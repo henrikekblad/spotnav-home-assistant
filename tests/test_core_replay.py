@@ -50,6 +50,8 @@ def _bundle(records) -> dict:
 
 
 STOPPED = {"owner": "none", "manual": {"action": "stop", "scope": "plug_in"}, "span_pause": None}
+#: The C7 stops' count and last try, which the core and today's code count apart (see the recordings below).
+C7_COUNT = {"hold_stop_times", "hold_tried_at"}
 
 
 def _synthetic() -> list[dict]:
@@ -86,6 +88,95 @@ def test_a_synthetic_bundle_replays_as_recorded() -> None:
     assert report.events == 4 and report.mismatches == ()
     assert report.session.manual is None and report.session.owner == "none"
     assert reports["charger_b"].events == 0
+
+
+def test_a_synthetic_bundle_replays_with_no_line_up() -> None:
+    report = replay_bundle(json.loads(json.dumps(_bundle(_synthetic()))), line_up=False)["charger_a"]
+    assert report.events == 4 and report.skipped == 0
+    assert report.differences == () and report.mismatches == ()
+    assert report.session.manual is None and report.session.owner == "none"
+
+
+def test_a_change_no_event_fed_is_a_real_difference(tmp_path, capsys) -> None:
+    records = _synthetic()
+    # Today's code gave the charge to the plan between the Stop and the report, and told the core nothing.
+    records[1]["pre"]["owner"] = "plan"
+    # And it kept the person's Stop past the unplug.
+    records[3]["today_after"] = STOPPED
+    report = replay(records, line_up=False)
+    assert [(item.index, item.when, item.field, item.expected, item.got) for item in report.real] == [
+        (1, "before", "owner", "plan", "none"),
+        (3, "after", "manual", {"action": "stop", "scope": "plug_in"}, None),
+    ]
+    assert replay(records).differences == (), "the line-up takes today's state, so it sees none"
+    path = tmp_path / "bundle.json"
+    path.write_text(json.dumps(_bundle(records)), encoding="utf-8")
+    assert main(["--no-line-up", str(path)]) == 1
+    out = capsys.readouterr().out
+    assert "0 observation drift, 2 real differences" in out
+    assert "REAL #1 charger_reported_on before: owner expected 'plan', got 'none'" in out
+
+
+def test_the_chargers_own_charge_and_two_clocks_are_drift(tmp_path, capsys) -> None:
+    records = _synthetic()
+    # The charger was seen charging by itself before the report said so: an observation.
+    records[1]["pre"]["owner"] = "charger_self"
+    # The stop under the person's Stop, as today's code timed it: half a second after the core decided it.
+    held = replay(records[:2], line_up=False).session.to_dict()
+    sent = "2026-10-04T22:00:00.500000+00:00"
+    assert held["hold_tried_at"] == AT
+    records[2]["pre"] = {**held, "hold_tried_at": sent, "hold_stop_times": [sent]}
+    report = replay(records, line_up=False)
+    assert report.real == (), report.real
+    assert [(item.index, item.field, item.reason) for item in report.drift] == [
+        (1, "owner", "owner"),
+        (2, "hold_stop_times", "clock"),
+        (2, "hold_tried_at", "clock"),
+    ]
+    # Two stops counted where the core counted one is no clock.
+    records[2]["pre"]["hold_stop_times"] = [sent, sent]
+    assert [item.field for item in replay(records, line_up=False).real] == ["hold_stop_times"]
+    path = tmp_path / "bundle.json"
+    path.write_text(json.dumps(_bundle(_synthetic())), encoding="utf-8")
+    assert main(["--no-line-up", str(path)]) == 0
+    assert "0 observation drift, 0 real differences" in capsys.readouterr().out
+
+
+#: A report the core decided at its feed's `begin` (it drives), whose hold's stop then ran as a task of its own and
+#: was kept first: a debug bundle's, its facts as recorded.
+_REPORT_FACTS = {
+    "window_ahead_outside": True, "window_open": False, "in_window": False, "plan_present": True,
+    "open_window_start": None, "car_ended_known_full": False, "need_grew": False, "car_ended_awaits_level": False,
+    "solar_holds": False, "plan_auto_owned": True, "handed_off": False, "start_pending": False, "owned": False,
+}
+
+
+def _decided_at_begin() -> list[dict]:
+    stopped = ev.CommandResult(command="stop", reason="hold", executed=True)
+    return [
+        _record(ev.PlugIn(previous=False), pre={"version": 1, "plugged": False}, order=1,
+                after={"owner": "none", "manual": None, "span_pause": None}),
+        _record(ev.Recheck(what="hold", control_on=True, top_off=False, **_REPORT_FACTS),
+                core=["stop"], today=["stop"], result=stopped, unchecked=True, order=4),
+        _record(ev.ChargerReportedOn(charging=True, was_on=False, connected=True, stop_recent=False,
+                                     **{k: v for k, v in _REPORT_FACTS.items()}),
+                core=["stop"], today=["stop"], pre={"version": 1, "plugged": True, "owner": "charger_self"},
+                queued=True, unchecked=True, early=3, order=5),
+        _record(ev.PlanInstalled(window_open=False), pre={"version": 1, "plugged": True, "held": True}, order=6,
+                after={"owner": "none", "manual": None, "span_pause": None}),
+    ]
+
+
+def test_an_event_decided_at_its_feeds_begin_is_replayed_in_that_place() -> None:
+    records = _decided_at_begin()
+    report = replay(records, line_up=False)
+    assert report.real == (), report.real
+    assert [(item.index, item.field) for item in report.drift] == [(2, "owner")]
+    assert report.mismatches == ()
+    # Without the decision clock, in the order kept: the report's stop would await a result that came before it.
+    for record in records:
+        record.pop("order")
+    assert [item.field for item in replay(records, line_up=False).real] == ["pending"]
 
 
 def test_a_replay_says_where_the_core_or_todays_code_differs() -> None:
@@ -144,6 +235,12 @@ async def test_a_real_chargers_recording_replays_without_a_difference(
     report = replay_bundle(bundle)["charger_a"]
     assert report.events == len(diagnostics["events"])
     assert report.mismatches == ()
+    # From the first recorded session on, with no line-up: every change of today's state was fed.
+    alone = replay_bundle(bundle, line_up=False)["charger_a"]
+    assert alone.events == len(diagnostics["events"]) and alone.skipped == 0
+    # Known, left to the step that moves C7 into the session: the core counts the report's stop and the task's
+    # again (`_person_hold`, then `_recheck`), today's code the one that went out; the line-up hides it.
+    assert {item.field for item in alone.real} <= C7_COUNT, alone.real
     await world.shutdown()
 
 
@@ -256,8 +353,9 @@ async def test_a_report_that_decides_nothing_keeps_the_plug_in_and_the_persons_a
     assert "plug_in" in kinds and "person_stop" in kinds, kinds
     assert shadow.counts["quiet"] >= EVENT_RING
     assert shadow.counts["disagreements"] == 0
-    report = replay_bundle(json.loads(json.dumps(_bundle(shadow.diagnostics()["events"]), default=str)))["charger_a"]
-    assert report.mismatches == ()
+    bundle = json.loads(json.dumps(_bundle(shadow.diagnostics()["events"]), default=str))
+    assert replay_bundle(bundle)["charger_a"].mismatches == ()
+    assert {item.field for item in replay_bundle(bundle, line_up=False)["charger_a"].real} <= C7_COUNT
     await world.shutdown()
 
 
