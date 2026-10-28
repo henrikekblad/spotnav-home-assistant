@@ -27,6 +27,7 @@ from homeassistant.helpers.event import async_call_later
 
 from ..planning.auto_settings import AutoSettings, AutoSettingsStore
 from .price_refresh import CatalogueSnapshot, PriceRefreshManager
+from .price_source import effective_settings
 
 
 #: The owner id a display observation subscribes under; not the Auto controller's prefix, so a
@@ -119,10 +120,15 @@ class MarketObservation:
         return self._closed
 
     async def async_start(self) -> None:
-        await self.async_reconcile(self._store.settings(self._entry_id))
+        await self.async_reconcile(self._settings())
+
+    def _settings(self) -> AutoSettings:
+        """The charger's settings with its price source's area (`pricing/price_source.py`)."""
+        return effective_settings(self._hass, self._entry_id, self._store.settings(self._entry_id))
 
     async def async_reconcile(self, settings: AutoSettings) -> None:
-        """Follow [settings]'s area: keep it fresh, or release what this entry had.
+        """Follow [settings]'s area (the price source's, `price_source.effective_settings`): keep it fresh, or
+        release what this entry had.
 
         Called from the one place a settings change is applied, so every path that can move a charger's area
         moves this subscription with it. An unknown area, and no area, both mean nothing to observe.
@@ -254,7 +260,7 @@ class MarketObservation:
         self._cancel_recovery()
         if self._closed:
             return
-        self._hass.async_create_task(self.async_reconcile(self._store.settings(self._entry_id)))
+        self._hass.async_create_task(self.async_reconcile(self._settings()))
 
     def _admit(self) -> int | None:
         if self._closed:

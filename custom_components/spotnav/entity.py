@@ -235,6 +235,10 @@ class SpotNavAutoEntity(Entity):
         """The preview's current immutable snapshot, or `None` without a preview."""
         return None if self._auto.preview is None else self._auto.preview.snapshot()
 
+    # Known gap until the area and fee entities move to the price entry: they show and write the charger's own
+    # stored area and fees. While an electricity price entry is the charger's price source
+    # (`pricing/price_source.py`) planning ignores those, so a change made here has no effect. Not to be released
+    # in this state.
     @property
     def area(self) -> AreaEntry | None:
         """The selected area's catalogue entry, or `None` when there is none to read."""

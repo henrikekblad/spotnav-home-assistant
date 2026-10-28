@@ -4,6 +4,10 @@ The price book is the repository's held day documents for the charger's market, 
 (`costing.spot_intervals`): a session keeps the energy and those raw prices, and its cost is made when it is
 read, with the fiscal choice the plan itself uses (`auto_controller.fiscal_choice_for`) as the person has it
 then (`current_fiscal`). Yesterday is included so a session that runs past midnight keeps pricing.
+
+The market and its fees are the charger's price source's (`pricing/price_source.py`). A session in the source's
+area is priced with the source's fees; a session in an area the source does not cover (one the charger used
+before) with the charger's own stored row for that area, as always.
 """
 
 from __future__ import annotations
@@ -24,6 +28,7 @@ from ..planning.auto_settings import STRATEGY_HYBRID, STRATEGY_SOLAR
 from ..planning.grid_voltage import voltage_between_phases_v
 from ..planning.planner import FiscalChoice, power_kw
 from ..pricing.price_repository import PriceRepository
+from ..pricing.price_source import effective_settings
 from ..runtime import charger_data, domain_data
 from ..planning.phases import charger_wiring, charging_phases
 from ..site.phase_detection import async_detect_phases
@@ -137,7 +142,7 @@ def price_market(hass: HomeAssistant, charger_id: str) -> PriceMarket | None:
     store, repository = data.auto_store, data.price_repository
     if store is None or repository is None:
         return None
-    settings = store.settings(charger_id)
+    settings = effective_settings(hass, charger_id, store.settings(charger_id))
     area_id = settings.area_id
     area = None if area_id is None else repository.catalogue_snapshot().area(area_id)
     if area is None:
@@ -183,7 +188,7 @@ def current_fiscal(hass: HomeAssistant, charger_id: str, area_id: str | None = N
     store, repository = data.auto_store, data.price_repository
     if store is None or repository is None:
         return None
-    settings = store.settings(charger_id)
+    settings = effective_settings(hass, charger_id, store.settings(charger_id))
     chosen = area_id or settings.area_id
     area = None if chosen is None else repository.catalogue_snapshot().area(chosen)
     return None if area is None else fiscal_choice_for(settings, area)
