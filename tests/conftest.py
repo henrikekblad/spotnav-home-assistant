@@ -82,6 +82,20 @@ def no_history_import(request, monkeypatch):
     monkeypatch.setattr(integration, "_async_schedule_history_import", lambda *args, **kwargs: None)
 
 
+@pytest.fixture
+def no_price_entry_from_settings(monkeypatch):
+    """A settings write that sets the area keeps the record the charger stores, as it did before price entries:
+    no electricity price entry is made from it (`pricing/price_setup.py:async_price_entry_from_settings`). For the
+    tests whose envelopes are the contract's fixtures, written before that."""
+
+    async def _none(*_args: Any, **_kwargs: Any) -> None:
+        return None
+
+    from custom_components.spotnav.api import settings as settings_api
+
+    monkeypatch.setattr(settings_api, "async_price_entry_from_settings", _none)
+
+
 @pytest.fixture(autouse=True)
 def no_installation_questions(request, monkeypatch):
     """Let a new charger's flow create the entry at once, as the flow tests that are about something

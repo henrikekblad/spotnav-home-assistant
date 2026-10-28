@@ -28,7 +28,7 @@ from tests.world import admin, ws_call
 from tests.test_strategy_schema import body_of
 from custom_components.spotnav.runtime import domain_data
 
-pytestmark = pytest.mark.usefixtures("offline_relay")
+pytestmark = pytest.mark.usefixtures("offline_relay", "no_price_entry_from_settings")
 
 SETTINGS_FIXTURE_DIR = Path(__file__).resolve().parent / "fixtures" / "settings" / "v1"
 
