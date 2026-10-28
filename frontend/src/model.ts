@@ -843,7 +843,7 @@ export function buildModel(input: BuildInput): CardModel {
     dashboardSettings: dashboard.settings,
     today: zone ? localDayKey(input.nowMs, format.timeZone) : null,
     dashboardFiscal: dashboard.fiscal,
-    status: statusText(status, format, input.nowMs),
+    status: statusText(status, format, input.nowMs, dashboard.planning?.publication_at ?? null),
     statusNote: statusNote(status, format, input.nowMs),
     chargeBar: chargeBarFor(dashboard.progress, format, input.nowMs),
     issues,

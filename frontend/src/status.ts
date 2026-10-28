@@ -10,7 +10,7 @@ import {
   hasZone,
   localeMoney,
   weekdayDate,
-  weekdayPlural,
+  weekdaySingular,
   type FormatContext,
 } from "./format";
 import { pluralForm, translate, type Language, type TranslationKey } from "./i18n";
@@ -242,6 +242,7 @@ export const STATUS_VARIANT_KEYS: readonly TranslationKey[] = [
   "status.scheduledNoTime",
   "status.waitingForPublicationNoTime",
   "status.waitingForHistoryNoDetail",
+  "status.waitingForHistoryAt",
   "status.loadBalancingLimited",
   "status.balancingPausedBattery",
   "status.balancingPausedHouseRoom",
@@ -381,7 +382,16 @@ function manualPauseKey(action: unknown, ends: unknown): TranslationKey {
   return ends === "resume" ? "control.pausedManualStopResume" : "control.pausedManualStop";
 }
 
-export function lineText(line: StatusLine, format: FormatContext, nowMs: number): string {
+/**
+ * One status line in words. `publicationAt` is the planning record's `publication_at`, the time the
+ * history-based wait names; a line that needs no time ignores it.
+ */
+export function lineText(
+  line: StatusLine,
+  format: FormatContext,
+  nowMs: number,
+  publicationAt: string | null = null,
+): string {
   const language = format.language;
   const say = (key: TranslationKey, params: Record<string, string> = {}): string =>
     translate(language, key, params);
@@ -422,17 +432,23 @@ export function lineText(line: StatusLine, format: FormatContext, nowMs: number)
         : say("status.waitingForPublication", { time: clock(format, at) });
     }
     case "waiting_for_history": {
-      // The weekday's plural, the saving and the weeks behind it; without all three, only the plain fact.
-      const weekday = weekdayPlural(language, num(p["weekday"]) ?? Number.NaN);
+      // SpotNav waits for the prices of the weekday's hours, which have been cheaper over the last weeks:
+      // when they come is the planning record's publication time, worded only while it is still ahead.
+      const weekday = weekdaySingular(language, num(p["weekday"]) ?? Number.NaN);
       const percent = num(p["percent"]);
       const weeks = num(p["weeks"]);
-      return weekday === null || percent === null || weeks === null
-        ? say("status.waitingForHistoryNoDetail")
-        : say("status.waitingForHistory", {
-            weekday,
-            percent: formatNumber(language, percent, 0),
-            weeks: formatNumber(language, weeks, 0),
-          });
+      if (weekday === null || percent === null || weeks === null) {
+        return say("status.waitingForHistoryNoDetail");
+      }
+      const detail = {
+        weekday,
+        percent: formatNumber(language, percent, 0),
+        weeks: formatNumber(language, weeks, 0),
+      };
+      const at = publicationAt === null ? null : ms(publicationAt);
+      return at === null || at <= nowMs || !zoned
+        ? say("status.waitingForHistory", detail)
+        : say("status.waitingForHistoryAt", { ...detail, time: clock(format, at) });
     }
     case "buying_before_publication":
       return say("status.buyingBeforePublication", { kwh: formatNumber(language, num(p["kwh"]) ?? 0, 1) });
@@ -600,7 +616,12 @@ export function lineText(line: StatusLine, format: FormatContext, nowMs: number)
 /** The suggestion note has its own muted line, never a part of the plan line. */
 const NOTE_CODE = "settings_suggested";
 
-export function statusText(status: Status | null, format: FormatContext, nowMs: number): string | null {
+export function statusText(
+  status: Status | null,
+  format: FormatContext,
+  nowMs: number,
+  publicationAt: string | null = null,
+): string | null {
   if (status === null) {
     return null;
   }
@@ -608,7 +629,7 @@ export function statusText(status: Status | null, format: FormatContext, nowMs: 
   if (lines.length === 0) {
     return null;
   }
-  const parts = lines.map((line) => lineText(line, format, nowMs));
+  const parts = lines.map((line) => lineText(line, format, nowMs, publicationAt));
   return parts
     .map((part, index) => (index < parts.length - 1 ? part.replace(/[.。]$/u, "") : part))
     .join(" · ");
