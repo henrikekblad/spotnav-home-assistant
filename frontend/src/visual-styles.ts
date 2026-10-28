@@ -924,8 +924,12 @@ export const VISUAL_STYLES = `
     opacity: 0.55;
     cursor: default;
   }
-  /** "Which car is plugged in?": a question that decides the plan, so it stands out from the status. */
-  .spotnav-suggestion[data-banner="identify"] {
+  /**
+   * "Which car is plugged in?": a question that decides the plan, so it stands out from the status. The same-area
+   * electricity price question in Settings stands out the same way.
+   */
+  .spotnav-suggestion[data-banner="identify"],
+  .spotnav-suggestion[data-banner="price"] {
     padding: 8px 10px;
     border-left: 3px solid var(--primary-color, #03a9f4);
     border-radius: 4px;

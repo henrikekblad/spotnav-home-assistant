@@ -247,6 +247,34 @@ export async function updateSiteSettings(
   });
 }
 
+/**
+ * The electricity price entry a charger uses (administrators only): through its site when it has one, so every
+ * charger there follows. Answers `{ok: true}`; a refusal is an error with a stable code.
+ */
+export async function choosePriceSource(hass: HomeAssistantLike, chargerId: string, priceEntryId: string): Promise<unknown> {
+  return await call<unknown>(hass, {
+    type: "spotnav/choose_price_source",
+    entry_id: chargerId,
+    price_entry_id: priceEntryId,
+  });
+}
+
+/**
+ * The answer to "Two electricity prices for the same area with different fees. Use one?" (administrators only):
+ * the entry to use, or `null` to keep them all. Answers `{ok: true}`; a refusal is an error with a stable code.
+ */
+export async function answerPriceDuplicate(
+  hass: HomeAssistantLike,
+  areaId: string,
+  keepEntryId: string | null,
+): Promise<unknown> {
+  return await call<unknown>(hass, {
+    type: "spotnav/answer_price_duplicate",
+    area_id: areaId,
+    keep_entry_id: keepEntryId,
+  });
+}
+
 /** The redacted installation-wide debug bundle (administrators only), `unknown` until decoded. */
 export async function getDebugBundle(hass: HomeAssistantLike): Promise<unknown> {
   return await call<unknown>(hass, {

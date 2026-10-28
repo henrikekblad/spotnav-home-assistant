@@ -52,6 +52,7 @@ import {
   type Issue,
   type PlanPeriod,
   type PlanRelationKind,
+  type PriceEntryFacts,
   type SiteFacts,
 } from "./model";
 import type { ActiveControlNotice } from "./site-settings";
@@ -351,6 +352,8 @@ export interface CardView {
   setEntityHass(hass: unknown): void;
   closeEntityEditor(): void;
   setOverviewNotice(failure: FailureSentence | null): void;
+  /** One of same-area electricity prices was chosen: the price section says once that the other can be removed. */
+  showPriceRemovableNote(): void;
   /** The debug download is being prepared: the button says so and cannot be pressed again. */
   setDebugPending(pending: boolean): void;
   /** Whether the card running here differs from the one the integration serves: Support then says to reload. */
@@ -2416,11 +2419,16 @@ export function createCardView(input: CardViewInput): CardView {
     );
   }
 
-  /** The price: the area (its own dialog, with the catalogue), and each fee in its own number editor. */
+  /**
+   * The price: where it lives (the electricity price entry and how many chargers use it), the same-area question,
+   * the choice of entry when there are several, then the area (its own dialog, with the catalogue) and each fee
+   * in its own number editor.
+   */
   function priceSectionBody(): HTMLElement {
     const section = element(doc, "section", C.settingsSection);
     section.dataset["section"] = "market";
     section.append(sectionHeading(doc, "price", translate(model.language, "settings.heading.price")));
+    section.append(...priceEntryNodes());
     const area = marketAreaLabel(model.language, model.contextAreaName, model.contextAreaId);
     // The area opens its own dialog, with the catalogue, for an administrator; anyone else reads it, as every other value.
     const areaLabel = translate(model.language, "context.area");
@@ -2441,6 +2449,153 @@ export function createCardView(input: CardViewInput): CardView {
       );
     }
     return section;
+  }
+
+  /** An electricity price's name as shown: the name SpotNav gives one ("Electricity price SE4") in the reader's language. */
+  function priceTitle(title: string): string {
+    const given = /^Electricity price ([A-Za-z0-9-]+)$/.exec(title);
+    return given === null ? title : translate(model.language, "price.title", { area: given[1]! });
+  }
+
+  /**
+   * Each electricity price's name for a list of them. Two with the same name (as SpotNav names them) are told apart:
+   * the one this charger uses says so, the other is "the other".
+   */
+  function priceLabels(entries: ReadonlyArray<{ entryId: string; title: string }>, current: string): Map<string, string> {
+    const labels = new Map<string, string>();
+    const shown = entries.map((entry) => ({ entryId: entry.entryId, title: priceTitle(entry.title) }));
+    for (const entry of shown) {
+      const same = shown.filter((other) => other.title === entry.title);
+      if (same.length < 2) {
+        labels.set(entry.entryId, entry.title);
+      } else if (entry.entryId === current) {
+        labels.set(entry.entryId, translate(model.language, "price.choice.here", { title: entry.title }));
+      } else {
+        const others = same.filter((other) => other.entryId !== current);
+        const label = translate(model.language, "price.choice.other", { title: entry.title });
+        labels.set(entry.entryId, others.length > 1 ? `${label} ${others.indexOf(entry) + 1}` : label);
+      }
+    }
+    return labels;
+  }
+
+  /** The electricity price entry's line, the shared note, the same-area question and the "Price from" choice. */
+  function priceEntryNodes(): HTMLElement[] {
+    const entry = model.priceEntry;
+    if (entry === null) {
+      return [];
+    }
+    const nodes: HTMLElement[] = [];
+    const count = entry.chargerCount;
+    const title = priceTitle(entry.title);
+    const sourceText =
+      count <= 1
+        ? title
+        : translate(model.language, count >= entry.chargerTotal ? "price.source.usedByAll" : "price.source.usedBy", {
+            title,
+            count: String(count),
+          });
+    const sourceLine = element(doc, "p", C.siteApplies, sourceText);
+    sourceLine.dataset["priceSource"] = entry.entryId;
+    nodes.push(sourceLine);
+    if (count > 1) {
+      const shared = element(doc, "p", C.siteApplies, translate(model.language, "price.shared"));
+      shared.dataset["priceShared"] = "";
+      nodes.push(shared);
+    }
+    if (input.isAdmin && entry.writable && entry.duplicate !== null) {
+      nodes.push(priceDuplicateQuestion(entry.duplicate, entry.entryId));
+    }
+    if (entry.choices.length > 1) {
+      const label = translate(model.language, "price.from.label");
+      const labels = priceLabels(entry.choices, entry.entryId);
+      const options: ChoiceOption[] = entry.choices.map((choice) => ({
+        value: choice.entryId,
+        label: labels.get(choice.entryId) ?? choice.title,
+      }));
+      const help = translate(model.language, model.site === null ? "price.from.help" : "price.from.helpSite");
+      nodes.push(
+        overviewRow(
+          "price_from",
+          label,
+          title,
+          entry.writable
+            ? () =>
+                editSingle(
+                  label,
+                  options,
+                  entry.entryId,
+                  (chosen) =>
+                    chosen === entry.entryId
+                      ? Promise.resolve(null)
+                      : writeValue({ kind: "priceSource", priceEntryId: chosen }),
+                  help,
+                )
+            : undefined,
+        ),
+      );
+    }
+    return nodes;
+  }
+
+  /**
+   * "Two electricity prices for SE4 with different fees. Use one?": one button per entry and one to keep them all.
+   * Answered once; nothing is removed.
+   */
+  function priceDuplicateQuestion(duplicate: NonNullable<PriceEntryFacts["duplicate"]>, current: string): HTMLElement {
+    const question = element(doc, "div", C.suggestion);
+    question.dataset["banner"] = "price";
+    question.dataset["priceDuplicate"] = duplicate.areaId;
+    const many = duplicate.entries.length > 2;
+    question.append(
+      element(
+        doc,
+        "p",
+        C.suggestionText,
+        translate(model.language, many ? "price.duplicate.questionMany" : "price.duplicate.question", {
+          area: duplicate.areaId,
+          count: String(duplicate.entries.length),
+        }),
+      ),
+    );
+    const answers = element(doc, "div", C.suggestionAnswers);
+    const failure = element(doc, "p", C.settingsError);
+    failure.hidden = true;
+    failure.setAttribute("role", "alert");
+    const buttons: HTMLButtonElement[] = [];
+    const choose = (keepEntryId: string | null): void => {
+      for (const button of buttons) {
+        button.disabled = true;
+      }
+      failure.hidden = true;
+      void writeValue({ kind: "priceDuplicate", areaId: duplicate.areaId, keepEntryId }).then((sentence) => {
+        if (sentence !== null) {
+          failure.textContent = sentence;
+          failure.hidden = false;
+          for (const button of buttons) {
+            button.disabled = false;
+          }
+        }
+      });
+    };
+    const answer = (text: string, keepEntryId: string | null): void => {
+      const button = element(doc, "button", C.choiceButton, text);
+      button.type = "button";
+      button.dataset["keep"] = keepEntryId ?? "";
+      button.addEventListener("click", () => choose(keepEntryId));
+      buttons.push(button);
+      answers.append(button);
+    };
+    const labels = priceLabels(duplicate.entries, current);
+    for (const choice of duplicate.entries) {
+      answer(
+        translate(model.language, "price.duplicate.use", { title: labels.get(choice.entryId) ?? choice.title }),
+        choice.entryId,
+      );
+    }
+    answer(translate(model.language, many ? "price.duplicate.keepAll" : "price.duplicate.keepBoth"), null);
+    question.append(answers, failure);
+    return question;
   }
 
   let overviewBodyNode: HTMLElement | null = null;
@@ -4280,6 +4435,21 @@ export function createCardView(input: CardViewInput): CardView {
     setOverviewNotice(failure: FailureSentence | null): void {
       overviewNotice = failure;
       paintOverviewNotice();
+    },
+    showPriceRemovableNote(): void {
+      const section = overviewBodyNode?.querySelector<HTMLElement>("[data-section='market']");
+      if (section === null || section === undefined || section.querySelector("[data-price-removable]") !== null) {
+        return;
+      }
+      const note = element(doc, "p", C.siteApplies, translate(model.language, "price.duplicate.removable"));
+      note.dataset["priceRemovable"] = "";
+      note.setAttribute("role", "status");
+      const sourceLine = section.querySelector("[data-price-source]");
+      if (sourceLine === null) {
+        section.append(note);
+      } else {
+        sourceLine.after(note);
+      }
     },
     closeSettingsOverview(): void {
       settingsOverviewDialog.hide({ restoreFocus: false });
