@@ -4020,9 +4020,11 @@ class ChargingController:
                         if self._safety.held:
                             self._safety = replace(self._safety, stopped_at=dt_util.utcnow())
                         self._remember_paused_charge(*paused_charge)
-                        self._save_memory_soon()
                 finally:
                     self._shadow.end(token, pause, legacy=("stop",), outcome=outcome)
+                # Saved soon once decided: today's fields, or the core's session when it drives (its result was
+                # decided at `end`), and today's `balancing_pause` key derived from it.
+                self._save_memory_soon()
         except ChargingExecutionError as err:
             if err.code == EXECUTION_STOP_HELD_AT_FLOOR:
                 # Not paused: the charge runs on at the floor, which is what load balancing must count.
