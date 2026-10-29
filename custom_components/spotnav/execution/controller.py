@@ -1645,6 +1645,12 @@ class ChargingController:
             self._new_phase_plug_in()
             # A safety stop's hold belongs to the plug-in it was made in.
             self._safety = SafetyHold(held=False, stopped_at=None)
+            # So does the hold of a charge that began by itself outside a window, and a person's override of it: ended
+            # here, as the core ends them, not first at the report's own observation (`WindowHold.observe`).
+            hold = self._hold_state
+            if hold.held or hold.overridden:
+                self._hold_state = replace(hold, held=False, overridden=False)
+                self._save_memory_soon()
         if self._balancing.paused and (connected is False or previous is False):
             # The plug-in session a balancing pause held a charge for is over (an unplug, or the first
             # connection after a restart says no car): nothing is left for the regulator to resume, and a
