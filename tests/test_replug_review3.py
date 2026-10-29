@@ -176,7 +176,7 @@ async def test_a_start_that_raises_restores_what_the_charge_was(hass: HomeAssist
 
     assert controller.charge_origin is None
     assert controller._plan_charge is False and controller._start_cause is None  # noqa: SLF001
-    assert controller._hold.owned is False  # noqa: SLF001
+    assert controller._hold_state.owned is False  # noqa: SLF001 - the hold's memory, through its accessor
     await controller.async_shutdown()
 
 
