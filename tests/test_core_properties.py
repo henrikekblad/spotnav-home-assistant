@@ -10,6 +10,7 @@ random results for every command, against the invariants the refactor is for.
 * A window's end stops only the plan's own charge: a person's, a Charge-now start's or the sun's goes on (I3).
 * A manual pause of the plug-in session ends at the unplug.
 * A restart (serialise, read back, restart) changes nothing about who owns the charge or what the person wants.
+* Today's two owner fields derived from the session read back as the same owner.
 
 The facts an event carries are drawn so that they could come from Home Assistant together: no plan exists under a
 person's pause (it is dropped), so no plan-bound event says one is applied then.
@@ -44,6 +45,8 @@ from custom_components.spotnav.core.ownership import (
     window_end_spared,
 )
 from custom_components.spotnav.core.session import CarEnded, CarEndedWait, ChargeSession, OWNERS, SCOPE_PLUG_IN
+from custom_components.spotnav.execution.controller import _CORE_OWNER_ORIGIN
+from custom_components.spotnav.execution.ownership_shadow import legacy_owner
 
 T0 = datetime(2026, 10, 4, 22, 0, tzinfo=timezone.utc)
 
@@ -158,8 +161,13 @@ class OwnershipMachine(RuleBasedStateMachine):
             and pre.owner in ("none", "charger_self")
             and not pre.overridden
             and not pre.paused
+            and not pre.start_pending
         ):
             assert "stop" in kinds
+        # ... and never one a start the core asked for began, while that start's result is still to come (a
+        # Charge-now start the charger answered before its command returned).
+        if isinstance(event, ev.SolarStop) and event.take_over and pre.start_pending:
+            assert "stop" not in kinds, (event, pre)
         # I3: a window's end stops only the plan's own charge; a person's, a Charge-now start's or the sun's (and one
         # load balancing holds back for them) goes on, never as a top-off, and the plan ends with no stop.
         if isinstance(event, (ev.WindowEnd, ev.FinalWindowEnd)):
@@ -233,6 +241,18 @@ class OwnershipMachine(RuleBasedStateMachine):
         assert session.paused_origin is None or session.balancing_paused
         # A person's override is of a hold in this plug-in session: never one without the hold.
         assert not session.overridden or session.held
+
+    @invariant()
+    def the_derived_owner_maps_back(self) -> None:
+        """Today's two owner fields derived from the session when the core drives (`controller._CORE_OWNER_ORIGIN`)
+        read back as the same owner (`ownership_shadow.legacy_owner`, a top-off by its deadline): nobody's and the
+        charger's own are no origin, and which of them it is is seen, not kept."""
+        owner = self.session.owner
+        origin, plan_charge = _CORE_OWNER_ORIGIN.get(owner, (None, False))
+        assert plan_charge is (owner in ("plan", "top_off"))
+        unseen = {"charging": False, "start_pending": False, "stop_recent": False}
+        read = legacy_owner(origin=origin, top_off=owner == "top_off", **unseen)
+        assert read == (owner if owner not in ("none", "charger_self") else "none"), (owner, origin, read)
 
     @invariant()
     def the_record_reads_back(self) -> None:

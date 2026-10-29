@@ -359,12 +359,15 @@ def spotnav_owned(session: ChargeSession) -> bool:
 
 def self_started(session: ChargeSession, *, charging: bool, start_pending: bool, stop_recent: bool) -> bool:
     """A charge the charger began by itself: charging, nobody here started it, no start or stop of ours on its
-    way, and not a person's override of the hold."""
+    way, and not a person's override of the hold. A start the core asked for that has not come back is on its way
+    too (`session.start_pending`): the shell's own `start_pending` turns false once the charger reports charging,
+    while the start's result is still to be fed (a Charge-now start's command still awaited)."""
     return (
         charging
         and not stop_recent
         and session.owner in (OWNER_NONE, OWNER_CHARGER_SELF)
         and not start_pending
+        and not session.start_pending
         and not session.overridden
     )
 

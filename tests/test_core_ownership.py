@@ -1442,3 +1442,132 @@ def test_a_command_from_an_earlier_plug_in_round_trips_and_an_older_record_reads
     del raw["pending"][0]["earlier_plug_in"]  # a debug bundle written before it was kept
     assert ChargeSession.from_dict(raw).pending[0].earlier_plug_in is False
     assert "pending" not in session.to_store(), "transient: a restart clears every command awaiting a result"
+
+
+# ---------------------------------------------------------------------------------------------- the owner (step 7)
+
+PLAN_CHARGE = PLUGGED.with_changes(owner="plan")
+
+
+def _unobserved(reason: str) -> ev.CommandResult:
+    return ev.CommandResult(command="stop", reason=reason, executed=True, unobserved=True)
+
+
+@pytest.mark.parametrize(
+    ("pre", "events", "owner"),
+    [
+        # Set: by a start's result that went out, to the owner the start was for (today's `_start_locked` writes
+        # `charge_origin` and `plan_charge` as the command goes out, and takes them back if it never did).
+        (PLUGGED, (ev.WindowStart(), ok("start", "plan_window")), "plan"),
+        (PLUGGED, (ev.PersonStart(), ok("start", "person")), "person"),
+        (PLUGGED, (ev.DirectStart(manual=True), ok("start", "direct")), "person"),
+        (PLUGGED, (ev.DirectStart(), ok("start", "direct")), "charge_now"),
+        (PLUGGED, (ev.DirectStart(cause="other"), ok("start", "direct")), "charge_now"),
+        (PLUGGED, (ev.DirectStart(cause="solar"), ok("start", "direct")), "solar"),
+        (PLUGGED, (ev.DirectStart(cause="plan_window"), ok("start", "direct")), "plan"),
+        (PLUGGED, (ev.DirectStart(cause="min_soc"), ok("start", "direct")), "min_soc"),
+        (PLUGGED, (ev.SolarStart(), ok("start", "solar")), "solar"),
+        (PLUGGED, (ev.MinSocStart(), ok("start", "min_soc")), "min_soc"),
+        (PLUGGED, (on(window_open=True), ok("start", "claim")), "plan"),
+        # Never by a start that did not go out (I4: today's rollback), nor one load balancing held back (its memory
+        # keeps whose it is, the owner stays as it was).
+        (PLUGGED, (ev.WindowStart(), failed("start", "plan_window")), "none"),
+        (PLUGGED, (ev.DirectStart(), failed("start", "direct")), "none"),
+        (
+            PLUGGED,
+            (ev.WindowStart(), ev.CommandResult(command="start", reason="plan_window", executed=False, balancing_held=True)),
+            "none",
+        ),
+        (PLAN_CHARGE, (ev.PersonStart(), failed("start", "person")), "plan"),
+        # A balancing resume gives the charge back as what it was; today's record of the plan's charge as
+        # `(plan_window, False)` (a stop after `async_drop_plan`) reads back as the plan's (`ORIGIN_OWNER`), so it
+        # resumes as `plan`, and nobody's stays nobody's.
+        (
+            PLUGGED.with_changes(balancing_paused=True, paused_origin="plan"),
+            (ev.BalancingResume(), ok("start", "balancing_resume")),
+            "plan",
+        ),
+        (
+            PLUGGED.with_changes(balancing_paused=True, paused_origin="person"),
+            (ev.BalancingResume(), ok("start", "balancing_resume")),
+            "person",
+        ),
+        (PLUGGED.with_changes(balancing_paused=True), (ev.BalancingResume(), ok("start", "balancing_resume")), "none"),
+        # Handed over with no command: the plan's charge to the sun, the floor's to the plan or the sun, the plan's
+        # past the last window to its top-off and back.
+        (PLAN_CHARGE, (ev.StrategyChange(plan_applied=True, sun_keeps=True),), "solar"),
+        (PLUGGED.with_changes(owner="min_soc"), (ev.MinSocEnd(handed_to=ev.HAND_TO_PLAN),), "plan"),
+        (PLUGGED.with_changes(owner="min_soc"), (ev.MinSocEnd(handed_to=ev.HAND_TO_SOLAR),), "solar"),
+        (PLAN_CHARGE, (ev.FinalWindowEnd(top_off_wanted=True),), "top_off"),
+        (PLUGGED.with_changes(owner="top_off"), (ev.NeedMet(control_on=False),), "plan"),
+        (PLUGGED.with_changes(owner="top_off"), (ev.PlanInstalled(),), "plan"),
+        (PLUGGED.with_changes(owner="top_off"), (ev.PlanDropped(),), "plan"),
+        (PLUGGED.with_changes(owner="top_off"), (ev.Rearm(past_last=True),), "plan"),
+        # Observed: a charge nobody here started is the charger's own once reported on.
+        (PLUGGED, (on(),), "charger_self"),
+        # Kept: a plan dropped by a person's Start (today's `async_drop_plan` clears `plan_charge` and keeps
+        # `charge_origin`, which reads as the plan's), a window end the next plan takes over, a restart.
+        (PLAN_CHARGE, (ev.PlanDropped(),), "plan"),
+        (PLAN_CHARGE, (ev.WindowEnd(continued=True),), "plan"),
+        (PLAN_CHARGE, (ev.FinalWindowEnd(continued=True),), "plan"),
+        (PLAN_CHARGE, (ev.Restart(),), "plan"),
+        (PLUGGED.with_changes(owner="person"), (ev.Restart(),), "person"),
+        # Kept: seen off while a start of ours awaits the charger's answer (also in the pass that tells readers).
+        (PLAN_CHARGE, (ev.ChargerReportedOff(start_pending=True),), "plan"),
+        (PLAN_CHARGE, (ev.ChargerReportedOff(notified=True, start_pending=True),), "plan"),
+        # Kept: a stop that never went out (I4), and one that sent nothing because the control said nothing.
+        (PLAN_CHARGE, (ev.WindowEnd(), failed("stop", "window_end")), "plan"),
+        (PLAN_CHARGE, (ev.WindowEnd(), _unobserved("window_end")), "plan"),
+        # Cleared: a stop that went out, also one a stop of ours still on its way answered for, and one that sent
+        # nothing to a control that said nothing when it also cleared the plan.
+        (PLAN_CHARGE, (ev.WindowEnd(), ok("stop", "window_end")), "none"),
+        (
+            PLAN_CHARGE,
+            (ev.WindowEnd(), ev.CommandResult(command="stop", reason="window_end", executed=True, settled=True)),
+            "none",
+        ),
+        (PLAN_CHARGE, (ev.TargetReached(), _unobserved("target")), "none"),
+        (PLUGGED.with_changes(owner="person"), (ev.PersonStop(), ok("stop", "person")), "none"),
+        (PLUGGED.with_changes(owner="solar"), (ev.SolarStop(), ok("stop", "solar")), "none"),
+        (PLAN_CHARGE, (ev.BalancingPause(), ok("stop", "balancing")), "none"),
+        # Cleared: seen off with no start of ours on its way, at the report and in the pass that tells readers.
+        (PLAN_CHARGE, (ev.ChargerReportedOff(),), "none"),
+        (PLAN_CHARGE, (ev.ChargerReportedOff(notified=True),), "none"),
+        (PLUGGED.with_changes(owner="charger_self"), (ev.ChargerReportedOff(),), "none"),
+    ],
+)
+def test_where_the_owner_is_set_and_cleared(pre, events, owner) -> None:
+    """The owner (the core end state plan, step 7): set only by a start's result that went out, a hand-over with no
+    command, or a report of a charge nobody here started; cleared by a stop that went out or a report of the charger
+    off with no start of ours on its way. Today's `charge_origin`/`plan_charge` are derived from it when the core
+    drives (`controller._CORE_OWNER_ORIGIN`)."""
+    session, _ = run(pre, *events)
+    assert session.owner == owner
+
+
+def test_a_top_off_is_the_plans_charge_past_the_last_window() -> None:
+    """Owner `top_off` is the plan's charge with a top-off running: only the last window's end sets it, and only for
+    the plan's own charge; today's code reads it as `charge_origin` `plan_window` with `top_off_until` set (and a
+    plan present). A charge not the plan's gets no top-off."""
+    for owner in ("person", "solar", "charge_now", "min_soc", "charger_self", "none"):
+        session, commands = run(PLUGGED.with_changes(owner=owner), ev.FinalWindowEnd(top_off_wanted=True))
+        assert session.owner != "top_off", owner
+    from custom_components.spotnav.execution.ownership_shadow import legacy_owner
+
+    unseen = {"charging": False, "start_pending": False, "stop_recent": False}
+    assert legacy_owner(origin="plan_window", top_off=True, **unseen) == "top_off"
+    assert legacy_owner(origin="plan_window", top_off=False, **unseen) == "plan"
+    assert legacy_owner(origin="manual", top_off=True, **unseen) == "person"
+
+
+@pytest.mark.parametrize("cause", [None, "other", "solar", "plan_window", "min_soc"])
+def test_the_suns_take_over_never_stops_a_start_still_awaiting_its_result(cause) -> None:
+    """A Charge-now start (any cause) is decided where it begins: while its command is on its way the charger may
+    report charging (the shell's own `start_pending` then reads false), and the sun's take-over must not take that
+    charge for one the charger began by itself."""
+    session, commands = run(PLUGGED, ev.DirectStart(cause=cause))
+    assert kinds(commands) == ["start"] and session.start_pending and session.owner == "none"
+    session, commands = run(session, ev.SolarStop(take_over=True, charging=True))
+    assert kinds(commands) == []
+    session, _ = run(session, ok("start", "direct"))
+    assert session.owner == run(PLUGGED, ev.DirectStart(cause=cause), ok("start", "direct"))[0].owner
