@@ -192,3 +192,74 @@ async def test_load_balancings_memory_is_kept_as_the_core_decided_it_and_a_diffe
     assert (shadow.session.balancing_paused, shadow.session.paused_origin) == (True, "person"), "never taken"
     (record,) = [item for item in shadow.diagnostics()["drift"] if item.get("mirror")]
     assert set(record["fields"]) == {"balancing_paused", "paused_origin"}
+
+
+async def _replugged(world: World, control: str) -> None:
+    """The car is unplugged and plugged in again while a command is on its way (no wait for the loop to settle: the
+    command's task holds the operation lock)."""
+    import asyncio
+
+    from .pause_world import SWITCH
+
+    for connected, stamp in ((False, "unplug"), (True, "replug")):
+        world.plug.connected = connected
+        world.hass.states.async_set(SWITCH, control, {"plug": connected, "stamp": stamp})
+        for _ in range(5):
+            await asyncio.sleep(0)
+
+
+def _nothing_held_back(world: World, drives: bool) -> None:
+    controller = world.controller
+    assert not controller._balancing.paused and controller.paused_charge_origin is None  # noqa: SLF001
+    if drives:
+        assert not _session(world).balancing_paused and _session(world).paused_origin is None
+
+
+@pytest.mark.parametrize("what", ["pause", "held_start", "failed_resume"])
+async def test_a_command_across_an_unplug_and_a_new_plug_in_holds_nothing_back(
+    hass: HomeAssistant, timers: FakeScheduler, drives: bool, what: str
+) -> None:
+    """Load balancing's pause, a start it holds back below the floor, or its resume that did not take, with the car
+    unplugged and plugged in again before the command came back: the charge held back would be the earlier plug-in's
+    (a person's Start, say), never one to give back on the new plug-in."""
+    world = await pause_world(hass, timers)
+    controller = world.controller
+    await world.executor.async_manual_start(10)
+    if what == "pause":
+        real_stop = controller.adapter.async_stop
+
+        async def stop_across_a_replug() -> bool:
+            await _replugged(world, "on")
+            return await real_stop()
+
+        controller.adapter.async_stop = stop_across_a_replug  # type: ignore[method-assign]
+        await controller._regulated_stop("pause")  # noqa: SLF001
+    elif what == "held_start":
+        await world.executor.async_manual_stop()
+        real_save = controller._async_save  # noqa: SLF001
+
+        async def save_across_a_replug() -> None:
+            await _replugged(world, "off")
+            await real_save()
+
+        controller.set_start_cap(lambda: 0.0)
+        controller._async_save = save_across_a_replug  # type: ignore[method-assign]  # noqa: SLF001
+        try:
+            assert await controller.async_start(16, cause="solar") is False
+        finally:
+            controller._async_save = real_save  # type: ignore[method-assign]  # noqa: SLF001
+    else:
+        await controller._regulated_stop("pause")  # noqa: SLF001
+        assert controller.paused_by_balancing and controller.paused_charge_origin == "manual"
+
+        async def start_across_a_replug(_amps: int | None = None) -> bool:
+            await _replugged(world, "off")
+            return False
+
+        controller.adapter.async_start = start_across_a_replug  # type: ignore[method-assign]
+        assert not await controller.async_battery_probe_start(8)
+    await hass.async_block_till_done()
+    assert world.plug.connected is True
+    _nothing_held_back(world, drives)
+    assert (await _stored(world))["balancing_pause"] is None
+    await world.shutdown()
