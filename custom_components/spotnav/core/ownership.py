@@ -578,10 +578,11 @@ def _person_hold(session: ChargeSession, now: datetime, *, control_on: bool, sta
     recent = tuple(sent for sent in session.hold_stop_times if (now - sent).total_seconds() < PERSON_HOLD_WINDOW_S)
     if len(recent) >= PERSON_HOLD_MAX_STOPS:
         return session.with_changes(hold_stop_times=recent, hold_gave_up=True), (Notify(NOTIFY_CHARGER_IGNORES_STOP),)
+    # The stop is counted, and its try timed, where it goes out: the task's own decision under the lock
+    # (`_recheck`), which a person's Start meanwhile may still call off. Never here as well.
     return (
         session.with_changes(
-            hold_stop_times=(*recent, now),
-            hold_tried_at=now,
+            hold_stop_times=recent,
             hold_stop_pending=True,
             pending=_awaiting(session, PendingCommand("stop", REASON_PERSON_HOLD, owner_before=session.owner)),
         ),
@@ -810,7 +811,9 @@ def _recheck(session: ChargeSession, event: Recheck, now: datetime) -> Decision:
         return s, ()
     if what == RECHECK_PERSON_HOLD:
         # A person's Start replaced their Stop meanwhile (it never lands between this and the stop), or a start of
-        # theirs is still on its way: nothing is stopped. The gap and the give-up were decided when it was spawned.
+        # theirs is still on its way: nothing is stopped. The gap and the give-up were decided when it was spawned;
+        # the stop is counted here, the one place it goes out, taken or not (a stop that raised may still have
+        # stopped the charger).
         if (
             automatic_allowed(s, GATE_STOP)
             and s.held_off_by_person
@@ -866,6 +869,12 @@ def _command_result(session: ChargeSession, event: CommandResult, now: datetime)
         return s, ()
     if event.reason == REASON_PERSON_HOLD:
         s = s.with_changes(hold_stop_pending=False)
+        if event.settled and s.hold_tried_at in s.hold_stop_times:
+            # Nothing went out (a stop of ours still settles): no stop the charger could have ignored. The try
+            # still holds the gap.
+            times = list(s.hold_stop_times)
+            times.remove(s.hold_tried_at)
+            s = s.with_changes(hold_stop_times=tuple(times))
     if not event.executed:
         # A stop that never went out is not done: the owner is kept (I4, bug 3).
         return s, ()

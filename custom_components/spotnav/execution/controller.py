@@ -6283,8 +6283,11 @@ class ChargingController:
 
     def _shadow_stop_outcome(self, executed: bool) -> CommandOutcome:
         """What became of a stop: it went out (or the charger was known stopped), or not; one that sent nothing
-        because the charge control said nothing is `unobserved`."""
-        return CommandOutcome(executed, unobserved=executed and self._shadow_unobserved)
+        because the charge control said nothing is `unobserved`, and one a stop of ours still on its way answered
+        for is `settled`."""
+        return CommandOutcome(
+            executed, unobserved=executed and self._shadow_unobserved, settled=executed and self._stop_settled
+        )
 
     def _shadow_start_outcome(self, executed: bool) -> CommandOutcome:
         return CommandOutcome(executed, balancing_held=not executed and self._balancing.paused)

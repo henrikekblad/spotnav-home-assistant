@@ -114,6 +114,19 @@ def test_the_stop_under_a_persons_stop_is_decided_again_and_counted_when_it_goes
     assert after.hold_stop_times == (earlier, T0) and after.hold_tried_at == T0 and after.hold_stop_pending
     after, _ = decide(after, ev.CommandResult(command="stop", reason="person_hold", executed=True), T0)
     assert not after.hold_stop_pending and after.pending == ()
+    assert after.hold_stop_times == (earlier, T0), "counted once: the report that spawned it counted nothing"
+
+
+def test_a_stop_under_a_persons_stop_that_a_stop_on_its_way_answered_for_is_not_counted() -> None:
+    """Nothing went out (a stop of ours still settles): no stop the charger could have ignored, but the try holds
+    the gap."""
+    earlier = T0 - timedelta(minutes=2)
+    session = PLUGGED.with_changes(manual=STOP, hold_stop_times=(earlier,), hold_stop_pending=True)
+    after, _ = decide(session, ev.Recheck(what="person_hold", control_on=True), T0)
+    after, _ = decide(
+        after, ev.CommandResult(command="stop", reason="person_hold", executed=True, settled=True), T0
+    )
+    assert after.hold_stop_times == (earlier,) and after.hold_tried_at == T0 and not after.hold_stop_pending
 
 
 @pytest.mark.parametrize(
@@ -233,6 +246,7 @@ async def test_the_claim_of_a_window_charge_comes_back_to_the_core(
         "executed": True,
         "balancing_held": False,
         "unobserved": False,
+        "settled": False,
     }
     assert world.controller.charge_origin == "plan_window"
     assert world.controller.ownership_shadow.session.owner == "plan"

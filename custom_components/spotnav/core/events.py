@@ -434,7 +434,8 @@ class Recheck(Event):
 class CommandResult(Event):
     """What became of a command the core asked for: `executed` (it went out), or not; a start load balancing held
     back for want of room is `balancing_held`; a stop that sent nothing because the charge control said nothing is
-    `unobserved` (nothing says whether the charge still runs, so its owner is kept unless the plan was cleared)."""
+    `unobserved` (nothing says whether the charge still runs, so its owner is kept unless the plan was cleared); a
+    stop that sent nothing because one of ours was still on its way (it answers for it) is `settled`."""
 
     kind: ClassVar[str] = "command_result"
     command: str = "start"
@@ -442,6 +443,7 @@ class CommandResult(Event):
     executed: bool = True
     balancing_held: bool = False
     unobserved: bool = False
+    settled: bool = False
 
 
 EVENT_TYPES: Final[dict[str, type[Event]]] = {

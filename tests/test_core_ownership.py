@@ -284,7 +284,9 @@ def test_under_a_person_stop_a_charge_the_charger_begins_is_stopped_at_once() ->
     """C7: whatever the plan's windows say."""
     session, commands = run(ChargeSession(manual=STOP, plugged=True), on(window_open=True, in_window=True))
     assert commands == (Stop("person_hold"),)
-    assert session.owner == "charger_self" and session.hold_stop_pending and session.hold_stop_times == (T0,)
+    assert session.owner == "charger_self" and session.hold_stop_pending
+    # Counted where it goes out (the task's `Recheck`), not where it is decided: once.
+    assert session.hold_stop_times == () and session.hold_tried_at is None
 
 
 @pytest.mark.parametrize(
@@ -327,6 +329,9 @@ def test_the_stops_under_a_person_stop_give_up_after_three_in_ten_minutes() -> N
     for _ in range(PERSON_HOLD_MAX_STOPS):
         session, commands = run(session, on(), now=now)
         assert commands == (Stop("person_hold"),)
+        # The report's stop goes out as a task of its own, decided again under the lock.
+        session, commands = run(session, ev.Recheck(what="person_hold", control_on=True), now=now)
+        assert commands == (Stop("person_hold"),)
         session, _ = run(session, ok("stop", "person_hold"), now=now)
         sent += 1
         now += timedelta(seconds=PERSON_HOLD_STOP_GAP_S)
@@ -339,7 +344,7 @@ def test_the_stops_under_a_person_stop_give_up_after_three_in_ten_minutes() -> N
 def test_stops_older_than_the_window_do_not_count() -> None:
     old = T0 - timedelta(seconds=PERSON_HOLD_WINDOW_S + 1)
     session, commands = run(ChargeSession(manual=STOP, hold_stop_times=(old, old, old), hold_tried_at=old), on())
-    assert commands == (Stop("person_hold"),) and session.hold_stop_times == (T0,)
+    assert commands == (Stop("person_hold"),) and session.hold_stop_times == ()
 
 
 def test_the_stops_start_afresh_once_no_person_stop_holds() -> None:

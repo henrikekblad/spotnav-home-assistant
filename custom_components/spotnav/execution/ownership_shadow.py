@@ -97,6 +97,8 @@ class CommandOutcome:
     balancing_held: bool = False
     #: A stop that sent nothing because the charge control said nothing (unreadable): who owns the charge is kept.
     unobserved: bool = False
+    #: A stop that sent nothing because a stop of ours was still on its way (`_stop_settling`).
+    settled: bool = False
 
 
 @dataclass(eq=False)
@@ -498,6 +500,7 @@ class OwnershipShadow:
                 executed=item.outcome.executed,
                 balancing_held=item.outcome.balancing_held,
                 unobserved=item.outcome.unobserved,
+                settled=item.outcome.settled,
             )
             session, _ = decide(session, result, now)
         elif acted is not None and item.event.kind not in _RESULTS_LATER:

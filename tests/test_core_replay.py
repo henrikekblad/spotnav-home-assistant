@@ -50,12 +50,11 @@ def _bundle(records) -> dict:
 
 
 STOPPED = {"owner": "none", "manual": {"action": "stop", "scope": "plug_in"}, "span_pause": None}
-#: The C7 stops' count and last try, which the core and today's code count apart (see the recordings below).
-C7_COUNT = {"hold_stop_times", "hold_tried_at"}
 
 
 def _synthetic() -> list[dict]:
-    """A person's Stop, a charge the charger begins under it (C7) whose stop goes out, and the unplug."""
+    """A person's Stop, a charge the charger begins under it (C7) whose stop goes out as a task of its own (decided
+    again under the lock, where it is counted), and the unplug."""
     return [
         _record(
             ev.PersonStop(connected=True),
@@ -73,7 +72,10 @@ def _synthetic() -> list[dict]:
             after={**STOPPED, "owner": "charger_self"},
         ),
         _record(
-            ev.CommandResult(command="stop", reason="person_hold", executed=True),
+            ev.Recheck(what="person_hold", control_on=True),
+            core=["stop"],
+            today=["stop"],
+            result=ev.CommandResult(command="stop", reason="person_hold", executed=True),
             after=STOPPED,
         ),
         _record(ev.Unplug(previous=True), after={"owner": "none", "manual": None, "span_pause": None}),
@@ -122,19 +124,19 @@ def test_the_chargers_own_charge_and_two_clocks_are_drift(tmp_path, capsys) -> N
     # The charger was seen charging by itself before the report said so: an observation.
     records[1]["pre"]["owner"] = "charger_self"
     # The stop under the person's Stop, as today's code timed it: half a second after the core decided it.
-    held = replay(records[:2], line_up=False).session.to_dict()
+    held = replay(records[:3], line_up=False).session.to_dict()
     sent = "2026-10-04T22:00:00.500000+00:00"
-    assert held["hold_tried_at"] == AT
-    records[2]["pre"] = {**held, "hold_tried_at": sent, "hold_stop_times": [sent]}
+    assert held["hold_tried_at"] == AT and held["hold_stop_times"] == [AT], "counted once, where it went out"
+    records[3]["pre"] = {**held, "hold_tried_at": sent, "hold_stop_times": [sent]}
     report = replay(records, line_up=False)
     assert report.real == (), report.real
     assert [(item.index, item.field, item.reason) for item in report.drift] == [
         (1, "owner", "owner"),
-        (2, "hold_stop_times", "clock"),
-        (2, "hold_tried_at", "clock"),
+        (3, "hold_stop_times", "clock"),
+        (3, "hold_tried_at", "clock"),
     ]
     # Two stops counted where the core counted one is no clock.
-    records[2]["pre"]["hold_stop_times"] = [sent, sent]
+    records[3]["pre"]["hold_stop_times"] = [sent, sent]
     assert [item.field for item in replay(records, line_up=False).real] == ["hold_stop_times"]
     path = tmp_path / "bundle.json"
     path.write_text(json.dumps(_bundle(_synthetic())), encoding="utf-8")
@@ -238,9 +240,7 @@ async def test_a_real_chargers_recording_replays_without_a_difference(
     # From the first recorded session on, with no line-up: every change of today's state was fed.
     alone = replay_bundle(bundle, line_up=False)["charger_a"]
     assert alone.events == len(diagnostics["events"]) and alone.skipped == 0
-    # Known, left to the step that moves C7 into the session: the core counts the report's stop and the task's
-    # again (`_person_hold`, then `_recheck`), today's code the one that went out; the line-up hides it.
-    assert {item.field for item in alone.real} <= C7_COUNT, alone.real
+    assert alone.real == (), alone.real
     await world.shutdown()
 
 
@@ -355,7 +355,7 @@ async def test_a_report_that_decides_nothing_keeps_the_plug_in_and_the_persons_a
     assert shadow.counts["disagreements"] == 0
     bundle = json.loads(json.dumps(_bundle(shadow.diagnostics()["events"]), default=str))
     assert replay_bundle(bundle)["charger_a"].mismatches == ()
-    assert {item.field for item in replay_bundle(bundle, line_up=False)["charger_a"].real} <= C7_COUNT
+    assert replay_bundle(bundle, line_up=False)["charger_a"].real == ()
     await world.shutdown()
 
 
