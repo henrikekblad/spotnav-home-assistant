@@ -63,6 +63,7 @@ AUTOMATIC = {
     "plan_installed",
     "plan_dropped",
     "car_ended",
+    "car_level_read",
     "restart",
 }
 #: Person happenings that may start the charger under their own Stop.
