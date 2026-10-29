@@ -360,6 +360,26 @@ def spotnav_owned(session: ChargeSession) -> bool:
     )
 
 
+SENT_START: Final = "start"
+SENT_STOP: Final = "stop"
+
+
+def owner_as_sent(session: ChargeSession, sent: str | None) -> str:
+    """The owner while a start (`SENT_START`) or a stop (`SENT_STOP`) of ours has gone out and its result is not decided
+    yet, as today's code writes `charge_origin` as the command goes out: a start's the owner the start awaiting its
+    result is for (the session's own when none awaits one, or it names no owner), a stop's nobody. With nothing sent,
+    the session's owner. A save in that gap writes this owner, in the record and in today's keys alike, so a restart
+    before the result is decided reads the charge as the command made it (the core end state plan, step 8)."""
+    if sent == SENT_STOP:
+        return OWNER_NONE
+    if sent == SENT_START:
+        return next(
+            (item.owner_after for item in reversed(session.pending) if item.command == "start" and item.owner_after),
+            session.owner,
+        )
+    return session.owner
+
+
 def self_started(session: ChargeSession, *, charging: bool, start_pending: bool, stop_recent: bool) -> bool:
     """A charge the charger began by itself: charging, nobody here started it, no start or stop of ours on its
     way, and not a person's override of the hold. A start the core asked for that has not come back is on its way

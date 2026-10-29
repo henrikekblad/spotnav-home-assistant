@@ -141,6 +141,9 @@ from ..core.ownership import (
     car_ended_reads_level,
     CarFacts,
     NO_CAR_FACTS,
+    owner_as_sent,
+    SENT_START,
+    SENT_STOP,
     spotnav_owned,
 )
 from ..core.replay import CLOCK_TOLERANCE_S
@@ -1084,20 +1087,7 @@ class ChargingController:
         read_back = self._owner_read_back
         if read_back is not None:
             return read_back
-        session = self._shadow.session
-        owner = session.owner
-        unfed = self._command_unfed
-        if unfed == "stop":
-            owner = OWNER_NONE
-        elif unfed == "start":
-            # The owner the start on its way makes it. With no such start pending, the session's own: the start's
-            # result is decided already (`OwnershipShadow.result`), the start asked for no owner (a balancing
-            # resume, which keeps what was held back), or it was decided as not going out.
-            owner = next(
-                (item.owner_after for item in reversed(session.pending) if item.command == "start" and item.owner_after),
-                owner,
-            )
-        return _CORE_OWNER_ORIGIN.get(owner, (None, False))
+        return _CORE_OWNER_ORIGIN.get(owner_as_sent(self._shadow.session, self._command_unfed), (None, False))
 
     @property
     def _owner_origin(self) -> str | None:
@@ -2949,7 +2939,7 @@ class ChargingController:
         self._is_plan_charge = True
         self._owner_origin = "plan_window"
         # When the core drives: the claim's owner (the plan's), until its result is fed at the feed's end.
-        self._command_unfed = "start"
+        self._command_unfed = SENT_START
         self._hold.spotnav_started()
         _LOGGER.info("SpotNav charger %s: a charge began by itself in a planned window; it is the plan's", self.entry_id)
         await self._async_save_quietly()
@@ -4094,7 +4084,7 @@ class ChargingController:
         was_unfed = self._command_unfed
         self._owner_origin = origin
         # When the core drives: the start's owner, until its result is fed at the feed's end.
-        self._command_unfed = "start"
+        self._command_unfed = SENT_START
         if not self._control_on:
             # Recorded before the first await: an accepted Start the charger has not answered is not
             # a failure, and the observation must not blame the car (see `charge_progress.py`).
@@ -4655,7 +4645,7 @@ class ChargingController:
             self._cancel_stop_retry()
             self._is_plan_charge = False
             self._owner_origin = None
-            self._command_unfed = "stop"
+            self._command_unfed = SENT_STOP
         elif needed:
             was_sent_at = self._stop_sent_at
             self._stop_sent_at = dt_util.utcnow()
@@ -4706,11 +4696,11 @@ class ChargingController:
             self._seen_charging = self.charging
             self._is_plan_charge = False
             self._owner_origin = None
-            self._command_unfed = "stop"
+            self._command_unfed = SENT_STOP
         elif self._control_observation is not None:
             self._is_plan_charge = False
             self._owner_origin = None
-            self._command_unfed = "stop"
+            self._command_unfed = SENT_STOP
         # Whatever start was on its way is over: its share of the site's margin is free for another.
         self._reserve_start(None)
         if (
@@ -4720,7 +4710,7 @@ class ChargingController:
         if clear_schedule:
             self._is_plan_charge = False
             self._owner_origin = None
-            self._command_unfed = "stop"
+            self._command_unfed = SENT_STOP
             self.plan = None
             self._clear_top_off()
             self._cancel_timers()

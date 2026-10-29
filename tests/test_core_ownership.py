@@ -23,10 +23,13 @@ from custom_components.spotnav.core.ownership import (
     KEEP,
     Notify,
     NOTIFY_CHARGER_IGNORES_STOP,
+    owner_as_sent,
     PERSON_HOLD_MAX_STOPS,
     PERSON_HOLD_STOP_GAP_S,
     PERSON_HOLD_WINDOW_S,
     SAFETY_RESUME_GAP_S,
+    SENT_START,
+    SENT_STOP,
     Start,
     Stop,
     window_end_spared,
@@ -1621,3 +1624,44 @@ def test_a_balancing_pause_meeting_a_persons_start_in_either_order(
     session, _ = run(PLUGGED.with_changes(owner="plan"), *events)
     assert session.owner == owner
     assert (session.balancing_paused, session.paused_origin) == ((True, paused[0]) if paused else (False, None))
+
+
+# ---------------------------------------------------------------------------------------------- the stored owner (step 8)
+
+
+@pytest.mark.parametrize(
+    ("pre", "sent", "owner"),
+    [
+        # Nothing on its way: the session's own owner.
+        (PLAN_CHARGE, None, "plan"),
+        (PLUGGED, None, "none"),
+        # A start that went out, its result not decided yet: the owner it is for, as today's `_start_locked` writes
+        # `charge_origin` before the command and saves it once the command went out.
+        (run(PLUGGED, ev.PersonStart())[0], SENT_START, "person"),
+        (run(PLUGGED, ev.DirectStart())[0], SENT_START, "charge_now"),
+        (run(PLUGGED, ev.DirectStart(cause="solar"))[0], SENT_START, "solar"),
+        (run(PLUGGED, ev.WindowStart())[0], SENT_START, "plan"),
+        (run(PLUGGED, on(window_open=True))[0], SENT_START, "plan"),
+        # A person's Start over the plan's charge: the person's from the moment it went out.
+        (run(PLAN_CHARGE, ev.PersonStart())[0], SENT_START, "person"),
+        # A start that names no owner (a balancing resume of nobody's charge), or none awaiting its result: as it was.
+        (run(PLUGGED.with_changes(balancing_paused=True), ev.BalancingResume())[0], SENT_START, "none"),
+        (PLAN_CHARGE, SENT_START, "plan"),
+        # A stop that went out (or one of ours already on its way answered for it): nobody's, as today's stop paths
+        # clear `charge_origin` before the stop's result is fed.
+        (run(PLAN_CHARGE, ev.WindowEnd())[0], SENT_STOP, "none"),
+        (PLUGGED.with_changes(owner="person"), SENT_STOP, "none"),
+    ],
+)
+def test_the_owner_saved_while_a_command_of_ours_is_on_its_way(pre, sent, owner) -> None:
+    """Step 8: the record is read back alone at a restart, so a save between a start or a stop going out and its
+    result being decided (today's code saves there) writes the owner the command makes, in the record and in today's
+    keys alike. A restart then keeps that owner (`Restart` keeps the owner), and the result, once decided, names the
+    same one."""
+    assert owner_as_sent(pre, sent) == owner
+    restarted, _ = run(pre.stored().with_changes(owner=owner_as_sent(pre, sent)), ev.Restart())
+    assert restarted.owner == owner and restarted.pending == ()
+    if sent == SENT_START and pre.start_pending:
+        reason = next(item.reason for item in pre.pending if item.command == "start")
+        decided, _ = run(pre, ok("start", reason))
+        assert decided.owner == owner
