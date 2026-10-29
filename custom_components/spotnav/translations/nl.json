@@ -597,8 +597,8 @@
           "site_activity": {
             "name": "Activiteit",
             "state": {
-              "measuring": "Meet, actieve load balancing uit",
-              "balancing": "Meet, actieve load balancing aan",
+              "measuring": "Meet, load balancing uit",
+              "balancing": "Meet, load balancing aan",
               "not_measuring": "Meet niet"
             }
           }

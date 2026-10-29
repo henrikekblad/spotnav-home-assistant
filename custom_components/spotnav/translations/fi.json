@@ -597,8 +597,8 @@
           "site_activity": {
             "name": "Toiminta",
             "state": {
-              "measuring": "Mittaa, aktiivinen kuormanhallinta pois",
-              "balancing": "Mittaa, aktiivinen kuormanhallinta päällä",
+              "measuring": "Mittaa, kuormanhallinta pois",
+              "balancing": "Mittaa, kuormanhallinta päällä",
               "not_measuring": "Ei mittaa"
             }
           }

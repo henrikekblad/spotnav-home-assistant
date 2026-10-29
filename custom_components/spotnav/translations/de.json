@@ -597,8 +597,8 @@
           "site_activity": {
             "name": "Aktivität",
             "state": {
-              "measuring": "Misst, aktives Lastmanagement aus",
-              "balancing": "Misst, aktives Lastmanagement an",
+              "measuring": "Misst, Lastmanagement aus",
+              "balancing": "Misst, Lastmanagement an",
               "not_measuring": "Misst nicht"
             }
           }

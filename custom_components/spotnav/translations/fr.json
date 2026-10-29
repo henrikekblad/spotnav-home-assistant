@@ -597,8 +597,8 @@
           "site_activity": {
             "name": "Activité",
             "state": {
-              "measuring": "Mesure en cours, équilibrage de charge actif désactivé",
-              "balancing": "Mesure en cours, équilibrage de charge actif activé",
+              "measuring": "Mesure en cours, équilibrage de charge désactivé",
+              "balancing": "Mesure en cours, équilibrage de charge activé",
               "not_measuring": "Pas de mesure"
             }
           }

@@ -597,8 +597,8 @@
           "site_activity": {
             "name": "Activity",
             "state": {
-              "measuring": "Measuring, active load balancing off",
-              "balancing": "Measuring, active load balancing on",
+              "measuring": "Measuring, load balancing off",
+              "balancing": "Measuring, load balancing on",
               "not_measuring": "Not measuring"
             }
           }

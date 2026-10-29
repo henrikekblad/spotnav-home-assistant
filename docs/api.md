@@ -481,7 +481,7 @@ Assistant", so the webhook says `solar_waiting_for_sun` in place of either line 
 
 **The site's sensors.** The site state sensor (*Capacity state*) keeps its states; the healthy one, `observing`,
 is named **Measuring**. Its additive attribute `site_activity` says what the site is doing in a word: `measuring`
-(healthy, active load balancing off), `balancing` (healthy, active load balancing on) or `not_measuring` (any other
+(healthy, load balancing off), `balancing` (healthy, load balancing on) or `not_measuring` (any other
 state); the site's diagnostics carry the same. A charger's allocation (`state` on its *Proposed current* sensor and
 in the diagnostics' `result`) has the additive `not_requesting` (reason `no_current_requested`, no limiting phase)
 for a charger that asks for no current, which used to read `below_minimum_current`; a reader that does not know it

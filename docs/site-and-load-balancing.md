@@ -106,8 +106,8 @@ whole result is reported as invalid rather than corrected silently. Results are 
 sensors and in [diagnostics](troubleshooting.md):
 
 - **Capacity state** on the site: **Measuring** when the site's measurement is healthy, otherwise why
-  not (**Not set up**, **Measurement missing**, **Measurement stale**, **Measurement invalid**). Its **Activity** attribute (`site_activity`) says it in a word: **Measuring, active load
-  balancing off**, **Measuring, active load balancing on** or **Not measuring**.
+  not (**Not set up**, **Measurement missing**, **Measurement stale**, **Measurement invalid**). Its **Activity** attribute (`site_activity`) says it in a word: **Measuring, load
+  balancing off**, **Measuring, load balancing on** or **Not measuring**.
 - **Proposed current** per charger, with the charger's share in its **State** attribute: **Fits**,
   **Limited** (lowered to the headroom), **Below the minimum current** (the headroom is too small for the
   charger's minimum), **Not charging** (`not_requesting`: the charger asks for no current, so there is

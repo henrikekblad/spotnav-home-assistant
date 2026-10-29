@@ -597,8 +597,8 @@
           "site_activity": {
             "name": "Aktivitet",
             "state": {
-              "measuring": "Måler, aktiv lastbalansering av",
-              "balancing": "Måler, aktiv lastbalansering på",
+              "measuring": "Måler, lastbalansering av",
+              "balancing": "Måler, lastbalansering på",
               "not_measuring": "Måler ikke"
             }
           }
