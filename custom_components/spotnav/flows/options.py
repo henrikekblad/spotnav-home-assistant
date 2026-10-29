@@ -879,7 +879,7 @@ class SiteCapacityOptionsFlow(ChargerWiringSteps, config_entries.OptionsFlow):
             )
         persistent_notification.async_create(
             self.hass,
-            "Active load balancing was turned off, but SpotNav could not restore every "
+            "Load balancing was turned off, but SpotNav could not restore every "
             "charger's current: "
             + ", ".join(item.charger_entry_id for item in failed)
             + ". The charger may still be limited; check its current setting.",

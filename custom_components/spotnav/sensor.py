@@ -345,7 +345,7 @@ class SiteStateEntity(_BuiltOnChangeSiteSensor):
         return {
             **attributes,
             "reason": result.reason,
-            # The state in a person's words: `measuring`, `balancing` (active load balancing on) or
+            # The state in a person's words: `measuring`, `balancing` (load balancing on) or
             # `not_measuring`; the state itself stays `observing` when healthy.
             "site_activity": site_activity(result.state, self.controller.active_control_enabled),
             "measurement_mode": result.measurement_mode,
@@ -367,8 +367,8 @@ class SiteStateEntity(_BuiltOnChangeSiteSensor):
             "blocking_reasons": list(snapshot.load_balancing.blocking_reasons),
             # `available`: this site could be actively controlled now (healthy measurement, no
             # membership conflict, a charger that opted into the write path). `enabled`: this
-            # installation turned it on. Reported separately; neither alone says whether active
-            # load balancing is running. See vehicles/capability.py.
+            # installation turned it on. Reported separately; neither alone says whether load
+            # balancing is running. See vehicles/capability.py.
             "active_load_balancing_available": snapshot.load_balancing.active_available,
             "active_load_balancing_enabled": snapshot.load_balancing.active_enabled,
             # Whether solar and hybrid can run on this site's measurement, and the stable reason when

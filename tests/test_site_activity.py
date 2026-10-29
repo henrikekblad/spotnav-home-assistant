@@ -1,7 +1,7 @@
-"""The healthy site state reads as what it is: measuring, with or without active load balancing.
+"""The healthy site state reads as what it is: measuring, with or without load balancing.
 
 `observing` stays the state's value (it is read by automations and diagnostics); what Home Assistant shows
-for it is "Measuring", and an additive `site_activity` attribute says whether active load balancing is on.
+for it is "Measuring", and an additive `site_activity` attribute says whether load balancing is on.
 """
 
 from __future__ import annotations

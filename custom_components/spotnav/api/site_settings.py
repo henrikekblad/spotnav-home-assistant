@@ -12,7 +12,7 @@ A compare-and-set over one site config entry's stored data, reusing the dashboar
   meaning). That one is applied in place on the running `SiteCapacityController`
   (`async_enable_active_control` / `async_disable_active_control`), persisted without a reload,
   and a disable answers with a `restore` outcome (`not_needed | restored | failed`, per charger).
-  Any other key is refused. Active load balancing is WebSocket-only: the webhook secret may write
+  Any other key is refused. Load balancing is WebSocket-only: the webhook secret may write
   solar settings but never the fuse-protection switch.
 * Refusals are stable codes in the success envelope shape: `not_admin`, `no_site`, `conflict`,
   `invalid_value`, `unavailable`, `active_control_unavailable` (may be turned off, never newly on)
@@ -70,7 +70,7 @@ ERROR_INVALID_VALUE: Final = "spotnav_invalid_value"
 ERROR_UNAVAILABLE: Final = "spotnav_site_unavailable"
 ERROR_ACTIVE_CONTROL_UNAVAILABLE: Final = "spotnav_active_control_unavailable"
 ERROR_CONFIRMATION_FAILED: Final = "spotnav_confirmation_failed"
-#: The webhook's secret may write solar settings but never touch active load balancing.
+#: The webhook's secret may write solar settings but never touch load balancing.
 ERROR_NOT_PERMITTED_OVER_WEBHOOK: Final = "spotnav_not_permitted_over_webhook"
 
 
@@ -186,7 +186,7 @@ async def async_update_site_settings(
     if not active_control_writable and any(
         isinstance(named, dict) and _ACTIVE_CONTROL in named for named in (changes, expected)
     ):
-        # The webhook carrier (`active_control_writable=False`): naming active load balancing at
+        # The webhook carrier (`active_control_writable=False`): naming load balancing at
         # all is refused before anything is compared.
         raise SiteSettingsRefusal(
             ERROR_NOT_PERMITTED_OVER_WEBHOOK,
@@ -324,7 +324,7 @@ async def _change_active_control(
     expected: dict[str, Any],
     changes: dict[str, Any],
 ) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
-    """Turn the site's active load balancing on or off, in place, and persist it. Lock held.
+    """Turn the site's load balancing on or off, in place, and persist it. Lock held.
 
     The running controller changes first and the entry is persisted second: a crash between leaves
     "on" over a controller that was turned off (balancing resumes after a restart) or "off" over one
@@ -434,7 +434,7 @@ def _failure(
 async def websocket_update_site_settings(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]
 ) -> None:
-    """Update one site's solar priority and/or hybrid forecast sources, or its active load-balancing
+    """Update one site's solar priority and/or hybrid forecast sources, or its load-balancing
     opt-in. Admin only.
 
     Every outcome, `not_admin` included, answers through `connection.send_result` in one envelope

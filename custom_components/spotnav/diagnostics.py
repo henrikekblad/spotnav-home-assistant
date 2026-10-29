@@ -203,7 +203,7 @@ def _site_diagnostics(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, Any]
         "config": async_redact_data(dict(entry.data), TO_REDACT),
         "price_data": _price_data(hass),
         "result": None if controller is None else _result_to_dict(controller.result),
-        # `observing` in words: `measuring`, `balancing` (active load balancing on) or `not_measuring`.
+        # `observing` in words: `measuring`, `balancing` (load balancing on) or `not_measuring`.
         "site_activity": None
         if controller is None
         else site_activity(controller.result.state, controller.active_control_enabled),

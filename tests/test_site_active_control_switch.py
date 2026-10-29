@@ -1,4 +1,4 @@
-"""Turning a site's active load balancing on and off: `spotnav/update_site_settings`
+"""Turning a site's load balancing on and off: `spotnav/update_site_settings`
 and the off/on transitions of `SiteCapacityController` it drives.
 
 WHAT THE OPTIONS-FLOW TOGGLE DID BEFORE THIS ROUND (read from the code; pinned by
