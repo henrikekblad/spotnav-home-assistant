@@ -52,6 +52,13 @@ async def _world(hass: HomeAssistant) -> tuple[Any, str, str]:
     )
 
 
+async def _start(hass: HomeAssistant, controller: Any, **cause: Any) -> None:
+    """A start of SpotNav's names who owns the charge (a person's Start: `manual=True`; the sun's: `cause="solar"`), as
+    the charger's own entry feeds it to the ownership core."""
+    assert await controller.async_start(**cause)
+    await hass.async_block_till_done()
+
+
 async def _charge(hass: HomeAssistant, controller: Any, *, on: bool = True) -> None:
     hass.states.async_set(SWITCH, "on" if on else "off")
     controller._notify()  # noqa: SLF001
@@ -90,7 +97,7 @@ async def test_hybrid_grid_part_is_on(hass: HomeAssistant) -> None:
 async def test_manual_start_is_on_even_under_solar(hass: HomeAssistant) -> None:
     controller, charger, _site = await _world(hass)
     _strategy(hass, STRATEGY_SOLAR)
-    controller._charge_origin = "manual"  # noqa: SLF001
+    await _start(hass, controller, manual=True)
     await _charge(hass, controller)
     assert hass.states.get(charger).state == "on"
     assert hass.states.get(charger).attributes["source"] == "manual"
@@ -100,7 +107,7 @@ async def test_manual_start_is_on_even_under_solar(hass: HomeAssistant) -> None:
 async def test_solar_surplus_charge_is_off(hass: HomeAssistant, strategy: str) -> None:
     controller, charger, site = await _world(hass)
     _strategy(hass, strategy)
-    controller._charge_origin = "solar"  # noqa: SLF001
+    await _start(hass, controller, cause="solar")
     controller.plan = _plan(active=False)
     await _charge(hass, controller)
     assert controller.charging
@@ -134,21 +141,17 @@ async def test_power_is_an_attribute_when_known(hass: HomeAssistant) -> None:
     controller, charger, _site = await _world(hass)
     controller.power_entity_id = "sensor.car_power"
     hass.states.async_set("sensor.car_power", "7360", {"unit_of_measurement": "W", "device_class": "power"})
-    controller._charge_origin = "manual"  # noqa: SLF001
+    await _start(hass, controller, manual=True)
     await _charge(hass, controller)
     assert hass.states.get(charger).attributes["power_w"] == 7360.0
 
 
 async def test_origin_survives_a_restart(hass: HomeAssistant) -> None:
     controller, _charger, _site = await _world(hass)
-    controller._charge_origin = "solar"  # noqa: SLF001
-    # Set directly, so the ownership core is told as a solar start would tell it: when it drives, its own stored
-    # record is what a restart reads back (`charge_session`), and it must say the same.
-    shadow = controller.ownership_shadow
-    shadow.session = replace(shadow.session, owner="solar")
-    await controller._async_save()  # noqa: SLF001
+    await _start(hass, controller, cause="solar")
+    await _charge(hass, controller)
+    assert controller.charge_origin == "solar"
     saved = await controller._store.async_load()  # noqa: SLF001
-    assert saved["charge_origin"] == "solar"
-    controller._charge_origin = None  # noqa: SLF001
+    assert saved["charge_origin"] == "solar", "saved with the start, in both modes"
     await controller._initialize_locked()  # noqa: SLF001
     assert controller.charge_origin == "solar"
