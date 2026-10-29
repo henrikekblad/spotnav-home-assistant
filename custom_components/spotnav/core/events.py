@@ -30,6 +30,19 @@ RESUME_FOLLOW: Final = "follow"
 RESUME_EXPIRED: Final = "expired"
 
 
+#: What the car-ended rule (R3, `ownership.car_ended_holds_window`) reads besides the session's car-ended record, as
+#: the facts of the events that decide a window's start (`WindowStart`, `ChargerReportedOn`, `Recheck`), read right
+#: before the decision and only while a record and an open window make them matter (all at their defaults else):
+#:
+#: * `plan_target`, `plan_vehicle`: the plan's target and its car;
+#: * `plan_full_at`: the level a car read at the end must have reached to be known full for the plan (the car's own
+#:   ceiling when the plan charges to it, else the target; `None`: none);
+#: * `car_level`, `car_level_at`: the car's state of charge read now (the record's car), and when it was read (`None`:
+#:   not known); read only when the record's level or its wait makes it matter;
+#: * `car_level_full`: whether that level says the car is full for the plan (`target_stop.car_ended_full`).
+CAR_FACTS: Final = ("plan_target", "plan_vehicle", "plan_full_at", "car_level", "car_level_at", "car_level_full")
+
+
 @dataclass(frozen=True)
 class Event:
     """Base of every event: `kind` names it in the record."""
@@ -75,10 +88,9 @@ class WindowStart(Event):
     taken is sent again (a retry, decided as a plug-in's start).
 
     Facts: whether the target's stop fired or is on its way (it ends the plan instead), whether a window is open
-    (a plug-in), the open window's start (the car-ended rule, R3), whether the car that ended a person's charge is
-    known full for the plan and whether its need grew since, whether the plan waits for the car's level after the car
-    ended its charge short of the target (`car_ended_awaits_level`), what the charger shows, and what else may own it (the
-    sun's phase; a pause holds the hold only for an Auto plan)."""
+    (a plug-in), the open window's start and what the car-ended rule reads besides the session's record (R3, the car
+    facts: `CAR_FACTS`), what the charger shows, and what else may own it (the sun's phase; a pause holds the hold only
+    for an Auto plan)."""
 
     kind: ClassVar[str] = "window_start"
     trigger: str = TRIGGER_TIMER
@@ -86,9 +98,12 @@ class WindowStart(Event):
     target_stopping: bool = False
     window_open: bool = True
     open_window_start: datetime | None = None
-    car_ended_known_full: bool = False
-    need_grew: bool = False
-    car_ended_awaits_level: bool = False
+    plan_target: float | None = None
+    plan_vehicle: str | None = None
+    plan_full_at: float | None = None
+    car_level: float | None = None
+    car_level_at: datetime | None = None
+    car_level_full: bool = False
     control_on: bool = False
     connected: bool | None = None
     start_pending: bool = False
@@ -274,9 +289,12 @@ class ChargerReportedOn(Event):
     in_window: bool = False
     plan_present: bool = False
     open_window_start: datetime | None = None
-    car_ended_known_full: bool = False
-    need_grew: bool = False
-    car_ended_awaits_level: bool = False
+    plan_target: float | None = None
+    plan_vehicle: str | None = None
+    plan_full_at: float | None = None
+    car_level: float | None = None
+    car_level_at: datetime | None = None
+    car_level_full: bool = False
     solar_holds: bool = False
     plan_auto_owned: bool = True
     handed_off: bool = False
@@ -318,6 +336,27 @@ class CarEnded(Event):
 
     kind: ClassVar[str] = "car_ended"
     plan: bool = False
+    #: The record's facts: the car's level read then (never an estimate; `None`: not read), which car was read, and
+    #: what the plan waits for (`wait_target` `None`: nothing; else the target then, the level the car ended at and
+    #: whether it was estimated).
+    soc: float | None = None
+    vehicle: str | None = None
+    wait_target: float | None = None
+    wait_level: float | None = None
+    wait_estimated: bool = False
+
+
+@dataclass(frozen=True)
+class CarLevelRead(Event):
+    """The car's level was read after it ended the plan's charge, while the plan waits for it (`CarEnded.wait_target`):
+    `car_level`, read at `car_level_at`, and whether it says the car is full for the plan (`car_level_full`). A level
+    read after the end that is not full ends the wait: the windows charge the car again (the one open at the end
+    stays skipped). A full one ends the plan instead, by the target's own event."""
+
+    kind: ClassVar[str] = "car_level_read"
+    car_level: float | None = None
+    car_level_at: datetime | None = None
+    car_level_full: bool = False
 
 
 @dataclass(frozen=True)
@@ -443,9 +482,12 @@ class Recheck(Event):
     in_window: bool = False
     plan_present: bool = False
     open_window_start: datetime | None = None
-    car_ended_known_full: bool = False
-    need_grew: bool = False
-    car_ended_awaits_level: bool = False
+    plan_target: float | None = None
+    plan_vehicle: str | None = None
+    plan_full_at: float | None = None
+    car_level: float | None = None
+    car_level_at: datetime | None = None
+    car_level_full: bool = False
     solar_holds: bool = False
     plan_auto_owned: bool = True
     handed_off: bool = False
@@ -498,6 +540,7 @@ EVENT_TYPES: Final[dict[str, type[Event]]] = {
         ChargerReportedOff,
         ChargerReportedUnreadable,
         CarEnded,
+        CarLevelRead,
         BalancingPause,
         BalancingResume,
         BalancingDropped,

@@ -132,8 +132,24 @@ from . import top_off
 from .window_hold import HOLD, OVERRIDE, WindowHold
 from .ownership_state import BalancingMemory, CarEndedRecord, HoldState, PersonHoldStops, SafetyHold
 from ..core import events as core_events
-from ..core.ownership import spotnav_owned
-from ..core.session import ChargeSession, OWNER_CHARGER_SELF, OWNER_NONE, SessionError
+from ..core.ownership import (
+    car_ended_awaits_level,
+    car_ended_waits,
+    car_ended_holds_window as core_car_ended_holds_window,
+    car_ended_known_full,
+    car_ended_reads_level,
+    CarFacts,
+    NO_CAR_FACTS,
+    spotnav_owned,
+)
+from ..core.session import (
+    CarEnded as EndedRecord,
+    CarEndedWait,
+    ChargeSession,
+    OWNER_CHARGER_SELF,
+    OWNER_NONE,
+    SessionError,
+)
 from . import ownership_shadow as ownership_shadow_module
 from .ownership_coverage import OwnershipCoverage, STORE_VERSION as COVERAGE_STORE_VERSION, store_key as coverage_key
 from .ownership_shadow import (
@@ -532,6 +548,35 @@ def _stored_car_ended_wait(raw: Any) -> dict[str, Any] | None:
     return {"target": target, "level": level, "estimated": estimated}
 
 
+def _record_view(record: EndedRecord | None) -> CarEndedRecord:
+    """The core's car-ended record as the controller reads it (`_car_ended`): nothing ended is all `None`."""
+    if record is None:
+        return CarEndedRecord(at=None, soc=None, vehicle=None, wait=None)
+    wait = record.wait
+    return CarEndedRecord(
+        at=record.at,
+        soc=record.soc,
+        vehicle=record.vehicle,
+        wait=None if wait is None else wait.to_dict(),
+    )
+
+
+def _ended_record(view: CarEndedRecord) -> EndedRecord | None:
+    """The controller's car-ended record as the core's session keeps it (`None`: nothing ended; a car kept with no end,
+    as today's fields keep it after a plug-in, is no record)."""
+    if view.at is None:
+        return None
+    wait = view.wait
+    return EndedRecord(
+        at=view.at,
+        soc=view.soc,
+        vehicle=view.vehicle,
+        wait=None
+        if wait is None
+        else CarEndedWait(target=float(wait["target"]), level=wait["level"], estimated=bool(wait["estimated"])),
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class ResolvedCurrent:
     """The best available answer to "what current is this charger about to use", with provenance.
@@ -925,7 +970,7 @@ class ChargingController:
         # of who owns the charge or which person intent holds, compared, never acting. What a report or a timer
         # decided (`_shadow_note`), the car-ended facts the last decision read, and the sun's part of the hold guard.
         self._shadow_decisions: list[str] | None = None
-        self._shadow_car_facts: tuple[bool, bool, bool] = (False, False, False)
+        self._shadow_car_facts: CarFacts = NO_CAR_FACTS
         self._shadow_unobserved = False
         self._solar_hold_probe: Callable[[], bool] | None = None
         # Step 2, `CONF_CORE_OWNERSHIP` (on unless the entry says false): the core decides, today's code acts on its verdicts
@@ -1184,7 +1229,7 @@ class ChargingController:
             )
             ended_soc = saved.get("car_ended_soc")
             ended_vehicle = saved.get("car_ended_vehicle")
-            self._car_ended = CarEndedRecord(
+            read_back_ended = CarEndedRecord(
                 at=ended_at,
                 soc=(
                     float(ended_soc)
@@ -1194,6 +1239,7 @@ class ChargingController:
                 vehicle=ended_vehicle if isinstance(ended_vehicle, str) else None,
                 wait=_stored_car_ended_wait(saved.get("car_ended_wait")) if ended_at is not None else None,
             )
+            self._car_ended = read_back_ended
             backoff = saved.get("solar_credit_backoff")
             if isinstance(backoff, dict):
                 until = backoff.get("until")
@@ -1753,8 +1799,8 @@ class ChargingController:
         """Whether the car ended a person's charge by itself in this plug-in (`async_note_car_ended`) and the
         window open now is not to start it again.
 
-        Only a car known full (`_car_ended_known_full`) keeps every later window of the plug-in from starting
-        it, unless its state of charge has dropped since by the hysteresis the sun's rules use
+        Only a car known full (`core.ownership.car_ended_known_full`) keeps every later window of the plug-in from
+        starting it, unless its state of charge has dropped since by the hysteresis the sun's rules use
         (`SOC_DROP_PCT`): the need grew. A car that only stopped drawing (its own timer, a preconditioning
         pause, a fault, or a state of charge nobody can read) skips just the window already open then; a
         later window charges it as planned."""
@@ -1763,25 +1809,63 @@ class ChargingController:
             self._shadow_car_facts = facts
         return holds
 
-    def _car_ended_hold(self) -> tuple[bool, tuple[bool, bool, bool] | None]:
-        """`_car_ended_holds_window` without telling the shadow: whether the window open now holds, and the car's
-        facts it was decided on (`None` when no window is open or nothing ended)."""
-        ended_at = self._car_ended.at
-        if ended_at is None or self.plan is None:
+    def _car_ended_hold(self) -> tuple[bool, CarFacts | None]:
+        """`_car_ended_holds_window` without telling the shadow: whether the window open now holds, and the car facts
+        it was decided on (`None` when no window is open or nothing ended). The rule is the core's
+        (`core.ownership.car_ended_holds_window`), on the car-ended record and the car facts read now."""
+        record = _ended_record(self._car_ended)
+        if record is None or self.plan is None:
             return False, None
         try:
             windows = self.plan.windows
         except ValueError:
             return False, None
         now = dt_util.utcnow()
-        if not any(start <= now < end for start, end in windows):
+        open_start = next((start for start, end in windows if start <= now < end), None)
+        if open_start is None:
             return False, None
-        if self._car_ended_known_full():
-            grew = self._car_ended_need_grew()
-            return not grew, (True, grew, False)
-        if self._car_ended_awaits_level():
-            return True, (False, False, True)
-        return any(start <= now < end and start <= ended_at for start, end in windows), (False, False, False)
+        facts = self._car_facts(record)
+        holds = core_car_ended_holds_window(ChargeSession(car_ended=record), open_window_start=open_start, facts=facts)
+        return holds, facts
+
+    def _car_plan_facts(self) -> CarFacts:
+        """The plan's part of the car facts (`core.ownership.CarFacts`): its target, its car, and the level a car read
+        at the end must have reached to be known full for it (the car's own ceiling when the plan charges to it, else
+        the target). None known with no plan."""
+        plan = self.plan
+        if plan is None:
+            return NO_CAR_FACTS
+        full_at = (
+            charge_ceiling_percent(self.vehicle_limit_percent(plan.vehicle_id))
+            if self.charges_to_vehicle_limit()
+            else plan.target_soc_percent
+        )
+        return CarFacts(plan_target=plan.target_soc_percent, plan_vehicle=plan.vehicle_id, plan_full_at=full_at)
+
+    def _car_facts(
+        self,
+        record: EndedRecord,
+        reads: Callable[[EndedRecord | None, CarFacts], bool] = car_ended_reads_level,
+    ) -> CarFacts:
+        """What the car-ended rule reads besides the record, read now: the plan's part, and the record's car's level
+        only when the rule reads it (`reads`: whether its need grew, or a level read since the end), as today's rule
+        read it (a reading may move and save its estimate's anchor)."""
+        facts = self._car_plan_facts()
+        if not reads(record, facts) or self._soc_reader is None:
+            return facts
+        try:
+            reading = self._soc_reader(record.vehicle)
+        except Exception:  # noqa: BLE001 - an unreadable car says nothing new
+            return facts
+        if reading is None or reading.soc_percent is None:
+            return facts
+        read_at = None if reading.age_s is None else dt_util.utcnow() - timedelta(seconds=max(0.0, reading.age_s))
+        return replace(
+            facts,
+            car_level=reading.soc_percent,
+            car_level_at=read_at,
+            car_level_full=self._car_ended_level_full(reading),
+        )
 
     @property
     def car_ended_holds_charge(self) -> bool:
@@ -1796,7 +1880,15 @@ class ChargingController:
         if self._balancing.paused and paused is not None and not paused[1]:
             return False
         holds, facts = self._car_ended_hold()
-        if holds and facts == (False, False, False) and self._car_ended.wait is not None:
+        record = _ended_record(self._car_ended)
+        if (
+            holds
+            and facts is not None
+            and record is not None
+            and record.wait is not None
+            and not car_ended_known_full(record, facts)
+            and not car_ended_awaits_level(record, facts)
+        ):
             return False
         return holds
 
@@ -1811,24 +1903,14 @@ class ChargingController:
         the end says the car is below the target (`_car_ended_level_since`, by more than the margin a car that ended
         a charge may read below its goal and still be full), the car is unplugged or plugged in again, the target is
         raised above the one the car ended at, or a person starts the charge. A level read since at the target ends
-        the plan instead (`_enforce_target_locked`).
+        the plan instead (`_enforce_target_locked`). The rule is the core's (`core.ownership.car_ended_awaits_level`).
 
         Before, only the window open at the end was skipped and a later one started a car that took nothing (the
         field night of 14 October: an estimate of 86 % against a target of 91 % for a car that was full)."""
-        wait = self._car_ended.wait
-        plan = self.plan
-        if wait is None or self._car_ended.at is None or plan is None or plan.target_soc_percent is None:
+        record = _ended_record(self._car_ended)
+        if record is None or record.wait is None or self.plan is None:
             return False
-        if plan.target_soc_percent > wait["target"]:
-            return False
-        if (
-            self._car_ended.vehicle is not None
-            and plan.vehicle_id is not None
-            and self._car_ended.vehicle != plan.vehicle_id
-        ):
-            return False
-        level = self._car_ended_level_since()
-        return level is None or self._car_ended_level_full(level)
+        return car_ended_awaits_level(record, self._car_facts(record, car_ended_waits))
 
     def _car_ended_level_since(self) -> SocReading | None:
         """The car's level read after it ended the plan's charge (`_car_ended_at`), or `None`: a reading made after
@@ -1889,66 +1971,28 @@ class ChargingController:
         except Exception:  # noqa: BLE001 - what cannot be read is not drawing
             return False
 
-    def _car_ended_known_full(self) -> bool:
-        """Whether the car that ended a person's charge was full for the plan in force: its state of charge
-        was read (not estimated) then and is at or above the plan's target, or the car's own limit when the
-        plan charges to it."""
-        ended_soc = self._car_ended.soc
-        plan = self.plan
-        if ended_soc is None or plan is None:
-            return False
-        if (
-            self._car_ended.vehicle is not None
-            and plan.vehicle_id is not None
-            and self._car_ended.vehicle != plan.vehicle_id
-        ):
-            return False
-        if self.charges_to_vehicle_limit():
-            return ended_soc >= charge_ceiling_percent(self.vehicle_limit_percent(plan.vehicle_id))
-        if plan.target_soc_percent is None:
-            return False
-        return ended_soc >= plan.target_soc_percent
-
-    def _car_ended_need_grew(self) -> bool:
-        """Whether the car's state of charge has dropped by `SOC_DROP_PCT` since it ended a person's charge."""
-        from .solar_execution import SOC_DROP_PCT
-
-        ended_soc = self._car_ended.soc
-        if ended_soc is None or self._soc_reader is None:
-            return False
-        try:
-            reading = self._soc_reader(self._car_ended.vehicle)
-        except Exception:  # noqa: BLE001 - an unreadable car says nothing grew
-            return False
-        soc = None if reading is None else reading.soc_percent
-        return soc is not None and soc <= ended_soc - SOC_DROP_PCT
-
-    async def async_note_car_ended(self, vehicle_id: str | None = None) -> None:
+    async def async_note_car_ended(self, vehicle_id: str | None = None) -> dict[str, Any]:
         """The car ended a person's charge by itself (it is full, or stopped drawing): no window of the plan
         starts it again in this plug-in unless its need grew (`_car_ended_holds_window`), and the sun's
         rules wait afresh, as after a charge they ran that the car ended (`_seed_ended`): tried again after the
         first retry from now, at once after a new plug-in. `vehicle_id` is the car whose state of charge is
-        read for it."""
+        read for it. Returns the record's facts for the core's `CarEnded` (fed by the execution boundary, whose
+        feed this is): when the core drives, the record is the one it decides from them."""
         from ..site.solar_surplus import SolarConfig
 
         async with self._lock:
             now = dt_util.utcnow()
-            self._car_ended = replace(self._car_ended, at=now)
             reading = None
             if self._soc_reader is not None:
                 try:
                     reading = self._soc_reader(vehicle_id)
                 except Exception:  # noqa: BLE001 - an unreadable car is a state of charge not known
                     reading = None
-            # Only a read state of charge says whether the car is full (`_car_ended_known_full`), never an
-            # estimate carried forward. A person's charge the car ended waits for nothing: only the plan's own
+            # Only a read state of charge says whether the car is full (`core.ownership.car_ended_known_full`), never
+            # an estimate carried forward. A person's charge the car ended waits for nothing: only the plan's own
             # charge does.
-            self._car_ended = replace(
-                self._car_ended,
-                soc=None if reading is None or getattr(reading, "estimated", False) else reading.soc_percent,
-                vehicle=vehicle_id,
-                wait=None,
-            )
+            soc = None if reading is None or getattr(reading, "estimated", False) else reading.soc_percent
+            self._car_ended = CarEndedRecord(at=now, soc=soc, vehicle=vehicle_id, wait=None)
             # A record kept from an earlier charge (its retry long past) must not let the sun start the car the
             # watch just found full: the wait starts now.
             retry_s = SolarConfig().ended_retry_s
@@ -1958,12 +2002,13 @@ class ChargingController:
                 "next_retry_s": retry_s * 2.0,
                 "context": {
                     "plugged_in_at": None if self._plugged_in_at is None else self._plugged_in_at.isoformat(),
-                    "soc_percent": self._car_ended.soc,
+                    "soc_percent": soc,
                     "limit_percent": None,
                     "target_percent": None,
                 },
             }
             await self._async_save_quietly()
+            return {"soc": soc, "vehicle": vehicle_id}
 
     @property
     def car_ended_at(self) -> datetime | None:
@@ -2069,20 +2114,30 @@ class ChargingController:
                 target_soc_percent=plan.target_soc_percent,
                 vehicle_max_percent=self.vehicle_limit_percent(vehicle_id),
             )
+            # Only a read state of charge makes the car known full for later windows
+            # (`core.ownership.car_ended_known_full`).
+            ended = CarEndedRecord(
+                at=dt_util.utcnow(),
+                soc=None if reading is None or reading.estimated else reading.soc_percent,
+                vehicle=vehicle_id,
+                wait=self._car_ended_wait_for(plan, reading, full),
+            )
             token = self._shadow.begin()
-            try:
-                # Only a read state of charge makes the car known full for later windows (`_car_ended_known_full`).
-                self._car_ended = CarEndedRecord(
-                    at=dt_util.utcnow(),
-                    soc=None if reading is None or reading.estimated else reading.soc_percent,
-                    vehicle=vehicle_id,
-                    wait=self._car_ended_wait_for(plan, reading, full),
-                )
-                await self._async_save_quietly()
-            except BaseException:
-                self._shadow.cancel(token)
-                raise
-            self._shadow.end(token, core_events.CarEnded(plan=True))
+            self._car_ended = ended
+            wait_for = ended.wait
+            self._shadow.end(
+                token,
+                core_events.CarEnded(
+                    plan=True,
+                    soc=ended.soc,
+                    vehicle=ended.vehicle,
+                    wait_target=None if wait_for is None else wait_for["target"],
+                    wait_level=None if wait_for is None else wait_for["level"],
+                    wait_estimated=False if wait_for is None else wait_for["estimated"],
+                ),
+            )
+            # Saved once decided: when the core drives, today's `car_ended_*` keys are derived from its record.
+            await self._async_save_quietly()
             _LOGGER.info(
                 "SpotNav charger %s: the car stopped taking the plan's charge by itself (%s%s)",
                 self.entry_id,
@@ -2230,7 +2285,7 @@ class ChargingController:
         """The start at plug-in, with the lock held; also a window start's retry (`TRIGGER_RETRY`), which rechecks
         everything a plug-in does."""
         token = self._shadow.begin()
-        self._shadow_car_facts = (False, False, False)
+        self._shadow_car_facts = NO_CAR_FACTS
         facts = self._shadow_facts(
             lambda: {
                 "window_open": self._open_window_end() is not None,
@@ -2304,14 +2359,7 @@ class ChargingController:
             return None
         try:
             self._car_ended_holds_window()
-            known_full, need_grew, awaits = self._shadow_car_facts
-            event = core_events.WindowStart(
-                trigger=trigger,
-                **facts,
-                car_ended_known_full=known_full,
-                need_grew=need_grew,
-                car_ended_awaits_level=awaits,
-            )
+            event = core_events.WindowStart(trigger=trigger, **facts, **self._shadow_car_facts.facts())
         except Exception as err:  # noqa: BLE001 - today's decision stands, not silently
             self._shadow.failed("window_start_facts", core_events.WindowStart.kind, err)
             return None
@@ -5378,7 +5426,7 @@ class ChargingController:
         if ended:
             self._shadow.end(token, core_events.WindowStart(trigger=trigger, target_reached=True))
             return True
-        self._shadow_car_facts = (False, False, False)
+        self._shadow_car_facts = NO_CAR_FACTS
         facts = self._shadow_facts(self._shadow_start_facts, core_events.WindowStart.kind, token=token)
         legacy: list[str] = []
         outcome: CommandOutcome | None = None
@@ -5459,7 +5507,19 @@ class ChargingController:
             self.entry_id,
             level.soc_percent or 0.0,
         )
+        token = self._shadow.begin()
         self._car_ended = replace(self._car_ended, wait=None)
+        self._shadow.end(
+            token,
+            core_events.CarLevelRead(
+                car_level=level.soc_percent,
+                car_level_at=None
+                if level.age_s is None
+                else dt_util.utcnow() - timedelta(seconds=max(0.0, level.age_s)),
+                car_level_full=False,
+            ),
+        )
+        # Saved once decided: when the core drives, today's `car_ended_wait` key is derived from its record.
         await self._async_save_quietly()
         if self.plan is not None and not self._control_on and self._open_window_end() is not None:
             await self._reschedule_locked()
@@ -6421,10 +6481,11 @@ class ChargingController:
             **self._shadow_hold_facts(),
         }
 
-    def _shadow_take_car_facts(self) -> dict[str, bool]:
-        known_full, need_grew, awaits = self._shadow_car_facts
-        self._shadow_car_facts = (False, False, False)
-        return {"car_ended_known_full": known_full, "need_grew": need_grew, "car_ended_awaits_level": awaits}
+    def _shadow_take_car_facts(self) -> dict[str, Any]:
+        """The car facts the car-ended rule last read (`_car_ended_holds_window`), once, as an event's facts."""
+        facts = self._shadow_car_facts
+        self._shadow_car_facts = NO_CAR_FACTS
+        return facts.facts()
 
     def _shadow_facts(
         self, read: Callable[[], dict[str, Any]], kind: str, *, token: ShadowToken | None = None
@@ -6509,11 +6570,10 @@ class ChargingController:
         reading them may read the car's state of charge, which moves and saves its anchor. With the option off they
         are what today's rule read itself, taken after it (`_recheck`), so the shadow reads nothing of the car."""
         open_start, ahead = self._shadow_windows()
-        self._shadow_car_facts = (False, False, False)
+        self._shadow_car_facts = NO_CAR_FACTS
         if self._core_drives and what == core_events.RECHECK_CLAIM:
             self._car_ended_holds_window()
-        known_full, need_grew, awaits = self._shadow_car_facts
-        self._shadow_car_facts = (False, False, False)
+        car_facts = self._shadow_take_car_facts()
         commanded = what in (core_events.RECHECK_HOLD, core_events.RECHECK_PERSON_HOLD)
         return {
             "control_on": self._control_on if commanded else self._control_observation is True,
@@ -6522,9 +6582,7 @@ class ChargingController:
             "in_window": open_start is not None,
             "plan_present": self.plan is not None,
             "open_window_start": open_start,
-            "car_ended_known_full": known_full,
-            "need_grew": need_grew,
-            "car_ended_awaits_level": awaits,
+            **car_facts,
             "handed_off": self._shadow_handed_off(),
             "top_off": self.top_off_until is not None,
             "start_pending": self._shadow_start_pending(),
@@ -6581,15 +6639,12 @@ class ChargingController:
             event = None
         previous = self._shadow_decisions
         self._shadow_decisions = []
-        self._shadow_car_facts = (False, False, False)
+        self._shadow_car_facts = NO_CAR_FACTS
         if self._core_drives and event is not None:
             try:
                 if isinstance(event, core_events.ChargerReportedOn):
                     self._car_ended_holds_window()
-                    known_full, need_grew, awaits = self._shadow_car_facts
-                    event = replace(
-                        event, car_ended_known_full=known_full, need_grew=need_grew, car_ended_awaits_level=awaits
-                    )
+                    event = replace(event, **self._shadow_car_facts.facts())
                 self._core_report_verdict = self._core_hold_verdict = self._shadow.verdict(event)
             except Exception as err:  # noqa: BLE001 - today's decision stands, not silently
                 self._shadow.failed("report_facts", event.kind, err, token=token)
@@ -6666,7 +6721,7 @@ class ChargingController:
             span_pause=span,
             held=self._hold_state.held,
             overridden=self._hold_state.overridden,
-            car_ended_at=self._car_ended.at,
+            car_ended=_ended_record(self._car_ended),
             balancing_paused=self._balancing.paused,
             paused_origin=paused_origin,
             held_for_safety=self._safety.held,

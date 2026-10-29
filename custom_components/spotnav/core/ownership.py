@@ -18,8 +18,11 @@ The rules are today's, as the manual-pause specs and their three review rounds s
 * Under a person's Stop a charge the charger begins by itself is stopped at once (C7), at most once per
   `PERSON_HOLD_STOP_GAP_S`, and after `PERSON_HOLD_MAX_STOPS` stops in `PERSON_HOLD_WINDOW_S` SpotNav gives up
   and says so (`charger_ignores_stop`, R5).
-* After the car ended a person's charge, a car known full skips every later window of the plug-in unless its
-  need grew; otherwise only the window open then is skipped (R3).
+* After the car ended a charge (a person's, or the plan's), a car known full skips every later window of the plug-in
+  unless its need grew; a plan that waits for the car's level skips every window until a level read since says the
+  car is below the target; otherwise only the window open then is skipped (R3). The session keeps the whole record
+  (`car_ended`: when, the level read then, which car, what the plan waits for); what the rule reads besides it comes
+  as the event's car facts (`CarFacts`), read right before the decision.
 * A window that opens (its timer, a re-arm) while the charger says no car is plugged in starts nothing: the plug-in
   inside it does. A charger that cannot say is started as before.
 * The hold of a charge that began by itself outside a window, its override, the claim of one inside a window
@@ -50,7 +53,9 @@ from .events import (
     BalancingDropped,
     BalancingPause,
     BalancingResume,
+    CAR_FACTS,
     CarEnded,
+    CarLevelRead,
     ChargerReportedOff,
     ChargerReportedOn,
     ChargerReportedUnreadable,
@@ -94,6 +99,8 @@ from .events import (
     WindowStart,
 )
 from .session import (
+    CarEnded as EndedRecord,
+    CarEndedWait,
     ChargeSession,
     ManualPause,
     MANUAL_START,
@@ -123,6 +130,9 @@ PERSON_HOLD_STOP_GAP_S: Final = 30.0
 PERSON_HOLD_MAX_STOPS: Final = 3
 PERSON_HOLD_WINDOW_S: Final = 600.0
 SAFETY_RESUME_GAP_S: Final = 300.0
+#: How far the car's level must have dropped since it ended a charge for its need to have grown: the hysteresis the
+#: sun's rules use (`execution/solar_execution.SOC_DROP_PCT`, which is this one).
+SOC_DROP_PCT: Final = 2.0
 
 #: The notification code when SpotNav gives up stopping a charger under a person's Stop.
 NOTIFY_CHARGER_IGNORES_STOP: Final = "charger_ignores_stop"
@@ -239,29 +249,98 @@ def hold_blocked(session: ChargeSession, *, solar_holds: bool, plan_auto_owned: 
     return (plan_auto_owned and session.paused) or solar_holds
 
 
+@dataclass(frozen=True)
+class CarFacts:
+    """What the car-ended rule (R3) reads besides the session's car-ended record (`events.CAR_FACTS`): the plan's
+    target, its car and the level a car read at the end must have reached to be known full for it, and the car's level
+    read now, when, and whether it says the car is full for the plan. All unknown by default: only the window open at
+    the end is skipped then."""
+
+    plan_target: float | None = None
+    plan_vehicle: str | None = None
+    plan_full_at: float | None = None
+    car_level: float | None = None
+    car_level_at: datetime | None = None
+    car_level_full: bool = False
+
+    @classmethod
+    def of(cls, event: Event) -> CarFacts:
+        """The car facts an event carries."""
+        return cls(**{name: getattr(event, name) for name in CAR_FACTS})
+
+    def facts(self) -> dict[str, object]:
+        """As an event's facts (`events.CAR_FACTS`)."""
+        return {name: getattr(self, name) for name in CAR_FACTS}
+
+
+NO_CAR_FACTS: Final = CarFacts()
+
+
+def _same_car(record: EndedRecord, plan_vehicle: str | None) -> bool:
+    """The record's car is the plan's, or either is not known."""
+    return record.vehicle is None or plan_vehicle is None or record.vehicle == plan_vehicle
+
+
+def car_ended_known_full(record: EndedRecord | None, facts: CarFacts) -> bool:
+    """Whether the car that ended a charge was full for the plan in force: its level was read (not estimated) then and
+    is at or above the level the plan counts full (`plan_full_at`), for the plan's car."""
+    if record is None or record.soc is None or facts.plan_full_at is None:
+        return False
+    return _same_car(record, facts.plan_vehicle) and record.soc >= facts.plan_full_at
+
+
+def car_ended_need_grew(record: EndedRecord | None, facts: CarFacts) -> bool:
+    """Whether the car's level has dropped by `SOC_DROP_PCT` since it ended a charge at a level read then."""
+    if record is None or record.soc is None or facts.car_level is None:
+        return False
+    return facts.car_level <= record.soc - SOC_DROP_PCT
+
+
+def car_level_since(record: EndedRecord | None, facts: CarFacts) -> bool:
+    """Whether the car's level read now was read after the car ended the charge."""
+    if record is None or facts.car_level is None or facts.car_level_at is None:
+        return False
+    return facts.car_level_at > record.at
+
+
+def car_ended_waits(record: EndedRecord | None, facts: CarFacts) -> bool:
+    """Whether the plan in force is the one the wait for the car's level is for: a wait was kept when the car ended the
+    plan's charge, the target is not raised above the one it ended at, and the car is the plan's."""
+    if record is None or record.wait is None or facts.plan_target is None:
+        return False
+    return facts.plan_target <= record.wait.target and _same_car(record, facts.plan_vehicle)
+
+
+def car_ended_awaits_level(record: EndedRecord | None, facts: CarFacts) -> bool:
+    """Whether the plan waits for the car's level after the car ended its charge short of the target: every window
+    holds until a level read since says the car is below the target (`car_level_since`, not `car_level_full`)."""
+    return car_ended_waits(record, facts) and (not car_level_since(record, facts) or facts.car_level_full)
+
+
+def car_ended_reads_level(record: EndedRecord | None, facts: CarFacts) -> bool:
+    """Whether the car-ended rule reads the car's level now (whether its need grew, or a level read since the end):
+    the shell reads the car only then, as today's rule did (a reading may move its estimate's anchor)."""
+    return car_ended_known_full(record, facts) or car_ended_waits(record, facts)
+
+
 def car_ended_holds_window(
-    session: ChargeSession,
-    *,
-    open_window_start: datetime | None,
-    known_full: bool,
-    need_grew: bool,
-    awaits_level: bool = False,
+    session: ChargeSession, *, open_window_start: datetime | None, facts: CarFacts = NO_CAR_FACTS
 ) -> bool:
     """R3: after the car ended a charge (a person's, or the plan's), a car known full keeps every later window of the
     plug-in from starting it unless its need grew; otherwise only the window already open then is skipped.
 
-    A plan that waits for the car's level (`awaits_level`: the car ended the plan's charge short of the target, its
-    level then an estimate or a reading older than the end, and no level read since says it is below the target)
-    keeps every window from starting until one does: a car that took nothing more is not started again on a level
-    nobody read."""
-    ended_at = session.car_ended_at
-    if ended_at is None or open_window_start is None:
+    A plan that waits for the car's level (`car_ended_awaits_level`: the car ended the plan's charge short of the
+    target, its level then an estimate or a reading older than the end, and no level read since says it is below the
+    target) keeps every window from starting until one does: a car that took nothing more is not started again on a
+    level nobody read. A car known full is decided first (`controller._car_ended_hold` did so)."""
+    record = session.car_ended
+    if record is None or open_window_start is None:
         return False
-    if awaits_level:
+    if car_ended_known_full(record, facts):
+        return not car_ended_need_grew(record, facts)
+    if car_ended_awaits_level(record, facts):
         return True
-    if known_full:
-        return not need_grew
-    return open_window_start <= ended_at
+    return open_window_start <= record.at
 
 
 def spotnav_owned(session: ChargeSession) -> bool:
@@ -353,7 +432,7 @@ def _plug_in(session: ChargeSession, event: PlugIn, now: datetime) -> Decision:
     if previous is not None:
         # The stops under a person's Stop and what the car ended belong to the plug-in they were in. Not for the
         # first connection known after a restart: nothing says the plug-in changed.
-        s = _reset_person_hold(s).with_changes(car_ended_at=None)
+        s = _reset_person_hold(s).with_changes(car_ended=None)
     manual = s.manual
     if manual is not None:
         if manual.scope == SCOPE_NEXT_PLUG_IN and previous is not True:
@@ -370,7 +449,7 @@ def _unplug(session: ChargeSession, event: Unplug, now: datetime) -> Decision:
         plugged=False, held_for_safety=False, safety_stopped_at=None, held=False, overridden=False
     )
     if event.previous is not None:
-        s = _reset_person_hold(s).with_changes(car_ended_at=None)
+        s = _reset_person_hold(s).with_changes(car_ended=None)
     manual = s.manual
     if manual is not None and manual.scope == SCOPE_PLUG_IN:
         # The plug-in session the pause was given in is over (also when the first connection known after a
@@ -385,13 +464,7 @@ def _connection_unknown(session: ChargeSession, event: ConnectionUnknown, now: d
 
 def _window_start(session: ChargeSession, event: WindowStart, now: datetime) -> Decision:
     blocked = hold_blocked(session, solar_holds=event.solar_holds, plan_auto_owned=event.plan_auto_owned)
-    ended_holds = car_ended_holds_window(
-        session,
-        open_window_start=event.open_window_start,
-        known_full=event.car_ended_known_full,
-        need_grew=event.need_grew,
-        awaits_level=event.car_ended_awaits_level,
-    )
+    ended_holds = car_ended_holds_window(session, open_window_start=event.open_window_start, facts=CarFacts.of(event))
     if event.trigger not in (TRIGGER_PLUG_IN, TRIGGER_RETRY):
         # The plug-in session a hold belonged to ends where the next window starts.
         s = session.with_changes(held=False, overridden=False)
@@ -486,7 +559,7 @@ def _person_start(session: ChargeSession, event: PersonStart, now: datetime) -> 
         # No car: refused, nothing sent and nothing paused (C6).
         return session, ()
     # A person decided to charge: what the car ended before is theirs to overrule.
-    return _start(session.with_changes(car_ended_at=None), REASON_PERSON, OWNER_PERSON)
+    return _start(session.with_changes(car_ended=None), REASON_PERSON, OWNER_PERSON)
 
 
 def _person_stop(session: ChargeSession, event: PersonStop, now: datetime) -> Decision:
@@ -501,7 +574,7 @@ def _person_stop(session: ChargeSession, event: PersonStop, now: datetime) -> De
 
 
 def _direct_start(session: ChargeSession, event: DirectStart, now: datetime) -> Decision:
-    s = session.with_changes(car_ended_at=None) if event.manual else session
+    s = session.with_changes(car_ended=None) if event.manual else session
     owner = OWNER_PERSON if event.manual else ORIGIN_OWNER.get(event.cause or "other", OWNER_CHARGE_NOW)
     return _start(s, REASON_DIRECT, owner)
 
@@ -647,13 +720,7 @@ def _reported_on(session: ChargeSession, event: ChargerReportedOn, now: datetime
         else:
             s = s.with_changes(held=True)
             hold = True
-    ended_holds = car_ended_holds_window(
-        s,
-        open_window_start=event.open_window_start,
-        known_full=event.car_ended_known_full,
-        need_grew=event.need_grew,
-        awaits_level=event.car_ended_awaits_level,
-    )
+    ended_holds = car_ended_holds_window(s, open_window_start=event.open_window_start, facts=CarFacts.of(event))
     unclaimed = (
         s.owner in (OWNER_NONE, OWNER_CHARGER_SELF)
         and not s.start_pending
@@ -721,10 +788,30 @@ def _car_ended(session: ChargeSession, event: CarEnded, now: datetime) -> Decisi
         held_back = session.balancing_paused and session.paused_origin == OWNER_PLAN
         if session.owner != OWNER_PLAN and not held_back:
             return session, ()
-        return session.with_changes(car_ended_at=now), ()
+        return session.with_changes(car_ended=_ended_record(event, now)), ()
     if not session.person_started:
         return session, ()
-    return session.with_changes(manual=None, car_ended_at=now), ()
+    return session.with_changes(manual=None, car_ended=_ended_record(event, now)), ()
+
+
+def _ended_record(event: CarEnded, now: datetime) -> EndedRecord:
+    """The car-ended record an end starts now, with the facts the shell read for it."""
+    wait = (
+        None
+        if event.wait_target is None
+        else CarEndedWait(target=event.wait_target, level=event.wait_level, estimated=event.wait_estimated)
+    )
+    return EndedRecord(at=now, soc=event.soc, vehicle=event.vehicle, wait=wait)
+
+
+def _car_level_read(session: ChargeSession, event: CarLevelRead, now: datetime) -> Decision:
+    # A level read after the end that is not full for the plan ends the wait: the windows charge the car again (the one
+    # open at the end stays skipped, `car_ended_holds_window`). A full one ends the plan by the target's own event.
+    record = session.car_ended
+    facts = CarFacts(car_level=event.car_level, car_level_at=event.car_level_at, car_level_full=event.car_level_full)
+    if record is None or record.wait is None or not car_level_since(record, facts) or event.car_level_full:
+        return session, ()
+    return session.with_changes(car_ended=replace(record, wait=None)), ()
 
 
 def _balancing_pause(session: ChargeSession, event: BalancingPause, now: datetime) -> Decision:
@@ -842,13 +929,7 @@ def _recheck(session: ChargeSession, event: Recheck, now: datetime) -> Decision:
             return _stop(s, REASON_STRAY)
         return s, ()
     if what == RECHECK_CLAIM:
-        ended_holds = car_ended_holds_window(
-            s,
-            open_window_start=event.open_window_start,
-            known_full=event.car_ended_known_full,
-            need_grew=event.need_grew,
-            awaits_level=event.car_ended_awaits_level,
-        )
+        ended_holds = car_ended_holds_window(s, open_window_start=event.open_window_start, facts=CarFacts.of(event))
         if (
             automatic_allowed(s, GATE_START)
             and event.control_on
@@ -995,6 +1076,7 @@ _HANDLERS: Final[dict[type[Event], Callable[[ChargeSession, Event, datetime], De
     ChargerReportedOff: _reported_off,  # type: ignore[dict-item]
     ChargerReportedUnreadable: _reported_unreadable,  # type: ignore[dict-item]
     CarEnded: _car_ended,  # type: ignore[dict-item]
+    CarLevelRead: _car_level_read,  # type: ignore[dict-item]
     BalancingPause: _balancing_pause,  # type: ignore[dict-item]
     BalancingResume: _balancing_resume,  # type: ignore[dict-item]
     BalancingDropped: _balancing_dropped,  # type: ignore[dict-item]

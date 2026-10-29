@@ -27,7 +27,7 @@ from typing import Any
 
 from .events import event_from_dict
 from .ownership import decide
-from .session import ChargeSession
+from .session import ChargeSession, SESSION_VERSION, upgraded
 
 
 @dataclass(frozen=True)
@@ -101,8 +101,13 @@ class ReplayReport:
 
 
 def expand(compact: Mapping[str, Any]) -> ChargeSession:
-    """A session from a recorded `pre` (its non-default fields only)."""
-    return ChargeSession.from_dict({**ChargeSession().to_dict(), **compact})
+    """A session from a recorded `pre` (its non-default fields only), also one an earlier version recorded (a bundle's
+    version 1 session kept only when the car ended a charge, `session.upgraded`)."""
+    full = ChargeSession().to_dict()
+    if compact.get("version", SESSION_VERSION) != SESSION_VERSION:
+        full = {key: value for key, value in full.items() if key != "car_ended"}
+        full["car_ended_at"] = None
+    return ChargeSession.from_dict(upgraded({**full, **compact}))
 
 
 def _intent(session: ChargeSession) -> dict[str, Any]:
@@ -123,6 +128,10 @@ def _instants(value: Any) -> list[datetime] | None:
 
 
 def _one_instant(expected: Any, got: Any) -> bool:
+    if isinstance(expected, dict) and isinstance(got, dict) and set(expected) == set(got) and "at" in expected:
+        # A record with its instant (the car-ended record): the same but for the instant, read off two clocks.
+        rest = [key for key in expected if key != "at"]
+        return all(expected[key] == got[key] for key in rest) and _one_instant(expected["at"], got["at"])
     mine, today = _instants(got), _instants(expected)
     return (
         mine is not None

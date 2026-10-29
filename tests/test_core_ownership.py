@@ -12,6 +12,8 @@ from custom_components.spotnav.core import events as ev
 from custom_components.spotnav.core.ownership import (
     automatic_allowed,
     car_ended_holds_window,
+    car_ended_known_full,
+    CarFacts,
     decide,
     GATE_BALANCING_RESUME,
     GATE_PERSON_RESUME,
@@ -30,6 +32,8 @@ from custom_components.spotnav.core.ownership import (
     window_end_spared,
 )
 from custom_components.spotnav.core.session import (
+    CarEnded,
+    CarEndedWait,
     ChargeSession,
     ManualPause,
     PendingCommand,
@@ -41,6 +45,7 @@ START = ManualPause("start", "plug_in")
 STOP = ManualPause("stop", "plug_in")
 STOP_NEXT = ManualPause("stop", "next_plug_in")
 PLUGGED = ChargeSession(plugged=True)
+ENDED = CarEnded(at=T0)
 
 
 def run(session: ChargeSession, *events: ev.Event, now: datetime = T0):
@@ -165,7 +170,7 @@ def test_a_person_start_keeps_a_pause_they_chose_for_a_span() -> None:
 
 
 def test_a_person_start_overrules_what_the_car_ended() -> None:
-    session, _ = run(ChargeSession(car_ended_at=T0), ev.PersonStart())
+    session, _ = run(ChargeSession(car_ended=ENDED), ev.PersonStart())
     assert session.car_ended_at is None
 
 
@@ -217,7 +222,7 @@ def test_an_unplug_ends_what_belonged_to_the_plug_in() -> None:
         safety_stopped_at=T0,
         held=True,
         overridden=True,
-        car_ended_at=T0,
+        car_ended=CarEnded(at=T0, soc=80.0, vehicle="car", wait=CarEndedWait(target=90.0)),
         hold_stop_times=(T0,),
         hold_gave_up=True,
     )
@@ -226,9 +231,9 @@ def test_an_unplug_ends_what_belonged_to_the_plug_in() -> None:
 
 
 def test_the_first_connection_after_a_restart_keeps_what_the_plug_in_had() -> None:
-    before = ChargeSession(car_ended_at=T0, hold_stop_times=(T0,))
+    before = ChargeSession(car_ended=CarEnded(at=T0, soc=80.0, vehicle="car"), hold_stop_times=(T0,))
     session, _ = run(before, ev.PlugIn(previous=None))
-    assert session.car_ended_at == T0 and session.hold_stop_times == (T0,)
+    assert session.car_ended == before.car_ended and session.hold_stop_times == (T0,)
 
 
 # ---------------------------------------------------------------------------------------------- resume, follow, span pauses
@@ -410,14 +415,13 @@ def test_the_car_ending_a_person_start_ends_their_pause() -> None:
     ],
 )
 def test_r3_which_windows_the_car_ended_record_holds(window_start, known_full, need_grew, holds) -> None:
-    session = ChargeSession(car_ended_at=T0)
-    assert (
-        car_ended_holds_window(session, open_window_start=window_start, known_full=known_full, need_grew=need_grew)
-        is holds
-    )
+    # Known full: read at 90 % against a target of 90 %; the need grew: read 2 points lower since.
+    session = ChargeSession(car_ended=CarEnded(at=T0, soc=90.0 if known_full else None, vehicle="car"))
+    facts = CarFacts(plan_target=90.0, plan_vehicle="car", plan_full_at=90.0, car_level=88.0 if need_grew else 90.0)
+    assert car_ended_holds_window(session, open_window_start=window_start, facts=facts) is holds
     _, commands = run(
         session,
-        ev.WindowStart(open_window_start=window_start, car_ended_known_full=known_full, need_grew=need_grew),
+        ev.WindowStart(open_window_start=window_start, **facts.facts()),
         now=T0 + timedelta(hours=2),
     )
     assert kinds(commands) == ([] if holds else ["start"])
@@ -426,28 +430,181 @@ def test_r3_which_windows_the_car_ended_record_holds(window_start, known_full, n
 @pytest.mark.parametrize("window_start", [T0 - timedelta(minutes=10), T0 + timedelta(hours=2)])
 def test_a_plan_waiting_for_the_cars_level_holds_every_window(window_start) -> None:
     """The car ended the plan's charge short of the target on a level nobody read: no window starts it, the one open
-    then nor any later, until a level read since says it is below the target (the controller's fact)."""
-    session = ChargeSession(car_ended_at=T0)
-    assert car_ended_holds_window(
-        session, open_window_start=window_start, known_full=False, need_grew=False, awaits_level=True
-    )
+    then nor any later, until a level read since says it is below the target (the car facts)."""
+    session = ChargeSession(car_ended=CarEnded(at=T0, wait=CarEndedWait(target=91.0, level=86.0, estimated=True)))
+    facts = CarFacts(plan_target=91.0, plan_full_at=91.0)
+    assert car_ended_holds_window(session, open_window_start=window_start, facts=facts)
     for event in (
-        ev.WindowStart(open_window_start=window_start, car_ended_awaits_level=True),
+        ev.WindowStart(open_window_start=window_start, **facts.facts()),
         ev.Recheck(
             what=ev.RECHECK_CLAIM, control_on=True, window_open=True, in_window=True, plan_present=True,
-            open_window_start=window_start, car_ended_awaits_level=True,
+            open_window_start=window_start, **facts.facts(),
         ),
     ):
         _, commands = run(session, event, now=T0 + timedelta(hours=2))
         assert kinds(commands) == []
     # Without a car-ended record there is nothing to wait for.
-    assert not car_ended_holds_window(
-        ChargeSession(), open_window_start=window_start, known_full=False, need_grew=False, awaits_level=True
-    )
+    assert not car_ended_holds_window(ChargeSession(), open_window_start=window_start, facts=facts)
 
 
 def test_no_car_ended_record_holds_nothing() -> None:
-    assert not car_ended_holds_window(ChargeSession(), open_window_start=T0, known_full=True, need_grew=False)
+    facts = CarFacts(plan_target=90.0, plan_full_at=90.0, car_level=90.0)
+    assert not car_ended_holds_window(ChargeSession(), open_window_start=T0, facts=facts)
+
+
+LATER = T0 + timedelta(hours=1)
+WAITING = CarEnded(at=T0, vehicle="car", wait=CarEndedWait(target=91.0, level=86.0, estimated=True))
+FULL = CarEnded(at=T0, soc=91.0, vehicle="car")
+PLAN_ENDED = ev.CarEnded(plan=True, vehicle="car", wait_target=91.0, wait_level=86.0, wait_estimated=True)
+
+
+@pytest.mark.parametrize(
+    ("pre", "events", "ended"),
+    [
+        # Set: the car ended the plan's charge in an open window (the plan's watch), with what the shell read then (a
+        # level read, never an estimate; the car; what the plan waits for), also one load balancing holds back
+        # whose battery probes the car refused.
+        (PLUGGED.with_changes(owner="plan"), (PLAN_ENDED,), WAITING),
+        (
+            PLUGGED.with_changes(balancing_paused=True, paused_origin="plan"),
+            (ev.CarEnded(plan=True, soc=91.0, vehicle="car"),),
+            FULL,
+        ),
+        # Not for a charge that is not the plan's (today's watch looks only at the plan's charge).
+        (PLUGGED.with_changes(owner="solar"), (PLAN_ENDED,), None),
+        (PLUGGED.with_changes(owner="person", manual=START), (PLAN_ENDED,), None),
+        # Set: the car ended a person's Start (their pause ends), with the level read then; it waits for nothing.
+        (PLUGGED.with_changes(owner="person", manual=START), (ev.CarEnded(soc=91.0, vehicle="car"),), FULL),
+        (PLUGGED.with_changes(manual=STOP), (ev.CarEnded(soc=91.0, vehicle="car"),), None),
+        (PLUGGED, (ev.CarEnded(soc=91.0, vehicle="car"),), None),
+        # A later end replaces the record whole (today's code writes all four fields at every end).
+        (PLUGGED.with_changes(owner="plan", car_ended=FULL), (PLAN_ENDED,), WAITING),
+        # The wait ends at a level read after the end that is not full for the plan: the end itself is kept (the
+        # window open then stays skipped). Not on a level read before the end, a full one (the plan ends by the
+        # target's own event), or with no level.
+        (
+            PLUGGED.with_changes(car_ended=WAITING),
+            (ev.CarLevelRead(car_level=80.0, car_level_at=T0 + timedelta(minutes=30)),),
+            CarEnded(at=T0, vehicle="car"),
+        ),
+        (
+            PLUGGED.with_changes(car_ended=WAITING),
+            (ev.CarLevelRead(car_level=80.0, car_level_at=T0 - timedelta(minutes=30)),),
+            WAITING,
+        ),
+        (
+            PLUGGED.with_changes(car_ended=WAITING),
+            (ev.CarLevelRead(car_level=91.0, car_level_at=T0 + timedelta(minutes=30), car_level_full=True),),
+            WAITING,
+        ),
+        (PLUGGED.with_changes(car_ended=WAITING), (ev.CarLevelRead(),), WAITING),
+        (PLUGGED, (ev.CarLevelRead(car_level=80.0, car_level_at=LATER),), None),
+        # Cleared: the unplug and a plug-in after a known one (the record belongs to its plug-in), not the first
+        # connection known after a restart either way (nothing says the plug-in changed: today's
+        # `_connection_changed` returns before it, so a car gone meanwhile keeps it until the next plug-in).
+        (PLUGGED.with_changes(car_ended=WAITING), (ev.Unplug(previous=True),), None),
+        (PLUGGED.with_changes(car_ended=WAITING), (ev.PlugIn(previous=False),), None),
+        (ChargeSession(car_ended=WAITING), (ev.Unplug(previous=None),), WAITING),
+        (ChargeSession(car_ended=WAITING), (ev.PlugIn(previous=None),), WAITING),
+        (ChargeSession(car_ended=WAITING), (ev.Unplug(previous=None), ev.PlugIn(previous=False)), None),
+        # Cleared: a person deciding to charge, also when the start then does not go out (today's code clears it
+        # before the command); not a Start refused with no car, nor a start that is not a person's.
+        (PLUGGED.with_changes(car_ended=WAITING), (ev.PersonStart(),), None),
+        (PLUGGED.with_changes(car_ended=WAITING), (ev.PersonStart(), failed("start", "person")), None),
+        (PLUGGED.with_changes(car_ended=WAITING), (ev.PersonStart(connected=False),), WAITING),
+        (PLUGGED.with_changes(car_ended=WAITING), (ev.DirectStart(manual=True),), None),
+        (PLUGGED.with_changes(car_ended=WAITING), (ev.DirectStart(cause="solar"), ok("start", "direct")), WAITING),
+        # Kept: a restart (stored), a status that says nothing, the windows, a new plan or none, the target's stop, a
+        # person's Stop, load balancing, a report of the charger.
+        (PLUGGED.with_changes(car_ended=WAITING), (ev.Restart(),), WAITING),
+        (PLUGGED.with_changes(car_ended=WAITING), (ev.ConnectionUnknown(),), WAITING),
+        (PLUGGED.with_changes(car_ended=WAITING), (ev.WindowStart(open_window_start=T0),), WAITING),
+        (PLUGGED.with_changes(car_ended=WAITING, owner="plan"), (ev.WindowEnd(),), WAITING),
+        (PLUGGED.with_changes(car_ended=WAITING), (ev.PlanInstalled(window_open=True),), WAITING),
+        (PLUGGED.with_changes(car_ended=WAITING), (ev.PlanDropped(),), WAITING),
+        (PLUGGED.with_changes(car_ended=WAITING, owner="plan"), (ev.TargetReached(), ok("stop", "target")), WAITING),
+        (PLUGGED.with_changes(car_ended=WAITING), (ev.PersonStop(), ok("stop", "person")), WAITING),
+        (PLUGGED.with_changes(car_ended=WAITING), (ev.BalancingPause(), ok("stop", "balancing")), WAITING),
+        (PLUGGED.with_changes(car_ended=WAITING), (on(connected=False), ev.ChargerReportedOff()), WAITING),
+    ],
+)
+def test_where_the_car_ended_record_is_set_and_cleared(pre, events, ended) -> None:
+    """The car-ended record (R3): when the car ended a charge by itself in this plug-in, the level read then, which
+    car, and what the plan waits for. One record, set whole by the car's end and cleared whole with its plug-in."""
+    session, _ = run(pre, *events)
+    assert session.car_ended == ended
+
+
+@pytest.mark.parametrize(
+    ("pre", "events", "plugged"),
+    [
+        (ChargeSession(), (ev.PlugIn(previous=None),), True),
+        (ChargeSession(), (ev.Unplug(previous=None),), False),
+        (PLUGGED, (ev.Unplug(previous=True),), False),
+        (ChargeSession(plugged=False), (ev.PlugIn(previous=False),), True),
+        # A status that says nothing, a report and a command keep the connection the charger last stated.
+        (PLUGGED, (ev.ConnectionUnknown(),), True),
+        (PLUGGED, (on(connected=False), ev.ChargerReportedOff(connected=False)), True),
+        (PLUGGED, (ev.ChargerReportedUnreadable(connected=False),), True),
+        (PLUGGED, (ev.PersonStart(), ok("start", "person")), True),
+        # A restart clears it: only the next status that states a car says.
+        (PLUGGED, (ev.Restart(),), None),
+    ],
+)
+def test_where_the_connection_is_set_and_cleared(pre, events, plugged) -> None:
+    """`plugged`: only a plug-in or an unplug the charger stated in so many words changes it (C2)."""
+    session, _ = run(pre, *events)
+    assert session.plugged is plugged
+
+
+@pytest.mark.parametrize(
+    ("record", "facts", "holds"),
+    [
+        # A car read full at the end holds every later window, unless its level dropped by the sun's hysteresis since.
+        (FULL, CarFacts(plan_target=91.0, plan_vehicle="car", plan_full_at=91.0, car_level=91.0), True),
+        (FULL, CarFacts(plan_target=91.0, plan_vehicle="car", plan_full_at=91.0, car_level=89.0), False),
+        # Not full for a plan of another car, or a raised target, or one that charges to the car's own ceiling above.
+        (FULL, CarFacts(plan_target=91.0, plan_vehicle="other", plan_full_at=91.0), False),
+        (FULL, CarFacts(plan_target=95.0, plan_vehicle="car", plan_full_at=95.0), False),
+        (FULL, CarFacts(plan_target=100.0, plan_vehicle="car", plan_full_at=100.0), False),
+        # A car known full is decided before a wait (today's `_car_ended_hold` asked in that order): one whose need
+        # grew is started even if a wait was kept.
+        (
+            CarEnded(at=T0, soc=91.0, vehicle="car", wait=CarEndedWait(target=91.0)),
+            CarFacts(plan_target=91.0, plan_vehicle="car", plan_full_at=91.0, car_level=89.0),
+            False,
+        ),
+        # A wait holds every window until a level read since is below the target; one at the target still holds.
+        (WAITING, CarFacts(plan_target=91.0, plan_vehicle="car", plan_full_at=91.0), True),
+        (
+            WAITING,
+            CarFacts(plan_target=91.0, plan_full_at=91.0, car_level=80.0, car_level_at=T0 - timedelta(hours=1)),
+            True,
+        ),
+        (WAITING, CarFacts(plan_target=91.0, plan_full_at=91.0, car_level=80.0, car_level_at=LATER), False),
+        (
+            WAITING,
+            CarFacts(plan_target=91.0, plan_full_at=91.0, car_level=91.0, car_level_at=LATER, car_level_full=True),
+            True,
+        ),
+        # A target raised above the one the car ended at, or another car's plan, waits for nothing.
+        (WAITING, CarFacts(plan_target=95.0, plan_full_at=95.0), False),
+        (WAITING, CarFacts(plan_target=91.0, plan_vehicle="other", plan_full_at=91.0), False),
+        # Nothing known of the plan or the car: only the window open at the end.
+        (WAITING, CarFacts(), False),
+    ],
+)
+def test_r3_reads_the_record_and_the_car_facts(record, facts, holds) -> None:
+    """The rule today's `controller._car_ended_holds_window` decided, on the session's record and the car facts the
+    controller reads now (`CarFacts`), for a window that opened after the end."""
+    session = ChargeSession(car_ended=record)
+    assert car_ended_holds_window(session, open_window_start=LATER, facts=facts) is holds
+    _, commands = run(session, ev.WindowStart(open_window_start=LATER, **facts.facts()), now=LATER)
+    assert kinds(commands) == ([] if holds else ["start"])
+    # The window open at the end holds whatever the facts say.
+    assert car_ended_holds_window(session, open_window_start=T0 - timedelta(minutes=5), facts=facts) or (
+        car_ended_known_full(record, facts)
+    )
 
 
 # ---------------------------------------------------------------------------------------------- windows
@@ -776,7 +933,7 @@ def test_a_report_whose_control_cannot_be_read_decides_nothing_of_the_charge(con
 def test_a_charge_inside_a_window_nobody_started_is_the_plans() -> None:
     _, commands = run(PLUGGED, on(window_open=True, in_window=True))
     assert commands == (Start("claim"),)
-    _, commands = run(ChargeSession(car_ended_at=T0), on(window_open=True, open_window_start=T0 - timedelta(minutes=5)))
+    _, commands = run(ChargeSession(car_ended=ENDED), on(window_open=True, open_window_start=T0 - timedelta(minutes=5)))
     assert kinds(commands) == [], "not after the car ended a charge in this window (R3)"
 
 
@@ -1141,7 +1298,7 @@ def test_a_restart_forgets_what_today_keeps_in_memory_only() -> None:
         owner="person",
         manual=START,
         held=True,
-        car_ended_at=T0,
+        car_ended=CarEnded(at=T0, soc=90.0, vehicle="car"),
         balancing_paused=True,
         paused_origin="person",
         held_for_safety=True,
@@ -1154,7 +1311,12 @@ def test_a_restart_forgets_what_today_keeps_in_memory_only() -> None:
     session, commands = run(ChargeSession.from_json(before.to_json()), ev.Restart())
     assert kinds(commands) == []
     assert session == ChargeSession(
-        owner="person", manual=START, held=True, car_ended_at=T0, balancing_paused=True, paused_origin="person"
+        owner="person",
+        manual=START,
+        held=True,
+        car_ended=CarEnded(at=T0, soc=90.0, vehicle="car"),
+        balancing_paused=True,
+        paused_origin="person",
     )
 
 
@@ -1176,7 +1338,7 @@ def test_the_session_round_trips_and_refuses_what_it_cannot_read() -> None:
         manual=STOP_NEXT,
         held=True,
         overridden=True,
-        car_ended_at=T0,
+        car_ended=CarEnded(at=T0, soc=88.5, vehicle="car", wait=CarEndedWait(target=91.0, level=86.0, estimated=True)),
         balancing_paused=True,
         paused_origin="plan",
         held_for_safety=True,
@@ -1193,11 +1355,17 @@ def test_the_session_round_trips_and_refuses_what_it_cannot_read() -> None:
     assert ChargeSession.from_json(session.to_json()) == session
     raw = session.to_dict()
     with pytest.raises(SessionError):
-        ChargeSession.from_dict({**raw, "version": 2})
+        ChargeSession.from_dict({**raw, "version": 3})
     with pytest.raises(SessionError):
         ChargeSession.from_dict({**raw, "owner": "nobody"})
     with pytest.raises(SessionError):
-        ChargeSession.from_dict({**raw, "car_ended_at": "2026-10-04T22:00:00"})
+        ChargeSession.from_dict({**raw, "car_ended": {**raw["car_ended"], "at": "2026-10-04T22:00:00"}})
+    with pytest.raises(SessionError):
+        ChargeSession.from_dict({**raw, "car_ended": {**raw["car_ended"], "wait": {"target": 91.0}}})
+    with pytest.raises(SessionError):
+        ChargeSession.from_dict({**raw, "car_ended": {**raw["car_ended"], "soc": True}})
+    with pytest.raises(SessionError):
+        ChargeSession.from_dict({**raw, "car_ended_at": None})
     with pytest.raises(SessionError):
         ChargeSession.from_dict({key: value for key, value in raw.items() if key != "held"})
     with pytest.raises(SessionError):

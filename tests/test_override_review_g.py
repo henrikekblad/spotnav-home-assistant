@@ -9,6 +9,7 @@ import pytest
 from homeassistant.core import HomeAssistant
 
 from custom_components.spotnav.const import CONF_CHARGE_CONTROL
+from custom_components.spotnav.core.ownership import CarFacts
 from custom_components.spotnav.execution import ownership_shadow
 from custom_components.spotnav.execution.auto_execution import AutoExecutor
 from custom_components.spotnav.execution.controller import ChargingController, SESSION_STORE_KEY
@@ -91,7 +92,7 @@ async def test_rev_g_off_the_stop_under_a_persons_stop_reads_no_state_of_charge(
     """Option off. Inside a window, after the car ended a person's charge (known full), with the hold guard
     blocking (an Auto plan under the person's Stop, as `__init__` wires it): the charger begins by itself and the
     stop under the person's Stop is sent. Main reads no state of charge for that stop; the branch's
-    `_recheck_facts` calls `_car_ended_holds_window` -> `_car_ended_need_grew` -> `SocReader.read`, which may move
+    `_recheck_facts` calls `_car_ended_holds_window` -> `_car_facts` -> `SocReader.read`, which may move
     and save the SoC anchor (`soc_estimate.SocReader.read` -> `_save`): a read and a storage write the shadow adds."""
     from homeassistant.util import dt as dt_util
 
@@ -113,7 +114,8 @@ async def test_rev_g_off_the_stop_under_a_persons_stop_reads_no_state_of_charge(
     controller._soc_reader = lambda vehicle: reads.append(vehicle)  # noqa: SLF001
     controller._car_ended_at = dt_util.utcnow() - timedelta(minutes=5)  # noqa: SLF001
     controller._car_ended_soc = 90  # noqa: SLF001
-    monkeypatch.setattr(controller, "_car_ended_known_full", lambda: True)
+    # Known full for the plan (read at 90 % against a target of 90 %): the rule would read whether its need grew.
+    monkeypatch.setattr(controller, "_car_plan_facts", lambda: CarFacts(plan_target=90.0, plan_full_at=90.0))
     stops = len(world.stops)
 
     await world.switch("on")
@@ -139,7 +141,8 @@ async def test_rev_g_off_a_recheck_today_declines_reads_no_state_of_charge(
     controller._soc_reader = lambda vehicle: reads.append(vehicle)  # noqa: SLF001
     controller._car_ended_at = dt_util.utcnow() - timedelta(minutes=5)  # noqa: SLF001
     controller._car_ended_soc = 90  # noqa: SLF001
-    monkeypatch.setattr(controller, "_car_ended_known_full", lambda: True)
+    # Known full for the plan (read at 90 % against a target of 90 %): the rule would read whether its need grew.
+    monkeypatch.setattr(controller, "_car_plan_facts", lambda: CarFacts(plan_target=90.0, plan_full_at=90.0))
     sent: list[str] = []
 
     async def act() -> bool:

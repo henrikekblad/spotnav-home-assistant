@@ -46,6 +46,7 @@ from ..core.events import CommandResult, Event
 from ..core.ownership import Command, decide, ORIGIN_OWNER
 from ..core.replay import CLOCK_TOLERANCE_S
 from ..core.session import (
+    CarEnded,
     ChargeSession,
     ManualPause,
     MANUAL_STOP,
@@ -224,12 +225,17 @@ def _same(core: Any, today: Any) -> bool:
         return abs((core - today).total_seconds()) <= MIRROR_CLOCK_S
     if isinstance(core, tuple) and isinstance(today, tuple) and len(core) == len(today):
         return all(_same(a, b) for a, b in zip(core, today, strict=True))
+    if isinstance(core, CarEnded) and isinstance(today, CarEnded):
+        # The car-ended record: the same but for its instant, read off two clocks.
+        return replace(core, at=today.at) == today and _same(core.at, today.at)
     return False
 
 
 def _plain(value: Any) -> Any:
     if isinstance(value, datetime):
         return value.isoformat()
+    if isinstance(value, CarEnded):
+        return value.to_dict()
     if isinstance(value, tuple):
         return [_plain(item) for item in value]
     return value

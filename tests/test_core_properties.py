@@ -26,6 +26,8 @@ from hypothesis.stateful import invariant, rule, RuleBasedStateMachine, run_stat
 from custom_components.spotnav.core import events as ev
 from custom_components.spotnav.core.ownership import (
     automatic_allowed,
+    car_ended_holds_window,
+    CarFacts,
     decide,
     GATE_STOP,
     Notify,
@@ -34,7 +36,7 @@ from custom_components.spotnav.core.ownership import (
     spotnav_owned,
     window_end_spared,
 )
-from custom_components.spotnav.core.session import ChargeSession, OWNERS, SCOPE_PLUG_IN
+from custom_components.spotnav.core.session import CarEnded, ChargeSession, OWNERS, SCOPE_PLUG_IN
 
 T0 = datetime(2026, 10, 4, 22, 0, tzinfo=timezone.utc)
 
@@ -68,6 +70,18 @@ PERSON_STARTS = {"person_start", "direct_start"}
 
 maybe_bool = st.sampled_from([True, False, None])
 when = st.one_of(st.none(), st.integers(-7200, 7200).map(lambda s: T0 + timedelta(seconds=s)))
+level = st.one_of(st.none(), st.sampled_from([60.0, 86.0, 88.0, 89.5, 90.0, 91.0, 100.0]))
+car = st.sampled_from([None, "car_a", "car_b"])
+#: What the car-ended rule reads besides the session's record (`ownership.CarFacts`).
+car_facts = st.builds(
+    CarFacts,
+    plan_target=st.one_of(st.none(), st.sampled_from([80.0, 90.0, 91.0, 100.0])),
+    plan_vehicle=car,
+    plan_full_at=st.one_of(st.none(), st.sampled_from([80.0, 90.0, 91.0, 100.0])),
+    car_level=level,
+    car_level_at=when,
+    car_level_full=st.booleans(),
+)
 
 
 class OwnershipMachine(RuleBasedStateMachine):
@@ -158,6 +172,28 @@ class OwnershipMachine(RuleBasedStateMachine):
             or (isinstance(event, ev.WindowStart) and event.trigger not in (ev.TRIGGER_PLUG_IN, ev.TRIGGER_RETRY))
         ):
             assert not post.held and not post.overridden, (event, post)
+        # The car-ended record belongs to its plug-in: it ends at the unplug, and at a plug-in after one known (not the
+        # first connection known after a restart); a person's Start overrules it. Only the car's end starts it, as a
+        # whole record of this instant; only a level read since the end that is not full ends its wait, and nothing
+        # else of it changes.
+        if (
+            (event.kind in ("unplug", "plug_in") and getattr(event, "previous", None) is not None)
+            or event.kind == "person_start"
+            or (event.kind == "direct_start" and getattr(event, "manual", False))
+        ):
+            assert post.car_ended is None, (event, post)
+        elif isinstance(event, ev.CarEnded):
+            if post.car_ended != pre.car_ended:
+                assert post.car_ended is not None and post.car_ended.at == self.now
+                assert (post.car_ended.soc, post.car_ended.vehicle) == (event.soc, event.vehicle)
+                assert (post.car_ended.wait is None) is (event.wait_target is None)
+        elif isinstance(event, ev.CarLevelRead):
+            if post.car_ended != pre.car_ended:
+                assert pre.car_ended is not None and pre.car_ended.wait is not None and not event.car_level_full
+                assert post.car_ended == CarEnded(pre.car_ended.at, pre.car_ended.soc, pre.car_ended.vehicle)
+                assert event.car_level_at is not None and event.car_level_at > pre.car_ended.at
+        else:
+            assert post.car_ended == pre.car_ended, (event, pre.car_ended, post.car_ended)
         # A report whose control cannot be read decides nothing of the charge: only its "no car" ends the hold.
         if isinstance(event, ev.ChargerReportedUnreadable):
             assert kinds == ["keep"]
@@ -221,8 +257,7 @@ class OwnershipMachine(RuleBasedStateMachine):
         trigger=st.sampled_from(["timer", "rearm", "plug_in"]),
         reached=st.booleans(),
         window_start=when,
-        known_full=st.booleans(),
-        need_grew=st.booleans(),
+        facts=car_facts,
         control_on=st.booleans(),
         connected=maybe_bool,
         start_pending=st.booleans(),
@@ -230,15 +265,14 @@ class OwnershipMachine(RuleBasedStateMachine):
         solar=st.booleans(),
     )
     def window_start(
-        self, data, trigger, reached, window_start, known_full, need_grew, control_on, connected, start_pending, top_off, solar
+        self, data, trigger, reached, window_start, facts, control_on, connected, start_pending, top_off, solar
     ) -> None:
         self.step(
             ev.WindowStart(
                 trigger=trigger,
                 target_reached=reached,
                 open_window_start=window_start,
-                car_ended_known_full=known_full,
-                need_grew=need_grew,
+                **facts.facts(),
                 control_on=control_on,
                 connected=connected,
                 start_pending=start_pending,
@@ -384,9 +418,51 @@ class OwnershipMachine(RuleBasedStateMachine):
     def charger_reported_unreadable(self, connected) -> None:
         self.step(ev.ChargerReportedUnreadable(connected=connected))
 
-    @rule()
-    def car_ended(self) -> None:
-        self.step(ev.CarEnded())
+    @rule(
+        plan=st.booleans(),
+        soc=level,
+        vehicle=car,
+        wait_target=st.one_of(st.none(), st.sampled_from([90.0, 91.0])),
+        wait_level=level,
+        estimated=st.booleans(),
+    )
+    def car_ended(self, plan, soc, vehicle, wait_target, wait_level, estimated) -> None:
+        self.step(
+            ev.CarEnded(
+                plan=plan,
+                soc=soc,
+                vehicle=vehicle,
+                wait_target=wait_target,
+                wait_level=wait_level,
+                wait_estimated=estimated,
+            )
+        )
+
+    @rule(level_=level, at=when, full=st.booleans())
+    def car_level_read(self, level_, at, full) -> None:
+        self.step(ev.CarLevelRead(car_level=level_, car_level_at=at, car_level_full=full))
+
+    @rule(window_start=when, facts=car_facts)
+    def car_ended_rule(self, window_start, facts) -> None:
+        """R3 as a query: a car known full holds every window of the plug-in unless its need grew; a plan that waits
+        for the car's level holds every window until a level read since is below the target; else only the window
+        open at the end holds."""
+        record = self.session.car_ended
+        holds = car_ended_holds_window(self.session, open_window_start=window_start, facts=facts)
+        if record is None or window_start is None:
+            assert not holds
+            return
+        known_full = (
+            record.soc is not None
+            and facts.plan_full_at is not None
+            and record.soc >= facts.plan_full_at
+            and (record.vehicle is None or facts.plan_vehicle is None or record.vehicle == facts.plan_vehicle)
+        )
+        if known_full:
+            grew = facts.car_level is not None and facts.car_level <= record.soc - 2.0
+            assert holds is not grew
+        elif window_start <= record.at:
+            assert holds
 
     @rule(data=st.data(), code=st.sampled_from(["pause", "safety_stop"]), was_on=st.booleans())
     def balancing_pause(self, data, code, was_on) -> None:
@@ -504,8 +580,14 @@ class OwnershipMachine(RuleBasedStateMachine):
         )
         session, commands = decide(read_back, ev.Restart(legacy_person_stop=legacy), self.now)
         assert [command.kind for command in commands] == ["keep"]
-        for name in ("owner", "held", "overridden", "car_ended_at", "balancing_paused", "paused_origin", "span_pause"):
+        for name in ("owner", "held", "overridden", "car_ended", "balancing_paused", "paused_origin", "span_pause"):
             assert getattr(session, name) == getattr(before, name), name
+        # A record of version 1 (an earlier build's: only when the car ended) reads back with that instant alone.
+        v1 = {key: value for key, value in before.to_store().items() if key != "car_ended"}
+        v1.update(version=1, car_ended_at=None if before.car_ended is None else before.car_ended.at.isoformat())
+        older = ChargeSession.from_store(v1)
+        ended = None if before.car_ended is None else CarEnded(before.car_ended.at)
+        assert older == stored.with_changes(car_ended=ended)
         if not (legacy and not before.paused):
             assert session.manual == before.manual
         assert session.plugged is None and session.pending == ()

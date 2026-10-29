@@ -13,6 +13,8 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.storage import Store
 
 from custom_components.spotnav.core.session import (
+    CarEnded,
+    CarEndedWait,
     ChargeSession,
     ManualPause,
     PendingCommand,
@@ -45,7 +47,7 @@ def test_the_stored_record_round_trips_without_what_a_restart_clears() -> None:
         owner="plan",
         manual=ManualPause("stop", "next_plug_in"),
         held=True,
-        car_ended_at=T0,
+        car_ended=CarEnded(at=T0, soc=88.0, vehicle="car", wait=CarEndedWait(target=91.0, level=86.0, estimated=True)),
         balancing_paused=True,
         paused_origin="person",
         held_for_safety=True,
@@ -62,18 +64,22 @@ def test_the_stored_record_round_trips_without_what_a_restart_clears() -> None:
     read = ChargeSession.from_store(record)
     assert read == session.stored()
     assert read.pending == () and read.hold_stop_times == () and not read.hold_gave_up and not read.held_for_safety
-    assert (read.owner, read.manual, read.car_ended_at, read.paused_origin) == ("plan", session.manual, T0, "person")
+    assert (read.owner, read.manual, read.car_ended, read.paused_origin) == (
+        "plan", session.manual, session.car_ended, "person"
+    )
 
 
 @pytest.mark.parametrize(
     "change",
     [
-        {"version": 2},
+        {"version": 3},
         {"version": None},
+        {"version": True},
         {"pending": []},  # a transient field is not part of the record
         {"owner": "nobody"},
         {"manual": {"action": "stop"}},
-        {"car_ended_at": "yesterday"},
+        {"car_ended": {"at": "yesterday", "soc": None, "vehicle": None, "wait": None}},
+        {"car_ended_at": None},  # a field of version 1 in a record of version 2
     ],
 )
 def test_a_stored_record_of_another_version_or_shape_is_refused(change: dict[str, Any]) -> None:

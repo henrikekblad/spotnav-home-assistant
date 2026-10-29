@@ -1810,6 +1810,8 @@ class AutoExecutor:
         # A plug-in's or an unplug's end of the pause the controller already fed; Follow and the car's end are this.
         fed = reason == "follow" or car_ended
         token = self._shadow.begin() if fed else None
+        # The car-ended record's facts, as the controller read them (`ChargingController.async_note_car_ended`).
+        ended: dict[str, Any] = {}
         try:
             await self._store.async_update(
                 self._entry_id,
@@ -1823,7 +1825,10 @@ class AutoExecutor:
             self._sync_manual_watch()
             _LOGGER.info("SpotNav charger %s: Auto resumes (%s)", self._entry_id, reason)
             if car_ended:
-                await self._controller.async_note_car_ended(self._store.settings(self._entry_id).target.vehicle_id)
+                noted = await self._controller.async_note_car_ended(
+                    self._store.settings(self._entry_id).target.vehicle_id
+                )
+                ended = noted if isinstance(noted, dict) else {}
         except BaseException:
             if token is not None:
                 self._shadow.cancel(token)
@@ -1833,7 +1838,7 @@ class AutoExecutor:
         else:
             self._shadow.end(
                 token,
-                core_events.CarEnded() if car_ended else core_events.Resume(reason=core_events.RESUME_FOLLOW),
+                core_events.CarEnded(**ended) if car_ended else core_events.Resume(reason=core_events.RESUME_FOLLOW),
             )
         await self._rearm_kept_plan()
         snapshot = None if self._live_snapshot is None else self._live_snapshot()
