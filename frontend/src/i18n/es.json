@@ -212,7 +212,7 @@
   "entity.help.measurementMode": "Si tu contador informa directamente de la corriente de cada fase o si SpotNav la calcula a partir de la potencia y la tensión.",
   "entity.help.voltageBetweenPhases": "La tensión entre dos fases de tu instalación eléctrica. La potencia de carga trifásica se calcula a partir de ella.",
   "entity.help.chargerPriority": "Cuando varios cargadores comparten el fusible de la instalación, un cargador en Primero se atiende antes que los demás y uno en Último recibe lo que sobra.",
-  "entity.help.phaseSwitching": "Cuando el sol no alcanza para cargar en tres fases, el coche carga en una sola fase en lugar de tomar de la red. Algunos coches cargan mal tras un cambio de fase: desactívalo si tu coche deja de cargar.",
+  "entity.help.phaseSwitching": "Cuando el sol no alcanza para cargar en tres fases, el coche carga en una sola fase en lugar de tomar de la red. Algunos coches cargan mal tras un cambio de fase: desactívalo si tu coche deja de cargar. SpotNav ajusta entonces las fases del cargador por sí mismo, así que no se usa el modo de fase automático del cargador.",
   "entity.phaseSwitching.automatic": "Automática",
   "entity.voltage.tn": "400 V (red TN, la habitual)",
   "entity.voltage.it": "230 V (red IT, común en Noruega)",

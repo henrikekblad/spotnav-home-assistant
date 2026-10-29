@@ -212,7 +212,7 @@
   "entity.help.measurementMode": "Whether your meter reports each phase's current directly, or SpotNav works it out from power and voltage.",
   "entity.help.voltageBetweenPhases": "The voltage between two phases of your electrical installation. Three-phase charging power is figured from it.",
   "entity.help.chargerPriority": "When several chargers share the site's fuse, a charger set to First is served before the others and one set to Last gets what is left.",
-  "entity.help.phaseSwitching": "When the sun does not cover three-phase charging, charge on one phase instead of drawing from the grid. Some cars charge badly after a phase change: turn this off if your car stops charging.",
+  "entity.help.phaseSwitching": "When the sun does not cover three-phase charging, charge on one phase instead of drawing from the grid. Some cars charge badly after a phase change: turn this off if your car stops charging. SpotNav then sets the charger's phases itself, so the charger's own automatic phase mode is not used.",
   "entity.phaseSwitching.automatic": "Automatic",
   "entity.voltage.tn": "400 V (TN network, the usual one)",
   "entity.voltage.it": "230 V (IT network, common in Norway)",

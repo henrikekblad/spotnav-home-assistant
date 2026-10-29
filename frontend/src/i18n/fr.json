@@ -212,7 +212,7 @@
   "entity.help.measurementMode": "Si votre compteur indique directement le courant de chaque phase, ou si SpotNav le calcule à partir de la puissance et de la tension.",
   "entity.help.voltageBetweenPhases": "La tension entre deux phases de votre installation électrique. La puissance de charge triphasée est calculée à partir de celle-ci.",
   "entity.help.chargerPriority": "Lorsque plusieurs bornes partagent le fusible du site, une borne réglée sur Première est servie avant les autres et une borne réglée sur Dernière reçoit ce qui reste.",
-  "entity.help.phaseSwitching": "Quand le soleil ne suffit pas pour charger sur trois phases, la voiture charge sur une seule phase au lieu de prendre sur le réseau. Certaines voitures chargent mal après un changement de phase : désactivez ceci si votre voiture arrête de charger.",
+  "entity.help.phaseSwitching": "Quand le soleil ne suffit pas pour charger sur trois phases, la voiture charge sur une seule phase au lieu de prendre sur le réseau. Certaines voitures chargent mal après un changement de phase : désactivez ceci si votre voiture arrête de charger. SpotNav règle alors lui-même les phases de la borne, le mode de phase automatique de la borne n'est donc pas utilisé.",
   "entity.phaseSwitching.automatic": "Automatique",
   "entity.voltage.tn": "400 V (réseau TN, le plus courant)",
   "entity.voltage.it": "230 V (réseau IT, courant en Norvège)",

@@ -212,7 +212,7 @@
   "entity.help.measurementMode": "Ilmoittaako mittarisi kunkin vaiheen virran suoraan vai laskeeko SpotNav sen tehosta ja jännitteestä.",
   "entity.help.voltageBetweenPhases": "Sähköasennuksesi kahden vaiheen välinen jännite. Kolmivaiheinen latausteho lasketaan siitä.",
   "entity.help.chargerPriority": "Kun useampi latauspiste jakaa kohteen sulakkeen, Ensin-asetuksen laturi saa virtaa ennen muita ja Viimeksi-asetuksen laturi sen, mikä jää jäljelle.",
-  "entity.help.phaseSwitching": "Kun aurinko ei riitä kolmivaiheiseen lataukseen, auto latautuu yhdellä vaiheella sen sijaan, että sähköä otettaisiin verkosta. Jotkin autot latautuvat huonosti vaiheenvaihdon jälkeen: kytke tämä pois, jos auto lakkaa latautumasta.",
+  "entity.help.phaseSwitching": "Kun aurinko ei riitä kolmivaiheiseen lataukseen, auto latautuu yhdellä vaiheella sen sijaan, että sähköä otettaisiin verkosta. Jotkin autot latautuvat huonosti vaiheenvaihdon jälkeen: kytke tämä pois, jos auto lakkaa latautumasta. SpotNav asettaa silloin laturin vaiheet itse, joten laturin omaa automaattista vaihetilaa ei käytetä.",
   "entity.phaseSwitching.automatic": "Automaattinen",
   "entity.voltage.tn": "400 V (TN-verkko, tavallinen)",
   "entity.voltage.it": "230 V (IT-verkko, yleinen Norjassa)",

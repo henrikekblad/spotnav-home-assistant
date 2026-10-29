@@ -212,7 +212,7 @@
   "entity.help.measurementMode": "Ob dein Zähler den Strom jeder Phase direkt meldet oder SpotNav ihn aus Leistung und Spannung berechnet.",
   "entity.help.voltageBetweenPhases": "Die Spannung zwischen zwei Phasen deiner Elektroinstallation. Daraus wird die Ladeleistung bei dreiphasigem Laden berechnet.",
   "entity.help.chargerPriority": "Teilen sich mehrere Ladestationen die Sicherung des Standorts, wird eine auf Zuerst gestellte vor den anderen bedient, und eine auf Zuletzt gestellte bekommt, was übrig bleibt.",
-  "entity.help.phaseSwitching": "Reicht die Sonne nicht für das Laden auf drei Phasen, lädt das Auto auf einer Phase, statt Strom aus dem Netz zu beziehen. Manche Autos laden nach einem Phasenwechsel schlecht: Schalten Sie dies aus, wenn Ihr Auto nicht mehr lädt.",
+  "entity.help.phaseSwitching": "Reicht die Sonne nicht für das Laden auf drei Phasen, lädt das Auto auf einer Phase, statt Strom aus dem Netz zu beziehen. Manche Autos laden nach einem Phasenwechsel schlecht: Schalten Sie dies aus, wenn Ihr Auto nicht mehr lädt. SpotNav stellt die Phasen der Ladestation dann selbst ein, der automatische Phasenmodus der Ladestation wird also nicht verwendet.",
   "entity.phaseSwitching.automatic": "Automatisch",
   "entity.voltage.tn": "400 V (TN-Netz, das übliche)",
   "entity.voltage.it": "230 V (IT-Netz, verbreitet in Norwegen)",
