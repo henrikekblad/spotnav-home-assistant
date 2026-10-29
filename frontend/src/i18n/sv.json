@@ -212,7 +212,7 @@
   "entity.help.measurementMode": "Om din mätare anger varje fas ström direkt, eller om SpotNav räknar ut den från effekt och spänning.",
   "entity.help.voltageBetweenPhases": "Spänningen mellan två faser i din elanläggning. Trefasig laddeffekt räknas ut från den.",
   "entity.help.chargerPriority": "När flera laddare delar anläggningens säkring får en laddare med Först tilldelad ström före de andra, och en med Sist får det som blir över.",
-  "entity.help.phaseSwitching": "När solen inte räcker till laddning på tre faser laddar bilen på en fas i stället för att ta från nätet. En del bilar laddar dåligt efter ett fasbyte: stäng av om bilen slutar ladda.",
+  "entity.help.phaseSwitching": "När solen inte räcker till laddning på tre faser laddar bilen på en fas i stället för att ta från nätet. När inställningen är på ställer SpotNav in laddarens faser själv, och laddarens eget automatiska fasläge används inte. En del bilar laddar dåligt efter ett fasbyte: stäng av om bilen slutar ladda.",
   "entity.phaseSwitching.automatic": "Automatiskt",
   "entity.voltage.tn": "400 V (TN-nät, det vanliga)",
   "entity.voltage.it": "230 V (IT-nät, vanligt i Norge)",

@@ -345,8 +345,9 @@ a charger whose integration can switch between one and three phases (Peblar, Lek
 Wattpilot, and Easee when it is alone on its circuit; see [strategies](strategies.md#solar)), that is wired for three
 phases, on a site with a solar source; no other charger has the row. Set to Automatic, a solar charge with too
 little sun for three phases charges on one phase instead of drawing from the grid, and the status then says
-so with its power (*Solar · 1 phase · 2.9 kW*). Some cars charge badly after a phase change: turn it off if
-your car stops charging. The rules are under [Solar](strategies.md#solar).
+so with its power (*Solar · 1 phase · 2.9 kW*). SpotNav then sets the charger's phases itself, so the charger's
+own automatic phase mode is not used (an NRGkick needs phase switching allowed in its app). Some cars charge badly
+after a phase change: turn it off if your car stops charging. The rules are under [Solar](strategies.md#solar).
 
 **Charge periods**, below the charger's setup rows for administrators, is **Automatic** (the default) or
 **1 period** to **8 periods**. Automatic splits the charge only where the saving is worth another start, and

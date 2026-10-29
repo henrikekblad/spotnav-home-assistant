@@ -212,7 +212,7 @@
   "entity.help.measurementMode": "Of je meter de stroom van elke fase direct doorgeeft, of dat SpotNav die berekent uit vermogen en spanning.",
   "entity.help.voltageBetweenPhases": "De spanning tussen twee fasen van je elektrische installatie. Het laadvermogen bij drie fasen wordt daaruit berekend.",
   "entity.help.chargerPriority": "Als meerdere laadpalen de zekering van de locatie delen, wordt een laadpaal op Eerst vóór de andere bediend en krijgt een laadpaal op Laatst wat overblijft.",
-  "entity.help.phaseSwitching": "Als de zon niet genoeg is om op drie fasen te laden, laadt de auto op één fase in plaats van stroom van het net te nemen. Sommige auto's laden slecht na een fasewissel: zet dit uit als je auto stopt met laden.",
+  "entity.help.phaseSwitching": "Als de zon niet genoeg is om op drie fasen te laden, laadt de auto op één fase in plaats van stroom van het net te nemen. Zolang dit aan staat, stelt SpotNav de fasen van de laadpaal zelf in en wordt de eigen automatische fasemodus van de laadpaal niet gebruikt. Sommige auto's laden slecht na een fasewissel: zet dit uit als je auto stopt met laden.",
   "entity.phaseSwitching.automatic": "Automatisch",
   "entity.voltage.tn": "400 V (TN-net, het gebruikelijke)",
   "entity.voltage.it": "230 V (IT-net, gebruikelijk in Noorwegen)",

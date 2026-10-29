@@ -203,6 +203,12 @@ cannot, and for a direct site without the total it says the meter's total grid p
   its API v2 or its MQTT integration, and Fronius Wattpilot (their phase switch mode, set to one or three phases,
   never left on Auto), and Easee (see below). Phase switching on these chargers is untested on real hardware; see
   [supported hardware](supported.md). The rules:
+  - SpotNav sets the charger's phases itself, to one or three. The charger's own automatic phase mode (go-e's and
+    Wattpilot's *Auto*, Easee's *auto phase*) is not used while the setting is on; it is not put back either.
+  - **NRGkick**: phase switching must be allowed in the NRGkick app first, or the charger refuses the change
+    (SpotNav then logs it and charges on as without switching).
+  - **Lektrico** forgets *Force single phase* when it restarts. SpotNav then goes by what the charger reads, three
+    phases, from its next look on.
   - Only a solar charge switches. A plan's period, your **Start**, a top-off, the car's minimum charge level
     and Hybrid's grid part always charge on all three phases; when one of them takes over a charge on one
     phase, three phases are set back first, at the minimum current.
@@ -222,7 +228,8 @@ cannot, and for a direct site without the total it says the meter's total grid p
     Easee charger is offered the setting only while it is the one Easee charger on its circuit, and its phases are
     set only right before a solar start, while it is not charging. A charge that runs is never switched: it
     follows the rules without switching (it stops when the sun does not carry it), and three phases are set back at
-    the next start that needs them. The start respects Easee's start minimum (7 A).
+    the next start that needs them. The start respects Easee's start minimum (7 A). Easee says some sessions stay
+    on one phase until the charge is paused or restarted, which is why only a start sets the phases.
   - While a charge is on one phase, the status says so with its power, for example
     *Solar · 1 phase · 2.9 kW*, and the site reckons the charger as a single-phase one.
 

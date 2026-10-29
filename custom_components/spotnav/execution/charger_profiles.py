@@ -420,7 +420,8 @@ _PROFILES: Final[tuple[PlatformProfile, ...]] = (
         status_keys=("status",),
         charging_values=("charging",),
         current_sensor_keys=("l1_current", "l2_current", "l3_current"),
-        phase_switching="the phase count number (1 or 3; not with a single-phase connector)",
+        phase_switching="the phase count number (1 or 3; not with a single-phase connector; phase switching must be "
+        "allowed in the NRGkick app)",
     ),
     PlatformProfile(
         platform="v2c",
