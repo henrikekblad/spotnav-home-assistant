@@ -85,6 +85,10 @@ SAFETY_AND_C7: Final = (
 #: Step 4: load balancing's memory, whether it holds a charge back and whose it was. Stored in the session's record,
 #: and still written to today's `balancing_pause` key, derived from the session, so an older build reads it as before.
 BALANCING: Final = ("balancing_paused", "paused_origin")
+#: Step 5: the hold's memory, whether this plug-in session's charge that began by itself outside a window was held
+#: and whether a person overrode the hold. Stored in the session's record, and still written to today's `hold` key,
+#: derived from the session, so an older build reads it as before.
+WINDOW_HOLD: Final = ("held", "overridden")
 #: How far apart two readings of the clock may be and still be one instant in an owned field: the core takes the
 #: instant it decided, today's code its own a moment earlier or later (`core.replay.CLOCK_TOLERANCE_S`).
 MIRROR_CLOCK_S: Final = CLOCK_TOLERANCE_S

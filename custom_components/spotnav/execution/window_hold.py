@@ -17,6 +17,7 @@ window starts. A charger that cannot report a vehicle (a plain switch) has only 
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Final
 
 #: Nothing to do.
@@ -30,13 +31,36 @@ OVERRIDE: Final = "override"
 class WindowHold:
     """What the rule remembers: whether the charge is SpotNav's, whether this session was held, and
     whether a person overrode the hold.
+
+    `owned`, when given, says whether the charge is SpotNav's instead of what this class remembers of the starts
+    and stops it is told (the charge-ownership core's session, while the core drives: the core end state plan,
+    step 5). `held` and `overridden` are then the core's too: the controller reads them from the session, and
+    lines this class up with it before each observation (`take`), so the rule computed beside the core's decides
+    from the core's memory.
     """
 
-    def __init__(self) -> None:
-        self.owned = False
+    def __init__(self, owned: Callable[[], bool] | None = None) -> None:
+        self._owned_by = owned
+        self._owned = False
         self.held = False
         self.overridden = False
         self._on: bool | None = None
+
+    @property
+    def owned(self) -> bool:
+        """Whether the charge is SpotNav's: the provider's answer when there is one."""
+        if self._owned_by is not None:
+            return self._owned_by()
+        return self._owned
+
+    @owned.setter
+    def owned(self, owned: bool) -> None:
+        self._owned = owned
+
+    def take(self, *, held: bool, overridden: bool) -> None:
+        """Remember the hold as someone else decided it (the core, while it drives)."""
+        self.held = held
+        self.overridden = overridden
 
     def baseline(self, control_on: bool | None) -> None:
         """Take the control's state as it is now, so what already runs is never "seen". `None`

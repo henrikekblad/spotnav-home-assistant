@@ -132,6 +132,7 @@ from . import top_off
 from .window_hold import HOLD, OVERRIDE, WindowHold
 from .ownership_state import BalancingMemory, CarEndedRecord, HoldState, PersonHoldStops, SafetyHold
 from ..core import events as core_events
+from ..core.ownership import spotnav_owned
 from ..core.session import ChargeSession, OWNER_CHARGER_SELF, OWNER_NONE, SessionError
 from . import ownership_shadow as ownership_shadow_module
 from .ownership_coverage import OwnershipCoverage, STORE_VERSION as COVERAGE_STORE_VERSION, store_key as coverage_key
@@ -144,6 +145,7 @@ from .ownership_shadow import (
     OwnershipShadow,
     SAFETY_AND_C7,
     ShadowToken,
+    WINDOW_HOLD,
 )
 
 
@@ -631,9 +633,8 @@ class ChargingController:
         # Hybrid mode's one hook into window-end handling (see `set_end_window_guard` and
         # `_async_end_callback`); `None` is inert.
         self._end_window_guard = end_window_guard
-        # What the hold of a charge that starts by itself outside a window remembers
-        # (`window_hold.py`), and the one hook that tells it something else owns the charger.
-        self._hold = WindowHold()
+        # The one hook that tells the hold of a charge that starts by itself outside a window (`self._hold`, below)
+        # something else owns the charger.
         self._hold_guard: Callable[[], bool] | None = None
         # The execution boundary every automatic decision asks first (`set_automatic_gate`); `None`
         # (a controller without one) lets every decision act.
@@ -776,6 +777,10 @@ class ChargingController:
         # A stop command on its way to the charger: the regulator writes no current meanwhile, since on
         # some chargers (Easee) a current written while the stop lands lifts it again.
         self._stop_in_flight = False
+        # A start of ours on its way (`_start_locked`, from the moment the charge is SpotNav's until the start
+        # returns): an observation of the command, not ownership. While the core drives, the hold counts such a
+        # charge SpotNav's (`_spotnav_owned`) before the start's result gives the session its owner.
+        self._start_in_flight = False
         # Shut down (`async_shutdown`): a regulator step that still holds this controller (the entry unloaded
         # while the step waited) sends the charger nothing more.
         self._shut_down = False
@@ -927,6 +932,13 @@ class ChargingController:
         # and takes its owner back (`_take_core_owner`). The verdicts a report or a timer acts on, while it runs.
         drives = config.get(CONF_CORE_OWNERSHIP)
         self._core_drives = bool(ownership_shadow_module.CORE_OWNERSHIP_DEFAULT if drives is None else drives)
+        # What the hold of a charge that starts by itself outside a window remembers (`window_hold.py`). When the core
+        # drives, whether the charge is SpotNav's is the session's (`_spotnav_owned`), as are `held` and `overridden`
+        # (`_hold_state`; the core end state plan, step 5).
+        self._hold = WindowHold(owned=self._spotnav_owned if self._core_drives else None)
+        # When the core drives: the hold's memory as today's `hold` key read it back, for the restart alone
+        # (`_restore_locked`), as `_balancing_read_back`. `None` at every other time: the session is read then.
+        self._hold_read_back: HoldState | None = None
         # Phase switching for solar (`phase_switching.py`): the charger's option (`CONF_PHASE_SWITCHING`, off unless its
         # entry data says true), what the switching of this plug-in has come to (persisted with the record), the timer
         # that gives up a switch the read-back never confirmed, and whether that was said in this plug-in.
@@ -964,10 +976,10 @@ class ChargingController:
             coverage=OwnershipCoverage(store=Store(hass, COVERAGE_STORE_VERSION, coverage_key(entry_id))),
             name=entry_id,
             on_failure=self._failure_repairs.failed,
-            # The safety hold and C7's stops (the core end state plan, step 3), and load balancing's memory (step 4),
-            # are the core's when it drives: read from its session (`_safety`, `_c7`, `_balancing`). With the option
-            # off, today's fields stay the truth, lined up as ever.
-            owned_fields=(*SAFETY_AND_C7, *BALANCING) if self._core_drives else (),
+            # The safety hold and C7's stops (the core end state plan, step 3), load balancing's memory (step 4) and
+            # the hold's memory (step 5) are the core's when it drives: read from its session (`_safety`, `_c7`,
+            # `_balancing`, `_hold_state`). With the option off, today's fields stay the truth, lined up as ever.
+            owned_fields=(*SAFETY_AND_C7, *BALANCING, *WINDOW_HOLD) if self._core_drives else (),
         )
         self._shadow.today_fields = lambda: f"origin={self._owner_origin} plan_charge={self._is_plan_charge}"
 
@@ -1085,16 +1097,34 @@ class ChargingController:
 
     @property
     def _hold_state(self) -> HoldState:
-        """What the window hold remembers of ownership (`window_hold.py`)."""
+        """What the window hold remembers of ownership (`window_hold.py`). When the core drives, the session's (step
+        5): only its decisions change `held` and `overridden`, and the charge is SpotNav's by its owner
+        (`_spotnav_owned`)."""
         hold = self._hold
+        if self._core_drives:
+            read_back = self._hold_read_back
+            if read_back is not None:
+                return HoldState(held=read_back.held, overridden=read_back.overridden, owned=hold.owned)
+            session = self._shadow.session
+            return HoldState(held=session.held, overridden=session.overridden, owned=hold.owned)
         return HoldState(held=hold.held, overridden=hold.overridden, owned=hold.owned)
 
     @_hold_state.setter
     def _hold_state(self, state: HoldState) -> None:
+        if self._core_drives:
+            # The core decided it already (a report's hold or override, the re-arm's stop and its result, a window's
+            # start, a plug-in, an unplug, a restart); whether the charge is SpotNav's is its owner.
+            return
         hold = self._hold
         hold.held = state.held
         hold.overridden = state.overridden
         hold.owned = state.owned
+
+    def _spotnav_owned(self) -> bool:
+        """When the core drives: whether the charge is SpotNav's, as the hold reads it (`WindowHold.owned`): the
+        session's owner is one of SpotNav's or a start of SpotNav's for one awaits its result
+        (`core.ownership.spotnav_owned`), or a start of ours is on its way and its result not fed yet."""
+        return spotnav_owned(self._shadow.session) or self._start_in_flight
 
     @property
     def _plugged(self) -> bool | None:
@@ -1214,9 +1244,12 @@ class ChargingController:
                     self._balancing_read_back = read_back
             hold = saved.get("hold")
             if isinstance(hold, dict):
-                self._hold_state = replace(
+                read_back_hold = replace(
                     self._hold_state, held=hold.get("held") is True, overridden=hold.get("overridden") is True
                 )
+                self._hold_state = read_back_hold
+                if self._core_drives:
+                    self._hold_read_back = read_back_hold
             self.adapter.restore_memory(saved.get("adapter_memory"))
             # Forced to one phase by us before the restart: kept, until the charger's read-back says otherwise
             # (`reconcile_phases`).
@@ -1225,6 +1258,9 @@ class ChargingController:
         if self._core_drives and self._balancing_read_back is None:
             # No balancing pause in today's keys: none read back (not the session the controller began with).
             self._balancing_read_back = BalancingMemory(paused=False, charge=None)
+        if self._core_drives and self._hold_read_back is None:
+            # No hold in today's keys: none read back.
+            self._hold_read_back = HoldState(held=False, overridden=False, owned=False)
         stored, migrate = self._stored_session(saved)
         keys_newer = self._restore_order(saved) if stored is not None else False
         await self._shadow.coverage.async_load(await self._integration_version())
@@ -1239,8 +1275,9 @@ class ChargingController:
                 keys_newer=keys_newer,
             )
         finally:
-            # From here load balancing's memory is the session's alone.
+            # From here load balancing's memory and the hold's are the session's alone.
             self._balancing_read_back = None
+            self._hold_read_back = None
         if stored is not None:
             self._session_saved = stored
         if migrate:
@@ -1484,9 +1521,11 @@ class ChargingController:
         self._maybe_write_after_start(event)
         self._observe_connection()
         self._top_off_tick()
+        # The hold's memory before the report: when the core drives, its decision of the report is taken at once.
+        before = self._hold_state
         report = self._shadow_report_begin()
         try:
-            changed = self._observe_hold()
+            changed = self._observe_hold(before)
             if self._owner_origin is not None and self._control_observation is False and not self.start_pending:
                 # Seen off with no Start of ours on its way: the charge is nobody's any more, so a later one
                 # the charger begins by itself does not inherit its owner (`_plan_charge` goes with it).
@@ -2607,14 +2646,17 @@ class ChargingController:
             return None
         return min((start for start, _ in windows if start > now), default=None)
 
-    def _observe_hold(self) -> bool:
+    def _observe_hold(self, state: HoldState) -> bool:
         """Decide, once per report, whether a charge that started by itself outside a window is
-        stopped (`window_hold.py`). Returns whether what the status says moved.
+        stopped (`window_hold.py`). `state` is the hold's memory before the report. Returns whether what the status
+        says moved.
         """
         connected = self.adapter.vehicle_connected()
-        state = self._hold_state
         before = (state.held, state.overridden, self._last_connected)
         self._last_connected = connected
+        if self._core_drives:
+            # Today's rule, computed beside the core's, decides from the core's memory as it was before the report.
+            self._hold.take(held=state.held, overridden=state.overridden)
         decision = self._hold.observe(
             control_on=self._control_observation,
             connected=connected,
@@ -3631,6 +3673,21 @@ class ChargingController:
         cause: str | None = None,
         capped: bool = True,
     ) -> bool:
+        """The start itself, with the operation lock held (`_start_command_locked`). A start of ours is on its way
+        (`_start_in_flight`) from the moment the charge is SpotNav's until this returns."""
+        try:
+            return await self._start_command_locked(amps, manual=manual, cause=cause, capped=capped)
+        finally:
+            self._start_in_flight = False
+
+    async def _start_command_locked(
+        self,
+        amps: int | None = None,
+        *,
+        manual: bool = False,
+        cause: str | None = None,
+        capped: bool = True,
+    ) -> bool:
         """The start itself, with the operation lock held: record the requested current (if known) and
         start charging.
 
@@ -3729,6 +3786,7 @@ class ChargingController:
         was_owned = self._hold_state.owned
         was_plan_charge = self._is_plan_charge
         self._hold.spotnav_started()
+        self._start_in_flight = True
         # A plan window's start is a plan charge; a person's, solar's or a webhook's is not, and
         # stays outside the stop of a charge that strays from a replaced plan.
         self._is_plan_charge = cause == "plan_window" and not manual
@@ -5259,6 +5317,9 @@ class ChargingController:
                 self._shadow_end_event(
                     token, facts, lambda: core_events.Rearm(past_last=False, **facts), legacy=legacy, outcome=outcome
                 )
+            # Saved soon once decided: when the core drives, its stop's result held the plug-in at `end`, and today's
+            # `hold` key is derived from it.
+            self._save_memory_soon()
         for index, (start, end) in enumerate(windows):
             if start > now:
                 self._timer_cancels.append(async_track_point_in_utc_time(
