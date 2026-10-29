@@ -24,8 +24,8 @@ The rules are today's, as the manual-pause specs and their three review rounds s
   inside it does. A charger that cannot say is started as before.
 * The hold of a charge that began by itself outside a window, its override, the claim of one inside a window
   as the plan's, the stop of a plan charge that strays, the re-arm's stop outside the windows, the window ends,
-  the top-off, the target and need-met stops, the sun's start, stop and take-over (I4), load balancing's pause
-  and resume: as `execution/controller.py` and `execution/auto_execution.py` decide them today, including the
+  the top-off, the target and need-met stops, the sun's start, stop and take-over (I4), load balancing's pause,
+  resume and the charge it drops: as `execution/controller.py` and `execution/auto_execution.py` decide them today, including the
   places the research found questionable (left as they are in step 1, see docs/architecture-state.md).
 * A window's end stops only the plan's own charge (`window_end_spared`): a person's Start, a Charge-now start
   and the sun's charge go on, and so does one load balancing holds back for them; the last window's end then
@@ -47,6 +47,7 @@ from datetime import datetime
 from typing import ClassVar, Final
 
 from .events import (
+    BalancingDropped,
     BalancingPause,
     BalancingResume,
     CarEnded,
@@ -717,6 +718,11 @@ def _balancing_resume(session: ChargeSession, event: BalancingResume, now: datet
     return _start(session, REASON_BALANCING_RESUME, origin or OWNER_NONE, paused_origin=origin)
 
 
+def _balancing_dropped(session: ChargeSession, event: BalancingDropped, now: datetime) -> Decision:
+    # The wish to charge is gone: the charge is not one to resume any more, and nobody's it was is forgotten.
+    return _no_balancing(session), ()
+
+
 def _target_reached(session: ChargeSession, event: TargetReached, now: datetime) -> Decision:
     if event.gated and not automatic_allowed(session, GATE_STOP):
         return session, ()
@@ -741,7 +747,9 @@ def _top_off_end(session: ChargeSession, event: TopOffEnd, now: datetime) -> Dec
 def _plan_installed(session: ChargeSession, event: PlanInstalled, now: datetime) -> Decision:
     s = session.with_changes(owner=OWNER_PLAN) if session.owner == OWNER_TOP_OFF else session
     if not event.window_open:
-        s = s.with_changes(balancing_paused=False)
+        # A new plan with no window open now ends the wish a balancing pause interrupted: nothing is held back, and
+        # whose charge it was goes with it (`paused_origin` is set only while `balancing_paused`).
+        s = _no_balancing(s)
     return s, ()
 
 
@@ -948,6 +956,7 @@ _HANDLERS: Final[dict[type[Event], Callable[[ChargeSession, Event, datetime], De
     CarEnded: _car_ended,  # type: ignore[dict-item]
     BalancingPause: _balancing_pause,  # type: ignore[dict-item]
     BalancingResume: _balancing_resume,  # type: ignore[dict-item]
+    BalancingDropped: _balancing_dropped,  # type: ignore[dict-item]
     TargetReached: _target_reached,  # type: ignore[dict-item]
     NeedMet: _need_met,  # type: ignore[dict-item]
     TopOffEnd: _top_off_end,  # type: ignore[dict-item]

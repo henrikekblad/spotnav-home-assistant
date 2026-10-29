@@ -812,6 +812,67 @@ def test_a_balancing_resume_gives_the_charge_back_what_it_was() -> None:
     assert session.balancing_paused and session.paused_origin == "solar" and session.owner == "none"
 
 
+HELD = ChargeSession(plugged=True, balancing_paused=True, paused_origin="person")
+
+
+@pytest.mark.parametrize(
+    ("pre", "events", "paused", "origin"),
+    [
+        # Set: load balancing's pause, once its stop went out (the regulator's `_regulated_stop`).
+        (ChargeSession(owner="plan"), (ev.BalancingPause(), ok("stop", "balancing")), True, "plan"),
+        # A repeat pause of the charge it holds back is the same pause.
+        (HELD, (ev.BalancingPause(was_on=False), ok("stop", "balancing")), True, "person"),
+        # A pause whose stop never went out changes nothing (`_stop_request_locked` puts it back).
+        (ChargeSession(owner="plan"), (ev.BalancingPause(), failed("stop", "balancing")), False, None),
+        (HELD, (ev.BalancingPause(), failed("stop", "balancing")), True, "person"),
+        # Set: a start held back below the floor (`_start_locked`), as the charge it would have been.
+        (
+            ChargeSession(plugged=True),
+            (ev.SolarStart(), ev.CommandResult(command="start", reason="solar", executed=False, balancing_held=True)),
+            True,
+            "solar",
+        ),
+        # Set again: a resume (a battery probe) that did not take.
+        (HELD, (ev.BalancingResume(), failed("start", "balancing_resume")), True, "person"),
+        # Cleared: every other start, as soon as it is asked for (also one that then does not go out).
+        (HELD, (ev.PersonStart(),), False, None),
+        (HELD, (ev.BalancingResume(),), False, None),
+        (HELD, (ev.BalancingResume(), ok("start", "balancing_resume")), False, None),
+        (HELD.with_changes(manual=None), (ev.DirectStart(cause="solar"),), False, None),
+        # Cleared: every other stop, once it went out.
+        (HELD, (ev.PersonStop(), ok("stop", "person")), False, None),
+        (HELD, (ev.PersonStop(), failed("stop", "person")), True, "person"),
+        (HELD, (ev.DirectStop(), ok("stop", "direct")), False, None),
+        # Cleared: the plug-in it held a charge for is over.
+        (HELD, (ev.Unplug(previous=True),), False, None),
+        (HELD, (ev.Unplug(previous=None),), False, None),
+        (HELD, (ev.PlugIn(previous=False),), False, None),
+        (HELD, (ev.PlugIn(previous=None),), True, "person"),
+        # Cleared: a new plan with no window open now, whose charge it was too (decided in step 4: today's code kept
+        # the origin with the flag down, which nothing read).
+        (HELD, (ev.PlanInstalled(window_open=False),), False, None),
+        (HELD, (ev.PlanInstalled(window_open=True),), True, "person"),
+        # Cleared: the regulator finds it no longer wanted (`forget_balancing_pause`, fed since step 4).
+        (HELD, (ev.BalancingDropped(),), False, None),
+        # A window's start is a start like any other; one at plug-in leaves the charge to the regulator.
+        (HELD.with_changes(manual=None), (ev.WindowStart(),), False, None),
+        (HELD.with_changes(manual=None), (ev.WindowStart(trigger=ev.TRIGGER_PLUG_IN),), True, "person"),
+        # Kept: a restart, a report of the charger off, a window's end, the person's pause choice.
+        (HELD, (ev.Restart(),), True, "person"),
+        (HELD, (ev.ChargerReportedOff(),), True, "person"),
+        (HELD.with_changes(manual=None), (ev.WindowEnd(),), True, "person"),
+        (HELD, (ev.PauseChoiceMade(choice="until_resumed"),), True, "person"),
+    ],
+)
+def test_where_load_balancings_memory_is_set_and_cleared(pre, events, paused, origin) -> None:
+    """Load balancing's memory means "the last thing done to the charge control was the regulator's pause, and this
+    was the charge it paused": set where its pause (or a start held back below the floor) is done, cleared by every
+    other start and every other stop that went out, by the end of the plug-in, by a new plan outside its windows and
+    when the regulator finds the charge no longer wanted. `paused_origin` is set only while `balancing_paused`."""
+    session, _ = run(pre, *events)
+    assert (session.balancing_paused, session.paused_origin) == (paused, origin)
+
+
 def test_a_resume_while_charging_does_nothing() -> None:
     _, commands = run(ChargeSession(balancing_paused=True, paused_origin="plan"), ev.BalancingResume(charging=True))
     assert kinds(commands) == []

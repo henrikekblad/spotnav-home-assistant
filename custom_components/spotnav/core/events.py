@@ -329,6 +329,14 @@ class BalancingResume(Event):
 
 
 @dataclass(frozen=True)
+class BalancingDropped(Event):
+    """Load balancing's regulator finds the charge it holds back no longer wanted (Auto paused by a person, and the
+    charge not theirs, `site_capacity_controller._charge_still_wanted`): it holds nothing back any more."""
+
+    kind: ClassVar[str] = "balancing_dropped"
+
+
+@dataclass(frozen=True)
 class TargetReached(Event):
     """The plan's target is reached: its stop, which ends the plan. `gated`: decided through the execution
     boundary's gate (the reading's own listener); a window start or an install decides it without the gate.
@@ -477,6 +485,7 @@ EVENT_TYPES: Final[dict[str, type[Event]]] = {
         CarEnded,
         BalancingPause,
         BalancingResume,
+        BalancingDropped,
         TargetReached,
         NeedMet,
         TopOffEnd,
