@@ -132,7 +132,7 @@ from . import top_off
 from .window_hold import HOLD, OVERRIDE, WindowHold
 from .ownership_state import BalancingMemory, CarEndedRecord, HoldState, PersonHoldStops, SafetyHold
 from ..core import events as core_events
-from ..core.session import ChargeSession, OWNER_CHARGER_SELF, OWNER_NONE, SessionError
+from ..core.session import STORED_VERSION, ChargeSession, OWNER_CHARGER_SELF, OWNER_NONE, SessionError
 from . import ownership_shadow as ownership_shadow_module
 from .ownership_coverage import OwnershipCoverage, STORE_VERSION as COVERAGE_STORE_VERSION, store_key as coverage_key
 from .ownership_shadow import (
@@ -5009,6 +5009,16 @@ class ChargingController:
         raw = saved.get(SESSION_STORE_KEY) if saved else None
         if raw is None:
             return None, bool(saved)
+        version = raw.get("version") if isinstance(raw, dict) else None
+        if isinstance(version, int) and version > STORED_VERSION:
+            # Written by a later release (this one was rolled back to): its record is not ours to read, and today's
+            # keys, which every release still writes, are. Expected, so no failure.
+            _LOGGER.debug(
+                "SpotNav charger %s: the stored session is version %s, from a later release; read from the keys",
+                self.entry_id,
+                version,
+            )
+            return None, True
         try:
             return ChargeSession.from_store(raw), False
         except SessionError as err:
