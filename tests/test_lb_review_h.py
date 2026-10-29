@@ -4,6 +4,7 @@ a failing probe is a finding. Copy into tests/ to run."""
 from __future__ import annotations
 
 from datetime import timedelta
+from typing import Any
 
 import pytest
 from homeassistant.core import HomeAssistant
@@ -360,18 +361,37 @@ async def test_a_rise_another_chargers_own_reading_shows_is_not_credited_to_a_la
 
 
 
+@pytest.mark.parametrize("drives", [False, True])
 async def test_a_stop_under_a_persons_stop_that_sends_nothing_is_not_counted_toward_the_give_up(
-    hass: HomeAssistant,
+    hass: HomeAssistant, timers: Any, monkeypatch: pytest.MonkeyPatch, drives: bool
 ) -> None:
     """A stop of ours still settles: the stop under a person's Stop sends nothing, and is no attempt the charger
-    could have ignored."""
-    controller, _starts, stops = await _charging(hass)
-    await controller._regulated_stop("pause")
-    async with controller._lock:
-        await controller._person_hold_stop_locked()
-    assert len(stops) == 1
-    assert controller._person_hold_stop_times == []
-    await controller.async_shutdown()
+    could have ignored. Its try still holds the gap. In both modes, read where each mode keeps them."""
+    from custom_components.spotnav.execution import ownership_shadow
+
+    from .pause_world import pause_world
+
+    monkeypatch.setattr(ownership_shadow, "CORE_OWNERSHIP_DEFAULT", drives)
+    world = await pause_world(hass, timers)
+    await world.executor.async_manual_start(10)
+    calls: list[Any] = []
+
+    async def ignored(call: Any) -> None:
+        calls.append(call)
+
+    hass.services.async_register("switch", "turn_off", ignored)
+    # The person's Stop goes out, and the charger has not answered it: it settles.
+    await world.executor.async_manual_stop()
+    assert len(calls) == 1
+    world.controller.note_person_hold()  # the charge runs on under their Stop
+    await hass.async_block_till_done()
+    assert len(calls) == 1, "nothing beside the stop on its way"
+    stops = world.controller._c7  # noqa: SLF001 - its accessor: the session's when the core drives
+    assert stops.stop_times == [] and stops.tried_at is not None and not stops.stop_pending
+    if drives:
+        session = world.controller.ownership_shadow.session
+        assert session.hold_stop_times == () and session.hold_tried_at is not None
+    await world.shutdown()
 
 
 async def test_the_resume_back_off_is_shown_and_ends(hass: HomeAssistant, monkeypatch) -> None:

@@ -4,7 +4,7 @@ never raising into the real path, a disagreement reported)."""
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import json
 
 import pytest
@@ -285,6 +285,38 @@ async def test_the_shadow_never_raises_into_the_real_path_and_stays_bounded(hass
     assert len(diagnostics["disagreements"]) == DISAGREEMENT_RING
     assert diagnostics["counts"]["disagreements"] == EVENT_RING + 50
     json.dumps(diagnostics)
+
+
+@pytest.mark.shadow_disagreement_expected
+async def test_an_owned_field_is_kept_as_the_core_decided_it_and_a_difference_is_mirror_drift(
+    hass: HomeAssistant,
+) -> None:
+    """The fields the core owns (`owned_fields`) are not lined up from today's state: a difference there is counted
+    and told as `mirror_drift`, and the core's value stays. An instant read off two clocks is no difference."""
+    at = datetime(2026, 10, 4, 22, tzinfo=timezone.utc)
+    today = {"session": ChargeSession(plugged=True, manual=ManualPause("stop", "plug_in"))}
+    heard: list[str] = []
+    ownership_shadow.LISTENERS.append(lambda kind, record: heard.append(kind))
+    try:
+        shadow = OwnershipShadow(
+            lambda: today["session"], now=lambda: at, owned_fields=ownership_shadow.SAFETY_AND_C7
+        )
+        shadow.session = today["session"].with_changes(hold_stop_times=(at,), hold_tried_at=at)
+        today["session"] = today["session"].with_changes(
+            hold_stop_times=(at + timedelta(seconds=1),), hold_tried_at=at + timedelta(seconds=1)
+        )
+        shadow.feed(ev.ConnectionUnknown())
+        assert heard == [] and shadow.counts["mirror_drift"] == 0
+        today["session"] = today["session"].with_changes(hold_gave_up=True, held_for_safety=True)
+        shadow.feed(ev.ConnectionUnknown())
+    finally:
+        ownership_shadow.LISTENERS.pop()
+    assert heard == ["mirror_drift"] and shadow.counts["mirror_drift"] == 1
+    assert not shadow.session.hold_gave_up and not shadow.session.held_for_safety, "never taken"
+    assert shadow.session.hold_stop_times == (at,), "the core's own, kept"
+    (record,) = [item for item in shadow.diagnostics()["drift"] if item.get("mirror")]
+    assert set(record["fields"]) == {"hold_gave_up", "held_for_safety"}
+    json.dumps(shadow.diagnostics())
 
 
 async def test_a_feed_inside_another_is_decided_after_it(hass: HomeAssistant) -> None:

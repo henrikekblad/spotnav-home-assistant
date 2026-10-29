@@ -301,8 +301,10 @@ def ownership_shadow_agrees(request):
                 SHADOW_TOTALS[f"drift_explained:{reason}"] = SHADOW_TOTALS.get(f"drift_explained:{reason}", 0) + 1
             else:
                 unexplained.append({"drift": record})
-        elif kind == "error":
-            unexplained.append(record)
+        elif kind in ("error", "mirror_drift"):
+            # A field the core owns that today's state reads otherwise: never explained (no `shadow_known.py`
+            # entry); a test that set it directly feeds an event instead.
+            unexplained.append({kind: record} if kind == "mirror_drift" else record)
         SHADOW_TOTALS[key] = SHADOW_TOTALS.get(key, 0) + 1
     if request.node.get_closest_marker("shadow_disagreement_expected") is not None:
         return

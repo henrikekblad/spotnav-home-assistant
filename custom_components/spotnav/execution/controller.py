@@ -141,6 +141,7 @@ from .ownership_shadow import (
     legacy_intent,
     legacy_owner,
     OwnershipShadow,
+    SAFETY_AND_C7,
     ShadowToken,
 )
 
@@ -950,6 +951,10 @@ class ChargingController:
             coverage=OwnershipCoverage(store=Store(hass, COVERAGE_STORE_VERSION, coverage_key(entry_id))),
             name=entry_id,
             on_failure=self._failure_repairs.failed,
+            # The safety hold and C7's stops are the core's when it drives (the core end state plan, step 3): read
+            # from its session (`_safety`, `_c7`). With the option off, today's fields stay the truth, lined up as
+            # ever.
+            owned_fields=SAFETY_AND_C7 if self._core_drives else (),
         )
         self._shadow.today_fields = lambda: f"origin={self._owner_origin} plan_charge={self._is_plan_charge}"
 
@@ -988,17 +993,33 @@ class ChargingController:
 
     @property
     def _safety(self) -> SafetyHold:
-        """The safety hold of the charge load balancing holds, and its last safety stop."""
+        """The safety hold of the charge load balancing holds, and its last safety stop. When the core drives, the
+        session's (step 3): only its decisions change it."""
+        if self._core_drives:
+            session = self._shadow.session
+            return SafetyHold(held=session.held_for_safety, stopped_at=session.safety_stopped_at)
         return SafetyHold(held=self._held_for_safety, stopped_at=self._safety_stopped_at)
 
     @_safety.setter
     def _safety(self, safety: SafetyHold) -> None:
+        if self._core_drives:
+            # The core decided it already (`BalancingPause`'s result, a resume, a plug-in, an unplug, a restart).
+            return
         self._held_for_safety = safety.held
         self._safety_stopped_at = safety.stopped_at
 
     @property
     def _c7(self) -> PersonHoldStops:
-        """C7: the stops of a charge the charger began by itself under a person's Stop."""
+        """C7: the stops of a charge the charger began by itself under a person's Stop. When the core drives, the
+        session's (step 3): only its decisions change them."""
+        if self._core_drives:
+            session = self._shadow.session
+            return PersonHoldStops(
+                stop_pending=session.hold_stop_pending,
+                stop_times=list(session.hold_stop_times),
+                tried_at=session.hold_tried_at,
+                gave_up=session.hold_gave_up,
+            )
         return PersonHoldStops(
             stop_pending=self._person_hold_stop_pending,
             stop_times=self._person_hold_stop_times,
@@ -1008,6 +1029,10 @@ class ChargingController:
 
     @_c7.setter
     def _c7(self, stops: PersonHoldStops) -> None:
+        if self._core_drives:
+            # The core decided them already (a report's or a timer's C7, the task's `Recheck` and its result, a
+            # person's Stop or Start, a plug-in, an unplug, a restart).
+            return
         self._person_hold_stop_pending = stops.stop_pending
         self._person_hold_stop_times = stops.stop_times
         self._person_hold_tried_at = stops.tried_at
