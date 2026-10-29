@@ -159,7 +159,7 @@ def _price_entry(hass: HomeAssistant, call: ServiceCall) -> tuple[str, PriceData
         candidates = [entry_id]
     elif device_id:
         device = dr.async_get(hass).async_get(device_id)
-        candidates = [] if device is None else sorted(device.config_entries)
+        candidates = [] if device is None else [device.config_entry_id]
     else:
         candidates = [entry.entry_id for entry in hass.config_entries.async_entries(DOMAIN)]
     found = [(candidate, data) for candidate in candidates if (data := price_data(hass, candidate)) is not None]

@@ -1442,7 +1442,7 @@ class SpotNavChargingConfigFlow(ChargerWiringSteps, PriceConfigSteps, config_ent
         areas = ar.async_get(self.hass)
         options: list[tuple[str, str]] = []
         for device in devices.devices:
-            device_domains = {domains.get(entry_id) for entry_id in device.config_entries}
+            device_domains = {domains.get(device.config_entry_id)}
             if self._is_ocpp_device(device.id):
                 if not self._carries_charge_control(device.id):
                     continue
@@ -1481,7 +1481,7 @@ class SpotNavChargingConfigFlow(ChargerWiringSteps, PriceConfigSteps, config_ent
         if "ocpp" in identifier_domains(device):
             return True
         domains = self._config_entry_domains()
-        return any(domains.get(config_entry_id) == "ocpp" for config_entry_id in device.config_entries)
+        return domains.get(device.config_entry_id) == "ocpp"
 
     def _ocpp_scope(self, device_id: str) -> tuple[list[str], int | None]:
         """Where an OCPP device's charge control is looked for, and the connector it fixes.

@@ -718,7 +718,7 @@ def snapshot_registry(hass: HomeAssistant) -> tuple[list[RegistryEntity], list[R
             manufacturer=device.manufacturer,
             model=device.model,
             name=device.name_by_user or device.name,
-            config_entry_ids=tuple(device.config_entries),
+            config_entry_ids=(device.config_entry_id,),
         )
         for device in dr.async_get(hass).devices
     ]
