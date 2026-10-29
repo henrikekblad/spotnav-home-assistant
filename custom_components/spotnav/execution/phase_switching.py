@@ -32,6 +32,9 @@ from typing import Any, Final, Literal
 SETTLE_S: Final = 90.0
 #: The read-back must show a switch within this long (seconds), or switching is given up for the plug-in.
 CONFIRM_S: Final = 30.0
+#: While the charger itself reports that it is switching (`PhaseSwitch.switching`), a wait on the settle looks again
+#: after this long (seconds).
+CHARGER_SWITCHING_RECHECK_S: Final = 10.0
 
 #: The key the charger's record keeps this under (only while there is something to keep).
 STORE_KEY: Final = "phase_switching"

@@ -74,7 +74,9 @@
   one phase sets the phase right before the start; a switch down is just the switch, a switch up writes the
   minimum current first. The charger does the interruption itself. A charger forced to one phase is reckoned as a
   single-phase "Automatic" one (`SiteCapacityController.reckoned_phases`, `_car_phases`), and while a switch settles the watch on
-  the charge reads no car ending it and no start not taken (`_watch_charge`).
+  the charge reads no car ending it and no start not taken (`_watch_charge`). A charger whose phases are set only before
+  a start (`PhaseSwitch.start_only`, Easee) gets the phase inputs only while no charge runs (`_start_only_charging`):
+  it starts on the phases the surplus carries, and a running charge is never switched.
 """
 
 from __future__ import annotations
@@ -1114,7 +1116,7 @@ class SolarExecutionCoordinator:
         settle (a charger set back to three for a charge that is not the sun's) is told."""
         controller = self._controller
         settling = controller.phase_switch_settling
-        if not controller.phase_switch_allowed():
+        if not controller.phase_switch_allowed() or self._start_only_charging():
             return replace(observation, phase_switch_settling=True) if settling else observation
         config = self._solar.config if self._solar is not None else self._solar_config(site)
         one_phase_max_a, three_phase_room = _phase_room(
@@ -1132,6 +1134,15 @@ class SolarExecutionCoordinator:
             three_phase_room=three_phase_room,
             phase_switch_settling=settling,
         )
+
+    def _start_only_charging(self) -> bool:
+        """A charger whose phases are set only before a start (`PhaseSwitch.start_only`, Easee) with a charge running:
+        no phase decision while it runs, so the charge follows the rules without switching."""
+        controller = self._controller
+        switch = controller.adapter.phase_switch
+        if switch is None or not switch.start_only:
+            return False
+        return controller.charging or (self._solar is not None and self._solar.running)
 
     def _follow_plug_in(self) -> None:
         """A new plug-in on the charger (`plug_in_generation`): the solar controller's switch budget starts afresh. A
