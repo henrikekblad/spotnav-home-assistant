@@ -882,6 +882,18 @@ HELD = ChargeSession(plugged=True, balancing_paused=True, paused_origin="person"
             False,
             None,
         ),
+        # The shell decided the start before the plug-in ended but fed it after: its result says so.
+        (
+            ChargeSession(plugged=True),
+            (
+                ev.SolarStart(),
+                ev.CommandResult(
+                    command="start", reason="solar", executed=False, balancing_held=True, earlier_plug_in=True
+                ),
+            ),
+            False,
+            None,
+        ),
         # A plug-in first known after a restart is no new plug-in: still that charge.
         (
             ChargeSession(owner="person", plugged=None),

@@ -874,8 +874,10 @@ def _command_result(session: ChargeSession, event: CommandResult, now: datetime)
         s = session
     # The plug-in the command was asked for in ended before its result (an unplug, also one followed by a new
     # plug-in, decided meanwhile): load balancing holds nothing back for it, as today's code checks the plug-in the
-    # command began in (`_session_generation`). With no record of the command, a car known gone says the same.
-    car_gone = pending.earlier_plug_in if pending is not None else s.plugged is False
+    # command began in (`_session_generation`). The command's own record says so when the core asked for it before
+    # the plug-in ended; the result says so when the shell decided it before but fed it after (`earlier_plug_in`).
+    # With neither, a car known gone says the same.
+    car_gone = event.earlier_plug_in or (pending.earlier_plug_in if pending is not None else s.plugged is False)
     if event.command == "start":
         if event.reason == REASON_BALANCING_RESUME:
             if event.executed:

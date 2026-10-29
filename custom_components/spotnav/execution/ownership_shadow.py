@@ -143,6 +143,9 @@ class ShadowToken:
     early_commands: tuple[Command, ...] = ()
     #: When it was decided at `begin`, on the shadow's decision clock (`_decide`'s `order`): its record says so.
     early_order: int = 0
+    #: How many plug-ins had ended (`OwnershipShadow._plug_in_ends`) at `begin`: a command of this feed whose result
+    #: comes back after another ended was decided in an earlier plug-in (`CommandResult.earlier_plug_in`).
+    plug_ins: int = 0
 
 
 @dataclass(frozen=True)
@@ -303,6 +306,9 @@ class OwnershipShadow:
         self._quiet: tuple[dict[str, Any], int] | None = None
         # The decision clock (`_tick`).
         self._ticks = 0
+        # How many plug-ins ended (an unplug, or a plug-in after a known unplug, decided): what a feed's command was
+        # decided in (`ShadowToken.plug_ins`). Transient: no feed outlives a restart.
+        self._plug_in_ends = 0
 
     # ------------------------------------------------------------------ feeding
 
@@ -346,8 +352,9 @@ class OwnershipShadow:
             except Exception as err:  # noqa: BLE001 - the shadow never raises into the real path
                 # Counted under the kind of the event the feed ends with (`end`), or none (`cancel`).
                 self._error("begin", cover=False)
-                return ShadowToken(key, True, ok=False, failed=True, error=err)
+                return ShadowToken(key, True, ok=False, failed=True, error=err, plug_ins=self._plug_in_ends)
             token = ShadowToken(key, True, drift=drifted)
+        token.plug_ins = self._plug_in_ends
         self._stack.setdefault(key, []).append(token)
         if early is not None and self.drives:
             self._decide_early(token, early)
@@ -359,6 +366,7 @@ class OwnershipShadow:
             token.early_order = self._tick()
             self.session, token.early_commands = decide(self.session, event, self._now())
             token.early = event
+            self._note_plug_in_end(event)
         except Exception as err:  # noqa: BLE001 - decided at `end` as ever
             self._error("begin_early", event.kind)
             self.failed("decide_early", event.kind, err, token=token)
@@ -574,13 +582,21 @@ class OwnershipShadow:
                 balancing_held=item.outcome.balancing_held,
                 unobserved=item.outcome.unobserved,
                 settled=item.outcome.settled,
+                earlier_plug_in=self._plug_in_ends != item.token.plug_ins,
             )
             session, _ = decide(session, result, now)
         elif acted is not None and item.event.kind not in _RESULTS_LATER:
             # The feed is over and today's code sent nothing: the command the core asked for did not happen.
-            result = CommandResult(command=acted.kind, reason=getattr(acted, "reason", ""), executed=False)
+            result = CommandResult(
+                command=acted.kind,
+                reason=getattr(acted, "reason", ""),
+                executed=False,
+                earlier_plug_in=self._plug_in_ends != item.token.plug_ins,
+            )
             session, _ = decide(session, result, now)
         self.session = session
+        if item.token.early is None or item.token.early_pre is None:
+            self._note_plug_in_end(item.event)
         self._count("events")
         self._cover(item.event.kind, "events")
         TOTALS[f"event:{item.event.kind}"] = TOTALS.get(f"event:{item.event.kind}", 0) + 1
@@ -615,6 +631,11 @@ class OwnershipShadow:
         if item.defer_intent and (session.manual, session.span_pause) != (pre.manual, pre.span_pause):
             self._intent_deferred = True
         return record, tuple(sorted(command.kind for command in commands if command.kind != "keep"))
+
+    def _note_plug_in_end(self, event: Event) -> None:
+        """An unplug, or a plug-in after a known unplug, was decided: the plug-in a command in flight began in ended."""
+        if event.kind == "unplug" or (event.kind == "plug_in" and getattr(event, "previous", None) is False):
+            self._plug_in_ends += 1
 
     def _tick(self) -> int:
         self._ticks += 1
