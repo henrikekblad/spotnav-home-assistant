@@ -3891,7 +3891,11 @@ class ChargingController:
                     and (dt_util.utcnow() - stop_sent_at).total_seconds() < STOP_ACK_S
                 )
                 session = self._session_generation
-                token = self._shadow.begin()
+                # Decided before the stop goes out (its facts are known now): a report of the charger off that lands
+                # while the stop is on its way is decided after it, so the core holds back the charge it paused,
+                # not the nobody's charge that report leaves.
+                pause = core_events.BalancingPause(code=code, was_on=was_on)
+                token = self._shadow.begin(early=pause)
                 outcome = CommandOutcome(False)
                 try:
                     # A balancing stop: a top-off running past the last window goes on, paused like any charge.
@@ -3916,9 +3920,7 @@ class ChargingController:
                         self._remember_paused_charge(*paused_charge)
                         self._save_memory_soon()
                 finally:
-                    self._shadow.end(
-                        token, core_events.BalancingPause(code=code, was_on=was_on), legacy=("stop",), outcome=outcome
-                    )
+                    self._shadow.end(token, pause, legacy=("stop",), outcome=outcome)
         except ChargingExecutionError as err:
             if err.code == EXECUTION_STOP_HELD_AT_FLOOR:
                 # Not paused: the charge runs on at the floor, which is what load balancing must count.
