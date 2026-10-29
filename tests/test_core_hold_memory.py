@@ -296,3 +296,28 @@ async def test_the_holds_memory_is_kept_as_the_core_decided_it_and_a_difference_
     assert (shadow.session.held, shadow.session.overridden) == (True, True), "never taken"
     (record,) = [item for item in shadow.diagnostics()["drift"] if item.get("mirror")]
     assert set(record["fields"]) == {"held", "overridden"}
+
+
+async def test_a_held_plug_in_sessions_recording_replays_with_no_line_up(
+    hass: HomeAssistant, timers: FakeScheduler, drives: bool
+) -> None:
+    """Every change of the hold's memory is fed: a recording of the hold, the override, the re-arm sparing it and the
+    unplug replays from its first session alone, with no difference beyond observation drift."""
+    import json
+
+    from custom_components.spotnav.core.replay import replay_bundle
+
+    from .test_core_replay import _bundle
+
+    world = await pause_world(hass, timers, plan=later_window())
+    await _overridden(world, drives)
+    await world.controller.async_follow_schedule()
+    await world.plug.set(False, control="off")
+    await hass.async_block_till_done()
+    diagnostics = world.controller.ownership_shadow.diagnostics()
+    bundle = json.loads(json.dumps(_bundle(diagnostics["events"]), default=str))
+    alone = replay_bundle(bundle, line_up=False)["charger_a"]
+    assert alone.events == len(diagnostics["events"]) and alone.skipped == 0
+    assert alone.real == (), alone.real
+    assert replay_bundle(bundle)["charger_a"].mismatches == ()
+    await world.shutdown()
