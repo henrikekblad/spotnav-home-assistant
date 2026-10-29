@@ -13,11 +13,13 @@ import { chargePeriodsLabel, chargePeriodsOptions, chargePeriodsReplacement, cha
 import { chartNowAt, nextIntervalBoundary, type ChartAxisMode, type ChartMark, type ChartNow } from "./chart";
 import {
   createChartInteraction,
+  measureChart,
   FALLBACK_SIZE,
   type ChartInteraction,
   type ChartObserverLike,
   type ChartSize,
 } from "./chart-interaction";
+import { planFill, type FillReading } from "./card-fill";
 import { applyFocus, chartHeightForWidth, renderChart, type ChartLabels } from "./chart-render";
 import { stripBarPlacement, stripBars, stripNowPosition, stripTicks } from "./chart-strip";
 import { createDialog, type DialogHandle } from "./dialog";
@@ -166,6 +168,13 @@ export interface CardViewInput {
   measure?: (host: HTMLElement) => ChartSize;
   /** The resize observer factory; `undefined` means the platform's own, `null` means none. */
   observe?: (host: HTMLElement, onResize: () => void) => ChartObserverLike | null;
+  /**
+   * The observer of the card's box, which fits the card to a box of fixed height (see `card-fill.ts`);
+   * `undefined` means the platform's own, `null` means none.
+   */
+  observeBox?: (box: HTMLElement, onResize: () => void) => ChartObserverLike | null;
+  /** Reads the card's natural layout for the fit; injectable for tests, since a test DOM has no layout. */
+  readFill?: (card: HTMLElement) => FillReading;
   setTimer?: (callback: () => void, delayMs: number) => number;
   clearTimer?: (handle: number) => void;
   /** Start with the chart collapsed to its 24-hour strip (the card's remembered or configured choice). */
@@ -923,6 +932,13 @@ export function chargeBarElement(doc: Document, bar: ChargeBarFacts): HTMLElemen
   return block;
 }
 
+/** The platform's `ResizeObserver` on the card's box, or none where there is none (a test DOM). */
+function defaultBoxObserver(_box: HTMLElement, onResize: () => void): ChartObserverLike | null {
+  const Constructor = (globalThis as { ResizeObserver?: new (callback: () => void) => ChartObserverLike })
+    .ResizeObserver;
+  return typeof Constructor === "function" ? new Constructor(onResize) : null;
+}
+
 export function createCardView(input: CardViewInput): CardView {
   const { model, idPrefix } = input;
   const doc = input.mount.ownerDocument;
@@ -1265,8 +1281,10 @@ export function createCardView(input: CardViewInput): CardView {
     );
   }
 
-  if (model.status !== null) {
-    card.append(element(doc, "p", C.status, model.status));
+  // The status sentence, the one row that gives up lines when the card is in a box too short for it.
+  const statusNode = model.status === null ? null : element(doc, "p", C.status, model.status);
+  if (statusNode !== null) {
+    card.append(statusNode);
   }
   if (model.chargeBar !== null) {
     card.append(chargeBarElement(doc, model.chargeBar));
@@ -1346,6 +1364,8 @@ export function createCardView(input: CardViewInput): CardView {
   const initial = input.size?.() ?? FALLBACK_SIZE;
   const density = input.chartDetail === true ? CHART_DENSITY.detail : CHART_DENSITY.normal;
   let size: ChartSize = { width: initial.width, height: chartHeightForWidth(initial.width, density) };
+  // The chart's height while the card fills a box of fixed height, else `null` and the width rule applies.
+  let fillHeight: number | null = null;
   // The now fact of the last draw; nothing else in this view reads the wall clock for geometry.
   let nowState: ChartNow = chartNowAt(model.chart.marks, now());
   // The one pending interval-boundary appointment, and the injected scheduler that owns it.
@@ -1397,8 +1417,9 @@ export function createCardView(input: CardViewInput): CardView {
     });
     drawn?.element.remove();
     drawn = result;
-    // The viewport's height is the policy's answer for the measured width, so the box, viewBox and CSS viewport agree 1:1.
-    viewport.style.height = `${chartHeightForWidth(size.width, density)}px`;
+    // The viewport's height is the policy's answer for the measured width (or the fitted height in a box
+    // of fixed height), so the box, viewBox and CSS viewport agree 1:1.
+    viewport.style.height = `${fillHeight ?? chartHeightForWidth(size.width, density)}px`;
     viewport.append(result.element);
     paintStrip();
     publish();
@@ -1566,6 +1587,7 @@ export function createCardView(input: CardViewInput): CardView {
     // A selection belongs to the chart that showed it; either way the reader starts from the now line.
     interaction?.select(null);
     applyCollapsed();
+    fit();
     input.onChartCollapsedChange?.(collapsed);
   }
   summary.addEventListener("click", toggleChart);
@@ -1588,7 +1610,11 @@ export function createCardView(input: CardViewInput): CardView {
     surface: () => viewport.querySelector("svg"),
     fallbackSize: size,
     now,
-    measure: input.measure,
+    // In a box of fixed height the fitted height replaces the width rule's; the width is measured as ever.
+    measure: (target) => {
+      const measured = input.measure !== undefined ? input.measure(target) : measureChart(target, density);
+      return fillHeight === null ? measured : { width: measured.width, height: fillHeight };
+    },
     density,
     observe: input.observe,
     onResize: (next) => {
@@ -1858,6 +1884,99 @@ export function createCardView(input: CardViewInput): CardView {
   paintLegend(null);
   render(size);
   scheduleBoundary();
+
+  // ---- a box of fixed height (a wall screen's layout card, a sections view with a number of rows):
+  // the card fills it, the action bar sits at its bottom edge and the chart takes the height between.
+  // Detected from layout, never from an option: the box is the host's height (`:host` and the shell
+  // are `height: 100%`, which is auto unless the container's height is definite), against the card's
+  // own natural height. Anywhere else the two are equal and nothing here writes to the DOM.
+  const fillBox: HTMLElement | null =
+    input.mount instanceof ShadowRoot
+      ? input.mount.host instanceof HTMLElement
+        ? input.mount.host
+        : null
+      : input.mount;
+  let filled = false;
+
+  function readFillFromLayout(target: HTMLElement): FillReading {
+    let lineHeight = 0;
+    if (statusNode !== null) {
+      const style = getComputedStyle(statusNode);
+      lineHeight = Number.parseFloat(style.lineHeight);
+      if (!Number.isFinite(lineHeight)) {
+        // "normal": the card's own line height (1.35) on the sentence's font size.
+        lineHeight = Number.parseFloat(style.fontSize) * 1.35;
+      }
+    }
+    return {
+      // Layout pixels, not the bounding rectangle: a scaled container (a CSS transform) must not change the fit.
+      box: fillBox?.offsetHeight ?? 0,
+      natural: target.offsetHeight,
+      statusHeight: statusNode?.offsetHeight ?? 0,
+      lineHeight: Number.isFinite(lineHeight) ? lineHeight : 0,
+    };
+  }
+
+  /** The card laid out as anywhere else: chart at its width rule, the status sentence in full. */
+  function naturalLayout(): void {
+    if (!filled) {
+      return;
+    }
+    filled = false;
+    delete card.dataset["fill"];
+    card.style.removeProperty("--spotnav-fill-spare");
+    if (statusNode !== null) {
+      delete statusNode.dataset["lines"];
+      statusNode.style.removeProperty("--spotnav-status-lines");
+      if (statusNode.getAttribute("style") === "") {
+        statusNode.removeAttribute("style");
+      }
+      statusNode.removeAttribute("title");
+    }
+    viewport.style.height = `${chartHeightForWidth(size.width, density)}px`;
+  }
+
+  /**
+   * Fit the card to its box. One synchronous pass: back to the natural layout, one reading of it, the
+   * plan from that reading alone (`planFill`), applied. Nothing is painted in between, and since the
+   * reading never sees the plan's own layout, measuring again gives the same plan: no resize loop.
+   */
+  function fit(): void {
+    if (destroyed) {
+      return;
+    }
+    const before = fillHeight;
+    naturalLayout();
+    const basis = collapsed ? 0 : chartHeightForWidth(size.width, density);
+    const plan = planFill((input.readFill ?? readFillFromLayout)(card), {
+      basis,
+      min: collapsed ? 0 : density.minHeight,
+    });
+    fillHeight = plan === null || collapsed ? null : plan.chartHeight;
+    if (plan !== null) {
+      filled = true;
+      card.dataset["fill"] = "true";
+      card.style.setProperty("--spotnav-fill-spare", `${plan.spare}px`);
+      if (statusNode !== null && plan.statusLines !== null) {
+        statusNode.dataset["lines"] = String(plan.statusLines);
+        statusNode.style.setProperty("--spotnav-status-lines", String(plan.statusLines));
+        statusNode.title = model.status ?? "";
+      }
+      viewport.style.height = `${fillHeight ?? basis}px`;
+    }
+    if (fillHeight !== before) {
+      // Redraw at the new height through the interaction, so its size, the viewBox and the hit targets agree.
+      interaction?.remeasure();
+    }
+  }
+
+  const boxObserver: ChartObserverLike | null =
+    fillBox === null
+      ? null
+      : (input.observeBox ?? defaultBoxObserver)(fillBox, () => {
+          fit();
+        });
+  boxObserver?.observe?.(fillBox as HTMLElement);
 
   function mountCard(): void {
     if (!input.mount.contains(card)) {
@@ -4053,6 +4172,7 @@ export function createCardView(input: CardViewInput): CardView {
       settingsError.hidden = true;
       settingsError.textContent = "";
       settingsError.removeAttribute("data-code");
+      fit();
       return;
     }
     settingsError.hidden = false;
@@ -4062,6 +4182,8 @@ export function createCardView(input: CardViewInput): CardView {
     } else {
       settingsError.dataset["code"] = failure.code;
     }
+    // A sentence appearing or going changes the rows above the chart: in a box of fixed height, fit again.
+    fit();
   }
 
   // The area/fiscal dialog: the card owns the record, catalogue context and drafts. Picking another area
@@ -4487,6 +4609,7 @@ export function createCardView(input: CardViewInput): CardView {
         actionError.hidden = true;
         actionError.textContent = "";
         actionError.removeAttribute("data-code");
+        fit();
         return;
       }
       actionError.hidden = false;
@@ -4496,6 +4619,7 @@ export function createCardView(input: CardViewInput): CardView {
       } else {
         actionError.dataset["code"] = failure.code;
       }
+      fit();
     },
     destroy(): void {
       if (destroyed) {
@@ -4505,6 +4629,7 @@ export function createCardView(input: CardViewInput): CardView {
       // The boundary appointment is released before anything else: a callback that fired after this
       // would belong to a view that no longer exists.
       cancelBoundary();
+      boxObserver?.disconnect();
       interaction?.destroy();
       issuesDialog.destroy();
       capabilityDialog.destroy();

@@ -60,6 +60,8 @@ export interface ChartInteraction {
   selection(): ChartMark | null;
   handleKeydown(event: KeyboardEvent): void;
   size(): ChartSize;
+  /** Measure the viewport again now, as an observed resize would; an equal size is not a redraw. */
+  remeasure(): void;
   isObserving(): boolean;
   destroy(): void;
 }
@@ -95,7 +97,7 @@ const DEFAULT_DIRECTION_THRESHOLD = 4;
  * the SVG is drawn in layout pixels, and a rectangle includes any CSS transform or zoom on an ancestor, so
  * in a scaled container (a wall screen's fullscreen view) it would squeeze the chart sideways.
  */
-function defaultMeasure(viewport: HTMLElement, density?: ChartDensityStyle): ChartSize {
+export function measureChart(viewport: HTMLElement, density?: ChartDensityStyle): ChartSize {
   const width = viewport.clientWidth > 0 ? viewport.clientWidth : FALLBACK_SIZE.width;
   return { width, height: chartHeightForWidth(width, density) };
 }
@@ -111,7 +113,7 @@ function defaultObserve(host: HTMLElement, onResize: () => void): ChartObserverL
 
 export function createChartInteraction(options: ChartInteractionOptions): ChartInteraction {
   const threshold = options.directionThreshold ?? DEFAULT_DIRECTION_THRESHOLD;
-  const measure = options.measure ?? ((viewport: HTMLElement) => defaultMeasure(viewport, options.density));
+  const measure = options.measure ?? ((viewport: HTMLElement) => measureChart(viewport, options.density));
   const surfaceOf = options.surface;
   const now = options.now ?? (() => Date.now());
   const isInsideInteractive =
@@ -370,6 +372,9 @@ export function createChartInteraction(options: ChartInteractionOptions): ChartI
     },
     size(): ChartSize {
       return size;
+    },
+    remeasure(): void {
+      onObservedResize();
     },
     isObserving(): boolean {
       return observing;
