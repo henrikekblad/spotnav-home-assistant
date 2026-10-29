@@ -142,6 +142,7 @@ from ..core.ownership import (
     NO_CAR_FACTS,
     spotnav_owned,
 )
+from ..core.replay import CLOCK_TOLERANCE_S
 from ..core.session import (
     CarEnded as EndedRecord,
     CarEndedWait,
@@ -1335,6 +1336,8 @@ class ChargingController:
             # No record at all: nothing the car ended read back.
             self._car_ended_read_back = _record_view(None)
         stored, migrate = self._stored_session(saved)
+        if stored is not None:
+            stored = self._car_ended_from_keys(saved, stored)
         keys_newer = self._restore_order(saved) if stored is not None else False
         await self._shadow.coverage.async_load(await self._integration_version())
         # The core's session is what was read back: its own record when it drives and one was read, else today's;
@@ -5175,6 +5178,21 @@ class ChargingController:
             # Read from today's keys again, not silently (a warning once, a count, Repairs when failures repeat).
             self._shadow.failed("stored_session", core_events.Restart.kind, err)
             return None, True
+
+    def _car_ended_from_keys(self, saved: dict[str, Any] | None, stored: ChargeSession) -> ChargeSession:
+        """The first restart after an upgrade from a version 1 record, which kept only when the car ended: today's
+        `car_ended_*` keys, written beside it, hold the rest of that record (the level read then, the car, what the
+        plan waits for). Taken from them when they are of the same end (their instant within `CLOCK_TOLERANCE_S` of
+        the record's); a record of another end keeps only its instant, and the keys are not read for it."""
+        raw = saved.get(SESSION_STORE_KEY) if saved else None
+        record = stored.car_ended
+        keys = self._car_ended_read_back
+        if not isinstance(raw, dict) or raw.get("version") != 1 or record is None or keys is None or keys.at is None:
+            return stored
+        if abs((keys.at - record.at).total_seconds()) > CLOCK_TOLERANCE_S:
+            return stored
+        from_keys = _ended_record(replace(keys, at=record.at))
+        return stored.with_changes(car_ended=from_keys)
 
     def _persist_session(self, session: ChargeSession) -> None:
         """The core decided (`OwnershipShadow`, only when it drives). A session whose stored record changed is saved

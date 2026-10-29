@@ -366,3 +366,50 @@ async def test_a_car_ended_plug_in_sessions_recording_replays_with_no_line_up(
     assert alone.real == (), alone.real
     assert replay_bundle(bundle)["charger_a"].mismatches == ()
     await world.shutdown()
+
+
+@pytest.mark.usefixtures("both_restarts")
+@pytest.mark.parametrize("same_end", [True, False], ids=["same_end", "another_end"])
+async def test_the_first_restart_after_a_version_1_record_takes_the_rest_of_the_record_from_the_keys(
+    hass: HomeAssistant, timers: FakeScheduler, freezer: Any, monkeypatch: pytest.MonkeyPatch, same_end: bool
+) -> None:
+    """An upgrade from a build whose record kept only when the car ended: today's keys beside it hold the level, the
+    car and the wait of that same end, so the plan still waits for the car's level after the first restart. Keys of
+    another end (their instant apart from the record's) are not read for it: the record keeps its instant alone."""
+    from custom_components.spotnav.execution.controller import SESSION_ORDER_KEY
+
+    monkeypatch.setattr(ownership_shadow, "CORE_OWNERSHIP_DEFAULT", True)
+    car = _estimate()
+    world = await _plan_ended(hass, timers, car)
+    controller = world.controller
+    record = _agrees(world, True)
+    ended = controller.ownership_shadow.session.car_ended
+    controller._cancel_session_save()  # noqa: SLF001
+    disk = dict(await _stored(world))
+    v1 = {key: value for key, value in disk[SESSION_STORE_KEY].items() if key != "car_ended"}
+    v1.update(version=1, car_ended_at=(ended.at if same_end else ended.at + timedelta(hours=1)).isoformat())
+    disk[SESSION_STORE_KEY] = v1
+    # The record is the newer: today's keys are not read for the session as a whole.
+    disk[SESSION_ORDER_KEY] = {"session": 5, "keys": 4}
+    await controller._store.async_save(disk)  # noqa: SLF001
+
+    async def nothing(*_args: Any, **_kwargs: Any) -> None:
+        return None
+
+    # The old build's process ends: it writes nothing more over what it left on disk.
+    monkeypatch.setattr(controller._store, "async_save", nothing)  # noqa: SLF001
+    monkeypatch.setattr(controller._store, "async_delay_save", lambda *_a, **_k: None)  # noqa: SLF001
+
+    restarted = await world.restart()
+    restarted.controller._soc_reader = car  # noqa: SLF001
+    session = restarted.controller.ownership_shadow.session
+    if same_end:
+        assert session.car_ended == ended
+        assert _agrees(restarted, True) == record
+        await restarted.switch("off")
+        starts = len(restarted.starts)
+        await _next_window(restarted, freezer)
+        assert len(restarted.starts) == starts, "the plan still waits for the car's level"
+    else:
+        assert session.car_ended == CarEnded(at=ended.at + timedelta(hours=1))
+    await restarted.shutdown()
