@@ -438,22 +438,143 @@ async def test_a_decision_made_while_the_shutdown_waits_for_the_lock_is_saved(
     await world.executor.async_shutdown()
 
 
+# ---------------------------------------------------------------------------------------------- one writer (step 8)
+
+
+def _keys_of(session: dict[str, Any]) -> dict[str, Any]:
+    """Today's ownership keys as derived from a stored record of the core's (`_store_record` when it drives)."""
+    from custom_components.spotnav.execution.controller import _CORE_OWNER_ORIGIN
+
+    origin, plan_charge = _CORE_OWNER_ORIGIN.get(session["owner"], (None, False))
+    ended = session["car_ended"] or {}
+    paused = _CORE_OWNER_ORIGIN.get(session["paused_origin"] or "", (None, False))
+    return {
+        "charge_origin": origin,
+        "plan_charge": plan_charge,
+        "car_ended_at": ended.get("at"),
+        "car_ended_soc": ended.get("soc"),
+        "car_ended_vehicle": ended.get("vehicle"),
+        "car_ended_wait": ended.get("wait"),
+        "balancing_pause": {"origin": paused[0], "plan_charge": paused[1]} if session["balancing_paused"] else None,
+        "hold": {"held": session["held"], "overridden": session["overridden"]},
+    }
+
+
+def _written_keys(record: dict[str, Any]) -> dict[str, Any]:
+    from custom_components.spotnav.execution.controller import OWNERSHIP_KEYS
+
+    return {key: record.get(key) for key in OWNERSHIP_KEYS}
+
+
+@pytest.mark.usefixtures("drives")
+async def test_every_record_written_keeps_todays_keys_derived_from_its_session_and_no_order_marks(
+    hass: HomeAssistant, timers: FakeScheduler, saves: list
+) -> None:
+    """One writer: every save writes the core's record and today's keys together, the keys derived from the record,
+    also the saves inside a start's or a stop's feed before its result is decided (the owner the command makes, in
+    both). No order marks are written, so an earlier build reads the record as the newer (its restore takes a
+    record with no marks for the newer), and an older build or the option off reads the same owner from the keys."""
+    world = await pause_world(hass, timers, plan=two_windows())
+    assert world.controller.charge_origin == "plan_window"
+    await world.executor.async_manual_stop()
+    await world.executor.async_manual_start()
+    await world.executor.async_resume()
+    assert await world.controller.async_start(cause="solar")
+    await world.controller.async_stop()
+    assert await world.controller.async_start()
+    await world.plug.set(False)
+    await hass.async_block_till_done()
+    await world.shutdown()
+    written = [record for record in saves if SESSION_STORE_KEY in record]
+    assert len(written) >= 6
+    owners = {record[SESSION_STORE_KEY]["owner"] for record in written}
+    assert {"plan", "person", "solar", "charge_now", "none"} <= owners, owners
+    for record in written:
+        assert SESSION_ORDER_KEY not in record
+        assert _written_keys(record) == _keys_of(record[SESSION_STORE_KEY]), record
+
+
+@pytest.mark.usefixtures("drives")
+@pytest.mark.parametrize("cause", ["solar", None])
+async def test_a_restart_right_after_a_starts_save_and_before_its_result_reads_the_starts_owner(
+    hass: HomeAssistant, timers: FakeScheduler, monkeypatch: pytest.MonkeyPatch, cause: str | None
+) -> None:
+    """The start's own save (`_start_locked`, inside its feed) is the last one on disk when Home Assistant dies before
+    the feed's end decides the result: the record alone is read back, and it names the start's owner, as today's keys
+    do (the order marks that once let the keys win here are gone). The sun's start and a Charge-now start; a person's
+    Start keeps its intent in the settings store as well, which this test cannot take back to that instant."""
+    world = await pause_world(hass, timers, plan={"periods": [later_window()], "amps": 10})
+    controller = world.controller
+    on_disk: list[dict[str, Any]] = []
+    real_save = controller._store.async_save  # noqa: SLF001
+
+    async def save(data: Any) -> None:
+        if controller._command_unfed == "start" and not on_disk:  # noqa: SLF001 - the start's result not fed yet
+            on_disk.append(dict(data))
+        await real_save(data)
+
+    monkeypatch.setattr(controller._store, "async_save", save)  # noqa: SLF001
+    assert await controller.async_start(cause=cause)
+    await hass.async_block_till_done()
+    (record,) = on_disk
+    expected = "solar" if cause == "solar" else "charge_now"
+    assert record[SESSION_STORE_KEY]["owner"] == expected, "the start's own save, before its result"
+    assert _written_keys(record) == _keys_of(record[SESSION_STORE_KEY])
+
+    # The process dies there: what is on disk is that save alone.
+    controller._cancel_session_save()  # noqa: SLF001
+    await world.executor.async_shutdown()
+
+    async def nothing(*_args: Any, **_kwargs: Any) -> None:
+        return None
+
+    await real_save(record)
+    monkeypatch.setattr(controller._store, "async_save", nothing)  # noqa: SLF001
+    await controller.async_shutdown()
+    restarted = await world._start_again()  # noqa: SLF001
+    assert restarted.controller.ownership_shadow.session.owner == expected
+    assert restarted.controller.charge_origin == (cause or "other")
+    assert hass.states.get(SWITCH).state == "on", "the charge goes on"
+    await restarted.shutdown()
+
+
+@pytest.mark.parametrize("drives", [True, False], ids=["core", "previous"])
+async def test_a_storm_of_reports_that_change_nothing_writes_nothing(
+    hass: HomeAssistant, timers: FakeScheduler, saves: list, freezer: Any, monkeypatch: pytest.MonkeyPatch, drives: bool
+) -> None:
+    """A hundred reports of a plan charge running unchanged, a debounce delay apart: no save at all, in either mode."""
+    monkeypatch.setattr(ownership_shadow, "CORE_OWNERSHIP_DEFAULT", drives)
+    world = await pause_world(hass, timers, plan=two_windows())
+    assert world.controller.charging
+    await _settle(hass, freezer)
+    await hass.async_block_till_done()
+    before = len(saves)
+    for index in range(100):
+        freezer.tick(timedelta(seconds=SESSION_SAVE_DELAY_S / 3))
+        hass.states.async_set(SWITCH, "on", {"report": index})
+        await hass.async_block_till_done()
+    assert len(saves) == before, saves[before:]
+    await world.shutdown()
+
+
 @pytest.mark.shadow_disagreement_expected  # the record's owner against today's keys, compared at the restart
 @pytest.mark.usefixtures("drives", "both_restarts")
-@pytest.mark.parametrize("newer", ["keys", "record"])
-async def test_at_a_restart_the_newer_of_the_record_and_todays_keys_wins(
-    hass: HomeAssistant, timers: FakeScheduler, newer: str
+@pytest.mark.parametrize("marks", ["none", "record_newer", "keys_newer"])
+async def test_at_a_restart_the_record_alone_is_read_but_for_an_earlier_builds_keys_written_after_it(
+    hass: HomeAssistant, timers: FakeScheduler, marks: str
 ) -> None:
-    """On disk the record says nobody owns the charge and today's keys say the sun does. Written after the record's
-    last change, today's keys win (the sun's charge is spared); written before it, the record wins (as the core
-    decided last, today's owner is cleared)."""
+    """On disk the record says nobody owns the charge and today's keys say the sun does. A record of this build (no
+    order marks) or one an earlier build saved after its keys is the truth: today's owner is cleared, and the keys are
+    written again to follow it. An earlier build's record whose marks say the keys were written after it is migrated
+    from the keys once, as that build read it (the sun's charge is spared), and written again without marks."""
     world = await pause_world(hass, timers, plan={"periods": [later_window()], "amps": 10})
-    key = SESSION_ORDER_KEY
 
     def change(record: dict[str, Any]) -> None:
         record[SESSION_STORE_KEY] = {**record[SESSION_STORE_KEY], "owner": "none"}
         record["charge_origin"] = "solar"
-        record[key] = {"session": 3, "keys": 4} if newer == "keys" else {"session": 4, "keys": 3}
+        record.pop(SESSION_ORDER_KEY, None)
+        if marks != "none":
+            record[SESSION_ORDER_KEY] = {"session": 3, "keys": 4} if marks == "keys_newer" else {"session": 4, "keys": 3}
 
     await world.controller.async_start(cause="solar")
     await hass.async_block_till_done()
@@ -463,8 +584,11 @@ async def test_at_a_restart_the_newer_of_the_record_and_todays_keys_wins(
     )
     world.controller.ownership_shadow.session = world.controller._session_saved  # noqa: SLF001
     restarted = await world.restart()
-    expected = "solar" if newer == "keys" else None
+    expected = "solar" if marks == "keys_newer" else None
     assert restarted.controller.charge_origin == expected
+    stored = await _stored(restarted)
+    assert SESSION_ORDER_KEY not in stored
+    assert stored["charge_origin"] == expected and stored[SESSION_STORE_KEY]["owner"] == (expected or "none")
     await restarted.shutdown()
 
 

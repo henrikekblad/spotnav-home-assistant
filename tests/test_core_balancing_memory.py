@@ -83,9 +83,9 @@ async def test_a_restart_while_balancing_holds_a_persons_charge_gives_it_back(
 async def test_todays_balancing_pause_key_is_read_where_the_keys_are_the_truth(
     hass: HomeAssistant, timers: FakeScheduler, monkeypatch: pytest.MonkeyPatch, record: str
 ) -> None:
-    """When the core drives, a restart takes load balancing's memory from today's `balancing_pause` key where today's
-    keys are the truth: an older build's record with no session of the core's (migrated once), or keys written
-    after the session's last change."""
+    """When the core drives, a restart takes load balancing's memory from today's `balancing_pause` key only to migrate:
+    an older build's record with no session of the core's, or an earlier build's record whose order marks say its keys
+    were written after it (each migrated once)."""
     monkeypatch.setattr(ownership_shadow, "CORE_OWNERSHIP_DEFAULT", True)
     world = await pause_world(hass, timers)
     await _persons_charge_held_back(world)

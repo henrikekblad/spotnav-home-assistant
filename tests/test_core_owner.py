@@ -371,9 +371,10 @@ async def test_a_feed_cancelled_in_another_task_leaves_a_start_on_its_way_its_ow
 async def test_a_record_newer_than_the_keys_is_the_owner_at_a_restart_and_the_keys_follow(
     hass: HomeAssistant, timers: FakeScheduler, monkeypatch: pytest.MonkeyPatch, owner: str
 ) -> None:
-    """The core drives, and its record was saved after today's keys (the order marks say so) and names another owner:
-    a charge of SpotNav's in the record, nobody's in the keys. The restart reads the owner from the record, and today's
-    keys are written again to follow it, so a rollback reads the same owner."""
+    """The core drives, and its record names another owner than today's keys beside it: a charge of SpotNav's in the
+    record, nobody's in the keys (an earlier build saved the record after them, as its order marks say). The restart
+    reads the owner from the record alone, and today's keys are written again to follow it, so a rollback reads the
+    same owner."""
     from custom_components.spotnav.execution.controller import SESSION_ORDER_KEY
 
     monkeypatch.setattr(ownership_shadow, "CORE_OWNERSHIP_DEFAULT", True)
