@@ -859,6 +859,10 @@ def _command_result(session: ChargeSession, event: CommandResult, now: datetime)
         if event.reason == REASON_PERSON and s.span_pause is None:
             # The person owns the charger for the plug-in session (A); a span pause they chose is kept.
             s = s.with_changes(manual=ManualPause(MANUAL_START, SCOPE_PLUG_IN))
+        if event.reason == REASON_PERSON:
+            # The person acted: the stops under their earlier Stop start afresh (a report decided after the Start
+            # would, but one that landed while it was on its way still saw the Stop).
+            s = _reset_person_hold(s)
         return s, ()
     if event.reason == REASON_PERSON_HOLD:
         s = s.with_changes(hold_stop_pending=False)

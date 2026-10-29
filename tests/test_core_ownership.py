@@ -347,6 +347,15 @@ def test_the_stops_start_afresh_once_no_person_stop_holds() -> None:
     assert session.hold_stop_times == () and not session.hold_gave_up
 
 
+def test_a_persons_start_starts_the_stops_under_their_stop_afresh() -> None:
+    """They acted: also when a report that landed while the start was on its way still saw the Stop."""
+    session = ChargeSession(manual=STOP, plugged=True, hold_stop_times=(T0,), hold_tried_at=T0, hold_gave_up=True)
+    session, commands = run(session, ev.PersonStart(connected=True))
+    assert commands == (Start("person"),)
+    session, _ = run(session, ok("start", "person"))
+    assert session.hold_stop_times == () and session.hold_tried_at is None and not session.hold_gave_up
+
+
 def test_a_timer_looks_again_under_a_person_stop() -> None:
     later = T0 + timedelta(seconds=PERSON_HOLD_STOP_GAP_S)
     session = ChargeSession(manual=STOP, hold_stop_times=(T0,), hold_tried_at=T0)
