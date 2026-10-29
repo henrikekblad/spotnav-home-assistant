@@ -48,6 +48,9 @@ charger executed whose pause could not be saved answers `{"ok": true, "action": 
 | `update_vehicle` | Change a vehicle's capacity, consumption, onboard charger, target, minimum charge level or wake for a reading, with `expected` values. |
 | `update_site_settings` | Change solar priority or forecast sources of the charger's site. |
 | `update_charger_priority` | Change this charger's priority on its site: `{"priority", "expected"}` (see below). |
+| `update_phase_switching` | Turn phase switching for solar on or off for this charger: `{"enabled", "expected"}` (see below). |
+| `choose_price_source` | The electricity price this charger uses: `{"price_entry_id"}` (see below). |
+| `answer_price_duplicate` | Answer the same-area question: `{"area_id", "keep_entry_id"}` (see below). |
 | `push_register` | The app's instant notifications: `{"push_ref", "events"}`, or `{"push_ref": null}` to stop (see below). |
 | `identify_vehicle` | Answer "which car is plugged in?": `{"vehicle_id"}` (see [vehicle identification](#vehicle-identification)). |
 | `choose_vehicle_identification` | Choose a car's plug or location source: `{"vehicle_id", "source", "entity_id"}` (see [vehicle identification](#vehicle-identification)). |
@@ -215,6 +218,47 @@ answer is `{"api_version": 1, "ok", "error", "field_errors", "charger_priority",
 "invalid_value"}]` for a missing or unknown value; 400 `spotnav_no_site` (and `charger_priority: null`)
 for a charger on no site; 400 `spotnav_unsupported_api_version`. Examples are in
 `tests/fixtures/webhook/update_charger_priority_*.json`.
+
+**Phase switching for solar.** `update_phase_switching` takes `enabled` and `expected`, both booleans, and an
+optional `api_version` (`1`); `expected` is the value the caller last saw (the dashboard's
+`phase_switching.value`). It is validated and written by the same core as `spotnav/update_entity_config`'s
+`phase_switching` field, and the charger is not reloaded for it. The answer is `{"api_version": 1, "ok", "error",
+"field_errors", "phase_switching", "action"}`, where `phase_switching` is the dashboard's block re-read after the
+write (`null` where the setting is not offered). HTTP 200 on success; 409 `spotnav_conflict` when `expected` is not
+the stored value (nothing is written); 400 `spotnav_invalid_value` with `field_errors` `[{"field": "phase_switching"
+| "expected", "code": "invalid_value"}]` for a missing or non-boolean value, or `[{"field": "phase_switching",
+"code": "not_writable"}]` for turning it on where it is not offered (turning it off is always allowed); 400
+`spotnav_unsupported_api_version`. Examples are in `tests/fixtures/webhook/update_phase_switching_*.json`.
+
+The webhook dashboard carries the additive `phase_switching` block, `{"value": bool, "writable": true}`, only where
+the setting is offered for this charger (its integration can switch phases, it is wired for three phases and its
+site has a solar source), and only when the request asks for it (`"reads": ["phase_switching"]`). The card reads the
+same setting from its entity configuration instead.
+
+**Electricity price.** The dashboard's additive `price_source` block (the electricity price this charger uses, the
+choices, and the unanswered same-area question for an administrator) reaches the webhook only when the request asks
+for it (`"reads": ["price_source"]`). Two writes twin the card's WebSocket commands for the webhook's own charger,
+through the same cores:
+
+- `choose_price_source {"price_entry_id"}`: the charger uses that electricity price; a charger on a site points its
+  site at it, so it applies to every charger there, and one without a site points at it itself
+  (`spotnav/choose_price_source`).
+- `answer_price_duplicate {"area_id", "keep_entry_id"}`: the same-area question answered; with an entry, every site
+  and charger using one of the others in the question moves to it (the others are kept), with `null` all are kept;
+  either way it is not asked again (`spotnav/answer_price_duplicate`).
+
+Both answer `{"ok", "error", "field_errors", "price_source", "action"}`, where `price_source` is this charger's
+block re-read after the write (`null` while it prices with its own settings). HTTP 200 on success; 400
+`spotnav_unknown_price_entry` (not an electricity price, or not one the question asks about),
+`spotnav_unknown_price_duplicate` (no question for that area), or `spotnav_invalid_value` with `field_errors`
+`[{"field": "price_entry_id" | "area_id" | "keep_entry_id", "code": "invalid_value"}]` for a missing field or one
+of the wrong type; nothing is written on a refusal. Examples are in
+`tests/fixtures/webhook/choose_price_source_*.json` and `answer_price_duplicate_*.json`.
+
+**Permissions over the webhook.** The webhook id is the credential: whoever holds it acts as an administrator for
+its own charger (the dashboard's `writable` flags are true), so these writes, like `update_site_settings` and
+`update_charger_priority`, need nothing more. Only switching active load balancing and choosing the entities SpotNav
+uses stay WebSocket-only.
 
 ## WebSocket commands
 
