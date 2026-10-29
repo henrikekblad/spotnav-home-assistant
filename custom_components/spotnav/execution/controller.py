@@ -125,6 +125,7 @@ from .target_stop import (
 )
 from . import top_off
 from .window_hold import HOLD, OVERRIDE, WindowHold
+from .ownership_state import BalancingMemory, CarEndedRecord, HoldState, PersonHoldStops, SafetyHold
 from ..core import events as core_events
 from ..core.session import ChargeSession, OWNER_CHARGER_SELF, OWNER_NONE, SessionError
 from . import ownership_shadow as ownership_shadow_module
@@ -946,6 +947,105 @@ class ChargingController:
             on_failure=self._failure_repairs.failed,
         )
         self._shadow.today_fields = lambda: f"origin={self._charge_origin} plan_charge={self._plan_charge}"
+
+    # One read path for ownership (the core end state plan, step 2). Every read and write of the owner, load
+    # balancing's memory, the safety hold, C7's stops, the car-ended record, the window hold's memory and the known
+    # connection goes through these accessors, so moving a group to the charge session is a change here alone.
+    # `tests/test_ownership_access.py` keeps every other method off the fields behind them.
+
+    @property
+    def _owner_origin(self) -> str | None:
+        """Who started the charge that is running (`charge_origin`), or `None`."""
+        return self._charge_origin
+
+    @_owner_origin.setter
+    def _owner_origin(self, origin: str | None) -> None:
+        self._charge_origin = origin
+
+    @property
+    def _is_plan_charge(self) -> bool:
+        """Whether the charge that runs was started by a plan window of ours."""
+        return self._plan_charge
+
+    @_is_plan_charge.setter
+    def _is_plan_charge(self, plan_charge: bool) -> None:
+        self._plan_charge = plan_charge
+
+    @property
+    def _balancing(self) -> BalancingMemory:
+        """Load balancing's memory: its pause was the last thing done, and the charge it holds back."""
+        return BalancingMemory(paused=self._paused_by_balancing, charge=self._paused_charge)
+
+    @_balancing.setter
+    def _balancing(self, memory: BalancingMemory) -> None:
+        self._paused_by_balancing = memory.paused
+        self._paused_charge = memory.charge
+
+    @property
+    def _safety(self) -> SafetyHold:
+        """The safety hold of the charge load balancing holds, and its last safety stop."""
+        return SafetyHold(held=self._held_for_safety, stopped_at=self._safety_stopped_at)
+
+    @_safety.setter
+    def _safety(self, safety: SafetyHold) -> None:
+        self._held_for_safety = safety.held
+        self._safety_stopped_at = safety.stopped_at
+
+    @property
+    def _c7(self) -> PersonHoldStops:
+        """C7: the stops of a charge the charger began by itself under a person's Stop."""
+        return PersonHoldStops(
+            stop_pending=self._person_hold_stop_pending,
+            stop_times=self._person_hold_stop_times,
+            tried_at=self._person_hold_tried_at,
+            gave_up=self._person_hold_gave_up,
+        )
+
+    @_c7.setter
+    def _c7(self, stops: PersonHoldStops) -> None:
+        self._person_hold_stop_pending = stops.stop_pending
+        self._person_hold_stop_times = stops.stop_times
+        self._person_hold_tried_at = stops.tried_at
+        self._person_hold_gave_up = stops.gave_up
+
+    @property
+    def _car_ended(self) -> CarEndedRecord:
+        """The car-ended record of this plug-in (`async_note_car_ended`, the plan's watch)."""
+        return CarEndedRecord(
+            at=self._car_ended_at,
+            soc=self._car_ended_soc,
+            vehicle=self._car_ended_vehicle,
+            wait=self._car_ended_wait,
+        )
+
+    @_car_ended.setter
+    def _car_ended(self, record: CarEndedRecord) -> None:
+        self._car_ended_at = record.at
+        self._car_ended_soc = record.soc
+        self._car_ended_vehicle = record.vehicle
+        self._car_ended_wait = record.wait
+
+    @property
+    def _hold_state(self) -> HoldState:
+        """What the window hold remembers of ownership (`window_hold.py`)."""
+        hold = self._hold
+        return HoldState(held=hold.held, overridden=hold.overridden, owned=hold.owned)
+
+    @_hold_state.setter
+    def _hold_state(self, state: HoldState) -> None:
+        hold = self._hold
+        hold.held = state.held
+        hold.overridden = state.overridden
+        hold.owned = state.owned
+
+    @property
+    def _plugged(self) -> bool | None:
+        """The last connection the charger reported in so many words (`_observe_connection`)."""
+        return self._known_connected
+
+    @_plugged.setter
+    def _plugged(self, connected: bool | None) -> None:
+        self._known_connected = connected
 
     def _repairs_name(self) -> str:
         """What a Repairs issue calls this charger: its entry's title, read when the issue is raised."""
