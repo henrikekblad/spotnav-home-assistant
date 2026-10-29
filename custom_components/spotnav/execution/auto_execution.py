@@ -1234,9 +1234,9 @@ class AutoExecutor:
             note["outcome"] = CommandOutcome(False)
             started = await self._controller.async_start(amps, manual=True)
             note["outcome"] = CommandOutcome(
-                started is not False, balancing_held=started is False and self._controller.paused_by_balancing
+                started is not False, balancing_held=started is False and self._controller.start_held_by_balancing
             )
-            if started is False and not self._controller.paused_by_balancing:
+            if started is False and not self._controller.start_held_by_balancing:
                 # The charger's control was unavailable and the command never went out: a failed command
                 # like any other, with nothing pending and a retry possible.
                 raise HomeAssistantError("The start command was not executed: the charge control is unavailable")
@@ -2064,7 +2064,7 @@ class AutoExecutor:
                 outcome = CommandOutcome(False)
                 started = await self._controller.async_start(amps, cause="solar")
                 outcome = CommandOutcome(
-                    started, balancing_held=not started and self._controller.paused_by_balancing
+                    started, balancing_held=not started and self._controller.start_held_by_balancing
                 )
             finally:
                 self._shadow.end(
@@ -2257,7 +2257,7 @@ class AutoExecutor:
                 legacy.append("start")
                 outcome = CommandOutcome(False)
                 started = await controller.async_start(amps, cause=ORIGIN_MIN_SOC)
-                outcome = CommandOutcome(started, balancing_held=not started and controller.paused_by_balancing)
+                outcome = CommandOutcome(started, balancing_held=not started and controller.start_held_by_balancing)
             finally:
                 self._shadow.end(token, event, legacy=legacy, outcome=outcome)
             await self._notify_change()

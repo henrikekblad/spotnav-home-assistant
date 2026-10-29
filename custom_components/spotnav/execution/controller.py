@@ -140,6 +140,7 @@ from .ownership_shadow import (
     FIELD_OWNER,
     legacy_intent,
     legacy_owner,
+    BALANCING,
     OwnershipShadow,
     SAFETY_AND_C7,
     ShadowToken,
@@ -873,6 +874,14 @@ class ChargingController:
         # want of headroom for the minimum current): any other stop or start clears it. Only the
         # battery probe reads it (`site/battery_probe.py`), to resume a charge balancing interrupted.
         self._paused_by_balancing = False
+        # When the core drives: load balancing's memory as today's `balancing_pause` key read it back, for the restart
+        # alone (`_restore_locked`), which takes it into the session where today's keys are the truth (no record of
+        # the core's own, or keys written after it). `None` at every other time: the session is read then.
+        self._balancing_read_back: BalancingMemory | None = None
+        # Whether the last start (`_start_locked`) was held back by load balancing for want of room below the floor:
+        # what that start's result says (`balancing_held`), read where the start returns. Not ownership: an
+        # observation of the start itself, so it reads the same whether or not the core keeps load balancing's memory.
+        self._start_held_back = False
         # When a Start this controller accepted was sent to the charge control while the charger
         # has not reported it on yet, else `None`.
         self._start_sent_at: datetime | None = None
@@ -955,10 +964,10 @@ class ChargingController:
             coverage=OwnershipCoverage(store=Store(hass, COVERAGE_STORE_VERSION, coverage_key(entry_id))),
             name=entry_id,
             on_failure=self._failure_repairs.failed,
-            # The safety hold and C7's stops are the core's when it drives (the core end state plan, step 3): read
-            # from its session (`_safety`, `_c7`). With the option off, today's fields stay the truth, lined up as
-            # ever.
-            owned_fields=SAFETY_AND_C7 if self._core_drives else (),
+            # The safety hold and C7's stops (the core end state plan, step 3), and load balancing's memory (step 4),
+            # are the core's when it drives: read from its session (`_safety`, `_c7`, `_balancing`). With the option
+            # off, today's fields stay the truth, lined up as ever.
+            owned_fields=(*SAFETY_AND_C7, *BALANCING) if self._core_drives else (),
         )
         self._shadow.today_fields = lambda: f"origin={self._owner_origin} plan_charge={self._is_plan_charge}"
 
@@ -987,11 +996,26 @@ class ChargingController:
 
     @property
     def _balancing(self) -> BalancingMemory:
-        """Load balancing's memory: its pause was the last thing done, and the charge it holds back."""
+        """Load balancing's memory: its pause was the last thing done, and the charge it holds back. When the core
+        drives, the session's (step 4): only its decisions change it, and whose charge it was is today's origin and
+        plan flag of the core's owner (`_CORE_OWNER_ORIGIN`; nobody's is `(None, False)`)."""
+        if self._core_drives:
+            if self._balancing_read_back is not None:
+                return self._balancing_read_back
+            session = self._shadow.session
+            if not session.balancing_paused:
+                return BalancingMemory(paused=False, charge=None)
+            return BalancingMemory(
+                paused=True, charge=_CORE_OWNER_ORIGIN.get(session.paused_origin or "", (None, False))
+            )
         return BalancingMemory(paused=self._paused_by_balancing, charge=self._paused_charge)
 
     @_balancing.setter
     def _balancing(self, memory: BalancingMemory) -> None:
+        if self._core_drives:
+            # The core decided it already (`BalancingPause`'s result, a start and its result, a stop's result, a
+            # plug-in, an unplug, a new plan, `BalancingDropped`, a restart).
+            return
         self._paused_by_balancing = memory.paused
         self._paused_charge = memory.charge
 
@@ -1181,10 +1205,13 @@ class ChargingController:
             balancing = saved.get("balancing_pause")
             if isinstance(balancing, dict):
                 origin = balancing.get("origin")
-                self._balancing = BalancingMemory(
+                read_back = BalancingMemory(
                     paused=True,
                     charge=(origin if isinstance(origin, str) else None, balancing.get("plan_charge") is True),
                 )
+                self._balancing = read_back
+                if self._core_drives:
+                    self._balancing_read_back = read_back
             hold = saved.get("hold")
             if isinstance(hold, dict):
                 self._hold_state = replace(
@@ -1195,18 +1222,25 @@ class ChargingController:
             # (`reconcile_phases`).
             self._phases = PhaseSwitchState.from_store(saved.get(PHASE_SWITCHING_STORE_KEY))
         self._saved_memory = self._memory_signature()
+        if self._core_drives and self._balancing_read_back is None:
+            # No balancing pause in today's keys: none read back (not the session the controller began with).
+            self._balancing_read_back = BalancingMemory(paused=False, charge=None)
         stored, migrate = self._stored_session(saved)
         keys_newer = self._restore_order(saved) if stored is not None else False
         await self._shadow.coverage.async_load(await self._integration_version())
         # The core's session is what was read back: its own record when it drives and one was read, else today's;
         # today's keys where they are newer than the record (written after its last change).
-        self._shadow.restart(
-            core_events.Restart(
-                legacy_person_stop=self._legacy_person_stopped and self._automatic_gate is not None
-            ),
-            stored,
-            keys_newer=keys_newer,
-        )
+        try:
+            self._shadow.restart(
+                core_events.Restart(
+                    legacy_person_stop=self._legacy_person_stopped and self._automatic_gate is not None
+                ),
+                stored,
+                keys_newer=keys_newer,
+            )
+        finally:
+            # From here load balancing's memory is the session's alone.
+            self._balancing_read_back = None
         if stored is not None:
             self._session_saved = stored
         if migrate:
@@ -3271,8 +3305,9 @@ class ChargingController:
             self._target_stop = None
             window_open = self.plan_window_active_now
             if not window_open:
-                # A new plan with no window open now ends the wish a balancing pause interrupted.
-                self._balancing = replace(self._balancing, paused=False)
+                # A new plan with no window open now ends the wish a balancing pause interrupted, and whose
+                # charge it was with it.
+                self._balancing = BalancingMemory(paused=False, charge=None)
         finally:
             self._shadow.end(token, core_events.PlanInstalled(window_open=window_open))
         try:
@@ -3454,6 +3489,12 @@ class ChargingController:
         return self._stop_settling()
 
     @property
+    def start_held_by_balancing(self) -> bool:
+        """Whether the last start was held back by load balancing for want of room below the floor (it waits for
+        the regulator's resume), read where that start returned `False`: the start's own outcome, not the memory."""
+        return self._start_held_back
+
+    @property
     def paused_by_balancing(self) -> bool:
         """Whether the charger is stopped because load balancing paused it, and nothing has stopped
         or started it since (a person's Stop, a window's end, a target stop all clear it)."""
@@ -3489,8 +3530,14 @@ class ChargingController:
 
     def forget_balancing_pause(self) -> None:
         """The wish to charge is gone (Auto paused by a person, say): balancing's pause is not a charge
-        to resume any more."""
-        self._balancing = replace(self._balancing, paused=False)
+        to resume any more, and whose charge it was goes with it. Fed to the core (`BalancingDropped`)."""
+        if not self._balancing.paused:
+            return
+        token = self._shadow.begin()
+        try:
+            self._balancing = BalancingMemory(paused=False, charge=None)
+        finally:
+            self._shadow.end(token, core_events.BalancingDropped())
         self._save_memory_soon()
 
     async def async_battery_probe_start(self, amps: int, *, capped: bool = False) -> bool:
@@ -3602,6 +3649,7 @@ class ChargingController:
           phase switching was turned off: the next start of any kind leaves the one phase we set behind. A charge that
           runs when the setting is turned off is left as it is (no extra interruption).
         """
+        self._start_held_back = False
         if manual or cause != "solar" or not self.phase_switching_option:
             await self._restore_three_phases_locked()
         # Whatever balancing paused before is over: this start is a charge of its own.
@@ -3662,6 +3710,7 @@ class ChargingController:
             if too_low is not None:
                 # The charge that was asked for waits for headroom as what it is (the plan's, a person's, the
                 # sun's); the regulator's resume gives it back that origin.
+                self._start_held_back = True
                 self._remember_paused_charge(
                     "manual" if manual else cause or "other", cause == "plan_window" and not manual
                 )
@@ -3971,9 +4020,11 @@ class ChargingController:
                         if self._safety.held:
                             self._safety = replace(self._safety, stopped_at=dt_util.utcnow())
                         self._remember_paused_charge(*paused_charge)
-                        self._save_memory_soon()
                 finally:
                     self._shadow.end(token, pause, legacy=("stop",), outcome=outcome)
+                # Saved soon once decided: today's fields, or the core's session when it drives (its result was
+                # decided at `end`), and today's `balancing_pause` key derived from it.
+                self._save_memory_soon()
         except ChargingExecutionError as err:
             if err.code == EXECUTION_STOP_HELD_AT_FLOOR:
                 # Not paused: the charge runs on at the floor, which is what load balancing must count.
@@ -5298,7 +5349,7 @@ class ChargingController:
             self._arm_start_retry()
             executed = await self._start_locked(cause="plan_window")
             outcome = self._shadow_start_outcome(executed)
-            if not executed and not self._balancing.paused and not self._charger_ready():
+            if not executed and not self._start_held_back and not self._charger_ready():
                 # Not sent: the charger's integration has not loaded. Decided again once it has.
                 self._owe("the window's start")
             return False
@@ -6345,7 +6396,7 @@ class ChargingController:
         )
 
     def _shadow_start_outcome(self, executed: bool) -> CommandOutcome:
-        return CommandOutcome(executed, balancing_held=not executed and self._balancing.paused)
+        return CommandOutcome(executed, balancing_held=not executed and self._start_held_back)
 
     async def _recheck(
         self, what: str, today: Callable[[], bool], act: Callable[[], Awaitable[bool]]
@@ -6523,7 +6574,7 @@ class ChargingController:
                 pause = None
         manual, span = legacy_intent(pause, gate is not None and self._legacy_person_stopped)
         top_off = self.top_off_until is not None
-        paused = self._balancing.charge
+        paused = self._balancing.charge if self._balancing.paused else None
         paused_origin: str | None = None
         if paused is not None and paused[0] is not None:
             owner = legacy_owner(origin=paused[0], top_off=top_off, charging=False, start_pending=False, stop_recent=False)

@@ -99,7 +99,8 @@ async def _paused_site(hass: HomeAssistant, monkeypatch, entry_id: str, **setup)
     monkeypatch.setattr(ChargerAdapter, "vehicle_connected", lambda self: True)
     turn_off = async_mock_service(hass, "switch", "turn_off")
     hass.states.async_set(f"switch.{prefix}", "off")
-    charger_controller._paused_by_balancing = True
+    # Load balancing's own pause stopped the charge during the setup (its memory is set by that pause, in both modes).
+    assert charger_controller.paused_by_balancing
     # The pause was written and recorded when it happened.
     controller._dampers[charger.entry_id].record_write(0.0)
     _held_at_zero(controller, charger)
@@ -441,7 +442,7 @@ async def test_a_battery_that_does_not_yield_stops_the_car_within_the_window_and
     yield_clock.advance(21.0)
     await controller._async_apply_active_control()
     assert len(turn_off) == 1  # stopped, hard
-    assert cc._paused_by_balancing is True  # the failed probe's stop is a balancing pause again
+    assert cc._balancing.paused is True  # noqa: SLF001 - the failed probe's stop is a balancing pause again
     snapshot = controller.battery_probe_snapshot[charger.entry_id]
     assert (snapshot["last_outcome"], snapshot["last_reason"]) == ("failed", "battery_did_not_yield")
     assert snapshot["state"] == "backoff" and snapshot["backoff_remaining_s"] > 590.0
@@ -731,7 +732,8 @@ async def test_no_probe_without_every_condition(hass: HomeAssistant, monkeypatch
     if case == "request_below_minimum":
         cc._requested_current_a = 4
     if case == "not_paused_by_balancing":
-        cc._paused_by_balancing = False  # a person's Stop, a window's end: never undone
+        # Nothing held back any more (a person's Stop, a window's end, the regulator dropping it): never undone.
+        cc.forget_balancing_pause()
     if case == "no_vehicle":
         monkeypatch.setattr(ChargerAdapter, "vehicle_connected", lambda self: False)
     if case == "held_by_the_charger":
@@ -1119,7 +1121,7 @@ async def test_a_session_start_never_gives_the_car_more_than_the_site_allows(has
     set_site_current_a(hass, site, 14.5)
     assert await cc.async_start(16) is False
     assert turn_on == [] and calls == []
-    assert cc.requested_current_a == 16 and cc._paused_by_balancing is True
+    assert cc.requested_current_a == 16 and cc.paused_by_balancing is True
 
     # 8 A of headroom: started at min(16, 8).
     set_site_current_a(hass, site, 12.0)
@@ -1179,10 +1181,14 @@ async def test_a_paused_charge_is_not_restarted_once_it_is_no_longer_wanted(
         )
     )
     turn_on = async_mock_service(hass, "switch", "turn_on")
-    cc._paused_by_balancing = True
+    assert cc.paused_by_balancing
     if ending in ("window_end", "final_window_end"):
-        # A window's end ends only the plan's own wish: the paused charge is the window's.
-        cc._paused_charge = ("plan_window", True)
+        # A window's end ends only the plan's own wish: the paused charge is the window's. A window's start that
+        # load balancing holds back below the floor makes it so (no room: the site allows nothing now).
+        cc.set_start_cap(lambda: 0.0)
+        assert await cc.async_start(16, cause="plan_window") is False
+        cc.set_start_cap(None)
+        assert cc.paused_by_balancing and cc.paused_charge_origin == "plan_window"
     await _end_the_wish(hass, cc, charger, ending)
     hass.states.async_set(f"switch.{prefix}", "off")
     set_site_current_a(hass, site, 11.0 if what == "resume" else 20.0)
@@ -1194,7 +1200,7 @@ async def test_a_paused_charge_is_not_restarted_once_it_is_no_longer_wanted(
         yield_clock.advance(61.0)
         await controller._async_apply_active_control()
 
-    assert cc._paused_by_balancing is False
+    assert cc.paused_by_balancing is False
     assert calls == [] and turn_on == [], (what, ending)
     assert [e for e in controller.regulator_decision_log if e["outcome"] in ("resumed", "probe_started")] == []
 

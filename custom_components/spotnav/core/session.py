@@ -122,6 +122,9 @@ class PendingCommand:
     code: str | None = None
     #: For a stop: whether it clears the plan too.
     clear_schedule: bool = False
+    #: The plug-in it was asked for in ended before its result came back (an unplug, or a plug-in after a known
+    #: unplug, decided meanwhile): load balancing holds nothing back for it (today's `_session_generation`).
+    earlier_plug_in: bool = False
 
 
 @dataclass(frozen=True)
@@ -213,6 +216,7 @@ class ChargeSession:
                     "was_on": command.was_on,
                     "code": command.code,
                     "clear_schedule": command.clear_schedule,
+                    "earlier_plug_in": command.earlier_plug_in,
                 }
                 for command in self.pending
             ],
@@ -258,6 +262,8 @@ class ChargeSession:
                         was_on=_bool(_member(pending, "was_on"), "was_on"),
                         code=_optional_text(_member(pending, "code"), "code"),
                         clear_schedule=_bool(_member(pending, "clear_schedule"), "clear_schedule"),
+                        # Absent in a record written before it was kept (an older debug bundle): this plug-in.
+                        earlier_plug_in=_bool(pending.get("earlier_plug_in", False), "earlier_plug_in"),
                     )
                     for pending in _list(raw["pending"])
                 ),

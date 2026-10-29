@@ -376,7 +376,10 @@ async def test_load_balancing_pausing_the_charge_is_not_a_surprise(hass: HomeAss
     controller = controller_of(hass, entry.entry_id)
     await controller.async_install(_window_now())
     assert controller.plan_expects_charge
-    controller._paused_by_balancing = True
+    # The window's charge held back by load balancing below the floor (no room on the site now): its pause.
+    controller.set_start_cap(lambda: 0.0)
+    assert await controller.async_start(16, cause="plan_window") is False
+    assert controller.paused_by_balancing
     assert not controller.plan_expects_charge
 
 

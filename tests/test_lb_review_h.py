@@ -289,10 +289,10 @@ async def test_probe_an_end_while_the_pause_settles_is_not_undone_by_a_repeat_pa
     await halo.tick()
     assert len(halo.turn_off) == 1
     await _end_the_wish(hass, halo.cc, halo.charger, ending)
-    assert not halo.cc._paused_by_balancing
+    assert not halo.cc._balancing.paused  # noqa: SLF001
     halo.advance(2.0)
     await halo.tick()  # the charger still reads on and draws: the regulator pauses it again
-    marked = halo.cc._paused_by_balancing
+    marked = halo.cc._balancing.paused  # noqa: SLF001
     halo.switch("off")
     halo.reads(0.0)
     _site_a(hass, halo.site, 1.6, 0.85, 4.44)

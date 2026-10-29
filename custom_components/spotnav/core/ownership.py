@@ -24,8 +24,8 @@ The rules are today's, as the manual-pause specs and their three review rounds s
   inside it does. A charger that cannot say is started as before.
 * The hold of a charge that began by itself outside a window, its override, the claim of one inside a window
   as the plan's, the stop of a plan charge that strays, the re-arm's stop outside the windows, the window ends,
-  the top-off, the target and need-met stops, the sun's start, stop and take-over (I4), load balancing's pause
-  and resume: as `execution/controller.py` and `execution/auto_execution.py` decide them today, including the
+  the top-off, the target and need-met stops, the sun's start, stop and take-over (I4), load balancing's pause,
+  resume and the charge it drops: as `execution/controller.py` and `execution/auto_execution.py` decide them today, including the
   places the research found questionable (left as they are in step 1, see docs/architecture-state.md).
 * A window's end stops only the plan's own charge (`window_end_spared`): a person's Start, a Charge-now start
   and the sun's charge go on, and so does one load balancing holds back for them; the last window's end then
@@ -42,11 +42,12 @@ The rules are today's, as the manual-pause specs and their three review rounds s
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 from typing import ClassVar, Final
 
 from .events import (
+    BalancingDropped,
     BalancingPause,
     BalancingResume,
     CarEnded,
@@ -301,6 +302,11 @@ def _no_balancing(session: ChargeSession) -> ChargeSession:
     return session.with_changes(balancing_paused=False, paused_origin=None)
 
 
+def _plug_in_ended(session: ChargeSession) -> ChargeSession:
+    """The plug-in session ended: every command still awaiting its result was asked for in an earlier one."""
+    return session.with_changes(pending=tuple(replace(item, earlier_plug_in=True) for item in session.pending))
+
+
 def _reset_person_hold(session: ChargeSession) -> ChargeSession:
     return session.with_changes(hold_stop_times=(), hold_tried_at=None, hold_gave_up=False)
 
@@ -329,7 +335,7 @@ def _plug_in(session: ChargeSession, event: PlugIn, now: datetime) -> Decision:
     s = session.with_changes(plugged=True)
     if previous is False:
         # A new plug-in session: what load balancing held and a safety stop belong to the one that ended.
-        s = _no_balancing(s).with_changes(held_for_safety=False, safety_stopped_at=None)
+        s = _plug_in_ended(_no_balancing(s).with_changes(held_for_safety=False, safety_stopped_at=None))
     if previous is not None:
         # The stops under a person's Stop and what the car ended belong to the plug-in they were in. Not for the
         # first connection known after a restart: nothing says the plug-in changed.
@@ -346,7 +352,7 @@ def _plug_in(session: ChargeSession, event: PlugIn, now: datetime) -> Decision:
 
 
 def _unplug(session: ChargeSession, event: Unplug, now: datetime) -> Decision:
-    s = _no_balancing(session).with_changes(
+    s = _plug_in_ended(_no_balancing(session)).with_changes(
         plugged=False, held_for_safety=False, safety_stopped_at=None, held=False, overridden=False
     )
     if event.previous is not None:
@@ -717,6 +723,11 @@ def _balancing_resume(session: ChargeSession, event: BalancingResume, now: datet
     return _start(session, REASON_BALANCING_RESUME, origin or OWNER_NONE, paused_origin=origin)
 
 
+def _balancing_dropped(session: ChargeSession, event: BalancingDropped, now: datetime) -> Decision:
+    # The wish to charge is gone: the charge is not one to resume any more, and nobody's it was is forgotten.
+    return _no_balancing(session), ()
+
+
 def _target_reached(session: ChargeSession, event: TargetReached, now: datetime) -> Decision:
     if event.gated and not automatic_allowed(session, GATE_STOP):
         return session, ()
@@ -741,7 +752,9 @@ def _top_off_end(session: ChargeSession, event: TopOffEnd, now: datetime) -> Dec
 def _plan_installed(session: ChargeSession, event: PlanInstalled, now: datetime) -> Decision:
     s = session.with_changes(owner=OWNER_PLAN) if session.owner == OWNER_TOP_OFF else session
     if not event.window_open:
-        s = s.with_changes(balancing_paused=False)
+        # A new plan with no window open now ends the wish a balancing pause interrupted: nothing is held back, and
+        # whose charge it was goes with it (`paused_origin` is set only while `balancing_paused`).
+        s = _no_balancing(s)
     return s, ()
 
 
@@ -859,11 +872,19 @@ def _command_result(session: ChargeSession, event: CommandResult, now: datetime)
         s = session.with_changes(pending=tuple(item for item in session.pending if item is not pending))
     else:
         s = session
+    # The plug-in the command was asked for in ended before its result (an unplug, also one followed by a new
+    # plug-in, decided meanwhile): load balancing holds nothing back for it, as today's code checks the plug-in the
+    # command began in (`_session_generation`). The command's own record says so when the core asked for it before
+    # the plug-in ended; the result says so when the shell decided it before but fed it after (`earlier_plug_in`).
+    # With neither, a car known gone says the same.
+    car_gone = event.earlier_plug_in or (pending.earlier_plug_in if pending is not None else s.plugged is False)
     if event.command == "start":
         if event.reason == REASON_BALANCING_RESUME:
             if event.executed:
                 owner = pending.owner_after if pending is not None and pending.owner_after else s.owner
                 return _no_balancing(s).with_changes(owner=owner, held_for_safety=False), ()
+            if car_gone:
+                return _no_balancing(s), ()
             origin = pending.paused_origin if pending is not None else s.paused_origin
             return s.with_changes(balancing_paused=True, paused_origin=origin), ()
         owner_after = pending.owner_after if pending is not None else _START_OWNER.get(event.reason)
@@ -871,8 +892,9 @@ def _command_result(session: ChargeSession, event: CommandResult, now: datetime)
             if owner_after is not None:
                 s = s.with_changes(owner=owner_after)
         elif event.balancing_held:
-            # Held back for want of room: still that charge, waiting for the regulator.
-            s = s.with_changes(balancing_paused=True, paused_origin=owner_after)
+            if not car_gone:
+                # Held back for want of room: still that charge, waiting for the regulator.
+                s = s.with_changes(balancing_paused=True, paused_origin=owner_after)
         else:
             return s, ()
         if event.reason == REASON_PERSON and s.span_pause is None:
@@ -898,7 +920,7 @@ def _command_result(session: ChargeSession, event: CommandResult, now: datetime)
         # Nothing was sent and nothing says whether the charge still runs: its owner is kept until it can be seen.
         return _no_balancing(s), ()
     s = _no_balancing(s).with_changes(owner=OWNER_NONE)
-    if pending is not None and event.reason == REASON_BALANCING:
+    if pending is not None and event.reason == REASON_BALANCING and not car_gone:
         if session.balancing_paused:
             # A repeat pause of a charge balancing already holds back (`_regulated_stop`): still that charge.
             s = s.with_changes(balancing_paused=True, paused_origin=session.paused_origin)
@@ -948,6 +970,7 @@ _HANDLERS: Final[dict[type[Event], Callable[[ChargeSession, Event, datetime], De
     CarEnded: _car_ended,  # type: ignore[dict-item]
     BalancingPause: _balancing_pause,  # type: ignore[dict-item]
     BalancingResume: _balancing_resume,  # type: ignore[dict-item]
+    BalancingDropped: _balancing_dropped,  # type: ignore[dict-item]
     TargetReached: _target_reached,  # type: ignore[dict-item]
     NeedMet: _need_met,  # type: ignore[dict-item]
     TopOffEnd: _top_off_end,  # type: ignore[dict-item]

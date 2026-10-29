@@ -269,7 +269,10 @@ async def test_no_retry_while_load_balancing_or_the_sun_holds_the_charger(
     await _after(hass, freezer, 31)
     assert len(starts) == 1
     if owner == "balancing":
-        controller._paused_by_balancing = True  # noqa: SLF001 - the regulator's pause, as it records it
+        # Load balancing holds the window's charge back below the floor (no room on the site now): its pause.
+        controller.set_start_cap(lambda: 0.0)
+        assert await controller.async_start(16, cause="plan_window") is False
+        assert controller.paused_by_balancing
     else:
         controller.set_hold_guard(lambda: True)
     await _walk(hass, freezer, 1200, step=60)

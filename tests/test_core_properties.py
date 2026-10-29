@@ -167,6 +167,8 @@ class OwnershipMachine(RuleBasedStateMachine):
         assert session.manual is None or session.span_pause is None
         assert session.paused_origin is None or session.paused_origin in OWNERS
         assert len(session.hold_stop_times) <= 3 or session.hold_gave_up
+        # Whose charge load balancing holds back is known only while it holds one back.
+        assert session.paused_origin is None or session.balancing_paused
 
     @invariant()
     def the_record_reads_back(self) -> None:
@@ -369,6 +371,44 @@ class OwnershipMachine(RuleBasedStateMachine):
     @rule(data=st.data(), charging=st.booleans())
     def balancing_resume(self, data, charging) -> None:
         self.step(ev.BalancingResume(charging=charging), data)
+
+    @rule(
+        what=st.sampled_from(["pause", "resume", "held_start"]),
+        executed=st.booleans(),
+        held=st.booleans(),
+    )
+    def balancing_command_across_a_replug(self, what, executed, held) -> None:
+        """Unplugged and plugged in again while load balancing's command is on its way: whatever its result, nothing
+        is held back for the plug-in that ended (today's `_session_generation`)."""
+        event = {
+            "pause": ev.BalancingPause(),
+            "resume": ev.BalancingResume(),
+            "held_start": ev.SolarStart(strategy_ok=True),
+        }[what]
+        pre = self.session
+        session, commands = decide(pre, event, self.now)
+        self.check_step(pre, event, session, commands)
+        self.session = session
+        acted = [command for command in commands if isinstance(command, (Start, Stop))]
+        for step in (ev.Unplug(previous=True), ev.PlugIn(previous=False)):
+            self.step(step)
+        if not acted:
+            return
+        result = ev.CommandResult(
+            command=acted[0].kind,
+            reason=acted[0].reason,
+            executed=executed,
+            balancing_held=acted[0].kind == "start" and not executed and held,
+        )
+        pre = self.session
+        session, more = decide(pre, result, self.now)
+        self.check_step(pre, result, session, more)
+        assert not session.balancing_paused and session.paused_origin is None, (event, result, pre, session)
+        self.session = session
+
+    @rule()
+    def balancing_dropped(self) -> None:
+        self.step(ev.BalancingDropped())
 
     @rule(data=st.data(), gated=st.booleans())
     def target_reached(self, data, gated) -> None:

@@ -248,6 +248,7 @@ async def test_the_claim_of_a_window_charge_comes_back_to_the_core(
         "balancing_held": False,
         "unobserved": False,
         "settled": False,
+        "earlier_plug_in": False,
     }
     assert world.controller.charge_origin == "plan_window"
     assert world.controller.ownership_shadow.session.owner == "plan"
