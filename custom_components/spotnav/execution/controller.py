@@ -5245,11 +5245,14 @@ class ChargingController:
                 verdict = None if facts is None else self._shadow.verdict(core_events.Rearm(past_last=False, **facts))
                 if not spared if verdict is None else self._shadow.choose("rearm", not spared, ("stop", "rearm") in verdict):
                     was_charging = self.charging
+                    generation = self._session_generation
                     legacy.append("stop")
                     outcome = CommandOutcome(False)
                     stopped = await self._automatic_stop_locked("the stop outside the plan's windows")
                     outcome = self._shadow_stop_outcome(stopped)
-                    if stopped and was_charging:
+                    if stopped and was_charging and self._session_generation == generation:
+                        # Not after an unplug while the stop was on its way: the hold belongs to the plug-in it was
+                        # made in.
                         self._hold.held_now()
                         await self._async_save_quietly()
             finally:

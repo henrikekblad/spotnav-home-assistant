@@ -31,6 +31,7 @@ from custom_components.spotnav.core.ownership import (
     Notify,
     Start,
     Stop,
+    spotnav_owned,
     window_end_spared,
 )
 from custom_components.spotnav.core.session import ChargeSession, OWNERS, SCOPE_PLUG_IN
@@ -148,6 +149,17 @@ class OwnershipMachine(RuleBasedStateMachine):
                     assert post.owner == "top_off"
             else:
                 assert "stop" not in kinds
+        # The hold belongs to one plug-in session: it ends at the unplug, at a new plug-in after a known unplug, and
+        # where the next window starts (not one started at plug-in, or a start's retry, in the same plug-in).
+        if (
+            event.kind == "unplug"
+            or (event.kind == "plug_in" and getattr(event, "previous", None) is False)
+            or (isinstance(event, ev.WindowStart) and event.trigger not in (ev.TRIGGER_PLUG_IN, ev.TRIGGER_RETRY))
+        ):
+            assert not post.held and not post.overridden, (event, post)
+        # The hold never stops a charge that is SpotNav's (its owner's, or a start of SpotNav's awaiting its result).
+        if isinstance(event, ev.ChargerReportedOn) and Stop("hold") in commands and event.owned is None:
+            assert not spotnav_owned(pre), (event, pre)
         # C7: under a person's Stop, a charge the charger begins is stopped at once, or SpotNav says it gives up.
         if (
             isinstance(event, ev.ChargerReportedOn)
@@ -169,6 +181,8 @@ class OwnershipMachine(RuleBasedStateMachine):
         assert len(session.hold_stop_times) <= 3 or session.hold_gave_up
         # Whose charge load balancing holds back is known only while it holds one back.
         assert session.paused_origin is None or session.balancing_paused
+        # A person's override is of a hold in this plug-in session: never one without the hold.
+        assert not session.overridden or session.held
 
     @invariant()
     def the_record_reads_back(self) -> None:

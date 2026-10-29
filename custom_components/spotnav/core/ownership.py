@@ -263,6 +263,15 @@ def car_ended_holds_window(
     return open_window_start <= ended_at
 
 
+def spotnav_owned(session: ChargeSession) -> bool:
+    """Whether the charge is SpotNav's, as the hold of a charge that began by itself outside a window reads it
+    (`window_hold.WindowHold.owned`): its owner is one of SpotNav's, or a start of SpotNav's for such an owner awaits
+    its result (a report of the charge may come before the start's result does)."""
+    if session.owner in SPOTNAV_OWNERS:
+        return True
+    return any(item.command == "start" and item.owner_after in SPOTNAV_OWNERS for item in session.pending)
+
+
 def self_started(session: ChargeSession, *, charging: bool, start_pending: bool, stop_recent: bool) -> bool:
     """A charge the charger began by itself: charging, nobody here started it, no start or stop of ours on its
     way, and not a person's override of the hold."""
@@ -334,8 +343,12 @@ def _plug_in(session: ChargeSession, event: PlugIn, now: datetime) -> Decision:
     previous = event.previous
     s = session.with_changes(plugged=True)
     if previous is False:
-        # A new plug-in session: what load balancing held and a safety stop belong to the one that ended.
-        s = _plug_in_ended(_no_balancing(s).with_changes(held_for_safety=False, safety_stopped_at=None))
+        # A new plug-in session: what load balancing held, a safety stop and the hold belong to the one that ended.
+        s = _plug_in_ended(
+            _no_balancing(s).with_changes(
+                held_for_safety=False, safety_stopped_at=None, held=False, overridden=False
+            )
+        )
     if previous is not None:
         # The stops under a person's Stop and what the car ended belong to the plug-in they were in. Not for the
         # first connection known after a restart: nothing says the plug-in changed.
@@ -623,7 +636,7 @@ def _reported_on(session: ChargeSession, event: ChargerReportedOn, now: datetime
         s = s.with_changes(held=False, overridden=False)
     blocked = hold_blocked(s, solar_holds=event.solar_holds, plan_auto_owned=event.plan_auto_owned)
     gap = event.window_ahead_outside and not blocked
-    owned = event.owned if event.owned is not None else s.owner in SPOTNAV_OWNERS
+    owned = event.owned if event.owned is not None else spotnav_owned(s)
     commands: list[Command] = []
     hold = False
     if event.was_on is False and gap and not owned:
@@ -795,7 +808,7 @@ def _recheck(session: ChargeSession, event: Recheck, now: datetime) -> Decision:
     blocked = hold_blocked(s, solar_holds=event.solar_holds, plan_auto_owned=event.plan_auto_owned)
     if what == RECHECK_HOLD:
         # A window opened, something else took the charger, SpotNav started the charge, or it is off by now.
-        owned = event.owned if event.owned is not None else s.owner in SPOTNAV_OWNERS
+        owned = event.owned if event.owned is not None else spotnav_owned(s)
         if (
             automatic_allowed(s, GATE_STOP)
             and event.window_ahead_outside
@@ -916,9 +929,14 @@ def _command_result(session: ChargeSession, event: CommandResult, now: datetime)
     if not event.executed:
         # A stop that never went out is not done: the owner is kept (I4, bug 3).
         return s, ()
+    # A charge that ran was stopped outside the windows by the re-arm: the rest of the plug-in session is held, also
+    # when nothing was sent because the control said nothing (today's `held_now` after any stop that returned), but
+    # never for a plug-in that ended before the result came back (the hold belongs to the one it was made in).
+    rearm_held = pending is not None and event.reason == REASON_REARM and pending.was_on and not car_gone
     if event.unobserved and not (pending is not None and pending.clear_schedule):
         # Nothing was sent and nothing says whether the charge still runs: its owner is kept until it can be seen.
-        return _no_balancing(s), ()
+        s = _no_balancing(s)
+        return (s.with_changes(held=True, overridden=False) if rearm_held else s), ()
     s = _no_balancing(s).with_changes(owner=OWNER_NONE)
     if pending is not None and event.reason == REASON_BALANCING and not car_gone:
         if session.balancing_paused:
@@ -940,8 +958,7 @@ def _command_result(session: ChargeSession, event: CommandResult, now: datetime)
                 held_for_safety=safety,
                 safety_stopped_at=now if safety else s.safety_stopped_at,
             )
-    elif pending is not None and event.reason == REASON_REARM and pending.was_on:
-        # A charge that ran was stopped outside the windows: the rest of the plug-in session is held.
+    elif rearm_held:
         s = s.with_changes(held=True, overridden=False)
     return s, ()
 
