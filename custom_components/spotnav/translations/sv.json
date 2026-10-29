@@ -76,7 +76,7 @@
       },
       "site": {
         "title": "Site",
-        "description": "Siten håller laddarnas sammanlagda ström under huvudsäkringen. Aktiv styrning kan slås på och av senare; den är bästa möjliga försök, inte ett skyddsorgan. Huvudsäkringens storlek måste anges uttryckligen -- den gissas aldrig utifrån uppmätt last. {charger_hint}",
+        "description": "Siten håller laddarnas sammanlagda ström under huvudsäkringen. Lastbalansering kan slås på och av senare; den är bästa möjliga försök, inte ett skyddsorgan. Huvudsäkringens storlek måste anges uttryckligen -- den gissas aldrig utifrån uppmätt last. {charger_hint}",
         "data": {
           "name": "Sitenamn",
           "main_fuse_a": "Huvudsäkring (A)",
@@ -597,8 +597,8 @@
           "site_activity": {
             "name": "Aktivitet",
             "state": {
-              "measuring": "Mäter, aktiv lastbalansering av",
-              "balancing": "Mäter, aktiv lastbalansering på",
+              "measuring": "Mäter, lastbalansering av",
+              "balancing": "Mäter, lastbalansering på",
               "not_measuring": "Mäter inte"
             }
           }

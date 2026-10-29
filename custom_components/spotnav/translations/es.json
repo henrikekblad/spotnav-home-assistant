@@ -76,7 +76,7 @@
       },
       "site": {
         "title": "Instalación",
-        "description": "La instalación mantiene la corriente combinada de sus cargadores por debajo del fusible general. El control activo se puede activar y desactivar más tarde; funciona lo mejor posible, pero no es un dispositivo de protección. El calibre del fusible general debe introducirse explícitamente -- nunca se deduce de la carga medida. {charger_hint}",
+        "description": "La instalación mantiene la corriente combinada de sus cargadores por debajo del fusible general. El equilibrado de carga se puede activar y desactivar más tarde; funciona lo mejor posible, pero no es un dispositivo de protección. El calibre del fusible general debe introducirse explícitamente -- nunca se deduce de la carga medida. {charger_hint}",
         "data": {
           "name": "Nombre de la instalación",
           "main_fuse_a": "Calibre del fusible general (A)",
@@ -597,8 +597,8 @@
           "site_activity": {
             "name": "Actividad",
             "state": {
-              "measuring": "Midiendo, equilibrado de carga activo desactivado",
-              "balancing": "Midiendo, equilibrado de carga activo activado",
+              "measuring": "Midiendo, equilibrado de carga desactivado",
+              "balancing": "Midiendo, equilibrado de carga activado",
               "not_measuring": "Sin medir"
             }
           }

@@ -324,7 +324,7 @@ class CapturedSite:
     #: Every config entry `update_site_settings` would accept for `solar_forecast`, as
     #: `(entry_id, title)`, plus any already-selected id that no longer qualifies.
     solar_forecast_choices: tuple[tuple[str, str], ...]
-    #: Active load balancing's availability from `SiteCapacityController.capability_snapshot`;
+    #: Load balancing's availability from `SiteCapacityController.capability_snapshot`;
     #: `active_control_enabled` above is the opt-in, this is whether it could do anything.
     active_control_available: bool
     #: The stable reason `active_control_available` is `False`, from the snapshot's `blocking_reasons`.
@@ -878,7 +878,7 @@ def solar_forecast_choices(
 
 
 def _active_control_reason(controller: SiteCapacityController) -> str | None:
-    """The stable reason active load balancing is unavailable, or `None` when it is available.
+    """The stable reason load balancing is unavailable, or `None` when it is available.
 
     Reuses `SiteCapacityController.capability_snapshot` and adds no opinion of its own: when neither
     blocking reason applies but it is still unavailable, the missing condition is "no
@@ -1748,7 +1748,7 @@ def serialize_dashboard(
 
     `can_act` is the caller's administrative authority (the site and the charger priority);
     `can_control` whether it may use `spotnav/manual_action` (`control.can_act`), defaulting to
-    `can_act`; `active_control_writable` says whether this carrier may also switch active load
+    `can_act`; `active_control_writable` says whether this carrier may also switch load
     balancing (the webhook never may).
     """
     return {
@@ -2034,7 +2034,7 @@ def serialize_site(
 ) -> dict[str, Any] | None:
     """The `site`: `None` for a charger with no resolved site; else the site's name (never an entry
     id), its charger count, solar priority and forecast choices as `update_site_settings` reads and
-    writes them, active load balancing's read-only availability/enabled/reason, and whether this
+    writes them, load balancing's read-only availability/enabled/reason, and whether this
     connection may call that command.
 
     `active_control.writable` defaults to `can_act` and is `False` over the webhook, whose secret may
@@ -2414,7 +2414,7 @@ async def async_webhook_dashboard(
 ) -> dict[str, Any] | DashboardFailure:
     """The webhook twin of `spotnav/get_dashboard` for one charger: same capture and serializer, same
     refusal for another version. The holder may act on this charger (`can_act` true) and write solar
-    settings, but not switch active load balancing (`site.active_control.writable` false). It adds the
+    settings, but not switch load balancing (`site.active_control.writable` false). It adds the
     `phase_switching` block where that setting is offered (`serialize_phase_switching`).
     """
     if isinstance(api_version, bool) or api_version != DASHBOARD_API_VERSION:

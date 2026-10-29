@@ -305,7 +305,7 @@ async def test_site_settings_over_the_webhook_write_solar_only(
     )
     assert status == 400 and invalid["error"] == "spotnav_invalid_value"
 
-    # Active load balancing is not the webhook's to touch, in `changes` or `expected`, and nothing
+    # Load balancing is not the webhook's to touch, in `changes` or `expected`, and nothing
     # is written.
     active_before = site.data.get(CONF_ACTIVE_CONTROL_ENABLED)
     forbidden = []

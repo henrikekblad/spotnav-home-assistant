@@ -76,7 +76,7 @@
       },
       "site": {
         "title": "Standort",
-        "description": "Der Standort hält den gemeinsamen Strom seiner Ladestationen unter der Hauptsicherung. Die aktive Regelung lässt sich später ein- und ausschalten; sie arbeitet nach bestem Bemühen und ist keine Schutzeinrichtung. Die Hauptsicherung muss ausdrücklich eingegeben werden -- sie wird nie aus der gemessenen Last geschätzt. {charger_hint}",
+        "description": "Der Standort hält den gemeinsamen Strom seiner Ladestationen unter der Hauptsicherung. Das Lastmanagement lässt sich später ein- und ausschalten; es arbeitet nach bestem Bemühen und ist keine Schutzeinrichtung. Die Hauptsicherung muss ausdrücklich eingegeben werden -- sie wird nie aus der gemessenen Last geschätzt. {charger_hint}",
         "data": {
           "name": "Name des Standorts",
           "main_fuse_a": "Hauptsicherung (A)",
@@ -597,8 +597,8 @@
           "site_activity": {
             "name": "Aktivität",
             "state": {
-              "measuring": "Misst, aktives Lastmanagement aus",
-              "balancing": "Misst, aktives Lastmanagement an",
+              "measuring": "Misst, Lastmanagement aus",
+              "balancing": "Misst, Lastmanagement an",
               "not_measuring": "Misst nicht"
             }
           }

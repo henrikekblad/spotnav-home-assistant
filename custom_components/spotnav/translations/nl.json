@@ -76,7 +76,7 @@
       },
       "site": {
         "title": "Locatie",
-        "description": "De locatie houdt de gezamenlijke stroom van haar laadpalen onder de hoofdzekering. Actieve regeling kan later aan- en uitgezet worden; het is naar beste vermogen, geen beveiligingsapparaat. De waarde van de hoofdzekering moet expliciet worden ingevuld -- die wordt nooit geraden uit de gemeten belasting. {charger_hint}",
+        "description": "De locatie houdt de gezamenlijke stroom van haar laadpalen onder de hoofdzekering. Load balancing kan later aan- en uitgezet worden; het is naar beste vermogen, geen beveiligingsapparaat. De waarde van de hoofdzekering moet expliciet worden ingevuld -- die wordt nooit geraden uit de gemeten belasting. {charger_hint}",
         "data": {
           "name": "Naam van de locatie",
           "main_fuse_a": "Hoofdzekering (A)",
@@ -597,8 +597,8 @@
           "site_activity": {
             "name": "Activiteit",
             "state": {
-              "measuring": "Meet, actieve load balancing uit",
-              "balancing": "Meet, actieve load balancing aan",
+              "measuring": "Meet, load balancing uit",
+              "balancing": "Meet, load balancing aan",
               "not_measuring": "Meet niet"
             }
           }

@@ -76,7 +76,7 @@
       },
       "site": {
         "title": "Anlegg",
-        "description": "Anlegget holder den samlede strømmen til laderne sine under hovedsikringen. Aktiv lastbalansering kan slås av og på senere; den er best effort, ingen verneinnretning. Hovedsikringens størrelse må angis eksplisitt -- den gjettes aldri ut fra målt last. {charger_hint}",
+        "description": "Anlegget holder den samlede strømmen til laderne sine under hovedsikringen. Lastbalansering kan slås av og på senere; den er best effort, ingen verneinnretning. Hovedsikringens størrelse må angis eksplisitt -- den gjettes aldri ut fra målt last. {charger_hint}",
         "data": {
           "name": "Anleggets navn",
           "main_fuse_a": "Hovedsikringens størrelse (A)",
@@ -597,8 +597,8 @@
           "site_activity": {
             "name": "Aktivitet",
             "state": {
-              "measuring": "Måler, aktiv lastbalansering av",
-              "balancing": "Måler, aktiv lastbalansering på",
+              "measuring": "Måler, lastbalansering av",
+              "balancing": "Måler, lastbalansering på",
               "not_measuring": "Måler ikke"
             }
           }
