@@ -4,7 +4,8 @@ Pure: no Home Assistant imports. The controller still keeps each group in its ow
 what its accessors (`_balancing`, `_safety`, `_c7`, `_car_ended`, `_hold_state`) give and take, so every read and
 write of a group goes through one place. A group the core owns is read from the charge session instead of the
 fields, in that accessor only, while the core drives: the safety hold and C7's stops (the core end state plan, step 3),
-load balancing's memory (step 4) and the hold's memory (step 5) so far.
+load balancing's memory (step 4), the hold's memory (step 5), and the car-ended record and the connection (step 6) so
+far.
 """
 
 from __future__ import annotations
