@@ -964,10 +964,16 @@ export const VISUAL_STYLES = `
     text-decoration: underline;
     cursor: pointer;
   }
+  /*
+   * height: 100% on the host and the shell is auto in an ordinary column, and the box's own height when
+   * the container gives the card one (a layout card on a wall screen, a sections view with a number of
+   * rows). The view compares that box with the card's natural height and fits the card to it.
+   */
   :host {
     display: block;
     box-sizing: border-box;
     max-width: 100%;
+    height: 100%;
   }
   *, *::before, *::after {
     box-sizing: border-box;
@@ -986,6 +992,26 @@ export const VISUAL_STYLES = `
   .${VISUAL_CLASSES.shell} {
     display: block;
     min-width: 0;
+    height: 100%;
+  }
+  /*
+   * The card in a box of fixed height (card-fill.ts): it takes the box's height, the chart is drawn at the
+   * height left over, the status sentence keeps the lines that fit (an ellipsis ends the last, the whole
+   * sentence is its title), and any height still left goes above the action bar, so the bar sits at the
+   * box's bottom edge.
+   */
+  .${VISUAL_CLASSES.card}[data-fill] {
+    height: 100%;
+  }
+  .${VISUAL_CLASSES.card}[data-fill] .${VISUAL_CLASSES.status}[data-lines] {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: var(--spotnav-status-lines, 1);
+    line-clamp: var(--spotnav-status-lines, 1);
+    overflow: hidden;
+  }
+  .${VISUAL_CLASSES.card}[data-fill] .${VISUAL_CLASSES.actionBarWrap} {
+    margin-top: calc(8px + var(--spotnav-fill-spare, 0px));
   }
   .${VISUAL_CLASSES.header} {
     display: flex;
