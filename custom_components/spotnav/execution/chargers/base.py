@@ -404,6 +404,10 @@ PHASES_TARGET_UNAVAILABLE: Final = ASSIGN_TARGET_UNAVAILABLE
 PHASES_INVALID: Final = "invalid_phases"
 #: This charger has no way to change its phases.
 PHASES_UNSUPPORTED: Final = ASSIGN_UNSUPPORTED
+#: The service call raised: nothing may be taken as sent.
+PHASES_WRITE_FAILED: Final = ASSIGN_WRITE_FAILED
+#: A switch that is made only before a charge (`PhaseSwitch.start_only`) was asked for while the charger charges.
+PHASES_WHILE_CHARGING: Final = "charging"
 
 
 @dataclass(frozen=True, slots=True)
@@ -429,9 +433,23 @@ class PhaseSwitch(ABC):
     the entity registry, never by a default entity id.
     """
 
-    def __init__(self, hass: HomeAssistant, entity_id: str) -> None:
+    #: Set only before a charge starts, never while the charger charges (Easee: a change takes effect at a pause, and
+    #: the charger may keep the session on its phases). A charge on such a charger follows the rules without switching.
+    start_only: bool = False
+
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        entity_id: str,
+        *,
+        switching_entity_ids: tuple[str, ...] = (),
+        switching_values: frozenset[str] = frozenset(),
+    ) -> None:
         self.hass = hass
         self.entity_id = entity_id
+        #: Status sensors that say, with one of `switching_values` (lower case), that the charger is switching now.
+        self.switching_entity_ids = switching_entity_ids
+        self.switching_values = switching_values
 
     @abstractmethod
     async def async_set_phases(self, phases: Literal[1, 3]) -> PhaseSwitchResult:
@@ -442,6 +460,13 @@ class PhaseSwitch(ABC):
     @abstractmethod
     def phases_now(self) -> int | None:
         """The phases the charger reports it is set to (1 or 3), or `None` when unknown or unavailable."""
+
+    def switching(self) -> bool:
+        """Whether the charger reports that it is switching its phases right now (it interrupts the charge for it):
+        counted as a settle, like the time after a switch of ours (`ChargingController.phase_switch_settling`)."""
+        return any(
+            _lower(self.hass.states.get(entity_id)) in self.switching_values for entity_id in self.switching_entity_ids
+        )
 
 
 @dataclass(frozen=True, slots=True)

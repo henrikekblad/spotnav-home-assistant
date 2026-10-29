@@ -24,6 +24,7 @@ the service call returned.
 
 from __future__ import annotations
 
+import logging
 from collections import deque
 from collections.abc import Awaitable, Callable
 from dataclasses import replace
@@ -62,6 +63,7 @@ from .base import (
     PhaseSwitch,
     PhaseSwitchResult,
     PHASES_UNSUPPORTED,
+    PHASES_WRITE_FAILED,
     start_call_tap,
     StartStopPath,
     STOP_HELD_AT_FLOOR,
@@ -71,6 +73,7 @@ from .generic import NoCurrent
 from .ocpp import OcppAssignedCurrent
 from .registry import build_current, build_phase_switch, build_start_stop, ChargerContext
 
+_LOGGER = logging.getLogger(__name__)
 
 #: After a Start, how long a charger that has not yet reported itself enabled is still treated as
 #: started for the one rule that depends on it (a current is not written while paused). Its report
@@ -228,7 +231,11 @@ class ChargerAdapter:
             result = await switch.async_set_phases(phases)
             return True if result.sent else (result.reason or False)
 
-        await self._logged(COMMAND_PHASES, run)
+        try:
+            await self._logged(COMMAND_PHASES, run)
+        except Exception as err:  # noqa: BLE001 - any failed call is a switch not sent, never a crash of the caller
+            _LOGGER.warning("The charger's phase switch to %s phase(s) failed: %s", phases, err)
+            return PhaseSwitchResult(False, PHASES_WRITE_FAILED)
         return result
 
     async def _logged(self, kind: str, run: Callable[[], Awaitable[Any]], *, only_when_sent: bool = False) -> Any:

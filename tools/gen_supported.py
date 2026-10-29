@@ -53,6 +53,10 @@ TESTED_ON: dict[tuple[str, str], str] = {
     ("forecast", "solcast_solar"): "Solcast",
 }
 
+#: Chargers whose phase switching for solar the owner has confirmed on real hardware, by platform. Every other
+#: platform that can switch is marked untested.
+PHASE_SWITCHING_TESTED_ON: dict[str, str] = {}
+
 #: Hardware that users have set up successfully (SpotNav found and configured it) but where nobody
 #: has confirmed a charge or a balanced current yet. Same keys as `TESTED_ON`.
 SET_UP_ON: dict[tuple[str, str], str] = {
@@ -278,6 +282,8 @@ def charger_notes(profile: cp.PlatformProfile) -> str:
         lines.append(f"Turn off its own {labels}: two controllers on one charger fight each other.")
     if profile.phase_switching:
         lines.append(f"Phase switching for solar through {profile.phase_switching}.")
+        tested = PHASE_SWITCHING_TESTED_ON.get(profile.platform)
+        lines.append(f"Phase switching tested on {tested}." if tested else "Phase switching: untested on real hardware.")
     return " ".join(lines)
 
 
