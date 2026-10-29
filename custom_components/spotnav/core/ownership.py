@@ -867,11 +867,16 @@ def _command_result(session: ChargeSession, event: CommandResult, now: datetime)
         s = session.with_changes(pending=tuple(item for item in session.pending if item is not pending))
     else:
         s = session
+    # The car left while the command was on its way (an unplug decided before its result): load balancing holds
+    # nothing back for a plug-in that is over (today's code checks the plug-in it began in, `_session_generation`).
+    car_gone = s.plugged is False
     if event.command == "start":
         if event.reason == REASON_BALANCING_RESUME:
             if event.executed:
                 owner = pending.owner_after if pending is not None and pending.owner_after else s.owner
                 return _no_balancing(s).with_changes(owner=owner, held_for_safety=False), ()
+            if car_gone:
+                return _no_balancing(s), ()
             origin = pending.paused_origin if pending is not None else s.paused_origin
             return s.with_changes(balancing_paused=True, paused_origin=origin), ()
         owner_after = pending.owner_after if pending is not None else _START_OWNER.get(event.reason)
@@ -879,8 +884,9 @@ def _command_result(session: ChargeSession, event: CommandResult, now: datetime)
             if owner_after is not None:
                 s = s.with_changes(owner=owner_after)
         elif event.balancing_held:
-            # Held back for want of room: still that charge, waiting for the regulator.
-            s = s.with_changes(balancing_paused=True, paused_origin=owner_after)
+            if not car_gone:
+                # Held back for want of room: still that charge, waiting for the regulator.
+                s = s.with_changes(balancing_paused=True, paused_origin=owner_after)
         else:
             return s, ()
         if event.reason == REASON_PERSON and s.span_pause is None:
@@ -906,7 +912,7 @@ def _command_result(session: ChargeSession, event: CommandResult, now: datetime)
         # Nothing was sent and nothing says whether the charge still runs: its owner is kept until it can be seen.
         return _no_balancing(s), ()
     s = _no_balancing(s).with_changes(owner=OWNER_NONE)
-    if pending is not None and event.reason == REASON_BALANCING:
+    if pending is not None and event.reason == REASON_BALANCING and not car_gone:
         if session.balancing_paused:
             # A repeat pause of a charge balancing already holds back (`_regulated_stop`): still that charge.
             s = s.with_changes(balancing_paused=True, paused_origin=session.paused_origin)

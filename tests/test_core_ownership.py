@@ -834,6 +834,24 @@ HELD = ChargeSession(plugged=True, balancing_paused=True, paused_origin="person"
         ),
         # Set again: a resume (a battery probe) that did not take.
         (HELD, (ev.BalancingResume(), failed("start", "balancing_resume")), True, "person"),
+        # Not set for a plug-in that ended while the command was on its way (an unplug decided before its result).
+        (
+            ChargeSession(owner="plan", plugged=True),
+            (ev.BalancingPause(), ev.Unplug(previous=True), ok("stop", "balancing")),
+            False,
+            None,
+        ),
+        (HELD, (ev.BalancingResume(), ev.Unplug(previous=True), failed("start", "balancing_resume")), False, None),
+        (
+            ChargeSession(plugged=True),
+            (
+                ev.SolarStart(),
+                ev.Unplug(previous=True),
+                ev.CommandResult(command="start", reason="solar", executed=False, balancing_held=True),
+            ),
+            False,
+            None,
+        ),
         # Cleared: every other start, as soon as it is asked for (also one that then does not go out).
         (HELD, (ev.PersonStart(),), False, None),
         (HELD, (ev.BalancingResume(),), False, None),
