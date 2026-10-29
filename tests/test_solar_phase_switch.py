@@ -112,6 +112,20 @@ def test_without_switching_a_surplus_for_one_phase_does_not_start_a_three_phase_
     assert verdicts[-1].reason == "off_no_surplus"
 
 
+@pytest.mark.parametrize(("surplus_w", "starts"), [(6.5 * VOLTAGE_V, False), (7.2 * VOLTAGE_V, True)])
+def test_a_one_phase_start_needs_the_chargers_start_minimum_on_that_phase(surplus_w, starts):
+    # Easee starts at 7 A or more (`min_start_current_a`), which the solar config's `start_a` carries.
+    solar = SolarController(SolarConfig(verify_s=0.0, start_a=7.0))
+    verdicts = _run(solar, 0.0, 600.0, surplus_w, drawing_a=0.0)
+    started = [v for v in verdicts if v.action == "start"]
+    if not starts:
+        assert started == []
+        return
+    assert len(started) == 1
+    assert started[0].start_phases == 1
+    assert started[0].requested_a >= 7.0
+
+
 def test_a_surplus_short_of_one_phase_does_not_start():
     solar = SolarController(_config())
     verdicts = _run(solar, 0.0, 600.0, ONE_MIN_W - 50.0, drawing_a=0.0)

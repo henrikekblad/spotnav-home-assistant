@@ -288,6 +288,8 @@ _PROFILES: Final[tuple[PlatformProfile, ...]] = (
         "sensor for confirmed writes, and the disabled \"Current\" sensor: its terminal attributes are the "
         "charger's measured current per phase, which the site reads for the regulator and solar (T3, T4, T5 "
         "are L1, L2, L3 on a TN network; T2, T3, T4 on an IT network).",
+        phase_switching="Easee's set charger phase mode service, only before a solar start while the charger does "
+        "not charge, and only while it is the one Easee charger on its circuit",
     ),
     PlatformProfile(
         platform="wallbox",
@@ -347,6 +349,7 @@ _PROFILES: Final[tuple[PlatformProfile, ...]] = (
         note="The raw `car` sensor is disabled by default; the enabled `car_value` sensor reports the "
         "state in Home Assistant's language, so the German word is accepted as well. The charger "
         "returns the force state to neutral on unplug.",
+        phase_switching="the Phase Switch-Mode select (one or three phases, never Auto)",
     ),
     PlatformProfile(
         platform="goecharger_mqtt",
@@ -362,6 +365,7 @@ _PROFILES: Final[tuple[PlatformProfile, ...]] = (
             _rule("select", ("lmo",), ("3", "default", "default mode"), "charging mode"),
             _rule("switch", ("fup",), ("off",), "PV surplus"),
         ),
+        phase_switching="the Phase switch mode select (one or three phases, never Auto)",
     ),
     PlatformProfile(
         platform="goecharger",
@@ -383,6 +387,7 @@ _PROFILES: Final[tuple[PlatformProfile, ...]] = (
         charging_values=("charging",),
         vehicle_idle_values=("wait car",),
         own_modes=(_rule("select", ("lmo",), ("3", "default", "default mode"), "charging mode"),),
+        phase_switching="the Phase Switch select (1 Phase or 3 Phases, never Auto)",
     ),
     PlatformProfile(
         platform="peblar",
@@ -415,6 +420,7 @@ _PROFILES: Final[tuple[PlatformProfile, ...]] = (
         status_keys=("status",),
         charging_values=("charging",),
         current_sensor_keys=("l1_current", "l2_current", "l3_current"),
+        phase_switching="the phase count number (1 or 3; not with a single-phase connector)",
     ),
     PlatformProfile(
         platform="v2c",
@@ -473,6 +479,7 @@ _PROFILES: Final[tuple[PlatformProfile, ...]] = (
         charging_values=("charging",),
         current_sensor_keys=("current_l1", "current_l2", "current_l3"),
         own_modes=(_rule("select", ("load_balancing_mode",), ("disabled", "none", "off"), "load balancing"),),
+        phase_switching="the Force single phase switch (three-phase models)",
     ),
     PlatformProfile(
         platform="openevse",

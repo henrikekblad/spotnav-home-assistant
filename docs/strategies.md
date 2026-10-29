@@ -197,9 +197,12 @@ cannot, and for a direct site without the total it says the meter's total grid p
 - **Phase switching for solar** (a charger setting, *Off* by default): a three-phase charge cannot go
   below three times the minimum current (about 4.1 kW at 6 A), so with less sun it either draws the rest
   from the grid until the stop or does not run at all. Set to *Automatic*, SpotNav lets such a charge go on
-  one phase instead (1.4 to 3.7 kW). It is offered only for a charger whose integration can switch its phases
-  (today a Peblar, through its *Force single phase* switch), wired for three phases, on a site with a solar
-  source. The rules:
+  one phase instead (1.4 to 3.7 kW). It is offered only for a charger whose integration can switch its phases,
+  wired for three phases, on a site with a solar source: Peblar and Lektrico (their *Force single phase* switch;
+  Lektrico's three-phase model), NRGkick (its phase count; not with a single-phase connector), go-e through either
+  its API v2 or its MQTT integration, and Fronius Wattpilot (their phase switch mode, set to one or three phases,
+  never left on Auto), and Easee (see below). Phase switching on these chargers is untested on real hardware; see
+  [supported hardware](supported.md). The rules:
   - Only a solar charge switches. A plan's period, your **Start**, a top-off, the car's minimum charge level
     and Hybrid's grid part always charge on all three phases; when one of them takes over a charge on one
     phase, three phases are set back first, at the minimum current.
@@ -213,7 +216,13 @@ cannot, and for a direct site without the total it says the meter's total grid p
     is on (on three phases it stops by the usual rule).
   - The charger pauses the charge itself for a switch. For 90 seconds after one, a charge that shows nothing
     is not taken for the car ending it or a start that failed, and nothing is learnt from the phases it draws
-    on. A switch the charger does not confirm within 30 seconds is given up for the plug-in and only logged.
+    on. While the charger itself reports that it is switching (Lektrico, go-e, Wattpilot), that counts the same.
+    A switch the charger does not confirm within 30 seconds is given up for the plug-in and only logged.
+  - **Easee** applies a phase change only at a pause, and the setting reaches every charger on its circuit. So an
+    Easee charger is offered the setting only while it is the one Easee charger on its circuit, and its phases are
+    set only right before a solar start, while it is not charging. A charge that runs is never switched: it
+    follows the rules without switching (it stops when the sun does not carry it), and three phases are set back at
+    the next start that needs them. The start respects Easee's start minimum (7 A).
   - While a charge is on one phase, the status says so with its power, for example
     *Solar · 1 phase · 2.9 kW*, and the site reckons the charger as a single-phase one.
 

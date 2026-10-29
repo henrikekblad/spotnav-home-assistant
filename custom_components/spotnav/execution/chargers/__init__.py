@@ -8,6 +8,7 @@ from . import (  # noqa: F401 - the imports register the paths
     ocpp,
     ohme,
     peblar,
+    phase_switches,
     registry,
     smartevse,
     webasto,

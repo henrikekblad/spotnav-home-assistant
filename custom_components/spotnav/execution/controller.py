@@ -103,7 +103,12 @@ from .charge_progress import (
     connector_status,
     START_ACK_TIMEOUT_S,
 )
-from .phase_switching import CONFIRM_S, PhaseSwitchState, STORE_KEY as PHASE_SWITCHING_STORE_KEY
+from .phase_switching import (
+    CHARGER_SWITCHING_RECHECK_S,
+    CONFIRM_S,
+    PhaseSwitchState,
+    STORE_KEY as PHASE_SWITCHING_STORE_KEY,
+)
 from .plan_car_ended import PlanChargeWatch
 from .target_stop import (
     car_ended_full,
@@ -2741,12 +2746,19 @@ class ChargingController:
     @property
     def phase_switch_settling(self) -> bool:
         """Whether a phase switch settles (`phase_switching.SETTLE_S` after it was sent): the charge may show nothing
-        meanwhile, and nothing reads that as the car ending it, a start that did not take or a phase it charges on."""
-        return self._phases.settling(dt_util.utcnow())
+        meanwhile, and nothing reads that as the car ending it, a start that did not take or a phase it charges on. The
+        charger's own report that it is switching (`PhaseSwitch.switching`) counts as a settle too."""
+        return self._phases.settling(dt_util.utcnow()) or self._charger_switching_phases()
 
     def phase_switch_settle_left_s(self) -> float:
-        """How long (seconds) the settle of a phase switch still runs, 0 when none does."""
-        return self._phases.settle_left_s(dt_util.utcnow())
+        """How long (seconds) the settle of a phase switch still runs, 0 when none does; while the charger reports that
+        it is switching, at least `CHARGER_SWITCHING_RECHECK_S` (it is looked at again then)."""
+        left = self._phases.settle_left_s(dt_util.utcnow())
+        return max(left, CHARGER_SWITCHING_RECHECK_S) if self._charger_switching_phases() else left
+
+    def _charger_switching_phases(self) -> bool:
+        switch = self.adapter.phase_switch
+        return switch is not None and switch.switching()
 
     @property
     def phase_switches_this_plug_in(self) -> int:
@@ -2924,7 +2936,14 @@ class ChargingController:
         phases = self._phases
         if phases.switched_phases != 1 and phases.confirming != 1:
             return
-        if self.adapter.phase_switch is None:
+        switch = self.adapter.phase_switch
+        if switch is None:
+            return
+        if switch.start_only and self.charging:
+            # Never mid-charge (Easee): the charge goes on as it is, and the next start sets three phases back.
+            _LOGGER.debug(
+                "SpotNav charger %s: three phases are set back at the next start, not while it charges", self.entry_id
+            )
             return
         if phases.given_up:
             if self._phase_restore_tried:
