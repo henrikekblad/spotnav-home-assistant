@@ -318,3 +318,49 @@ async def test_an_owners_recording_replays_with_no_line_up(
     path.write_text(json.dumps(bundle), encoding="utf-8")
     assert main([str(path), "--no-line-up"]) == 0
     await world.shutdown()
+
+
+async def test_a_feed_cancelled_in_another_task_leaves_a_start_on_its_way_its_owner(
+    hass: HomeAssistant, timers: FakeScheduler, drives: bool
+) -> None:
+    """A start of ours on its way in one task, and a report in another whose control cannot be read (its feed is
+    cancelled: nothing to decide): the owner still reads as the start makes it until the start's own feed is over."""
+    world = await pause_world(hass, timers)
+    controller = world.controller
+    shadow = controller.ownership_shadow
+    sent = asyncio.Event()
+    release = asyncio.Event()
+    cancelled: list[int] = []
+    real_cancel = shadow.cancel
+
+    def counting_cancel(token: Any) -> None:
+        cancelled.append(1)
+        real_cancel(token)
+
+    shadow.cancel = counting_cancel  # type: ignore[method-assign]
+
+    async def slow_start(*_args: Any, **_kwargs: Any) -> bool:
+        sent.set()
+        await release.wait()
+        current = hass.states.get(SWITCH)
+        hass.states.async_set(SWITCH, "on", current.attributes if current else None)
+        return True
+
+    controller.adapter.async_start = slow_start  # type: ignore[method-assign]
+    start = hass.async_create_task(controller.async_start())
+    await sent.wait()
+    assert controller.charge_origin == "other"
+    # A report whose control cannot be read, landing while the start is on its way.
+    hass.states.async_set(SWITCH, "unavailable", {"plug": True, "stamp": "unreadable"})
+    for _ in range(5):
+        await asyncio.sleep(0)
+    assert cancelled, "the report's feed was cancelled"
+    assert controller.charge_origin == "other", "still the start's owner while it is on its way"
+    hass.states.async_set(SWITCH, "off", {"plug": True, "stamp": "readable"})
+    release.set()
+    assert await start
+    await hass.async_block_till_done()
+    assert controller.charge_origin == "other"
+    if drives:
+        assert shadow.session.owner == "charge_now"
+    await world.shutdown()

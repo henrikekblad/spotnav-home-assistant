@@ -432,7 +432,9 @@ class OwnershipShadow:
             return
         self._close(token)
         self._cover_token(token, None)
-        self._settle()
+        if not self._others_open(token.key):
+            # As `end`: a feed of another task still open (a start of ours on its way) is not over with this one.
+            self._settle()
         if self._queue and self._idle():
             try:
                 self._drain()
