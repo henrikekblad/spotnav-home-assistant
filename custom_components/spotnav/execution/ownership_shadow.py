@@ -42,7 +42,7 @@ from homeassistant.util import dt as dt_util
 
 from .ownership_coverage import OwnershipCoverage
 
-from ..core.events import CommandResult, Event
+from ..core.events import CommandResult, Event, PlugIn, Unplug
 from ..core.ownership import Command, decide, ORIGIN_OWNER
 from ..core.replay import CLOCK_TOLERANCE_S
 from ..core.session import (
@@ -387,7 +387,7 @@ class OwnershipShadow:
         try:
             token.early_pre = self.session
             token.early_order = self._tick()
-            self.session, token.early_commands = decide(self.session, event, self._now())
+            self.session, token.early_commands = self._decide_or_observe(self.session, event)
             token.early = event
             self._note_plug_in_end(event)
         except Exception as err:  # noqa: BLE001 - decided at `end` as ever
@@ -595,7 +595,7 @@ class OwnershipShadow:
             pre, session, commands = item.token.early_pre, self.session, item.token.early_commands
         else:
             pre = self.session
-            session, commands = decide(pre, item.event, now)
+            session, commands = self._decide_or_observe(pre, item.event, now)
         acted = next((command for command in commands if command.kind in ("start", "stop")), None)
         result: CommandResult | None = None
         if item.outcome is not None and acted is not None:
@@ -661,6 +661,21 @@ class OwnershipShadow:
         if item.defer_intent and (session.manual, session.span_pause) != (pre.manual, pre.span_pause):
             self._intent_deferred = True
         return record, tuple(sorted(command.kind for command in commands if command.kind != "keep"))
+
+    def _decide_or_observe(
+        self, session: ChargeSession, event: Event, now: datetime | None = None
+    ) -> tuple[ChargeSession, tuple[Command, ...]]:
+        """`decide`, which raises as it does (a failure, told by the caller). A plug-in or an unplug whose decision
+        failed still moves the connection the session keeps: it is what the charger stated, an observation and not a
+        decision, and the controller reads it from the session when the core drives. Left as it was, every next report
+        would find the connection changed again and feed the same plug-in or unplug, failing each time. What the
+        plug-in's end decides (a pause, the car-ended record, the hold, load balancing's memory) is not guessed."""
+        try:
+            return decide(session, event, self._now() if now is None else now)
+        except Exception:
+            if isinstance(event, (PlugIn, Unplug)):
+                self.session = session.with_changes(plugged=isinstance(event, PlugIn))
+            raise
 
     def _note_plug_in_end(self, event: Event) -> None:
         """An unplug, or a plug-in after a known unplug, was decided: the plug-in a command in flight began in ended."""
