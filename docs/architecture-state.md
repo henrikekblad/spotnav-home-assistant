@@ -81,7 +81,13 @@ hands a running charge over instead of stopping it: to `solar`, the plan's charg
 the sun's rules keep it (`sun_keeps` on `strategy_change`: the surplus at or above the charger's stop level on the
 reading at hand, and, running beside the plan, its own state `on`, never `disarming`), and is stopped once
 otherwise. The other way, a plan window open when the sun runs a charge takes it over at its start
-(`window_start`, no command), and the sun leaving it does not stop it.
+(`window_start`, no command), and the sun leaving it does not stop it. A charge started by hand (owner `person` or
+`charge_now`, `WINDOW_START_SPARED`) is never taken over by a window's start, whatever its trigger: the owner is kept
+and nothing is sent, so the window's end does not stop it. A person's intent normally holds the window back already;
+this covers a restart that read the person's owner but not their intent (Home Assistant died between the Start's own
+save and the settings store's pause). Today's code takes such a charge over as the plan's, so the core's verdict
+differs from it there (`verdict_differs`): in that crash window for a person's charge, and whenever a window starts
+under a running Charge-now charge. The claim, the stray stop, the re-arm and the window's end already leave both alone.
 The car's minimum charge level (`execution/min_soc_floor.py`) is an owner of its own, `min_soc`: while the car's
 known state of charge is below it, `min_soc_start` starts the charge at once at the full current set (also one the
 plan or the sun runs, or one the charger began by itself), but never through a pause a person chose or their Stop,
@@ -219,7 +225,9 @@ the core decides from its record alone and compares it with today's restored sta
 read into the session, and are written again, derived, when they say otherwise (an earlier build's record saved after
 them). The order marks an earlier build kept beside the record (`charge_session_order`: its last decision and the last
 change of today's keys on one counter) are no longer written; read once only, they migrate: marks saying the keys
-were written after the record make the restart read the keys, as that build did. A record that is missing, of a
+were written after the record make the restart read the keys, as that build did, but with the person intent from the
+settings store (`PauseIntent`, as every migration takes it), where that build took it from its record. The two differ
+only when Home Assistant died between a person's Start's own save and the settings store's pause. A record that is missing, of a
 version the core does not know, or such an earlier build's is read from today's keys once (`legacy_session`; the
 read-backs `_owner_read_back`, `_balancing_read_back`, `_hold_read_back` and `_car_ended_read_back` serve that alone)
 and written: so a charger that starts driving mid-session (the update that made it the default, during a plan's or the

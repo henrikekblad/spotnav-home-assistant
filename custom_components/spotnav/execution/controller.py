@@ -5481,7 +5481,9 @@ class ChargingController:
             )
             return None, True
         if _earlier_keys_newer(saved.get(SESSION_ORDER_KEY)):
-            # An earlier build read today's keys over such a record; so does this one, once, and writes its own.
+            # An earlier build read today's keys over such a record; so does this one, once, and writes its own. The
+            # person intent comes from the settings store then, as at every migration (that build took the record's);
+            # they differ only after a crash between a person's Start's own save and the store's pause.
             return None, True
         try:
             return ChargeSession.from_store(raw), False
