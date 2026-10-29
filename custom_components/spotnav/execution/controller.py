@@ -1393,11 +1393,12 @@ class ChargingController:
         if stored is not None:
             stored = self._car_ended_from_keys(saved, stored)
         keys_newer = self._restore_order(saved) if stored is not None else False
+        await self._shadow.coverage.async_load(await self._integration_version())
         if stored is not None and not keys_newer:
             # The core's own record is the truth: the owner is read from the session it restarts with, not the keys
-            # (a record saved alone may be newer than them).
+            # (a record saved alone may be newer than them). Dropped right before the restart, so nothing reads the
+            # owner the controller was built with meanwhile.
             self._owner_read_back = None
-        await self._shadow.coverage.async_load(await self._integration_version())
         # The core's session is what was read back: its own record when it drives and one was read, else today's;
         # today's keys where they are newer than the record (written after its last change).
         try:
