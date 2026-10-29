@@ -27,6 +27,9 @@ from custom_components.spotnav.planning.auto_settings import STRATEGY_CHEAPEST
 from custom_components.spotnav.const import (
     CONF_ACTIVE_CONTROL_ENABLED,
     CONF_CHARGER_PRIORITY,
+    CONF_PHASE_SWITCHING,
+    CONF_PHASE_WIRING,
+    CONF_PRICE_ENTRY_ID,
     CONF_SOLAR_FORECAST_ENTRIES,
     CONF_SOLAR_PRIORITY,
     SOLAR_PRIORITY_BATTERY_FIRST,
@@ -38,7 +41,13 @@ from tests.world import go_auto
 from tests.world import admin, non_admin, ws_call
 from tests.world import forecast_entry, setup_charger, setup_site_with_charger
 from tests.world import add_car
-from custom_components.spotnav.runtime import domain_data
+from custom_components.spotnav.runtime import controller_for, domain_data
+from custom_components.spotnav.pricing.price_store import price_duplicates
+from tests.relay import SE4
+from tests.test_price_card_api import dashboard as price_dashboard, pointer, two_chargers, two_prices
+from tests.test_price_device import add_price, NOW as PRICE_NOW
+from tests.test_solar_phase_execution import _world as _phase_world
+from tests.world import setup_site
 
 pytestmark = pytest.mark.usefixtures("offline_relay")
 
@@ -430,11 +439,243 @@ async def test_charger_priority_over_the_webhook_shares_the_sockets_core(
     _pinned("update_charger_priority_no_site.json", _pin(no_site))
 
 
+# --------------------------------------------------------- the electricity price
+
+
+async def test_choosing_the_price_over_the_webhook_shares_the_sockets_core(
+    hass: HomeAssistant, hass_client_no_auth, freezer
+) -> None:
+    """The webhook's own charger chooses its electricity price as the socket does: a charger on a site points
+    the site, and the answer is the charger's `price_source` block re-read; an entry that is no price, or a
+    field that is not text, is refused and nothing moves."""
+    await two_chargers(hass)
+    site = await setup_site(hass, charger_entry_ids=["entry_a", "entry_b"])
+    client = await hass_client_no_auth()
+    freezer.move_to(PRICE_NOW)
+    await two_prices(hass)
+
+    status, success = await post(client, "webhook-a", {"action": "choose_price_source", "price_entry_id": "price_b"})
+    await hass.async_block_till_done()
+    assert status == 200 and success["ok"] is True and success["error"] is None and success["field_errors"] == []
+    assert success["action"] == "choose_price_source"
+    assert pointer(hass, site.entry_id) == "price_b" and pointer(hass, "entry_a") is None
+    block = success["price_source"]
+    assert block["entry_id"] == "price_b" and block["charger_count"] == 2 and block["writable"] is True
+    assert block["duplicate"]["area_id"] == SE4
+    assert block == price_dashboard(hass)["price_source"]
+
+    status, unknown = await post(client, "webhook-a", {"action": "choose_price_source", "price_entry_id": "entry_b"})
+    assert status == 400 and unknown["ok"] is False and unknown["error"] == "spotnav_unknown_price_entry"
+    assert unknown["field_errors"] == [] and unknown["price_source"]["entry_id"] == "price_b"
+    assert pointer(hass, site.entry_id) == "price_b"
+
+    for body in ({}, {"price_entry_id": 5}, {"price_entry_id": None}, {"price_entry_id": ["price_a"]}):
+        status, invalid = await post(client, "webhook-a", {"action": "choose_price_source", **body})
+        assert status == 400 and invalid["error"] == "spotnav_invalid_value", body
+        assert invalid["field_errors"] == [{"field": "price_entry_id", "code": "invalid_value"}]
+    assert pointer(hass, site.entry_id) == "price_b"
+
+    _pinned("choose_price_source_success.json", _pin(success))
+    _pinned("choose_price_source_unknown_entry.json", _pin(unknown))
+    _pinned("choose_price_source_invalid_value.json", _pin(invalid))
+
+
+async def test_choosing_the_price_without_a_site_points_the_charger(
+    hass: HomeAssistant, hass_client_no_auth, freezer
+) -> None:
+    await two_chargers(hass)
+    client = await hass_client_no_auth()
+    freezer.move_to(PRICE_NOW)
+    await two_prices(hass)
+
+    status, body = await post(client, "webhook-b", {"action": "choose_price_source", "price_entry_id": "price_b"})
+    await hass.async_block_till_done()
+
+    assert status == 200 and body["price_source"]["entry_id"] == "price_b"
+    assert pointer(hass, "entry_b") == "price_b" and pointer(hass, "entry_a") is None
+
+
+async def test_answering_the_same_area_question_over_the_webhook_shares_the_sockets_core(
+    hass: HomeAssistant, hass_client_no_auth, freezer
+) -> None:
+    """The question answered over the webhook as over the socket: an entry it does not ask about, an area it
+    does not ask about and fields of the wrong types are refused and it is still asked; using one moves every
+    pointer, and the answer is the charger's block without the question."""
+    await two_chargers(hass)
+    client = await hass_client_no_auth()
+    freezer.move_to(PRICE_NOW)
+    await two_prices(hass)
+    await add_price(hass, entry_id="price_c", area="DK1")
+    for charger in ("entry_a", "entry_b"):
+        entry = hass.config_entries.async_get_entry(charger)
+        hass.config_entries.async_update_entry(entry, data={**entry.data, CONF_PRICE_ENTRY_ID: "price_b"})
+
+    async def answer(body: dict[str, Any]) -> tuple[int, dict[str, Any]]:
+        return await post(client, "webhook-a", {"action": "answer_price_duplicate", **body})
+
+    status, unknown_area = await answer({"area_id": "NO1", "keep_entry_id": None})
+    assert status == 400 and unknown_area["error"] == "spotnav_unknown_price_duplicate"
+    assert unknown_area["price_source"]["duplicate"]["area_id"] == SE4
+    status, unknown_entry = await answer({"area_id": SE4, "keep_entry_id": "price_c"})
+    assert status == 400 and unknown_entry["error"] == "spotnav_unknown_price_entry"
+    for body, field in (
+        ({"area_id": 4, "keep_entry_id": None}, "area_id"),
+        ({"keep_entry_id": None}, "area_id"),
+        ({"area_id": SE4, "keep_entry_id": 3}, "keep_entry_id"),
+        ({"area_id": SE4}, "keep_entry_id"),
+    ):
+        status, invalid = await answer(body)
+        assert status == 400 and invalid["error"] == "spotnav_invalid_value", body
+        assert invalid["field_errors"] == [{"field": field, "code": "invalid_value"}]
+    assert len(price_duplicates(hass)) == 1, "still asked"
+
+    status, success = await answer({"area_id": SE4, "keep_entry_id": "price_a"})
+    await hass.async_block_till_done()
+    assert status == 200 and success["ok"] is True and success["error"] is None
+    assert success["action"] == "answer_price_duplicate"
+    assert pointer(hass, "entry_a") == "price_a" and pointer(hass, "entry_b") == "price_a"
+    assert price_duplicates(hass) == []
+    assert success["price_source"]["entry_id"] == "price_a" and success["price_source"]["duplicate"] is None
+    assert success["price_source"] == price_dashboard(hass)["price_source"]
+
+    _pinned("answer_price_duplicate_success.json", _pin(success))
+    _pinned("answer_price_duplicate_unknown_duplicate.json", _pin(unknown_area))
+    _pinned("answer_price_duplicate_unknown_entry.json", _pin(unknown_entry))
+    _pinned("answer_price_duplicate_invalid_value.json", _pin(invalid))
+
+
+async def test_keeping_both_over_the_webhook_answers_and_moves_nothing(
+    hass: HomeAssistant, hass_client_no_auth, freezer
+) -> None:
+    await two_chargers(hass)
+    client = await hass_client_no_auth()
+    freezer.move_to(PRICE_NOW)
+    await two_prices(hass)
+    entry = hass.config_entries.async_get_entry("entry_a")
+    hass.config_entries.async_update_entry(entry, data={**entry.data, CONF_PRICE_ENTRY_ID: "price_b"})
+
+    status, body = await post(
+        client, "webhook-a", {"action": "answer_price_duplicate", "area_id": SE4, "keep_entry_id": None}
+    )
+
+    assert status == 200 and body["ok"] is True and body["price_source"]["duplicate"] is None
+    assert pointer(hass, "entry_a") == "price_b"
+    assert price_duplicates(hass, unanswered_only=False)[0]["answered"] is True
+
+
+# --------------------------------------------------------- phase switching for solar
+
+
+async def test_phase_switching_over_the_webhook_shares_the_sockets_core(
+    hass: HomeAssistant, hass_client_no_auth, freezer
+) -> None:
+    """The webhook dashboard's `phase_switching` block, only for an app that reads it, and its write through the
+    entity config core: a stale `expected` is a conflict, a non-boolean is refused field by field, and the
+    charger is not reloaded for it."""
+    w = await _phase_world(hass, freezer, option=False)
+    charger = w.charger
+    client = await hass_client_no_auth()
+    webhook_id = "webhook-solar"
+
+    status, plain = await post(client, webhook_id, {"action": "dashboard", "api_version": 1})
+    assert status == 200 and "phase_switching" not in plain
+    status, read = await post(
+        client, webhook_id, {"action": "dashboard", "api_version": 1, "reads": ["phase_switching"]}
+    )
+    assert status == 200 and read["phase_switching"] == {"value": False, "writable": True}
+    assert {key: value for key, value in read.items() if key != "phase_switching"}.keys() == plain.keys()
+
+    status, success = await post(
+        client, webhook_id, {"action": "update_phase_switching", "api_version": 1, "enabled": True, "expected": False}
+    )
+    assert status == 200 and success["ok"] is True and success["error"] is None and success["field_errors"] == []
+    assert success["action"] == "update_phase_switching"
+    assert success["phase_switching"] == {"value": True, "writable": True}
+    assert charger.data[CONF_PHASE_SWITCHING] is True
+    assert controller_for(hass, charger.entry_id) is w.controller, "no reload"
+    assert w.controller.phase_switching_option is True
+
+    status, conflict = await post(
+        client, webhook_id, {"action": "update_phase_switching", "enabled": False, "expected": False}
+    )
+    assert status == 409 and conflict["error"] == "spotnav_conflict"
+    assert conflict["phase_switching"]["value"] is True and charger.data[CONF_PHASE_SWITCHING] is True
+
+    status, invalid = await post(
+        client, webhook_id, {"action": "update_phase_switching", "enabled": "off", "expected": True}
+    )
+    assert status == 400 and invalid["error"] == "spotnav_invalid_value"
+    assert invalid["field_errors"] == [{"field": "phase_switching", "code": "invalid_value"}]
+    status, missing = await post(client, webhook_id, {"action": "update_phase_switching", "expected": True})
+    assert status == 400 and missing["field_errors"] == [{"field": "phase_switching", "code": "invalid_value"}]
+    for body in ({"enabled": False}, {"enabled": False, "expected": "on"}, {"enabled": False, "expected": 1}):
+        status, refused = await post(client, webhook_id, {"action": "update_phase_switching", **body})
+        assert status == 400 and refused["error"] == "spotnav_invalid_value", body
+        assert refused["field_errors"] == [{"field": "expected", "code": "invalid_value"}]
+    status, other_version = await post(
+        client, webhook_id, {"action": "update_phase_switching", "api_version": 2, "enabled": False, "expected": True}
+    )
+    assert status == 400 and other_version["error"] == "spotnav_unsupported_api_version"
+    assert charger.data[CONF_PHASE_SWITCHING] is True
+
+    status, off = await post(
+        client, webhook_id, {"action": "update_phase_switching", "enabled": False, "expected": True}
+    )
+    assert status == 200 and off["phase_switching"] == {"value": False, "writable": True}
+    assert CONF_PHASE_SWITCHING not in charger.data, "stored only while on"
+
+    _pinned("update_phase_switching_success.json", _pin(success))
+    _pinned("update_phase_switching_conflict.json", _pin(conflict))
+    _pinned("update_phase_switching_invalid_value.json", _pin(invalid))
+
+
+async def test_phase_switching_where_it_is_not_offered(hass: HomeAssistant, hass_client_no_auth, freezer) -> None:
+    """No block even for an app that reads it, turning it on is the core's not-writable refusal, and turning a
+    setting left on off is allowed."""
+    w = await _phase_world(hass, freezer, option=True)
+    charger = w.charger
+    site_entry = hass.config_entries.async_get_entry(w.site.entry_id)
+    wiring = dict(site_entry.data.get(CONF_PHASE_WIRING) or {})
+    wiring[charger.entry_id] = {**(wiring.get(charger.entry_id) or {}), "phases": 1}
+    hass.config_entries.async_update_entry(site_entry, data={**site_entry.data, CONF_PHASE_WIRING: wiring})
+    client = await hass_client_no_auth()
+    webhook_id = "webhook-solar"
+
+    status, read = await post(
+        client, webhook_id, {"action": "dashboard", "api_version": 1, "reads": ["phase_switching"]}
+    )
+    assert status == 200 and "phase_switching" not in read
+
+    hass.config_entries.async_update_entry(charger, data={k: v for k, v in charger.data.items() if k != CONF_PHASE_SWITCHING})
+    status, not_offered = await post(
+        client, webhook_id, {"action": "update_phase_switching", "enabled": True, "expected": False}
+    )
+    assert status == 400 and not_offered["error"] == "spotnav_invalid_value"
+    assert not_offered["field_errors"] == [{"field": "phase_switching", "code": "not_writable"}]
+    assert not_offered["phase_switching"] is None and CONF_PHASE_SWITCHING not in charger.data
+
+    hass.config_entries.async_update_entry(charger, data={**charger.data, CONF_PHASE_SWITCHING: True})
+    status, off = await post(
+        client, webhook_id, {"action": "update_phase_switching", "enabled": False, "expected": True}
+    )
+    assert status == 200 and off["ok"] is True and off["phase_switching"] is None
+    assert CONF_PHASE_SWITCHING not in charger.data
+
+    _pinned("update_phase_switching_not_writable.json", _pin(not_offered))
+
+
 async def test_no_fixture_is_left_unwritten() -> None:
     if WRITE:
         return
     assert sorted(p.name for p in FIXTURE_DIR.glob("*.json")) == sorted(
         [
+            "answer_price_duplicate_invalid_value.json",
+            "answer_price_duplicate_success.json",
+            "answer_price_duplicate_unknown_duplicate.json",
+            "answer_price_duplicate_unknown_entry.json",
+            "choose_price_source_invalid_value.json",
+            "choose_price_source_success.json",
+            "choose_price_source_unknown_entry.json",
             "dashboard.json",
             "dashboard_unsupported_version.json",
             "push_register_invalid.json",
@@ -446,6 +687,10 @@ async def test_no_fixture_is_left_unwritten() -> None:
             "update_site_settings_conflict.json",
             "update_site_settings_invalid_value.json",
             "update_site_settings_not_permitted.json",
+            "update_phase_switching_conflict.json",
+            "update_phase_switching_invalid_value.json",
+            "update_phase_switching_not_writable.json",
+            "update_phase_switching_success.json",
             "update_site_settings_success.json",
             "update_vehicle_conflict.json",
             "update_vehicle_refused.json",

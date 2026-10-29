@@ -38,8 +38,10 @@ per-phase meters, battery power sensor and maximum measurement age), validated b
 * Every outcome is one envelope, `not_admin` included, with the config re-read after any write.
 * A charger's priority and its phase switching for solar are written without a reload: the site reads the
   priority from the entry on every recompute, the charger's controller the phase switching each time it decides
-  (`ChargingController.phase_switching_option`). The webhook writes it through the same core as `update_charger_priority`
-  (`async_webhook_update_charger_priority`), answering the dashboard's `charger_priority` block.
+  (`ChargingController.phase_switching_option`). The webhook writes both through the same core: `update_charger_priority`
+  (`async_webhook_update_charger_priority`), answering the dashboard's `charger_priority` block, and
+  `update_phase_switching` (`async_webhook_update_phase_switching`), answering the webhook dashboard's
+  `phase_switching` block.
 """
 
 from __future__ import annotations
@@ -98,8 +100,10 @@ from .common import (
 )
 from .dashboard import (
     capture_charger_priority,
+    capture_phase_switching,
     capture_vehicles,
     serialize_charger_priority,
+    serialize_phase_switching,
     serialize_vehicle,
     site_binding,
 )
@@ -808,6 +812,60 @@ async def async_webhook_update_charger_priority(
     except EntityConfigRefusal as refusal:
         return _priority_answer(hass, entry, refusal.code, refusal.field_errors)
     return _priority_answer(hass, entry, None)
+
+
+def _phase_switching_answer(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    code: str | None,
+    field_errors: list[FieldError] | None = None,
+) -> tuple[int, dict[str, Any]]:
+    """`update_phase_switching`'s envelope: the shared one without `config`, with the webhook dashboard's
+    `phase_switching` block re-read now (`null` while the setting is not offered for this charger)."""
+    block = serialize_phase_switching(capture_phase_switching(hass, entry), can_act=True)
+    body = {
+        "api_version": ENTITY_CONFIG_API_VERSION,
+        "ok": code is None,
+        "error": code,
+        "field_errors": [error.as_dict() for error in field_errors or []],
+        "phase_switching": block,
+    }
+    return _webhook_status(code), body
+
+
+async def async_webhook_update_phase_switching(
+    hass: HomeAssistant, entry: ConfigEntry, payload: dict[str, Any]
+) -> tuple[int, dict[str, Any]]:
+    """`update_phase_switching` over the webhook: `{"enabled", "expected"}`, both booleans, where `expected` is
+    the value the caller last saw (a mismatch is `spotnav_conflict` and nothing is written). Validated and
+    written by `async_update_entity_config`'s own core for the one field `phase_switching`, as
+    `async_webhook_update_charger_priority` writes the priority: turning it on where it is not offered is
+    `spotnav_invalid_value` with `phase_switching`/`not_writable`, turning it off is always allowed. Returns
+    `(http_status, body)`.
+    """
+    version = payload.get("api_version")
+    if version is not None and (isinstance(version, bool) or version != ENTITY_CONFIG_API_VERSION):
+        return _phase_switching_answer(hass, entry, ERROR_UNSUPPORTED_VERSION)
+    expected = payload.get("expected")
+    if not isinstance(expected, bool):
+        return _phase_switching_answer(
+            hass, entry, ERROR_INVALID_VALUE, [FieldError("expected", ERR_INVALID_VALUE)]
+        )
+    if "enabled" not in payload:
+        return _phase_switching_answer(
+            hass, entry, ERROR_INVALID_VALUE, [FieldError(FIELD_PHASE_SWITCHING, ERR_INVALID_VALUE)]
+        )
+    try:
+        await async_update_entity_config(
+            hass,
+            entry.entry_id,
+            scope="charger",
+            expected={FIELD_PHASE_SWITCHING: expected},
+            changes={FIELD_PHASE_SWITCHING: payload["enabled"]},
+        )
+    except EntityConfigRefusal as refusal:
+        return _phase_switching_answer(hass, entry, refusal.code, refusal.field_errors)
+    return _phase_switching_answer(hass, entry, None)
 
 
 @callback
