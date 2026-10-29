@@ -18,7 +18,8 @@ While a charge is expected, it is in trouble when the charger is unavailable, or
 the vehicle is not taking current (`charge_progress.py`). Trouble must last `GRACE_S` (longer than a
 Start the charger has not answered yet may take; nothing is told while one is unanswered), and it is
 told once while it lasts, whatever its reason turns into: a charge that recovers and stops again is
-told again, after the notifier's own rate limit.
+told again, after the notifier's own rate limit. The notifier keeps the open window's judgement across a restart
+(`window_state`, `restore`), so a restart neither tells it twice nor loses that the window had charged.
 
 Reasons, first match:
 
@@ -34,7 +35,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Final
+from typing import Any, Final
 
 #: How long trouble must last before it is told: past an unanswered Start (30 s) and a charger's slow
 #: report, and short enough to matter for a window of an hour.
@@ -85,6 +86,24 @@ class UnexpectedStopDetector:
         self._charged_in_window = False
         self._trouble_since: datetime | None = None
         self._told = False
+
+    @property
+    def window_state(self) -> dict[str, Any] | None:
+        """What a restart must not lose of the window open now: whether it charged (the reason a stop is told
+        with) and whether its trouble was told (not told twice). `None` outside a window or before either."""
+        if self._window is None or not (self._charged_in_window or self._told):
+            return None
+        return {"window": self._window, "charged": self._charged_in_window, "told": self._told}
+
+    def restore(self, state: Any) -> None:
+        """Take back a `window_state` kept across a restart; anything that is not one is ignored. Its window
+        must still be the one open for it to count (`observe` starts afresh otherwise)."""
+        if not isinstance(state, dict) or not isinstance(state.get("window"), str):
+            return
+        self._window = state["window"]
+        self._charged_in_window = state.get("charged") is True
+        self._told = state.get("told") is True
+        self._trouble_since = None
 
     @property
     def due_at(self) -> datetime | None:

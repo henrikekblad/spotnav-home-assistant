@@ -44,6 +44,14 @@ app's wake-up alike: no `plan_at_risk`, no `plan_stopped` for a window that did 
 A `plan_at_risk` held back is told after the plug-in, when the plan made for the car is judged, if the departure
 still cannot be met then.
 
+A restart of Home Assistant keeps, with the told plan, what a person would otherwise get twice, lose or get
+wrong: a new plan still settling or owed after a plug-in (judged again shortly after the start: the plan restored
+at the start is no event), a `plan_at_risk` already told for the coming departure (the first Auto snapshot after
+a start is no news), and the open window's `plan_stopped` judgement (whether it charged, so the reason is right,
+and whether its trouble was told). A `plan_at_risk` held back while the car is away is not kept: Auto's first
+snapshot after the start holds it back again. The rate limits below are not kept: a restart lets at most one more
+notification of a real event through, replacing the earlier one on the phone (the same tag).
+
 Every event first sets a baseline: loading the integration is not an event. Sending is rate-limited
 per charger: the same event is not sent again within `REPEAT_S`, and no more than `HOURLY_LIMIT`
 notifications go out in an hour. Each notification carries a `tag` (one per charger and event), so a
@@ -95,6 +103,9 @@ from .unexpected_stop import ExpectationFacts, REASON_NOT_STARTED, UnexpectedSto
 _LOGGER = logging.getLogger(__name__)
 
 _STORE_VERSION: Final = 1
+#: 2: the record also keeps a plan's pending judgement, the `plan_at_risk` told and the open window's `plan_stopped`
+#: judgement; each optional, so a version 1 record reads as it is.
+_STORE_MINOR_VERSION: Final = 2
 _STORE_KEY_PREFIX: Final = f"{DOMAIN}.notified_plan"
 
 #: The same event for the same charger is not sent again within this long.
@@ -210,6 +221,31 @@ def _last_day(plan: Any) -> str | None:
     return dt_util.as_local(end).date().isoformat()
 
 
+def _departure_after(departure: Any, now: datetime) -> datetime | None:
+    """The first departure at local `HH:MM` after `now`, or `None` when it cannot be read."""
+    try:
+        hour, minute = (int(part) for part in str(departure).split(":"))
+        local = dt_util.as_local(now)
+        moment = local.replace(hour=hour, minute=minute, second=0, microsecond=0)
+    except (TypeError, ValueError):
+        return None
+    if moment <= local:
+        moment += timedelta(days=1)
+    return dt_util.as_utc(moment)
+
+
+def _instant(raw: Any) -> datetime | None:
+    return dt_util.parse_datetime(raw) if isinstance(raw, str) else None
+
+
+class _NotifierStore(Store[dict[str, Any]]):
+    async def _async_migrate_func(
+        self, old_major_version: int, old_minor_version: int, old_data: dict[str, Any]
+    ) -> dict[str, Any]:
+        # Minor versions only add optional keys: an older record reads as it is.
+        return old_data
+
+
 def _later_day(day: str | None, told: str | None) -> bool:
     """Whether a plan reaching `day` reaches past the told plan's `told` day: it rests on new prices."""
     return day is not None and (told is None or day > told)
@@ -250,7 +286,9 @@ class ChargerNotifier:
         self._sent_times: deque[datetime] = deque()
         self._unsubscribe: list[CALLBACK_TYPE] = []
         # The fingerprint of the plan last told about, kept across restarts (see `plan_fingerprint`).
-        self._plan_store: Store[dict[str, Any]] = Store(hass, _STORE_VERSION, f"{_STORE_KEY_PREFIX}.{entry_id}")
+        self._plan_store: Store[dict[str, Any]] = _NotifierStore(
+            hass, _STORE_VERSION, f"{_STORE_KEY_PREFIX}.{entry_id}", minor_version=_STORE_MINOR_VERSION
+        )
         self._notified_plan: str | None = None
         # The plans told so far and when the last was (`plan_notice`), kept with the told plan.
         self._notice_seq = 0
@@ -273,6 +311,11 @@ class ChargerNotifier:
         # still cannot be met then; and whether it cannot be met now.
         self._at_risk_owed: dict[str, Any] | None = None
         self._at_risk_now = False
+        # The `plan_at_risk` told for the coming departure (its departure time and that departure's instant): one
+        # seen again after a restart, before that departure, is not news.
+        self._at_risk_told: dict[str, Any] | None = None
+        # The open window's `plan_stopped` judgement as last stored (`UnexpectedStopDetector.window_state`).
+        self._stop_state: dict[str, Any] | None = None
 
     async def async_load(self) -> None:
         """Read the last told plan's fingerprint, before `async_start`."""
@@ -287,6 +330,29 @@ class ChargerNotifier:
         self._plug_in_told = told is True
         day = raw.get("plan_day") if isinstance(raw, dict) else None
         self._plan_day = day if isinstance(day, str) else None
+        if isinstance(raw, dict):
+            self._load_pending(raw)
+
+    def _load_pending(self, raw: dict[str, Any]) -> None:
+        """What was under way at a restart. A plan judgement still due is judged again no sooner than `SETTLE_S`
+        after the start, so the plans Auto calculates at the start settle first."""
+        now = dt_util.utcnow()
+        floor = now + timedelta(seconds=SETTLE_S)
+        pending = raw.get("pending")
+        if isinstance(pending, dict):
+            burst_due = _instant(pending.get("burst_due"))
+            owed_until = _instant(pending.get("owed_until"))
+            if burst_due is not None:
+                self._burst_since = now
+                self._burst_due = max(burst_due, floor)
+                self._burst_quiet = pending.get("burst_quiet") is True
+            if owed_until is not None:
+                self._owed_until = max(owed_until, floor)
+        told = raw.get("at_risk_told")
+        if isinstance(told, dict) and _instant(told.get("until")) is not None:
+            self._at_risk_told = dict(told)
+        self._stops.restore(raw.get("stop"))
+        self._stop_state = self._stops.window_state
 
     @staticmethod
     async def async_remove_stored(hass: HomeAssistant, entry_id: str) -> None:
@@ -314,6 +380,18 @@ class ChargerNotifier:
             record["plug_in_told"] = True
         if self._plan_day is not None:
             record["plan_day"] = self._plan_day
+        pending: dict[str, Any] = {}
+        if self._burst_due is not None:
+            pending["burst_due"] = self._burst_due.isoformat()
+            pending["burst_quiet"] = self._burst_quiet
+        if self._owed_until is not None:
+            pending["owed_until"] = self._owed_until.isoformat()
+        if pending:
+            record["pending"] = pending
+        if self._at_risk_told is not None:
+            record["at_risk_told"] = self._at_risk_told
+        if self._stop_state is not None:
+            record["stop"] = self._stop_state
         self._hass.async_create_task(self._plan_store.async_save(record), eager_start=True)
 
     @callback
@@ -324,6 +402,8 @@ class ChargerNotifier:
         self._unsubscribe.append(self._controller.add_charge_state_listener(self._observe))
         if preview is not None:
             self._unsubscribe.append(preview.add_listener(self._on_snapshot))
+        # A plan judgement under way at a restart.
+        self._arm_plan_timer(self._plan_due())
 
     @callback
     def async_shutdown(self) -> None:
@@ -351,19 +431,31 @@ class ChargerNotifier:
         away = self._connected is False
         events: list[tuple[str, dict[str, Any]]] = []
         facts = charger_facts(self._hass, controller, self._snapshot, settings)
+        at_risk_told = self._at_risk_told
         for kind, attributes in self._tracker.observe(facts):
             if kind == EVENT_PLAN_AT_RISK:
+                if self._at_risk_told_for(attributes, now):
+                    # Told before a restart for this departure: the first snapshot after the start is no news.
+                    _LOGGER.debug("SpotNav charger %s: plan_at_risk told already for this departure", self._entry_id)
+                    continue
                 # Told now, or after the plug-in if it still holds then; either way this one is settled.
                 self._at_risk_owed = attributes if away else None
                 if away:
                     _LOGGER.debug("SpotNav charger %s: plan_at_risk held back while no car is plugged in", self._entry_id)
                     continue
+                self._mark_at_risk_told(attributes, now)
             if kind in _TRACKED:
                 events.append((kind, attributes))
         self._at_risk_now = facts.at_risk
-        if not facts.at_risk:
+        if not facts.at_risk and self._snapshot is not None:
+            # Read from a snapshot (before the first one after a start, nothing is known either way).
             self._at_risk_owed = None
+            self._at_risk_told = None
         reason = self._stops.observe(self._expectation(now))
+        stop_state = self._stops.window_state
+        if stop_state != self._stop_state or self._at_risk_told != at_risk_told:
+            self._stop_state = stop_state
+            self._save_plan()
         if reason is not None and not (away and reason == REASON_NOT_STARTED):
             events.append((EVENT_PLAN_STOPPED, {"reason": reason}))
         ignores_stop = bool(controller.ignores_person_stop)
@@ -413,6 +505,7 @@ class ChargerNotifier:
             self._burst_since = self._burst_due = self._owed_until = None
             self._burst_quiet = False
         self._arm_plan_timer(self._plan_due())
+        self._save_plan()
 
     def _expectation(self, now: datetime) -> ExpectationFacts:
         controller = self._controller
@@ -499,6 +592,7 @@ class ChargerNotifier:
         # The plan after a plug-in is here: it, not the one that stood, is what is told.
         self._owed_until = None
         self._arm_plan_timer(self._plan_due())
+        self._save_plan()
 
     def _end_plug_in(self) -> None:
         if self._plug_in_told:
@@ -535,6 +629,7 @@ class ChargerNotifier:
         quiet = self._burst_due is not None and self._burst_quiet
         self._burst_since = self._burst_due = self._owed_until = None
         self._burst_quiet = False
+        self._save_plan()
         self._tell_owed_at_risk(now)
         plan = self._controller.plan
         fingerprint = plan_fingerprint(plan)
@@ -579,7 +674,23 @@ class ChargerNotifier:
             return
         owed, self._at_risk_owed = self._at_risk_owed, None
         if self._at_risk_now:
+            self._mark_at_risk_told(owed, now)
+            self._save_plan()
             self._send(EVENT_PLAN_AT_RISK, owed, now, None)
+
+    def _mark_at_risk_told(self, attributes: dict[str, Any], now: datetime) -> None:
+        until = _departure_after(attributes.get("departure_time"), now)
+        self._at_risk_told = (
+            None if until is None else {"departure_time": attributes.get("departure_time"), "until": until.isoformat()}
+        )
+
+    def _at_risk_told_for(self, attributes: dict[str, Any], now: datetime) -> bool:
+        """Whether this `plan_at_risk` was told already: the same departure time, and that departure still ahead."""
+        told = self._at_risk_told
+        if told is None or told.get("departure_time") != attributes.get("departure_time"):
+            return False
+        until = _instant(told.get("until"))
+        return until is not None and now < until
 
     # ------------------------------------------------------------------ sending
 
