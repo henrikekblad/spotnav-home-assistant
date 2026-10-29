@@ -105,6 +105,9 @@ APP_READS_SOLAR_ONE_PHASE: Final = "solar_one_phase"
 #: Waking the car for a reading: an app that does not read `APP_READS_WAKE_FOR_READING` gets vehicle rows without
 #: `wake_for_reading` (its settings row is never offered).
 APP_READS_WAKE_FOR_READING: Final = "wake_for_reading"
+#: Where the charger's electricity price lives: the dashboard's `price_source` block is left out for an app that does
+#: not read `APP_READS_PRICE_SOURCE` (its decoder refuses a dashboard with an unknown key).
+APP_READS_PRICE_SOURCE: Final = "price_source"
 #: Each vehicle-row field an app released before it does not read, with the `reads` name that opts into it.
 APP_VEHICLE_FIELD_READS: Final = {"min_percent": APP_READS_MIN_SOC, "wake_for_reading": APP_READS_WAKE_FOR_READING}
 
@@ -159,9 +162,12 @@ def _for_app(body: dict[str, Any], payload: dict[str, Any]) -> dict[str, Any]:
     charge level: its status line and the vehicle rows' `min_percent`; `auto_periods` for a `max_periods` of
     null; `balancing_paused` for the plan's charge load balancing paused; `car_ended_waiting` for the plan waiting for
     the car's level after the car ended its charge; `wake_for_reading` for the vehicle rows' `wake_for_reading`; `solar_one_phase` for a solar charge the sun
-    switched to one phase); anything else in it, or a `reads` that is not a list, is ignored.
+    switched to one phase; `price_source` for the dashboard's `price_source` block); anything else in it, or a
+    `reads` that is not a list, is ignored.
     """
     opted_in = _opted_in(payload)
+    if "price_source" in body and APP_READS_PRICE_SOURCE not in opted_in:
+        body = {key: value for key, value in body.items() if key != "price_source"}
     if isinstance(body.get("vehicles"), list):
         body = {**body, "vehicles": [_vehicle_for_app(row, opted_in) for row in body["vehicles"]]}
     status = body.get("status")

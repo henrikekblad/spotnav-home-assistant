@@ -14,10 +14,16 @@ the form would, and only while `price_setup_lock` is held, so two chargers set u
   area's row are its effective fees; the chargers are grouped by them. A price entry holding exactly that area and
   those fees is reused, else one is made. A site whose chargers all landed in one group points at it; the chargers
   of a site that disagree point at theirs themselves, as does a charger without a site. A price entry with the
-  same area but other fees is never edited: the group gets its own, and the pair is recorded for the card's
+  same area but other fees is never edited: the group gets its own, named after who uses it ("Electricity price
+  SE4 (Home)": the site, else the one charger, else how many chargers), and the pair is recorded for the card's
   question (`price_store.py`). The chargers' own settings are left as they were (a rollback reads them). The
   marker is set only at the end, so an interrupted run starts again and reuses what it made.
 * **Removal** (`async_drop_pointers`): a price entry that is removed takes every pointer to it along.
+* **A choice from the card** (`choose_price_entry`): with several price entries, an administrator picks the one a
+  charger uses. A charger on a site points its site at it (every charger there follows: their own pointers are
+  dropped), a charger without one points at it itself.
+* **The card's question** (`use_price_entry`): for same-area price entries with different fees, every pointer to
+  the others moves to the one kept. The others stay (removed only by the person, under Devices & services).
 
 Pointers are written in the entries' data (`CONF_PRICE_ENTRY_ID`), on a site when the charger is on one, else on
 the charger. Neither entry reloads for it; every consumer is told (`async_price_sources_changed`) and resolves again.
@@ -47,7 +53,14 @@ from ..planning.auto_settings import AreaAutoSettings, AutoSettings
 from ..planning.first_run import site_for_charger, suggest_area
 from ..runtime import domain_data, entry_kind
 from .price_points import default_fee_mode, FEE_OFF, fee_mode, fee_override, included
-from .price_source import async_price_sources_changed, FEE_COMPONENTS, fees_from_data, price_entries, wire_revision
+from .price_source import (
+    async_price_sources_changed,
+    default_price_title,
+    FEE_COMPONENTS,
+    fees_from_data,
+    price_entries,
+    wire_revision,
+)
 from .relay_contract import AreaCatalogue, AreaEntry
 
 _LOGGER = logging.getLogger(__name__)
@@ -89,14 +102,18 @@ async def _async_catalogue(hass: HomeAssistant) -> AreaCatalogue | None:
     return manager.catalogue_snapshot().catalogue
 
 
-async def async_create_price_entry(hass: HomeAssistant, fees: AreaAutoSettings) -> ConfigEntry | None:
+async def async_create_price_entry(
+    hass: HomeAssistant, fees: AreaAutoSettings, *, title: str | None = None
+) -> ConfigEntry | None:
     """A new electricity price entry for these area and fees, through the price flow's import step; `None` when
-    the step refused them (logged)."""
-    result = await hass.config_entries.flow.async_init(
-        DOMAIN,
-        context={"source": SOURCE_IMPORT},
-        data={CONF_PRICE_AREA: fees.area_id, **{name: getattr(fees, name).as_dict() for name in FEE_COMPONENTS}},
-    )
+    the step refused them (logged). Without `title` it gets the name the form gives."""
+    data: dict[str, Any] = {
+        CONF_PRICE_AREA: fees.area_id,
+        **{name: getattr(fees, name).as_dict() for name in FEE_COMPONENTS},
+    }
+    if title is not None:
+        data["title"] = title
+    result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": SOURCE_IMPORT}, data=data)
     if result["type"] is FlowResultType.CREATE_ENTRY:
         return result["result"]
     _LOGGER.warning("An electricity price for %s could not be added: %s", fees.area_id, result.get("reason"))
@@ -197,6 +214,47 @@ async def async_price_entry_from_settings(
         return created
 
 
+# ------------------------------------------------------------------ the card's choice and question
+
+
+@callback
+def choose_price_entry(hass: HomeAssistant, charger_id: str, price_entry_id: str) -> None:
+    """The charger's site points at the price entry and every charger on it follows (their own pointers are
+    dropped); a charger without a site points at it itself."""
+    before = {entry.data.get(CONF_PRICE_ENTRY_ID) for entry in hass.config_entries.async_entries(DOMAIN)}
+    site = site_for_charger(hass, charger_id)
+    changed = False
+    if site is None:
+        charger = hass.config_entries.async_get_entry(charger_id)
+        changed = charger is not None and _write_pointer(hass, charger, price_entry_id)
+    else:
+        changed = _write_pointer(hass, site, price_entry_id)
+        for member_id in site.data.get(CONF_CHARGER_ENTRY_IDS) or []:
+            member = hass.config_entries.async_get_entry(member_id)
+            if member is not None and _write_pointer(hass, member, None):
+                changed = True
+    if changed:
+        _announce(hass, {price_entry_id, *before})
+
+
+@callback
+def use_price_entry(hass: HomeAssistant, keep_entry_id: str, other_entry_ids: Iterable[str]) -> None:
+    """Every site and charger pointing at one of the others points at the kept entry; nothing is removed."""
+    others = set(other_entry_ids) - {keep_entry_id}
+    moved = False
+    for entry in hass.config_entries.async_entries(DOMAIN):
+        if entry.data.get(CONF_PRICE_ENTRY_ID) in others:
+            moved = _write_pointer(hass, entry, keep_entry_id) or moved
+    if moved:
+        _announce(hass, {keep_entry_id, *others})
+
+
+@callback
+def _announce(hass: HomeAssistant, entry_ids: Iterable[Any]) -> None:
+    for entry_id in sorted(entry_id for entry_id in entry_ids if isinstance(entry_id, str)):
+        async_price_sources_changed(hass, entry_id)
+
+
 # ------------------------------------------------------------------ removal
 
 
@@ -234,7 +292,7 @@ async def async_migrate_price_sources(hass: HomeAssistant) -> bool:
         chosen: dict[str, str] = {}
         made: dict[AreaAutoSettings, str] = {}
         for key in sorted(groups, key=_sort_key):
-            entry_id = _reused(hass, catalogue, key) or await _async_made(hass, key)
+            entry_id = _reused(hass, catalogue, key) or await _async_made(hass, key, groups[key])
             if entry_id is None:
                 continue
             made[key] = entry_id
@@ -277,8 +335,12 @@ def _reused(hass: HomeAssistant, catalogue: AreaCatalogue, key: AreaAutoSettings
     return None
 
 
-async def _async_made(hass: HomeAssistant, key: AreaAutoSettings) -> str | None:
-    created = await async_create_price_entry(hass, key)
+async def _async_made(hass: HomeAssistant, key: AreaAutoSettings, chargers: list[str]) -> str | None:
+    """A new entry for the group. While another electricity price holds the same area (decision A), it is named
+    after who uses it, so the card's question and choice tell the two apart; otherwise the form's name."""
+    same_area = any(str(entry.data.get(CONF_PRICE_AREA)) == key.area_id for entry in price_entries(hass))
+    title = f"{default_price_title(key.area_id)} ({_users_name(hass, chargers)})" if same_area else None
+    created = await async_create_price_entry(hass, key, title=title)
     return None if created is None else created.entry_id
 
 
@@ -304,6 +366,18 @@ def _write_pointers(
     for charger_id in chargers:
         if charger_id not in sited and charger_id in chosen:
             _write_pointer(hass, hass.config_entries.async_get_entry(charger_id), chosen[charger_id])
+
+
+def _users_name(hass: HomeAssistant, chargers: list[str]) -> str:
+    """Who uses a group's price: their shared site's name, the one charger's name, or how many chargers."""
+    sites = {None if (site := site_for_charger(hass, charger_id)) is None else site.title for charger_id in chargers}
+    if len(sites) == 1 and None not in sites:
+        return str(sites.pop())
+    if len(chargers) == 1:
+        entry = hass.config_entries.async_get_entry(chargers[0])
+        if entry is not None and entry.title:
+            return entry.title
+    return f"{len(chargers)} chargers"
 
 
 async def _async_record_duplicates(

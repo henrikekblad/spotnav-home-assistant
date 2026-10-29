@@ -24,7 +24,8 @@ no API key.
   price. These are your prices only if you are on Agile; see
   [Great Britain](supported.md#great-britain-octopus-agile).
 
-You choose the price area in the card (**Settings, Price area and taxes**; see [the card](card.md#price-area-and-fiscal)). A country with several
+You choose the price area in the card (**Settings, Electricity price**; see [the card](card.md#electricity-price)). It belongs to
+the installation's [electricity price](price-device.md), so every charger that uses it follows. A country with several
 bidding zones (Sweden, Norway, Denmark, Italy) has one area per zone. The card names each area's
 price source, linked, under the area.
 
@@ -91,7 +92,7 @@ current values every time it is shown (see [Charge history](card.md#charge-histo
 ## How the integration uses the prices
 
 The same prices, with the same fees, are there for automations that have nothing to do with a car:
-see [Prices for other automations](price-device.md).
+see [The electricity price](price-device.md).
 
 ### Plans only on published prices
 

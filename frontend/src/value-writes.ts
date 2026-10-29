@@ -36,5 +36,9 @@ export type ValueWrite =
   | { kind: "settings"; build: (record: SettingsRecord) => ReplacementCheck }
   /** The camera's frame (`spotnav/save_camera_frame`; `null` is the whole picture). */
   | { kind: "cameraFrame"; frame: CameraFrame | null }
+  /** The electricity price entry the charger (or its site) uses (`spotnav/choose_price_source`). */
+  | { kind: "priceSource"; priceEntryId: string }
+  /** The same-area question answered: the entry to use, or `null` to keep them all (`spotnav/answer_price_duplicate`). */
+  | { kind: "priceDuplicate"; areaId: string; keepEntryId: string | null }
   /** One fee of the selected area: a figure, or `null` for off. */
   | { kind: "fiscal"; component: FiscalComponentName; value: number | null };

@@ -303,7 +303,53 @@ export interface CardModel {
   contextAreaId: string | null;
   /** Where the area's prices come from (relay contract v2), shown small and linked in the settings. */
   priceSource: { name: string; url: string } | null;
+  /** The electricity price entry the charger uses, where its area and fees live; `null` for its own settings. */
+  priceEntry: PriceEntryFacts | null;
   technicalCodes: string[];
+}
+
+/** The electricity price entry a charger uses, as the price section shows it. */
+export interface PriceEntryFacts {
+  entryId: string;
+  title: string;
+  /** How many chargers use it, and how many there are. */
+  chargerCount: number;
+  chargerTotal: number;
+  /** Every electricity price entry when there is more than one, else empty. */
+  choices: Array<{ entryId: string; title: string }>;
+  writable: boolean;
+  /**
+   * Same-area entries with different fees not asked about yet, each with its fees (`null` where they cannot be
+   * read); `null` when there is no question.
+   */
+  duplicate: { areaId: string; entries: Array<{ entryId: string; title: string; fees: Fiscal | null }> } | null;
+}
+
+export function priceEntryFor(dashboard: Dashboard): PriceEntryFacts | null {
+  const block = dashboard.price_source;
+  if (block === null) {
+    return null;
+  }
+  const duplicate = block.duplicate;
+  return {
+    entryId: block.entry_id,
+    title: block.title,
+    chargerCount: block.charger_count,
+    chargerTotal: Math.max(dashboard.chargers.length, block.charger_count),
+    choices: block.choices.map((choice) => ({ entryId: choice.entry_id, title: choice.title })),
+    writable: block.writable,
+    duplicate:
+      duplicate === null
+        ? null
+        : {
+            areaId: duplicate.area_id,
+            entries: duplicate.entry_ids.map((entryId, index) => ({
+              entryId,
+              title: duplicate.titles[index] ?? entryId,
+              fees: duplicate.fees[index] ?? null,
+            })),
+          },
+  };
 }
 
 export function capabilitiesFor(dashboard: Dashboard): CapabilityItem[] {
@@ -892,6 +938,7 @@ export function buildModel(input: BuildInput): CardModel {
     contextAreaName: market?.area_name ?? null,
     contextAreaId: market?.area_id ?? null,
     priceSource: market?.source ?? null,
+    priceEntry: priceEntryFor(dashboard),
     technicalCodes,
   };
 }

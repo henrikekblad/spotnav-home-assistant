@@ -43,6 +43,8 @@ import {
   updateEntityConfig,
   updateSettings,
   updateSiteSettings,
+  choosePriceSource,
+  answerPriceDuplicate,
   updateVehicle,
 } from "./api";
 import {
@@ -338,6 +340,8 @@ export class SpotnavCard extends HTMLElement {
   private readonly overviewPlace: OverviewPlaceHolder = { place: null };
   /** A warning a value's save leaves for the Settings page it returns to (the plan was not updated). */
   private overviewWarning: { sentenceKey: TranslationKey; code: string | null } | null = null;
+  /** After one of same-area electricity prices was chosen: Settings says once that the other can be removed. */
+  private priceRemovableNote = false;
   private confirmReadFailed = false;
   private deferredRefresh = false;
   private readonly idPrefix: string;
@@ -1941,6 +1945,10 @@ export class SpotnavCard extends HTMLElement {
       const code = error instanceof SpotnavApiError ? error.code : null;
       return say(settingsErrorKey(code));
     }
+    if (write.kind === "priceDuplicate") {
+      // Answered in Settings itself, not in an editor: Settings closes, so it opens again from the next read.
+      this.view?.closeSettingsOverview();
+    }
     await this.closeEditorAndConfirm();
     return null;
   }
@@ -2155,6 +2163,18 @@ export class SpotnavCard extends HTMLElement {
           return decoded.failure === "unsupported" ? "settings.error.version" : "settings.error.generic";
         }
         return decoded.value.ok ? null : siteSettingsErrorKey(decoded.value.code);
+      }
+      case "priceSource": {
+        await choosePriceSource(hass, charger, write.priceEntryId);
+        return null;
+      }
+      case "priceDuplicate": {
+        await answerPriceDuplicate(hass, write.areaId, write.keepEntryId);
+        if (write.keepEntryId !== null) {
+          // The others are not removed: Settings says once where they can be.
+          this.priceRemovableNote = true;
+        }
+        return null;
       }
       case "settings":
       case "fiscal": {
@@ -2470,6 +2490,10 @@ export class SpotnavCard extends HTMLElement {
           if (warning !== null) {
             this.overviewWarning = null;
             this.view?.setOverviewNotice(warning);
+          }
+          if (this.priceRemovableNote) {
+            this.priceRemovableNote = false;
+            this.view?.showPriceRemovableNote();
           }
           void this.loadEntityConfig();
           void this.loadCardInfo();

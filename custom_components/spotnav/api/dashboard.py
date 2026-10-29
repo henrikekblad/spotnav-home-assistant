@@ -130,6 +130,7 @@ from ..vehicles.vehicle_charge_limit import charge_limit_range
 from ..vehicles.vehicle_discovery import discover_vehicles, resolve_target_vehicle
 from ..vehicles.vehicle_wake import wake_supported
 from .charge_bar import charge_bar, ProgressFacts
+from .price_source import capture_price_source, CapturedPriceSource, serialize_price_source
 from .common import (
     ERROR_CHARGER_REQUIRED,
     ERROR_CHARGER_UNLOADED,
@@ -489,6 +490,8 @@ class CapturedDashboard:
     session: CapturedSession | None = None
     #: The notifier's count of the plans it told (`ChargerNotifier.plan_notice`), `None` without a notifier.
     plan_notice: dict[str, Any] | None = None
+    #: The charger's electricity price entry (`api/price_source.py`), or `None` while it prices with its own settings.
+    price_source: CapturedPriceSource | None = None
     #: The settings record's `revision` on the wire, `None` for the stored one: the charger's own plus its price
     #: entry's write counter (`pricing/price_source.py:wire_revision`).
     wire_revision: int | None = None
@@ -1133,6 +1136,7 @@ def capture_dashboard(
         switched_phases=None if controller is None else controller.switched_phases,
         session=capture_session(hass, entry_id),
         plan_notice=_plan_notice(hass, entry_id),
+        price_source=capture_price_source(hass, entry_id),
     )
 
 
@@ -1773,6 +1777,12 @@ def serialize_dashboard(
             {}
             if capture.camera_identification is None
             else {"camera_identification": capture.camera_identification}
+        ),
+        # Additive, and only where the charger uses an electricity price entry (`api/price_source.py`).
+        **(
+            {}
+            if capture.price_source is None
+            else {"price_source": serialize_price_source(capture.price_source, can_act=can_act)}
         ),
     }
 

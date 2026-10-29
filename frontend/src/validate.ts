@@ -275,6 +275,27 @@ export interface Dashboard {
    * Assistant offers no camera and AI Task entity, from an older backend, or unreadable.
    */
   camera_identification: CameraIdentification | null;
+  /**
+   * The electricity price entry the charger uses, where its area and fees live. `null` while the charger prices
+   * with its own settings, from an older backend, or unreadable.
+   */
+  price_source: PriceSourceBlock | null;
+}
+
+/** The electricity price entry a charger uses (`price_source`). */
+export interface PriceSourceBlock {
+  entry_id: string;
+  title: string;
+  /** How many chargers use this entry. */
+  charger_count: number;
+  /** Every electricity price entry, only when there is more than one. */
+  choices: Array<{ entry_id: string; title: string }>;
+  writable: boolean;
+  /**
+   * Same-area entries with different fees, not asked about yet (an administrator's question). `fees` is aligned
+   * with `entry_ids`: each entry's fees in the `fiscal` block's shape, or `null` where they cannot be read.
+   */
+  duplicate: { area_id: string; entry_ids: string[]; titles: string[]; fees: Array<Fiscal | null> } | null;
 }
 
 /** A camera or AI Task entity that can be chosen. */
@@ -1597,6 +1618,7 @@ export function decodeDashboard(raw: unknown): DecodeResult {
         vehicle_choices: vehicleChoicesOf(root),
         progress: chargeBarOrNull(root),
         camera_identification: cameraIdentificationOrNull(root),
+        price_source: priceSourceOrNull(root),
       },
     };
   } catch {
@@ -1652,7 +1674,50 @@ const OPTIONAL_DASHBOARD_KEYS = [
   "camera_identification",
   // The notifier's count of the plans it told, for the app's background check: accepted and never read.
   "plan_notice",
+  "price_source",
 ] as const;
+
+/** The `price_source` block, or `null` when it is missing or unreadable: the price section shows no source. */
+function priceSourceOrNull(root: Record<string, unknown>): PriceSourceBlock | null {
+  const value = root.price_source;
+  if (!isRecord(value)) {
+    return null;
+  }
+  try {
+    exactKeys(value, ["entry_id", "title", "charger_count", "choices", "writable", "duplicate"]);
+    const count = value.charger_count;
+    if (typeof count !== "number" || !Number.isInteger(count) || count < 0 || typeof value.writable !== "boolean") {
+      return bad();
+    }
+    const choices = arrayValue(value, "choices").map((entry) => {
+      const item = record(entry);
+      exactKeys(item, ["entry_id", "title"]);
+      return { entry_id: text(item, "entry_id"), title: text(item, "title") };
+    });
+    let duplicate: PriceSourceBlock["duplicate"] = null;
+    if (value.duplicate !== null) {
+      const item = record(value.duplicate);
+      exactKeys(item, ["area_id", "entry_ids", "titles", "fees"]);
+      const ids = arrayValue(item, "entry_ids").map((id) => (typeof id === "string" && id !== "" ? id : bad()));
+      const titles = arrayValue(item, "titles").map((title) => (typeof title === "string" ? title : bad()));
+      const fees = arrayValue(item, "fees").map((fee) => (fee === null ? null : (decodeFiscal(fee) ?? bad())));
+      if (ids.length < 2 || ids.length !== titles.length || ids.length !== fees.length) {
+        return bad();
+      }
+      duplicate = { area_id: text(item, "area_id"), entry_ids: ids, titles, fees };
+    }
+    return {
+      entry_id: text(value, "entry_id"),
+      title: text(value, "title"),
+      charger_count: count,
+      choices,
+      writable: value.writable,
+      duplicate,
+    };
+  } catch {
+    return null;
+  }
+}
 
 /** The `camera_identification` block, or `null` when it is missing or unreadable: the camera rows are hidden. */
 function cameraIdentificationOrNull(root: Record<string, unknown>): CameraIdentification | null {

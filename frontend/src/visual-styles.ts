@@ -37,6 +37,8 @@ export const VISUAL_CLASSES = {
   suggestionAnswers: "spotnav-suggestion-answers",
   pauseChoices: "spotnav-pause-choices",
   choiceButton: "spotnav-choice-button",
+  choiceLabel: "spotnav-choice-label",
+  choiceDetail: "spotnav-choice-detail",
   nameBlock: "spotnav-name-block",
   vehicleLine: "spotnav-vehicle-line",
   vehicleLineName: "spotnav-vehicle-line-name",
@@ -920,12 +922,25 @@ export const VISUAL_STYLES = `
     color: var(--primary-text-color, #212121);
     cursor: pointer;
   }
+  /** A choice's second, smaller line (the same-area question's fees per price). */
+  .spotnav-choice-label,
+  .spotnav-choice-detail {
+    display: block;
+  }
+  .spotnav-choice-detail {
+    font-size: 0.8em;
+    color: var(--secondary-text-color, #727272);
+  }
   .spotnav-choice-button:disabled {
     opacity: 0.55;
     cursor: default;
   }
-  /** "Which car is plugged in?": a question that decides the plan, so it stands out from the status. */
-  .spotnav-suggestion[data-banner="identify"] {
+  /**
+   * "Which car is plugged in?": a question that decides the plan, so it stands out from the status. The same-area
+   * electricity price question in Settings stands out the same way.
+   */
+  .spotnav-suggestion[data-banner="identify"],
+  .spotnav-suggestion[data-banner="price"] {
     padding: 8px 10px;
     border-left: 3px solid var(--primary-color, #03a9f4);
     border-radius: 4px;
