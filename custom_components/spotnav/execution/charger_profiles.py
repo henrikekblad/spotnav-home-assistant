@@ -288,6 +288,8 @@ _PROFILES: Final[tuple[PlatformProfile, ...]] = (
         "sensor for confirmed writes, and the disabled \"Current\" sensor: its terminal attributes are the "
         "charger's measured current per phase, which the site reads for the regulator and solar (T3, T4, T5 "
         "are L1, L2, L3 on a TN network; T2, T3, T4 on an IT network).",
+        phase_switching="Easee's set charger phase mode service, only before a solar start while the charger does "
+        "not charge, and only while it is the one Easee charger on its circuit",
     ),
     PlatformProfile(
         platform="wallbox",

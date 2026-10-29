@@ -7,6 +7,13 @@ the status sensor), falling back to the id stored at setup: an Easee integration
 gives the charger a new device, and a call to the old id would reach no charger while Easee's service
 only logs it. When no id resolves to an existing device the paths are not ready, so a command is owed,
 never sent into nothing.
+
+Phases (`EaseePhaseMode`, start-time only): `easee.set_charger_phase_mode` (`1_phase` / `3_phase`; `auto_phase` is never
+written), read back from the disabled-by-default `phase_mode` sensor (`single` / `auto` / `three`) where it is enabled,
+else from the status sensor's `config_phaseMode` attribute (1 / 2 / 3). Easee applies a phase mode only at a pause, and
+the setting reaches every charger on the circuit, so it is set only before a solar start while the charger does not
+charge (`PhaseSwitch.start_only`), and a charger has it only while it is the one Easee charger on its circuit (the
+status sensors' `circuit_id`); when that cannot be told, it has none.
 """
 
 from __future__ import annotations
@@ -16,7 +23,7 @@ import logging
 import math
 from collections.abc import Callable
 from datetime import datetime
-from typing import Any, Final
+from typing import Any, Final, Literal
 
 from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN
 from homeassistant.core import HomeAssistant
@@ -24,9 +31,10 @@ from homeassistant.helpers import device_registry as dr, entity_registry as er
 from homeassistant.util import dt as dt_util
 
 from ...const import CURRENT_CONTROL_EASEE, DEFAULT_MIN_CURRENT_A
-from ..charger_profiles import PATH_EASEE, WritePolicy
+from ..charger_profiles import entity_matches_keys, PATH_EASEE, WritePolicy
 from .base import (
     _finite,
+    _lower,
     ASSIGN_ASSIGNED,
     ASSIGN_BELOW_MINIMUM,
     ASSIGN_IGNORED_WHILE_PAUSED,
@@ -39,13 +47,19 @@ from .base import (
     current_description,
     CurrentPath,
     path_description,
+    PhaseSwitch,
+    PhaseSwitchResult,
+    PHASES_INVALID,
+    PHASES_TARGET_UNAVAILABLE,
+    PHASES_WHILE_CHARGING,
     StartStopPath,
     MODULATION_WRITES,
     WRITE_RESEND,
     WRITE_SESSION_START,
     WriteRateLimiter,
 )
-from .registry import ChargerContext, register_current, register_start_stop
+from .phase_switches import device_entities
+from .registry import ChargerContext, register_current, register_phase_switch, register_start_stop
 
 _ADAPTER_LOGGER = logging.getLogger(__name__)
 
@@ -627,5 +641,122 @@ def _easee_current(context: ChargerContext) -> CurrentPath | None:
     )
 
 
+#: The status sensor (`<id>_status`, translation key `easee_status`), the read-back sensor and their attributes.
+_EASEE_STATUS_KEYS: Final = ("status", "easee_status")
+_EASEE_PHASE_MODE_KEYS: Final = ("phase_mode",)
+_EASEE_CIRCUIT_ATTRIBUTE: Final = "circuit_id"
+_EASEE_PHASE_MODE_ATTRIBUTE: Final = "config_phasemode"
+#: What `set_charger_phase_mode` takes, and what the read-back says (sensor words, attribute codes); auto is unknown.
+_EASEE_PHASE_MODE_OPTIONS: Final = {1: "1_phase", 3: "3_phase"}
+_EASEE_PHASE_MODE_WORDS: Final = {"single": 1, "three": 3}
+_EASEE_PHASE_MODE_CODES: Final = {1: 1, 3: 3}
+_EASEE_CHARGING: Final = "charging"
+
+
+def _attribute(hass: HomeAssistant, entity_id: str, name: str) -> Any:
+    """A state attribute by its name, whatever its case (`config_phaseMode`), or `None`."""
+    state = hass.states.get(entity_id)
+    if state is None:
+        return None
+    for key, value in state.attributes.items():
+        if key.lower() == name:
+            return value
+    return None
+
+
+def _circuit_of(hass: HomeAssistant, status_entity_id: str) -> str | None:
+    value = _attribute(hass, status_entity_id, _EASEE_CIRCUIT_ATTRIBUTE)
+    if value is None or isinstance(value, bool) or str(value).strip() == "":
+        return None
+    return str(value).strip()
+
+
+def easee_alone_on_circuit(hass: HomeAssistant, status_entity_id: str) -> bool:
+    """Whether this Easee charger is the only one on its circuit, by the `circuit_id` of every Easee charger's status
+    sensor. `False` when that cannot be told: no circuit of its own, or another Easee charger whose circuit cannot be
+    read (its status sensor disabled or without the attribute)."""
+    registry = er.async_get(hass)
+    own = registry.async_get(status_entity_id)
+    if own is None or own.platform != _EASEE_DOMAIN:
+        return False
+    circuit = _circuit_of(hass, status_entity_id)
+    if circuit is None:
+        return False
+    for entry in list(registry.entities.values()):
+        if (
+            entry.platform != _EASEE_DOMAIN
+            or entry.domain != "sensor"
+            or entry.entity_id == status_entity_id
+            or (own.device_id is not None and entry.device_id == own.device_id)
+            or not entity_matches_keys(
+                translation_key=entry.translation_key, unique_id=entry.unique_id, keys=_EASEE_STATUS_KEYS
+            )
+        ):
+            continue
+        other = None if entry.disabled_by is not None else _circuit_of(hass, entry.entity_id)
+        if other is None or other == circuit:
+            return False
+    return True
+
+
+class EaseePhaseMode(PhaseSwitch):
+    """Easee's charger phase mode, set before a solar start only (module docstring)."""
+
+    start_only = True
+
+    def __init__(
+        self, hass: HomeAssistant, device: EaseeDevice, status_entity_id: str, phase_mode_entity_id: str | None
+    ) -> None:
+        super().__init__(hass, phase_mode_entity_id or status_entity_id)
+        self.device = device
+        self.status_entity_id = status_entity_id
+        self.phase_mode_entity_id = phase_mode_entity_id
+
+    async def async_set_phases(self, phases: Literal[1, 3]) -> PhaseSwitchResult:
+        if phases not in (1, 3):
+            return PhaseSwitchResult(False, PHASES_INVALID)
+        if _lower(self.hass.states.get(self.status_entity_id)) == _EASEE_CHARGING:
+            # Never mid-charge: Easee would apply it only at the next pause.
+            return PhaseSwitchResult(False, PHASES_WHILE_CHARGING)
+        device_id = self.device.resolve()
+        if device_id is None:
+            _no_device()
+            return PhaseSwitchResult(False, PHASES_TARGET_UNAVAILABLE)
+        await call_service(
+            self.hass,
+            _EASEE_DOMAIN,
+            "set_charger_phase_mode",
+            {"device_id": device_id, "phase_mode": _EASEE_PHASE_MODE_OPTIONS[phases]},
+            blocking=True,
+        )
+        return PhaseSwitchResult(True)
+
+    def phases_now(self) -> int | None:
+        if self.phase_mode_entity_id is not None:
+            word = _lower(self.hass.states.get(self.phase_mode_entity_id))
+            if word is not None:
+                return _EASEE_PHASE_MODE_WORDS.get(word)
+        code = _finite(_attribute(self.hass, self.status_entity_id, _EASEE_PHASE_MODE_ATTRIBUTE))
+        return None if code is None else _EASEE_PHASE_MODE_CODES.get(int(code))
+
+
+def _easee_phase_mode(context: ChargerContext) -> PhaseSwitch | None:
+    device_id = context.raw_path.get("device_id")
+    status_entity_id = context.status_entity_id
+    if not device_id or not status_entity_id:
+        return None
+    hass = context.hass
+    if not easee_alone_on_circuit(hass, status_entity_id):
+        return None
+    phase_mode = device_entities(hass, _EASEE_DOMAIN, "sensor", _EASEE_PHASE_MODE_KEYS, status_entity_id)
+    return EaseePhaseMode(
+        hass,
+        EaseeDevice(hass, str(device_id), (context.charge_control, status_entity_id)),
+        status_entity_id,
+        phase_mode[0] if phase_mode else None,
+    )
+
+
 register_start_stop(PATH_EASEE, _easee_path)
 register_current(CURRENT_CONTROL_EASEE, _easee_current)
+register_phase_switch(_EASEE_DOMAIN, _easee_phase_mode)
