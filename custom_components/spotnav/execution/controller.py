@@ -140,6 +140,7 @@ from .ownership_shadow import (
     FIELD_OWNER,
     legacy_intent,
     legacy_owner,
+    BALANCING,
     OwnershipShadow,
     SAFETY_AND_C7,
     ShadowToken,
@@ -873,6 +874,10 @@ class ChargingController:
         # want of headroom for the minimum current): any other stop or start clears it. Only the
         # battery probe reads it (`site/battery_probe.py`), to resume a charge balancing interrupted.
         self._paused_by_balancing = False
+        # When the core drives: load balancing's memory as today's `balancing_pause` key read it back, for the restart
+        # alone (`_restore_locked`), which takes it into the session where today's keys are the truth (no record of
+        # the core's own, or keys written after it). `None` at every other time: the session is read then.
+        self._balancing_read_back: BalancingMemory | None = None
         # Whether the last start (`_start_locked`) was held back by load balancing for want of room below the floor:
         # what that start's result says (`balancing_held`), read where the start returns. Not ownership: an
         # observation of the start itself, so it reads the same whether or not the core keeps load balancing's memory.
@@ -959,10 +964,10 @@ class ChargingController:
             coverage=OwnershipCoverage(store=Store(hass, COVERAGE_STORE_VERSION, coverage_key(entry_id))),
             name=entry_id,
             on_failure=self._failure_repairs.failed,
-            # The safety hold and C7's stops are the core's when it drives (the core end state plan, step 3): read
-            # from its session (`_safety`, `_c7`). With the option off, today's fields stay the truth, lined up as
-            # ever.
-            owned_fields=SAFETY_AND_C7 if self._core_drives else (),
+            # The safety hold and C7's stops (the core end state plan, step 3), and load balancing's memory (step 4),
+            # are the core's when it drives: read from its session (`_safety`, `_c7`, `_balancing`). With the option
+            # off, today's fields stay the truth, lined up as ever.
+            owned_fields=(*SAFETY_AND_C7, *BALANCING) if self._core_drives else (),
         )
         self._shadow.today_fields = lambda: f"origin={self._owner_origin} plan_charge={self._is_plan_charge}"
 
@@ -991,11 +996,26 @@ class ChargingController:
 
     @property
     def _balancing(self) -> BalancingMemory:
-        """Load balancing's memory: its pause was the last thing done, and the charge it holds back."""
+        """Load balancing's memory: its pause was the last thing done, and the charge it holds back. When the core
+        drives, the session's (step 4): only its decisions change it, and whose charge it was is today's origin and
+        plan flag of the core's owner (`_CORE_OWNER_ORIGIN`; nobody's is `(None, False)`)."""
+        if self._core_drives:
+            if self._balancing_read_back is not None:
+                return self._balancing_read_back
+            session = self._shadow.session
+            if not session.balancing_paused:
+                return BalancingMemory(paused=False, charge=None)
+            return BalancingMemory(
+                paused=True, charge=_CORE_OWNER_ORIGIN.get(session.paused_origin or "", (None, False))
+            )
         return BalancingMemory(paused=self._paused_by_balancing, charge=self._paused_charge)
 
     @_balancing.setter
     def _balancing(self, memory: BalancingMemory) -> None:
+        if self._core_drives:
+            # The core decided it already (`BalancingPause`'s result, a start and its result, a stop's result, a
+            # plug-in, an unplug, a new plan, `BalancingDropped`, a restart).
+            return
         self._paused_by_balancing = memory.paused
         self._paused_charge = memory.charge
 
@@ -1185,10 +1205,13 @@ class ChargingController:
             balancing = saved.get("balancing_pause")
             if isinstance(balancing, dict):
                 origin = balancing.get("origin")
-                self._balancing = BalancingMemory(
+                read_back = BalancingMemory(
                     paused=True,
                     charge=(origin if isinstance(origin, str) else None, balancing.get("plan_charge") is True),
                 )
+                self._balancing = read_back
+                if self._core_drives:
+                    self._balancing_read_back = read_back
             hold = saved.get("hold")
             if isinstance(hold, dict):
                 self._hold_state = replace(
@@ -1199,18 +1222,25 @@ class ChargingController:
             # (`reconcile_phases`).
             self._phases = PhaseSwitchState.from_store(saved.get(PHASE_SWITCHING_STORE_KEY))
         self._saved_memory = self._memory_signature()
+        if self._core_drives and self._balancing_read_back is None:
+            # No balancing pause in today's keys: none read back (not the session the controller began with).
+            self._balancing_read_back = BalancingMemory(paused=False, charge=None)
         stored, migrate = self._stored_session(saved)
         keys_newer = self._restore_order(saved) if stored is not None else False
         await self._shadow.coverage.async_load(await self._integration_version())
         # The core's session is what was read back: its own record when it drives and one was read, else today's;
         # today's keys where they are newer than the record (written after its last change).
-        self._shadow.restart(
-            core_events.Restart(
-                legacy_person_stop=self._legacy_person_stopped and self._automatic_gate is not None
-            ),
-            stored,
-            keys_newer=keys_newer,
-        )
+        try:
+            self._shadow.restart(
+                core_events.Restart(
+                    legacy_person_stop=self._legacy_person_stopped and self._automatic_gate is not None
+                ),
+                stored,
+                keys_newer=keys_newer,
+            )
+        finally:
+            # From here load balancing's memory is the session's alone.
+            self._balancing_read_back = None
         if stored is not None:
             self._session_saved = stored
         if migrate:
