@@ -538,6 +538,63 @@ async def test_a_restart_right_after_a_starts_save_and_before_its_result_reads_t
     await restarted.shutdown()
 
 
+@pytest.mark.usefixtures("drives")
+async def test_a_crash_between_a_persons_starts_save_and_its_pause_leaves_the_charge_to_the_person(
+    hass: HomeAssistant, timers: FakeScheduler, monkeypatch: pytest.MonkeyPatch, freezer: Any
+) -> None:
+    """The plan's charge runs in an open window and the person presses Start. The Start's own save (inside its feed)
+    writes the person's owner; Home Assistant dies before the settings store's pause and the feed's end are saved.
+    The restart reads a person's charge with no intent of theirs and the plan still there: the window's start the
+    re-arm feeds does not take it over as the plan's, so the window's end does not stop it."""
+    from dataclasses import replace
+
+    from .pause_world import ENTRY as CHARGER
+
+    world = await pause_world(hass, timers, plan=two_windows())
+    controller = world.controller
+    assert controller.charge_origin == "plan_window"
+    on_disk: list[dict[str, Any]] = []
+    real_save = controller._store.async_save  # noqa: SLF001
+
+    async def save(data: Any) -> None:
+        if controller._command_unfed == "start" and not on_disk:  # noqa: SLF001 - the Start's result not fed yet
+            on_disk.append(dict(data))
+        await real_save(data)
+
+    monkeypatch.setattr(controller._store, "async_save", save)  # noqa: SLF001
+    pause_before = world.store.settings(CHARGER).pause
+    await world.executor.async_manual_start(10)
+    await hass.async_block_till_done()
+    (record,) = on_disk
+    assert (record[SESSION_STORE_KEY]["owner"], record[SESSION_STORE_KEY]["manual"]) == ("person", None)
+    assert record["plan"] is not None and record["charge_origin"] == "manual"
+
+    # The process dies there: neither the pause nor any later save reached the disk.
+    controller._cancel_session_save()  # noqa: SLF001
+    await world.executor.async_shutdown()
+    await world.store.async_update(CHARGER, mutate=lambda current: replace(current, pause=pause_before))
+
+    async def nothing(*_args: Any, **_kwargs: Any) -> None:
+        return None
+
+    await real_save(record)
+    monkeypatch.setattr(controller._store, "async_save", nothing)  # noqa: SLF001
+    await controller.async_shutdown()
+    restarted = await world._start_again()  # noqa: SLF001
+    shadow = restarted.controller.ownership_shadow
+    assert (shadow.session.owner, shadow.session.manual) == ("person", None)
+    assert restarted.controller.plan is not None and restarted.controller.charge_origin == "manual"
+    assert hass.states.get(SWITCH).state == "on"
+
+    freezer.tick(timedelta(minutes=51))
+    await restarted.fire("_async_end_callback")
+    await hass.async_block_till_done()
+    assert hass.states.get(SWITCH).state == "on", "the window's end does not stop the person's charge"
+    assert shadow.session.owner == "person" and restarted.controller.charge_origin == "manual"
+    assert shadow.counts["verdict_differs"] == 1, "today's code would take it over at the window's start"
+    await restarted.shutdown()
+
+
 @pytest.mark.parametrize("drives", [True, False], ids=["core", "previous"])
 async def test_a_storm_of_reports_that_change_nothing_writes_nothing(
     hass: HomeAssistant, timers: FakeScheduler, saves: list, freezer: Any, monkeypatch: pytest.MonkeyPatch, drives: bool
