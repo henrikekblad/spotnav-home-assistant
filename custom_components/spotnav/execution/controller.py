@@ -986,9 +986,10 @@ class ChargingController:
         # want of headroom for the minimum current): any other stop or start clears it. Only the
         # battery probe reads it (`site/battery_probe.py`), to resume a charge balancing interrupted.
         self._paused_by_balancing = False
-        # When the core drives: load balancing's memory as today's `balancing_pause` key read it back, for the restart
-        # alone (`_restore_locked`), which takes it into the session where today's keys are the truth (no record of
-        # the core's own, or keys written after it). `None` at every other time: the session is read then.
+        # When the core drives: load balancing's memory as today's `balancing_pause` key read it back, for a restart that
+        # migrates from today's keys alone (`_restore_locked`: no record of the core's own it can read, or an earlier
+        # build's whose order marks say the keys are newer). `None` at every other time, also at a restart from the
+        # core's record: the session is read then.
         self._balancing_read_back: BalancingMemory | None = None
         # Whether the last start (`_start_locked`) was held back by load balancing for want of room below the floor:
         # what that start's result says (`balancing_held`), read where the start returns. Not ownership: an
@@ -1315,7 +1316,7 @@ class ChargingController:
         saved = await self._store.async_load()
         # When the core drives, its own record is the truth and today's keys are not read into its session; they are
         # read (`_*_read_back`) only to migrate: no record, one it cannot read, or an earlier build's saying the keys
-        # are the newer (`_stored_session`). With the option off, today's keys exactly, as ever.
+        # were written after it (`_stored_session`). With the option off, today's keys exactly, as ever.
         session, migrate = self._stored_session(saved)
         from_keys = self._core_drives and session is None
         keys_ended: CarEndedRecord | None = None

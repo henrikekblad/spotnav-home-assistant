@@ -200,23 +200,29 @@ default (the core drives); `SPOTNAV_CORE_OWNERSHIP=0` runs the whole suite with 
 pass.
 
 With the option on the core's session is also kept across restarts, as one versioned record per charger
-(`charge_session` in the charger's store, `ChargeSession.to_store`) beside today's keys, which are still written as
-before. The record leaves out what a restart clears anyway (`TRANSIENT_FIELDS`: commands awaiting a result, the stops
-under a person's Stop and their give-up, the safety stop's gap). Every save of today's keys writes it as it is then.
-A change of the owner or of the person intent no such save carried is saved at once, in a task off the decision's
-path, with today's keys as they are then (derived from the session, so they never lag it by a decision: a save inside
-a start's or a stop's feed runs before the feed's end decides the owner); the charger's own charge and nobody's count
-as one there (a restart sees which again). Any other change is saved by the first decision at least `SESSION_SAVE_DELAY_S` after it
-(no timer of its own, so no other timer moves), at Home Assistant's stop (`__init__._async_stop`, which unloads no
-entry, so no controller's own shutdown runs; `ChargingController.async_flush_session`) and at an unload's shutdown,
-which also saves a decision that finished while it waited for the lock. So a report that changes nothing stored
-writes nothing and many bookkeeping changes in a row are one save. Beside the record, `charge_session_order` keeps
-two marks on one counter: the core's last decision (`session`) and the last change of today's ownership keys
-(`keys`), as each was written. At a restart the core decides from the record and compares it with today's restored
-state, except that today's keys written after the record's last change (a start whose result had not come back when
-they were saved) are the newer: the session is read from them then, and only the person intent from the record. A
-record that is missing or of a version the core does not know is read from today's keys once (`legacy_session`) and
-written: so a charger that starts driving mid-session (the update that made it the default, during a plan's or the
+(`charge_session` in the charger's store, `ChargeSession.to_store`) beside today's keys, which are still written,
+derived from the session, so an older build or the option off reads the same. The record leaves out what a restart
+clears anyway (`TRANSIENT_FIELDS`: commands awaiting a result, the stops under a person's Stop and their give-up, the
+safety stop's gap). One writer (step 8): every save (`ChargingController._async_save`) writes the record and today's
+keys together, both as they are then, so neither can be newer than the other. A save inside a start's or a stop's feed,
+before the feed's end decides its result, writes the owner that command makes in both (`ownership.owner_as_sent`: the
+start's owner the core awaits, nobody's after a stop), as today's code wrote its fields as the command went out. A
+change of the owner or of the person intent is saved at once, in a task off the decision's path (the same save, which
+awaits nothing before it writes); the charger's own charge and nobody's count as one there (a restart sees which
+again). Any other change is saved by the first decision at least `SESSION_SAVE_DELAY_S` after it (no timer of its own,
+so no other timer moves), by any other save, at Home Assistant's stop (`__init__._async_stop`, which unloads no entry,
+so no controller's own shutdown runs; `ChargingController.async_flush_session`) and at an unload's shutdown, which
+also saves a decision that finished while it waited for the lock. So a report that changes nothing stored writes
+nothing and many bookkeeping changes in a row are one save. A session that cannot be stored drops the record at the
+next save (today's keys are written), so a restart reads the keys rather than a record older than them. At a restart
+the core decides from its record alone and compares it with today's restored state; today's keys beside it are not
+read into the session, and are written again, derived, when they say otherwise (an earlier build's record saved after
+them). The order marks an earlier build kept beside the record (`charge_session_order`: its last decision and the last
+change of today's keys on one counter) are no longer written; read once only, they migrate: marks saying the keys
+were written after the record make the restart read the keys, as that build did. A record that is missing, of a
+version the core does not know, or such an earlier build's is read from today's keys once (`legacy_session`; the
+read-backs `_owner_read_back`, `_balancing_read_back`, `_hold_read_back` and `_car_ended_read_back` serve that alone)
+and written: so a charger that starts driving mid-session (the update that made it the default, during a plan's or the
 sun's charge, or a charger set back from the previous logic) takes the running charge over as today's keys describe
 it. With the option off nothing of it is written or read: today's restore, exactly, and the first save of today's
 keys drops a record left from when it drove, so a charger set back to the current logic later reads no stale one. In the shadow's facts, the
@@ -244,8 +250,7 @@ unplug marks every command awaiting its result as the earlier plug-in's (`Pendin
 command the shell decided before the plug-in ended but fed after says so on its result
 (`CommandResult.earlier_plug_in`, from the shadow's count of ended plug-ins at the feed's `begin`). Both are
 transient: no command awaiting its result outlives a restart. Today's `balancing_pause` key is still written, derived from the session, so an older build
-reads it; a restart takes it into the session where today's keys are the truth (no record of the core's own, or keys
-written after it). Load balancing's own stop never depends on the core: `_regulated_stop` sends it whatever the core
+reads it; a restart takes it into the session only to migrate (no record of the core's own it can read). Load balancing's own stop never depends on the core: `_regulated_stop` sends it whatever the core
 decides, and the core is only told (`balancing_pause`, decided before the stop goes out, its result after).
 
 The hold's memory (`held`, `overridden`) is the session's the same way when the core drives (`_hold_state` reads it),
@@ -261,8 +266,8 @@ when the charge is seen off; both at a report with no car (also one whose contro
 the next window starts (a timer's or a re-arm's, not one at plug-in or a start's retry). Kept: a person's Start or
 Stop, a new plan, a window's end, load balancing, a restart; the re-arm spares an overridden hold. Today's rule is
 still computed beside the core's, from the core's memory as it was before the report (`WindowHold.take`). Today's
-`hold` key is still written, derived from the session, and a restart takes it into the session where today's keys
-are the truth, as load balancing's.
+`hold` key is still written, derived from the session, and a restart takes it into the session only to migrate, as
+load balancing's.
 
 The car-ended record (`car_ended`) and the connection (`plugged`) are the session's the same way when the core drives
 (`_car_ended` and `_plugged` read them). The record is set whole at the car's end with the facts the controller read
@@ -275,7 +280,8 @@ the command goes out, as today's code clears it then). A car's end of a person's
 while it was on its way records nothing. `plugged` changes only at a plug-in or an unplug the charger stated, decided
 where its feed begins (so the controller's own reads inside the feed see it), and a restart clears it. Today's
 `car_ended_*` keys are still written, derived from the session (saved soon after every change the core decides,
-`_persist_session`), and a restart takes them into the session where today's keys are the truth, as load balancing's.
+`_persist_session`), and a restart takes them into the session only to migrate, as load balancing's (and, at the first
+restart after a version 1 record, the rest of that record's car-ended end from them).
 An older build refuses the version 2 record and reads those keys. One difference in the keys: once the record ends,
 its car is no longer kept (`car_ended_vehicle` is `null` with `car_ended_at`); nothing reads it without the instant.
 
@@ -301,11 +307,11 @@ result, the owner reads as that command makes it (`_command_unfed`: the start's 
 a stop), as today's code wrote its fields as the command went out, so what the feed tells its readers meanwhile (the
 site's regulator, the sun) is not the owner before it; an owner decided after the feed's own notification (a
 hand-over in the boundary's feed) is told to every reader at once after it. Today's `charge_origin` and `plan_charge`
-keys are still written, derived from the session, and a restart takes them into the session where today's keys are
-the truth (no record of the core's own, or keys written after it); where the core's record is the truth the owner is
-read from it.
+keys are still written, derived from the session (also inside a start's or a stop's feed, as that command makes the
+owner), and a restart reads the owner from the core's record, taking it from today's keys only to migrate.
 
-Not yet the core's alone: the session itself after the restart (read from today's keys where they are newer, step 8).
+The session is the core's alone after a restart too (step 8): it is read from the core's record, never from today's
+keys beside it. What is left of today's code is the previous logic computed beside the core, and the option off.
 
 ## Tests
 
@@ -323,7 +329,9 @@ Not yet the core's alone: the session itself after the restart (read from today'
 * `tests/test_charging_decisions_option.py`: the per-charger choice under **Configure**.
 * `tests/test_core_recheck.py`: a background task's re-check asked of the core, and its command's result.
 * `tests/test_core_session_store.py`: the stored record: round trip, migration from today's keys, an unknown version,
-  no save at every report, a restart in each scope of a manual pause, and the core taking over at an update during
+  an earlier build's order marks, one writer (every record written keeps today's keys derived from it and no order
+  marks, also inside a start's feed, and a restart right after that save reads the start's owner), no save at every
+  report or in a storm of reports that change nothing, a restart in each scope of a manual pause, and the core taking over at an update during
   a plan's and the sun's charge, and after a charger was set to the previous logic and back.
 * `tests/test_core_car_ended_memory.py`: the car-ended record and the connection in both modes: a restart in both
   restart kinds, the wait's end, the record's end with its plug-in and at a person's Start, an older build's view of
