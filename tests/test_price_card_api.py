@@ -9,6 +9,7 @@ from __future__ import annotations
 from typing import Any
 
 import pytest
+from homeassistant.config_entries import ConfigEntryDisabler
 from homeassistant.core import HomeAssistant
 
 from custom_components.spotnav.api import dashboard as dashboard_api
@@ -105,11 +106,32 @@ async def test_several_prices_offer_a_choice_and_ask_the_question(hass: HomeAssi
         "area_id": SE4,
         "entry_ids": ["price_a", "price_b"],
         "titles": ["Electricity price SE4", "Electricity price SE4 (company)"],
+        "fees": block["duplicate"]["fees"],
     }
+    # Each entry's fees, aligned with its id, in the `fiscal` block's shape: the one this charger uses is its own.
+    fees = block["duplicate"]["fees"]
+    assert fees[1] == dashboard(hass)["fiscal"]
+    assert [item["transfer"]["effective_value"] for item in fees] == [30.0, OWN_FEE["value"]]
+    assert fees[0]["tax"] == fees[1]["tax"] and fees[0]["tax"]["unit"] == "öre/kWh"
     # The question is an administrator's: nobody else is asked.
     assert dashboard(hass, can_act=False)["price_source"]["duplicate"] is None
     # A charger with no pointer among several prices prices with its own settings: no block.
     assert "price_source" not in dashboard(hass, "entry_b")
+
+
+async def test_a_duplicate_that_cannot_be_read_has_no_fees(hass: HomeAssistant, freezer) -> None:
+    await two_chargers(hass)
+    freezer.move_to(NOW)
+    await two_prices(hass)
+    hass.config_entries.async_update_entry(hass.config_entries.async_get_entry("entry_a"), data={
+        **hass.config_entries.async_get_entry("entry_a").data, CONF_PRICE_ENTRY_ID: "price_b",
+    })
+    await hass.config_entries.async_set_disabled_by("price_a", ConfigEntryDisabler.USER)
+    await hass.async_block_till_done()
+
+    duplicate = dashboard(hass)["price_source"]["duplicate"]
+    assert duplicate["entry_ids"] == ["price_a", "price_b"]
+    assert duplicate["fees"][0] is None and duplicate["fees"][1] == dashboard(hass)["fiscal"]
 
 
 async def test_the_apps_webhook_sends_the_block_only_when_read(hass: HomeAssistant, hass_client_no_auth, freezer) -> None:

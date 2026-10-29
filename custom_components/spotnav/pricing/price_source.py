@@ -68,6 +68,8 @@ VIA_CHARGER: Final = "charger"
 VIA_SITE: Final = "site"
 VIA_ONLY: Final = "only"
 VIA_OWN: Final = "own"
+#: An electricity price entry read by its id (`price_entry_source`), not as any charger's source.
+VIA_ENTRY: Final = "entry"
 
 #: Sent with the price entry's id whenever any electricity price entry is added, changed, disabled or removed.
 SIGNAL_PRICE_SOURCES: Final = f"{DOMAIN}_price_sources"
@@ -216,6 +218,12 @@ def _from_entry(hass: HomeAssistant, entry: ConfigEntry, via: str) -> PriceSourc
         revision=source_revision(overrides),
         write_revision=price_write_revision(entry),
     )
+
+
+def price_entry_source(hass: HomeAssistant, entry_id: str) -> PriceSource | None:
+    """The electricity price entry's own area and fees, or `None` while it may not be a source."""
+    entry = hass.config_entries.async_get_entry(entry_id)
+    return _from_entry(hass, entry, VIA_ENTRY) if entry is not None and _usable(entry) else None
 
 
 def entry_source_for(hass: HomeAssistant, charger_id: str) -> PriceSource | None:

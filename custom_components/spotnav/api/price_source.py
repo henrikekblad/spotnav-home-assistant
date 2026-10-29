@@ -9,8 +9,10 @@ own settings:
 * `charger_count`: how many chargers use that entry;
 * `choices`: `[{entry_id, title}]` of every electricity price entry, only when there is more than one;
 * `writable`: whether this caller may change it (an administrator);
-* `duplicate`: `{area_id, entry_ids, titles}` while a recorded set of same-area entries with different fees that
-  holds this charger's entry is unanswered (`pricing/price_store.py`), for an administrator only; else `null`.
+* `duplicate`: `{area_id, entry_ids, titles, fees}` while a recorded set of same-area entries with different fees
+  that holds this charger's entry is unanswered (`pricing/price_store.py`), for an administrator only; else `null`.
+  `fees` is aligned with `entry_ids`: each entry's fees as the dashboard's `fiscal` block
+  (`api/dashboard.py:serialize_fiscal`), or `null` while that entry cannot be read or its area is not listed.
 
 Two WebSocket commands, administrators only, each answering `{"ok": true}` or a stable error code:
 
@@ -32,7 +34,8 @@ from homeassistant.components import websocket_api
 from homeassistant.core import callback, HomeAssistant
 
 from ..pricing.price_setup import choose_price_entry, use_price_entry
-from ..pricing.price_source import entry_source_for, price_entries
+from ..planning.auto_settings import AutoSettings
+from ..pricing.price_source import entry_source_for, price_entries, price_entry_source, PriceSource
 from ..pricing.price_store import price_duplicates
 from ..runtime import domain_data
 from ..vehicles.charger_inventory import charger_entries
@@ -53,6 +56,8 @@ class CapturedPriceSource:
     choices: tuple[tuple[str, str], ...]
     #: `(area_id, entry_ids, titles)` of the unanswered duplicates holding this entry, or `None`.
     duplicate: tuple[str, tuple[str, ...], tuple[str, ...]] | None
+    #: Each duplicate entry's own area and fees, aligned with its `entry_ids` (`None` for one that cannot be read).
+    duplicate_sources: tuple[PriceSource | None, ...] = ()
 
 
 def _title(hass: HomeAssistant, entry_id: str) -> str:
@@ -78,10 +83,12 @@ def capture_price_source(hass: HomeAssistant, charger_id: str) -> CapturedPriceS
         else ()
     )
     duplicate = None
+    duplicate_sources: tuple[PriceSource | None, ...] = ()
     for item in price_duplicates(hass):
         if entry_id in item["entry_ids"]:
             ids = tuple(item["entry_ids"])
             duplicate = (item["area_id"], ids, tuple(_title(hass, found) for found in ids))
+            duplicate_sources = tuple(price_entry_source(hass, found) for found in ids)
             break
     return CapturedPriceSource(
         entry_id=entry_id,
@@ -89,7 +96,17 @@ def capture_price_source(hass: HomeAssistant, charger_id: str) -> CapturedPriceS
         charger_count=count,
         choices=choices,
         duplicate=duplicate,
+        duplicate_sources=duplicate_sources,
     )
+
+
+def _fees(source: PriceSource | None) -> dict[str, Any] | None:
+    """One price entry's fees as the dashboard's `fiscal` block, or `None`."""
+    from .dashboard import serialize_fiscal  # noqa: PLC0415 - the dashboard imports this module
+
+    if source is None:
+        return None
+    return serialize_fiscal(AutoSettings(area_id=source.area_id, overrides=(source.overrides,)), source.area)
 
 
 def serialize_price_source(price_source: CapturedPriceSource | None, *, can_act: bool) -> dict[str, Any] | None:
@@ -105,7 +122,12 @@ def serialize_price_source(price_source: CapturedPriceSource | None, *, can_act:
         "writable": bool(can_act),
         "duplicate": None
         if duplicate is None
-        else {"area_id": duplicate[0], "entry_ids": list(duplicate[1]), "titles": list(duplicate[2])},
+        else {
+            "area_id": duplicate[0],
+            "entry_ids": list(duplicate[1]),
+            "titles": list(duplicate[2]),
+            "fees": [_fees(source) for source in price_source.duplicate_sources],
+        },
     }
 
 
