@@ -270,3 +270,99 @@ async def test_the_stop_under_a_persons_stop_is_rechecked_by_the_core(
     shadow = world.controller.ownership_shadow
     assert not shadow.session.hold_stop_pending and len(shadow.session.hold_stop_times) == 1
     await world.shutdown()
+
+
+# ---------------------------------------------------------------------------------------------- C7 in the session
+
+
+def _c7(world) -> tuple[int, bool]:
+    """How many stops under the person's Stop count now, and whether they were given up: through the controller's
+    accessor (the session's when the core drives, today's fields otherwise)."""
+    stops = world.controller._c7  # noqa: SLF001 - the one read path
+    return len(stops.stop_times), stops.gave_up
+
+
+@pytest.mark.parametrize("drives", [False, True])
+async def test_the_stops_under_a_persons_stop_keep_the_gap_and_give_up_in_both_modes(
+    hass: HomeAssistant, timers: FakeScheduler, monkeypatch, freezer, drives: bool
+) -> None:
+    """C7 and R5 through the controller: a charger that begins again by itself under a person's Stop is stopped at
+    most once per gap, each stop counted once, and after three in ten minutes SpotNav gives up and says so. When the
+    core drives, all of it is the session's, and the controller's own fields are never written."""
+    monkeypatch.setattr(ownership_shadow, "CORE_OWNERSHIP_DEFAULT", drives)
+    world = await pause_world(hass, timers)
+    await world.executor.async_manual_stop()
+    stops = len(world.stops)
+
+    await world.switch("on")  # the charger begins by itself: stopped at once
+    assert len(world.stops) == stops + 1 and _c7(world) == (1, False)
+    freezer.tick(timedelta(seconds=5))
+    await world.switch("on")  # again, within the gap: nothing yet
+    assert len(world.stops) == stops + 1 and _c7(world) == (1, False)
+    freezer.tick(timedelta(seconds=30))
+    world.controller.note_person_hold()  # the gap's own look again
+    await hass.async_block_till_done()
+    assert len(world.stops) == stops + 2 and _c7(world) == (2, False)
+    freezer.tick(timedelta(seconds=31))
+    await world.switch("on")
+    assert len(world.stops) == stops + 3 and _c7(world) == (3, False)
+    freezer.tick(timedelta(seconds=31))
+    await world.switch("on")  # a fourth within ten minutes: given up, and said
+    assert len(world.stops) == stops + 3 and _c7(world) == (3, True)
+    assert world.controller.ignores_person_stop
+    shadow = world.controller.ownership_shadow
+    if drives:
+        assert shadow.session.hold_gave_up and len(shadow.session.hold_stop_times) == 3
+        fields = vars(world.controller)
+        assert fields["_person_hold_stop_times"] == [] and not fields["_person_hold_gave_up"], "never written"
+    assert shadow.counts["mirror_drift"] == 0
+
+    await world.executor.async_manual_stop()  # the person acts: afresh
+    assert _c7(world) == (0, False) and not world.controller.ignores_person_stop
+    await world.shutdown()
+
+
+@pytest.mark.parametrize("drives", [False, True])
+async def test_a_report_that_lands_while_the_stop_under_a_persons_stop_is_on_its_way_keeps_it_pending(
+    hass: HomeAssistant, timers: FakeScheduler, monkeypatch, drives: bool
+) -> None:
+    """The stop under a person's Stop is on its way (its command awaited), and the charger reports again: the
+    session keeps `hold_stop_pending` when the core drives, no second stop goes out, and nothing the core owns
+    drifts from what the controller reads."""
+    import asyncio
+
+    monkeypatch.setattr(ownership_shadow, "CORE_OWNERSHIP_DEFAULT", drives)
+    world = await pause_world(hass, timers)
+    await world.executor.async_manual_stop()
+    release = asyncio.Event()
+    calls: list[object] = []
+
+    async def slow(call) -> None:
+        calls.append(call)
+        await release.wait()
+        hass.states.async_set(SWITCH, "off")
+
+    hass.services.async_register("switch", "turn_off", slow)
+    hass.states.async_set(SWITCH, "on")  # the charger begins by itself
+    for _ in range(20):
+        await asyncio.sleep(0)
+        if calls:
+            break
+    assert len(calls) == 1, "the stop is on its way"
+    shadow = world.controller.ownership_shadow
+    hass.states.async_set(SWITCH, "on", {"report": 1})  # a report lands mid-command
+    for _ in range(10):
+        await asyncio.sleep(0)
+    assert world.controller._c7.stop_pending  # noqa: SLF001
+    if drives:
+        # The session is the truth: the report was decided on it as the core left it (with the option off, the
+        # shadow decides both after the stop's feed, from today's state lined up).
+        assert shadow.session.hold_stop_pending
+    assert len(calls) == 1, "no second stop beside the one on its way"
+    release.set()
+    await hass.async_block_till_done()
+    assert len(calls) == 1
+    assert not shadow.session.hold_stop_pending and not world.controller._c7.stop_pending  # noqa: SLF001
+    assert len(world.controller._c7.stop_times) == 1, "counted once"  # noqa: SLF001
+    assert shadow.counts["mirror_drift"] == 0
+    await world.shutdown()
