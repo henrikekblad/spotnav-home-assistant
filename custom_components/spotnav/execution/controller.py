@@ -1422,6 +1422,10 @@ class ChargingController:
         if migrate:
             # Read from today's keys once: the core's own record is written now, beside them.
             await self._async_save_session()
+        elif self._core_drives and self._memory_signature() != self._saved_memory:
+            # The core's record was newer than today's keys and says otherwise (an owner, load balancing's memory, the
+            # hold, the car-ended record): the keys are written again, derived from it, so a rollback reads the same.
+            await self._async_save_quietly()
         await self._reschedule_locked()
         # Armed for the controller's whole life, not only while a plan is: a manual Start has no
         # plan, and a scheduled one is observed from acceptance.
