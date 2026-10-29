@@ -873,6 +873,10 @@ class ChargingController:
         # want of headroom for the minimum current): any other stop or start clears it. Only the
         # battery probe reads it (`site/battery_probe.py`), to resume a charge balancing interrupted.
         self._paused_by_balancing = False
+        # Whether the last start (`_start_locked`) was held back by load balancing for want of room below the floor:
+        # what that start's result says (`balancing_held`), read where the start returns. Not ownership: an
+        # observation of the start itself, so it reads the same whether or not the core keeps load balancing's memory.
+        self._start_held_back = False
         # When a Start this controller accepted was sent to the charge control while the charger
         # has not reported it on yet, else `None`.
         self._start_sent_at: datetime | None = None
@@ -3455,6 +3459,12 @@ class ChargingController:
         return self._stop_settling()
 
     @property
+    def start_held_by_balancing(self) -> bool:
+        """Whether the last start was held back by load balancing for want of room below the floor (it waits for
+        the regulator's resume), read where that start returned `False`: the start's own outcome, not the memory."""
+        return self._start_held_back
+
+    @property
     def paused_by_balancing(self) -> bool:
         """Whether the charger is stopped because load balancing paused it, and nothing has stopped
         or started it since (a person's Stop, a window's end, a target stop all clear it)."""
@@ -3609,6 +3619,7 @@ class ChargingController:
           phase switching was turned off: the next start of any kind leaves the one phase we set behind. A charge that
           runs when the setting is turned off is left as it is (no extra interruption).
         """
+        self._start_held_back = False
         if manual or cause != "solar" or not self.phase_switching_option:
             await self._restore_three_phases_locked()
         # Whatever balancing paused before is over: this start is a charge of its own.
@@ -3669,6 +3680,7 @@ class ChargingController:
             if too_low is not None:
                 # The charge that was asked for waits for headroom as what it is (the plan's, a person's, the
                 # sun's); the regulator's resume gives it back that origin.
+                self._start_held_back = True
                 self._remember_paused_charge(
                     "manual" if manual else cause or "other", cause == "plan_window" and not manual
                 )
@@ -5305,7 +5317,7 @@ class ChargingController:
             self._arm_start_retry()
             executed = await self._start_locked(cause="plan_window")
             outcome = self._shadow_start_outcome(executed)
-            if not executed and not self._balancing.paused and not self._charger_ready():
+            if not executed and not self._start_held_back and not self._charger_ready():
                 # Not sent: the charger's integration has not loaded. Decided again once it has.
                 self._owe("the window's start")
             return False
@@ -6352,7 +6364,7 @@ class ChargingController:
         )
 
     def _shadow_start_outcome(self, executed: bool) -> CommandOutcome:
-        return CommandOutcome(executed, balancing_held=not executed and self._balancing.paused)
+        return CommandOutcome(executed, balancing_held=not executed and self._start_held_back)
 
     async def _recheck(
         self, what: str, today: Callable[[], bool], act: Callable[[], Awaitable[bool]]
