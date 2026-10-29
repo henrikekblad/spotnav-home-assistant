@@ -285,3 +285,36 @@ async def test_a_dropped_plan_keeps_its_charge_the_plans(hass: HomeAssistant, ti
     stored = await _stored(world)
     assert (stored["charge_origin"], stored["plan_charge"]) == ("plan_window", drives)
     await world.shutdown()
+
+
+async def test_an_owners_recording_replays_with_no_line_up(
+    hass: HomeAssistant, timers: FakeScheduler, drives: bool, tmp_path
+) -> None:
+    """Every change of the owner is fed: a recording of the plan's window start, the charger seen off, a person's Start,
+    a start through the charger's entry and a person's Stop replays from its first session alone, with no difference
+    beyond observation drift (the core's replay tool, `--no-line-up`, says the same)."""
+    import json
+
+    from custom_components.spotnav.core.replay import main, replay_bundle
+
+    from .test_core_replay import _bundle
+
+    world = await pause_world(hass, timers, plan=open_window())
+    await world.switch("off")
+    await world.executor.async_manual_start()
+    await world.executor.async_manual_stop()
+    await world.executor.async_resume()
+    assert await world.controller.async_start(cause="solar")
+    await world.executor.async_manual_stop()
+    await hass.async_block_till_done()
+    diagnostics = world.controller.ownership_shadow.diagnostics()
+    assert diagnostics["counts"]["disagreements"] == 0
+    bundle = json.loads(json.dumps(_bundle(diagnostics["events"]), default=str))
+    alone = replay_bundle(bundle, line_up=False)["charger_a"]
+    assert alone.events == len(diagnostics["events"]) and alone.skipped == 0
+    assert alone.real == (), alone.real
+    assert replay_bundle(bundle)["charger_a"].mismatches == ()
+    path = tmp_path / "bundle.json"
+    path.write_text(json.dumps(bundle), encoding="utf-8")
+    assert main([str(path), "--no-line-up"]) == 0
+    await world.shutdown()
