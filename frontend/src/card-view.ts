@@ -81,7 +81,7 @@ import {
   type MarketEditorForm,
 } from "./market-editor";
 import { settingsEditorBody, settingsTrigger, type SettingsEditorForm } from "./settings-editor";
-import { type ReferencePicture, type Vehicle } from "./validate";
+import { type Fiscal, type ReferencePicture, type Vehicle } from "./validate";
 import { floorEditor, limitEditor, targetEditor } from "./percent-editors";
 import { defaultTargetPercent } from "./percent-slider";
 import { vehicleSummary, type VehicleEdits, type VehicleReference } from "./vehicle-settings";
@@ -2581,8 +2581,14 @@ export function createCardView(input: CardViewInput): CardView {
         }
       });
     };
-    const answer = (text: string, keepEntryId: string | null): void => {
-      const button = element(doc, "button", C.choiceButton, text);
+    const answer = (text: string, keepEntryId: string | null, fees: string | null = null): void => {
+      const button = element(doc, "button", C.choiceButton);
+      button.append(element(doc, "span", C.choiceLabel, text));
+      if (fees !== null) {
+        const detail = element(doc, "span", C.choiceDetail, fees);
+        detail.dataset["fees"] = "";
+        button.append(detail);
+      }
       button.type = "button";
       button.dataset["keep"] = keepEntryId ?? "";
       button.addEventListener("click", () => choose(keepEntryId));
@@ -2594,11 +2600,30 @@ export function createCardView(input: CardViewInput): CardView {
       answer(
         translate(model.language, "price.duplicate.use", { title: labels.get(choice.entryId) ?? choice.title }),
         choice.entryId,
+        priceFeesLine(choice.fees),
       );
     }
     answer(translate(model.language, many ? "price.duplicate.keepAll" : "price.duplicate.keepBoth"), null);
     question.append(answers, failure);
     return question;
+  }
+
+  /**
+   * One electricity price's fees on a line, "VAT 25 % · tax 36 öre/kWh · grid 30 öre/kWh", each figure as the fee
+   * rows show it; `null` when they cannot be read.
+   */
+  function priceFeesLine(fees: Fiscal | null): string | null {
+    if (fees === null) {
+      return null;
+    }
+    const keys = {
+      vat: "price.duplicate.fee.vat",
+      tax: "price.duplicate.fee.tax",
+      transfer: "price.duplicate.fee.transfer",
+    } as const satisfies Record<FiscalComponentName, TranslationKey>;
+    return fiscalRows(model.language, fees)
+      .map((row) => translate(model.language, keys[row.key as FiscalComponentName], { value: row.value }))
+      .join(" · ");
   }
 
   let overviewBodyNode: HTMLElement | null = null;

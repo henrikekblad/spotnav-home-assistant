@@ -33,7 +33,33 @@ function dashboard(block: Record<string, unknown> | null, fixture = "cheapest_di
   return payload;
 }
 
-const DUPLICATE = { area_id: "SE4", entry_ids: ["price_a", "price_b"], titles: [ONE.title, COMPANY.title] };
+/** One fee as the dashboard's `fiscal` block carries it. */
+function fee(policy: string, effective: number | null, unit: string): Record<string, unknown> {
+  return {
+    policy,
+    explicit_value: policy === "manual" ? effective : null,
+    suggested_value: effective,
+    effective_value: effective,
+    value_source: policy,
+    unit,
+  };
+}
+
+/** An electricity price's fees in the `fiscal` block's shape: VAT 25 %, the given tax and a grid fee of 30 öre. */
+function fees(tax: number): Record<string, unknown> {
+  return {
+    vat: fee("suggested", 25, "%"),
+    tax: fee(tax === 36 ? "suggested" : "manual", tax, "öre/kWh"),
+    transfer: fee("suggested", 30, "öre/kWh"),
+  };
+}
+
+const DUPLICATE = {
+  area_id: "SE4",
+  entry_ids: ["price_a", "price_b"],
+  titles: [ONE.title, COMPANY.title],
+  fees: [fees(36), fees(43)],
+};
 
 async function settle(): Promise<void> {
   await vi.advanceTimersByTimeAsync(0);
@@ -86,8 +112,25 @@ describe("the price_source block", () => {
       charger_count: 2,
       choices: [ONE, COMPANY],
       writable: true,
-      duplicate: DUPLICATE,
+      duplicate: {
+        ...DUPLICATE,
+        // Read by the `fiscal` block's decoder.
+        fees: [
+          {
+            vat: { policy: "suggested", effective: 25, unit: "%" },
+            tax: { policy: "suggested", effective: 36, unit: "öre/kWh" },
+            transfer: { policy: "suggested", effective: 30, unit: "öre/kWh" },
+          },
+          {
+            vat: { policy: "suggested", effective: 25, unit: "%" },
+            tax: { policy: "manual", effective: 43, unit: "öre/kWh" },
+            transfer: { policy: "suggested", effective: 30, unit: "öre/kWh" },
+          },
+        ],
+      },
     });
+    const unread = decodeDashboard(dashboard(priceSource({ duplicate: { ...DUPLICATE, fees: [null, fees(43)] } })));
+    expect(unread.ok && unread.value.price_source?.duplicate?.fees[0]).toBeNull();
     const without = decodeDashboard(dashboard(null));
     expect(without.ok && without.value.price_source).toBeNull();
   });
@@ -97,6 +140,11 @@ describe("the price_source block", () => {
       priceSource({ charger_count: -1 }),
       priceSource({ extra: true }),
       priceSource({ duplicate: { ...DUPLICATE, titles: [ONE.title] } }),
+      // The fees: required, one per entry, each null or the `fiscal` block's shape.
+      priceSource({ duplicate: { area_id: "SE4", entry_ids: DUPLICATE.entry_ids, titles: DUPLICATE.titles } }),
+      priceSource({ duplicate: { ...DUPLICATE, fees: [fees(36)] } }),
+      priceSource({ duplicate: { ...DUPLICATE, fees: [fees(36), "43"] } }),
+      priceSource({ duplicate: { ...DUPLICATE, fees: [fees(36), { vat: fee("suggested", 25, "%") }] } }),
       "price_a",
     ]) {
       const payload = dashboard(null);
@@ -139,10 +187,14 @@ describe("the Electricity price section", () => {
     expect(section.querySelector("[data-row='price_from']")?.textContent).toContain("Pris från");
     const question = section.querySelector<HTMLElement>("[data-price-duplicate]")!;
     expect(question.textContent).toContain("Två elpriser för SE4 med olika avgifter. Använd ett?");
-    expect(Array.from(question.querySelectorAll("button")).map((button) => button.textContent)).toEqual([
+    expect(Array.from(question.querySelectorAll(".spotnav-choice-label")).map((label) => label.textContent)).toEqual([
       "Använd Elpris SE4",
       "Använd Elpris SE4 (company)",
       "Behåll båda",
+    ]);
+    expect(Array.from(question.querySelectorAll("[data-fees]")).map((line) => line.textContent)).toEqual([
+      "moms 25 % · skatt 36 öre/kWh · nät 30 öre/kWh",
+      "moms 25 % · skatt 43 öre/kWh · nät 30 öre/kWh",
     ]);
   });
 
@@ -182,7 +234,7 @@ describe("Price from", () => {
     const { element } = await open(
       dashboard(priceSource({ choices: [ONE, twin], duplicate: { ...DUPLICATE, titles: [ONE.title, twin.title] } })),
     );
-    const buttons = Array.from(priceSection(element).querySelectorAll("[data-price-duplicate] button"));
+    const buttons = Array.from(priceSection(element).querySelectorAll("[data-price-duplicate] .spotnav-choice-label"));
     expect(buttons.map((button) => button.textContent)).toEqual([
       "Use Electricity price SE4 (used here)",
       "Use Electricity price SE4 (the other)",
@@ -198,6 +250,33 @@ describe("Price from", () => {
 });
 
 describe("the same-area question", () => {
+  it("shows each price's fees in its button, and none under Keep both", async () => {
+    const included = { ...fees(43), vat: { ...fee("suggested", null, "%"), policy: "included", effective_value: null } };
+    const { element } = await open(
+      dashboard(priceSource({ choices: [ONE, COMPANY], duplicate: { ...DUPLICATE, fees: [fees(36), included] } })),
+    );
+    const buttons = Array.from(
+      priceSection(element).querySelectorAll<HTMLButtonElement>("[data-price-duplicate] button"),
+    );
+    expect(buttons.map((button) => [button.dataset["keep"], button.querySelector("[data-fees]")?.textContent ?? null])).toEqual([
+      ["price_a", "VAT 25 % · tax 36 öre/kWh · grid 30 öre/kWh"],
+      ["price_b", `VAT ${translate("en", "market.included")} · tax 43 öre/kWh · grid 30 öre/kWh`],
+      ["", null],
+    ]);
+  });
+
+  it("leaves out the fees of a price that cannot be read", async () => {
+    const { element } = await open(
+      dashboard(priceSource({ choices: [ONE, COMPANY], duplicate: { ...DUPLICATE, fees: [null, fees(43)] } })),
+    );
+    const buttons = Array.from(priceSection(element).querySelectorAll("[data-price-duplicate] button"));
+    expect(buttons.map((button) => button.querySelector("[data-fees]")?.textContent ?? null)).toEqual([
+      null,
+      "VAT 25 % · tax 43 öre/kWh · grid 30 öre/kWh",
+      null,
+    ]);
+  });
+
   it("uses one price, then says the other can be removed", async () => {
     const { hass, element } = await open(dashboard(priceSource({ choices: [ONE, COMPANY], duplicate: DUPLICATE })));
     const question = priceSection(element).querySelector<HTMLElement>("[data-price-duplicate='SE4']")!;

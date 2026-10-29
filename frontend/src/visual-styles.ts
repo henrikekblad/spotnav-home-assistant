@@ -37,6 +37,8 @@ export const VISUAL_CLASSES = {
   suggestionAnswers: "spotnav-suggestion-answers",
   pauseChoices: "spotnav-pause-choices",
   choiceButton: "spotnav-choice-button",
+  choiceLabel: "spotnav-choice-label",
+  choiceDetail: "spotnav-choice-detail",
   nameBlock: "spotnav-name-block",
   vehicleLine: "spotnav-vehicle-line",
   vehicleLineName: "spotnav-vehicle-line-name",
@@ -919,6 +921,15 @@ export const VISUAL_STYLES = `
     background: var(--secondary-background-color, transparent);
     color: var(--primary-text-color, #212121);
     cursor: pointer;
+  }
+  /** A choice's second, smaller line (the same-area question's fees per price). */
+  .spotnav-choice-label,
+  .spotnav-choice-detail {
+    display: block;
+  }
+  .spotnav-choice-detail {
+    font-size: 0.8em;
+    color: var(--secondary-text-color, #727272);
   }
   .spotnav-choice-button:disabled {
     opacity: 0.55;

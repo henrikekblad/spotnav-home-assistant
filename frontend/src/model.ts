@@ -318,8 +318,11 @@ export interface PriceEntryFacts {
   /** Every electricity price entry when there is more than one, else empty. */
   choices: Array<{ entryId: string; title: string }>;
   writable: boolean;
-  /** Same-area entries with different fees not asked about yet; `null` when there is no question. */
-  duplicate: { areaId: string; entries: Array<{ entryId: string; title: string }> } | null;
+  /**
+   * Same-area entries with different fees not asked about yet, each with its fees (`null` where they cannot be
+   * read); `null` when there is no question.
+   */
+  duplicate: { areaId: string; entries: Array<{ entryId: string; title: string; fees: Fiscal | null }> } | null;
 }
 
 export function priceEntryFor(dashboard: Dashboard): PriceEntryFacts | null {
@@ -340,7 +343,11 @@ export function priceEntryFor(dashboard: Dashboard): PriceEntryFacts | null {
         ? null
         : {
             areaId: duplicate.area_id,
-            entries: duplicate.entry_ids.map((entryId, index) => ({ entryId, title: duplicate.titles[index] ?? entryId })),
+            entries: duplicate.entry_ids.map((entryId, index) => ({
+              entryId,
+              title: duplicate.titles[index] ?? entryId,
+              fees: duplicate.fees[index] ?? null,
+            })),
           },
   };
 }

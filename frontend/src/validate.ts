@@ -291,8 +291,11 @@ export interface PriceSourceBlock {
   /** Every electricity price entry, only when there is more than one. */
   choices: Array<{ entry_id: string; title: string }>;
   writable: boolean;
-  /** Same-area entries with different fees, not asked about yet (an administrator's question). */
-  duplicate: { area_id: string; entry_ids: string[]; titles: string[] } | null;
+  /**
+   * Same-area entries with different fees, not asked about yet (an administrator's question). `fees` is aligned
+   * with `entry_ids`: each entry's fees in the `fiscal` block's shape, or `null` where they cannot be read.
+   */
+  duplicate: { area_id: string; entry_ids: string[]; titles: string[]; fees: Array<Fiscal | null> } | null;
 }
 
 /** A camera or AI Task entity that can be chosen. */
@@ -1694,13 +1697,14 @@ function priceSourceOrNull(root: Record<string, unknown>): PriceSourceBlock | nu
     let duplicate: PriceSourceBlock["duplicate"] = null;
     if (value.duplicate !== null) {
       const item = record(value.duplicate);
-      exactKeys(item, ["area_id", "entry_ids", "titles"]);
+      exactKeys(item, ["area_id", "entry_ids", "titles", "fees"]);
       const ids = arrayValue(item, "entry_ids").map((id) => (typeof id === "string" && id !== "" ? id : bad()));
       const titles = arrayValue(item, "titles").map((title) => (typeof title === "string" ? title : bad()));
-      if (ids.length < 2 || ids.length !== titles.length) {
+      const fees = arrayValue(item, "fees").map((fee) => (fee === null ? null : (decodeFiscal(fee) ?? bad())));
+      if (ids.length < 2 || ids.length !== titles.length || ids.length !== fees.length) {
         return bad();
       }
-      duplicate = { area_id: text(item, "area_id"), entry_ids: ids, titles };
+      duplicate = { area_id: text(item, "area_id"), entry_ids: ids, titles, fees };
     }
     return {
       entry_id: text(value, "entry_id"),
