@@ -53,6 +53,7 @@ from .events import (
     CarEnded,
     ChargerReportedOff,
     ChargerReportedOn,
+    ChargerReportedUnreadable,
     CommandResult,
     ConnectionUnknown,
     DirectStart,
@@ -705,6 +706,14 @@ def _reported_off(session: ChargeSession, event: ChargerReportedOff, now: dateti
     return _person_hold(s, now, control_on=False, start_pending=event.start_pending)
 
 
+def _reported_unreadable(session: ChargeSession, event: ChargerReportedUnreadable, now: datetime) -> Decision:
+    # Nothing is known of the charge; a report with no car still ends the hold and its override, as a readable one
+    # does (before its own hold), and as today's `WindowHold.observe` does with a control it cannot read.
+    if event.connected is False:
+        return session.with_changes(held=False, overridden=False), ()
+    return session, ()
+
+
 def _car_ended(session: ChargeSession, event: CarEnded, now: datetime) -> Decision:
     if event.plan:
         # The plan's charge, which the car stopped taking in an open window: the record (R3) only. Also one load
@@ -984,6 +993,7 @@ _HANDLERS: Final[dict[type[Event], Callable[[ChargeSession, Event, datetime], De
     MinSocEnd: _min_soc_end,  # type: ignore[dict-item]
     ChargerReportedOn: _reported_on,  # type: ignore[dict-item]
     ChargerReportedOff: _reported_off,  # type: ignore[dict-item]
+    ChargerReportedUnreadable: _reported_unreadable,  # type: ignore[dict-item]
     CarEnded: _car_ended,  # type: ignore[dict-item]
     BalancingPause: _balancing_pause,  # type: ignore[dict-item]
     BalancingResume: _balancing_resume,  # type: ignore[dict-item]

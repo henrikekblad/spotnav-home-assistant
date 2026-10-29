@@ -695,6 +695,12 @@ OVERRIDDEN = ChargeSession(plugged=True, held=True, overridden=True)
         # whose control could not be read, which the core is not fed; the new plug-in is where that plug-in ends).
         (OVERRIDDEN, (on(connected=False),), False, False),
         (OVERRIDDEN, (on(connected=False, **HOLD_ON),), True, False),
+        # A report whose control cannot be read is no state of the charge, but its "no car" still ends both (today's
+        # `WindowHold.observe` ends them with a control it cannot read); with a car, or none stated, nothing changes.
+        (OVERRIDDEN, (ev.ChargerReportedUnreadable(connected=False),), False, False),
+        (OVERRIDDEN, (ev.ChargerReportedUnreadable(connected=True),), True, True),
+        (OVERRIDDEN, (ev.ChargerReportedUnreadable(connected=None),), True, True),
+        (PLUGGED, (on(connected=False, **HOLD_ON), ev.ChargerReportedUnreadable(connected=False)), False, False),
         (OVERRIDDEN, (ev.Unplug(previous=True),), False, False),
         (OVERRIDDEN, (ev.Unplug(previous=None),), False, False),
         (OVERRIDDEN, (ev.PlugIn(previous=False),), False, False),
@@ -746,6 +752,25 @@ def test_a_pause_holds_the_hold_only_for_an_auto_plan() -> None:
     assert kinds(commands) == []
     _, commands = run(paused, on(was_on=False, window_ahead_outside=True, plan_auto_owned=False))
     assert kinds(commands) == ["stop"]
+
+
+@pytest.mark.parametrize("connected", [False, True, None])
+def test_a_report_whose_control_cannot_be_read_decides_nothing_of_the_charge(connected) -> None:
+    """Only the hold's memory may change (with no car); the owner, the person intent, load balancing's memory and
+    what awaits a result stay, and nothing is sent."""
+    pre = ChargeSession(
+        plugged=True,
+        owner="plan",
+        manual=START,
+        held=True,
+        overridden=True,
+        balancing_paused=True,
+        paused_origin="plan",
+        pending=(PendingCommand("stop", "hold"),),
+    )
+    session, commands = run(pre, ev.ChargerReportedUnreadable(connected=connected))
+    assert kinds(commands) == []
+    assert session == (pre.with_changes(held=False, overridden=False) if connected is False else pre)
 
 
 def test_a_charge_inside_a_window_nobody_started_is_the_plans() -> None:

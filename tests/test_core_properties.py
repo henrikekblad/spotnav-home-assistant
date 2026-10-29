@@ -50,6 +50,7 @@ AUTOMATIC = {
     "solar_stop",
     "charger_reported_on",
     "charger_reported_off",
+    "charger_reported_unreadable",
     "timer",
     "recheck",
     "top_off_end",
@@ -157,6 +158,11 @@ class OwnershipMachine(RuleBasedStateMachine):
             or (isinstance(event, ev.WindowStart) and event.trigger not in (ev.TRIGGER_PLUG_IN, ev.TRIGGER_RETRY))
         ):
             assert not post.held and not post.overridden, (event, post)
+        # A report whose control cannot be read decides nothing of the charge: only its "no car" ends the hold.
+        if isinstance(event, ev.ChargerReportedUnreadable):
+            assert kinds == ["keep"]
+            expected = pre.with_changes(held=False, overridden=False) if event.connected is False else pre
+            assert post == expected, (event, pre, post)
         # The hold never stops a charge that is SpotNav's (its owner's, or a start of SpotNav's awaiting its result).
         if isinstance(event, ev.ChargerReportedOn) and Stop("hold") in commands and event.owned is None:
             assert not spotnav_owned(pre), (event, pre)
@@ -373,6 +379,10 @@ class OwnershipMachine(RuleBasedStateMachine):
     @rule(notified=st.booleans(), start_pending=st.booleans(), connected=maybe_bool)
     def charger_reported_off(self, notified, start_pending, connected) -> None:
         self.step(ev.ChargerReportedOff(notified=notified, start_pending=start_pending, connected=connected))
+
+    @rule(connected=maybe_bool)
+    def charger_reported_unreadable(self, connected) -> None:
+        self.step(ev.ChargerReportedUnreadable(connected=connected))
 
     @rule()
     def car_ended(self) -> None:

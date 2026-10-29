@@ -96,7 +96,7 @@ MIRROR_CLOCK_S: Final = CLOCK_TOLERANCE_S
 _RESULTS_LATER: Final = frozenset({"charger_reported_on", "charger_reported_off", "timer"})
 #: A charger's report of its control: recorded only when it decided something or something moved, so a charger
 #: that reports every few seconds does not push the plug-in and a person's actions out of the event ring.
-_REPORTS: Final = frozenset({"charger_reported_on", "charger_reported_off"})
+_REPORTS: Final = frozenset({"charger_reported_on", "charger_reported_off", "charger_reported_unreadable"})
 #: Who hears every disagreement, drift and shadow error (`kind`, record): the test suite's collector.
 LISTENERS: list[Callable[[str, dict[str, Any]], None]] = []
 #: What every shadow in this process counted (a test run's summary).

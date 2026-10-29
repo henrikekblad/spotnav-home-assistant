@@ -6572,6 +6572,10 @@ class ChargingController:
                     hold_stop_overdue=self._hold_stop_overdue(),
                     **self._shadow_hold_facts(),
                 )
+            elif connected is False:
+                # A control that cannot be read says nothing of the charge; the report's "no car" still ends the hold,
+                # as `WindowHold.observe` ends it.
+                event = core_events.ChargerReportedUnreadable(connected=False)
         except Exception as err:  # noqa: BLE001 - the shadow never raises into the real path
             self._shadow.failed("report_facts", _report_kind(observed), err, token=token)
             event = None

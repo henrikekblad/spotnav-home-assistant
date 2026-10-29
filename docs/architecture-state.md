@@ -44,7 +44,7 @@ Events: `plug_in`, `unplug`, `connection_unknown`, `window_start` (timer, re-arm
 window; a car full for the plan then also gives `target_reached`, or `need_met` without a target; one that ended the
 plan's charge short of the target on a level nobody read then makes the plan wait for the car's level: the facts
 `car_ended_awaits_level` on `window_start`, `charger_reported_on` and `recheck` then hold every window until a level read
-after the end says it is below the target), `balancing_pause`, `balancing_resume`, `balancing_dropped` (the regulator
+after the end says it is below the target), `charger_reported_unreadable` (a report whose control cannot be read, fed when it states no car: it decides nothing of the charge and only ends the hold), `balancing_pause`, `balancing_resume`, `balancing_dropped` (the regulator
 finds the charge it holds back no longer wanted), `target_reached`, `need_met`,
 `top_off_end`, `plan_installed`, `plan_dropped`, `restart`, `timer`, `command_result`.
 
@@ -241,7 +241,7 @@ for one awaiting its result, or a start of ours still on its way before its resu
 person started it again after that, and it goes on", and is set only while `held`. Set: the hold at a report of such
 a charge, the override at the next one; the re-arm's stop of a charge that ran, once it went out (also one that sent
 nothing because the control said nothing), never for a plug-in that ended before its result. Cleared: the override
-when the charge is seen off; both at a report with no car, at an unplug, at a plug-in after a known unplug, and where
+when the charge is seen off; both at a report with no car (also one whose control cannot be read), at an unplug, at a plug-in after a known unplug, and where
 the next window starts (a timer's or a re-arm's, not one at plug-in or a start's retry). Kept: a person's Start or
 Stop, a new plan, a window's end, load balancing, a restart; the re-arm spares an overridden hold. Today's rule is
 still computed beside the core's, from the core's memory as it was before the report (`WindowHold.take`). Today's

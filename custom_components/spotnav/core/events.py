@@ -299,6 +299,17 @@ class ChargerReportedOff(Event):
 
 
 @dataclass(frozen=True)
+class ChargerReportedUnreadable(Event):
+    """The charger reported, but its charge control could not be read (unavailable or unknown): no state of the
+    control is known, so nothing is decided about the charge. Only what the report did say is fed: `connected`, the
+    car as the charger states it now. Fed only when it states no car, which ends the hold of the plug-in session as
+    every report saying no car does (today's `WindowHold.observe`)."""
+
+    kind: ClassVar[str] = "charger_reported_unreadable"
+    connected: bool | None = False
+
+
+@dataclass(frozen=True)
 class CarEnded(Event):
     """The car ended a charge by itself (full, or stopped drawing): the car-ended record (R3) starts now. A person's
     charge (`plan` false): their Start's pause ends. The plan's charge in an open window (`plan`), or one load
@@ -485,6 +496,7 @@ EVENT_TYPES: Final[dict[str, type[Event]]] = {
         MinSocEnd,
         ChargerReportedOn,
         ChargerReportedOff,
+        ChargerReportedUnreadable,
         CarEnded,
         BalancingPause,
         BalancingResume,

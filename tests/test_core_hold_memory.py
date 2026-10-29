@@ -239,6 +239,38 @@ async def test_a_start_of_ours_reported_before_it_returns_is_not_held(
     await world.shutdown()
 
 
+async def test_a_report_with_no_car_and_a_control_that_cannot_be_read_ends_the_hold(
+    hass: HomeAssistant, timers: FakeScheduler, drives: bool
+) -> None:
+    """The charger turns its control on with no car stated (the hold stops it once; this one ignores the stop, so no
+    report of it off ends the hold first), then reports its control unreadable, still with no car. That report says
+    nothing of the charge, but its "no car" ends the hold as every report saying no car does: in today's code
+    (`WindowHold.observe`) and in the core (`charger_reported_unreadable`)."""
+    world = await pause_world(hass, timers, plan=later_window())
+    ignored: list[Any] = []
+
+    async def ignore(call: Any) -> None:
+        ignored.append(call)
+
+    hass.services.async_register("switch", "turn_off", ignore)
+    await world.plug.set(False, control="on")
+    assert len(ignored) == 1 and hass.states.get(SWITCH).state == "on"
+    _agrees(world, drives, HELD)
+    assert (await _stored(world))["hold"] == HELD
+
+    world.plug.connected = False
+    hass.states.async_set(SWITCH, "unavailable", {"plug": False, "stamp": "unreadable"})
+    await hass.async_block_till_done()
+    assert world.controller.hold_until is None and not world.controller.hold_overridden
+    _agrees(world, drives, NONE)
+    assert (await _stored(world))["hold"] == NONE
+    if drives:
+        assert (await _stored(world))[SESSION_STORE_KEY]["held"] is False
+    kinds = [record["event"]["kind"] for record in world.controller.ownership_shadow.diagnostics()["events"]]
+    assert kinds[-1] == "charger_reported_unreadable"
+    await world.shutdown()
+
+
 @pytest.mark.usefixtures("both_restarts")
 @pytest.mark.parametrize("record", ["missing", "older_than_the_keys"])
 async def test_todays_hold_key_is_read_where_the_keys_are_the_truth(
