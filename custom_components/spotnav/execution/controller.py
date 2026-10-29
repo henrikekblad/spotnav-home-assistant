@@ -3271,8 +3271,9 @@ class ChargingController:
             self._target_stop = None
             window_open = self.plan_window_active_now
             if not window_open:
-                # A new plan with no window open now ends the wish a balancing pause interrupted.
-                self._balancing = replace(self._balancing, paused=False)
+                # A new plan with no window open now ends the wish a balancing pause interrupted, and whose
+                # charge it was with it.
+                self._balancing = BalancingMemory(paused=False, charge=None)
         finally:
             self._shadow.end(token, core_events.PlanInstalled(window_open=window_open))
         try:
@@ -3489,8 +3490,14 @@ class ChargingController:
 
     def forget_balancing_pause(self) -> None:
         """The wish to charge is gone (Auto paused by a person, say): balancing's pause is not a charge
-        to resume any more."""
-        self._balancing = replace(self._balancing, paused=False)
+        to resume any more, and whose charge it was goes with it. Fed to the core (`BalancingDropped`)."""
+        if not self._balancing.paused:
+            return
+        token = self._shadow.begin()
+        try:
+            self._balancing = BalancingMemory(paused=False, charge=None)
+        finally:
+            self._shadow.end(token, core_events.BalancingDropped())
         self._save_memory_soon()
 
     async def async_battery_probe_start(self, amps: int, *, capped: bool = False) -> bool:
@@ -6523,7 +6530,7 @@ class ChargingController:
                 pause = None
         manual, span = legacy_intent(pause, gate is not None and self._legacy_person_stopped)
         top_off = self.top_off_until is not None
-        paused = self._balancing.charge
+        paused = self._balancing.charge if self._balancing.paused else None
         paused_origin: str | None = None
         if paused is not None and paused[0] is not None:
             owner = legacy_owner(origin=paused[0], top_off=top_off, charging=False, start_pending=False, stop_recent=False)
