@@ -225,7 +225,11 @@ outcome says so, `start_held_by_balancing`, not the memory) and when a resume do
 start as it is asked for, by every other stop that went out, by an unplug or a plug-in after a known unplug, by a new
 plan with no window open now and when the regulator drops a charge no longer wanted (`balancing_dropped`).
 `paused_origin` is set only while `balancing_paused`, and nothing is held back for a plug-in that ended while the
-command was on its way. Today's `balancing_pause` key is still written, derived from the session, so an older build
+command was on its way, also when the car was plugged in again before its result: an unplug or a plug-in after a known
+unplug marks every command awaiting its result as the earlier plug-in's (`PendingCommand.earlier_plug_in`), and a
+command the shell decided before the plug-in ended but fed after says so on its result
+(`CommandResult.earlier_plug_in`, from the shadow's count of ended plug-ins at the feed's `begin`). Both are
+transient: no command awaiting its result outlives a restart. Today's `balancing_pause` key is still written, derived from the session, so an older build
 reads it; a restart takes it into the session where today's keys are the truth (no record of the core's own, or keys
 written after it). Load balancing's own stop never depends on the core: `_regulated_stop` sends it whatever the core
 decides, and the core is only told (`balancing_pause`, decided before the stop goes out, its result after).
