@@ -2798,8 +2798,9 @@ class ChargingController:
 
     def reconcile_phases(self) -> None:
         """Look at the charger's read-back: a switch on its way is confirmed or, past `CONFIRM_S`, given up; with none
-        on its way the read-back wins over what is kept (a restart, a switch made by hand). Nothing with the option
-        off and no switch of ours."""
+        on its way the read-back wins over what is kept (a restart, a switch made by hand, a charger that forgot it at a
+        reboot, as Lektrico's switch does), once a switch no longer settles. Nothing with the option off and no switch
+        of ours."""
         if not self._phase_switching_kept():
             return
         read_back = self._phases_read_back()
@@ -2813,7 +2814,7 @@ class ChargingController:
             self._notify()
         elif outcome == "given_up":
             self._phase_switch_given_up(read_back)
-        elif self._phases.reconcile(read_back):
+        elif not self.phase_switch_settling and self._phases.reconcile(read_back):
             _LOGGER.info(
                 "SpotNav charger %s: the charger reads %s phase(s), which is what it is reckoned on now",
                 self.entry_id,

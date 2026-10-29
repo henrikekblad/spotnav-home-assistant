@@ -419,6 +419,28 @@ async def test_a_restart_while_forced_reads_the_switch_back(hass: HomeAssistant,
     assert controller.switched_phases is None
 
 
+async def test_a_charger_that_forgets_one_phase_at_a_reboot_is_reckoned_on_three_again(
+    hass: HomeAssistant, freezer: Any
+) -> None:
+    # Lektrico's force-single-phase switch is volatile: after a charger reboot it reads off (three phases).
+    w = await _switched_down(hass, freezer)
+    switched_at = w.t
+    await w.charger_takes(1)
+    w.draw(13.0)
+    await w.run(switched_at + 60.0)
+    assert w.controller.switched_phases == 1
+    # A flip inside the settle is not taken yet: the charger may still be switching.
+    hass.states.async_set(FORCE, "off")
+    await w.at(w.t + 10.0)
+    assert w.controller.phase_switch_settling and w.controller.switched_phases == 1
+    # Once the settle is over, the read-back wins on the next tick.
+    await w.run(switched_at + SETTLE_S + 20.0)
+    assert not w.controller.phase_switch_settling
+    assert w.controller.switched_phases is None
+    assert w.site.reckoned_phases(CHARGER) == (3, None)
+    assert w.force_calls() == ["1"], "nothing is sent for it"
+
+
 async def test_a_restart_where_the_read_back_says_three_is_not_forced(hass: HomeAssistant, freezer: Any) -> None:
     w = await _switched_down(hass, freezer)
     await w.charger_takes(1)
