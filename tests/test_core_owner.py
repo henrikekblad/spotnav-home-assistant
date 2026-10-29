@@ -63,3 +63,37 @@ async def test_the_suns_take_over_never_stops_a_charge_now_start_on_its_way(
     assert controller.charge_origin == "other"
     if drives:
         assert controller.ownership_shadow.session.owner == "charge_now"
+
+
+@pytest.mark.shadow_disagreement_expected
+async def test_the_owner_is_kept_as_the_core_decided_it_and_a_difference_is_mirror_drift(hass: HomeAssistant) -> None:
+    """Owned by the core (`OWNER`): the line-up never takes it from today's state; a difference is counted and told as
+    `mirror_drift` (not as drift), and the core's owner stays. Nobody's and the charger's own charge are one owner to
+    it: which of them it is is seen now, and taken from today's state with no mirror drift."""
+    from custom_components.spotnav.core import events as ev
+    from custom_components.spotnav.core.session import ChargeSession
+
+    today = {"session": ChargeSession(plugged=True, owner="person")}
+    heard: list[str] = []
+    ownership_shadow.LISTENERS.append(lambda kind, record: heard.append(kind))
+    try:
+        shadow = ownership_shadow.OwnershipShadow(lambda: today["session"], owned_fields=ownership_shadow.OWNER)
+        shadow.session = today["session"]
+        shadow.feed(ev.ConnectionUnknown())
+        assert heard == [] and shadow.counts["mirror_drift"] == 0
+        today["session"] = today["session"].with_changes(owner="solar")
+        shadow.feed(ev.ConnectionUnknown())
+        assert heard.count("mirror_drift") == 1 and "drift" not in heard
+        assert shadow.session.owner == "person", "never taken"
+        shadow.session = shadow.session.with_changes(owner="none")
+        today["session"] = today["session"].with_changes(owner="charger_self")
+        heard.clear()
+        shadow.feed(ev.ConnectionUnknown())
+        assert heard == [] and shadow.session.owner == "charger_self", "seen, not kept"
+        today["session"] = today["session"].with_changes(owner="none")
+        shadow.feed(ev.ConnectionUnknown())
+        assert heard == [] and shadow.session.owner == "none"
+    finally:
+        ownership_shadow.LISTENERS.pop()
+    (record,) = [item for item in shadow.diagnostics()["drift"] if item.get("mirror")]
+    assert record["fields"] == {"owner": {"core": "person", "today": "solar"}}

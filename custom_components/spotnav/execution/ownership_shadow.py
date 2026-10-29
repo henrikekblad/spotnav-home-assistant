@@ -572,7 +572,11 @@ class OwnershipShadow:
         The controller reads an owned group from the session (its accessor), so there is none unless something reads
         or keeps that group around the accessor."""
         moved = [
-            name for name in self.owned_fields if not _same(getattr(self.session, name), getattr(today, name))
+            name
+            for name in self.owned_fields
+            if not _same(getattr(self.session, name), getattr(today, name))
+            # The charger's own charge and nobody's: an observation, as in `_line_up` (counted `observed` there).
+            and not (name == FIELD_OWNER and {self.session.owner, today.owner} <= _UNSEEN)
         ]
         if not moved:
             return
