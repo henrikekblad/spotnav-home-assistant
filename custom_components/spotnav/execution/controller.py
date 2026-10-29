@@ -5184,15 +5184,24 @@ class ChargingController:
         the target ended the plan instead of starting anything, so a caller arming timers knows there is no
         plan left to arm.
         """
+        # The feed opens first, so the core sees the window start end the hold as today's code ends it.
+        token = self._shadow.begin()
         # The plug-in session a hold belonged to ends where the next window starts.
         self._hold.end_session()
         if self._target_stopping:
             # A stop is in flight and the plan stays live until its turn_off is awaited: starting now
             # would race it. Report the charge as over so no caller arms timers or starts it.
+            self._shadow.end(token, core_events.WindowStart(trigger=trigger, target_stopping=True))
             return True
-        if await self._enforce_target_locked():
+        try:
+            # The target's stop, if it fires, is fed inside this one and decided after the window's start.
+            ended = await self._enforce_target_locked()
+        except BaseException:
+            self._shadow.end(token, core_events.WindowStart(trigger=trigger, target_reached=True))
+            raise
+        if ended:
+            self._shadow.end(token, core_events.WindowStart(trigger=trigger, target_reached=True))
             return True
-        token = self._shadow.begin()
         self._shadow_car_facts = (False, False, False)
         facts = self._shadow_facts(self._shadow_start_facts, core_events.WindowStart.kind, token=token)
         legacy: list[str] = []
