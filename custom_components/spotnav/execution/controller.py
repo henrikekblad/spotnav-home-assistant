@@ -3524,7 +3524,10 @@ class ChargingController:
             if self._shadow.depth:
                 # Inside a feed of the execution boundary's (a person's Start, the sun's): that feed is the event.
                 return await self._start_locked(amps, manual=manual, cause=cause)
-            token = self._shadow.begin()
+            # A person's start is decided where it begins (its facts are known up front), as their Start through the
+            # boundary is: what the car ended is theirs to overrule before the command goes out, as today's code
+            # clears it then.
+            token = self._shadow.begin(early=core_events.DirectStart(manual=True, cause=cause) if manual else None)
             outcome = CommandOutcome(False)
             try:
                 executed = await self._start_locked(amps, manual=manual, cause=cause)

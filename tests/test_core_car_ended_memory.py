@@ -20,7 +20,7 @@ from custom_components.spotnav.execution import ownership_shadow
 from custom_components.spotnav.execution.controller import SESSION_STORE_KEY
 
 from .helpers import install_schedule
-from .pause_world import pause_world, two_windows, World
+from .pause_world import pause_world, SWITCH, two_windows, World
 from .relay import FakeScheduler
 from .test_car_ended_waits_for_level import _estimate, Car, TARGET
 
@@ -161,6 +161,29 @@ async def test_a_persons_start_overrules_what_the_car_ended(
     await world.switch("off")
     await world.executor.async_manual_start()
     await hass.async_block_till_done()
+    assert _agrees(world, drives)["car_ended_at"] is None
+    assert (await _stored(world))["car_ended_at"] is None
+    await world.shutdown()
+
+
+async def test_a_persons_direct_start_overrules_the_record_before_its_command_goes_out(
+    hass: HomeAssistant, timers: FakeScheduler, drives: bool
+) -> None:
+    """A person's start through the controller (a button with no Auto, a webhook): what the car ended is theirs to
+    overrule, already while the start is on its way, as today's code clears it before the command."""
+    world = await _plan_ended(hass, timers, _estimate())
+    await world.switch("off")
+    controller = world.controller
+    seen: list[Any] = []
+
+    async def turn_on(call: Any) -> None:
+        seen.append(controller.car_ended_at)
+        hass.states.async_set(SWITCH, "on")
+
+    hass.services.async_register("switch", "turn_on", turn_on)
+    assert await controller.async_start(manual=True)
+    await hass.async_block_till_done()
+    assert seen == [None]
     assert _agrees(world, drives)["car_ended_at"] is None
     assert (await _stored(world))["car_ended_at"] is None
     await world.shutdown()
