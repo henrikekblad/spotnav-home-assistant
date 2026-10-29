@@ -1665,3 +1665,49 @@ def test_the_owner_saved_while_a_command_of_ours_is_on_its_way(pre, sent, owner)
         reason = next(item.reason for item in pre.pending if item.command == "start")
         decided, _ = run(pre, ok("start", reason))
         assert decided.owner == owner
+
+
+# ---------------------------------------------------------------------------------------------- a charge started by hand
+
+
+@pytest.mark.parametrize("owner", ["person", "charge_now"])
+@pytest.mark.parametrize(
+    "event",
+    [
+        # A window's start by its timer, by the re-arm, at plug-in or at a start's retry, the charger off or on.
+        ev.WindowStart(trigger=ev.TRIGGER_TIMER, connected=True),
+        ev.WindowStart(trigger=ev.TRIGGER_TIMER, connected=True, control_on=True),
+        ev.WindowStart(trigger=ev.TRIGGER_REARM, connected=True),
+        ev.WindowStart(trigger=ev.TRIGGER_PLUG_IN, connected=True),
+        ev.WindowStart(trigger=ev.TRIGGER_PLUG_IN, connected=True, control_on=True),
+        ev.WindowStart(trigger=ev.TRIGGER_RETRY, connected=True),
+        # A report of the charge in an open window (the claim), and the claim's task deciding again.
+        on(window_open=True),
+        ev.Recheck(what=ev.RECHECK_CLAIM, control_on=True, window_open=True, plan_present=True),
+        # The stray charge's stop, outside every window, and the re-arm's stop, before the last window and past it.
+        ev.Recheck(what=ev.RECHECK_STRAY, control_on=True, plan_present=True),
+        ev.Rearm(control_on=True, charging=True),
+        ev.Rearm(past_last=True, control_on=True, charging=True),
+        # The window's end, also the last one's.
+        ev.WindowEnd(),
+        ev.FinalWindowEnd(top_off_wanted=True),
+    ],
+)
+def test_the_plan_never_takes_over_or_stops_a_charge_started_by_hand(owner, event) -> None:
+    """A person's or a Charge-now charge with no intent of the person's in the session: what a restart reads when
+    Home Assistant died between the Start's own save and the settings store's pause (step 8). Nothing of the plan's
+    takes it over as the plan's (its window's end would then stop it) or stops it: the owner is kept, nothing sent.
+    Normally the person's intent holds these back already; with the option off today's code takes such a charge over
+    at a window's start, so the core's verdict differs from today's there."""
+    pre = PLUGGED.with_changes(owner=owner)
+    session, commands = run(pre, event)
+    assert kinds(commands) == [], (event, kinds(commands))
+    assert session.owner == owner
+
+
+@pytest.mark.parametrize("owner", ["none", "charger_self", "plan"])
+def test_a_window_start_still_starts_what_is_not_a_charge_started_by_hand(owner) -> None:
+    session, commands = run(PLUGGED.with_changes(owner=owner), ev.WindowStart(trigger=ev.TRIGGER_TIMER, connected=True))
+    assert kinds(commands) == ["start"]
+    session, _ = run(session, ok("start", "plan_window"))
+    assert session.owner == "plan"

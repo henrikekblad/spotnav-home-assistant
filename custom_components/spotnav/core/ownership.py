@@ -176,6 +176,11 @@ _START_OWNER: Final = {
 #: Charge-now start, the sun and the car's minimum charge level. Never the plan, its top-off, or a charge the charger
 #: began by itself.
 WINDOW_END_SPARED: Final = frozenset({OWNER_PERSON, OWNER_CHARGE_NOW, OWNER_SOLAR, OWNER_MIN_SOC})
+#: A charge started by hand (a person's Start, a Charge-now start) that a plan window's start never takes over as the
+#: plan's: it keeps its owner and nothing is sent. Normally a person's intent holds the window back already; this
+#: covers a restart that read the owner but not the intent (a crash between the Start's own save and the settings
+#: store's pause, step 8), where taking it over would make the window's end stop it.
+WINDOW_START_SPARED: Final = frozenset({OWNER_PERSON, OWNER_CHARGE_NOW})
 
 #: Today's `charge_origin` values, as owners (`None`: nobody's).
 ORIGIN_OWNER: Final = {
@@ -522,6 +527,9 @@ def _window_start(session: ChargeSession, event: WindowStart, now: datetime) -> 
             # No car at the charger: nothing to start (a charger takes a start without one and waits). The plug-in
             # inside the window starts it.
             return s, ()
+        if s.owner in WINDOW_START_SPARED:
+            # A charge started by hand is not the plan's to take over (its end would stop it).
+            return s, ()
         return _start(s, REASON_PLAN_WINDOW, OWNER_PLAN)
     s = session
     if not event.window_open or event.target_stopping:
@@ -539,6 +547,8 @@ def _window_start(session: ChargeSession, event: WindowStart, now: datetime) -> 
             return _claim(s)
         return s, ()
     if event.connected is False or event.start_pending or s.balancing_paused or event.target_reached:
+        return s, ()
+    if s.owner in WINDOW_START_SPARED:
         return s, ()
     return _start(s, REASON_PLAN_WINDOW, OWNER_PLAN)
 
