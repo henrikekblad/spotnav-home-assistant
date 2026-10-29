@@ -42,7 +42,7 @@ The rules are today's, as the manual-pause specs and their three review rounds s
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 from typing import ClassVar, Final
 
@@ -302,6 +302,11 @@ def _no_balancing(session: ChargeSession) -> ChargeSession:
     return session.with_changes(balancing_paused=False, paused_origin=None)
 
 
+def _plug_in_ended(session: ChargeSession) -> ChargeSession:
+    """The plug-in session ended: every command still awaiting its result was asked for in an earlier one."""
+    return session.with_changes(pending=tuple(replace(item, earlier_plug_in=True) for item in session.pending))
+
+
 def _reset_person_hold(session: ChargeSession) -> ChargeSession:
     return session.with_changes(hold_stop_times=(), hold_tried_at=None, hold_gave_up=False)
 
@@ -330,7 +335,7 @@ def _plug_in(session: ChargeSession, event: PlugIn, now: datetime) -> Decision:
     s = session.with_changes(plugged=True)
     if previous is False:
         # A new plug-in session: what load balancing held and a safety stop belong to the one that ended.
-        s = _no_balancing(s).with_changes(held_for_safety=False, safety_stopped_at=None)
+        s = _plug_in_ended(_no_balancing(s).with_changes(held_for_safety=False, safety_stopped_at=None))
     if previous is not None:
         # The stops under a person's Stop and what the car ended belong to the plug-in they were in. Not for the
         # first connection known after a restart: nothing says the plug-in changed.
@@ -347,7 +352,7 @@ def _plug_in(session: ChargeSession, event: PlugIn, now: datetime) -> Decision:
 
 
 def _unplug(session: ChargeSession, event: Unplug, now: datetime) -> Decision:
-    s = _no_balancing(session).with_changes(
+    s = _plug_in_ended(_no_balancing(session)).with_changes(
         plugged=False, held_for_safety=False, safety_stopped_at=None, held=False, overridden=False
     )
     if event.previous is not None:
@@ -867,9 +872,10 @@ def _command_result(session: ChargeSession, event: CommandResult, now: datetime)
         s = session.with_changes(pending=tuple(item for item in session.pending if item is not pending))
     else:
         s = session
-    # The car left while the command was on its way (an unplug decided before its result): load balancing holds
-    # nothing back for a plug-in that is over (today's code checks the plug-in it began in, `_session_generation`).
-    car_gone = s.plugged is False
+    # The plug-in the command was asked for in ended before its result (an unplug, also one followed by a new
+    # plug-in, decided meanwhile): load balancing holds nothing back for it, as today's code checks the plug-in the
+    # command began in (`_session_generation`). With no record of the command, a car known gone says the same.
+    car_gone = pending.earlier_plug_in if pending is not None else s.plugged is False
     if event.command == "start":
         if event.reason == REASON_BALANCING_RESUME:
             if event.executed:

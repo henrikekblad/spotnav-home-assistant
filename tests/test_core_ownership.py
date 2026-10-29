@@ -852,6 +852,43 @@ HELD = ChargeSession(plugged=True, balancing_paused=True, paused_origin="person"
             False,
             None,
         ),
+        # Nor for one that ended and a new one began meanwhile (unplugged and plugged in again before the result):
+        # the charge held back would be the earlier plug-in's, never the new one's to resume.
+        (
+            ChargeSession(owner="person", plugged=True),
+            (ev.BalancingPause(), ev.Unplug(previous=True), ev.PlugIn(previous=False), ok("stop", "balancing")),
+            False,
+            None,
+        ),
+        (
+            HELD,
+            (
+                ev.BalancingResume(),
+                ev.Unplug(previous=True),
+                ev.PlugIn(previous=False),
+                failed("start", "balancing_resume"),
+            ),
+            False,
+            None,
+        ),
+        (
+            ChargeSession(plugged=True),
+            (
+                ev.PersonStart(connected=True),
+                ev.Unplug(previous=True),
+                ev.PlugIn(previous=False),
+                ev.CommandResult(command="start", reason="person", executed=False, balancing_held=True),
+            ),
+            False,
+            None,
+        ),
+        # A plug-in first known after a restart is no new plug-in: still that charge.
+        (
+            ChargeSession(owner="person", plugged=None),
+            (ev.BalancingPause(), ev.PlugIn(previous=None), ok("stop", "balancing")),
+            True,
+            "person",
+        ),
         # Cleared: every other start, as soon as it is asked for (also one that then does not go out).
         (HELD, (ev.PersonStart(),), False, None),
         (HELD, (ev.BalancingResume(),), False, None),
@@ -1073,3 +1110,12 @@ def test_a_window_end_the_next_plan_takes_over_stops_nothing(event: ev.Event) ->
     assert kinds(commands) == [] and session.owner == "plan"
     session, commands = run(ChargeSession(owner="plan"), ev.FinalWindowEnd(continued=True, top_off_wanted=True))
     assert kinds(commands) == [] and session.owner == "plan"
+
+
+def test_a_command_from_an_earlier_plug_in_round_trips_and_an_older_record_reads_as_this_one() -> None:
+    session = ChargeSession(plugged=True, pending=(PendingCommand("stop", "balancing", earlier_plug_in=True),))
+    assert ChargeSession.from_dict(session.to_dict()) == session
+    raw = ChargeSession(pending=(PendingCommand("stop", "balancing"),)).to_dict()
+    del raw["pending"][0]["earlier_plug_in"]  # a debug bundle written before it was kept
+    assert ChargeSession.from_dict(raw).pending[0].earlier_plug_in is False
+    assert "pending" not in session.to_store(), "transient: a restart clears every command awaiting a result"
