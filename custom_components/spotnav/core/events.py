@@ -261,7 +261,9 @@ class ChargerReportedOn(Event):
     of a plan charge that strays outside every window, and the stop under a person's Stop (C7).
 
     `was_on` is the control the hold last saw (`None`: nothing yet), `owned` whether SpotNav started the charge
-    as the hold remembers it (`None`: read it from the owner)."""
+    as the hold remembers it (`None`: read it from the owner). `hold_stop_overdue`: the task of the stop under a
+    person's Stop ended at least `PERSON_HOLD_STOP_GAP_S` ago and none is running, so a stop still awaited is one
+    whose decision never came back (its re-check could not be fed)."""
 
     kind: ClassVar[str] = "charger_reported_on"
     charging: bool = True
@@ -281,6 +283,7 @@ class ChargerReportedOn(Event):
     start_pending: bool = False
     stop_recent: bool = False
     owned: bool | None = None
+    hold_stop_overdue: bool = False
 
 
 @dataclass(frozen=True)
@@ -385,12 +388,14 @@ class Restart(Event):
 
 @dataclass(frozen=True)
 class Timer(Event):
-    """A timer of the session's own fired: the stop under a person's Stop looks again (`person_hold`)."""
+    """A timer of the session's own fired: the stop under a person's Stop looks again (`person_hold`).
+    `hold_stop_overdue` as for `ChargerReportedOn`."""
 
     kind: ClassVar[str] = "timer"
     what: str = "person_hold"
     control_on: bool = False
     start_pending: bool = False
+    hold_stop_overdue: bool = False
 
 
 #: What a background task decides again (`Recheck.what`): the command's reason (`ownership.REASON_*`).

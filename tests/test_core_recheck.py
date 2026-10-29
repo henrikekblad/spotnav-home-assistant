@@ -9,6 +9,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 from homeassistant.core import HomeAssistant
+from homeassistant.util import dt as dt_util
 
 from custom_components.spotnav.core import events as ev
 from custom_components.spotnav.core.ownership import decide, Keep, Stop
@@ -365,4 +366,79 @@ async def test_a_report_that_lands_while_the_stop_under_a_persons_stop_is_on_its
     assert not shadow.session.hold_stop_pending and not world.controller._c7.stop_pending  # noqa: SLF001
     assert len(world.controller._c7.stop_times) == 1, "counted once"  # noqa: SLF001
     assert shadow.counts["mirror_drift"] == 0
+    await world.shutdown()
+
+
+def _break_the_first_person_hold_recheck(controller, monkeypatch) -> list[str]:
+    """The facts of the first re-check of a stop under a person's Stop cannot be read: that `Recheck` is never fed
+    (a failure; today's rule acts for that one event)."""
+    real = controller._recheck_facts  # noqa: SLF001
+    broken: list[str] = []
+
+    def facts(what: str):
+        if what == "person_hold" and not broken:
+            broken.append(what)
+            raise RuntimeError("the facts could not be read")
+        return real(what)
+
+    monkeypatch.setattr(controller, "_recheck_facts", facts)
+    return broken
+
+
+# The failed feed is a failure on purpose: the core never hears the stop's result, so the owner after it differs once.
+@pytest.mark.shadow_disagreement_expected
+@pytest.mark.parametrize("drives", [False, True])
+async def test_a_stop_whose_recheck_was_never_fed_does_not_hold_off_the_next(
+    hass: HomeAssistant, timers: FakeScheduler, monkeypatch, freezer, drives: bool
+) -> None:
+    """The stop under a person's Stop went out, but its re-check could not be fed, so the core never heard of it and
+    still awaits it. Once its task has ended a gap ago, that awaited stop is dropped (`hold_stop_overdue`): the
+    charger beginning again is stopped as ever, not left alone until the next plug-in."""
+    monkeypatch.setattr(ownership_shadow, "CORE_OWNERSHIP_DEFAULT", drives)
+    world = await pause_world(hass, timers)
+    await world.executor.async_manual_stop()
+    broken = _break_the_first_person_hold_recheck(world.controller, monkeypatch)
+    stops = len(world.stops)
+
+    await world.switch("on")  # the charger begins by itself: stopped (today's rule acts for the failed event)
+    assert broken and len(world.stops) == stops + 1
+    if drives:
+        assert world.controller.ownership_shadow.session.hold_stop_pending, "the core never heard back"
+
+    freezer.tick(timedelta(seconds=31))
+    await world.switch("on")  # it begins again, a gap later
+    assert len(world.stops) == stops + 2, "stopped again: the awaited stop no longer holds the next off"
+    assert not world.controller._c7.stop_pending  # noqa: SLF001
+    assert world.controller.ownership_shadow.counts["mirror_drift"] == 0
+    await world.shutdown()
+
+
+@pytest.mark.shadow_disagreement_expected
+async def test_an_overdue_stop_is_looked_at_again_even_without_a_report(
+    hass: HomeAssistant, timers: FakeScheduler, monkeypatch, freezer
+) -> None:
+    """The same, with a charger that ignores the stop and reports nothing new: the controller looks again once the
+    awaited stop is overdue (its retry), and the core stops the charge again."""
+    monkeypatch.setattr(ownership_shadow, "CORE_OWNERSHIP_DEFAULT", True)
+    world = await pause_world(hass, timers)
+    await world.executor.async_manual_stop()
+    _break_the_first_person_hold_recheck(world.controller, monkeypatch)
+    calls: list[object] = []
+
+    async def ignored(call) -> None:
+        calls.append(call)
+
+    hass.services.async_register("switch", "turn_off", ignored)
+    await world.switch("on")
+    assert len(calls) == 1
+    controller = world.controller
+    assert controller._person_hold_retry_cancel is not None, "looked at again once overdue"  # noqa: SLF001
+
+    freezer.tick(timedelta(seconds=31))
+    controller._cancel_person_hold_retry()  # noqa: SLF001 - fired by hand below, so not left behind
+    controller._person_hold_retry_callback(dt_util.utcnow())  # noqa: SLF001 - that timer's own entry
+    await hass.async_block_till_done()
+    assert len(calls) == 2
+    assert len(controller._c7.stop_times) == 1, "the stop the core heard of is counted"  # noqa: SLF001
+    assert controller.ownership_shadow.counts["mirror_drift"] == 0
     await world.shutdown()

@@ -711,6 +711,10 @@ class ChargingController:
         self._person_hold_tried_at: datetime | None = None
         self._person_hold_gave_up = False
         self._person_hold_retry_cancel: Callable[[], None] | None = None
+        # The task of such a stop: whether one is running (from its spawn), and when the last one ended. An observation
+        # of this controller's own task, read as the fact `hold_stop_overdue` (`_hold_stop_overdue`).
+        self._person_hold_task_running = False
+        self._person_hold_task_ended_at: datetime | None = None
         # Counts plug-in sessions that ended (an unplug, a first report of no car): a command's failure branch
         # that would put back what was held for a session compares it, so an unplug while the command was on
         # its way wins (`_session_unchanged`).
@@ -2414,7 +2418,7 @@ class ChargingController:
             return
         self._shadow_note("stop")
         self._c7 = replace(self._c7, stop_pending=True)
-        self._async_spawn(self._async_person_hold_stop(), "the stop under a person's Stop")
+        self._spawn_person_hold_stop()
 
     def _core_person_hold(self, verdict: frozenset[tuple[str, str]]) -> None:
         """C7 as the core decided it (`CONF_CORE_OWNERSHIP`): the give-up, a stop, or a look again after the gap."""
@@ -2433,7 +2437,7 @@ class ChargingController:
         if ("stop", "person_hold") in verdict:
             self._shadow_note("stop")
             self._c7 = replace(self._c7, stop_pending=True)
-            self._async_spawn(self._async_person_hold_stop(), "the stop under a person's Stop")
+            self._spawn_person_hold_stop()
             return
         tried_at = self._c7.tried_at
         if (
@@ -2478,6 +2482,10 @@ class ChargingController:
         within `PERSON_HOLD_WINDOW_S`: SpotNav sends no more, and the status says so."""
         return self._c7.gave_up and self._held_off_by_person()
 
+    def _spawn_person_hold_stop(self) -> None:
+        self._person_hold_task_running = True
+        self._async_spawn(self._async_person_hold_stop(), "the stop under a person's Stop")
+
     async def _async_person_hold_stop(self) -> None:
         """The stop under a person's Stop a report or a timer decided, decided again under the boundary's lock
         (`_recheck`): a person's Start may have replaced their Stop meanwhile."""
@@ -2490,6 +2498,25 @@ class ChargingController:
                 )
         finally:
             self._c7 = replace(self._c7, stop_pending=False)
+            self._person_hold_task_running = False
+            self._person_hold_task_ended_at = dt_util.utcnow()
+            if self._c7.stop_pending and not self._shut_down and self._person_hold_retry_cancel is None:
+                # The core still awaits this stop (its re-check could not be fed): looked at again once it is
+                # overdue, so the stops under the person's Stop go on even if the charger reports nothing new.
+                self._person_hold_retry_cancel = async_call_later(
+                    self.hass, PERSON_HOLD_STOP_GAP_S + 1, self._person_hold_retry_callback
+                )
+
+    def _hold_stop_overdue(self) -> bool:
+        """The fact `hold_stop_overdue`: a stop under a person's Stop is still awaited, but no task of it runs and
+        the last ended at least `PERSON_HOLD_STOP_GAP_S` ago (its decision never came back)."""
+        ended = self._person_hold_task_ended_at
+        return (
+            self._c7.stop_pending
+            and not self._person_hold_task_running
+            and ended is not None
+            and (dt_util.utcnow() - ended).total_seconds() >= PERSON_HOLD_STOP_GAP_S
+        )
 
     async def _person_hold_stop_locked(self) -> bool:
         """One stop of a charge a person's Stop holds off, counted (`_observe_person_hold`). Runs with the
@@ -6420,6 +6447,7 @@ class ChargingController:
                     start_pending=self._shadow_start_pending(),
                     stop_recent=self._shadow_stop_recent(),
                     owned=self._hold_state.owned,
+                    hold_stop_overdue=self._hold_stop_overdue(),
                     **self._shadow_hold_facts(),
                 )
         except Exception as err:  # noqa: BLE001 - the shadow never raises into the real path
@@ -6463,7 +6491,11 @@ class ChargingController:
         """`_observe_person_hold` outside a report (its retry, a restore, a stop's retry), fed as a timer."""
         token = self._shadow.begin()
         facts = self._shadow_facts(
-            lambda: {"control_on": self._control_observation is True, "start_pending": self._shadow_start_pending()},
+            lambda: {
+                "control_on": self._control_observation is True,
+                "start_pending": self._shadow_start_pending(),
+                "hold_stop_overdue": self._hold_stop_overdue(),
+            },
             core_events.Timer.kind,
             token=token,
         )

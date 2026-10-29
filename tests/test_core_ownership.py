@@ -361,6 +361,21 @@ def test_a_persons_start_starts_the_stops_under_their_stop_afresh() -> None:
     assert session.hold_stop_times == () and session.hold_tried_at is None and not session.hold_gave_up
 
 
+def test_an_awaited_stop_under_a_person_stop_that_is_overdue_holds_off_no_more() -> None:
+    """Its task ended a gap ago and its result never came back (`hold_stop_overdue`): dropped, and the charge the
+    charger runs is stopped again. Not overdue, it still holds the next stop off."""
+    awaited = ChargeSession(
+        manual=STOP, plugged=True, hold_stop_pending=True, pending=(PendingCommand("stop", "person_hold"),)
+    )
+    _, commands = run(awaited, on())
+    assert kinds(commands) == []
+    session, commands = run(awaited, on(hold_stop_overdue=True))
+    assert commands == (Stop("person_hold"),) and session.hold_stop_pending
+    assert [(item.command, item.reason) for item in session.pending] == [("stop", "person_hold")]
+    session, commands = run(awaited, ev.Timer(control_on=True, hold_stop_overdue=True))
+    assert commands == (Stop("person_hold"),)
+
+
 def test_a_timer_looks_again_under_a_person_stop() -> None:
     later = T0 + timedelta(seconds=PERSON_HOLD_STOP_GAP_S)
     session = ChargeSession(manual=STOP, hold_stop_times=(T0,), hold_tried_at=T0)
