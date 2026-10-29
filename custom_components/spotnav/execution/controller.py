@@ -6675,6 +6675,11 @@ class ChargingController:
             hold_tried_at=self._c7.tried_at,
             hold_gave_up=self._c7.gave_up,
             hold_stop_pending=self._c7.stop_pending,
+            # The core's own when it drives; today's: the hold counts the charge SpotNav's though nobody here owns it
+            # (only a balancing resume of the charger's own charge does that: every other start names its owner).
+            spotnav_resumed=self._shadow.session.spotnav_resumed
+            if self._core_drives
+            else self._hold_state.owned and self._owner_origin is None,
         )
 
     def _async_spawn(self, work: Any, what: str) -> None:

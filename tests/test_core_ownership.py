@@ -649,24 +649,37 @@ OVERRIDDEN = ChargeSession(plugged=True, held=True, overridden=True)
             False,
             False,
         ),
-        # A start of nobody's (load balancing giving the charger's own charge back) is the charger's own (decided in
-        # step 5: today's code counted it SpotNav's from the start).
+        # Nor one load balancing gives back with a start of SpotNav's, also one nobody here owns (the charger's own):
+        # while the resume awaits its result, and after it until the charge is seen off or stopped (today's
+        # `spotnav_started` at the resume). SpotNav does not stop a charge it did not stop before.
         (
             PLUGGED.with_changes(pending=(PendingCommand("start", "balancing_resume", owner_after="none"),)),
             (on(**HOLD_ON),),
-            True,
+            False,
             False,
         ),
-        # Set: the re-arm's stop of a charge that ran outside the windows, once it went out (`held_now`), also one
-        # that sent nothing because the control said nothing; never one of a charge that did not run, one that never
-        # went out, or one whose plug-in ended before its result (an unplug and a new plug-in meanwhile).
-        (PLUGGED.with_changes(owner="plan"), (ev.Rearm(charging=True), ok("stop", "rearm")), True, False),
         (
-            PLUGGED.with_changes(owner="plan"),
-            (ev.Rearm(charging=True), ev.CommandResult(command="stop", reason="rearm", executed=True, unobserved=True)),
+            PLUGGED.with_changes(balancing_paused=True),
+            (ev.BalancingResume(), ok("start", "balancing_resume"), on(**HOLD_ON)),
+            False,
+            False,
+        ),
+        (
+            PLUGGED.with_changes(balancing_paused=True),
+            (ev.BalancingResume(), ok("start", "balancing_resume"), ev.ChargerReportedOff(), on(**HOLD_ON)),
             True,
             False,
         ),
+        (
+            PLUGGED.with_changes(balancing_paused=True),
+            (ev.BalancingResume(), ok("start", "balancing_resume"), ev.Restart(), on(**HOLD_ON)),
+            True,
+            False,
+        ),
+        # Set: the re-arm's stop of a charge that ran outside the windows, once it went out (`held_now`); never one of
+        # a charge that did not run, one that never went out, or one whose plug-in ended before its result (an unplug
+        # and a new plug-in meanwhile).
+        (PLUGGED.with_changes(owner="plan"), (ev.Rearm(charging=True), ok("stop", "rearm")), True, False),
         (PLUGGED.with_changes(owner="plan"), (ev.Rearm(charging=False), ok("stop", "rearm")), False, False),
         (PLUGGED.with_changes(owner="plan"), (ev.Rearm(charging=True), failed("stop", "rearm")), False, False),
         (

@@ -281,6 +281,54 @@ async def test_a_report_with_no_car_and_a_control_that_cannot_be_read_ends_the_h
     await world.shutdown()
 
 
+async def test_a_charge_load_balancing_gives_back_to_the_charger_is_not_held(
+    hass: HomeAssistant, timers: FakeScheduler, drives: bool
+) -> None:
+    """The charger begins a charge by itself between the windows while something else owns the charger (the guard:
+    a pause, the sun), so nothing holds it; load balancing pauses it, the guard lets go, and the regulator gives the
+    charge back with a start of SpotNav's. The charger reports it on only after the start returned: the hold leaves
+    it alone, as today's code does (`spotnav_started` at the resume), though nobody here owns it. SpotNav does not
+    stop a charge it did not stop before. Seen off, it is the charger's own again."""
+    world = await pause_world(hass, timers, plan=later_window())
+    controller = world.controller
+    guard = {"owns": True}
+    controller.set_hold_guard(lambda: guard["owns"])
+    await _charger_begins(world)
+    assert world.stops == [] and controller.charging
+    await controller._regulated_stop("pause")  # noqa: SLF001 - the regulator's own pause
+    await hass.async_block_till_done()
+    assert controller.paused_by_balancing and controller.paused_charge_origin is None
+    guard["owns"] = False
+    stops = len(world.stops)
+
+    late: list[Any] = []
+
+    async def answered_later(call: Any) -> None:
+        late.append(call)
+
+    hass.services.async_register("switch", "turn_on", answered_later)
+    assert await controller.async_battery_probe_start(8)
+    await hass.async_block_till_done()
+    assert len(late) == 1 and controller.charge_origin is None
+    hass.states.async_set(SWITCH, "on", {"plug": True, "stamp": "given_back"})
+    await hass.async_block_till_done()
+    assert len(world.stops) == stops, "the charge load balancing gave back is not held"
+    assert controller._hold_state.owned  # noqa: SLF001
+    _agrees(world, drives, NONE)
+    if drives:
+        assert _session(world).spotnav_resumed and _session(world).owner in ("none", "charger_self")
+
+    # Seen off, and begun again by itself: the charger's own now, held once.
+    hass.states.async_set(SWITCH, "off", {"plug": True, "stamp": "off"})
+    await hass.async_block_till_done()
+    assert not controller._hold_state.owned  # noqa: SLF001
+    hass.states.async_set(SWITCH, "on", {"plug": True, "stamp": "again"})
+    await hass.async_block_till_done()
+    assert len(world.stops) == stops + 1
+    _agrees(world, drives, HELD)
+    await world.shutdown()
+
+
 @pytest.mark.usefixtures("both_restarts")
 @pytest.mark.parametrize("record", ["missing", "older_than_the_keys"])
 async def test_todays_hold_key_is_read_where_the_keys_are_the_truth(
