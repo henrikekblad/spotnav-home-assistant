@@ -224,7 +224,8 @@ energy tax and grid fee as the plan applies them. Tapping the area or a tax open
   on it follows.
 - **Two electricity prices for SE4 with different fees. Use one?** is asked once, to an administrator,
   when an upgrade found an electricity price with the same area as a charger's but other fees (see
-  [upgrading](price-device.md#upgrading-from-an-earlier-version)). **Use …** moves every charger and
+  [upgrading](price-device.md#upgrading-from-an-earlier-version)). Each **Use …** button shows that
+  price's VAT, tax and grid fee on a second line, so you can see what differs. **Use …** moves every charger and
   site to that one; the other is not removed, and the card says it can be removed under **Devices &
   services**. **Keep both** keeps them as they are. Two prices with the same name are told apart by
   which one this charger uses.
