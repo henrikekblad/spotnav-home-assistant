@@ -158,6 +158,7 @@ from .ownership_shadow import (
     legacy_intent,
     legacy_owner,
     BALANCING,
+    CAR_ENDED_AND_PLUG,
     OwnershipShadow,
     SAFETY_AND_C7,
     ShadowToken,
@@ -984,6 +985,9 @@ class ChargingController:
         # When the core drives: the hold's memory as today's `hold` key read it back, for the restart alone
         # (`_restore_locked`), as `_balancing_read_back`. `None` at every other time: the session is read then.
         self._hold_read_back: HoldState | None = None
+        # When the core drives: the car-ended record as today's `car_ended_*` keys read it back, for the restart alone
+        # (`_restore_locked`), as `_balancing_read_back`. `None` at every other time: the session is read then.
+        self._car_ended_read_back: CarEndedRecord | None = None
         # Phase switching for solar (`phase_switching.py`): the charger's option (`CONF_PHASE_SWITCHING`, off unless its
         # entry data says true), what the switching of this plug-in has come to (persisted with the record), the timer
         # that gives up a switch the read-back never confirmed, and whether that was said in this plug-in.
@@ -1021,10 +1025,11 @@ class ChargingController:
             coverage=OwnershipCoverage(store=Store(hass, COVERAGE_STORE_VERSION, coverage_key(entry_id))),
             name=entry_id,
             on_failure=self._failure_repairs.failed,
-            # The safety hold and C7's stops (the core end state plan, step 3), load balancing's memory (step 4) and
-            # the hold's memory (step 5) are the core's when it drives: read from its session (`_safety`, `_c7`,
-            # `_balancing`, `_hold_state`). With the option off, today's fields stay the truth, lined up as ever.
-            owned_fields=(*SAFETY_AND_C7, *BALANCING, *WINDOW_HOLD) if self._core_drives else (),
+            # The safety hold and C7's stops (the core end state plan, step 3), load balancing's memory (step 4), the
+            # hold's memory (step 5), the car-ended record and the connection (step 6) are the core's when it drives:
+            # read from its session (`_safety`, `_c7`, `_balancing`, `_hold_state`, `_car_ended`, `_plugged`). With the
+            # option off, today's fields stay the truth, lined up as ever.
+            owned_fields=(*SAFETY_AND_C7, *BALANCING, *WINDOW_HOLD, *CAR_ENDED_AND_PLUG) if self._core_drives else (),
         )
         self._shadow.today_fields = lambda: f"origin={self._owner_origin} plan_charge={self._is_plan_charge}"
 
@@ -1125,7 +1130,13 @@ class ChargingController:
 
     @property
     def _car_ended(self) -> CarEndedRecord:
-        """The car-ended record of this plug-in (`async_note_car_ended`, the plan's watch)."""
+        """The car-ended record of this plug-in (`async_note_car_ended`, the plan's watch). When the core drives, the
+        session's (step 6): only its decisions change it (`CarEnded`, `CarLevelRead`, a plug-in, an unplug, a person's
+        Start, a restart)."""
+        if self._core_drives:
+            if self._car_ended_read_back is not None:
+                return self._car_ended_read_back
+            return _record_view(self._shadow.session.car_ended)
         return CarEndedRecord(
             at=self._car_ended_at,
             soc=self._car_ended_soc,
@@ -1135,6 +1146,10 @@ class ChargingController:
 
     @_car_ended.setter
     def _car_ended(self, record: CarEndedRecord) -> None:
+        if self._core_drives:
+            # The core decided it already (the car's end and its facts, a level read since, a plug-in, an unplug, a
+            # person's Start, a restart).
+            return
         self._car_ended_at = record.at
         self._car_ended_soc = record.soc
         self._car_ended_vehicle = record.vehicle
@@ -1173,11 +1188,18 @@ class ChargingController:
 
     @property
     def _plugged(self) -> bool | None:
-        """The last connection the charger reported in so many words (`_observe_connection`)."""
+        """The last connection the charger reported in so many words (`_observe_connection`). When the core drives, the
+        session's (step 6): a plug-in or an unplug is decided where its feed begins (`PlugIn`, `Unplug`), and a
+        restart clears it."""
+        if self._core_drives:
+            return self._shadow.session.plugged
         return self._known_connected
 
     @_plugged.setter
     def _plugged(self, connected: bool | None) -> None:
+        if self._core_drives:
+            # The core decided it already, where the plug-in's or the unplug's feed began.
+            return
         self._known_connected = connected
 
     def _repairs_name(self) -> str:
@@ -1240,6 +1262,8 @@ class ChargingController:
                 wait=_stored_car_ended_wait(saved.get("car_ended_wait")) if ended_at is not None else None,
             )
             self._car_ended = read_back_ended
+            if self._core_drives:
+                self._car_ended_read_back = read_back_ended
             backoff = saved.get("solar_credit_backoff")
             if isinstance(backoff, dict):
                 until = backoff.get("until")
@@ -1307,6 +1331,9 @@ class ChargingController:
         if self._core_drives and self._hold_read_back is None:
             # No hold in today's keys: none read back.
             self._hold_read_back = HoldState(held=False, overridden=False, owned=False)
+        if self._core_drives and self._car_ended_read_back is None:
+            # No record at all: nothing the car ended read back.
+            self._car_ended_read_back = _record_view(None)
         stored, migrate = self._stored_session(saved)
         keys_newer = self._restore_order(saved) if stored is not None else False
         await self._shadow.coverage.async_load(await self._integration_version())
@@ -1321,9 +1348,10 @@ class ChargingController:
                 keys_newer=keys_newer,
             )
         finally:
-            # From here load balancing's memory and the hold's are the session's alone.
+            # From here load balancing's memory, the hold's and the car-ended record are the session's alone.
             self._balancing_read_back = None
             self._hold_read_back = None
+            self._car_ended_read_back = None
         if stored is not None:
             self._session_saved = stored
         if migrate:
@@ -1658,11 +1686,13 @@ class ChargingController:
                 self._first_known_connected_at = dt_util.utcnow()
         if previous == connected:
             return
+        # Read before the feed begins: when the core drives, it decides the plug-in or the unplug there.
+        had_car_ended = self._car_ended.at is not None
         token = self._shadow.begin(
             early=core_events.PlugIn(previous=previous) if connected else core_events.Unplug(previous=previous)
         )
         try:
-            self._connection_changed(previous, connected)
+            self._connection_changed(previous, connected, had_car_ended=had_car_ended)
         finally:
             self._shadow.end(
                 token,
@@ -1671,8 +1701,13 @@ class ChargingController:
                 defer_intent=True,
             )
 
-    def _connection_changed(self, previous: bool | None, connected: bool) -> None:
-        """`_observe_connection` once the charger stated a connection other than the last one."""
+    def _connection_changed(
+        self, previous: bool | None, connected: bool, *, had_car_ended: bool | None = None
+    ) -> None:
+        """`_observe_connection` once the charger stated a connection other than the last one. `had_car_ended`: a
+        car-ended record was kept before it (`None`: read it now)."""
+        if had_car_ended is None:
+            had_car_ended = self._car_ended.at is not None
         self._plugged = connected
         if connected and previous is None and self._first_known_connected_at is None:
             self._first_known_connected_at = dt_util.utcnow()
@@ -1692,10 +1727,13 @@ class ChargingController:
             # A safety stop's hold belongs to the plug-in it was made in.
             self._safety = SafetyHold(held=False, stopped_at=None)
             # So does the hold of a charge that began by itself outside a window, and a person's override of it: ended
-            # here, as the core ends them, not first at the report's own observation (`WindowHold.observe`).
+            # here, as the core ends them, not first at the report's own observation (`WindowHold.observe`). Saved soon
+            # also when the core drives and already ended them where this feed began.
             hold = self._hold_state
             if hold.held or hold.overridden:
                 self._hold_state = replace(hold, held=False, overridden=False)
+                self._save_memory_soon()
+            elif self._core_drives:
                 self._save_memory_soon()
         if self._balancing.paused and (connected is False or previous is False):
             # The plug-in session a balancing pause held a charge for is over (an unplug, or the first
@@ -1710,7 +1748,6 @@ class ChargingController:
         self._reset_person_hold()
         event = CONNECTION_PLUGGED_IN if connected else CONNECTION_UNPLUGGED
         # What the car ended belongs to the plug-in it ended in.
-        had_car_ended = self._car_ended.at is not None
         self._car_ended = replace(self._car_ended, at=None, soc=None, wait=None)
         if connected:
             self._plugged_in_at = dt_util.utcnow()
@@ -5021,7 +5058,15 @@ class ChargingController:
             self._is_plan_charge,
             tuple(sorted(self.adapter.memory().items())),
             self._phases.to_store(),
+            # Last: `_persist_session` compares it alone.
+            self._car_ended_signature(),
         )
+
+    def _car_ended_signature(self) -> tuple[Any, ...]:
+        """The car-ended record as `_memory_signature` keeps it saved."""
+        record = self._car_ended
+        wait = None if record.wait is None else tuple(sorted(record.wait.items()))
+        return (record.at, record.soc, record.vehicle, wait)
 
     def _save_memory_soon(self) -> None:
         """Save the record soon when one of the facts a restart must not forget changed outside a save of
@@ -5141,6 +5186,10 @@ class ChargingController:
         self._session_as_of = self._order
         if not self._restored or self._shut_down:
             return
+        if self._saved_memory is not None and self._car_ended_signature() != self._saved_memory[-1]:
+            # The core's car-ended record changed (the car's end, a level read since, a plug-in, an unplug, a person's
+            # Start): today's `car_ended_*` keys are derived from it, saved soon with the rest.
+            self._save_memory_soon()
         stored = session.stored()
         if stored == self._session_saved:
             self._session_dirty_since = None
@@ -5173,7 +5222,7 @@ class ChargingController:
             self._owner_origin,
             self._is_plan_charge,
             self._top_off_until,
-            self._car_ended.at,
+            self._car_ended_signature(),
             self._balancing.paused,
             self._balancing.charge,
             self._hold_state.held,

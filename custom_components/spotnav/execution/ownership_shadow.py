@@ -90,6 +90,11 @@ BALANCING: Final = ("balancing_paused", "paused_origin")
 #: and whether a person overrode the hold. Stored in the session's record, and still written to today's `hold` key,
 #: derived from the session, so an older build reads it as before.
 WINDOW_HOLD: Final = ("held", "overridden")
+#: Step 6: the car-ended record (when, the level read then, which car, what the plan waits for) and the connection
+#: the charger last stated. The record is stored in the session's record (version 2) and still written to today's
+#: `car_ended_*` keys, derived from the session, so an older build reads them as before; `plugged` is never stored (a
+#: restart clears it).
+CAR_ENDED_AND_PLUG: Final = ("car_ended", "plugged")
 #: How far apart two readings of the clock may be and still be one instant in an owned field: the core takes the
 #: instant it decided, today's code its own a moment earlier or later (`core.replay.CLOCK_TOLERANCE_S`).
 MIRROR_CLOCK_S: Final = CLOCK_TOLERANCE_S
