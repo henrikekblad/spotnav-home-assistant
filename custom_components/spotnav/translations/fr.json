@@ -76,7 +76,7 @@
       },
       "site": {
         "title": "Site",
-        "description": "Le site maintient le courant total de ses bornes sous le fusible principal. Le contrôle actif peut être activé et désactivé plus tard ; il fonctionne au mieux et n'est pas un dispositif de protection. Le calibre du fusible principal doit être saisi explicitement -- il n'est jamais déduit de la charge mesurée. {charger_hint}",
+        "description": "Le site maintient le courant total de ses bornes sous le fusible principal. L'équilibrage de charge peut être activé et désactivé plus tard ; il fonctionne au mieux et n'est pas un dispositif de protection. Le calibre du fusible principal doit être saisi explicitement -- il n'est jamais déduit de la charge mesurée. {charger_hint}",
         "data": {
           "name": "Nom du site",
           "main_fuse_a": "Calibre du fusible principal (A)",

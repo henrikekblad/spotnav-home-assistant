@@ -76,7 +76,7 @@
       },
       "site": {
         "title": "Anlæg",
-        "description": "Anlægget holder sine laderes samlede strøm under hovedsikringen. Aktiv styring kan slås til og fra senere; den er bedste indsats, ikke en beskyttelsesanordning. Hovedsikringens størrelse skal angives udtrykkeligt -- den gættes aldrig ud fra målt last. {charger_hint}",
+        "description": "Anlægget holder sine laderes samlede strøm under hovedsikringen. Lastbalancering kan slås til og fra senere; den er bedste indsats, ikke en beskyttelsesanordning. Hovedsikringens størrelse skal angives udtrykkeligt -- den gættes aldrig ud fra målt last. {charger_hint}",
         "data": {
           "name": "Anlæggets navn",
           "main_fuse_a": "Hovedsikring (A)",
