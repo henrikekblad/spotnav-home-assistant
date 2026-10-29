@@ -236,11 +236,13 @@ decides, and the core is only told (`balancing_pause`, decided before the stop g
 
 The hold's memory (`held`, `overridden`) is the session's the same way when the core drives (`_hold_state` reads it),
 and whether the charge is SpotNav's (`WindowHold.owned`) is the session's owner: one of SpotNav's, a start of SpotNav's
-for one awaiting its result, or a start of ours still on its way before its result is fed (`_start_in_flight`).
+for one awaiting its result, or a start of ours still on its way before its result is fed (`_start_in_flight`); and
+a charge load balancing gave back with a start of SpotNav's, also one nobody here owns (`spotnav_resumed`, transient,
+until the charge is seen off or stopped): SpotNav does not stop a charge it did not stop before.
 `held` means "this plug-in session's charge that began by itself outside a window was stopped once", `overridden` "a
 person started it again after that, and it goes on", and is set only while `held`. Set: the hold at a report of such
-a charge, the override at the next one; the re-arm's stop of a charge that ran, once it went out (also one that sent
-nothing because the control said nothing), never for a plug-in that ended before its result. Cleared: the override
+a charge, the override at the next one; the re-arm's stop of a charge that ran, once it went out, never for a plug-in
+that ended before its result. Cleared: the override
 when the charge is seen off; both at a report with no car (also one whose control cannot be read), at an unplug, at a plug-in after a known unplug, and where
 the next window starts (a timer's or a re-arm's, not one at plug-in or a start's retry). Kept: a person's Start or
 Stop, a new plan, a window's end, load balancing, a restart; the re-arm spares an overridden hold. Today's rule is
