@@ -245,6 +245,28 @@ async def test_facts_that_cannot_be_read_are_a_failure(
 
 
 @pytest.mark.usefixtures("driving")
+async def test_a_stored_session_from_a_later_release_is_no_failure(
+    hass: HomeAssistant, timers: FakeScheduler, caplog: pytest.LogCaptureFixture
+) -> None:
+    """After a rollback the later release's record is expected: read from today's keys, with no warning, count or
+    issue, however often it restarts."""
+    world = await _world(hass, timers)
+    await world.executor.async_manual_stop()
+    world.controller._cancel_session_save()  # noqa: SLF001
+    record = dict(await world.controller._store.async_load())  # noqa: SLF001
+    record[SESSION_STORE_KEY] = {**record[SESSION_STORE_KEY], "version": 2, "car_ended": None}
+    await world.controller._store.async_save(record)  # noqa: SLF001
+
+    restarted = await world.restart()
+    shadow = restarted.controller.ownership_shadow
+    assert shadow.counts.get("failures", {}) == {}
+    assert _warnings(caplog) == []
+    assert shadow.session.manual is not None, "the person's Stop is read from today's keys"
+    assert _issue(hass) is None
+    await restarted.shutdown()
+
+
+@pytest.mark.usefixtures("driving")
 async def test_a_stored_session_that_cannot_be_read_is_a_failure(
     hass: HomeAssistant, timers: FakeScheduler, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
