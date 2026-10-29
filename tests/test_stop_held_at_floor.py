@@ -97,4 +97,4 @@ async def test_an_overload_stop_held_at_the_floor_counts_the_floor(hass: HomeAss
             "the charger draws the floor, not nothing"
         )
         assert controller.charge_origin == origin, "the charge runs on, and is still whose it was"
-        assert not controller._paused_by_balancing, "nothing was paused"  # noqa: SLF001
+        assert not controller._balancing.paused, "nothing was paused"  # noqa: SLF001

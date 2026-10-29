@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 from typing import Any
 
 from homeassistant.core import HomeAssistant
@@ -184,9 +185,21 @@ async def test_r4_the_regulator_forgets_a_persons_paused_charge_under_their_stop
 
     world = await pause_world(hass, timers)
     await world.executor.async_manual_start(10)
-    await world.executor.async_manual_stop()
+    await world.controller._regulated_stop("pause")  # noqa: SLF001 - load balancing holds the person's charge back
+    assert world.controller.paused_by_balancing and world.controller.paused_charge_origin == "manual"
+
+    async def not_executed() -> bool:
+        return False
+
+    # The charger reports its control on again by itself, and their Stop does not go out (the charge control is
+    # unavailable): their pause is stored all the same, and the charge load balancing holds back is still held back.
+    await world.switch("on")
+    world.controller.adapter.async_stop = not_executed  # type: ignore[method-assign]
+    with contextlib.suppress(Exception):
+        await world.executor.async_manual_stop()
     assert world.pause.action == "stop"
-    world.controller._remember_paused_charge("manual", False)  # noqa: SLF001 - as if still held back
+    await world.switch("off")
+    assert world.controller.paused_by_balancing, "as if still held back"
 
     monkeypatch.setattr(scc, "domain_data", lambda _hass: SimpleNamespace(auto_store=world.store))
     fake_site = SimpleNamespace(hass=hass)
@@ -205,7 +218,10 @@ async def test_r4_a_plan_charge_paused_under_a_span_pause_is_not_wanted(
 
     world = await pause_world(hass, timers)
     await world.executor.async_pause(PAUSE_UNTIL_RESUMED)
-    world.controller._remember_paused_charge("plan_window", True)  # noqa: SLF001
+    # The plan's charge, held back by load balancing below the floor (no room on the site now).
+    world.controller.set_start_cap(lambda: 0.0)
+    assert await world.controller.async_start(16, cause="plan_window") is False
+    assert world.controller.paused_by_balancing and world.controller.paused_charge_origin == "plan_window"
 
     monkeypatch.setattr(scc, "domain_data", lambda _hass: SimpleNamespace(auto_store=world.store))
     fake_site = SimpleNamespace(hass=hass)
@@ -371,7 +387,10 @@ async def test_an_unplug_during_a_stop_not_executed_ends_the_balancing_pause(
     world = await pause_world(hass, timers)
     await world.executor.async_manual_start(10)
     controller = world.controller
-    controller._remember_paused_charge("manual", False)  # noqa: SLF001 - balancing holds a person's charge
+    # Balancing holds a person's charge back; the charger then reports its control on again by itself.
+    await controller._regulated_stop("pause")  # noqa: SLF001
+    await world.switch("on")
+    assert controller._balancing.paused and controller.paused_charge_origin == "manual"  # noqa: SLF001
 
     async def unplugged_on_the_way() -> bool:
         world.plug.connected = False
@@ -384,7 +403,7 @@ async def test_an_unplug_during_a_stop_not_executed_ends_the_balancing_pause(
     with pytest.raises(ChargingExecutionError):
         await controller.async_stop(balancing=True)
     await hass.async_block_till_done()
-    assert not controller._paused_by_balancing, "a balancing pause outlived the unplug"  # noqa: SLF001
+    assert not controller._balancing.paused, "a balancing pause outlived the unplug"  # noqa: SLF001
     await world.shutdown()
 
 
