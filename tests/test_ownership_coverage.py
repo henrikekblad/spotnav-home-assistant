@@ -61,13 +61,17 @@ class Clock:
 
 def test_every_event_kind_of_the_core_is_listed_with_zeros() -> None:
     coverage = OwnershipCoverage(now=lambda: T0).as_dict()
-    assert set(coverage) == {"since", "version", "kinds", "unattributed"}
-    assert coverage["since"] == T0.isoformat()
+    assert set(coverage) == {"since", "version", "kinds", "unattributed", "previous"}
+    assert coverage["since"] == T0.isoformat() and coverage["previous"] is None
     assert set(coverage["kinds"]) == _kinds_in_code() == set(ev.EVENT_TYPES)
-    for counts in coverage["kinds"].values():
-        assert counts == {**dict.fromkeys(COVERAGE_FIELDS, 0), "first_seen": None, "last_seen": None}
+    for kind, counts in coverage["kinds"].items():
+        triggers = {"triggers": {}} if kind == "window_start" else {}
+        assert counts == {**dict.fromkeys(COVERAGE_FIELDS, 0), "first_seen": None, "last_seen": None, **triggers}
     assert coverage["unattributed"] == dict.fromkeys(COVERAGE_FIELDS, 0)
-    assert set(COVERAGE_FIELDS) == {"events", "compared", "disagreements", "drift", "errors"}
+    assert set(COVERAGE_FIELDS) == {
+        "events", "compared", "disagreements", "drift", "errors",
+        "mirror_drift", "written_back", "verdict_differs", "failures",
+    }
     json.dumps(coverage)
 
 
@@ -80,7 +84,7 @@ def test_the_shadow_counts_each_event_under_its_kind() -> None:
     shadow.feed(ev.PlugIn(previous=False))
     kinds = shadow.diagnostics()["coverage"]["kinds"]
     assert kinds["car_ended"] == {
-        "events": 2, "compared": 2, "disagreements": 0, "drift": 0, "errors": 0,
+        **dict.fromkeys(COVERAGE_FIELDS, 0), "events": 2, "compared": 2,
         "first_seen": T0.isoformat(), "last_seen": (T0 + timedelta(minutes=5)).isoformat(),
     }
     assert kinds["plug_in"]["events"] == 1 and kinds["plug_in"]["first_seen"] == kinds["plug_in"]["last_seen"]
@@ -194,7 +198,7 @@ async def test_the_stored_tally_is_added_to_and_a_damaged_one_is_read_as_far_as_
     }
     coverage = OwnershipCoverage(store=Store(hass, STORE_VERSION, store_key("entry_y")), now=lambda: T0)
     coverage.add("plug_in", "events")
-    await coverage.async_load("1.12.1")
+    await coverage.async_load("1.12.0")
     tally = coverage.as_dict()
     assert tally["since"] == "2026-09-01T00:00:00+00:00" and tally["version"] == "1.12.0"
     assert tally["kinds"]["plug_in"] == {
@@ -204,6 +208,103 @@ async def test_the_stored_tally_is_added_to_and_a_damaged_one_is_read_as_far_as_
     assert tally["kinds"]["unplug"]["events"] == 0
     assert "retired_kind" not in tally["kinds"]
     assert tally["unattributed"]["errors"] == 4 and tally["unattributed"]["drift"] == 0
+
+
+async def test_another_release_begins_a_new_tally_and_keeps_the_one_before(
+    hass: HomeAssistant, hass_storage: dict[str, Any]
+) -> None:
+    """The gate before the owner moves to the core reads one release: its tally begins when the release does, and the
+    one before is kept under `previous`, one period back (the one before that is dropped)."""
+    old = {
+        "since": "2026-09-01T00:00:00+00:00",
+        "version": "1.12.0",
+        "kinds": {"plug_in": {"events": 7, "disagreements": 1}},
+        "unattributed": {"errors": 2},
+        "previous": {"since": "2026-08-01T00:00:00+00:00", "version": "1.11.0"},
+    }
+    hass_storage[store_key("entry_v")] = {"version": STORE_VERSION, "key": store_key("entry_v"), "data": old}
+    coverage = OwnershipCoverage(store=Store(hass, STORE_VERSION, store_key("entry_v")), now=lambda: T0)
+    coverage.add("unplug", "events")
+    await coverage.async_load("1.13.0")
+    tally = coverage.as_dict()
+    assert (tally["since"], tally["version"]) == (T0.isoformat(), "1.13.0")
+    assert tally["kinds"]["plug_in"]["events"] == 0 and tally["kinds"]["plug_in"]["disagreements"] == 0
+    assert tally["kinds"]["unplug"]["events"] == 1, "what was counted meanwhile is this release's"
+    assert tally["previous"] == {key: value for key, value in old.items() if key != "previous"}
+    await coverage.async_flush()
+
+    # The same release again: added to, its previous period kept.
+    again = OwnershipCoverage(store=Store(hass, STORE_VERSION, store_key("entry_v")), now=lambda: T0)
+    await again.async_load("1.13.0")
+    assert again.as_dict()["kinds"]["unplug"]["events"] == 1
+    assert again.as_dict()["previous"]["version"] == "1.12.0"
+    # A version that cannot be read changes nothing.
+    unknown = OwnershipCoverage(store=Store(hass, STORE_VERSION, store_key("entry_v")), now=lambda: T0)
+    await unknown.async_load(None)
+    assert unknown.as_dict()["version"] == "1.13.0" and unknown.as_dict()["kinds"]["unplug"]["events"] == 1
+
+
+@pytest.mark.shadow_disagreement_expected
+def test_mirror_drift_write_backs_differing_verdicts_and_failures_are_counted_under_their_event() -> None:
+    state = {"today": ChargeSession(plugged=True, held=True)}
+    written = {"changed": False}
+    shadow = OwnershipShadow(
+        lambda: state["today"],
+        now=lambda: T0,
+        owned_fields=("held",),
+        drives=True,
+        writer=lambda _session: written["changed"],
+    )
+    shadow.session = state["today"]
+    # A field the core owns that today's state reads otherwise: under the kind of the event that met it.
+    state["today"] = state["today"].with_changes(held=False)
+    shadow.feed(ev.ConnectionUnknown())
+    state["today"] = state["today"].with_changes(held=True)
+    # Today's owner fields overridden by the core's owner.
+    written["changed"] = True
+    shadow.feed(ev.PlanDropped())
+    written["changed"] = False
+    # Today's rule would have chosen otherwise, inside a feed and outside any.
+    token = shadow.begin()
+    shadow.choose("window_start", True, False)
+    shadow.end(token, ev.WindowStart(trigger=ev.TRIGGER_PLUG_IN, window_open=False))
+    shadow.choose("nowhere", True, False)
+    # A decision that could not be taken.
+    shadow.failed("verdict", "rearm", RuntimeError("no"))
+    shadow.failed("facts", None, RuntimeError("no"))
+    coverage = shadow.diagnostics()["coverage"]
+    kinds = coverage["kinds"]
+    assert kinds["connection_unknown"]["mirror_drift"] == 1
+    assert kinds["plan_dropped"]["written_back"] == 1
+    assert kinds["window_start"]["verdict_differs"] == 1
+    assert kinds["rearm"]["failures"] == 1
+    assert coverage["unattributed"]["verdict_differs"] == 1 and coverage["unattributed"]["failures"] == 1
+    assert sum(counts["mirror_drift"] for counts in kinds.values()) == shadow.counts["mirror_drift"] == 1
+
+
+@pytest.mark.shadow_disagreement_expected  # the core asks for starts no code here sends
+def test_a_window_start_is_counted_by_what_started_it() -> None:
+    shadow = OwnershipShadow(ChargeSession, now=lambda: T0)
+    for trigger in (ev.TRIGGER_TIMER, ev.TRIGGER_PLUG_IN, ev.TRIGGER_PLUG_IN, ev.TRIGGER_RETRY):
+        shadow.feed(ev.WindowStart(trigger=trigger, window_open=False))
+    window_start = shadow.diagnostics()["coverage"]["kinds"]["window_start"]
+    assert window_start["events"] == 4
+    assert window_start["triggers"] == {"timer": 1, "plug_in": 2, "retry": 1}
+    assert "triggers" not in shadow.diagnostics()["coverage"]["kinds"]["plug_in"]
+
+
+async def test_the_triggers_and_the_new_counts_are_kept_on_disk(hass: HomeAssistant) -> None:
+    store = Store(hass, STORE_VERSION, store_key("entry_t"))
+    coverage = OwnershipCoverage(store=store, now=lambda: T0)
+    await coverage.async_load("1.13.0")
+    coverage.add_trigger("window_start", "timer")
+    coverage.add("rearm", "failures")
+    await coverage.async_flush()
+    again = OwnershipCoverage(store=Store(hass, STORE_VERSION, store_key("entry_t")), now=lambda: T0)
+    again.add_trigger("window_start", "timer")
+    await again.async_load("1.13.0")
+    kinds = again.as_dict()["kinds"]
+    assert kinds["window_start"]["triggers"] == {"timer": 2} and kinds["rearm"]["failures"] == 1
 
 
 async def test_a_new_tally_names_the_version_that_started_it(hass: HomeAssistant) -> None:
@@ -255,7 +356,7 @@ async def test_diagnostics_carry_the_tally_beside_the_shadow(hass: HomeAssistant
     shadow = diagnostics["controller"]["ownership_shadow"]
     assert {"counts", "session", "disagreements", "drift", "events"} <= set(shadow)
     coverage = shadow["coverage"]
-    assert set(coverage) == {"since", "version", "kinds", "unattributed"}
+    assert set(coverage) == {"since", "version", "kinds", "unattributed", "previous"}
     assert set(coverage["kinds"]) == set(ev.EVENT_TYPES)
     assert coverage["kinds"]["restart"]["events"] == 1
     assert coverage["version"]
