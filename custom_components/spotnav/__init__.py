@@ -43,6 +43,7 @@ from .api.webhook import async_register_charger_webhook
 from .card_asset import async_setup_card_asset
 from .const import (
     CONF_CHARGER_ENTRY_IDS,
+    CONF_CORE_OWNERSHIP,
     CONF_ENTRY_TYPE,
     DOMAIN,
     ENTRY_TYPE_PRICE,
@@ -260,8 +261,25 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     return loaded
 
 
+def _drop_core_ownership_choice(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """An earlier release let a charger keep the logic before the charge-ownership core (`CONF_CORE_OWNERSHIP` false).
+    That logic is gone: the key is dropped from the entry's data once, before the controller reads it. A charger has no
+    update listener, so this reloads nothing. A charger that had kept the previous logic says so once in the log."""
+    if CONF_CORE_OWNERSHIP not in entry.data:
+        return
+    data = dict(entry.data)
+    previous = data.pop(CONF_CORE_OWNERSHIP) is False
+    hass.config_entries.async_update_entry(entry, data=data)
+    if previous:
+        _LOGGER.info(
+            "SpotNav charger %s: the previous logic is no longer available; this charger uses the current logic",
+            entry.title or entry.entry_id,
+        )
+
+
 async def _async_setup_charger_entry(hass: HomeAssistant, entry: ChargerConfigEntry) -> bool:
     """One charger: its controller, its authority boundary, solar, Auto, its webhook, its entities."""
+    _drop_core_ownership_choice(hass, entry)
 
     def _read_soc(vehicle_id: str | None) -> SocReading | None:
         """Read the state of charge a plan's target is enforced against.

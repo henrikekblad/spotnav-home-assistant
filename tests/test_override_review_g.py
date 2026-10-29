@@ -10,7 +10,6 @@ from homeassistant.core import HomeAssistant
 
 from custom_components.spotnav.const import CONF_CHARGE_CONTROL
 from custom_components.spotnav.core.ownership import CarFacts
-from custom_components.spotnav.execution import ownership_shadow
 from custom_components.spotnav.execution.auto_execution import AutoExecutor
 from custom_components.spotnav.execution.controller import ChargingController, SESSION_STORE_KEY
 
@@ -20,8 +19,8 @@ from .test_replug import Plug
 
 
 @pytest.fixture
-def drives(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(ownership_shadow, "CORE_OWNERSHIP_DEFAULT", True)
+def drives() -> None:
+    """The core drives (for every charger now)."""
 
 
 async def _ha_restart(world: World) -> World:
@@ -50,9 +49,8 @@ async def _ha_restart(world: World) -> World:
 # ---------------------------------------------------------------------------------------------- (b) restart
 
 
-@pytest.fixture(params=[False, True], ids=["off", "on"])
+@pytest.fixture(params=[True], ids=["core"])
 def mode(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) -> bool:
-    monkeypatch.setattr(ownership_shadow, "CORE_OWNERSHIP_DEFAULT", request.param)
     return request.param
 
 
@@ -98,7 +96,6 @@ async def test_rev_g_off_the_stop_under_a_persons_stop_reads_no_state_of_charge(
 
     from .pause_world import two_windows
 
-    monkeypatch.setattr(ownership_shadow, "CORE_OWNERSHIP_DEFAULT", False, raising=False)
     world = await pause_world(hass, timers, plan=two_windows())
     controller = world.controller
     controller.set_hold_guard(lambda: True)
@@ -134,7 +131,6 @@ async def test_rev_g_off_a_recheck_today_declines_reads_no_state_of_charge(
 
     from .pause_world import two_windows
 
-    monkeypatch.setattr(ownership_shadow, "CORE_OWNERSHIP_DEFAULT", False, raising=False)
     world = await pause_world(hass, timers, plan=two_windows())
     controller = world.controller
     reads: list[Any] = []
@@ -158,7 +154,7 @@ async def test_rev_g_off_a_recheck_today_declines_reads_no_state_of_charge(
 # ---------------------------------------------------------------------------------------------- (c) leaks
 
 
-@pytest.mark.parametrize("on", [False, True], ids=["off", "on"])
+@pytest.mark.parametrize("on", [True])
 async def test_rev_g_shadow_diagnostics_name_no_entity(
     hass: HomeAssistant, timers: FakeScheduler, monkeypatch: pytest.MonkeyPatch, on: bool
 ) -> None:
@@ -167,7 +163,6 @@ async def test_rev_g_shadow_diagnostics_name_no_entity(
 
     from .pause_world import two_windows
 
-    monkeypatch.setattr(ownership_shadow, "CORE_OWNERSHIP_DEFAULT", on)
     world = await pause_world(hass, timers, plan=two_windows())
     await world.executor.async_manual_start()
     await world.executor.async_manual_stop()
@@ -193,7 +188,6 @@ async def test_rev_g_give_up_counts_the_same_in_both_modes(
     sent the same stops and reaches the give-up at the same report whether the core drives or not."""
     seen: dict[bool, list[tuple[int, bool]]] = {}
     for on in (False, True):
-        monkeypatch.setattr(ownership_shadow, "CORE_OWNERSHIP_DEFAULT", on)
         world = await pause_world(hass, timers)
         await world.executor.async_manual_stop()
         stops = len(world.stops)
@@ -212,7 +206,7 @@ async def test_rev_g_give_up_counts_the_same_in_both_modes(
 # ---------------------------------------------------------------------------------------------- pre-existing, copied
 
 
-@pytest.mark.parametrize("on", [False, True], ids=["off", "on"])
+@pytest.mark.parametrize("on", [True])
 async def test_rev_g_preexisting_a_replan_outside_the_windows_leaves_a_charge_now_running(
     hass: HomeAssistant, timers: FakeScheduler, monkeypatch: pytest.MonkeyPatch, on: bool
 ) -> None:
@@ -221,7 +215,6 @@ async def test_rev_g_preexisting_a_replan_outside_the_windows_leaves_a_charge_no
     started between windows (a webhook start, a button with no Auto) is stopped by the next plan installed."""
     from .helpers import install_schedule
 
-    monkeypatch.setattr(ownership_shadow, "CORE_OWNERSHIP_DEFAULT", on)
     world = await pause_world(hass, timers, plan={"periods": [later_window()], "amps": 10})
     assert await world.controller.async_start()
     await hass.async_block_till_done()
@@ -232,7 +225,7 @@ async def test_rev_g_preexisting_a_replan_outside_the_windows_leaves_a_charge_no
     await world.shutdown()
 
 
-@pytest.mark.parametrize("on", [False, True], ids=["off", "on"])
+@pytest.mark.parametrize("on", [True])
 async def test_a_replan_outside_the_windows_leaves_a_persons_start_running(
     hass: HomeAssistant, timers: FakeScheduler, monkeypatch: pytest.MonkeyPatch, on: bool
 ) -> None:
@@ -240,7 +233,6 @@ async def test_a_replan_outside_the_windows_leaves_a_persons_start_running(
     between the plan's windows: the next plan installed stops nothing."""
     from .helpers import install_schedule
 
-    monkeypatch.setattr(ownership_shadow, "CORE_OWNERSHIP_DEFAULT", on)
     world = await pause_world(hass, timers, plan={"periods": [later_window()], "amps": 10})
     await world.executor.async_manual_start()
     await hass.async_block_till_done()
@@ -253,13 +245,12 @@ async def test_a_replan_outside_the_windows_leaves_a_persons_start_running(
 
 
 @pytest.mark.usefixtures("both_restarts")
-@pytest.mark.parametrize("on", [False, True], ids=["off", "on"])
+@pytest.mark.parametrize("on", [True])
 async def test_a_restart_outside_the_windows_leaves_a_charge_now_running(
     hass: HomeAssistant, timers: FakeScheduler, monkeypatch: pytest.MonkeyPatch, on: bool
 ) -> None:
     """A Charge-now start with no Auto between the plan's windows, then a restart: the re-arm at the restore stops
     nothing (only the plan's own charge is the plan's to stop)."""
-    monkeypatch.setattr(ownership_shadow, "CORE_OWNERSHIP_DEFAULT", on)
     world = await pause_world(hass, timers, plan={"periods": [later_window()], "amps": 10})
     assert await world.controller.async_start()
     await hass.async_block_till_done()
@@ -274,7 +265,7 @@ async def test_a_restart_outside_the_windows_leaves_a_charge_now_running(
 
 
 @pytest.mark.usefixtures("offline_relay")
-@pytest.mark.parametrize("on", [False, True], ids=["off", "on"])
+@pytest.mark.parametrize("on", [True])
 async def test_rev_g_preexisting_the_departure_does_not_cycle_a_charge_the_next_plan_continues(
     hass: HomeAssistant, transport: Any, monkeypatch: pytest.MonkeyPatch, on: bool
 ) -> None:
@@ -294,7 +285,6 @@ async def test_rev_g_preexisting_the_departure_does_not_cycle_a_charge_the_next_
     from .test_dashboard_api import NOW
     from .test_replug import _car
 
-    monkeypatch.setattr(ownership_shadow, "CORE_OWNERSHIP_DEFAULT", on)
     serve_prices(transport, rising=True)
     calls: list[tuple[str, int]] = []
     with freeze_time(NOW) as frozen:
@@ -320,7 +310,7 @@ async def test_rev_g_preexisting_the_departure_does_not_cycle_a_charge_the_next_
 
 
 @pytest.mark.usefixtures("offline_relay")
-@pytest.mark.parametrize("on", [False, True], ids=["off", "on"])
+@pytest.mark.parametrize("on", [True])
 @pytest.mark.parametrize("first", ["window_end", "next_plan"])
 async def test_the_next_plan_beginning_at_the_departure_takes_the_charge_over_in_either_order(
     hass: HomeAssistant, transport: Any, monkeypatch: pytest.MonkeyPatch, on: bool, first: str
@@ -339,7 +329,6 @@ async def test_the_next_plan_beginning_at_the_departure_takes_the_charge_over_in
     from .test_dashboard_api import NOW
     from .test_replug import _car
 
-    monkeypatch.setattr(ownership_shadow, "CORE_OWNERSHIP_DEFAULT", on)
     serve_prices(transport, rising=True)
     calls: list[tuple[str, int]] = []
     with freeze_time(NOW) as frozen:

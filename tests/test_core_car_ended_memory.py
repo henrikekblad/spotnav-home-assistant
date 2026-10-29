@@ -28,9 +28,8 @@ KEYS = ("car_ended_at", "car_ended_soc", "car_ended_vehicle", "car_ended_wait")
 WAIT = {"target": TARGET, "level": 86.2, "estimated": True}
 
 
-@pytest.fixture(params=[True, False], ids=["core", "previous"])
+@pytest.fixture(params=[True], ids=["core"])
 def drives(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) -> bool:
-    monkeypatch.setattr(ownership_shadow, "CORE_OWNERSHIP_DEFAULT", request.param)
     return request.param
 
 
@@ -241,7 +240,6 @@ async def test_an_older_build_reads_the_keys_when_it_cannot_read_the_record(
 ) -> None:
     """A build that knows only version 1 of the session's record refuses version 2 and reads today's keys, which are
     written beside it, derived from the session: the record comes back whole, and is written again."""
-    monkeypatch.setattr(ownership_shadow, "CORE_OWNERSHIP_DEFAULT", True)
     world = await _plan_ended(hass, timers, _estimate())
     record = _agrees(world, True)
     assert (await _stored(world))[SESSION_STORE_KEY]["version"] == 2
@@ -259,7 +257,6 @@ async def test_a_version_1_record_is_read_with_the_instant_and_the_keys_fill_not
 ) -> None:
     """A record an earlier build wrote (version 1) keeps only when the car ended: read as a record of that instant
     alone (its level, car and wait not known), and written again as version 2."""
-    monkeypatch.setattr(ownership_shadow, "CORE_OWNERSHIP_DEFAULT", True)
     world = await pause_world(hass, timers, plan=two_windows())
     controller = world.controller
     ended = dt_util.utcnow() - timedelta(minutes=5)
@@ -378,7 +375,6 @@ async def test_the_first_restart_after_a_version_1_record_takes_the_rest_of_the_
     another end (their instant apart from the record's) are not read for it: the record keeps its instant alone."""
     from custom_components.spotnav.execution.controller import SESSION_ORDER_KEY
 
-    monkeypatch.setattr(ownership_shadow, "CORE_OWNERSHIP_DEFAULT", True)
     car = _estimate()
     world = await _plan_ended(hass, timers, car)
     controller = world.controller

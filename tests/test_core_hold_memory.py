@@ -25,9 +25,8 @@ OVERRIDDEN = {"held": True, "overridden": True}
 NONE = {"held": False, "overridden": False}
 
 
-@pytest.fixture(params=[True, False], ids=["core", "previous"])
+@pytest.fixture(params=[True], ids=["core"])
 def drives(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) -> bool:
-    monkeypatch.setattr(ownership_shadow, "CORE_OWNERSHIP_DEFAULT", request.param)
     return request.param
 
 
@@ -337,7 +336,6 @@ async def test_todays_hold_key_is_read_where_the_keys_are_the_truth(
     """When the core drives, a restart takes the hold's memory from today's `hold` key only to migrate: an older
     build's record with no session of the core's, or an earlier build's record whose order marks say its keys were
     written after it (each migrated once)."""
-    monkeypatch.setattr(ownership_shadow, "CORE_OWNERSHIP_DEFAULT", True)
     world = await pause_world(hass, timers, plan=later_window())
     await _overridden(world, True)
     world.controller._cancel_session_save()  # noqa: SLF001 - the record is changed by hand below

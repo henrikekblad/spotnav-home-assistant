@@ -187,11 +187,10 @@ def _records(world, kind: str) -> list[dict]:
     return [record for record in world.controller.ownership_shadow.events if record["event"]["kind"] == kind]
 
 
-@pytest.mark.parametrize("drives", [False, True])
+@pytest.mark.parametrize("drives", [True])
 async def test_the_holds_stop_is_sent_and_its_result_comes_back_to_the_core(
     hass: HomeAssistant, timers: FakeScheduler, monkeypatch, drives: bool
 ) -> None:
-    monkeypatch.setattr(ownership_shadow, "CORE_OWNERSHIP_DEFAULT", drives)
     world, stops = await _held_world(hass, timers)
     assert len(world.stops) == stops + 1
     rechecks = _records(world, "recheck")
@@ -204,13 +203,12 @@ async def test_the_holds_stop_is_sent_and_its_result_comes_back_to_the_core(
 
 
 @pytest.mark.shadow_disagreement_expected
-@pytest.mark.parametrize(("drives", "stopped"), [(True, False), (False, True)])
+@pytest.mark.parametrize(("drives", "stopped"), [(True, False)])
 async def test_the_holds_task_acts_on_the_cores_recheck_when_it_drives(
     hass: HomeAssistant, timers: FakeScheduler, monkeypatch, drives: bool, stopped: bool
 ) -> None:
     """A core whose re-check finds the hold's stop no longer due: driving, the task sends nothing (today's rule would
     have, counted as `verdict_differs`); shadowing, today's rule stops it and the shadow reports the disagreement."""
-    monkeypatch.setattr(ownership_shadow, "CORE_OWNERSHIP_DEFAULT", drives)
     real = ownership_shadow.decide
 
     def nothing_due(session, event, now):
@@ -228,13 +226,12 @@ async def test_the_holds_task_acts_on_the_cores_recheck_when_it_drives(
     await world.shutdown()
 
 
-@pytest.mark.parametrize("drives", [False, True])
+@pytest.mark.parametrize("drives", [True])
 async def test_the_claim_of_a_window_charge_comes_back_to_the_core(
     hass: HomeAssistant, timers: FakeScheduler, monkeypatch, drives: bool
 ) -> None:
     """The charger begins by itself inside a window of the plan: the claim's task asks the core again and the charge
     is the plan's, in both modes."""
-    monkeypatch.setattr(ownership_shadow, "CORE_OWNERSHIP_DEFAULT", drives)
     world = await pause_world(hass, timers, plan=open_window())
     await world.controller.async_stop()  # the window's own start, stopped: nobody's charge now
     await world.switch("on")
@@ -255,11 +252,10 @@ async def test_the_claim_of_a_window_charge_comes_back_to_the_core(
     await world.shutdown()
 
 
-@pytest.mark.parametrize("drives", [False, True])
+@pytest.mark.parametrize("drives", [True])
 async def test_the_stop_under_a_persons_stop_is_rechecked_by_the_core(
     hass: HomeAssistant, timers: FakeScheduler, monkeypatch, drives: bool
 ) -> None:
-    monkeypatch.setattr(ownership_shadow, "CORE_OWNERSHIP_DEFAULT", drives)
     world = await pause_world(hass, timers)
     await world.executor.async_manual_stop()
     stops = len(world.stops)
@@ -284,14 +280,13 @@ def _c7(world) -> tuple[int, bool]:
     return len(stops.stop_times), stops.gave_up
 
 
-@pytest.mark.parametrize("drives", [False, True])
+@pytest.mark.parametrize("drives", [True])
 async def test_the_stops_under_a_persons_stop_keep_the_gap_and_give_up_in_both_modes(
     hass: HomeAssistant, timers: FakeScheduler, monkeypatch, freezer, drives: bool
 ) -> None:
     """C7 and R5 through the controller: a charger that begins again by itself under a person's Stop is stopped at
     most once per gap, each stop counted once, and after three in ten minutes SpotNav gives up and says so. When the
     core drives, all of it is the session's, and the controller's own fields are never written."""
-    monkeypatch.setattr(ownership_shadow, "CORE_OWNERSHIP_DEFAULT", drives)
     world = await pause_world(hass, timers)
     await world.executor.async_manual_stop()
     stops = len(world.stops)
@@ -324,7 +319,7 @@ async def test_the_stops_under_a_persons_stop_keep_the_gap_and_give_up_in_both_m
     await world.shutdown()
 
 
-@pytest.mark.parametrize("drives", [False, True])
+@pytest.mark.parametrize("drives", [True])
 async def test_a_report_that_lands_while_the_stop_under_a_persons_stop_is_on_its_way_keeps_it_pending(
     hass: HomeAssistant, timers: FakeScheduler, monkeypatch, drives: bool
 ) -> None:
@@ -333,7 +328,6 @@ async def test_a_report_that_lands_while_the_stop_under_a_persons_stop_is_on_its
     drifts from what the controller reads."""
     import asyncio
 
-    monkeypatch.setattr(ownership_shadow, "CORE_OWNERSHIP_DEFAULT", drives)
     world = await pause_world(hass, timers)
     await world.executor.async_manual_stop()
     release = asyncio.Event()
@@ -388,14 +382,13 @@ def _break_the_first_person_hold_recheck(controller, monkeypatch) -> list[str]:
 
 # The failed feed is a failure on purpose: the core never hears the stop's result, so the owner after it differs once.
 @pytest.mark.shadow_disagreement_expected
-@pytest.mark.parametrize("drives", [False, True])
+@pytest.mark.parametrize("drives", [True])
 async def test_a_stop_whose_recheck_was_never_fed_does_not_hold_off_the_next(
     hass: HomeAssistant, timers: FakeScheduler, monkeypatch, freezer, drives: bool
 ) -> None:
     """The stop under a person's Stop went out, but its re-check could not be fed, so the core never heard of it and
     still awaits it. Once its task has ended a gap ago, that awaited stop is dropped (`hold_stop_overdue`): the
     charger beginning again is stopped as ever, not left alone until the next plug-in."""
-    monkeypatch.setattr(ownership_shadow, "CORE_OWNERSHIP_DEFAULT", drives)
     world = await pause_world(hass, timers)
     await world.executor.async_manual_stop()
     broken = _break_the_first_person_hold_recheck(world.controller, monkeypatch)
@@ -420,7 +413,6 @@ async def test_an_overdue_stop_is_looked_at_again_even_without_a_report(
 ) -> None:
     """The same, with a charger that ignores the stop and reports nothing new: the controller looks again once the
     awaited stop is overdue (its retry), and the core stops the charge again."""
-    monkeypatch.setattr(ownership_shadow, "CORE_OWNERSHIP_DEFAULT", True)
     world = await pause_world(hass, timers)
     await world.executor.async_manual_stop()
     _break_the_first_person_hold_recheck(world.controller, monkeypatch)

@@ -361,17 +361,15 @@ async def test_a_rise_another_chargers_own_reading_shows_is_not_credited_to_a_la
 
 
 
-@pytest.mark.parametrize("drives", [False, True])
+@pytest.mark.parametrize("drives", [True])
 async def test_a_stop_under_a_persons_stop_that_sends_nothing_is_not_counted_toward_the_give_up(
     hass: HomeAssistant, timers: Any, monkeypatch: pytest.MonkeyPatch, drives: bool
 ) -> None:
     """A stop of ours still settles: the stop under a person's Stop sends nothing, and is no attempt the charger
     could have ignored. Its try still holds the gap. In both modes, read where each mode keeps them."""
-    from custom_components.spotnav.execution import ownership_shadow
 
     from .pause_world import pause_world
 
-    monkeypatch.setattr(ownership_shadow, "CORE_OWNERSHIP_DEFAULT", drives)
     world = await pause_world(hass, timers)
     await world.executor.async_manual_start(10)
     calls: list[Any] = []

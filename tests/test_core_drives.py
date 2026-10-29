@@ -1,7 +1,5 @@
-"""The charge-ownership core drives (`CONF_CORE_OWNERSHIP`, on unless a charger's entry data says false): it decides,
-today's code acts on its verdicts and reads its owner from the session, and is still computed beside it and compared. A charger
-set to the previous logic decides with today's code as ever, the core only in shadow. (`SPOTNAV_CORE_OWNERSHIP=0`
-runs the whole suite with the previous logic.)"""
+"""The charge-ownership core drives for every charger: it decides, today's code acts on its verdicts and reads its
+owner from the session, and is still computed beside it and compared."""
 
 from __future__ import annotations
 
@@ -41,33 +39,20 @@ async def _charger(hass: HomeAssistant, *, drives: bool | None) -> tuple[Chargin
     return controller, executor, starts
 
 
-@pytest.mark.parametrize(("default", "configured", "drives"), [
-    (True, None, True),
-    (True, False, False),
-    (True, True, True),
-    (False, None, False),
-    (False, True, True),
-])
-async def test_the_core_drives_unless_a_charger_says_otherwise(
-    hass: HomeAssistant, timers: FakeScheduler, monkeypatch, default: bool, configured: bool | None, drives: bool
+@pytest.mark.parametrize("configured", [None, False, True])
+async def test_the_core_drives_whatever_an_earlier_release_stored(
+    hass: HomeAssistant, timers: FakeScheduler, configured: bool | None
 ) -> None:
-    monkeypatch.setattr(ownership_shadow, "CORE_OWNERSHIP_DEFAULT", default)
+    """The choice of the logic before the core is gone: a charger whose data still says `core_ownership` (a controller
+    built from it before setup drops the key) is driven by the core all the same."""
     controller, executor, _starts = await _charger(hass, drives=configured)
-    assert controller.ownership_shadow.drives is drives
-    assert controller.ownership_shadow.diagnostics()["drives"] is drives
+    assert controller.ownership_shadow.drives is True
+    assert controller.ownership_shadow.diagnostics()["drives"] is True
     await executor.async_shutdown()
     await controller.async_shutdown()
 
 
-def test_the_default_is_that_the_core_drives() -> None:
-    import os
-
-    if os.environ.get("SPOTNAV_CORE_OWNERSHIP") == "0":
-        pytest.skip("this run sets the previous logic as the default")
-    assert ownership_shadow.CORE_OWNERSHIP_DEFAULT is True
-
-
-@pytest.mark.parametrize("drives", [True, False])
+@pytest.mark.parametrize("drives", [True])
 async def test_the_previous_logic_is_still_computed_and_compared_while_the_core_drives(
     hass: HomeAssistant, timers: FakeScheduler, drives: bool
 ) -> None:
@@ -89,7 +74,7 @@ async def test_the_previous_logic_is_still_computed_and_compared_while_the_core_
 
 
 @pytest.mark.shadow_disagreement_expected
-@pytest.mark.parametrize(("drives", "started"), [(True, False), (False, True)])
+@pytest.mark.parametrize(("drives", "started"), [(True, False)])
 async def test_todays_code_acts_on_the_cores_verdict_when_it_drives(
     hass: HomeAssistant, timers: FakeScheduler, monkeypatch, drives: bool, started: bool
 ) -> None:
@@ -187,43 +172,37 @@ async def test_shadow_token_equality_confuses_nested_tokens() -> None:
     assert not shadow._stack  # noqa: SLF001
 
 
-@pytest.mark.parametrize("drives", [False, True])
+@pytest.mark.parametrize("drives", [True])
 async def test_a_charge_seen_off_is_not_handed_back_to_the_plan_at_every_report(hass, timers, drives):
     """Step 2: a pause whose stop failed, then the charge stops some other way. Today's code forgets the plan charge
     (`_async_forget_plan_charge`, plan_charge False, origin kept). Driving, the owner is the core's (step 7): the
     report of the charger off made it nobody's, and later reports neither hand the charge back to the plan nor save
     again."""
     from homeassistant.exceptions import HomeAssistantError
-    from custom_components.spotnav.execution import ownership_shadow
     from custom_components.spotnav.planning.auto_settings import PAUSE_UNTIL_RESUMED
     from .pause_world import pause_world, two_windows, SWITCH
 
-    default = ownership_shadow.CORE_OWNERSHIP_DEFAULT
-    ownership_shadow.CORE_OWNERSHIP_DEFAULT = drives
-    try:
-        world = await pause_world(hass, timers, plan=two_windows())
+    world = await pause_world(hass, timers, plan=two_windows())
 
-        async def failing() -> bool:
-            raise HomeAssistantError("the charge control is unavailable")
+    async def failing() -> bool:
+        raise HomeAssistantError("the charge control is unavailable")
 
-        world.controller.adapter.async_stop = failing
-        await world.executor.async_pause(PAUSE_UNTIL_RESUMED)
-        await world.switch("off")
-        saves = []
-        real = world.controller._async_save
+    world.controller.adapter.async_stop = failing
+    await world.executor.async_pause(PAUSE_UNTIL_RESUMED)
+    await world.switch("off")
+    saves = []
+    real = world.controller._async_save
 
-        async def counting(*a, **k):
-            saves.append(1)
-            return await real(*a, **k)
+    async def counting(*a, **k):
+        saves.append(1)
+        return await real(*a, **k)
 
-        world.controller._async_save = counting
-        flips = []
-        for index in range(6):
-            hass.states.async_set(SWITCH, "off", {"report": index})
-            await hass.async_block_till_done()
-            flips.append(world.controller._is_plan_charge)
-        written = world.controller.ownership_shadow.counts["written_back"]
-        await world.shutdown()
-        assert written <= 1 and len(saves) <= 1, (drives, written, len(saves), flips)
-    finally:
-        ownership_shadow.CORE_OWNERSHIP_DEFAULT = default
+    world.controller._async_save = counting
+    flips = []
+    for index in range(6):
+        hass.states.async_set(SWITCH, "off", {"report": index})
+        await hass.async_block_till_done()
+        flips.append(world.controller._is_plan_charge)
+    written = world.controller.ownership_shadow.counts["written_back"]
+    await world.shutdown()
+    assert written <= 1 and len(saves) <= 1, (drives, written, len(saves), flips)

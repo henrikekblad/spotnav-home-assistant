@@ -334,12 +334,10 @@
           "current_control": "Aseta laturin virta",
           "energy_register_entity": "Energiamittari (kumulatiivinen, valinnainen)",
           "power_entity": "Tehoanturi, älypistoke (valinnainen)",
-          "idle_power_w": "Ei ota virtaa, kun teho alle (W)",
-          "charging_decisions": "Latauspäätökset"
+          "idle_power_w": "Ei ota virtaa, kun teho alle (W)"
         },
         "data_description": {
-          "idle_power_w": "Jos teho pysyy tämän alapuolella viisi minuuttia suunnitellun latauksen aikana, SpotNav toteaa, ettei auto ota virtaa. Oletus 100 W.",
-          "charging_decisions": "Mikä logiikka päättää, milloin tämä laturi aloittaa ja lopettaa latauksen. Valitse Aiempi logiikka vain, jos nykyinen ei toimi oikein tällä laturilla; tallennus lataa laturin uudelleen."
+          "idle_power_w": "Jos teho pysyy tämän alapuolella viisi minuuttia suunnitellun latauksen aikana, SpotNav toteaa, ettei auto ota virtaa. Oletus 100 W."
         }
       },
       "site_init": {
@@ -560,12 +558,6 @@
         "off": "Ei mitään",
         "suggested": "Hinta-alueen ehdotus",
         "manual": "Oma luku"
-      }
-    },
-    "charging_decisions": {
-      "options": {
-        "current": "Nykyinen (oletus)",
-        "previous": "Aiempi logiikka"
       }
     }
   },
@@ -880,7 +872,7 @@
     },
     "core_decision_failed": {
       "title": "Laturin latauspäätökset epäonnistuivat",
-      "description": "SpotNavin nykyinen logiikka ei pystynyt tekemään päätöstä laturille **{charger}** useita kertoja viimeisen vuorokauden aikana, joten aiempi logiikka päätti sen sijaan. Lataus jatkuu. Voit auttaa vian korjaamisessa: lataa vianetsintätiedot (SpotNav-kortin ratas → Lataa vianetsintätiedot) ja liitä ne GitHubin issueen. Jos laturi toimii oudosti, vaihda se Aiempaan logiikkaan: laturin Määritä → Latauspäätökset. Ilmoitus poistuu vuorokauden kuluttua ilman virheitä."
+      "description": "SpotNavin nykyinen logiikka ei pystynyt tekemään päätöstä laturille **{charger}** useita kertoja viimeisen vuorokauden aikana, joten aiempi logiikka päätti sen sijaan. Lataus jatkuu. Voit auttaa vian korjaamisessa: lataa vianetsintätiedot (SpotNav-kortin ratas → Lataa vianetsintätiedot) ja liitä ne GitHubin issueen. Ilmoitus poistuu vuorokauden kuluttua ilman virheitä."
     },
     "price_source_missing": {
       "title": "Alueella {area} ei ole sähkön hintoja",

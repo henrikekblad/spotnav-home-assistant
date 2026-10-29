@@ -15,7 +15,6 @@ from homeassistant.util import dt as dt_util
 from pytest_homeassistant_custom_component.common import async_fire_time_changed
 
 from custom_components.spotnav.core.session import OWNER_NONE, OWNER_PLAN
-from custom_components.spotnav.execution import ownership_shadow
 from tests.relay import serve as serve_prices
 
 from .test_dashboard_api import NOW
@@ -25,9 +24,8 @@ from .test_replug import _car, _meter, _record_charger_commands, Car
 pytestmark = pytest.mark.usefixtures("offline_relay")
 
 
-@pytest.fixture(params=[False, True], ids=["shadows", "drives"])
+@pytest.fixture(params=[True], ids=["core"])
 def drives(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) -> bool:
-    monkeypatch.setattr(ownership_shadow, "CORE_OWNERSHIP_DEFAULT", request.param)
     return request.param
 
 

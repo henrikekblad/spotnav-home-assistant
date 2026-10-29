@@ -114,11 +114,6 @@ _REPORTS: Final = frozenset({"charger_reported_on", "charger_reported_off", "cha
 LISTENERS: list[Callable[[str, dict[str, Any]], None]] = []
 #: What every shadow in this process counted (a test run's summary).
 TOTALS: dict[str, int] = {}
-#: Whether the core drives ownership for a charger whose entry data does not say (`const.CONF_CORE_OWNERSHIP`). On:
-#: the core decides and today's code is still computed beside it and compared. An entry with the key false keeps the
-#: previous logic (today's code decides, the core only shadows it). A test run turns it off to run the suite in both
-#: modes.
-CORE_OWNERSHIP_DEFAULT = True
 #: Every shadow alive (a test's dump of what each recorded).
 SHADOWS: weakref.WeakSet[OwnershipShadow] = weakref.WeakSet()
 

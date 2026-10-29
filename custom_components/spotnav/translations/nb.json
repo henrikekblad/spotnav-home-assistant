@@ -334,12 +334,10 @@
           "current_control": "Still inn laderens strøm",
           "energy_register_entity": "Energiteller (totalt, valgfritt)",
           "power_entity": "Effektsensor, smartplugg (valgfritt)",
-          "idle_power_w": "Trekker ikke strøm under (W)",
-          "charging_decisions": "Ladebeslutninger"
+          "idle_power_w": "Trekker ikke strøm under (W)"
         },
         "data_description": {
-          "idle_power_w": "Er effekten under denne verdien i fem minutter under en planlagt lading, melder SpotNav at bilen ikke trekker strøm. Standard 100 W.",
-          "charging_decisions": "Hvilken logikk som bestemmer når denne laderen starter og stopper. Velg Tidligere logikk bare hvis den nåværende ikke fungerer for denne laderen; når du lagrer, lastes laderen inn på nytt."
+          "idle_power_w": "Er effekten under denne verdien i fem minutter under en planlagt lading, melder SpotNav at bilen ikke trekker strøm. Standard 100 W."
         }
       },
       "site_init": {
@@ -560,12 +558,6 @@
         "off": "Ingenting",
         "suggested": "Prisområdets forslag",
         "manual": "Mitt eget tall"
-      }
-    },
-    "charging_decisions": {
-      "options": {
-        "current": "Nåværende (standard)",
-        "previous": "Tidligere logikk"
       }
     }
   },
@@ -880,7 +872,7 @@
     },
     "core_decision_failed": {
       "title": "En laders ladebeslutninger mislyktes",
-      "description": "SpotNavs nåværende logikk kunne ikke ta en beslutning for **{charger}** flere ganger det siste døgnet, så den tidligere logikken bestemte i stedet. Ladingen fortsetter. For å hjelpe med å rette feilen: last ned feilsøkingsinfo (tannhjulet på SpotNav-kortet → Last ned feilsøkingsinfo) og legg den ved et issue på GitHub. Hvis laderen oppfører seg rart, kan du bytte til Tidligere logikk: laderens Konfigurer → Ladebeslutninger. Meldingen forsvinner etter et døgn uten feil."
+      "description": "SpotNavs nåværende logikk kunne ikke ta en beslutning for **{charger}** flere ganger det siste døgnet, så den tidligere logikken bestemte i stedet. Ladingen fortsetter. For å hjelpe med å rette feilen: last ned feilsøkingsinfo (tannhjulet på SpotNav-kortet → Last ned feilsøkingsinfo) og legg den ved et issue på GitHub. Meldingen forsvinner etter et døgn uten feil."
     },
     "price_source_missing": {
       "title": "Ingen strømpriser for {area}",

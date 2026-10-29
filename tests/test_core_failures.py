@@ -36,16 +36,15 @@ TITLE = "Garage charger"
 pytestmark = pytest.mark.shadow_disagreement_expected
 
 
-@pytest.fixture(params=[True, False], ids=["drives", "shadows"])
+@pytest.fixture(params=[True], ids=["core"])
 def drives(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) -> bool:
-    """The core drives (the default), or the charger keeps the previous logic (`SPOTNAV_CORE_OWNERSHIP=0`)."""
-    monkeypatch.setattr(ownership_shadow, "CORE_OWNERSHIP_DEFAULT", request.param)
+    """The core drives (for every charger now)."""
     return request.param
 
 
 @pytest.fixture
-def driving(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(ownership_shadow, "CORE_OWNERSHIP_DEFAULT", True)
+def driving() -> None:
+    """The core drives (for every charger now)."""
 
 
 def _break(monkeypatch: pytest.MonkeyPatch, kind: str) -> None:

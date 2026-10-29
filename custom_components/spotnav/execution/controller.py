@@ -37,7 +37,6 @@ from homeassistant.util import dt as dt_util
 
 from ..const import (
     CONF_CHARGE_CONTROL,
-    CONF_CORE_OWNERSHIP,
     CONF_CURRENT_CONTROL,
     CONF_CURRENT_LIMIT_NONE,
     CONF_CURRENT_LIMIT,
@@ -156,7 +155,6 @@ from ..core.session import (
     SessionError,
     STORED_VERSION,
 )
-from . import ownership_shadow as ownership_shadow_module
 from .ownership_coverage import OwnershipCoverage, STORE_VERSION as COVERAGE_STORE_VERSION, store_key as coverage_key
 from .ownership_shadow import (
     CommandOutcome,
@@ -1036,11 +1034,9 @@ class ChargingController:
         self._shadow_car_facts: CarFacts = NO_CAR_FACTS
         self._shadow_unobserved = False
         self._solar_hold_probe: Callable[[], bool] | None = None
-        # Step 2, `CONF_CORE_OWNERSHIP` (on unless the entry says false): the core decides and today's code acts on its
-        # verdicts; the owner is the session's (step 7, `_core_owner`). The verdicts a report or a timer acts on, while
-        # it runs.
-        drives = config.get(CONF_CORE_OWNERSHIP)
-        self._core_drives = bool(ownership_shadow_module.CORE_OWNERSHIP_DEFAULT if drives is None else drives)
+        # The core decides for every charger (the choice of the logic before it is gone): the owner is the session's
+        # (`_core_owner`).
+        self._core_drives = True
         # What the hold of a charge that starts by itself outside a window remembers (`window_hold.py`). When the core
         # drives, whether the charge is SpotNav's is the session's (`_spotnav_owned`), as are `held` and `overridden`
         # (`_hold_state`; the core end state plan, step 5).

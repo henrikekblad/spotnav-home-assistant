@@ -25,9 +25,8 @@ from .world import solar_setup
 pytestmark = pytest.mark.usefixtures("offline_relay")
 
 
-@pytest.fixture(params=[True, False], ids=["core", "previous"])
+@pytest.fixture(params=[True], ids=["core"])
 def drives(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) -> bool:
-    monkeypatch.setattr(ownership_shadow, "CORE_OWNERSHIP_DEFAULT", request.param)
     return request.param
 
 
@@ -377,7 +376,6 @@ async def test_a_record_newer_than_the_keys_is_the_owner_at_a_restart_and_the_ke
     same owner."""
     from custom_components.spotnav.execution.controller import SESSION_ORDER_KEY
 
-    monkeypatch.setattr(ownership_shadow, "CORE_OWNERSHIP_DEFAULT", True)
     world = await pause_world(hass, timers)
     await _start(world, owner)
     assert _owner(world) == ORIGINS[owner]

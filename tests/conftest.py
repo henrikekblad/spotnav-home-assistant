@@ -221,19 +221,12 @@ def loop_callback_guard(monkeypatch):
 
 
 def pytest_configure(config):
-    """The charge-ownership core drives ownership for every charger that does not say (`const.CONF_CORE_OWNERSHIP`,
-    the default). `SPOTNAV_CORE_OWNERSHIP=0` runs the whole suite with the previous logic deciding instead (the core
-    only in shadow), `=1` with the core driving (the default, said explicitly)."""
+    """`SPOTNAV_SHADOW_REPORT` set: every start and stop each test sent a charger is collected for the run's report."""
     import os
 
     global COMMANDS
     if os.environ.get("SPOTNAV_SHADOW_REPORT"):
         COMMANDS = {}
-    mode = os.environ.get("SPOTNAV_CORE_OWNERSHIP")
-    if mode in ("0", "1"):
-        from custom_components.spotnav.execution import ownership_shadow
-
-        ownership_shadow.CORE_OWNERSHIP_DEFAULT = mode == "1"
 
 
 #: Over the whole run: events the shadow decided, comparisons, disagreements (explained or not), drifts, errors.
