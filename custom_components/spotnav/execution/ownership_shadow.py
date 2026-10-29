@@ -96,6 +96,12 @@ WINDOW_HOLD: Final = ("held", "overridden", "spotnav_resumed")
 #: `car_ended_*` keys, derived from the session, so an older build reads them as before; `plugged` is never stored (a
 #: restart clears it).
 CAR_ENDED_AND_PLUG: Final = ("car_ended", "plugged")
+#: Step 7: the owner. Stored in the session's record, and still written to today's `charge_origin` and `plan_charge`
+#: keys, derived from the session (`controller._CORE_OWNER_ORIGIN`), so an older build reads them as before. Nobody's
+#: and the charger's own charge are one owner to the line-up: which of them it is is seen, not kept (`_UNSEEN`).
+OWNER: Final = (FIELD_OWNER,)
+#: The owners a restart or a line-up does not tell apart: whether the charger charges by itself is an observation.
+_UNSEEN: Final = frozenset({OWNER_NONE, OWNER_CHARGER_SELF})
 #: How far apart two readings of the clock may be and still be one instant in an owned field: the core takes the
 #: instant it decided, today's code its own a moment earlier or later (`core.replay.CLOCK_TOLERANCE_S`).
 MIRROR_CLOCK_S: Final = CLOCK_TOLERANCE_S
@@ -493,7 +499,7 @@ class OwnershipShadow:
             if stored is not None and from_store:
                 if keys_newer:
                     stored = replace(today, manual=stored.manual, span_pause=stored.span_pause)
-                if {stored.owner, today.owner} <= {OWNER_NONE, OWNER_CHARGER_SELF}:
+                if {stored.owner, today.owner} <= _UNSEEN:
                     stored = replace(stored, owner=today.owner)
                 self.session = stored
             else:
@@ -526,8 +532,13 @@ class OwnershipShadow:
         if self._intent_deferred:
             # The boundary has not written the plug-in's or the unplug's effect on the intent yet.
             today = replace(today, manual=self.session.manual, span_pause=self.session.span_pause)
-        moved = [name for name in COMPARED if _field(today, name) != _field(self.session, name)]
-        if moved == [FIELD_OWNER] and {today.owner, self.session.owner} == {OWNER_NONE, OWNER_CHARGER_SELF}:
+        # A field the core owns that today's state reads otherwise is mirror drift (`_mirror_drift`), not drift.
+        moved = [
+            name
+            for name in COMPARED
+            if name not in self.owned_fields and _field(today, name) != _field(self.session, name)
+        ]
+        if moved == [FIELD_OWNER] and {today.owner, self.session.owner} == _UNSEEN:
             # The charger's own charge is an observation (it charges, nobody here started it): one that began or
             # ended with no report (a test's state, a stop's answer window running out) is no ownership drift.
             self._count("observed")
@@ -549,8 +560,11 @@ class OwnershipShadow:
         return bool(moved)
 
     def _adopt(self, today: ChargeSession, core: ChargeSession) -> ChargeSession:
-        """Today's state, with the core's pending command and owned fields kept."""
+        """Today's state, with the core's pending command and owned fields kept. An owned owner of nobody or of the
+        charger itself takes today's of the two (seen now: whether the charger charges by itself)."""
         owned = {name: getattr(core, name) for name in self.owned_fields}
+        if FIELD_OWNER in owned and {core.owner, today.owner} <= _UNSEEN:
+            owned[FIELD_OWNER] = today.owner
         return replace(today, pending=core.pending, **owned)
 
     def _mirror_drift(self, today: ChargeSession) -> None:

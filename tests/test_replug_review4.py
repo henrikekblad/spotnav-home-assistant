@@ -47,7 +47,7 @@ async def test_a_window_start_refused_below_the_floor_resumes_as_the_plans(hass:
         c.set_start_cap(None)
         assert await c.async_battery_probe_start(8)  # the regulator resumes it
         await hass.async_block_till_done()
-        assert c.charge_origin == "plan_window" and c._plan_charge  # noqa: SLF001
+        assert c.charge_origin == "plan_window" and c._is_plan_charge  # noqa: SLF001
 
         await _delivered(hass, frozen, 1003.1, minutes=15)
 
@@ -74,7 +74,7 @@ async def test_a_persons_stop_forgets_what_balancing_paused(hass: HomeAssistant,
 
         assert await c.async_battery_probe_start(8)
 
-        assert c.charge_origin == "manual" and not c._plan_charge, "the person's Charge now stays theirs"  # noqa: SLF001
+        assert c.charge_origin == "manual" and not c._is_plan_charge, "the person's Charge now stays theirs"  # noqa: SLF001
 
 
 async def test_a_manual_charge_the_balancing_resume_could_not_start_waits_as_the_persons(hass: HomeAssistant) -> None:

@@ -1,5 +1,5 @@
 """The charge-ownership core drives (`CONF_CORE_OWNERSHIP`, on unless a charger's entry data says false): it decides,
-today's code acts on its verdicts and takes its owner back, and is still computed beside it and compared. A charger
+today's code acts on its verdicts and reads its owner from the session, and is still computed beside it and compared. A charger
 set to the previous logic decides with today's code as ever, the core only in shadow. (`SPOTNAV_CORE_OWNERSHIP=0`
 runs the whole suite with the previous logic.)"""
 
@@ -115,22 +115,33 @@ async def test_todays_code_acts_on_the_cores_verdict_when_it_drives(
     await controller.async_shutdown()
 
 
-async def test_the_cores_owner_is_taken_back_by_todays_two_fields_one_way(
-    hass: HomeAssistant, timers: FakeScheduler
+@pytest.mark.parametrize(
+    ("owner", "fields"),
+    [
+        ("plan", ("plan_window", True)),
+        ("top_off", ("plan_window", True)),
+        ("person", ("manual", False)),
+        ("solar", ("solar", False)),
+        ("charge_now", ("other", False)),
+        ("min_soc", ("min_soc", False)),
+        ("charger_self", (None, False)),
+        ("none", (None, False)),
+    ],
+)
+async def test_the_cores_owner_is_todays_two_fields_both_ways(
+    hass: HomeAssistant, timers: FakeScheduler, owner: str, fields: tuple
 ) -> None:
-    """A charge the core says nobody here owns clears today's `charge_origin` and `plan_charge`; an owner the core
-    names is never written back over them (today's code sets them where it starts or claims a charge, and forgets
-    `plan_charge` by itself when it sees the charger off)."""
+    """Driving, today's `charge_origin` and `plan_charge` are the session's owner, both ways (the core end state plan,
+    step 7): every owner the core names is read as them, nobody's and the charger's own as none, and today's writes
+    change nothing (the core decided it already)."""
     controller, executor, _starts = await _charger(hass, drives=True)
-    controller._charge_origin, controller._plan_charge = "plan_window", False  # noqa: SLF001 - today's own forget
-    assert not controller._take_core_owner(ChargeSession(owner="plan"))  # noqa: SLF001
-    assert (controller.charge_origin, controller._plan_charge) == ("plan_window", False)  # noqa: SLF001
-    assert not controller._take_core_owner(ChargeSession(owner="top_off"))  # noqa: SLF001
-    assert controller._take_core_owner(ChargeSession(owner="charger_self"))  # noqa: SLF001
-    assert (controller.charge_origin, controller._plan_charge) == (None, False)  # noqa: SLF001
-    assert not controller._take_core_owner(ChargeSession(owner="none"))  # noqa: SLF001
-    assert not controller._take_core_owner(ChargeSession(owner="person"))  # noqa: SLF001
-    assert controller.charge_origin is None
+    shadow = controller.ownership_shadow
+    shadow.session = shadow.session.with_changes(owner=owner)
+    assert (controller.charge_origin, controller._is_plan_charge) == fields  # noqa: SLF001
+    controller._owner_origin, controller._is_plan_charge = "manual", True  # noqa: SLF001 - today's own write
+    assert (controller.charge_origin, controller._is_plan_charge) == fields  # noqa: SLF001
+    assert (controller._charge_origin, controller._plan_charge) == (None, False), "today's fields are not written"  # noqa: SLF001
+    assert shadow.counts["written_back"] == 0
     await executor.async_shutdown()
     await controller.async_shutdown()
 
@@ -179,9 +190,9 @@ async def test_shadow_token_equality_confuses_nested_tokens() -> None:
 @pytest.mark.parametrize("drives", [False, True])
 async def test_a_charge_seen_off_is_not_handed_back_to_the_plan_at_every_report(hass, timers, drives):
     """Step 2: a pause whose stop failed, then the charge stops some other way. Today's code forgets the plan charge
-    (`_async_forget_plan_charge`, plan_charge False, origin kept); the core still says `plan`. Driving, its write-back
-    is one-way (it may clear today's owner fields, never set them back to an owner), so later reports neither hand
-    the charge back to the plan nor save again."""
+    (`_async_forget_plan_charge`, plan_charge False, origin kept). Driving, the owner is the core's (step 7): the
+    report of the charger off made it nobody's, and later reports neither hand the charge back to the plan nor save
+    again."""
     from homeassistant.exceptions import HomeAssistantError
     from custom_components.spotnav.execution import ownership_shadow
     from custom_components.spotnav.planning.auto_settings import PAUSE_UNTIL_RESUMED
@@ -210,7 +221,7 @@ async def test_a_charge_seen_off_is_not_handed_back_to_the_plan_at_every_report(
         for index in range(6):
             hass.states.async_set(SWITCH, "off", {"report": index})
             await hass.async_block_till_done()
-            flips.append(world.controller._plan_charge)
+            flips.append(world.controller._is_plan_charge)
         written = world.controller.ownership_shadow.counts["written_back"]
         await world.shutdown()
         assert written <= 1 and len(saves) <= 1, (drives, written, len(saves), flips)
