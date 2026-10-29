@@ -141,6 +141,7 @@ from .ownership_shadow import (
     legacy_intent,
     legacy_owner,
     OwnershipShadow,
+    SAFETY_AND_C7,
     ShadowToken,
 )
 
@@ -710,6 +711,10 @@ class ChargingController:
         self._person_hold_tried_at: datetime | None = None
         self._person_hold_gave_up = False
         self._person_hold_retry_cancel: Callable[[], None] | None = None
+        # The task of such a stop: whether one is running (from its spawn), and when the last one ended. An observation
+        # of this controller's own task, read as the fact `hold_stop_overdue` (`_hold_stop_overdue`).
+        self._person_hold_task_running = False
+        self._person_hold_task_ended_at: datetime | None = None
         # Counts plug-in sessions that ended (an unplug, a first report of no car): a command's failure branch
         # that would put back what was held for a session compares it, so an unplug while the command was on
         # its way wins (`_session_unchanged`).
@@ -950,6 +955,10 @@ class ChargingController:
             coverage=OwnershipCoverage(store=Store(hass, COVERAGE_STORE_VERSION, coverage_key(entry_id))),
             name=entry_id,
             on_failure=self._failure_repairs.failed,
+            # The safety hold and C7's stops are the core's when it drives (the core end state plan, step 3): read
+            # from its session (`_safety`, `_c7`). With the option off, today's fields stay the truth, lined up as
+            # ever.
+            owned_fields=SAFETY_AND_C7 if self._core_drives else (),
         )
         self._shadow.today_fields = lambda: f"origin={self._owner_origin} plan_charge={self._is_plan_charge}"
 
@@ -988,17 +997,33 @@ class ChargingController:
 
     @property
     def _safety(self) -> SafetyHold:
-        """The safety hold of the charge load balancing holds, and its last safety stop."""
+        """The safety hold of the charge load balancing holds, and its last safety stop. When the core drives, the
+        session's (step 3): only its decisions change it."""
+        if self._core_drives:
+            session = self._shadow.session
+            return SafetyHold(held=session.held_for_safety, stopped_at=session.safety_stopped_at)
         return SafetyHold(held=self._held_for_safety, stopped_at=self._safety_stopped_at)
 
     @_safety.setter
     def _safety(self, safety: SafetyHold) -> None:
+        if self._core_drives:
+            # The core decided it already (`BalancingPause`'s result, a resume, a plug-in, an unplug, a restart).
+            return
         self._held_for_safety = safety.held
         self._safety_stopped_at = safety.stopped_at
 
     @property
     def _c7(self) -> PersonHoldStops:
-        """C7: the stops of a charge the charger began by itself under a person's Stop."""
+        """C7: the stops of a charge the charger began by itself under a person's Stop. When the core drives, the
+        session's (step 3): only its decisions change them."""
+        if self._core_drives:
+            session = self._shadow.session
+            return PersonHoldStops(
+                stop_pending=session.hold_stop_pending,
+                stop_times=list(session.hold_stop_times),
+                tried_at=session.hold_tried_at,
+                gave_up=session.hold_gave_up,
+            )
         return PersonHoldStops(
             stop_pending=self._person_hold_stop_pending,
             stop_times=self._person_hold_stop_times,
@@ -1008,6 +1033,10 @@ class ChargingController:
 
     @_c7.setter
     def _c7(self, stops: PersonHoldStops) -> None:
+        if self._core_drives:
+            # The core decided them already (a report's or a timer's C7, the task's `Recheck` and its result, a
+            # person's Stop or Start, a plug-in, an unplug, a restart).
+            return
         self._person_hold_stop_pending = stops.stop_pending
         self._person_hold_stop_times = stops.stop_times
         self._person_hold_tried_at = stops.tried_at
@@ -2389,7 +2418,7 @@ class ChargingController:
             return
         self._shadow_note("stop")
         self._c7 = replace(self._c7, stop_pending=True)
-        self._async_spawn(self._async_person_hold_stop(), "the stop under a person's Stop")
+        self._spawn_person_hold_stop()
 
     def _core_person_hold(self, verdict: frozenset[tuple[str, str]]) -> None:
         """C7 as the core decided it (`CONF_CORE_OWNERSHIP`): the give-up, a stop, or a look again after the gap."""
@@ -2408,7 +2437,7 @@ class ChargingController:
         if ("stop", "person_hold") in verdict:
             self._shadow_note("stop")
             self._c7 = replace(self._c7, stop_pending=True)
-            self._async_spawn(self._async_person_hold_stop(), "the stop under a person's Stop")
+            self._spawn_person_hold_stop()
             return
         tried_at = self._c7.tried_at
         if (
@@ -2453,6 +2482,10 @@ class ChargingController:
         within `PERSON_HOLD_WINDOW_S`: SpotNav sends no more, and the status says so."""
         return self._c7.gave_up and self._held_off_by_person()
 
+    def _spawn_person_hold_stop(self) -> None:
+        self._person_hold_task_running = True
+        self._async_spawn(self._async_person_hold_stop(), "the stop under a person's Stop")
+
     async def _async_person_hold_stop(self) -> None:
         """The stop under a person's Stop a report or a timer decided, decided again under the boundary's lock
         (`_recheck`): a person's Start may have replaced their Stop meanwhile."""
@@ -2465,6 +2498,25 @@ class ChargingController:
                 )
         finally:
             self._c7 = replace(self._c7, stop_pending=False)
+            self._person_hold_task_running = False
+            self._person_hold_task_ended_at = dt_util.utcnow()
+            if self._c7.stop_pending and not self._shut_down and self._person_hold_retry_cancel is None:
+                # The core still awaits this stop (its re-check could not be fed): looked at again once it is
+                # overdue, so the stops under the person's Stop go on even if the charger reports nothing new.
+                self._person_hold_retry_cancel = async_call_later(
+                    self.hass, PERSON_HOLD_STOP_GAP_S + 1, self._person_hold_retry_callback
+                )
+
+    def _hold_stop_overdue(self) -> bool:
+        """The fact `hold_stop_overdue`: a stop under a person's Stop is still awaited, but no task of it runs and
+        the last ended at least `PERSON_HOLD_STOP_GAP_S` ago (its decision never came back)."""
+        ended = self._person_hold_task_ended_at
+        return (
+            self._c7.stop_pending
+            and not self._person_hold_task_running
+            and ended is not None
+            and (dt_util.utcnow() - ended).total_seconds() >= PERSON_HOLD_STOP_GAP_S
+        )
 
     async def _person_hold_stop_locked(self) -> bool:
         """One stop of a charge a person's Stop holds off, counted (`_observe_person_hold`). Runs with the
@@ -3891,7 +3943,11 @@ class ChargingController:
                     and (dt_util.utcnow() - stop_sent_at).total_seconds() < STOP_ACK_S
                 )
                 session = self._session_generation
-                token = self._shadow.begin()
+                # Decided before the stop goes out (its facts are known now): a report of the charger off that lands
+                # while the stop is on its way is decided after it, so the core holds back the charge it paused,
+                # not the nobody's charge that report leaves.
+                pause = core_events.BalancingPause(code=code, was_on=was_on)
+                token = self._shadow.begin(early=pause)
                 outcome = CommandOutcome(False)
                 try:
                     # A balancing stop: a top-off running past the last window goes on, paused like any charge.
@@ -3916,9 +3972,7 @@ class ChargingController:
                         self._remember_paused_charge(*paused_charge)
                         self._save_memory_soon()
                 finally:
-                    self._shadow.end(
-                        token, core_events.BalancingPause(code=code, was_on=was_on), legacy=("stop",), outcome=outcome
-                    )
+                    self._shadow.end(token, pause, legacy=("stop",), outcome=outcome)
         except ChargingExecutionError as err:
             if err.code == EXECUTION_STOP_HELD_AT_FLOOR:
                 # Not paused: the charge runs on at the floor, which is what load balancing must count.
@@ -5184,15 +5238,24 @@ class ChargingController:
         the target ended the plan instead of starting anything, so a caller arming timers knows there is no
         plan left to arm.
         """
+        # The feed opens first, so the core sees the window start end the hold as today's code ends it.
+        token = self._shadow.begin()
         # The plug-in session a hold belonged to ends where the next window starts.
         self._hold.end_session()
         if self._target_stopping:
             # A stop is in flight and the plan stays live until its turn_off is awaited: starting now
             # would race it. Report the charge as over so no caller arms timers or starts it.
+            self._shadow.end(token, core_events.WindowStart(trigger=trigger, target_stopping=True))
             return True
-        if await self._enforce_target_locked():
+        try:
+            # The target's stop, if it fires, is fed inside this one and decided after the window's start.
+            ended = await self._enforce_target_locked()
+        except BaseException:
+            self._shadow.end(token, core_events.WindowStart(trigger=trigger, target_reached=True))
+            raise
+        if ended:
+            self._shadow.end(token, core_events.WindowStart(trigger=trigger, target_reached=True))
             return True
-        token = self._shadow.begin()
         self._shadow_car_facts = (False, False, False)
         facts = self._shadow_facts(self._shadow_start_facts, core_events.WindowStart.kind, token=token)
         legacy: list[str] = []
@@ -6274,8 +6337,11 @@ class ChargingController:
 
     def _shadow_stop_outcome(self, executed: bool) -> CommandOutcome:
         """What became of a stop: it went out (or the charger was known stopped), or not; one that sent nothing
-        because the charge control said nothing is `unobserved`."""
-        return CommandOutcome(executed, unobserved=executed and self._shadow_unobserved)
+        because the charge control said nothing is `unobserved`, and one a stop of ours still on its way answered
+        for is `settled`."""
+        return CommandOutcome(
+            executed, unobserved=executed and self._shadow_unobserved, settled=executed and self._stop_settled
+        )
 
     def _shadow_start_outcome(self, executed: bool) -> CommandOutcome:
         return CommandOutcome(executed, balancing_held=not executed and self._balancing.paused)
@@ -6381,6 +6447,7 @@ class ChargingController:
                     start_pending=self._shadow_start_pending(),
                     stop_recent=self._shadow_stop_recent(),
                     owned=self._hold_state.owned,
+                    hold_stop_overdue=self._hold_stop_overdue(),
                     **self._shadow_hold_facts(),
                 )
         except Exception as err:  # noqa: BLE001 - the shadow never raises into the real path
@@ -6424,7 +6491,11 @@ class ChargingController:
         """`_observe_person_hold` outside a report (its retry, a restore, a stop's retry), fed as a timer."""
         token = self._shadow.begin()
         facts = self._shadow_facts(
-            lambda: {"control_on": self._control_observation is True, "start_pending": self._shadow_start_pending()},
+            lambda: {
+                "control_on": self._control_observation is True,
+                "start_pending": self._shadow_start_pending(),
+                "hold_stop_overdue": self._hold_stop_overdue(),
+            },
             core_events.Timer.kind,
             token=token,
         )

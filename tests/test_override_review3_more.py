@@ -347,11 +347,11 @@ async def test_r5_a_persons_new_stop_ends_the_give_up(hass: HomeAssistant, timer
 
 
 async def test_r5_the_stop_retry_honours_the_gap_and_a_stop_on_its_way(
-    hass: HomeAssistant, timers: Any
+    hass: HomeAssistant, timers: Any, freezer: Any
 ) -> None:
     """R5 double stop: the retry of a stop that was not executed goes through the same gate as every stop
     under a person's Stop: none while another is on its way, none within 30 s of the last."""
-    from homeassistant.util import dt as dt_util
+    import asyncio
 
     from .pause_world import pause_world
 
@@ -371,12 +371,29 @@ async def test_r5_the_stop_retry_honours_the_gap_and_a_stop_on_its_way(
     await hass.async_block_till_done()
     assert len(calls) == 1, "a retry within 30 s of the last stop"
 
-    controller._person_hold_tried_at = dt_util.utcnow() - timedelta_s(60)  # noqa: SLF001
-    controller._person_hold_stop_pending = True  # noqa: SLF001 - a stop is on its way
-    await controller._async_retry_stop()  # noqa: SLF001
+    # Past the gap, a stop is decided, and its task waits for the lock: on its way. A retry that takes the lock
+    # first then sends none beside it.
+    freezer.tick(timedelta_s(60))
+    tasks = _person_hold_rechecks(controller)
+    async with controller._lock:  # noqa: SLF001 - held, so both wait in turn: the retry first
+        retry = hass.async_create_task(controller._async_retry_stop())  # noqa: SLF001
+        await asyncio.sleep(0)
+        controller.note_person_hold()
+        await asyncio.sleep(0)
+    await retry
     await hass.async_block_till_done()
-    assert len(calls) == 1, "a retry beside a stop on its way"
+    assert len(calls) == 2, "a retry beside a stop on its way"
+    assert _person_hold_rechecks(controller) == tasks + 1, "one stop's task, none spawned beside it"
     await world.shutdown()
+
+
+def _person_hold_rechecks(controller: Any) -> int:
+    """How many stops under a person's Stop went to their task (each decides again under the lock, `Recheck`)."""
+    return sum(
+        1
+        for record in controller.ownership_shadow.diagnostics()["events"]
+        if record["event"]["kind"] == "recheck" and record["event"].get("what") == "person_hold"
+    )
 
 
 def timedelta_s(seconds: float) -> Any:

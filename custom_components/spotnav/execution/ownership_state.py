@@ -2,8 +2,9 @@
 
 Pure: no Home Assistant imports. The controller still keeps each group in its own fields; these frozen views are
 what its accessors (`_balancing`, `_safety`, `_c7`, `_car_ended`, `_hold_state`) give and take, so every read and
-write of a group goes through one place. A later step reads a group from the charge session instead of the fields,
-in that accessor only (docs: the core end state plan, step 2).
+write of a group goes through one place. A group the core owns is read from the charge session instead of the
+fields, in that accessor only, while the core drives: the safety hold and C7's stops so far (the core end state plan,
+step 3).
 """
 
 from __future__ import annotations

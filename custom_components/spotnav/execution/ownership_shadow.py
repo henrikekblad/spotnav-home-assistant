@@ -44,6 +44,7 @@ from .ownership_coverage import OwnershipCoverage
 
 from ..core.events import CommandResult, Event
 from ..core.ownership import Command, decide, ORIGIN_OWNER
+from ..core.replay import CLOCK_TOLERANCE_S
 from ..core.session import (
     ChargeSession,
     ManualPause,
@@ -70,6 +71,20 @@ FIELD_MANUAL: Final = "manual"
 FIELD_SPAN: Final = "span_pause"
 COMPARED: Final = (FIELD_OWNER, FIELD_MANUAL, FIELD_SPAN)
 INTENT: Final = (FIELD_MANUAL, FIELD_SPAN)
+#: The session's fields a group the core owns keeps as it decided them (`OwnershipShadow.owned_fields`, the core end
+#: state plan's steps 3-6): the line-up does not take them from today's state. Step 3: the safety hold and C7's stops,
+#: all transient (`core.session.TRANSIENT_FIELDS`), so nothing stored changes.
+SAFETY_AND_C7: Final = (
+    "held_for_safety",
+    "safety_stopped_at",
+    "hold_stop_times",
+    "hold_tried_at",
+    "hold_gave_up",
+    "hold_stop_pending",
+)
+#: How far apart two readings of the clock may be and still be one instant in an owned field: the core takes the
+#: instant it decided, today's code its own a moment earlier or later (`core.replay.CLOCK_TOLERANCE_S`).
+MIRROR_CLOCK_S: Final = CLOCK_TOLERANCE_S
 #: Events whose commands' results come back later, as events of their own (a report's or a timer's spawned stop).
 _RESULTS_LATER: Final = frozenset({"charger_reported_on", "charger_reported_off", "timer"})
 #: A charger's report of its control: recorded only when it decided something or something moved, so a charger
@@ -97,6 +112,8 @@ class CommandOutcome:
     balancing_held: bool = False
     #: A stop that sent nothing because the charge control said nothing (unreadable): who owns the charge is kept.
     unobserved: bool = False
+    #: A stop that sent nothing because a stop of ours was still on its way (`_stop_settling`).
+    settled: bool = False
 
 
 @dataclass(eq=False)
@@ -188,6 +205,26 @@ def _field(session: ChargeSession, name: str) -> Any:
     return getattr(session, name)
 
 
+def _same(core: Any, today: Any) -> bool:
+    """One value of an owned field, read from the core and from today's state: an instant, or a list of them of the
+    same length, within `MIRROR_CLOCK_S` of each other is the same."""
+    if core == today:
+        return True
+    if isinstance(core, datetime) and isinstance(today, datetime):
+        return abs((core - today).total_seconds()) <= MIRROR_CLOCK_S
+    if isinstance(core, tuple) and isinstance(today, tuple) and len(core) == len(today):
+        return all(_same(a, b) for a, b in zip(core, today, strict=True))
+    return False
+
+
+def _plain(value: Any) -> Any:
+    if isinstance(value, datetime):
+        return value.isoformat()
+    if isinstance(value, tuple):
+        return [_plain(item) for item in value]
+    return value
+
+
 def _compact(session: ChargeSession) -> dict[str, Any]:
     """A session as its non-default fields (a debug bundle keeps 200 of them): `core/replay.py` fills the rest."""
     full = session.to_dict()
@@ -209,9 +246,13 @@ class OwnershipShadow:
         coverage: OwnershipCoverage | None = None,
         name: str = "",
         on_failure: Callable[[], None] | None = None,
+        owned_fields: Iterable[str] = (),
     ) -> None:
         SHADOWS.add(self)
         self._legacy = legacy
+        # The session's fields the core keeps as it decided them (`SAFETY_AND_C7` when the core drives): never taken
+        # from today's state, which is only compared with them (`mirror_drift`).
+        self.owned_fields: tuple[str, ...] = tuple(owned_fields)
         # Which charger this is, in a log line; and who hears a failure while the core drives (Repairs, `failed`).
         self._name = name
         self._on_failure = on_failure
@@ -241,6 +282,7 @@ class OwnershipShadow:
             "compared": 0,
             "disagreements": 0,
             "drift": 0,
+            "mirror_drift": 0,
             "skipped": 0,
             "observed": 0,
             "written_back": 0,
@@ -465,9 +507,39 @@ class OwnershipShadow:
             self.drift.append(record)
             _LOGGER.debug("SpotNav ownership shadow: drift %s", record)
             self._tell("drift", record)
-        # Today's state is the truth the core decides from; only the core's own pending command is its.
-        self.session = replace(today, pending=self.session.pending)
+        self._mirror_drift(today)
+        # Today's state is the truth the core decides from; only the core's own pending command and the fields it
+        # owns are its.
+        self.session = self._adopt(today, self.session)
         return bool(moved)
+
+    def _adopt(self, today: ChargeSession, core: ChargeSession) -> ChargeSession:
+        """Today's state, with the core's pending command and owned fields kept."""
+        owned = {name: getattr(core, name) for name in self.owned_fields}
+        return replace(today, pending=core.pending, **owned)
+
+    def _mirror_drift(self, today: ChargeSession) -> None:
+        """An owned field today's state reads otherwise than the core decided it: recorded and told, never taken.
+        The controller reads an owned group from the session (its accessor), so there is none unless something reads
+        or keeps that group around the accessor."""
+        moved = [
+            name for name in self.owned_fields if not _same(getattr(self.session, name), getattr(today, name))
+        ]
+        if not moved:
+            return
+        record = {
+            "at": self._now().isoformat(),
+            "mirror": True,
+            "fields": {
+                name: {"core": _plain(getattr(self.session, name)), "today": _plain(getattr(today, name))}
+                for name in moved
+            },
+            "after": self.events[-1]["event"]["kind"] if self.events else None,
+        }
+        self._count("mirror_drift")
+        self.drift.append(record)
+        _LOGGER.debug("SpotNav ownership shadow: mirror drift %s", record)
+        self._tell("mirror_drift", record)
 
     def _drain(self) -> None:
         held = self._quiet
@@ -498,6 +570,7 @@ class OwnershipShadow:
                 executed=item.outcome.executed,
                 balancing_held=item.outcome.balancing_held,
                 unobserved=item.outcome.unobserved,
+                settled=item.outcome.settled,
             )
             session, _ = decide(session, result, now)
         elif acted is not None and item.event.kind not in _RESULTS_LATER:
@@ -594,9 +667,9 @@ class OwnershipShadow:
         if self.drives:
             # The core's state is the truth (today's owner fields are cleared one-way, `_write_back`).
             return
-        # Today's state stays the truth.
+        # Today's state stays the truth, but for the fields the core owns.
         keep = self.session
-        self.session = replace(today, pending=keep.pending)
+        self.session = self._adopt(today, keep)
         if self._intent_deferred and not settle:
             self.session = replace(self.session, manual=keep.manual, span_pause=keep.span_pause)
 

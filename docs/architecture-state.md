@@ -208,6 +208,14 @@ keys drops a record left from when it drove, so a charger set back to the curren
 car-ended rule's answer is read only when the core drives; off, it is what today's rule read itself (a read of the
 car's state of charge may move and save its anchor, so the shadow makes none).
 
+When the core drives, the safety hold (`held_for_safety`, `safety_stopped_at`) and C7's stops (`hold_stop_*`) are
+the session's (`OwnershipShadow.owned_fields`): the line-up leaves them as the core decided them, the controller reads
+them from the session (`_safety`, `_c7`) and never writes its own fields for them. A difference the line-up still
+finds there is `mirror_drift`: counted, told and kept in the drift ring, never taken (and a test fails on it). With
+the option off, today's fields stay the truth and are lined up as ever. A stop under a person's Stop is counted once,
+where it goes out (the task's `Recheck`), not where it is decided; one that sent nothing because a stop of ours was
+still on its way (`CommandResult.settled`) is not counted.
+
 Not yet the core's: load balancing's memory of the charge it holds, the hold's memory and the car-ended record, and
 the session itself after the restart (all read from today's fields at each feed, which lines the session up).
 
@@ -236,4 +244,4 @@ the session itself after the restart (all read from today's fields at each feed,
 * Every restart test runs twice (`both_restarts`): after an unload (`World.restart`) and as Home Assistant's own
   stop, which unloads nothing (`World.ha_restart`).
 * Every test runs with the shadow (`tests/conftest.py`, `ownership_shadow_agrees`) and fails on a disagreement or a
-  drift nobody explained (`tests/shadow_known.py`).
+  drift nobody explained (`tests/shadow_known.py`), and on any `mirror_drift`.

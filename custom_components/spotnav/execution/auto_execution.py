@@ -1240,6 +1240,9 @@ class AutoExecutor:
                 # The charger's control was unavailable and the command never went out: a failed command
                 # like any other, with nothing pending and a retry possible.
                 raise HomeAssistantError("The start command was not executed: the charge control is unavailable")
+            # The person acted: the stops under their earlier Stop start afresh, also when a report that landed
+            # while the start was on its way still saw that Stop.
+            self._controller.reset_person_hold()
             # Started, or held back by load balancing for want of headroom: either way the person's charge,
             # which the regulator resumes when there is room.
             before = self._store.settings(self._entry_id).pause

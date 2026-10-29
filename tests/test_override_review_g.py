@@ -199,7 +199,7 @@ async def test_rev_g_give_up_counts_the_same_in_both_modes(
             freezer.tick(timedelta(seconds=gap_s))
             await world.switch("off")
             await world.switch("on")
-            seen[on].append((len(world.stops) - stops, world.controller._person_hold_gave_up))  # noqa: SLF001
+            seen[on].append((len(world.stops) - stops, world.controller.ignores_person_stop))
         await world.shutdown()
         hass.services.async_remove("switch", "turn_on")
         hass.services.async_remove("switch", "turn_off")

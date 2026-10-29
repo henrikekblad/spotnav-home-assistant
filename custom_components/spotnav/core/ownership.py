@@ -562,8 +562,20 @@ def _min_soc_end(session: ChargeSession, event: MinSocEnd, now: datetime) -> Dec
     return _stop(session, REASON_MIN_SOC)
 
 
-def _person_hold(session: ChargeSession, now: datetime, *, control_on: bool, start_pending: bool) -> Decision:
-    """C7 and R5: under a person's Stop a charge the charger begins is stopped, with a gap and a give-up."""
+def _person_hold(
+    session: ChargeSession, now: datetime, *, control_on: bool, start_pending: bool, overdue: bool = False
+) -> Decision:
+    """C7 and R5: under a person's Stop a charge the charger begins is stopped, with a gap and a give-up.
+
+    `overdue`: the stop's task ended a gap ago and no decision of it came back (its re-check could not be fed), so
+    the stop awaited is none any more: it is dropped and the stops go on, never held off until the next plug-in."""
+    if session.hold_stop_pending and overdue:
+        session = session.with_changes(
+            hold_stop_pending=False,
+            pending=tuple(
+                item for item in session.pending if (item.command, item.reason) != ("stop", REASON_PERSON_HOLD)
+            ),
+        )
     if not session.held_off_by_person:
         return _reset_person_hold(session), ()
     if session.hold_stop_pending or not control_on or session.hold_gave_up:
@@ -578,10 +590,11 @@ def _person_hold(session: ChargeSession, now: datetime, *, control_on: bool, sta
     recent = tuple(sent for sent in session.hold_stop_times if (now - sent).total_seconds() < PERSON_HOLD_WINDOW_S)
     if len(recent) >= PERSON_HOLD_MAX_STOPS:
         return session.with_changes(hold_stop_times=recent, hold_gave_up=True), (Notify(NOTIFY_CHARGER_IGNORES_STOP),)
+    # The stop is counted, and its try timed, where it goes out: the task's own decision under the lock
+    # (`_recheck`), which a person's Start meanwhile may still call off. Never here as well.
     return (
         session.with_changes(
-            hold_stop_times=(*recent, now),
-            hold_tried_at=now,
+            hold_stop_times=recent,
             hold_stop_pending=True,
             pending=_awaiting(session, PendingCommand("stop", REASON_PERSON_HOLD, owner_before=session.owner)),
         ),
@@ -649,7 +662,9 @@ def _reported_on(session: ChargeSession, event: ChargerReportedOn, now: datetime
         if automatic_allowed(s, GATE_STOP):
             s, stop = _stop(s, REASON_STRAY)
             commands.extend(stop)
-    s, held_off = _person_hold(s, now, control_on=True, start_pending=event.start_pending)
+    s, held_off = _person_hold(
+        s, now, control_on=True, start_pending=event.start_pending, overdue=event.hold_stop_overdue
+    )
     commands.extend(held_off)
     return s, tuple(commands)
 
@@ -747,7 +762,9 @@ def _restart(session: ChargeSession, event: Restart, now: datetime) -> Decision:
 
 
 def _timer(session: ChargeSession, event: Timer, now: datetime) -> Decision:
-    return _person_hold(session, now, control_on=event.control_on, start_pending=event.start_pending)
+    return _person_hold(
+        session, now, control_on=event.control_on, start_pending=event.start_pending, overdue=event.hold_stop_overdue
+    )
 
 
 def _recheck(session: ChargeSession, event: Recheck, now: datetime) -> Decision:
@@ -810,7 +827,9 @@ def _recheck(session: ChargeSession, event: Recheck, now: datetime) -> Decision:
         return s, ()
     if what == RECHECK_PERSON_HOLD:
         # A person's Start replaced their Stop meanwhile (it never lands between this and the stop), or a start of
-        # theirs is still on its way: nothing is stopped. The gap and the give-up were decided when it was spawned.
+        # theirs is still on its way: nothing is stopped. The gap and the give-up were decided when it was spawned;
+        # the stop is counted here, the one place it goes out, taken or not (a stop that raised may still have
+        # stopped the charger).
         if (
             automatic_allowed(s, GATE_STOP)
             and s.held_off_by_person
@@ -859,9 +878,19 @@ def _command_result(session: ChargeSession, event: CommandResult, now: datetime)
         if event.reason == REASON_PERSON and s.span_pause is None:
             # The person owns the charger for the plug-in session (A); a span pause they chose is kept.
             s = s.with_changes(manual=ManualPause(MANUAL_START, SCOPE_PLUG_IN))
+        if event.reason == REASON_PERSON:
+            # The person acted: the stops under their earlier Stop start afresh (a report decided after the Start
+            # would, but one that landed while it was on its way still saw the Stop).
+            s = _reset_person_hold(s)
         return s, ()
     if event.reason == REASON_PERSON_HOLD:
         s = s.with_changes(hold_stop_pending=False)
+        if event.settled and s.hold_tried_at in s.hold_stop_times:
+            # Nothing went out (a stop of ours still settles): no stop the charger could have ignored. The try
+            # still holds the gap.
+            times = list(s.hold_stop_times)
+            times.remove(s.hold_tried_at)
+            s = s.with_changes(hold_stop_times=tuple(times))
     if not event.executed:
         # A stop that never went out is not done: the owner is kept (I4, bug 3).
         return s, ()
