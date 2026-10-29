@@ -44,7 +44,8 @@ Events: `plug_in`, `unplug`, `connection_unknown`, `window_start` (timer, re-arm
 window; a car full for the plan then also gives `target_reached`, or `need_met` without a target; one that ended the
 plan's charge short of the target on a level nobody read then makes the plan wait for the car's level: the facts
 `car_ended_awaits_level` on `window_start`, `charger_reported_on` and `recheck` then hold every window until a level read
-after the end says it is below the target), `balancing_pause`, `balancing_resume`, `target_reached`, `need_met`,
+after the end says it is below the target), `balancing_pause`, `balancing_resume`, `balancing_dropped` (the regulator
+finds the charge it holds back no longer wanted), `target_reached`, `need_met`,
 `top_off_end`, `plan_installed`, `plan_dropped`, `restart`, `timer`, `command_result`.
 
 The rules are today's (`plans/ha_manual_override_and_fixes.md` and its three review rounds): the gate every
@@ -216,8 +217,21 @@ the option off, today's fields stay the truth and are lined up as ever. A stop u
 where it goes out (the task's `Recheck`), not where it is decided; one that sent nothing because a stop of ours was
 still on its way (`CommandResult.settled`) is not counted.
 
-Not yet the core's: load balancing's memory of the charge it holds, the hold's memory and the car-ended record, and
-the session itself after the restart (all read from today's fields at each feed, which lines the session up).
+Load balancing's memory (`balancing_paused`, `paused_origin`) is the session's the same way when the core drives
+(`_balancing` reads it; whose charge it was is today's origin and plan flag of the core's owner). It means "the last
+thing done to the charge control was the regulator's pause, and this was the charge it paused": set when the pause's
+stop went out (a repeat pause keeps the charge it holds), when a start is held back below the floor (the start's own
+outcome says so, `start_held_by_balancing`, not the memory) and when a resume does not take; cleared by every other
+start as it is asked for, by every other stop that went out, by an unplug or a plug-in after a known unplug, by a new
+plan with no window open now and when the regulator drops a charge no longer wanted (`balancing_dropped`).
+`paused_origin` is set only while `balancing_paused`, and nothing is held back for a plug-in that ended while the
+command was on its way. Today's `balancing_pause` key is still written, derived from the session, so an older build
+reads it; a restart takes it into the session where today's keys are the truth (no record of the core's own, or keys
+written after it). Load balancing's own stop never depends on the core: `_regulated_stop` sends it whatever the core
+decides, and the core is only told (`balancing_pause`, decided before the stop goes out, its result after).
+
+Not yet the core's: the hold's memory and the car-ended record, and the session itself after the restart (all read
+from today's fields at each feed, which lines the session up).
 
 ## Tests
 
