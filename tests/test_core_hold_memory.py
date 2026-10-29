@@ -268,6 +268,16 @@ async def test_a_report_with_no_car_and_a_control_that_cannot_be_read_ends_the_h
         assert (await _stored(world))[SESSION_STORE_KEY]["held"] is False
     kinds = [record["event"]["kind"] for record in world.controller.ownership_shadow.diagnostics()["events"]]
     assert kinds[-1] == "charger_reported_unreadable"
+    # Every change of the hold was fed: the recording replays from its first session alone with no difference.
+    import json
+
+    from custom_components.spotnav.core.replay import replay_bundle
+
+    from .test_core_replay import _bundle
+
+    events = world.controller.ownership_shadow.diagnostics()["events"]
+    alone = replay_bundle(json.loads(json.dumps(_bundle(events), default=str)), line_up=False)["charger_a"]
+    assert alone.skipped == 0 and alone.real == (), alone.real
     await world.shutdown()
 
 
