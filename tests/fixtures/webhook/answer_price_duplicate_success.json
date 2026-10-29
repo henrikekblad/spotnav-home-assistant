@@ -1,0 +1,27 @@
+{
+  "action": "answer_price_duplicate",
+  "error": null,
+  "field_errors": [],
+  "ok": true,
+  "price_source": {
+    "charger_count": 2,
+    "choices": [
+      {
+        "entry_id": "price_c",
+        "title": "Electricity price DK1"
+      },
+      {
+        "entry_id": "price_a",
+        "title": "Electricity price SE4"
+      },
+      {
+        "entry_id": "price_b",
+        "title": "Electricity price SE4 (company)"
+      }
+    ],
+    "duplicate": null,
+    "entry_id": "price_a",
+    "title": "Electricity price SE4",
+    "writable": true
+  }
+}

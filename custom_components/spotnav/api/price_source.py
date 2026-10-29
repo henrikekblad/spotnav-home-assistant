@@ -22,6 +22,10 @@ Two WebSocket commands, administrators only, each answering `{"ok": true}` or a 
 * `spotnav/answer_price_duplicate {area_id, keep_entry_id}`: the card's question answered. With an entry, every
   site and charger using one of the others in the record moves to it (the others stay, removable under Devices &
   services); with `null` both are kept. Either way the question is not asked again.
+
+The webhook twins both for its own charger (`choose_price_source {price_entry_id}`, `answer_price_duplicate {area_id,
+keep_entry_id}`), through the same cores, answering `{ok, error, field_errors, price_source}` with the charger's block
+re-read now; a field not of its type is `spotnav_invalid_value` with `field_errors` `[{field, code: "invalid_value"}]`.
 """
 
 from __future__ import annotations
@@ -31,6 +35,7 @@ from typing import Any, Final
 
 import voluptuous as vol
 from homeassistant.components import websocket_api
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import callback, HomeAssistant
 
 from ..pricing.price_setup import choose_price_entry, use_price_entry
@@ -40,9 +45,12 @@ from ..pricing.price_store import price_duplicates
 from ..runtime import domain_data
 from ..vehicles.charger_inventory import charger_entries
 from .common import ERROR_NOT_ADMIN, is_admin, lookup_charger
+from .entity_fields import ERR_INVALID_VALUE
 
 ERROR_UNKNOWN_PRICE_ENTRY: Final = "spotnav_unknown_price_entry"
 ERROR_UNKNOWN_PRICE_DUPLICATE: Final = "spotnav_unknown_price_duplicate"
+#: A webhook request whose fields are not of their types (`field_errors` names them).
+ERROR_INVALID_VALUE: Final = "spotnav_invalid_value"
 
 
 @dataclass(frozen=True, slots=True)
@@ -135,6 +143,89 @@ def _price_entry_ids(hass: HomeAssistant) -> set[str]:
     return {entry.entry_id for entry in price_entries(hass)}
 
 
+class PriceSourceRefusal(Exception):
+    """A stable-code refusal of a choice or an answer; nothing was written."""
+
+    def __init__(self, code: str, message: str, field: str | None = None) -> None:
+        super().__init__(message)
+        self.code = code
+        self.message = message
+        #: The request field that is not of its type (`spotnav_invalid_value`), else `None`.
+        self.field = field
+
+
+def choose_price_source(hass: HomeAssistant, charger_id: str, price_entry_id: str) -> None:
+    """The charger uses this electricity price entry: through its site when it has one (see the module)."""
+    if price_entry_id not in _price_entry_ids(hass):
+        raise PriceSourceRefusal(ERROR_UNKNOWN_PRICE_ENTRY, "Not an electricity price")
+    choose_price_entry(hass, charger_id, price_entry_id)
+
+
+async def async_answer_price_duplicate(hass: HomeAssistant, area_id: str, keep: str | None) -> None:
+    """The question for one area answered: use one of the entries, or (`None`) keep them all (see the module)."""
+    record = next(
+        (item for item in price_duplicates(hass, unanswered_only=False) if item["area_id"] == area_id), None
+    )
+    store = domain_data(hass).price_store
+    if record is None or store is None:
+        raise PriceSourceRefusal(ERROR_UNKNOWN_PRICE_DUPLICATE, "No such question")
+    if keep is not None:
+        if keep not in record["entry_ids"] or keep not in _price_entry_ids(hass):
+            raise PriceSourceRefusal(ERROR_UNKNOWN_PRICE_ENTRY, "Not one of the electricity prices asked about")
+        use_price_entry(hass, keep, record["entry_ids"])
+    await store.async_answer_duplicates(area_id)
+
+
+def _webhook_answer(
+    hass: HomeAssistant, entry: ConfigEntry, refusal: PriceSourceRefusal | None = None
+) -> tuple[int, dict[str, Any]]:
+    """A webhook write's envelope: `ok`, the stable `error` and its `field_errors`, and this charger's
+    `price_source` block re-read now (`null` while it prices with its own settings)."""
+    block = serialize_price_source(capture_price_source(hass, entry.entry_id), can_act=True)
+    body = {
+        "ok": refusal is None,
+        "error": None if refusal is None else refusal.code,
+        "field_errors": []
+        if refusal is None or refusal.field is None
+        else [{"field": refusal.field, "code": ERR_INVALID_VALUE}],
+        "price_source": block,
+    }
+    return (200 if refusal is None else 400), body
+
+
+async def async_webhook_choose_price_source(
+    hass: HomeAssistant, entry: ConfigEntry, payload: dict[str, Any]
+) -> tuple[int, dict[str, Any]]:
+    """`choose_price_source {price_entry_id}` over the webhook: `spotnav/choose_price_source` for the
+    webhook's own charger. Returns `(http_status, body)`."""
+    price_entry_id = payload.get("price_entry_id")
+    try:
+        if not isinstance(price_entry_id, str):
+            raise PriceSourceRefusal(ERROR_INVALID_VALUE, "Not an entry id", "price_entry_id")
+        choose_price_source(hass, entry.entry_id, price_entry_id)
+    except PriceSourceRefusal as refusal:
+        return _webhook_answer(hass, entry, refusal)
+    return _webhook_answer(hass, entry)
+
+
+async def async_webhook_answer_price_duplicate(
+    hass: HomeAssistant, entry: ConfigEntry, payload: dict[str, Any]
+) -> tuple[int, dict[str, Any]]:
+    """`answer_price_duplicate {area_id, keep_entry_id}` over the webhook: `spotnav/answer_price_duplicate`,
+    answered with the webhook's own charger's block. Returns `(http_status, body)`."""
+    area_id = payload.get("area_id")
+    keep = payload.get("keep_entry_id", ...)
+    try:
+        if not isinstance(area_id, str):
+            raise PriceSourceRefusal(ERROR_INVALID_VALUE, "Not an area", "area_id")
+        if keep is not None and not isinstance(keep, str):
+            raise PriceSourceRefusal(ERROR_INVALID_VALUE, "Not an entry id or null", "keep_entry_id")
+        await async_answer_price_duplicate(hass, area_id, keep)
+    except PriceSourceRefusal as refusal:
+        return _webhook_answer(hass, entry, refusal)
+    return _webhook_answer(hass, entry)
+
+
 @websocket_api.websocket_command(
     {
         vol.Required("type"): "spotnav/choose_price_source",
@@ -154,10 +245,11 @@ async def websocket_choose_price_source(
     if failure is not None or charger is None:
         connection.send_error(msg["id"], failure or ERROR_NOT_ADMIN, "Not a charger")
         return
-    if msg["price_entry_id"] not in _price_entry_ids(hass):
-        connection.send_error(msg["id"], ERROR_UNKNOWN_PRICE_ENTRY, "Not an electricity price")
+    try:
+        choose_price_source(hass, charger.entry_id, msg["price_entry_id"])
+    except PriceSourceRefusal as refusal:
+        connection.send_error(msg["id"], refusal.code, refusal.message)
         return
-    choose_price_entry(hass, charger.entry_id, msg["price_entry_id"])
     connection.send_result(msg["id"], {"ok": True})
 
 
@@ -176,20 +268,11 @@ async def websocket_answer_price_duplicate(
     if not is_admin(connection):
         connection.send_error(msg["id"], ERROR_NOT_ADMIN, "Only administrators can change the electricity price")
         return
-    area_id, keep = msg["area_id"], msg["keep_entry_id"]
-    record = next(
-        (item for item in price_duplicates(hass, unanswered_only=False) if item["area_id"] == area_id), None
-    )
-    store = domain_data(hass).price_store
-    if record is None or store is None:
-        connection.send_error(msg["id"], ERROR_UNKNOWN_PRICE_DUPLICATE, "No such question")
+    try:
+        await async_answer_price_duplicate(hass, msg["area_id"], msg["keep_entry_id"])
+    except PriceSourceRefusal as refusal:
+        connection.send_error(msg["id"], refusal.code, refusal.message)
         return
-    if keep is not None:
-        if keep not in record["entry_ids"] or keep not in _price_entry_ids(hass):
-            connection.send_error(msg["id"], ERROR_UNKNOWN_PRICE_ENTRY, "Not one of the electricity prices asked about")
-            return
-        use_price_entry(hass, keep, record["entry_ids"])
-    await store.async_answer_duplicates(area_id)
     connection.send_result(msg["id"], {"ok": True})
 
 

@@ -37,7 +37,12 @@ from ..vehicles.vehicle_charge_limit import async_set_charge_limit, VehicleCharg
 from ..vehicles.vehicle_refresh import async_refresh_vehicle, VehicleRefreshLimited
 from .common import ERROR_UNSUPPORTED_VERSION
 from .dashboard import async_webhook_dashboard, DashboardFailure
-from .entity_config import async_webhook_update_charger_priority, async_webhook_update_vehicle
+from .entity_config import (
+    async_webhook_update_charger_priority,
+    async_webhook_update_phase_switching,
+    async_webhook_update_vehicle,
+)
+from .price_source import async_webhook_answer_price_duplicate, async_webhook_choose_price_source
 from .camera import WEBHOOK_ACTIONS as CAMERA_ACTIONS
 from .identification import webhook_choose_vehicle_identification, webhook_identify_vehicle
 from .sessions import SESSIONS_API_VERSION, sessions_answer, SessionsRefusal
@@ -108,6 +113,15 @@ APP_READS_WAKE_FOR_READING: Final = "wake_for_reading"
 #: Where the charger's electricity price lives: the dashboard's `price_source` block is left out for an app that does
 #: not read `APP_READS_PRICE_SOURCE` (its decoder refuses a dashboard with an unknown key).
 APP_READS_PRICE_SOURCE: Final = "price_source"
+#: Phase switching for solar: the webhook dashboard's `phase_switching` block is left out for an app that does not
+#: read `APP_READS_PHASE_SWITCHING` (its decoder refuses a dashboard with an unknown key).
+APP_READS_PHASE_SWITCHING: Final = "phase_switching"
+#: Each optional top-level dashboard block an app released before it does not read, with the `reads` name that opts
+#: into it.
+APP_DASHBOARD_BLOCK_READS: Final = {
+    "price_source": APP_READS_PRICE_SOURCE,
+    "phase_switching": APP_READS_PHASE_SWITCHING,
+}
 #: Each vehicle-row field an app released before it does not read, with the `reads` name that opts into it.
 APP_VEHICLE_FIELD_READS: Final = {"min_percent": APP_READS_MIN_SOC, "wake_for_reading": APP_READS_WAKE_FOR_READING}
 
@@ -162,12 +176,13 @@ def _for_app(body: dict[str, Any], payload: dict[str, Any]) -> dict[str, Any]:
     charge level: its status line and the vehicle rows' `min_percent`; `auto_periods` for a `max_periods` of
     null; `balancing_paused` for the plan's charge load balancing paused; `car_ended_waiting` for the plan waiting for
     the car's level after the car ended its charge; `wake_for_reading` for the vehicle rows' `wake_for_reading`; `solar_one_phase` for a solar charge the sun
-    switched to one phase; `price_source` for the dashboard's `price_source` block); anything else in it, or a
-    `reads` that is not a list, is ignored.
+    switched to one phase; `price_source` for the dashboard's `price_source` block; `phase_switching` for its
+    `phase_switching` block); anything else in it, or a `reads` that is not a list, is ignored.
     """
     opted_in = _opted_in(payload)
-    if "price_source" in body and APP_READS_PRICE_SOURCE not in opted_in:
-        body = {key: value for key, value in body.items() if key != "price_source"}
+    withheld_blocks = {block for block, read in APP_DASHBOARD_BLOCK_READS.items() if read not in opted_in}
+    if withheld_blocks & set(body):
+        body = {key: value for key, value in body.items() if key not in withheld_blocks}
     if isinstance(body.get("vehicles"), list):
         body = {**body, "vehicles": [_vehicle_for_app(row, opted_in) for row in body["vehicles"]]}
     status = body.get("status")
@@ -401,6 +416,9 @@ ACTIONS: Final[dict[str, Handler]] = {
     "update_charger_priority": _bounded_write(
         async_webhook_update_charger_priority, "update_charger_priority"
     ),
+    "update_phase_switching": _bounded_write(async_webhook_update_phase_switching, "update_phase_switching"),
+    "choose_price_source": _bounded_write(async_webhook_choose_price_source, "choose_price_source"),
+    "answer_price_duplicate": _bounded_write(async_webhook_answer_price_duplicate, "answer_price_duplicate"),
     "push_register": _push_register,
     "identify_vehicle": webhook_identify_vehicle,
     "choose_vehicle_identification": webhook_choose_vehicle_identification,

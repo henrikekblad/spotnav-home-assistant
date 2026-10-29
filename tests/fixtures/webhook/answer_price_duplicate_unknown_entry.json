@@ -1,0 +1,91 @@
+{
+  "action": "answer_price_duplicate",
+  "error": "spotnav_unknown_price_entry",
+  "field_errors": [],
+  "ok": false,
+  "price_source": {
+    "charger_count": 2,
+    "choices": [
+      {
+        "entry_id": "price_c",
+        "title": "Electricity price DK1"
+      },
+      {
+        "entry_id": "price_a",
+        "title": "Electricity price SE4"
+      },
+      {
+        "entry_id": "price_b",
+        "title": "Electricity price SE4 (company)"
+      }
+    ],
+    "duplicate": {
+      "area_id": "SE4",
+      "entry_ids": [
+        "price_a",
+        "price_b"
+      ],
+      "fees": [
+        {
+          "tax": {
+            "effective_value": 36.0,
+            "explicit_value": null,
+            "policy": "suggested",
+            "suggested_value": 36.0,
+            "unit": "\u00f6re/kWh",
+            "value_source": "suggested"
+          },
+          "transfer": {
+            "effective_value": 30.0,
+            "explicit_value": null,
+            "policy": "suggested",
+            "suggested_value": 30.0,
+            "unit": "\u00f6re/kWh",
+            "value_source": "suggested"
+          },
+          "vat": {
+            "effective_value": 25.0,
+            "explicit_value": null,
+            "policy": "suggested",
+            "suggested_value": 25.0,
+            "unit": "%",
+            "value_source": "suggested"
+          }
+        },
+        {
+          "tax": {
+            "effective_value": 36.0,
+            "explicit_value": null,
+            "policy": "suggested",
+            "suggested_value": 36.0,
+            "unit": "\u00f6re/kWh",
+            "value_source": "suggested"
+          },
+          "transfer": {
+            "effective_value": 24.5,
+            "explicit_value": 24.5,
+            "policy": "manual",
+            "suggested_value": 30.0,
+            "unit": "\u00f6re/kWh",
+            "value_source": "manual"
+          },
+          "vat": {
+            "effective_value": 25.0,
+            "explicit_value": null,
+            "policy": "suggested",
+            "suggested_value": 25.0,
+            "unit": "%",
+            "value_source": "suggested"
+          }
+        }
+      ],
+      "titles": [
+        "Electricity price SE4",
+        "Electricity price SE4 (company)"
+      ]
+    },
+    "entry_id": "price_b",
+    "title": "Electricity price SE4 (company)",
+    "writable": true
+  }
+}

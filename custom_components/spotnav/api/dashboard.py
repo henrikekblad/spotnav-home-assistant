@@ -40,6 +40,7 @@ from ..const import (
     CONF_ENTRY_TYPE,
     CONF_MAIN_FUSE_A,
     CONF_MEASUREMENT_MODE,
+    CONF_PHASE_SWITCHING,
     MEASUREMENT_MODE_DIRECT,
     CONF_SOLAR_FORECAST_ENTRIES,
     CONF_SOLAR_PRIORITY,
@@ -130,6 +131,7 @@ from ..vehicles.vehicle_charge_limit import charge_limit_range
 from ..vehicles.vehicle_discovery import discover_vehicles, resolve_target_vehicle
 from ..vehicles.vehicle_wake import wake_supported
 from .charge_bar import charge_bar, ProgressFacts
+from .entity_fields import phase_switching_offered
 from .price_source import capture_price_source, CapturedPriceSource, serialize_price_source
 from .common import (
     ERROR_CHARGER_REQUIRED,
@@ -1718,6 +1720,22 @@ def serialize_live(capture: CapturedDashboard) -> dict[str, Any]:
         "measured_current_a": finite_number(live.measured_current_a),
     }
 
+def capture_phase_switching(hass: HomeAssistant, entry: ConfigEntry) -> bool | None:
+    """Whether phase switching for solar is on for this charger, `None` while it is not offered
+    (`api/entity_fields.py:phase_switching_offered`)."""
+    if not phase_switching_offered(hass, entry):
+        return None
+    return entry.data.get(CONF_PHASE_SWITCHING) is True
+
+
+def serialize_phase_switching(phase_switching: bool | None, *, can_act: bool) -> dict[str, Any] | None:
+    """The webhook's additive `phase_switching` block: `null` while not offered, else its `value` and whether
+    this caller may write it (`update_phase_switching` over the webhook; the card writes it through
+    `spotnav/update_entity_config`)."""
+    if phase_switching is None:
+        return None
+    return {"value": phase_switching, "writable": bool(can_act)}
+
 
 def serialize_dashboard(
     capture: CapturedDashboard,
@@ -2396,14 +2414,18 @@ async def async_webhook_dashboard(
 ) -> dict[str, Any] | DashboardFailure:
     """The webhook twin of `spotnav/get_dashboard` for one charger: same capture and serializer, same
     refusal for another version. The holder may act on this charger (`can_act` true) and write solar
-    settings, but not switch active load balancing (`site.active_control.writable` false).
+    settings, but not switch active load balancing (`site.active_control.writable` false). It adds the
+    `phase_switching` block where that setting is offered (`serialize_phase_switching`).
     """
     if isinstance(api_version, bool) or api_version != DASHBOARD_API_VERSION:
         return _unsupported_version()
     capture = capture_dashboard(
         hass, entry, forecast_domains=await async_forecast_capable_domains(hass)
     )
-    return serialize_dashboard(capture, can_act=True, active_control_writable=False)
+    body = serialize_dashboard(capture, can_act=True, active_control_writable=False)
+    # Additive, webhook only and only where it is offered: the card reads it from its entity configuration.
+    phase_switching = serialize_phase_switching(capture_phase_switching(hass, entry), can_act=True)
+    return body if phase_switching is None else {**body, "phase_switching": phase_switching}
 
 
 @callback

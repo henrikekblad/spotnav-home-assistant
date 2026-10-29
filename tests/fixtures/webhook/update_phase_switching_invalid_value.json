@@ -1,0 +1,16 @@
+{
+  "action": "update_phase_switching",
+  "api_version": 1,
+  "error": "spotnav_invalid_value",
+  "field_errors": [
+    {
+      "code": "invalid_value",
+      "field": "phase_switching"
+    }
+  ],
+  "ok": false,
+  "phase_switching": {
+    "value": true,
+    "writable": true
+  }
+}
