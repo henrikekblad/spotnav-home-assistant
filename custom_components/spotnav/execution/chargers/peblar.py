@@ -20,35 +20,30 @@ import logging
 from collections import deque
 from collections.abc import Callable
 from datetime import datetime
-from typing import Any, Final, Literal
+from typing import Any, Final
 
-from homeassistant.const import STATE_OFF, STATE_ON
+from homeassistant.const import STATE_ON
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers import entity_registry as er
 from homeassistant.util import dt as dt_util
 
 from ...const import DEFAULT_MIN_CURRENT_A
-from ..charger_profiles import entity_matches_keys, PATH_SWITCH, PATH_SWITCH_BUDGET
+from ..charger_profiles import PATH_SWITCH, PATH_SWITCH_BUDGET
 from .base import (
     _entity_unavailable,
-    _lower,
     _not_executed,
     call_service,
     path_description,
     PhaseSwitch,
-    PhaseSwitchResult,
-    PHASES_INVALID,
-    PHASES_TARGET_UNAVAILABLE,
     StartStopPath,
     STOP_HELD_AT_FLOOR,
 )
 from .generic import SwitchPath
+from .phase_switches import force_single_phase
 from .registry import ChargerContext, register_phase_switch, register_start_stop
 
 _LOGGER = logging.getLogger(__name__)
 
 PEBLAR_DOMAIN: Final = "peblar"
-_FORCE_SINGLE_PHASE_KEYS: Final = ("force_single_phase",)
 
 PAUSE_WINDOW_S = 600.0
 
@@ -129,56 +124,8 @@ def _budget_switch_path(context: ChargerContext) -> StartStopPath | None:
 register_start_stop(PATH_SWITCH_BUDGET, _budget_switch_path)
 
 
-class ForceSinglePhaseSwitch(PhaseSwitch):
-    """Peblar's force-single-phase switch: on charges on one phase, off on the phases connected (three)."""
-
-    async def async_set_phases(self, phases: Literal[1, 3]) -> PhaseSwitchResult:
-        if phases not in (1, 3):
-            return PhaseSwitchResult(False, PHASES_INVALID)
-        if _entity_unavailable(self.hass, self.entity_id):
-            _not_executed(self.entity_id)
-            return PhaseSwitchResult(False, PHASES_TARGET_UNAVAILABLE)
-        service = "turn_on" if phases == 1 else "turn_off"
-        await call_service(self.hass, "switch", service, {"entity_id": self.entity_id}, blocking=True)
-        return PhaseSwitchResult(True)
-
-    def phases_now(self) -> int | None:
-        state = _lower(self.hass.states.get(self.entity_id))
-        if state == STATE_ON:
-            return 1
-        if state == STATE_OFF:
-            return 3
-        return None
-
-
-def force_single_phase_entity(hass: HomeAssistant, *entity_ids: str | None) -> str | None:
-    """The force-single-phase switch on the device of the first of `entity_ids` that is a Peblar entity, or `None`.
-
-    Found by what the entity is (its translation key or unique id), never by its name; a disabled one is not found.
-    """
-    registry = er.async_get(hass)
-    for entity_id in entity_ids:
-        own = registry.async_get(entity_id) if entity_id else None
-        if own is None or own.platform != PEBLAR_DOMAIN or own.device_id is None:
-            continue
-        for entry in er.async_entries_for_device(registry, own.device_id):
-            if (
-                entry.domain == "switch"
-                and entry.platform == PEBLAR_DOMAIN
-                and entity_matches_keys(
-                    translation_key=entry.translation_key, unique_id=entry.unique_id, keys=_FORCE_SINGLE_PHASE_KEYS
-                )
-            ):
-                return entry.entity_id
-        return None
-    return None
-
-
 def _force_single_phase(context: ChargerContext) -> PhaseSwitch | None:
-    entity_id = force_single_phase_entity(
-        context.hass, context.charge_control, context.status_entity_id, context.current_limit
-    )
-    return None if entity_id is None else ForceSinglePhaseSwitch(context.hass, entity_id)
+    return force_single_phase(context, PEBLAR_DOMAIN)
 
 
 register_phase_switch(PEBLAR_DOMAIN, _force_single_phase)
