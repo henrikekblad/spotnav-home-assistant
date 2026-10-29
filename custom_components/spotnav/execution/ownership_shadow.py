@@ -280,6 +280,7 @@ class OwnershipShadow:
         name: str = "",
         on_failure: Callable[[], None] | None = None,
         owned_fields: Iterable[str] = (),
+        settled: Callable[[], None] | None = None,
     ) -> None:
         SHADOWS.add(self)
         self._legacy = legacy
@@ -298,6 +299,9 @@ class OwnershipShadow:
         # When the core drives: told the session after each decision, to keep it across a restart (debounced by the
         # caller: a decision that leaves the stored record as it was writes nothing).
         self._persist = persist
+        # When the core drives: told when a task's outermost feed is over (ended, decided or not, or cancelled), before
+        # `persist`: what the feed's commands did is the session's from then on.
+        self._settled = settled
         self._now = now if now is not None else dt_util.utcnow
         # What it has seen per event kind, cumulative (kept across restarts when the controller gives it a store).
         self.coverage = coverage if coverage is not None else OwnershipCoverage(now=self._now)
@@ -428,6 +432,7 @@ class OwnershipShadow:
             return
         self._close(token)
         self._cover_token(token, None)
+        self._settle()
         if self._queue and self._idle():
             try:
                 self._drain()
@@ -783,8 +788,19 @@ class OwnershipShadow:
         _LOGGER.debug("SpotNav ownership shadow: disagreement at %s: %s %s", where, differs, disagreement["commands"])
         self._tell("disagreement", disagreement)
 
+    def _settle(self) -> None:
+        """When the core drives and the running task has no feed open any more: tell `settled` (never raises)."""
+        settled = self._settled
+        if not self.drives or settled is None or self.depth:
+            return
+        try:
+            settled()
+        except Exception:  # noqa: BLE001 - the shadow never raises into the real path
+            self._error("settled")
+
     def _persisted(self) -> None:
         """When the core drives: tell the keeper of the stored record the session as it is now (never raises)."""
+        self._settle()
         persist = self._persist
         if not self.drives or persist is None or self.depth:
             return

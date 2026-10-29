@@ -842,6 +842,15 @@ class ChargingController:
         # restart alone (`_restore_locked`), as `_balancing_read_back`. `None` at every other time: the session's
         # owner is read then (`_core_owner`).
         self._owner_read_back: tuple[str | None, bool] | None = None
+        # When the core drives: the owner as today's two fields when readers were last told (`_notify`): a decision
+        # that changes it after the feed's own `_notify` ran tells them again (`_owner_settled`).
+        self._owner_told: tuple[str | None, bool] = (None, False)
+        # When the core drives: a start (`start`) or a stop (`stop`) of ours that went out in the feed still open, whose
+        # result the core decides at that feed's end. Until then the owner reads as that command makes it, as today's
+        # code wrote its two fields as the command went out (the start's owner the core awaits, nobody's after a stop),
+        # so what the feed tells its readers meanwhile (the site's regulator, the sun) is not the owner before it. An
+        # observation of the command in flight, as `_start_in_flight`; cleared where the feed is over.
+        self._command_unfed: str | None = None
         self.charge_control: str = config[CONF_CHARGE_CONTROL]
         # "None" in the card: no current entity, no current control and no automatic session-limit lookup.
         self.current_limit_none: bool = bool(config.get(CONF_CURRENT_LIMIT_NONE))
@@ -1026,6 +1035,7 @@ class ChargingController:
             self._shadow_session,
             drives=self._core_drives,
             persist=self._persist_session,
+            settled=self._owner_settled,
             # What the core has seen per event kind, kept across restarts in a store of its own (read back at the
             # restore, removed with the entry).
             coverage=OwnershipCoverage(store=Store(hass, COVERAGE_STORE_VERSION, coverage_key(entry_id))),
@@ -1053,7 +1063,17 @@ class ChargingController:
         read_back = self._owner_read_back
         if read_back is not None:
             return read_back
-        return _CORE_OWNER_ORIGIN.get(self._shadow.session.owner, (None, False))
+        session = self._shadow.session
+        owner = session.owner
+        unfed = self._command_unfed
+        if unfed == "stop":
+            owner = OWNER_NONE
+        elif unfed == "start":
+            owner = next(
+                (item.owner_after for item in reversed(session.pending) if item.command == "start" and item.owner_after),
+                owner,
+            )
+        return _CORE_OWNER_ORIGIN.get(owner, (None, False))
 
     @property
     def _owner_origin(self) -> str | None:
@@ -1394,6 +1414,8 @@ class ChargingController:
             self._hold_read_back = None
             self._car_ended_read_back = None
             self._owner_read_back = None
+        # Readers are told the owner the restart read back with everything else at the first `_notify`.
+        self._owner_told = self._core_owner
         if stored is not None:
             self._session_saved = stored
         if migrate:
@@ -2859,6 +2881,8 @@ class ChargingController:
         await self._restore_three_phases_locked()
         self._is_plan_charge = True
         self._owner_origin = "plan_window"
+        # When the core drives: the claim's owner (the plan's), until its result is fed at the feed's end.
+        self._command_unfed = "start"
         self._hold.spotnav_started()
         _LOGGER.info("SpotNav charger %s: a charge began by itself in a planned window; it is the plan's", self.entry_id)
         await self._async_save_quietly()
@@ -3694,7 +3718,11 @@ class ChargingController:
         (the execution boundary decided it, in its feed): a plan window open now (`plan_window`) or the sun
         (`solar`), which decides it on its next reading."""
         async with self._lock:
-            if self._owner_origin != "min_soc":
+            if self._core_drives:
+                # The core handed the floor's charge over in the boundary's feed, before this (`MinSocEnd`).
+                if self._owner_origin != origin:
+                    return
+            elif self._owner_origin != "min_soc":
                 return
             self._owner_origin = origin
             self._is_plan_charge = origin == "plan_window"
@@ -3936,7 +3964,10 @@ class ChargingController:
         origin = "manual" if manual else cause or "other"
         origin_changed = origin != self._owner_origin
         was_origin = self._owner_origin
+        was_unfed = self._command_unfed
         self._owner_origin = origin
+        # When the core drives: the start's owner, until its result is fed at the feed's end.
+        self._command_unfed = "start"
         if not self._control_on:
             # Recorded before the first await: an accepted Start the charger has not answered is not
             # a failure, and the observation must not blame the car (see `charge_progress.py`).
@@ -3960,6 +3991,7 @@ class ChargingController:
                 self._hold_state = replace(self._hold_state, owned=was_owned)
                 self._is_plan_charge = was_plan_charge
                 self._owner_origin = was_origin
+                self._command_unfed = was_unfed
                 raise
             if not executed:
                 # The command never went out: nothing is awaiting an answer, and nothing may say so.
@@ -3971,6 +4003,7 @@ class ChargingController:
                 self._hold_state = replace(self._hold_state, owned=was_owned)
                 self._is_plan_charge = was_plan_charge
                 self._owner_origin = was_origin
+                self._command_unfed = was_unfed
             elif (
                 explicit_amps is not None
                 and self._writes_current_at_start
@@ -4494,6 +4527,7 @@ class ChargingController:
             self._cancel_stop_retry()
             self._is_plan_charge = False
             self._owner_origin = None
+            self._command_unfed = "stop"
         elif needed:
             was_sent_at = self._stop_sent_at
             self._stop_sent_at = dt_util.utcnow()
@@ -4543,9 +4577,11 @@ class ChargingController:
             self._seen_charging = self.charging
             self._is_plan_charge = False
             self._owner_origin = None
+            self._command_unfed = "stop"
         elif self._control_observation is not None:
             self._is_plan_charge = False
             self._owner_origin = None
+            self._command_unfed = "stop"
         # Whatever start was on its way is over: its share of the site's margin is free for another.
         self._reserve_start(None)
         if (
@@ -4555,6 +4591,7 @@ class ChargingController:
         if clear_schedule:
             self._is_plan_charge = False
             self._owner_origin = None
+            self._command_unfed = "stop"
             self.plan = None
             self._clear_top_off()
             self._cancel_timers()
@@ -5066,6 +5103,8 @@ class ChargingController:
         """
         self._tick_charge_clock()
         self._charge_progress.evaluate()
+        if self._core_drives:
+            self._owner_told = self._core_owner
         if (
             self._owner_origin is not None
             and not self.charging
@@ -5273,6 +5312,23 @@ class ChargingController:
             self._session_dirty_since = None
             self.hass.async_create_task(self._async_save_session())
 
+    def _owner_settled(self) -> None:
+        """When the core drives, a task's outermost feed is over (`OwnershipShadow`): what its start or stop did is the
+        session's from now on (`_command_unfed`). An owner other than the one readers were last told (a decision at
+        the feed's end, after its own `_notify`, or one that told them nothing) is told now, soon and not inline,
+        since `_notify` opens a feed of its own."""
+        self._command_unfed = None
+        if not self._restored or self._shut_down or self._core_owner == self._owner_told:
+            return
+        self._owner_told = self._core_owner
+        self.hass.loop.call_soon(self._notify_after_owner)
+
+    @callback
+    def _notify_after_owner(self) -> None:
+        """Readers are told an owner the core decided (`_owner_settled`), unless this controller has shut down."""
+        if not self._shut_down:
+            self._notify()
+
     def _ownership_changed(self, stored: ChargeSession) -> bool:
         """Whether `stored` names another owner or another person intent than the record saved last. The charger's own
         charge and nobody's are one at a restart (it is seen again then), so a charger reporting on and off is no
@@ -5342,23 +5398,22 @@ class ChargingController:
         return waiting
 
     async def _async_save_session(self) -> None:
-        """Write the core's session record alone, when it changed: today's keys go as they were last written or read
-        back (each of today's own saves writes them, with the record as it is then). Prepared at once and never
-        behind the operation lock, so it delays no decision; a save of today's keys after it writes both again."""
+        """Write the core's session record, when it changed, with today's keys as they are now: the ownership keys are
+        derived from the session (the owner, load balancing's memory, the hold, the car-ended record), so a save of
+        the record never leaves them a decision behind (a save of today's keys inside a feed runs before the feed's
+        end decides its owner). Prepared at once and never behind the operation lock, so it delays no decision.
+        Only while the core drives (`_session_record`)."""
         session = self._session_record()
         if session is None or session[0] == self._session_saved:
             return
-        base = self._record_saved if self._record_saved is not None else self._store_record()
-        # Today's keys go as last written, so as of the mark they were written with (none: the oldest).
-        order = base.get(SESSION_ORDER_KEY)
-        keys_as_of = order.get("keys") if isinstance(order, dict) else None
-        if not isinstance(keys_as_of, int) or isinstance(keys_as_of, bool):
-            keys_as_of = 0
+        signature = self._memory_signature()
+        base = self._store_record()
+        self._note_keys()
         session_as_of = self._session_as_of
         record = {
             **base,
             SESSION_STORE_KEY: session[1],
-            SESSION_ORDER_KEY: {"session": session_as_of, "keys": keys_as_of},
+            SESSION_ORDER_KEY: {"session": session_as_of, "keys": self._keys_as_of},
         }
         self._record_saved = record
         try:
@@ -5366,6 +5421,7 @@ class ChargingController:
         except Exception as err:  # noqa: BLE001 - the record is a safeguard, never a reason to fail
             _LOGGER.warning("Saving the SpotNav charge session failed: %s", type(err).__name__)
             return
+        self._saved_memory = signature
         self._session_saved = session[0]
         self._session_written_as_of = session_as_of
 
