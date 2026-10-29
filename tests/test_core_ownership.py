@@ -476,6 +476,13 @@ PLAN_ENDED = ev.CarEnded(plan=True, vehicle="car", wait_target=91.0, wait_level=
         # Set: the car ended a person's Start (their pause ends), with the level read then; it waits for nothing.
         (PLUGGED.with_changes(owner="person", manual=START), (ev.CarEnded(soc=91.0, vehicle="car"),), FULL),
         (PLUGGED.with_changes(manual=STOP), (ev.CarEnded(soc=91.0, vehicle="car"),), None),
+        # Not for a person's charge whose plug-in ended while its end was on its way (decided in step 6: today's code
+        # wrote the record for a car already gone, kept until the next plug-in cleared it).
+        (
+            PLUGGED.with_changes(owner="person", manual=START),
+            (ev.Unplug(previous=True), ev.CarEnded(soc=91.0, vehicle="car")),
+            None,
+        ),
         (PLUGGED, (ev.CarEnded(soc=91.0, vehicle="car"),), None),
         # A later end replaces the record whole (today's code writes all four fields at every end).
         (PLUGGED.with_changes(owner="plan", car_ended=FULL), (PLAN_ENDED,), WAITING),
