@@ -234,8 +234,22 @@ reads it; a restart takes it into the session where today's keys are the truth (
 written after it). Load balancing's own stop never depends on the core: `_regulated_stop` sends it whatever the core
 decides, and the core is only told (`balancing_pause`, decided before the stop goes out, its result after).
 
-Not yet the core's: the hold's memory and the car-ended record, and the session itself after the restart (all read
-from today's fields at each feed, which lines the session up).
+The hold's memory (`held`, `overridden`) is the session's the same way when the core drives (`_hold_state` reads it),
+and whether the charge is SpotNav's (`WindowHold.owned`) is the session's owner: one of SpotNav's, a start of SpotNav's
+for one awaiting its result, or a start of ours still on its way before its result is fed (`_start_in_flight`).
+`held` means "this plug-in session's charge that began by itself outside a window was stopped once", `overridden` "a
+person started it again after that, and it goes on", and is set only while `held`. Set: the hold at a report of such
+a charge, the override at the next one; the re-arm's stop of a charge that ran, once it went out (also one that sent
+nothing because the control said nothing), never for a plug-in that ended before its result. Cleared: the override
+when the charge is seen off; both at a report with no car, at an unplug, at a plug-in after a known unplug, and where
+the next window starts (a timer's or a re-arm's, not one at plug-in or a start's retry). Kept: a person's Start or
+Stop, a new plan, a window's end, load balancing, a restart; the re-arm spares an overridden hold. Today's rule is
+still computed beside the core's, from the core's memory as it was before the report (`WindowHold.take`). Today's
+`hold` key is still written, derived from the session, and a restart takes it into the session where today's keys
+are the truth, as load balancing's.
+
+Not yet the core's: the car-ended record, and the session itself after the restart (read from today's fields at
+each feed, which lines the session up).
 
 ## Tests
 
