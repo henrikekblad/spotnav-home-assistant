@@ -3194,6 +3194,9 @@ class ChargingController:
             self._owner_origin is None
             and not self._is_plan_charge
             and not self.start_pending
+            # A start of ours still on its way: the charger may report charging before its command returns, and
+            # when the core drives, the start's owner is the session's only once its result is fed.
+            and not self._start_in_flight
             and not self._hold_state.overridden
         )
 
@@ -3527,10 +3530,11 @@ class ChargingController:
             if self._shadow.depth:
                 # Inside a feed of the execution boundary's (a person's Start, the sun's): that feed is the event.
                 return await self._start_locked(amps, manual=manual, cause=cause)
-            # A person's start is decided where it begins (its facts are known up front), as their Start through the
-            # boundary is: what the car ended is theirs to overrule before the command goes out, as today's code
-            # clears it then.
-            token = self._shadow.begin(early=core_events.DirectStart(manual=True, cause=cause) if manual else None)
+            # Decided where it begins (its facts are known up front), as a person's Start through the boundary is: what
+            # the car ended is a person's to overrule before the command goes out, as today's code clears it then, and
+            # while the command is on its way the core knows a start of its own awaits its result, so nothing takes
+            # the charge the charger begins meanwhile for one it began by itself (the sun's take-over).
+            token = self._shadow.begin(early=core_events.DirectStart(manual=manual, cause=cause))
             outcome = CommandOutcome(False)
             try:
                 executed = await self._start_locked(amps, manual=manual, cause=cause)

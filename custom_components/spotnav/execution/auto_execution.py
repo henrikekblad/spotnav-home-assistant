@@ -2183,7 +2183,9 @@ class AutoExecutor:
                 "top_off_or_window": controller.top_off_until is not None
                 or (settings.strategy == STRATEGY_HYBRID and controller.plan_window_active_now),
                 "charging": controller.charging,
-                "start_pending": controller._shadow_start_pending(),  # noqa: SLF001 - read without its side effect
+                # A start of ours still on its way counts, also once the charger reports charging before it returns.
+                "start_pending": controller._shadow_start_pending()  # noqa: SLF001 - read without its side effect
+                or controller._start_in_flight,  # noqa: SLF001
                 "stop_recent": controller._shadow_stop_recent(),  # noqa: SLF001
             }
         except Exception as err:  # noqa: BLE001 - the shadow never raises into the real path; today's code decides
