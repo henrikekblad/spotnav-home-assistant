@@ -21,7 +21,14 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 from hypothesis import HealthCheck, settings, strategies as st
-from hypothesis.stateful import invariant, rule, RuleBasedStateMachine, run_state_machine_as_test
+from hypothesis.stateful import (
+    initialize,
+    invariant,
+    precondition,
+    rule,
+    RuleBasedStateMachine,
+    run_state_machine_as_test,
+)
 
 from custom_components.spotnav.core import events as ev
 from custom_components.spotnav.core.ownership import (
@@ -36,7 +43,7 @@ from custom_components.spotnav.core.ownership import (
     spotnav_owned,
     window_end_spared,
 )
-from custom_components.spotnav.core.session import CarEnded, ChargeSession, OWNERS, SCOPE_PLUG_IN
+from custom_components.spotnav.core.session import CarEnded, CarEndedWait, ChargeSession, OWNERS, SCOPE_PLUG_IN
 
 T0 = datetime(2026, 10, 4, 22, 0, tzinfo=timezone.utc)
 
@@ -174,12 +181,12 @@ class OwnershipMachine(RuleBasedStateMachine):
         ):
             assert not post.held and not post.overridden, (event, post)
         # The car-ended record belongs to its plug-in: it ends at the unplug, and at a plug-in after one known (not the
-        # first connection known after a restart); a person's Start overrules it. Only the car's end starts it, as a
-        # whole record of this instant; only a level read since the end that is not full ends its wait, and nothing
-        # else of it changes.
+        # first connection known after a restart); a person's Start overrules it (not one refused with no car). Only
+        # the car's end starts it, as a whole record of this instant; only a level read since the end that is not full
+        # ends its wait, and nothing else of it changes.
         if (
             (event.kind in ("unplug", "plug_in") and getattr(event, "previous", None) is not None)
-            or event.kind == "person_start"
+            or (event.kind == "person_start" and getattr(event, "connected", None) is not False)
             or (event.kind == "direct_start" and getattr(event, "manual", False))
         ):
             assert post.car_ended is None, (event, post)
@@ -232,6 +239,26 @@ class OwnershipMachine(RuleBasedStateMachine):
         assert ChargeSession.from_json(self.session.to_json()) == self.session
 
     # ------------------------------------------------------------------ the world
+
+    @initialize(
+        plugged=maybe_bool,
+        ended=st.one_of(
+            st.none(),
+            st.builds(
+                CarEnded,
+                at=st.integers(-7200, 0).map(lambda s: T0 + timedelta(seconds=s)),
+                soc=level,
+                vehicle=car,
+                wait=st.one_of(
+                    st.none(),
+                    st.builds(CarEndedWait, target=st.sampled_from([90.0, 91.0]), level=level, estimated=st.booleans()),
+                ),
+            ),
+        ),
+    )
+    def begin(self, plugged, ended) -> None:
+        """A session the machine starts from: a car-ended record may already be kept (a restart read it back)."""
+        self.session = ChargeSession(plugged=plugged, car_ended=ended)
 
     @rule(seconds=st.integers(1, 3600))
     def tick(self, seconds: int) -> None:
@@ -439,9 +466,22 @@ class OwnershipMachine(RuleBasedStateMachine):
             )
         )
 
-    @rule(level_=level, at=when, full=st.booleans())
-    def car_level_read(self, level_, at, full) -> None:
+    @rule(level_=level, offset=st.one_of(st.none(), st.integers(-3600, 3600)), full=st.booleans())
+    def car_level_read(self, level_, offset, full) -> None:
+        ended = self.session.car_ended
+        base = self.now if ended is None else ended.at
+        at = None if offset is None else base + timedelta(seconds=offset)
         self.step(ev.CarLevelRead(car_level=level_, car_level_at=at, car_level_full=full))
+
+    @precondition(lambda self: self.session.car_ended is not None and self.session.car_ended.wait is not None)
+    @rule(level_=st.sampled_from([60.0, 80.0, 91.0]), seconds=st.integers(1, 3600), full=st.booleans())
+    def car_level_read_while_the_plan_waits(self, level_, seconds, full) -> None:
+        """A level read after the end while the plan waits for it: below the target it ends the wait, and only it."""
+        pre = self.session.car_ended
+        at = pre.at + timedelta(seconds=seconds)
+        self.step(ev.CarLevelRead(car_level=level_, car_level_at=at, car_level_full=full))
+        post = self.session.car_ended
+        assert post == (pre if full else CarEnded(pre.at, pre.soc, pre.vehicle)), (pre, post)
 
     @rule(window_start=when, facts=car_facts)
     def car_ended_rule(self, window_start, facts) -> None:
