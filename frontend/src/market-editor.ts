@@ -87,7 +87,7 @@ interface AreaChoice {
 }
 
 /**
- * The selector's choices: every published area in the relay's order, plus the charger's stored area
+ * The selector's choices: every listed area in the list's order, plus the charger's stored area
  * when the catalogue no longer lists it, so a stored choice never disappears (it has no name to show).
  */
 function areaChoices(options: MarketOptionsV1): AreaChoice[] {

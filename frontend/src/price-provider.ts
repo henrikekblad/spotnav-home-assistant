@@ -29,7 +29,6 @@ const SOURCE_LINES: Record<string, TranslationKey> = {
   entsoe: "price.provider.entsoe",
   pvpc: "price.provider.pvpc",
   octopus: "price.provider.octopus",
-  relay: "price.provider.relay",
 };
 
 /** What a notice's button does. */
