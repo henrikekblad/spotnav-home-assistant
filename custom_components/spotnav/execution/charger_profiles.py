@@ -615,7 +615,9 @@ _PROFILES: Final[tuple[PlatformProfile, ...]] = (
         name="ABB Terra AC",
         start_stop=StartStop(PATH_NUMBER_PAUSE, keys=("current_limit",), start_keys=("start_charging",)),
         current_keys=("current_limit",),
-        policy=WritePolicy(min_interval_s=10.0, ignored_while_paused=True),
+        # Current changes under about 15 s apart can freeze or reset the charger; the integration's
+        # maintainer advises about 30 s.
+        policy=WritePolicy(min_interval_s=30.0, ignored_while_paused=True),
         status_keys=("charging_state",),
         charging_values=("state c2 - charging",),
         vehicle_idle_values=("state c1 - ev ready for charge", "state b2 - ev plug in, charging complete"),
