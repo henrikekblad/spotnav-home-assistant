@@ -17,8 +17,8 @@ price timer.
   clock jump still leaves one timer per area. Only the exact area-local midnight rollover is not
   jittered; every interval and backoff is (see [jittered]).
 * Per provider: an area read from the relay follows its index (the catalogue and index steps run only while
-  some active area does); an area read from a provider without an index (Nord Pool through Home Assistant)
-  asks for a file when the schedule says it is out and it is not held, so a cycle with everything held makes
+  some active area does); an area read from a provider without an index (Nord Pool through Home Assistant,
+  ENTSO-E) asks for a file when the schedule says it is out and it is not held, so a cycle with everything held makes
   no request at all. When the choice of provider changes (a `nordpool` entry loaded or unloaded, the ENTSO-E key
   set, cleared or rejected), the areas take the new calendar and a cycle runs at once, or right after the one
   running (a key rejected during a cycle moves its areas, which that cycle has already asked).

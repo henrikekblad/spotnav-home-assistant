@@ -52,7 +52,8 @@ relay's area list, index and profiles beside the days) is read through the same 
 schema 2 on the next write, losing nothing (a stored relay profile is no longer read: see below).
 
 A day file comes from the area's provider. The relay's index is its authority on which days exist; a provider
-without an index (Nord Pool through Home Assistant) is asked on its publication schedule instead
+without an index (Nord Pool through Home Assistant, ENTSO-E with the installation's key) is asked on its
+publication schedule instead
 (`providers.schedule_authority`): today and earlier when not held, tomorrow from just before its expected
 publication, and an empty answer ("not published yet") is remembered in memory until the next attempt. Such a
 provider dates its files on its own calendar (the CET delivery day), so [area_entry] answers the area list's entry
