@@ -172,6 +172,7 @@ async def test_an_unknown_area_is_refused(hass: HomeAssistant, transport: StubTr
     assert price.data["area_id"] == SE4 and price_write_revision(price) == 0
 
 
+@pytest.mark.usefixtures("no_bundled_catalogue")
 async def test_the_market_list_reaches_the_select_once_it_can_be_read(
     hass: HomeAssistant, transport: StubTransport
 ) -> None:

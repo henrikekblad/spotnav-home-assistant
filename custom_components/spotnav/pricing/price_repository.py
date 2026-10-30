@@ -61,6 +61,7 @@ from homeassistant.util import dt as dt_util
 from ..const import DOMAIN
 from ..runtime import domain_data
 from .. import time_zones
+from .area_catalogue import async_load_bundled, BundledCatalogue
 from .market_day import compose_display_day, market_days_for, principal_market_day
 from .relay_contract import (
     AreaCatalogue,
@@ -123,8 +124,9 @@ CatalogueState = Literal["loading", "ready", "stale", "unavailable", "invalid"]
 #: Where the index says a day is. "Not listed" is authoritative only when the index itself was read.
 IndexAuthority = Literal["listed", "not_listed", "unknown"]
 
-#: Where a snapshot's document came from; a restored one is not freshly fetched.
-SnapshotSource = Literal["memory", "store", "network"]
+#: Where a snapshot's document came from; a restored one is not freshly fetched. `bundled` is the area list
+#: shipped with the integration (`pricing/areas.json`), answered while the relay's is not held.
+SnapshotSource = Literal["memory", "store", "network", "bundled"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -292,6 +294,7 @@ class PriceRepository:
         session: ClientSession | None = None,
         store: Store[dict[str, Any]] | None = None,
         now=None,
+        bundled: BundledCatalogue | None = None,
     ) -> None:
         self._hass = hass
         self._base_url = base_url.rstrip("/")
@@ -303,6 +306,9 @@ class PriceRepository:
         # Seams for tests (races and clock changes are timing); `None` means the real thing.
         self._store: Store[dict[str, Any]] = store if store is not None else Store(hass, STORAGE_VERSION, STORAGE_KEY)
         self._catalogue: _Cached | None = None
+        #: The area list shipped with the integration: what the catalogue snapshot answers while the relay's
+        #: is not held, so the area picker has its list without the network. Never stored, never noted.
+        self._bundled = bundled
         #: The index revision (`areas_rev`) the held area list belongs to, as noted by the refresh manager;
         #: `None` when unknown (nothing noted yet, or a store written before it was kept).
         self._catalogue_rev: str | None = None
@@ -326,10 +332,11 @@ class PriceRepository:
     def calendars(self, area_id: str) -> tuple[str, str] | None:
         """`(tz, market_tz)` for an area whose display day is cut from market-day files, else `None`.
 
-        From the held catalogue: an area it does not list (or none held) is read one file per day.
+        From the held catalogue (the bundled one while the relay's is not held): an area it does not list (or
+        none held) is read one file per day.
         """
-        catalogue = self._catalogue
-        entry = None if catalogue is None else catalogue.parsed.area(area_id)
+        catalogue = self._held_catalogue()
+        entry = None if catalogue is None else catalogue.area(area_id)
         if entry is None or not entry.split_calendar:
             return None
         return entry.tz, entry.market_tz
@@ -381,7 +388,7 @@ class PriceRepository:
         attempt_at, error = self._attempt(("catalogue",))
         refreshing = ("catalogue",) in self._inflight
         return self._catalogue_snapshot(
-            state=read_state(self._catalogue is not None, error, refreshing), settled=not refreshing
+            state=read_state(self._holds_catalogue(), error, refreshing), settled=not refreshing
         )
 
     def index_snapshot(self) -> IndexSnapshot:
@@ -831,8 +838,8 @@ class PriceRepository:
 
     def _after_failure(self, key: tuple[str, ...], err: Exception, snapshot):
         self._record_failure(key, err)
-        cached = self._catalogue if key == ("catalogue",) else self._index
-        if cached is not None:
+        held = self._holds_catalogue() if key == ("catalogue",) else self._index is not None
+        if held:
             # Last good stays what a reader sees; the failure is recorded beside it (`stale`).
             return snapshot(state="stale", settled=True)
         if isinstance(err, _Failure):
@@ -867,11 +874,31 @@ class PriceRepository:
     def _index_revision(self) -> str | None:
         return None if self._index is None else self._index.parsed.areas_rev
 
+    def _held_catalogue(self) -> AreaCatalogue | None:
+        """The area list answered: the relay's when held, else the bundled one, else `None`."""
+        if self._catalogue is not None:
+            return self._catalogue.parsed
+        return None if self._bundled is None else self._bundled.catalogue
+
+    def _holds_catalogue(self) -> bool:
+        return self._held_catalogue() is not None
+
     def _catalogue_snapshot(
         self, *, state: CatalogueState, source: SnapshotSource | None = None, settled: bool = False
     ) -> CatalogueSnapshot:
         cached = self._catalogue
         attempt_at, error = self._attempt(("catalogue",))
+        if cached is None and self._bundled is not None:
+            # The relay's list is not held: the bundled one, never fetched, with the relay attempt beside it.
+            return CatalogueSnapshot(
+                state=state,
+                catalogue=self._bundled.catalogue,
+                source="bundled",
+                fetched_at=None,
+                attempt_at=attempt_at,
+                attempt_error=error,
+                refreshing=not settled and ("catalogue",) in self._inflight,
+            )
         return CatalogueSnapshot(
             state=state,
             catalogue=None if cached is None else cached.parsed,
@@ -1131,7 +1158,13 @@ async def async_setup_price_repository(
     if data.price_repository is not None:
         await data.price_repository.async_restore()
         return data.price_repository
-    repository = PriceRepository(hass, base_url=base_url, session=session, store=store, now=now)
+    # The bundled area list, read off the loop; without it the repository works from the relay's alone. Read
+    # before the second lookup, so that lookup and the publish below stay one synchronous step.
+    bundled = await async_load_bundled(hass)
+    if data.price_repository is not None:
+        await data.price_repository.async_restore()
+        return data.price_repository
+    repository = PriceRepository(hass, base_url=base_url, session=session, store=store, now=now, bundled=bundled)
     data.price_repository = repository
     await repository.async_restore()
     return repository
