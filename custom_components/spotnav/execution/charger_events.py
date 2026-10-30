@@ -9,7 +9,8 @@ The events, `CHARGER_EVENT_TYPES`:
 * `plugged_in` / `unplugged`: the vehicle's connection changed, for a charger that can say whether a
   vehicle is connected (an unknown reading is never a change);
 * `charge_started` / `charge_finished`: the charger began / stopped charging. `finished` says whether
-  the vehicle was unplugged then, and how much energy the charger's register counted since the start;
+  the vehicle was unplugged then, and how much energy the charger's register counted since the start
+  (the event entity adds what that charge cost, from its session);
 * `plan_installed`: a charging plan that is not the one before it was installed (by Auto or by hand);
 * `plan_at_risk`: the departure cannot be met with the energy that remains. Once per time it becomes so.
 
@@ -67,6 +68,11 @@ class ChargerEventTracker:
     def __init__(self) -> None:
         self._last: ChargerFacts | None = None
         self._register_at_start: float | None = None
+
+    @property
+    def charging(self) -> bool | None:
+        """Whether the charge is going as last seen, `None` before it was read."""
+        return None if self._last is None else self._last.charging
 
     def observe(self, facts: ChargerFacts) -> list[Event]:
         before = self._last
