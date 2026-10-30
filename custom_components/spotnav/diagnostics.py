@@ -396,6 +396,8 @@ def _price_data(hass: HomeAssistant) -> dict[str, Any]:
                 "tomorrow_data": day_summary(area.tomorrow_snapshot),
                 # The history profile a dated departure weighs (window, weeks, coverage; no prices).
                 "history_profile": manager.profile_summary(area.area_id),
+                # Whether the price history's backfill waits for this area (a failure, and when it tries again).
+                "history_backfill": manager.backfill_summary(area.area_id),
             }
             for area in snapshot.areas
         ]

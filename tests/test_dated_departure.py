@@ -372,6 +372,8 @@ async def test_diagnostics_carry_the_profile_summary_and_the_last_wait_decision(
     assert profile["usable"] is True and profile["weeks"] == 4 and profile["hour_entries"] == 168
     assert profile["from"] == "2026-09-04" and profile["to"] == "2026-10-01"
     assert not any(isinstance(value, (list, dict)) for value in profile.values()), "no price rows"
+    backfill = next(area for area in price_data["areas"] if area["area"] == SE4)["history_backfill"]
+    assert backfill is None or set(backfill) == {"queued", "failures", "next_try"}
 
 
 async def test_a_charger_that_never_weighed_history_reports_nothing_for_it(

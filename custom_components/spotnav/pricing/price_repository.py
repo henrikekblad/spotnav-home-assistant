@@ -61,7 +61,10 @@ with the provider's `market_tz` and publication, and every calendar question her
 
 The history profile is built here from the held market-day files (`pricing/price_profile.py`, the relay's
 own rules), not fetched: [profile_for] reads the files of the 28-day window on the area's market calendar,
-keyed by market date, and keeps the result until the window or a file in it changes.
+keyed by market date, and keeps the result until the window or a file in it changes. The past files of that
+window (and, from a provider that keeps years, a year for statistics) are fetched by the history backfill
+(`pricing/price_history.py`) through [async_fetch_history], which never asks for a held day or one older than the
+provider keeps (`history_reach`).
 """
 
 from __future__ import annotations
@@ -69,7 +72,8 @@ from __future__ import annotations
 import asyncio
 import copy
 import logging
-from dataclasses import dataclass, replace
+from collections.abc import Sequence
+from dataclasses import dataclass, field, replace
 from datetime import date, datetime, timedelta
 from typing import Any, Final, Literal
 
@@ -230,6 +234,23 @@ class DaySnapshot:
         if self.complete is not None:
             return self.document is not None and self.complete
         return self.document is not None and self.document.covers_whole_day()
+
+
+@dataclass(frozen=True, slots=True)
+class HistoryFetch:
+    """What one [PriceRepository.async_fetch_history] call brought.
+
+    `stored` are the days now held; `missing` the days the provider answered without a usable file (nothing
+    published for it, or a file the parser refused), with the code; `failed` the first transport failure (the
+    provider could not be asked: back off), with the provider's `retry_after` when it named one; `switched` that
+    the area moved to another provider while it was asked, so nothing was kept.
+    """
+
+    stored: tuple[date, ...] = ()
+    missing: dict[date, FailureCode] = field(default_factory=dict)
+    failed: FailureCode | None = None
+    retry_after: timedelta | None = None
+    switched: bool = False
 
 
 @dataclass(slots=True)
@@ -609,6 +630,83 @@ class PriceRepository:
         if reach is None or calendar is None:
             return False
         return day < market_today(self._now(), calendar) - reach
+
+    def archive_reachable(self, area_id: str, day: date) -> bool:
+        """Whether a past display date can be asked of the area's provider at all: its principal file is not older
+        than the provider keeps (`history_reach`). No I/O; a held date is answered from the store either way."""
+        calendars = self.calendars(area_id)
+        principal = day if calendars is None else principal_market_day(day, *calendars)
+        return not self._out_of_reach(area_id, principal)
+
+    def holds_file(self, area_id: str, day: date) -> bool:
+        """Whether the market-day file is held on the calendar the area is read in now. No I/O."""
+        return self._held_file(area_id, day) is not None
+
+    def history_reachable(self, area_id: str, day: date) -> bool:
+        """Whether a past market-day file is within the area's provider's `history_reach`. No I/O."""
+        return not self._out_of_reach(area_id, day)
+
+    async def async_fetch_history(self, area_id: str, days: Sequence[date], *, persist: bool = True) -> HistoryFetch:
+        """Past market-day files for the history store, asked of the area's provider (the backfill,
+        `pricing/price_history.py`).
+
+        A day held, not yet over (the market's today or later: the refresh manager's) or older than the provider
+        keeps is not asked. One day is one `async_fetch_day`; several consecutive days are one `async_fetch_days`,
+        for a provider that answers a range. Each file is validated like any other and kept under the provider that
+        sent it; the store is written once (unless [persist] is false: the caller writes later with
+        [async_persist_history]). A provider that no longer serves the area when the answer arrives has its files
+        dropped (`switched`).
+        """
+        await self.async_restore()
+        provider = self._router.provider_for(area_id)
+        calendar = self._market_calendar(area_id)
+        if calendar is None:
+            return HistoryFetch(failed="source_missing")
+        today = market_today(self._now(), calendar)
+        wanted = sorted(
+            day
+            for day in set(days)
+            if day < today and self._held_file(area_id, day) is None and not self._out_of_reach(area_id, day)
+        )
+        if not wanted:
+            return HistoryFetch()
+        if len(wanted) == 1:
+            fetches = {wanted[0]: await provider.async_fetch_day(area_id, wanted[0])}
+        else:
+            fetch_days = getattr(provider, "async_fetch_days", None)
+            if fetch_days is None:
+                raise ValueError("this provider answers one day at a time")
+            fetches = await fetch_days(area_id, wanted)
+        if self._router.provider_for(area_id) is not provider:
+            return HistoryFetch(switched=True)
+        stored: list[date] = []
+        missing: dict[date, FailureCode] = {}
+        failed: FailureCode | None = None
+        retry_after: timedelta | None = None
+        for day in wanted:
+            # A day a range answer did not carry is a day the provider has nothing for.
+            fetch = fetches.get(day) or DayFetch("not_published", code="not_published")
+            if fetch.retry_after is not None:
+                retry_after = max(retry_after or fetch.retry_after, fetch.retry_after)
+            if fetch.outcome == "failed" and is_transport(fetch.code):
+                failed = failed or fetch.code
+                continue
+            try:
+                parsed, document = self._accept(fetch, area_id, day)
+            except (RelayParseError, _Refused) as err:
+                missing[day] = err.code
+                continue
+            self._days.setdefault((area_id, day), {})[parsed.tz] = _Cached(
+                document=document, fetched_at=self._now(), parsed=parsed, provider=provider.key
+            )
+            stored.append(day)
+        if stored and persist:
+            await self._persist()
+        return HistoryFetch(stored=tuple(stored), missing=missing, failed=failed, retry_after=retry_after)
+
+    async def async_persist_history(self) -> None:
+        """Write the store now (after [async_fetch_history] calls made with `persist=False`)."""
+        await self._persist()
 
     def profile_for(self, area_id: str) -> PriceProfile | None:
         """The area's history profile, built from the held day files, or `None`. No I/O.
