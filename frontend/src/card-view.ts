@@ -875,6 +875,11 @@ export function capabilityBody(doc: Document, model: CardModel): HTMLElement {
     if (item.key === "target_soc" && item.state === "unavailable") {
       body.append(element(doc, "span", C.capabilityNote, translate(model.language, "cap.targetSocNote")));
     }
+    if (item.noteKey !== undefined) {
+      const note = element(doc, "span", C.capabilityNote, translate(model.language, item.noteKey));
+      note.dataset["capabilityNote"] = item.key;
+      body.append(note);
+    }
   }
   return body;
 }

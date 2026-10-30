@@ -1448,19 +1448,20 @@ describe("the charger editor's control path and write policy", () => {
     expect(lines[0]?.closest("[data-part='current-limit']")).not.toBeNull();
   });
 
-  it("says nothing when SpotNav does not set the current", async () => {
+  it("says only that load balancing can pause the charge when SpotNav does not set the current", async () => {
     const element = await open({
       ...wallbox,
       current: { kind: "none", entity_id: null, service: null, enabled: false },
       policy: { ...POLICY_FREE, min_interval_s: 900 },
       capabilities: { ...CAPABILITIES, set_current: false, regulated_current: false },
     });
-    expect(restriction(element)).toBeNull();
+    expect(restriction(element)).toBe(translate("en", "control.limit.switchOnly"));
+    expect(translate("en", "control.limit.switchOnly")).toContain("can only pause the charge");
   });
 
   it("words the restrictions in every language", () => {
     for (const language of ["sv", "nb", "da", "fi"] as const) {
-      for (const key of ["minutes", "seconds", "flash", "stopOnly", "installation"] as const) {
+      for (const key of ["minutes", "seconds", "flash", "stopOnly", "switchOnly", "installation"] as const) {
         const text = translate(language, `control.limit.${key}`, { count: "5" });
         expect(text, `${language} ${key}`).not.toBe(translate("en", `control.limit.${key}`, { count: "5" }));
         expect(text).not.toContain("{count}");
