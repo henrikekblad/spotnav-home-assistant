@@ -288,6 +288,9 @@ class ChargerRequest:
     #: How `phase` was decided (`PhaseBasis`): `worst_case` with `phase` still `None` is an "Automatic"
     #: charger not yet resolved.
     phase_basis: PhaseBasis = "chosen"
+    #: A charger whose current cannot be set, only switched on and off: `requested_current_a` and `min_current_a`
+    #: are its switched current, and the regulator only pauses it whole (`regulator.decide_switched_load`).
+    switch_only: bool = False
 
     def phases_used(self) -> tuple[PhaseName, ...] | None:
         """The phases this request draws from, or `None` if that's unknown (an "Automatic" single-phase

@@ -92,6 +92,9 @@ RegulatorReason = Literal[
     # The site's measurement has been lost for `MEASUREMENT_LOST_GRACE_S`: the charger is stepped to its
     # minimum until it is back (only `SiteCapacityController`, never `decide_charging_current`).
     "site_measurement_lost_held_at_minimum",
+    # A charger that can only be switched on and off draws on a phase over the limit on a net import: paused whole,
+    # as nothing slower can lower it (`decide_switched_load`).
+    "switched_load_paused_for_import_overload",
 ]
 
 # Decisions in which the fuse is in danger *now*: a write the charger cannot take in time must then
@@ -116,6 +119,9 @@ DEFAULT_MIN_CONSECUTIVE_CONFIRMATIONS = 3
 MEASUREMENT_LOST_GRACE_S = 60.0
 
 MEASUREMENT_LOST_REASON: RegulatorReason = "site_measurement_lost_held_at_minimum"
+
+# A switch-only charger reading less than this on every phase it uses has nothing to shed: it is not drawing.
+SWITCHED_DRAWING_FROM_A = 1.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -477,6 +483,17 @@ def decide_charging_current(
         return RegulatorDecision(None, "charger_phase_wiring_unknown", None, {})
     if request.measured_current_a is None:
         return RegulatorDecision(None, "charger_measurement_unusable", None, {})
+    if request.switch_only:
+        return decide_switched_load(
+            site_result=site_result,
+            request=request,
+            phases=phases,
+            voltage_by_phase=voltage_by_phase,
+            confirmed_direction_by_phase=confirmed_direction_by_phase,
+            max_age_s=max_age_s,
+            zero_margin_w=zero_margin_w,
+            headroom_by_phase=headroom_by_phase,
+        )
 
     per_phase: dict[PhaseName, tuple[float | None, RegulatorReason]] = {}
     overloaded_phases: set[PhaseName] = set()
@@ -559,6 +576,99 @@ def decide_charging_current(
         limiting_phase, (proposed, reason) = max(per_phase.items(), key=lambda kv: kv[1][0])
 
     return RegulatorDecision(proposed, reason, limiting_phase, basis)
+
+
+def decide_switched_load(
+    *,
+    site_result: SiteCapacityResult,
+    request: ChargerRequest,
+    phases: Sequence[PhaseName],
+    voltage_by_phase: Mapping[PhaseName, float | None],
+    confirmed_direction_by_phase: Mapping[PhaseName, DirectionClass | None],
+    max_age_s: float,
+    zero_margin_w: float = DEFAULT_ZERO_MARGIN_W,
+    headroom_by_phase: Mapping[PhaseName, float | None] | None = None,
+) -> RegulatorDecision:
+    """The decision for a charger that can only be switched on and off (`ChargerRequest.switch_only`).
+
+    It cannot be lowered, only paused whole, so there is one action: while it draws on a phase that is over the
+    limit (its headroom negative) on a net import, it is paused (`0.0`, an import overload like any must-lower).
+    On an export or unclear overload nothing is reliable (`None`), as for any charger. Otherwise its draw is kept
+    as it is (`no_change_requested`): a drawing charger is never paused on a merely tight margin, and one not
+    drawing yet is offered its switched current where every phase has room for it (else `0.0` with
+    `paused_safe_current_below_charger_minimum`, which pauses nothing: only an overload does). Taken after the
+    chargers whose current can be set while the site is over (`allocate_regulator_decisions`), so they are lowered
+    first, in their own order, and this one pauses only for what is still over.
+    """
+    measured_source = request.measured_current_a
+    if measured_source is None:
+        return RegulatorDecision(None, "charger_measurement_unusable", None, {})
+    basis: dict[PhaseName, PhaseDecisionBasis] = {}
+    headrooms: dict[PhaseName, float] = {}
+    draws = 0.0
+    for phase in phases:
+        measured = measured_source.get(phase)
+        if (
+            measured.value is None
+            or measured.problem is not None
+            or measured.age_s is None
+            or measured.age_s > max_age_s
+        ):
+            return RegulatorDecision(None, "charger_measurement_unusable", phase, basis)
+        signed_w = site_result.phase_signed_active_power_w.get(phase)
+        signed_age = site_result.phase_signed_active_power_age_s.get(phase)
+        if (
+            signed_w is None
+            or site_result.phase_signed_active_power_reason.get(phase) is not None
+            or signed_age is None
+            or signed_age > max_age_s
+        ):
+            return RegulatorDecision(None, "phase_measurement_unusable", phase, basis)
+        headroom = (
+            headroom_by_phase.get(phase) if headroom_by_phase is not None else site_result.measured_margin_a.get(phase)
+        )
+        if headroom is None:
+            return RegulatorDecision(None, "phase_measurement_unusable", phase, basis)
+        headrooms[phase] = headroom
+        draws = max(draws, measured.value)
+        basis[phase] = PhaseDecisionBasis(
+            signed_active_power_w=signed_w,
+            signed_active_power_age_s=signed_age,
+            measured_current_a=measured.value,
+            measured_current_age_s=measured.age_s,
+            requested_current_a=request.requested_current_a,
+            direction=classify_direction(signed_w, zero_margin_w),
+            confirmed_direction=confirmed_direction_by_phase.get(phase),
+        )
+    overloaded = [phase for phase in phases if headrooms[phase] < 0.0]
+    drawing = draws >= SWITCHED_DRAWING_FROM_A
+    if overloaded:
+        limiting_phase = min(overloaded, key=lambda phase: headrooms[phase])
+        for phase in overloaded:
+            direction = basis[phase].direction
+            if direction == "net_export":
+                return RegulatorDecision(None, "active_export_overload_no_reliable_action", phase, basis)
+            if direction != "net_import":
+                return RegulatorDecision(None, "active_overload_direction_unclear_no_reliable_action", phase, basis)
+        if not drawing:
+            return RegulatorDecision(draws, "no_change_requested", limiting_phase, basis)
+        if _reduction_overloads_another_phase(
+            site_result=site_result,
+            request=request,
+            phases=phases,
+            proposed=0.0,
+            voltage_by_phase=voltage_by_phase,
+        ):
+            return RegulatorDecision(None, "active_overload_direction_unclear_no_reliable_action", limiting_phase, basis)
+        return RegulatorDecision(0.0, "switched_load_paused_for_import_overload", limiting_phase, basis, overload=True)
+    if drawing or not request.requested_current_a:
+        return RegulatorDecision(draws, "no_change_requested", None, basis)
+    # On, and not drawing yet: its whole switched current where every phase has room for it.
+    needed = request.requested_current_a
+    limiting_phase = min(phases, key=lambda phase: headrooms[phase] + basis[phase].measured_current_a)  # type: ignore[operator]
+    if all(headrooms[phase] + (basis[phase].measured_current_a or 0.0) >= needed for phase in phases):
+        return RegulatorDecision(needed, "increase_within_safe_uncredited_margin", limiting_phase, basis)
+    return RegulatorDecision(0.0, "paused_safe_current_below_charger_minimum", limiting_phase, basis)
 
 
 def magnitude_overload_lowering(
@@ -681,7 +791,12 @@ def allocate_regulator_decisions(
     blocked_phases: set[PhaseName] = set()
     decisions: dict[str, RegulatorDecision] = {}
 
-    for request in allocation_order(requests):
+    ordered = allocation_order(requests)
+    if any(margin is not None and margin < 0.0 for margin in site_result.measured_margin_a.values()):
+        # Over the limit: the chargers whose current can be set take the cut first, in their own order; a charger
+        # that can only be paused is paused only for what is still over after them.
+        ordered = [r for r in ordered if not r.switch_only] + [r for r in ordered if r.switch_only]
+    for request in ordered:
         phases_used = request.phases_used()
         if phases_used is not None and blocked_phases.intersection(phases_used):
             decisions[request.charger_entry_id] = RegulatorDecision(
