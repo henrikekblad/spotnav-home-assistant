@@ -120,7 +120,7 @@ Solar and hybrid need the grid's signed power. A derived site has it per phase; 
 | DSMR smart meter (`dsmr`) | Derived from power and voltage, current exact | Import and export are two entities | Total grid power for solar and hybrid: an import and an export entity. Updates about every 30 s. | Set up by users: detected and configured, charging not yet confirmed (ESPHome P1 reader) |
 | DSMR Reader (`dsmr_reader`) | Derived from power and voltage, current exact | Import and export are two entities | Total grid power for solar and hybrid: an import and an export entity. | Detected from the integration's source |
 | P1 Monitor (`p1_monitor`) | Derived from power and voltage, current exact | Import and export are two entities | Total grid power for solar and hybrid: an import and an export entity. | Detected from the integration's source |
-| AMS HAN (`amshan`) | Direct phase current | None needed |  | Detected from the integration's source |
+| AMS HAN (`amshan`) | Direct phase current | Negative current while exporting, read as its size |  | Detected from the integration's source |
 | EDL21 smart meter (`edl21`) | Derived from power and voltage, current exact | None needed | Reports only when a value changes. | Detected from the integration's source |
 | Huawei Solar (`huawei_solar`) | Derived from power and voltage, current exact | Negative current while exporting, read as its size; Export-positive power, negated | Updates about every 30 s. | Detected from the integration's source |
 | Solarman (`solarman`) | Derived from power and voltage, current exact | Negative current while exporting, read as its size |  | Detected from the integration's source |

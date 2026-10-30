@@ -307,6 +307,9 @@ METER_ROWS: Final[tuple[MeterRow, ...]] = (
             _p("current", r"[-_]current_l(?P<n>[123])$"),
             _p("voltage", r"[-_]voltage_l(?P<n>[123])$"),
         ),
+        # Aidon meters send phase current as a signed `long`: a phase that exports reads negative. The
+        # flag only reads |I|, so it changes nothing for the meters whose current never goes negative.
+        signed_current=True,
     ),
     MeterRow(
         platforms=("edl21",),
