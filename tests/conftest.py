@@ -377,6 +377,17 @@ def offline_relay(monkeypatch: pytest.MonkeyPatch, transport: StubTransport) -> 
 
 
 @pytest.fixture
+def no_bundled_catalogue(monkeypatch: pytest.MonkeyPatch) -> None:
+    """An installation without the area list bundled with the integration: only the relay's can be held."""
+    from custom_components.spotnav.pricing import price_repository as repository_module
+
+    async def absent(_hass):
+        return None
+
+    monkeypatch.setattr(repository_module, "async_load_bundled", absent)
+
+
+@pytest.fixture
 def install_spy(monkeypatch: pytest.MonkeyPatch) -> list[ChargingPlan]:
     """Every real installation, through the controller's own public method.
 

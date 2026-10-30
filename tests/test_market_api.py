@@ -280,7 +280,8 @@ async def test_a_held_catalogue_whose_next_attempt_failed_is_stale_and_still_usa
     assert transport.call_count(AREAS_PATH) == 2
 
 
-async def test_nothing_held_is_an_honest_answer_and_never_a_compiled_fallback(
+@pytest.mark.usefixtures("no_bundled_catalogue")
+async def test_nothing_held_is_an_honest_answer(
     hass: HomeAssistant, hass_ws_client, transport: StubTransport
 ) -> None:
     # The relay serves no catalogue at all, which is a transport failure and not an empty market.
@@ -296,6 +297,25 @@ async def test_nothing_held_is_an_honest_answer_and_never_a_compiled_fallback(
     assert payload["areas"] == [] and payload["configured_area"] is None
 
 
+async def test_an_offline_relay_leaves_the_bundled_list(
+    hass: HomeAssistant, hass_ws_client, transport: StubTransport
+) -> None:
+    transport.routes.pop(AREAS_PATH)
+    await setup_charger(hass)
+    client = await hass_ws_client(hass)
+
+    before = transport.call_count(AREAS_PATH)
+    payload = await read_payload(hass, client)
+    # The bundled list answers, so the read asks the relay no more: the refresh cycle keeps asking.
+    assert transport.call_count(AREAS_PATH) == before
+    assert payload["state"] == "stale" and payload["reason"] == "offline"
+    bundled = domain_data(hass).price_repository.catalogue_snapshot()
+    assert bundled.source == "bundled" and bundled.fetched_at is None
+    assert [area["area_id"] for area in payload["areas"]] == list(bundled.catalogue.area_ids)
+    assert {"SE3", "DE-LU", "FI", "PT"} <= {area["area_id"] for area in payload["areas"]}
+
+
+@pytest.mark.usefixtures("no_bundled_catalogue")
 async def test_a_catalogue_the_client_cannot_read_is_invalid_not_unavailable(
     hass: HomeAssistant, hass_ws_client, transport: StubTransport
 ) -> None:
@@ -306,6 +326,18 @@ async def test_a_catalogue_the_client_cannot_read_is_invalid_not_unavailable(
     payload = await read_payload(hass, client)
     assert payload["state"] == "invalid" and payload["reason"] == "invalid"
     assert payload["areas"] == []
+
+
+async def test_an_unreadable_relay_list_leaves_the_bundled_one_and_says_why(
+    hass: HomeAssistant, hass_ws_client, transport: StubTransport
+) -> None:
+    transport.serve(AREAS_PATH, 200, "{not json at all")
+    await setup_charger(hass)
+    client = await hass_ws_client(hass)
+
+    payload = await read_payload(hass, client)
+    assert payload["state"] == "stale" and payload["reason"] == "invalid"
+    assert len(payload["areas"]) == len(domain_data(hass).price_repository.catalogue_snapshot().catalogue.areas)
 
 
 # ------------------------------------ 3. the stored choice, offline and unlisted; one shared cache

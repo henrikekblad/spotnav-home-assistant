@@ -6,8 +6,10 @@ never disappears merely because the catalogue is offline or has moved on. It wri
 starts no download of its own: with no catalogue held it uses the repository's coalesced ensure
 path, so two chargers reading at once share one fetch.
 
-Deliberately absent: a compiled area list or any fallback (no catalogue is an honest non-ready
-answer, never an invented one); a second contract (the settings record is the only authority on what
+While the relay's list is not held, the catalogue is the one bundled with the integration
+(`pricing/areas.json`, generated from the relay's own area table, `pricing/area_catalogue.py`), so the
+picker has its areas without the network; its snapshot says `source: "bundled"`. Deliberately absent: any
+other fallback (with neither list, no catalogue is an honest non-ready answer); a second contract (the settings record is the only authority on what
 a charger chose); and any conversion (VAT is the relay's percent, tax and transfer its minor
 currency unit, and currency and both display units travel as separate facts).
 """
