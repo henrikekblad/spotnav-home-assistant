@@ -30,6 +30,7 @@
   "status.loadBalancingLimitedTo": "Aseman kuormanhallinta rajoittaa latauksen {limit} A:iin.",
   "status.loadBalancingLimitedByBattery": "Kotiakku lataa verkosta ja jakaa pääsulakkeen: auto saa {limit} A.",
   "status.loadBalancingLimitedByHouse": "Talon kulutus rajoittaa auton {limit} A:iin.",
+  "status.loadBalancingMeasurementLost": "Aseman mittari ei anna tuoreita lukemia: kuormanhallinta pitää auton vähimmässä {limit} A:ssa, kunnes mittaus palaa.",
   "status.balancingPausedHouse": "Tauolla – talo käyttää koko sulakkeen; yritetään uudelleen klo {time}",
   "status.balancingPausedBattery": "Tauolla – kotiakku lataa verkosta ja täyttää pääsulakkeen; yritetään uudelleen klo {time}",
   "status.balancingPausedHouseRoom": "Tauolla – talo käyttää koko sulakkeen; yritetään uudelleen, kun tilaa vapautuu",

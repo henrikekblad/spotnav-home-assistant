@@ -30,6 +30,7 @@
   "status.loadBalancingLimitedTo": "Laden wordt door de load balancing van de locatie beperkt tot {limit} A.",
   "status.loadBalancingLimitedByBattery": "De thuisbatterij laadt van het net en deelt de hoofdzekering: de auto krijgt {limit} A.",
   "status.loadBalancingLimitedByHouse": "Het verbruik in huis beperkt de auto tot {limit} A.",
+  "status.loadBalancingMeasurementLost": "De meter van de locatie geeft geen actuele waarden: de load balancing houdt de auto op zijn minimum van {limit} A tot de meting terug is.",
   "status.balancingPausedHouse": "Gepauzeerd – het huis gebruikt de hele zekering; nieuwe poging om {time}",
   "status.balancingPausedBattery": "Gepauzeerd – de thuisbatterij laadt van het net en vult de hoofdzekering; nieuwe poging om {time}",
   "status.balancingPausedHouseRoom": "Gepauzeerd – het huis gebruikt de hele zekering; nieuwe poging zodra er ruimte is",

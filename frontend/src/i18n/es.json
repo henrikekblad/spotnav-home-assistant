@@ -30,6 +30,7 @@
   "status.loadBalancingLimitedTo": "La carga está limitada a {limit} A por el equilibrado de carga de la instalación.",
   "status.loadBalancingLimitedByBattery": "La batería doméstica se carga desde la red y comparte el fusible general: el coche recibe {limit} A.",
   "status.loadBalancingLimitedByHouse": "El consumo de la casa limita el coche a {limit} A.",
+  "status.loadBalancingMeasurementLost": "El contador de la instalación no da lecturas recientes: el equilibrado de carga mantiene el coche en su mínimo de {limit} A hasta que vuelva la medición.",
   "status.balancingPausedHouse": "En pausa: la casa usa todo el fusible; se reintentará a las {time}",
   "status.balancingPausedBattery": "En pausa: la batería doméstica se carga desde la red y ocupa el fusible general; se reintentará a las {time}",
   "status.balancingPausedHouseRoom": "En pausa: la casa usa todo el fusible; se reintentará cuando haya margen",

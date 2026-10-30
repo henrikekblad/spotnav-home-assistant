@@ -30,6 +30,7 @@
   "status.loadBalancingLimitedTo": "Opladningen begrænses til {limit} A af anlæggets lastbalancering.",
   "status.loadBalancingLimitedByBattery": "Hjemmebatteriet oplader fra nettet og deler hovedsikringen: bilen får {limit} A.",
   "status.loadBalancingLimitedByHouse": "Husets forbrug begrænser bilen til {limit} A.",
+  "status.loadBalancingMeasurementLost": "Anlæggets måler giver ingen friske målinger: lastbalanceringen holder bilen på sit minimum på {limit} A, indtil målingen er tilbage.",
   "status.balancingPausedHouse": "Sat på pause – huset bruger hele sikringen; prøver igen kl. {time}",
   "status.balancingPausedBattery": "Sat på pause – hjemmebatteriet oplader fra nettet og fylder hovedsikringen; prøver igen kl. {time}",
   "status.balancingPausedHouseRoom": "Sat på pause – huset bruger hele sikringen; prøver igen, når der er plads",

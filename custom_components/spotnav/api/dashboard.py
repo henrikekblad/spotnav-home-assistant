@@ -335,7 +335,8 @@ class CapturedSite:
     #: This charger's row of `SiteCapacityController.solar_surplus_snapshot` / `.hybrid_snapshot`.
     solar_state: dict[str, Any] | None
     hybrid_state: dict[str, Any] | None
-    #: The phases that make the site's measurement unusable, and why (`site/measurement_problem.py`).
+    #: The phases that make the site's measurement unusable, and why (`site/measurement_problem.py`), once
+    #: that has lasted (`SiteCapacityController.lasting_measurement_problem`).
     measurement_problem: MeasurementProblem | None = None
     #: The current active control last gave this charger while it holds the car below what it asked
     #: for, and why where known (`SiteCapacityController.load_balancing_limit`).
@@ -957,7 +958,7 @@ def capture_site(
         active_control_reason=_active_control_reason(controller),
         solar_state=dict(solar_snapshot) if solar_snapshot is not None else None,
         hybrid_state=dict(hybrid_snapshot) if hybrid_snapshot is not None else None,
-        measurement_problem=controller.measurement_problem,
+        measurement_problem=controller.lasting_measurement_problem,
         limit_a=finite_number(limit_a),
         limit_cause=limit_cause,
         balancing_paused=balancing is not None,

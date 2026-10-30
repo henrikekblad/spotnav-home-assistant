@@ -25,7 +25,7 @@ from typing import Any, Final
 from homeassistant.util import dt as dt_util
 
 from ..planning.planner import FiscalChoice
-from .costing import price_slices, Slice
+from .costing import price_slices, Slice, subtract_slices
 
 #: Where a session's energy comes from: the charger's energy register, SpotNav's own integration of a
 #: smart plug's power, or an estimate from the current the charger was asked for (marked `estimated`).
@@ -162,6 +162,18 @@ class ChargeSession:
             priced_kwh=costing.priced_kwh,
             cost_minor=costing.cost_minor,
             reference_cost_minor=costing.reference_cost_minor,
+        )
+
+    def since(self, earlier: ChargeSession | None) -> ChargeSession:
+        """The part of this session delivered after `earlier`, the same session as it stood then (all of it
+        when `earlier` is `None` or another session): its energy and intervals, with no cost made yet."""
+        if earlier is None or earlier.id != self.id:
+            energy, intervals = self.energy_kwh, self.intervals
+        else:
+            energy = max(self.energy_kwh - earlier.energy_kwh, 0.0)
+            intervals = subtract_slices(self.intervals, earlier.intervals)
+        return replace(
+            self, energy_kwh=energy, intervals=intervals, priced_kwh=0.0, cost_minor=None, reference_cost_minor=None
         )
 
     @property

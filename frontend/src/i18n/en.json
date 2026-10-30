@@ -30,6 +30,7 @@
   "status.loadBalancingLimitedTo": "Charging is limited to {limit} A by the site's load balancing.",
   "status.loadBalancingLimitedByBattery": "The home battery charges from the grid and shares the main fuse: the car gets {limit} A.",
   "status.loadBalancingLimitedByHouse": "House consumption limits the car to {limit} A.",
+  "status.loadBalancingMeasurementLost": "The site's meter has no fresh reading: load balancing holds the car at its minimum of {limit} A until it is back.",
   "status.balancingPausedHouse": "Paused – the house is using the whole fuse; trying again at {time}",
   "status.balancingPausedBattery": "Paused – the home battery charges from the grid and fills the main fuse; trying again at {time}",
   "status.balancingPausedHouseRoom": "Paused – the house is using the whole fuse; trying again when there is room",

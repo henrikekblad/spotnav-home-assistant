@@ -258,6 +258,9 @@ def _site_diagnostics(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, Any]
         "charger_phase": {} if controller is None else controller.charger_phase_snapshot(),
         # The resumes of a balancing pause per charger, and the back-off left after too many in ten minutes.
         "balancing_resume": {} if controller is None else controller.balancing_resume_snapshot(),
+        # How often load balancing held a charger at its minimum because the site's measurement was lost, when it
+        # last did, and for how long the measurement has been lost per charger now.
+        "measurement_lost": {} if controller is None else controller.measurement_lost_snapshot(),
         # How often each measurement entity reports (median of its recent `last_reported` gaps, `None`
         # until enough are seen), and which ones hold load balancing for reporting too seldom.
         "report_cadence": None

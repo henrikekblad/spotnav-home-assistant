@@ -384,3 +384,54 @@ async def test_the_start_cause_is_consumed_once_and_only_while_fresh(hass: HomeA
         await controller.async_start()
         frozen.move_to(datetime.now(UTC) + timedelta(minutes=10))
         assert controller.consume_start_cause() is None, "a stale cause belongs to nothing"
+
+
+async def test_a_finished_charge_event_carries_its_cost_as_the_last_session_sensor_does(hass: HomeAssistant) -> None:
+    with freeze_time(NOW) as frozen:
+        entry = await charger(hass)
+        await go_auto(hass)
+        fired: list[dict] = []
+
+        def on_change(change) -> None:
+            state = change.data["new_state"]
+            if state is not None and state.attributes.get("event_type") == "charge_finished":
+                fired.append(dict(state.attributes))
+
+        hass.bus.async_listen("state_changed", on_change)
+        await one_charge(hass, frozen, entry, hours=1.0, kwh=6.0)
+
+        (finished,) = fired
+        last_cost = hass.states.get(entity_id(hass, entry.entry_id, "sessions_last_cost"))
+        assert finished["energy_kwh"] == pytest.approx(6.0)
+        assert finished["cost"] == pytest.approx(float(last_cost.state))
+        assert finished["currency"] == "SEK" == last_cost.attributes["unit_of_measurement"]
+        assert finished["average_price"] == pytest.approx(
+            last_cost.attributes["average_price_minor_per_kwh"] / 100, abs=1e-4
+        )
+        assert finished["unpriced_kwh"] == 0.0
+
+
+async def test_a_charge_after_a_short_pause_reports_only_its_own_energys_cost(hass: HomeAssistant) -> None:
+    with freeze_time(NOW) as frozen:
+        entry = await charger(hass)
+        await go_auto(hass)
+        event = entity_id(hass, entry.entry_id, "charger_events", "event")
+        hass.states.async_set("switch.charger_a", "on")
+        await hass.async_block_till_done()
+        for kwh in (106.0, 109.0):
+            frozen.move_to(datetime.now(UTC) + timedelta(minutes=30))
+            hass.states.async_set(REGISTER, str(kwh), REGISTER_ATTRIBUTES)
+            hass.states.async_set("switch.charger_a", "off")
+            await hass.async_block_till_done()
+            finished = hass.states.get(event).attributes
+            assert finished["event_type"] == "charge_finished"
+            if kwh == 106.0:
+                first = finished["cost"]
+                # Back on within the debounce: the same session goes on.
+                frozen.move_to(datetime.now(UTC) + timedelta(seconds=30))
+                hass.states.async_set("switch.charger_a", "on")
+                await hass.async_block_till_done()
+        assert finished["energy_kwh"] == pytest.approx(3.0)
+        session = domain_data(hass).session_store.open_session(entry.entry_id)
+        assert session is not None and session.energy_kwh == pytest.approx(9.0), "one session"
+        assert first + finished["cost"] == pytest.approx(round(session.cost_minor / 100, 4), abs=1e-3)
