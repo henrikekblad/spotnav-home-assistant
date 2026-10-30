@@ -23,7 +23,7 @@ const tokens = await ha.login();
 const api = new ha.Api(tokens);
 await ha.promoteHttp(api);
 await ha.setLocation(api);
-for (const demo of ["ocpp", "sigen", "kia_uvo", "demo_vision"]) {
+for (const demo of ["ocpp", "sigen", "kia_uvo", "demo_vision", "nordpool"]) {
   if ((await api.entries(demo)).length === 0) await api.flow(demo);
 }
 // A clean slate for the integration under test, so a re-run against a live instance starts the same way.
