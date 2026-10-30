@@ -29,6 +29,11 @@ Per phase:
 Outcomes stay distinct: a legal setpoint (`0` or `>= min_current_a`), a
 confident pause (`0.0`, `_legalize_or_pause`), and `None` for "no reliable
 action" (never just because a computed value was small).
+
+A site whose measurement is lost (`measurement_lost`) decides nothing, and no decision may be written
+on it (`applyability_failure`). Once it has been lost for `MEASUREMENT_LOST_GRACE_S` the controller
+steps every charger it governs that draws above its minimum to that minimum
+(`MEASUREMENT_LOST_REASON`): a lowering, which needs no headroom proof, never a pause.
 """
 
 from __future__ import annotations
@@ -84,6 +89,9 @@ RegulatorReason = Literal[
     "paused_safe_current_below_charger_minimum",
     # A sibling on a shared phase was undetermined (only `allocate_regulator_decisions`).
     "shared_phase_blocked_by_another_chargers_undetermined_decision",
+    # The site's measurement has been lost for `MEASUREMENT_LOST_GRACE_S`: the charger is stepped to its
+    # minimum until it is back (only `SiteCapacityController`, never `decide_charging_current`).
+    "site_measurement_lost_held_at_minimum",
 ]
 
 # Decisions in which the fuse is in danger *now*: a write the charger cannot take in time must then
@@ -98,6 +106,16 @@ DEFAULT_HELP_MARGIN_FACTOR = 0.5
 
 # Consecutive consistent readings required to confirm a reduction (guards against desync).
 DEFAULT_MIN_CONSECUTIVE_CONFIRMATIONS = 3
+
+# How long (s) the site's measurement may stay lost on a phase a charger may draw on before load balancing steps
+# that charger to its minimum current. A reading is stale only once older than the maximum age (120 s by default),
+# so this comes on top of it; the site is recomputed every 30 s, so it spans two of those ticks: a meter's
+# integration reloading, or one reading arriving late, moves no charger, and the house is left unwatched at a
+# charger's full current for some three and a half minutes at most, well within what a fuse takes at the overload
+# a house's own loads can add.
+MEASUREMENT_LOST_GRACE_S = 60.0
+
+MEASUREMENT_LOST_REASON: RegulatorReason = "site_measurement_lost_held_at_minimum"
 
 
 @dataclass(frozen=True, slots=True)
@@ -287,6 +305,25 @@ class ApplyabilityFailure:
     phase: PhaseName | None = None
 
 
+def _reading_failure(
+    phase: PhaseName,
+    value: float | None,
+    age_s: float | None,
+    reason: PhaseUnusableReason | None,
+    max_age_s: float,
+) -> ApplyabilityFailure | None:
+    """Why one phase's signed reading cannot be decided on, or `None` when it can."""
+    if reason is not None:
+        return ApplyabilityFailure("phase_unusable", phase)
+    if value is None:
+        return ApplyabilityFailure("phase_value_missing", phase)
+    if age_s is None:
+        return ApplyabilityFailure("phase_age_unknown", phase)
+    if age_s > max_age_s:
+        return ApplyabilityFailure("phase_stale", phase)
+    return None
+
+
 def applyability_failure(
     *,
     decision: RegulatorDecision,
@@ -302,18 +339,41 @@ def applyability_failure(
     if not decision.basis:
         return ApplyabilityFailure("no_basis")
     for phase, basis in decision.basis.items():
-        if signed_active_power_reason.get(phase) is not None:
-            return ApplyabilityFailure("phase_unusable", phase)
         value = signed_active_power_w.get(phase)
-        if value is None:
-            return ApplyabilityFailure("phase_value_missing", phase)
-        age_s = signed_active_power_age_s.get(phase)
-        if age_s is None:
-            return ApplyabilityFailure("phase_age_unknown", phase)
-        if age_s > max_age_s:
-            return ApplyabilityFailure("phase_stale", phase)
+        failure = _reading_failure(
+            phase, value, signed_active_power_age_s.get(phase), signed_active_power_reason.get(phase), max_age_s
+        )
+        if failure is not None:
+            return failure
         if classify_direction(value, zero_margin_w) != basis.direction:
             return ApplyabilityFailure("direction_changed", phase)
+    return None
+
+
+def measurement_lost(
+    *, site_result: SiteCapacityResult, phases: Sequence[PhaseName], max_age_s: float
+) -> ApplyabilityFailure | None:
+    """The first of `phases` on which the site's measurement is lost, and how, or `None` while every one is read.
+
+    Judged on the site's own reading of the phase as the site's state judges it: no value (`phase_value_missing`),
+    no known age (`phase_age_unknown`), or a value no longer taken as alive (`phase_stale`: older than `max_age_s`
+    and not re-reported unchanged since). Where the phase's direction is known, its signed reading missing or
+    invalid counts too (`phase_unusable`); a direct site's phase whose sign is not confirmed is only the
+    direction unknown, not a lost measurement, and a value merely unchanged for long is not lost either.
+    """
+    derived = site_result.measurement_mode == "derived_phase_current"
+    for phase in phases:
+        if site_result.measured_phase_current_a.get(phase) is None:
+            return ApplyabilityFailure("phase_value_missing", phase)
+        age_s = site_result.phase_age_s.get(phase)
+        liveness = site_result.phase_liveness.get(phase)
+        if age_s is None or liveness is None:
+            return ApplyabilityFailure("phase_age_unknown", phase)
+        if liveness not in ("fresh", "confirmed_unchanged"):
+            return ApplyabilityFailure("phase_stale", phase)
+        direction_known = derived or site_result.phase_direction_source.get(phase) is not None
+        if direction_known and site_result.phase_signed_active_power_reason.get(phase) in ("missing", "invalid"):
+            return ApplyabilityFailure("phase_unusable", phase)
     return None
 
 
