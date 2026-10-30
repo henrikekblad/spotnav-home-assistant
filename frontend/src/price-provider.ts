@@ -232,9 +232,9 @@ export function keyEditor(
   const howto = element(doc, "p", C.entityHelp, translate(language, "price.key.howto"));
   howto.id = `${field.id}-howto`;
   field.setAttribute("aria-describedby", howto.id);
-  const line = element(doc, "div", C.settingsRow);
-  line.append(field);
-  editor.body.append(howto, label, line);
+  const line = element(doc, "div", C.settingsField);
+  line.append(label, field);
+  editor.body.append(howto, line);
   editor.submit(async () => {
     const key = field.value.trim();
     if (key === "") {
