@@ -1,7 +1,7 @@
-"""The webhook's `price_days` read: the charger's held market-day files and profile, as the relay serves them.
+"""The webhook's `price_days` read: the charger's held market-day files and profile, in the relay contract's shapes.
 
 The answers are pinned under `tests/fixtures/webhook/price_days_*.json` (`SPOTNAV_WRITE_FIXTURES=1` rewrites them),
-which the app vendors: each file in them must read through the relay's own parsers.
+which the app vendors: each file in them must read through the contract's own parsers.
 """
 
 from __future__ import annotations
@@ -80,22 +80,20 @@ async def test_a_single_calendar_area_answers_todays_and_tomorrows_files(
 
     assert status == 200 and body["ok"] is True and body["action"] == "price_days" and body["v"] == 1
     assert body["area"]["id"] == SE4 and body["area"]["market_tz"] == body["area"]["tz"] == "Europe/Stockholm"
-    assert body["provider"] == {
-        "key": "relay", "name": "SpotNav relay", "url": "https://spotnav.sensnology.se",
-        "notice": {"code": "add_nordpool", "params": {}},
-    }
+    # The days are held, but the area has no source of its own (as after an upgrade without Nord Pool).
+    assert body["provider"] == {"key": None, "name": None, "url": None, "notice": {"code": "add_nordpool", "params": {}}}
     assert (body["state"], body["reason"], body["waiting_for_tomorrow"]) == ("ready", "ready", False)
     assert body["publication"] == body["area"]["publication"]
     assert list(body["files"]) == ["2026-09-22", "2026-09-23"]
-    # Exactly what the relay served.
+    # Exactly the file held.
     assert body["files"]["2026-09-22"] == json.loads(offline_relay.routes["/v1/SE4/2026/09-22.json"][1][0])
     # Two days held: no profile yet.
     assert body["profile"] is None
     read_back(body)
-    _pinned("price_days_relay_se4.json", body)
+    _pinned("price_days_held_se4.json", body)
 
 
-async def test_the_profile_is_the_relays_profile_shape(
+async def test_the_profile_is_the_v1_profile_shape(
     hass: HomeAssistant, hass_client_no_auth, offline_relay: StubTransport
 ) -> None:
     with freeze_time(NOW):
@@ -131,6 +129,8 @@ async def test_nothing_held_is_refused_and_asks_for_nothing(
     hass: HomeAssistant, hass_client_no_auth, offline_relay: StubTransport
 ) -> None:
     serve(offline_relay, days=())
+    for path in [path for path in offline_relay.routes if path.startswith("/v1/SE4/")]:
+        del offline_relay.routes[path]
     with freeze_time(NOW):
         await _charger_on_se4(hass)
         calls = len(offline_relay.calls)
@@ -138,7 +138,7 @@ async def test_nothing_held_is_refused_and_asks_for_nothing(
         status, body = await post(client, "webhook-days", {"action": "price_days"})
 
     assert (status, body) == (400, {"ok": False, "error": ERROR_NO_PRICES, "action": "price_days"})
-    assert len(offline_relay.calls) == calls, "a read never asks the relay"
+    assert len(offline_relay.calls) == calls, "a read never asks for a file"
     _pinned("price_days_no_prices.json", body)
 
 
@@ -214,29 +214,28 @@ async def test_finland_on_nord_pool_answers_its_cet_files(
         await world.stop()
 
 
-async def test_a_london_day_from_the_relays_paris_files(
+async def test_a_london_day_from_held_paris_files(
     hass: HomeAssistant, transport: StubTransport
 ) -> None:
     # 23:30 BST on the 4th: today in London is the 4th's and 5th's Paris files, tomorrow also needs the 6th's.
     clock = Clock(datetime(2026, 10, 4, 22, 30, tzinfo=UTC))
     serve_v2(transport)
     repository = repository_for(hass, transport, clock)
-    await repository.async_get_catalogue()
+    repository.catalogue_snapshot()
     for day in (OCT4, OCT5):
         await repository.async_get_file("GB-C", day)
 
     answer = await async_price_days_answer(repository, "GB-C", clock.now)
-
     assert not isinstance(answer, PriceDaysRefusal)
     area = answer["area"]
     assert (area["tz"], area["market_tz"]) == ("Europe/London", "Europe/Paris") and "eic" not in area
     assert area["included"] == ["vat", "tax", "grid_fee"]
-    assert area["source"]["name"] == "Octopus Energy (Agile)", "the relay's own attribution"
-    assert answer["provider"]["key"] == "relay"
+    # No Octopus integration: no source of its own, so no attribution beyond the placeholder.
+    assert (answer["provider"]["key"], answer["provider"]["name"]) == (None, None)
     assert list(answer["files"]) == ["2026-10-04", "2026-10-05"]
     assert answer["state"] == "ready"
     read_back(answer)
-    _pinned("price_days_relay_gb.json", envelope(answer))
+    _pinned("price_days_held_gb.json", envelope(answer))
 
     # An area no list names has no answer.
     assert await async_price_days_answer(repository, "XX9", clock.now) == PriceDaysRefusal(ERROR_UNKNOWN_PRICE_AREA)

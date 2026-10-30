@@ -359,8 +359,8 @@ async def _async_setup_charger_entry(hass: HomeAssistant, entry: ChargerConfigEn
         and settings_store.settings(entry.entry_id).area_id is None
         and settings_store.suggested(entry.entry_id)
     ):
-        # The relay was unreachable when the defaults were written, so the area is empty: suggest it
-        # when the relay first answers, then stop listening.
+        # No area list was there when the defaults were written, so the area is empty: suggest it when the
+        # list first answers, then stop listening.
         remove_listener: list[Any] = []
 
         @callback

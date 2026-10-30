@@ -3,7 +3,7 @@
 The choice itself is [choose_provider] (`providers/__init__.py`): Home Assistant's PVPC integration for Spain's
 PVPC, the Octopus Energy integration's Agile rates for a Great Britain region, Home Assistant's Nord Pool
 integration for an area Nord Pool trades, the person's ENTSO-E key for an area the platform publishes. An area that
-gets none of these has no source of its own: the relay still serves it for now, and is going away, so such an area
+gets none of these has no source: nothing is fetched for it (the SpotNav relay delivers no prices since 2.0), so it
 carries a **notice** naming the action that gives it one ([source_notice]). Nothing else is a notice: a source
 that is there but failing (Nord Pool unreachable, ENTSO-E asking to wait) stays what it is today, `stale` or
 `degraded`, because there is nothing to do but wait.
@@ -27,8 +27,8 @@ that is there but failing (Nord Pool unreachable, ENTSO-E asking to wait) stays 
 | ENTSO-E area | no key | `add_entsoe_key` |
 | any other | | `source_missing` |
 
-The notice is the same whether or not the relay still serves the area: the relay is ending, so the action is
-already the person's. Only the Repairs issue waits for prices to have stopped (`price_device.py`).
+The notice shows as soon as the area has no source, also while it still holds today's prices (kept from before
+2.0); only the Repairs issue waits for prices to have stopped (`price_device.py`).
 """
 
 from __future__ import annotations
@@ -108,8 +108,8 @@ class ProviderNotice:
 
 @dataclass(frozen=True, slots=True)
 class SourceStatus:
-    """An area's price source now: the provider's key, name and address (`None` with no source at all, the relay
-    not serving it either), and the notice (`None` when there is nothing to do)."""
+    """An area's price source now: the provider's key, name and address (`None` with no source at all), and the
+    notice (`None` when there is nothing to do)."""
 
     key: str | None
     name: str | None

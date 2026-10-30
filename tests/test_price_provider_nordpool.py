@@ -31,10 +31,9 @@ from custom_components.spotnav.pricing.providers import (
 )
 from custom_components.spotnav.pricing.providers import nordpool as nordpool_module
 from custom_components.spotnav.pricing.providers.nordpool import NordPoolProvider, PUBLICATION
-from custom_components.spotnav.pricing.providers.relay import RelayProvider
 from custom_components.spotnav.pricing.relay_contract import parse_day
 
-from .relay import BASE_URL, Clock, FakeScheduler, StoreDouble, StubTransport
+from .relay import Clock, FakeScheduler, StoreDouble, StubTransport
 
 UTC = timezone.utc
 BRUSSELS = "Europe/Brussels"
@@ -138,7 +137,7 @@ class World:
         bundled = await async_load_bundled(self.hass)
         assert bundled is not None
         self.provider = NordPoolProvider(self.hass, bundled, self.rates, now=self.clock)
-        self.router = ProviderRouter(RelayProvider(self.hass, base_url=BASE_URL, session=self.transport), self.provider)
+        self.router = ProviderRouter(self.provider)
         self.router.async_start(self.hass)
         self.repository = PriceRepository(
             self.hass, now=self.clock, store=self.store, bundled=bundled, router=self.router
@@ -548,17 +547,17 @@ async def test_the_router_follows_the_nordpool_entry(world: World) -> None:
     await world.start(loaded=False)
     world.service.serve("FI", YESTERDAY, rows(YESTERDAY))
     world.service.serve("FI", TODAY, rows(TODAY))
-    assert world.repository.provider_for("FI").key == "relay"
-    assert world.repository.provider_for("GB-A").key == "relay"
+    assert world.repository.provider_for("FI") is None
+    assert world.repository.provider_for("GB-A") is None
 
     world.entry.mock_state(world.hass, ConfigEntryState.LOADED)
     assert world.repository.provider_for("FI") is world.provider
     assert world.repository.area_entry("FI").market_tz == BRUSSELS
     # An area Nord Pool does not trade stays with the relay.
-    assert world.repository.provider_for("ES").key == "relay"
+    assert world.repository.provider_for("ES") is None
 
     world.entry.mock_state(world.hass, ConfigEntryState.NOT_LOADED)
-    assert world.repository.provider_for("FI").key == "relay"
+    assert world.repository.provider_for("FI") is None
     assert world.repository.area_entry("FI").market_tz == "Europe/Helsinki"
 
 
@@ -600,10 +599,10 @@ async def test_setup_builds_the_router_and_the_rates_for_the_installation(hass: 
     repository = await async_setup_price_repository(hass, store=StoreDouble())
     try:
         assert domain_data(hass).fx_rates is not None
-        assert repository.provider_for("SE3").key == "relay"
+        assert repository.provider_for("SE3") is None
         entry.mock_state(hass, ConfigEntryState.LOADED)
         assert repository.provider_for("SE3").key == "nordpool"
         entry.mock_state(hass, ConfigEntryState.NOT_LOADED)
-        assert repository.provider_for("SE3").key == "relay"
+        assert repository.provider_for("SE3") is None
     finally:
         repository.stop_following_providers()

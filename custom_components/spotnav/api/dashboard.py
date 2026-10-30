@@ -1371,8 +1371,7 @@ def serialize_market(capture: CapturedDashboard) -> dict[str, Any] | None:
         "suggested_tax": None if entry is None else finite_number(entry.suggested_tax),
         "suggested_grid_fee": None if entry is None else finite_number(entry.suggested_grid_fee),
         # Contract v2, additive: the market calendar behind the display zone, what the price already
-        # includes (as the relay names it), and where the prices come from: the area's provider (the relay's
-        # own attribution while the relay serves it), `null` with no source.
+        # includes, and where the prices come from: the area's provider, `null` with no source.
         "market_timezone": None if entry is None else _text(entry.market_tz),
         "included": None if entry is None else list(entry.included),
         "source": _market_source(entry, capture.source_status),
@@ -1588,8 +1587,10 @@ def serialize_prices(capture: CapturedDashboard) -> dict[str, Any]:
         "tomorrow_attempt_at": aware_iso(None if tomorrow is None else tomorrow.attempt_at),
         "today_attempt_error": None if today is None else _text(today.attempt_error),
         "tomorrow_attempt_error": None if tomorrow is None else _text(tomorrow.attempt_error),
-        "index_state": None if area is None else area.index_state,
-        "index_revision": None if area is None else area.index_revision,
+        # No index since 2.0 (prices are asked for on a schedule); the keys stay, always `null`, for readers that
+        # require them.
+        "index_state": None,
+        "index_revision": None,
         "waiting_for_tomorrow": None if area is None else area.waiting_for_tomorrow,
         "resolution_minutes": _resolution_of(capture),
         "resolutions_minutes": resolutions,

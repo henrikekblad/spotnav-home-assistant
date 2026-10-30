@@ -25,7 +25,7 @@ from .const import (
     ENTRY_TYPE_PRICE,
     ENTRY_TYPE_SITE,
 )
-from .pricing.price_repository import catalogue_summary, day_summary, index_summary
+from .pricing.price_repository import catalogue_summary, day_summary
 from .pricing.price_source import price_source_for
 from .runtime import (
     charger_data,
@@ -376,15 +376,13 @@ def _price_data(hass: HomeAssistant) -> dict[str, Any]:
                 "reason": area.reason,
                 "today": area.today.isoformat(),
                 "tomorrow": area.tomorrow.isoformat(),
-                # Three-valued: with no current index authority the answer is `None` (unknown),
-                # never inferred by negating "waiting".
+                # Three-valued (the schedule and the provider's last answer): unknown is `unknown`, never
+                # inferred by negating "waiting".
                 "today_authority": area.today_authority,
                 "tomorrow_authority": area.tomorrow_authority,
                 "tomorrow_published": _tomorrow_published(area),
                 "today_state": area.today_state,
                 "tomorrow_state": area.tomorrow_state,
-                "index_state": area.index_state,
-                "index_revision": area.index_revision,
                 "currency": None if area.catalogue is None else area.catalogue.currency,
                 "major_unit": None if area.catalogue is None else area.catalogue.major_unit,
                 "minor_unit": None if area.catalogue is None else area.catalogue.minor_unit,
@@ -396,16 +394,17 @@ def _price_data(hass: HomeAssistant) -> dict[str, Any]:
                 "tomorrow_data": day_summary(area.tomorrow_snapshot),
                 # The history profile a dated departure weighs (window, weeks, coverage; no prices).
                 "history_profile": manager.profile_summary(area.area_id),
+                # Where the prices come from (`nordpool`, `entsoe`, `pvpc`, `octopus`, or `null` with no source)
+                # and the notice the person sees; never a key or a request.
+                "price_source": manager.source_status(area.area_id).as_dict(),
                 # Whether the price history's backfill waits for this area (a failure, and when it tries again).
                 "history_backfill": manager.backfill_summary(area.area_id),
             }
             for area in snapshot.areas
         ]
         data["catalogue"] = catalogue_summary(snapshot.catalogue)
-        data["index"] = index_summary(snapshot.index)
     if repository is not None and manager is None:
         data["catalogue"] = catalogue_summary(repository.catalogue_snapshot())
-        data["index"] = index_summary(repository.index_snapshot())
     return data
 
 

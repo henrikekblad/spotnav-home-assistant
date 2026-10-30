@@ -61,7 +61,7 @@ The words each language uses for SpotNav's recurring terms. Use them in all thre
 Android app (its `strings.xml`, its status line tables and its store texts), so a new text reads like
 the old ones and the card and the app call the same thing by the same name. This table is the single
 reference for both. Product names (SpotNav, Home Assistant, Easee, OCPP, Zaptec, Tibber,
-Octopus Energy), entity ids and the price areas' names, which come from the relay, are never
+Octopus Energy), entity ids and the price areas' names, which come from the area list, are never
 translated.
 
 | English | German (`de`) | Dutch (`nl`) | French (`fr`) | Spanish (`es`) |

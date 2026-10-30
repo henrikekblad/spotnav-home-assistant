@@ -129,7 +129,7 @@ class PriceNowSensor(SpotNavPriceEntity, SensorEntity):
             "spot_price": None if point is None else rounded(point.spot),
             "next_change": _iso(device.next_price_change()),
             "tomorrow_published": device.tomorrow_published,
-            # Where the prices come from: `nordpool`, `entsoe`, `pvpc`, `octopus` or `relay`.
+            # Where the prices come from: `nordpool`, `entsoe`, `pvpc`, `octopus`, or `None` with no source.
             "source": device.source,
         }
 
@@ -231,7 +231,7 @@ class SpotNavPriceSetting(SpotNavPriceEntity):
 
 
 class PriceAreaSelect(SpotNavPriceSetting, SelectEntity):
-    """The market whose prices the device uses, as the relay's own catalogue states it."""
+    """The market whose prices the device uses, as the bundled area list states it."""
 
     def __init__(self, entry: ConfigEntry, device: PriceDevice) -> None:
         super().__init__(entry, device, "price_area")

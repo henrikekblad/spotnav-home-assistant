@@ -131,7 +131,7 @@
     "area_id": "SE4",
     "area_name": "Malm\u00f6",
     "catalogue_attempt_error": null,
-    "catalogue_fetched_at": "2026-09-22T06:00:00+00:00",
+    "catalogue_fetched_at": null,
     "catalogue_state": "ready",
     "countries": [
       "SE"
@@ -141,10 +141,7 @@
     "major_unit": "kr",
     "market_timezone": "Europe/Stockholm",
     "minor_unit": "\u00f6re",
-    "source": {
-      "name": "SpotNav relay",
-      "url": "https://spotnav.sensnology.se"
-    },
+    "source": null,
     "suggested_grid_fee": 30.0,
     "suggested_tax": 36.0,
     "suggested_vat_percent": 25.0,
@@ -159,7 +156,7 @@
     "installed": {
       "active_period_index": null,
       "amps": 10,
-      "identity": "a9e50792cf4a4de4146041478fcf25ca",
+      "identity": "d6cb5aa5cfc1f982601277f3a7894def",
       "periods": [
         {
           "end": "2026-09-22T13:15:00+00:00",
@@ -176,7 +173,7 @@
         "value": 28.737126984088583
       },
       "distance_mil": 10.392304845413264,
-      "identity": "a9e50792cf4a4de4146041478fcf25ca",
+      "identity": "d6cb5aa5cfc1f982601277f3a7894def",
       "periods": [
         {
           "end": "2026-09-22T13:15:00+00:00",
@@ -194,7 +191,7 @@
     },
     "relation": {
       "applied": true,
-      "applied_identity": "a9e50792cf4a4de4146041478fcf25ca",
+      "applied_identity": "d6cb5aa5cfc1f982601277f3a7894def",
       "pending_identity": null
     },
     "remaining_kwh": null
@@ -205,7 +202,7 @@
   },
   "planning": {
     "applied": true,
-    "applied_identity": "a9e50792cf4a4de4146041478fcf25ca",
+    "applied_identity": "d6cb5aa5cfc1f982601277f3a7894def",
     "calculated_at": "2026-09-22T06:00:00+00:00",
     "execution_paused": false,
     "execution_reason": null,
@@ -216,7 +213,7 @@
     "must_buy_now_kwh": null,
     "pending_attempt": null,
     "pending_identity": null,
-    "price_identity": "2026-09-22/2026-09-23|916f2f8e05fd|2026-09-22T06:00:00+00:00",
+    "price_identity": "2026-09-22/2026-09-23|2026-09-22T06:00:00+00:00",
     "price_state": "ready",
     "price_wait": null,
     "publication_at": null,
@@ -228,8 +225,8 @@
   },
   "prices": {
     "area_id": "SE4",
-    "index_revision": "916f2f8e05fd",
-    "index_state": "ready",
+    "index_revision": null,
+    "index_state": null,
     "interval_count": 192,
     "intervals": [
       {
@@ -2155,13 +2152,13 @@
     ],
     "priced_slots": 12,
     "provider": {
-      "key": "relay",
-      "name": "SpotNav relay",
+      "key": null,
+      "name": null,
       "notice": {
         "code": "add_nordpool",
         "params": {}
       },
-      "url": "https://spotnav.sensnology.se"
+      "url": null
     },
     "reason": "ready",
     "resolution_minutes": 15,

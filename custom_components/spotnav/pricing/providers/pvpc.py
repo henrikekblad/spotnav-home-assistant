@@ -81,7 +81,6 @@ class PvpcProvider:
     #: What the card and the app call it, and where it is (attribution).
     name: str = "Red Eléctrica (ESIOS) – PVPC"
     url: str = "https://www.esios.ree.es/es/pvpc"
-    has_index = False
     publication: AreaPublication = PUBLICATION
     history_reach: timedelta | None = HISTORY_REACH
 

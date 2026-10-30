@@ -18,7 +18,7 @@ from custom_components.spotnav.const import DOMAIN
 from custom_components.spotnav.pricing.price_source import fees_from_data, price_write_revision
 from custom_components.spotnav.runtime import domain_data, preview_for
 
-from .relay import DE_LU, SE4, StubTransport
+from .relay import BUNDLED, DE_LU, SE4, StubTransport
 from .test_price_device import add_price, NOW
 from .world import call, entity_id, go_auto, setup_charger
 
@@ -111,31 +111,9 @@ async def test_area_options_come_only_from_the_catalogue(hass: HomeAssistant) ->
     price = await add_price(hass)
     state = hass.states.get(entity_id(hass, price.entry_id, "price_area", "select"))
     assert state.state == SE4
-    assert [area for area in state.attributes["options"] if area] == ["DE-LU", "DK1", "NO1", "SE4"]
+    assert [area for area in state.attributes["options"] if area] == list(BUNDLED.catalogue.area_ids)
     assert state.attributes["area_names"][SE4]
     assert (state.attributes["currency"], state.attributes["minor_unit"]) == ("SEK", "öre")
-
-
-async def test_a_configured_area_survives_an_offline_catalogue(hass: HomeAssistant, transport: StubTransport) -> None:
-    """Losing the relay never loses the choice: it stays selected, stays an option, and the list says it is stale."""
-    price = await add_price(hass)
-    area = entity_id(hass, price.entry_id, "price_area", "select")
-    await call(hass, "select", "select_option", {"entity_id": area, "option": DK1})
-
-    transport.serve("/v1/areas.json", 500, "")
-    repository = domain_data(hass).price_repository
-    manager = domain_data(hass).price_refresh
-    await repository.async_get_catalogue(refresh=True)
-    assert repository.catalogue_snapshot().state == "stale"
-    await manager.async_ensure_catalogue()
-    await hass.async_block_till_done()
-
-    state = hass.states.get(area)
-    assert state.state == DK1 and DK1 in state.attributes["options"]
-    assert state.attributes["catalogue_state"] == "stale"
-    assert price.data["area_id"] == DK1
-    # A market that is already configured stays selectable.
-    await call(hass, "select", "select_option", {"entity_id": area, "option": DK1})
 
 
 async def test_another_area_starts_from_its_own_suggestions_and_never_copies_a_figure(hass: HomeAssistant) -> None:
@@ -176,17 +154,16 @@ async def test_an_unknown_area_is_refused(hass: HomeAssistant, transport: StubTr
 async def test_the_market_list_reaches_the_select_once_it_can_be_read(
     hass: HomeAssistant, transport: StubTransport
 ) -> None:
-    transport.serve("/v1/areas.json", 500, "")  # nothing can be loaded at setup
     price = await add_price(hass)
     area = entity_id(hass, price.entry_id, "price_area", "select")
     assert hass.states.get(area).attributes["options"] == [SE4], "only the configured area"
 
-    transport.serve_area(SE4)
+    domain_data(hass).price_repository._bundled = BUNDLED  # noqa: SLF001 - the list can be read now
     await domain_data(hass).price_refresh.async_ensure_catalogue()
     await hass.async_block_till_done()
 
     state = hass.states.get(area)
-    assert state.attributes["options"] == ["DE-LU", "DK1", "NO1", "SE4"]
+    assert state.attributes["options"] == list(BUNDLED.catalogue.area_ids)
     assert state.attributes["catalogue_state"] == "ready"
 
 
@@ -252,7 +229,7 @@ async def test_manual_without_a_value_is_refused_and_a_zero_is_a_real_value(hass
     assert hass.states.get(policy).state == "manual"
 
 
-async def test_a_suggestion_the_area_lacks_and_a_published_zero(hass: HomeAssistant) -> None:
+async def test_a_suggestion_the_area_lacks_and_one_it_states(hass: HomeAssistant) -> None:
     price = await add_off_price(hass)
     area = entity_id(hass, price.entry_id, "price_area", "select")
     policy = entity_id(hass, price.entry_id, "fiscal_transfer_policy", "select")
@@ -266,11 +243,11 @@ async def test_a_suggestion_the_area_lacks_and_a_published_zero(hass: HomeAssist
     assert unresolved.attributes["value_source"] == "suggestion_unavailable"
     assert unresolved.state == "unknown" and unresolved.attributes["effective"] is False
 
-    # NO1 publishes a literal zero: shown, not blanked.
-    await call(hass, "select", "select_option", {"entity_id": area, "option": NO1})
+    # SE4 states one: shown.
+    await call(hass, "select", "select_option", {"entity_id": area, "option": SE4})
     shown = hass.states.get(transfer)
     assert hass.states.get(policy).state == "suggested"
-    assert float(shown.state) == 0.0 and shown.attributes["suggested_value"] == 0.0
+    assert float(shown.state) == 30.0 and shown.attributes["suggested_value"] == 30.0
 
 
 async def test_reading_a_fee_writes_nothing_and_each_write_is_counted_once(hass: HomeAssistant) -> None:

@@ -230,13 +230,16 @@ energy tax and grid fee as the plan applies them. Tapping the area or a tax open
   services**. **Keep both** keeps them as they are. Two prices with the same name are told apart by
   which one this charger uses.
 - **Area** decides which prices are used and which taxes are suggested. The list is grouped by
-  country and is what the public SpotNav Relay publishes; if it cannot be reached, the last list Home Assistant received is
-  shown with a note.
+  country and comes with SpotNav itself.
 - **VAT** (as a percentage), **Energy tax** and **Grid transfer** (both in the area's smallest
   currency unit) can each be switched off, use the area's suggested value, or use your own value.
   **Reset to suggestion** returns to the suggestion when the area publishes one.
-- Under the area, a small linked line names where its prices come from (ENTSO-E, Red Eléctrica
-  for Spain's regulated PVPC, or Octopus Energy (Agile) in Great Britain).
+- A line names where the area's prices come from: *Prices from Nord Pool (via Home Assistant)*, *Prices
+  from ENTSO-E (your key)*, *Prices from PVPC (Home Assistant)* or *Prices from Octopus Energy (your Agile
+  tariff)*. When the area has no source of its own, a notice says what to add instead (**Add Nord Pool**,
+  **Add your ENTSO-E key**, **Add PVPC**, **Add Octopus Energy**), with the button for an administrator, and
+  the ENTSO-E key's field with its how-to. The key is one for the whole installation. See
+  [Prices](prices.md#where-prices-come-from).
 - Where the published price already includes VAT, energy tax or grid transfer (all three in Great
   Britain), that component is checked, locked and marked **Included in the price**, and nothing is
   added for it. For Great Britain, **Find my region** looks the region up from a postcode (see

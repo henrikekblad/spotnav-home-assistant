@@ -3,7 +3,7 @@
 #
 #   tools/docs_screenshots/run.sh [--keep-ha] [shot-name ...]
 #
-# Sets up (or reuses) tools/docs_screenshots/.venv, starts a relay stub and Home Assistant on 127.0.0.1,
+# Sets up (or reuses) tools/docs_screenshots/.venv, starts a rates stub and Home Assistant on 127.0.0.1,
 # runs the browser driver, and stops both again. The instance's configuration is rebuilt from nothing on
 # every run, so the result does not depend on an earlier run. With shot names only those are written.
 set -euo pipefail
@@ -86,10 +86,11 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-# 4. The relay stub, then Home Assistant pointed at it.
-"$VENV/bin/python" "$HERE/relay_stub.py" "$STUB_PORT" >"$LOGS/relay_stub.log" 2>&1 &
+# 4. The ECB rates stub, then Home Assistant pointed at it (prices come from the demo Nord Pool integration).
+"$VENV/bin/python" "$HERE/rates_stub.py" "$STUB_PORT" >"$LOGS/rates_stub.log" 2>&1 &
 PIDS+=($!)
-DOCS_SEED_SESSIONS=1 RELAY_STUB_URL="http://127.0.0.1:$STUB_PORT" "$VENV/bin/python" "$HERE/ha_launch.py" -c "$CONFIG" >"$LOGS/home-assistant.log" 2>&1 &
+DOCS_SEED_SESSIONS=1 DOCS_PRICE_FIXTURE="$REPO/tests/fixtures/relay/day_SE4_2026-09-22_96.json" \
+  RATES_STUB_URL="http://127.0.0.1:$STUB_PORT" "$VENV/bin/python" "$HERE/ha_launch.py" -c "$CONFIG" >"$LOGS/home-assistant.log" 2>&1 &
 PIDS+=($!)
 
 # 5. The driver.

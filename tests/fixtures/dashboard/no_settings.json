@@ -70,7 +70,7 @@
     "area_id": null,
     "area_name": null,
     "catalogue_attempt_error": null,
-    "catalogue_fetched_at": "2026-09-22T06:00:00+00:00",
+    "catalogue_fetched_at": null,
     "catalogue_state": "ready",
     "countries": null,
     "currency": null,
@@ -95,7 +95,7 @@
       "amps": null,
       "cost": null,
       "distance_mil": 10.0625,
-      "identity": "2ecc7126e14bb80486a5a41add3b2bbd",
+      "identity": "00d0a46a51f33f0820d29925728b6775",
       "periods": [
         {
           "end": "2026-09-22T14:30:00+00:00",
@@ -139,7 +139,7 @@
     "must_buy_now_kwh": null,
     "pending_attempt": null,
     "pending_identity": null,
-    "price_identity": "2026-09-22/2026-09-23|916f2f8e05fd|2026-09-22T06:00:00+00:00",
+    "price_identity": "2026-09-22/2026-09-23|2026-09-22T06:00:00+00:00",
     "price_state": "ready",
     "price_wait": null,
     "publication_at": null,

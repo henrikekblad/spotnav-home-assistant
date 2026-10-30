@@ -1,8 +1,8 @@
 # Set up SpotNav
 
 This page walks through the whole setup in Home Assistant, dialog by dialog. It assumes you
-installed SpotNav from HACS and restarted Home Assistant (see the [README](../README.md)). Nothing
-here needs an account or an API key.
+installed SpotNav from HACS and restarted Home Assistant (see the [README](../README.md)). SpotNav
+itself needs no account; the prices come from a source you add in Home Assistant (below).
 
 There are four steps, and only the first is required:
 
@@ -35,13 +35,36 @@ SpotNav fills in only what Home Assistant already knows:
   made: choose the area in the card, which makes it then. Great Britain is left empty too: choose
   your region in the card, where **Find my region** looks it up from your postcode (see below).
 
+### Where the prices come from
+
+Your Home Assistant fetches the prices itself ([Prices](prices.md#where-prices-come-from)). When the
+first charger or site is added and its area has no source yet, the dialog shows one step, **Electricity
+prices**, before it finishes:
+
+- **An area Nord Pool trades** (the Nordic and Baltic countries, Germany/Luxembourg, the Netherlands,
+  Belgium, France, Austria, Poland, Romania, Bulgaria): a link opens Home Assistant's own dialog for the
+  built-in **Nord Pool** integration. The area and currency you pick there do not matter: SpotNav asks for
+  the area it needs. Or enter your own ENTSO-E key instead.
+- **Another European area**: your own free **ENTSO-E key**. Register at
+  [transparency.entsoe.eu](https://transparency.entsoe.eu/), then e-mail transparency@entsoe.eu with the
+  subject "Restful API access" and your account's e-mail address in the text. Once access is granted (it
+  can take a few days), generate the security token under **My Account Settings** and paste it in. One key
+  serves the whole installation.
+- **Spain – PVPC**: a link adds Home Assistant's own **PVPC** integration.
+- **Great Britain**: a link to the **Octopus Energy** integration, installed through HACS, with your Agile
+  meter.
+
+Every field in the step is optional. You can do it later: until the area has a source, the card's
+**Settings → Electricity price** shows the same step as a notice.
+
 ### Great Britain: Octopus Agile
 
 In Great Britain SpotNav plans on Octopus Energy's **Agile** prices, one region per GSP group (`GB-A`
 to `GB-P`), and is meant for Agile customers. In the card's **Settings, Electricity price**, tap the area and pick your
 region under Great Britain ("GB C – London"), or type your postcode under **Find my region**: Home
-Assistant asks Octopus Energy's public lookup directly, and the postcode is not sent to the SpotNav
-relay, stored or logged. The Agile price is all-in, so VAT, energy tax and grid transfer show as
+Assistant asks Octopus Energy's public lookup directly, and the postcode is not sent anywhere else,
+stored or logged. The rates themselves come from your own meter through the
+[Octopus Energy](https://github.com/BottlecapDave/HomeAssistant-OctopusEnergy) integration (from HACS). The Agile price is all-in, so VAT, energy tax and grid transfer show as
 *Included in the price* and nothing is added. The price source, Octopus Energy (Agile), is linked
 there. SpotNav is not affiliated with Octopus Energy.
 

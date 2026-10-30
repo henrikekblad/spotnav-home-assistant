@@ -20,14 +20,12 @@ from homeassistant.util import dt as dt_util
 from pytest_homeassistant_custom_component.common import async_fire_time_changed
 
 from tests.relay import (
-    BASE_URL,
     TODAY,
     TOMORROW,
     Clock,
     StoreDouble,
     StubTransport,
     day_body,
-    fixture,
 )
 
 from custom_components.spotnav.pricing.price_refresh import (
@@ -41,7 +39,7 @@ from custom_components.spotnav.pricing.price_refresh import (
     next_local_midnight,
 )
 from custom_components.spotnav.pricing.price_repository import PriceRepository
-from .relay import FakeScheduler, FakeTimer
+from .relay import stub_repository, FakeScheduler, FakeTimer
 from custom_components.spotnav.runtime import domain_data
 
 STOCKHOLM = "Europe/Stockholm"
@@ -63,7 +61,7 @@ class Listener:
 
 @pytest.fixture
 def repository(hass: HomeAssistant, transport: StubTransport, clock: Clock) -> PriceRepository:
-    return PriceRepository(hass, base_url=BASE_URL, session=transport, now=clock, store=StoreDouble())
+    return stub_repository(hass, transport, now=clock, store=StoreDouble())
 
 
 @pytest.fixture
@@ -88,16 +86,17 @@ def manager(
 ROLLOVER_WHEN = datetime(2026, 9, 22, 22, 0, tzinfo=timezone.utc)
 
 
-def index_listing(area: str, days: list[str]) -> str:
-    """An index document listing exactly these days, in order.
+def count_cycles(manager: PriceRefreshManager) -> list[int]:
+    """Count the manager's global cycles from now on: a one-item list, read as `runs == [n]`."""
+    runs = [0]
+    original = manager._refresh_global  # noqa: SLF001 - the cycle itself, to count it
 
-    Built rather than string-replaced: swapping one date for another inside the
-    fixture leaves the list unsorted, which the contract refuses — and then the
-    test would be measuring that refusal instead of what it meant to.
-    """
-    document = json.loads(fixture("index.json"))
-    document["areas"] = {area: {"days": sorted(days), "res": 15}}
-    return json.dumps(document)
+    async def counted() -> None:
+        runs[0] += 1
+        await original()
+
+    manager._refresh_global = counted  # type: ignore[method-assign]  # noqa: SLF001
+    return runs
 
 
 def kind_of(timer: FakeTimer) -> str:
@@ -172,21 +171,21 @@ async def test_two_owners_of_one_area_share_one_stream_and_one_leaves_the_other(
     hass: HomeAssistant, manager: PriceRefreshManager, transport: StubTransport, scheduler: FakeScheduler
 ) -> None:
     transport.serve_area()
-    # The shared cycle is held open inside its index request, so the second
+    # The shared cycle is held open inside its day request, so the second
     # subscription genuinely arrives while it is in flight — which is the case that
     # must join rather than start a poll of its own.
-    transport.hold("/v1/index.json")
+    today = transport.day_path("SE4", TODAY)
+    transport.hold(today)
     first = await manager.async_subscribe(owner_id="entry-a", area_id="SE4", listener=Listener())
-    await transport.entered["/v1/index.json"].wait()
+    await transport.entered[today].wait()
     await manager.async_subscribe(owner_id="entry-b", area_id="SE4", listener=Listener())
-    transport.release("/v1/index.json")
+    transport.release(today)
     await hass.async_block_till_done()
 
     snapshot = manager.area_snapshot("SE4")
     assert snapshot is not None and snapshot.subscriber_count == 2
-    # One area, one index, one day — however many chargers asked.
-    assert transport.call_count("/v1/index.json") == 1
-    assert transport.call_count(transport.day_path("SE4", TODAY)) == 1
+    # One area, one day — however many chargers asked.
+    assert transport.call_count(today) == 1
     assert len(scheduler.pending) == 2  # one refresh timer and one rollover timer
     assert refresh_timer(scheduler) is not None and rollover_timer(scheduler) is not None
 
@@ -198,55 +197,53 @@ async def test_two_owners_of_one_area_share_one_stream_and_one_leaves_the_other(
     assert manager.owner_area("entry-b") == "SE4"
 
 
-async def test_two_areas_progress_independently_and_share_the_catalogue(
+async def test_two_areas_progress_independently_and_share_one_cycle(
     hass: HomeAssistant, manager: PriceRefreshManager, transport: StubTransport, scheduler: FakeScheduler
 ) -> None:
     transport.serve_area("SE4")
     transport.serve("/v1/DE-LU/2026/09-22.json", 200, day_body("DE-LU", TODAY))
+    runs = count_cycles(manager)
 
-    transport.hold("/v1/index.json")
+    today = transport.day_path("SE4", TODAY)
+    transport.hold(today)
     await manager.async_subscribe(owner_id="entry-a", area_id="SE4", listener=Listener())
-    await transport.entered["/v1/index.json"].wait()
+    await transport.entered[today].wait()
     await manager.async_subscribe(owner_id="entry-b", area_id="DE-LU", listener=Listener())
-    transport.release("/v1/index.json")
+    transport.release(today)
     await hass.async_block_till_done()
 
-    # One catalogue and one index for the installation, two areas' own days.
-    assert transport.call_count("/v1/areas.json") == 1
-    # One index request too, although the two subscriptions were made in
-    # consecutive event-loop turns and their areas' jitter values differ: the cycle
-    # is global, so a second area joins it instead of starting its own poll.
-    assert transport.call_count("/v1/index.json") == 1
-    assert transport.call_count(transport.day_path("SE4", TODAY)) == 1
+    # One cycle, although the two subscriptions were made in consecutive event-loop turns: the cycle is global,
+    # so a second area joins it instead of starting its own poll. Two areas' own days.
+    assert runs == [1]
+    assert transport.call_count(today) == 1
     assert transport.call_count(transport.day_path("DE-LU", TODAY)) == 1
+    # No area list and no index is asked for: the list is bundled.
+    assert transport.call_count("/v1/areas.json") == 0 and transport.call_count("/v1/index.json") == 0
 
     assert manager.area_snapshot("SE4") is not None
     assert manager.area_snapshot("DE-LU") is not None
 
-    # A global cycle runs once per due cycle, not once per area: firing the shared
-    # timer asks the index exactly one more time, whichever areas are active.
+    # A global cycle runs once per due cycle, not once per area; with today held, it asks for nothing new.
     refresh_timer(scheduler).fire()
     await hass.async_block_till_done()
-    assert transport.call_count("/v1/index.json") == 2
-    assert transport.call_count("/v1/areas.json") == 1
+    assert runs == [2]
+    assert transport.call_count(today) == 1
 
 
 async def test_an_area_without_a_known_timezone_is_refused_rather_than_guessed(
     hass: HomeAssistant, manager: PriceRefreshManager, transport: StubTransport
 ) -> None:
-    transport.serve("/v1/areas.json", 503, "")
-
     with pytest.raises(PriceAreaUnavailable):
-        await manager.async_subscribe(owner_id="entry-a", area_id="SE4", listener=Listener())
+        await manager.async_subscribe(owner_id="entry-a", area_id="XX9", listener=Listener())
     assert manager.owner_area("entry-a") is None
 
     # A caller that already knows the zone — from its own settings, say — may
-    # subscribe even while the relay is unreachable.
+    # subscribe even to an area the list does not name.
     handle = await manager.async_subscribe(
-        owner_id="entry-a", area_id="SE4", listener=Listener(), tz=STOCKHOLM
+        owner_id="entry-a", area_id="XX9", listener=Listener(), tz=STOCKHOLM
     )
-    assert manager.owner_area("entry-a") == "SE4"
-    snapshot = manager.area_snapshot("SE4")
+    assert manager.owner_area("entry-a") == "XX9"
+    snapshot = manager.area_snapshot("XX9")
     assert snapshot is not None and snapshot.today == TODAY
     handle()
 
@@ -263,8 +260,8 @@ async def test_a_new_subscriber_receives_the_known_state_promptly(
     await manager.async_subscribe(owner_id="entry-b", area_id="SE4", listener=late)
 
     # Before that call returned, and without any new fetch. The state is
-    # `waiting_for_tomorrow` because the fixture index lists today only -- tomorrow
-    # (2026-09-23) is authoritatively absent, which is a state and not a failure.
+    # `waiting_for_tomorrow` because only today is served -- tomorrow (2026-09-23)
+    # was answered "not published yet", which is a state and not a failure.
     assert late.snapshots, "a new subscriber was not told the current state"
     assert late.snapshots[-1].state == "waiting_for_tomorrow"
     assert late.snapshots[-1].reason == "waiting_for_tomorrow"
@@ -284,7 +281,7 @@ async def test_the_next_refresh_is_scheduled_by_the_documented_policy(
     await manager.async_subscribe(owner_id="entry-a", area_id="SE4", listener=Listener())
     await hass.async_block_till_done()
 
-    # Today ready, tomorrow not listed, and it is 08:00 Brussels: the ordinary cadence.
+    # Today ready, tomorrow not out yet, and it is 08:00 Brussels: the ordinary cadence.
     assert refresh_timer(scheduler).when == clock.now + timedelta(seconds=HEALTHY_POLL_SECONDS)
 
     # The timer fires: a new run, and a new timer at the same cadence, with the old
@@ -295,21 +292,13 @@ async def test_the_next_refresh_is_scheduled_by_the_documented_policy(
     assert fired.fired is True
     assert refresh_timer(scheduler).when == clock.now + timedelta(seconds=HEALTHY_POLL_SECONDS)
 
-    # Move into the publication window, with tomorrow still unlisted: 5 minutes.
+    # Move into the publication window, with tomorrow still not out: 5 minutes.
     clock.now = brussels(13, 0)
     refresh_timer(scheduler).fire()
     await hass.async_block_till_done()
     assert refresh_timer(scheduler).when == clock.now + timedelta(seconds=PUBLICATION_POLL_SECONDS)
 
-    # Inside the window with tomorrow *listed but not in hand* is the same impatience: the relay
-    # publishes an early incomplete document some days, so "listed" is not "usable" and this is the
-    # case where the complete document follows the same afternoon.
-    assert refresh_timer(scheduler).when == clock.now + timedelta(seconds=PUBLICATION_POLL_SECONDS)
-
-    # And a settled area — tomorrow listed and in hand — is checked hourly.
-    transport.serve(
-        "/v1/index.json", 200, index_listing("SE4", ["2026-09-22", "2026-09-23"])
-    )
+    # And a settled area — tomorrow in hand — is checked hourly.
     transport.serve(transport.day_path("SE4", TOMORROW), 200, day_body("SE4", TOMORROW))
     refresh_timer(scheduler).fire()
     await hass.async_block_till_done()
@@ -339,7 +328,7 @@ async def test_jitter_moves_the_interval_but_never_the_midnight(
 async def test_transport_failures_step_through_the_backoff_and_recover(
     hass: HomeAssistant, manager: PriceRefreshManager, transport: StubTransport, scheduler: FakeScheduler, clock: Clock
 ) -> None:
-    transport.serve("/v1/index.json", 503, "")
+    transport.serve(transport.day_path("SE4", TODAY), 503, "")
     await manager.async_subscribe(owner_id="entry-a", area_id="SE4", listener=Listener(), tz=STOCKHOLM)
     await hass.async_block_till_done()
 
@@ -362,25 +351,25 @@ async def test_transport_failures_step_through_the_backoff_and_recover(
     assert manager.area_snapshot("SE4").state == "waiting_for_tomorrow"  # type: ignore[union-attr]
 
 
-async def test_an_unlisted_tomorrow_is_never_requested_and_then_fetched_once(
+async def test_a_tomorrow_not_out_yet_is_waited_for_and_then_fetched_once(
     hass: HomeAssistant, manager: PriceRefreshManager, transport: StubTransport, scheduler: FakeScheduler
 ) -> None:
     transport.serve_area()
-    transport.serve(transport.day_path("SE4", TOMORROW), 200, day_body("SE4", TOMORROW))
 
     await manager.async_subscribe(owner_id="entry-a", area_id="SE4", listener=Listener())
     await hass.async_block_till_done()
     snapshot = manager.area_snapshot("SE4")
+    # Asked once, answered "not published yet": waiting, and not a failure.
     assert snapshot is not None and snapshot.waiting_for_tomorrow is True
-    # The index lists today only, so tomorrow's document is not requested at all...
-    assert transport.call_count(transport.day_path("SE4", TOMORROW)) == 0
+    assert snapshot.tomorrow_snapshot.attempt_error is None
+    assert transport.call_count(transport.day_path("SE4", TOMORROW)) == 1
 
-    # ...until a later index does list it: then, and only then, exactly one request.
-    transport.serve("/v1/index.json", 200, index_listing("SE4", ["2026-09-22", "2026-09-23"]))
+    # Once it is out, the next cycle fetches it: exactly one more request.
+    transport.serve(transport.day_path("SE4", TOMORROW), 200, day_body("SE4", TOMORROW))
     refresh_timer(scheduler).fire()
     await hass.async_block_till_done()
 
-    assert transport.call_count(transport.day_path("SE4", TOMORROW)) == 1
+    assert transport.call_count(transport.day_path("SE4", TOMORROW)) == 2
     settled = manager.area_snapshot("SE4")
     assert settled is not None and settled.state == "ready" and settled.tomorrow_document is not None
 
@@ -388,7 +377,7 @@ async def test_an_unlisted_tomorrow_is_never_requested_and_then_fetched_once(
     refresh_timer(scheduler).fire()
     await hass.async_block_till_done()
     assert transport.call_count(transport.day_path("SE4", TODAY)) == 1
-    assert transport.call_count(transport.day_path("SE4", TOMORROW)) == 1
+    assert transport.call_count(transport.day_path("SE4", TOMORROW)) == 2
 
 
 async def test_an_incomplete_day_stays_incomplete_and_is_not_re_requested(
@@ -408,35 +397,13 @@ async def test_an_incomplete_day_stays_incomplete_and_is_not_re_requested(
     assert snapshot.state == "incomplete" and snapshot.reason == "incomplete_day"
     assert snapshot.today_document is not None and snapshot.today_document.interval_count == 48
 
-    # The relay's day documents are immutable: an incomplete one is reported, not
+    # Day documents are immutable: an incomplete one is reported, not
     # re-requested or cache-busted.
     for _ in range(3):
         refresh_timer(scheduler).fire()
         await hass.async_block_till_done()
     assert transport.call_count(transport.day_path("SE4", TODAY)) == 1
     assert manager.area_snapshot("SE4").state == "incomplete"  # type: ignore[union-attr]
-
-
-async def test_last_good_is_kept_when_the_index_stops_listing_the_day(
-    hass: HomeAssistant, manager: PriceRefreshManager, transport: StubTransport, scheduler: FakeScheduler
-) -> None:
-    transport.serve_area()
-    held = await manager.async_subscribe(owner_id="entry-a", area_id="SE4", listener=Listener())
-    await hass.async_block_till_done()
-    assert manager.area_snapshot("SE4").state == "waiting_for_tomorrow"  # type: ignore[union-attr]
-
-    # The index's window moves on and stops listing today. Nothing valid is thrown
-    # away, and the state says the data is no longer published.
-    transport.serve("/v1/index.json", 200, index_listing("SE4", ["2026-09-18"]))
-    refresh_timer(scheduler).fire()
-    await hass.async_block_till_done()
-
-    stale = manager.area_snapshot("SE4")
-    assert stale is not None
-    assert stale.state == "stale" and stale.reason == "last_good_retained"
-    assert stale.today_document is not None
-    assert transport.call_count(transport.day_path("SE4", TODAY)) == 1
-    held()
 
 
 async def test_a_contract_invalid_day_is_reported_and_never_hot_looped(
@@ -456,99 +423,6 @@ async def test_a_contract_invalid_day_is_reported_and_never_hot_looped(
     assert refresh_timer(scheduler).when >= clock.now + timedelta(minutes=30)
 
 
-async def test_a_changed_areas_revision_refreshes_the_catalogue_once(
-    hass: HomeAssistant, manager: PriceRefreshManager, transport: StubTransport, scheduler: FakeScheduler, clock: Clock
-) -> None:
-    transport.serve_area()
-    await manager.async_subscribe(owner_id="entry-a", area_id="SE4", listener=Listener())
-    await hass.async_block_till_done()
-    assert transport.call_count("/v1/areas.json") == 1
-
-    # A new index revision means the area list changed: refresh it now, not at the
-    # 24-hour mark, and then not again while the revision holds.
-    changed = json.loads(fixture("index.json"))
-    changed["areas_rev"] = "ffffffffffff"
-    transport.serve("/v1/index.json", 200, json.dumps(changed))
-    refresh_timer(scheduler).fire()
-    await hass.async_block_till_done()
-    assert transport.call_count("/v1/areas.json") == 2
-
-    refresh_timer(scheduler).fire()
-    await hass.async_block_till_done()
-    assert transport.call_count("/v1/areas.json") == 2
-
-    # And a catalogue that is a day old is refreshed without any revision change.
-    clock.advance(hours=25)
-    refresh_timer(scheduler).fire()
-    await hass.async_block_till_done()
-    assert transport.call_count("/v1/areas.json") == 3
-
-
-async def test_an_area_list_that_changed_while_home_assistant_was_down_is_fetched_at_the_first_cycle(
-    hass: HomeAssistant, transport: StubTransport, scheduler: FakeScheduler, clock: Clock
-) -> None:
-    # A first process holds the area list and the index of one revision, and keeps them in the store.
-    store = StoreDouble()
-    transport.serve_area()
-    first = PriceRepository(hass, base_url=BASE_URL, session=transport, now=clock, store=store)
-    first_manager = PriceRefreshManager(hass, first, now=clock, jitter=lambda: 0.5, scheduler=scheduler)
-    await first_manager.async_subscribe(owner_id="entry-a", area_id="SE4", listener=Listener())
-    await hass.async_block_till_done()
-    assert transport.call_count("/v1/areas.json") == 1
-    await first_manager.async_shutdown()
-
-    # The relay changes its area list while Home Assistant is down; the held list is only an hour old.
-    clock.advance(hours=1)
-    changed = json.loads(fixture("index.json"))
-    changed["areas_rev"] = "ffffffffffff"
-    transport.serve("/v1/index.json", 200, json.dumps(changed))
-    restarted = PriceRepository(hass, base_url=BASE_URL, session=transport, now=clock, store=store)
-    await restarted.async_restore()
-    manager = PriceRefreshManager(hass, restarted, now=clock, jitter=lambda: 0.5, scheduler=scheduler)
-    await manager.async_subscribe(owner_id="entry-a", area_id="SE4", listener=Listener())
-    await hass.async_block_till_done()
-    assert transport.call_count("/v1/areas.json") == 2
-
-    # And with the revision unchanged, a restart asks for no list at all.
-    await manager.async_shutdown()
-    again = PriceRepository(hass, base_url=BASE_URL, session=transport, now=clock, store=store)
-    await again.async_restore()
-    calm = PriceRefreshManager(hass, again, now=clock, jitter=lambda: 0.5, scheduler=scheduler)
-    await calm.async_subscribe(owner_id="entry-a", area_id="SE4", listener=Listener())
-    await hass.async_block_till_done()
-    assert transport.call_count("/v1/areas.json") == 2
-    await calm.async_shutdown()
-
-
-async def test_a_held_area_list_of_unknown_revision_is_fetched_once_after_a_restart(
-    hass: HomeAssistant, transport: StubTransport, scheduler: FakeScheduler, clock: Clock
-) -> None:
-    # A store written before the list's revision was kept: the index already of the new revision, the list
-    # of an older one, and nothing saying which.
-    store = StoreDouble()
-    transport.serve_area()
-    first = PriceRepository(hass, base_url=BASE_URL, session=transport, now=clock, store=store)
-    first_manager = PriceRefreshManager(hass, first, now=clock, jitter=lambda: 0.5, scheduler=scheduler)
-    await first_manager.async_subscribe(owner_id="entry-a", area_id="SE4", listener=Listener())
-    await hass.async_block_till_done()
-    await first_manager.async_shutdown()
-    assert store.payload["relay"]["catalogue_rev"] is not None
-    store.payload["relay"].pop("catalogue_rev")
-    calls = transport.call_count("/v1/areas.json")
-
-    restarted = PriceRepository(hass, base_url=BASE_URL, session=transport, now=clock, store=store)
-    await restarted.async_restore()
-    manager = PriceRefreshManager(hass, restarted, now=clock, jitter=lambda: 0.5, scheduler=scheduler)
-    await manager.async_subscribe(owner_id="entry-a", area_id="SE4", listener=Listener())
-    await hass.async_block_till_done()
-    assert transport.call_count("/v1/areas.json") == calls + 1
-    # Noted now, so the next cycle asks for no list.
-    refresh_timer(scheduler).fire()
-    await hass.async_block_till_done()
-    assert transport.call_count("/v1/areas.json") == calls + 1
-    await manager.async_shutdown()
-
-
 async def test_the_local_midnight_rollover_republishes_the_new_date_keys(
     hass: HomeAssistant, manager: PriceRefreshManager, transport: StubTransport, scheduler: FakeScheduler, clock: Clock
 ) -> None:
@@ -558,9 +432,7 @@ async def test_the_local_midnight_rollover_republishes_the_new_date_keys(
     await hass.async_block_till_done()
     assert manager.area_snapshot("SE4").today == TODAY  # type: ignore[union-attr]
 
-    # The index starts listing the new today before the clock rolls over, so the
-    # post-rollover run has authority to fetch it.
-    transport.serve("/v1/index.json", 200, index_listing("SE4", ["2026-09-22", "2026-09-23"]))
+    # The new today is out before the clock rolls over (the first cycle was answered "not published yet").
     transport.serve(transport.day_path("SE4", TOMORROW), 200, day_body("SE4", TOMORROW))
 
     # Move the clock to the area's local midnight, and fire the exact rollover timer
@@ -575,9 +447,9 @@ async def test_the_local_midnight_rollover_republishes_the_new_date_keys(
     assert after.today == TOMORROW
     assert after.tomorrow == TOMORROW + timedelta(days=1)
     assert listener.snapshots[-1].today == TOMORROW
-    # The rollover's own run has already fetched the new today (the index lists it),
-    # and the next rollover is the following local midnight.
-    assert transport.call_count(transport.day_path("SE4", TOMORROW)) == 1
+    # The rollover's own run has already fetched the new today, and the next rollover is the following
+    # local midnight.
+    assert transport.call_count(transport.day_path("SE4", TOMORROW)) == 2
     assert after.today_state == "ready" and after.today_document is not None
     assert rollover_timer(scheduler, when=datetime(2026, 9, 23, 22, 0, tzinfo=timezone.utc)) is not None  # type: ignore[union-attr]
 
@@ -625,7 +497,8 @@ async def test_a_timer_and_a_manual_refresh_overlap_into_one_run(
     await manager.async_subscribe(owner_id="entry-a", area_id="SE4", listener=Listener())
     await hass.async_block_till_done()
 
-    transport.serve("/v1/index.json", 200, index_listing("SE4", ["2026-09-22", "2026-09-23"]))
+    # The first cycle asked for tomorrow once and heard "not published yet"; now it is out.
+    assert transport.call_count(path) == 1
     transport.serve(path, 200, day_body("SE4", TOMORROW))
     transport.hold(path)
 
@@ -637,8 +510,8 @@ async def test_a_timer_and_a_manual_refresh_overlap_into_one_run(
     await manual
     await hass.async_block_till_done()
 
-    # One request for tomorrow, and one coherent result.
-    assert transport.call_count(path) == 1
+    # One more request for tomorrow, and one coherent result.
+    assert transport.call_count(path) == 2
     snapshot = manager.area_snapshot("SE4")
     assert snapshot is not None and snapshot.state == "ready"
     assert snapshot.today_document is not None and snapshot.tomorrow_document is not None
@@ -653,19 +526,18 @@ async def test_two_triggers_while_one_failing_run_is_open_still_make_one_run(
 ) -> None:
     """One run per cycle, not one per trigger — and the failure count is what proves it.
 
-    The wire cannot see two runs here: the repository coalesces the index fetch and caches the day
-    document, so a duplicated cycle would still make one request of each. What *is* observable is the
-    global backoff count, which only a finished cycle may advance. With the relay failing and one run
-    open, a timer tick plus a manual refresh must therefore advance it **once** — two runs would count
+    The wire cannot see two runs here: the repository coalesces the day fetch, so a duplicated cycle would
+    still make one request. What *is* observable is the global backoff count, which only a finished cycle may
+    advance. With the source failing and one run open, a timer tick plus a manual refresh must therefore advance it **once** — two runs would count
     the same failure twice and book the second backoff step instead of the first.
     """
     transport.serve_area()
     await manager.async_subscribe(owner_id="entry-a", area_id="SE4", listener=Listener())
     await hass.async_block_till_done()
 
-    # From here the relay fails, and its index request is held open.
-    path = "/v1/index.json"
-    transport.serve(path, 500, "the relay is unwell")
+    # From here the source fails, and the request for tomorrow (asked every cycle until held) is held open.
+    path = transport.day_path("SE4", TOMORROW)
+    transport.serve(path, 500, "the source is unwell")
     transport.hold(path)
     before = transport.call_count(path)
 
@@ -694,9 +566,8 @@ async def test_moving_an_owner_to_another_area_suppresses_the_old_areas_late_wor
     await hass.async_block_till_done()
     transport.serve("/v1/DE-LU/2026/09-22.json", 200, day_body("DE-LU", TODAY))
 
-    # Tomorrow has just become listed, so the next SE4 run *will* request it: that
+    # Tomorrow is not held, so the next SE4 run *will* request it again: that
     # request is what is held open while the owner moves to DE-LU.
-    transport.serve("/v1/index.json", 200, index_listing("SE4", ["2026-09-22", "2026-09-23"]))
     path = transport.day_path("SE4", TOMORROW)
     transport.serve(path, 200, day_body("SE4", TOMORROW))
     transport.hold(path)
@@ -710,7 +581,7 @@ async def test_moving_an_owner_to_another_area_suppresses_the_old_areas_late_wor
     # The late SE4 completion is not delivered as this owner's current area, and it
     # does not install an SE4 timer.
     assert manager.owner_area("entry-a") == "DE-LU"
-    assert transport.call_count(path) == 1
+    assert transport.call_count(path) == 2
     assert manager.area_snapshot("SE4") is None
     # Nothing at all was delivered after the move finished: the SE4 completion was
     # suppressed rather than relabelled, and the last thing this owner heard was
@@ -748,9 +619,8 @@ async def test_the_final_unsubscribe_and_shutdown_are_both_terminal(
     assert manager.area_snapshot("SE4") is not None
 
     # A late completion during shutdown cannot resurrect anything either. The run is
-    # held inside the index request, which every run makes, rather than inside a day
-    # request, which a cached day does not make at all.
-    path = "/v1/index.json"
+    # held inside the request for tomorrow, which every run makes while it is not held.
+    path = transport.day_path("SE4", TOMORROW)
     transport.hold(path)
     refresh_timer(scheduler).fire()
     await transport.entered[path].wait()
@@ -809,9 +679,10 @@ async def test_a_listener_hears_every_meaningful_change_and_nothing_else(
     await hass.async_block_till_done()
     assert len(listener.snapshots) > delivered
 
-    # A state change is not silent either: the index stops listing today.
+    # A state change is not silent either: asking for today again fails, and last good is kept.
     delivered = len(listener.snapshots)
-    transport.serve("/v1/index.json", 200, index_listing("SE4", ["2026-09-18"]))
+    transport.serve(transport.day_path("SE4", TODAY), 503, "")
+    await repository.async_get_day("SE4", TODAY, refresh=True)
     refresh_timer(scheduler).fire()
     await hass.async_block_till_done()
     assert len(listener.snapshots) > delivered
@@ -828,8 +699,7 @@ async def test_the_manager_is_domain_scoped_and_setting_it_up_fetches_nothing(
     second = await async_setup_price_refresh(hass, repository, now=clock, scheduler=scheduler)
 
     # One manager, and no request: setting the integration up must never reach the
-    # network, offline relays must not fail it, and the catalogue is therefore
-    # loaded on first use rather than here.
+    # network, and an unreachable source must not fail it.
     assert first is second
     assert domain_data(hass).price_refresh is first
     assert transport.calls == []
@@ -878,12 +748,14 @@ async def test_diagnostics_describe_the_manager_in_every_state_without_leaking_d
     assert area["today_data"]["state"] == "ready"
     assert area["currency"] == "SEK" and area["timezone"] == "Europe/Stockholm"
     assert area["next_attempt"] is not None and area["fetched_at"] is not None
-    assert ready["catalogue"]["area_count"] == 4
-    assert ready["index"]["areas_rev"] == "916f2f8e05fd"
+    assert ready["catalogue"]["area_count"] == 54 and "index" not in ready
+    # The test's repository has no real provider objects: no source, and nothing that names one.
+    assert area["price_source"]["key"] is None
     assert redacted(ready)
 
-    # Stale last-good.
-    transport.serve("/v1/index.json", 200, index_listing("SE4", ["2026-09-18"]))
+    # Stale last-good (the connection drops: a `network` failure).
+    transport.serve_chunks(transport.day_path("SE4", TODAY), 200, [b"{"], fail_after=0)
+    await manager._repository.async_get_day("SE4", TODAY, refresh=True)  # noqa: SLF001
     refresh_timer(scheduler).fire()
     await hass.async_block_till_done()
     stale = (await async_get_config_entry_diagnostics(hass, entry))["price_data"]["areas"][0]
@@ -919,7 +791,6 @@ async def test_loading_prices_calls_no_service_and_no_charging_controller(
 
     await manager.async_subscribe(owner_id="entry-a", area_id="SE4", listener=Listener())
     await hass.async_block_till_done()
-    transport.serve("/v1/index.json", 200, index_listing("SE4", ["2026-09-22", "2026-09-23"]))
     for _ in range(3):
         refresh_timer(scheduler).fire()
         await hass.async_block_till_done()
@@ -982,59 +853,11 @@ async def test_moving_an_owner_invalidates_every_older_handle(
     assert manager.area_snapshot("DE-LU") is None
 
 
-async def test_a_failed_index_refresh_stops_claiming_tomorrow_is_not_published(
-    hass: HomeAssistant, manager: PriceRefreshManager, transport: StubTransport, scheduler: FakeScheduler
-) -> None:
-    """The index-authority sequence driven through the manager rather than the function."""
-    transport.serve_area()
-    await manager.async_subscribe(owner_id="entry-a", area_id="SE4", listener=Listener())
-    await hass.async_block_till_done()
-
-    # 1. A fresh index omits tomorrow: waiting, which is a real answer.
-    first = manager.area_snapshot("SE4")
-    assert first is not None
-    assert first.tomorrow_authority == "not_listed"
-    assert (first.state, first.reason) == ("waiting_for_tomorrow", "waiting_for_tomorrow")
-
-    # 2. The next index refresh fails; last-good is retained.
-    transport.serve("/v1/index.json", 503, "")
-    refresh_timer(scheduler).fire()
-    await hass.async_block_till_done()
-    retained = manager.area_snapshot("SE4")
-    assert retained is not None
-    assert retained.index_state == "stale"
-    assert retained.tomorrow_authority == "unknown", "a stale index claimed to know"
-    assert retained.waiting_for_tomorrow is False
-    assert retained.state == "degraded" and retained.reason == "index_unavailable"
-    # The retained document itself is still on screen, and still says what it is.
-    assert retained.today_document is not None and retained.today_state == "ready"
-
-    # 3. A later successful index that still omits tomorrow: waiting again.
-    transport.serve_area()
-    refresh_timer(scheduler).fire()
-    await hass.async_block_till_done()
-    again = manager.area_snapshot("SE4")
-    assert again is not None and again.tomorrow_authority == "not_listed"
-    assert again.state == "waiting_for_tomorrow"
-
-    # 4. A successful index that lists tomorrow: listed, and the day is fetched.
-    transport.serve("/v1/index.json", 200, index_listing("SE4", ["2026-09-22", "2026-09-23"]))
-    transport.serve(transport.day_path("SE4", TOMORROW), 200, day_body("SE4", TOMORROW))
-    refresh_timer(scheduler).fire()
-    await hass.async_block_till_done()
-    listed = manager.area_snapshot("SE4")
-    assert listed is not None
-    assert listed.tomorrow_authority == "listed" and listed.state == "ready"
-    assert listed.tomorrow_document is not None
-    assert transport.call_count(transport.day_path("SE4", TOMORROW)) == 1
-
-
 async def test_a_failed_tomorrow_degrades_the_horizon_without_taking_today_away(
     hass: HomeAssistant, manager: PriceRefreshManager, transport: StubTransport, scheduler: FakeScheduler
 ) -> None:
     """Ready -> degraded -> ready."""
     transport.serve_area()
-    transport.serve("/v1/index.json", 200, index_listing("SE4", ["2026-09-22", "2026-09-23"]))
     transport.serve(transport.day_path("SE4", TOMORROW), 200, day_body("SE4", TOMORROW))
     await manager.async_subscribe(owner_id="entry-a", area_id="SE4", listener=Listener())
     await hass.async_block_till_done()
@@ -1079,74 +902,32 @@ async def test_no_subscribers_means_no_timer_at_all(
     assert manager.manager_snapshot().areas == ()
 
 
-async def test_one_managed_index_poll_covers_several_areas_per_cycle(
-    hass: HomeAssistant, manager: PriceRefreshManager, transport: StubTransport, scheduler: FakeScheduler
-) -> None:
-    transport.serve_area("SE4")
-    transport.serve("/v1/DE-LU/2026/09-22.json", 200, day_body("DE-LU", TODAY))
-    transport.serve("/v1/NO1/2026/09-22.json", 200, day_body("NO1", TODAY))
-    # The fixture index lists NO1's yesterday only, so an index that lists today for
-    # all three is built here: the point of the test is one poll serving three areas.
-    three_areas = json.loads(fixture("index.json"))
-    three_areas["areas"] = {
-        "DE-LU": {"days": ["2026-09-22"], "res": 15},
-        "NO1": {"days": ["2026-09-22"], "res": 15},
-        "SE4": {"days": ["2026-09-22"], "res": 15},
-    }
-    transport.serve("/v1/index.json", 200, json.dumps(three_areas))
-
-    transport.hold("/v1/index.json")
-    for owner, area in (("entry-a", "SE4"), ("entry-b", "DE-LU"), ("entry-c", "NO1")):
-        await manager.async_subscribe(owner_id=owner, area_id=area, listener=Listener())
-    await transport.entered["/v1/index.json"].wait()
-    transport.release("/v1/index.json")
-    await hass.async_block_till_done()
-
-    # Three areas, three days, one catalogue and one index.
-    assert transport.call_count("/v1/index.json") == 1
-    assert transport.call_count("/v1/areas.json") == 1
-    assert len([call for call in transport.calls if call.endswith("09-22.json")]) == 3
-    assert len(scheduler.pending) == 4  # one global poll, and one midnight per area
-
-    # A manual refresh joins the shared cycle: it adds the day fan-out, never an
-    # extra index poll.
-    before = transport.call_count("/v1/index.json")
-    await manager.async_refresh_area("SE4")
-    await hass.async_block_till_done()
-    assert transport.call_count("/v1/index.json") == before + 1  # its own cycle, once
-    assert transport.call_count(transport.day_path("SE4", TODAY)) == 1  # cached, so no new day
-
-
 async def test_a_global_transport_failure_is_reported_to_every_area_once(
     hass: HomeAssistant, manager: PriceRefreshManager, transport: StubTransport, scheduler: FakeScheduler, clock: Clock
 ) -> None:
-    transport.serve("/v1/index.json", 503, "")
-    transport.serve("/v1/areas.json", 503, "")
-    # Held open, so both subscriptions belong to the *same* failed cycle: one
-    # attempt between two areas, not one each.
-    transport.hold("/v1/index.json")
+    for area in ("SE4", "DE-LU"):
+        transport.serve(transport.day_path(area, TODAY), 503, "")
+    # Held open, so both subscriptions belong to the *same* failed cycle.
+    transport.hold(transport.day_path("SE4", TODAY))
     await manager.async_subscribe(owner_id="entry-a", area_id="SE4", listener=Listener(), tz=STOCKHOLM)
-    await transport.entered["/v1/index.json"].wait()
-    await manager.async_subscribe(owner_id="entry-b", area_id="DE-LU", listener=Listener(), tz=STOCKHOLM)
-    transport.release("/v1/index.json")
+    await transport.entered[transport.day_path("SE4", TODAY)].wait()
+    await manager.async_subscribe(owner_id="entry-b", area_id="DE-LU", listener=Listener(), tz=BERLIN)
+    transport.release(transport.day_path("SE4", TODAY))
     await hass.async_block_till_done()
 
     for area in ("SE4", "DE-LU"):
         snapshot = manager.area_snapshot(area)
         assert snapshot is not None
-        assert snapshot.index_state == "unavailable"
-        assert snapshot.reason == "index_unavailable"
-        assert snapshot.tomorrow_authority == "unknown"
-    # Two areas, one failed attempt: the backoff is the installation's, not each
-    # area's, so it steps once and the next poll is a minute away.
-    assert transport.call_count("/v1/index.json") == 1
+        assert snapshot.today_state == "unavailable"
+        assert snapshot.today_snapshot.attempt_error == "http_status"
+    # Two areas, one failed cycle: the backoff is the installation's, not each area's, so it steps once and the
+    # next poll is a minute away.
     assert refresh_timer(scheduler).when == clock.now + timedelta(seconds=60)
 
     # The next cycle is the second step, not the second step *per area*.
-    transport.serve("/v1/index.json", 503, "")
     refresh_timer(scheduler).fire()
     await hass.async_block_till_done()
-    assert transport.call_count("/v1/index.json") == 2
+    assert transport.call_count(transport.day_path("SE4", TODAY)) == 2
     assert refresh_timer(scheduler).when == clock.now + timedelta(seconds=120)
 
 
@@ -1156,11 +937,8 @@ async def test_one_areas_day_failure_does_not_block_another_areas_fetch(
     transport.serve_area("SE4")
     transport.serve("/v1/DE-LU/2026/09-22.json", 500, "")
 
-    transport.hold("/v1/index.json")
     await manager.async_subscribe(owner_id="entry-a", area_id="SE4", listener=Listener())
     await manager.async_subscribe(owner_id="entry-b", area_id="DE-LU", listener=Listener())
-    await transport.entered["/v1/index.json"].wait()
-    transport.release("/v1/index.json")
     await hass.async_block_till_done()
 
     # DE-LU's day failed; SE4's plain day fetch still happened and is shown.
@@ -1169,7 +947,8 @@ async def test_one_areas_day_failure_does_not_block_another_areas_fetch(
     assert se4 is not None and se4.today_document is not None and se4.today_state == "ready"
     broken = manager.area_snapshot("DE-LU")
     assert broken is not None and broken.today_state == "unavailable"
-    assert broken.state == "unavailable" and broken.reason == "source_unreachable"
+    # A failed attempt leaves nothing to rely on about today: `index_unavailable`, the reason of an unknown answer.
+    assert broken.state == "unavailable" and broken.reason == "index_unavailable"
 
 
 async def test_diagnostics_publish_the_tri_state_and_never_a_guess(
@@ -1190,27 +969,25 @@ async def test_diagnostics_publish_the_tri_state_and_never_a_guess(
     async def price_data() -> dict:
         return (await async_get_config_entry_diagnostics(hass, entry))["price_data"]
 
-    # A fresh index omits tomorrow: `not_listed`, and the convenience field says
-    # `False` because the relay is currently saying so.
+    # Tomorrow was answered "not published yet": `not_listed`, and the convenience field says
+    # `False` because the source is currently saying so.
     listed = (await price_data())["areas"][0]
     assert listed["tomorrow_authority"] == "not_listed"
     assert listed["tomorrow_published"] is False
     assert listed["today_authority"] == "listed"
     assert listed["state"] == "waiting_for_tomorrow"
 
-    # The index refresh fails and last-good is retained: authority is unknown, and
-    # the convenience field is `None` rather than a lie in either direction.
-    transport.serve("/v1/index.json", 503, "")
+    # The next attempt for tomorrow fails: authority is unknown, and the convenience field is `None` rather
+    # than a lie in either direction.
+    transport.serve(transport.day_path("SE4", TOMORROW), 503, "")
     refresh_timer(scheduler).fire()
     await hass.async_block_till_done()
     stale = (await price_data())["areas"][0]
     assert stale["tomorrow_authority"] == "unknown"
     assert stale["tomorrow_published"] is None
-    assert stale["index_state"] == "stale"
     assert stale["state"] == "degraded" and stale["reason"] == "index_unavailable"
 
-    # A successful index that lists tomorrow: `listed`, and the day was fetched.
-    transport.serve("/v1/index.json", 200, index_listing("SE4", ["2026-09-22", "2026-09-23"]))
+    # Tomorrow is out: `listed`, and the day was fetched.
     transport.serve(transport.day_path("SE4", TOMORROW), 200, day_body("SE4", TOMORROW))
     refresh_timer(scheduler).fire()
     await hass.async_block_till_done()
@@ -1226,81 +1003,24 @@ async def test_diagnostics_publish_the_tri_state_and_never_a_guess(
     assert redacted(await price_data())
 
 
-async def test_a_stale_index_lets_the_manager_ask_for_today_and_the_repository_agrees(
-    hass: HomeAssistant, manager: PriceRefreshManager, transport: StubTransport, scheduler: FakeScheduler
-) -> None:
-    """Manager and repository agree on authority for a retained index.
-
-    Both follow one freshness rule: a stale retained index list is unknown authority, not
-    an authoritative absence, so today is requested rather than suppressed.
-    """
-    # 1. A fresh index omits today (its day list is a day old).
-    transport.serve_area()
-    listing = json.loads(fixture("index.json"))
-    listing["areas"]["SE4"] = {"days": ["2026-09-21"], "res": 15}
-    transport.serve("/v1/index.json", 200, json.dumps(listing))
-    await manager.async_subscribe(owner_id="entry-a", area_id="SE4", listener=Listener())
-    await hass.async_block_till_done()
-    first = manager.area_snapshot("SE4")
-    assert first is not None
-    assert first.today_authority == "not_listed" and first.state == "unavailable"
-    assert transport.call_count(transport.day_path("SE4", TODAY)) == 0
-
-    # 2. The next index refresh fails, and last-good remains.
-    transport.serve("/v1/index.json", 503, "")
-    refresh_timer(scheduler).fire()
-    await hass.async_block_till_done()
-    stale = manager.area_snapshot("SE4")
-    assert stale is not None and stale.index_state == "stale"
-    assert stale.today_authority == "unknown"
-
-    # 3. The manager asks for today, because authority is now unknown rather than an
-    #    authoritative absence — and the repository agrees instead of suppressing it.
-    transport.serve(transport.day_path("SE4", TODAY), 200, day_body("SE4", TODAY))
-    index_calls = transport.call_count("/v1/index.json")
-    await manager.async_refresh_area("SE4")
-    await hass.async_block_till_done()
-
-    # 4. Exactly one day request, and it succeeded.
-    assert transport.call_count(transport.day_path("SE4", TODAY)) == 1
-    recovered = manager.area_snapshot("SE4")
-    assert recovered is not None
-    assert recovered.today_document is not None and recovered.state == "degraded"
-    # 5. No index request was hidden inside that day request: the day request did not
-    #    re-ask a failed index, it only read the state it already had.
-    assert transport.call_count("/v1/index.json") == index_calls + 1  # the cycle's own
-    # 6. Both layers report the same authority for the same facts.
-    repository = manager._repository  # noqa: SLF001 - the repository this test owns
-    assert recovered.today_authority == "unknown"
-    assert repository.day_snapshot("SE4", TODAY).index_authority == "unknown"
-
-    # And a successful later index restores authority in both.
-    transport.serve("/v1/index.json", 200, json.dumps(listing))
-    refresh_timer(scheduler).fire()
-    await hass.async_block_till_done()
-    final = manager.area_snapshot("SE4")
-    assert final is not None and final.today_authority == "not_listed"
-    assert repository.day_snapshot("SE4", TODAY).index_authority == "not_listed"
-
-
 async def test_a_second_owner_of_an_active_area_does_not_poll_again(
     hass: HomeAssistant, manager: PriceRefreshManager, transport: StubTransport, scheduler: FakeScheduler
 ) -> None:
     transport.serve_area()
+    runs = count_cycles(manager)
     await manager.async_subscribe(owner_id="entry-a", area_id="SE4", listener=Listener())
     await hass.async_block_till_done()
 
     # The initial global cycle has fully finished.
-    index_calls = transport.call_count("/v1/index.json")
     appointment = refresh_timer(scheduler).when
-    assert index_calls == 1
+    assert runs == [1]
 
     # A second owner of the same area: current state, and nothing else.
     late = Listener()
     await manager.async_subscribe(owner_id="entry-b", area_id="SE4", listener=late)
     await hass.async_block_till_done()
     assert late.snapshots, "a new owner was not told the current state"
-    assert transport.call_count("/v1/index.json") == index_calls
+    assert runs == [1]
     assert refresh_timer(scheduler).when == appointment
 
     # The same owner replacing its listener: also nothing but current state.
@@ -1308,7 +1028,7 @@ async def test_a_second_owner_of_an_active_area_does_not_poll_again(
     await manager.async_subscribe(owner_id="entry-a", area_id="SE4", listener=replacement)
     await hass.async_block_till_done()
     assert replacement.snapshots, "a replacement listener was not told the current state"
-    assert transport.call_count("/v1/index.json") == index_calls
+    assert runs == [1]
     assert refresh_timer(scheduler).when == appointment
     assert manager.area_snapshot("SE4").subscriber_count == 2  # type: ignore[union-attr]
 
@@ -1317,7 +1037,7 @@ async def test_a_second_owner_of_an_active_area_does_not_poll_again(
     transport.serve("/v1/DE-LU/2026/09-22.json", 200, day_body("DE-LU", TODAY))
     await manager.async_subscribe(owner_id="entry-c", area_id="DE-LU", listener=Listener())
     await hass.async_block_till_done()
-    assert transport.call_count("/v1/index.json") == index_calls + 1
+    assert runs == [2]
     assert manager.area_snapshot("DE-LU") is not None
 
 
@@ -1325,37 +1045,37 @@ async def test_topology_changes_do_not_advance_or_reset_the_backoff(
     hass: HomeAssistant, manager: PriceRefreshManager, transport: StubTransport, scheduler: FakeScheduler, clock: Clock
 ) -> None:
     """Only a finished cycle may move the count; subscriptions merely reschedule."""
-    transport.serve("/v1/index.json", 503, "")
-    transport.serve("/v1/areas.json", 503, "")
+    probe = transport.day_path("SE4", TODAY)
+    transport.serve(probe, 503, "")
+    transport.serve(transport.day_path("DE-LU", TODAY), 503, "")
 
     # Two areas, one failed cycle: the count is at one step, and the appointment is a
     # minute out.
-    transport.hold("/v1/index.json")
+    transport.hold(probe)
     handle_a = await manager.async_subscribe(owner_id="entry-a", area_id="SE4", listener=Listener(), tz=STOCKHOLM)
-    await transport.entered["/v1/index.json"].wait()
-    handle_b = await manager.async_subscribe(owner_id="entry-b", area_id="DE-LU", listener=Listener(), tz=STOCKHOLM)
-    transport.release("/v1/index.json")
+    await transport.entered[probe].wait()
+    handle_b = await manager.async_subscribe(owner_id="entry-b", area_id="DE-LU", listener=Listener(), tz=BERLIN)
+    transport.release(probe)
     await hass.async_block_till_done()
     assert refresh_timer(scheduler).when == clock.now + timedelta(seconds=60)
 
-    # Removing one of the two areas while the relay is in backoff: the appointment is
+    # Removing one of the two areas while the source is in backoff: the appointment is
     # recomputed from the same count, not advanced by a "failure" that never happened.
     handle_b()
     assert refresh_timer(scheduler).when == clock.now + timedelta(seconds=60)
     assert manager.area_snapshot("DE-LU") is None
 
-    # Adding another owner to the remaining area changes nothing either. The zone is
-    # supplied because the catalogue request is failing in this test.
+    # Adding another owner to the remaining area changes nothing either.
     handle_c = await manager.async_subscribe(
         owner_id="entry-c", area_id="SE4", listener=Listener(), tz=STOCKHOLM
     )
     assert refresh_timer(scheduler).when == clock.now + timedelta(seconds=60)
 
     # The next *actual* failed cycle advances exactly one step, to two minutes.
-    attempts = transport.call_count("/v1/index.json")
+    attempts = transport.call_count(probe)
     refresh_timer(scheduler).fire()
     await hass.async_block_till_done()
-    assert transport.call_count("/v1/index.json") == attempts + 1
+    assert transport.call_count(probe) == attempts + 1
     assert refresh_timer(scheduler).when == clock.now + timedelta(seconds=120)
 
     # The final unsubscribes cancel the timer without touching the recorded count.
@@ -1367,12 +1087,11 @@ async def test_topology_changes_do_not_advance_or_reset_the_backoff(
     # it does start a cycle of its own — and that cycle advances the count *once*,
     # from the two steps the earlier failures earned to the third, rather than back
     # to a first step of one minute.
-    transport.serve("/v1/index.json", 503, "")
     back = await manager.async_subscribe(owner_id="entry-a", area_id="SE4", listener=Listener(), tz=STOCKHOLM)
     # The activation's own cycle fails again and is awaited here, so the appointment
     # below is the one *that* cycle earned — the third step, not a fresh first.
     await hass.async_block_till_done()
-    assert transport.call_count("/v1/index.json") == attempts + 2
+    assert transport.call_count(probe) == attempts + 2
     assert refresh_timer(scheduler).when == clock.now + timedelta(seconds=300)
     back()
 
@@ -1386,7 +1105,7 @@ async def test_topology_changes_do_not_advance_or_reset_the_backoff(
 @pytest.fixture
 def live_repository(hass: HomeAssistant, transport: StubTransport) -> PriceRepository:
     """The repository on Home Assistant's *own* clock, so the manager's real timers agree with it."""
-    return PriceRepository(hass, base_url=BASE_URL, session=transport, store=StoreDouble())
+    return stub_repository(hass, transport, store=StoreDouble())
 
 
 @pytest.fixture
@@ -1403,6 +1122,7 @@ async def test_the_default_timer_runs_on_the_event_loop_and_keeps_the_chain_aliv
 ) -> None:
     """One tick: one shared cycle, on the loop, and a later appointment afterwards."""
     transport.serve_area()
+    runs = count_cycles(live_manager)
     await live_manager.async_subscribe(
         owner_id="entry-a", area_id="SE4", listener=Listener(), tz=STOCKHOLM
     )
@@ -1411,7 +1131,7 @@ async def test_the_default_timer_runs_on_the_event_loop_and_keeps_the_chain_aliv
     first = live_manager.area_snapshot("SE4")
     assert first is not None and first.next_attempt is not None
     fired_at = first.next_attempt
-    index_calls = transport.call_count("/v1/index.json")
+    index_calls = runs[0]
 
     # Home Assistant's own helper fires the appointment it was given. Nothing is called directly.
     async_fire_time_changed(hass, fired_at)
@@ -1423,7 +1143,7 @@ async def test_the_default_timer_runs_on_the_event_loop_and_keeps_the_chain_aliv
     assert "RuntimeError" not in caplog.text, caplog.text
 
     # One tick, one shared cycle, and an appointment after it: the chain is alive.
-    assert transport.call_count("/v1/index.json") == index_calls + 1
+    assert runs[0] == index_calls + 1
     after = live_manager.area_snapshot("SE4")
     assert after is not None and after.next_attempt is not None
     assert after.next_attempt > dt_util.utcnow()
@@ -1431,7 +1151,7 @@ async def test_the_default_timer_runs_on_the_event_loop_and_keeps_the_chain_aliv
     # A second fired appointment performs a second cycle through the same path.
     async_fire_time_changed(hass, after.next_attempt)
     await hass.async_block_till_done()
-    assert transport.call_count("/v1/index.json") == index_calls + 2
+    assert runs[0] == index_calls + 2
     third = live_manager.area_snapshot("SE4")
     assert third is not None and third.next_attempt is not None
     assert third.next_attempt > dt_util.utcnow()
@@ -1454,6 +1174,7 @@ async def test_the_rollover_callback_publishes_rearms_and_runs_on_the_event_loop
 ) -> None:
     """Local midnight: the new date keys are published, one shared run starts, and it re-arms."""
     transport.serve_area()
+    runs = count_cycles(live_manager)
     listener = Listener()
     await live_manager.async_subscribe(
         owner_id="entry-a", area_id="SE4", listener=listener, tz=STOCKHOLM
@@ -1461,7 +1182,7 @@ async def test_the_rollover_callback_publishes_rearms_and_runs_on_the_event_loop
     await hass.async_block_till_done()
 
     midnight = next_local_midnight(dt_util.utcnow(), STOCKHOLM)
-    index_calls = transport.call_count("/v1/index.json")
+    index_calls = runs[0]
     notified = len(listener.snapshots)
 
     async_fire_time_changed(hass, midnight)
@@ -1473,24 +1194,24 @@ async def test_the_rollover_callback_publishes_rearms_and_runs_on_the_event_loop
     assert "RuntimeError" not in caplog.text, caplog.text
 
     # Published (the listener was told again, with the new date keys -- the rollover's own effect, and
-    # the only thing that publishes them), and the shared run started. The index count *increases*
+    # the only thing that publishes them), and the shared run started. The cycle count *increases*
     # rather than gaining exactly one: local midnight is a distant instant, so Home Assistant also
     # fires the shared refresh appointment that had come due on the way there.
     assert len(listener.snapshots) > notified
     assert live_manager.area_snapshot("SE4") is not None
-    assert transport.call_count("/v1/index.json") > index_calls
+    assert runs[0] > index_calls
     scheduled = live_manager.area_snapshot("SE4")
     assert scheduled is not None and scheduled.next_attempt is not None
     assert scheduled.next_attempt > dt_util.utcnow()
 
     # It re-armed for the area's next local midnight, through the same partial-and-scheduler path:
     # firing just past that instant runs a second rollover, which an un-armed one-shot could not.
-    index_calls = transport.call_count("/v1/index.json")
+    index_calls = runs[0]
     notified = len(listener.snapshots)
     async_fire_time_changed(hass, midnight + timedelta(seconds=1))
     await hass.async_block_till_done()
     assert len(listener.snapshots) > notified
-    assert transport.call_count("/v1/index.json") > index_calls
+    assert runs[0] > index_calls
 
     assert "from a thread other than the event loop" not in caplog.text, caplog.text
     assert "RuntimeError" not in caplog.text, caplog.text
@@ -1506,6 +1227,7 @@ async def test_a_shutdown_manager_is_inert_through_the_real_timer_path(
 ) -> None:
     """Cancelled and shutdown: a former appointment fires, and nothing at all happens."""
     transport.serve_area()
+    runs = count_cycles(live_manager)
     await live_manager.async_subscribe(
         owner_id="entry-a", area_id="SE4", listener=Listener(), tz=STOCKHOLM
     )
@@ -1516,14 +1238,14 @@ async def test_a_shutdown_manager_is_inert_through_the_real_timer_path(
 
     await live_manager.async_shutdown()
     await hass.async_block_till_done()
-    index_calls = transport.call_count("/v1/index.json")
+    index_calls = runs[0]
 
     async_fire_time_changed(hass, fired_at)
     await hass.async_block_till_done()
 
     # No request, no new appointment and no resurrection: a shutdown manager is inert, and every
     # timer it had was cancelled rather than left to fire into a finished installation.
-    assert transport.call_count("/v1/index.json") == index_calls
+    assert runs[0] == index_calls
     assert live_manager.manager_snapshot().shutdown is True
     assert live_manager.area_snapshot("SE4") is None
     assert "from a thread other than the event loop" not in caplog.text

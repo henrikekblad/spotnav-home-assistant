@@ -1,8 +1,9 @@
-"""Start Home Assistant with the relay's address redirected to the local stub.
+"""Start Home Assistant with the ECB's address redirected to the local rates stub.
 
-The integration fetches prices from a fixed public address. This launcher, used only by the screenshot
-tool, rewrites requests to that address so they reach `RELAY_STUB_URL`; the integration itself is not
-touched. Usage: `python ha_launch.py -c <config dir>`.
+Prices come from the demo Nord Pool integration; the ECB's reference rates (to convert SE4's EUR prices to SEK)
+are read from a fixed public address. This launcher, used only by the screenshot tool, rewrites requests to that
+address so they reach `RATES_STUB_URL`; the integration itself is not touched. Usage:
+`python ha_launch.py -c <config dir>`.
 """
 
 from __future__ import annotations
@@ -12,16 +13,16 @@ import sys
 
 import aiohttp
 
-RELAY = "https://spotnav.sensnology.se"
-STUB = os.environ.get("RELAY_STUB_URL", "http://127.0.0.1:8130")
+ECB = "https://www.ecb.europa.eu"
+STUB = os.environ.get("RATES_STUB_URL", "http://127.0.0.1:8130")
 
 _request = aiohttp.ClientSession._request
 
 
 async def _redirected(self, method, str_or_url, *args, **kwargs):
     url = str(str_or_url)
-    if url.startswith(RELAY):
-        str_or_url = STUB + url[len(RELAY):]
+    if url.startswith(ECB):
+        str_or_url = STUB + url[len(ECB):]
     return await _request(self, method, str_or_url, *args, **kwargs)
 
 

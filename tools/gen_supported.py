@@ -719,10 +719,29 @@ def prices_section() -> list[str]:
     return [
         "## Supported price areas",
         "",
-        "Prices come from the SpotNav relay, which publishes the European day-ahead bidding zones from the "
-        "ENTSO-E Transparency Platform, Spain's regulated PVPC tariff from Red Eléctrica and the fourteen Great "
-        "Britain regions from Octopus Energy's Agile tariff. The card's area picker lists every area the relay publishes and names its price source, "
-        "linked, in the price settings.",
+        "Your Home Assistant fetches the prices itself, from a source you add once "
+        "([Prices](prices.md#where-prices-come-from)):",
+        "",
+        *table(
+            ("Areas", "Source"),
+            [
+                (
+                    "Sweden, Norway, Denmark, Finland, Estonia, Latvia, Lithuania, Germany/Luxembourg, the "
+                    "Netherlands, Belgium, France, Austria, Poland, Romania, Bulgaria",
+                    "Home Assistant's built-in Nord Pool integration (or your own ENTSO-E key)",
+                ),
+                (
+                    "Switzerland, Czechia, Slovakia, Hungary, Slovenia, Croatia, Greece, Italy (all zones), "
+                    "Spain (day-ahead), Portugal",
+                    "Your own free ENTSO-E key (the ENTSO-E Transparency Platform)",
+                ),
+                ("Spain – PVPC (regulated)", "Home Assistant's built-in PVPC integration (Red Eléctrica)"),
+                ("Great Britain – Octopus Agile, 14 regions", "The Octopus Energy integration (HACS), your Agile meter"),
+            ],
+        ),
+        "",
+        "The card's area picker lists every area and names, in the price settings, where its prices come from "
+        "or what to add. The SpotNav relay no longer delivers prices (since SpotNav 2.0).",
         "",
         "### Great Britain (Octopus Agile)",
         "",
@@ -733,9 +752,12 @@ def prices_section() -> list[str]:
         "tax and grid transfer are locked as *Included in the price* and nothing is added. The daily "
         "standing charge is not part of a plan or a session's cost.",
         "- **Your region.** The picker groups the regions under Great Britain (\"GB C – London\"). *Find my "
-        "region* takes a postcode: Home Assistant asks Octopus Energy's public lookup directly, the postcode "
-        "never reaches the relay, and it is neither stored nor logged. A new charger in Great Britain starts "
+        "region* takes a postcode: Home Assistant asks Octopus Energy's public lookup directly, and the "
+        "postcode is not sent anywhere else, stored or logged. A new charger in Great Britain starts "
         "with no area until you choose one.",
+        "- **Your rates.** They are read from your own meter through the [Octopus Energy]"
+        "(https://github.com/BottlecapDave/HomeAssistant-OctopusEnergy) integration, installed through HACS. "
+        "Without an Agile meter there are no prices.",
         "- **When.** Agile is published around 16:00 UK time for 23:00 to 23:00, so tomorrow's last hour "
         "(23:00 to midnight) arrives with the next day's publication. Amounts are in pounds and pence and "
         "distances in miles.",

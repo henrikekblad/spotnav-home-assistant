@@ -25,8 +25,9 @@ const shadow = (element: Element): ShadowRoot => element.shadowRoot as ShadowRoo
 const read = (...parts: string[]): Record<string, any> =>
   JSON.parse(readFileSync(join(ROOT, ...parts), "utf8")) as Record<string, any>;
 
-const RELAY = { key: "relay", name: "SpotNav relay", url: "https://spotnav.sensnology.se" };
+const SOURCE = { key: "entsoe", name: "ENTSO-E", url: "https://transparency.entsoe.eu/" };
 const NONE = { key: null, name: null, url: null };
+const SV_ENTSOE = "Priser från ENTSO-E (din nyckel)";
 
 function provider(base: Record<string, unknown>, code: string | null, params: Record<string, string> = {}) {
   return { ...base, notice: code === null ? null : { code, params } };
@@ -100,9 +101,9 @@ afterEach(() => {
 
 describe("the prices.provider block", () => {
   it("is read with its notice and parameters", () => {
-    const decoded = decodeDashboard(dashboard(provider(RELAY, "octopus_region_mismatch", { region: "A" })));
+    const decoded = decodeDashboard(dashboard(provider(SOURCE, "octopus_region_mismatch", { region: "A" })));
     expect(decoded.ok && decoded.value.prices.provider).toEqual({
-      ...RELAY,
+      ...SOURCE,
       notice: { code: "octopus_region_mismatch", params: { region: "A" } },
     });
     const none = decodeDashboard(dashboard(provider(NONE, "add_entsoe_key")));
@@ -116,11 +117,11 @@ describe("the prices.provider block", () => {
       absent,
       dashboard(null),
       dashboard("relay"),
-      dashboard({ ...provider(RELAY, null), extra: true }),
-      dashboard({ ...RELAY }),
-      dashboard(provider(RELAY, "add_nordpool", { region: 3 } as unknown as Record<string, string>)),
-      dashboard({ ...RELAY, notice: { code: "add_nordpool" } }),
-      dashboard({ ...RELAY, key: 4, notice: null }),
+      dashboard({ ...provider(SOURCE, null), extra: true }),
+      dashboard({ ...SOURCE }),
+      dashboard(provider(SOURCE, "add_nordpool", { region: 3 } as unknown as Record<string, string>)),
+      dashboard({ ...SOURCE, notice: { code: "add_nordpool" } }),
+      dashboard({ ...SOURCE, key: 4, notice: null }),
     ]) {
       const decoded = decodeDashboard(payload);
       expect(decoded.ok).toBe(true);
@@ -138,8 +139,9 @@ describe("the prices.provider block", () => {
   });
 
   it("is in every committed dashboard fixture", () => {
+    // The fixtures' SE4 has no source of its own (no Nord Pool entry, no key): no provider, and the notice.
     const decoded = decodeDashboard(read("dashboard", "proposal_ready.json"));
-    expect(decoded.ok && decoded.value.prices.provider?.key).toBe("relay");
+    expect(decoded.ok && decoded.value.prices.provider).toEqual({ ...NONE, notice: { code: "add_nordpool", params: {} } });
   });
 });
 
@@ -149,13 +151,17 @@ describe("the source line", () => {
     ["entsoe", "Prices from ENTSO-E (your key)"],
     ["pvpc", "Prices from PVPC (Home Assistant)"],
     ["octopus", "Prices from Octopus Energy (your Agile tariff)"],
-    ["relay", "Prices from the SpotNav relay"],
   ])("names %s", async (key, text) => {
     const { element } = await open(dashboard(provider({ key, name: "x", url: "https://example.org/" }, null)));
     const line = priceSection(element).querySelector<HTMLElement>("[data-price-provider]");
     expect(line?.textContent).toBe(text);
     expect(line?.dataset["priceProvider"]).toBe(key);
     expect(notice(element)).toBeNull();
+  });
+
+  it("has no line for the relay, which no longer delivers prices (an older backend's key)", async () => {
+    const { element } = await open(dashboard(provider({ key: "relay", name: "SpotNav relay", url: "https://spotnav.sensnology.se" }, null)));
+    expect(priceSection(element).querySelector("[data-price-provider]")).toBeNull();
   });
 
   it("is absent with no source, and nothing is shown without the block", async () => {
@@ -168,16 +174,16 @@ describe("the source line", () => {
   });
 
   it("speaks Swedish", async () => {
-    const { element } = await open(dashboard(provider(RELAY, "add_nordpool")), { language: "sv" });
+    const { element } = await open(dashboard(provider(SOURCE, "add_nordpool")), { language: "sv" });
     await settle();
-    expect(priceSection(element).querySelector("[data-price-provider]")?.textContent).toBe("Priser från SpotNav-reläet");
+    expect(priceSection(element).querySelector("[data-price-provider]")?.textContent).toBe(SV_ENTSOE);
     expect(labels(notice(element))).toEqual(["Lägg till Nord Pool", "Använd min ENTSO-E-nyckel i stället"]);
   });
 });
 
 describe("the notices", () => {
   it("add_nordpool opens Home Assistant's own flow for Nord Pool and offers the key", async () => {
-    const { element } = await open(dashboard(provider(RELAY, "add_nordpool")));
+    const { element } = await open(dashboard(provider(SOURCE, "add_nordpool")));
     const box = notice(element)!;
     expect(box.dataset["priceNotice"]).toBe("add_nordpool");
     expect(box.querySelector(".spotnav-suggestion-text")?.textContent).toBe(
@@ -199,7 +205,7 @@ describe("the notices", () => {
     ["octopus_not_loaded", ["Open Octopus Energy"], integrationPath("octopus_energy")],
     ["octopus_no_agile", ["Open Octopus Energy"], integrationPath("octopus_energy")],
   ])("%s opens its page", async (code, buttons, path) => {
-    const { element } = await open(dashboard(provider(RELAY, code)));
+    const { element } = await open(dashboard(provider(SOURCE, code)));
     const box = notice(element)!;
     expect(labels(box)).toEqual(buttons);
     action(box, path).click();
@@ -244,7 +250,7 @@ describe("the notices", () => {
   });
 
   it("an unknown notice is not shown", async () => {
-    const { element } = await open(dashboard(provider(RELAY, "something_new")));
+    const { element } = await open(dashboard(provider(SOURCE, "something_new")));
     expect(notice(element)).toBeNull();
     expect(priceSection(element).querySelector("[data-price-provider]")).not.toBeNull();
   });
@@ -252,7 +258,7 @@ describe("the notices", () => {
   it("a reader who is not an administrator gets the sentence without its buttons", () => {
     const nodes = priceProviderNodes(document, {
       language: "en",
-      provider: { ...RELAY, notice: { code: "add_nordpool", params: {} } } as PriceProvider,
+      provider: { ...SOURCE, notice: { code: "add_nordpool", params: {} } } as PriceProvider,
       areaLabel: "SE4",
       areaId: "SE4",
       isAdmin: false,
@@ -263,7 +269,7 @@ describe("the notices", () => {
       openArea: () => undefined,
       openKeyEditor: () => undefined,
     });
-    expect(nodes.map((node) => node.dataset["priceProvider"] ?? node.dataset["priceNotice"])).toEqual(["relay", "add_nordpool"]);
+    expect(nodes.map((node) => node.dataset["priceProvider"] ?? node.dataset["priceNotice"])).toEqual(["entsoe", "add_nordpool"]);
     expect(nodes[1]!.querySelector("button")).toBeNull();
   });
 
@@ -275,7 +281,7 @@ describe("the notices", () => {
 
   it("has its words in every language", () => {
     const keys = Object.keys(TRANSLATIONS.en).filter((key) => key.startsWith("price.notice.") || key.startsWith("price.key.") || key.startsWith("price.provider."));
-    expect(keys.length).toBe(32);
+    expect(keys.length).toBe(31);
     for (const language of LANGUAGES) {
       const words = TRANSLATIONS[language] as Record<string, string>;
       for (const key of keys) {

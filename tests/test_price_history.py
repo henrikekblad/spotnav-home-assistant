@@ -20,10 +20,9 @@ from custom_components.spotnav import time_zones
 from custom_components.spotnav.pricing.area_catalogue import BUNDLED_PATH, parse_bundled
 from custom_components.spotnav.pricing.price_repository import (
     HISTORY_KEEP_DAYS,
-    PriceRepository,
     STORAGE_SCHEMA,
 )
-from .relay import BASE_URL, Clock, StoreDouble, StubTransport, TODAY, day_body, fixture
+from .relay import stub_repository, Clock, StoreDouble, StubTransport, TODAY, day_body, fixture
 
 STAMP = "2026-09-22T04:00:00+00:00"
 
@@ -79,7 +78,7 @@ async def test_a_schema_one_store_migrates_with_every_day_it_held(
 ) -> None:
     legacy = schema_one()
     store = StoreDouble(copy.deepcopy(legacy))
-    repository = PriceRepository(hass, base_url=BASE_URL, session=transport, now=clock, store=store)
+    repository = stub_repository(hass, transport, now=clock, store=store)
     await repository.async_restore()
 
     # Every day is read back by the same parser, nothing fetched.
@@ -87,9 +86,8 @@ async def test_a_schema_one_store_migrates_with_every_day_it_held(
         area, _, raw_day = key.partition("|")
         snapshot = repository.file_snapshot(area, date.fromisoformat(raw_day))
         assert snapshot.document is not None and snapshot.source == "store", key
-    assert repository.catalogue_snapshot().catalogue is not None
-    assert repository.index_snapshot().index is not None
-    assert repository.catalogue_revision() == "916f2f8e05fd"
+    # The relay's area list, index and profile beside them are not read (the list is the bundled one).
+    assert repository.catalogue_snapshot().source == "bundled"
     assert transport.calls == []
 
     # The next write is schema 2: every document unchanged, filed under its own calendar.
@@ -104,16 +102,11 @@ async def test_a_schema_one_store_migrates_with_every_day_it_held(
     assert set(written["days"]) == set(expected)
     for key, entry in expected.items():
         assert written["days"][key] == {**entry, "provider": "relay"}, key
-    relay = written["relay"]
-    assert relay["catalogue"] == legacy["catalogue"]
-    assert relay["catalogue_rev"] == "916f2f8e05fd"
-    assert relay["index"] == legacy["index"]
-    # The relay's profile is not kept: the profile is built from the held days.
-    assert "profiles" not in relay
-    assert set(written) == {"schema", "days", "relay"}
+    # The relay's area list, index and profile are not kept: nothing reads them any more.
+    assert set(written) == {"schema", "days"}
 
     # And schema 2 restores to the same thing in a new process.
-    again = PriceRepository(hass, base_url=BASE_URL, session=StubTransport(), now=clock, store=StoreDouble(written))
+    again = stub_repository(hass, StubTransport(), now=clock, store=StoreDouble(written))
     await again.async_restore()
     for key in legacy["days"]:
         area, _, raw_day = key.partition("|")
@@ -128,11 +121,11 @@ async def test_a_fetched_file_is_stored_under_its_calendar_with_its_provider(
 ) -> None:
     transport.serve_area()
     store = StoreDouble()
-    repository = PriceRepository(hass, base_url=BASE_URL, session=transport, now=clock, store=store)
+    repository = stub_repository(hass, transport, now=clock, store=store)
     await repository.async_get_day("SE4", TODAY)
 
     entry = store.payload["days"]["SE4|Europe/Stockholm|2026-09-22"]
-    assert entry["provider"] == "relay"
+    assert entry["provider"] == "stub"
     assert entry["document"] == json.loads(day_body("SE4", TODAY))
 
 
@@ -150,7 +143,7 @@ async def test_files_older_than_the_retention_are_dropped_on_the_next_write(
             },
         }
     )
-    repository = PriceRepository(hass, base_url=BASE_URL, session=transport, now=clock, store=store)
+    repository = stub_repository(hass, transport, now=clock, store=store)
     await repository.async_restore()
     # Restoring keeps everything; nothing is lost before a write.
     assert repository.file_snapshot("SE4", too_old).document is not None
@@ -184,8 +177,7 @@ async def test_finnish_files_on_two_calendars_coexist_and_only_the_area_calendar
     }
 
     # Read on the relay's calendar (the bundled list says Helsinki): the Helsinki file, though the CET one is newer.
-    relay_era = PriceRepository(
-        hass, base_url=BASE_URL, session=transport, now=clock, store=StoreDouble(copy.deepcopy(payload)),
+    relay_era = stub_repository(hass, transport, now=clock, store=StoreDouble(copy.deepcopy(payload)),
         bundled=await bundled(),
     )
     await relay_era.async_restore()
@@ -195,8 +187,7 @@ async def test_finnish_files_on_two_calendars_coexist_and_only_the_area_calendar
 
     # Read on the CET calendar: the CET file, and the Helsinki one is not mistaken for it.
     store = StoreDouble(copy.deepcopy(payload))
-    switched = PriceRepository(
-        hass, base_url=BASE_URL, session=transport, now=clock, store=store,
+    switched = stub_repository(hass, transport, now=clock, store=store,
         bundled=await bundled(finland_on_cet=True),
     )
     await switched.async_restore()
@@ -218,8 +209,7 @@ async def test_a_file_dated_on_another_calendar_than_the_area_is_refused_when_fe
     transport.serve("/v1/index.json", 503, "busy")
     transport.serve(transport.day_path("FI", TODAY), 200, json.dumps(finnish_file(TODAY, "Europe/Brussels")))
     store = StoreDouble()
-    repository = PriceRepository(
-        hass, base_url=BASE_URL, session=transport, now=clock, store=store, bundled=await bundled()
+    repository = stub_repository(hass, transport, now=clock, store=store, bundled=await bundled()
     )
 
     snapshot = await repository.async_get_file("FI", TODAY)
@@ -242,7 +232,7 @@ async def test_a_stored_file_whose_key_names_another_calendar_is_ignored(
             },
         }
     )
-    repository = PriceRepository(hass, base_url=BASE_URL, session=transport, now=clock, store=store)
+    repository = stub_repository(hass, transport, now=clock, store=store)
     await repository.async_restore()
     assert repository.file_snapshot("SE4", TODAY).document is None
 
@@ -253,7 +243,7 @@ async def test_a_store_of_an_unknown_schema_is_ignored(
     store = StoreDouble(
         {"schema": 3, "days": {"SE4|Europe/Stockholm|2026-09-22": stored(json.loads(day_body("SE4", TODAY)))}}
     )
-    repository = PriceRepository(hass, base_url=BASE_URL, session=transport, now=clock, store=store)
+    repository = stub_repository(hass, transport, now=clock, store=store)
     await repository.async_restore()
     assert repository.file_snapshot("SE4", TODAY).document is None
 
@@ -264,8 +254,8 @@ async def test_a_day_file_dated_in_an_equal_zone_is_found_under_the_area_calenda
     """Calendars compare by instant: a Stockholm-dated file is a Berlin day too, so a German area finds it."""
     transport.serve_area()
     transport.serve("/v1/DE-LU/2026/09-22.json", 200, day_body("DE-LU", TODAY))
-    repository = PriceRepository(hass, base_url=BASE_URL, session=transport, now=clock, store=StoreDouble())
-    await repository.async_get_catalogue()
+    repository = stub_repository(hass, transport, now=clock, store=StoreDouble())
+    repository.catalogue_snapshot()
 
     snapshot = await repository.async_get_file("DE-LU", TODAY)
 

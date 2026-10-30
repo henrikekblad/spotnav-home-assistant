@@ -19,11 +19,10 @@ from custom_components.spotnav.pricing.area_catalogue import (
     BUNDLED_PATH,
     parse_bundled,
 )
-from custom_components.spotnav.pricing.price_repository import PriceRepository
 from custom_components.spotnav.pricing.relay_contract import RelayParseError
 from tools.sync_areas import lost_routes, render
 
-from .relay import BASE_URL, Clock, StubTransport
+from .relay import stub_repository, Clock, StubTransport
 
 #: The areas Nord Pool's day-ahead market prices, by SpotNav id, with Nord Pool's own code.
 NORD_POOL = {
@@ -168,49 +167,40 @@ async def test_a_missing_or_refused_file_is_no_bundled_catalogue(hass: HomeAssis
     assert loaded is not None and "SE4" in loaded.catalogue.area_ids
 
 
-# ------------------------------------------------------------------ the repository's fallback
+# ------------------------------------------------------------------ the repository's list
 
 
-async def test_the_bundled_list_answers_until_the_relays_is_held(
+async def test_the_bundled_list_is_the_only_list(
     hass: HomeAssistant, transport: StubTransport, clock: Clock, bundled
 ) -> None:
-    repository = PriceRepository(hass, base_url=BASE_URL, session=transport, now=clock, bundled=bundled)
+    repository = stub_repository(hass, transport, now=clock, bundled=bundled)
 
-    before = repository.catalogue_snapshot()
-    assert (before.state, before.source, before.fetched_at) == ("ready", "bundled", None)
-    assert before.catalogue is bundled.catalogue
+    snapshot = repository.catalogue_snapshot()
+    assert (snapshot.state, snapshot.source, snapshot.fetched_at, snapshot.attempt_error) == (
+        "ready", "bundled", None, None
+    )
+    assert snapshot.catalogue is bundled.catalogue
     # Its calendars too: Portugal's display day is cut from Madrid files.
     assert repository.calendars("PT") == ("Europe/Lisbon", "Europe/Madrid")
-
-    # The relay cannot be reached: the bundled list stays, with the failure beside it.
-    transport.serve("/v1/areas.json", 500, "")
-    failed = await repository.async_get_catalogue()
-    assert (failed.state, failed.source, failed.attempt_error) == ("stale", "bundled", "http_status")
-    assert failed.catalogue is bundled.catalogue
-
-    # The relay's list, once held, is the one answered.
-    transport.serve_area()
-    fetched = await repository.async_get_catalogue()
-    assert (fetched.state, fetched.source) == ("ready", "network")
-    assert fetched.catalogue is not bundled.catalogue
-    assert repository.catalogue_snapshot().catalogue is fetched.catalogue
+    # Nothing is ever asked for it.
+    assert transport.calls == []
 
 
-async def test_without_a_bundled_list_nothing_changes(
+async def test_without_a_bundled_list_no_area_is_listed(
     hass: HomeAssistant, transport: StubTransport, clock: Clock
 ) -> None:
-    repository = PriceRepository(hass, base_url=BASE_URL, session=transport, now=clock)
-    assert repository.catalogue_snapshot().catalogue is None
-    transport.serve("/v1/areas.json", 500, "")
-    failed = await repository.async_get_catalogue()
-    assert (failed.state, failed.catalogue) == ("unavailable", None)
+    repository = stub_repository(hass, transport, now=clock, bundled=None)
+    snapshot = repository.catalogue_snapshot()
+    assert (snapshot.state, snapshot.catalogue) == ("unavailable", None)
+    assert repository.area_entry("SE4") is None
+    assert transport.calls == []
 
 
 async def test_the_bundled_list_is_never_stored(
     hass: HomeAssistant, transport: StubTransport, clock: Clock, bundled
 ) -> None:
-    repository = PriceRepository(hass, base_url=BASE_URL, session=transport, now=clock, bundled=bundled)
-    assert repository._payload()["relay"]["catalogue"] is None
+    repository = stub_repository(hass, transport, now=clock, bundled=bundled)
+    assert set(repository._payload()) == {"schema", "days"}
 
 
 # ------------------------------------------------------------------ the sync tool's guard

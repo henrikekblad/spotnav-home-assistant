@@ -37,10 +37,11 @@ energy to charge (or a [target state of charge](target-soc.md)), the charger's *
   plugged in, only Resume ends it, and the status says so.
 - **Settings are one record.** The card, the app and the entities all edit the same settings.
   A write names the revision it edited, so two clients cannot silently overwrite each other.
-- **Prices** come from the SpotNav Relay, exactly as published: EUR per kWh with each area's
-  currency, units, time zone and the day's ECB rate, which the planner applies. Home Assistant never guesses a price. Fiscal components
-  (VAT, energy tax, grid transfer fee) can each be off, use the relay's suggestion for the
-  area, or use your own value. See [Prices](prices.md).
+- **Prices** come from the source your Home Assistant uses for the area (Nord Pool, PVPC or Octopus
+  Energy through Home Assistant, or your own ENTSO-E key), exactly as published: EUR per kWh with each
+  area's currency, units, time zone and the day's ECB rate, which the planner applies. Home Assistant
+  never guesses a price. Fiscal components (VAT, energy tax, grid transfer fee) can each be off, use the
+  area's suggestion, or use your own value. See [Prices](prices.md).
 - **Tomorrow's prices** are published in the afternoon. If a deadline needs hours that are not
   priced yet, SpotNav buys what it must now and plans the rest when the prices arrive. Part of
   a plan that had to be bought without published prices is flagged.
@@ -77,7 +78,7 @@ at once.
 choose a date up to seven days ahead ("Sun 4 Oct"); clearing it returns to a departure that repeats
 every day. With a date the plan reaches that far, but SpotNav still only charges in prices that are
 published. If the weeks behind show that the same weekday and hours that are not published yet were
-clearly cheaper (more than one standard deviation of the spread, from a history the relay publishes),
+clearly cheaper (more than one standard deviation of the spread, from the prices Home Assistant has stored),
 it waits and says so: *Waiting for Sunday's prices (at 13:00), which have been 30 % cheaper over the last 4 weeks*. It only waits while the
 charge can still be finished in time, buys what cannot wait, and plans again each time prices are
 published. Without a usable history, or without a clear saving, it plans on the published prices.

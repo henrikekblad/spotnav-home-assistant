@@ -1,8 +1,12 @@
-"""The suite's one fake relay wire and its doubles.
+"""The suite's one fake price source and its doubles.
 
-`StubTransport` routes by path and serves bodies as streams, `StoreDouble` and `Clock` are the
-repository's store and injected time, `FakeScheduler` records timers instead of waiting, and
-`serve` publishes the fixture documents. Every test that needs a relay imports from here.
+Since 2.0 no price comes from the SpotNav relay; a test that needs prices still serves `"v": 1` day documents by
+path, the shape every provider builds. `StubTransport` routes by path and serves bodies as streams, and
+[StubProvider] is a price provider that reads its day files from it (`/v1/<AREA>/<YYYY>/<MM-DD>.json`, a 404 being
+"not published yet"), asked on a schedule that opens tomorrow at once, so a test decides what is out by what it
+serves. [StubRouter] gives every area without a real provider the stub, and [stub_repository] builds a repository on
+it with the bundled area list. `StoreDouble` and `Clock` are the repository's store and injected time,
+`FakeScheduler` records timers instead of waiting, and `serve` publishes the fixture documents.
 """
 
 from __future__ import annotations
@@ -16,6 +20,13 @@ from zoneinfo import ZoneInfo
 
 from aiohttp import ClientError
 from homeassistant.core import HomeAssistant
+
+from custom_components.spotnav import time_zones
+from custom_components.spotnav.pricing.area_catalogue import BUNDLED_PATH, parse_bundled
+from custom_components.spotnav.pricing.price_repository import PriceRepository
+from custom_components.spotnav.pricing.providers import DayFetch, ProviderRouter
+from custom_components.spotnav.pricing.providers.notices import source_notice, SourceStatus
+from custom_components.spotnav.pricing.relay_contract import AreaPublication
 
 FIXTURES = Path(__file__).parent / "fixtures" / "relay"
 
@@ -168,11 +179,8 @@ class StubTransport:
         self.routes[path] = (status, chunks, behaviour)
 
     def serve_area(self, area: str = "SE4", *, chunked: int | None = None) -> None:
-        """The three resources, optionally delivered in tiny pieces."""
-        bodies = {
-            "/v1/areas.json": fixture("areas.json"),
-            "/v1/index.json": fixture("index.json"),
-        }
+        """Today's and yesterday's files, optionally delivered in tiny pieces."""
+        bodies = {}
         for day in (TODAY, YESTERDAY):
             bodies[self.day_path(area, day)] = day_body(area, day)
         for path, body in bodies.items():
@@ -209,6 +217,111 @@ class StubTransport:
 
     def call_count(self, path: str) -> int:
         return self.calls.count(path)
+
+
+def _load_bundled():
+    """The area list shipped with the integration, read once at import (off the event loop, so its zones resolve)."""
+    document = json.loads(BUNDLED_PATH.read_text(encoding="utf-8"))
+    for area in document["areas"]:
+        for name in (area.get("tz"), area.get("market_tz"), area.get("routes", {}).get("cet_market_tz")):
+            if name:
+                time_zones.zone(name)
+    return parse_bundled(document)
+
+
+#: The bundled area list, as the repository reads it.
+BUNDLED = _load_bundled()
+
+#: The stub's schedule: tomorrow is worth asking for from the start of today (Brussels), so what a test serves is
+#: what is out. The cadence still follows the area's own publication (13:00 Brussels).
+STUB_PUBLICATION = AreaPublication(local_time=datetime.min.time(), tz="Europe/Brussels")
+
+
+#: Where a test states which days are out (`serve_index`, `serve(listed=...)`), in the shape the relay's index had.
+INDEX_PATH = "/v1/index.json"
+
+
+class StubProvider:
+    """A price provider reading `"v": 1` day files from a [StubTransport], by path.
+
+    200 is the file, 404 "not published yet", any other status a failed request (`http_status`), a dropped or
+    stalled body `network`/`timeout`. When the test serves a listing ([INDEX_PATH]), a day it does not list is "not
+    published yet" without a request, so a test can say what is out apart from what is served. Its files are dated on the area list's own calendar (`market_calendar` is
+    `None`), so the repository reads the area's entry unchanged.
+    """
+
+    key = "stub"
+    name = "Test prices"
+    url = "https://prices.test"
+    publication = STUB_PUBLICATION
+    history_reach = None
+
+    def __init__(self, transport: "StubTransport") -> None:
+        self.transport = transport
+
+    def market_calendar(self, area_id: str) -> str | None:
+        return None
+
+    def wants_again(self, area_id: str, document: Any) -> bool:
+        return False
+
+    def _not_out(self, area_id: str, market_day: date) -> bool:
+        """Whether the test's listing (an index document on the wire, [serve_index]) leaves this day out."""
+        route = self.transport.routes.get(INDEX_PATH)
+        if route is None or route[0] != 200:
+            return False
+        listing = json.loads(b"".join(route[1]).decode("utf-8")).get("areas", {}).get(area_id)
+        return listing is None or market_day.isoformat() not in listing.get("days", [])
+
+    async def async_fetch_day(self, area_id: str, market_day: date) -> DayFetch:
+        if self._not_out(area_id, market_day):
+            return DayFetch("not_published", code="not_published")
+        try:
+            async with asyncio.timeout(20):
+                async with self.transport.get(BASE_URL + StubTransport.day_path(area_id, market_day)) as response:
+                    if response.status == 404:
+                        return DayFetch("not_published", code="not_published")
+                    if response.status != 200:
+                        return DayFetch("failed", code="http_status")
+                    chunks = []
+                    while chunk := await response.content.read(64 * 1024):
+                        chunks.append(chunk)
+        except TimeoutError:
+            return DayFetch("failed", code="timeout")
+        except ClientError:
+            return DayFetch("failed", code="network")
+        try:
+            document = json.loads(b"".join(chunks).decode("utf-8"))
+        except ValueError:
+            return DayFetch("failed", code="not_json")
+        await time_zones.async_resolve_document(document)
+        return DayFetch("fetched", document=document)
+
+
+class StubRouter(ProviderRouter):
+    """The real router, with the stub reading the files of every area it finds no provider for.
+
+    The area's source status stays the real router's: an area the stub reads has no source as far as anything shown
+    is concerned (`key` `None` and its notice), like an installation holding the days it kept from before 2.0.
+    """
+
+    def __init__(self, stub: StubProvider, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self.stub = stub
+
+    def provider_for(self, area_id: str):
+        return super().provider_for(area_id) or self.stub
+
+    def source_status(self, area_id: str):
+        if ProviderRouter.provider_for(self, area_id) is None:
+            return SourceStatus(key=None, name=None, url=None, notice=source_notice(self.facts(area_id)))
+        return super().source_status(area_id)
+
+
+def stub_repository(hass: HomeAssistant, transport: "StubTransport", **kwargs: Any) -> PriceRepository:
+    """A repository whose areas read the stub's files, with the bundled area list (unless `bundled` is given)."""
+    kwargs.setdefault("bundled", BUNDLED)
+    return PriceRepository(hass, router=StubRouter(StubProvider(transport)), **kwargs)
 
 
 class StoreDouble:
@@ -510,3 +623,26 @@ def hold_history(repository: Any, area: str = SE4, **kwargs: Any) -> None:
     The profile is built from held day files, so this is how a test gives an area its history.
     """
     repository._adopt({"schema": 2, "days": history_days(area, **kwargs)})  # noqa: SLF001 - the store's own path
+
+
+async def today_fails(world: Any, area: str = SE4) -> None:
+    """Asking for today's held file again fails (the source is unwell): what is held stays, `stale`.
+
+    A held file is not asked for again on its own, so the test asks once more itself, through the repository,
+    as a manual refresh does. [today_back] serves the file as it was.
+    """
+    path = StubTransport.day_path(area, TODAY)
+    saved = getattr(world.transport, "saved_routes", {})
+    saved.setdefault(path, world.transport.routes.get(path))
+    world.transport.saved_routes = saved
+    world.transport.serve(path, 500, "the source is unwell")
+    await world.repository.async_get_day(area, TODAY, refresh=True)
+
+
+async def today_back(world: Any, area: str = SE4) -> None:
+    """Today's file is served as before [today_fails], and asked for again."""
+    path = StubTransport.day_path(area, TODAY)
+    route = getattr(world.transport, "saved_routes", {}).pop(path, None)
+    if route is not None:
+        world.transport.routes[path] = route
+    await world.repository.async_get_day(area, TODAY, refresh=True)

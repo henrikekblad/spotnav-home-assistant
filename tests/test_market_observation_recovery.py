@@ -1,5 +1,8 @@
 """Recovery: a transient failure must not end the observation for the rest of the day.
 
+Here the failure is the area list not being there (the bundled file unreadable, simulated by a repository built
+without it); it "comes back" when the repository gets it.
+
 The display need is a *background* need -- nobody is waiting for it, and no settings edit comes to
 rescue it -- so a catalogue or subscribe failure that simply returned would leave the dashboard
 empty until the person happened to change something. Instead the failure leaves **one** cancellable
@@ -19,12 +22,13 @@ from typing import Any, Callable
 import pytest
 from homeassistant.core import HomeAssistant
 
+from .relay import stub_repository
 from custom_components.spotnav.pricing.market_observation import MarketObservation
 from custom_components.spotnav.pricing.price_refresh import PriceRefreshManager
 from custom_components.spotnav.pricing.price_repository import PriceRepository
 
 from tests.relay import FakeScheduler
-from tests.relay import BASE_URL, TODAY, Clock, StoreDouble, StubTransport
+from tests.relay import BUNDLED, TODAY, Clock, StoreDouble, StubTransport
 
 SE4 = "SE4"
 DE_LU = "DE-LU"
@@ -71,7 +75,13 @@ class FakeRecoveryScheduler:
 
 @pytest.fixture
 def repository(hass: HomeAssistant, transport: StubTransport, clock: Clock) -> PriceRepository:
-    return PriceRepository(hass, base_url=BASE_URL, session=transport, now=clock, store=StoreDouble())
+    # No area list yet: the area cannot be resolved until [list_back] gives it one.
+    return stub_repository(hass, transport, now=clock, store=StoreDouble(), bundled=None)
+
+
+def list_back(repository: PriceRepository) -> None:
+    """The area list can be read again."""
+    repository._bundled = BUNDLED  # noqa: SLF001 - the one seam for "the list came back"
 
 
 @pytest.fixture
@@ -101,13 +111,14 @@ async def test_a_transient_catalogue_failure_recovers_without_another_settings_w
     store = StoreStub(SettingsStub(SE4))
     observation = failing_observation(hass, manager, store, recovery)
 
-    # The relay is down: nothing is served, so the catalogue cannot be resolved.
+    # No area list: the area cannot be resolved.
     await observation.async_start()
     assert observation.subscribed_area is None
     assert observation.recovery_pending, "a transient failure leaves exactly one retry behind"
 
     # It comes back -- and nothing else happens: no settings edit, no reload, no new downloader.
     transport.serve_area(SE4)
+    list_back(manager._repository)  # noqa: SLF001
     recovery.fire()
     await hass.async_block_till_done()
 
@@ -127,6 +138,8 @@ async def test_the_managers_own_catalogue_signal_recovers_it_too(
     assert observation.recovery_pending
 
     transport.serve_area(SE4)
+
+    list_back(manager._repository)  # noqa: SLF001
     # The manager's own catalogue call fetches nothing on our behalf -- it is the *manager's* fetch --
     # and then hands the loaded list to its listeners: that signal is what this observation reuses.
     await manager.async_ensure_catalogue()
@@ -145,13 +158,15 @@ async def test_a_settings_move_while_recovery_is_pending_subscribes_only_the_new
     await observation.async_start()
     assert observation.recovery_pending
 
-    # The person moves the charger while the relay is still down. Recovery is replaced, not multiplied,
+    # The person moves the charger while the list is still missing. Recovery is replaced, not multiplied,
     # and it will ask for what the store says *now*.
     store.value = SettingsStub(DE_LU)
     await observation.async_reconcile(store.settings("entry_a"))
     assert len(recovery.live) == 1, "one appointment, replaced rather than multiplied"
 
     transport.serve_area(SE4)
+
+    list_back(manager._repository)  # noqa: SLF001
     transport.serve_area(DE_LU)
     recovery.fire()
     await hass.async_block_till_done()
@@ -173,6 +188,8 @@ async def test_closing_before_recovery_leaves_no_retry_and_no_owner(
     assert recovery.cancelled == 1
 
     transport.serve_area(SE4)
+
+    list_back(manager._repository)  # noqa: SLF001
     recovery.fire()
     await hass.async_block_till_done()
 
@@ -215,6 +232,8 @@ async def test_the_real_recovery_timer_retries_on_the_event_loop(
     assert observation.recovery_pending
 
     transport.serve_area(SE4)
+
+    list_back(manager._repository)  # noqa: SLF001
     async_fire_time_changed(hass, dt_util.utcnow() + timedelta(seconds=RECOVERY_DELAY_SECONDS + 1))
     await hass.async_block_till_done()
 

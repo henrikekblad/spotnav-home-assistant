@@ -8,6 +8,7 @@ the suite's stub and the exchange rates a fixed table.
 from __future__ import annotations
 
 import asyncio
+import json
 import urllib.parse
 from datetime import date, datetime, timedelta, timezone
 from typing import Any
@@ -26,11 +27,10 @@ from custom_components.spotnav.pricing.price_store import PriceSourceStore
 from custom_components.spotnav.pricing.providers import choose_provider, DayFetch, ProviderRouter
 from custom_components.spotnav.pricing.providers.entsoe import EntsoeProvider, PUBLICATION
 from custom_components.spotnav.pricing.providers.nordpool import NordPoolProvider
-from custom_components.spotnav.pricing.providers.relay import RelayProvider
 from custom_components.spotnav.pricing.relay_contract import DEFAULT_PUBLICATION, parse_day
 
 from .entsoe_helpers import area as entsoe_area, entsoe_body, fixture, SECRET, with_sequence
-from .relay import BASE_URL, Clock, FakeScheduler, serve, StoreDouble, StubTransport
+from .relay import Clock, day_body as relay_day_body, FakeScheduler, serve, StoreDouble, StubTransport
 
 UTC = timezone.utc
 #: The relay fixtures' day, before the publication (08:00 in Stockholm).
@@ -159,7 +159,6 @@ class World:
             self.hass, bundled, self.keys, self.rates, session=self.platform, now=self.clock, min_spacing_s=0
         )
         self.router = ProviderRouter(
-            RelayProvider(self.hass, base_url=BASE_URL, session=self.transport),
             NordPoolProvider(self.hass, bundled, self.rates, now=self.clock),
             self.provider,
         )
@@ -468,9 +467,9 @@ async def test_without_a_key_nothing_is_asked(world: World) -> None:
     "answer",
     [(401, "Unauthorized", {}), (403, "", {}), (200, fixture("synthetic_ack_999_auth.xml"), {})],
 )
-async def test_a_rejected_key_moves_its_areas_to_the_relay_at_once(world: World, answer: Any) -> None:
-    """A 401/403 during operation marks the key rejected; the router takes ENTSO-E off every area, which is read
-    from the relay again (for now: once the relay stops, such an area has no source until the key is replaced)."""
+async def test_a_rejected_key_leaves_its_areas_without_a_source_at_once(world: World, answer: Any) -> None:
+    """A 401/403 during operation marks the key rejected; the router takes ENTSO-E off every area, which then has no
+    source (nothing is asked for it) until the key is replaced, and says so."""
     serve(world.transport)
     await world.start()
     world.platform.serve("SE4", TODAY, answer)
@@ -482,11 +481,14 @@ async def test_a_rejected_key_moves_its_areas_to_the_relay_at_once(world: World,
 
     assert world.keys.entsoe_key_state == "rejected" and world.keys.entsoe_key_set
     assert world.changes == 1
-    assert world.repository.provider_for("SE4").key == "relay"
-    assert world.repository.provider_for("ES").key == "relay"
-    # The cycle that met the rejection is followed by one that reads the relay.
-    assert "/v1/SE4/2026/09-22.json" in world.transport.calls
-    assert world.manager.area_snapshot("SE4").today_state == "ready"
+    assert world.repository.provider_for("SE4") is None
+    assert world.repository.provider_for("ES") is None
+    # The cycle after the rejection asks nobody: no source is left.
+    assert world.transport.calls == []
+    snapshot = world.manager.area_snapshot("SE4")
+    assert snapshot.today_state == "unavailable"
+    assert snapshot.today_snapshot.attempt_error == "source_missing"
+    assert world.repository.source_status("ES").notice.code == "entsoe_key_rejected"
     assert len(world.platform.requests) == 1
 
 
@@ -513,11 +515,11 @@ async def test_a_key_replaced_while_a_request_was_out_keeps_its_own_state(world:
         (True, True, True, True, "nordpool"),
         (True, True, True, False, "nordpool"),
         (True, False, True, True, "entsoe"),
-        (True, False, True, False, "relay"),
+        (True, False, True, False, None),
         (False, True, True, True, "entsoe"),
-        (False, True, True, False, "relay"),
-        (False, False, False, True, "relay"),
-        (False, False, False, False, "relay"),
+        (False, True, True, False, None),
+        (False, False, False, True, None),
+        (False, False, False, False, None),
     ],
 )
 def test_the_choice_rule(nordpool_serves: bool, nordpool_loaded: bool, entsoe_serves: bool, usable: bool, chosen: str) -> None:
@@ -534,7 +536,7 @@ def test_the_choice_rule(nordpool_serves: bool, nordpool_loaded: bool, entsoe_se
 
 async def test_the_router_follows_the_key_and_the_nordpool_entry(world: World) -> None:
     await world.start(key=None)
-    assert world.repository.provider_for("ES").key == "relay"
+    assert world.repository.provider_for("ES") is None
     assert world.repository.area_entry("FI").market_tz == "Europe/Helsinki"
 
     await world.keys.async_set_entsoe_key(EntsoeToken(SECRET), "ok")
@@ -542,8 +544,8 @@ async def test_the_router_follows_the_key_and_the_nordpool_entry(world: World) -
     assert world.repository.provider_for("ES") is world.provider
     assert world.repository.provider_for("FI") is world.provider
     assert world.repository.area_entry("FI").market_tz == "Europe/Brussels"
-    # No route on the platform: the relay.
-    assert world.repository.provider_for("GB-A").key == "relay"
+    # No route on the platform: no source.
+    assert world.repository.provider_for("GB-A") is None
 
     world.nordpool_entry.mock_state(world.hass, ConfigEntryState.LOADED)
     assert world.repository.provider_for("FI").key == "nordpool"
@@ -551,15 +553,20 @@ async def test_the_router_follows_the_key_and_the_nordpool_entry(world: World) -
 
     world.nordpool_entry.mock_state(world.hass, ConfigEntryState.NOT_LOADED)
     await world.keys.async_set_entsoe_key(None)
-    assert world.repository.provider_for("FI").key == "relay"
+    assert world.repository.provider_for("FI") is None
     assert world.changes == 4
 
 
 async def test_setting_the_key_moves_a_subscribed_area_and_asks_at_once(world: World) -> None:
-    """SE4's relay files are dated on the same calendar as ENTSO-E's, so today's held file stays; inside the window
-    tomorrow is asked of the platform at once."""
-    serve(world.transport, days=(TODAY,))
+    """SE4's files kept from before 2.0 (the relay's) are dated on the same calendar as ENTSO-E's, so today's held
+    file stays; inside the window tomorrow is asked of the platform at once."""
     await world.start(key=None)
+    world.repository._adopt(  # noqa: SLF001 - the store's own path
+        {"schema": 2, "days": {"SE4|Europe/Stockholm|2026-09-22": {
+            "document": json.loads(relay_day_body("SE4", TODAY)), "fetched_at": "2026-09-21T12:00:00+00:00",
+            "provider": "relay",
+        }}}
+    )
     world.clock.now = datetime(2026, 9, 22, 11, 0, tzinfo=UTC)
     world.platform.serve_day("SE4", TOMORROW)
     await world.manager.async_subscribe(owner_id="charger", area_id="SE4")
@@ -619,6 +626,6 @@ async def test_setup_builds_the_entsoe_provider_with_the_stored_key(hass: HomeAs
         assert repository.provider_for("ES").key == "entsoe"
         assert repository.provider_for("SE4").key == "entsoe"
         await domain_data(hass).price_store.async_mark_entsoe_key(EntsoeToken(SECRET), "rejected")
-        assert repository.provider_for("ES").key == "relay"
+        assert repository.provider_for("ES") is None
     finally:
         repository.stop_following_providers()

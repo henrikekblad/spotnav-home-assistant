@@ -2,7 +2,7 @@
 
 The history profile (`pricing/price_profile.py`) is built from the held market-day files of the last 28 market
 days and needs 21 of them. An installation that starts on a provider (a new install, a `nordpool` entry added, an
-ENTSO-E key set, a new area, Finland moving from the relay's Helsinki days to CET days) holds only what the refresh
+ENTSO-E key set, a new area, Finland moving from the Helsinki days kept from before 2.0 to CET days) holds only what the refresh
 manager fetched since: today and tomorrow. [HistoryBackfill] fills the rest from the area's provider, in the
 background, on the calendar the area is read in now:
 
@@ -12,7 +12,7 @@ background, on the calendar the area is read in now:
 * **A year, for statistics**, only from a provider that keeps years and answers a range in one request (ENTSO-E,
   `async_fetch_days`): after the window, the market days back to [DEEP_DAYS], one request of up to a month every
   [DEEP_GAP_S]: about a dozen requests per area, once. The store keeps [price_repository.HISTORY_KEEP_DAYS], so
-  what is filled stays. A provider asked one day at a time (Nord Pool, the relay) fills the window only.
+  what is filled stays. A provider asked one day at a time (Nord Pool) fills the window only.
 * **Pace.** One request at a time for the whole installation, one area after the other (every window before any
   year). A provider asked one day at a time gets one request per day, [HISTORY_GAP_S] apart (the session import's
   pause); a range provider one request per run of missing days (at most a month), [HISTORY_GAP_S] apart in the
@@ -179,7 +179,8 @@ class HistoryBackfill:
         now = self._now()
         for area_id in area_ids:
             state = self._areas.get(area_id)
-            provider = self._repository.provider_for(area_id).key
+            current = self._repository.provider_for(area_id)
+            provider = None if current is None else current.key
             if (
                 state is not None
                 and state.next_try is not None
@@ -253,12 +254,16 @@ class HistoryBackfill:
         return missed is None or self._now() - missed >= retry
 
     def _plan(self, area_id: str, phase: Phase) -> tuple[PriceProvider, str, list[date]] | None:
-        """The provider, its calendar and the days to ask for (newest first), or `None` for an area not listed."""
+        """The provider, its calendar and the days to ask for (newest first), or `None` for an area not listed or
+        without a source."""
         entry = self._repository.area_entry(area_id)
         if entry is None:
             return None
         calendar = entry.market_tz
         provider = self._repository.provider_for(area_id)
+        if provider is None:
+            # No source: nothing to ask.
+            return None
         now = self._now()
         today = market_today(now, calendar)
         first, _ = profile_window(now, calendar)
@@ -371,7 +376,7 @@ class HistoryBackfill:
 
 def _fills_a_year(provider: PriceProvider) -> bool:
     """Whether a provider is asked for a year: it keeps years and answers a range in one request."""
-    return provider.history_reach is None and not provider.has_index and hasattr(provider, "async_fetch_days")
+    return provider.history_reach is None and hasattr(provider, "async_fetch_days")
 
 
 def _batches(provider: PriceProvider, days: list[date]) -> list[list[date]]:
