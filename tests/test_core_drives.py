@@ -122,10 +122,8 @@ async def test_a_persons_stop_and_start_follow_the_core_when_it_drives(
 
 @pytest.mark.parametrize("drives", [True])
 async def test_a_charge_seen_off_is_not_handed_back_to_the_plan_at_every_report(hass, timers, drives):
-    """Step 2: a pause whose stop failed, then the charge stops some other way. Today's code forgets the plan charge
-    (`_async_forget_plan_charge`, plan_charge False, origin kept). Driving, the owner is the core's (step 7): the
-    report of the charger off made it nobody's, and later reports neither hand the charge back to the plan nor save
-    again."""
+    """A pause whose stop failed, then the charge stops some other way: the report of the charger off made it
+    nobody's, and later reports neither hand the charge back to the plan nor save again."""
     from homeassistant.exceptions import HomeAssistantError
     from custom_components.spotnav.planning.auto_settings import PAUSE_UNTIL_RESUMED
     from .pause_world import pause_world, two_windows, SWITCH

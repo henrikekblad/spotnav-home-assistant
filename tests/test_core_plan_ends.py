@@ -1,7 +1,6 @@
-"""The ownership core beside the plan ends and replans 1.11 brought (the best-effort plan for a departure the need
-cannot be met by, the replan a returning register reading asks for, and a need met at that same reading), in both
-modes: the core agrees with today's code (`conftest.ownership_shadow_agrees` fails a test otherwise) and the charger
-sees the same starts and stops whether it shadows or drives."""
+"""The ownership core at the plan ends and replans 1.11 brought (the best-effort plan for a departure the need cannot
+be met by, the replan a returning register reading asks for, and a need met at that same reading): the charger sees
+the starts and stops those plans call for, and the core never fails (`conftest.core_never_fails`)."""
 
 from __future__ import annotations
 

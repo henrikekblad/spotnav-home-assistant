@@ -1,6 +1,5 @@
-"""A window's start ends the plug-in session's hold (`WindowHold.end_session`): the core is fed that start where
-today's code ends the hold, also when the target ends the plan instead, so a replay from the first recorded session
-with no line-up finds no difference in the hold."""
+"""A window's start ends the plug-in session's hold: the core is fed that start, also when the target ends the plan
+instead, so a replay from the first recorded session with no line-up finds no difference in the hold."""
 
 from __future__ import annotations
 
