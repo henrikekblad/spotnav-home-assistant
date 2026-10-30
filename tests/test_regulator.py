@@ -997,3 +997,83 @@ def test_applyability_failure_names_the_check_that_stopped_a_write() -> None:
             )
             is None
         )
+
+
+def _prioritised(charger_entry_id: str, priority: str, requested: float, measured: float, order: int = 0):
+    return replace(
+        _charger(requested, measured), charger_entry_id=charger_entry_id, priority=priority, order=order
+    )
+
+
+def _allocate_overload(site_result, requests):
+    return allocate_regulator_decisions(
+        site_result=site_result,
+        requests=requests,
+        voltage_by_phase=_voltage_by_phase(),
+        confirmed_direction_by_phase=_confirmed("net_import"),
+        max_age_s=MAX_AGE,
+    )
+
+
+def test_an_overload_is_cut_from_the_last_priority_first_and_first_keeps_its_current() -> None:
+    """A First charger at 16 A and a Last one at 13 A, 10 A over: the Last one takes the cut (13 - 10 = 3 A is below
+    its minimum, so it is paused), the First one keeps its 16 A, whatever order they are listed in."""
+    site_result = _site_result(29.0 * VOLTAGE)  # 29 A against a 19 A limit
+    first = _prioritised("first", "first", 16.0, 16.0)
+    last = _prioritised("last", "last", 13.0, 13.0)
+    for requests in ([first, last], [last, first]):
+        decisions = _allocate_overload(site_result, requests)
+        assert (decisions["last"].proposed_current_a, decisions["last"].reason) == (
+            0.0,
+            "paused_safe_current_below_charger_minimum",
+        )
+        assert decisions["last"].overload
+        assert decisions["first"].proposed_current_a == 16.0
+        assert decisions["first"].reason == "no_change_requested"
+
+
+def test_a_smaller_overload_lowers_the_last_priority_and_leaves_the_others() -> None:
+    site_result = _site_result(23.0 * VOLTAGE)  # 4 A over
+    decisions = _allocate_overload(
+        site_result, [_prioritised("first", "first", 16.0, 16.0), _prioritised("last", "last", 13.0, 13.0)]
+    )
+    assert decisions["last"].proposed_current_a == 9.0
+    assert decisions["last"].reason == "reducing_current_due_to_active_import_overload"
+    assert decisions["first"].proposed_current_a == 16.0
+
+
+def test_three_priority_classes_are_cut_last_then_normal_then_first() -> None:
+    """14 A over: the Last charger is paused (10 A freed), the Normal one is lowered by the 4 A still over, and the
+    First one keeps its current."""
+    site_result = _site_result(33.0 * VOLTAGE)
+    decisions = _allocate_overload(
+        site_result,
+        [
+            _prioritised("first", "first", 16.0, 16.0, order=0),
+            _prioritised("normal", "normal", 16.0, 16.0, order=1),
+            _prioritised("last", "last", 10.0, 10.0, order=2),
+        ],
+    )
+    assert decisions["last"].proposed_current_a == 0.0
+    assert decisions["normal"].proposed_current_a == 12.0
+    assert decisions["first"].proposed_current_a == 16.0
+
+
+def test_within_one_priority_class_the_site_order_still_decides_who_is_cut() -> None:
+    site_result = _site_result(23.0 * VOLTAGE)  # 4 A over
+    decisions = _allocate_overload(
+        site_result,
+        [_prioritised("second", "normal", 16.0, 16.0, order=1), _prioritised("joined_first", "normal", 16.0, 16.0, order=0)],
+    )
+    assert decisions["joined_first"].proposed_current_a == 12.0
+    assert decisions["second"].proposed_current_a == 16.0
+
+
+def test_without_an_overload_first_is_still_served_first() -> None:
+    """Room is handed out in the usual order: First before Last."""
+    site_result = _site_result(8.0 * VOLTAGE)  # 11 A of room
+    decisions = _allocate_overload(
+        site_result, [_prioritised("last", "last", 16.0, 0.0), _prioritised("first", "first", 16.0, 0.0)]
+    )
+    assert decisions["first"].proposed_current_a == 11.0
+    assert decisions["last"].proposed_current_a == 0.0
