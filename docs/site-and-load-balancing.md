@@ -358,11 +358,16 @@ pauses or resumes it whole. There is no setting for it; SpotNav learns it, from 
 The current and where it came from are in the charger's diagnostics (`switched_current`). With it:
 
 - **It never blocks the other chargers.** Its request is its switched current, never "unknown".
-- **An import overload pauses it whole.** While a phase it draws on is over the limit on a net import,
-  the chargers whose current can be set take the cut first, in their usual order; whatever is still over
-  pauses the switch-only charger at once, through the same balancing pause as any other charger. It is
-  never paused on a merely tight margin, and on an export or unclear overload nothing is done, as for any
-  charger. A site of only such chargers is protected the same way.
+- **An import overload pauses it whole.** While a phase is over the limit on a net import and such a
+  charger takes part, the overload is resolved in one pass, by charger priority, Last first, then Normal,
+  then First; within each priority: the chargers whose current can be set are lowered, at most to their
+  minimum; if the site is still over, the switch-only chargers are paused whole, through the same
+  balancing pause as any other charger; only then are the chargers whose current can be set paused. An
+  electric car at 10 A beside a 10 A switch-only charger, 10 A over, ends at its minimum with the other
+  one paused, not paused itself while the other runs on. If the switch-only charger's pause cannot be
+  sent (its command fails or is refused), the chargers held at their minimum for it are paused in that
+  same pass. It is never paused on a merely tight margin, and on an export or unclear overload nothing is
+  done, as for any charger. A site of only such chargers is protected the same way.
 - **It is resumed whole.** A charge load balancing paused, or a start it held back for want of room, is
   started again once every phase it uses has room for its whole switched current plus 1 A, for the
   dwell (60 s), with the usual limit on resumes. A start goes out only where the site has room for all of
