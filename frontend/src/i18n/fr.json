@@ -904,5 +904,13 @@
   "setup.solarForecast.action": "Choisir une prévision",
   "setup.solarForecast.add": "Ajouter Forecast.Solar",
   "setup.phaseSwitching.text": "Activez le basculement de phases pour le solaire : par temps nuageux, la voiture charge sur une phase depuis le soleil plutôt que depuis le réseau.",
-  "setup.phaseSwitching.action": "Ouvrir le réglage"
+  "setup.phaseSwitching.action": "Ouvrir le réglage",
+  "settings.automations.label": "Automatisations",
+  "settings.automations.value": "Afficher",
+  "automations.intro": "Des automatisations toutes prêtes pour Home Assistant (blueprints) qui utilisent les prix ou le surplus solaire de SpotNav. Chacune s'ouvre dans votre Home Assistant, où vous choisissez ses entités et l'enregistrez.",
+  "automations.add": "Ajouter à Home Assistant",
+  "automations.priceSetpoint.name": "Consigne selon le prix de l'électricité",
+  "automations.priceSetpoint.text": "Le plancher chauffant, les radiateurs ou une pompe à chaleur reçoivent une température plus haute quand l'électricité est bon marché et plus basse quand elle est chère.",
+  "automations.solarSurplus.name": "Marche sur surplus solaire",
+  "automations.solarSurplus.text": "Un chauffage de piscine, un chauffe-eau ou une résistance électrique est allumé quand le soleil donne un surplus."
 }

@@ -904,5 +904,13 @@
   "setup.solarForecast.action": "Elegir previsión",
   "setup.solarForecast.add": "Añadir Forecast.Solar",
   "setup.phaseSwitching.text": "Activa el cambio de fases para solar: en un día nublado el coche carga en una fase desde el sol en lugar de desde la red.",
-  "setup.phaseSwitching.action": "Abrir el ajuste"
+  "setup.phaseSwitching.action": "Abrir el ajuste",
+  "settings.automations.label": "Automatizaciones",
+  "settings.automations.value": "Mostrar",
+  "automations.intro": "Automatizaciones listas para Home Assistant (blueprints) que usan los precios o el excedente solar de SpotNav. Cada una se abre en tu Home Assistant, donde eliges sus entidades y la guardas.",
+  "automations.add": "Añadir a Home Assistant",
+  "automations.priceSetpoint.name": "Consigna según el precio de la electricidad",
+  "automations.priceSetpoint.text": "La calefacción por suelo, los radiadores o una bomba de calor reciben una temperatura más alta cuando la electricidad es barata y más baja cuando es cara.",
+  "automations.solarSurplus.name": "Funcionar con excedente solar",
+  "automations.solarSurplus.text": "Un calentador de piscina, un termo o una resistencia eléctrica se enciende cuando el sol da un excedente."
 }

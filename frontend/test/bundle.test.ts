@@ -136,13 +136,17 @@ describe("loading the compiled asset", () => {
 });
 
 describe("the asset's only absolute URLs", () => {
-  it("are the W3C namespace and the documentation links, and nothing that could be a network address", () => {
+  it("are the W3C namespace, the documentation links and the blueprint imports, and nothing that could be a network address", () => {
     const asset = readFileSync(ASSET, "utf8");
     const found = new Set(asset.match(/https?:\/\/[^"'`)\s]+/g) ?? []);
     expect(Array.from(found).sort()).toEqual([
       // The Octopus Energy integration's page, opened in a new tab by its notice when HACS is not there.
       "https://github.com/BottlecapDave/HomeAssistant-OctopusEnergy",
       "https://github.com/henrikekblad/spotnav-home-assistant",
+      // Home Assistant's blueprint import, through my.home-assistant.io, for SpotNav's two blueprints on main
+      // ("Automations" in Settings, a new tab).
+      "https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fraw.githubusercontent.com%2Fhenrikekblad%2Fspotnav-home-assistant%2Fmain%2Fblueprints%2Fautomation%2Fspotnav%2Fprice_setpoint.yaml",
+      "https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fraw.githubusercontent.com%2Fhenrikekblad%2Fspotnav-home-assistant%2Fmain%2Fblueprints%2Fautomation%2Fspotnav%2Fsolar_surplus_switch.yaml",
       // The SpotNav app on Google Play, opened in a new tab by "Get started" (where to get the app).
       "https://play.google.com/store/apps/details?id=se.sensnology.spotnav",
       // ENTSO-E's Transparency Platform, linked from the key's how-to (a new tab).

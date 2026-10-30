@@ -113,6 +113,7 @@ import {
 import { issueText } from "./status";
 import { keyEditor, priceProviderNodes } from "./price-provider";
 import { setupLineText, setupSection, type SetupRowId } from "./setup-checklist";
+import { automationsBody } from "./automations";
 import { historyBody, type HistoryState, type HistoryUi } from "./history";
 import { connectionLabel, vehicleLineFor } from "./vehicle-line";
 import type { ChargeBarFacts } from "./charge-bar";
@@ -2114,6 +2115,22 @@ export function createCardView(input: CardViewInput): CardView {
     });
   }
 
+  /** "Automations" from Settings: the blueprints, each with its import button, in the info dialog. Administrators only. */
+  function openAutomations(): void {
+    if (destroyed || !input.isAdmin) {
+      return;
+    }
+    issuesDialog.hide({ restoreFocus: false });
+    settingsOverviewDialog.hide({ restoreFocus: false });
+    capabilityDialog.show({
+      title: translate(model.language, "settings.automations.label"),
+      body: automationsBody(doc, model.language, (url) => {
+        doc.defaultView?.open(url, "_blank", "noopener,noreferrer");
+      }),
+      opener: settingsGeneral,
+    });
+  }
+
   function openPause(): void {
     if (destroyed || model.control.choices.length === 0) {
       // No choices is not an empty menu: it is this charger having none to offer, and opening a
@@ -2454,7 +2471,7 @@ export function createCardView(input: CardViewInput): CardView {
 
   /**
    * Support: "About this card" (the capability list, for everyone) and, for administrators only, the
-   * button that saves the debug bundle. Nothing is sent anywhere.
+   * "Automations" row (SpotNav's blueprints) and the button that saves the debug bundle. Nothing is sent anywhere.
    */
   function supportSectionBody(): HTMLElement {
     const section = element(doc, "section", C.settingsSection);
@@ -2469,6 +2486,14 @@ export function createCardView(input: CardViewInput): CardView {
     paintCardOutdated();
     section.append(outdatedNote);
     if (input.isAdmin) {
+      section.append(
+        overviewRow(
+          "automations",
+          translate(model.language, "settings.automations.label"),
+          translate(model.language, "settings.automations.value"),
+          () => openAutomations(),
+        ),
+      );
       section.append(element(doc, "p", C.muted, translate(model.language, "debug.intro")));
     }
     const actions = element(doc, "div", C.settingsSupportActions);

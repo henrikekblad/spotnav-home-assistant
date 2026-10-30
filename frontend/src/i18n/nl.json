@@ -904,5 +904,13 @@
   "setup.solarForecast.action": "Prognose kiezen",
   "setup.solarForecast.add": "Forecast.Solar toevoegen",
   "setup.phaseSwitching.text": "Zet faseomschakeling voor zon aan: op een bewolkte dag laadt de auto op één fase van de zon in plaats van van het net.",
-  "setup.phaseSwitching.action": "Instelling openen"
+  "setup.phaseSwitching.action": "Instelling openen",
+  "settings.automations.label": "Automatiseringen",
+  "settings.automations.value": "Tonen",
+  "automations.intro": "Kant-en-klare automatiseringen voor Home Assistant (blueprints) die de prijzen of het zonne-overschot van SpotNav gebruiken. Elke opent in je Home Assistant, waar je de entiteiten kiest en hem opslaat.",
+  "automations.add": "Toevoegen aan Home Assistant",
+  "automations.priceSetpoint.name": "Setpoint volgens stroomprijs",
+  "automations.priceSetpoint.text": "Vloerverwarming, radiatoren of een warmtepomp krijgen een hogere temperatuur als stroom goedkoop is en een lagere als die duur is.",
+  "automations.solarSurplus.name": "Aan bij zonne-overschot",
+  "automations.solarSurplus.text": "Een zwembadverwarming, boiler of elektrisch verwarmingselement wordt ingeschakeld als de zon een overschot geeft."
 }

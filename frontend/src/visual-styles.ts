@@ -36,6 +36,7 @@ export const VISUAL_CLASSES = {
   suggestionText: "spotnav-suggestion-text",
   suggestionAnswers: "spotnav-suggestion-answers",
   setupHeading: "spotnav-setup-heading",
+  automationName: "spotnav-automation-name",
   pauseChoices: "spotnav-pause-choices",
   choiceButton: "spotnav-choice-button",
   choiceLabel: "spotnav-choice-label",
@@ -921,6 +922,14 @@ export const VISUAL_STYLES = `
   }
   .spotnav-suggestion[data-banner="setup-row"]:first-child {
     margin-top: 0;
+  }
+  /** "Automations": a blueprint's name over its sentence, each blueprint apart from the one above. */
+  .spotnav-suggestion[data-blueprint] {
+    margin-top: 14px;
+  }
+  .spotnav-automation-name {
+    margin: 0 0 2px;
+    font-weight: 500;
   }
   .spotnav-pause-choices,
   .spotnav-strategy-row {

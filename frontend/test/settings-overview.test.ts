@@ -14,6 +14,7 @@ import { SETTINGS_API_VERSION, type SettingsRecord } from "../src/types";
 import { VISUAL_CLASSES } from "../src/visual-styles";
 import { CARD_OUTDATED_NOTE, setOwnCardBundleHashForTest } from "../src/card-identity";
 import { CARD_VERSION } from "../src/generated/version";
+import { BLUEPRINT_IMPORT_URLS } from "../src/automations";
 import { FakeHass, mountCard, settingsOffered, shownSections } from "./helpers";
 
 const DASHBOARD_DIR = join(__dirname, "..", "..", "tests", "fixtures", "dashboard");
@@ -268,7 +269,8 @@ describe("Download debug info", () => {
     await openSettings(admin.element);
     expect(debugButton(admin.element)?.textContent).toBe(translate("en", "debug.download"));
     const support = section(admin.element, "support");
-    expect(Array.from(support?.querySelectorAll("button") ?? []).map((button) => button.textContent)).toEqual([
+    const actions = support?.querySelectorAll(`.${VISUAL_CLASSES.settingsSupportActions} button`) ?? [];
+    expect(Array.from(actions).map((button) => button.textContent)).toEqual([
       translate("en", "settings.about.open"),
       translate("en", "debug.download"),
     ]);
@@ -401,5 +403,76 @@ describe("Support says when the card here is older than the one served", () => {
   it("stays quiet when they match", async () => {
     const { element } = await opened("11111111");
     expect(section(element, "support")?.querySelector<HTMLElement>("[data-card-outdated]")?.hidden).toBe(true);
+  });
+});
+
+describe("Automations", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  function automationsRow(element: Element): HTMLButtonElement | null {
+    return shadow(element).querySelector<HTMLButtonElement>("[data-section='support'] [data-edit='automations']");
+  }
+
+  it("is a row in Support for administrators only", async () => {
+    const admin = await mounted();
+    settingsGeneralButton(admin.element).click();
+    await settle();
+    const row = automationsRow(admin.element);
+    expect(row?.closest("[data-row]")?.textContent).toBe(
+      translate("en", "settings.automations.label") + translate("en", "settings.automations.value"),
+    );
+
+    const reader = await mounted(fixture("start_idle"), false);
+    settingsGeneralButton(reader.element).click();
+    await settle();
+    expect(automationsRow(reader.element)).toBeNull();
+  });
+
+  it.each(["en", "sv"] as const)("lists both blueprints, each opening Home Assistant's import of it (%s)", async (language) => {
+    const { element } = await mounted(fixture("start_idle"), true, language);
+    const win = element.ownerDocument.defaultView as Window & typeof globalThis;
+    const opened: unknown[][] = [];
+    vi.spyOn(win, "open").mockImplementation((...args: unknown[]) => {
+      opened.push(args);
+      return null;
+    });
+    settingsGeneralButton(element, language).click();
+    await settle();
+    automationsRow(element)?.click();
+    await settle();
+
+    const dialog = openDialog(element);
+    expect(dialog?.textContent).toContain(translate(language, "settings.automations.label"));
+    expect(dialog?.querySelector("[data-section='support']")).toBeNull();
+    const boxes = Array.from(dialog?.querySelectorAll<HTMLElement>("[data-blueprint]") ?? []);
+    expect(boxes.map((box) => box.dataset["blueprint"])).toEqual(["priceSetpoint", "solarSurplus"]);
+    expect(boxes[0]?.textContent).toContain(translate(language, "automations.priceSetpoint.name"));
+    expect(boxes[0]?.textContent).toContain(translate(language, "automations.priceSetpoint.text"));
+    expect(boxes[1]?.textContent).toContain(translate(language, "automations.solarSurplus.name"));
+    expect(boxes[1]?.textContent).toContain(translate(language, "automations.solarSurplus.text"));
+
+    for (const box of boxes) {
+      const button = box.querySelector<HTMLButtonElement>("[data-blueprint-import]");
+      expect(button?.textContent).toBe(translate(language, "automations.add"));
+      button?.click();
+    }
+    expect(opened).toEqual([
+      [BLUEPRINT_IMPORT_URLS.priceSetpoint, "_blank", "noopener,noreferrer"],
+      [BLUEPRINT_IMPORT_URLS.solarSurplus, "_blank", "noopener,noreferrer"],
+    ]);
+  });
+
+  it("points at the blueprints' raw files on main, through Home Assistant's blueprint import", () => {
+    const prefix = "https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=";
+    const raw = "https://raw.githubusercontent.com/henrikekblad/spotnav-home-assistant/main/blueprints/automation/spotnav/";
+    expect(BLUEPRINT_IMPORT_URLS).toEqual({
+      priceSetpoint: prefix + encodeURIComponent(raw + "price_setpoint.yaml"),
+      solarSurplus: prefix + encodeURIComponent(raw + "solar_surplus_switch.yaml"),
+    });
+    for (const name of ["price_setpoint.yaml", "solar_surplus_switch.yaml"]) {
+      expect(() => readFileSync(join(__dirname, "..", "..", "blueprints", "automation", "spotnav", name))).not.toThrow();
+    }
   });
 });
