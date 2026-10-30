@@ -5044,8 +5044,14 @@ class ChargingController:
         return None if amps is None or amps <= 0 else float(amps)
 
     def switched_current(self) -> SwitchedCurrentValue:
-        """The current this switch-only charger is reckoned at, and its source (`SwitchedCurrent.value`)."""
-        return self._switched.value(self.configured_charging_current_a())
+        """The current this switch-only charger is reckoned at, and its source (`SwitchedCurrent.value`). Never
+        raises: load balancing reads it on every pass, and an unreadable setting falls back to the default."""
+        try:
+            configured = self.configured_charging_current_a()
+        except Exception:  # noqa: BLE001 - the fuse's protection must not depend on reading a setting
+            _LOGGER.debug("SpotNav charger %s: the charging current could not be read", self.entry_id, exc_info=True)
+            configured = None
+        return self._switched.value(configured)
 
     def switched_current_snapshot(self) -> dict[str, Any] | None:
         """For the diagnostics: the learned current of a switch-only charger, else `None`."""

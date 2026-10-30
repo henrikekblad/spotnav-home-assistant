@@ -812,7 +812,10 @@ class SiteCapacityController:
         self.result = self._calculate()
         self._sample_battery()
         self._observe_charger_starts(previous)
-        self._learn_switched_currents()
+        try:
+            self._learn_switched_currents()
+        except Exception:  # noqa: BLE001 - learning is optional: it never holds back a decision or a lowering
+            _LOGGER.exception("SpotNav site %s: learning a switched current failed", self.entry_id)
         self._update_direction_history()
         self._update_measurement_lost()
         previous_decisions = self.regulator_decisions
