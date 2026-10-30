@@ -109,6 +109,7 @@ from .step_guard import charger_above_written, StepGuard
 from .regulator import (
     allocate_regulator_decisions,
     applyability_failure,
+    ApplyabilityFailure,
     classify_direction,
     confirmed_direction,
     DEFAULT_HELP_MARGIN_FACTOR,
@@ -118,6 +119,9 @@ from .regulator import (
     DirectionClass,
     magnitude_overload_lowering,
     is_import_overload,
+    measurement_lost,
+    MEASUREMENT_LOST_GRACE_S,
+    MEASUREMENT_LOST_REASON,
     RegulatorDecision,
 )
 from .current_sign import CurrentSignCheck
@@ -210,6 +214,13 @@ LIMIT_AT_FUSE_MARGIN_A = 2.0
 #: Why load balancing holds a car below what it asked for, where known.
 LIMIT_CAUSE_BATTERY_SHARES_FUSE = "battery_shares_fuse"
 LIMIT_CAUSE_HOUSE_CONSUMPTION = "house_consumption"
+#: The site's measurement is lost and the car is held at its minimum until it is back (`_async_step_to_minimum`).
+LIMIT_CAUSE_MEASUREMENT_LOST = "measurement_lost"
+
+#: How far (amps) above its minimum a charger's own fresh reading must be for a charger whose current the site does
+#: not know to count as drawing above it, once the site's measurement is lost: a car at its minimum reads a little
+#: either side of it.
+MEASUREMENT_LOST_ABOVE_MINIMUM_A = 1.0
 
 #: How far back (seconds) a rise of the home battery's power counts (`_battery_takes_the_fuse`): a battery that
 #: begins its own grid charge at a quarter-hour's boundary reads a few hundred watts at first and its full power
@@ -428,6 +439,13 @@ class SiteCapacityController:
         # write Home Assistant reports, changed or not, and sampled on each recompute.
         self._cadence = ReportCadence()
         self._report_listener_cancel: Callable[[], None] | None = None
+        # Per charger load balancing governs, since when (`_yield_now`) the site's measurement has been lost on a
+        # phase it may draw on (`_update_measurement_lost`); and how often, and when last (wall clock), a charger was
+        # stepped to its minimum for it (`measurement_lost_snapshot`).
+        self._measurement_lost_since: dict[str, float] = {}
+        self._measurement_lost_stepped: set[str] = set()
+        self._measurement_lost_steps = 0
+        self._measurement_lost_last_step_at: datetime | None = None
         self.result: SiteCapacityResult = self._calculate()
         self._update_direction_history()
         # One regulator decision per associated charger (`site/regulator.py`); acting on them is
@@ -781,6 +799,7 @@ class SiteCapacityController:
         self._sample_battery()
         self._observe_charger_starts(previous)
         self._update_direction_history()
+        self._update_measurement_lost()
         previous_decisions = self.regulator_decisions
         self.regulator_decisions = self._compute_regulator_decisions()
         _log_transitions(self.entry_id, previous, self.result)
@@ -939,12 +958,16 @@ class SiteCapacityController:
     def load_balancing_limit(self, charger_entry_id: str) -> tuple[float | None, str | None]:
         """`(limit_a, cause)` while active control holds this charger below what it asked for, else
         `(None, None)`. `limit_a` is the current it was last given; `cause` is the battery sharing
-        the fuse, house consumption, or `None` when it is not known.
+        the fuse, house consumption, the site's measurement lost (`limit_a` is then the charger's minimum), or
+        `None` when it is not known.
         """
         decision = self.regulator_decisions.get(charger_entry_id)
         damper = self._dampers.get(charger_entry_id)
         if decision is None or damper is None or not self._active_control_allowed():
             return None, None
+        if self._measurement_lost_due(charger_entry_id, self.result) is not None:
+            # Held at its minimum until the measurement is back, whatever it asked for.
+            return self._minimum_setpoint(charger_entry_id), LIMIT_CAUSE_MEASUREMENT_LOST
         assigned = damper.last_written_a
         requested = next((basis.requested_current_a for basis in decision.basis.values()), None)
         if assigned is None or requested is None or assigned >= requested - 0.5:
@@ -1563,6 +1586,10 @@ class SiteCapacityController:
                 charger_entry_id, charger_controller, decision, fresh, probe
             )
             return True
+        lost = self._measurement_lost_due(charger_entry_id, fresh)
+        if lost is not None and self._draws_above_minimum(charger_entry_id, charger_controller):
+            await self._async_step_to_minimum(charger_entry_id, charger_controller, decision, lost)
+            return True
         if self._held_while_phases_settle(charger_entry_id, charger_controller, decision):
             self._log_active_control_outcome(charger_entry_id, decision, outcome="held", detail="phase_switch_settling")
             return True
@@ -1963,6 +1990,149 @@ class SiteCapacityController:
             None,
             site_read_at=self._site_read_at(fresh),
         )
+
+    # -- the site's measurement lost
+
+    def _measurement_lost_failure(self, charger_entry_id: str, result: SiteCapacityResult) -> ApplyabilityFailure | None:
+        """How the site's measurement is lost on a phase this charger may draw on (`regulator.measurement_lost`), or
+        `None`: always `None` for a charger load balancing does not govern (`active_control_writes`) and on a site
+        that is not configured to measure at all."""
+        if result.state not in UNHEALTHY_STATES or not self.active_control_writes(charger_entry_id):
+            return None
+        request = next(
+            (request for request in self._build_requests(credit=False) if request.charger_entry_id == charger_entry_id),
+            None,
+        )
+        if request is None:
+            return None
+        return measurement_lost(
+            site_result=result,
+            phases=direction_phases(request),
+            max_age_s=float(self.config.get(CONF_MAX_AGE_S, DEFAULT_MAX_AGE_S)),
+        )
+
+    def _update_measurement_lost(self) -> None:
+        """Note, per charger, since when the site's measurement has been lost for it, and forget it once it is
+        read again: from then on the regulator decides as before (it may raise again by its own rules)."""
+        now = self._yield_now()
+        for charger_entry_id in list(self.config.get(CONF_CHARGER_ENTRY_IDS) or []):
+            if self._measurement_lost_failure(charger_entry_id, self.result) is None:
+                self._measurement_lost_stepped.discard(charger_entry_id)
+                if self._measurement_lost_since.pop(charger_entry_id, None) is not None:
+                    _LOGGER.info(
+                        "SpotNav site %s load balancing: the measurement is back for charger %s; regulated again",
+                        self.entry_id,
+                        charger_entry_id,
+                    )
+            else:
+                self._measurement_lost_since.setdefault(charger_entry_id, now)
+
+    def _measurement_lost_due(self, charger_entry_id: str, result: SiteCapacityResult) -> ApplyabilityFailure | None:
+        """How the measurement is lost for this charger on `result`, once it has been for `MEASUREMENT_LOST_GRACE_S`;
+        else `None`."""
+        since = self._measurement_lost_since.get(charger_entry_id)
+        if since is None or self._yield_now() - since < MEASUREMENT_LOST_GRACE_S:
+            return None
+        return self._measurement_lost_failure(charger_entry_id, result)
+
+    def _minimum_setpoint(self, charger_entry_id: str) -> int:
+        """The charger's minimum current in whole amps, never below the floor below which a write is a pause."""
+        return max(math.ceil(self._min_current_a(charger_entry_id) - 1e-9), int(DEFAULT_MIN_CURRENT_A))
+
+    def _draws_above_minimum(self, charger_entry_id: str, charger_controller: Any) -> bool:
+        """Whether this charger is in a charge at a current above its minimum: what the site last gave it, or where
+        the site gave it nothing it knows of (a charge that just started), its own fresh reading, or, with none,
+        taken as above (a charge at an unknown current). Never a charger that is off or paused: nothing is
+        started."""
+        if not (charger_controller.charging or charger_controller.start_pending):
+            return False
+        if charger_controller.paused_by_balancing or charger_controller.stop_settling:
+            return False
+        minimum = self._minimum_setpoint(charger_entry_id)
+        written = self._damper_for(charger_entry_id).last_written_a
+        if written is not None:
+            return written > minimum
+        wiring: dict[str, Any] = (self.config.get(CONF_PHASE_WIRING) or {}).get(charger_entry_id) or {}
+        delivered = self._read_charger_measured_current(wiring)
+        max_age_s = float(self.config.get(CONF_MAX_AGE_S, DEFAULT_MAX_AGE_S))
+        readings = (
+            []
+            if delivered is None
+            else [
+                value.value
+                for value in (delivered.get(phase) for phase in PHASES)
+                if value.value is not None
+                and value.problem is None
+                and value.age_s is not None
+                and value.age_s <= max_age_s
+            ]
+        )
+        if not readings:
+            return True
+        return max(readings) > minimum + MEASUREMENT_LOST_ABOVE_MINIMUM_A
+
+    async def _async_step_to_minimum(
+        self,
+        charger_entry_id: str,
+        charger_controller: ChargingController,
+        decision: RegulatorDecision,
+        lost: ApplyabilityFailure,
+    ) -> None:
+        """Step a charger to its minimum current while the site's measurement is lost (`MEASUREMENT_LOST_GRACE_S`).
+
+        A lowering needs no headroom proof, so `applyability_failure` (which refuses every write on a lost
+        measurement) is not asked; the write goes the way of the regulator's other lowerings
+        (`_async_write_regulated`: the charger's write path and its rate limit, the damper, the step guard and the
+        record of writes), at once, but never as a must-lower: nothing shows an overload, so a charger that will not
+        take it is not stopped, and the next pass tries again."""
+        setpoint = self._minimum_setpoint(charger_entry_id)
+        damper = self._damper_for(charger_entry_id)
+        previous_setpoint = damper.last_written_a
+        stepped = RegulatorDecision(float(setpoint), MEASUREMENT_LOST_REASON, lost.phase, decision.basis)
+        damper.record_write(float(setpoint))
+        if not self._active_control_allowed() or self._closed:
+            damper.forget_write(previous_setpoint)
+            return
+        if charger_entry_id not in self._measurement_lost_stepped:
+            # Said and counted once per lost spell; a write the charger refused is tried again quietly.
+            self._measurement_lost_stepped.add(charger_entry_id)
+            self._measurement_lost_steps += 1
+            self._measurement_lost_last_step_at = dt_util.utcnow()
+            _LOGGER.warning(
+                "SpotNav site %s load balancing: the site's measurement is lost (%s on %s) for %.0f s or more; "
+                "charger %s is held at its minimum of %sA until it is back",
+                self.entry_id,
+                lost.kind,
+                lost.phase,
+                MEASUREMENT_LOST_GRACE_S,
+                charger_entry_id,
+                setpoint,
+            )
+        await self._async_write_regulated(
+            charger_entry_id,
+            charger_controller,
+            stepped,
+            damper,
+            DampingDecision(True, float(setpoint), "measurement_lost"),
+            setpoint,
+            previous_setpoint,
+            None,
+        )
+
+    def measurement_lost_snapshot(self) -> dict[str, Any]:
+        """For the diagnostics: how often a charger was stepped to its minimum on a lost measurement and when last,
+        and per charger the seconds its measurement has been lost (only those it is lost for)."""
+        now = self._yield_now()
+        return {
+            "grace_s": MEASUREMENT_LOST_GRACE_S,
+            "steps_to_minimum": self._measurement_lost_steps,
+            "last_step_at": None
+            if self._measurement_lost_last_step_at is None
+            else self._measurement_lost_last_step_at.isoformat(),
+            "lost_for_s": {
+                charger_entry_id: round(now - since, 1) for charger_entry_id, since in self._measurement_lost_since.items()
+            },
+        }
 
     async def _async_write_regulated(
         self,
