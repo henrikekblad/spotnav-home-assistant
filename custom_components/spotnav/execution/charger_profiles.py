@@ -374,7 +374,7 @@ _PROFILES: Final[tuple[PlatformProfile, ...]] = (
         status_keys=("car_status",),
         charging_values=("charging",),
         vehicle_idle_values=("waiting for vehicle",),
-        note="Current is only reachable through a service: start and stop only. The switch means "
+        note="Current is only reachable through a service: switched on and off whole, at the current SpotNav learns it draws. The switch means "
         "charging is allowed, so the status sensor decides whether it is charging.",
     ),
     PlatformProfile(
@@ -630,7 +630,7 @@ _PROFILES: Final[tuple[PlatformProfile, ...]] = (
         platform="myenergi",
         name="myenergi zappi",
         start_stop=_select(("charge_mode",), ("fast",), ("stopped",)),
-        note="No current control: start and stop only.",
+        note="No current control: switched on and off whole, at the current SpotNav learns it draws.",
     ),
     PlatformProfile(
         platform="ohme",
@@ -657,7 +657,7 @@ _PROFILES: Final[tuple[PlatformProfile, ...]] = (
         status_keys=("charger_state",),
         charging_values=("busy-charging",),
         vehicle_idle_values=("busy-non-charging",),
-        note="No current control: start and stop only.",
+        note="No current control: switched on and off whole, at the current SpotNav learns it draws.",
     ),
     PlatformProfile(
         platform="pod_point",
@@ -670,7 +670,7 @@ _PROFILES: Final[tuple[PlatformProfile, ...]] = (
         platform="chargepoint",
         name="ChargePoint",
         start_stop=_buttons(("start_charging_session",), ("stop_charging_session",)),
-        note="Its current limit is a select: start and stop only. Stop ends the session and Start may stay "
+        note="Its current limit is a select: switched on and off whole, at the current SpotNav learns it draws. Stop ends the session and Start may stay "
         "refused until the cable is replugged.",
     ),
     PlatformProfile(

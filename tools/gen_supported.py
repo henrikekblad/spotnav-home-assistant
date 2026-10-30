@@ -363,7 +363,9 @@ def chargers_section() -> list[str]:
         "",
         "These integrations can be started and stopped, and most can have their current set. "
         "A column that says None means SpotNav does that part without the charger's help: "
-        "a charger with no current control still follows the plan's start and stop times.",
+        "a charger with no current control still follows the plan's start and stop times, and load balancing and "
+        "solar switch it on and off whole at the current SpotNav learns it draws "
+        "(see [chargers that can only be switched on and off](site-and-load-balancing.md#chargers-that-can-only-be-switched-on-and-off)).",
         "",
     ]
     rows = [OCPP_ROW] + [charger_row(p) for p in by_role.get(cp.ROLE_CHARGER, [])]
@@ -454,7 +456,9 @@ def chargers_section() -> list[str]:
         "- The plug must be rated for the charger's continuous current (a charger at 16 A needs a plug that "
         "carries 16 A for hours, which many cheap plugs do not), and the charger must start charging again "
         "by itself when power returns. SpotNav can switch the plug but cannot tell the charger to start.",
-        "- There is no current control: the charger charges at its own current and SpotNav only switches it.",
+        "- There is no current control: the charger charges at its own current and SpotNav only switches it. "
+        "SpotNav learns that current from the plug's power, and load balancing pauses and resumes the charge whole "
+        "(see [chargers that can only be switched on and off](site-and-load-balancing.md#chargers-that-can-only-be-switched-on-and-off)).",
         "",
     ]
     return lines
