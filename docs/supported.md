@@ -60,6 +60,7 @@ SpotNav cannot start or stop these chargers, so the flow refuses them as a charg
 | Integration | Energy and status | Notes | Verification |
 | --- | --- | --- | --- |
 | Tesla Wall Connector (`tesla_wall_connector`) | Lifetime energy | Read only: the car is the actuator. | Detected from the integration's source |
+| NexBlue (`nexblue`) | Lifetime energy | Read only: the integration cannot set the current. | Detected from the integration's source |
 
 ### Controlled by another system
 

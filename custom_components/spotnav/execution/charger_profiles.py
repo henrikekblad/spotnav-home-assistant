@@ -681,6 +681,20 @@ _PROFILES: Final[tuple[PlatformProfile, ...]] = (
         current_sensor_keys=("current_a_a", "current_b_a", "current_c_a"),
         note="Read only: the car is the actuator.",
     ),
+    # NexBlue (core `nexblue`, Home Assistant 2026.9; `<serial>_<key>` unique ids). It has no number to set the
+    # current in any version: 2026.9 is sensors only, and Home Assistant 2026.10 and the vendor's own HACS
+    # integration add just a `charging` switch, whose state is a cloud status polled once a minute and assumed
+    # for a while after each command. With no current to set, it is read only. The lifetime register is
+    # `lifetime_energy`; the session's `energy` is left out because its key is also the tail of that one.
+    # The phase currents are `current_1` to `current_3` (all three share the translation key `current`).
+    PlatformProfile(
+        platform="nexblue",
+        name="NexBlue",
+        role=ROLE_MEASUREMENT_ONLY,
+        energy_keys=("lifetime_energy",),
+        current_sensor_keys=("current_1", "current_2", "current_3"),
+        note="Read only: the integration cannot set the current.",
+    ),
     PlatformProfile(platform="evcc_intg", name="evcc", role=ROLE_EXTERNAL_CONTROLLER),
     PlatformProfile(platform="openwb2mqtt", name="openWB", role=ROLE_EXTERNAL_CONTROLLER),
     PlatformProfile(platform="andersen_ev", name="Andersen", role=ROLE_UNSUPPORTED, note="Lock only."),
