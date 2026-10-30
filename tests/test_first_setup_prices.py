@@ -60,6 +60,7 @@ async def test_the_first_charger_in_a_nord_pool_area_is_told_about_nord_pool(has
     assert result["description_placeholders"] == {
         "area": "SE4",
         "link": "/config/integrations/dashboard/add?domain=nordpool",
+        "entsoe_url": "https://transparency.entsoe.eu/",
     }
     assert [str(key) for key in result["data_schema"].schema] == ["entsoe_key"]
 
@@ -107,7 +108,7 @@ async def test_an_entsoe_area_takes_the_key_and_a_rejected_one_keeps_the_step(
     monkeypatch.setattr(price_source_step, "suggest_area", lambda *_args: "ES")
     result = await add_wallbox(hass)
     assert result["step_id"] == "prices_entsoe"
-    assert result["description_placeholders"] == {"area": "ES", "link": ""}
+    assert result["description_placeholders"] == {"area": "ES", "link": "", "entsoe_url": "https://transparency.entsoe.eu/"}
 
     platform.fallback = (401, "Unauthorized", {})
     result = await hass.config_entries.flow.async_configure(result["flow_id"], {"entsoe_key": "wrong"})
@@ -133,7 +134,9 @@ async def test_pvpc_and_agile_link_their_integrations(
 ) -> None:
     monkeypatch.setattr(price_source_step, "suggest_area", lambda *_args: area)
     result = await add_wallbox(hass)
-    assert result["step_id"] == step and result["description_placeholders"] == {"area": area, "link": link}
+    assert result["step_id"] == step and result["description_placeholders"] == {
+        "area": area, "link": link, "entsoe_url": "https://transparency.entsoe.eu/"
+    }
     assert [str(key) for key in result["data_schema"].schema] == []
     result = await hass.config_entries.flow.async_configure(result["flow_id"], {})
     assert result["type"] == FlowResultType.CREATE_ENTRY

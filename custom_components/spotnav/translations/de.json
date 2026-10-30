@@ -257,7 +257,7 @@
           "entsoe_key": "ENTSO-E-Schlüssel (optional)"
         },
         "data_description": {
-          "entsoe_key": "Registriere dich auf transparency.entsoe.eu und schreibe dann eine E-Mail an transparency@entsoe.eu mit dem Betreff \"Restful API access\" und der E-Mail-Adresse deines Kontos im Text. Sobald der Zugang freigeschaltet ist (das kann ein paar Tage dauern), erzeugst du den Sicherheitsschlüssel unter My Account Settings und fügst ihn hier ein. Ein Schlüssel für die ganze Installation."
+          "entsoe_key": "Registriere dich auf [transparency.entsoe.eu]({entsoe_url}) und schreibe dann eine E-Mail an transparency@entsoe.eu mit dem Betreff \"Restful API access\" und der E-Mail-Adresse deines Kontos im Text. Sobald der Zugang freigeschaltet ist (das kann ein paar Tage dauern), erzeugst du den Sicherheitsschlüssel unter My Account Settings und fügst ihn hier ein. Ein Schlüssel für die ganze Installation."
         }
       },
       "prices_entsoe": {
@@ -267,7 +267,7 @@
           "entsoe_key": "ENTSO-E-Schlüssel (optional)"
         },
         "data_description": {
-          "entsoe_key": "Registriere dich auf transparency.entsoe.eu und schreibe dann eine E-Mail an transparency@entsoe.eu mit dem Betreff \"Restful API access\" und der E-Mail-Adresse deines Kontos im Text. Sobald der Zugang freigeschaltet ist (das kann ein paar Tage dauern), erzeugst du den Sicherheitsschlüssel unter My Account Settings und fügst ihn hier ein. Ein Schlüssel für die ganze Installation."
+          "entsoe_key": "Registriere dich auf [transparency.entsoe.eu]({entsoe_url}) und schreibe dann eine E-Mail an transparency@entsoe.eu mit dem Betreff \"Restful API access\" und der E-Mail-Adresse deines Kontos im Text. Sobald der Zugang freigeschaltet ist (das kann ein paar Tage dauern), erzeugst du den Sicherheitsschlüssel unter My Account Settings und fügst ihn hier ein. Ein Schlüssel für die ganze Installation."
         }
       },
       "prices_pvpc": {

@@ -257,7 +257,7 @@
           "entsoe_key": "Clé ENTSO-E (facultative)"
         },
         "data_description": {
-          "entsoe_key": "Inscrivez-vous sur transparency.entsoe.eu, puis écrivez à transparency@entsoe.eu avec l'objet « Restful API access » et l'adresse e-mail de votre compte dans le texte. Une fois l'accès accordé (cela peut prendre quelques jours), générez le jeton de sécurité dans My Account Settings et collez-le ici. Une clé pour toute l'installation."
+          "entsoe_key": "Inscrivez-vous sur [transparency.entsoe.eu]({entsoe_url}), puis écrivez à transparency@entsoe.eu avec l'objet « Restful API access » et l'adresse e-mail de votre compte dans le texte. Une fois l'accès accordé (cela peut prendre quelques jours), générez le jeton de sécurité dans My Account Settings et collez-le ici. Une clé pour toute l'installation."
         }
       },
       "prices_entsoe": {
@@ -267,7 +267,7 @@
           "entsoe_key": "Clé ENTSO-E (facultative)"
         },
         "data_description": {
-          "entsoe_key": "Inscrivez-vous sur transparency.entsoe.eu, puis écrivez à transparency@entsoe.eu avec l'objet « Restful API access » et l'adresse e-mail de votre compte dans le texte. Une fois l'accès accordé (cela peut prendre quelques jours), générez le jeton de sécurité dans My Account Settings et collez-le ici. Une clé pour toute l'installation."
+          "entsoe_key": "Inscrivez-vous sur [transparency.entsoe.eu]({entsoe_url}), puis écrivez à transparency@entsoe.eu avec l'objet « Restful API access » et l'adresse e-mail de votre compte dans le texte. Une fois l'accès accordé (cela peut prendre quelques jours), générez le jeton de sécurité dans My Account Settings et collez-le ici. Une clé pour toute l'installation."
         }
       },
       "prices_pvpc": {

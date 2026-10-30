@@ -257,7 +257,7 @@
           "entsoe_key": "ENTSO-E-nøkkel (valgfri)"
         },
         "data_description": {
-          "entsoe_key": "Registrer deg på transparency.entsoe.eu, og send så en e-post til transparency@entsoe.eu med emnet \"Restful API access\" og kontoens e-postadresse i teksten. Når du har fått tilgang (det kan ta noen dager), lager du sikkerhetsnøkkelen under My Account Settings og limer den inn her. Én nøkkel for hele installasjonen."
+          "entsoe_key": "Registrer deg på [transparency.entsoe.eu]({entsoe_url}), og send så en e-post til transparency@entsoe.eu med emnet \"Restful API access\" og kontoens e-postadresse i teksten. Når du har fått tilgang (det kan ta noen dager), lager du sikkerhetsnøkkelen under My Account Settings og limer den inn her. Én nøkkel for hele installasjonen."
         }
       },
       "prices_entsoe": {
@@ -267,7 +267,7 @@
           "entsoe_key": "ENTSO-E-nøkkel (valgfri)"
         },
         "data_description": {
-          "entsoe_key": "Registrer deg på transparency.entsoe.eu, og send så en e-post til transparency@entsoe.eu med emnet \"Restful API access\" og kontoens e-postadresse i teksten. Når du har fått tilgang (det kan ta noen dager), lager du sikkerhetsnøkkelen under My Account Settings og limer den inn her. Én nøkkel for hele installasjonen."
+          "entsoe_key": "Registrer deg på [transparency.entsoe.eu]({entsoe_url}), og send så en e-post til transparency@entsoe.eu med emnet \"Restful API access\" og kontoens e-postadresse i teksten. Når du har fått tilgang (det kan ta noen dager), lager du sikkerhetsnøkkelen under My Account Settings og limer den inn her. Én nøkkel for hele installasjonen."
         }
       },
       "prices_pvpc": {

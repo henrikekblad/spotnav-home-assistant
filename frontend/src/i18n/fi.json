@@ -838,7 +838,7 @@
   "price.notice.chooseArea": "Valitse alue",
   "price.key.label": "ENTSO-E-avain (koko asennus)",
   "price.key.save": "Tallenna avain",
-  "price.key.howto": "Rekisteröidy osoitteessa transparency.entsoe.eu ja lähetä sitten sähköposti osoitteeseen transparency@entsoe.eu aiheella ”Restful API access” ja tilisi sähköpostiosoite. Kun pääsy on myönnetty, luo suojausavain kohdassa My Account Settings ja liitä se tähän.",
+  "price.key.howto": "Rekisteröidy osoitteessa {site} ja lähetä sitten sähköposti osoitteeseen transparency@entsoe.eu aiheella ”Restful API access” ja tilisi sähköpostiosoite. Kun pääsy on myönnetty, luo suojausavain kohdassa My Account Settings ja liitä se tähän.",
   "price.key.rejected": "ENTSO-E ei hyväksynyt avainta. Tarkista se tai luo uusi osoitteessa transparency.entsoe.eu.",
   "price.notice.addEntsoeKey.action": "Lisää ENTSO-E-avaimesi",
   "price.notice.entsoeKeyRejected.action": "Anna uusi avain",

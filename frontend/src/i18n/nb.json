@@ -838,7 +838,7 @@
   "price.notice.chooseArea": "Velg område",
   "price.key.label": "ENTSO-E-nøkkel (hele installasjonen)",
   "price.key.save": "Lagre nøkkel",
-  "price.key.howto": "Registrer deg på transparency.entsoe.eu, og send så en e-post til transparency@entsoe.eu med emnet «Restful API access» og kontoens e-postadresse. Når du har fått tilgang, lager du sikkerhetsnøkkelen under My Account Settings og limer den inn her.",
+  "price.key.howto": "Registrer deg på {site}, og send så en e-post til transparency@entsoe.eu med emnet «Restful API access» og kontoens e-postadresse. Når du har fått tilgang, lager du sikkerhetsnøkkelen under My Account Settings og limer den inn her.",
   "price.key.rejected": "ENTSO-E godtok ikke nøkkelen. Sjekk den, eller lag en ny på transparency.entsoe.eu.",
   "price.notice.addEntsoeKey.action": "Legg til ENTSO-E-nøkkelen din",
   "price.notice.entsoeKeyRejected.action": "Skriv inn en ny nøkkel",

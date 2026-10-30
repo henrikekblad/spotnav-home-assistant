@@ -19,6 +19,8 @@ export function integrationPath(domain: string): string {
 /** The Octopus Energy integration's repository: opened in HACS when HACS is there, else on GitHub. */
 export const OCTOPUS_HACS_PATH =
   "/_my_redirect/hacs_repository?owner=BottlecapDave&repository=HomeAssistant-OctopusEnergy&category=integration";
+/** Where an ENTSO-E key is registered for. */
+export const ENTSOE_URL = "https://transparency.entsoe.eu/";
 export const OCTOPUS_REPOSITORY_URL = "https://github.com/BottlecapDave/HomeAssistant-OctopusEnergy";
 
 /** The providers the card has a source line for. */
@@ -229,7 +231,16 @@ export function keyEditor(
   field.dataset["valueField"] = "entsoeKey";
   const label = element(doc, "label", C.settingsLabel, translate(language, "price.key.label"));
   label.setAttribute("for", field.id);
-  const howto = element(doc, "p", C.entityHelp, translate(language, "price.key.howto"));
+  const howto = element(doc, "p", C.entityHelp);
+  // The platform's host is a link (a new tab); the sentence around it is the reader's language.
+  const marker = "\u0000";
+  const [before, after = ""] = translate(language, "price.key.howto", { site: marker }).split(marker);
+  const site = doc.createElement("a");
+  site.href = ENTSOE_URL;
+  site.target = "_blank";
+  site.rel = "noopener noreferrer";
+  site.textContent = "transparency.entsoe.eu";
+  howto.append(before ?? "", site, after);
   howto.id = `${field.id}-howto`;
   field.setAttribute("aria-describedby", howto.id);
   const line = element(doc, "div", C.settingsField);

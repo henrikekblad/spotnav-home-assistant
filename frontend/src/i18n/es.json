@@ -838,7 +838,7 @@
   "price.notice.chooseArea": "Elegir la zona",
   "price.key.label": "Clave de ENTSO-E (toda la instalación)",
   "price.key.save": "Guardar clave",
-  "price.key.howto": "Regístrate en transparency.entsoe.eu y después escribe a transparency@entsoe.eu con el asunto «Restful API access» y el correo de tu cuenta. Cuando te den acceso, genera el token de seguridad en My Account Settings y pégalo aquí.",
+  "price.key.howto": "Regístrate en {site} y después escribe a transparency@entsoe.eu con el asunto «Restful API access» y el correo de tu cuenta. Cuando te den acceso, genera el token de seguridad en My Account Settings y pégalo aquí.",
   "price.key.rejected": "ENTSO-E no aceptó esta clave. Revísala o genera una nueva en transparency.entsoe.eu.",
   "price.notice.addEntsoeKey.action": "Añadir tu clave de ENTSO-E",
   "price.notice.entsoeKeyRejected.action": "Introducir una clave nueva",

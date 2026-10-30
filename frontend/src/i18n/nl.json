@@ -838,7 +838,7 @@
   "price.notice.chooseArea": "Gebied kiezen",
   "price.key.label": "ENTSO-E-sleutel (hele installatie)",
   "price.key.save": "Sleutel opslaan",
-  "price.key.howto": "Registreer je op transparency.entsoe.eu en mail daarna transparency@entsoe.eu met als onderwerp ‘Restful API access’ en het e-mailadres van je account. Zodra je toegang hebt, maak je de beveiligingssleutel aan onder My Account Settings en plak je hem hier.",
+  "price.key.howto": "Registreer je op {site} en mail daarna transparency@entsoe.eu met als onderwerp ‘Restful API access’ en het e-mailadres van je account. Zodra je toegang hebt, maak je de beveiligingssleutel aan onder My Account Settings en plak je hem hier.",
   "price.key.rejected": "ENTSO-E heeft deze sleutel niet geaccepteerd. Controleer hem, of maak een nieuwe aan op transparency.entsoe.eu.",
   "price.notice.addEntsoeKey.action": "Je ENTSO-E-sleutel toevoegen",
   "price.notice.entsoeKeyRejected.action": "Nieuwe sleutel invullen",

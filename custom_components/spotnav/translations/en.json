@@ -257,7 +257,7 @@
           "entsoe_key": "ENTSO-E key (optional)"
         },
         "data_description": {
-          "entsoe_key": "Register at transparency.entsoe.eu, then e-mail transparency@entsoe.eu with the subject \"Restful API access\" and your account's e-mail address in the text. Once access is granted (it can take a few days), generate the security token under My Account Settings and paste it here. One key for the whole installation."
+          "entsoe_key": "Register at [transparency.entsoe.eu]({entsoe_url}), then e-mail transparency@entsoe.eu with the subject \"Restful API access\" and your account's e-mail address in the text. Once access is granted (it can take a few days), generate the security token under My Account Settings and paste it here. One key for the whole installation."
         }
       },
       "prices_entsoe": {
@@ -267,7 +267,7 @@
           "entsoe_key": "ENTSO-E key (optional)"
         },
         "data_description": {
-          "entsoe_key": "Register at transparency.entsoe.eu, then e-mail transparency@entsoe.eu with the subject \"Restful API access\" and your account's e-mail address in the text. Once access is granted (it can take a few days), generate the security token under My Account Settings and paste it here. One key for the whole installation."
+          "entsoe_key": "Register at [transparency.entsoe.eu]({entsoe_url}), then e-mail transparency@entsoe.eu with the subject \"Restful API access\" and your account's e-mail address in the text. Once access is granted (it can take a few days), generate the security token under My Account Settings and paste it here. One key for the whole installation."
         }
       },
       "prices_pvpc": {

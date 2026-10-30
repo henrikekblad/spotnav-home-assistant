@@ -267,6 +267,12 @@ describe("the notices", () => {
     expect(nodes[1]!.querySelector("button")).toBeNull();
   });
 
+  it("puts the platform's link in every language's how-to", () => {
+    for (const language of LANGUAGES) {
+      expect((TRANSLATIONS[language] as Record<string, string>)["price.key.howto"], language).toContain("{site}");
+    }
+  });
+
   it("has its words in every language", () => {
     const keys = Object.keys(TRANSLATIONS.en).filter((key) => key.startsWith("price.notice.") || key.startsWith("price.key.") || key.startsWith("price.provider."));
     expect(keys.length).toBe(32);
@@ -295,6 +301,11 @@ describe("the ENTSO-E key's editor", () => {
     expect(field.value).toBe("");
     expect(form.textContent).toContain("transparency@entsoe.eu");
     expect(form.textContent).toContain("Restful API access");
+    expect(form.textContent).toContain("Register at transparency.entsoe.eu, then e-mail");
+    const link = form.querySelector<HTMLAnchorElement>("a[href='https://transparency.entsoe.eu/']")!;
+    expect(link.textContent).toBe("transparency.entsoe.eu");
+    expect(link.target).toBe("_blank");
+    expect(link.rel).toBe("noopener noreferrer");
   });
 
   it("asks for a key before sending anything", async () => {

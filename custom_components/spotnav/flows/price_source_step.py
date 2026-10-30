@@ -37,6 +37,8 @@ from .price import async_price_catalogue, CONF_ENTSOE_KEY
 #: flow for a domain, and an integration's own page.
 ADD_INTEGRATION_PATH: Final = "/config/integrations/dashboard/add?domain={domain}"
 INTEGRATION_PATH: Final = "/config/integrations/integration/{domain}"
+#: Where an ENTSO-E key is registered for (the how-to's link).
+ENTSOE_URL: Final = "https://transparency.entsoe.eu/"
 #: The Octopus Energy integration is not part of Home Assistant: it is added from HACS.
 OCTOPUS_REPOSITORY_URL: Final = "https://github.com/BottlecapDave/HomeAssistant-OctopusEnergy"
 
@@ -135,5 +137,5 @@ class PriceSourceSteps:
             step_id=step_id,
             data_schema=vol.Schema(schema),
             errors=errors,
-            description_placeholders={"area": area_id, "link": link or ""},
+            description_placeholders={"area": area_id, "link": link or "", "entsoe_url": ENTSOE_URL},
         )

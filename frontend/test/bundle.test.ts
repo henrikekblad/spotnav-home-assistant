@@ -141,6 +141,8 @@ describe("the asset's only absolute URLs", () => {
       // The Octopus Energy integration's page, opened in a new tab by its notice when HACS is not there.
       "https://github.com/BottlecapDave/HomeAssistant-OctopusEnergy",
       "https://github.com/henrikekblad/spotnav-home-assistant",
+      // ENTSO-E's Transparency Platform, linked from the key's how-to (a new tab).
+      "https://transparency.entsoe.eu/",
       "http://www.w3.org/2000/svg",
     ].sort());
   });

@@ -257,7 +257,7 @@
           "entsoe_key": "ENTSO-E-sleutel (optioneel)"
         },
         "data_description": {
-          "entsoe_key": "Registreer je op transparency.entsoe.eu en mail daarna transparency@entsoe.eu met als onderwerp \"Restful API access\" en het e-mailadres van je account in de tekst. Zodra je toegang hebt (dat kan een paar dagen duren), maak je de beveiligingssleutel aan onder My Account Settings en plak je hem hier. Eén sleutel voor de hele installatie."
+          "entsoe_key": "Registreer je op [transparency.entsoe.eu]({entsoe_url}) en mail daarna transparency@entsoe.eu met als onderwerp \"Restful API access\" en het e-mailadres van je account in de tekst. Zodra je toegang hebt (dat kan een paar dagen duren), maak je de beveiligingssleutel aan onder My Account Settings en plak je hem hier. Eén sleutel voor de hele installatie."
         }
       },
       "prices_entsoe": {
@@ -267,7 +267,7 @@
           "entsoe_key": "ENTSO-E-sleutel (optioneel)"
         },
         "data_description": {
-          "entsoe_key": "Registreer je op transparency.entsoe.eu en mail daarna transparency@entsoe.eu met als onderwerp \"Restful API access\" en het e-mailadres van je account in de tekst. Zodra je toegang hebt (dat kan een paar dagen duren), maak je de beveiligingssleutel aan onder My Account Settings en plak je hem hier. Eén sleutel voor de hele installatie."
+          "entsoe_key": "Registreer je op [transparency.entsoe.eu]({entsoe_url}) en mail daarna transparency@entsoe.eu met als onderwerp \"Restful API access\" en het e-mailadres van je account in de tekst. Zodra je toegang hebt (dat kan een paar dagen duren), maak je de beveiligingssleutel aan onder My Account Settings en plak je hem hier. Eén sleutel voor de hele installatie."
         }
       },
       "prices_pvpc": {
