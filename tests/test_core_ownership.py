@@ -628,6 +628,123 @@ def test_the_hold_stops_a_charge_that_began_by_itself_outside_a_window_once() ->
     assert kinds(commands) == [] and session.overridden, "started again after the hold: a person's override"
 
 
+HOLD_ON = {"was_on": False, "window_ahead_outside": True, "plan_present": True}
+HELD_SESSION = ChargeSession(plugged=True, held=True)
+OVERRIDDEN = ChargeSession(plugged=True, held=True, overridden=True)
+
+
+@pytest.mark.parametrize(
+    ("pre", "events", "held", "overridden"),
+    [
+        # Set: the hold, at a report of a charge that began by itself outside a window (`WindowHold.observe`).
+        (PLUGGED, (on(**HOLD_ON),), True, False),
+        # Set: a person's override, at the next such start after the hold.
+        (HELD_SESSION, (on(**HOLD_ON),), True, True),
+        # Not by a charge that is SpotNav's: its owner is, or a start of SpotNav's for one awaits its result (today's
+        # `WindowHold.owned` is set as the start goes out, before its result).
+        (PLUGGED.with_changes(owner="plan"), (on(**HOLD_ON),), False, False),
+        (
+            PLUGGED.with_changes(pending=(PendingCommand("start", "direct", owner_after="charge_now"),)),
+            (on(**HOLD_ON),),
+            False,
+            False,
+        ),
+        # Nor one load balancing gives back with a start of SpotNav's, also one nobody here owns (the charger's own):
+        # while the resume awaits its result, and after it until the charge is seen off or stopped (today's
+        # `spotnav_started` at the resume). SpotNav does not stop a charge it did not stop before.
+        (
+            PLUGGED.with_changes(pending=(PendingCommand("start", "balancing_resume", owner_after="none"),)),
+            (on(**HOLD_ON),),
+            False,
+            False,
+        ),
+        (
+            PLUGGED.with_changes(balancing_paused=True),
+            (ev.BalancingResume(), ok("start", "balancing_resume"), on(**HOLD_ON)),
+            False,
+            False,
+        ),
+        (
+            PLUGGED.with_changes(balancing_paused=True),
+            (ev.BalancingResume(), ok("start", "balancing_resume"), ev.ChargerReportedOff(), on(**HOLD_ON)),
+            True,
+            False,
+        ),
+        (
+            PLUGGED.with_changes(balancing_paused=True),
+            (ev.BalancingResume(), ok("start", "balancing_resume"), ev.Restart(), on(**HOLD_ON)),
+            True,
+            False,
+        ),
+        # Set: the re-arm's stop of a charge that ran outside the windows, once it went out (`held_now`); never one of
+        # a charge that did not run, one that never went out, or one whose plug-in ended before its result (an unplug
+        # and a new plug-in meanwhile).
+        (PLUGGED.with_changes(owner="plan"), (ev.Rearm(charging=True), ok("stop", "rearm")), True, False),
+        (PLUGGED.with_changes(owner="plan"), (ev.Rearm(charging=False), ok("stop", "rearm")), False, False),
+        (PLUGGED.with_changes(owner="plan"), (ev.Rearm(charging=True), failed("stop", "rearm")), False, False),
+        (
+            PLUGGED.with_changes(owner="plan"),
+            (ev.Rearm(charging=True), ev.Unplug(previous=True), ev.PlugIn(previous=False), ok("stop", "rearm")),
+            False,
+            False,
+        ),
+        (
+            PLUGGED.with_changes(owner="plan"),
+            (
+                ev.Rearm(charging=True),
+                ev.CommandResult(command="stop", reason="rearm", executed=True, earlier_plug_in=True),
+            ),
+            False,
+            False,
+        ),
+        # The re-arm spares an overridden hold: nothing is stopped, and both stay.
+        (OVERRIDDEN.with_changes(owner="charger_self"), (ev.Rearm(charging=True),), True, True),
+        # Cleared: the override, when the charge is seen off; both, when it is seen off with no car.
+        (OVERRIDDEN, (ev.ChargerReportedOff(),), True, False),
+        (OVERRIDDEN, (ev.ChargerReportedOff(connected=False),), False, False),
+        (OVERRIDDEN, (ev.ChargerReportedOff(notified=True),), True, True),
+        # Cleared: both, at a report with no car (before the report's own hold), at the unplug, and at a new plug-in
+        # after a known unplug (decided in step 5: today's code cleared them at any report saying no car, also one
+        # whose control could not be read, which the core is not fed; the new plug-in is where that plug-in ends).
+        (OVERRIDDEN, (on(connected=False),), False, False),
+        (OVERRIDDEN, (on(connected=False, **HOLD_ON),), True, False),
+        # A report whose control cannot be read is no state of the charge, but its "no car" still ends both (today's
+        # `WindowHold.observe` ends them with a control it cannot read); with a car, or none stated, nothing changes.
+        (OVERRIDDEN, (ev.ChargerReportedUnreadable(connected=False),), False, False),
+        (OVERRIDDEN, (ev.ChargerReportedUnreadable(connected=True),), True, True),
+        (OVERRIDDEN, (ev.ChargerReportedUnreadable(connected=None),), True, True),
+        (PLUGGED, (on(connected=False, **HOLD_ON), ev.ChargerReportedUnreadable(connected=False)), False, False),
+        (OVERRIDDEN, (ev.Unplug(previous=True),), False, False),
+        (OVERRIDDEN, (ev.Unplug(previous=None),), False, False),
+        (OVERRIDDEN, (ev.PlugIn(previous=False),), False, False),
+        (OVERRIDDEN, (ev.PlugIn(previous=None),), True, True),
+        # Cleared: both, where the next window starts (a timer's or a re-arm's), also when the target ends the plan
+        # instead; a window started at plug-in or a start's retry is the same plug-in.
+        (OVERRIDDEN, (ev.WindowStart(),), False, False),
+        (OVERRIDDEN, (ev.WindowStart(trigger=ev.TRIGGER_REARM),), False, False),
+        (OVERRIDDEN, (ev.WindowStart(target_reached=True),), False, False),
+        (OVERRIDDEN, (ev.WindowStart(target_stopping=True),), False, False),
+        (OVERRIDDEN, (ev.WindowStart(trigger=ev.TRIGGER_PLUG_IN, window_open=True),), True, True),
+        (OVERRIDDEN, (ev.WindowStart(trigger=ev.TRIGGER_RETRY, window_open=True),), True, True),
+        # Kept: a person's Start or Stop over a held window, a new plan, a window's end, load balancing, a restart.
+        (OVERRIDDEN, (ev.PersonStart(), ok("start", "person")), True, True),
+        (OVERRIDDEN, (ev.PersonStop(), ok("stop", "person")), True, True),
+        (OVERRIDDEN, (ev.PlanInstalled(window_open=False),), True, True),
+        (OVERRIDDEN, (ev.PlanDropped(),), True, True),
+        (OVERRIDDEN.with_changes(owner="charger_self"), (ev.WindowEnd(),), True, True),
+        (OVERRIDDEN, (ev.BalancingPause(), ok("stop", "balancing")), True, True),
+        (OVERRIDDEN, (ev.Restart(),), True, True),
+    ],
+)
+def test_where_the_holds_memory_is_set_and_cleared(pre, events, held, overridden) -> None:
+    """The hold's memory (`window_hold.WindowHold`): `held` means "this plug-in session's charge that began by itself
+    outside a window was stopped once" (or the re-arm stopped one that ran), `overridden` "a person started it again
+    after that, and it goes on". `overridden` is set only while `held` (a person's override of a hold this plug-in)."""
+    session, _ = run(pre, *events)
+    assert (session.held, session.overridden) == (held, overridden)
+    assert not session.overridden or session.held
+
+
 @pytest.mark.parametrize(
     "event",
     [
@@ -648,6 +765,25 @@ def test_a_pause_holds_the_hold_only_for_an_auto_plan() -> None:
     assert kinds(commands) == []
     _, commands = run(paused, on(was_on=False, window_ahead_outside=True, plan_auto_owned=False))
     assert kinds(commands) == ["stop"]
+
+
+@pytest.mark.parametrize("connected", [False, True, None])
+def test_a_report_whose_control_cannot_be_read_decides_nothing_of_the_charge(connected) -> None:
+    """Only the hold's memory may change (with no car); the owner, the person intent, load balancing's memory and
+    what awaits a result stay, and nothing is sent."""
+    pre = ChargeSession(
+        plugged=True,
+        owner="plan",
+        manual=START,
+        held=True,
+        overridden=True,
+        balancing_paused=True,
+        paused_origin="plan",
+        pending=(PendingCommand("stop", "hold"),),
+    )
+    session, commands = run(pre, ev.ChargerReportedUnreadable(connected=connected))
+    assert kinds(commands) == []
+    assert session == (pre.with_changes(held=False, overridden=False) if connected is False else pre)
 
 
 def test_a_charge_inside_a_window_nobody_started_is_the_plans() -> None:

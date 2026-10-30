@@ -22,6 +22,9 @@ charger_state_machine_2026-10-04.md`, section 1); this record names each once:
   sooner than its gap.
 * `hold_stop_*`: the stops sent under a person's Stop of a charge the charger began by itself (C7, R5): when
   they went out, when the last was tried, whether SpotNav gave up, and whether one is on its way.
+* `spotnav_resumed`: load balancing gave back a charge nobody here owns (the charger's own) with a start of
+  SpotNav's: the hold leaves it alone, as a charge SpotNav started, until it is seen off or stopped (today's
+  `WindowHold.owned` from that start on). Its owner stays nobody's.
 * `pending`: the commands the core asked for whose results have not come back yet (`ownership.CommandResult`).
 
 Serialised as JSON with a version field (`to_dict`/`from_dict`); a record of another version is refused. The
@@ -50,7 +53,10 @@ TRANSIENT_FIELDS: Final = (
     "hold_stop_pending",
     "held_for_safety",
     "safety_stopped_at",
+    "spotnav_resumed",
 )
+#: Fields a serialised record written before they were kept may lack (an older debug bundle): read as their default.
+LATER_FIELDS: Final = frozenset({"spotnav_resumed"})
 
 OWNER_NONE: Final = "none"
 OWNER_PLAN: Final = "plan"
@@ -146,6 +152,7 @@ class ChargeSession:
     hold_tried_at: datetime | None = None
     hold_gave_up: bool = False
     hold_stop_pending: bool = False
+    spotnav_resumed: bool = False
     pending: tuple[PendingCommand, ...] = field(default=())
 
     def __post_init__(self) -> None:
@@ -206,6 +213,7 @@ class ChargeSession:
             "hold_tried_at": _iso(self.hold_tried_at),
             "hold_gave_up": self.hold_gave_up,
             "hold_stop_pending": self.hold_stop_pending,
+            "spotnav_resumed": self.spotnav_resumed,
             "pending": [
                 {
                     "command": command.command,
@@ -230,8 +238,8 @@ class ChargeSession:
         if raw.get("version") != SESSION_VERSION:
             raise SessionError(f"session version {raw.get('version')!r} is not {SESSION_VERSION}")
         expected = {"version"} | {item.name for item in fields(cls)}
-        if set(raw) != expected:
-            raise SessionError(f"session fields differ: {sorted(set(raw) ^ expected)}")
+        if not expected - LATER_FIELDS <= set(raw) <= expected:
+            raise SessionError(f"session fields differ: {sorted((set(raw) ^ expected) - (LATER_FIELDS - set(raw)))}")
         manual = raw["manual"]
         try:
             return cls(
@@ -252,6 +260,7 @@ class ChargeSession:
                 hold_tried_at=_instant(raw["hold_tried_at"], "hold_tried_at"),
                 hold_gave_up=_bool(raw["hold_gave_up"], "hold_gave_up"),
                 hold_stop_pending=_bool(raw["hold_stop_pending"], "hold_stop_pending"),
+                spotnav_resumed=_bool(raw.get("spotnav_resumed", False), "spotnav_resumed"),
                 pending=tuple(
                     PendingCommand(
                         command=_text(_member(pending, "command"), "command"),

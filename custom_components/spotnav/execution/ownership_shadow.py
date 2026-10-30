@@ -85,6 +85,11 @@ SAFETY_AND_C7: Final = (
 #: Step 4: load balancing's memory, whether it holds a charge back and whose it was. Stored in the session's record,
 #: and still written to today's `balancing_pause` key, derived from the session, so an older build reads it as before.
 BALANCING: Final = ("balancing_paused", "paused_origin")
+#: Step 5: the hold's memory, whether this plug-in session's charge that began by itself outside a window was held
+#: and whether a person overrode the hold. Stored in the session's record, and still written to today's `hold` key,
+#: derived from the session, so an older build reads it as before. With them, whether load balancing gave back a charge
+#: nobody here owns with a start of SpotNav's (transient: today's `WindowHold.owned` is not kept across a restart).
+WINDOW_HOLD: Final = ("held", "overridden", "spotnav_resumed")
 #: How far apart two readings of the clock may be and still be one instant in an owned field: the core takes the
 #: instant it decided, today's code its own a moment earlier or later (`core.replay.CLOCK_TOLERANCE_S`).
 MIRROR_CLOCK_S: Final = CLOCK_TOLERANCE_S
@@ -92,7 +97,7 @@ MIRROR_CLOCK_S: Final = CLOCK_TOLERANCE_S
 _RESULTS_LATER: Final = frozenset({"charger_reported_on", "charger_reported_off", "timer"})
 #: A charger's report of its control: recorded only when it decided something or something moved, so a charger
 #: that reports every few seconds does not push the plug-in and a person's actions out of the event ring.
-_REPORTS: Final = frozenset({"charger_reported_on", "charger_reported_off"})
+_REPORTS: Final = frozenset({"charger_reported_on", "charger_reported_off", "charger_reported_unreadable"})
 #: Who hears every disagreement, drift and shadow error (`kind`, record): the test suite's collector.
 LISTENERS: list[Callable[[str, dict[str, Any]], None]] = []
 #: What every shadow in this process counted (a test run's summary).

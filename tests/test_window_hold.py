@@ -155,7 +155,7 @@ async def test_the_next_window_starts_as_usual_and_ends_the_session(hass: HomeAs
         await controller._async_start_window()  # noqa: SLF001 - the timer's own entry
 
     assert len(starts) == 1 and len(stops) == 1
-    assert controller._hold.held is False  # noqa: SLF001
+    assert controller._hold_state.held is False  # noqa: SLF001 - the hold's memory, through its accessor
     await controller.async_shutdown()
 
 
