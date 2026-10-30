@@ -13,7 +13,9 @@ everywhere else (see [Prices](docs/prices.md#where-prices-come-from)).
   when a solar forecast promises sun, and keep several chargers under one main fuse.
 - **Prices for the rest of the house.** An *Electricity price* entry gives any automation (floor
   heating, a washing machine) the price now with your fees, "cheap now" and "expensive now" sensors,
-  and a `spotnav.get_prices` action; see [The electricity price](docs/price-device.md).
+  and a `spotnav.get_prices` action; see [The electricity price](docs/price-device.md). Two
+  [blueprints](docs/automations.md) set thermostats by the price and run a pool or water heater on
+  solar surplus.
 - **Runs locally.** The plan lives in Home Assistant and keeps running if your phone is away. A
   Lovelace card is included, and the SpotNav Android app
   ([Google Play](https://play.google.com/store/apps/details?id=se.sensnology.spotnav),
@@ -86,6 +88,8 @@ match and choose **Approve**. No Home Assistant password or token is stored on t
 - [Prices](docs/prices.md): where prices come from, taxes and fees, and the day document.
 - [The electricity price](docs/price-device.md): where the area and fees live for every charger, its
   sensors and `spotnav.get_prices`, with a floor-heating and a washing-machine example.
+- [Automations](docs/automations.md): blueprints for heating by the electricity price and for running
+  a pool or water heater on solar surplus.
 - [Target state of charge](docs/target-soc.md): vehicles, estimates and stopping at a target.
 - [Which car is plugged in?](docs/vehicle-identification.md): several cars at one charger.
 - [Site and load balancing](docs/site-and-load-balancing.md): main fuse, measurement sources,

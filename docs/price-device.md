@@ -130,6 +130,9 @@ automation:
 Set **Cheap hours per day** and **Expensive hours per day** on the device to how long the floor may
 run warm and how long it should hold back.
 
+The blueprint *Setpoint by electricity price* does the same for several thermostats, with a max price
+and an away temperature, and writes only a setpoint that differs; see [Automations](automations.md).
+
 ## The `spotnav.get_prices` action
 
 `spotnav.get_prices` answers with the prices of one electricity price entry, for an automation or a
