@@ -917,10 +917,13 @@ class AutoExecutor:
                 sun_keeps = False if floors else self._sun_keeps_charge()
                 event = core_events.StrategyChange(strategy=STRATEGY_SOLAR, plan_applied=True, sun_keeps=sun_keeps)
                 token = self._runner.begin()
-                # The core decides the stop. No verdict (it could not decide): nothing is stopped, and the plan is
-                # cleared as the strategy wants.
+                # The core decides the stop. No verdict (it could not decide): Keep. Nothing is stopped and the plan is
+                # kept as applied, so the charge keeps an owner whose rules end it; the next reconcile asks again.
                 verdict = self._runner.verdict(event, token)
-                stop = verdict is not None and ("stop", "strategy") in verdict
+                if verdict is None:
+                    self._runner.end(token, event)
+                    return applied
+                stop = ("stop", "strategy") in verdict
                 stopped: CommandOutcome | None = CommandOutcome(False) if stop else None
                 try:
                     if stop:
@@ -1647,17 +1650,21 @@ class AutoExecutor:
     async def _resume_locked(self) -> None:
         """The resume itself. Runs with this boundary's lock held."""
         token = self._runner.begin()
+        stored = False
         try:
             await self._store.async_update(
                 self._entry_id, mutate=lambda settings: replace(settings, pause=PauseIntent())
             )
-        except BaseException:
-            self._runner.cancel(token)
-            raise
-        self._arm_pause_expiry(None)
-        self._end_stop_pending()
-        self._sync_manual_watch()
-        self._runner.end(token, core_events.Resume(reason=core_events.RESUME_PERSON))
+            stored = True
+            self._arm_pause_expiry(None)
+            self._end_stop_pending()
+            self._sync_manual_watch()
+        finally:
+            # Fed once the pause is gone from the store, whatever follows; never left open.
+            if stored:
+                self._runner.end(token, core_events.Resume(reason=core_events.RESUME_PERSON))
+            else:
+                self._runner.cancel(token)
         self.begin_attempt()
         self._last_error = None
         await self._rearm_kept_plan()
@@ -2404,9 +2411,15 @@ class AutoExecutor:
                 self._last_error = EXECUTION_PAUSE_CLEAR_FAILED
                 await self._notify_change()
                 return False
-            self._last_error = None
-            self._arm_pause_expiry(None)
-            self._runner.end(token, core_events.Resume(reason=core_events.RESUME_EXPIRED))
+            except BaseException:
+                # Cancelled while the write was on its way: no feed is left open behind it.
+                self._runner.cancel(token)
+                raise
+            try:
+                self._last_error = None
+                self._arm_pause_expiry(None)
+            finally:
+                self._runner.end(token, core_events.Resume(reason=core_events.RESUME_EXPIRED))
             await self._rearm_kept_plan()
             await self._notify_change()
             return True

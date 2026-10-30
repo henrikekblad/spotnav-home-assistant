@@ -1993,10 +1993,8 @@ class ChargingController:
                 vehicle=vehicle_id,
                 wait=self._car_ended_wait_for(plan, reading, full),
             )
-            token = self._runner.begin()
             wait_for = ended.wait
-            self._runner.end(
-                token,
+            self._runner.feed(
                 core_events.CarEnded(
                     plan=True,
                     soc=ended.soc,
@@ -5169,9 +5167,7 @@ class ChargingController:
             self.entry_id,
             level.soc_percent or 0.0,
         )
-        token = self._runner.begin()
-        self._runner.end(
-            token,
+        self._runner.feed(
             core_events.CarLevelRead(
                 car_level=level.soc_percent,
                 car_level_at=None
