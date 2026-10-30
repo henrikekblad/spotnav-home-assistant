@@ -347,6 +347,9 @@ class CapturedSite:
     balancing_paused: bool = False
     balancing_retry_at: datetime | None = None
     balancing_cause: str | None = None
+    #: Whether load balancing can set this charger's current at all; one that can only be switched on and off is
+    #: paused whole, never limited to a current.
+    current_settable: bool = True
 
 
 @dataclass(frozen=True, slots=True)
@@ -964,6 +967,7 @@ def capture_site(
         balancing_paused=balancing is not None,
         balancing_retry_at=None if balancing is None else balancing.retry_at,
         balancing_cause=None if balancing is None else balancing.cause,
+        current_settable=bool(getattr(controller_for(hass, charger_entry_id), "is_commandable", True)),
     )
 
 
@@ -2330,6 +2334,7 @@ def status_facts(capture: CapturedDashboard) -> StatusFacts:
             ),
             limiting_phase=_text(site.limiting_phase),
             cause=site.limit_cause,
+            current_settable=site.current_settable,
         ),
     )
 

@@ -563,6 +563,16 @@ CASES: list[tuple[str, StatusFacts, str, list[dict[str, Any]]]] = [
         ],
     ),
     (
+        "no limit is shown for a charger whose current load balancing cannot set",
+        base(
+            charging=True,
+            load_balancing=LoadBalancingFacts("capacity_limited", True, 10.0, "L2", current_settable=False),
+            load_balancing_capable=True,
+        ),
+        "normal",
+        [{"code": "charging_now", "params": {"until": None}}],
+    ),
+    (
         "load balancing names the battery sharing the fuse, even when the allocation itself is not limited",
         base(
             charging=True,
