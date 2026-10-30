@@ -64,23 +64,31 @@ export interface SetupSectionInput {
   /** Move to one of Home Assistant's own pages. */
   navigate: (path: string) => void;
   openExternal: (url: string) => void;
+  /** Whether the section has its own "Get started" heading: when it shares the dialog with reported issues. */
+  heading: boolean;
   /** "Not needed": the card asks the integration to keep the row away. */
   dismiss: (id: SetupRowId) => void;
 }
 
-/** The dialog's "Get started" section: a heading and one row per thing left. */
+/**
+ * The dialog's "Get started" section: one box per thing left, its sentence and below it its buttons, headed
+ * "Get started" when the dialog also lists issues (alone, the dialog's title says it).
+ */
 export function setupSection(doc: Document, input: SetupSectionInput): HTMLElement {
   const say = (key: TranslationKey): string => translate(input.language, key);
   const section = doc.createElement("section");
   section.dataset["section"] = "setup";
-  const heading = doc.createElement("h3");
-  heading.className = C.setupHeading;
-  heading.textContent = say("setup.heading");
-  section.append(heading);
+  if (input.heading) {
+    const heading = doc.createElement("h3");
+    heading.className = C.setupHeading;
+    heading.textContent = say("setup.heading");
+    section.append(heading);
+  }
   for (const row of input.rows) {
     const box = doc.createElement("div");
     box.className = C.suggestion;
     box.dataset["setup"] = row.id;
+    box.dataset["banner"] = "setup-row";
     const text = doc.createElement("p");
     text.className = C.suggestionText;
     text.textContent = say(WORDS[row.id].text);

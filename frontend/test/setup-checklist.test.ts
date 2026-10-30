@@ -63,6 +63,7 @@ function openDialog(element: Element): HTMLElement {
   const dialogs = Array.from(shadow(element).querySelectorAll<HTMLElement>("[role='dialog']"));
   return dialogs.find((dialog) => dialog.closest("[hidden]") === null)!;
 }
+const title = (element: Element) => openDialog(element).querySelector(".spotnav-dialog-title")?.textContent ?? null;
 const section = (element: Element) => openDialog(element).querySelector<HTMLElement>("[data-section='setup']");
 const row = (element: Element, id: string) => section(element)!.querySelector<HTMLElement>(`[data-setup="${id}"]`)!;
 const button = (node: HTMLElement, action: string) =>
@@ -147,15 +148,43 @@ describe("the attention line", () => {
     await settle();
     expect(openDialog(element).querySelector("[data-code='price_data_unavailable']")).not.toBeNull();
     expect(section(element)).not.toBeNull();
+    // Beside issues: the dialog keeps its title, and Get started is a section of its own under its heading.
+    expect(title(element)).toBe(translate("en", "dialog.issues"));
+    expect(section(element)!.querySelector("h3")?.textContent).toBe("Get started");
   });
 });
 
 describe("the dialog's Get started section", () => {
+  it("is called Kom igång in Swedish when it is alone", async () => {
+    const { element } = await open(dashboard(ALL), { language: "sv" });
+    line(element)!.click();
+    await settle();
+    expect(title(element)).toBe("Kom igång");
+  });
+
+  it("puts each row in its own box, the sentence first and its buttons below", async () => {
+    const { element } = await open(dashboard(ALL));
+    line(element)!.click();
+    await settle();
+    const boxes = Array.from(section(element)!.querySelectorAll<HTMLElement>("[data-setup]"));
+    expect(boxes).toHaveLength(ALL.length);
+    for (const box of boxes) {
+      expect(box.classList.contains("spotnav-suggestion")).toBe(true);
+      expect(box.dataset["banner"]).toBe("setup-row");
+      expect(Array.from(box.children).map((child) => child.className)).toEqual([
+        "spotnav-suggestion-text",
+        "spotnav-suggestion-answers",
+      ]);
+    }
+  });
+
   it("lists each row with its button, and Not needed only where it may be dismissed", async () => {
     const { element } = await open(dashboard(ALL));
     line(element)!.click();
     await settle();
-    expect(section(element)!.querySelector("h3")?.textContent).toBe("Get started");
+    // Only setup rows: the dialog itself is "Get started", with no heading inside repeating it.
+    expect(title(element)).toBe("Get started");
+    expect(section(element)!.querySelector("h3")).toBeNull();
     // Nothing else to review: no sentence about issues above it.
     expect(openDialog(element).querySelector(".spotnav-dialog-intro:not([hidden])")).toBeNull();
     const ids = Array.from(section(element)!.querySelectorAll<HTMLElement>("[data-setup]")).map((node) => node.dataset["setup"]);
