@@ -85,6 +85,14 @@ PhaseDirectionSource = Literal["active_power", "signed_current"]
 # regulator's zero band in watts (a direct site measures no voltage). Every other use of it divides out.
 DIRECTION_NOMINAL_PHASE_VOLTAGE_V = 230.0
 
+# A reading beyond this many times what the main fuse carries is a meter or integration fault, not a load:
+# a SolaX register read 1000 times too high, an EDL21 spike, an AMS current mis-decoded as +408 A. It is
+# `invalid`, never a value. A fuse never holds twice its rating for long, so a real overload stays far
+# below the bound and is still read and cut as one.
+IMPLAUSIBLE_FUSE_MULTIPLE = 2.0
+# The phase voltage the bound on a power reading is reckoned at.
+IMPLAUSIBLE_BOUND_PHASE_VOLTAGE_V = 230.0
+
 # Site-level: whether configuration and measurements are healthy enough to compute.
 SiteState = Literal[
     "not_configured",
@@ -599,6 +607,22 @@ def classify_voltage(raw: object, unit: str | None) -> tuple[float | None, Phase
     if normalized_unit in ("kv",):
         return value * 1000.0, None
     return None, "invalid"
+
+
+def implausible_current(current_a: float, main_fuse_a: float | None) -> bool:
+    """Whether a phase current is beyond any load the main fuse could carry (`IMPLAUSIBLE_FUSE_MULTIPLE`).
+    Never with no fuse configured."""
+    if main_fuse_a is None or main_fuse_a <= 0:
+        return False
+    return abs(current_a) > IMPLAUSIBLE_FUSE_MULTIPLE * main_fuse_a
+
+
+def implausible_power(power_w: float, main_fuse_a: float | None, phases: int = 1) -> bool:
+    """As `implausible_current`, for a power over `phases` phases (one phase's, or the site's total over
+    all three)."""
+    if main_fuse_a is None or main_fuse_a <= 0:
+        return False
+    return abs(power_w) > IMPLAUSIBLE_FUSE_MULTIPLE * main_fuse_a * phases * IMPLAUSIBLE_BOUND_PHASE_VOLTAGE_V
 
 
 def _is_absent(raw: object) -> bool:
@@ -1541,6 +1565,11 @@ def _resolve_measurements(
                 report_age_s = derived_current.report_age_s
                 phase_problem = derived_current.problem
                 bases[phase] = derived_current.basis
+                power_w = derived_input.active_power_w.value
+                if power_w is not None and implausible_power(power_w, config.main_fuse_a):
+                    value, phase_problem, bases[phase] = None, "invalid", None
+        if value is not None and implausible_current(value, config.main_fuse_a):
+            value, phase_problem, bases[phase] = None, "invalid", None
 
         values[phase] = value
         ages[phase] = age_s
