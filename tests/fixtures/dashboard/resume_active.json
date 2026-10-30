@@ -109,7 +109,10 @@
     "major_unit": "kr",
     "market_timezone": "Europe/Stockholm",
     "minor_unit": "\u00f6re",
-    "source": null,
+    "source": {
+      "name": "SpotNav relay",
+      "url": "https://spotnav.sensnology.se"
+    },
     "suggested_grid_fee": 30.0,
     "suggested_tax": 36.0,
     "suggested_vat_percent": 25.0,
@@ -2127,6 +2130,15 @@
       }
     ],
     "priced_slots": 35,
+    "provider": {
+      "key": "relay",
+      "name": "SpotNav relay",
+      "notice": {
+        "code": "add_nordpool",
+        "params": {}
+      },
+      "url": "https://spotnav.sensnology.se"
+    },
     "reason": "ready",
     "resolution_minutes": 15,
     "resolutions_minutes": [

@@ -129,7 +129,10 @@
     "suggested_grid_fee": 30.0,
     "market_timezone": "Europe/Stockholm",
     "included": [],
-    "source": null
+    "source": {
+      "name": "SpotNav relay",
+      "url": "https://spotnav.sensnology.se"
+    }
   },
   "prices": {
     "area_id": "SE4",
@@ -2079,7 +2082,16 @@
         "proposal_planned": false,
         "installed_planned": false
       }
-    ]
+    ],
+    "provider": {
+      "key": "relay",
+      "name": "SpotNav relay",
+      "url": "https://spotnav.sensnology.se",
+      "notice": {
+        "code": "add_nordpool",
+        "params": {}
+      }
+    }
   },
   "plan": {
     "proposal": {

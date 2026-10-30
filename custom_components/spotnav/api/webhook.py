@@ -123,6 +123,12 @@ APP_DASHBOARD_BLOCK_READS: Final = {
     "price_source": APP_READS_PRICE_SOURCE,
     "phase_switching": APP_READS_PHASE_SWITCHING,
 }
+#: Where the area's prices come from and what to do when it has no source of its own: the dashboard's
+#: `prices.provider` is left out for an app that does not read `APP_READS_PRICE_PROVIDER`.
+APP_READS_PRICE_PROVIDER: Final = "price_provider"
+#: Each optional key inside a dashboard block an app released before it does not read, as `(block, key)`, with the
+#: `reads` name that opts into it.
+APP_DASHBOARD_NESTED_READS: Final = {("prices", "provider"): APP_READS_PRICE_PROVIDER}
 #: Each vehicle-row field an app released before it does not read, with the `reads` name that opts into it.
 APP_VEHICLE_FIELD_READS: Final = {"min_percent": APP_READS_MIN_SOC, "wake_for_reading": APP_READS_WAKE_FOR_READING}
 
@@ -178,12 +184,17 @@ def _for_app(body: dict[str, Any], payload: dict[str, Any]) -> dict[str, Any]:
     null; `balancing_paused` for the plan's charge load balancing paused; `car_ended_waiting` for the plan waiting for
     the car's level after the car ended its charge; `wake_for_reading` for the vehicle rows' `wake_for_reading`; `solar_one_phase` for a solar charge the sun
     switched to one phase; `price_source` for the dashboard's `price_source` block; `phase_switching` for its
-    `phase_switching` block); anything else in it, or a `reads` that is not a list, is ignored.
+    `phase_switching` block; `price_provider` for `prices.provider`); anything else in it, or a `reads` that is not
+    a list, is ignored.
     """
     opted_in = _opted_in(payload)
     withheld_blocks = {block for block, read in APP_DASHBOARD_BLOCK_READS.items() if read not in opted_in}
     if withheld_blocks & set(body):
         body = {key: value for key, value in body.items() if key not in withheld_blocks}
+    for (block, field), read in APP_DASHBOARD_NESTED_READS.items():
+        inner = body.get(block)
+        if read not in opted_in and isinstance(inner, dict) and field in inner:
+            body = {**body, block: {key: value for key, value in inner.items() if key != field}}
     if isinstance(body.get("vehicles"), list):
         body = {**body, "vehicles": [_vehicle_for_app(row, opted_in) for row in body["vehicles"]]}
     status = body.get("status")
