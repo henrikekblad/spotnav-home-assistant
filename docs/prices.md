@@ -160,7 +160,8 @@ same area make one set of requests.
 The last good prices are kept and never relabelled as fresh. A plan already calculated is kept as it
 stands, and the card says *The prices are stale: the last successful fetch is still being used.*
 Nothing new is calculated from stale data. If the area list cannot be fetched, the card's area picker
-shows the last list Home Assistant received, with a note. Once the relay answers again, the prices
+shows the last list Home Assistant received, with a note; before any list has been received, it shows
+the list that comes with SpotNav itself. Once the relay answers again, the prices
 and the plan update by themselves.
 
 ## The relay's published files
