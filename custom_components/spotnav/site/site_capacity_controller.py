@@ -76,6 +76,7 @@ from ..execution.controller import (
     CurrentRestore,
     REGULATED_FLOORED,
     REGULATED_STOPPED,
+    RegulatedWrite,
     RESTORE_FAILED,
     RESTORE_NOT_NEEDED,
     RESTORE_RESTORED,
@@ -349,6 +350,9 @@ class SiteCapacityController:
         # (`_skipped_while_busy`), so a newer decision (a lowering one above all) goes out at once.
         self._charger_ops: dict[str, asyncio.Task[None]] = {}
         self._skipped_while_busy: set[str] = set()
+        # Switch-only pauses that could not be sent in a pass, with the phases they were to free: the pass that
+        # sent them pauses the chargers it held at their minimum on those phases instead (`_async_pause_fallbacks`).
+        self._failed_switched_pauses: list[tuple[str, frozenset[PhaseName]]] = []
         # Serialises active-control transitions for this instance; a transition on a closed (shut-
         # down) controller is refused.
         self.transition_lock = asyncio.Lock()
@@ -1533,6 +1537,56 @@ class SiteCapacityController:
             for task in spawned:
                 task.cancel()
             raise
+        await self._async_pause_fallbacks(decisions, fresh, max_age_s, margin_by_charger)
+
+    async def _async_pause_fallbacks(
+        self,
+        decisions: Mapping[str, RegulatorDecision],
+        fresh: SiteCapacityResult,
+        max_age_s: float,
+        margin_by_charger: dict[str, float | None],
+    ) -> None:
+        """A switch-only charger's pause that could not be sent in this pass: the chargers this pass held at their
+        minimum for it (`RegulatorDecision.pause_if_switched_pause_fails`) on a phase it shares are paused instead,
+        in this same pass. Their lowering to the minimum already went out; this only follows a failed command."""
+        if not self._failed_switched_pauses:
+            return
+        failed = self._failed_switched_pauses
+        self._failed_switched_pauses = []
+        phases: set[PhaseName] = set()
+        for _charger_entry_id, freed in failed:
+            phases.update(freed)
+        steps: list[asyncio.Task[None]] = []
+        for charger_entry_id, decision in decisions.items():
+            if not decision.pause_if_switched_pause_fails or not phases.intersection(decision.basis):
+                continue
+            if not self._active_control_allowed():
+                break
+            running = self._charger_ops.get(charger_entry_id)
+            if running is not None and not running.done():
+                continue
+            pause = replace(
+                decision,
+                proposed_current_a=0.0,
+                reason="paused_safe_current_below_charger_minimum",
+                pause_if_switched_pause_fails=False,
+            )
+            _LOGGER.warning(
+                "SpotNav site %s active control: a switch-only charger could not be paused; charger %s is paused instead",
+                self.entry_id,
+                charger_entry_id,
+            )
+            task = self.hass.async_create_task(
+                self._async_charger_step(charger_entry_id, pause, fresh, max_age_s, margin_by_charger),
+                f"spotnav site {self.entry_id} fallback pause for {charger_entry_id}",
+            )
+            self._charger_ops[charger_entry_id] = task
+            task.add_done_callback(
+                lambda done, charger_entry_id=charger_entry_id: self._on_charger_op_done(charger_entry_id, done)
+            )
+            steps.append(task)
+        if steps:
+            await asyncio.wait(steps)
 
     async def _async_charger_step(
         self,
@@ -2007,16 +2061,23 @@ class SiteCapacityController:
             previous = None
         if not self._active_control_allowed() or self._closed:
             return
-        await self._async_write_regulated(
-            charger_entry_id,
-            charger_controller,
-            decision,
-            damper,
-            DampingDecision(True, 0.0, "urgent"),
-            0,
-            previous,
-            None,
-        )
+        try:
+            write = await self._async_write_regulated(
+                charger_entry_id,
+                charger_controller,
+                decision,
+                damper,
+                DampingDecision(True, 0.0, "urgent"),
+                0,
+                previous,
+                None,
+            )
+        except Exception:
+            self._failed_switched_pauses.append((charger_entry_id, frozenset(decision.basis)))
+            raise
+        if write.outcome != REGULATED_STOPPED:
+            # Not paused (the command failed or was refused): the chargers held at their minimum for it are paused.
+            self._failed_switched_pauses.append((charger_entry_id, frozenset(decision.basis)))
 
     async def _async_apply_must_lower(
         self,
@@ -2281,8 +2342,9 @@ class SiteCapacityController:
         yield_verdict: YieldVerdict | None,
         *,
         site_read_at: float | None = None,
-    ) -> None:
-        """The write of one charger's regulated current and what it means for its damper and the log."""
+    ) -> RegulatedWrite:
+        """The write of one charger's regulated current and what it means for its damper and the log; returns what
+        the charger's write path said."""
         # The charger's own write path owns the OCPP read-modify-write and stays best-effort; any
         # other adapter may refuse by policy, and then the fuse decides (stop or hold).
         write = await charger_controller.async_apply_regulated_current(
@@ -2314,7 +2376,7 @@ class SiteCapacityController:
                 detail=f"adapter_{write.code}" if write.outcome == "held" else write.code,
                 yield_verdict=yield_verdict,
             )
-            return
+            return write
         if damper.last_written_a != damping.current_a:
             # Another path's write was told to the site while this one was on its way (`note_charger_write`):
             # this write landed last, so it is what the charger carries.
@@ -2343,6 +2405,7 @@ class SiteCapacityController:
             ),
             yield_verdict=yield_verdict,
         )
+        return write
 
     # -- a home battery charging from the grid as the car starts
 
