@@ -454,13 +454,18 @@ METER_ROWS: Final[tuple[MeterRow, ...]] = (
             _p("grid_power_export", r"_pe_0$"),
         ),
     ),
-    # Ferroamp EnergyHub (henricm, `1842058`). `<slug>_ehub-iext-L1..L3` is the grid current. The grid power
-    # (`pext`) and the battery power (`pbat`) are passed on from the hub unchanged and nothing in the
-    # integration says which way they count, so neither is used: the current alone protects the fuse.
+    # Ferroamp EnergyHub (henricm, `aad7f8f`). `<slug>_ehub-iext-L1..L3` is the grid current, which protects
+    # the fuse. `<slug>_ehub-pext` is the hub's total grid power, passed on unchanged (`sensor.py` L365-367,
+    # summed from the phases by `ThreePhaseFerroampSensor`). It counts import as positive: in the hub
+    # message the integration's tests replay (`tests/test_sensor.py` L95-L133), each phase's load `pload`
+    # is exactly `pext - pinv` while the inverter delivers (`pinv` -2224.66 W, `pext` -1595.28 W, `pload`
+    # 629.38 W on L1), so a negative `pext` is the 5.3 kW the site exports; evcc reads the hub's grid power
+    # (Modbus 3100) as import-positive too (`ferroamp-energyhub.yaml`).
     MeterRow(
         platforms=("ferroamp",),
         patterns=(_p("current", r"-iext-l(?P<n>[123])$"),),
         signed_current=True,
+        totals=(_p("grid_power", r"-pext$"),),
     ),
     # frient Electricity Meter Interface (EMIZB-132) through ZHA. The electrical measurement cluster gives
     # the current of phase A as `rms_current` and of B and C as `rms_current_ph_b` and `_ph_c`, and the
