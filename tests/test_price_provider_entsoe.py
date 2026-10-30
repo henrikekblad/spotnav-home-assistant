@@ -271,6 +271,80 @@ async def test_history_reaches_years_back(world: World) -> None:
     assert world.provider.history_reach is None
 
 
+def range_body(area_id: str, first: date, last: date, *, base: float = 40.0) -> str:
+    """The platform's A44 answer for consecutive CET market days: one period over all of them, at quarter hours."""
+    area = entsoe_area(area_id)
+    start, _ = market_day_bounds(first, area.market_tz)
+    _, end = market_day_bounds(last, area.market_tz)
+    slots = int((end - start).total_seconds() // 900)
+    return entsoe_body(
+        area.eic,
+        start.strftime("%Y-%m-%dT%H:%MZ"),
+        end.strftime("%Y-%m-%dT%H:%MZ"),
+        "PT15M",
+        [f"{base + (i % 96) * 0.25:.2f}" for i in range(slots)],
+    )
+
+
+async def test_a_range_of_past_days_is_one_request_read_day_by_day(world: World) -> None:
+    await world.start()
+    first, last = date(2026, 3, 20), date(2026, 4, 2)  # across the spring clock change (29 March: 92 quarters)
+    world.platform.serve("SE4", first, (200, range_body("SE4", first, last), {}))
+    days = [first + timedelta(days=offset) for offset in range((last - first).days + 1)]
+
+    fetches = await world.provider.async_fetch_days("SE4", days)
+
+    [query] = world.platform.requests
+    assert query["periodStart"] == "202603192300" and query["periodEnd"] == "202604022200"
+    assert sorted(fetches) == days and all(fetch.outcome == "fetched" for fetch in fetches.values())
+    for day, fetch in fetches.items():
+        parsed = parse_day(fetch.document, area_id="SE4", day=day)
+        assert parsed.covers_whole_day() and fetch.document["src"] == "entsoe.eu"
+    assert parse_day(fetches[date(2026, 3, 29)].document, area_id="SE4", day=date(2026, 3, 29)).interval_count == 92
+    assert world.provider.history_range_days == 31
+
+
+async def test_a_range_answer_missing_a_day_says_that_day_is_not_published(world: World) -> None:
+    await world.start()
+    first, last = date(2026, 9, 1), date(2026, 9, 3)
+    # The answer covers the first two days only.
+    world.platform.serve("SE4", first, (200, range_body("SE4", first, date(2026, 9, 2)), {}))
+
+    fetches = await world.provider.async_fetch_days("SE4", [first, date(2026, 9, 2), last])
+
+    assert [fetches[day].outcome for day in sorted(fetches)] == ["fetched", "fetched", "not_published"]
+    assert len(world.platform.requests) == 1
+
+
+async def test_a_rejected_key_on_a_range_is_recorded_once_for_every_day(world: World) -> None:
+    await world.start()
+    first = date(2026, 9, 1)
+    world.platform.serve("SE4", first, (401, "", {}))
+    marks: list[str] = []
+    original = world.keys.async_mark_entsoe_key
+
+    async def mark(token, state):
+        marks.append(state)
+        return await original(token, state)
+
+    world.keys.async_mark_entsoe_key = mark  # type: ignore[method-assign]
+    days = [first + timedelta(days=offset) for offset in range(5)]
+
+    fetches = await world.provider.async_fetch_days("SE4", days)
+
+    assert {fetch.code for fetch in fetches.values()} == {"entsoe_auth"} and marks == ["rejected"]
+    assert len(world.platform.requests) == 1
+
+
+async def test_a_range_must_be_consecutive_and_at_most_a_month(world: World) -> None:
+    await world.start()
+    with pytest.raises(ValueError):
+        await world.provider.async_fetch_days("SE4", [date(2026, 9, 1), date(2026, 9, 3)])
+    with pytest.raises(ValueError):
+        await world.provider.async_fetch_days("SE4", [date(2026, 8, 1) + timedelta(days=n) for n in range(32)])
+    assert world.platform.requests == []
+
+
 # ------------------------------------------------------------------ the schedule
 
 

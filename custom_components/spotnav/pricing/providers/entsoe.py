@@ -3,7 +3,7 @@
 The request, the answer and the document are `pricing/entsoe_parse.py`'s (a port of the relay's client); this
 module is the transport around it:
 
-* **One request per file**, through Home Assistant's shared aiohttp session, with SpotNav's User-Agent, one overall
+* **One request per file** (or per range of past files, for the history backfill), through Home Assistant's shared aiohttp session, with SpotNav's User-Agent, one overall
   timeout and a bounded body ([REQUEST_TIMEOUT_S], `entsoe_parse.MAX_BODY_BYTES`). Requests go one at a time, at
   least [MIN_SPACING_S] apart.
 * **The CET market day**, like Nord Pool (`routes.cet_market_tz`): a Finnish display day is cut from two CET files
@@ -16,7 +16,9 @@ module is the transport around it:
   naming the credentials) is `entsoe_auth` and marks the stored key `rejected`, which takes every ENTSO-E area off
   this provider at once (the router chooses again: the relay, for now); "no matching data" or a day that is still
   being published is `not_published`; a body the parser refuses is `provider_refused`.
-* **History reaches years back** ([history_reach] `None`); the backfill that uses it is not here.
+* **History reaches years back** ([history_reach] `None`). The history backfill (`pricing/price_history.py`) asks
+  for up to [RANGE_DAYS] consecutive days in one request ([async_fetch_days]); each day is read from that answer
+  exactly as if it had been asked alone.
 * **The rate**: the area's ECB rate, as for Nord Pool (`providers/rates.py`). `src` is `"entsoe.eu"`.
 
 The token is read from the key source on every request and lives only inside an `EntsoeRequest`. Nothing here logs
@@ -29,9 +31,9 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from datetime import date, datetime, timedelta
-from typing import Final, Literal, Protocol
+from typing import Final, Literal, overload, Protocol
 
 from aiohttp import ClientSession
 from homeassistant.core import HomeAssistant
@@ -43,6 +45,7 @@ from ..day_document import build_day_document
 from ..entsoe_parse import (
     build_request,
     day_document_fields,
+    EntsoeAnswer,
     EntsoeArea,
     EntsoeRequest,
     EntsoeRequestError,
@@ -65,6 +68,10 @@ REQUEST_TIMEOUT_S: Final = 30.0
 
 #: The least time between two requests. The platform allows 400 a minute per token; SpotNav asks a handful a day.
 MIN_SPACING_S: Final = 1.0
+
+#: The most consecutive days one request asks for (the history backfill): a month of quarter hours is a few hundred
+#: kilobytes, well inside the body limit.
+RANGE_DAYS: Final = 31
 
 #: Bytes asked per read, so a trickling body yields to the loop and meets the overall timeout.
 _CHUNK_BYTES: Final = 64 * 1024
@@ -123,6 +130,8 @@ class EntsoeProvider:
     publication: AreaPublication = PUBLICATION
     #: The platform keeps years of day-ahead prices.
     history_reach: timedelta | None = None
+    #: How many consecutive past days one request may ask for ([async_fetch_days]).
+    history_range_days: int = RANGE_DAYS
 
     def __init__(
         self,
@@ -189,6 +198,40 @@ class EntsoeProvider:
 
     async def async_fetch_day(self, area_id: str, market_day: date) -> DayFetch:
         """One CET market day for an area; every expected failure is a code, never an exception."""
+        ready = self._ready(area_id)
+        if isinstance(ready, DayFetch):
+            return ready
+        area, token = ready
+        answer = await self._ask(token, area, market_day)
+        return await self._settle(area_id, market_day, token, answer)
+
+    async def async_fetch_days(self, area_id: str, days: Sequence[date]) -> dict[date, DayFetch]:
+        """Consecutive CET market days in **one** request (the history backfill), at most [RANGE_DAYS]: the platform
+        answers a period of several days, and each day is read from that one answer as if asked alone. A day the
+        answer does not carry is `not_published`; a failure of the request is every day's."""
+        ordered = sorted(set(days))
+        if not ordered:
+            return {}
+        if len(ordered) > RANGE_DAYS or (ordered[-1] - ordered[0]).days != len(ordered) - 1:
+            raise ValueError("a range is at most RANGE_DAYS consecutive days")
+        if len(ordered) == 1:
+            return {ordered[0]: await self.async_fetch_day(area_id, ordered[0])}
+        ready = self._ready(area_id)
+        if isinstance(ready, DayFetch):
+            return dict.fromkeys(ordered, ready)
+        area, token = ready
+        answers = await self._ask(token, area, ordered[0], ordered)
+        first = answers if isinstance(answers, str) else answers[ordered[0]]
+        if isinstance(first, str) or (first.outcome == "failed" and first.code != "provider_refused"):
+            # The request itself failed (transport, status, acknowledgement): one answer for every day, settled
+            # once so a rejected key or a wait is recorded once.
+            return dict.fromkeys(ordered, await self._settle(area_id, ordered[0], token, first))
+        assert not isinstance(answers, str)
+        return {day: await self._settle(area_id, day, token, answers[day]) for day in ordered}
+
+    def _ready(self, area_id: str) -> tuple[EntsoeArea, EntsoeToken] | DayFetch:
+        """The area and the key to ask with, or the answer that needs no request (no route or key, or still
+        inside the wait the platform asked for)."""
         area = self._area(area_id)
         entry = self._bundled.catalogue.area(area_id)
         token = self._keys.entsoe_key() if self._keys.entsoe_key_usable else None
@@ -198,7 +241,11 @@ class EntsoeProvider:
         if self._quiet_until is not None and now < self._quiet_until:
             # Still inside the wait the platform asked for: no request.
             return DayFetch("failed", code=self._quiet_code or "rate_limited", retry_after=self._quiet_until - now)
-        answer = await self._ask(token, area, market_day)
+        return area, token
+
+    async def _settle(self, area_id: str, market_day: date, token: EntsoeToken, answer: EntsoeAnswer | str) -> DayFetch:
+        """What one answer means for the provider (a wait, a rejected or proven key) and the day it brings."""
+        entry = self._bundled.catalogue.area(area_id)
         if isinstance(answer, str):
             _LOGGER.debug("ENTSO-E %s %s: %s", area_id, market_day, answer)
             return DayFetch("failed", code=answer)
@@ -214,7 +261,7 @@ class EntsoeProvider:
             await self._keys.async_mark_entsoe_key(token, _ACCEPTED)
         if answer.outcome == "not_published":
             return DayFetch("not_published", code="not_published")
-        if answer.outcome == "failed" or answer.day is None:
+        if answer.outcome == "failed" or answer.day is None or entry is None:
             _LOGGER.debug("ENTSO-E %s %s: %s", area_id, market_day, answer.code)
             return DayFetch("failed", code=answer.code or "entsoe_rejected", retry_after=answer.retry_after)
         fields = day_document_fields(answer.day)
@@ -252,13 +299,25 @@ class EntsoeProvider:
             self._session = async_get_clientsession(self._hass)
         return self._session
 
-    async def _ask(self, token: EntsoeToken, area: EntsoeArea, day: date):
-        """One request and what its answer means, or a transport code (`timeout`, `network`, `too_large`)."""
+    @overload
+    async def _ask(self, token: EntsoeToken, area: EntsoeArea, day: date) -> EntsoeAnswer | str: ...
+
+    @overload
+    async def _ask(
+        self, token: EntsoeToken, area: EntsoeArea, day: date, days: Sequence[date]
+    ) -> dict[date, EntsoeAnswer] | str: ...
+
+    async def _ask(self, token: EntsoeToken, area: EntsoeArea, day: date, days: Sequence[date] | None = None):
+        """One request and what its answer means, or a transport code (`timeout`, `network`, `too_large`).
+
+        With [days] (consecutive, from [day]) the request covers them all and the answer is read once per day, off
+        the event loop: a month of quarter hours is a large document to read thirty times."""
+        last = None if days is None else days[-1]
         try:
             request = (
-                build_request(token, area, day)
+                build_request(token, area, day, last=last)
                 if self._endpoint is None
-                else build_request(token, area, day, endpoint=self._endpoint)
+                else build_request(token, area, day, endpoint=self._endpoint, last=last)
             )
         except EntsoeRequestError:
             return "source_missing"
@@ -270,7 +329,17 @@ class EntsoeProvider:
                 self._last_request = asyncio.get_running_loop().time()
         if isinstance(status, str):
             return status
-        return read_response(status, body, area, day, now=self._now(), retry_after=retry_after, token=token)
+        now = self._now()
+        if days is None:
+            return read_response(status, body, area, day, now=now, retry_after=retry_after, token=token)
+
+        def read_each() -> dict[date, EntsoeAnswer]:
+            return {
+                each: read_response(status, body, area, each, now=now, retry_after=retry_after, token=token)
+                for each in days
+            }
+
+        return await self._hass.async_add_executor_job(read_each)
 
     async def _space(self) -> None:
         if self._last_request is None or self._min_spacing_s <= 0:

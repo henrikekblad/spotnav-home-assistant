@@ -224,11 +224,16 @@ class EntsoeToken:
         return hash((EntsoeToken, self._secret))
 
 
-def query_parameters(area: EntsoeArea, day: date) -> dict[str, str]:
-    """The request's parameters without the token: one zone, the day-ahead contract, one market day in UTC."""
+def query_parameters(area: EntsoeArea, day: date, last: date | None = None) -> dict[str, str]:
+    """The request's parameters without the token: one zone, the day-ahead contract, one market day in UTC (or
+    the consecutive market days [day] to [last], for the history backfill: [parse_day] reads each from the one
+    answer)."""
     if not area.eic.strip():
         raise EntsoeRequestError(f"area {area.area_id} has no EIC to ask for")
-    start, end = market_day_bounds(day, area.market_tz)
+    if last is not None and last < day:
+        raise EntsoeRequestError("the last day of a range is before its first")
+    start, _ = market_day_bounds(day, area.market_tz)
+    _, end = market_day_bounds(last or day, area.market_tz)
     parameters = {
         "documentType": "A44",
         # A01 is the day-ahead contract. Without it the platform also answers with the zone's intraday
@@ -285,11 +290,14 @@ class EntsoeRequest:
         raise TypeError("an ENTSO-E request cannot be pickled")
 
 
-def build_request(token: EntsoeToken, area: EntsoeArea, day: date, *, endpoint: str = ENDPOINT) -> EntsoeRequest:
-    """The request for one area's market day. An empty token is refused: a request that cannot work."""
+def build_request(
+    token: EntsoeToken, area: EntsoeArea, day: date, *, endpoint: str = ENDPOINT, last: date | None = None
+) -> EntsoeRequest:
+    """The request for one area's market day (to [last], for a range). An empty token is refused: a request
+    that cannot work."""
     if token.empty:
         raise EntsoeRequestError("entsoe: no security token configured")
-    return EntsoeRequest(token, query_parameters(area, day), endpoint)
+    return EntsoeRequest(token, query_parameters(area, day, last), endpoint)
 
 
 class EntsoeTransportError(EntsoeError):
