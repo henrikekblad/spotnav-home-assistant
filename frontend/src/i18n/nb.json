@@ -817,7 +817,7 @@
   "price.provider.pvpc": "Priser fra PVPC (Home Assistant)",
   "price.provider.octopus": "Priser fra Octopus Energy (din Agile-tariff)",
   "price.provider.relay": "Priser fra SpotNav-reléet",
-  "price.notice.addNordpool": "Hent prisene for {area} fra Home Assistants egen Nord Pool-integrasjon. Uansett hvilket område og hvilken valuta du velger i den, fungerer det.",
+  "price.notice.addNordpool": "Hent prisene for {area} via Home Assistants innebygde Nord Pool-integrasjon. Hvilket område du velger når du legger den til, spiller ingen rolle – SpotNav henter selv området som trengs.",
   "price.notice.addNordpool.action": "Legg til Nord Pool",
   "price.notice.nordpoolNotLoaded": "Nord Pool er lagt til i Home Assistant, men startet ikke.",
   "price.notice.nordpoolNotLoaded.action": "Åpne Nord Pool",

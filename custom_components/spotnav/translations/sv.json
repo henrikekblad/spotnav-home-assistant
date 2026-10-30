@@ -252,7 +252,7 @@
       },
       "prices_nordpool": {
         "title": "Elpriser",
-        "description": "SpotNav hämtar priserna för {area} från Home Assistants egen Nord Pool-integration: [Nord Pool i Home Assistant]({link}). Vilket område och vilken valuta du än väljer där fungerar; SpotNav frågar efter sina egna.\n\nEller ange din egen ENTSO-E-nyckel nedan i stället. Du kan också göra det senare, i SpotNav-kortets inställningar under Elpris.",
+        "description": "SpotNav hämtar priserna för {area} via Home Assistants inbyggda Nord Pool-integration: [Nord Pool i Home Assistant]({link}). Vilket område du väljer när du lägger till den spelar ingen roll.\n\nEller ange din egen ENTSO-E-nyckel nedan i stället. Du kan också göra det senare, i SpotNav-kortets inställningar under Elpris.",
         "data": {
           "entsoe_key": "ENTSO-E-nyckel (valfri)"
         },

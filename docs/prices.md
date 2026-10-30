@@ -27,8 +27,8 @@ no API key.
 **Nord Pool through Home Assistant.** If Home Assistant's own [Nord Pool](https://www.home-assistant.io/integrations/nordpool/)
 integration is set up and loaded, SpotNav reads the areas Nord Pool trades from it instead of the relay: Sweden,
 Norway, Denmark, Finland, the Baltic countries, Germany/Luxembourg, the Netherlands, Belgium, France, Austria,
-Poland, Romania and Bulgaria. It asks that integration's `nordpool.get_prices_for_date` for each day in euro, whatever
-areas and currency you chose when you added it, and converts with the ECB rate as below. Nord Pool's day is the CET
+Poland, Romania and Bulgaria. It asks that integration's `nordpool.get_prices_for_date` for each day of the area it needs, in euro, whatever
+area you picked when you added it, and converts with the ECB rate as below. Nord Pool's day is the CET
 day, so a Finnish, Baltic, Romanian or Bulgarian day is cut from two of Nord Pool's days. Removing or disabling the
 integration moves those areas back to the relay.
 

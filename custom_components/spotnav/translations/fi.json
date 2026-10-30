@@ -252,7 +252,7 @@
       },
       "prices_nordpool": {
         "title": "Sähkön hinnat",
-        "description": "SpotNav lukee alueen {area} hinnat Home Assistantin omasta Nord Pool -integraatiosta: [Nord Pool Home Assistantissa]({link}). Mikä tahansa siellä valitsemasi alue ja valuutta käy; SpotNav pyytää omansa.\n\nTai anna sen sijaan oma ENTSO-E-avaimesi alla. Voit tehdä tämän myös myöhemmin SpotNav-kortin asetuksista kohdasta Sähkön hinta.",
+        "description": "SpotNav hakee alueen {area} hinnat Home Assistantin sisäänrakennetun Nord Pool -integraation kautta: [Nord Pool Home Assistantissa]({link}). Sillä ei ole väliä, minkä alueen valitset integraatiota lisätessäsi.\n\nTai anna sen sijaan oma ENTSO-E-avaimesi alla. Voit tehdä tämän myös myöhemmin SpotNav-kortin asetuksista kohdasta Sähkön hinta.",
         "data": {
           "entsoe_key": "ENTSO-E-avain (valinnainen)"
         },

@@ -181,7 +181,7 @@ describe("the notices", () => {
     const box = notice(element)!;
     expect(box.dataset["priceNotice"]).toBe("add_nordpool");
     expect(box.querySelector(".spotnav-suggestion-text")?.textContent).toBe(
-      "Get the prices for Malmö · SE4 from Home Assistant's own Nord Pool integration. Any area and currency you choose in it works.",
+      "Get the prices for Malmö · SE4 through Home Assistant's built-in Nord Pool integration. The area you pick when adding it doesn't matter – SpotNav fetches the one it needs.",
     );
     expect(labels(box)).toEqual(["Add Nord Pool", "Use my ENTSO-E key instead"]);
     const changed = vi.fn();

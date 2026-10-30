@@ -252,7 +252,7 @@
       },
       "prices_nordpool": {
         "title": "Electricity prices",
-        "description": "SpotNav reads the prices for {area} from Home Assistant's own Nord Pool integration: [Nord Pool in Home Assistant]({link}). Any area and currency you choose there works; SpotNav asks for its own.\n\nOr enter your own ENTSO-E key below instead. You can also do this later, from the SpotNav card's settings under Electricity price.",
+        "description": "SpotNav gets the prices for {area} through Home Assistant's built-in Nord Pool integration: [Nord Pool in Home Assistant]({link}). The area you pick when adding it doesn't matter.\n\nOr enter your own ENTSO-E key below instead. You can also do this later, from the SpotNav card's settings under Electricity price.",
         "data": {
           "entsoe_key": "ENTSO-E key (optional)"
         },
