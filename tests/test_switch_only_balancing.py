@@ -12,9 +12,12 @@ from typing import Any
 
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 from pytest_homeassistant_custom_component.common import async_mock_service
 
 from custom_components.spotnav.const import (
+    CHARGER_PRIORITY_FIRST,
+    CONF_CHARGER_PRIORITY,
     CONF_MEASURED_CURRENT_SOURCE,
     CONF_POWER_ENTITY,
     CURRENT_CONTROL_CHANGE_CONFIGURATION,
@@ -104,6 +107,7 @@ async def _world(
     switches: tuple[str, ...] = ("b",),
     switch_measured: bool = True,
     switch_extra: dict[str, Any] | None = None,
+    commandable_extra: dict[str, Any] | None = None,
 ) -> _World:
     from custom_components.spotnav.execution.chargers.adapter import ChargerAdapter
 
@@ -123,6 +127,7 @@ async def _world(
             title="A",
             current_control=CURRENT_CONTROL_CHANGE_CONFIGURATION,
             ocpp_target=(prefix, 1),
+            extra=commandable_extra,
         )
         wiring[prefix] = _wiring(prefix)
     for key in switches:
@@ -435,3 +440,93 @@ async def test_a_lost_direction_on_a_direct_site_still_pauses_a_switch_only_char
         "lowering_overload_on_current_magnitude_direction_unknown",
     )
     assert [call.data.get("entity_id") for call in turn_off] == [f"switch.{prefix}"]
+
+
+def _assigned(world: _World) -> list[int]:
+    return [int(call.data["value"].split(",")[0].split(".")[1]) for call in world.configure]
+
+
+async def test_an_ev_and_a_switch_charger_ten_amps_over_lower_the_ev_and_pause_the_switch_charger(
+    hass: HomeAssistant, monkeypatch
+) -> None:
+    """An EV at 10 A and a 10 A switch charger (a mower, say), 10 A over: the EV goes to its minimum and the switch
+    charger is paused, in one pass; the EV is not paused while the switch charger runs on."""
+    world = await _world(hass, monkeypatch, "mower")
+    await _charging(world, "a", 10.0, start=10)
+    await _charging(world, "b", 10.0, start=10)
+    world.meter(20.0)
+    await world.tick()
+    world.configure.clear()
+
+    world.meter(30.0)
+    world.advance(5.0)
+    await world.tick()
+    assert world.decision("a").proposed_current_a == 6.0
+    assert world.decision("a").pause_if_switched_pause_fails
+    assert world.decision("b").reason == "switched_load_paused_for_import_overload"
+    assert _assigned(world) == [6]
+    assert world.stops("b") == 1
+    assert world.stops("a") == 0
+
+
+async def test_the_priority_class_comes_first_a_normal_ev_is_paused_before_a_first_switch_charger(
+    hass: HomeAssistant, monkeypatch
+) -> None:
+    world = await _world(
+        hass, monkeypatch, "classes", switch_extra={CONF_CHARGER_PRIORITY: CHARGER_PRIORITY_FIRST}
+    )
+    await _charging(world, "a", 10.0, start=10)
+    await _charging(world, "b", 10.0, start=10)
+    world.meter(20.0)
+    await world.tick()
+    world.configure.clear()
+
+    # 8 A over: the Normal EV is lowered to its minimum and, still over, paused; that is enough, and the First
+    # switch charger runs on.
+    world.meter(28.0)
+    world.advance(5.0)
+    await world.tick()
+    assert world.decision("a").proposed_current_a == 0.0
+    assert world.stops("a") == 1
+    assert world.decision("b").reason == "no_change_requested"
+    assert world.stops("b") == 0
+
+    # Far more over: the First switch charger is paused as well, after the Normal EV.
+    world.switch("a", "off")
+    world.reads("a", 0.0)
+    world.meter(35.0)
+    world.advance(5.0)
+    await world.tick()
+    assert world.decision("b").reason == "switched_load_paused_for_import_overload"
+    assert world.stops("b") == 1
+
+
+async def test_a_refused_switch_pause_falls_through_to_pausing_the_ev_in_the_same_pass(
+    hass: HomeAssistant, monkeypatch
+) -> None:
+    world = await _world(hass, monkeypatch, "refused")
+    await _charging(world, "a", 10.0, start=10)
+    await _charging(world, "b", 10.0, start=10)
+    world.meter(20.0)
+    await world.tick()
+    world.configure.clear()
+
+    stops: list[str] = []
+
+    async def turn_off(call) -> None:
+        entity_id = call.data.get("entity_id")
+        stops.append(entity_id if isinstance(entity_id, str) else entity_id[0])
+        if "refused_b" in str(entity_id):
+            raise HomeAssistantError("the plug did not answer")
+
+    hass.services.async_register("switch", "turn_off", turn_off)
+
+    world.meter(30.0)
+    world.advance(5.0)
+    await world.tick()
+    assert world.decision("a").pause_if_switched_pause_fails
+    # The EV's lowering to its minimum went out first, then, the switch charger's pause refused, the EV's pause.
+    assert _assigned(world) == [6]
+    assert "switch.refused_b" in stops
+    assert "switch.refused_a" in stops
+    assert world.cc("a").paused_by_balancing or world.cc("a").stop_settling
