@@ -24,12 +24,12 @@ inside the site's `diagnostics`, `solar_decision_log` (per member charger, what 
 only changes and actions). The card adds a `client` block to the file it saves (the card version and
 bundle hash the browser runs, and a short user agent); the backend never sees it.
 
-Version 5 adds, inside each charger's `diagnostics.controller`, `ownership_shadow`: the charge-ownership core run
-in shadow mode beside today's code (`execution/ownership_shadow.py`), with its counts, its session, and the last
+Version 5 adds, inside each charger's `diagnostics.controller`, `session_runner`: the charge-ownership core run
+in shadow mode beside today's code (`execution/session_runner.py`), with its counts, its session, and the last
 disagreements, drifts and events it saw (facts only: no entity ids, no secrets), which `core/replay.py` feeds to
 the core again.
 
-Version 6 adds, inside `ownership_shadow`, `coverage`: per event kind of the core (every kind, zeros until seen) how
+Version 6 adds, inside `session_runner`, `coverage`: per event kind of the core (every kind, zeros until seen) how
 many events the shadow decided, compared, disagreed on, found drift at and failed on, and when it first and last saw
 one, kept across restarts since `since` (under the integration's `version` then; `execution/ownership_coverage.py`).
 The same version 6 tally later gained, per kind, `mirror_drift`, `written_back`, `verdict_differs` and `failures`,
@@ -39,7 +39,7 @@ so a reader of the earlier shape reads it as before.
 Version 7 adds, inside the site's `diagnostics`, `yield_stepping`, `solar_surplus` and `hybrid` (per member charger),
 which the site state sensor carried as attributes until it stopped carrying what moves with each reading.
 
-Inside `ownership_shadow.counts`, `failures` (per `where/kind`, the charging decisions the core could not take) and
+Inside `session_runner.counts`, `failures` (per `where/kind`, the charging decisions the core could not take) and
 `last_failure` (when) came later with no version change: a reader that does not know them passes them by.
 
 Inside each charger's `diagnostics.controller.adapter`, `phase_switch` (`supported`, `entity`, `phases_now`: whether

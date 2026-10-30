@@ -27,7 +27,7 @@ from custom_components.spotnav.execution.ownership_coverage import (
     STORE_VERSION,
     store_key,
 )
-from custom_components.spotnav.execution.ownership_shadow import OwnershipShadow
+from custom_components.spotnav.execution.session_runner import SessionRunner
 
 from .pause_world import pause_world
 from .relay import FakeScheduler
@@ -76,7 +76,7 @@ def test_every_event_kind_of_the_core_is_listed_with_zeros() -> None:
 
 def test_the_runner_counts_each_event_under_its_kind() -> None:
     clock = Clock()
-    shadow = OwnershipShadow(now=clock)
+    shadow = SessionRunner(now=clock)
     shadow.feed(ev.CarEnded())
     clock.now = T0 + timedelta(minutes=5)
     shadow.feed(ev.CarEnded())
@@ -95,7 +95,7 @@ def test_a_failing_tally_never_breaks_the_runner() -> None:
         def add(self, kind: str | None, field: str) -> None:
             raise RuntimeError("no tally")
 
-    shadow = OwnershipShadow(now=lambda: T0, coverage=Broken(now=lambda: T0))
+    shadow = SessionRunner(now=lambda: T0, coverage=Broken(now=lambda: T0))
     shadow.feed(ev.CarEnded())
     assert shadow.counts["events"] == 1 and shadow.counts["errors"] == 0
 
@@ -199,7 +199,7 @@ async def test_another_release_begins_a_new_tally_and_keeps_the_one_before(
 
 @pytest.mark.core_failure_expected
 def test_failures_are_counted_under_their_event() -> None:
-    shadow = OwnershipShadow(now=lambda: T0)
+    shadow = SessionRunner(now=lambda: T0)
     shadow.failed("verdict", "rearm", RuntimeError("no"))
     shadow.failed("facts", None, RuntimeError("no"))
     coverage = shadow.diagnostics()["coverage"]
@@ -209,7 +209,7 @@ def test_failures_are_counted_under_their_event() -> None:
 
 
 def test_a_window_start_is_counted_by_what_started_it() -> None:
-    shadow = OwnershipShadow(now=lambda: T0)
+    shadow = SessionRunner(now=lambda: T0)
     for trigger in (ev.TRIGGER_TIMER, ev.TRIGGER_PLUG_IN, ev.TRIGGER_PLUG_IN, ev.TRIGGER_RETRY):
         shadow.feed(ev.WindowStart(trigger=trigger, window_open=False))
     window_start = shadow.diagnostics()["coverage"]["kinds"]["window_start"]
@@ -241,11 +241,11 @@ async def test_a_new_tally_names_the_version_that_started_it(hass: HomeAssistant
 async def test_the_tally_survives_a_restart(hass: HomeAssistant, timers: FakeScheduler) -> None:
     world = await pause_world(hass, timers)
     await world.plug.set(False)
-    before = world.controller.ownership_shadow.diagnostics()["coverage"]
+    before = world.controller.session_runner.diagnostics()["coverage"]
     assert before["kinds"]["restart"]["events"] == 1 and before["kinds"]["unplug"]["events"] >= 1
     assert before["version"]
     restarted = await world.restart()
-    after = restarted.controller.ownership_shadow.diagnostics()["coverage"]
+    after = restarted.controller.session_runner.diagnostics()["coverage"]
     assert after["since"] == before["since"] and after["version"] == before["version"]
     assert after["kinds"]["restart"]["events"] == 2
     assert after["kinds"]["restart"]["first_seen"] == before["kinds"]["restart"]["first_seen"]
@@ -257,13 +257,13 @@ async def test_the_tally_survives_a_restart(hass: HomeAssistant, timers: FakeSch
 async def test_the_tally_survives_home_assistants_own_stop(hass: HomeAssistant, timers: FakeScheduler) -> None:
     world = await pause_world(hass, timers)
     restarted = await world.ha_restart()
-    assert restarted.controller.ownership_shadow.diagnostics()["coverage"]["kinds"]["restart"]["events"] == 2
+    assert restarted.controller.session_runner.diagnostics()["coverage"]["kinds"]["restart"]["events"] == 2
     await restarted.shutdown()
 
 
 async def test_removing_the_entry_removes_the_tally(hass: HomeAssistant, hass_storage: dict[str, Any]) -> None:
     entry = await setup_charger(hass, entry_id="cover_a")
-    assert controller_of(hass, entry.entry_id).ownership_shadow.coverage.as_dict()["kinds"]["restart"]["events"] == 1
+    assert controller_of(hass, entry.entry_id).session_runner.coverage.as_dict()["kinds"]["restart"]["events"] == 1
     assert await hass.config_entries.async_unload(entry.entry_id)
     await hass.async_block_till_done()
     assert hass_storage[store_key(entry.entry_id)]["data"]["kinds"]["restart"]["events"] == 1

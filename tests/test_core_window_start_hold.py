@@ -51,7 +51,7 @@ async def _held(hass: HomeAssistant, soc: dict[str, float], **plan: Any) -> tupl
 
 
 def _replayed(controller: ChargingController) -> tuple[ReplayReport, list[dict[str, Any]]]:
-    events = json.loads(json.dumps(controller.ownership_shadow.diagnostics()["events"], default=str))
+    events = json.loads(json.dumps(controller.session_runner.diagnostics()["events"], default=str))
     return replay(events, line_up=False), events
 
 
@@ -105,5 +105,5 @@ async def test_a_window_start_while_the_targets_stop_is_on_its_way_is_fed_too(ha
     (start,) = [record for record in events if record["event"]["kind"] == "window_start"]
     assert start["event"]["target_stopping"] is True and start["core"] == []
     assert _hold_differences(report) == [], report.real
-    assert controller.ownership_shadow.session.held is False
+    assert controller.session_runner.session.held is False
     await controller.async_shutdown()

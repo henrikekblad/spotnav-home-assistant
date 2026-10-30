@@ -503,7 +503,7 @@ class ChargerDay:
         )
 
     def note_ownership(self, record: Mapping[str, Any]) -> None:
-        """One event the charge-ownership core decided (`OwnershipShadow._record`): a plug-in opens a new entry, an
+        """One event the charge-ownership core decided (`SessionRunner._decide`): a plug-in opens a new entry, an
         unplug closes the current one, and a person's or the app's action is kept in its `actions`."""
         try:
             event = record.get("event")

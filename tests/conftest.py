@@ -231,31 +231,31 @@ def chargers_not_switch_only(monkeypatch):
 
 @pytest.fixture(autouse=True)
 def core_never_fails(request):
-    """Every test fails on a decision the charge-ownership core could not take (`execution/ownership_shadow.failed`:
+    """Every test fails on a decision the charge-ownership core could not take (`execution/session_runner.failed`:
     the core raised, or its facts or its stored session could not be read) and on an error of its runner. A test
     about such a failure itself opts out with the `core_failure_expected` marker.
 
     `SPOTNAV_CORE_DUMP_EVENTS` set to part of a test's id writes the events every runner of that test recorded to
     `SPOTNAV_CORE_DUMP` (default: here), as a debug bundle carries them for `core/replay.py`."""
-    from custom_components.spotnav.execution import ownership_shadow
+    from custom_components.spotnav.execution import session_runner
 
     seen: list[tuple[str, dict[str, Any]]] = []
 
     def listener(kind: str, record: dict[str, Any]) -> None:
         seen.append((kind, record))
 
-    ownership_shadow.LISTENERS.append(listener)
+    session_runner.LISTENERS.append(listener)
     try:
         yield seen
     finally:
-        ownership_shadow.LISTENERS.remove(listener)
+        session_runner.LISTENERS.remove(listener)
         import os
 
         dump = os.environ.get("SPOTNAV_CORE_DUMP_EVENTS")
         if dump and dump in request.node.nodeid:
             import json
 
-            records = [list(runner.events) for runner in ownership_shadow.SHADOWS]
+            records = [list(runner.events) for runner in session_runner.RUNNERS]
             name = request.node.nodeid.replace("/", "_").replace("::", "__")
             with open(os.path.join(os.environ.get("SPOTNAV_CORE_DUMP", "."), f"events_{name}.json"), "w") as handle:
                 json.dump(records, handle, indent=1, default=str)

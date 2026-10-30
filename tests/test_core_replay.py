@@ -1,4 +1,4 @@
-"""The charge-ownership core's runner (`execution/ownership_shadow.py`) and the replay of what it recorded
+"""The charge-ownership core's runner (`execution/session_runner.py`) and the replay of what it recorded
 (`core/replay.py`): a synthetic debug bundle, a real charger's recording, and the runner's own guarantees (bounded,
 never raising into the controller, a failure deciding nothing)."""
 
@@ -13,11 +13,11 @@ from homeassistant.core import HomeAssistant
 from custom_components.spotnav.core import events as ev
 from custom_components.spotnav.core.replay import bundle_events, expand, main, replay, replay_bundle
 from custom_components.spotnav.core.session import ChargeSession, ManualPause
-from custom_components.spotnav.execution import ownership_shadow
-from custom_components.spotnav.execution.ownership_shadow import (
+from custom_components.spotnav.execution import session_runner
+from custom_components.spotnav.execution.session_runner import (
     CommandOutcome,
     EVENT_RING,
-    OwnershipShadow,
+    SessionRunner,
 )
 
 from .pause_world import pause_world, two_windows
@@ -230,7 +230,7 @@ async def test_a_real_chargers_recording_replays_without_a_difference(
     await world.executor.async_manual_stop()
     await world.plug.set(False)
     await hass.async_block_till_done()
-    diagnostics = world.controller.ownership_shadow.diagnostics()
+    diagnostics = world.controller.session_runner.diagnostics()
     assert diagnostics["counts"]["events"] > 5 and diagnostics["counts"]["failures"] == {}
     bundle = json.loads(json.dumps(_bundle(diagnostics["events"]), default=str))
     report = replay_bundle(bundle)["charger_a"]
@@ -251,28 +251,28 @@ async def test_a_core_that_raises_decides_nothing_and_the_runner_stays_bounded(h
     """The core raising for an event is a failure: the session is left as it was, nothing is decided for it, and the
     runner never raises; its event ring stays bounded."""
     heard: list[str] = []
-    ownership_shadow.LISTENERS.append(lambda kind, record: heard.append(kind))
+    session_runner.LISTENERS.append(lambda kind, record: heard.append(kind))
     try:
-        shadow = OwnershipShadow(now=lambda: datetime(2026, 10, 4, 22, tzinfo=timezone.utc))
+        shadow = SessionRunner(now=lambda: datetime(2026, 10, 4, 22, tzinfo=timezone.utc))
         shadow.session = ChargeSession(owner="plan")
-        real = ownership_shadow.decide
+        real = session_runner.decide
 
         def broken(session, event, now):
             if event.kind == "window_end":
                 raise RuntimeError("the core raised")
             return real(session, event, now)
 
-        monkeypatch.setattr(ownership_shadow, "decide", broken)
+        monkeypatch.setattr(session_runner, "decide", broken)
         token = shadow.begin()
         assert shadow.verdict(ev.WindowEnd(), token) is None
         shadow.end(token, ev.WindowEnd())
     finally:
-        ownership_shadow.LISTENERS.pop()
+        session_runner.LISTENERS.pop()
     assert heard[:1] == ["error"] and "failure" in heard
     assert shadow.session.owner == "plan", "the session is left as it was"
     assert shadow.counts["failures"] == {"decide_early/window_end": 1}
-    monkeypatch.setattr(ownership_shadow, "decide", real)
-    shadow = OwnershipShadow()
+    monkeypatch.setattr(session_runner, "decide", real)
+    shadow = SessionRunner()
     shadow.session = ChargeSession(owner="plan")
     for _ in range(EVENT_RING + 50):
         shadow.session = ChargeSession(owner="plan")
@@ -286,7 +286,7 @@ async def test_a_core_that_raises_decides_nothing_and_the_runner_stays_bounded(h
 async def test_a_feed_inside_another_is_decided_when_it_happens(hass: HomeAssistant) -> None:
     """A report that lands while a person's Start awaits its command is decided at once, with the Start's command in
     flight in the session; the Start's result comes back where its feed ends."""
-    shadow = OwnershipShadow()
+    shadow = SessionRunner()
     shadow.session = ChargeSession(plugged=True, manual=ManualPause("stop", "plug_in"))
     outer = shadow.begin(early=ev.PersonStart(connected=True))
     assert shadow.session.start_pending
@@ -309,7 +309,7 @@ async def test_a_connection_read_that_raises_at_start_up_leaves_no_feed_open(
     nothing open behind it, so later feeds are still decided and saved."""
     world = await pause_world(hass, timers, plan=two_windows())
     controller = world.controller
-    shadow = controller.ownership_shadow
+    shadow = controller.session_runner
     real = controller.adapter.vehicle_connected
     cancel, controller._progress_listener_cancel = controller._progress_listener_cancel, None  # noqa: SLF001
 
@@ -344,7 +344,7 @@ async def test_a_report_that_decides_nothing_keeps_the_plug_in_and_the_persons_a
     await world.plug.set(False)
     await world.plug.set(True)
     await world.executor.async_manual_stop()
-    shadow = world.controller.ownership_shadow
+    shadow = world.controller.session_runner
     for index in range(EVENT_RING + 20):
         hass.states.async_set(SWITCH, "off", {"report": index})
     await hass.async_block_till_done()

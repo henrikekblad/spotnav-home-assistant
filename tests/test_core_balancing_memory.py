@@ -41,7 +41,7 @@ async def _persons_charge_held_back(world: World) -> None:
 
 
 def _session(world: World) -> ChargeSession:
-    return world.controller.ownership_shadow.session
+    return world.controller.session_runner.session
 
 
 @pytest.mark.usefixtures("both_restarts")
@@ -98,7 +98,7 @@ async def test_todays_balancing_pause_key_is_read_where_the_keys_are_the_truth(
     world.controller._session_saved = ChargeSession.from_store(  # noqa: SLF001 - the old controller saves no more
         saved.get(SESSION_STORE_KEY) or ChargeSession().to_store()
     )
-    world.controller.ownership_shadow.session = world.controller._session_saved  # noqa: SLF001
+    world.controller.session_runner.session = world.controller._session_saved  # noqa: SLF001
 
     restarted = await world.restart()
     assert (_session(restarted).balancing_paused, _session(restarted).paused_origin) == (True, "person")
@@ -129,7 +129,7 @@ async def test_the_regulator_dropping_a_charge_no_longer_wanted_is_the_cores_dec
     assert not scc.SiteCapacityController._charge_still_wanted(site, "entry_a", controller)  # noqa: SLF001
     assert not controller.paused_by_balancing and controller.paused_charge_origin is None
     assert not _session(world).balancing_paused and _session(world).paused_origin is None
-    kinds = [record["event"]["kind"] for record in controller.ownership_shadow.diagnostics()["events"]]
+    kinds = [record["event"]["kind"] for record in controller.session_runner.diagnostics()["events"]]
     assert kinds[-1] == "balancing_dropped"
     assert (await _stored(world))["balancing_pause"] is None
 

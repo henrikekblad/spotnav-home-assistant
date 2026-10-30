@@ -53,7 +53,7 @@ LISTENERS: list[Callable[[str, dict[str, Any]], None]] = []
 #: What every runner in this process counted (a test run's summary).
 TOTALS: dict[str, int] = {}
 #: Every runner alive (a test's dump of what each recorded).
-SHADOWS: weakref.WeakSet[OwnershipShadow] = weakref.WeakSet()
+RUNNERS: weakref.WeakSet[SessionRunner] = weakref.WeakSet()
 
 
 @dataclass(frozen=True)
@@ -70,7 +70,7 @@ class CommandOutcome:
 
 
 @dataclass(eq=False)
-class ShadowToken:
+class FeedToken:
     """One open feed: the task it was opened in. Compared by identity."""
 
     key: object = None
@@ -84,7 +84,7 @@ class ShadowToken:
     early_commands: tuple[Command, ...] = ()
     #: When it was decided, on the runner's decision clock (`_tick`): its record says so.
     early_order: int = 0
-    #: How many plug-ins had ended (`OwnershipShadow._plug_in_ends`) at `begin`: a command of this feed whose result
+    #: How many plug-ins had ended (`SessionRunner._plug_in_ends`) at `begin`: a command of this feed whose result
     #: comes back after another ended was decided in an earlier plug-in (`CommandResult.earlier_plug_in`).
     plug_ins: int = 0
     #: The result of the command of the event decided at once, decided as soon as it is known (`result`), and when, on
@@ -94,26 +94,26 @@ class ShadowToken:
     result_order: int = 0
 
 
-class NullShadow:
+class NullRunner:
     """A runner that decides nothing, for a boundary built around something that is not a `ChargingController`:
     every verdict is a failure's (`None`), so nothing automatic is sent through it."""
 
     drives = True
     session = ChargeSession()
 
-    def begin(self, early: Event | None = None) -> ShadowToken:
-        return ShadowToken(ok=False)
+    def begin(self, early: Event | None = None) -> FeedToken:
+        return FeedToken(ok=False)
 
-    def verdict(self, event: Event, token: ShadowToken | None = None) -> None:
+    def verdict(self, event: Event, token: FeedToken | None = None) -> None:
         return None
 
-    def end(self, token: ShadowToken, event: Event, **_kwargs: Any) -> None:
+    def end(self, token: FeedToken, event: Event, **_kwargs: Any) -> None:
         return
 
-    def cancel(self, token: ShadowToken) -> None:
+    def cancel(self, token: FeedToken) -> None:
         return
 
-    def result(self, token: ShadowToken, outcome: CommandOutcome) -> None:
+    def result(self, token: FeedToken, outcome: CommandOutcome) -> None:
         return
 
     def feed(self, event: Event, **_kwargs: Any) -> None:
@@ -140,11 +140,11 @@ def _compact(session: ChargeSession) -> dict[str, Any]:
     return {key: value for key, value in full.items() if key == "version" or value != default[key]}
 
 
-class OwnershipShadow:
+class SessionRunner:
     """The charge-ownership core's runner for one charger. `now` is the clock; `intent` reads the person intent the
     execution boundary keeps (`PauseIntent`, as the session's `manual` and `span_pause`) for `check_intent`."""
 
-    #: The core decides (kept for diagnostics and the debug bundle, which said so since the core could only shadow).
+    #: The core decides (kept for the debug bundle's readers, which read it since the core could also only shadow).
     drives = True
 
     def __init__(
@@ -158,7 +158,7 @@ class OwnershipShadow:
         settled: Callable[[], None] | None = None,
         intent: Callable[[], tuple[ManualPause | None, str | None]] | None = None,
     ) -> None:
-        SHADOWS.add(self)
+        RUNNERS.add(self)
         # Which charger this is, in a log line; and who hears a failure (Repairs, `failed`).
         self._name = name
         self._on_failure = on_failure
@@ -192,7 +192,7 @@ class OwnershipShadow:
         # The decision clock (`_tick`).
         self._ticks = 0
         # How many plug-ins ended (an unplug, or a plug-in after a known unplug, decided): what a feed's command was
-        # decided in (`ShadowToken.plug_ins`). Transient: no feed outlives a restart.
+        # decided in (`FeedToken.plug_ins`). Transient: no feed outlives a restart.
         self._plug_in_ends = 0
 
     # ------------------------------------------------------------------ feeding
@@ -211,17 +211,17 @@ class OwnershipShadow:
                 self._open.pop(key, None)
         return any(count > 0 for count in self._open.values())
 
-    def begin(self, early: Event | None = None) -> ShadowToken:
+    def begin(self, early: Event | None = None) -> FeedToken:
         """Open a feed. Never raises. An `early` event (one whose facts are all known before anything acts: a plug-in,
         a person's Start or Stop) is decided here, so what its effects do meanwhile is decided after it."""
         key = _task_key()
         self._open[key] = self._open.get(key, 0) + 1
-        token = ShadowToken(key=key, plug_ins=self._plug_in_ends)
+        token = FeedToken(key=key, plug_ins=self._plug_in_ends)
         if early is not None:
             self._decide_early(token, early)
         return token
 
-    def _decide_early(self, token: ShadowToken, event: Event) -> tuple[Command, ...]:
+    def _decide_early(self, token: FeedToken, event: Event) -> tuple[Command, ...]:
         try:
             token.early_pre = self.session
             token.early_order = self._tick()
@@ -233,14 +233,14 @@ class OwnershipShadow:
             self.failed("decide_early", event.kind, err, token=token)
         return token.early_commands
 
-    def _close(self, token: ShadowToken) -> None:
+    def _close(self, token: FeedToken) -> None:
         count = self._open.get(token.key, 0) - 1
         if count > 0:
             self._open[token.key] = count
         else:
             self._open.pop(token.key, None)
 
-    def cancel(self, token: ShadowToken) -> None:
+    def cancel(self, token: FeedToken) -> None:
         """A `begin` whose happening turned out to be none (nothing to feed)."""
         if token.early is not None:
             # Decided already, and acted on: it is fed as it was decided.
@@ -249,7 +249,7 @@ class OwnershipShadow:
         self._close(token)
         self._settle()
 
-    def end(self, token: ShadowToken, event: Event, *, outcome: CommandOutcome | None = None) -> None:
+    def end(self, token: FeedToken, event: Event, *, outcome: CommandOutcome | None = None) -> None:
         """Close a feed: `event` is decided now unless it was at once, and `outcome` is what became of the start or
         stop it asked for. Never raises."""
         self._close(token)
@@ -260,7 +260,7 @@ class OwnershipShadow:
             self.failed("decide", event.kind, err, token=token)
         self._persisted()
 
-    def result(self, token: ShadowToken, outcome: CommandOutcome) -> None:
+    def result(self, token: FeedToken, outcome: CommandOutcome) -> None:
         """The command of a feed decided at once returned with `outcome`: its result is decided now, before whatever
         the feed still awaits (a person's Start storing its pause), so a happening that lands meanwhile (load
         balancing's pause) is decided after it, as the commands went out. `end` then only keeps its record. Never
@@ -272,7 +272,7 @@ class OwnershipShadow:
             self._error("result", kind)
             self.failed("result", kind, err, token=token)
 
-    def _result_now(self, token: ShadowToken, outcome: CommandOutcome) -> None:
+    def _result_now(self, token: FeedToken, outcome: CommandOutcome) -> None:
         """Decide the result of the command of `token`'s decision at once, once (`result`)."""
         if token.resulted or token.early is None or token.early_pre is None:
             return
@@ -329,7 +329,7 @@ class OwnershipShadow:
 
     # ------------------------------------------------------------------ inside
 
-    def _decide(self, token: ShadowToken, event: Event, outcome: CommandOutcome | None) -> None:
+    def _decide(self, token: FeedToken, event: Event, outcome: CommandOutcome | None) -> None:
         now = self._now()
         if token.early is not None and token.early_pre is not None:
             # Decided at once: only its result is new.
@@ -446,7 +446,7 @@ class OwnershipShadow:
         except Exception:  # noqa: BLE001 - the runner never raises into the controller
             self._error("persist")
 
-    def verdict(self, event: Event, token: ShadowToken | None = None) -> frozenset[tuple[str, str]] | None:
+    def verdict(self, event: Event, token: FeedToken | None = None) -> frozenset[tuple[str, str]] | None:
         """The commands the core decides for `event` now, as `(kind, reason)` (a notification's code as its reason),
         taken as the decision of the feed `token` (decided once: a second verdict in one feed only previews). `None`
         when it could not decide: a failure, and nothing automatic is sent for that event."""
@@ -490,7 +490,7 @@ class OwnershipShadow:
         kind: str | None,
         error: BaseException | None = None,
         *,
-        token: ShadowToken | None = None,
+        token: FeedToken | None = None,
     ) -> None:
         """A decision that could not be taken at `where` for an event of `kind` (`None`: no event's): the core raised,
         or its facts or its stored session could not be read. Nothing automatic is sent for that event. Counted per

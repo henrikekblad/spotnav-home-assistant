@@ -123,7 +123,7 @@ async def _charging(hass: HomeAssistant, freezer: Any, car: Car, **plan: Any) ->
 
 
 def _coverage(controller: ChargingController, kind: str) -> dict[str, Any]:
-    return controller._shadow.diagnostics()["coverage"]["kinds"][kind]  # noqa: SLF001 - what the field report shows
+    return controller._runner.diagnostics()["coverage"]["kinds"][kind]  # noqa: SLF001 - what the field report shows
 
 
 async def test_the_night_of_10_october_the_car_full_by_the_estimate_ends_the_plan(

@@ -240,7 +240,7 @@ def core_decision_issue_id(entry_id: str) -> str:
 
 
 class CoreFailureRepairs:
-    """The Repairs side of one charger's failing charging decisions (`OwnershipShadow.failed`, while the core drives).
+    """The Repairs side of one charger's failing charging decisions (`SessionRunner.failed`, while the core drives).
 
     A single failure is a log line and a count only: nobody can act on it. Only `CORE_FAILURE_REPEATS` within
     `CORE_FAILURE_WINDOW` (a sliding window, in memory) raise `core_decision_failed_<entry_id>`, which says the only

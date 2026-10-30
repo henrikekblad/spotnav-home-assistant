@@ -109,8 +109,8 @@ async def test_an_entry_that_kept_the_previous_logic_upgrades_and_keeps_its_runn
     assert len(told) == (0 if stored else 1)
     assert all(record.levelno == logging.INFO for record in told)
     controller = controller_of(hass, entry.entry_id)
-    assert controller.ownership_shadow.drives
-    assert controller.charge_origin == "plan_window" and controller.ownership_shadow.session.owner == "plan"
+    assert controller.session_runner.drives
+    assert controller.charge_origin == "plan_window" and controller.session_runner.session.owner == "plan"
     assert controller.charging and commands == [], "the running charge is left as it is"
     assert hass_storage[f"spotnav.{ENTRY}"]["data"][SESSION_STORE_KEY]["owner"] == "plan", "the core's record is written"
 

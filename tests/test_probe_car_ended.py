@@ -286,7 +286,7 @@ async def test_the_night_of_14_october_a_full_car_ends_the_charge_after_two_refu
     await hass.async_block_till_done()
     assert _outcomes(halo) == ["probe_started", "probe_failed", "probe_started", "probe_failed", "probe_car_ended"]
     assert cc.car_ended_at is not None, "the car ended the plan's charge by itself"
-    shadow = cc._shadow  # noqa: SLF001
+    shadow = cc._runner  # noqa: SLF001
     core_ended = shadow.session.car_ended_at
     assert core_ended is not None and abs((core_ended - cc.car_ended_at).total_seconds()) < 1.0, "the core's end too"
     assert any(record["event"]["kind"] == "car_ended" for record in shadow.events)

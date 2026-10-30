@@ -103,7 +103,7 @@ async def test_rev_g_shadow_diagnostics_name_no_entity(
     await world.plug.set(True)
     await world.controller.async_start(cause="solar")
     await world.controller.async_stop()
-    text = json.dumps(world.controller.ownership_shadow.diagnostics(), default=str)
+    text = json.dumps(world.controller.session_runner.diagnostics(), default=str)
     entityish = sorted(set(re.findall(r"\b[a-z_]+\.[a-z0-9_]+\b", text)))
     assert "switch.a" not in text and ENTRY not in text and not entityish, entityish
     await world.shutdown()

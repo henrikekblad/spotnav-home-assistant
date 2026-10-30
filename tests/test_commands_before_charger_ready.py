@@ -145,7 +145,7 @@ async def _restart_before_the_charger(
 
 def _core_agrees(controller: ChargingController) -> None:
     """The core decided every event: no failure."""
-    counts = controller._shadow.diagnostics()["counts"]  # noqa: SLF001 - what the decisions met is what is tested
+    counts = controller._runner.diagnostics()["counts"]  # noqa: SLF001 - what the decisions met is what is tested
     assert counts["failures"] == {} and counts["errors"] == 0, counts
 
 

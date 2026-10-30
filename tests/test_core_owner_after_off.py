@@ -20,7 +20,7 @@ from .world import controller_of, set_site_power_w, tick_site
 
 
 def _owner(controller: Any) -> tuple[Any, Any, str]:
-    return controller.charge_origin, controller._is_plan_charge, controller.ownership_shadow.session.owner  # noqa: SLF001
+    return controller.charge_origin, controller._is_plan_charge, controller.session_runner.session.owner  # noqa: SLF001
 
 
 @pytest.mark.parametrize("drives", [True])
@@ -65,7 +65,7 @@ async def test_a_start_on_its_way_keeps_its_owner_through_an_off_report(
     hass.states.async_set(SWITCH, "off", {"report": "still off"})
     await hass.async_block_till_done()
     assert world.controller.charge_origin == "manual"
-    assert world.controller.ownership_shadow.session.owner == "person"
+    assert world.controller.session_runner.session.owner == "person"
     await world.shutdown()
 
 
@@ -100,7 +100,7 @@ async def test_hybrid_a_charge_resumed_inside_a_window_is_not_taken_over_by_the_
 
     hass.states.async_set(f"switch.{charger.entry_id}", "off")
     await hass.async_block_till_done()
-    assert (controller.charge_origin, controller.ownership_shadow.session.owner) == (None, "none")
+    assert (controller.charge_origin, controller.session_runner.session.owner) == (None, "none")
 
     _self_start(hass, charger.entry_id, FULL_A)
     await hass.async_block_till_done()

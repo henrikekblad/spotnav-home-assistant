@@ -8,7 +8,7 @@ from homeassistant.core import HomeAssistant
 
 from custom_components.spotnav.const import CONF_CHARGE_CONTROL, CONF_CORE_OWNERSHIP
 from custom_components.spotnav.core.ownership import Start
-from custom_components.spotnav.execution import ownership_shadow
+from custom_components.spotnav.execution import session_runner
 from custom_components.spotnav.execution.auto_execution import AutoExecutor
 from custom_components.spotnav.execution.controller import ChargingController
 from custom_components.spotnav.planning.auto_settings import async_setup_auto_settings
@@ -45,8 +45,8 @@ async def test_the_core_drives_whatever_an_earlier_release_stored(
     """The choice of the logic before the core is gone: a charger whose data still says `core_ownership` (a controller
     built from it before setup drops the key) is driven by the core all the same."""
     controller, executor, _starts = await _charger(hass, drives=configured)
-    assert controller.ownership_shadow.drives is True
-    assert controller.ownership_shadow.diagnostics()["drives"] is True
+    assert controller.session_runner.drives is True
+    assert controller.session_runner.diagnostics()["drives"] is True
     await executor.async_shutdown()
     await controller.async_shutdown()
 
@@ -56,7 +56,7 @@ async def test_todays_code_acts_on_the_cores_verdict_when_it_drives(
     hass: HomeAssistant, timers: FakeScheduler, monkeypatch, drives: bool, started: bool
 ) -> None:
     """A core that would not start a window: no start goes out."""
-    real = ownership_shadow.decide
+    real = session_runner.decide
 
     def no_window_starts(session, event, now):
         session, commands = real(session, event, now)
@@ -64,7 +64,7 @@ async def test_todays_code_acts_on_the_cores_verdict_when_it_drives(
             commands = tuple(command for command in commands if not isinstance(command, Start))
         return session, commands
 
-    monkeypatch.setattr(ownership_shadow, "decide", no_window_starts)
+    monkeypatch.setattr(session_runner, "decide", no_window_starts)
     controller, executor, starts = await _charger(hass, drives=drives)
     before = len(starts)
     await install_schedule(controller, open_window())
@@ -94,7 +94,7 @@ async def test_the_cores_owner_is_todays_two_fields_both_ways(
     """`charge_origin` and `plan_charge` are the session's owner: every owner the core names is read as them, nobody's
     and the charger's own as none, and nothing else can write them."""
     controller, executor, _starts = await _charger(hass, drives=True)
-    shadow = controller.ownership_shadow
+    shadow = controller.session_runner
     shadow.session = shadow.session.with_changes(owner=owner)
     assert (controller.charge_origin, controller._is_plan_charge) == fields  # noqa: SLF001
     with pytest.raises(AttributeError):
@@ -111,7 +111,7 @@ async def test_a_persons_stop_and_start_follow_the_core_when_it_drives(
     await executor.async_manual_stop()
     pause = executor.pause_intent
     assert (pause.choice, pause.action, pause.scope) == ("manual", "stop", "plug_in")
-    assert controller.ownership_shadow.session.manual is not None
+    assert controller.session_runner.session.manual is not None
     await executor.async_manual_start()
     pause = executor.pause_intent
     assert (pause.action, pause.scope) == ("start", "plug_in")

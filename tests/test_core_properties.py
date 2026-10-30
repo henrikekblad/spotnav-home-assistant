@@ -248,7 +248,7 @@ class OwnershipMachine(RuleBasedStateMachine):
     @invariant()
     def the_derived_owner_maps_back(self) -> None:
         """Today's two owner fields derived from the session when the core drives (`controller._CORE_OWNER_ORIGIN`)
-        read back as the same owner (`ownership_shadow.legacy_owner`, a top-off by its deadline): nobody's and the
+        read back as the same owner (`session_runner.legacy_owner`, a top-off by its deadline): nobody's and the
         charger's own are no origin, and which of them it is is seen, not kept."""
         owner = self.session.owner
         origin, plan_charge = _CORE_OWNER_ORIGIN.get(owner, (None, False))

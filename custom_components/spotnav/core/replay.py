@@ -1,6 +1,6 @@
 """Feed the events a debug bundle recorded to the charge-ownership core again.
 
-Pure: no Home Assistant imports. The runner (`execution/ownership_shadow.py`) keeps, per charger, the last events it
+Pure: no Home Assistant imports. The runner (`execution/session_runner.py`) keeps, per charger, the last events it
 fed the core: the event, the instant, the session it decided from (`pre`, its non-default fields), the result of the
 command it asked for and what the core asked for. A bundle before version 8 also recorded what the previous logic
 did (`today`) and its owner and intent after the event (`today_after`), from when the core still ran beside it. `replay` decides each again, from the recorded `pre` where there is one and
@@ -44,7 +44,7 @@ class ReplayMismatch:
 
 #: Owners between which a change is an observation, not ownership: whether the charger charges by itself (nobody
 #: here started it) is seen in its reports, and the line-up counts the same change as `observed`, not as drift
-#: (`execution/ownership_shadow._line_up`). A charge that begins or ends with no report fed (a stop's answer window
+#: (`execution/session_runner._line_up`). A charge that begins or ends with no report fed (a stop's answer window
 #: running out, a restart reading the charger as it is) moves today's owner between these two with no event.
 OBSERVED: frozenset[str] = frozenset({"none", "charger_self"})
 #: How far apart two readings of the clock may be and still be one instant: the core takes the instant it decided
@@ -251,7 +251,7 @@ def bundle_events(bundle: Mapping[str, Any]) -> dict[str, list[dict[str, Any]]]:
     found: dict[str, list[dict[str, Any]]] = {}
     for charger in bundle.get("chargers") or ():
         controller = ((charger or {}).get("diagnostics") or {}).get("controller") or {}
-        # `ownership` from version 8, `ownership_shadow` before it.
+        # `ownership` from version 8, `session_runner` before it.
         shadow = controller.get("ownership") or controller.get("ownership_shadow") or {}
         found[str(charger.get("entry_id"))] = list(shadow.get("events") or ())
     return found

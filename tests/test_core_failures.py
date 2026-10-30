@@ -1,4 +1,4 @@
-"""A charging decision the core could not take is surfaced, never silent (`OwnershipShadow.failed`): the core raised,
+"""A charging decision the core could not take is surfaced, never silent (`SessionRunner.failed`): the core raised,
 its facts could not be read, or its stored session could not be read. Nothing automatic is sent for that event (the
 core's `Keep`), and the next event decides again; a person's own command still goes out. A warning once per
 (charger, where, kind) per run, then only a count (diagnostics and the debug bundle); a Repairs issue only when three
@@ -17,7 +17,7 @@ from pytest_homeassistant_custom_component.common import async_fire_time_changed
 
 from custom_components.spotnav.const import DOMAIN
 from custom_components.spotnav.core.session import STORED_VERSION
-from custom_components.spotnav.execution import ownership_shadow
+from custom_components.spotnav.execution import session_runner
 from custom_components.spotnav.execution.controller import SESSION_STORE_KEY
 from custom_components.spotnav.repairs import (
     async_sync_resolution_repairs,
@@ -38,14 +38,14 @@ pytestmark = pytest.mark.core_failure_expected
 
 def _break(monkeypatch: pytest.MonkeyPatch, kind: str) -> None:
     """The core raises for every event of `kind`, and decides every other as ever."""
-    real = ownership_shadow.decide
+    real = session_runner.decide
 
     def broken(session: Any, event: Any, now: Any) -> Any:
         if event.kind == kind:
             raise RuntimeError(f"the core cannot decide {kind}")
         return real(session, event, now)
 
-    monkeypatch.setattr(ownership_shadow, "decide", broken)
+    monkeypatch.setattr(session_runner, "decide", broken)
 
 
 async def _world(hass: HomeAssistant, timers: FakeScheduler, **kwargs: Any) -> World:
@@ -89,7 +89,7 @@ async def test_a_failing_decision_warns_once_and_raises_the_issue_at_the_third(
 ) -> None:
     _break(monkeypatch, "person_start")
     world = await _world(hass, timers)
-    shadow = world.controller.ownership_shadow
+    shadow = world.controller.session_runner
 
     await _person_start(world)
     await _person_start(world)
@@ -121,7 +121,7 @@ async def test_failures_spread_over_more_than_a_day_raise_no_issue(
     await _person_start(world)
     await _later(hass, freezer, timedelta(hours=13))
     await _person_start(world)
-    assert world.controller.ownership_shadow.counts["failures"] == {"decide_early/person_start": 3}
+    assert world.controller.session_runner.counts["failures"] == {"decide_early/person_start": 3}
     assert _issue(hass) is None, "never three within one day"
     await _person_start(world)
     assert _issue(hass) is not None, "the last three fall within a day"
@@ -196,12 +196,12 @@ async def test_facts_that_cannot_be_read_are_a_failure_and_send_nothing(
     """A window start whose facts cannot be read is the core's `Keep`: no start goes out (at the window's start, nor
     at each plug-in inside it), the session is left as it was, and the window starts once the facts can be read."""
     world = await _world(hass, timers)
-    real = world.controller._shadow_start_facts  # noqa: SLF001
+    real = world.controller._core_start_facts  # noqa: SLF001
 
     def unreadable() -> dict[str, Any]:
         raise RuntimeError("the start's facts cannot be read")
 
-    monkeypatch.setattr(world.controller, "_shadow_start_facts", unreadable)
+    monkeypatch.setattr(world.controller, "_core_start_facts", unreadable)
     await install_schedule(world.controller, open_window())
     await hass.async_block_till_done()
     assert world.starts == [], "nothing is started for an event the core could not decide"
@@ -211,13 +211,13 @@ async def test_facts_that_cannot_be_read_are_a_failure_and_send_nothing(
         await world.plug.set(True)
         await hass.async_block_till_done()
         assert world.starts == [], "nor at the plug-in"
-    shadow = world.controller.ownership_shadow
+    shadow = world.controller.session_runner
     assert shadow.counts["failures"] == {"facts/window_start": 3}
     assert shadow.session.owner == "none"
     assert len(_warnings(caplog)) == 1
     assert _issue(hass) is not None
 
-    monkeypatch.setattr(world.controller, "_shadow_start_facts", real)
+    monkeypatch.setattr(world.controller, "_core_start_facts", real)
     await world.plug.set(False, control="off")
     await world.plug.set(True)
     await hass.async_block_till_done()
@@ -263,7 +263,7 @@ async def test_a_stored_session_that_cannot_be_read_is_a_failure(
     await world.controller._store.async_save(record)  # noqa: SLF001
 
     restarted = await world.restart()
-    shadow = restarted.controller.ownership_shadow
+    shadow = restarted.controller.session_runner
     assert shadow.counts["failures"] == {"stored_session/restart": 1}
     (warning,) = _warnings(caplog)
     assert "stored_session" in warning.getMessage()
@@ -290,7 +290,7 @@ async def test_a_plug_in_or_unplug_the_core_cannot_decide_is_fed_once_and_the_co
     controller reads the connection from the session)."""
     world = await _world(hass, timers, connected=kind == "unplug")
     controller = world.controller
-    shadow = controller.ownership_shadow
+    shadow = controller.session_runner
     fed: list[str] = []
     real = controller._connection_changed  # noqa: SLF001
 
@@ -332,5 +332,5 @@ async def test_load_balancings_stop_goes_out_when_the_core_cannot_decide(
     await hass.async_block_till_done()
     assert len(world.stops) == stops + 1 and not world.controller.charging
     assert result.code == code
-    assert world.controller.ownership_shadow.counts["failures"] == {"decide_early/balancing_pause": 1}
+    assert world.controller.session_runner.counts["failures"] == {"decide_early/balancing_pause": 1}
     await world.shutdown()

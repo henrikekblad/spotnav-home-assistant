@@ -364,7 +364,7 @@ async def _async_setup_charger_entry(hass: HomeAssistant, entry: ChargerConfigEn
                 and state.state in ("on", "arming", "disarming")
             )
         )
-        # The same guard's sun's part on its own, for the charge-ownership core's shadow (which decides the pause's).
+        # The same guard's sun's part on its own, for the charge-ownership core (which decides the pause's part).
         controller.set_solar_hold_probe(
             lambda: (state := solar_execution_state(hass, entry.entry_id)) is not None
             and state.state in ("on", "arming", "disarming")

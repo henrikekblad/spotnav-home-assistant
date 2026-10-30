@@ -30,7 +30,7 @@ def drives(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) -> b
 
 
 def _agrees(car: Car, drives: bool) -> None:
-    shadow = car.controller.ownership_shadow
+    shadow = car.controller.session_runner
     assert shadow.drives is drives
     assert shadow.counts["errors"] == 0
 
@@ -56,7 +56,7 @@ async def test_a_best_effort_plan_charges_to_the_departure_and_the_next_departur
         assert proposal is not None and proposal.short_of_deadline
         assert car.executor.window_charging_now()
         assert [call[0] for call in calls] == ["turn_on"]
-        assert car.controller.ownership_shadow.session.owner == OWNER_PLAN
+        assert car.controller.session_runner.session.owner == OWNER_PLAN
         assert car.controller.charge_origin == "plan_window"
 
         await _at(car, frozen, timedelta(hours=1, minutes=59))
@@ -74,7 +74,7 @@ async def test_a_best_effort_plan_charges_to_the_departure_and_the_next_departur
         assert car.controller.charging
         snapshot = car.preview.snapshot()
         assert snapshot.departure_at is not None and snapshot.departure_at > dt_util.utcnow() + timedelta(hours=20)
-        assert car.controller.ownership_shadow.session.owner == OWNER_PLAN
+        assert car.controller.session_runner.session.owner == OWNER_PLAN
         assert car.controller.charge_origin == "plan_window"
         _agrees(car, drives)
 
@@ -88,7 +88,7 @@ async def _window_charging_after_restart(hass: HomeAssistant, transport: Any, fr
     assert car.executor.window_charging_now()
     assert [call[0] for call in calls] == ["turn_on"]
     assert car.preview.snapshot().energy_basis == "kept_recent"
-    assert car.controller.ownership_shadow.session.owner == OWNER_PLAN
+    assert car.controller.session_runner.session.owner == OWNER_PLAN
     assert car.controller.charge_origin == "plan_window"
     calls.clear()
     return car, calls
@@ -109,7 +109,7 @@ async def test_a_returning_reading_replans_a_running_plan_charge_without_touchin
         assert car.preview.snapshot().energy_basis == "register"
         assert calls == [], "the replan neither stops nor starts the plan's charge"
         assert car.executor.window_charging_now()
-        assert car.controller.ownership_shadow.session.owner == OWNER_PLAN
+        assert car.controller.session_runner.session.owner == OWNER_PLAN
         assert car.controller.charge_origin == "plan_window"
         _agrees(car, drives)
 
@@ -128,6 +128,6 @@ async def test_a_returning_reading_that_meets_the_need_ends_the_plan_once(
 
         assert [call[0] for call in calls] == ["turn_off"]
         assert not car.executor.window_charging_now()
-        assert car.controller.ownership_shadow.session.owner == OWNER_NONE
+        assert car.controller.session_runner.session.owner == OWNER_NONE
         assert car.controller.charge_origin is None
         _agrees(car, drives)

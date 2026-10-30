@@ -194,10 +194,10 @@ def _charger_diagnostics(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, A
             # forced to one phase by us, the plug-in's switches, the last one, a settle, whether it was given up in this
             # plug-in and how many were given up since the start.
             "phase_switching": controller.phase_switching_facts(),
-            # The charge-ownership core (`execution/ownership_shadow.py`): what it counted, its session, and the last
+            # The charge-ownership core (`execution/session_runner.py`): what it counted, its session, and the last
             # events (no entity ids, no secrets), replayable by `core/replay.py`, and its tally per event kind kept
             # across restarts (`coverage`).
-            "ownership": controller.ownership_shadow.diagnostics(),
+            "ownership": controller.session_runner.diagnostics(),
         },
     }
 

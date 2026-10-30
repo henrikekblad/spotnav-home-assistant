@@ -51,7 +51,7 @@ def _record(world: World) -> dict[str, Any]:
 def _agrees(world: World, drives: bool) -> dict[str, Any]:
     """The record the controller reads is the core's when it drives; the shadow saw no difference in it."""
     record = _record(world)
-    shadow = world.controller.ownership_shadow
+    shadow = world.controller.session_runner
     if drives:
         ended = shadow.session.car_ended
         assert (None if ended is None else ended.at.isoformat()) == record["car_ended_at"]
@@ -124,7 +124,7 @@ async def test_a_level_read_below_the_target_ends_the_wait_and_keeps_the_end(
     stored = await _stored(world)
     assert stored["car_ended_wait"] is None and stored["car_ended_at"] == ended_at
     if drives:
-        kinds = [item["event"]["kind"] for item in world.controller.ownership_shadow.events]
+        kinds = [item["event"]["kind"] for item in world.controller.session_runner.events]
         assert "car_level_read" in kinds
 
     starts = len(world.starts)
@@ -212,7 +212,7 @@ async def test_the_connection_is_the_sessions_while_the_core_drives(
 ) -> None:
     world = await pause_world(hass, timers, connected=False)
     controller = world.controller
-    shadow = controller.ownership_shadow
+    shadow = controller.session_runner
     assert controller.known_connected is False and shadow.session.plugged is False
     for connected in (True, False, True):
         await world.plug.set(connected)
@@ -224,7 +224,7 @@ async def test_the_connection_is_the_sessions_while_the_core_drives(
     assert controller.known_connected is True and shadow.session.plugged is True
 
     restarted = await world.restart()
-    assert restarted.controller.ownership_shadow.session.plugged is None, "a restart clears it"
+    assert restarted.controller.session_runner.session.plugged is None, "a restart clears it"
     assert restarted.controller.known_connected is None
     await restarted.plug.set(False)
     assert restarted.controller.known_connected is False
@@ -257,7 +257,7 @@ async def test_a_version_1_record_is_read_with_the_instant_and_the_keys_fill_not
     world = await pause_world(hass, timers, plan=two_windows())
     controller = world.controller
     ended = dt_util.utcnow() - timedelta(minutes=5)
-    current = controller.ownership_shadow.session.to_store()
+    current = controller.session_runner.session.to_store()
     v1 = {key: value for key, value in current.items() if key != "car_ended"}
     v1.update(version=1, car_ended_at=ended.isoformat())
     controller._cancel_session_save()  # noqa: SLF001
@@ -266,10 +266,10 @@ async def test_a_version_1_record_is_read_with_the_instant_and_the_keys_fill_not
     disk.pop("charge_session_order", None)
     await controller._store.async_save(disk)  # noqa: SLF001
     controller._session_saved = ChargeSession.from_store(v1)  # noqa: SLF001 - the old controller saves nothing more
-    controller.ownership_shadow.session = controller._session_saved  # noqa: SLF001
+    controller.session_runner.session = controller._session_saved  # noqa: SLF001
 
     restarted = await world.restart()
-    session = restarted.controller.ownership_shadow.session
+    session = restarted.controller.session_runner.session
     assert session.car_ended == CarEnded(at=ended)
     assert restarted.controller.car_ended_at == ended
     await restarted.controller.async_save_record()
@@ -305,7 +305,7 @@ async def test_a_car_ended_plug_in_sessions_recording_replays_with_no_line_up(
     await world.plug.set(False, control="off")
     await world.plug.set(True)
     await hass.async_block_till_done()
-    diagnostics = world.controller.ownership_shadow.diagnostics()
+    diagnostics = world.controller.session_runner.diagnostics()
     kinds = {item["event"]["kind"] for item in diagnostics["events"]}
     assert {"car_ended", "car_level_read", "unplug", "plug_in"} <= kinds
     bundle = json.loads(json.dumps(_bundle(diagnostics["events"]), default=str))
@@ -330,7 +330,7 @@ async def test_the_first_restart_after_a_version_1_record_takes_the_rest_of_the_
     world = await _plan_ended(hass, timers, car)
     controller = world.controller
     record = _agrees(world, True)
-    ended = controller.ownership_shadow.session.car_ended
+    ended = controller.session_runner.session.car_ended
     controller._cancel_session_save()  # noqa: SLF001
     disk = dict(await _stored(world))
     v1 = {key: value for key, value in disk[SESSION_STORE_KEY].items() if key != "car_ended"}
@@ -349,7 +349,7 @@ async def test_the_first_restart_after_a_version_1_record_takes_the_rest_of_the_
 
     restarted = await world.restart()
     restarted.controller._soc_reader = car  # noqa: SLF001
-    session = restarted.controller.ownership_shadow.session
+    session = restarted.controller.session_runner.session
     if same_end:
         assert session.car_ended == ended
         assert _agrees(restarted, True) == record

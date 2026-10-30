@@ -14,7 +14,7 @@ from homeassistant.util import dt as dt_util
 from custom_components.spotnav.core import events as ev
 from custom_components.spotnav.core.ownership import decide, Keep, Stop
 from custom_components.spotnav.core.session import CarEnded, ChargeSession, ManualPause, PendingCommand
-from custom_components.spotnav.execution import ownership_shadow
+from custom_components.spotnav.execution import session_runner
 
 from .pause_world import later_window, open_window, pause_world, SWITCH
 from .relay import FakeScheduler
@@ -184,7 +184,7 @@ async def _held_world(hass: HomeAssistant, timers: FakeScheduler):
 
 
 def _records(world, kind: str) -> list[dict]:
-    return [record for record in world.controller.ownership_shadow.events if record["event"]["kind"] == kind]
+    return [record for record in world.controller.session_runner.events if record["event"]["kind"] == kind]
 
 
 @pytest.mark.parametrize("drives", [True])
@@ -197,7 +197,7 @@ async def test_the_holds_stop_is_sent_and_its_result_comes_back_to_the_core(
     assert rechecks and rechecks[-1]["event"]["what"] == "hold"
     assert rechecks[-1]["core"] == [{"kind": "stop", "reason": "hold"}]
     assert rechecks[-1]["result"]["command"] == "stop" and rechecks[-1]["result"]["executed"] is True
-    shadow = world.controller.ownership_shadow
+    shadow = world.controller.session_runner
     assert shadow.session.pending == ()
     await world.shutdown()
 
@@ -208,7 +208,7 @@ async def test_the_holds_task_acts_on_the_cores_recheck_when_it_drives(
     hass: HomeAssistant, timers: FakeScheduler, monkeypatch, drives: bool, stopped: bool
 ) -> None:
     """A core whose re-check finds the hold's stop no longer due: the task sends nothing."""
-    real = ownership_shadow.decide
+    real = session_runner.decide
 
     def nothing_due(session, event, now):
         session, commands = real(session, event, now)
@@ -216,7 +216,7 @@ async def test_the_holds_task_acts_on_the_cores_recheck_when_it_drives(
             commands = tuple(command for command in commands if not isinstance(command, Stop))
         return session, commands
 
-    monkeypatch.setattr(ownership_shadow, "decide", nothing_due)
+    monkeypatch.setattr(session_runner, "decide", nothing_due)
     world, stops = await _held_world(hass, timers)
     assert (len(world.stops) > stops) is stopped
     await world.shutdown()
@@ -244,7 +244,7 @@ async def test_the_claim_of_a_window_charge_comes_back_to_the_core(
         "earlier_plug_in": False,
     }
     assert world.controller.charge_origin == "plan_window"
-    assert world.controller.ownership_shadow.session.owner == "plan"
+    assert world.controller.session_runner.session.owner == "plan"
     await world.shutdown()
 
 
@@ -261,7 +261,7 @@ async def test_the_stop_under_a_persons_stop_is_rechecked_by_the_core(
     rechecks = _records(world, "recheck")
     assert rechecks and rechecks[-1]["event"]["what"] == "person_hold"
     assert rechecks[-1]["result"]["executed"] is True
-    shadow = world.controller.ownership_shadow
+    shadow = world.controller.session_runner
     assert not shadow.session.hold_stop_pending and len(shadow.session.hold_stop_times) == 1
     await world.shutdown()
 
@@ -303,7 +303,7 @@ async def test_the_stops_under_a_persons_stop_keep_the_gap_and_give_up_in_both_m
     await world.switch("on")  # a fourth within ten minutes: given up, and said
     assert len(world.stops) == stops + 3 and _c7(world) == (3, True)
     assert world.controller.ignores_person_stop
-    shadow = world.controller.ownership_shadow
+    shadow = world.controller.session_runner
     if drives:
         assert shadow.session.hold_gave_up and len(shadow.session.hold_stop_times) == 3
 
@@ -338,7 +338,7 @@ async def test_a_report_that_lands_while_the_stop_under_a_persons_stop_is_on_its
         if calls:
             break
     assert len(calls) == 1, "the stop is on its way"
-    shadow = world.controller.ownership_shadow
+    shadow = world.controller.session_runner
     hass.states.async_set(SWITCH, "on", {"report": 1})  # a report lands mid-command
     for _ in range(10):
         await asyncio.sleep(0)
@@ -387,7 +387,7 @@ async def test_a_stop_whose_recheck_was_never_fed_does_not_hold_off_the_next(
 
     await world.switch("on")  # the charger begins by itself: its stop's re-check fails, so nothing is sent
     assert broken and len(world.stops) == stops
-    assert world.controller.ownership_shadow.session.hold_stop_pending, "the core never heard back"
+    assert world.controller.session_runner.session.hold_stop_pending, "the core never heard back"
 
     freezer.tick(timedelta(seconds=31))
     world.controller._cancel_person_hold_retry()  # noqa: SLF001 - the report below looks again first

@@ -66,7 +66,7 @@ async def test_the_suns_take_over_never_stops_a_charge_now_start_on_its_way(
     assert not stopped and turn_off_calls == [], "the sun does not stop a Charge-now start"
     assert controller.charge_origin == "other"
     if drives:
-        assert controller.ownership_shadow.session.owner == "charge_now"
+        assert controller.session_runner.session.owner == "charge_now"
 
 
 # ---------------------------------------------------------------------------------------------- a bare charger
@@ -88,7 +88,7 @@ async def _keys_follow(world: World, drives: bool, expected: tuple[str | None, b
     stored = await _stored(world)
     assert (stored["charge_origin"], stored["plan_charge"]) == expected, "today's keys never lag the owner"
     if drives:
-        session = world.controller.ownership_shadow.session
+        session = world.controller.session_runner.session
         assert _CORE_OWNER_ORIGIN.get(session.owner, (None, False)) == expected
         assert stored[SESSION_STORE_KEY]["owner"] == session.stored().owner
 
@@ -199,7 +199,7 @@ async def test_a_restart_from_todays_keys_alone_reads_the_owner(
     restarted = await world._start_again()  # noqa: SLF001 - the old controller is down already
     await _keys_follow(restarted, drives, ("manual", False))
     if drives:
-        assert restarted.controller.ownership_shadow.session.owner == "person"
+        assert restarted.controller.session_runner.session.owner == "person"
         assert (await _stored(restarted))[SESSION_STORE_KEY]["owner"] == "person"
     await restarted.shutdown()
 
@@ -223,7 +223,7 @@ async def test_a_start_that_fails_in_the_middle_of_a_report_owns_nothing(
     assert not await controller.async_start()
     await hass.async_block_till_done()
     assert _owner(world) == (None, False)
-    shadow = controller.ownership_shadow
+    shadow = controller.session_runner
     if drives:
         assert shadow.session.owner == "none" and not shadow.session.start_pending
     assert (await _stored(world))["charge_origin"] is None
@@ -270,7 +270,7 @@ async def test_an_owners_recording_replays_with_no_line_up(
     assert await world.controller.async_start(cause="solar")
     await world.executor.async_manual_stop()
     await hass.async_block_till_done()
-    diagnostics = world.controller.ownership_shadow.diagnostics()
+    diagnostics = world.controller.session_runner.diagnostics()
     assert diagnostics["counts"]["failures"] == {}
     bundle = json.loads(json.dumps(_bundle(diagnostics["events"]), default=str))
     alone = replay_bundle(bundle, line_up=False)["charger_a"]
@@ -290,7 +290,7 @@ async def test_a_feed_cancelled_in_another_task_leaves_a_start_on_its_way_its_ow
     cancelled: nothing to decide): the owner still reads as the start makes it until the start's own feed is over."""
     world = await pause_world(hass, timers)
     controller = world.controller
-    shadow = controller.ownership_shadow
+    shadow = controller.session_runner
     sent = asyncio.Event()
     release = asyncio.Event()
     cancelled: list[int] = []
@@ -356,7 +356,7 @@ async def test_a_record_newer_than_the_keys_is_the_owner_at_a_restart_and_the_ke
     monkeypatch.setattr(World, "_start_again", keys_behind)
     restarted = await world.restart()
     await hass.async_block_till_done()
-    assert restarted.controller.ownership_shadow.session.owner == owner
+    assert restarted.controller.session_runner.session.owner == owner
     assert hass.states.get(SWITCH).state == "on", "the charge goes on"
     await _keys_follow(restarted, True, ORIGINS[owner])
     await restarted.shutdown()

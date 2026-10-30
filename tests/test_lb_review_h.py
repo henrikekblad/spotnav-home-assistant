@@ -387,7 +387,7 @@ async def test_a_stop_under_a_persons_stop_that_sends_nothing_is_not_counted_tow
     stops = world.controller._c7  # noqa: SLF001 - its accessor: the session's when the core drives
     assert stops.stop_times == [] and stops.tried_at is not None and not stops.stop_pending
     if drives:
-        session = world.controller.ownership_shadow.session
+        session = world.controller.session_runner.session
         assert session.hold_stop_times == () and session.hold_tried_at is not None
     await world.shutdown()
 

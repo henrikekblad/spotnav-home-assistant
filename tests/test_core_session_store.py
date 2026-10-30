@@ -146,7 +146,7 @@ def _but_the_plug(session: ChargeSession) -> ChargeSession:
 
 
 def _intent(world: World) -> tuple[Any, Any]:
-    manual = world.controller.ownership_shadow.session.manual
+    manual = world.controller.session_runner.session.manual
     return (None, None) if manual is None else (manual.action, manual.scope)
 
 
@@ -179,7 +179,7 @@ async def test_todays_keys_are_migrated_once_into_the_cores_record(
     assert (stored["manual"], stored["owner"]) == ({"action": "stop", "scope": "plug_in"}, "none")
     for key in ("plan", "charge_origin", "plan_charge", "hold"):
         assert key in await _stored(restarted), "today's keys are still written"
-    assert _but_the_plug(restarted.controller.ownership_shadow.session) == _but_the_plug(
+    assert _but_the_plug(restarted.controller.session_runner.session) == _but_the_plug(
         ChargeSession.from_store(stored)
     )
 
@@ -210,7 +210,7 @@ async def test_a_record_of_an_unknown_version_falls_back_to_todays_keys(
 
     stored = (await _stored(restarted))[SESSION_STORE_KEY]
     assert stored["version"] == STORED_VERSION, "written again in the version the core knows"
-    assert _but_the_plug(ChargeSession.from_store(stored)) == _but_the_plug(restarted.controller.ownership_shadow.session)
+    assert _but_the_plug(ChargeSession.from_store(stored)) == _but_the_plug(restarted.controller.session_runner.session)
     assert _intent(restarted) == (MANUAL_STOP, MANUAL_SCOPE_PLUG_IN), "from today's keys and the stored pause"
     await restarted.shutdown()
 
@@ -301,7 +301,7 @@ async def test_a_restart_with_a_persons_start_reads_it_from_the_record(
     assert reads and reads[-1].manual == ManualPause(MANUAL_START, MANUAL_SCOPE_PLUG_IN)
     assert reads[-1].owner == "person"
     assert _intent(restarted) == (MANUAL_START, MANUAL_SCOPE_PLUG_IN)
-    assert restarted.controller.ownership_shadow.session.owner == "person"
+    assert restarted.controller.session_runner.session.owner == "person"
     hass.states.async_set(SWITCH, "on", {"report": "after the restart"})
     await hass.async_block_till_done()
     assert len(world.stops) == stops and restarted.controller.charging, "nothing automatic stops the person's Start"
@@ -355,7 +355,7 @@ async def test_home_assistants_stop_saves_a_change_waiting_for_its_debounced_sav
     import custom_components.spotnav as integration
 
     world = await pause_world(hass, timers)
-    shadow = world.controller.ownership_shadow
+    shadow = world.controller.session_runner
     shadow.session = shadow.session.with_changes(held=True)
     world.controller._persist_session(shadow.session)  # noqa: SLF001 - a decision changed only bookkeeping
     assert world.controller._session_dirty_since is not None  # noqa: SLF001 - waiting for its debounced save
@@ -387,7 +387,7 @@ async def test_a_decision_made_while_the_shutdown_waits_for_the_lock_is_saved(
 
     world = await pause_world(hass, timers)
     controller = world.controller
-    shadow = controller.ownership_shadow
+    shadow = controller.session_runner
     async with controller._lock:  # noqa: SLF001 - a decision in flight
         down = hass.async_create_task(controller.async_shutdown())
         await asyncio.sleep(0)
@@ -493,7 +493,7 @@ async def test_a_restart_right_after_a_starts_save_and_before_its_result_reads_t
     monkeypatch.setattr(controller._store, "async_save", nothing)  # noqa: SLF001
     await controller.async_shutdown()
     restarted = await world._start_again()  # noqa: SLF001
-    assert restarted.controller.ownership_shadow.session.owner == expected
+    assert restarted.controller.session_runner.session.owner == expected
     assert restarted.controller.charge_origin == (cause or "other")
     assert hass.states.get(SWITCH).state == "on", "the charge goes on"
     await restarted.shutdown()
@@ -542,7 +542,7 @@ async def test_a_crash_between_a_persons_starts_save_and_its_pause_leaves_the_ch
     monkeypatch.setattr(controller._store, "async_save", nothing)  # noqa: SLF001
     await controller.async_shutdown()
     restarted = await world._start_again()  # noqa: SLF001
-    shadow = restarted.controller.ownership_shadow
+    shadow = restarted.controller.session_runner
     assert (shadow.session.owner, shadow.session.manual) == ("person", None)
     assert restarted.controller.plan is not None and restarted.controller.charge_origin == "manual"
     assert hass.states.get(SWITCH).state == "on"
@@ -598,7 +598,7 @@ async def test_at_a_restart_the_record_alone_is_read_but_for_an_earlier_builds_k
     world.controller._session_saved = ChargeSession.from_store(  # noqa: SLF001 - the old controller saves nothing more
         (await _stored(world))[SESSION_STORE_KEY]
     )
-    world.controller.ownership_shadow.session = world.controller._session_saved  # noqa: SLF001
+    world.controller.session_runner.session = world.controller._session_saved  # noqa: SLF001
     restarted = await world.restart()
     expected = "solar" if marks == "keys_newer" else None
     assert restarted.controller.charge_origin == expected
@@ -631,7 +631,7 @@ async def test_an_update_during_a_running_plan_charge_hands_it_to_the_core(
 
     restarted = await world.restart()
     controller = restarted.controller
-    shadow = controller.ownership_shadow
+    shadow = controller.session_runner
     assert shadow.drives and reads == [], "nothing of the core's to read: today's keys are"
     assert shadow.session.owner == "plan"
     assert controller.charging and controller.charge_origin == "plan_window"
@@ -664,8 +664,8 @@ async def test_an_update_during_a_solar_charge_hands_it_to_the_core(
 
     restarted = await world.restart()
     controller = restarted.controller
-    assert controller.ownership_shadow.drives and reads == []
-    assert controller.ownership_shadow.session.owner == "solar"
+    assert controller.session_runner.drives and reads == []
+    assert controller.session_runner.session.owner == "solar"
     assert controller.charging and controller.charge_origin == "solar"
     assert (await _stored(restarted))[SESSION_STORE_KEY]["owner"] == "solar"
     hass.states.async_set(SWITCH, "on", {"report": "after the update"})

@@ -124,7 +124,7 @@ def test_the_check_lets_the_accessors_and_the_holds_observation_be() -> None:
         "class C:\n"
         "    @property\n"
         "    def _owner_origin(self):\n"
-        "        return self._shadow.session.owner\n"
+        "        return self._runner.session.owner\n"
         "    def elsewhere(self):\n"
         "        self._hold.observe(True)\n"
         "        return self._owner_origin, self._hold.was_on\n"
