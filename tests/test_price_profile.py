@@ -1,9 +1,9 @@
-"""The relay's history profile (`/v1/<area>/profile.json`, contract v1): parsing and the repository.
+"""The history profile: the relay's document (`/v1/<area>/profile.json`, contract v1) and the repository's own.
 
-The parser is judged on documents (good, malformed in each way the contract can be broken), the
-repository on the wire stub and an injected clock: once per area per local day, the relay's 404 as a
-definite "no usable profile", a held copy kept through a transport failure but not past two days, and
-the store round trip.
+The parser is judged on documents (good, malformed in each way the contract can be broken); the repository
+on held day files and an injected clock: the profile is built from the market-day files of its window with
+no request, kept until the window or a file in it changes, absent below 21 files, and blind to files on
+another calendar than the area's.
 """
 
 from __future__ import annotations
@@ -16,11 +16,9 @@ from typing import Any
 import pytest
 from homeassistant.core import HomeAssistant
 
-from custom_components.spotnav.pricing.price_repository import (
-    PROFILE_MAX_AGE,
-    PROFILE_RETRY_AFTER,
-    PriceRepository,
-)
+from custom_components.spotnav.pricing.area_catalogue import async_load_bundled
+from custom_components.spotnav.pricing.price_profile import build_profile
+from custom_components.spotnav.pricing.price_repository import PriceRepository
 from custom_components.spotnav.pricing.relay_contract import (
     PriceProfile,
     RelayParseError,
@@ -31,14 +29,14 @@ from .relay import (
     BASE_URL,
     Clock,
     fixture,
+    history_days,
     profile_document,
-    profile_path,
-    serve_profile,
     StoreDouble,
     StubTransport,
 )
 
-TODAY = date(2026, 10, 1)
+#: Sunday's night hours, in the profile's local weekday-hour.
+SUNDAY_NIGHT = {(7, hour): 0.03 for hour in range(8)}
 
 
 @pytest.fixture
@@ -47,9 +45,12 @@ def now() -> datetime:
 
 
 @pytest.fixture
-def repository(hass: HomeAssistant, transport: StubTransport, clock: Clock, now: datetime) -> PriceRepository:
+async def repository(hass: HomeAssistant, transport: StubTransport, clock: Clock, now: datetime) -> PriceRepository:
     clock.now = now
-    return PriceRepository(hass, base_url=BASE_URL, session=transport, now=clock, store=StoreDouble())
+    return PriceRepository(
+        hass, base_url=BASE_URL, session=transport, now=clock, store=StoreDouble(),
+        bundled=await async_load_bundled(hass),
+    )
 
 
 # ------------------------------------------------------------------------------------- the parser
@@ -116,137 +117,127 @@ def test_a_profile_that_is_not_an_object_is_refused() -> None:
 # --------------------------------------------------------------------------------- the repository
 
 
-async def test_a_profile_is_fetched_once_per_area_per_local_day(
-    repository: PriceRepository, transport: StubTransport, clock: Clock
+async def hold(repository: PriceRepository, days: dict[str, Any]) -> None:
+    await repository.async_restore()
+    repository._adopt({"schema": 2, "days": days})  # noqa: SLF001 - the store's own path
+
+
+async def test_the_profile_is_built_from_held_days_without_a_request(
+    repository: PriceRepository, transport: StubTransport
 ) -> None:
-    serve_profile(transport)
+    await hold(repository, history_days(to="2026-10-02", cheap=SUNDAY_NIGHT))
 
-    first = await repository.async_get_profile("SE4", TODAY)
-    again = await repository.async_get_profile("SE4", TODAY)
-    assert first is not None and again is first
-    assert transport.call_count(profile_path()) == 1
-    assert repository.profile_for("SE4") is first
+    profile = await repository.async_get_profile("SE4")
 
-    # The next local day asks again, and only once.
-    serve_profile(transport, generated="2026-10-02T14:05:00+02:00", to="2026-10-02")
+    assert profile is not None and transport.calls == []
+    assert (profile.from_date, profile.to_date, profile.weeks) == (date(2026, 9, 5), date(2026, 10, 2), 4)
+    assert profile.tz == "Europe/Stockholm" and len(profile.hours) == 168
+    sunday_night, monday_noon = profile.hours[(7, 3)], profile.hours[(1, 12)]
+    assert (sunday_night.median, sunday_night.std, sunday_night.n) == (0.03, 0.01, 16)
+    assert (monday_noon.median, monday_noon.std, monday_noon.n) == (0.10, 0.01, 16)
+    # The same as building it from those files directly: the repository passes the market-day files.
+    documents = {cached.parsed.day: cached.parsed for files in repository._days.values() for cached in files.values()}
+    assert build_profile("SE4", "Europe/Stockholm", "Europe/Stockholm", repository._now(), documents) == profile
+
+
+async def test_the_profile_is_kept_until_the_window_or_a_file_in_it_changes(
+    repository: PriceRepository, clock: Clock
+) -> None:
+    await hold(repository, history_days(to="2026-10-02"))
+    first = repository.profile_for("SE4")
+    assert first is not None and repository.profile_for("SE4") is first
+
+    # A new file in the window builds it again.
+    today = history_days(to="2026-10-03")["SE4|Europe/Stockholm|2026-10-02"]
+    await hold(repository, {"SE4|Europe/Stockholm|2026-10-02": {**today, "fetched_at": "2026-10-02T12:00:00+00:00"}})
+    second = repository.profile_for("SE4")
+    assert second is not None and second is not first
+
+    # So does the next market day, which moves the window.
     clock.now = datetime(2026, 10, 3, 8, 0, tzinfo=timezone.utc)
-    newer = await repository.async_get_profile("SE4", TODAY + timedelta(days=1))
-    await repository.async_get_profile("SE4", TODAY + timedelta(days=1))
-    assert newer is not first and newer is not None and newer.to_date == date(2026, 10, 2)
-    assert transport.call_count(profile_path()) == 2
+    third = repository.profile_for("SE4")
+    assert third is not None and third is not second and third.to_date == date(2026, 10, 3)
 
 
-async def test_the_relays_404_is_a_definite_no_profile_and_drops_a_held_copy(
-    repository: PriceRepository, transport: StubTransport
-) -> None:
-    serve_profile(transport)
-    assert await repository.async_get_profile("SE4", TODAY) is not None
-
-    transport.serve(profile_path(), 404, "not found")
-    assert await repository.async_get_profile("SE4", TODAY + timedelta(days=1)) is None
+async def test_twenty_files_are_no_profile_and_twenty_one_are(repository: PriceRepository) -> None:
+    days = sorted(history_days(to="2026-10-02").items())
+    await hold(repository, dict(days[-20:]))
     assert repository.profile_for("SE4") is None
-    # A 404 is an answer: not asked again the same day.
-    await repository.async_get_profile("SE4", TODAY + timedelta(days=1))
-    assert transport.call_count(profile_path()) == 2
-    summary = repository.profile_summary("SE4")
-    assert summary["held"] is False and summary["usable"] is False
-    assert summary["checked_day"] == "2026-10-02"
+    assert repository.profile_summary("SE4") | {"area": None} == {
+        "area": None, "usable": False, "days_held": 20, "generated": None, "from": None, "to": None,
+        "weeks": None, "hour_entries": None,
+    }
+
+    await hold(repository, dict(days[-21:]))
+    assert repository.profile_for("SE4") is not None
+    assert repository.profile_summary("SE4")["days_held"] == 21
 
 
-async def test_an_area_the_relay_has_no_profile_for_is_simply_none(
-    repository: PriceRepository, transport: StubTransport
-) -> None:
-    assert await repository.async_get_profile("DK1", TODAY) is None
-    assert repository.profile_summary("DK1")["held"] is False
-
-
-async def test_a_transport_failure_keeps_the_held_copy_and_retries_only_after_the_pause(
-    repository: PriceRepository, transport: StubTransport, clock: Clock
-) -> None:
-    serve_profile(transport)
-    held = await repository.async_get_profile("SE4", TODAY)
-    assert held is not None
-
-    transport.serve(profile_path(), 503, "busy")
-    tomorrow = TODAY + timedelta(days=1)
-    assert await repository.async_get_profile("SE4", tomorrow) is held
-    assert await repository.async_get_profile("SE4", tomorrow) is held
-    assert transport.call_count(profile_path()) == 2, "one failed try, then a pause"
-
-    clock.advance(seconds=PROFILE_RETRY_AFTER.total_seconds() + 1)
-    serve_profile(transport, generated="2026-10-02T09:00:00+02:00", to="2026-10-02")
-    fresh = await repository.async_get_profile("SE4", tomorrow)
-    assert fresh is not held and fresh is not None
-    assert transport.call_count(profile_path()) == 3
-
-
-async def test_an_invalid_body_never_replaces_the_good_one(
-    repository: PriceRepository, transport: StubTransport
-) -> None:
-    serve_profile(transport)
-    held = await repository.async_get_profile("SE4", TODAY)
-
-    broken = profile_document()
-    broken["hours"][0]["std"] = -1
-    transport.serve(profile_path(), 200, json.dumps(broken))
-    assert await repository.async_get_profile("SE4", TODAY + timedelta(days=1)) is held
-
-
-async def test_a_profile_older_than_two_days_is_not_used(
-    repository: PriceRepository, transport: StubTransport, clock: Clock
-) -> None:
-    serve_profile(transport)
-    assert await repository.async_get_profile("SE4", TODAY) is not None
-
-    clock.now = datetime(2026, 10, 1, 14, 5, tzinfo=timezone(timedelta(hours=2))) + PROFILE_MAX_AGE
-    assert repository.profile_for("SE4") is None
-    assert repository.profile_summary("SE4")["held"] is True
-    assert repository.profile_summary("SE4")["usable"] is False
-
-
-async def test_the_profile_survives_a_restart_through_the_store(
+async def test_an_area_no_catalogue_lists_has_no_profile(
     hass: HomeAssistant, transport: StubTransport, clock: Clock, now: datetime
 ) -> None:
     clock.now = now
-    store = StoreDouble()
-    first = PriceRepository(hass, base_url=BASE_URL, session=transport, now=clock, store=store)
-    serve_profile(transport)
-    await first.async_get_profile("SE4", TODAY)
-    assert store.payload["relay"]["profiles"]["SE4"]["document"]["weeks"] == 4
-
-    second = PriceRepository(hass, base_url=BASE_URL, session=transport, now=clock, store=store)
-    await second.async_restore()
-    restored = second.profile_for("SE4")
-    assert restored is not None and restored.to_date == date(2026, 10, 1)
-    # The restore asked for nothing: the day's request is still owed.
-    assert transport.call_count(profile_path()) == 1
+    repository = PriceRepository(hass, base_url=BASE_URL, session=transport, now=clock, store=StoreDouble())
+    await hold(repository, history_days(to="2026-10-02"))
+    assert await repository.async_get_profile("SE4") is None
+    assert transport.calls == []
 
 
-async def test_a_stored_profile_that_fails_the_parser_is_ignored(
+async def test_files_on_another_calendar_are_not_counted(repository: PriceRepository) -> None:
+    """Finland is read on the relay's Helsinki days: CET files held beside them are not that calendar's days."""
+    helsinki = {}
+    for key, entry in history_days(to="2026-10-02").items():
+        document = dict(entry["document"], area="FI", tz="Europe/Brussels")
+        helsinki[key.replace("SE4|Europe/Stockholm", "FI|Europe/Brussels")] = {**entry, "document": document}
+    await hold(repository, helsinki)
+    assert repository.profile_for("FI") is None
+
+
+async def test_a_split_calendar_area_is_built_from_its_market_day_files(repository: PriceRepository) -> None:
+    """Portugal: Madrid files, keyed by Madrid date, grouped by Lisbon weekday-hour."""
+    files = {}
+    for key, entry in history_days(to="2026-10-02").items():
+        document = dict(entry["document"], area="PT", tz="Europe/Lisbon", market_tz="Europe/Madrid")
+        files[key.replace("SE4|Europe/Stockholm", "PT|Europe/Madrid")] = {**entry, "document": document}
+    await hold(repository, files)
+
+    profile = repository.profile_for("PT")
+
+    assert profile is not None and profile.tz == "Europe/Lisbon"
+    documents = {
+        day: cached.parsed for (area, day), held in repository._days.items() if area == "PT" for cached in held.values()
+    }
+    assert all(document.tz == "Europe/Madrid" for document in documents.values())
+    assert build_profile("PT", "Europe/Lisbon", "Europe/Madrid", repository._now(), documents) == profile
+    # Madrid's midnight is 23:00 in Lisbon: the first quarter of a Madrid Thursday is a Lisbon Wednesday.
+    assert profile.hours[(3, 23)].n == 16
+
+
+async def test_a_stored_relay_profile_is_not_read_any_more(
     hass: HomeAssistant, transport: StubTransport, clock: Clock, now: datetime
 ) -> None:
     clock.now = now
-    bad = profile_document()
-    bad["weeks"] = 0
     store = StoreDouble(
         {
             "schema": 1,
             "catalogue": None,
             "index": None,
             "days": {},
-            "profiles": {"SE4": {"document": bad, "fetched_at": now.isoformat()}},
+            "profiles": {"SE4": {"document": profile_document(), "fetched_at": now.isoformat()}},
         }
     )
-    repository = PriceRepository(hass, base_url=BASE_URL, session=transport, now=clock, store=store)
-    await repository.async_restore()
-    assert repository.profile_for("SE4") is None
+    repository = PriceRepository(
+        hass, base_url=BASE_URL, session=transport, now=clock, store=store, bundled=await async_load_bundled(hass)
+    )
+    assert await repository.async_get_profile("SE4") is None
+    await repository._persist()
+    assert "profiles" not in store.payload["relay"]
+    assert transport.calls == []
 
 
-async def test_the_profile_summary_carries_no_price_rows(
-    repository: PriceRepository, transport: StubTransport
-) -> None:
-    serve_profile(transport)
-    await repository.async_get_profile("SE4", TODAY)
+async def test_the_profile_summary_carries_no_price_rows(repository: PriceRepository) -> None:
+    await hold(repository, history_days(to="2026-10-02"))
     summary = repository.profile_summary("SE4")
+    assert summary["usable"] is True and summary["days_held"] == 27
     assert summary["hour_entries"] == 168 and summary["weeks"] == 4
     assert all(not isinstance(value, (list, dict)) for value in summary.values())
