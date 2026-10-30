@@ -19,7 +19,6 @@ from custom_components.spotnav.const import (
     CURRENT_CONTROL_CHANGE_CONFIGURATION,
 )
 from custom_components.spotnav.execution.controller import ChargingController
-from custom_components.spotnav.execution.window_hold import HOLD, NOTHING, OVERRIDE, WindowHold
 from custom_components.spotnav.flows.charger_detection import detect_charger
 
 from .charger_helpers import detected_config
@@ -27,31 +26,6 @@ from .charger_shapes import register_shape, SHAPES
 from .helpers import install_schedule
 
 STATUS = "sensor.charger_connector_1_status_connector"
-
-
-# --- the rule on its own -------------------------------------------------------------------------
-
-
-def test_the_rule_holds_once_then_respects_a_person_and_a_session_end_resets_it() -> None:
-    hold = WindowHold()
-    hold.baseline(False)
-    assert hold.observe(control_on=True, connected=True, gap=True) == HOLD
-    assert hold.observe(control_on=False, connected=True, gap=True) == NOTHING
-    assert hold.observe(control_on=True, connected=True, gap=True) == OVERRIDE and hold.overridden
-    assert hold.observe(control_on=False, connected=True, gap=True) == NOTHING and not hold.overridden
-    assert hold.observe(control_on=False, connected=False, gap=True) == NOTHING
-    assert hold.observe(control_on=True, connected=True, gap=True) == HOLD
-
-
-def test_a_charge_that_already_runs_or_is_spotnavs_or_is_inside_a_window_is_left_alone() -> None:
-    hold = WindowHold()
-    hold.baseline(True)
-    assert hold.observe(control_on=True, connected=True, gap=True) == NOTHING
-    hold.observe(control_on=False, connected=True, gap=True)
-    hold.spotnav_started()
-    assert hold.observe(control_on=True, connected=True, gap=True) == NOTHING
-    hold.observe(control_on=False, connected=True, gap=True)
-    assert hold.observe(control_on=True, connected=True, gap=False) == NOTHING
 
 
 # --- the controller -------------------------------------------------------------------------------

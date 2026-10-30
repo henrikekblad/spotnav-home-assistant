@@ -591,7 +591,7 @@ async def test_a_safety_stop_of_a_persons_start_is_resumed_by_load_balancing(
 ) -> None:
     from datetime import timedelta
 
-    from custom_components.spotnav.execution.controller import SAFETY_RESUME_GAP_S
+    from custom_components.spotnav.core.ownership import SAFETY_RESUME_GAP_S
 
     world = await pause_world(hass, timers)
     await world.executor.async_manual_start(10)

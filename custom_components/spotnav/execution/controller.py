@@ -140,10 +140,12 @@ from ..core.ownership import (
     car_ended_reads_level,
     CarFacts,
     NO_CAR_FACTS,
+    automatic_allowed,
     owner_as_sent,
     SENT_START,
     SENT_STOP,
     spotnav_owned,
+    window_end_spared,
 )
 from ..core.replay import CLOCK_TOLERANCE_S
 from ..core.session import (
@@ -201,12 +203,6 @@ START_CAUSE_TTL_S = 300.0
 # Token for hybrid window-end handoff logs (see `_async_end_callback`).
 HYBRID_LOG_TOKEN = "HYBRID"
 
-#: Who owns a charge a plan window's end leaves alone (`_window_end_spared_owner`): a person's Start, a start
-#: with no cause (Charge now on a charger without Auto), the sun's and the car's minimum charge level's
-#: (`min_soc_floor.py`). Never `plan_window`, nor a charge the charger began by itself (no origin), which the
-#: window's end stops as it always did.
-WINDOW_END_SPARED_ORIGINS: Final = frozenset({"manual", "other", "solar", "min_soc"})
-
 #: What a connection handler is told (`set_connection_handler`): a vehicle was plugged in, or unplugged.
 CONNECTION_PLUGGED_IN = "plugged_in"
 CONNECTION_UNPLUGGED = "unplugged"
@@ -256,10 +252,6 @@ START_RETRY_AFTER_S: Final = (90.0, 300.0, 600.0)
 PERSON_HOLD_STOP_GAP_S: Final = 30.0
 PERSON_HOLD_MAX_STOPS: Final = 3
 PERSON_HOLD_WINDOW_S: Final = 600.0
-#: A person's charge load balancing stopped for safety (not its below-floor pause) is resumed by the
-#: regulator no sooner than this many seconds after the last such stop, so a fuse that keeps needing the stop
-#: never cycles it.
-SAFETY_RESUME_GAP_S: Final = 300.0
 
 
 class AutomaticGate(Protocol):
@@ -1000,10 +992,9 @@ class ChargingController:
         # The core decides for every charger (the choice of the logic before it is gone): the owner is the session's
         # (`_core_owner`).
         self._core_drives = True
-        # What the hold of a charge that starts by itself outside a window remembers (`window_hold.py`). When the core
-        # drives, whether the charge is SpotNav's is the session's (`_spotnav_owned`), as are `held` and `overridden`
-        # (`_hold_state`; the core end state plan, step 5).
-        self._hold = WindowHold(owned=self._spotnav_owned if self._core_drives else None)
+        # The charge control's last readable state, which the hold of a charge that starts by itself outside a window is
+        # decided from (`window_hold.py`). The hold and its memory are the core's.
+        self._hold = WindowHold()
         # Phase switching for solar (`phase_switching.py`): the charger's option (`CONF_PHASE_SWITCHING`, off unless its
         # entry data says true), what the switching of this plug-in has come to (persisted with the record), the timer
         # that gives up a switch the read-back never confirmed, and whether that was said in this plug-in.
@@ -1179,22 +1170,14 @@ class ChargingController:
         """What the window hold remembers of ownership (`window_hold.py`). When the core drives, the session's (step
         5): only its decisions change `held` and `overridden`, and the charge is SpotNav's by its owner
         (`_spotnav_owned`)."""
-        hold = self._hold
-        if self._core_drives:
-            session = self._shadow.session
-            return HoldState(held=session.held, overridden=session.overridden, owned=hold.owned)
-        return HoldState(held=hold.held, overridden=hold.overridden, owned=hold.owned)
+        session = self._shadow.session
+        return HoldState(held=session.held, overridden=session.overridden, owned=self._spotnav_owned())
 
     @_hold_state.setter
     def _hold_state(self, state: HoldState) -> None:
-        if self._core_drives:
-            # The core decided it already (a report's hold or override, the re-arm's stop and its result, a window's
-            # start, a plug-in, an unplug, a restart); whether the charge is SpotNav's is its owner.
-            return
-        hold = self._hold
-        hold.held = state.held
-        hold.overridden = state.overridden
-        hold.owned = state.owned
+        # The core decided it already (a report's hold or override, the re-arm's stop and its result, a window's start, a
+        # plug-in, an unplug, a restart); whether the charge is SpotNav's is its owner.
+        return
 
     def _spotnav_owned(self) -> bool:
         """When the core drives: whether the charge is SpotNav's, as the hold reads it (`WindowHold.owned`): the
@@ -2290,7 +2273,6 @@ class ChargingController:
             self.plan = None
             self._is_plan_charge = False
             self._owner_origin = "solar"
-            self._hold.spotnav_started()
             self._clear_top_off()
             self._cancel_timers()
             self._async_disarm_target_listener()
@@ -2486,27 +2468,14 @@ class ChargingController:
         self._automatic_gate = gate
 
     def _automatic_permitted(self, kind: str) -> bool:
-        """Whether the boundary lets an automatic decision of this kind act now, read without its lock (the
-        caller is already inside it, or nothing else can run: a restore)."""
-        gate = self._automatic_gate
-        if gate is None:
-            return True
-        if self._legacy_person_stopped and kind != AUTOMATIC_STOP:
-            # A person's Stop an older release stored, not yet the boundary's manual pause
-            # (`take_legacy_person_stop`): it holds as that pause will, from the restore's own re-arm on.
-            return False
-        return gate.automatic_allowed(kind)
+        """Whether an automatic decision of this kind may act now, by the person intent the core keeps
+        (`core.ownership.automatic_allowed`, as the execution boundary's gate reads its stored pause; a person's Stop
+        an older release stored is the core's from the restart on)."""
+        return automatic_allowed(self._shadow.session, kind)
 
     def _held_off_by_person(self) -> bool:
-        """Whether a person's Stop pauses Auto (`AutomaticGate.holds_charger_off`, or one an older release
-        stored that the boundary has not taken over yet): any charge the charger begins is stopped."""
-        gate = self._automatic_gate
-        if gate is None:
-            return False
-        if self._legacy_person_stopped:
-            return True
-        holds = getattr(gate, "holds_charger_off", None)
-        return bool(holds()) if holds is not None else False
+        """Whether a person's Stop pauses Auto (the core's person intent): any charge the charger begins is stopped."""
+        return self._shadow.session.held_off_by_person
 
     @callback
     def note_person_hold(self) -> None:
@@ -2686,8 +2655,7 @@ class ChargingController:
         before = (state.held, state.overridden, self._last_connected)
         self._last_connected = connected
         # What the control said, which the next report reads as the one before it (`was_on`).
-        self._hold.take(held=state.held, overridden=state.overridden)
-        self._hold.observe(control_on=self._control_observation, connected=connected, gap=False)
+        self._hold.observe(self._control_observation)
         # The core decided the report where its feed began (`_core_report_verdict`): the hold's stop, the claim of a
         # charge the charger began in a window, or the stop of the plan's charge outside every window. Each task decides
         # again under the locks (`_recheck`). No verdict (it could not decide): nothing is sent.
@@ -2701,30 +2669,10 @@ class ChargingController:
         state = self._hold_state
         return ("stop", "hold") in verdict or before != (state.held, state.overridden, connected)
 
-    def _window_charge_unclaimed(self) -> bool:
-        """Whether a charge runs inside an open window of the plan that nobody started: the charger began
-        it by itself (at plug-in, say). It is the plan's, so the plan's stops (its window's end, a met
-        need) apply to it; never a person's, solar's, or one something else owns, or after the car ended a
-        charge in this plug-in.
-        """
-        return (
-            self._control_observation is True
-            and not self._is_plan_charge
-            and self._owner_origin is None
-            and self.plan_window_active_now
-            and not self._hold_blocked()
-            and not self._car_ended_holds_window()
-        )
-
     async def _async_claim_window_charge(self) -> None:
         """The claim of a window charge a report decided, decided again under the boundary's lock (`_recheck`)."""
         async with self._automatic(AUTOMATIC_START):
             await self._recheck(core_events.RECHECK_CLAIM, self._claim_locked)
-
-    async def _claim_window_charge_locked(self) -> bool:
-        if not self._window_charge_unclaimed() or not self._automatic_permitted(AUTOMATIC_START):
-            return False
-        return await self._claim_locked()
 
     async def _claim_locked(self) -> bool:
         """The claim itself: the charge running is the plan's, on the charger's full phases."""
@@ -2733,7 +2681,6 @@ class ChargingController:
         self._owner_origin = "plan_window"
         # When the core drives: the claim's owner (the plan's), until its result is fed at the feed's end.
         self._command_unfed = SENT_START
-        self._hold.spotnav_started()
         _LOGGER.info("SpotNav charger %s: a charge began by itself in a planned window; it is the plan's", self.entry_id)
         await self._async_save_quietly()
         self._notify()
@@ -2746,40 +2693,12 @@ class ChargingController:
         async with self._automatic(AUTOMATIC_STOP):
             await self._recheck(core_events.RECHECK_HOLD, lambda: self._automatic_stop_locked("the hold's stop"))
 
-    def _plan_charge_strays(self) -> bool:
-        """Whether a charge a plan window of ours started runs while the time is outside every window
-        of the installed plan (replaced, restarted, or handed off and not taken back): it is ours, so it
-        is ours to stop. Never while something else owns the charger (a pause, solar) or the hybrid
-        hand-off carries it, and never for a charge a person started.
-        """
-        plan = self.plan
-        if plan is None or not self._is_plan_charge or self._control_observation is not True:
-            return False
-        if self._hold_blocked() or (self._end_window_guard is not None and self._end_window_guard()):
-            return False
-        if self.top_off_until is not None:
-            # The car finishes its charge past the last window: the top-off ends it, not this stop.
-            return False
-        try:
-            windows = plan.windows
-        except ValueError:
-            return False
-        now = dt_util.utcnow()
-        return not any(start <= now < end for start, end in windows)
-
     async def _async_stray_stop(self) -> None:
         """The ordinary stop of a plan charge that runs outside every window, decided again under the
         lock: a plan may have been installed, or the charge ended, meanwhile.
         """
         async with self._automatic(AUTOMATIC_STOP):
             await self._recheck(core_events.RECHECK_STRAY, lambda: self._automatic_stop_locked("the stray charge's stop"))
-
-    async def _async_forget_plan_charge(self) -> None:
-        """The charger was seen off: nothing of ours runs, so a later start is not ours."""
-        async with self._lock:
-            if self._is_plan_charge and self._control_observation is False:
-                self._is_plan_charge = False
-                await self._async_save_quietly()
 
     async def _async_save_quietly(self) -> None:
         """`_async_save`, logging a failure instead of raising it: the record is a safeguard, never a reason to fail."""
@@ -3221,7 +3140,7 @@ class ChargingController:
         # already holds begins a new grace period, the only honest thing a restart can do.
         self._charge_progress.evaluate()
         # A charge that already runs is not "seen" later: only a start after this point is.
-        self._hold.baseline(self._control_observation)
+        self._hold.observe(self._control_observation)
         first = self.adapter.vehicle_connected()
         token = self._shadow.begin(
             early=None
@@ -3826,7 +3745,6 @@ class ChargingController:
         # solar or hybrid execution): the hold of a charge that starts by itself leaves it alone.
         was_owned = self._hold_state.owned
         was_plan_charge = self._is_plan_charge
-        self._hold.spotnav_started()
         self._start_in_flight = True
         # A plan window's start is a plan charge; a person's, solar's or a webhook's is not, and
         # stays outside the stop of a charge that strays from a replaced plan.
@@ -4345,7 +4263,6 @@ class ChargingController:
         was_owned = self._hold_state.owned
         was_balancing = self._balancing
         session = self._session_generation
-        self._hold.spotnav_stopped()
         self._balancing = BalancingMemory(paused=False, charge=None)
         # What cannot be read (a restart before the charger's entities exist) says nothing about
         # whether the charge is still running, so the flag survives until it can be seen.
@@ -5428,8 +5345,6 @@ class ChargingController:
         """
         # The feed opens first, so the core sees the window start end the hold as today's code ends it.
         token = self._shadow.begin()
-        # The plug-in session a hold belonged to ends where the next window starts.
-        self._hold.end_session()
         if self._target_stopping:
             # A stop is in flight and the plan stays live until its turn_off is awaited: starting now
             # would race it. Report the charge as over so no caller arms timers or starts it.
@@ -5945,7 +5860,7 @@ class ChargingController:
     @callback
     def _async_end_callback(self, _now: datetime) -> None:
         """A window ended and another follows: stop the plan's charge (never one a person or the sun owns,
-        `_window_end_spared_owner`) but keep the schedule, unless
+        `core.ownership.window_end_spared`) but keep the schedule, unless
         `end_window_guard` says the sun can carry the charge past this boundary (see
         `set_end_window_guard`), in which case nothing happens and charging continues, or the next plan
         takes the charge over at this boundary (`_successor_continues`).
@@ -6000,7 +5915,7 @@ class ChargingController:
     @callback
     def _async_final_end_callback(self, _now: datetime) -> None:
         """The last window ended: stop the plan's charge (a person's or the sun's goes on,
-        `_window_end_spared_owner`) and clear the schedule, unless `end_window_guard` says the
+        `core.ownership.window_end_spared`) and clear the schedule, unless `end_window_guard` says the
         sun can carry the charge past this boundary; then neither happens and solar mode owns the
         charger (see `plan_window_active_now`, `False` once every window is past). A plan that charges
         to the car's own limit with the car still drawing is not stopped either: the car finishes it in
@@ -6024,7 +5939,7 @@ class ChargingController:
         self._final_window_end()
 
     def _final_window_end(self) -> None:
-        if self._window_end_spared_owner() is not None:
+        if window_end_spared(self._shadow.session):
             # Not the plan's charge: the plan ends with its last window, the charge goes on (decided again
             # under the lock).
             self._async_spawn(self._async_window_end_stop(clear_schedule=True), "the last window's end")
@@ -6061,27 +5976,6 @@ class ChargingController:
                     await self._window_end_spare_locked(clear_schedule=clear_schedule)
             finally:
                 self._shadow.end(token, event, outcome=outcome)
-
-    def _window_end_spared_owner(self) -> str | None:
-        """Who owns the charge a plan window's end leaves alone, else `None` (the end stops it).
-
-        A window's end stops only the plan's own charge: the window's, or one the charger began by itself
-        inside it (claimed, or not yet). A charge a person started (a Start, Charge now), or the sun, goes
-        on, and so does one load balancing holds back for them: the regulator still gives it back. Read
-        under the operation lock by the stop itself; the timer's callback reads it too, to choose between
-        the stop and the top-off. The core decides the same (`core.ownership.window_end_spared`).
-        """
-        if self._is_plan_charge:
-            return None
-        origin = self._owner_origin
-        if self._control_observation is False and not self.start_pending:
-            # Seen off with no Start on its way: an origin left from a charge that ended owns nothing.
-            origin = None
-        if origin is None and self._balancing.paused and self._balancing.charge is not None:
-            origin, plan_charge = self._balancing.charge
-            if plan_charge:
-                return None
-        return origin if origin in WINDOW_END_SPARED_ORIGINS else None
 
     async def _window_end_spare_locked(self, *, clear_schedule: bool) -> None:
         """A window's end that leaves the charge running, with the operation lock held: it is not the plan's (the
@@ -6145,7 +6039,7 @@ class ChargingController:
         """The deadline of the top-off the plan's last window ending calls for, else `None`.
 
         Only for a plan that charges to the car's own limit, with its charge still on and the plan's (not a
-        person's or the sun's, `_window_end_spared_owner`), nothing else owning the charger (a pause,
+        person's or the sun's, `core.ownership.window_end_spared`), nothing else owning the charger (a pause,
         solar), load balancing not pausing it, a car not known to be gone,
         and the car still drawing by what the charger measures (a control that is merely on is no
         evidence). Never past the departure: a deadline already reached is none.
@@ -6159,7 +6053,7 @@ class ChargingController:
             return None
         if not self._control_on or self._balancing.paused or self._hold_blocked():
             return None
-        if self._window_end_spared_owner() is not None:
+        if window_end_spared(self._shadow.session):
             return None
         if self.adapter.vehicle_connected() is False or self._car_drawing() is not True:
             return None
@@ -6547,7 +6441,7 @@ class ChargingController:
                 self._car_ended_holds_window()
                 event = core_events.ChargerReportedOn(
                     charging=self.charging,
-                    was_on=self._hold._on,  # noqa: SLF001 - the hold's own memory, read only
+                    was_on=self._hold.was_on,
                     connected=connected,
                     window_ahead_outside=ahead,
                     window_open=self.plan_window_active_now,

@@ -1,116 +1,30 @@
-"""Hold a charge that starts by itself outside a planned window: the once-per-plug-in decision.
+"""What the charger's charge control last said, readably: the observation the hold of a charge that starts by itself
+outside a planned window is decided from.
 
-Pure: no Home Assistant imports. While a plan has a window still ahead and the time is outside every
-window, a charge SpotNav did not start is stopped once, as soon as it is seen. The controller owns the
-facts (its plan, its guard, the charger's states) and the stop; this class owns only what it
-remembers between two observations, so the rule can be read, and tested, on its own.
-
-A charge is *seen* when the charge control turns on (the controller's `charging`, or the control
-itself for a charger that enables it at plug-in) after having been off. A charge is *SpotNav's* from
-the moment the controller starts one, whatever started it (a window, a manual Start, a webhook, solar
-or hybrid execution), until the control is seen off again or SpotNav stops it.
-
-A session is one plug-in. After the hold, a start SpotNav did not make is respected as a person's
-decision (`overridden`). The session ends when the vehicle is reported disconnected, or when the next
-window starts. A charger that cannot report a vehicle (a plain switch) has only the second end.
+Pure: no Home Assistant imports. The hold itself (stop a charge SpotNav did not start, seen while a plan has a window
+still ahead and the time is outside every window, once per plug-in; a start after it is a person's override) is the
+charge-ownership core's (`core/ownership.py`, `charger_reported_on`), and so is its memory (the session's `held` and
+`overridden`). A charge is *seen* when the control turns on after having been off: the core reads that from the state
+before the report (`was_on`), which this class keeps between two reports.
 """
 
 from __future__ import annotations
 
-from collections.abc import Callable
-from typing import Final
-
-#: Nothing to do.
-NOTHING: Final = "nothing"
-#: Stop the charge once: it started by itself outside the plan.
-HOLD: Final = "hold"
-#: The charge started again after the hold without SpotNav: a person overrode the plan.
-OVERRIDE: Final = "override"
-
 
 class WindowHold:
-    """What the rule remembers: whether the charge is SpotNav's, whether this session was held, and
-    whether a person overrode the hold.
+    """The control's last readable state: `None` until one is read, so what already runs at the start is never
+    "seen" beginning."""
 
-    `owned`, when given, says whether the charge is SpotNav's instead of what this class remembers of the starts
-    and stops it is told (the charge-ownership core's session, while the core drives: the core end state plan,
-    step 5). `held` and `overridden` are then the core's too: the controller reads them from the session, and
-    lines this class up with it before each observation (`take`), so the rule computed beside the core's decides
-    from the core's memory.
-    """
-
-    def __init__(self, owned: Callable[[], bool] | None = None) -> None:
-        self._owned_by = owned
-        self._owned = False
-        self.held = False
-        self.overridden = False
+    def __init__(self) -> None:
         self._on: bool | None = None
 
     @property
-    def owned(self) -> bool:
-        """Whether the charge is SpotNav's: the provider's answer when there is one."""
-        if self._owned_by is not None:
-            return self._owned_by()
-        return self._owned
+    def was_on(self) -> bool | None:
+        """The control's state at the last readable report (`None`: none read yet)."""
+        return self._on
 
-    @owned.setter
-    def owned(self, owned: bool) -> None:
-        self._owned = owned
-
-    def take(self, *, held: bool, overridden: bool) -> None:
-        """Remember the hold as someone else decided it (the core, while it drives)."""
-        self.held = held
-        self.overridden = overridden
-
-    def baseline(self, control_on: bool | None) -> None:
-        """Take the control's state as it is now, so what already runs is never "seen". `None`
-        (unreadable: unavailable or unknown) takes nothing: the baseline is the first readable state.
-        """
+    def observe(self, control_on: bool | None) -> None:
+        """One report of the control. `None` (unreadable: unavailable or unknown) is no observation and keeps what
+        was read before."""
         if control_on is not None:
             self._on = control_on
-
-    def spotnav_started(self) -> None:
-        """SpotNav started (or took over) the charge."""
-        self.owned = True
-
-    def spotnav_stopped(self) -> None:
-        """SpotNav stopped the charge."""
-        self.owned = False
-
-    def held_now(self) -> None:
-        """A stop outside the window took a charge that was running: the rest of the session is
-        respected.
-        """
-        self.held = True
-        self.overridden = False
-
-    def end_session(self) -> None:
-        """The next window starts: the plug-in session is over."""
-        self.held = False
-        self.overridden = False
-
-    def observe(self, *, control_on: bool | None, connected: bool | None, gap: bool) -> str:
-        """One observation of the charger. `gap`: a window is still ahead, the time is outside every
-        one, and nothing else (a pause, solar) owns the charger. `control_on` is tri-state: `None`
-        is an unreadable control, which is no observation and never a "seen" start. The first
-        readable state only sets the baseline.
-        """
-        if control_on is None:
-            if connected is False:
-                self.end_session()
-            return NOTHING
-        was_on = self._on
-        self._on = control_on
-        if connected is False:
-            self.end_session()
-        if not control_on:
-            self.owned = False
-            self.overridden = False
-            return NOTHING
-        if was_on is not False or not gap or self.owned:
-            return NOTHING
-        if self.held:
-            self.overridden = True
-            return OVERRIDE
-        self.held = True
-        return HOLD

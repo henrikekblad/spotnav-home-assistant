@@ -1449,7 +1449,6 @@ def test_the_cores_constants_are_todays() -> None:
     assert PERSON_HOLD_STOP_GAP_S == controller.PERSON_HOLD_STOP_GAP_S
     assert PERSON_HOLD_MAX_STOPS == controller.PERSON_HOLD_MAX_STOPS
     assert PERSON_HOLD_WINDOW_S == controller.PERSON_HOLD_WINDOW_S
-    assert SAFETY_RESUME_GAP_S == controller.SAFETY_RESUME_GAP_S
     assert {item.name for item in dataclass_fields(ChargeSession)} >= {"owner", "manual", "span_pause"}
 
 
