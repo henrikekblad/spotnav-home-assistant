@@ -249,9 +249,7 @@ class OwnershipShadow:
         self._close(token)
         self._settle()
 
-    def end(
-        self, token: ShadowToken, event: Event, *, outcome: CommandOutcome | None = None, **_previous: Any
-    ) -> None:
+    def end(self, token: ShadowToken, event: Event, *, outcome: CommandOutcome | None = None) -> None:
         """Close a feed: `event` is decided now unless it was at once, and `outcome` is what became of the start or
         stop it asked for. Never raises."""
         self._close(token)
@@ -295,16 +293,9 @@ class OwnershipShadow:
         token.resulted = True
         token.result_order = self._tick()
 
-    def feed(self, event: Event, *, outcome: CommandOutcome | None = None, **_previous: Any) -> None:
+        def feed(self, event: Event, *, outcome: CommandOutcome | None = None) -> None:
         """`begin` and `end` at once."""
         self.end(self.begin(), event, outcome=outcome)
-
-    def choose(self, site: str, today: bool, core: bool) -> bool:
-        """The core's choice (the previous logic's beside it goes with its branches)."""
-        return core
-
-    def check(self, fields: Any, where: str) -> None:
-        self.check_intent(where)
 
     def restart(self, event: Event, session: ChargeSession) -> None:
         """The record was read back after a restart (`session`: the core's own record, or one migrated from today's

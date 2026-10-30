@@ -9,7 +9,6 @@ import pytest
 from homeassistant.core import HomeAssistant
 
 from custom_components.spotnav.const import CONF_CHARGE_CONTROL
-from custom_components.spotnav.core.ownership import CarFacts
 from custom_components.spotnav.execution.auto_execution import AutoExecutor
 from custom_components.spotnav.execution.controller import ChargingController, SESSION_STORE_KEY
 
@@ -82,73 +81,6 @@ async def test_rev_g_suns_charge_survives_a_real_ha_restart(
 
 
 # ---------------------------------------------------------------------------------------------- (a) inertness
-
-
-async def test_rev_g_off_the_stop_under_a_persons_stop_reads_no_state_of_charge(
-    hass: HomeAssistant, timers: FakeScheduler, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """Option off. Inside a window, after the car ended a person's charge (known full), with the hold guard
-    blocking (an Auto plan under the person's Stop, as `__init__` wires it): the charger begins by itself and the
-    stop under the person's Stop is sent. Main reads no state of charge for that stop; the branch's
-    `_recheck_facts` calls `_car_ended_holds_window` -> `_car_facts` -> `SocReader.read`, which may move
-    and save the SoC anchor (`soc_estimate.SocReader.read` -> `_save`): a read and a storage write the shadow adds."""
-    from homeassistant.util import dt as dt_util
-
-    from .pause_world import two_windows
-
-    world = await pause_world(hass, timers, plan=two_windows())
-    controller = world.controller
-    controller.set_hold_guard(lambda: True)
-    await world.executor.async_manual_stop()
-    # A schedule installed after the Stop (the person's Stop clears the plan it found; a webhook or a service call
-    # installs another), with a window open now.
-    from .helpers import install_schedule
-
-    await install_schedule(controller, two_windows())
-    await hass.async_block_till_done()
-    assert controller.plan is not None
-    reads: list[Any] = []
-    controller._soc_reader = lambda vehicle: reads.append(vehicle)  # noqa: SLF001
-    controller._car_ended_at = dt_util.utcnow() - timedelta(minutes=5)  # noqa: SLF001
-    controller._car_ended_soc = 90  # noqa: SLF001
-    # Known full for the plan (read at 90 % against a target of 90 %): the rule would read whether its need grew.
-    monkeypatch.setattr(controller, "_car_plan_facts", lambda: CarFacts(plan_target=90.0, plan_full_at=90.0))
-    stops = len(world.stops)
-
-    await world.switch("on")
-    assert len(world.stops) == stops + 1, "the stop under the person's Stop went out"
-    assert reads == [], f"the stop read the car's state of charge {len(reads)} time(s)"
-    await world.shutdown()
-
-
-@pytest.mark.parametrize("what", ["claim", "hold", "stray", "person_hold"])
-async def test_rev_g_off_a_recheck_today_declines_reads_no_state_of_charge(
-    hass: HomeAssistant, timers: FakeScheduler, monkeypatch: pytest.MonkeyPatch, what: str
-) -> None:
-    """Option off. A background task's re-check whose rule today short-circuits (Auto holds it back) reads nothing
-    of the car: the shadow's facts take the car-ended rule's answer from today's own read, never one of their own."""
-    from homeassistant.util import dt as dt_util
-
-    from .pause_world import two_windows
-
-    world = await pause_world(hass, timers, plan=two_windows())
-    controller = world.controller
-    reads: list[Any] = []
-    controller._soc_reader = lambda vehicle: reads.append(vehicle)  # noqa: SLF001
-    controller._car_ended_at = dt_util.utcnow() - timedelta(minutes=5)  # noqa: SLF001
-    controller._car_ended_soc = 90  # noqa: SLF001
-    # Known full for the plan (read at 90 % against a target of 90 %): the rule would read whether its need grew.
-    monkeypatch.setattr(controller, "_car_plan_facts", lambda: CarFacts(plan_target=90.0, plan_full_at=90.0))
-    sent: list[str] = []
-
-    async def act() -> bool:
-        sent.append(what)
-        return True
-
-    async with controller._lock:  # noqa: SLF001
-        assert not await controller._recheck(what, lambda: False, act)  # noqa: SLF001
-    assert (sent, reads) == ([], []), f"the re-check sent {sent} and read the car's state of charge {len(reads)} time(s)"
-    await world.shutdown()
 
 
 # ---------------------------------------------------------------------------------------------- (c) leaks

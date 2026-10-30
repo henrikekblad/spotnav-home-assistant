@@ -57,7 +57,6 @@ from ..pricing.price_source import effective_settings, plan_revision_for
 from .controller import (
     AUTOMATIC_BALANCING_RESUME,
     AUTOMATIC_PERSON_RESUME,
-    AUTOMATIC_START,
     AUTOMATIC_STOP,
     ChargingController,
     ChargingExecutionError,
@@ -917,10 +916,10 @@ class AutoExecutor:
                 sun_keeps = False if floors else self._sun_keeps_charge()
                 event = core_events.StrategyChange(strategy=STRATEGY_SOLAR, plan_applied=True, sun_keeps=sun_keeps)
                 token = self._shadow.begin()
-                stop = not sun_keeps and not floors
+                # The core decides the stop. No verdict (it could not decide): nothing is stopped, and the plan is
+                # cleared as the strategy wants.
                 verdict = self._shadow.verdict(event, token)
-                if verdict is not None:
-                    stop = self._shadow.choose("strategy", stop, ("stop", "strategy") in verdict)
+                stop = verdict is not None and ("stop", "strategy") in verdict
                 stopped: CommandOutcome | None = CommandOutcome(False) if stop else None
                 try:
                     if stop:
@@ -938,7 +937,7 @@ class AutoExecutor:
                     await self._notify_change()
                     return applied
                 finally:
-                    self._shadow.end(token, event, legacy=("stop",) if stop else (), outcome=stopped)
+                    self._shadow.end(token, event, outcome=stopped)
                 self._applied = None
                 self._last_error = None
                 await self._notify_change()
@@ -1262,24 +1261,23 @@ class AutoExecutor:
         """
         connected = self._shadow_connected(fallback=False, kind=core_events.PersonStart.kind)
         token = self._shadow.begin(early=None if connected is ... else core_events.PersonStart(connected=connected))
-        note: dict[str, Any] = {"legacy": [], "outcome": None, "token": token}
+        note: dict[str, Any] = {"outcome": None, "token": token}
         try:
             await self._manual_start_body(amps, note)
         finally:
             if connected is ...:
+                # The core could not be told (a failure, told): the session takes the pause the Start stored.
                 self._shadow.cancel(token)
+                self._shadow.check_intent("person_start")
             else:
-                self._shadow.end(
-                    token,
-                    core_events.PersonStart(connected=connected),
-                    legacy=note["legacy"],
-                    outcome=note["outcome"],
-                )
+                self._shadow.end(token, core_events.PersonStart(connected=connected), outcome=note["outcome"])
 
     def _core_stop_scope(self, connected: Any, scope: str | None) -> str | None:
-        """When the core drives: the plug-in session a person's Stop pauses Auto for, as it decides it (`None`: a
-        pause they chose for a span is kept). Otherwise today's `scope`."""
-        if not self._shadow.drives or connected is ...:
+        """The plug-in session a person's Stop pauses Auto for, as the core decided it (`None`: a pause they chose for
+        a span is kept). When the core could not be told the Stop (what the charger says of a car could not be read: a
+        failure, told), `scope` as the boundary reads it: a person's Stop is stored all the same, and the session takes
+        it from the stored pause (`check_intent`)."""
+        if connected is ...:
             return scope
         try:
             session = self._shadow.session
@@ -1320,7 +1318,6 @@ class AutoExecutor:
         save_error: Exception | None = None
         self._manual_write_in_flight = True
         try:
-            note["legacy"].append("start")
             note["outcome"] = CommandOutcome(False)
             started = await self._controller.async_start(amps, manual=True)
             note["outcome"] = CommandOutcome(
@@ -1594,16 +1591,13 @@ class AutoExecutor:
         """The pause itself. Runs with this boundary's lock held, and never translates failures."""
         token = self._shadow.begin()
         plan_applied = self.applied is not None
-        note: dict[str, Any] = {"legacy": [], "outcome": None, "stored": False}
+        note: dict[str, Any] = {"outcome": None, "stored": False}
         try:
             await self._pause_body(choice, note)
         finally:
             if note["stored"]:
                 self._shadow.end(
-                    token,
-                    core_events.PauseChoiceMade(choice=choice, plan_applied=plan_applied),
-                    legacy=note["legacy"],
-                    outcome=note["outcome"],
+                    token, core_events.PauseChoiceMade(choice=choice, plan_applied=plan_applied), outcome=note["outcome"]
                 )
             else:
                 self._shadow.cancel(token)
@@ -1627,7 +1621,6 @@ class AutoExecutor:
             self._last_error = None
             await self._notify_change()
             return
-        note["legacy"].append("stop")
         note["outcome"] = CommandOutcome(False)
         try:
             # Through the controller: the same path every stop uses, and the only code here that
@@ -1831,10 +1824,12 @@ class AutoExecutor:
             await self._immediate_stop_body(note)
         finally:
             if connected is ...:
+                # The core could not be told (a failure, told): the session takes the pause the Stop stored.
                 self._shadow.cancel(token)
+                self._shadow.check_intent("person_stop")
             else:
                 self._shadow.end(
-                    token, core_events.PersonStop(connected=connected), legacy=("stop",), outcome=note["outcome"]
+                    token, core_events.PersonStop(connected=connected), outcome=note["outcome"]
                 )
 
     async def _immediate_stop_body(self, note: dict[str, Any]) -> None:
@@ -1958,19 +1953,11 @@ class AutoExecutor:
         self._hass.async_create_task(self._async_connection_changed(previous, connected, want))
 
     async def _async_connection_changed(self, previous: bool | None, connected: bool, want: Any = ...) -> None:
-        """Decided under the lock against the stored pause:
-
-        * an unplug ends a pause of the plug-in the car was in; one given with no car plugged in waits for
-          the plug-in after it;
-        * a plug-in starts the session a pause given with no car was for, and so does the first connection
-          known after a restart when it is a car (plugged in while Home Assistant was down); any other
-          plug-in means the session its pause was given in is over (an unplug nobody saw: a restart, a
-          charger offline);
-        * the first connection known after a restart, no car: the session ended while nobody looked.
-
-        A status that says nothing is never a plug-in or an unplug: the controller reports only connections
-        the charger stated.
-        """
+        """The manual pause the core decided for a plug-in or an unplug (`want`), written under the lock to the stored
+        pause: an unplug ends a pause of the plug-in the car was in, one given with no car waits for the plug-in after
+        it, a plug-in starts the session such a pause was for, and any other plug-in ends the session its pause was
+        given in (`core.ownership`). A status that says nothing is never a plug-in or an unplug: the controller
+        reports only connections the charger stated."""
         try:
             async with self._lock:
                 intent = self.pause_intent
@@ -1979,32 +1966,13 @@ class AutoExecutor:
                 if want is ...:
                     # Told outside the controller's connection feed: the core's session has decided it since.
                     want = self._shadow.session.manual
-                if self._shadow.drives and want is not ...:
-                    await self._core_connection_changed(intent, connected, want)
-                    return
-                waiting = intent.scope == MANUAL_SCOPE_NEXT_PLUG_IN
-                if connected and previous is not True and waiting:
-                    await self._store.async_update(
-                        self._entry_id,
-                        mutate=lambda current: replace(
-                            current, pause=replace(current.pause, scope=MANUAL_SCOPE_PLUG_IN)
-                        )
-                        if current.pause == intent
-                        else current,
-                    )
-                    self._shadow.check_intent("manual_pause_plug_in")
-                    await self._notify_change()
-                    return
-                if waiting:
-                    return
-                if (connected and previous is False) or not connected:
-                    await self._end_manual_pause_locked("plugged in" if connected else "unplugged")
+                await self._core_connection_changed(intent, connected, want)
         except Exception as err:  # noqa: BLE001 - a callback's task must not raise; the next report decides
             _LOGGER.warning("Ending a manual pause at a plug-in or unplug failed: %s", type(err).__name__)
 
     async def _core_connection_changed(self, intent: PauseIntent, connected: bool, manual: Any) -> None:
-        """When the core drives: a plug-in or an unplug leaves the manual pause the core decided for it when the
-        controller saw the connection (`manual`): ended, moved to the plug-in, or as it was."""
+        """A plug-in or an unplug leaves the manual pause the core decided for it when the controller saw the
+        connection (`manual`): ended, moved to the plug-in, or as it was."""
         if manual is not None and (manual.action, manual.scope) == (intent.action, intent.scope):
             return
         if manual is None:
@@ -2151,23 +2119,18 @@ class AutoExecutor:
             settings = self._store.settings(self._entry_id)
             token = self._shadow.begin()
             strategy_ok = settings.strategy in (STRATEGY_SOLAR, STRATEGY_HYBRID)
-            legacy: list[str] = []
             outcome: CommandOutcome | None = None
             try:
                 verdict = self._shadow.verdict(core_events.SolarStart(strategy_ok=strategy_ok), token)
-                refused = pause_blocks_execution(settings) or not strategy_ok
-                if refused if verdict is None else not self._shadow.choose("solar_start", not refused, ("start", "solar") in verdict):
+                if verdict is None or ("start", "solar") not in verdict:
                     return False
-                legacy.append("start")
                 outcome = CommandOutcome(False)
                 started = await self._controller.async_start(amps, cause="solar")
                 outcome = CommandOutcome(
                     started, balancing_held=not started and self._controller.start_held_by_balancing
                 )
             finally:
-                self._shadow.end(
-                    token, core_events.SolarStart(strategy_ok=strategy_ok), legacy=legacy, outcome=outcome
-                )
+                self._shadow.end(token, core_events.SolarStart(strategy_ok=strategy_ok), outcome=outcome)
             await self._notify_change()
             return started
 
@@ -2182,15 +2145,15 @@ class AutoExecutor:
         """
         async with self._lock:
             token = self._shadow.begin()
-            legacy: list[str] = []
             outcome: CommandOutcome | None = None
             try:
+                # Never a person's charge under their pause, nor the floor's (`min_soc_floor.py`): the core decides.
                 verdict = self._shadow.verdict(core_events.SolarStop(), token)
-                # Never the floor's charge (`min_soc_floor.py`): it is not the sun's to stop.
-                allowed = self.automatic_allowed(AUTOMATIC_STOP) and self._controller.charge_origin != ORIGIN_MIN_SOC
-                if not allowed if verdict is None else not self._shadow.choose("solar_stop", allowed, ("stop", "solar") in verdict):
+                if verdict is None:
+                    # It could not decide: nothing is sent, and the sun asks again at its next evaluation.
+                    return False
+                if ("stop", "solar") not in verdict:
                     return True
-                legacy.append("stop")
                 outcome = CommandOutcome(False)
                 try:
                     await self._controller.async_stop(urgent=False)
@@ -2200,7 +2163,7 @@ class AutoExecutor:
                     return False
                 outcome = self._shadow_stop_outcome()
             finally:
-                self._shadow.end(token, core_events.SolarStop(), legacy=legacy, outcome=outcome)
+                self._shadow.end(token, core_events.SolarStop(), outcome=outcome)
             await self._notify_change()
             return True
 
@@ -2236,24 +2199,11 @@ class AutoExecutor:
             controller = self._controller
             token = self._shadow.begin()
             facts = self._shadow_take_over_facts(settings)
-            legacy: list[str] = []
             outcome: CommandOutcome | None = None
             try:
                 verdict = None if facts is None else self._shadow.verdict(core_events.SolarStop(take_over=True, **facts), token)
-                if verdict is not None:
-                    if ("stop", "take_over") not in verdict:
-                        return False
-                elif pause_blocks_execution(settings) or settings.strategy not in (
-                    STRATEGY_SOLAR, STRATEGY_HYBRID
-                ):
+                if verdict is None or ("stop", "take_over") not in verdict:
                     return False
-                elif controller.top_off_until is not None or (
-                    settings.strategy == STRATEGY_HYBRID and controller.plan_window_active_now
-                ):
-                    return False
-                elif not controller.self_started_charge():
-                    return False
-                legacy.append("stop")
                 outcome = CommandOutcome(False)
                 await controller.async_stop(urgent=False)
                 outcome = self._shadow_stop_outcome()
@@ -2261,9 +2211,7 @@ class AutoExecutor:
                 if facts is None:
                     self._shadow.cancel(token)
                 else:
-                    self._shadow.end(
-                        token, core_events.SolarStop(take_over=True, **facts), legacy=legacy, outcome=outcome
-                    )
+                    self._shadow.end(token, core_events.SolarStop(take_over=True, **facts), outcome=outcome)
             await self._notify_change()
             return True
 
@@ -2339,27 +2287,17 @@ class AutoExecutor:
             connected = controller.adapter.vehicle_connected()
             event = core_events.MinSocStart(connected=connected)
             token = self._shadow.begin()
-            legacy: list[str] = []
             outcome: CommandOutcome | None = None
             started = False
             try:
                 verdict = self._shadow.verdict(event, token)
-                refused = (
-                    connected is False
-                    or not self.automatic_allowed(AUTOMATIC_START)
-                    or controller.charge_origin in ("manual", ORIGIN_MIN_SOC)
-                    or controller.balancing_holds(ORIGIN_MIN_SOC)
-                )
-                if refused if verdict is None else not self._shadow.choose(
-                    "min_soc_start", not refused, ("start", REASON_MIN_SOC) in verdict
-                ):
+                if verdict is None or ("start", REASON_MIN_SOC) not in verdict:
                     return False
-                legacy.append("start")
                 outcome = CommandOutcome(False)
                 started = await controller.async_start(amps, cause=ORIGIN_MIN_SOC)
                 outcome = CommandOutcome(started, balancing_held=not started and controller.start_held_by_balancing)
             finally:
-                self._shadow.end(token, event, legacy=legacy, outcome=outcome)
+                self._shadow.end(token, event, outcome=outcome)
             await self._notify_change()
             return started
 
@@ -2382,26 +2320,21 @@ class AutoExecutor:
                 handed = core_events.HAND_TO_NOBODY
             event = core_events.MinSocEnd(handed_to=handed)
             token = self._shadow.begin()
-            legacy: list[str] = []
             outcome: CommandOutcome | None = None
             ended = False
             try:
                 verdict = self._shadow.verdict(event, token)
                 if handed:
+                    # The core handed the charge over with no command; the controller says so once it did.
                     await controller.async_take_min_soc_charge("plan_window" if handed == core_events.HAND_TO_PLAN else "solar")
-                    ended = True
-                else:
-                    stop = self.automatic_allowed(AUTOMATIC_STOP)
-                    if verdict is not None:
-                        stop = self._shadow.choose("min_soc_end", stop, ("stop", REASON_MIN_SOC) in verdict)
-                    if stop:
-                        legacy.append("stop")
-                        outcome = CommandOutcome(False)
-                        await controller.async_stop(urgent=False)
-                        outcome = self._shadow_stop_outcome()
-                        ended = outcome.executed
+                    ended = verdict is not None
+                elif verdict is not None and ("stop", REASON_MIN_SOC) in verdict:
+                    outcome = CommandOutcome(False)
+                    await controller.async_stop(urgent=False)
+                    outcome = self._shadow_stop_outcome()
+                    ended = outcome.executed
             finally:
-                self._shadow.end(token, event, legacy=legacy, outcome=outcome)
+                self._shadow.end(token, event, outcome=outcome)
             await self._notify_change()
             return ended
 

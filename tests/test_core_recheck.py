@@ -360,7 +360,7 @@ async def test_a_report_that_lands_while_the_stop_under_a_persons_stop_is_on_its
 
 def _break_the_first_person_hold_recheck(controller, monkeypatch) -> list[str]:
     """The facts of the first re-check of a stop under a person's Stop cannot be read: that `Recheck` is never fed
-    (a failure; today's rule acts for that one event)."""
+    (a failure: nothing is sent for that one event)."""
     real = controller._recheck_facts  # noqa: SLF001
     broken: list[str] = []
 
@@ -374,28 +374,28 @@ def _break_the_first_person_hold_recheck(controller, monkeypatch) -> list[str]:
     return broken
 
 
-# The failed feed is a failure on purpose: the core never hears the stop's result, so the owner after it differs once.
+# The failed feed is a failure on purpose: nothing is sent for it, and the core never hears of a stop.
 @pytest.mark.core_failure_expected
-@pytest.mark.parametrize("drives", [True])
 async def test_a_stop_whose_recheck_was_never_fed_does_not_hold_off_the_next(
-    hass: HomeAssistant, timers: FakeScheduler, monkeypatch, freezer, drives: bool
+    hass: HomeAssistant, timers: FakeScheduler, monkeypatch, freezer
 ) -> None:
-    """The stop under a person's Stop went out, but its re-check could not be fed, so the core never heard of it and
-    still awaits it. Once its task has ended a gap ago, that awaited stop is dropped (`hold_stop_overdue`): the
-    charger beginning again is stopped as ever, not left alone until the next plug-in."""
+    """The stop under a person's Stop was decided, but its re-check could not be fed: nothing is sent for it, and the
+    core still awaits it. Once its task has ended a gap ago, that awaited stop is dropped (`hold_stop_overdue`): the
+    charger reporting it charges is stopped as ever, not left alone until the next plug-in."""
     world = await pause_world(hass, timers)
     await world.executor.async_manual_stop()
     broken = _break_the_first_person_hold_recheck(world.controller, monkeypatch)
     stops = len(world.stops)
 
-    await world.switch("on")  # the charger begins by itself: stopped (today's rule acts for the failed event)
-    assert broken and len(world.stops) == stops + 1
-    if drives:
-        assert world.controller.ownership_shadow.session.hold_stop_pending, "the core never heard back"
+    await world.switch("on")  # the charger begins by itself: its stop's re-check fails, so nothing is sent
+    assert broken and len(world.stops) == stops
+    assert world.controller.ownership_shadow.session.hold_stop_pending, "the core never heard back"
 
     freezer.tick(timedelta(seconds=31))
-    await world.switch("on")  # it begins again, a gap later
-    assert len(world.stops) == stops + 2, "stopped again: the awaited stop no longer holds the next off"
+    world.controller._cancel_person_hold_retry()  # noqa: SLF001 - the report below looks again first
+    hass.states.async_set(SWITCH, "on", {"report": "a gap later"})  # it reports charging again, a gap later
+    await hass.async_block_till_done()
+    assert len(world.stops) == stops + 1, "stopped now: the awaited stop no longer holds the next off"
     assert not world.controller._c7.stop_pending  # noqa: SLF001
     await world.shutdown()
 
@@ -416,7 +416,7 @@ async def test_an_overdue_stop_is_looked_at_again_even_without_a_report(
 
     hass.services.async_register("switch", "turn_off", ignored)
     await world.switch("on")
-    assert len(calls) == 1
+    assert calls == [], "nothing is sent for the event that failed"
     controller = world.controller
     assert controller._person_hold_retry_cancel is not None, "looked at again once overdue"  # noqa: SLF001
 
@@ -424,6 +424,7 @@ async def test_an_overdue_stop_is_looked_at_again_even_without_a_report(
     controller._cancel_person_hold_retry()  # noqa: SLF001 - fired by hand below, so not left behind
     controller._person_hold_retry_callback(dt_util.utcnow())  # noqa: SLF001 - that timer's own entry
     await hass.async_block_till_done()
-    assert len(calls) == 2
+    assert len(calls) == 1
     assert len(controller._c7.stop_times) == 1, "the stop the core heard of is counted"  # noqa: SLF001
+    controller._cancel_person_hold_retry()  # noqa: SLF001 - the charger ignores it: not left behind
     await world.shutdown()
