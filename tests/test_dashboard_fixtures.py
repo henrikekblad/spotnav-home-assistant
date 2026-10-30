@@ -53,7 +53,7 @@ from tests.relay import serve
 from tests.relay import cheap_night_day
 from tests.relay import TODAY
 from tests.relay import SE4
-from .world import controller_of
+from .world import controller_of, measurement_lost_a_while
 from custom_components.spotnav.runtime import domain_data
 
 pytestmark = pytest.mark.usefixtures("offline_relay")
@@ -199,6 +199,8 @@ async def _direct_site_charger(hass: HomeAssistant, *, entry_id: str) -> MockCon
     assert await hass.config_entries.async_setup(site.entry_id)
     await hass.async_block_till_done()
     await go_auto(hass, charger.entry_id, strategy=STRATEGY_CHEAPEST)
+    # Its meter is never read: long enough for the card to name it.
+    measurement_lost_a_while(hass, site.entry_id)
     return charger
 
 

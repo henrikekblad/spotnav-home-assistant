@@ -39,7 +39,7 @@ from custom_components.spotnav.vehicles.discovery_decisions import DECISION_DOMA
 from tests.test_dashboard_api import NOW
 from tests.world import go_auto
 from tests.world import admin, non_admin, ws_call
-from tests.world import forecast_entry, setup_charger, setup_site_with_charger
+from tests.world import forecast_entry, measurement_lost_a_while, setup_charger, setup_site_with_charger
 from tests.world import add_car
 from custom_components.spotnav.runtime import controller_for, domain_data
 from custom_components.spotnav.pricing.price_store import price_duplicates
@@ -98,8 +98,9 @@ async def test_the_webhook_dashboard_is_the_websocket_dashboard_bar_writability(
     hass: HomeAssistant, hass_client_no_auth, hass_ws_client, offline_relay: None
 ) -> None:
     with freeze_time(NOW):
-        charger, _site = await setup_site_with_charger(hass, charger_entry_id="entry_dash")
+        charger, site = await setup_site_with_charger(hass, charger_entry_id="entry_dash")
         await go_auto(hass, charger.entry_id, strategy=STRATEGY_CHEAPEST)
+        measurement_lost_a_while(hass, site.entry_id)
     client = await hass_client_no_auth()
     socket = await admin(hass, hass_ws_client)
     request = {"type": "spotnav/get_dashboard", "api_version": 1, "charger_id": charger.entry_id}
