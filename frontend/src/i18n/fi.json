@@ -878,5 +878,17 @@
   "display.chartAxis.fromNow": "Nyt alkaen",
   "display.chartAxis.fromNowHelp": "Tästä tunnista viimeisen julkaistun vuorokauden loppuun. Kunnes huomisen hinnat on julkaistu, sama kuin Vuorokausi.",
   "display.priceUnit": "Hinnan yksikkö",
-  "display.priceUnit.example": "Esimerkiksi {price}"
+  "display.priceUnit.example": "Esimerkiksi {price}",
+  "setup.line.one": "Aloitus: {count} asia jäljellä",
+  "setup.line.other": "Aloitus: {count} asiaa jäljellä",
+  "setup.heading": "Aloitus",
+  "setup.dismiss": "Ei tarvita",
+  "setup.carLevel.text": "Lisää auton lataustaso: suunnitelma lataa tavoitetasoon, mutta mikään ei vielä kerro auton tasoa.",
+  "setup.carLevel.action": "Avaa Suunnitelma",
+  "setup.site.text": "Lisää kohde, jossa on talon sähkömittari, kuormanhallintaa pääsulakkeen alla ja aurinkolatausta varten.",
+  "setup.site.action": "Lisää kohde",
+  "setup.phone.text": "Valitse puhelin, joka saa tiedon, kun lataus pysähtyy odottamatta tai on valmis.",
+  "setup.phone.action": "Valitse puhelin",
+  "setup.app.text": "Hanki SpotNav-sovellus Androidille ja seuraa ja ohjaa latausta puhelimesta.",
+  "setup.app.action": "Hanki sovellus"
 }

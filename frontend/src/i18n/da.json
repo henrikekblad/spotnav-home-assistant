@@ -878,5 +878,17 @@
   "display.chartAxis.fromNow": "Fra nu",
   "display.chartAxis.fromNowHelp": "Fra denne time til slutningen af det sidste offentliggjorte døgn. Indtil morgendagens priser er ude, det samme som Døgn.",
   "display.priceUnit": "Prisenhed",
-  "display.priceUnit.example": "For eksempel {price}"
+  "display.priceUnit.example": "For eksempel {price}",
+  "setup.line.one": "Kom i gang: {count} ting tilbage",
+  "setup.line.other": "Kom i gang: {count} ting tilbage",
+  "setup.heading": "Kom i gang",
+  "setup.dismiss": "Ikke nødvendigt",
+  "setup.carLevel.text": "Tilføj bilens ladetilstand: planen lader til et mål, men intet rapporterer bilens niveau endnu.",
+  "setup.carLevel.action": "Åbn Plan",
+  "setup.site.text": "Tilføj et anlæg med husets elmåler, til lastbalancering under hovedsikringen og opladning med solstrøm.",
+  "setup.site.action": "Tilføj anlæg",
+  "setup.phone.text": "Vælg en telefon, der får besked, når en opladning stopper uventet eller er færdig.",
+  "setup.phone.action": "Vælg telefon",
+  "setup.app.text": "Hent SpotNav-appen til Android, og følg og styr opladningen fra telefonen.",
+  "setup.app.action": "Hent appen"
 }

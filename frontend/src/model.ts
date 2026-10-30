@@ -5,6 +5,7 @@
 // `plan.installed`, `plan.relation` decides labelling, chart rows only from `prices.intervals`, and
 // "charging" only from `live.charging`.
 
+import { setupRowsOf, type SetupRow } from "./setup-checklist";
 import {
   chartSeries,
   DEFAULT_CHART_AXIS,
@@ -308,6 +309,8 @@ export interface CardModel {
   priceEntry: PriceEntryFacts | null;
   /** The area's price provider and its notice (`prices.provider`); `null` without one. */
   priceProvider: PriceProvider | null;
+  /** What is still left to set up for this charger, the "Get started" rows (shown to an administrator only). */
+  setup: SetupRow[];
   technicalCodes: string[];
 }
 
@@ -943,6 +946,7 @@ export function buildModel(input: BuildInput): CardModel {
     priceSource: market?.source ?? null,
     priceEntry: priceEntryFor(dashboard),
     priceProvider: dashboard.prices.provider,
+    setup: setupRowsOf(dashboard.setup),
     technicalCodes,
   };
 }

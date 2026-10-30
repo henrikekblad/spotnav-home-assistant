@@ -112,6 +112,7 @@ import {
 } from "./camera-editor";
 import { issueText } from "./status";
 import { keyEditor, priceProviderNodes } from "./price-provider";
+import { setupLineText, setupSection, type SetupRowId } from "./setup-checklist";
 import { historyBody, type HistoryState, type HistoryUi } from "./history";
 import { connectionLabel, vehicleLineFor } from "./vehicle-line";
 import type { ChargeBarFacts } from "./charge-bar";
@@ -270,6 +271,8 @@ export interface CardViewInput {
   onAnswerIdentification?: (vehicleId: string) => void;
   /** One value of the Settings page: the card writes it and answers `null`, or the sentence to show. */
   onWriteValue?: (write: ValueWrite) => Promise<string | null>;
+  /** A "Get started" row answered "Not needed": the card asks the integration to keep it away, then reads again. */
+  onDismissSetup?: (id: SetupRowId) => void;
   /** Where Settings was left for a child dialog: the page returns there (owned by the card, kept across renders). */
   overviewPlace?: OverviewPlaceHolder;
   /** A picture for the camera's editors: the camera's picture now, or a car's reference thumbnail. */
@@ -841,12 +844,20 @@ function capabilityStateText(language: Language, state: "available" | "unavailab
   return translate(language, state === "available" ? "cap.available" : "cap.unavailable");
 }
 
-/** The issue list, in the model's stable order, with codes only as subdued technical detail. */
-export function issueListBody(doc: Document, model: CardModel): HTMLElement {
+/**
+ * The issue list, in the model's stable order, with codes only as subdued technical detail; then, for an
+ * administrator, the "Get started" section (`setup`) when anything is left to set up.
+ */
+export function issueListBody(doc: Document, model: CardModel, setup: HTMLElement | null = null): HTMLElement {
   const body = element(doc, "div");
-  body.append(element(doc, "p", `${C.muted} ${C.dialogIntro}`, translate(model.language, "dialog.issuesIntro")));
+  if (model.issues.length > 0 || setup === null) {
+    body.append(element(doc, "p", `${C.muted} ${C.dialogIntro}`, translate(model.language, "dialog.issuesIntro")));
+  }
   for (const issue of model.issues) {
     body.append(issueRow(doc, model, issue));
+  }
+  if (setup !== null) {
+    body.append(setup);
   }
   return body;
 }
@@ -1212,7 +1223,8 @@ export function createCardView(input: CardViewInput): CardView {
   }
 
   const severity = bannerSeverity(model);
-  if (severity !== null && !bannerRepeatsStatus(model, severity)) {
+  const issueBannerShown = severity !== null && !bannerRepeatsStatus(model, severity);
+  if (severity !== null && issueBannerShown) {
     const banner = element(doc, "button", `${C.banner} ${severity === "blocking" ? C.bannerBlocking : C.bannerNotice}`);
     banner.type = "button";
     banner.append(
@@ -1224,6 +1236,16 @@ export function createCardView(input: CardViewInput): CardView {
       ),
     );
     banner.append(element(doc, "span", C.bannerCount, issueCountText(model.language, model.issues.length)));
+    banner.addEventListener("click", () => {
+      openIssues(banner);
+    });
+    card.append(banner);
+  } else if (input.isAdmin && model.setup.length > 0) {
+    // Nothing more serious to say: the same line says what is left to set up, and opens the same dialog.
+    const banner = element(doc, "button", `${C.banner} ${C.bannerNotice}`);
+    banner.type = "button";
+    banner.dataset["banner"] = "setup";
+    banner.append(element(doc, "span", undefined, setupLineText(model.language, model.setup.length)));
     banner.addEventListener("click", () => {
       openIssues(banner);
     });
@@ -2011,8 +2033,40 @@ export function createCardView(input: CardViewInput): CardView {
     settingsOverviewDialog.hide({ restoreFocus: false });
     issuesDialog.show({
       title: translate(model.language, "dialog.issues"),
-      body: issueListBody(doc, model),
+      body: issueListBody(doc, model, setupNode()),
       opener,
+    });
+  }
+
+  /** The dialog's "Get started" section, for an administrator with something left to set up; else `null`. */
+  function setupNode(): HTMLElement | null {
+    if (!input.isAdmin || model.setup.length === 0) {
+      return null;
+    }
+    return setupSection(doc, {
+      language: model.language,
+      rows: model.setup,
+      openPlan: () => {
+        issuesDialog.hide({ restoreFocus: false });
+        input.onOpenSettings("plan");
+      },
+      openNotifications: () => {
+        openSettingsOverview();
+        const section = overviewPanel().querySelector<HTMLElement>('[data-section="notifications"]');
+        section?.scrollIntoView?.({ block: "start" });
+        section?.querySelector<HTMLElement>("button")?.focus({ preventScroll: true });
+      },
+      navigate: (path) => {
+        issuesDialog.hide({ restoreFocus: false });
+        navigateTo(doc, path);
+      },
+      openExternal: (url) => {
+        doc.defaultView?.open(url, "_blank", "noopener,noreferrer");
+      },
+      dismiss: (id: SetupRowId) => {
+        issuesDialog.hide({ restoreFocus: false });
+        input.onDismissSetup?.(id);
+      },
     });
   }
 

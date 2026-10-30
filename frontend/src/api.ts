@@ -275,6 +275,14 @@ export async function answerPriceDuplicate(
   });
 }
 
+/**
+ * A "Get started" row answered "Not needed" (`spotnav/dismiss_setup_item`, administrators only): kept away for the
+ * whole installation. Answers `{ok: true}`; a row that cannot be dismissed is an error with a stable code.
+ */
+export async function dismissSetupItem(hass: HomeAssistantLike, item: string): Promise<unknown> {
+  return await call<unknown>(hass, { type: "spotnav/dismiss_setup_item", item });
+}
+
 /** What saving the installation's ENTSO-E key answered: stored and accepted, or a stable code. */
 export interface EntsoeKeyAnswer {
   ok: boolean;

@@ -878,5 +878,17 @@
   "display.chartAxis.fromNow": "À partir de maintenant",
   "display.chartAxis.fromNowHelp": "De l'heure en cours à la fin du dernier jour publié. Tant que les prix de demain ne sont pas publiés, identique à Journée.",
   "display.priceUnit": "Unité de prix",
-  "display.priceUnit.example": "Par exemple {price}"
+  "display.priceUnit.example": "Par exemple {price}",
+  "setup.line.one": "Pour commencer : encore {count} point",
+  "setup.line.other": "Pour commencer : encore {count} points",
+  "setup.heading": "Pour commencer",
+  "setup.dismiss": "Pas nécessaire",
+  "setup.carLevel.text": "Ajoutez le niveau de charge de la voiture : le plan charge jusqu'à un niveau cible, mais rien ne donne encore le niveau de la voiture.",
+  "setup.carLevel.action": "Ouvrir Plan",
+  "setup.site.text": "Ajoutez un site avec le compteur électrique de la maison, pour l'équilibrage de charge sous le disjoncteur principal et la recharge solaire.",
+  "setup.site.action": "Ajouter un site",
+  "setup.phone.text": "Choisissez un téléphone prévenu quand une recharge s'arrête de façon inattendue ou est terminée.",
+  "setup.phone.action": "Choisir un téléphone",
+  "setup.app.text": "Installez l'application SpotNav pour Android pour suivre et piloter la recharge depuis votre téléphone.",
+  "setup.app.action": "Obtenir l'application"
 }

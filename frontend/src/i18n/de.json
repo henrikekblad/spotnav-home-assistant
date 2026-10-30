@@ -878,5 +878,17 @@
   "display.chartAxis.fromNow": "Ab jetzt",
   "display.chartAxis.fromNowHelp": "Von dieser Stunde bis zum Ende des letzten veröffentlichten Tages. Bis die Preise für morgen da sind, wie Tag.",
   "display.priceUnit": "Preiseinheit",
-  "display.priceUnit.example": "Zum Beispiel {price}"
+  "display.priceUnit.example": "Zum Beispiel {price}",
+  "setup.line.one": "Erste Schritte: noch {count} Punkt offen",
+  "setup.line.other": "Erste Schritte: noch {count} Punkte offen",
+  "setup.heading": "Erste Schritte",
+  "setup.dismiss": "Nicht nötig",
+  "setup.carLevel.text": "Ladestand des Autos hinzufügen: Der Plan lädt auf einen Zielstand, aber noch meldet nichts den Ladestand des Autos.",
+  "setup.carLevel.action": "Plan öffnen",
+  "setup.site.text": "Einen Standort mit dem Stromzähler des Hauses hinzufügen, für Lastmanagement unter der Hauptsicherung und Laden mit Solarstrom.",
+  "setup.site.action": "Standort hinzufügen",
+  "setup.phone.text": "Ein Telefon wählen, das benachrichtigt wird, wenn ein Ladevorgang unerwartet stoppt oder fertig ist.",
+  "setup.phone.action": "Telefon wählen",
+  "setup.app.text": "Die SpotNav-App für Android holen und das Laden vom Telefon aus verfolgen und steuern.",
+  "setup.app.action": "App holen"
 }

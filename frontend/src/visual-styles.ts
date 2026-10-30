@@ -35,6 +35,7 @@ export const VISUAL_CLASSES = {
   suggestion: "spotnav-suggestion",
   suggestionText: "spotnav-suggestion-text",
   suggestionAnswers: "spotnav-suggestion-answers",
+  setupHeading: "spotnav-setup-heading",
   pauseChoices: "spotnav-pause-choices",
   choiceButton: "spotnav-choice-button",
   choiceLabel: "spotnav-choice-label",
@@ -904,6 +905,15 @@ export const VISUAL_STYLES = `
     flex-wrap: wrap;
     gap: 6px;
     margin-top: 6px;
+  }
+  /** "Get started" in the attention dialog: a heading over its rows, apart from the issues above it. */
+  .spotnav-setup-heading {
+    margin: 12px 0 0;
+    font-size: 0.9rem;
+    font-weight: 500;
+  }
+  .spotnav-setup-heading:first-child {
+    margin-top: 0;
   }
   .spotnav-pause-choices,
   .spotnav-strategy-row {

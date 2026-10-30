@@ -878,5 +878,17 @@
   "display.chartAxis.fromNow": "Från nu",
   "display.chartAxis.fromNowHelp": "Från den här timmen till slutet av det sista publicerade dygnet. Tills morgondagens priser finns, samma som Dygn.",
   "display.priceUnit": "Prisenhet",
-  "display.priceUnit.example": "Till exempel {price}"
+  "display.priceUnit.example": "Till exempel {price}",
+  "setup.line.one": "Kom igång: {count} sak kvar",
+  "setup.line.other": "Kom igång: {count} saker kvar",
+  "setup.heading": "Kom igång",
+  "setup.dismiss": "Behövs inte",
+  "setup.carLevel.text": "Lägg till bilens laddnivå: planen laddar till en målnivå, men inget rapporterar bilens nivå ännu.",
+  "setup.carLevel.action": "Öppna Plan",
+  "setup.site.text": "Lägg till en anläggning med husets elmätare, för lastbalansering under huvudsäkringen och laddning med solel.",
+  "setup.site.action": "Lägg till anläggning",
+  "setup.phone.text": "Välj en telefon som får veta när en laddning stannar oväntat eller är klar.",
+  "setup.phone.action": "Välj telefon",
+  "setup.app.text": "Skaffa SpotNav-appen för Android och följ och styr laddningen från telefonen.",
+  "setup.app.action": "Hämta appen"
 }

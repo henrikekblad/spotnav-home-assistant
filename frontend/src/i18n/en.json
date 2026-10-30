@@ -878,5 +878,17 @@
   "display.chartAxis.fromNow": "From now",
   "display.chartAxis.fromNowHelp": "From this hour to the end of the last published day. Until tomorrow's prices are out, the same as Day.",
   "display.priceUnit": "Price unit",
-  "display.priceUnit.example": "For example {price}"
+  "display.priceUnit.example": "For example {price}",
+  "setup.line.one": "Get started: {count} thing left",
+  "setup.line.other": "Get started: {count} things left",
+  "setup.heading": "Get started",
+  "setup.dismiss": "Not needed",
+  "setup.carLevel.text": "Add the car's charge level: the plan charges to a target level, but nothing reports the car's level yet.",
+  "setup.carLevel.action": "Open Plan",
+  "setup.site.text": "Add a site with your home's grid meter, for load balancing under the main fuse and charging from solar.",
+  "setup.site.action": "Add a site",
+  "setup.phone.text": "Choose a phone to be told when a charge stops unexpectedly or is complete.",
+  "setup.phone.action": "Choose a phone",
+  "setup.app.text": "Get the SpotNav app for Android to follow and control charging from your phone.",
+  "setup.app.action": "Get the app"
 }

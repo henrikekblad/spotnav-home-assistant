@@ -878,5 +878,17 @@
   "display.chartAxis.fromNow": "Vanaf nu",
   "display.chartAxis.fromNowHelp": "Van dit uur tot het einde van de laatst gepubliceerde dag. Tot de prijzen van morgen er zijn, hetzelfde als Dag.",
   "display.priceUnit": "Prijseenheid",
-  "display.priceUnit.example": "Bijvoorbeeld {price}"
+  "display.priceUnit.example": "Bijvoorbeeld {price}",
+  "setup.line.one": "Aan de slag: nog {count} punt",
+  "setup.line.other": "Aan de slag: nog {count} punten",
+  "setup.heading": "Aan de slag",
+  "setup.dismiss": "Niet nodig",
+  "setup.carLevel.text": "Voeg het laadniveau van de auto toe: het plan laadt tot een doel, maar nog niets meldt het niveau van de auto.",
+  "setup.carLevel.action": "Plan openen",
+  "setup.site.text": "Voeg een locatie toe met de elektriciteitsmeter van je huis, voor load balancing onder de hoofdzekering en laden met zonnestroom.",
+  "setup.site.action": "Locatie toevoegen",
+  "setup.phone.text": "Kies een telefoon die bericht krijgt als het laden onverwacht stopt of klaar is.",
+  "setup.phone.action": "Telefoon kiezen",
+  "setup.app.text": "Haal de SpotNav-app voor Android en volg en bedien het laden vanaf je telefoon.",
+  "setup.app.action": "App downloaden"
 }

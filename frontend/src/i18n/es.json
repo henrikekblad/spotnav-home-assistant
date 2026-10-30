@@ -878,5 +878,17 @@
   "display.chartAxis.fromNow": "Desde ahora",
   "display.chartAxis.fromNowHelp": "Desde esta hora hasta el final del último día publicado. Hasta que se publiquen los precios de mañana, igual que Día.",
   "display.priceUnit": "Unidad de precio",
-  "display.priceUnit.example": "Por ejemplo, {price}"
+  "display.priceUnit.example": "Por ejemplo, {price}",
+  "setup.line.one": "Primeros pasos: queda {count} cosa",
+  "setup.line.other": "Primeros pasos: quedan {count} cosas",
+  "setup.heading": "Primeros pasos",
+  "setup.dismiss": "No es necesario",
+  "setup.carLevel.text": "Añade el nivel de carga del coche: el plan carga hasta un nivel objetivo, pero nada informa todavía del nivel del coche.",
+  "setup.carLevel.action": "Abrir Plan",
+  "setup.site.text": "Añade una instalación con el contador eléctrico de la casa, para el equilibrado de carga bajo el interruptor general y la carga solar.",
+  "setup.site.action": "Añadir instalación",
+  "setup.phone.text": "Elige un teléfono que reciba un aviso cuando una carga se detenga inesperadamente o termine.",
+  "setup.phone.action": "Elegir teléfono",
+  "setup.app.text": "Consigue la app SpotNav para Android y sigue y controla la carga desde el teléfono.",
+  "setup.app.action": "Obtener la app"
 }
