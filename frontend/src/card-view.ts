@@ -2031,9 +2031,11 @@ export function createCardView(input: CardViewInput): CardView {
     // not restore focus on the way out (that would briefly focus a background control).
     capabilityDialog.hide({ restoreFocus: false });
     settingsOverviewDialog.hide({ restoreFocus: false });
+    const setup = setupNode();
     issuesDialog.show({
-      title: translate(model.language, "dialog.issues"),
-      body: issueListBody(doc, model, setupNode()),
+      // Only setup rows to show: the dialog is "Get started" itself.
+      title: translate(model.language, model.issues.length === 0 && setup !== null ? "setup.heading" : "dialog.issues"),
+      body: issueListBody(doc, model, setup),
       opener,
     });
   }
@@ -2073,6 +2075,7 @@ export function createCardView(input: CardViewInput): CardView {
     return setupSection(doc, {
       language: model.language,
       rows: model.setup,
+      heading: model.issues.length > 0,
       openPlan: () => {
         issuesDialog.hide({ restoreFocus: false });
         input.onOpenSettings("plan");
