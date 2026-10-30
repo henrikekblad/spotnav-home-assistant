@@ -225,7 +225,7 @@ The integrations below are the ones the detection was checked against, from each
 
 - **Health is not charge.** State-of-health, target, limit, minimum, arrival and predicted readings are never taken as the state of charge.
 - **The 12 V battery.** Many integrations give the car's 12 V battery the battery device class. A device with only that sensor is not a vehicle.
-- **Sleeping cars.** Cloud readings can be an hour old in the middle of a charge. SpotNav estimates the level forward from the charger's energy meter and marks it as estimated. The app's refresh only asks Home Assistant to re-read the vehicle's entities; SpotNav never calls an integration's own force-update, so it does not wake the car.
+- **Sleeping cars.** Cloud readings can be an hour old in the middle of a charge. SpotNav estimates the level forward from the charger's energy meter and marks it as estimated. The app's refresh, like SpotNav's own re-reads, only asks Home Assistant to re-read the vehicle's entities; SpotNav never calls an integration's own force-update. Most integrations answer that from their cloud's copy, but Kia Uvo (`kia_uvo`) asks the car itself when its last report is older than the integration's force-refresh interval (in the Australian region at every update), which can wake the car.
 - **No range sensor, no vehicle.** A device without a distance-class range sensor, or with no device classes at all, is not detected.
 - Shapes the detection was checked to leave alone:
   - `cupra_we_connect`: Range sensor without a distance class is a miss.
