@@ -42,12 +42,14 @@ from ..execution.charger_profiles import (
     PATH_SELECT_APPROVE,
     PATH_SELECT_RESTORE,
     PATH_SWITCH,
+    PATH_SWITCH_ASSUMED,
     PATH_SWITCH_BUDGET,
     profile_for,
     PROFILES,
     register_owner,
     ROLE_CHARGER,
     ROLE_EXTERNAL_CONTROLLER,
+    ROLE_MEASUREMENT_ONLY,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -147,7 +149,7 @@ def _detect_start_stop(
     if rule is None:
         found.notes.append("no_start_stop")
         return
-    if rule.kind in (PATH_SWITCH, PATH_SWITCH_BUDGET):
+    if rule.kind in (PATH_SWITCH, PATH_SWITCH_BUDGET, PATH_SWITCH_ASSUMED):
         entry = matcher.first("switch", rule.keys)
         if entry is None:
             found.notes.append("no_charge_switch")
@@ -414,6 +416,11 @@ def detect_charger(hass: HomeAssistant, device_id: str) -> DetectedCharger | Non
     entries = [entry for entry in all_entries if entry.platform == profile.platform]
     matcher = EntityMatcher(hass, entries, profile)
     _detect_start_stop(hass, found, matcher, device)
+    if profile.start_stop_since and not found.found_control:
+        # An older Home Assistant whose integration has no start/stop entity yet: read only, as before it had.
+        return DetectedCharger(
+            device_id=device_id, device_name=name, platform=platform, role=ROLE_MEASUREMENT_ONLY, notes=found.notes
+        )
     _detect_current(hass, found, matcher, device)
     _detect_energy(hass, found, matcher)
     _detect_status(hass, found, matcher)

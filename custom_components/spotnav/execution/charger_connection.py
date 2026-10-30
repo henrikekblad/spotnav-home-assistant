@@ -219,6 +219,17 @@ PLATFORM_STATUS: Final[dict[str, dict[str, str]]] = {
         "busy-scheduled": PAUSED,
         "error": ERROR,
     },
+    # NexBlue's `charging_state` (core `nexblue`, `CHARGING_STATE_MAP`).
+    "nexblue": {
+        "idle": DISCONNECTED,
+        "connected": CONNECTED,
+        "charging": CHARGING,
+        "lb_waiting": PAUSED,
+        "delay_waiting": PAUSED,
+        "ev_waiting": PAUSED,
+        "finished": FINISHED,
+        "error": ERROR,
+    },
 }
 
 

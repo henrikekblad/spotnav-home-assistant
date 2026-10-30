@@ -63,7 +63,7 @@ last thing it did say.
 
 A charger can tell when it is an OCPP connector, or when its status sensor says it the way the card's connection
 shows it (*disconnected*): Easee, Wallbox, Zaptec, go-e, Wattpilot, Peblar, NRGkick, Charge Amps, Lektrico,
-OpenEVSE, Alfen, Heidelberg, GARO, DEFA, ABB Terra AC, Ohme and Monta. A status that does not prove the car is away
+OpenEVSE, Alfen, Heidelberg, GARO, DEFA, ABB Terra AC, Ohme, Monta and NexBlue. A status that does not prove the car is away
 counts as neither: Charge Amps says *Unavailable* while its switch has the connector off, so a window opening then
 still starts it (a car plugged in meanwhile would not be seen), and nothing is told once it says *Available*.
 SmartEVSE's *Ready to Charge* is also said with a car plugged in while the charger is paused, so a SmartEVSE cannot

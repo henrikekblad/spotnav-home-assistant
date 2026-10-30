@@ -52,6 +52,7 @@ These integrations can be started and stopped, and most can have their current s
 | Ohme (`ohme`) | Mode select, a charge waiting for approval is approved first | None | Status sensor | No current control. The integration offers no resume call: a charge waiting for approval is approved with its button before max charge is selected. Ohme's own smart schedule may fight external control and its cloud has blocked pausing before. Turn off its own price cap and solar boost: two controllers on one charger fight each other. | Detected from the integration's source |
 | Monta (`monta`) | Switch | None | Lifetime energy, status sensor | No current control: switched on and off whole, at the current SpotNav learns it draws. | Detected from the integration's source |
 | ChargePoint (`chargepoint`) | Start and stop buttons | None | None | Its current limit is a select: switched on and off whole, at the current SpotNav learns it draws. Stop ends the session and Start may stay refused until the cable is replugged. | Detected from the integration's source |
+| NexBlue (`nexblue`) | Switch (HA 2026.10+) | None | Lifetime energy, status sensor | Start and stop only; read only on older Home Assistant. No current control: switched on and off whole, at the current SpotNav learns it draws. The switch's state is assumed for up to 20 s after a command, so SpotNav reads the charger's status meanwhile. | Detected from the integration's source |
 
 ### Measurement only
 
@@ -60,7 +61,6 @@ SpotNav cannot start or stop these chargers, so the flow refuses them as a charg
 | Integration | Energy and status | Notes | Verification |
 | --- | --- | --- | --- |
 | Tesla Wall Connector (`tesla_wall_connector`) | Lifetime energy | Read only: the car is the actuator. | Detected from the integration's source |
-| NexBlue (`nexblue`) | Lifetime energy | Read only: the integration cannot set the current. | Detected from the integration's source |
 
 ### Controlled by another system
 

@@ -239,10 +239,15 @@ def duration(seconds: float) -> str:
 
 
 def start_stop_text(profile: cp.PlatformProfile) -> str:
+    text = _start_stop_kind_text(profile)
+    return f"{text} (HA {profile.start_stop_since}+)" if profile.start_stop_since else text
+
+
+def _start_stop_kind_text(profile: cp.PlatformProfile) -> str:
     path = profile.start_stop
     if path is None:
         return "None"
-    if path.kind == cp.PATH_SWITCH:
+    if path.kind in (cp.PATH_SWITCH, cp.PATH_SWITCH_ASSUMED):
         return "Switch (on means paused)" if path.inverted else "Switch"
     if path.kind == cp.PATH_SELECT:
         return "Mode select"
