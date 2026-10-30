@@ -872,7 +872,7 @@
     },
     "core_decision_failed": {
       "title": "De laadbeslissingen van een laadpaal mislukten",
-      "description": "De huidige logica van SpotNav kon het afgelopen etmaal meerdere keren niet beslissen voor **{charger}**, dus de vorige logica besliste in plaats daarvan. Het laden gaat door. Om te helpen het op te lossen: download de debuginfo (het tandwiel op de SpotNav-kaart → Debuginfo downloaden) en voeg die toe aan een issue op GitHub. Deze melding verdwijnt na een etmaal zonder fouten."
+      "description": "SpotNav kon het afgelopen etmaal meerdere keren geen laadbeslissing nemen voor **{charger}**, dus op die momenten startte of stopte het niets automatisch en besliste het opnieuw bij de volgende keer. Wat je zelf start of stopt, werkt nog steeds, en load balancing beschermt nog steeds de zekering. Om te helpen het op te lossen: download de debuginfo (het tandwiel op de SpotNav-kaart → Debuginfo downloaden) en voeg die toe aan een issue op GitHub. Deze melding verdwijnt na een etmaal zonder fouten."
     },
     "price_source_missing": {
       "title": "Geen stroomprijzen voor {area}",

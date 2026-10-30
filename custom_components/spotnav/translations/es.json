@@ -872,7 +872,7 @@
     },
     "core_decision_failed": {
       "title": "Las decisiones de carga de un cargador fallaron",
-      "description": "La lógica actual de SpotNav no pudo decidir por **{charger}** varias veces en el último día, así que decidió la lógica anterior. La carga continúa. Para ayudar a corregirlo, descarga la información de depuración (el engranaje en la tarjeta de SpotNav → Descargar información de depuración) y adjúntala a un issue en GitHub. Este mensaje desaparece tras un día sin fallos."
+      "description": "SpotNav no pudo tomar su decisión de carga para **{charger}** varias veces en el último día, así que en esos momentos no inició ni detuvo nada automáticamente y volvió a decidir en el siguiente. Lo que inicias o detienes tú sigue funcionando, y el equilibrado de carga sigue protegiendo el fusible. Para ayudar a corregirlo, descarga la información de depuración (el engranaje en la tarjeta de SpotNav → Descargar información de depuración) y adjúntala a un issue en GitHub. Este mensaje desaparece tras un día sin fallos."
     },
     "price_source_missing": {
       "title": "No hay precios de la electricidad para {area}",

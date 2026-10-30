@@ -872,7 +872,7 @@
     },
     "core_decision_failed": {
       "title": "A charger's charging decisions failed",
-      "description": "SpotNav's current logic could not decide for **{charger}** several times in the last day, so the previous logic decided instead. Charging goes on. To help fix it, download the debug info (the gear icon on the SpotNav card → Download debug info) and attach it to an issue on GitHub. This message goes away after a day without failures."
+      "description": "SpotNav could not take its charging decision for **{charger}** several times in the last day, so at those moments it started or stopped nothing automatically and decided again at the next one. What you start or stop yourself still works, and load balancing still protects the fuse. To help fix it, download the debug info (the gear icon on the SpotNav card → Download debug info) and attach it to an issue on GitHub. This message goes away after a day without failures."
     },
     "price_source_missing": {
       "title": "No electricity prices for {area}",

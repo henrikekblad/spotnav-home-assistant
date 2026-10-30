@@ -2,8 +2,9 @@
 
 Pure: no Home Assistant imports. The runner (`execution/session_runner.py`) keeps, per charger, the last events it
 fed the core: the event, the instant, the session it decided from (`pre`, its non-default fields), the result of the
-command it asked for and what the core asked for. A bundle before version 8 also recorded what the previous logic
-did (`today`) and its owner and intent after the event (`today_after`), from when the core still ran beside it. `replay` decides each again, from the recorded `pre` where there is one and
+command it asked for and what the core asked for. A bundle before version 8, from when the core still ran beside the
+logic before it ("today's code" below), also recorded what that logic did (`today`) and its owner and intent after the
+event (`today_after`); those are compared where a record has them. `replay` decides each again, from the recorded `pre` where there is one and
 from its own result otherwise, and says where the core now decides differently from the recording (a change of the
 core since), and where it differs from today's code (what a disagreement is).
 
@@ -44,11 +45,11 @@ class ReplayMismatch:
 
 #: Owners between which a change is an observation, not ownership: whether the charger charges by itself (nobody
 #: here started it) is seen in its reports, and the line-up counts the same change as `observed`, not as drift
-#: (`execution/session_runner._line_up`). A charge that begins or ends with no report fed (a stop's answer window
+#: (the line-up of the runner before version 8). A charge that begins or ends with no report fed (a stop's answer window
 #: running out, a restart reading the charger as it is) moves today's owner between these two with no event.
 OBSERVED: frozenset[str] = frozenset({"none", "charger_self"})
 #: How far apart two readings of the clock may be and still be one instant: the core takes the instant it decided
-#: (the shadow's clock when the event came), today's code its own a moment later (when its stop went out, say). An
+#: (the runner's clock when the event came), today's code its own a moment later (when its stop went out, say). An
 #: instant, or a list of them of the same length, apart by no more than this is an observation of the time, not a
 #: change of ownership state. Well below the shortest gap the rules measure (`PERSON_HOLD_STOP_GAP_S`, 30 s).
 CLOCK_TOLERANCE_S = 2.0
@@ -187,7 +188,7 @@ def replay(
         elif any(today.get(name) != mine[name] for name in mine):
             mismatches.append(ReplayMismatch(index, kind, "today", dict(today), mine))
 
-    # Each record is two steps: its event, then its result and the comparisons, in the order the shadow decided
+    # Each record is two steps: its event, then its result and the comparisons, in the order the runner decided
     # them (its decision clock, `order`; a bundle without one, in the order kept). With no line-up, an event the
     # core decided when its feed began (`early`) is decided in that place, before the feeds kept before its record.
     kept = records[skipped:]
@@ -251,7 +252,7 @@ def bundle_events(bundle: Mapping[str, Any]) -> dict[str, list[dict[str, Any]]]:
     found: dict[str, list[dict[str, Any]]] = {}
     for charger in bundle.get("chargers") or ():
         controller = ((charger or {}).get("diagnostics") or {}).get("controller") or {}
-        # `ownership` from version 8, `session_runner` before it.
+        # `ownership` from version 8, `ownership_shadow` before it.
         shadow = controller.get("ownership") or controller.get("ownership_shadow") or {}
         found[str(charger.get("entry_id"))] = list(shadow.get("events") or ())
     return found

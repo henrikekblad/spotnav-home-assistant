@@ -872,7 +872,7 @@
     },
     "core_decision_failed": {
       "title": "Ladeentscheidungen einer Ladestation sind fehlgeschlagen",
-      "description": "Die aktuelle Logik von SpotNav konnte für **{charger}** am letzten Tag mehrmals nicht entscheiden, deshalb hat die bisherige Logik entschieden. Das Laden geht weiter. Um beim Beheben zu helfen: Lade die Debug-Infos herunter (Zahnrad auf der SpotNav-Karte → Debug-Infos herunterladen) und hänge sie an ein Issue auf GitHub an. Diese Meldung verschwindet nach einem Tag ohne Fehler."
+      "description": "SpotNav konnte für **{charger}** am letzten Tag mehrmals keine Ladeentscheidung treffen; in diesen Momenten hat es daher nichts automatisch gestartet oder gestoppt und beim nächsten Mal neu entschieden. Was du selbst startest oder stoppst, funktioniert weiterhin, und das Lastmanagement schützt weiterhin die Sicherung. Um beim Beheben zu helfen: Lade die Debug-Infos herunter (Zahnrad auf der SpotNav-Karte → Debug-Infos herunterladen) und hänge sie an ein Issue auf GitHub an. Diese Meldung verschwindet nach einem Tag ohne Fehler."
     },
     "price_source_missing": {
       "title": "Keine Strompreise für {area}",

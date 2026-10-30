@@ -240,12 +240,13 @@ def core_decision_issue_id(entry_id: str) -> str:
 
 
 class CoreFailureRepairs:
-    """The Repairs side of one charger's failing charging decisions (`SessionRunner.failed`, while the core drives).
+    """The Repairs side of one charger's failing charging decisions (`SessionRunner.failed`): each sent nothing
+    automatic for its event.
 
     A single failure is a log line and a count only: nobody can act on it. Only `CORE_FAILURE_REPEATS` within
-    `CORE_FAILURE_WINDOW` (a sliding window, in memory) raise `core_decision_failed_<entry_id>`, which says the only
-    two things a person can do: send the debug info with an issue, and switch the charger to the previous logic. It
-    is deleted once a whole window passes without a failure (a timer) and when the charger is unloaded (`clear`).
+    `CORE_FAILURE_WINDOW` (a sliding window, in memory) raise `core_decision_failed_<entry_id>`, which says what a
+    person can do: send the debug info with an issue (what they start or stop themselves still works). It is
+    deleted once a whole window passes without a failure (a timer) and when the charger is unloaded (`clear`).
     """
 
     def __init__(self, hass: HomeAssistant, entry_id: str, name: Callable[[], str]) -> None:

@@ -872,7 +872,7 @@
     },
     "core_decision_failed": {
       "title": "En laders ladebeslutninger mislyktes",
-      "description": "SpotNavs nåværende logikk kunne ikke ta en beslutning for **{charger}** flere ganger det siste døgnet, så den tidligere logikken bestemte i stedet. Ladingen fortsetter. For å hjelpe med å rette feilen: last ned feilsøkingsinfo (tannhjulet på SpotNav-kortet → Last ned feilsøkingsinfo) og legg den ved et issue på GitHub. Meldingen forsvinner etter et døgn uten feil."
+      "description": "SpotNav kunne ikke ta sin ladebeslutning for **{charger}** flere ganger det siste døgnet, så på de tidspunktene startet eller stoppet den ingenting automatisk og bestemte på nytt ved det neste. Det du selv starter eller stopper, virker fortsatt, og lastbalanseringen beskytter fortsatt sikringen. For å hjelpe med å rette feilen: last ned feilsøkingsinfo (tannhjulet på SpotNav-kortet → Last ned feilsøkingsinfo) og legg den ved et issue på GitHub. Meldingen forsvinner etter et døgn uten feil."
     },
     "price_source_missing": {
       "title": "Ingen strømpriser for {area}",

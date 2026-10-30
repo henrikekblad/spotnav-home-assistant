@@ -172,8 +172,8 @@ PHASE_SAMPLE_INTERVAL = timedelta(seconds=30)
 #: How often the plan's charge is looked at for the car ending it by itself (`PlanChargeWatch`).
 PLAN_WATCH_INTERVAL = timedelta(seconds=30)
 STORE_VERSION = 1
-#: The store key of the core's own session record (`ChargeSession.to_store`), kept beside today's keys while the core
-#: drives (`CONF_CORE_OWNERSHIP`); today's keys are still written too.
+#: The store key of the core's own session record (`ChargeSession.to_store`), the truth a restart reads; today's keys
+#: are still written beside it, derived from it, for one release more.
 SESSION_STORE_KEY = "charge_session"
 #: A change of the core's session that no save of today's keys carried is saved by the first decision at least this
 #: long after it (or at shutdown), once: never at every report. No timer of its own: a restart's timers are not moved.
@@ -184,8 +184,8 @@ SESSION_SAVE_DELAY_S = 30.0
 #: together by one writer, so neither can be the newer. Read once only, as a migration: an earlier build's marks
 #: saying its keys were written after its record make the restart read today's keys, as that build would have.
 SESSION_ORDER_KEY = "charge_session_order"
-#: Today's ownership keys: when the core drives, derived from its session at every save (`_store_record`), so an older
-#: build or the option off reads the same; read back only to migrate into the core's record.
+#: Today's ownership keys: derived from the core's session at every save (`_store_record`), so the release before reads
+#: the same after a rollback; read back only to migrate into the core's record (`core.migration.migrate_from_keys`).
 OWNERSHIP_KEYS = (
     "plan_charge",
     "charge_origin",
@@ -793,8 +793,8 @@ class ChargingController:
         # some chargers (Easee) a current written while the stop lands lifts it again.
         self._stop_in_flight = False
         # A start of ours on its way (`_start_locked`, from the moment the charge is SpotNav's until the start
-        # returns): an observation of the command, not ownership. While the core drives, the hold counts such a
-        # charge SpotNav's (`_spotnav_owned`) before the start's result gives the session its owner.
+        # returns): an observation of the command, not ownership. The hold counts such a charge SpotNav's
+        # (`_spotnav_owned`) before the start's result gives the session its owner.
         self._start_in_flight = False
         # Shut down (`async_shutdown`): a regulator step that still holds this controller (the entry unloaded
         # while the step waited) sends the charger nothing more.
@@ -802,11 +802,11 @@ class ChargingController:
         # The owner as the two owner fields when readers were last told (`_notify`): a decision that changes it after
         # the feed's own `_notify` ran tells them again (`_owner_settled`).
         self._owner_told: tuple[str | None, bool] = (None, False)
-        # When the core drives: a start (`start`) or a stop (`stop`) of ours that went out in the feed still open, whose
-        # result the core decides at that feed's end. Until then the owner reads as that command makes it, as today's
-        # code wrote its two fields as the command went out (the start's owner the core awaits, nobody's after a stop),
-        # so what the feed tells its readers meanwhile (the site's regulator, the sun) is not the owner before it. An
-        # observation of the command in flight, as `_start_in_flight`; cleared where the feed is over.
+        # A start (`start`) or a stop (`stop`) of ours that went out in the feed still open, whose result the core
+        # decides at that feed's end. Until then the owner reads as that command makes it (the start's owner the core
+        # awaits, nobody's after a stop), so what the feed tells its readers meanwhile (the site's regulator, the sun) is
+        # not the owner before it, and a save meanwhile writes it so. An observation of the command in flight, as
+        # `_start_in_flight`; cleared where the feed is over.
         self._command_unfed: str | None = None
         self.charge_control: str = config[CONF_CHARGE_CONTROL]
         # "None" in the card: no current entity, no current control and no automatic session-limit lookup.
@@ -1457,7 +1457,7 @@ class ChargingController:
         self._maybe_write_after_start(event)
         self._observe_connection()
         self._top_off_tick()
-        # The hold's memory before the report: when the core drives, its decision of the report is taken at once.
+        # The hold's memory before the report: the core decides the report at once.
         before = self._hold_state
         report = self._core_report_begin()
         try:
@@ -1540,7 +1540,7 @@ class ChargingController:
                 self._first_known_connected_at = dt_util.utcnow()
         if previous == connected:
             return
-        # Read before the feed begins: when the core drives, it decides the plug-in or the unplug there.
+        # Read before the feed begins: the core decides the plug-in or the unplug there.
         had_car_ended = self._car_ended.at is not None
         token = self._runner.begin(
             early=core_events.PlugIn(previous=previous) if connected else core_events.Unplug(previous=previous)
@@ -1720,8 +1720,8 @@ class ChargingController:
         reads: Callable[[EndedRecord | None, CarFacts], bool] = car_ended_reads_level,
     ) -> CarFacts:
         """What the car-ended rule reads besides the record, read now: the plan's part, and the record's car's level
-        only when the rule reads it (`reads`: whether its need grew, or a level read since the end), as today's rule
-        read it (a reading may move and save its estimate's anchor)."""
+        only when the rule reads it (`reads`: whether its need grew, or a level read since the end): a reading may move
+        and save its estimate's anchor."""
         facts = self._car_plan_facts()
         if not reads(record, facts) or self._soc_reader is None:
             return facts
@@ -1849,7 +1849,7 @@ class ChargingController:
         rules wait afresh, as after a charge they ran that the car ended (`_seed_ended`): tried again after the
         first retry from now, at once after a new plug-in. `vehicle_id` is the car whose state of charge is
         read for it. Returns the record's facts for the core's `CarEnded` (fed by the execution boundary, whose
-        feed this is): when the core drives, the record is the one it decides from them."""
+        feed this is): the core's record is the one it decides from them."""
         from ..site.solar_surplus import SolarConfig
 
         async with self._lock:
@@ -2006,7 +2006,7 @@ class ChargingController:
                     wait_estimated=False if wait_for is None else wait_for["estimated"],
                 ),
             )
-            # Saved once decided: when the core drives, today's `car_ended_*` keys are derived from its record.
+            # Saved once decided: today's `car_ended_*` keys are derived from the core's record.
             await self._async_save_quietly()
             _LOGGER.info(
                 "SpotNav charger %s: the car stopped taking the plan's charge by itself (%s%s)",
@@ -2855,8 +2855,8 @@ class ChargingController:
             self._owner_origin is None
             and not self._is_plan_charge
             and not self.start_pending
-            # A start of ours still on its way: the charger may report charging before its command returns, and
-            # when the core drives, the start's owner is the session's only once its result is fed.
+            # A start of ours still on its way: the charger may report charging before its command returns, and the
+            # start's owner is the session's only once its result is fed.
             and not self._start_in_flight
             and not self._hold_state.overridden
         )
@@ -3187,7 +3187,7 @@ class ChargingController:
                 # Inside a feed of the execution boundary's (a person's Start, the sun's): that feed is the event.
                 return await self._start_locked(amps, manual=manual, cause=cause)
             # Decided where it begins (its facts are known up front), as a person's Start through the boundary is: what
-            # the car ended is a person's to overrule before the command goes out, as today's code clears it then, and
+            # the car ended is a person's to overrule before the command goes out, and
             # while the command is on its way the core knows a start of its own awaits its result, so nothing takes
             # the charge the charger begins meanwhile for one it began by itself (the sun's take-over).
             token = self._runner.begin(early=core_events.DirectStart(manual=manual, cause=cause))
@@ -4738,12 +4738,11 @@ class ChargingController:
                 await self._async_save_quietly()
 
     async def _async_save(self) -> None:
-        """The one writer of the charger's record: today's keys and, when the core drives, its session
-        (`SESSION_STORE_KEY`), both as they are now, so the keys, derived from the session, never say otherwise than
-        it. Prepared at once (nothing awaits before the write), so it may run off the operation lock: a save that
-        begins later writes later. With the option off no session is written, so the record of an earlier time
-        driving is dropped (a restart driving again reads today's keys). A session that cannot be stored now drops
-        the record too: today's keys are written, and a restart reads them rather than a record older than them."""
+        """The one writer of the charger's record: the core's session (`SESSION_STORE_KEY`) and today's keys, both as
+        they are now, so the keys, derived from the session, never say otherwise than it. Prepared at once (nothing
+        awaits before the write), so it may run off the operation lock: a save that begins later writes later. A
+        session that cannot be stored now drops the record: today's keys are written, and a restart migrates from them
+        rather than read a record older than them."""
         signature = self._memory_signature()
         record = self._store_record()
         session = self._session_record()
@@ -4834,9 +4833,9 @@ class ChargingController:
             return None
 
     def _stored_session(self, saved: dict[str, Any] | None) -> tuple[ChargeSession | None, bool]:
-        """When the core drives: its session as stored (`None`: none, or none it can read), and whether today's keys
-        are to be migrated into its record (one is missing, of a version it does not know, or an earlier build's whose
-        marks say today's keys were written after it). Off, `(None, False)`: today's restore exactly."""
+        """The core's session as stored (`None`: none, or none it can read), and whether today's keys are to be migrated
+        into its record (one is missing, of a version it does not know, or an earlier build's whose order marks say
+        today's keys were written after it)."""
         raw = saved.get(SESSION_STORE_KEY) if saved else None
         if raw is None:
             return None, bool(saved)
@@ -4909,8 +4908,8 @@ class ChargingController:
             self.hass.async_create_task(self._async_save_changed())
 
     def _owner_settled(self) -> None:
-        """When the core drives, a task's outermost feed is over (`SessionRunner`): what its start or stop did is the
-        session's from now on (`_command_unfed`). An owner other than the one readers were last told (a decision at
+        """No feed is open any more (`SessionRunner`): what a start or stop did is the session's from now on
+        (`_command_unfed`). An owner other than the one readers were last told (a decision at
         the feed's end, after its own `_notify`, or one that told them nothing) is told now, soon and not inline,
         since `_notify` opens a feed of its own."""
         self._command_unfed = None
@@ -5094,7 +5093,7 @@ class ChargingController:
         the target ended the plan instead of starting anything, so a caller arming timers knows there is no
         plan left to arm.
         """
-        # The feed opens first, so the core sees the window start end the hold as today's code ends it.
+        # The feed opens first: the window start ends the hold of the plug-in session before anything else of it.
         token = self._runner.begin()
         if self._target_stopping:
             # A stop is in flight and the plan stays live until its turn_off is awaited: starting now
@@ -5181,7 +5180,7 @@ class ChargingController:
                 car_level_full=False,
             ),
         )
-        # Saved once decided: when the core drives, today's `car_ended_wait` key is derived from its record.
+        # Saved once decided: today's `car_ended_wait` key is derived from the core's record.
         await self._async_save_quietly()
         if self.plan is not None and not self._control_on and self._open_window_end() is not None:
             await self._reschedule_locked()
@@ -6077,7 +6076,7 @@ class ChargingController:
         self, read: Callable[[], dict[str, Any]], kind: str, *, token: FeedToken | None = None
     ) -> dict[str, Any] | None:
         """Facts for an event of `kind`, read without ever raising into the real path (`None`: they could not be
-        read, the event is not fed, and today's code decides it: a failure, `SessionRunner.failed`)."""
+        read, the event is not fed, and nothing automatic is sent for it: a failure, `SessionRunner.failed`)."""
         try:
             return read()
         except Exception as err:  # noqa: BLE001 - a failure, told: the event is not fed

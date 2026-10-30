@@ -872,7 +872,7 @@
     },
     "core_decision_failed": {
       "title": "Laturin latauspäätökset epäonnistuivat",
-      "description": "SpotNavin nykyinen logiikka ei pystynyt tekemään päätöstä laturille **{charger}** useita kertoja viimeisen vuorokauden aikana, joten aiempi logiikka päätti sen sijaan. Lataus jatkuu. Voit auttaa vian korjaamisessa: lataa vianetsintätiedot (SpotNav-kortin ratas → Lataa vianetsintätiedot) ja liitä ne GitHubin issueen. Ilmoitus poistuu vuorokauden kuluttua ilman virheitä."
+      "description": "SpotNav ei pystynyt tekemään latauspäätöstä laturille **{charger}** useita kertoja viimeisen vuorokauden aikana, joten niinä hetkinä se ei käynnistänyt eikä pysäyttänyt mitään automaattisesti vaan päätti uudelleen seuraavalla kerralla. Itse käynnistämäsi ja pysäyttämäsi lataus toimii edelleen, ja kuormanhallinta suojaa edelleen sulaketta. Voit auttaa vian korjaamisessa: lataa vianetsintätiedot (SpotNav-kortin ratas → Lataa vianetsintätiedot) ja liitä ne GitHubin issueen. Ilmoitus poistuu vuorokauden kuluttua ilman virheitä."
     },
     "price_source_missing": {
       "title": "Alueella {area} ei ole sähkön hintoja",
