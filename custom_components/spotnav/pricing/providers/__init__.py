@@ -5,18 +5,22 @@ states; a provider only answers "this area's file for this market day" as the re
 a plain mapping the repository validates with the same `parse_day` as any other. So every source is checked by
 one parser, the store keeps one format, and nothing that reads a [PriceDocument] knows where it came from.
 
-Two providers so far:
+Three providers so far:
 
 * the relay ([RelayProvider], `providers/relay.py`): its index says which days exist, and its files are dated on
   the area list's own market calendar;
 * Nord Pool through Home Assistant's own `nordpool` integration ([NordPoolProvider], `providers/nordpool.py`):
   no index, so the publication schedule says when a day is worth asking for ([schedule_authority]), and its
-  files are CET delivery days (`routes.cet_market_tz`).
+  files are CET delivery days (`routes.cet_market_tz`);
+* ENTSO-E's Transparency Platform with the installation's own key ([EntsoeProvider], `providers/entsoe.py`):
+  asked like Nord Pool, on the same schedule and the same CET calendar.
 
-[ProviderRouter] picks one per area: Nord Pool for an area Nord Pool trades while a `nordpool` config entry is
-loaded, else the relay. There is no fallback from one to the other within an attempt. The choice is taken again
+[ProviderRouter] picks one per area ([choose_provider]): Nord Pool for an area Nord Pool trades while a `nordpool`
+config entry is loaded; else ENTSO-E for an area the platform publishes while a key is set that it has not
+rejected; else the relay. There is no fallback from one to the other within an attempt. The choice is taken again
 whenever a `nordpool` entry is added, removed, loaded or unloaded (Home Assistant's `SIGNAL_CONFIG_ENTRY_CHANGED`,
-which it sends for each of those, a load or unload being a state change of the entry).
+which it sends for each of those, a load or unload being a state change of the entry), and whenever the ENTSO-E
+key is set, cleared or rejected.
 """
 
 from __future__ import annotations
@@ -36,13 +40,14 @@ from ..relay_contract import AreaPublication, ParseCode
 
 if TYPE_CHECKING:
     from ..relay_contract import PriceDocument
+    from .entsoe import EntsoeProvider
     from .nordpool import NordPoolProvider
     from .relay import RelayProvider
 
 _LOGGER = logging.getLogger(__name__)
 
 #: Which provider a file came from, as stored beside it (`"provider"` in the store's day entries).
-ProviderKey = Literal["relay", "nordpool"]
+ProviderKey = Literal["relay", "nordpool", "entsoe"]
 
 #: How a provider's attempt for one file ended. The relay has no `not_published` of its own: its index says
 #: which days exist, so a file it does not have is a failed request (its 404), as it always was. Nord Pool's
@@ -57,6 +62,12 @@ FetchOutcome = Literal["fetched", "not_published", "failed"]
 #:   service does not accept);
 #: * `provider_refused`: the answer is not a day this client can read (another area, a gap, a mixed step, a
 #:   price that is not a number); never the answer's text;
+#: * `entsoe_auth`: ENTSO-E rejected the key (401/403, or an acknowledgement naming a credential problem);
+#: * `rate_limited`: ENTSO-E asked to wait (429, or a rate-limit acknowledgement); [DayFetch.retry_after] says how
+#:   long, and the provider asks nothing until then;
+#: * `entsoe_unavailable`: ENTSO-E answered with a server error;
+#: * `entsoe_rejected`: ENTSO-E refused the request otherwise (another status, a bad-request acknowledgement);
+#: * `source_missing`: no way to ask this provider for the area (no key, no route);
 #: * `not_published`: carried by a `not_published` outcome, never recorded as a failure;
 #: * `history_out_of_reach`: an archive day older than the provider keeps, not asked for.
 FetchCode = Literal[
@@ -67,6 +78,11 @@ FetchCode = Literal[
     "nordpool_unavailable",
     "nordpool_error",
     "nordpool_rejected",
+    "entsoe_auth",
+    "rate_limited",
+    "entsoe_unavailable",
+    "entsoe_rejected",
+    "source_missing",
     "provider_refused",
     "not_published",
     "history_out_of_reach",
@@ -76,7 +92,20 @@ FailureCode = FetchCode | ParseCode
 #: The codes that mean "could not be reached", not "answered something wrong" (`stale`/`unavailable` vs
 #: `invalid`), and that back off.
 TRANSPORT_CODES: frozenset[str] = frozenset(
-    {"timeout", "network", "http_status", "too_large", "nordpool_unavailable", "nordpool_error", "nordpool_rejected"}
+    {
+        "timeout",
+        "network",
+        "http_status",
+        "too_large",
+        "nordpool_unavailable",
+        "nordpool_error",
+        "nordpool_rejected",
+        "entsoe_auth",
+        "rate_limited",
+        "entsoe_unavailable",
+        "entsoe_rejected",
+        "source_missing",
+    }
 )
 
 #: How long before a provider's expected publication its window opens (the refresh manager's
@@ -92,12 +121,14 @@ class DayFetch:
     """One provider's answer for one market-day file.
 
     `document` is set for `fetched` only: the raw day document, not yet validated. `code` is set for
-    `failed` (and may be for `not_published`); it is never a response body or a URL.
+    `failed` (and may be for `not_published`); it is never a response body or a URL. `retry_after` is the
+    provider's own word on how long to wait (ENTSO-E's `Retry-After`); the provider itself keeps to it.
     """
 
     outcome: FetchOutcome
     document: Any = None
     code: FailureCode | None = None
+    retry_after: timedelta | None = None
 
 
 class PriceProvider(Protocol):
@@ -177,17 +208,36 @@ def schedule_authority(
     return "unknown"
 
 
+def choose_provider(
+    *, nordpool_serves: bool, nordpool_loaded: bool, entsoe_serves: bool, entsoe_key_usable: bool
+) -> ProviderKey:
+    """The rule, per area: Nord Pool for an area it trades while a `nordpool` entry is loaded; else ENTSO-E for an
+    area the platform publishes while a key is set that it has not rejected; else the relay (for now: it ends with
+    the relay's prices, after which such an area has no source)."""
+    if nordpool_serves and nordpool_loaded:
+        return "nordpool"
+    if entsoe_serves and entsoe_key_usable:
+        return "entsoe"
+    return "relay"
+
+
 class ProviderRouter:
-    """Which provider serves an area: Nord Pool for an area it trades while a `nordpool` entry is loaded, else
-    the relay. Listeners hear when that choice may have changed for some area.
+    """Which provider serves an area ([choose_provider]). Listeners hear when that choice may have changed for some
+    area: a `nordpool` entry loaded or unloaded, the ENTSO-E key set, cleared, accepted or rejected.
     """
 
-    def __init__(self, relay: RelayProvider, nordpool: NordPoolProvider | None = None) -> None:
+    def __init__(
+        self,
+        relay: RelayProvider,
+        nordpool: NordPoolProvider | None = None,
+        entsoe: EntsoeProvider | None = None,
+    ) -> None:
         self._relay = relay
         self._nordpool = nordpool
+        self._entsoe = entsoe
         self._nordpool_loaded = False
         self._listeners: list[Callable[[], None]] = []
-        self._unsubscribe: Callable[[], None] | None = None
+        self._unsubscribe: list[Callable[[], None]] = []
 
     @property
     def relay(self) -> RelayProvider:
@@ -195,18 +245,32 @@ class ProviderRouter:
         return self._relay
 
     @property
+    def entsoe(self) -> EntsoeProvider | None:
+        """The ENTSO-E provider, for checking a key before it is stored."""
+        return self._entsoe
+
+    @property
     def nordpool_in_use(self) -> bool:
         return self._nordpool is not None and self._nordpool_loaded
 
     def provider_for(self, area_id: str) -> PriceProvider:
         """The provider whose files an area is read from."""
-        if self._nordpool is not None and self._nordpool_loaded and self._nordpool.serves(area_id):
+        key = choose_provider(
+            nordpool_serves=self._nordpool is not None and self._nordpool.serves(area_id),
+            nordpool_loaded=self._nordpool_loaded,
+            entsoe_serves=self._entsoe is not None and self._entsoe.serves(area_id),
+            entsoe_key_usable=self._entsoe is not None and self._entsoe.key_usable(),
+        )
+        if key == "nordpool" and self._nordpool is not None:
             return self._nordpool
+        if key == "entsoe" and self._entsoe is not None:
+            return self._entsoe
         return self._relay
 
     @callback
     def async_start(self, hass: HomeAssistant) -> Callable[[], None]:
-        """Follow the `nordpool` config entries from now on; returns the call that stops following."""
+        """Follow the `nordpool` config entries and the ENTSO-E key from now on; returns the call that stops
+        following."""
         self._nordpool_loaded = _nordpool_loaded(hass)
 
         @callback
@@ -218,20 +282,25 @@ class ProviderRouter:
                 return
             self._nordpool_loaded = loaded
             _LOGGER.debug("Nord Pool through Home Assistant is %s", "in use" if loaded else "not in use")
-            for listener in list(self._listeners):
-                try:
-                    listener()
-                except Exception as err:  # noqa: BLE001 - one listener must not stop the rest
-                    _LOGGER.warning("A price provider listener failed: %s", type(err).__name__)
+            self._notify()
 
-        self._unsubscribe = async_dispatcher_connect(hass, SIGNAL_CONFIG_ENTRY_CHANGED, changed)
+        self._unsubscribe.append(async_dispatcher_connect(hass, SIGNAL_CONFIG_ENTRY_CHANGED, changed))
+        if self._entsoe is not None:
+            self._unsubscribe.append(self._entsoe.add_key_listener(self._notify))
         return self.async_stop
 
     @callback
     def async_stop(self) -> None:
-        if self._unsubscribe is not None:
-            self._unsubscribe()
-            self._unsubscribe = None
+        while self._unsubscribe:
+            self._unsubscribe.pop()()
+
+    @callback
+    def _notify(self) -> None:
+        for listener in list(self._listeners):
+            try:
+                listener()
+            except Exception as err:  # noqa: BLE001 - one listener must not stop the rest
+                _LOGGER.warning("A price provider listener failed: %s", type(err).__name__)
 
     def add_listener(self, listener: Callable[[], None]) -> Callable[[], None]:
         """Call [listener] (on the loop, no arguments) whenever the choice of provider may have changed."""
