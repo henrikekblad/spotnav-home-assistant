@@ -44,6 +44,7 @@ from typing import Literal, Mapping, Sequence
 from .site_capacity import (
     PHASES,
     allocation_order,
+    charger_order_key,
     ChargerRequest,
     DirectPhaseMeasurement,
     PhaseName,
@@ -149,6 +150,9 @@ class RegulatorDecision:
     # lowering, or the pause it was legalised to below the charger's minimum. Applied like `MUST_LOWER_REASONS`
     # (`is_import_overload`).
     overload: bool = False
+    # Held at its minimum, not paused, in an import overload because a switch-only charger on a phase it shares is
+    # paused for the rest (`allocate_regulator_decisions`): paused after all if that pause cannot be sent.
+    pause_if_switched_pause_fails: bool = False
 
 
 def is_import_overload(decision: RegulatorDecision) -> bool:
@@ -785,81 +789,203 @@ def allocate_regulator_decisions(
     site meter shows before the charger does). A credited reading may keep a charger from a pause or a lowering,
     never raise it: a decision that goes more than `credit_raise_tolerance_a` above the credited draw on a credited
     phase rests on the credit for an increase, and the decision on the charger's own reading is taken instead.
+
+    While a phase is over the limit and a switch-only charger takes part, the overload is resolved in one pass by
+    priority class, lowest first ("last", then "normal", then "first"), and within each class (`_allocate_staged`):
+    the chargers whose current can be set are lowered, at most to their minimum; if still over, the switch-only
+    chargers are paused whole; only then are the chargers whose current can be set paused. A charger held at its
+    minimum on that account is marked `pause_if_switched_pause_fails`.
     """
-    remaining: dict[PhaseName, float | None] = dict(site_result.measured_margin_a)
-    remaining_signed: dict[PhaseName, float | None] = dict(site_result.phase_signed_margin_a)
-    blocked_phases: set[PhaseName] = set()
-    decisions: dict[str, RegulatorDecision] = {}
+    allocator = _Allocator(
+        site_result=site_result,
+        voltage_by_phase=voltage_by_phase,
+        confirmed_direction_by_phase=confirmed_direction_by_phase,
+        max_age_s=max_age_s,
+        zero_margin_w=zero_margin_w,
+        help_margin_factor=help_margin_factor,
+        own_measured_current_a=own_measured_current_a,
+        credit_raise_tolerance_a=credit_raise_tolerance_a,
+        increase_reserved_by_phase=increase_reserved_by_phase,
+    )
+    overloaded = any(margin is not None and margin < 0.0 for margin in site_result.measured_margin_a.values())
+    if overloaded and any(request.switch_only for request in requests):
+        return allocator.staged(requests)
+    for request in allocation_order(requests):
+        allocator.decide(request)
+    return allocator.decisions
 
-    ordered = allocation_order(requests)
-    if any(margin is not None and margin < 0.0 for margin in site_result.measured_margin_a.values()):
-        # Over the limit: the chargers whose current can be set take the cut first, in their own order; a charger
-        # that can only be paused is paused only for what is still over after them.
-        ordered = [r for r in ordered if not r.switch_only] + [r for r in ordered if r.switch_only]
-    for request in ordered:
-        phases_used = request.phases_used()
-        if phases_used is not None and blocked_phases.intersection(phases_used):
-            decisions[request.charger_entry_id] = RegulatorDecision(
-                None,
-                "shared_phase_blocked_by_another_chargers_undetermined_decision",
-                None,
-                {},
-            )
-            continue
 
+class _Allocator:
+    """The shared headroom of one allocation pass (`allocate_regulator_decisions`)."""
+
+    def __init__(
+        self,
+        *,
+        site_result: SiteCapacityResult,
+        voltage_by_phase: Mapping[PhaseName, float | None],
+        confirmed_direction_by_phase: Mapping[PhaseName, DirectionClass | None],
+        max_age_s: float,
+        zero_margin_w: float,
+        help_margin_factor: float,
+        own_measured_current_a: Mapping[str, DirectPhaseMeasurement | None] | None,
+        credit_raise_tolerance_a: float,
+        increase_reserved_by_phase: Mapping[PhaseName, float] | None,
+    ) -> None:
+        self.site_result = site_result
+        self.voltage_by_phase = voltage_by_phase
+        self.confirmed_direction_by_phase = confirmed_direction_by_phase
+        self.max_age_s = max_age_s
+        self.zero_margin_w = zero_margin_w
+        self.help_margin_factor = help_margin_factor
+        self.own_measured_current_a = own_measured_current_a
+        self.credit_raise_tolerance_a = credit_raise_tolerance_a
+        self.increase_reserved_by_phase = increase_reserved_by_phase
+        self.remaining: dict[PhaseName, float | None] = dict(site_result.measured_margin_a)
+        self.remaining_signed: dict[PhaseName, float | None] = dict(site_result.phase_signed_margin_a)
+        self.blocked_phases: set[PhaseName] = set()
+        # Phases a switch-only charger with no reliable decision draws on, in a staged pass: nothing may be raised
+        # there, but a lowering still goes ahead (an undetermined switch-only charger never holds back the fuse).
+        self.no_raise_phases: set[PhaseName] = set()
+        self.decisions: dict[str, RegulatorDecision] = {}
+        # The request each decision was taken on (its own reading where a credit was set aside).
+        self.used: dict[str, ChargerRequest] = {}
+        # In a staged overload pass (`staged`).
+        self._staging = False
+
+    def _decide_one(self, request: ChargerRequest) -> tuple[ChargerRequest, RegulatorDecision]:
         decision = decide_charging_current(
-            site_result=site_result,
+            site_result=self.site_result,
             request=request,
-            voltage_by_phase=voltage_by_phase,
-            confirmed_direction_by_phase=confirmed_direction_by_phase,
-            max_age_s=max_age_s,
-            zero_margin_w=zero_margin_w,
-            help_margin_factor=help_margin_factor,
-            headroom_by_phase=remaining,
-            signed_headroom_by_phase=remaining_signed,
-            increase_reserved_by_phase=increase_reserved_by_phase,
+            voltage_by_phase=self.voltage_by_phase,
+            confirmed_direction_by_phase=self.confirmed_direction_by_phase,
+            max_age_s=self.max_age_s,
+            zero_margin_w=self.zero_margin_w,
+            help_margin_factor=self.help_margin_factor,
+            headroom_by_phase=self.remaining,
+            signed_headroom_by_phase=self.remaining_signed,
+            increase_reserved_by_phase=self.increase_reserved_by_phase,
         )
-        own = (own_measured_current_a or {}).get(request.charger_entry_id, request.measured_current_a)
+        phases_used = request.phases_used()
+        own = (self.own_measured_current_a or {}).get(request.charger_entry_id, request.measured_current_a)
         if (
             own is not request.measured_current_a
             and phases_used is not None
-            and _raises_on_credit(decision, request, own, phases_used, credit_raise_tolerance_a)
+            and _raises_on_credit(decision, request, own, phases_used, self.credit_raise_tolerance_a)
         ):
             request = replace(request, measured_current_a=own)
             decision = decide_charging_current(
-                site_result=site_result,
+                site_result=self.site_result,
                 request=request,
-                voltage_by_phase=voltage_by_phase,
-                confirmed_direction_by_phase=confirmed_direction_by_phase,
-                max_age_s=max_age_s,
-                zero_margin_w=zero_margin_w,
-                help_margin_factor=help_margin_factor,
-                headroom_by_phase=remaining,
-                signed_headroom_by_phase=remaining_signed,
-                increase_reserved_by_phase=increase_reserved_by_phase,
+                voltage_by_phase=self.voltage_by_phase,
+                confirmed_direction_by_phase=self.confirmed_direction_by_phase,
+                max_age_s=self.max_age_s,
+                zero_margin_w=self.zero_margin_w,
+                help_margin_factor=self.help_margin_factor,
+                headroom_by_phase=self.remaining,
+                signed_headroom_by_phase=self.remaining_signed,
+                increase_reserved_by_phase=self.increase_reserved_by_phase,
             )
-        decisions[request.charger_entry_id] = decision
+        return request, decision
 
+    def decide(self, request: ChargerRequest, *, floor_at_minimum: bool = False) -> RegulatorDecision:
+        """Decide `request` on the headroom left and take its share; `floor_at_minimum` holds an overload's pause
+        of a charger whose current can be set at its minimum instead (a staged pass, `staged`)."""
+        phases_used = request.phases_used()
+        if phases_used is not None and self.blocked_phases.intersection(phases_used):
+            decision = RegulatorDecision(
+                None, "shared_phase_blocked_by_another_chargers_undetermined_decision", None, {}
+            )
+            self.decisions[request.charger_entry_id] = decision
+            return decision
+        request, decision = self._decide_one(request)
+        if phases_used is not None and self.no_raise_phases.intersection(phases_used) and not _lowers(decision, request):
+            decision = RegulatorDecision(
+                None, "shared_phase_blocked_by_another_chargers_undetermined_decision", None, {}
+            )
+            self.decisions[request.charger_entry_id] = decision
+            return decision
+        if (
+            floor_at_minimum
+            and decision.overload
+            and decision.proposed_current_a is not None
+            and decision.proposed_current_a < request.min_current_a
+        ):
+            decision = replace(
+                decision,
+                proposed_current_a=float(request.min_current_a),
+                reason="reducing_current_due_to_active_import_overload",
+                pause_if_switched_pause_fails=True,
+            )
+        self.decisions[request.charger_entry_id] = decision
+        self.used[request.charger_entry_id] = request
         if phases_used is None:
-            continue
-
+            return decision
         if decision.proposed_current_a is None:
-            blocked_phases.update(phases_used)
-            continue
+            if request.switch_only and self._staging:
+                self.no_raise_phases.update(phases_used)
+            else:
+                self.blocked_phases.update(phases_used)
+            return decision
+        self._take(request, phases_used, decision.proposed_current_a, None)
+        return decision
 
-        # Explicit `None` check rather than `assert`, so it holds under `python -O`.
+    def _take(
+        self, request: ChargerRequest, phases_used: Sequence[PhaseName], proposed: float, before: float | None
+    ) -> None:
+        """Shrink the headroom by what `request` is given beyond what it draws (or, with `before`, beyond what it
+        was given before)."""
         measured_source = request.measured_current_a
         if measured_source is None:
-            blocked_phases.update(phases_used)
-            continue
-
+            # Explicit `None` check rather than `assert`, so it holds under `python -O`.
+            self.blocked_phases.update(phases_used)
+            return
         for phase in phases_used:
-            measured = measured_source.get(phase).value
-            if remaining[phase] is not None and measured is not None:
-                remaining[phase] = remaining[phase] - (decision.proposed_current_a - measured)
-                if remaining_signed[phase] is not None:
-                    remaining_signed[phase] = remaining_signed[phase] - (
-                        decision.proposed_current_a - measured
-                    )
+            base = before if before is not None else measured_source.get(phase).value
+            if self.remaining[phase] is not None and base is not None:
+                self.remaining[phase] = self.remaining[phase] - (proposed - base)
+                if self.remaining_signed[phase] is not None:
+                    self.remaining_signed[phase] = self.remaining_signed[phase] - (proposed - base)
 
-    return decisions
+    def staged(self, requests: Sequence[ChargerRequest]) -> dict[str, RegulatorDecision]:
+        """The staged overload pass (`allocate_regulator_decisions`)."""
+        self._staging = True
+        ordered = allocation_order(requests)
+        ranks = sorted(
+            {charger_order_key(r.priority, r.order, r.charger_entry_id)[0] for r in ordered}, reverse=True
+        )
+        for rank in ranks:
+            members = [r for r in ordered if charger_order_key(r.priority, r.order, r.charger_entry_id)[0] == rank]
+            floored: list[str] = []
+            for request in members:
+                if not request.switch_only:
+                    decision = self.decide(request, floor_at_minimum=True)
+                    if decision.pause_if_switched_pause_fails:
+                        floored.append(request.charger_entry_id)
+            for request in members:
+                if request.switch_only:
+                    self.decide(request)
+            for charger_entry_id in floored:
+                request = self.used[charger_entry_id]
+                decision = self.decisions[charger_entry_id]
+                phases_used = request.phases_used() or ()
+                if any(self.remaining[p] is not None and self.remaining[p] < 0.0 for p in phases_used):
+                    # Still over with the switch-only chargers paused: this one is paused too.
+                    self.decisions[charger_entry_id] = replace(
+                        decision,
+                        proposed_current_a=0.0,
+                        reason="paused_safe_current_below_charger_minimum",
+                        pause_if_switched_pause_fails=False,
+                    )
+                    self._take(request, phases_used, 0.0, decision.proposed_current_a)
+        return self.decisions
+
+
+def _lowers(decision: RegulatorDecision, request: ChargerRequest) -> bool:
+    """Whether `decision` gives the charger less than it draws now on every phase it uses."""
+    proposed = decision.proposed_current_a
+    measured = request.measured_current_a
+    phases = request.phases_used()
+    if proposed is None or measured is None or not phases:
+        return False
+    values = [measured.get(phase).value for phase in phases]
+    return all(value is not None and proposed < value for value in values)
