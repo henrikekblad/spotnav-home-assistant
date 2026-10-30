@@ -447,6 +447,9 @@ class SiteCapacityController:
         self._measurement_lost_stepped: set[str] = set()
         self._measurement_lost_steps = 0
         self._measurement_lost_last_step_at: datetime | None = None
+        # Since when (`_yield_now`) the site's measurement has been unhealthy at all (`UNHEALTHY_STATES`), whichever
+        # charger it concerns; the status line waits on it (`lasting_measurement_problem`).
+        self._measurement_unhealthy_since: float | None = None
         self.result: SiteCapacityResult = self._calculate()
         self._update_direction_history()
         # One regulator decision per associated charger (`site/regulator.py`); acting on them is
@@ -2016,6 +2019,11 @@ class SiteCapacityController:
         """Note, per charger, since when the site's measurement has been lost for it, and forget it once it is
         read again: from then on the regulator decides as before (it may raise again by its own rules)."""
         now = self._yield_now()
+        if self.result.state in UNHEALTHY_STATES:
+            if self._measurement_unhealthy_since is None:
+                self._measurement_unhealthy_since = now
+        else:
+            self._measurement_unhealthy_since = None
         for charger_entry_id in list(self.config.get(CONF_CHARGER_ENTRY_IDS) or []):
             if self._measurement_lost_failure(charger_entry_id, self.result) is None:
                 self._measurement_lost_stepped.discard(charger_entry_id)
@@ -3829,6 +3837,20 @@ class SiteCapacityController:
         return measurement_problem(
             self.result, entities, unavailable=unavailable, platforms=platforms, negative=negative
         )
+
+    @property
+    def lasting_measurement_problem(self) -> MeasurementProblem | None:
+        """`measurement_problem` for the card's status: only once the measurement has been unhealthy for
+        `MEASUREMENT_LOST_GRACE_S`, the grace the regulator waits before it steps a charger down, so a meter that
+        drops out for a few seconds (a Shelly reconnecting) shows nothing; at once when a phase reads a negative
+        current on an unsigned site, a setting the person can change; gone as soon as the reading is back."""
+        problem = self.measurement_problem
+        if problem is None or problem.negative_phases:
+            return problem
+        since = self._measurement_unhealthy_since
+        if since is None or self._yield_now() - since < MEASUREMENT_LOST_GRACE_S:
+            return None
+        return problem
 
     def _read_direct_entities(self) -> DirectPhaseMeasurement:
         source = self._resolve_site_current_source()

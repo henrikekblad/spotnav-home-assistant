@@ -29,6 +29,7 @@ from custom_components.spotnav.const import (
 from custom_components.spotnav.execution.controller import ChargingController, ChargingPlan
 from custom_components.spotnav.execution.target_stop import ESTIMATE_CONFIRM_WAIT_S, ESTIMATE_STOP_MARGIN_PERCENT
 from custom_components.spotnav.site.measurement_source import PhaseMeasurementSource, source_to_dict
+from custom_components.spotnav.site.regulator import MEASUREMENT_LOST_GRACE_S
 from custom_components.spotnav.site.site_capacity_controller import SiteCapacityController
 from custom_components.spotnav.execution.solar_execution import (
     SolarExecutionCoordinator,
@@ -60,6 +61,14 @@ PHASES = ("L1", "L2", "L3")
 def controller_of(hass: HomeAssistant, entry_id: str) -> Any:
     """The live controller of a charger or a site entry."""
     return hass.config_entries.async_get_entry(entry_id).runtime_data.controller
+
+
+def measurement_lost_a_while(hass: HomeAssistant, site_entry_id: str) -> None:
+    """The site's measurement, unhealthy since setup, has been so for longer than the minute the card's status
+    waits before it names it (`SiteCapacityController.lasting_measurement_problem`)."""
+    site = controller_of(hass, site_entry_id)
+    assert site._measurement_unhealthy_since is not None  # noqa: SLF001
+    site._measurement_unhealthy_since -= 2 * MEASUREMENT_LOST_GRACE_S  # noqa: SLF001
 
 
 async def setup_charger(
