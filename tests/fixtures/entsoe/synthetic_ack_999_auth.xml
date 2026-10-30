@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Acknowledgement_MarketDocument xmlns="urn:iec62325.351:tc57wg16:451-3:publicationdocument:7:3">
+  <mRID>ack</mRID>
+  <createdDateTime>2026-09-19T13:45:12Z</createdDateTime>
+  <Reason>
+    <code>999</code>
+    <text>The securitytoken is not valid. Please check your credentials in the portal.</text>
+  </Reason>
+</Acknowledgement_MarketDocument>
