@@ -17,8 +17,9 @@ def _site(l1: float, l2: float, l3: float) -> dict[str, float]:
 
 def _edge(learner: SwitchedCurrent, kind: str, before, after, *, at: float, phases=THREE, maximum_a: float = 16.0):
     learner.begin_edge(kind, now=at, phases=phases, baseline=before, maximum_a=maximum_a)
-    learner.observe_site(after, now=at + 6.0)
-    learner.observe_site(after, now=at + 10.0)
+    learner.observe_site(after, now=at + 11.0)
+    learner.observe_site(after, now=at + 16.0)
+    learner.observe_site(after, now=at + 22.0)
 
 
 def test_before_anything_is_learned_the_configured_charging_current_is_used() -> None:
@@ -86,7 +87,7 @@ def test_a_noisy_step_is_ignored() -> None:
     # Readings that never hold still are no step at all.
     learner.begin_edge("on", now=1000.0, phases=THREE, baseline=_site(3.0, 2.0, 4.0), maximum_a=16.0)
     for second, value in enumerate([10.0, 14.0, 18.0, 12.0, 16.0]):
-        learner.observe_site(_site(value, value, value), now=1006.0 + second)
+        learner.observe_site(_site(value, value, value), now=1011.0 + 3 * second)
     learner.observe_site(_site(19.0, 18.0, 19.0), now=1200.0)
     assert learner.snapshot(10.0)["last_step"]["outcome"] == "no_stable_reading"
     assert learner.value(10.0).source == "charging_current"

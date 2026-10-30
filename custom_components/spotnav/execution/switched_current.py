@@ -10,8 +10,8 @@ from the first source that has anything to say:
    not make the next charge look small.
 2. **The site meter's step**, only for a charger with no measurement of its own: when SpotNav switches it on or off,
    the change in the site's measured phase currents on the phases it is wired to (net of what the other chargers'
-   own readings changed by), from the reading just before the command to the first stable reading after it
-   (`STEP_SETTLE_S`, `STEP_STABLE_A`, within `STEP_WINDOW_S`). A step counts only when it is plausible: the same on
+   own readings changed by), from the reading just before the command to the first stable reading after it: past
+   `STEP_SETTLE_S`, holding within `STEP_STABLE_A` for `STEP_HOLD_S`, within `STEP_WINDOW_S`. A step counts only when it is plausible: the same on
    every phase it is wired to (`STEP_PHASE_SPREAD_A`), quiet on the phases it is not (`STEP_QUIET_A`), at least
    `STEP_MIN_A` and not above the charger's configured maximum (`STEP_OVER_MAX_A`). It is trusted only once a
    second step agrees with it (`STEP_AGREE_A`): an on and an off edge, or the same edge again.
@@ -42,7 +42,8 @@ FALL_WEIGHT = 0.05
 SAVE_STEP_A = 0.5
 DEFAULT_SWITCHED_CURRENT_A = 16.0
 
-STEP_SETTLE_S = 5.0
+STEP_SETTLE_S = 10.0
+STEP_HOLD_S = 10.0
 STEP_WINDOW_S = 120.0
 STEP_STABLE_A = 0.5
 STEP_PHASE_SPREAD_A = 1.5
@@ -70,6 +71,7 @@ class _OpenEdge:
     baseline: dict[PhaseKey, float]
     maximum_a: float
     last: dict[PhaseKey, float] | None = None
+    stable_since: float | None = None
 
 
 def measured_amps(
@@ -134,8 +136,8 @@ class SwitchedCurrent:
         self._edge = _OpenEdge(kind, now, tuple(phases), values, float(maximum_a))
 
     def observe_site(self, readings: Mapping[PhaseKey, float | None], *, now: float) -> None:
-        """A site reading (net as for `begin_edge`) after an edge: the first one that holds still against the one
-        before it, past the settle time, is the step's other end."""
+        """A site reading (net as for `begin_edge`) after an edge: once the readings past the settle time have held
+        still for `STEP_HOLD_S`, they are the step's other end."""
         edge = self._edge
         if edge is None:
             return
@@ -149,11 +151,13 @@ class SwitchedCurrent:
                 return
             values[phase] = float(value)
         if now - edge.at < STEP_SETTLE_S:
-            edge.last = values
             return
         previous = edge.last
-        edge.last = values
         if previous is None or any(abs(values[p] - previous[p]) > STEP_STABLE_A for p in PHASE_KEYS):
+            edge.last = values
+            edge.stable_since = now
+            return
+        if edge.stable_since is None or now - edge.stable_since < STEP_HOLD_S:
             return
         sign = 1.0 if edge.kind == "on" else -1.0
         steps = {phase: sign * (values[phase] - edge.baseline[phase]) for phase in PHASE_KEYS}
