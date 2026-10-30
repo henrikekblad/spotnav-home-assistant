@@ -1,4 +1,4 @@
-"""Relay contract v2: the v2 documents with a v1 fallback, and display days cut from market days.
+"""Contract v2 shapes (the area list, split calendars) and display days cut from market days.
 
 The documents are the relay's own (`tests/fixtures/relay_v2/`, written by the relay's Go writer). The
 scenario is the one they were written for: a London evening, 2026-10-04 23:30 BST, already the 5th in
@@ -29,11 +29,10 @@ from custom_components.spotnav.pricing.relay_contract import (
     RelayParseError,
     parse_catalogue,
     parse_day,
-    parse_index,
 )
 from custom_components.spotnav.sessions.costing import price_slices, split_energy, spot_intervals
 
-from .relay import BASE_URL, Clock, FakeScheduler, StoreDouble, StubTransport
+from .relay import stub_repository, Clock, FakeScheduler, StoreDouble, StubTransport
 
 V2 = Path(__file__).parent / "fixtures" / "relay_v2"
 LONDON = "Europe/London"
@@ -58,18 +57,9 @@ def gb_file(day: date) -> Any:
     return parse_day(doc(f"GB-C_{day.isoformat()}.json"), area_id="GB-C", day=day)
 
 
-def serve_v2(transport: StubTransport, *, days: dict[str, list[date]] | None = None) -> None:
-    """The relay as deployed: both versions of the list and index, and the fixture day files."""
-    transport.serve("/v2/areas.json", 200, raw("areas-v2.json"))
-    transport.serve("/v1/areas.json", 200, raw("areas-v1.json"))
-    if days is None:
-        transport.serve("/v2/index.json", 200, raw("index-v2.json"))
-    else:
-        index = doc("index-v2.json")
-        index["areas"] = {area: {"days": sorted(d.isoformat() for d in listed), "res": 30 if area.startswith("GB") else 15}
-                          for area, listed in days.items()}
-        transport.serve("/v2/index.json", 200, json.dumps(index))
-    transport.serve("/v1/index.json", 200, raw("index-v1.json"))
+def serve_v2(transport: StubTransport) -> None:
+    """The fixture day files (the relay's own v2 writer's), served by path; every one of them is out."""
+    transport.routes.pop("/v1/index.json", None)
     for path in V2.glob("*_*.json"):
         area, _, rest = path.stem.partition("_")
         day = date.fromisoformat(rest)
@@ -77,7 +67,7 @@ def serve_v2(transport: StubTransport, *, days: dict[str, list[date]] | None = N
 
 
 def repository_for(hass: HomeAssistant, transport: StubTransport, clock: Clock, store: StoreDouble | None = None) -> PriceRepository:
-    return PriceRepository(hass, base_url=BASE_URL, session=transport, now=clock, store=store or StoreDouble())
+    return stub_repository(hass, transport, now=clock, store=store or StoreDouble())
 
 
 # --- the documents -------------------------------------------------------------------------------
@@ -157,15 +147,6 @@ def test_ids_up_to_32_characters_are_areas_and_a_repeat_still_refuses_the_list()
     assert caught.value.code == "duplicate_area"
 
 
-def test_the_v2_index_lists_market_days_with_half_hours() -> None:
-    index = parse_index(doc("index-v2.json"), version=2)
-    gb = index.area("GB-C")
-    assert gb is not None and gb.resolution_minutes == 30
-    assert gb.days == (OCT4, OCT5)
-    with pytest.raises(RelayParseError):
-        parse_index(doc("index-v2.json"))
-
-
 def test_a_gb_file_is_a_paris_day_of_half_hours() -> None:
     file = gb_file(OCT4)
     assert file.tz == PARIS
@@ -239,96 +220,21 @@ def test_both_clock_changes_cut_by_instant(day: date, files: tuple[date, ...], c
     assert set(steps) == {HALF_HOUR}
 
 
-# --- the repository: v2 first, v1 behind it ------------------------------------------------------
-
-
-async def test_the_list_and_index_are_read_as_v2_when_the_relay_has_it(
-    hass: HomeAssistant, transport: StubTransport, clock: Clock
-) -> None:
-    serve_v2(transport)
-    repository = repository_for(hass, transport, clock)
-    catalogue = await repository.async_get_catalogue(refresh=True)
-    index = await repository.async_get_index(refresh=True)
-    assert catalogue.catalogue is not None and catalogue.catalogue.version == 2
-    assert index.index is not None and index.index.version == 2
-    assert transport.calls == ["/v2/areas.json", "/v2/index.json"]
-
-
-@pytest.mark.parametrize("v2", [(404, "not found"), (200, "<html>proxy</html>"), (200, '{"v": 3}')])
-async def test_an_old_or_unreadable_v2_falls_back_to_v1_and_the_index_follows(
-    hass: HomeAssistant, transport: StubTransport, clock: Clock, v2: tuple[int, str]
-) -> None:
-    serve_v2(transport)
-    transport.serve("/v2/areas.json", *v2)
-    repository = repository_for(hass, transport, clock)
-    catalogue = await repository.async_get_catalogue(refresh=True)
-    index = await repository.async_get_index(refresh=True)
-    assert catalogue.state == "ready" and catalogue.catalogue is not None
-    assert catalogue.catalogue.version == 1
-    assert catalogue.catalogue.area("GB-C") is None
-    # The index is the list's version, never the newer one beside it.
-    assert index.index is not None and index.index.version == 1
-    assert transport.calls == ["/v2/areas.json", "/v1/areas.json", "/v1/index.json"]
-
-
-async def test_an_unreachable_relay_is_not_taken_for_an_old_one(
-    hass: HomeAssistant, transport: StubTransport, clock: Clock
-) -> None:
-    serve_v2(transport)
-    transport.serve("/v2/areas.json", 503, "busy")
-    repository = repository_for(hass, transport, clock)
-    catalogue = await repository.async_get_catalogue(refresh=True)
-    assert catalogue.state == "unavailable"
-    assert transport.calls == ["/v2/areas.json"]
-
-
-async def test_a_v1_cache_restores_its_held_days_and_moves_to_v2(
-    hass: HomeAssistant, transport: StubTransport, clock: Clock
-) -> None:
-    """A cache written by an older release (v1 list and index) loses nothing it held."""
-    clock.now = datetime(2026, 10, 4, 12, 0, tzinfo=timezone.utc)
-    fetched = clock.now.isoformat()
-    store = StoreDouble(
-        {
-            "schema": 1,
-            "catalogue": {"document": doc("areas-v1.json"), "fetched_at": fetched},
-            "index": {"document": doc("index-v1.json"), "fetched_at": fetched},
-            "days": {"PT|2026-10-04": {"document": doc("PT_2026-10-04.json"), "fetched_at": fetched}},
-            "profiles": {},
-        }
-    )
-    serve_v2(transport)
-    repository = repository_for(hass, transport, clock, store)
-    await repository.async_restore()
-    assert repository.catalogue_snapshot().catalogue.version == 1
-    held = repository.day_snapshot("PT", OCT4)
-    # v1 Portugal is one Madrid calendar: the held file is the day.
-    assert held.document is not None and held.document.interval_count == 96
-
-    await repository.async_get_catalogue(refresh=True)
-    assert repository.catalogue_snapshot().catalogue.version == 2
-    # The v1 index is not authority beside a v2 list; the next read is v2.
-    assert repository.index_snapshot().index is None
-    await repository.async_get_index(refresh=True)
-    assert repository.index_snapshot().index.version == 2
-    assert repository.file_snapshot("PT", OCT4).document is not None
-    assert "PT|Europe/Madrid|2026-10-04" in store.payload["days"]
+# --- the repository ------------------------------------------------------------------------------
 
 
 async def test_an_archive_london_day_asks_for_a_shared_file_once(
     hass: HomeAssistant, transport: StubTransport, clock: Clock
 ) -> None:
-    serve_v2(transport, days={"GB-C": []})
+    serve_v2(transport)
     repository = repository_for(hass, transport, clock)
-    await repository.async_get_catalogue(refresh=True)
-    await repository.async_get_index(refresh=True)
     first = await repository.async_get_archive_day("GB-C", OCT4)
     second = await repository.async_get_archive_day("GB-C", OCT5)
     assert first is not None and first.interval_count == 48 and first.tz == LONDON
     # The 5th's file is the end of the 4th in London and most of the 5th: asked for once.
     assert transport.call_count("/v1/GB-C/2026/10-05.json") == 1
     assert second is not None and second.interval_count == 46
-    # A day whose principal file the relay does not have is no day.
+    # A day whose principal file the source does not have is no day.
     assert await repository.async_get_archive_day("GB-C", date(2026, 10, 7)) is None
 
 
@@ -371,9 +277,10 @@ async def test_a_london_evening_needs_the_next_paris_file(
 async def test_a_london_afternoon_before_publication_waits_for_tomorrow(
     hass: HomeAssistant, transport: StubTransport, clock: Clock
 ) -> None:
-    # 14:00 BST on the 4th: the index lists the 3rd and 4th in Paris, not yet the 5th.
+    # 14:00 BST on the 4th: the 3rd and 4th are out in Paris, not yet the 5th.
     clock.now = datetime(2026, 10, 4, 13, 0, tzinfo=timezone.utc)
-    serve_v2(transport, days={"GB-C": [date(2026, 10, 3), OCT4], "PT": [OCT4], "SE4": [OCT4]})
+    serve_v2(transport)
+    del transport.routes["/v1/GB-C/2026/10-05.json"]
     repository = repository_for(hass, transport, clock)
     manager = manager_for(hass, repository, clock)
     await manager.async_subscribe(owner_id="a", area_id="GB-C")
@@ -385,8 +292,8 @@ async def test_a_london_afternoon_before_publication_waits_for_tomorrow(
     assert snapshot.today_state == "ready"
     assert snapshot.today_document is not None and snapshot.today_document.interval_count == 46
     assert snapshot.waiting_for_tomorrow and snapshot.state == "waiting_for_tomorrow"
-    # Nothing unpublished is asked for.
-    assert transport.call_count("/v1/GB-C/2026/10-05.json") == 0
+    # Tomorrow's file was asked for once and is not out yet; nothing earlier than today's files is asked for.
+    assert transport.call_count("/v1/GB-C/2026/10-05.json") == 1
     assert transport.call_count("/v1/GB-C/2026/10-03.json") == 0
     await manager.async_shutdown()
 
@@ -409,25 +316,6 @@ async def test_lisbon_is_read_on_madrid_market_days(
     assert [part.day for part in today.parts] == [OCT4, OCT4]
     assert today.start_instant == datetime(2026, 10, 3, 23, 0, tzinfo=timezone.utc)
     assert snapshot.state == "ready"
-    await manager.async_shutdown()
-
-
-async def test_a_v1_relay_keeps_portugal_on_one_madrid_calendar(
-    hass: HomeAssistant, transport: StubTransport, clock: Clock
-) -> None:
-    clock.now = datetime(2026, 10, 4, 12, 0, tzinfo=timezone.utc)
-    serve_v2(transport)
-    transport.serve("/v2/areas.json", 404, "not found")
-    transport.serve("/v2/index.json", 404, "not found")
-    repository = repository_for(hass, transport, clock)
-    manager = manager_for(hass, repository, clock)
-    await manager.async_subscribe(owner_id="a", area_id="PT")
-    await hass.async_block_till_done()
-    snapshot = manager.area_snapshot("PT")
-    assert snapshot is not None
-    today = snapshot.today_document
-    assert today is not None and today.tz == MADRID and today.parts == ()
-    assert transport.call_count("/v1/PT/2026/10-05.json") == 1
     await manager.async_shutdown()
 
 
@@ -492,7 +380,7 @@ def test_the_settings_record_states_what_is_included_and_the_app_is_not_shown_it
     ]
 
 
-def test_the_dashboard_and_the_market_editor_show_included_parts_and_the_source() -> None:
+def test_the_dashboard_and_the_market_editor_show_included_parts_and_no_list_source() -> None:
     from custom_components.spotnav.api.dashboard import serialize_fiscal
     from custom_components.spotnav.api.market import _area
 
@@ -508,4 +396,5 @@ def test_the_dashboard_and_the_market_editor_show_included_parts_and_the_source(
     area = _area(gb)
     assert area["included"] == ["vat", "tax", "transfer"]
     assert area["market_timezone"] == PARIS and area["timezone"] == LONDON
-    assert area["source"] == {"name": "Octopus Energy (Agile)", "url": "https://octopus.energy/smart/agile/"}
+    # The list's attribution is not shown: where the prices come from is the area's provider's to say.
+    assert area["source"] is None

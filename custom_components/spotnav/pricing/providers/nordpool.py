@@ -80,7 +80,6 @@ class NordPoolProvider:
     #: What the card and the app call it, and where it is (attribution).
     name: str = "Nord Pool"
     url: str = "https://www.nordpoolgroup.com/"
-    has_index = False
     publication: AreaPublication = PUBLICATION
     history_reach: timedelta | None = HISTORY_REACH
 

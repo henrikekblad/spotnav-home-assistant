@@ -29,10 +29,9 @@ from custom_components.spotnav.pricing.price_refresh import PriceRefreshManager
 from custom_components.spotnav.pricing.price_repository import PriceRepository
 from custom_components.spotnav.pricing.providers import DayFetch, ProviderRouter
 from custom_components.spotnav.pricing.providers.octopus import agile_region, OctopusProvider, PUBLICATION
-from custom_components.spotnav.pricing.providers.relay import RelayProvider
 from custom_components.spotnav.pricing.relay_contract import parse_day
 
-from .relay import BASE_URL, Clock, FakeScheduler, StoreDouble, StubTransport
+from .relay import Clock, FakeScheduler, StoreDouble, StubTransport
 
 UTC = timezone.utc
 LONDON = "Europe/London"
@@ -168,7 +167,7 @@ class World:
         assert bundled is not None
         self.provider = OctopusProvider(self.hass, bundled, self.rates, now=self.clock)
         self.router = ProviderRouter(
-            RelayProvider(self.hass, base_url=BASE_URL, session=self.transport), octopus=self.provider
+            octopus=self.provider
         )
         self.router.async_start(self.hass)
         self.repository = PriceRepository(
@@ -409,7 +408,7 @@ async def test_an_export_meter_or_another_tariff_serves_nothing(world: World) ->
     exporter = Meter(world.hass, world.entry, "21E7654321", "1170000000001", export=True)
     await world.publish(TODAY, meter=exporter, tariff="E-1R-AGILE-OUTGOING-19-05-13-C")
     assert world.provider.meters == () and not world.provider.serves(AREA)
-    assert world.repository.provider_for(AREA).key == "relay"
+    assert world.repository.provider_for(AREA) is None
 
 
 async def test_another_region_than_the_meters_is_read_from_the_meter(world: World) -> None:
@@ -435,7 +434,7 @@ async def test_meters_in_several_regions_serve_only_their_own(world: World) -> N
 async def test_a_disabled_entity_or_an_unloaded_entry_serves_nothing(world: World) -> None:
     await world.start(loaded=False)
     await world.publish(TODAY)
-    assert world.repository.provider_for(AREA).key == "relay"
+    assert world.repository.provider_for(AREA) is None
 
     world.entry.mock_state(world.hass, ConfigEntryState.LOADED)
     assert world.repository.provider_for(AREA) is world.provider
@@ -445,7 +444,7 @@ async def test_a_disabled_entity_or_an_unloaded_entry_serves_nothing(world: Worl
         world.meter.entity_ids["current_day_rates"], disabled_by=er.RegistryEntryDisabler.USER
     )
     assert world.provider.refresh() is True
-    assert world.repository.provider_for(AREA).key == "relay"
+    assert world.repository.provider_for(AREA) is None
 
 
 # ------------------------------------------------------------------ the choice and the schedule
@@ -455,7 +454,7 @@ async def test_the_router_follows_the_meters_rate_entities(world: World) -> None
     await world.start()
     heard: list[int] = []
     world.repository.add_provider_listener(lambda: heard.append(1))
-    assert world.repository.provider_for(AREA).key == "relay"
+    assert world.repository.provider_for(AREA) is None
 
     await world.publish(TODAY)
     assert world.repository.provider_for(AREA) is world.provider and heard == [1]
@@ -469,11 +468,11 @@ async def test_the_router_follows_the_meters_rate_entities(world: World) -> None
 
     # The customer leaves Agile.
     await world.publish(TODAY, tariff="E-1R-VAR-22-11-01-C")
-    assert world.repository.provider_for(AREA).key == "relay" and heard == [1, 1]
+    assert world.repository.provider_for(AREA) is None and heard == [1, 1]
 
     await world.publish(TODAY)
     world.entry.mock_state(world.hass, ConfigEntryState.NOT_LOADED)
-    assert world.repository.provider_for(AREA).key == "relay" and heard == [1, 1, 1, 1]
+    assert world.repository.provider_for(AREA) is None and heard == [1, 1, 1, 1]
 
 
 async def test_a_subscribed_area_is_read_and_waits_for_the_afternoon_publication(world: World) -> None:
@@ -502,7 +501,7 @@ async def test_setup_builds_the_octopus_provider(hass: HomeAssistant) -> None:
     entry.mock_state(hass, ConfigEntryState.LOADED)
     repository = await async_setup_price_repository(hass, store=StoreDouble())
     try:
-        assert repository.provider_for(AREA).key == "relay"
+        assert repository.provider_for(AREA) is None
         meter = Meter(hass, entry, SERIAL, MPAN)
         meter.publish(relay_slots(TODAY), NOW)
         await hass.async_block_till_done()

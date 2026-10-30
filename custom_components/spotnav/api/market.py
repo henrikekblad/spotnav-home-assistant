@@ -1,17 +1,11 @@
-"""The market editor's read: which areas the relay publishes, and what it suggests for each.
+"""The market editor's read: which areas there are, and what is suggested for each.
 
-`spotnav/get_market_options` answers from the catalogue Home Assistant already holds (parsed
-`AreaEntry` objects, never raw relay JSON) plus the charger's own stored area, so a person's choice
-never disappears merely because the catalogue is offline or has moved on. It writes nothing and
-starts no download of its own: with no catalogue held it uses the repository's coalesced ensure
-path, so two chargers reading at once share one fetch.
-
-While the relay's list is not held, the catalogue is the one bundled with the integration
-(`pricing/areas.json`, generated from the relay's own area table, `pricing/area_catalogue.py`), so the
-picker has its areas without the network; its snapshot says `source: "bundled"`. Deliberately absent: any
-other fallback (with neither list, no catalogue is an honest non-ready answer); a second contract (the settings record is the only authority on what
-a charger chose); and any conversion (VAT is the relay's percent, tax and transfer its minor
-currency unit, and currency and both display units travel as separate facts).
+`spotnav/get_market_options` answers from the area list bundled with the integration (`pricing/areas.json`,
+`pricing/area_catalogue.py`; parsed `AreaEntry` objects) plus the charger's own stored area, so a person's choice
+never disappears merely because the list has moved on. It writes nothing and asks nothing of the network.
+Deliberately absent: any other list (a bundled file that could not be read is an honest non-ready answer); a
+second contract (the settings record is the only authority on what a charger chose); and any conversion (VAT is a
+percent, tax and transfer the minor currency unit, and currency and both display units travel as separate facts).
 """
 
 from __future__ import annotations
@@ -38,13 +32,12 @@ _LOGGER = logging.getLogger(__name__)
 #: Contract version, independent of the dashboard's, the settings' and the action's.
 MARKET_API_VERSION: Final = 1
 
-#: What a non-ready catalogue is reported as instead of a repository failure code: the relay could
-#: not be reached, or what it sent could not be read.
+#: What a non-ready catalogue is reported as instead of a repository failure code (kept for the contract; the
+#: bundled list has no attempt that could fail).
 REASON_OFFLINE: Final = "offline"
 REASON_INVALID: Final = "invalid"
 
-#: The repository's fetch failures ("relay unreachable"); everything else is a rejection of what
-#: the relay sent.
+#: Transport failures; everything else is a rejection of what was read.
 OFFLINE_CODES: Final = ("timeout", "network", "http_status", "too_large")
 
 
@@ -57,7 +50,7 @@ def _reason_for(snapshot: CatalogueSnapshot) -> str | None:
 
 
 def _suggestions(entry: AreaEntry) -> dict[str, Any]:
-    """The relay's suggestions for one area, as three independent nullable figures.
+    """The list's suggestions for one area, as three independent nullable figures.
 
     `None` is "nothing published" and a literal `0.0` is a published zero; the relay keeps those apart
     and so does this. VAT is a percent; tax and transfer are in the currency's minor unit. Nothing is
@@ -87,10 +80,12 @@ def _area(entry: AreaEntry) -> dict[str, Any]:
         "minor_unit": entry.minor_unit,
         "suggestions": _suggestions(entry),
         # Contract v2: the market calendar, the fiscal components the price already includes (in the
-        # settings' own names, locked in the editor), and the attribution (`null` from a v1 list).
+        # settings' own names, locked in the editor), and the attribution: always `null`, because the bundled list
+        # states only a placeholder; where the prices come from is the area's provider (the dashboard's
+        # `prices.provider`).
         "market_timezone": entry.market_tz,
         "included": list(included_components(entry)),
-        "source": None if entry.source is None else {"name": entry.source.name, "url": entry.source.url},
+        "source": None,
     }
 
 
@@ -99,9 +94,8 @@ def market_options_payload(
 ) -> dict[str, Any]:
     """The one success shape, from the held catalogue and the charger's stored choice.
 
-    `areas` keeps the relay's published order and is empty when nothing is held. `configured_area` is
-    the stored choice, returned whether or not the catalogue still lists it, so a person's area does not
-    vanish when the relay is offline; the card can say "no longer listed" without this command inventing
+    `areas` keeps the list's order and is empty when nothing is held. `configured_area` is the stored choice,
+    returned whether or not the catalogue still lists it, so a person's area does not vanish; the card can say "no longer listed" without this command inventing
     a name, currency or suggestion.
     """
     catalogue = None if snapshot is None else snapshot.catalogue
@@ -115,20 +109,15 @@ def market_options_payload(
 
 
 async def async_market_options(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, Any]:
-    """One charger's market choices, ensuring a catalogue only when none is held at all.
-
-    Reads the manager's own snapshot (one cache, one state). Only an empty cache asks the repository's
-    coalesced ensure path, since that is the one moment a fetch can change the answer; a held catalogue
-    is never refreshed here and no timer, listener or download is created.
-    """
+    """One charger's market choices, from the bundled area list. No timer, listener or download is created."""
     source = price_source_for(hass, entry.entry_id)
     configured_area = None if source is None else source.area_id
     manager = domain_data(hass).price_refresh
     snapshot = None if manager is None else manager.catalogue_snapshot()
-    if snapshot is None or snapshot.catalogue is None:
+    if snapshot is None:
         repository = domain_data(hass).price_repository
         if repository is not None:
-            snapshot = await repository.async_get_catalogue()
+            snapshot = repository.catalogue_snapshot()
     return market_options_payload(snapshot, configured_area)
 
 

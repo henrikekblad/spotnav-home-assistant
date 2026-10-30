@@ -61,7 +61,7 @@ _LOGGER = logging.getLogger(__name__)
 #: one stream.
 OWNER_PREFIX: Final = "price:"
 
-#: Delay before trying again to subscribe after the relay or the catalogue was not there.
+#: Delay before trying again to subscribe after the area list did not name the area.
 RETRY_DELAY_S: Final = 60.0
 
 #: The longest span `spotnav.get_prices` answers for.
@@ -124,7 +124,7 @@ class PriceDevice:
     # ----------------------------------------------------------------- lifetime
 
     async def async_start(self) -> None:
-        """Subscribe to the area; a relay that is not there yet is retried, never an error."""
+        """Subscribe to the area; an area not known yet is retried, never an error."""
         await self._async_subscribe()
         if not self._closed:
             self._remove_catalogue = self._manager.add_catalogue_listener(self._on_catalogue)
@@ -352,7 +352,7 @@ class PriceDevice:
     # ----------------------------------------------------------------- reads
 
     def catalogue(self) -> CatalogueSnapshot:
-        """The relay's area list as the installation holds it."""
+        """The area list (the bundled one)."""
         return self._manager.catalogue_snapshot()
 
     @property
@@ -379,7 +379,7 @@ class PriceDevice:
 
     @property
     def source(self) -> str | None:
-        """The key of the provider the area's prices come from (`nordpool`, `entsoe`, `pvpc`, `octopus`, `relay`),
+        """The key of the provider the area's prices come from (`nordpool`, `entsoe`, `pvpc`, `octopus`),
         `None` with no source at all or before it is known."""
         return None if self._source is None else self._source.key
 

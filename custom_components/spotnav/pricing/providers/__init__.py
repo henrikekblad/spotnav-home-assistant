@@ -1,35 +1,35 @@
 """Where a market-day file comes from: the price providers behind the repository.
 
 The repository (`pricing/price_repository.py`) stays the one owner of cache, store, coalescing, snapshots and
-states; a provider only answers "this area's file for this market day" as the relay's `"v": 1` day document,
-a plain mapping the repository validates with the same `parse_day` as any other. So every source is checked by
-one parser, the store keeps one format, and nothing that reads a [PriceDocument] knows where it came from.
+states; a provider only answers "this area's file for this market day" as a `"v": 1` day document (the shape
+`pricing/relay_contract.py` reads), a plain mapping the repository validates with the same `parse_day` as any
+other. So every source is checked by one parser, the store keeps one format, and nothing that reads a
+[PriceDocument] knows where it came from.
 
-Five providers so far:
+Four providers, each fetched by this installation for its own use. None has an index: the publication schedule says
+when a day is worth asking for ([schedule_authority]).
 
-* the relay ([RelayProvider], `providers/relay.py`): its index says which days exist, and its files are dated on
-  the area list's own market calendar;
 * Nord Pool through Home Assistant's own `nordpool` integration ([NordPoolProvider], `providers/nordpool.py`):
-  no index, so the publication schedule says when a day is worth asking for ([schedule_authority]), and its
-  files are CET delivery days (`routes.cet_market_tz`);
+  its files are CET delivery days (`routes.cet_market_tz`);
 * ENTSO-E's Transparency Platform with the installation's own key ([EntsoeProvider], `providers/entsoe.py`):
   asked like Nord Pool, on the same schedule and the same CET calendar;
 * Spain's PVPC through Home Assistant's own `pvpc_hourly_pricing` integration ([PvpcProvider],
   `providers/pvpc.py`): the prices it already holds, on the Madrid day;
 * Great Britain's Agile rates through the Octopus Energy integration ([OctopusProvider], `providers/octopus.py`):
-  the customer's own meter's rates, on the relay's Paris day.
+  the customer's own meter's rates, on the Paris day (23:00 to 23:00 UK time).
 
 [ProviderRouter] picks one per area ([choose_provider]): the PVPC integration for the PVPC area while one of its
 entries is loaded; the Octopus integration for a GB area while an Agile meter's rates are there for it; Nord Pool
 for an area Nord Pool trades while a `nordpool` config entry is loaded; else ENTSO-E for an area the platform
-publishes while a key is set that it has not rejected; else the relay. There is no fallback from one to the other
-within an attempt. The choice is taken again whenever a `nordpool`, `pvpc_hourly_pricing` or `octopus_energy`
-entry is added, removed, loaded or unloaded (Home Assistant's `SIGNAL_CONFIG_ENTRY_CHANGED`, which it sends for
-each of those, a load or unload being a state change of the entry), whenever one of the Octopus integration's rate
-entities changes (the meter's tariff is read from it), and whenever the ENTSO-E key is set, cleared or rejected.
+publishes while a key is set that it has not rejected; else **none**: the area has no source, nothing is asked for,
+and its notice names the action that gives it one. There is no fallback from one to the other within an attempt.
+The choice is taken again whenever a `nordpool`, `pvpc_hourly_pricing` or `octopus_energy` entry is added, removed,
+loaded or unloaded (Home Assistant's `SIGNAL_CONFIG_ENTRY_CHANGED`, which it sends for each of those, a load or
+unload being a state change of the entry), whenever one of the Octopus integration's rate entities changes (the
+meter's tariff is read from it), and whenever the ENTSO-E key is set, cleared or rejected.
 
-[ProviderRouter.source_status] says which provider an area is read from and, when it has no source of its own
-(the relay only), the one action that gives it one: the notices of `providers/notices.py`.
+[ProviderRouter.source_status] says which provider an area is read from and, when it has none, the one action that
+gives it one: the notices of `providers/notices.py`.
 """
 
 from __future__ import annotations
@@ -55,16 +55,15 @@ if TYPE_CHECKING:
     from .nordpool import NordPoolProvider
     from .octopus import OctopusProvider
     from .pvpc import PvpcProvider
-    from .relay import RelayProvider
 
 _LOGGER = logging.getLogger(__name__)
 
-#: Which provider a file came from, as stored beside it (`"provider"` in the store's day entries).
-ProviderKey = Literal["relay", "nordpool", "entsoe", "pvpc", "octopus"]
+#: Which provider a file came from, as stored beside it (`"provider"` in the store's day entries). Files kept from
+#: before 2.0, when the SpotNav relay delivered prices, carry `"relay"`; no provider has that key any more.
+ProviderKey = Literal["nordpool", "entsoe", "pvpc", "octopus"]
 
-#: How a provider's attempt for one file ended. The relay has no `not_published` of its own: its index says
-#: which days exist, so a file it does not have is a failed request (its 404), as it always was. Nord Pool's
-#: empty answer is `not_published`: the day is not out yet, which is not a failure.
+#: How a provider's attempt for one file ended. An empty answer (Nord Pool's empty list, ENTSO-E's "no matching
+#: data") is `not_published`: the day is not out yet, which is not a failure.
 FetchOutcome = Literal["fetched", "not_published", "failed"]
 
 #: A failed fetch's stable code: the transport half here, the content half `relay_contract`'s.
@@ -134,7 +133,7 @@ TRANSPORT_CODES: frozenset[str] = frozenset(
 #: `PUBLICATION_WINDOW_LEAD`): before it, tomorrow is not asked for.
 PUBLICATION_WINDOW_LEAD: Final = timedelta(minutes=5)
 
-#: What a source says about one file: the relay's index, or the schedule for a provider without one.
+#: What the schedule and the provider's last answer say about one file.
 Authority = Literal["listed", "not_listed", "unknown"]
 
 
@@ -161,16 +160,13 @@ class PriceProvider(Protocol):
     #: What the card and the app call it, and where it is (attribution).
     name: str
     url: str
-    #: Whether it publishes an index of the days it holds (the relay); a provider without one is asked on a
-    #: schedule instead ([schedule_authority]).
-    has_index: bool
-    #: When tomorrow's file is expected; `None` means the area list's own (the relay's).
-    publication: AreaPublication | None
+    #: When tomorrow's file is expected: the schedule the provider is asked on ([schedule_authority]).
+    publication: AreaPublication
     #: How far back a day can be asked for; `None` means no limit.
     history_reach: timedelta | None
 
     def market_calendar(self, area_id: str) -> str | None:
-        """The zone whose calendar day one of its files covers; `None` means the area list's `market_tz`."""
+        """The zone whose calendar day one of its files covers; `None` for an area it has no route for."""
 
     def wants_again(self, area_id: str, document: PriceDocument) -> bool:
         """Whether a held file is worth asking for once more (a rate that was missing when it was built)."""
@@ -242,12 +238,12 @@ def choose_provider(
     pvpc_serves: bool = False,
     pvpc_loaded: bool = False,
     octopus_serves: bool = False,
-) -> ProviderKey:
+) -> ProviderKey | None:
     """The rule, per area: the PVPC integration for the PVPC area while one of its entries is loaded; the Octopus
     integration for a GB area while an Agile meter's rates are there for it; Nord Pool for an area it trades while
     a `nordpool` entry is loaded; else ENTSO-E for an area the platform publishes while a key is set that it has
-    not rejected; else the relay (for now: it ends with the relay's prices, after which such an area has no
-    source). No area is served by more than one of the first three, so their order is only for reading."""
+    not rejected; else none (the area has no source). No area is served by more than one of the first three, so
+    their order is only for reading."""
     if pvpc_serves and pvpc_loaded:
         return "pvpc"
     if octopus_serves:
@@ -256,7 +252,7 @@ def choose_provider(
         return "nordpool"
     if entsoe_serves and entsoe_key_usable:
         return "entsoe"
-    return "relay"
+    return None
 
 
 class ProviderRouter:
@@ -267,14 +263,12 @@ class ProviderRouter:
 
     def __init__(
         self,
-        relay: RelayProvider,
         nordpool: NordPoolProvider | None = None,
         entsoe: EntsoeProvider | None = None,
         *,
         pvpc: PvpcProvider | None = None,
         octopus: OctopusProvider | None = None,
     ) -> None:
-        self._relay = relay
         self._nordpool = nordpool
         self._entsoe = entsoe
         self._pvpc = pvpc
@@ -286,11 +280,6 @@ class ProviderRouter:
         self._entry_states: dict[str, EntryState] = {}
         self._listeners: list[Callable[[], None]] = []
         self._unsubscribe: list[Callable[[], None]] = []
-
-    @property
-    def relay(self) -> RelayProvider:
-        """The relay itself, for the resources only it has (its area list and index)."""
-        return self._relay
 
     @property
     def entsoe(self) -> EntsoeProvider | None:
@@ -306,8 +295,8 @@ class ProviderRouter:
     def nordpool_in_use(self) -> bool:
         return self._nordpool is not None and self._nordpool_loaded
 
-    def provider_for(self, area_id: str) -> PriceProvider:
-        """The provider whose files an area is read from."""
+    def provider_for(self, area_id: str) -> PriceProvider | None:
+        """The provider whose files an area is read from, or `None` when the area has no source."""
         key = choose_provider(
             nordpool_serves=self._nordpool is not None and self._nordpool.serves(area_id),
             nordpool_loaded=self._nordpool_loaded,
@@ -325,12 +314,12 @@ class ProviderRouter:
             return self._nordpool
         if key == "entsoe" and self._entsoe is not None:
             return self._entsoe
-        return self._relay
+        return None
 
-    def source_status(self, area_id: str, *, relay_serves: bool) -> SourceStatus:
-        """The area's provider (the relay's only while it serves the area) and its notice (`notices.py`)."""
+    def source_status(self, area_id: str) -> SourceStatus:
+        """The area's provider (`None` fields when it has none) and its notice (`notices.py`)."""
         provider = self.provider_for(area_id)
-        if provider.key == "relay" and not relay_serves:
+        if provider is None:
             return SourceStatus(key=None, name=None, url=None, notice=source_notice(self.facts(area_id)))
         return SourceStatus(
             key=provider.key, name=provider.name, url=provider.url, notice=source_notice(self.facts(area_id))

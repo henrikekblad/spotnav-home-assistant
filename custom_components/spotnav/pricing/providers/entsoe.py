@@ -14,7 +14,7 @@ module is the transport around it:
   server error make the provider wait the time it names (`Retry-After`, bounded) before it asks anything again,
   answering `rate_limited` / `entsoe_unavailable` meanwhile without a request; a 401/403 (or an acknowledgement
   naming the credentials) is `entsoe_auth` and marks the stored key `rejected`, which takes every ENTSO-E area off
-  this provider at once (the router chooses again: the relay, for now); "no matching data" or a day that is still
+  this provider at once (the router chooses again: Nord Pool where it is loaded, else no source); "no matching data" or a day that is still
   being published is `not_published`; a body the parser refuses is `provider_refused`.
 * **History reaches years back** ([history_reach] `None`). The history backfill (`pricing/price_history.py`) asks
   for up to [RANGE_DAYS] consecutive days in one request ([async_fetch_days]); each day is read from that answer
@@ -129,7 +129,6 @@ class EntsoeProvider:
     #: What the card and the app call it, and where it is (attribution).
     name: str = "ENTSO-E Transparency Platform"
     url: str = "https://transparency.entsoe.eu/"
-    has_index = False
     publication: AreaPublication = PUBLICATION
     #: The platform keeps years of day-ahead prices.
     history_reach: timedelta | None = None

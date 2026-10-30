@@ -1,19 +1,18 @@
-"""The SpotNav Relay contract (v1 and v2): typed models and the parsers that build them.
+"""The `"v": 1` day document, the v2 area list and the v1 history profile: typed models and their parsers.
 
-Home Assistant consumes three published documents (`areas.json`, `index.json` and one dated price
-document) and this module is the one place that knows their shape. The area list and the index come
-in two versions (`/v2/…` first, `/v1/…` from a relay that predates contract v2); a day file is the
-same `"v": 1` document under both, read on its own calendar (`market_tz`, else `tz`). It is pure (no `hass`,
-session or clock), so every rule is a plain unit test. Field names follow `spotnav-relay`'s
-`docs/format.md`. A field the relay documents as optional is held as `None`, never substituted:
-zero and absent are different facts.
+The shapes are the SpotNav relay contract's (`spotnav-relay`'s `docs/format.md`), kept as the one internal format
+since 2.0, when the relay stopped delivering prices: every provider builds a `"v": 1` day document
+(`pricing/day_document.py`) that [parse_day] validates, the bundled area list (`pricing/areas.json`) is a v2 area
+list read by [parse_catalogue], and the webhook's `price_days` sends the history profile in the v1 profile shape
+([parse_profile] reads it back). A day file is read on its own calendar (`market_tz`, else `tz`). It is pure (no
+`hass`, session or clock), so every rule is a plain unit test. A field documented as optional is held as `None`,
+never substituted: zero and absent are different facts.
 
 Every rejection raises [RelayParseError] carrying a stable [ParseCode] that callers may branch on;
 the message is for logs only.
 
-Not here: fetching (`price_repository`), deciding how much of a day is enough, or computing a
-consumer price. Prices are stored as published, in EUR per kWh, with the catalogue's currency and
-unit labels beside them.
+Not here: fetching (`pricing/providers/`), deciding how much of a day is enough, or computing a consumer price.
+Prices are stored as published, in EUR per kWh, with the catalogue's currency and unit labels beside them.
 """
 
 from __future__ import annotations
@@ -112,24 +111,6 @@ def _fail(code: ParseCode, message: str) -> None:
     raise RelayParseError(code, message)
 
 
-def loads_document(text: str) -> Any:
-    """Parse a response body as JSON, refusing the non-finite constants.
-
-    `json.loads` accepts `NaN` and `Infinity`, which are not JSON. A body that is not JSON at all
-    (likely a proxy's HTML page) raises [RelayParseError] with `not_json`.
-    """
-
-    def refuse(constant: str) -> Any:
-        _fail("invalid_number", f"the document contains {constant}, which is not a JSON number")
-
-    try:
-        return json.loads(text, parse_constant=refuse)
-    except RelayParseError:
-        raise
-    except (ValueError, TypeError) as err:
-        raise RelayParseError("not_json", f"the response body is not JSON: {type(err).__name__}") from err
-
-
 def _object(value: Any, what: str) -> dict[str, Any]:
     if not isinstance(value, dict):
         _fail("not_an_object", f"{what} must be a JSON object")
@@ -148,16 +129,6 @@ def _version(document: Mapping[str, Any], what: str, expected: int = SUPPORTED_V
         _fail("invalid_field", f"{what}: 'v' must be a whole number, not {raw!r}")
     if raw != expected:
         _fail("unsupported_version", f"{what}: contract version {raw} is not {expected}")
-    return raw
-
-
-def document_version(document: Any) -> int | None:
-    """The `v` a stored area list or index says it is, when it is one this client reads, else `None`."""
-    if not isinstance(document, dict):
-        return None
-    raw = document.get("v")
-    if isinstance(raw, bool) or not isinstance(raw, int) or raw not in CATALOGUE_VERSIONS:
-        return None
     return raw
 
 
@@ -318,42 +289,6 @@ class AreaCatalogue:
     @property
     def area_ids(self) -> tuple[str, ...]:
         return tuple(entry.id for entry in self.areas)
-
-
-@dataclass(frozen=True, slots=True)
-class IndexArea:
-    """One area inside the index: which of its recent days are published.
-
-    `resolution_minutes` is optional; `res_default` covers areas without a per-area value.
-    """
-
-    area_id: str
-    days: tuple[date, ...]
-    resolution_minutes: int | None
-
-    def lists(self, day: date) -> bool:
-        return day in self.days
-
-
-@dataclass(frozen=True, slots=True)
-class RelayIndex:
-    """The published index: a short recent window per area, and two revisions.
-
-    `areas_rev` is the first twelve hex digits of the `areas.json` hash, so a client polling this
-    small document notices a changed catalogue. It is the only revision the contract states.
-    """
-
-    version: int
-    generated: datetime
-    res_default: int | None
-    areas_rev: str
-    areas: tuple[IndexArea, ...]
-
-    def area(self, area_id: str) -> IndexArea | None:
-        for entry in self.areas:
-            if entry.area_id == area_id:
-                return entry
-        return None
 
 
 @dataclass(frozen=True, slots=True)
@@ -671,64 +606,6 @@ def parse_catalogue(document: Any, *, version: int = SUPPORTED_VERSION) -> AreaC
         seen.add(entry.id)
         entries.append(entry)
     return AreaCatalogue(version=version, generated=generated, areas=tuple(entries))
-
-
-def _parse_index_area(area_id: Any, raw: Any) -> IndexArea:
-    what = f"index area {area_id!r}"
-    if not isinstance(area_id, str) or not AREA_ID_PATTERN.match(area_id):
-        _fail("invalid_field", "the index has an area key that is not an area id")
-    area = _object(raw, what)
-    raw_days = _require(area, "days", what)
-    if not isinstance(raw_days, list):
-        _fail("invalid_field", f"{what}: 'days' must be a list")
-    days: list[date] = []
-    for item in raw_days:
-        if not isinstance(item, str):
-            _fail("invalid_field", f"{what}: 'days' must hold ISO dates")
-        try:
-            days.append(date.fromisoformat(item))
-        except ValueError as err:
-            raise RelayParseError("invalid_field", f"{what}: {item!r} is not an ISO date") from err
-    if len(set(days)) != len(days):
-        _fail("duplicate_day", f"{what}: 'days' repeats a date")
-    if days != sorted(days):
-        _fail("unsorted_days", f"{what}: 'days' is not in ascending order")
-    resolution = None if area.get("res") is None else _resolution(area["res"], f"{what}: 'res'")
-    return IndexArea(area_id=area_id, days=tuple(days), resolution_minutes=resolution)
-
-
-def parse_index(document: Any, *, version: int = SUPPORTED_VERSION) -> RelayIndex:
-    """The published index of the [version] asked for, whose `days` lists are this client's authority.
-
-    The two versions have one shape (v2 lists every advertised area, its days on each area's market
-    calendar). An unsorted or repeating list, or a resolution this client cannot plan with, skips that
-    area so a damaged one is not read as authoritative.
-    """
-    document = _object(document, "the index")
-    if version not in CATALOGUE_VERSIONS:
-        _fail("unsupported_version", f"the index: version {version} is not read here")
-    version = _version(document, "the index", version)
-    generated = _timestamp(document, "generated", "the index")
-    areas_rev = _text(document, "areas_rev", "the index")
-    res_default = None if document.get("res_default") is None else _resolution(document["res_default"], "the index: 'res_default'")
-    raw_areas = _require(document, "areas", "the index")
-    if not isinstance(raw_areas, dict):
-        _fail("invalid_field", "the index: 'areas' must be an object keyed by area id")
-
-    entries: list[IndexArea] = []
-    for area_id, raw in raw_areas.items():
-        try:
-            entries.append(_parse_index_area(area_id, raw))
-        except RelayParseError as err:
-            # One damaged entry must not hide every other area's days.
-            _log_skipped("index area", repr(area_id), err)
-    return RelayIndex(
-        version=version,
-        generated=generated,
-        res_default=res_default,
-        areas_rev=areas_rev,
-        areas=tuple(entries),
-    )
 
 
 def parse_day(document: Any, *, area_id: str, day: date) -> PriceDocument:

@@ -133,7 +133,6 @@ class OctopusProvider:
     #: What the card and the app call it, and where it is (attribution).
     name: str = "Octopus Energy (Agile)"
     url: str = "https://octopus.energy/smart/agile/"
-    has_index = False
     publication: AreaPublication = PUBLICATION
     history_reach: timedelta | None = HISTORY_REACH
 

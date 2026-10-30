@@ -18,13 +18,14 @@ area is asked for by), never a price. Its shape is the relay's contract-v2 area 
 * `octopus`: a Great Britain Agile region's GSP group letter (`A` to `P`), matched against the region of the
   customer's own meter in the Octopus Energy integration.
 * `pvpc`: the PVPC tariff the area is priced at (`2.0TD`), as Home Assistant's PVPC integration names it.
-* `cet_market_tz`: the market calendar of a provider without the relay: the CET delivery day for Nord Pool and
-  ENTSO-E, and the relay's own calendars for Octopus (the Paris day, 23:00 to 23:00 UK time) and the PVPC (the
-  Madrid day). `market_tz` stays the relay's calendar.
+* `cet_market_tz`: the market calendar the providers date their files on: the CET delivery day for Nord Pool and
+  ENTSO-E, the Paris day for Octopus (23:00 to 23:00 UK time) and the Madrid day for the PVPC. `market_tz` stays
+  the calendar the relay dated its files on before 2.0, which an area with no provider is still read in (so the
+  days it holds from then still show).
 
 The `source` every entry states is a placeholder the v2 contract requires; where prices come from is the
-provider's to say. The repository answers this catalogue while it holds none from the relay, so the area
-picker has its list without the network. The providers read the routes (`pricing/providers/`).
+provider's to say. This is the only area list: the repository answers it, so the area picker has its list
+without the network. The providers read the routes (`pricing/providers/`).
 """
 
 from __future__ import annotations

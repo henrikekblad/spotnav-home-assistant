@@ -26,10 +26,9 @@ from custom_components.spotnav.pricing.price_refresh import PriceRefreshManager
 from custom_components.spotnav.pricing.price_repository import PriceRepository
 from custom_components.spotnav.pricing.providers import choose_provider, DayFetch, ProviderRouter
 from custom_components.spotnav.pricing.providers.pvpc import PUBLICATION, PvpcProvider
-from custom_components.spotnav.pricing.providers.relay import RelayProvider
 from custom_components.spotnav.pricing.relay_contract import parse_day
 
-from .relay import BASE_URL, Clock, FakeScheduler, StoreDouble, StubTransport
+from .relay import Clock, FakeScheduler, StoreDouble, StubTransport
 
 UTC = timezone.utc
 MADRID = "Europe/Madrid"
@@ -92,7 +91,7 @@ class World:
         assert bundled is not None
         self.provider = PvpcProvider(self.hass, bundled, now=self.clock)
         self.router = ProviderRouter(
-            RelayProvider(self.hass, base_url=BASE_URL, session=self.transport), pvpc=self.provider
+            pvpc=self.provider
         )
         self.router.async_start(self.hass)
         self.repository = PriceRepository(
@@ -296,10 +295,10 @@ async def test_the_areas_tariff_is_preferred_and_another_is_the_persons_own(worl
     ("pvpc_serves", "pvpc_loaded", "octopus_serves", "chosen"),
     [
         (True, True, False, "pvpc"),
-        (True, False, False, "relay"),
-        (False, True, False, "relay"),
+        (True, False, False, None),
+        (False, True, False, None),
         (False, False, True, "octopus"),
-        (False, False, False, "relay"),
+        (False, False, False, None),
     ],
 )
 def test_the_rule_for_the_pvpc_and_agile(pvpc_serves, pvpc_loaded, octopus_serves, chosen) -> None:
@@ -324,7 +323,7 @@ async def test_the_router_follows_the_pvpc_entry(world: World) -> None:
     world.hold(series(ORDINARY))
     heard: list[int] = []
     world.repository.add_provider_listener(lambda: heard.append(1))
-    assert world.repository.provider_for(AREA).key == "relay"
+    assert world.repository.provider_for(AREA) is None
 
     world.entry.mock_state(world.hass, ConfigEntryState.LOADED)
     assert world.repository.provider_for(AREA) is world.provider and heard == [1]
@@ -332,10 +331,10 @@ async def test_the_router_follows_the_pvpc_entry(world: World) -> None:
     assert entry.market_tz == MADRID and entry.publication == PUBLICATION
     assert entry.included == ("grid_fee",)
     # Spain's spot price is another area: not the PVPC's.
-    assert world.repository.provider_for("ES").key == "relay"
+    assert world.repository.provider_for("ES") is None
 
     world.entry.mock_state(world.hass, ConfigEntryState.NOT_LOADED)
-    assert world.repository.provider_for(AREA).key == "relay" and heard == [1, 1]
+    assert world.repository.provider_for(AREA) is None and heard == [1, 1]
 
 
 async def test_a_subscribed_area_is_read_and_waits_for_the_evening_publication(world: World) -> None:
@@ -374,10 +373,10 @@ async def test_setup_builds_the_pvpc_provider(hass: HomeAssistant) -> None:
     entry.add_to_hass(hass)
     repository = await async_setup_price_repository(hass, store=StoreDouble())
     try:
-        assert repository.provider_for(AREA).key == "relay"
+        assert repository.provider_for(AREA) is None
         entry.mock_state(hass, ConfigEntryState.LOADED)
         assert repository.provider_for(AREA).key == "pvpc"
         entry.mock_state(hass, ConfigEntryState.NOT_LOADED)
-        assert repository.provider_for(AREA).key == "relay"
+        assert repository.provider_for(AREA) is None
     finally:
         repository.stop_following_providers()

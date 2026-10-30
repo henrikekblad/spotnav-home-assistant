@@ -100,7 +100,7 @@
     "area_id": null,
     "area_name": null,
     "catalogue_attempt_error": null,
-    "catalogue_fetched_at": "2026-09-22T06:00:00+00:00",
+    "catalogue_fetched_at": null,
     "catalogue_state": "ready",
     "countries": null,
     "currency": null,

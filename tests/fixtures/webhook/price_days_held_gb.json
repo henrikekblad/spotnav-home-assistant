@@ -20,8 +20,8 @@
       "tz": "Europe/London"
     },
     "source": {
-      "name": "Octopus Energy (Agile)",
-      "url": "https://octopus.energy/smart/agile/"
+      "name": "SpotNav",
+      "url": "https://spotnav.sensnology.se"
     },
     "tz": "Europe/London"
   },
@@ -166,13 +166,13 @@
   "ok": true,
   "profile": null,
   "provider": {
-    "key": "relay",
-    "name": "SpotNav relay",
+    "key": null,
+    "name": null,
     "notice": {
       "code": "source_missing",
       "params": {}
     },
-    "url": "https://spotnav.sensnology.se"
+    "url": null
   },
   "publication": {
     "time": "16:00",

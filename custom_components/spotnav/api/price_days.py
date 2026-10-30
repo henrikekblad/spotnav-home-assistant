@@ -1,7 +1,8 @@
-"""The webhook's `price_days` read: the charger's prices for today and tomorrow, as the relay serves them.
+"""The webhook's `price_days` read: the charger's prices for today and tomorrow, as Home Assistant holds them.
 
-The paired app reads its charger's prices from Home Assistant instead of the relay. The answer carries the very
-documents the relay publishes, so the app's relay parsers read it unchanged:
+The paired app reads its charger's prices from Home Assistant (the SpotNav relay delivers no prices since 2.0). The
+answer carries the held `"v": 1` day documents, the shape the relay once served, so the app's parsers read it
+unchanged:
 
     {"ok": true, "action": "price_days", "v": 1,
      "area": <the area's v2 area-list entry, with the market calendar and publication of its provider now>,
@@ -19,7 +20,7 @@ documents the relay publishes, so the app's relay parsers read it unchanged:
 * `state`, `reason` and `waiting_for_tomorrow` are the area's combined price state, as the dashboard's `prices`
   block states them (`pricing/price_refresh.py`, `combined_state`).
 * `profile` is the history profile built from the held files (`pricing/price_profile.py`) in the relay's
-  `profile.json` shape, `null` while fewer than 21 of the last 28 days are held.
+  `profile.json` shape (contract v1), `null` while fewer than 21 of the last 28 days are held.
 * `provider` is the area's price source as the dashboard's `prices.provider` states it
   (`pricing/providers/notices.py`): `key`, `name` and `url` are `null` when the area has no source at all, and
   `notice` names what gives it one.
@@ -100,12 +101,9 @@ def serialize_area(area: AreaEntry, status: SourceStatus) -> dict[str, Any]:
 
 
 def serialize_source(area: AreaEntry | None, status: SourceStatus | None) -> dict[str, str] | None:
-    """Where the area's prices come from: the relay's own attribution while the relay serves them and its list
-    states one (the upstream it read them from), else the provider's; `None` with no source."""
+    """Where the area's prices come from: the provider's name and address; `None` with no source."""
     if status is None or status.key is None or status.name is None or status.url is None:
         return None
-    if status.key == "relay" and area is not None and area.source is not None:
-        return {"name": area.source.name, "url": area.source.url}
     return {"name": status.name, "url": status.url}
 
 

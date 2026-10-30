@@ -26,7 +26,7 @@ from custom_components.spotnav.pricing.relay_contract import (
 )
 
 from .relay import (
-    BASE_URL,
+    stub_repository,
     Clock,
     fixture,
     history_days,
@@ -47,8 +47,7 @@ def now() -> datetime:
 @pytest.fixture
 async def repository(hass: HomeAssistant, transport: StubTransport, clock: Clock, now: datetime) -> PriceRepository:
     clock.now = now
-    return PriceRepository(
-        hass, base_url=BASE_URL, session=transport, now=clock, store=StoreDouble(),
+    return stub_repository(hass, transport, now=clock, store=StoreDouble(),
         bundled=await async_load_bundled(hass),
     )
 
@@ -177,7 +176,7 @@ async def test_an_area_no_catalogue_lists_has_no_profile(
     hass: HomeAssistant, transport: StubTransport, clock: Clock, now: datetime
 ) -> None:
     clock.now = now
-    repository = PriceRepository(hass, base_url=BASE_URL, session=transport, now=clock, store=StoreDouble())
+    repository = stub_repository(hass, transport, now=clock, store=StoreDouble(), bundled=None)
     await hold(repository, history_days(to="2026-10-02"))
     assert await repository.async_get_profile("SE4") is None
     assert transport.calls == []
@@ -226,12 +225,11 @@ async def test_a_stored_relay_profile_is_not_read_any_more(
             "profiles": {"SE4": {"document": profile_document(), "fetched_at": now.isoformat()}},
         }
     )
-    repository = PriceRepository(
-        hass, base_url=BASE_URL, session=transport, now=clock, store=store, bundled=await async_load_bundled(hass)
+    repository = stub_repository(hass, transport, now=clock, store=store, bundled=await async_load_bundled(hass)
     )
     assert await repository.async_get_profile("SE4") is None
     await repository._persist()
-    assert "profiles" not in store.payload["relay"]
+    assert "profiles" not in store.payload and "relay" not in store.payload
     assert transport.calls == []
 
 

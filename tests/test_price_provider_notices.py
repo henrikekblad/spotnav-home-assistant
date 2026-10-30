@@ -2,12 +2,13 @@
 `prices.provider` and `market.source`, the app's `reads` gating, the key from the card's WebSocket command, and the
 electricity price device's problem, `source` attribute and Repairs issue.
 
-Real config entries on the offline relay (whose area list holds DE-LU, DK1, NO1 and SE4); the Transparency Platform
-is the fake behind Home Assistant's session, never the network.
+Real config entries with the production router: an area gets prices only from a provider the person added (no
+SpotNav relay since 2.0); the Transparency Platform is the fake behind Home Assistant's session, never the network.
 """
 
 from __future__ import annotations
 
+import json
 from datetime import date
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -38,11 +39,10 @@ from custom_components.spotnav.pricing.providers.notices import (
     SourceFacts,
 )
 from custom_components.spotnav.pricing.providers.pvpc import PvpcProvider
-from custom_components.spotnav.pricing.providers.relay import RelayProvider
 from custom_components.spotnav.runtime import domain_data
 
 from .entsoe_helpers import SECRET
-from .relay import BASE_URL, Clock, StoreDouble, StubTransport, serve, TODAY
+from .relay import Clock, day_body, StoreDouble, StubTransport, TODAY
 from .test_price_device import add_price, entity, NOW
 from .test_price_provider_entsoe import FakePlatform
 from .test_webhook_parity import post
@@ -108,13 +108,12 @@ class World:
         self.clock = Clock(NOW)
         self.changes = 0
 
-    async def start(self, *, relay_catalogue: bool = True) -> None:
+    async def start(self) -> None:
         self.keys = PriceSourceStore(self.hass)
         await self.keys.async_load()
         bundled = await async_load_bundled(self.hass)
         assert bundled is not None
         self.router = ProviderRouter(
-            RelayProvider(self.hass, base_url=BASE_URL, session=self.transport),
             NordPoolProvider(self.hass, bundled, None, now=self.clock),
             EntsoeProvider(self.hass, bundled, self.keys, None, session=FakePlatform(), now=self.clock),
             pvpc=PvpcProvider(self.hass, bundled, now=self.clock),
@@ -124,9 +123,6 @@ class World:
         self.repository = PriceRepository(
             self.hass, now=self.clock, store=StoreDouble(), bundled=bundled, router=self.router
         )
-        if relay_catalogue:
-            serve(self.transport)
-            await self.repository.async_get_catalogue()
 
     def _changed(self) -> None:
         self.changes += 1
@@ -147,16 +143,16 @@ async def world(hass: HomeAssistant, transport: StubTransport):
             entry.mock_state(hass, ConfigEntryState.NOT_LOADED)
 
 
-async def test_a_nord_pool_area_names_the_relay_and_asks_for_nord_pool(world: World) -> None:
+async def test_a_nord_pool_area_has_no_source_and_asks_for_nord_pool(world: World) -> None:
     await world.start()
-    assert world.status("SE4") == ("relay", "add_nordpool")
+    assert world.status("SE4") == (None, "add_nordpool")
     status = world.repository.source_status("SE4")
-    assert (status.name, status.url) == ("SpotNav relay", "https://spotnav.sensnology.se")
+    assert (status.name, status.url) == (None, None)
 
 
-async def test_an_area_the_relay_does_not_list_has_no_source(world: World) -> None:
+async def test_an_area_without_its_integration_or_a_key_has_no_source(world: World) -> None:
     await world.start()
-    # FI is a Nord Pool area the stub relay's list does not hold; ES is ENTSO-E only; XX is nobody's.
+    # FI is a Nord Pool area; ES is ENTSO-E only; XX is nobody's.
     assert world.status("FI") == (None, "add_nordpool")
     assert world.status("ES") == (None, "add_entsoe_key")
     assert world.status("ES-PVPC") == (None, "add_pvpc")
@@ -165,19 +161,14 @@ async def test_an_area_the_relay_does_not_list_has_no_source(world: World) -> No
     assert (status.name, status.url) == (None, None)
 
 
-async def test_without_the_relays_list_held_the_relay_serves_nothing(world: World) -> None:
-    await world.start(relay_catalogue=False)
-    assert world.status("SE4") == (None, "add_nordpool")
-
-
 async def test_a_nordpool_entry_that_did_not_start_says_so_and_is_followed(world: World) -> None:
     await world.start()
     entry = MockConfigEntry(domain="nordpool", title="Nord Pool", data={})
     entry.add_to_hass(world.hass)
     entry.mock_state(world.hass, ConfigEntryState.SETUP_ERROR)
-    # The provider stays the relay, but the notice moved: the listeners were told.
+    # Still no provider, but the notice moved: the listeners were told.
     assert world.changes == 1
-    assert world.status("SE4") == ("relay", "nordpool_not_loaded")
+    assert world.status("SE4") == (None, "nordpool_not_loaded")
 
     entry.mock_state(world.hass, ConfigEntryState.LOADED)
     assert world.changes == 2
@@ -192,7 +183,7 @@ async def test_the_key_moves_the_notice_and_the_provider(world: World) -> None:
     await world.start()
     await world.keys.async_set_entsoe_key(EntsoeToken(SECRET), "rejected")
     assert world.status("ES") == (None, "entsoe_key_rejected")
-    assert world.status("SE4") == ("relay", "entsoe_key_rejected")
+    assert world.status("SE4") == (None, "entsoe_key_rejected")
 
     await world.keys.async_set_entsoe_key(EntsoeToken(SECRET), "ok")
     assert world.status("ES") == ("entsoe", None)
@@ -221,18 +212,18 @@ def dashboard(hass: HomeAssistant, entry_id: str) -> dict[str, Any]:
     return dashboard_api.serialize_dashboard(dashboard_api.capture_dashboard(hass, entry), can_act=True)
 
 
-@pytest.mark.usefixtures("offline_relay")
 async def test_the_dashboard_names_the_provider_and_its_attribution(hass: HomeAssistant) -> None:
     with freeze_time(NOW):
         await setup_charger(hass, entry_id="entry_np", webhook_id="webhook-np")
         await add_price(hass)
         before = dashboard(hass, "entry_np")
         assert before["prices"]["provider"] == {
-            "key": "relay",
-            "name": "SpotNav relay",
-            "url": "https://spotnav.sensnology.se",
+            "key": None,
+            "name": None,
+            "url": None,
             "notice": {"code": "add_nordpool", "params": {}},
         }
+        assert before["market"]["source"] is None
         entry = MockConfigEntry(domain="nordpool", title="Nord Pool", data={})
         entry.add_to_hass(hass)
         entry.mock_state(hass, ConfigEntryState.LOADED)
@@ -250,7 +241,7 @@ async def test_the_dashboard_names_the_provider_and_its_attribution(hass: HomeAs
 
 
 def test_the_app_gets_prices_provider_only_when_it_reads_it() -> None:
-    body = {"prices": {"state": "ready", "provider": {"key": "relay"}}, "market": {"source": None}}
+    body = {"prices": {"state": "ready", "provider": {"key": "nordpool"}}, "market": {"source": None}}
     assert _for_app(body, {}) == {"prices": {"state": "ready"}, "market": {"source": None}}
     assert _for_app(body, {"reads": ["price_source"]})["prices"] == {"state": "ready"}
     assert _for_app(body, {"reads": ["price_provider"]}) == body
@@ -258,7 +249,6 @@ def test_the_app_gets_prices_provider_only_when_it_reads_it() -> None:
     assert _for_app({"prices": None}, {}) == {"prices": None}
 
 
-@pytest.mark.usefixtures("offline_relay")
 async def test_the_webhook_dashboard_carries_the_provider_for_an_app_that_reads_it(
     hass: HomeAssistant, hass_client_no_auth
 ) -> None:
@@ -285,23 +275,16 @@ def platform(monkeypatch: pytest.MonkeyPatch) -> FakePlatform:
     return fake
 
 
-def without_the_relays_list(transport: StubTransport) -> None:
-    """A relay that answers no area list: the bundled one is the installation's, and the relay serves no area."""
-    for path in [path for path in transport.routes if not path.startswith("/v1/SE4/")]:
-        del transport.routes[path]
-
-
 def _issues(hass: HomeAssistant) -> list[str]:
     return [issue_id for (domain, issue_id) in ir.async_get(hass).issues if domain == DOMAIN]
 
 
 async def test_the_cards_key_gives_an_entsoe_area_its_source_and_ends_the_repair(
-    hass: HomeAssistant, hass_ws_client, platform: FakePlatform, offline_relay: StubTransport
+    hass: HomeAssistant, hass_ws_client, platform: FakePlatform
 ) -> None:
-    """Spain on an installation whose relay does not serve it: no source at all, so once a price cycle found nothing
-    for today the electricity price raises its Repairs issue. The key from the card's command gives the area ENTSO-E,
-    the prices come, and the issue goes by itself."""
-    without_the_relays_list(offline_relay)
+    """Spain with no key: no source at all, so once a price cycle found nothing for today the electricity price raises
+    its Repairs issue. The key from the card's command gives the area ENTSO-E, the prices come, and the issue goes by
+    itself."""
     await setup_charger(hass, entry_id="entry_es", webhook_id="webhook-es")
     off = {"enabled": False, "value": None}
     price = await add_price(hass, area="ES", vat=off, tax=off, transfer=off)
@@ -338,22 +321,31 @@ async def test_the_cards_key_gives_an_entsoe_area_its_source_and_ends_the_repair
     assert state is not None and state.attributes["source"] == "entsoe"
 
 
-@pytest.mark.usefixtures("offline_relay")
-async def test_an_area_the_relay_still_serves_has_a_notice_and_no_repair(hass: HomeAssistant) -> None:
+async def test_an_area_still_holding_todays_prices_has_a_notice_and_no_repair(hass: HomeAssistant) -> None:
+    """An upgraded installation without Nord Pool: today's file kept from before 2.0 still shows, the notice asks for
+    Nord Pool at once, and the Repairs issue waits until there are no prices for today."""
     with freeze_time(NOW):
         price = await add_price(hass)
+        repository = domain_data(hass).price_repository
+        repository._adopt(  # noqa: SLF001 - the store's own path, as an upgraded store restores
+            {"schema": 2, "days": {"SE4|Europe/Stockholm|2026-09-22": {
+                "document": json.loads(day_body("SE4", TODAY)), "fetched_at": "2026-09-21T12:00:00+00:00",
+                "provider": "relay",
+            }}}
+        )
         await domain_data(hass).price_refresh.async_refresh_area("SE4")
         await hass.async_block_till_done()
         device = price.runtime_data.device
-        assert device.source == "relay" and device.problem == "add_nordpool"
-        assert device.diagnostics()["source"] == "relay"
+        assert device.source is None and device.problem == "add_nordpool"
+        assert device.diagnostics()["source"] is None
+        assert repository.day_snapshot("SE4", TODAY).document is not None
         state = hass.states.get(entity(hass, price.entry_id, "price_now", "sensor"))
-        assert state is not None and state.attributes["source"] == "relay"
+        assert state is not None and state.state not in ("unknown", "unavailable")
+        assert state.attributes["source"] is None
     assert _issues(hass) == []
 
 
-async def test_removing_the_price_takes_its_repair_along(hass: HomeAssistant, offline_relay: StubTransport) -> None:
-    without_the_relays_list(offline_relay)
+async def test_removing_the_price_takes_its_repair_along(hass: HomeAssistant) -> None:
     price = await add_price(hass, area="ES")
     await domain_data(hass).price_refresh.async_refresh_area("ES")
     await hass.async_block_till_done()
@@ -363,6 +355,6 @@ async def test_removing_the_price_takes_its_repair_along(hass: HomeAssistant, of
     assert _issues(hass) == []
 
 
-def test_the_relays_day_is_todays_fixture() -> None:
-    # The relay stub serves SE4 for TODAY; the frozen NOW falls on it.
+def test_the_fixtures_day_is_today() -> None:
+    # The held SE4 file is for TODAY; the frozen NOW falls on it.
     assert NOW.astimezone(ZoneInfo("Europe/Stockholm")).date() == TODAY

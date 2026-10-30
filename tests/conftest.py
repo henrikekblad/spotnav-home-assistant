@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from functools import partial
 from typing import Any, Callable
 
 import pytest
@@ -14,7 +13,7 @@ from custom_components.spotnav import time_zones
 from custom_components.spotnav.execution import auto_execution as auto_execution_module, controller as controller_module
 from custom_components.spotnav.execution.controller import ChargingController, ChargingPlan
 
-from .relay import BASE_URL, Clock, FakeScheduler, serve, StubTransport
+from .relay import Clock, FakeScheduler, serve, StubProvider, StubRouter, StubTransport
 from .harness import FlakyStore, Harness, RecordedAppointments, Session
 
 
@@ -359,18 +358,17 @@ def clock() -> Clock:
 
 @pytest.fixture
 def offline_relay(monkeypatch: pytest.MonkeyPatch, transport: StubTransport) -> StubTransport:
-    """Point the whole installation's price repository at the stub wire, catalogue and days served.
+    """Give the whole installation's price repository the stub price source (`tests/relay.py`), days served.
 
-    Opt in with `pytestmark = pytest.mark.usefixtures("offline_relay")` for a module whose tests
-    set up real config entries; a test that needs a different answer overrides the routes.
+    Every area with no real provider reads its day files from the stub wire. Opt in with
+    `pytestmark = pytest.mark.usefixtures("offline_relay")` for a module whose tests set up real config entries; a
+    test that needs a different answer overrides the routes.
     """
-    from custom_components.spotnav import async_setup_price_repository as real_setup
-    from custom_components.spotnav.pricing.providers import relay as relay_module
-    import custom_components.spotnav as integration
+    from custom_components.spotnav.pricing import price_repository as repository_module
 
-    monkeypatch.setattr(relay_module, "async_get_clientsession", lambda _hass: transport)
+    stub = StubProvider(transport)
     monkeypatch.setattr(
-        integration, "async_setup_price_repository", partial(real_setup, base_url=BASE_URL)
+        repository_module, "ProviderRouter", lambda *args, **kwargs: StubRouter(stub, *args, **kwargs)
     )
     serve(transport)
     return transport
@@ -378,7 +376,7 @@ def offline_relay(monkeypatch: pytest.MonkeyPatch, transport: StubTransport) -> 
 
 @pytest.fixture
 def no_bundled_catalogue(monkeypatch: pytest.MonkeyPatch) -> None:
-    """An installation without the area list bundled with the integration: only the relay's can be held."""
+    """An installation whose bundled area list could not be read: no area is listed."""
     from custom_components.spotnav.pricing import price_repository as repository_module
 
     async def absent(_hass):

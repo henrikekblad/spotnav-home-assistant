@@ -16,7 +16,7 @@
       "tz": "Europe/Brussels"
     },
     "source": {
-      "name": "SpotNav relay",
+      "name": "SpotNav",
       "url": "https://spotnav.sensnology.se"
     },
     "suggested_grid_fee": 30.0,
@@ -259,13 +259,13 @@
   "ok": true,
   "profile": null,
   "provider": {
-    "key": "relay",
-    "name": "SpotNav relay",
+    "key": null,
+    "name": null,
     "notice": {
       "code": "add_nordpool",
       "params": {}
     },
-    "url": "https://spotnav.sensnology.se"
+    "url": null
   },
   "publication": {
     "time": "13:00",

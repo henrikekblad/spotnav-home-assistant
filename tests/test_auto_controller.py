@@ -37,8 +37,8 @@ from custom_components.spotnav.diagnostics import async_get_config_entry_diagnos
 from custom_components.spotnav.pricing.price_refresh import PriceRefreshManager
 
 from .helpers import future_window, make_entry, make_site_entry
-from .relay import StubTransport
-from .relay import TODAY, TOMORROW, YESTERDAY, day_body
+from .relay import StubTransport, today_back, today_fails
+from .relay import TODAY, TOMORROW, day_body
 from .relay import DE_LU, SE4, cheap_midday_day, cheap_night_day, serve, serve_index
 from .harness import Harness, Recording, assert_nothing_executed
 from .world import go_auto, setup_charger
@@ -171,7 +171,7 @@ async def test_entering_auto_with_an_area_calculates_a_real_proposal(
     assert snapshot.calculated_at == harness.clock()
     assert snapshot.price_identity is not None and snapshot.last_error_code is None
     # One stream for the installation, and one subscriber: this charger.
-    assert harness.transport.call_count("/v1/index.json") == 1
+    assert harness.transport.call_count(harness.transport.day_path(SE4, TODAY)) == 1
     assert harness.area is not None and harness.area.subscriber_count == 1
     assert_nothing_executed(no_execution)
 
@@ -224,8 +224,6 @@ async def test_two_chargers_share_one_price_stream_and_calculate_separately(
 
     assert first.snapshot().state == "proposal_ready"
     assert second.snapshot().state == "proposal_ready"
-    assert harness.transport.call_count("/v1/index.json") == 1
-    assert harness.transport.call_count("/v1/areas.json") == 1
     assert harness.transport.call_count(harness.transport.day_path(SE4, TODAY)) == 1
     assert harness.area is not None and harness.area.subscriber_count == 2
     # The same prices, two different energy requests: two different plans.
@@ -285,35 +283,6 @@ async def test_a_refused_edit_leaves_the_stored_state_and_names_the_refusal(
 # ------------------------------------------------------- price-state precedence
 
 
-async def test_nothing_asked_yet_is_waiting_and_becomes_a_proposal(
-    harness: Harness, no_execution: dict[str, Any]
-) -> None:
-    """A charger that has just been switched to Auto is waiting, not regretting stale data.
-
-    The held *index* request is what makes this deterministic: the catalogue is already
-    known, the day has never been attempted, and nothing has ever been held, so the honest
-    state is `waiting_for_prices` -- the same state a request in flight produces.
-    """
-    serve(harness.transport)
-    harness.transport.hold("/v1/index.json")
-    controller = await harness.auto()
-
-    waiting = controller.snapshot()
-    assert waiting.state == "waiting_for_prices" and waiting.reason == "no_prices_yet"
-    assert waiting.proposal is None and waiting.in_process is False
-    # No day has been attempted and no index has landed: the area's own state is
-    # `unavailable` while the index request is the thing in flight.
-    assert waiting.price_state == "unavailable"
-    assert harness.area is not None and harness.area.index_state == "loading"
-    assert waiting.today == TODAY.isoformat()
-
-    harness.transport.release("/v1/index.json")
-    await harness.hass.async_block_till_done()
-    assert controller.snapshot().state == "proposal_ready"
-    assert controller.snapshot().proposal is not None
-    assert_nothing_executed(no_execution)
-
-
 async def test_a_request_in_flight_is_waiting_even_with_prices_already_held(
     harness: Harness, no_execution: dict[str, Any]
 ) -> None:
@@ -347,9 +316,9 @@ async def test_prices_that_stop_being_published_keep_the_exact_proposal(harness:
     ready = controller.snapshot()
     assert ready.state == "proposal_ready"
 
-    # The relay stops listing today: the held document is no longer published. The plan itself
+    # Asking for today again fails: the held document is kept, stale. The plan itself
     # is unchanged -- only the state of the data behind it.
-    serve_index(harness.transport, {SE4: [YESTERDAY]})
+    await today_fails(harness)
     await harness.tick()
 
     stale = controller.snapshot()
@@ -374,22 +343,6 @@ async def test_stale_prices_with_no_proposal_are_stale_and_carry_nothing(
     assert stale.state == "price_data_stale" and stale.reason == "price_data_stale"
     assert stale.proposal is None and stale.in_process is False and stale.applied is False
     assert stale.price_identity is not None, "the identity describes the data that failed"
-    assert_nothing_executed(no_execution)
-
-
-async def test_today_not_published_at_all_is_named_as_such(
-    harness: Harness, no_execution: dict[str, Any]
-) -> None:
-    """A current valid index that omits today is a statement of absence, not a wait."""
-    serve(harness.transport, days=(TODAY,), listed=(YESTERDAY, TOMORROW))
-    controller = await harness.auto()
-
-    snapshot = controller.snapshot()
-    assert snapshot.state == "planning_unavailable"
-    assert snapshot.reason == "no_published_prices"
-    assert snapshot.proposal is None
-    # And the request for a day the index does not list was never made.
-    assert harness.transport.call_count(harness.transport.day_path(SE4, TODAY)) == 0
     assert_nothing_executed(no_execution)
 
 
@@ -433,19 +386,19 @@ async def test_a_later_fresh_snapshot_replaces_a_stale_proposal(harness: Harness
     controller.add_listener(recording)
     stale_identity = controller.snapshot().price_identity
 
-    serve_index(harness.transport, {SE4: [YESTERDAY]})
+    await today_fails(harness)
     await harness.tick()
     assert controller.snapshot().state == "price_data_stale"
 
     # The clock moves on, so the fresh calculation is visibly a *new* calculation.
     harness.clock.advance(minutes=5)
-    serve_index(harness.transport, {SE4: list(_BOTH)})
+    await today_back(harness)
     await harness.tick()
 
     fresh = controller.snapshot()
     assert fresh.state == "proposal_ready" and fresh.proposal is not None
     assert fresh.calculated_at == harness.clock()
-    assert fresh.price_identity == stale_identity, "the same held document is still the source"
+    assert fresh.price_identity != stale_identity, "today was fetched again: a new acquisition"
     assert recording.states[-2:] == ["price_data_stale", "proposal_ready"]
 
 
@@ -1225,8 +1178,8 @@ async def test_diagnostics_describe_every_auto_state(
     assert proposal["historical"] is False and proposal["in_process"] is True
     assert proposal["applied"] is False and len(proposal["periods"]) >= 1
 
-    # 4. Prices that stopped being published: the same proposal, a different state.
-    serve_index(harness.transport, {SE4: [YESTERDAY]})
+    # 4. Prices whose next attempt failed: the same proposal, a different state.
+    await today_fails(harness)
     await harness.tick()
     stale = await auto_section(hass, entry)
     assert stale["state"] == "price_data_stale"
@@ -1366,7 +1319,7 @@ async def test_no_auto_path_ever_reaches_a_charger(
             requested_kwh=20.0,
         )
     )
-    serve_index(harness.transport, {SE4: [YESTERDAY]})
+    await today_fails(harness)
     await harness.tick()
 
     assert_nothing_executed(no_execution)
