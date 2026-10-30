@@ -153,7 +153,8 @@ same area make one set of requests.
   minute up to 30 minutes.
 - The area list is read again once a day, and at once when the index says it has changed.
 - Everything fetched is stored in Home Assistant, so after a restart the last prices are there
-  before the relay answers.
+  before the relay answers. Day prices are kept for 400 days and then dropped, so the stored file
+  stays a bounded size.
 
 ### When the relay cannot be reached
 
