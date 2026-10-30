@@ -851,6 +851,10 @@
     "core_decision_failed": {
       "title": "De laadbeslissingen van een laadpaal mislukten",
       "description": "De huidige logica van SpotNav kon het afgelopen etmaal meerdere keren niet beslissen voor **{charger}**, dus de vorige logica besliste in plaats daarvan. Het laden gaat door. Om te helpen het op te lossen: download de debuginfo (het tandwiel op de SpotNav-kaart → Debuginfo downloaden) en voeg die toe aan een issue op GitHub. Als de laadpaal zich vreemd gedraagt, schakel dan naar Vorige logica: Configureren van de laadpaal → Laadbeslissingen. Deze melding verdwijnt na een etmaal zonder fouten."
+    },
+    "price_source_missing": {
+      "title": "Geen stroomprijzen voor {area}",
+      "description": "**{price}** heeft geen prijzen: er is geen bron ingesteld voor {area}. Open de instellingen van de SpotNav-kaart, Stroomprijs: daar staat wat je moet toevoegen (de Nord Pool-integratie van Home Assistant, je eigen ENTSO-E-sleutel, de PVPC- of de Octopus Energy-integratie). Deze melding verdwijnt vanzelf zodra er weer prijzen zijn."
     }
   },
   "exceptions": {

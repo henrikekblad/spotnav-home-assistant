@@ -851,6 +851,10 @@
     "core_decision_failed": {
       "title": "Les décisions de charge d'une borne ont échoué",
       "description": "La logique actuelle de SpotNav n'a pas pu décider pour **{charger}** plusieurs fois au cours de la dernière journée ; la logique précédente a donc décidé à sa place. La charge continue. Pour aider à corriger le problème : téléchargez les infos de débogage (l'engrenage sur la carte SpotNav → Télécharger les infos de débogage) et joignez-les à un ticket sur GitHub. Si la borne se comporte de façon étrange, passez à Logique précédente : Configurer de la borne → Décisions de charge. Ce message disparaît après une journée sans échec."
+    },
+    "price_source_missing": {
+      "title": "Pas de prix de l'électricité pour {area}",
+      "description": "**{price}** n'a pas de prix : aucune source n'est configurée pour {area}. Ouvrez les réglages de la carte SpotNav, Prix de l'électricité : ils indiquent quoi ajouter (l'intégration Nord Pool de Home Assistant, votre propre clé ENTSO-E, l'intégration PVPC ou Octopus Energy). Ce message disparaît de lui-même dès que les prix sont de retour."
     }
   },
   "exceptions": {

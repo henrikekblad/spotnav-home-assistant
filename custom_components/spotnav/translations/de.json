@@ -851,6 +851,10 @@
     "core_decision_failed": {
       "title": "Ladeentscheidungen einer Ladestation sind fehlgeschlagen",
       "description": "Die aktuelle Logik von SpotNav konnte für **{charger}** am letzten Tag mehrmals nicht entscheiden, deshalb hat die bisherige Logik entschieden. Das Laden geht weiter. Um beim Beheben zu helfen: Lade die Debug-Infos herunter (Zahnrad auf der SpotNav-Karte → Debug-Infos herunterladen) und hänge sie an ein Issue auf GitHub an. Wenn sich die Ladestation seltsam verhält, wechsle zu Bisherige Logik: Konfigurieren der Ladestation → Ladeentscheidungen. Diese Meldung verschwindet nach einem Tag ohne Fehler."
+    },
+    "price_source_missing": {
+      "title": "Keine Strompreise für {area}",
+      "description": "**{price}** hat keine Preise: Für {area} ist keine Quelle eingerichtet. Öffne die Einstellungen der SpotNav-Karte, Strompreis: Dort steht, was hinzuzufügen ist (Home Assistants Nord-Pool-Integration, dein eigener ENTSO-E-Schlüssel, die PVPC- oder die Octopus-Energy-Integration). Diese Meldung verschwindet von selbst, sobald wieder Preise da sind."
     }
   },
   "exceptions": {

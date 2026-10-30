@@ -851,6 +851,10 @@
     "core_decision_failed": {
       "title": "En laddares laddbeslut misslyckades",
       "description": "SpotNavs nuvarande logik kunde inte fatta beslut för **{charger}** flera gånger det senaste dygnet, så den tidigare logiken beslutade i stället. Laddningen fortsätter. För att hjälpa till att rätta felet: ladda ner felsökningsinfon (kugghjulet på SpotNav-kortet → Ladda ner felsökningsinfo) och bifoga den i ett ärende på GitHub. Om laddaren beter sig konstigt kan du byta till Tidigare logik: laddarens Konfigurera → Laddbeslut. Meddelandet försvinner efter ett dygn utan fel."
+    },
+    "price_source_missing": {
+      "title": "Inga elpriser för {area}",
+      "description": "**{price}** har inga priser: ingen källa är uppsatt för {area}. Öppna SpotNav-kortets inställningar, Elpris: där står vad som ska läggas till (Home Assistants Nord Pool-integration, din egen ENTSO-E-nyckel, PVPC- eller Octopus Energy-integrationen). Meddelandet försvinner av sig självt när priserna är tillbaka."
     }
   },
   "exceptions": {

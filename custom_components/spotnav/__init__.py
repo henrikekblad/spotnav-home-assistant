@@ -669,7 +669,7 @@ async def _async_setup_price_entry(hass: HomeAssistant, entry: PriceConfigEntry)
     if manager is None:
         # Domain setup creates the manager before any entry; without it there is nothing to price with.
         return False
-    device = PriceDevice(hass, entry.entry_id, entry.data, manager)
+    device = PriceDevice(hass, entry.entry_id, entry.data, manager, title=entry.title)
     entry.runtime_data = PriceData(device)
     entry.async_on_unload(device.async_stop)
     await device.async_start()

@@ -851,6 +851,10 @@
     "core_decision_failed": {
       "title": "Laturin latauspäätökset epäonnistuivat",
       "description": "SpotNavin nykyinen logiikka ei pystynyt tekemään päätöstä laturille **{charger}** useita kertoja viimeisen vuorokauden aikana, joten aiempi logiikka päätti sen sijaan. Lataus jatkuu. Voit auttaa vian korjaamisessa: lataa vianetsintätiedot (SpotNav-kortin ratas → Lataa vianetsintätiedot) ja liitä ne GitHubin issueen. Jos laturi toimii oudosti, vaihda se Aiempaan logiikkaan: laturin Määritä → Latauspäätökset. Ilmoitus poistuu vuorokauden kuluttua ilman virheitä."
+    },
+    "price_source_missing": {
+      "title": "Alueella {area} ei ole sähkön hintoja",
+      "description": "Kohteella **{price}** ei ole hintoja: alueelle {area} ei ole määritetty lähdettä. Avaa SpotNav-kortin asetukset, Sähkön hinta: siellä kerrotaan, mitä lisätä (Home Assistantin Nord Pool -integraatio, oma ENTSO-E-avaimesi, PVPC- tai Octopus Energy -integraatio). Ilmoitus poistuu itsestään, kun hinnat palaavat."
     }
   },
   "exceptions": {

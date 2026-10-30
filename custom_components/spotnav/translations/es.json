@@ -851,6 +851,10 @@
     "core_decision_failed": {
       "title": "Las decisiones de carga de un cargador fallaron",
       "description": "La lógica actual de SpotNav no pudo decidir por **{charger}** varias veces en el último día, así que decidió la lógica anterior. La carga continúa. Para ayudar a corregirlo, descarga la información de depuración (el engranaje en la tarjeta de SpotNav → Descargar información de depuración) y adjúntala a un issue en GitHub. Si el cargador se comporta de forma extraña, cambia a Lógica anterior: Configurar del cargador → Decisiones de carga. Este mensaje desaparece tras un día sin fallos."
+    },
+    "price_source_missing": {
+      "title": "No hay precios de la electricidad para {area}",
+      "description": "**{price}** no tiene precios: no hay ninguna fuente configurada para {area}. Abre los ajustes de la tarjeta SpotNav, Precio de la electricidad: ahí se indica qué añadir (la integración Nord Pool de Home Assistant, tu propia clave de ENTSO-E, la integración PVPC u Octopus Energy). Este aviso desaparece solo cuando vuelvan los precios."
     }
   },
   "exceptions": {

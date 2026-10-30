@@ -7,7 +7,8 @@ kind but never a candidate entity id. The fix flow offers the same candidates, v
 same `valid_*_entity_id` and records through the same store calls as the services.
 
 One more, not a decision: a charger whose charging decisions keep failing (`CoreFailureRepairs`), raised
-only when they repeat and gone after a day without one.
+only when they repeat and gone after a day without one. An electricity price whose area has no source and whose
+prices have stopped raises and deletes its own (`price_device.py`); the sync here leaves it alone.
 """
 
 from __future__ import annotations
@@ -30,7 +31,7 @@ from homeassistant.helpers import (
 from homeassistant.helpers.event import async_call_later
 from homeassistant.util import dt as dt_util
 
-from .const import CONF_CHARGER_ENTRY_IDS, CONF_ENTRY_TYPE, DOMAIN, ENTRY_TYPE_SITE
+from .const import CONF_CHARGER_ENTRY_IDS, CONF_ENTRY_TYPE, DOMAIN, ENTRY_TYPE_SITE, PRICE_SOURCE_MISSING_ISSUE
 from .vehicles.duplicate_chargers import charger_entries_except, duplicate_pairs
 from .vehicles.choices import (
     DISMISS_VEHICLE_CHOICE,
@@ -159,6 +160,9 @@ async def async_sync_resolution_repairs(
     registry = ir.async_get(hass)
     for issue_id in [key[1] for key in registry.issues if key[0] == DOMAIN]:
         if issue_id.startswith(f"{CORE_DECISION_FAILED_ISSUE}_") and issue_id not in excluded:
+            continue
+        if issue_id.startswith(f"{PRICE_SOURCE_MISSING_ISSUE}_"):
+            # An electricity price's own (`price_device.py`): raised and deleted by its device.
             continue
         if issue_id not in wanted:
             ir.async_delete_issue(hass, DOMAIN, issue_id)
