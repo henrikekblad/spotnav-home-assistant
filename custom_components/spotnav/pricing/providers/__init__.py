@@ -5,7 +5,7 @@ states; a provider only answers "this area's file for this market day" as the re
 a plain mapping the repository validates with the same `parse_day` as any other. So every source is checked by
 one parser, the store keeps one format, and nothing that reads a [PriceDocument] knows where it came from.
 
-Three providers so far:
+Five providers so far:
 
 * the relay ([RelayProvider], `providers/relay.py`): its index says which days exist, and its files are dated on
   the area list's own market calendar;
@@ -13,14 +13,20 @@ Three providers so far:
   no index, so the publication schedule says when a day is worth asking for ([schedule_authority]), and its
   files are CET delivery days (`routes.cet_market_tz`);
 * ENTSO-E's Transparency Platform with the installation's own key ([EntsoeProvider], `providers/entsoe.py`):
-  asked like Nord Pool, on the same schedule and the same CET calendar.
+  asked like Nord Pool, on the same schedule and the same CET calendar;
+* Spain's PVPC through Home Assistant's own `pvpc_hourly_pricing` integration ([PvpcProvider],
+  `providers/pvpc.py`): the prices it already holds, on the Madrid day;
+* Great Britain's Agile rates through the Octopus Energy integration ([OctopusProvider], `providers/octopus.py`):
+  the customer's own meter's rates, on the relay's Paris day.
 
-[ProviderRouter] picks one per area ([choose_provider]): Nord Pool for an area Nord Pool trades while a `nordpool`
-config entry is loaded; else ENTSO-E for an area the platform publishes while a key is set that it has not
-rejected; else the relay. There is no fallback from one to the other within an attempt. The choice is taken again
-whenever a `nordpool` entry is added, removed, loaded or unloaded (Home Assistant's `SIGNAL_CONFIG_ENTRY_CHANGED`,
-which it sends for each of those, a load or unload being a state change of the entry), and whenever the ENTSO-E
-key is set, cleared or rejected.
+[ProviderRouter] picks one per area ([choose_provider]): the PVPC integration for the PVPC area while one of its
+entries is loaded; the Octopus integration for a GB area while an Agile meter's rates are there for it; Nord Pool
+for an area Nord Pool trades while a `nordpool` config entry is loaded; else ENTSO-E for an area the platform
+publishes while a key is set that it has not rejected; else the relay. There is no fallback from one to the other
+within an attempt. The choice is taken again whenever a `nordpool`, `pvpc_hourly_pricing` or `octopus_energy`
+entry is added, removed, loaded or unloaded (Home Assistant's `SIGNAL_CONFIG_ENTRY_CHANGED`, which it sends for
+each of those, a load or unload being a state change of the entry), whenever one of the Octopus integration's rate
+entities changes (the meter's tariff is read from it), and whenever the ENTSO-E key is set, cleared or rejected.
 """
 
 from __future__ import annotations
@@ -32,6 +38,7 @@ from datetime import date, datetime, timedelta
 from typing import Any, Final, Literal, Protocol, TYPE_CHECKING
 
 from homeassistant.config_entries import ConfigEntryState, SIGNAL_CONFIG_ENTRY_CHANGED
+from homeassistant.const import EVENT_STATE_CHANGED
 from homeassistant.core import callback, HomeAssistant
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 
@@ -42,12 +49,14 @@ if TYPE_CHECKING:
     from ..relay_contract import PriceDocument
     from .entsoe import EntsoeProvider
     from .nordpool import NordPoolProvider
+    from .octopus import OctopusProvider
+    from .pvpc import PvpcProvider
     from .relay import RelayProvider
 
 _LOGGER = logging.getLogger(__name__)
 
 #: Which provider a file came from, as stored beside it (`"provider"` in the store's day entries).
-ProviderKey = Literal["relay", "nordpool", "entsoe"]
+ProviderKey = Literal["relay", "nordpool", "entsoe", "pvpc", "octopus"]
 
 #: How a provider's attempt for one file ended. The relay has no `not_published` of its own: its index says
 #: which days exist, so a file it does not have is a failed request (its 404), as it always was. Nord Pool's
@@ -67,6 +76,9 @@ FetchOutcome = Literal["fetched", "not_published", "failed"]
 #:   long, and the provider asks nothing until then;
 #: * `entsoe_unavailable`: ENTSO-E answered with a server error;
 #: * `entsoe_rejected`: ENTSO-E refused the request otherwise (another status, a bad-request acknowledgement);
+#: * `pvpc_unavailable`: no loaded `pvpc_hourly_pricing` entry, or it holds no prices for a day that is out;
+#: * `octopus_unavailable`: no Agile meter's rates for the area, or they do not reach back to the day's start;
+#: * `fx_missing`: no ECB rate to convert a day priced in another currency (Octopus, in GBP) to EUR;
 #: * `source_missing`: no way to ask this provider for the area (no key, no route);
 #: * `not_published`: carried by a `not_published` outcome, never recorded as a failure;
 #: * `history_out_of_reach`: an archive day older than the provider keeps, not asked for.
@@ -82,6 +94,9 @@ FetchCode = Literal[
     "rate_limited",
     "entsoe_unavailable",
     "entsoe_rejected",
+    "pvpc_unavailable",
+    "octopus_unavailable",
+    "fx_missing",
     "source_missing",
     "provider_refused",
     "not_published",
@@ -104,6 +119,9 @@ TRANSPORT_CODES: frozenset[str] = frozenset(
         "rate_limited",
         "entsoe_unavailable",
         "entsoe_rejected",
+        "pvpc_unavailable",
+        "octopus_unavailable",
+        "fx_missing",
         "source_missing",
     }
 )
@@ -209,11 +227,24 @@ def schedule_authority(
 
 
 def choose_provider(
-    *, nordpool_serves: bool, nordpool_loaded: bool, entsoe_serves: bool, entsoe_key_usable: bool
+    *,
+    nordpool_serves: bool,
+    nordpool_loaded: bool,
+    entsoe_serves: bool,
+    entsoe_key_usable: bool,
+    pvpc_serves: bool = False,
+    pvpc_loaded: bool = False,
+    octopus_serves: bool = False,
 ) -> ProviderKey:
-    """The rule, per area: Nord Pool for an area it trades while a `nordpool` entry is loaded; else ENTSO-E for an
-    area the platform publishes while a key is set that it has not rejected; else the relay (for now: it ends with
-    the relay's prices, after which such an area has no source)."""
+    """The rule, per area: the PVPC integration for the PVPC area while one of its entries is loaded; the Octopus
+    integration for a GB area while an Agile meter's rates are there for it; Nord Pool for an area it trades while
+    a `nordpool` entry is loaded; else ENTSO-E for an area the platform publishes while a key is set that it has
+    not rejected; else the relay (for now: it ends with the relay's prices, after which such an area has no
+    source). No area is served by more than one of the first three, so their order is only for reading."""
+    if pvpc_serves and pvpc_loaded:
+        return "pvpc"
+    if octopus_serves:
+        return "octopus"
     if nordpool_serves and nordpool_loaded:
         return "nordpool"
     if entsoe_serves and entsoe_key_usable:
@@ -223,7 +254,8 @@ def choose_provider(
 
 class ProviderRouter:
     """Which provider serves an area ([choose_provider]). Listeners hear when that choice may have changed for some
-    area: a `nordpool` entry loaded or unloaded, the ENTSO-E key set, cleared, accepted or rejected.
+    area: a `nordpool` or `pvpc_hourly_pricing` entry loaded or unloaded, an Agile meter found or gone, the
+    ENTSO-E key set, cleared, accepted or rejected.
     """
 
     def __init__(
@@ -231,11 +263,17 @@ class ProviderRouter:
         relay: RelayProvider,
         nordpool: NordPoolProvider | None = None,
         entsoe: EntsoeProvider | None = None,
+        *,
+        pvpc: PvpcProvider | None = None,
+        octopus: OctopusProvider | None = None,
     ) -> None:
         self._relay = relay
         self._nordpool = nordpool
         self._entsoe = entsoe
+        self._pvpc = pvpc
+        self._octopus = octopus
         self._nordpool_loaded = False
+        self._pvpc_loaded = False
         self._listeners: list[Callable[[], None]] = []
         self._unsubscribe: list[Callable[[], None]] = []
 
@@ -250,6 +288,11 @@ class ProviderRouter:
         return self._entsoe
 
     @property
+    def octopus(self) -> OctopusProvider | None:
+        """The Octopus provider, for what it knows of the customer's meter (its region)."""
+        return self._octopus
+
+    @property
     def nordpool_in_use(self) -> bool:
         return self._nordpool is not None and self._nordpool_loaded
 
@@ -260,7 +303,14 @@ class ProviderRouter:
             nordpool_loaded=self._nordpool_loaded,
             entsoe_serves=self._entsoe is not None and self._entsoe.serves(area_id),
             entsoe_key_usable=self._entsoe is not None and self._entsoe.key_usable(),
+            pvpc_serves=self._pvpc is not None and self._pvpc.serves(area_id),
+            pvpc_loaded=self._pvpc_loaded,
+            octopus_serves=self._octopus is not None and self._octopus.serves(area_id),
         )
+        if key == "pvpc" and self._pvpc is not None:
+            return self._pvpc
+        if key == "octopus" and self._octopus is not None:
+            return self._octopus
         if key == "nordpool" and self._nordpool is not None:
             return self._nordpool
         if key == "entsoe" and self._entsoe is not None:
@@ -269,22 +319,54 @@ class ProviderRouter:
 
     @callback
     def async_start(self, hass: HomeAssistant) -> Callable[[], None]:
-        """Follow the `nordpool` config entries and the ENTSO-E key from now on; returns the call that stops
-        following."""
+        """Follow the `nordpool`, `pvpc_hourly_pricing` and `octopus_energy` config entries, the Octopus rate
+        entities and the ENTSO-E key from now on; returns the call that stops following."""
         self._nordpool_loaded = _nordpool_loaded(hass)
+        self._pvpc_loaded = self._pvpc is not None and self._pvpc.loaded()
+        if self._octopus is not None:
+            self._octopus.refresh()
 
         @callback
         def changed(_change: Any, entry: Any) -> None:
-            if getattr(entry, "domain", None) != "nordpool":
-                return
-            loaded = _nordpool_loaded(hass)
-            if loaded == self._nordpool_loaded:
-                return
-            self._nordpool_loaded = loaded
-            _LOGGER.debug("Nord Pool through Home Assistant is %s", "in use" if loaded else "not in use")
-            self._notify()
+            domain = getattr(entry, "domain", None)
+            if domain == "nordpool":
+                loaded = _nordpool_loaded(hass)
+                if loaded == self._nordpool_loaded:
+                    return
+                self._nordpool_loaded = loaded
+                _LOGGER.debug("Nord Pool through Home Assistant is %s", "in use" if loaded else "not in use")
+                self._notify()
+            elif domain == PVPC_DOMAIN and self._pvpc is not None:
+                loaded = self._pvpc.loaded()
+                if loaded == self._pvpc_loaded:
+                    return
+                self._pvpc_loaded = loaded
+                _LOGGER.debug("The PVPC through Home Assistant is %s", "in use" if loaded else "not in use")
+                self._notify()
+            elif domain == OCTOPUS_DOMAIN:
+                octopus_changed()
+
+        @callback
+        def octopus_changed() -> None:
+            if self._octopus is not None and self._octopus.refresh():
+                _LOGGER.debug("Agile meters through Octopus Energy: %d", len(self._octopus.meters))
+                self._notify()
+
+        @callback
+        def rate_entity_changed(_event: Any) -> None:
+            octopus_changed()
+
+        @callback
+        def rate_entity_filter(event_data: Any) -> bool:
+            entity_id = event_data.get("entity_id")
+            return isinstance(entity_id, str) and self._octopus is not None and self._octopus.is_rate_entity(entity_id)
 
         self._unsubscribe.append(async_dispatcher_connect(hass, SIGNAL_CONFIG_ENTRY_CHANGED, changed))
+        if self._octopus is not None:
+            # The meter's tariff, and so its region and whether it is Agile, is read from its rate entities.
+            self._unsubscribe.append(
+                hass.bus.async_listen(EVENT_STATE_CHANGED, rate_entity_changed, event_filter=rate_entity_filter)
+            )
         if self._entsoe is not None:
             self._unsubscribe.append(self._entsoe.add_key_listener(self._notify))
         return self.async_stop
@@ -311,6 +393,12 @@ class ProviderRouter:
                 self._listeners.remove(listener)
 
         return remove
+
+
+#: The integrations whose entries the router follows besides `nordpool` (their providers' `DOMAIN`, repeated here
+#: so this module does not import the providers it is imported by).
+PVPC_DOMAIN: Final = "pvpc_hourly_pricing"
+OCTOPUS_DOMAIN: Final = "octopus_energy"
 
 
 def _nordpool_loaded(hass: HomeAssistant) -> bool:

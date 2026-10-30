@@ -1,6 +1,6 @@
 {
   "v": 2,
-  "generated": "2026-10-30T15:05:09Z",
+  "generated": "2026-10-30T16:40:50Z",
   "areas": [
     {
       "id": "AT",
@@ -303,6 +303,33 @@
       }
     },
     {
+      "id": "ES-PVPC",
+      "countries": [
+        "ES"
+      ],
+      "name": "Spain – PVPC (regulated)",
+      "tz": "Europe/Madrid",
+      "currency": "EUR",
+      "major_unit": "€",
+      "minor_unit": "cent",
+      "included": [
+        "grid_fee"
+      ],
+      "vat_percent": 21,
+      "publication": {
+        "time": "20:15",
+        "tz": "Europe/Madrid"
+      },
+      "source": {
+        "name": "SpotNav",
+        "url": "https://spotnav.sensnology.se"
+      },
+      "routes": {
+        "pvpc": "2.0TD",
+        "cet_market_tz": "Europe/Madrid"
+      }
+    },
+    {
       "id": "FI",
       "eic": "10YFI-1--------U",
       "countries": [
@@ -359,6 +386,412 @@
           "eic": "10YFR-RTE------C",
           "half_hourly": false
         },
+        "cet_market_tz": "Europe/Paris"
+      }
+    },
+    {
+      "id": "GB-A",
+      "countries": [
+        "GB"
+      ],
+      "name": "GB A – Eastern England",
+      "tz": "Europe/London",
+      "market_tz": "Europe/Paris",
+      "currency": "GBP",
+      "major_unit": "£",
+      "minor_unit": "p",
+      "included": [
+        "vat",
+        "tax",
+        "grid_fee"
+      ],
+      "publication": {
+        "time": "16:00",
+        "tz": "Europe/London"
+      },
+      "source": {
+        "name": "SpotNav",
+        "url": "https://spotnav.sensnology.se"
+      },
+      "routes": {
+        "octopus": "A",
+        "cet_market_tz": "Europe/Paris"
+      }
+    },
+    {
+      "id": "GB-B",
+      "countries": [
+        "GB"
+      ],
+      "name": "GB B – East Midlands",
+      "tz": "Europe/London",
+      "market_tz": "Europe/Paris",
+      "currency": "GBP",
+      "major_unit": "£",
+      "minor_unit": "p",
+      "included": [
+        "vat",
+        "tax",
+        "grid_fee"
+      ],
+      "publication": {
+        "time": "16:00",
+        "tz": "Europe/London"
+      },
+      "source": {
+        "name": "SpotNav",
+        "url": "https://spotnav.sensnology.se"
+      },
+      "routes": {
+        "octopus": "B",
+        "cet_market_tz": "Europe/Paris"
+      }
+    },
+    {
+      "id": "GB-C",
+      "countries": [
+        "GB"
+      ],
+      "name": "GB C – London",
+      "tz": "Europe/London",
+      "market_tz": "Europe/Paris",
+      "currency": "GBP",
+      "major_unit": "£",
+      "minor_unit": "p",
+      "included": [
+        "vat",
+        "tax",
+        "grid_fee"
+      ],
+      "publication": {
+        "time": "16:00",
+        "tz": "Europe/London"
+      },
+      "source": {
+        "name": "SpotNav",
+        "url": "https://spotnav.sensnology.se"
+      },
+      "routes": {
+        "octopus": "C",
+        "cet_market_tz": "Europe/Paris"
+      }
+    },
+    {
+      "id": "GB-D",
+      "countries": [
+        "GB"
+      ],
+      "name": "GB D – Merseyside and North Wales",
+      "tz": "Europe/London",
+      "market_tz": "Europe/Paris",
+      "currency": "GBP",
+      "major_unit": "£",
+      "minor_unit": "p",
+      "included": [
+        "vat",
+        "tax",
+        "grid_fee"
+      ],
+      "publication": {
+        "time": "16:00",
+        "tz": "Europe/London"
+      },
+      "source": {
+        "name": "SpotNav",
+        "url": "https://spotnav.sensnology.se"
+      },
+      "routes": {
+        "octopus": "D",
+        "cet_market_tz": "Europe/Paris"
+      }
+    },
+    {
+      "id": "GB-E",
+      "countries": [
+        "GB"
+      ],
+      "name": "GB E – West Midlands",
+      "tz": "Europe/London",
+      "market_tz": "Europe/Paris",
+      "currency": "GBP",
+      "major_unit": "£",
+      "minor_unit": "p",
+      "included": [
+        "vat",
+        "tax",
+        "grid_fee"
+      ],
+      "publication": {
+        "time": "16:00",
+        "tz": "Europe/London"
+      },
+      "source": {
+        "name": "SpotNav",
+        "url": "https://spotnav.sensnology.se"
+      },
+      "routes": {
+        "octopus": "E",
+        "cet_market_tz": "Europe/Paris"
+      }
+    },
+    {
+      "id": "GB-F",
+      "countries": [
+        "GB"
+      ],
+      "name": "GB F – North East England",
+      "tz": "Europe/London",
+      "market_tz": "Europe/Paris",
+      "currency": "GBP",
+      "major_unit": "£",
+      "minor_unit": "p",
+      "included": [
+        "vat",
+        "tax",
+        "grid_fee"
+      ],
+      "publication": {
+        "time": "16:00",
+        "tz": "Europe/London"
+      },
+      "source": {
+        "name": "SpotNav",
+        "url": "https://spotnav.sensnology.se"
+      },
+      "routes": {
+        "octopus": "F",
+        "cet_market_tz": "Europe/Paris"
+      }
+    },
+    {
+      "id": "GB-G",
+      "countries": [
+        "GB"
+      ],
+      "name": "GB G – North West England",
+      "tz": "Europe/London",
+      "market_tz": "Europe/Paris",
+      "currency": "GBP",
+      "major_unit": "£",
+      "minor_unit": "p",
+      "included": [
+        "vat",
+        "tax",
+        "grid_fee"
+      ],
+      "publication": {
+        "time": "16:00",
+        "tz": "Europe/London"
+      },
+      "source": {
+        "name": "SpotNav",
+        "url": "https://spotnav.sensnology.se"
+      },
+      "routes": {
+        "octopus": "G",
+        "cet_market_tz": "Europe/Paris"
+      }
+    },
+    {
+      "id": "GB-H",
+      "countries": [
+        "GB"
+      ],
+      "name": "GB H – Southern England",
+      "tz": "Europe/London",
+      "market_tz": "Europe/Paris",
+      "currency": "GBP",
+      "major_unit": "£",
+      "minor_unit": "p",
+      "included": [
+        "vat",
+        "tax",
+        "grid_fee"
+      ],
+      "publication": {
+        "time": "16:00",
+        "tz": "Europe/London"
+      },
+      "source": {
+        "name": "SpotNav",
+        "url": "https://spotnav.sensnology.se"
+      },
+      "routes": {
+        "octopus": "H",
+        "cet_market_tz": "Europe/Paris"
+      }
+    },
+    {
+      "id": "GB-J",
+      "countries": [
+        "GB"
+      ],
+      "name": "GB J – South East England",
+      "tz": "Europe/London",
+      "market_tz": "Europe/Paris",
+      "currency": "GBP",
+      "major_unit": "£",
+      "minor_unit": "p",
+      "included": [
+        "vat",
+        "tax",
+        "grid_fee"
+      ],
+      "publication": {
+        "time": "16:00",
+        "tz": "Europe/London"
+      },
+      "source": {
+        "name": "SpotNav",
+        "url": "https://spotnav.sensnology.se"
+      },
+      "routes": {
+        "octopus": "J",
+        "cet_market_tz": "Europe/Paris"
+      }
+    },
+    {
+      "id": "GB-K",
+      "countries": [
+        "GB"
+      ],
+      "name": "GB K – South Wales",
+      "tz": "Europe/London",
+      "market_tz": "Europe/Paris",
+      "currency": "GBP",
+      "major_unit": "£",
+      "minor_unit": "p",
+      "included": [
+        "vat",
+        "tax",
+        "grid_fee"
+      ],
+      "publication": {
+        "time": "16:00",
+        "tz": "Europe/London"
+      },
+      "source": {
+        "name": "SpotNav",
+        "url": "https://spotnav.sensnology.se"
+      },
+      "routes": {
+        "octopus": "K",
+        "cet_market_tz": "Europe/Paris"
+      }
+    },
+    {
+      "id": "GB-L",
+      "countries": [
+        "GB"
+      ],
+      "name": "GB L – South West England",
+      "tz": "Europe/London",
+      "market_tz": "Europe/Paris",
+      "currency": "GBP",
+      "major_unit": "£",
+      "minor_unit": "p",
+      "included": [
+        "vat",
+        "tax",
+        "grid_fee"
+      ],
+      "publication": {
+        "time": "16:00",
+        "tz": "Europe/London"
+      },
+      "source": {
+        "name": "SpotNav",
+        "url": "https://spotnav.sensnology.se"
+      },
+      "routes": {
+        "octopus": "L",
+        "cet_market_tz": "Europe/Paris"
+      }
+    },
+    {
+      "id": "GB-M",
+      "countries": [
+        "GB"
+      ],
+      "name": "GB M – Yorkshire",
+      "tz": "Europe/London",
+      "market_tz": "Europe/Paris",
+      "currency": "GBP",
+      "major_unit": "£",
+      "minor_unit": "p",
+      "included": [
+        "vat",
+        "tax",
+        "grid_fee"
+      ],
+      "publication": {
+        "time": "16:00",
+        "tz": "Europe/London"
+      },
+      "source": {
+        "name": "SpotNav",
+        "url": "https://spotnav.sensnology.se"
+      },
+      "routes": {
+        "octopus": "M",
+        "cet_market_tz": "Europe/Paris"
+      }
+    },
+    {
+      "id": "GB-N",
+      "countries": [
+        "GB"
+      ],
+      "name": "GB N – South Scotland",
+      "tz": "Europe/London",
+      "market_tz": "Europe/Paris",
+      "currency": "GBP",
+      "major_unit": "£",
+      "minor_unit": "p",
+      "included": [
+        "vat",
+        "tax",
+        "grid_fee"
+      ],
+      "publication": {
+        "time": "16:00",
+        "tz": "Europe/London"
+      },
+      "source": {
+        "name": "SpotNav",
+        "url": "https://spotnav.sensnology.se"
+      },
+      "routes": {
+        "octopus": "N",
+        "cet_market_tz": "Europe/Paris"
+      }
+    },
+    {
+      "id": "GB-P",
+      "countries": [
+        "GB"
+      ],
+      "name": "GB P – North Scotland",
+      "tz": "Europe/London",
+      "market_tz": "Europe/Paris",
+      "currency": "GBP",
+      "major_unit": "£",
+      "minor_unit": "p",
+      "included": [
+        "vat",
+        "tax",
+        "grid_fee"
+      ],
+      "publication": {
+        "time": "16:00",
+        "tz": "Europe/London"
+      },
+      "source": {
+        "name": "SpotNav",
+        "url": "https://spotnav.sensnology.se"
+      },
+      "routes": {
+        "octopus": "P",
         "cet_market_tz": "Europe/Paris"
       }
     },

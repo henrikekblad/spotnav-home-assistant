@@ -102,6 +102,8 @@ from .providers import (
 )
 from .providers.entsoe import EntsoeProvider
 from .providers.nordpool import NordPoolProvider
+from .providers.octopus import OctopusProvider
+from .providers.pvpc import PvpcProvider
 from .providers.relay import CONTRACT_VERSIONS, DEFAULT_BASE_URL, RelayFailure, RelayProvider
 from .relay_contract import (
     AreaCatalogue,
@@ -1411,12 +1413,15 @@ async def async_setup_price_repository(
         await data.price_repository.async_restore()
         return data.price_repository
     # Nord Pool through Home Assistant for the areas it trades while a `nordpool` entry is loaded; else ENTSO-E
-    # with the installation's key; the relay otherwise. The bundled catalogue holds the Nord Pool codes and the
-    # ENTSO-E routes, so without it there is only the relay.
+    # with the installation's key; the relay otherwise. Spain's PVPC and the GB Agile regions are read from the
+    # PVPC and Octopus Energy integrations when the person has added them. The bundled catalogue holds every
+    # provider's routes, so without it there is only the relay.
     router = ProviderRouter(
         RelayProvider(hass, base_url=base_url, session=session),
         None if bundled is None else NordPoolProvider(hass, bundled, data.fx_rates, now=now),
         None if bundled is None else EntsoeProvider(hass, bundled, keys, data.fx_rates, now=now),
+        pvpc=None if bundled is None else PvpcProvider(hass, bundled, now=now),
+        octopus=None if bundled is None else OctopusProvider(hass, bundled, data.fx_rates, now=now),
     )
     repository = PriceRepository(hass, store=store, now=now, bundled=bundled, router=router)
     router.async_start(hass)

@@ -9,15 +9,22 @@ area is asked for by), never a price. Its shape is the relay's contract-v2 area 
                "entsoe": {"eic": "10Y1001A1001A82H", "sequence": "1", "expected_sequences": ["1", "2"],
                           "half_hourly": false},
                "cet_market_tz": "Europe/Berlin"}
+    "routes": {"octopus": "C", "cet_market_tz": "Europe/Paris"}
+    "routes": {"pvpc": "2.0TD", "cet_market_tz": "Europe/Madrid"}
 
 * `nordpool`: Nord Pool's delivery area code; absent for an area Nord Pool does not trade.
-* `entsoe`: the ENTSO-E area code and the sequence policy its documents are read by.
-* `cet_market_tz`: the market calendar of a provider that answers by the CET delivery day (Nord Pool, and
-  ENTSO-E asked the same way). `market_tz` stays the relay's calendar.
+* `entsoe`: the ENTSO-E area code and the sequence policy its documents are read by; absent for an area the
+  platform does not publish (the Great Britain Agile regions, Spain's PVPC).
+* `octopus`: a Great Britain Agile region's GSP group letter (`A` to `P`), matched against the region of the
+  customer's own meter in the Octopus Energy integration.
+* `pvpc`: the PVPC tariff the area is priced at (`2.0TD`), as Home Assistant's PVPC integration names it.
+* `cet_market_tz`: the market calendar of a provider without the relay: the CET delivery day for Nord Pool and
+  ENTSO-E, and the relay's own calendars for Octopus (the Paris day, 23:00 to 23:00 UK time) and the PVPC (the
+  Madrid day). `market_tz` stays the relay's calendar.
 
 The `source` every entry states is a placeholder the v2 contract requires; where prices come from is the
 provider's to say. The repository answers this catalogue while it holds none from the relay, so the area
-picker has its list without the network. Nothing reads the routes yet.
+picker has its list without the network. The providers read the routes (`pricing/providers/`).
 """
 
 from __future__ import annotations
@@ -43,6 +50,9 @@ BUNDLED_PATH: Final = Path(__file__).with_name("areas.json")
 #: The contract version the file is written in.
 BUNDLED_VERSION: Final = 2
 
+#: Great Britain's fourteen GSP groups, as Octopus letters them (no I, no O).
+OCTOPUS_REGIONS: Final = frozenset("ABCDEFGHJKLMNP")
+
 
 @dataclass(frozen=True, slots=True)
 class EntsoeRoute:
@@ -66,6 +76,8 @@ class AreaRoutes:
     nordpool: str | None
     entsoe: EntsoeRoute | None
     cet_market_tz: str
+    octopus: str | None = None
+    pvpc: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -117,10 +129,16 @@ def _routes(raw: Any, area_id: str) -> AreaRoutes:
     if nordpool is not None:
         nordpool = _code(nordpool, f"{what}.nordpool")
     entsoe = None if raw.get("entsoe") is None else _entsoe_route(raw["entsoe"], f"{what}.entsoe")
+    octopus = raw.get("octopus")
+    if octopus is not None and (not isinstance(octopus, str) or octopus not in OCTOPUS_REGIONS):
+        _fail(f"{what}.octopus must be a GSP group letter")
+    pvpc = raw.get("pvpc")
+    if pvpc is not None:
+        pvpc = _code(pvpc, f"{what}.pvpc")
     cet_market_tz = _code(raw.get("cet_market_tz"), f"{what}.cet_market_tz")
     if time_zones.zone(cet_market_tz) is None:
         _fail(f"{what}: {cet_market_tz!r} is not a known timezone")
-    return AreaRoutes(nordpool=nordpool, entsoe=entsoe, cet_market_tz=cet_market_tz)
+    return AreaRoutes(nordpool=nordpool, entsoe=entsoe, cet_market_tz=cet_market_tz, octopus=octopus, pvpc=pvpc)
 
 
 def parse_bundled(document: Any) -> BundledCatalogue:
