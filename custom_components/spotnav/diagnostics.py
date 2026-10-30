@@ -360,9 +360,9 @@ def _price_data(hass: HomeAssistant) -> dict[str, Any]:
     manager = domain_data(hass).price_refresh
     repository = domain_data(hass).price_repository
     if manager is None and repository is None:
-        return {"available": False, "reason": "not_set_up"}
+        return {"available": False, "reason": "not_set_up", **_entsoe_key(hass)}
 
-    data: dict[str, Any] = {"available": True}
+    data: dict[str, Any] = {"available": True, **_entsoe_key(hass)}
     if manager is not None:
         snapshot = manager.manager_snapshot()
         data["running"] = snapshot.running
@@ -405,6 +405,16 @@ def _price_data(hass: HomeAssistant) -> dict[str, Any]:
         data["catalogue"] = catalogue_summary(repository.catalogue_snapshot())
         data["index"] = index_summary(repository.index_snapshot())
     return data
+
+
+def _entsoe_key(hass: HomeAssistant) -> dict[str, Any]:
+    """Whether the installation's ENTSO-E key is set and what is known of it; never the key itself."""
+    store = domain_data(hass).price_store
+    key_set = store is not None and store.entsoe_key_set
+    return {
+        "entsoe_key": "set" if key_set else "unset",
+        "entsoe_key_state": store.entsoe_key_state if key_set and store is not None else None,
+    }
 
 
 def _auto_price(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, Any]:
