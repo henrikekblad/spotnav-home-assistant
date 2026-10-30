@@ -2265,6 +2265,18 @@
     "items": [
       {
         "dismissible": true,
+        "id": "vehicle"
+      },
+      {
+        "dismissible": true,
+        "id": "solar_forecast"
+      },
+      {
+        "dismissible": true,
+        "id": "phone"
+      },
+      {
+        "dismissible": true,
         "id": "app"
       }
     ]

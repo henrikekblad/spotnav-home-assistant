@@ -1276,7 +1276,15 @@
     "items": [
       {
         "dismissible": true,
+        "id": "vehicle"
+      },
+      {
+        "dismissible": true,
         "id": "site"
+      },
+      {
+        "dismissible": true,
+        "id": "phone"
       },
       {
         "dismissible": true,

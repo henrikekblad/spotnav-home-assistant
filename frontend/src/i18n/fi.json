@@ -887,13 +887,20 @@
   "setup.carLevel.action": "Avaa Suunnitelma",
   "setup.site.text": "Lisää kohde, jossa on talon sähkömittari, kuormanhallintaa pääsulakkeen alla ja aurinkolatausta varten.",
   "setup.site.action": "Lisää kohde",
-  "setup.phone.text": "Valitse puhelin, joka saa tiedon, kun lataus pysähtyy odottamatta tai on valmis.",
-  "setup.phone.action": "Valitse puhelin",
+  "setup.phone.text": "Valitse, mitkä puhelimet saavat latausilmoitukset Home Assistant -sovelluksen tai SpotNav-sovelluksen kautta.",
+  "setup.phone.action": "Valitse puhelimet",
   "setup.app.text": "Hanki SpotNav-sovellus Androidille ja seuraa ja ohjaa latausta puhelimesta.",
   "setup.app.action": "Hanki sovellus",
   "status.planSaving": "säästää ~{amount} verrattuna lataamiseen heti",
   "strategy.status.hybrid.creditSuffixWindow": ", {credit} kWh odotetaan auringosta {from}–{to}",
   "strategy.status.solar.forecast": "{kwh} kWh odotetaan auringosta {from}–{to}",
   "strategy.status.solar.forecastTomorrow": "{kwh} kWh odotetaan auringosta huomenna {from}–{to}",
-  "strategy.status.solar.forecastNoTime": "{kwh} kWh odotetaan auringosta"
+  "strategy.status.solar.forecastNoTime": "{kwh} kWh odotetaan auringosta",
+  "setup.vehicle.text": "Lisää autosi, jotta prosenttitavoite ja toimintamatka ovat oikein.",
+  "setup.vehicle.action": "Lisää auton integraatio",
+  "setup.solarForecast.text": "Lisää aurinkoennuste (esimerkiksi Forecast.Solar tai Solcast), jotta Hybridi voi luottaa aurinkoon ja tila kertoo, milloin sitä odotetaan.",
+  "setup.solarForecast.action": "Valitse ennuste",
+  "setup.solarForecast.add": "Lisää Forecast.Solar",
+  "setup.phaseSwitching.text": "Ota käyttöön vaiheenvaihto aurinkolataukselle: pilvisenä päivänä auto latautuu yhdellä vaiheella auringosta eikä verkosta.",
+  "setup.phaseSwitching.action": "Avaa asetus"
 }

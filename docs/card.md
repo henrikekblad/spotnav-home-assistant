@@ -40,14 +40,21 @@ While nothing more serious is shown, an administrator sees **Get started: 3 thin
 until the setup is complete. It opens the same list, whose **Get started** section has one row per thing left,
 each with a button to where it is done:
 
-- **the car's charge level**, when the plan charges to a target level and nothing reports the car's level (opens
-  Plan);
+- **your car**, when no vehicle is set up for the charger: a target in percent and the range need its battery
+  size and consumption (opens Home Assistant's integrations, where the car's integration is added);
+- **the car's charge level**, when the plan charges to a target level, the car is set up and nothing reports its
+  level (opens Plan);
 - **a site** with the home's grid meter, for load balancing and solar (starts adding one);
-- **a phone** for notifications, when the Home Assistant app is signed in on one and none is chosen (opens
-  Settings at Notifications);
-- **the SpotNav app**, until it has been used with this Home Assistant (opens the app's page).
+- **a solar forecast**, when the site can measure solar surplus but has no forecast source: Hybrid then counts
+  on the sun and the status says when it is expected (opens the site's choice of forecast, or adds Forecast.Solar
+  first when no forecast integration is there yet);
+- **phase switching for solar**, when the charger can switch phases on a solar site and the setting is off
+  (opens the setting);
+- **phones** for charging notifications, through the Home Assistant app or the SpotNav app, until a phone is
+  chosen or the paired SpotNav app has its instant notifications on (opens the phones in Settings → Notifications);
+- **the SpotNav app**, until it has been used with this Home Assistant (opens it on Google Play).
 
-The last three can be answered **Not needed**; that holds for every charger and every browser. Each row goes by
+Every row but the car's charge level can be answered **Not needed**; that holds for every charger and every browser. Each row goes by
 itself once the thing is done. The prices are not a row: the Electricity price section already says what an area
 without a source needs.
 

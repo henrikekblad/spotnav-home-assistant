@@ -887,13 +887,20 @@
   "setup.carLevel.action": "Ouvrir Plan",
   "setup.site.text": "Ajoutez un site avec le compteur électrique de la maison, pour l'équilibrage de charge sous le disjoncteur principal et la recharge solaire.",
   "setup.site.action": "Ajouter un site",
-  "setup.phone.text": "Choisissez un téléphone prévenu quand une recharge s'arrête de façon inattendue ou est terminée.",
-  "setup.phone.action": "Choisir un téléphone",
+  "setup.phone.text": "Choisissez quels téléphones reçoivent les notifications de recharge, via l'application Home Assistant ou l'application SpotNav.",
+  "setup.phone.action": "Choisir les téléphones",
   "setup.app.text": "Installez l'application SpotNav pour Android pour suivre et piloter la recharge depuis votre téléphone.",
   "setup.app.action": "Obtenir l'application",
   "status.planSaving": "économise ~{amount} par rapport à une recharge immédiate",
   "strategy.status.hybrid.creditSuffixWindow": ", {credit} kWh attendus du soleil {from}–{to}",
   "strategy.status.solar.forecast": "{kwh} kWh attendus du soleil {from}–{to}",
   "strategy.status.solar.forecastTomorrow": "{kwh} kWh attendus du soleil demain {from}–{to}",
-  "strategy.status.solar.forecastNoTime": "{kwh} kWh attendus du soleil"
+  "strategy.status.solar.forecastNoTime": "{kwh} kWh attendus du soleil",
+  "setup.vehicle.text": "Ajoutez votre voiture, pour qu'un objectif en pourcentage et l'autonomie soient justes.",
+  "setup.vehicle.action": "Ajouter l'intégration de la voiture",
+  "setup.solarForecast.text": "Ajoutez une prévision solaire (par exemple Forecast.Solar ou Solcast), pour que Hybride puisse compter sur le soleil et que le statut dise quand il est attendu.",
+  "setup.solarForecast.action": "Choisir une prévision",
+  "setup.solarForecast.add": "Ajouter Forecast.Solar",
+  "setup.phaseSwitching.text": "Activez le basculement de phases pour le solaire : par temps nuageux, la voiture charge sur une phase depuis le soleil plutôt que depuis le réseau.",
+  "setup.phaseSwitching.action": "Ouvrir le réglage"
 }

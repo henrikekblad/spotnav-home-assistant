@@ -16,7 +16,7 @@ from custom_components.spotnav.notifications.settings import NotificationSetting
 from custom_components.spotnav.planning.auto_settings import DRIVER_TARGET_SOC
 from custom_components.spotnav.runtime import charger_data, domain_data
 from tests.helpers import webhook_dashboard
-from tests.world import admin, non_admin, setup_charger, setup_site_with_charger, ws_call
+from tests.world import add_car, admin, non_admin, setup_charger, setup_site_with_charger, ws_call
 
 pytestmark = pytest.mark.usefixtures("offline_relay")
 
@@ -39,9 +39,21 @@ async def update(hass: HomeAssistant, entry_id: str, **changes: Any) -> None:
     await hass.async_block_till_done()
 
 
-async def test_a_new_charger_lists_the_site_and_the_app_both_dismissible(hass: HomeAssistant) -> None:
+async def test_a_new_charger_lists_the_car_the_site_a_phone_and_the_app_all_dismissible(hass: HomeAssistant) -> None:
     entry = await setup_charger(hass)
-    assert items(hass, entry) == [{"id": "site", "dismissible": True}, {"id": "app", "dismissible": True}]
+    assert items(hass, entry) == [
+        {"id": "vehicle", "dismissible": True},
+        {"id": "site", "dismissible": True},
+        {"id": "phone", "dismissible": True},
+        {"id": "app", "dismissible": True},
+    ]
+
+
+async def test_a_car_takes_its_row_away(hass: HomeAssistant) -> None:
+    entry = await setup_charger(hass)
+    add_car(hass, "family")
+    await hass.async_block_till_done()
+    assert "vehicle" not in ids(hass, entry)
 
 
 async def test_a_site_takes_its_row_away(hass: HomeAssistant) -> None:
@@ -49,21 +61,43 @@ async def test_a_site_takes_its_row_away(hass: HomeAssistant) -> None:
     assert "site" not in ids(hass, charger)
 
 
-async def test_the_phone_row_shows_only_while_a_phone_could_be_chosen_and_none_is(hass: HomeAssistant) -> None:
+async def test_the_phone_row_goes_once_a_phone_is_chosen(hass: HomeAssistant) -> None:
     entry = await setup_charger(hass)
-    # No Companion app: nothing to choose, so nothing to ask for.
-    assert "phone" not in ids(hass, entry)
+    # Asked for even with no phone at all: the notification settings say how to get one, through either app.
+    assert "phone" in ids(hass, entry)
     async_mock_service(hass, "notify", "mobile_app_pixel")
-    assert ids(hass, entry) == ["site", "phone", "app"]
     await update(hass, entry.entry_id, notifications=NotificationSettings(targets=("mobile_app_pixel",)))
     assert "phone" not in ids(hass, entry)
 
 
 async def test_the_paired_apps_notifications_take_the_phone_and_the_app_rows_away(hass: HomeAssistant) -> None:
     entry = await setup_charger(hass)
-    async_mock_service(hass, "notify", "mobile_app_pixel")
     await charger_data(hass, entry.entry_id).push.async_register(PushRegistration(push_ref=REF, events=("plan_stopped",)))
-    assert ids(hass, entry) == ["site"]
+    assert ids(hass, entry) == ["vehicle", "site"]
+
+
+async def test_a_solar_site_without_a_forecast_asks_for_one_and_phase_switching_when_it_is_off(
+    hass: HomeAssistant, freezer
+) -> None:
+    from homeassistant.config_entries import ConfigEntry
+
+    from custom_components.spotnav.const import CONF_PHASE_SWITCHING, CONF_SOLAR_FORECAST_ENTRIES
+    from tests.test_solar_phase_execution import _world as phase_world
+
+    w = await phase_world(hass, freezer, option=False)
+    charger = w.charger
+    assert "solar_forecast" in ids(hass, charger)
+    assert "phase_switching" in ids(hass, charger)
+    site: ConfigEntry = dashboard_api.site_binding(hass, charger.entry_id)
+    hass.config_entries.async_update_entry(site, data={**site.data, CONF_SOLAR_FORECAST_ENTRIES: ["roof"]})
+    hass.config_entries.async_update_entry(charger, data={**charger.data, CONF_PHASE_SWITCHING: True})
+    assert "solar_forecast" not in ids(hass, charger)
+    assert "phase_switching" not in ids(hass, charger)
+
+
+async def test_a_site_that_cannot_measure_solar_asks_for_neither(hass: HomeAssistant) -> None:
+    charger, _site = await setup_site_with_charger(hass)
+    assert not {"solar_forecast", "phase_switching"} & set(ids(hass, charger))
 
 
 async def test_the_app_row_is_done_for_good_once_the_app_spoke(hass: HomeAssistant, hass_client_no_auth) -> None:
@@ -86,14 +120,25 @@ async def test_an_app_that_opts_in_reads_the_block(hass: HomeAssistant, hass_cli
         json={"version": 1, "action": "dashboard", "api_version": 1, "reads": ["setup"]},
     )
     body = await response.json()
-    assert body["setup"] == {"items": [{"id": "site", "dismissible": True}]}
+    assert [item["id"] for item in body["setup"]["items"]] == ["vehicle", "site", "phone"]
+
+
+async def test_without_a_car_a_charge_level_target_asks_for_the_car_not_its_level(hass: HomeAssistant) -> None:
+    entry = await setup_charger(hass)
+    await update(hass, entry.entry_id, driver=DRIVER_TARGET_SOC)
+    assert ids(hass, entry)[0] == "vehicle"
+    assert "car_level" not in ids(hass, entry)
 
 
 async def test_a_charge_level_target_without_a_level_source_asks_for_one_and_cannot_be_dismissed(
-    hass: HomeAssistant, hass_ws_client
+    hass: HomeAssistant, hass_ws_client, monkeypatch
 ) -> None:
     entry = await setup_charger(hass)
+    add_car(hass, "family")
+    await hass.async_block_till_done()
     await update(hass, entry.entry_id, driver=DRIVER_TARGET_SOC)
+    # A car is set up, but nothing reports its level to this charger.
+    monkeypatch.setattr(dashboard_api, "capture_soc", lambda *_args: None)
     assert items(hass, entry)[0] == {"id": "car_level", "dismissible": False}
     socket = await admin(hass, hass_ws_client)
     answer = await ws_call(socket, {"type": "spotnav/dismiss_setup_item", "item": "car_level"})
@@ -112,8 +157,8 @@ async def test_a_dismissal_holds_for_every_charger_of_the_installation(hass: Hom
     socket = await admin(hass, hass_ws_client)
     answer = await ws_call(socket, {"type": "spotnav/dismiss_setup_item", "item": "site"})
     assert answer["success"] is True and answer["result"] == {"ok": True}
-    assert ids(hass, first) == ["app"]
-    assert ids(hass, second) == ["app"]
+    assert "site" not in ids(hass, first) + ids(hass, second)
+    assert "app" in ids(hass, first) and "app" in ids(hass, second)
     unknown = await ws_call(socket, {"type": "spotnav/dismiss_setup_item", "item": "prices"})
     assert unknown["success"] is False
 

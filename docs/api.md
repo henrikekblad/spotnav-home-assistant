@@ -285,10 +285,11 @@ for this charger, sent to the webhook only when the request asks for it (`"reads
 "setup": {"items": [{"id": "site", "dismissible": true}, {"id": "app", "dismissible": true}]}
 ```
 
-`id` is `car_level` (the plan charges to a target level and no source reports the car's level; never
-dismissible), `site` (the charger has no site), `phone` (no phone is chosen for notifications while the Home
-Assistant app is signed in on one, and the paired app does not take them) or `app` (no charger's webhook has been
-used yet); a reader should skip an id it does not know. `spotnav/dismiss_setup_item {"item"}` (administrators
+`id` is `vehicle` (no vehicle is set up for the charger), `car_level` (the plan charges to a target level, a
+vehicle is set up and no source reports its level; never dismissible, and never beside `vehicle`), `site` (the
+charger has no site), `solar_forecast` (the site can measure solar surplus and has no forecast source),
+`phase_switching` (offered for the charger and off), `phone` (no phone is chosen for notifications and the paired
+app has no push registration) or `app` (no charger's webhook has been used yet); a reader should skip an id it does not know. `spotnav/dismiss_setup_item {"item"}` (administrators
 only) keeps a dismissible row away for the whole installation and answers `{"ok": true}`, else
 `spotnav_setup_item_not_dismissible`. The rows are in `setup_checklist.py`.
 
