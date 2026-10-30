@@ -319,7 +319,10 @@ OCPP_ROW: tuple[str, ...] = (
     "AssignedCurrent through ChangeConfiguration, else the connector's session current limit number",
     "Energy.Active.Import.Register sensor",
     "SpotNav asks the charge point which of the two it supports when the charger is added. "
-    "A charge point with several connectors is added once per connector.",
+    "A charge point with several connectors is added once per connector. "
+    "The session current limit goes out as a relative charging profile, which Easee over OCPP, KEBA firmware 1.18 "
+    "and 1.19.0, Autel, and ABB firmware 1.8.37 with the integration's 0.12 versions reject: current control does "
+    "not work on those. A charging profile left behind can cap the charger; `ocpp.clear_profile` removes it.",
     verified("charger", "ocpp"),
 )
 
