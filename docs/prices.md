@@ -24,6 +24,14 @@ no API key.
   price. These are your prices only if you are on Agile; see
   [Great Britain](supported.md#great-britain-octopus-agile).
 
+**Nord Pool through Home Assistant.** If Home Assistant's own [Nord Pool](https://www.home-assistant.io/integrations/nordpool/)
+integration is set up and loaded, SpotNav reads the areas Nord Pool trades from it instead of the relay: Sweden,
+Norway, Denmark, Finland, the Baltic countries, Germany/Luxembourg, the Netherlands, Belgium, France, Austria,
+Poland, Romania and Bulgaria. It asks that integration's `nordpool.get_prices_for_date` for each day in euro, whatever
+areas and currency you chose when you added it, and converts with the ECB rate as below. Nord Pool's day is the CET
+day, so a Finnish, Baltic, Romanian or Bulgarian day is cut from two of Nord Pool's days. Removing or disabling the
+integration moves those areas back to the relay.
+
 You choose the price area in the card (**Settings, Electricity price**; see [the card](card.md#electricity-price)). It belongs to
 the installation's [electricity price](price-device.md), so every charger that uses it follows. A country with several
 bidding zones (Sweden, Norway, Denmark, Italy) has one area per zone. The card names each area's
@@ -51,6 +59,7 @@ Prices for tomorrow are published once a day, at a time that depends on the sour
 | Source | Expected publication |
 |---|---|
 | ENTSO-E day-ahead (most areas) | about 13:00 Brussels time |
+| Nord Pool through Home Assistant | about 12:45 Brussels time |
 | Octopus Agile (Great Britain) | about 16:00 UK time |
 | Red Eléctrica PVPC (Spain, regulated) | about 20:15 Madrid time |
 
@@ -153,6 +162,9 @@ same area make one set of requests.
   so installations do not ask at the same moment. After a network failure it backs off from one
   minute up to 30 minutes.
 - The area list is read again once a day, and at once when the index says it has changed.
+- An area read from Nord Pool has no index: today's prices are asked for when they are missing, and tomorrow's
+  from 5 minutes before the expected publication, once per check, until they arrive. Once both days are held,
+  a check asks nothing. Nord Pool keeps about two months of past days, so nothing older is asked for.
 - Everything fetched is stored in Home Assistant, so after a restart the last prices are there
   before the relay answers. Day prices are kept for 400 days and then dropped, so the stored file
   stays a bounded size.
