@@ -388,6 +388,11 @@ charger that belongs to a site has one): **First**, **Normal** (the default) or 
 set to First is served before the others and keeps what it asks for; one set to Last gets what is
 left. Chargers with the same priority are served in the order they joined the site.
 
+When the site is over its limit and load balancing has to cut, the cut is taken in the opposite
+order: from Last first, then Normal, then First, in the same pass. Within one priority the chargers
+are cut in the order they joined the site. A charger set to First keeps its current as long as the
+others can give way.
+
 Solar surplus follows the same order. Of the chargers on solar (or on hybrid outside a plan window
 and short of their target), the first in the order is offered the whole surplus; the next is
 offered only what the first cannot use: surplus too small for the first one to start on, or more
