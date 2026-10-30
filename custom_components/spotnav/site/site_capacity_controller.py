@@ -2276,19 +2276,7 @@ class SiteCapacityController:
         person's (their Start, under any pause but their own Stop), or a person's Start paused Auto (a stop,
         window end, solar off or new plan outside every window has already cleared the controller's own
         mark). When it is not wanted the mark is dropped."""
-        store = domain_data(self.hass).auto_store
-        settings = None if store is None else store.settings(charger_entry_id)
-        if settings is None or not settings.pause.admitted:
-            return True
-        pause = settings.pause
-        persons_stop = pause.manual and pause.action == MANUAL_STOP
-        persons_charge = getattr(charger_controller, "paused_charge_origin", None) == "manual" or (
-            pause.manual and pause.action == MANUAL_START
-        )
-        if persons_charge and not persons_stop:
-            return True
-        charger_controller.forget_balancing_pause()
-        return False
+        return charge_still_wanted(self.hass, charger_entry_id, charger_controller)
 
     async def _async_maybe_resume_paused_charge(
         self,
@@ -2736,7 +2724,8 @@ class SiteCapacityController:
         in-flight apply pass (a write already dispatched is not assumed to have failed or succeeded;
         the restore reads the charger); (3) capture per-charger evidence of what was written, then
         drop damping and yield state; (4) restore each member charger through
-        `ChargingController.async_restore_current`, one after another; (5) notify listeners.
+        `ChargingController.async_restore_current`, one after another; (5) give back or forget a charge it held
+        back (`async_release_held_charges`), which no regulator resumes any more; (6) notify listeners.
 
         A charger that cannot be restored is reported `failed` with a stable code; the opt-in stays
         off regardless. Callers hold `transition_lock`.
@@ -2795,6 +2784,15 @@ class SiteCapacityController:
                     restore.to_a,
                     restore.code,
                 )
+        # Load balancing governs these chargers no more, and nothing else would resume a charge it holds back.
+        await async_release_held_charges(
+            self.hass,
+            [
+                charger_entry_id
+                for charger_entry_id in self.config.get(CONF_CHARGER_ENTRY_IDS) or []
+                if charger_entry_id not in conflicted
+            ],
+        )
         outcomes = {report.restore.outcome for report in reports}
         if RESTORE_FAILED in outcomes:
             outcome = RESTORE_FAILED
@@ -3760,6 +3758,57 @@ class SiteCapacityController:
         if last_reported is None:
             return None
         return (dt_util.utcnow() - last_reported).total_seconds()
+
+
+def charge_still_wanted(hass: HomeAssistant, charger_entry_id: str, charger_controller: Any) -> bool:
+    """Whether a charge balancing paused is still wanted (`SiteCapacityController._charge_still_wanted`); when it is
+    not, the mark is dropped (`forget_balancing_pause`)."""
+    store = domain_data(hass).auto_store
+    settings = None if store is None else store.settings(charger_entry_id)
+    if settings is None or not settings.pause.admitted:
+        return True
+    pause = settings.pause
+    persons_stop = pause.manual and pause.action == MANUAL_STOP
+    persons_charge = getattr(charger_controller, "paused_charge_origin", None) == "manual" or (
+        pause.manual and pause.action == MANUAL_START
+    )
+    if persons_charge and not persons_stop:
+        return True
+    charger_controller.forget_balancing_pause()
+    return False
+
+
+async def async_release_held_charges(hass: HomeAssistant, charger_entry_ids: Sequence[str]) -> None:
+    """Load balancing governs these chargers no more (turned off, a charger taken off its site, the site removed), so
+    no regulator will resume a charge it holds back: one still wanted is given back as the regulator's resume gives it
+    back (`async_battery_probe_start`, at the current on record, with no site left to cap it), one no longer wanted is
+    forgotten. Not at an unload: a reload's controller and the next start of Home Assistant resume it themselves."""
+    for charger_entry_id in charger_entry_ids:
+        charger_controller = controller_for(hass, charger_entry_id)
+        if charger_controller is None or not charger_controller.paused_by_balancing:
+            continue
+        if not charge_still_wanted(hass, charger_entry_id, charger_controller):
+            continue
+        requested = charger_controller.requested_current_a
+        if (
+            requested is None
+            or charger_controller.held_by_charger
+            or charger_controller.adapter.vehicle_connected() is False
+            or charger_controller.car_ended_holds_charge
+        ):
+            continue
+        try:
+            started = await charger_controller.async_battery_probe_start(requested)
+        except Exception:  # noqa: BLE001 - the others are still given back
+            _LOGGER.warning(
+                "SpotNav charger %s: the charge load balancing held back could not be given back", charger_entry_id,
+                exc_info=True,
+            )
+            continue
+        if started:
+            _LOGGER.info(
+                "SpotNav charger %s: load balancing governs it no more; the charge it held back goes on", charger_entry_id
+            )
 
 
 def _source_entity_ids(source: PhaseMeasurementSource) -> set[str]:

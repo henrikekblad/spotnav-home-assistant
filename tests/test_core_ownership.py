@@ -516,6 +516,31 @@ def test_a_balancing_pause_keeps_a_plug_in_from_starting() -> None:
 
 
 @pytest.mark.parametrize(
+    ("session", "trigger", "starts"),
+    [
+        # A re-arm inside an open window (a restart, a follow, an install) leaves a charge load balancing holds back
+        # to its regulator, whoever's it was, and keeps the memory.
+        (ChargeSession(balancing_paused=True, paused_origin="plan"), ev.TRIGGER_REARM, False),
+        (ChargeSession(balancing_paused=True, paused_origin="person"), ev.TRIGGER_REARM, False),
+        (ChargeSession(balancing_paused=True), ev.TRIGGER_REARM, False),
+        # Nothing held back: the re-arm starts the window's charge as ever.
+        (ChargeSession(), ev.TRIGGER_REARM, True),
+        # A window's own timer is not a re-arm: it starts as before.
+        (ChargeSession(balancing_paused=True, paused_origin="plan"), ev.TRIGGER_TIMER, True),
+    ],
+)
+def test_a_rearm_leaves_a_charge_load_balancing_holds_back(
+    session: ChargeSession, trigger: str, starts: bool
+) -> None:
+    after, commands = run(session, ev.WindowStart(trigger=trigger))
+    if starts:
+        assert commands == (Start("plan_window"),)
+    else:
+        assert kinds(commands) == []
+        assert (after.balancing_paused, after.paused_origin) == (session.balancing_paused, session.paused_origin)
+
+
+@pytest.mark.parametrize(
     ("session", "stops"),
     [
         # The plan's own charge: the window's, its top-off, one the charger began by itself, or none running.
