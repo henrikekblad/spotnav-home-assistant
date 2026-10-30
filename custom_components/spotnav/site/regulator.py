@@ -780,7 +780,9 @@ def allocate_regulator_decisions(
     """One decision per charger, computed sequentially so chargers sharing a phase
     are never offered the same headroom.
 
-    Chargers are processed in `allocation_order` (priority, then the site's charger order). A per-phase `remaining`
+    Chargers are processed in `allocation_order` (priority, then the site's charger order), or while a phase is over
+    the limit in `overload_order` (lowest priority first, so the cut is taken from "last" first). A per-phase
+    `remaining`
     headroom starts at `site_result.measured_margin_a` and shrinks by
     `proposed - measured` after each decision. A `None` decision blocks its
     phases for the rest of the cycle; later chargers sharing one are refused.
@@ -810,9 +812,21 @@ def allocate_regulator_decisions(
     overloaded = any(margin is not None and margin < 0.0 for margin in site_result.measured_margin_a.values())
     if overloaded and any(request.switch_only for request in requests):
         return allocator.staged(requests)
-    for request in allocation_order(requests):
+    for request in overload_order(requests) if overloaded else allocation_order(requests):
         allocator.decide(request)
     return allocator.decisions
+
+
+def _priority_rank(request: ChargerRequest) -> int:
+    return charger_order_key(request.priority, request.order, request.charger_entry_id)[0]
+
+
+def overload_order(requests: Sequence[ChargerRequest]) -> list[ChargerRequest]:
+    """The order an import overload is cut in: lowest priority first ("last", then "normal", then "first"), each
+    class in the site's own order (`allocation_order`). The charger decided first is given the negative headroom,
+    so it takes the cut: a charger set to First keeps what it asks for as long as the others can give way."""
+    ordered = allocation_order(requests)
+    return sorted(ordered, key=lambda request: -_priority_rank(request))
 
 
 class _Allocator:
@@ -950,11 +964,9 @@ class _Allocator:
         """The staged overload pass (`allocate_regulator_decisions`)."""
         self._staging = True
         ordered = allocation_order(requests)
-        ranks = sorted(
-            {charger_order_key(r.priority, r.order, r.charger_entry_id)[0] for r in ordered}, reverse=True
-        )
+        ranks = sorted({_priority_rank(r) for r in ordered}, reverse=True)
         for rank in ranks:
-            members = [r for r in ordered if charger_order_key(r.priority, r.order, r.charger_entry_id)[0] == rank]
+            members = [r for r in ordered if _priority_rank(r) == rank]
             floored: list[str] = []
             for request in members:
                 if not request.switch_only:
