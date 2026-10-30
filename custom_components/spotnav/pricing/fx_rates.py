@@ -29,7 +29,9 @@ use of the information obtained directly from it" and "When such information is 
 must appear accurately and the ECB must be cited as the source." SpotNav uses the rates to show and compare
 prices (information, not transactions), never alters a rate, and names the source (`fx_src: "ECB"`, `fx_date`).
 
-Not set up by the integration yet: the providers that need it (S6, S9) own its start and stop.
+One per installation on `SpotNavData.fx_rates`, created with the price repository. Its daily timer is started by
+the first day a provider builds for an area that trades in another currency than EUR (Nord Pool,
+`providers/nordpool.py`), so an installation that needs no rate makes no request; it stops with Home Assistant.
 """
 
 from __future__ import annotations

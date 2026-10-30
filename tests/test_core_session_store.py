@@ -403,7 +403,7 @@ async def test_home_assistants_stop_saves_a_change_waiting_for_its_debounced_sav
     with monkeypatch.context() as patch:
         patch.setattr(hass.config_entries, "async_entries", lambda domain=None: [Entry()])
         patch.setattr(integration, "charger_data", lambda _hass, entry_id: Data() if entry_id == ENTRY else None)
-        patch.setattr(integration, "domain_data", lambda _hass: type("Domain", (), {"price_refresh": None})())
+        patch.setattr(integration, "domain_data", lambda _hass: type("Domain", (), {"price_refresh": None, "price_repository": None, "fx_rates": None})())
         await integration._async_stop(hass)  # noqa: SLF001
     assert (await _stored(world))[SESSION_STORE_KEY]["held"] is True
     assert world.controller._session_dirty_since is None  # noqa: SLF001
