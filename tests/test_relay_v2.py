@@ -312,7 +312,7 @@ async def test_a_v1_cache_restores_its_held_days_and_moves_to_v2(
     await repository.async_get_index(refresh=True)
     assert repository.index_snapshot().index.version == 2
     assert repository.file_snapshot("PT", OCT4).document is not None
-    assert "PT|2026-10-04" in store.payload["days"]
+    assert "PT|Europe/Madrid|2026-10-04" in store.payload["days"]
 
 
 async def test_an_archive_london_day_asks_for_a_shared_file_once(

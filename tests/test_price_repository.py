@@ -295,12 +295,15 @@ async def test_a_restart_restores_last_good_without_a_network_call(
     await hass.async_block_till_done()
 
     written = hass_storage[STORAGE_KEY]["data"]
-    assert written["schema"] == 1
-    # The raw published document, not a summary of it, and its own acquisition time.
-    assert written["days"]["SE4|2026-09-22"]["document"]["area"] == "SE4"
-    assert written["days"]["SE4|2026-09-22"]["document"]["prices"] == list(original.document.prices)
-    assert written["catalogue"]["document"]["v"] == 1
-    assert written["index"]["document"]["areas_rev"] == "916f2f8e05fd"
+    assert written["schema"] == 2
+    # The raw published document, not a summary of it, and its own acquisition time, filed under its
+    # market calendar and labelled with who published it.
+    stored_day = written["days"]["SE4|Europe/Stockholm|2026-09-22"]
+    assert stored_day["document"]["area"] == "SE4"
+    assert stored_day["document"]["prices"] == list(original.document.prices)
+    assert stored_day["provider"] == "relay"
+    assert written["relay"]["catalogue"]["document"]["v"] == 1
+    assert written["relay"]["index"]["document"]["areas_rev"] == "916f2f8e05fd"
     # No credential, no webhook id and no URL ever reaches the store.
     assert "http" not in json.dumps(written)
 

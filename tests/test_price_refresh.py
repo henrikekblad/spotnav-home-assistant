@@ -532,8 +532,8 @@ async def test_a_held_area_list_of_unknown_revision_is_fetched_once_after_a_rest
     await first_manager.async_subscribe(owner_id="entry-a", area_id="SE4", listener=Listener())
     await hass.async_block_till_done()
     await first_manager.async_shutdown()
-    assert store.payload["catalogue_rev"] is not None
-    store.payload.pop("catalogue_rev")
+    assert store.payload["relay"]["catalogue_rev"] is not None
+    store.payload["relay"].pop("catalogue_rev")
     calls = transport.call_count("/v1/areas.json")
 
     restarted = PriceRepository(hass, base_url=BASE_URL, session=transport, now=clock, store=store)
