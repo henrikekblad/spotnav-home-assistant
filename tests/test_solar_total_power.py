@@ -51,7 +51,7 @@ from .helpers import make_entry, make_site_entry
 from .messages import get_message, register, update_entity_config_message
 from .world import admin, controller_of, SecondsClock, set_charger_delivered_a, tick_site, ws_call
 
-pytestmark = pytest.mark.usefixtures("offline_relay")
+pytestmark = pytest.mark.usefixtures("offline_relay", "chargers_not_switch_only")
 
 PHASES = ("L1", "L2", "L3")
 TOTAL = "sensor.grid_total_w"

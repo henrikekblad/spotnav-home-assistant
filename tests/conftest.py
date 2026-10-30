@@ -230,6 +230,15 @@ DRIFTS: list[tuple[str, dict[str, Any]]] = []
 COMMANDS: dict[str, list[str]] | None = None
 
 
+@pytest.fixture
+def chargers_not_switch_only(monkeypatch):
+    """For tests about the sun's state machine and its hand-overs, written before chargers that can only be switched
+    on and off were reckoned at their whole current: their plain-switch chargers start and stop on the minimum-current
+    thresholds as a charger whose current is set does, not on a switched current (`tests/test_switch_only_solar.py`
+    covers those)."""
+    monkeypatch.setattr(ChargingController, "is_switch_only", property(lambda self: False))
+
+
 @pytest.fixture(autouse=True)
 def ownership_shadow_agrees(request):
     """Every test runs the charge-ownership core in shadow mode beside today's code

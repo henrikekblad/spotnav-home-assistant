@@ -24,7 +24,7 @@ from custom_components.spotnav.runtime import executor_for
 
 from .world import controller_of, set_charger_delivered_a, set_site_power_w, solar_setup, tick_site
 
-pytestmark = pytest.mark.usefixtures("offline_relay")
+pytestmark = pytest.mark.usefixtures("offline_relay", "chargers_not_switch_only")
 
 BATTERY = "sensor.home_battery_power"
 #: 15.7 A on three phases at 230 V.

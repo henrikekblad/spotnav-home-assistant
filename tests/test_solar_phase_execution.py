@@ -31,7 +31,7 @@ from custom_components.spotnav.site.solar_surplus import MIN_BETWEEN_S, UP_DELAY
 
 from .world import PHASES, controller_of, solar_setup, tick_site
 
-pytestmark = pytest.mark.usefixtures("offline_relay")
+pytestmark = pytest.mark.usefixtures("offline_relay", "chargers_not_switch_only")
 
 CHARGER = "solar_charger"
 SWITCH = f"switch.{CHARGER}"

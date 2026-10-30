@@ -14,7 +14,7 @@ from custom_components.spotnav.runtime import executor_for
 from .test_manual_pause_solar import _solar_on
 from .world import set_charger_delivered_a, set_site_power_w, tick_site
 
-pytestmark = pytest.mark.usefixtures("offline_relay")
+pytestmark = pytest.mark.usefixtures("offline_relay", "chargers_not_switch_only")
 
 
 async def _run(hass: HomeAssistant, stale: bool) -> int:

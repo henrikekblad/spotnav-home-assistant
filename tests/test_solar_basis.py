@@ -34,7 +34,7 @@ from .helpers import make_site_entry, set_current_sensor
 from .test_solar_total_power import _set_total, direct_solar_setup, TOTAL
 from .world import controller_of, set_charger_delivered_a, tick_site
 
-pytestmark = pytest.mark.usefixtures("offline_relay")
+pytestmark = pytest.mark.usefixtures("offline_relay", "chargers_not_switch_only")
 
 
 def _lose_l1(hass: HomeAssistant) -> None:

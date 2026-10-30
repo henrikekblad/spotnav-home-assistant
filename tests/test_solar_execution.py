@@ -37,7 +37,7 @@ from .world import controller_of
 from custom_components.spotnav.runtime import domain_data
 from custom_components.spotnav.runtime import executor_for
 
-pytestmark = pytest.mark.usefixtures("offline_relay")
+pytestmark = pytest.mark.usefixtures("offline_relay", "chargers_not_switch_only")
 
 
 MEASUREMENT_MODE_DERIVED = "derived_phase_current"
