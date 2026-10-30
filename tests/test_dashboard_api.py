@@ -177,6 +177,9 @@ PRIVATE_KEYS = frozenset(
 #: Fragments a *string value* may never contain: an entity id, a webhook id or url, a bare url.
 PRIVATE_FRAGMENTS = ("switch.", "sensor.", "number.", "webhook-", "http://", "https://", "/api/webhook")
 
+#: The one place a public address is stated: where the prices come from (a price provider's own site).
+PUBLIC_URL_PATHS = frozenset({"$.market.source.url", "$.prices.provider.url"})
+
 
 def assert_no_private_identifiers(payload: dict[str, Any]) -> None:
     """The recursive, path-based audit: leaf keys first, then string values.
@@ -189,7 +192,7 @@ def assert_no_private_identifiers(payload: dict[str, Any]) -> None:
         key = path.rsplit(".", 1)[-1]
         if not path.startswith("$.charger.capabilities."):
             assert key not in PRIVATE_KEYS, path
-        if isinstance(value, str):
+        if isinstance(value, str) and path not in PUBLIC_URL_PATHS:
             assert not any(fragment in value for fragment in PRIVATE_FRAGMENTS), path
 
 
@@ -1160,7 +1163,9 @@ async def test_a_fresh_unconfigured_charger_serializes_the_contract_shape(
         "unpriced",
         "interval_count",
         "intervals",
+        "provider",
     }
+    assert prices["provider"] is None, "no area, no source"
     assert prices["intervals"] == []
     assert prices["interval_count"] == 0
     assert prices["resolutions_minutes"] == []

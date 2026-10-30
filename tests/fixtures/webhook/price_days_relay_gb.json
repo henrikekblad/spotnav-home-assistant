@@ -168,7 +168,10 @@
   "provider": {
     "key": "relay",
     "name": "SpotNav relay",
-    "notice": null,
+    "notice": {
+      "code": "source_missing",
+      "params": {}
+    },
     "url": "https://spotnav.sensnology.se"
   },
   "publication": {

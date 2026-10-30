@@ -27,6 +27,9 @@ within an attempt. The choice is taken again whenever a `nordpool`, `pvpc_hourly
 entry is added, removed, loaded or unloaded (Home Assistant's `SIGNAL_CONFIG_ENTRY_CHANGED`, which it sends for
 each of those, a load or unload being a state change of the entry), whenever one of the Octopus integration's rate
 entities changes (the meter's tariff is read from it), and whenever the ENTSO-E key is set, cleared or rejected.
+
+[ProviderRouter.source_status] says which provider an area is read from and, when it has no source of its own
+(the relay only), the one action that gives it one: the notices of `providers/notices.py`.
 """
 
 from __future__ import annotations
@@ -44,6 +47,7 @@ from homeassistant.helpers.dispatcher import async_dispatcher_connect
 
 from ... import time_zones
 from ..relay_contract import AreaPublication, ParseCode
+from .notices import entry_state, EntryState, source_notice, SourceFacts, SourceStatus
 
 if TYPE_CHECKING:
     from ..relay_contract import PriceDocument
@@ -154,6 +158,9 @@ class PriceProvider(Protocol):
 
     #: Stored beside each file it delivers.
     key: ProviderKey
+    #: What the card and the app call it, and where it is (attribution).
+    name: str
+    url: str
     #: Whether it publishes an index of the days it holds (the relay); a provider without one is asked on a
     #: schedule instead ([schedule_authority]).
     has_index: bool
@@ -274,6 +281,9 @@ class ProviderRouter:
         self._octopus = octopus
         self._nordpool_loaded = False
         self._pvpc_loaded = False
+        # The integrations' entries as last seen ([entry_state]), for the notices; `None` until started.
+        self._hass: HomeAssistant | None = None
+        self._entry_states: dict[str, EntryState] = {}
         self._listeners: list[Callable[[], None]] = []
         self._unsubscribe: list[Callable[[], None]] = []
 
@@ -317,10 +327,42 @@ class ProviderRouter:
             return self._entsoe
         return self._relay
 
+    def source_status(self, area_id: str, *, relay_serves: bool) -> SourceStatus:
+        """The area's provider (the relay's only while it serves the area) and its notice (`notices.py`)."""
+        provider = self.provider_for(area_id)
+        if provider.key == "relay" and not relay_serves:
+            return SourceStatus(key=None, name=None, url=None, notice=source_notice(self.facts(area_id)))
+        return SourceStatus(
+            key=provider.key, name=provider.name, url=provider.url, notice=source_notice(self.facts(area_id))
+        )
+
+    def facts(self, area_id: str) -> SourceFacts:
+        """What decides the area's source and notice now."""
+        octopus = self._octopus
+        octopus_meter = octopus is not None and octopus.serves(area_id)
+        key_state = None if self._entsoe is None else self._entsoe.key_state()
+        return SourceFacts(
+            nordpool_route=self._nordpool is not None and self._nordpool.serves(area_id),
+            nordpool_entry=self._entry_state("nordpool"),
+            entsoe_route=self._entsoe is not None and self._entsoe.serves(area_id),
+            entsoe_key="none" if key_state is None else key_state,
+            pvpc_route=self._pvpc is not None and self._pvpc.serves(area_id),
+            pvpc_entry=self._entry_state(PVPC_DOMAIN),
+            octopus_route=octopus is not None and octopus.has_route(area_id),
+            octopus_entry=self._entry_state(OCTOPUS_DOMAIN),
+            octopus_meter=octopus_meter,
+            octopus_region=octopus.region_mismatch(area_id) if octopus_meter and octopus is not None else None,
+        )
+
+    def _entry_state(self, domain: str) -> EntryState:
+        return entry_state(self._hass, domain)
+
     @callback
     def async_start(self, hass: HomeAssistant) -> Callable[[], None]:
         """Follow the `nordpool`, `pvpc_hourly_pricing` and `octopus_energy` config entries, the Octopus rate
         entities and the ENTSO-E key from now on; returns the call that stops following."""
+        self._hass = hass
+        self._entry_states = {domain: entry_state(hass, domain) for domain in FOLLOWED_DOMAINS}
         self._nordpool_loaded = _nordpool_loaded(hass)
         self._pvpc_loaded = self._pvpc is not None and self._pvpc.loaded()
         if self._octopus is not None:
@@ -329,22 +371,29 @@ class ProviderRouter:
         @callback
         def changed(_change: Any, entry: Any) -> None:
             domain = getattr(entry, "domain", None)
+            if domain not in FOLLOWED_DOMAINS:
+                return
+            # An entry added, failed or removed changes an area's notice, if not its provider.
+            state = entry_state(hass, domain)
+            moved = state != self._entry_states.get(domain)
+            self._entry_states[domain] = state
             if domain == "nordpool":
                 loaded = _nordpool_loaded(hass)
-                if loaded == self._nordpool_loaded:
-                    return
-                self._nordpool_loaded = loaded
-                _LOGGER.debug("Nord Pool through Home Assistant is %s", "in use" if loaded else "not in use")
-                self._notify()
+                if loaded != self._nordpool_loaded:
+                    self._nordpool_loaded = loaded
+                    _LOGGER.debug("Nord Pool through Home Assistant is %s", "in use" if loaded else "not in use")
+                    moved = True
             elif domain == PVPC_DOMAIN and self._pvpc is not None:
                 loaded = self._pvpc.loaded()
-                if loaded == self._pvpc_loaded:
-                    return
-                self._pvpc_loaded = loaded
-                _LOGGER.debug("The PVPC through Home Assistant is %s", "in use" if loaded else "not in use")
+                if loaded != self._pvpc_loaded:
+                    self._pvpc_loaded = loaded
+                    _LOGGER.debug("The PVPC through Home Assistant is %s", "in use" if loaded else "not in use")
+                    moved = True
+            elif domain == OCTOPUS_DOMAIN and self._octopus is not None and self._octopus.refresh():
+                _LOGGER.debug("Agile meters through Octopus Energy: %d", len(self._octopus.meters))
+                moved = True
+            if moved:
                 self._notify()
-            elif domain == OCTOPUS_DOMAIN:
-                octopus_changed()
 
         @callback
         def octopus_changed() -> None:
@@ -399,6 +448,8 @@ class ProviderRouter:
 #: so this module does not import the providers it is imported by).
 PVPC_DOMAIN: Final = "pvpc_hourly_pricing"
 OCTOPUS_DOMAIN: Final = "octopus_energy"
+#: Every integration whose entries decide a provider or a notice.
+FOLLOWED_DOMAINS: Final = ("nordpool", PVPC_DOMAIN, OCTOPUS_DOMAIN)
 
 
 def _nordpool_loaded(hass: HomeAssistant) -> bool:

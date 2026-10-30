@@ -40,5 +40,7 @@ export type ValueWrite =
   | { kind: "priceSource"; priceEntryId: string }
   /** The same-area question answered: the entry to use, or `null` to keep them all (`spotnav/answer_price_duplicate`). */
   | { kind: "priceDuplicate"; areaId: string; keepEntryId: string | null }
+  /** The installation's ENTSO-E key (`spotnav/set_entsoe_key`), checked against the area's prices. */
+  | { kind: "entsoeKey"; key: string; areaId: string | null }
   /** One fee of the selected area: a figure, or `null` for off. */
   | { kind: "fiscal"; component: FiscalComponentName; value: number | null };

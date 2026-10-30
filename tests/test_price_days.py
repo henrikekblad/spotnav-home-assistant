@@ -81,7 +81,8 @@ async def test_a_single_calendar_area_answers_todays_and_tomorrows_files(
     assert status == 200 and body["ok"] is True and body["action"] == "price_days" and body["v"] == 1
     assert body["area"]["id"] == SE4 and body["area"]["market_tz"] == body["area"]["tz"] == "Europe/Stockholm"
     assert body["provider"] == {
-        "key": "relay", "name": "SpotNav relay", "url": "https://spotnav.sensnology.se", "notice": None
+        "key": "relay", "name": "SpotNav relay", "url": "https://spotnav.sensnology.se",
+        "notice": {"code": "add_nordpool", "params": {}},
     }
     assert (body["state"], body["reason"], body["waiting_for_tomorrow"]) == ("ready", "ready", False)
     assert body["publication"] == body["area"]["publication"]

@@ -100,7 +100,20 @@ export interface PriceInterval {
   installed_planned: boolean;
 }
 
+/**
+ * Where the area's prices come from (`prices.provider`, additive): the provider's key, name and address (`null`
+ * with no source at all), and the one thing an administrator can do when the area has no source of its own.
+ */
+export interface PriceProvider {
+  key: string | null;
+  name: string | null;
+  url: string | null;
+  notice: { code: string; params: Record<string, string> } | null;
+}
+
 export interface Prices {
+  /** `null` without an area, from an older backend, or unreadable. */
+  provider: PriceProvider | null;
   state: string | null;
   reason: string | null;
   waiting_for_tomorrow: boolean | null;
@@ -887,6 +900,7 @@ function decodePrices(source: Record<string, unknown>, timeZone: string | null):
     previous = next;
   }
   return {
+    provider: priceProviderOrNull(source["provider"]),
     state: textOrNull(source, "state"),
     reason: textOrNull(source, "reason"),
     waiting_for_tomorrow: booleanOrNull(source, "waiting_for_tomorrow"),
@@ -898,6 +912,37 @@ function decodePrices(source: Record<string, unknown>, timeZone: string | null):
     resolutions_minutes: numberList(source, "resolutions_minutes"),
     intervals,
   };
+}
+
+/**
+ * `prices.provider`, read leniently: anything that is not the contract's shape is `null` (the section shows no
+ * source line and no notice) rather than refusing the dashboard. The address is kept only when it is http(s).
+ */
+export function priceProviderOrNull(raw: unknown): PriceProvider | null {
+  if (!isRecord(raw)) {
+    return null;
+  }
+  try {
+    exactKeys(raw, ["key", "name", "url", "notice"]);
+    const key = textOrNull(raw, "key");
+    const name = textOrNull(raw, "name");
+    const url = textOrNull(raw, "url");
+    const rawNotice = raw["notice"];
+    let notice: PriceProvider["notice"] = null;
+    if (rawNotice !== null) {
+      const item = record(rawNotice);
+      exactKeys(item, ["code", "params"]);
+      const params: Record<string, string> = {};
+      for (const [param, value] of Object.entries(record(item["params"]))) {
+        params[param] = typeof value === "string" ? value : bad();
+      }
+      notice = { code: text(item, "code"), params };
+    }
+    const attribution = name !== null && url !== null ? priceSource({ name, url }) : null;
+    return { key, name, url: attribution?.url ?? null, notice };
+  } catch {
+    return null;
+  }
 }
 
 function decodePeriods(source: Record<string, unknown>): Period[] {

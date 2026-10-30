@@ -120,6 +120,9 @@ async def test_the_webhook_dashboard_is_the_websocket_dashboard_bar_writability(
     # The one other documented difference: the webhook leaves out what the app cannot read yet.
     assert "departure_date" in expected["settings"]
     expected["settings"] = as_app_sees(expected["settings"])
+    # And `prices.provider`, read only with `reads: ["price_provider"]`.
+    assert "provider" in expected["prices"]
+    del expected["prices"]["provider"]
     assert payload == expected
     _pinned("dashboard.json", _pin(body))
 

@@ -256,6 +256,23 @@ block re-read after the write (`null` while it prices with its own settings). HT
 of the wrong type; nothing is written on a refusal. Examples are in
 `tests/fixtures/webhook/choose_price_source_*.json` and `answer_price_duplicate_*.json`.
 
+**Where the prices come from.** The dashboard's `prices` block carries an additive `provider` object, sent to the
+webhook only when the request asks for it (`"reads": ["price_provider"]`):
+
+```json
+"provider": {"key": "relay", "name": "SpotNav relay", "url": "https://spotnav.sensnology.se",
+             "notice": {"code": "add_nordpool", "params": {}}}
+```
+
+`key` is `nordpool`, `entsoe`, `pvpc`, `octopus` or `relay` (`null`, with `name` and `url`, when the area has no
+source at all); `null` for the whole object without an area. `notice` is `null` while the area has a source of its
+own, else the one thing an administrator can do: `add_nordpool`, `nordpool_not_loaded`, `add_entsoe_key`,
+`entsoe_key_rejected`, `add_pvpc`, `pvpc_not_loaded`, `add_octopus`, `octopus_not_loaded`, `octopus_no_agile`,
+`octopus_region_mismatch` (`params.region`, the meter's region, whose rates are used) or `source_missing`. The relay
+is no source of the area's own, so an area it serves carries the notice too. A source that is there but failing is
+no notice (the prices are `stale` or `degraded` as before). `market.source` is the provider's attribution (the
+relay's own upstream while the relay serves the area). The table is in `pricing/providers/notices.py`.
+
 **Prices for the app.** `price_days` answers the prices of the charger's electricity price (its price entry, else
 its own area), read from what Home Assistant holds: no request is made for it. The day files and the profile are
 the relay's own documents ([prices](prices.md#how-to-read-it)), so a client that reads the relay reads them unchanged:
@@ -276,7 +293,7 @@ the relay's own documents ([prices](prices.md#how-to-read-it)), so a client that
 
 - `area` is the area as the relay's `/v2/areas.json` lists it, with the market calendar (`market_tz`, always
   written) and `publication` of the source its prices come from now, and that source as `source`.
-- `provider` names that source: `key` `relay` or `nordpool`. `notice` is `null`.
+- `provider` names that source, as the dashboard's `prices.provider` does (below).
 - `state`, `reason` and `waiting_for_tomorrow` are the dashboard's `prices` block's.
 - `files` are the held market-day files (`/v1/{area}/{YYYY}/{MM-DD}.json`, keyed by market date) that cover today
   and tomorrow in the area's `tz`: two when its calendars agree, up to three when they do not (a Finnish day from

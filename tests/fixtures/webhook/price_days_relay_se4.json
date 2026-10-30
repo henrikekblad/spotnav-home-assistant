@@ -261,7 +261,10 @@
   "provider": {
     "key": "relay",
     "name": "SpotNav relay",
-    "notice": null,
+    "notice": {
+      "code": "add_nordpool",
+      "params": {}
+    },
     "url": "https://spotnav.sensnology.se"
   },
   "publication": {

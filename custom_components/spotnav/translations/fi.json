@@ -249,6 +249,34 @@
           "transfer_mode": "Siirtomaksu",
           "transfer_value": "Siirtomaksu, oma luku"
         }
+      },
+      "prices_nordpool": {
+        "title": "Sähkön hinnat",
+        "description": "SpotNav hakee alueen {area} hinnat Home Assistantin sisäänrakennetun Nord Pool -integraation kautta: [Nord Pool Home Assistantissa]({link}). Sillä ei ole väliä, minkä alueen valitset integraatiota lisätessäsi.\n\nTai anna sen sijaan oma ENTSO-E-avaimesi alla. Voit tehdä tämän myös myöhemmin SpotNav-kortin asetuksista kohdasta Sähkön hinta.",
+        "data": {
+          "entsoe_key": "ENTSO-E-avain (valinnainen)"
+        },
+        "data_description": {
+          "entsoe_key": "Rekisteröidy osoitteessa [transparency.entsoe.eu]({entsoe_url}) ja lähetä sitten sähköposti osoitteeseen transparency@entsoe.eu aiheella \"Restful API access\" ja tilisi sähköpostiosoite tekstissä. Kun pääsy on myönnetty (se voi kestää muutaman päivän), luo suojausavain kohdassa My Account Settings ja liitä se tähän. Yksi avain koko asennukselle."
+        }
+      },
+      "prices_entsoe": {
+        "title": "Sähkön hinnat",
+        "description": "Alueen {area} hinnat tulevat ENTSO-E:n Transparency Platformilta omalla maksuttomalla avaimellasi. Anna se alla tai myöhemmin SpotNav-kortin asetuksista kohdasta Sähkön hinta.",
+        "data": {
+          "entsoe_key": "ENTSO-E-avain (valinnainen)"
+        },
+        "data_description": {
+          "entsoe_key": "Rekisteröidy osoitteessa [transparency.entsoe.eu]({entsoe_url}) ja lähetä sitten sähköposti osoitteeseen transparency@entsoe.eu aiheella \"Restful API access\" ja tilisi sähköpostiosoite tekstissä. Kun pääsy on myönnetty (se voi kestää muutaman päivän), luo suojausavain kohdassa My Account Settings ja liitä se tähän. Yksi avain koko asennukselle."
+        }
+      },
+      "prices_pvpc": {
+        "title": "Sähkön hinnat",
+        "description": "SpotNav lukee Espanjan PVPC-hinnat Home Assistantin omasta PVPC-integraatiosta: [Spain electricity hourly pricing (PVPC)]({link}). Voit tehdä tämän myös myöhemmin; SpotNav-kortin asetukset muistuttavat siitä kohdassa Sähkön hinta."
+      },
+      "prices_octopus": {
+        "title": "Sähkön hinnat",
+        "description": "SpotNav lukee alueen {area} Agile-hintasi Octopus Energy -integraatiosta, joka asennetaan HACSin kautta: [Octopus Energy]({link}). Mittarisi tariffin on oltava Agile. Voit tehdä tämän myös myöhemmin; SpotNav-kortin asetukset muistuttavat siitä kohdassa Sähkön hinta."
       }
     },
     "abort": {
@@ -265,7 +293,8 @@
       "not_a_charger": "Laite ei ole sähköauton laturi (vaan lämmittimen tai pistorasian ohjain).",
       "charger_not_recognised": "SpotNav ei tunne tätä integraatiota. Valitse sen sijaan Manuaalinen.",
       "charger_not_controllable": "SpotNav ei voi käynnistää tai pysäyttää tätä laturia. Sitä voi vain lukea.",
-      "no_price_areas": "Hinta-alueiden luetteloa ei voitu lukea. Yritä uudelleen minuutin kuluttua."
+      "no_price_areas": "Hinta-alueiden luetteloa ei voitu lukea. Yritä uudelleen minuutin kuluttua.",
+      "no_pending_entry": "Mikään ei odottanut tallennusta."
     },
     "error": {
       "safety_margin_at_or_above_fuse": "Turvamarginaalin on oltava pääsulaketta pienempi, muuten latureille ei jää virtaa.",
@@ -291,7 +320,8 @@
       "unit_expected_apparent_power": "Tämän anturin on ilmoitettava näennäisteho yksikössä VA tai kVA.",
       "manual_entities_duplicate": "Jokainen vaihe tarvitsee oman entiteettinsä.",
       "fee_value_required": "Anna oma luku tai valitse ehdotus.",
-      "fee_no_suggestion": "Hinta-alueella ei ole tälle ehdotusta: anna oma luku tai valitse ei mitään."
+      "fee_no_suggestion": "Hinta-alueella ei ole tälle ehdotusta: anna oma luku tai valitse ei mitään.",
+      "entsoe_key_rejected": "ENTSO-E ei hyväksynyt avainta. Tarkista se tai luo uusi osoitteessa transparency.entsoe.eu."
     }
   },
   "options": {
@@ -851,6 +881,10 @@
     "core_decision_failed": {
       "title": "Laturin latauspäätökset epäonnistuivat",
       "description": "SpotNavin nykyinen logiikka ei pystynyt tekemään päätöstä laturille **{charger}** useita kertoja viimeisen vuorokauden aikana, joten aiempi logiikka päätti sen sijaan. Lataus jatkuu. Voit auttaa vian korjaamisessa: lataa vianetsintätiedot (SpotNav-kortin ratas → Lataa vianetsintätiedot) ja liitä ne GitHubin issueen. Jos laturi toimii oudosti, vaihda se Aiempaan logiikkaan: laturin Määritä → Latauspäätökset. Ilmoitus poistuu vuorokauden kuluttua ilman virheitä."
+    },
+    "price_source_missing": {
+      "title": "Alueella {area} ei ole sähkön hintoja",
+      "description": "Kohteella **{price}** ei ole hintoja: alueelle {area} ei ole määritetty lähdettä. Avaa SpotNav-kortin asetukset, Sähkön hinta: siellä kerrotaan, mitä lisätä (Home Assistantin Nord Pool -integraatio, oma ENTSO-E-avaimesi, PVPC- tai Octopus Energy -integraatio). Ilmoitus poistuu itsestään, kun hinnat palaavat."
     }
   },
   "exceptions": {

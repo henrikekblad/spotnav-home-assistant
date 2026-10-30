@@ -249,6 +249,34 @@
           "transfer_mode": "Peaje de acceso",
           "transfer_value": "Peaje de acceso, mi propia cifra"
         }
+      },
+      "prices_nordpool": {
+        "title": "Precios de la electricidad",
+        "description": "SpotNav obtiene los precios de {area} a través de la integración Nord Pool incluida en Home Assistant: [Nord Pool en Home Assistant]({link}). Da igual qué zona elijas al añadirla.\n\nO introduce en su lugar tu propia clave de ENTSO-E abajo. También puedes hacerlo más tarde, en los ajustes de la tarjeta SpotNav, en Precio de la electricidad.",
+        "data": {
+          "entsoe_key": "Clave de ENTSO-E (opcional)"
+        },
+        "data_description": {
+          "entsoe_key": "Regístrate en [transparency.entsoe.eu]({entsoe_url}) y después escribe a transparency@entsoe.eu con el asunto \"Restful API access\" y el correo de tu cuenta en el texto. Cuando te den acceso (puede tardar unos días), genera el token de seguridad en My Account Settings y pégalo aquí. Una clave para toda la instalación."
+        }
+      },
+      "prices_entsoe": {
+        "title": "Precios de la electricidad",
+        "description": "Los precios de {area} vienen de la Transparency Platform de ENTSO-E, con tu propia clave gratuita. Introdúcela abajo, o más tarde en los ajustes de la tarjeta SpotNav, en Precio de la electricidad.",
+        "data": {
+          "entsoe_key": "Clave de ENTSO-E (opcional)"
+        },
+        "data_description": {
+          "entsoe_key": "Regístrate en [transparency.entsoe.eu]({entsoe_url}) y después escribe a transparency@entsoe.eu con el asunto \"Restful API access\" y el correo de tu cuenta en el texto. Cuando te den acceso (puede tardar unos días), genera el token de seguridad en My Account Settings y pégalo aquí. Una clave para toda la instalación."
+        }
+      },
+      "prices_pvpc": {
+        "title": "Precios de la electricidad",
+        "description": "SpotNav lee los precios PVPC de España de la integración PVPC de Home Assistant: [Spain electricity hourly pricing (PVPC)]({link}). También puedes hacerlo más tarde; los ajustes de la tarjeta SpotNav te lo recuerdan en Precio de la electricidad."
+      },
+      "prices_octopus": {
+        "title": "Precios de la electricidad",
+        "description": "SpotNav lee tus tarifas Agile de {area} de la integración Octopus Energy, que se instala desde HACS: [Octopus Energy]({link}). La tarifa de tu contador tiene que ser Agile. También puedes hacerlo más tarde; los ajustes de la tarjeta SpotNav te lo recuerdan en Precio de la electricidad."
       }
     },
     "abort": {
@@ -265,7 +293,8 @@
       "not_a_charger": "Ese dispositivo no es un cargador de vehículos eléctricos (es un controlador de calefacción o de enchufe).",
       "charger_not_recognised": "SpotNav no conoce esta integración. Elige Manual en su lugar.",
       "charger_not_controllable": "SpotNav no puede iniciar ni detener este cargador. Solo se puede leer.",
-      "no_price_areas": "No se pudo leer la lista de zonas de precios. Inténtalo de nuevo en un minuto."
+      "no_price_areas": "No se pudo leer la lista de zonas de precios. Inténtalo de nuevo en un minuto.",
+      "no_pending_entry": "No había nada pendiente de guardar."
     },
     "error": {
       "safety_margin_at_or_above_fuse": "El margen de seguridad debe ser menor que el fusible general; de lo contrario no queda corriente para los cargadores.",
@@ -291,7 +320,8 @@
       "unit_expected_apparent_power": "Este sensor debe informar de la potencia aparente en VA o kVA.",
       "manual_entities_duplicate": "Cada fase necesita su propia entidad.",
       "fee_value_required": "Introduce tu propia cifra, o elige la sugerencia.",
-      "fee_no_suggestion": "Esta zona no tiene sugerencia para esto: introduce tu propia cifra o elige nada."
+      "fee_no_suggestion": "Esta zona no tiene sugerencia para esto: introduce tu propia cifra o elige nada.",
+      "entsoe_key_rejected": "ENTSO-E no aceptó esta clave. Compruébala o genera una nueva en transparency.entsoe.eu."
     }
   },
   "options": {
@@ -851,6 +881,10 @@
     "core_decision_failed": {
       "title": "Las decisiones de carga de un cargador fallaron",
       "description": "La lógica actual de SpotNav no pudo decidir por **{charger}** varias veces en el último día, así que decidió la lógica anterior. La carga continúa. Para ayudar a corregirlo, descarga la información de depuración (el engranaje en la tarjeta de SpotNav → Descargar información de depuración) y adjúntala a un issue en GitHub. Si el cargador se comporta de forma extraña, cambia a Lógica anterior: Configurar del cargador → Decisiones de carga. Este mensaje desaparece tras un día sin fallos."
+    },
+    "price_source_missing": {
+      "title": "No hay precios de la electricidad para {area}",
+      "description": "**{price}** no tiene precios: no hay ninguna fuente configurada para {area}. Abre los ajustes de la tarjeta SpotNav, Precio de la electricidad: ahí se indica qué añadir (la integración Nord Pool de Home Assistant, tu propia clave de ENTSO-E, la integración PVPC u Octopus Energy). Este aviso desaparece solo cuando vuelvan los precios."
     }
   },
   "exceptions": {

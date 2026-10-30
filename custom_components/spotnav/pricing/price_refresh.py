@@ -50,6 +50,7 @@ from ..runtime import domain_data
 from . import providers
 from .market_day import market_days_for, principal_market_day
 from .price_history import HistoryBackfill
+from .providers.notices import SourceStatus
 from .price_repository import (
     CatalogueSnapshot,
     DaySnapshot,
@@ -1089,6 +1090,14 @@ class PriceRefreshManager:
     def profile_summary(self, area_id: str) -> dict[str, Any]:
         """Diagnostics' view of the held profile (no price rows)."""
         return self._repository.profile_summary(area_id)
+
+    def source_status(self, area_id: str) -> SourceStatus:
+        """The area's price source and notice (`providers/notices.py`)."""
+        return self._repository.source_status(area_id)
+
+    def add_provider_listener(self, listener: Callable[[], None]) -> Callable[[], None]:
+        """Call [listener] whenever an area's provider or notice may have changed; returns the remover."""
+        return self._repository.add_provider_listener(listener)
 
     def area_snapshot(self, area_id: str) -> AreaPriceSnapshot | None:
         record = self._areas.get(area_id)

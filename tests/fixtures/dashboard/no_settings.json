@@ -1117,6 +1117,7 @@
       }
     ],
     "priced_slots": 35,
+    "provider": null,
     "reason": null,
     "resolution_minutes": null,
     "resolutions_minutes": [],

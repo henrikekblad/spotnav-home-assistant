@@ -6,6 +6,11 @@ shares the area's one fetch with every charger and releases only its own share. 
 timer, at the next interval boundary, and tells its entities when the price, the hours or the
 interval changes; the entities poll nothing. The arithmetic is `pricing/price_points.py`.
 
+Where the area's prices come from is the installation's choice (`pricing/providers/notices.py`): the device
+follows it, names it in the Price now sensor's `source`, and makes its notice the device's `problem`. When the area
+has no source at all and its prices have stopped, it raises one Repairs issue (`price_source_missing_<entry id>`),
+deleted by itself once a source is there, the prices are back, or the entry goes.
+
 A change of the entry's area or fees is taken in place (`update_data`, from the entry's update listener): new
 fees price again at once, a new area releases the old one and subscribes to the new. The entry is never reloaded
 for it, so its entities never go unavailable over a fee change.
@@ -19,11 +24,12 @@ from datetime import date, datetime, timedelta
 from typing import Any, Final
 
 from homeassistant.core import callback, HomeAssistant
+from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.event import async_call_later, async_track_point_in_utc_time
 from homeassistant.util import dt as dt_util
 
 from . import time_zones
-from .const import CONF_PRICE_AREA
+from .const import CONF_PRICE_AREA, DOMAIN, PRICE_SOURCE_MISSING_ISSUE
 from .planning.planner import FiscalChoice, PlannerInputError
 from .pricing.market_day import display_day_span
 from .pricing.price_points import (
@@ -45,6 +51,7 @@ from .pricing.price_points import (
 )
 from .pricing.price_refresh import AreaPriceSnapshot, PriceRefreshManager
 from .pricing.price_repository import CatalogueSnapshot
+from .pricing.providers.notices import SourceStatus
 from .pricing.relay_contract import AreaEntry
 
 
@@ -59,6 +66,13 @@ RETRY_DELAY_S: Final = 60.0
 
 #: The longest span `spotnav.get_prices` answers for.
 MAX_SPAN_DAYS: Final = 7
+
+#: The Repairs issue of an area with no price source whose prices have stopped (`const.py`).
+SOURCE_MISSING_ISSUE: Final = PRICE_SOURCE_MISSING_ISSUE
+
+
+def source_missing_issue_id(entry_id: str) -> str:
+    return f"{SOURCE_MISSING_ISSUE}_{entry_id}"
 
 
 def snap_hours(value: float) -> float:
@@ -79,9 +93,11 @@ class PriceDevice:
         *,
         now: Callable[[], datetime] | None = None,
         scheduler: Callable[..., Callable[[], None]] | None = None,
+        title: str | None = None,
     ) -> None:
         self._hass = hass
         self._entry_id = entry_id
+        self._title = title or entry_id
         self.area_id: str = str(data.get(CONF_PRICE_AREA) or "")
         self.overrides = overrides_from_data(self.area_id, data)
         self._manager = manager
@@ -93,11 +109,14 @@ class PriceDevice:
         self._points: tuple[PricePoint, ...] = ()
         self._rankings: dict[str, Ranking] = {}
         self._problem: str | None = "loading"
+        self._source: SourceStatus | None = None
+        self._issue_raised = False
         self._listeners: list[Callable[[], None]] = []
         self._unsubscribe: Callable[[], None] | None = None
         self._cancel_timer: Callable[[], None] | None = None
         self._cancel_retry: Callable[[], None] | None = None
         self._remove_catalogue: Callable[[], None] | None = None
+        self._remove_providers: Callable[[], None] | None = None
         self._subscribing = False
         self._closed = False
         self._rank()
@@ -109,15 +128,27 @@ class PriceDevice:
         await self._async_subscribe()
         if not self._closed:
             self._remove_catalogue = self._manager.add_catalogue_listener(self._on_catalogue)
+            self._remove_providers = self._manager.add_provider_listener(self._on_providers)
+            self._follow_source()
 
     async def async_stop(self) -> None:
         """Release the area, the timers and the listeners. Terminal."""
         self._closed = True
-        for cancel in (self._cancel_timer, self._cancel_retry, self._remove_catalogue, self._unsubscribe):
+        for cancel in (
+            self._cancel_timer,
+            self._cancel_retry,
+            self._remove_catalogue,
+            self._remove_providers,
+            self._unsubscribe,
+        ):
             if cancel is not None:
                 cancel()
-        self._cancel_timer = self._cancel_retry = self._remove_catalogue = self._unsubscribe = None
+        self._cancel_timer = self._cancel_retry = self._remove_catalogue = self._remove_providers = None
+        self._unsubscribe = None
         self._listeners.clear()
+        if self._issue_raised:
+            ir.async_delete_issue(self._hass, DOMAIN, source_missing_issue_id(self._entry_id))
+            self._issue_raised = False
 
     @property
     def subscribed(self) -> bool:
@@ -187,6 +218,50 @@ class PriceDevice:
         self._notify()
 
     @callback
+    def _on_providers(self) -> None:
+        """An area's provider or notice may have changed (an integration added or gone, the ENTSO-E key)."""
+        if self._closed:
+            return
+        before = self._source
+        self._follow_source()
+        if self._source != before:
+            self._notify()
+
+    def _follow_source(self) -> None:
+        """Read the area's source and notice again, and raise or delete the Repairs issue to match."""
+        self._source = self._manager.source_status(self.area_id) if self.area_id else None
+        self._sync_issue()
+
+    def _sync_issue(self) -> None:
+        """The issue stands while the area has no source at all and nothing priced today after an attempt."""
+        if self._closed:
+            return
+        snapshot = self._snapshot
+        source = self._source
+        stopped = (
+            source is not None
+            and source.key is None
+            and snapshot is not None
+            and snapshot.attempted_at is not None
+            and snapshot.today_document is None
+        )
+        issue_id = source_missing_issue_id(self._entry_id)
+        if stopped:
+            ir.async_create_issue(
+                self._hass,
+                DOMAIN,
+                issue_id,
+                is_fixable=False,
+                severity=ir.IssueSeverity.WARNING,
+                translation_key=SOURCE_MISSING_ISSUE,
+                translation_placeholders={"price": self._title, "area": self.area_id},
+            )
+            self._issue_raised = True
+        elif self._issue_raised:
+            ir.async_delete_issue(self._hass, DOMAIN, issue_id)
+            self._issue_raised = False
+
+    @callback
     def update_data(self, data: Mapping[str, Any]) -> None:
         """The entry's area or fees were saved: price again with the new fees, or move to the new area."""
         if self._closed:
@@ -210,6 +285,7 @@ class PriceDevice:
         self._snapshot = None
         self._points, self._problem = (), "loading"
         self._rank()
+        self._follow_source()
         self._notify()
         self._hass.async_create_task(self._async_subscribe())
 
@@ -233,6 +309,8 @@ class PriceDevice:
             except PlannerInputError as err:
                 self._points, self._problem = (), err.code
         self._rank()
+        if self._remove_providers is not None:
+            self._follow_source()
 
     def _rank(self) -> None:
         self._rankings = {kind: rank(self._points, self._hours[kind], kind) for kind in (CHEAP, EXPENSIVE)}
@@ -292,8 +370,18 @@ class PriceDevice:
 
     @property
     def problem(self) -> str | None:
-        """Why there are no prices, as a stable code, or `None`."""
+        """What is wrong, as a stable code, or `None`: the area's notice when it has no source of its own (what
+        the person can do about it), else why there are no prices."""
+        source = self._source
+        if source is not None and source.notice is not None:
+            return source.notice.code
         return self._problem
+
+    @property
+    def source(self) -> str | None:
+        """The key of the provider the area's prices come from (`nordpool`, `entsoe`, `pvpc`, `octopus`, `relay`),
+        `None` with no source at all or before it is known."""
+        return None if self._source is None else self._source.key
 
     def hours(self, kind: str) -> float:
         return self._hours[kind]
@@ -384,7 +472,8 @@ class PriceDevice:
             "area_id": self.area_id,
             "owner_id": self.owner_id,
             "subscribed": self.subscribed,
-            "problem": self._problem,
+            "problem": self.problem,
+            "source": self.source,
             "fees": {
                 component: getattr(self.overrides, component).as_dict() for component in ("vat", "tax", "transfer")
             },

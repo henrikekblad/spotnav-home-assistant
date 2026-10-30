@@ -105,6 +105,7 @@ from ..planning.status_compose import (
 from ..planning.strategy_options import strategy_options_for
 from ..pricing.price_refresh import AreaPriceSnapshot, PriceRefreshManager
 from ..pricing.price_repository import CatalogueSnapshot
+from ..pricing.providers.notices import SourceStatus
 from ..runtime import (
     charger_data,
     controller_for,
@@ -133,6 +134,7 @@ from ..vehicles.vehicle_wake import wake_supported
 from .charge_bar import charge_bar, ProgressFacts
 from .entity_fields import phase_switching_offered
 from .price_source import capture_price_source, CapturedPriceSource, serialize_price_source
+from .price_days import serialize_source as source_attribution
 from .common import (
     ERROR_CHARGER_REQUIRED,
     ERROR_CHARGER_UNLOADED,
@@ -498,6 +500,8 @@ class CapturedDashboard:
     #: The settings record's `revision` on the wire, `None` for the stored one: the charger's own plus its price
     #: entry's write counter (`pricing/price_source.py:wire_revision`).
     wire_revision: int | None = None
+    #: The area's price source and its notice (`pricing/providers/notices.py`), `None` without an area.
+    source_status: SourceStatus | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -1068,6 +1072,7 @@ def capture_dashboard(
         snapshot=snapshot,
         catalogue=catalogue,
         area_entry=area_entry,
+        source_status=None if repository is None or area_id is None else repository.source_status(area_id),
         area=None if manager is None or area_id is None else manager.area_snapshot(area_id),
         days=days,
         plan=None if controller is None else controller.plan,
@@ -1366,14 +1371,20 @@ def serialize_market(capture: CapturedDashboard) -> dict[str, Any] | None:
         "suggested_tax": None if entry is None else finite_number(entry.suggested_tax),
         "suggested_grid_fee": None if entry is None else finite_number(entry.suggested_grid_fee),
         # Contract v2, additive: the market calendar behind the display zone, what the price already
-        # includes (as the relay names it), and where the prices come from (`null` from a v1 list).
+        # includes (as the relay names it), and where the prices come from: the area's provider (the relay's
+        # own attribution while the relay serves it), `null` with no source.
         "market_timezone": None if entry is None else _text(entry.market_tz),
         "included": None if entry is None else list(entry.included),
-        "source": None if entry is None or entry.source is None else {
-            "name": entry.source.name,
-            "url": entry.source.url,
-        },
+        "source": _market_source(entry, capture.source_status),
     }
+
+
+def _market_source(entry: Any, status: SourceStatus | None) -> dict[str, str] | None:
+    if entry is None:
+        return None
+    if status is None:
+        return None if entry.source is None else {"name": entry.source.name, "url": entry.source.url}
+    return source_attribution(entry, status)
 
 
 def _utc(moment: Any) -> datetime | None:
@@ -1587,6 +1598,10 @@ def serialize_prices(capture: CapturedDashboard) -> dict[str, Any]:
         "unpriced": None if snapshot is None else snapshot.unpriced,
         "interval_count": len(rows),
         "intervals": rows,
+        # Additive: where the area's prices come from and what the person can do when it has no source of its
+        # own (`pricing/providers/notices.py`); `null` without an area. An app reads it only with
+        # `reads: ["price_provider"]` (`api/webhook.py`).
+        "provider": None if capture.source_status is None else capture.source_status.as_dict(),
     }
 
 

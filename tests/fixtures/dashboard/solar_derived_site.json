@@ -166,6 +166,7 @@
     "interval_count": 0,
     "intervals": [],
     "priced_slots": 0,
+    "provider": null,
     "reason": null,
     "resolution_minutes": null,
     "resolutions_minutes": [],

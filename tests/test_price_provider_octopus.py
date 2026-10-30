@@ -510,3 +510,32 @@ async def test_setup_builds_the_octopus_provider(hass: HomeAssistant) -> None:
     finally:
         repository.stop_following_providers()
         entry.mock_state(hass, ConfigEntryState.NOT_LOADED)
+
+
+# ------------------------------------------------------------------ the notice
+
+
+def _notice(world: World, area_id: str) -> tuple[str | None, Any]:
+    status = world.repository.source_status(area_id)
+    return status.key, None if status.notice is None else status.notice.as_dict()
+
+
+async def test_the_notice_follows_the_meter_and_the_entry(world: World) -> None:
+    await world.start()
+    # Loaded, but no Agile meter's rates yet.
+    assert _notice(world, "GB-C") == (None, {"code": "octopus_no_agile", "params": {}})
+    await world.publish(TODAY)
+    assert _notice(world, "GB-C") == ("octopus", None)
+    status = world.repository.source_status("GB-C")
+    assert (status.name, status.url) == ("Octopus Energy (Agile)", "https://octopus.energy/smart/agile/")
+    # Another region than the meter's: read from the meter, and said.
+    assert _notice(world, "GB-A") == ("octopus", {"code": "octopus_region_mismatch", "params": {"region": "C"}})
+    world.entry.mock_state(world.hass, ConfigEntryState.SETUP_ERROR)
+    await world.hass.async_block_till_done()
+    assert _notice(world, "GB-C") == (None, {"code": "octopus_not_loaded", "params": {}})
+
+
+async def test_without_the_integration_the_notice_asks_for_it(world: World) -> None:
+    await world.start(loaded=False)
+    await world.hass.config_entries.async_remove(world.entry.entry_id)
+    assert _notice(world, "GB-C") == (None, {"code": "add_octopus", "params": {}})
