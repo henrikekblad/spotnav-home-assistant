@@ -116,7 +116,7 @@ async def test_the_command_answers_over_the_socket(
     client = await hass_ws_client(hass, hass_read_only_access_token)
     frame = await ws_call(client, {"id": 1, "type": "spotnav/find_region", "api_version": 1, "postcode": POSTCODE})
     assert frame["success"] is True
-    # The offline relay's catalogue is v1 (no Great Britain): nothing it does not list is offered.
-    assert frame["result"]["reason"] == "not_found"
+    # The offline relay's catalogue is not held; the bundled one lists the Great Britain Agile regions.
+    assert frame["result"]["reason"] is None and frame["result"]["regions"] == ["GB-C"]
     refused = await ws_call(client, {"id": 2, "type": "spotnav/find_region", "api_version": 2, "postcode": POSTCODE})
     assert refused["success"] is False
