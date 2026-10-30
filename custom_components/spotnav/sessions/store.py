@@ -102,6 +102,10 @@ class SessionStore:
             out.append(item.priced(choices[key]))
         return tuple(out)
 
+    def priced(self, session: ChargeSession) -> ChargeSession:
+        """`session` with its cost made from the current settings."""
+        return self._priced((session,))[0]
+
     def closed(self, charger_id: str) -> tuple[ChargeSession, ...]:
         """The charger's finished sessions, oldest first, costed with the current settings."""
         return self._priced(tuple(self._closed.get(charger_id, ())))
