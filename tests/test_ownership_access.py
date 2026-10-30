@@ -1,10 +1,10 @@
-"""One read path for ownership (the core end state plan, step 2).
+"""One read path for ownership: the charge session.
 
-The controller keeps the owner, load balancing's memory, the safety hold, C7's stops, the car-ended record, the
-window hold's memory and the known connection in fields of its own, but reads and writes them only through a small
-set of accessors. A later step moves a group to the charge session by changing that group's accessor alone, so a
-read or write that goes around it would keep a stale field. This test reads the controller's source and fails on
-any such read or write, and on any other module reaching into those fields.
+The owner, load balancing's memory, the safety hold, C7's stops, the car-ended record, the hold's memory and the known
+connection are the core's session's alone. The controller keeps no field of its own for them: it reads them through a
+small set of read-only accessors (`_owner_origin`, `_balancing`, ...), and only the core's decisions change them. This
+test reads the controller's source and fails on a field that would hold one of them again, on an accessor that could
+be written, and on any other module reaching into the accessors.
 """
 
 from __future__ import annotations
@@ -17,120 +17,81 @@ import pytest
 PACKAGE = Path(__file__).resolve().parent.parent / "custom_components" / "spotnav"
 CONTROLLER = PACKAGE / "execution" / "controller.py"
 
-#: Each field behind an accessor -> the accessor (a property whose getter alone reads it, whose setter alone
-#: writes it).
-FIELDS: dict[str, str] = {
-    "_charge_origin": "_owner_origin",
-    "_plan_charge": "_is_plan_charge",
-    "_paused_by_balancing": "_balancing",
-    "_paused_charge": "_balancing",
-    "_held_for_safety": "_safety",
-    "_safety_stopped_at": "_safety",
-    "_person_hold_stop_pending": "_c7",
-    "_person_hold_stop_times": "_c7",
-    "_person_hold_tried_at": "_c7",
-    "_person_hold_gave_up": "_c7",
-    "_car_ended_at": "_car_ended",
-    "_car_ended_soc": "_car_ended",
-    "_car_ended_vehicle": "_car_ended",
-    "_car_ended_wait": "_car_ended",
-    "_known_connected": "_plugged",
-}
-#: The window hold's memory of ownership, read and written only through `_hold_state`.
-HOLD_FIELDS = frozenset({"held", "overridden", "owned"})
-HOLD_ACCESSOR = "_hold_state"
-ACCESSORS = frozenset(FIELDS.values()) | {HOLD_ACCESSOR}
+#: The controller's fields that mirrored the session before it was the truth: none may come back.
+GONE: frozenset[str] = frozenset(
+    {
+        "_charge_origin",
+        "_plan_charge",
+        "_paused_by_balancing",
+        "_paused_charge",
+        "_held_for_safety",
+        "_safety_stopped_at",
+        "_person_hold_stop_pending",
+        "_person_hold_stop_times",
+        "_person_hold_tried_at",
+        "_person_hold_gave_up",
+        "_car_ended_at",
+        "_car_ended_soc",
+        "_car_ended_vehicle",
+        "_car_ended_wait",
+        "_known_connected",
+        "_core_drives",
+    }
+)
+#: The read-only accessors, each a view of the session.
+ACCESSORS: frozenset[str] = frozenset(
+    {"_owner_origin", "_is_plan_charge", "_balancing", "_safety", "_c7", "_car_ended", "_hold_state", "_plugged"}
+)
+#: What the hold (`window_hold.WindowHold`) no longer remembers: the hold's memory is the session's.
+HOLD_MEMORY = frozenset({"held", "overridden", "owned"})
 
 
 def _is_self(node: ast.AST) -> bool:
     return isinstance(node, ast.Name) and node.id == "self"
 
 
-def _role(function: ast.FunctionDef | ast.AsyncFunctionDef) -> str | None:
-    """`getter` or `setter` for an accessor's own two functions, else `None`."""
-    if function.name not in ACCESSORS:
-        return None
-    for decorator in function.decorator_list:
-        if isinstance(decorator, ast.Name) and decorator.id == "property":
-            return "getter"
-        if isinstance(decorator, ast.Attribute) and decorator.attr == "setter":
-            return "setter"
-    return None
-
-
-def _stores(target: ast.Attribute, parents: dict[ast.AST, ast.AST]) -> bool:
-    """Whether the attribute is written: assigned, deleted, or changed in place (`.append(...)`, `x[i] = ...`)."""
-    if isinstance(target.ctx, (ast.Store, ast.Del)):
-        return True
-    parent = parents.get(target)
-    if isinstance(parent, ast.Subscript) and isinstance(parent.ctx, (ast.Store, ast.Del)):
-        return True
-    if isinstance(parent, ast.Attribute) and isinstance(parents.get(parent), ast.Call):
-        return parent.attr in {"append", "remove", "extend", "clear", "pop", "insert", "update", "setdefault"}
-    return False
-
-
 def violations(source: str) -> list[str]:
-    """Every read or write of a field behind an accessor outside that accessor, as `line: what`."""
-    tree = ast.parse(source)
-    parents = {child: node for node in ast.walk(tree) for child in ast.iter_child_nodes(node)}
+    """Every use of a field that mirrored the session, every write through an accessor, and every use of the hold's
+    old memory, as `line: what`."""
     found: list[str] = []
-
-    def enclosing(node: ast.AST) -> ast.FunctionDef | ast.AsyncFunctionDef | None:
-        while node in parents:
-            node = parents[node]
-            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                return node
-        return None
-
-    for node in ast.walk(tree):
+    for node in ast.walk(ast.parse(source)):
         if not isinstance(node, ast.Attribute):
             continue
-        function = enclosing(node)
-        role = None if function is None else _role(function)
-        if _is_self(node.value) and node.attr in FIELDS:
-            write = _stores(node, parents)
-            if function is not None and function.name == "__init__" and isinstance(node.ctx, ast.Store):
-                continue  # its declaration
-            if function is not None and function.name == FIELDS[node.attr] and role == ("setter" if write else "getter"):
-                continue
-            found.append(f"{node.lineno}: {'write' if write else 'read'} of self.{node.attr} outside {FIELDS[node.attr]}")
-        elif isinstance(node.value, ast.Attribute) and _is_self(node.value.value) and node.value.attr == "_hold":
-            if node.attr not in HOLD_FIELDS:
-                continue  # the hold's own observation (`observe`, `held_now`, ...), not its memory of ownership
-            write = _stores(node, parents)
-            if function is not None and function.name == HOLD_ACCESSOR and role == ("setter" if write else "getter"):
-                continue
-            found.append(f"{node.lineno}: {'write' if write else 'read'} of self._hold.{node.attr} outside {HOLD_ACCESSOR}")
-        elif _is_self(node.value) and node.attr == "_hold":
-            parent = parents.get(node)
-            if isinstance(parent, ast.Attribute):
-                continue  # judged above, as `self._hold.<name>`
-            if function is not None and function.name == "__init__" and isinstance(node.ctx, ast.Store):
-                continue
-            if function is not None and function.name == HOLD_ACCESSOR and role is not None:
-                continue
-            found.append(f"{node.lineno}: self._hold taken whole outside {HOLD_ACCESSOR}")
+        if _is_self(node.value) and node.attr in GONE:
+            found.append(f"{node.lineno}: self.{node.attr} mirrors the session")
+        elif _is_self(node.value) and node.attr in ACCESSORS and isinstance(node.ctx, (ast.Store, ast.Del)):
+            found.append(f"{node.lineno}: write of self.{node.attr}, a view of the session")
+        elif (
+            isinstance(node.value, ast.Attribute)
+            and _is_self(node.value.value)
+            and node.value.attr == "_hold"
+            and node.attr in HOLD_MEMORY
+        ):
+            found.append(f"{node.lineno}: self._hold.{node.attr} is the session's")
     return found
 
 
-def test_the_controller_reads_and_writes_ownership_only_through_its_accessors() -> None:
+def test_the_controller_keeps_no_ownership_of_its_own() -> None:
     assert violations(CONTROLLER.read_text(encoding="utf-8")) == []
 
 
-def test_every_accessor_is_a_property_with_a_setter() -> None:
+def test_every_accessor_is_a_read_only_property() -> None:
     tree = ast.parse(CONTROLLER.read_text(encoding="utf-8"))
-    roles: dict[str, set[str]] = {name: set() for name in ACCESSORS}
+    roles: dict[str, list[str]] = {name: [] for name in ACCESSORS}
     for node in ast.walk(tree):
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and (role := _role(node)) is not None:
-            roles[node.name].add(role)
-    assert roles == {name: {"getter", "setter"} for name in ACCESSORS}
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name in ACCESSORS:
+            for decorator in node.decorator_list:
+                if isinstance(decorator, ast.Name) and decorator.id == "property":
+                    roles[node.name].append("getter")
+                elif isinstance(decorator, ast.Attribute) and decorator.attr in ("setter", "deleter"):
+                    roles[node.name].append(decorator.attr)
+    assert roles == {name: ["getter"] for name in ACCESSORS}
 
 
-def test_no_other_module_reaches_into_the_fields() -> None:
+def test_no_other_module_reaches_into_the_accessors() -> None:
     """Outside the controller, ownership is read through its public properties (`charge_origin`,
-    `paused_by_balancing`, `paused_charge_origin`, ...), never through these fields."""
-    names = set(FIELDS) | ACCESSORS | {"_hold"}
+    `paused_by_balancing`, `paused_charge_origin`, ...) or the session itself, never through these accessors."""
+    names = GONE | ACCESSORS
     found = []
     for path in sorted(PACKAGE.rglob("*.py")):
         if path == CONTROLLER:
@@ -144,46 +105,28 @@ def test_no_other_module_reaches_into_the_fields() -> None:
 @pytest.mark.parametrize(
     ("body", "expected"),
     [
-        ("self._charge_origin = 'manual'", "write of self._charge_origin outside _owner_origin"),
-        ("return self._plan_charge", "read of self._plan_charge outside _is_plan_charge"),
-        ("self._person_hold_stop_times.append(now)", "write of self._person_hold_stop_times outside _c7"),
-        ("self._car_ended_at, self._car_ended_soc = None, None", "write of self._car_ended_at outside _car_ended"),
-        ("self._hold.owned = True", "write of self._hold.owned outside _hold_state"),
-        ("hold = self._hold", "self._hold taken whole outside _hold_state"),
+        ("self._charge_origin = 'manual'", "self._charge_origin mirrors the session"),
+        ("return self._plan_charge", "self._plan_charge mirrors the session"),
+        ("self._person_hold_stop_times.append(now)", "self._person_hold_stop_times mirrors the session"),
+        ("self._owner_origin = 'manual'", "write of self._owner_origin, a view of the session"),
+        ("self._c7 = None", "write of self._c7, a view of the session"),
+        ("self._hold.owned = True", "self._hold.owned is the session's"),
+        ("return self._hold.held", "self._hold.held is the session's"),
     ],
 )
-def test_the_check_finds_a_read_or_write_around_an_accessor(body: str, expected: str) -> None:
+def test_the_check_finds_ownership_kept_beside_the_session(body: str, expected: str) -> None:
     source = f"class C:\n    def elsewhere(self, now):\n        {body}\n"
     assert any(expected in item for item in violations(source))
 
 
-def test_the_check_lets_the_accessors_and_the_hold_s_own_methods_be() -> None:
+def test_the_check_lets_the_accessors_and_the_holds_observation_be() -> None:
     source = (
         "class C:\n"
-        "    def __init__(self):\n"
-        "        self._charge_origin = None\n"
-        "        self._hold = object()\n"
         "    @property\n"
         "    def _owner_origin(self):\n"
-        "        return self._charge_origin\n"
-        "    @_owner_origin.setter\n"
-        "    def _owner_origin(self, origin):\n"
-        "        self._charge_origin = origin\n"
+        "        return self._shadow.session.owner\n"
         "    def elsewhere(self):\n"
-        "        self._hold.spotnav_started()\n"
-        "        return self._owner_origin\n"
+        "        self._hold.observe(True)\n"
+        "        return self._owner_origin, self._hold.was_on\n"
     )
     assert violations(source) == []
-
-
-def test_a_getter_does_not_write_and_a_setter_does_not_read() -> None:
-    source = (
-        "class C:\n"
-        "    @property\n"
-        "    def _owner_origin(self):\n"
-        "        self._charge_origin = None\n"
-        "    @_owner_origin.setter\n"
-        "    def _owner_origin(self, origin):\n"
-        "        return self._charge_origin\n"
-    )
-    assert len(violations(source)) == 2

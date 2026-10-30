@@ -306,8 +306,6 @@ async def test_the_stops_under_a_persons_stop_keep_the_gap_and_give_up_in_both_m
     shadow = world.controller.ownership_shadow
     if drives:
         assert shadow.session.hold_gave_up and len(shadow.session.hold_stop_times) == 3
-        fields = vars(world.controller)
-        assert fields["_person_hold_stop_times"] == [] and not fields["_person_hold_gave_up"], "never written"
 
     await world.executor.async_manual_stop()  # the person acts: afresh
     assert _c7(world) == (0, False) and not world.controller.ignores_person_stop

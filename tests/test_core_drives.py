@@ -91,16 +91,15 @@ async def test_todays_code_acts_on_the_cores_verdict_when_it_drives(
 async def test_the_cores_owner_is_todays_two_fields_both_ways(
     hass: HomeAssistant, timers: FakeScheduler, owner: str, fields: tuple
 ) -> None:
-    """Driving, today's `charge_origin` and `plan_charge` are the session's owner, both ways (the core end state plan,
-    step 7): every owner the core names is read as them, nobody's and the charger's own as none, and today's writes
-    change nothing (the core decided it already)."""
+    """`charge_origin` and `plan_charge` are the session's owner: every owner the core names is read as them, nobody's
+    and the charger's own as none, and nothing else can write them."""
     controller, executor, _starts = await _charger(hass, drives=True)
     shadow = controller.ownership_shadow
     shadow.session = shadow.session.with_changes(owner=owner)
     assert (controller.charge_origin, controller._is_plan_charge) == fields  # noqa: SLF001
-    controller._owner_origin, controller._is_plan_charge = "manual", True  # noqa: SLF001 - today's own write
+    with pytest.raises(AttributeError):
+        controller._owner_origin = "manual"  # noqa: SLF001 - a view of the session
     assert (controller.charge_origin, controller._is_plan_charge) == fields  # noqa: SLF001
-    assert (controller._charge_origin, controller._plan_charge) == (None, False), "today's fields are not written"  # noqa: SLF001
     await executor.async_shutdown()
     await controller.async_shutdown()
 
