@@ -30,6 +30,7 @@
   "status.loadBalancingLimitedTo": "Das Laden wird durch das Lastmanagement des Standorts auf {limit} A begrenzt.",
   "status.loadBalancingLimitedByBattery": "Die Hausbatterie lädt aus dem Netz und teilt sich die Hauptsicherung: Das Auto bekommt {limit} A.",
   "status.loadBalancingLimitedByHouse": "Der Hausverbrauch begrenzt das Auto auf {limit} A.",
+  "status.loadBalancingMeasurementLost": "Der Zähler des Standorts liefert keine aktuellen Werte: Das Lastmanagement hält das Auto auf seinem Minimum von {limit} A, bis die Messung zurück ist.",
   "status.balancingPausedHouse": "Pausiert – das Haus nutzt die ganze Sicherung; neuer Versuch um {time}",
   "status.balancingPausedBattery": "Pausiert – die Hausbatterie lädt aus dem Netz und füllt die Hauptsicherung; neuer Versuch um {time}",
   "status.balancingPausedHouseRoom": "Pausiert – das Haus nutzt die ganze Sicherung; neuer Versuch, sobald Platz ist",
