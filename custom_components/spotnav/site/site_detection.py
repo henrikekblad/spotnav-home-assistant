@@ -634,6 +634,12 @@ BATTERY_ROWS: Final[tuple[BatteryRow, ...]] = (
     BatteryRow(("solis_modbus",), _re(r"battery_power_net$"), inverted=True),
     # Charge and discharge as two non-negative entities.
     BatteryRow(("sma",), _re(r"battery_power_charge$"), discharge_regex=_re(r"battery_power_discharge$")),
+    # Ferroamp EnergyHub (henricm, `aad7f8f`): `<slug>_ehub-pbat`, the hub's battery power passed on unchanged
+    # (`sensor.py` L737-L744). Discharge-positive: in the hub message the integration's tests replay
+    # (`tests/test_sensor.py` L95-L133) the solar's 10.1 kW goes 6.7 kW to the inverter (`pinv` -6722 W over the
+    # phases) while `pbat` reads -3219 W, the rest, going into the battery. evcc's Modbus template reads the
+    # hub's battery output power the same way ("negative implies charging").
+    BatteryRow(("ferroamp",), _re(r"-pbat$"), inverted=True),
 )
 
 

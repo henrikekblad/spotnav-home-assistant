@@ -1520,6 +1520,14 @@ def test_ferroamp_is_a_current_meter_with_the_hubs_import_positive_total_grid_po
     assert WARNING_SIGN_UNVERIFIED not in candidate.warnings
 
 
+def test_the_ferroamp_battery_is_discharge_positive_and_is_negated() -> None:
+    [battery] = ferroamp_energyhub().detect().batteries
+
+    assert battery.integration == "ferroamp"
+    assert battery.entity_id == "sensor.ehub_battery_power"
+    assert battery.inverted is True and battery.discharge_entity_id is None
+
+
 def test_frient_meter_interface_over_zha_gets_its_total_with_the_sign_unverified() -> None:
     candidate = one_meter(frient_emizb_zha())
 

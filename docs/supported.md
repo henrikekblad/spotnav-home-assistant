@@ -172,6 +172,7 @@ The site uses a house battery's power to tell the car's draw from the house's, a
 | Sungrow (`sungrow`) | Charge and discharge are two entities, combined |  | Detected from the integration's source |
 | Solis Modbus (`solis_modbus`) | Discharge-positive, negated |  | Detected from the integration's source |
 | SMA (`sma`) | Charge and discharge are two entities, combined |  | Detected from the integration's source |
+| Ferroamp (`ferroamp`) | Discharge-positive, negated |  | Detected from the integration's source |
 
 ## Supported vehicles
 
