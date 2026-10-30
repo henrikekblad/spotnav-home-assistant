@@ -1,6 +1,6 @@
 """What every charger path shares: the outcome codes, the rate limiter, the two path interfaces
 (`StartStopPath`, `CurrentPath`), the optional `PhaseSwitch` capability, `AdapterCapabilities` and the small
-helpers the paths read states with.
+helpers the paths read states and find the charger's own entities with.
 
 Nothing here knows a vendor. A vendor's behaviour lives in its own module beside this one and
 registers itself in `registry.py`.
@@ -21,9 +21,10 @@ from typing import Any, Final, Literal
 
 from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN
 from homeassistant.core import HomeAssistant, State
+from homeassistant.helpers import entity_registry as er
 from homeassistant.util import dt as dt_util
 
-from ..charger_profiles import WritePolicy
+from ..charger_profiles import entity_matches_keys, WritePolicy
 
 _ADAPTER_LOGGER = logging.getLogger(__name__)
 
@@ -202,6 +203,26 @@ def _finite(value: Any) -> float | None:
     except (TypeError, ValueError, OverflowError):
         return None
     return parsed if math.isfinite(parsed) else None
+
+
+def device_entities(
+    hass: HomeAssistant, platform: str, domain: str, keys: tuple[str, ...], *entity_ids: str | None
+) -> list[str]:
+    """The enabled `domain` entities of `platform` that are one of `keys`, on the device of the first of `entity_ids`
+    that is an entity of `platform` on a device (the charger's own device). Empty when there is none."""
+    registry = er.async_get(hass)
+    for entity_id in entity_ids:
+        own = registry.async_get(entity_id) if entity_id else None
+        if own is None or own.platform != platform or own.device_id is None:
+            continue
+        return [
+            entry.entity_id
+            for entry in er.async_entries_for_device(registry, own.device_id)
+            if entry.domain == domain
+            and entry.platform == platform
+            and entity_matches_keys(translation_key=entry.translation_key, unique_id=entry.unique_id, keys=keys)
+        ]
+    return []
 
 
 def _amps_factor(state: State | None) -> float | None:
