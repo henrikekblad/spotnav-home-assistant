@@ -4,6 +4,8 @@
   SpotNav pauses at 0 A can start again by itself.
 * GARO: with Always off and a car connected, the status reads UNAVAILABLE instead of CHARGING_PAUSED
   (sockless-coding/garo_wallbox #61).
+* Shelly Pro 3EM and EM mini Gen4: the device reconnects every 2-3 minutes and its sensors read unavailable for
+  seconds (home-assistant/core #170327).
 """
 
 from __future__ import annotations
@@ -16,8 +18,11 @@ from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.util import dt as dt_util
 from pytest_homeassistant_custom_component.common import async_fire_time_changed
 
+from custom_components.spotnav.site.measurement_problem import UNHEALTHY_STATES
+
 from .helpers import install_schedule
 from .test_charger_controller_paths import _controller
+from .test_lb_start_credit import _halo, _site_a
 
 pytestmark = pytest.mark.usefixtures("offline_relay")
 
@@ -130,3 +135,41 @@ async def test_a_garo_whose_status_reads_unavailable_once_stopped_keeps_its_car_
 
     assert chosen == ["ALWAYS_OFF", "ALWAYS_ON"]
     await controller.async_shutdown()
+
+
+async def test_a_meter_that_drops_out_for_five_seconds_neither_stops_nor_changes_a_balanced_charge(
+    hass: HomeAssistant, monkeypatch
+) -> None:
+    """Every sensor of the meter reads unavailable for about 5 s every 2-3 minutes: the site's measurement is missing
+    for that long, and the charge goes on at what it was set to, with nothing written, until the meter reads again.
+    (The card's status names the unavailable meter while it lasts.)"""
+    halo = await _halo(hass, monkeypatch)
+    await halo.start()
+    halo.switch("on")
+    halo.reads(13.0)
+    _site_a(hass, halo.site, 14.63, 13.92, 19.36)
+    await halo.tick()
+    halo.advance(30.0)
+    await halo.tick()
+    assert halo.controller.result.state not in UNHEALTHY_STATES
+    halo.configure.clear()
+
+    for phase in ("l1", "l2", "l3"):
+        for kind in ("power", "reactive", "voltage"):
+            hass.states.async_set(f"sensor.{halo.site}_{kind}_{phase}", "unavailable")
+    await halo.tick()
+    halo.advance(5.0)
+    await halo.tick()
+
+    assert halo.controller.result.state == "missing_measurements"
+    assert halo.turn_off == [] and halo.written() == []
+    assert halo.cc.charging
+
+    for phase in ("l1", "l2", "l3"):
+        hass.states.async_set(f"sensor.{halo.site}_reactive_{phase}", "0", {"unit_of_measurement": "var"})
+        hass.states.async_set(f"sensor.{halo.site}_voltage_{phase}", "230", {"unit_of_measurement": "V"})
+    _site_a(hass, halo.site, 14.63, 13.92, 19.36)
+    await halo.tick()
+
+    assert halo.controller.result.state not in UNHEALTHY_STATES
+    assert halo.turn_off == [] and halo.written() == []
