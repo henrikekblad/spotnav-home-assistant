@@ -78,6 +78,9 @@ class PvpcProvider:
     """Day files from the prices the `pvpc_hourly_pricing` integration holds; no request of its own."""
 
     key: ProviderKey = "pvpc"
+    #: What the card and the app call it, and where it is (attribution).
+    name: str = "Red Eléctrica (ESIOS) – PVPC"
+    url: str = "https://www.esios.ree.es/es/pvpc"
     has_index = False
     publication: AreaPublication = PUBLICATION
     history_reach: timedelta | None = HISTORY_REACH

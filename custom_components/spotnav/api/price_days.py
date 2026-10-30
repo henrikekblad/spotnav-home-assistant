@@ -5,7 +5,7 @@ documents the relay publishes, so the app's relay parsers read it unchanged:
 
     {"ok": true, "action": "price_days", "v": 1,
      "area": <the area's v2 area-list entry, with the market calendar and publication of its provider now>,
-     "provider": {"key", "name", "url", "notice": null},
+     "provider": {"key", "name", "url", "notice": {"code", "params"} | null},
      "state", "reason", "waiting_for_tomorrow",
      "publication": {"time": "HH:MM", "tz"},
      "files": {"YYYY-MM-DD": <the held "v": 1 market-day file>, ...},
@@ -20,7 +20,9 @@ documents the relay publishes, so the app's relay parsers read it unchanged:
   block states them (`pricing/price_refresh.py`, `combined_state`).
 * `profile` is the history profile built from the held files (`pricing/price_profile.py`) in the relay's
   `profile.json` shape, `null` while fewer than 21 of the last 28 days are held.
-* `provider.notice` is always `null` for now (notices come with the choice of provider).
+* `provider` is the area's price source as the dashboard's `prices.provider` states it
+  (`pricing/providers/notices.py`): `key`, `name` and `url` are `null` when the area has no source at all, and
+  `notice` names what gives it one.
 
 Read-only and never a request: what is held is answered. Refusals are HTTP 400 with a stable code and the action:
 `spotnav_no_price_area` (nothing names an area for this charger), `spotnav_unknown_price_area` (no area list held or
@@ -42,6 +44,7 @@ from ..pricing.market_day import market_days_for, principal_market_day
 from ..pricing.price_refresh import combined_state
 from ..pricing.price_repository import PriceRepository
 from ..pricing.price_source import price_source_for
+from ..pricing.providers.notices import SourceStatus
 from ..pricing.relay_contract import AreaEntry, PriceProfile
 from ..runtime import ChargerConfigEntry, domain_data
 from .common import ERROR_UNSUPPORTED_VERSION
@@ -54,14 +57,8 @@ ERROR_NO_PRICE_AREA: Final = "spotnav_no_price_area"
 ERROR_UNKNOWN_PRICE_AREA: Final = "spotnav_unknown_price_area"
 ERROR_NO_PRICES: Final = "spotnav_no_prices"
 
-#: What each provider is called and where it is, for attribution. Until the providers state it themselves.
-PROVIDER_NAMES: Final = {
-    "relay": ("SpotNav relay", "https://spotnav.sensnology.se"),
-    "nordpool": ("Nord Pool", "https://www.nordpoolgroup.com/"),
-    "entsoe": ("ENTSO-E Transparency Platform", "https://transparency.entsoe.eu/"),
-    "pvpc": ("Red Eléctrica (ESIOS) – PVPC", "https://www.esios.ree.es/es/pvpc"),
-    "octopus": ("Octopus Energy (Agile)", "https://octopus.energy/smart/agile/"),
-}
+#: The attribution of an area with no source at all (its files are what is left of an earlier one).
+NO_SOURCE_ATTRIBUTION: Final = {"name": "SpotNav", "url": "https://spotnav.sensnology.se"}
 
 
 @dataclass(frozen=True, slots=True)
@@ -71,7 +68,7 @@ class PriceDaysRefusal:
     code: str
 
 
-def serialize_area(area: AreaEntry, provider_key: str) -> dict[str, Any]:
+def serialize_area(area: AreaEntry, status: SourceStatus) -> dict[str, Any]:
     """One area as the relay's v2 area list states it (`docs/prices.md`), read by the same parser.
 
     An optional figure that is not known is left out (absent and zero are different facts); `market_tz` is always
@@ -98,26 +95,22 @@ def serialize_area(area: AreaEntry, provider_key: str) -> dict[str, Any]:
     if area.included:
         entry["included"] = list(area.included)
     entry["publication"] = serialize_publication(area)
-    entry["source"] = serialize_source(area, provider_key)
+    entry["source"] = serialize_source(area, status) or dict(NO_SOURCE_ATTRIBUTION)
     return entry
 
 
-def serialize_source(area: AreaEntry, provider_key: str) -> dict[str, str]:
+def serialize_source(area: AreaEntry | None, status: SourceStatus | None) -> dict[str, str] | None:
     """Where the area's prices come from: the relay's own attribution while the relay serves them and its list
-    states one (the upstream it read them from), else the provider's."""
-    if provider_key == "relay" and area.source is not None:
+    states one (the upstream it read them from), else the provider's; `None` with no source."""
+    if status is None or status.key is None or status.name is None or status.url is None:
+        return None
+    if status.key == "relay" and area is not None and area.source is not None:
         return {"name": area.source.name, "url": area.source.url}
-    name, url = PROVIDER_NAMES.get(provider_key, PROVIDER_NAMES["relay"])
-    return {"name": name, "url": url}
+    return {"name": status.name, "url": status.url}
 
 
 def serialize_publication(area: AreaEntry) -> dict[str, str]:
     return {"time": area.publication.local_time.strftime("%H:%M"), "tz": area.publication.tz}
-
-
-def serialize_provider(provider_key: str) -> dict[str, Any]:
-    name, url = PROVIDER_NAMES.get(provider_key, (provider_key, None))
-    return {"key": provider_key, "name": name, "url": url, "notice": None}
 
 
 def serialize_profile(profile: PriceProfile) -> dict[str, Any]:
@@ -185,12 +178,12 @@ async def async_price_days_answer(
         today_authority=repository.file_authority(area_id, principal_market_day(today, area.tz, area.market_tz)),
         tomorrow_authority=tomorrow_authority,
     )
-    provider_key = repository.provider_for(area_id).key
+    status = repository.source_status(area_id)
     profile = await repository.async_get_profile(area_id)
     return {
         "v": PRICE_DAYS_VERSION,
-        "area": serialize_area(area, provider_key),
-        "provider": serialize_provider(provider_key),
+        "area": serialize_area(area, status),
+        "provider": status.as_dict(),
         "state": state,
         "reason": reason,
         "waiting_for_tomorrow": tomorrow_authority == "not_listed",

@@ -80,6 +80,9 @@ class RelayProvider:
     """The relay's published files. Holds nothing: every call is one request (or two, for a v2 fallback)."""
 
     key: ProviderKey = "relay"
+    #: What the card and the app call it, and where it is (attribution).
+    name: str = "SpotNav relay"
+    url: str = "https://spotnav.sensnology.se"
     has_index = True
     #: The area list states each area's publication and calendar; the relay keeps its archive.
     publication = None

@@ -104,6 +104,7 @@ from .providers.entsoe import EntsoeProvider
 from .providers.nordpool import NordPoolProvider
 from .providers.octopus import OctopusProvider
 from .providers.pvpc import PvpcProvider
+from .providers.notices import SourceStatus
 from .providers.relay import CONTRACT_VERSIONS, DEFAULT_BASE_URL, RelayFailure, RelayProvider
 from .relay_contract import (
     AreaCatalogue,
@@ -350,6 +351,13 @@ class PriceRepository:
     def provider_for(self, area_id: str) -> PriceProvider:
         """The provider an area's files come from now."""
         return self._router.provider_for(area_id)
+
+    def source_status(self, area_id: str) -> SourceStatus:
+        """The area's price source now and its notice (`providers/notices.py`). The relay counts as the area's
+        source only while its own area list (held) lists the area."""
+        relay = self._catalogue
+        relay_serves = relay is not None and relay.parsed.area(area_id) is not None
+        return self._router.source_status(area_id, relay_serves=relay_serves)
 
     def entsoe_provider(self) -> EntsoeProvider | None:
         """The ENTSO-E provider (for checking a key before it is stored); `None` without the bundled catalogue."""

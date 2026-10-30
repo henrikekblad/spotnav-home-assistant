@@ -126,6 +126,9 @@ class EntsoeProvider:
     """Day files from the Transparency Platform, one request per file, with the stored key."""
 
     key: ProviderKey = "entsoe"
+    #: What the card and the app call it, and where it is (attribution).
+    name: str = "ENTSO-E Transparency Platform"
+    url: str = "https://transparency.entsoe.eu/"
     has_index = False
     publication: AreaPublication = PUBLICATION
     #: The platform keeps years of day-ahead prices.
@@ -170,6 +173,10 @@ class EntsoeProvider:
     def key_usable(self) -> bool:
         """Whether a key is stored that the platform has not rejected."""
         return self._keys.entsoe_key_usable
+
+    def key_state(self) -> str | None:
+        """The stored key's state (`ok`, `unchecked`, `rejected`), `None` with no key."""
+        return self._keys.entsoe_key_state
 
     def add_key_listener(self, listener: Callable[[], None]) -> Callable[[], None]:
         return self._keys.add_entsoe_listener(listener)

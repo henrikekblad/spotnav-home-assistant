@@ -130,6 +130,9 @@ class OctopusProvider:
     """Day files from the rates the Octopus Energy integration holds for the customer's Agile meter."""
 
     key: ProviderKey = "octopus"
+    #: What the card and the app call it, and where it is (attribution).
+    name: str = "Octopus Energy (Agile)"
+    url: str = "https://octopus.energy/smart/agile/"
     has_index = False
     publication: AreaPublication = PUBLICATION
     history_reach: timedelta | None = HISTORY_REACH
@@ -217,6 +220,11 @@ class OctopusProvider:
         return meter.region
 
     # -------------------------------------------------------------- what the router and repository ask
+
+    def has_route(self, area_id: str) -> bool:
+        """Whether the area is an Agile region (it has an Octopus route in the bundled catalogue)."""
+        routes = self._bundled.routes.get(area_id)
+        return routes is not None and routes.octopus is not None
 
     def serves(self, area_id: str) -> bool:
         """Whether an Agile meter's rates are there for the area."""
