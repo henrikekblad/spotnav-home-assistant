@@ -326,6 +326,10 @@ class PriceRepository:
         """The provider an area's files come from now."""
         return self._router.provider_for(area_id)
 
+    def entsoe_provider(self) -> EntsoeProvider | None:
+        """The ENTSO-E provider (for checking a key before it is stored); `None` without the bundled catalogue."""
+        return self._router.entsoe
+
     def uses_index(self, area_id: str) -> bool:
         """Whether the area's provider has an index (the relay) rather than a publication schedule."""
         return self._router.provider_for(area_id).has_index
