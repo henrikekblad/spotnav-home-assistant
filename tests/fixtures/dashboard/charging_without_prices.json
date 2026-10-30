@@ -11,6 +11,7 @@
       "auto_price": true,
       "current_limit": false,
       "load_balancing": false,
+      "price_days": true,
       "refresh_vehicle": true,
       "regulated_current": false,
       "set_charge_limit": true,
@@ -101,7 +102,7 @@
     "area_id": "SE4",
     "area_name": "Malm\u00f6",
     "catalogue_attempt_error": null,
-    "catalogue_fetched_at": "2026-09-22T20:30:00+00:00",
+    "catalogue_fetched_at": null,
     "catalogue_state": "ready",
     "countries": [
       "SE"
@@ -126,7 +127,7 @@
     "installed": {
       "active_period_index": 0,
       "amps": 10,
-      "identity": "8115047df72bd0926e114ebfe7c92057",
+      "identity": "6184973129124a10a48b2e844d5286b0",
       "periods": [
         {
           "end": "2026-09-23T07:15:00+02:00",
@@ -143,7 +144,7 @@
         "value": 0.0
       },
       "distance_mil": 10.0625,
-      "identity": "8115047df72bd0926e114ebfe7c92057",
+      "identity": "6184973129124a10a48b2e844d5286b0",
       "periods": [
         {
           "end": "2026-09-23T07:15:00+02:00",
@@ -161,7 +162,7 @@
     },
     "relation": {
       "applied": true,
-      "applied_identity": "8115047df72bd0926e114ebfe7c92057",
+      "applied_identity": "6184973129124a10a48b2e844d5286b0",
       "pending_identity": null
     },
     "remaining_kwh": null
@@ -172,7 +173,7 @@
   },
   "planning": {
     "applied": true,
-    "applied_identity": "8115047df72bd0926e114ebfe7c92057",
+    "applied_identity": "6184973129124a10a48b2e844d5286b0",
     "calculated_at": "2026-09-22T20:30:00+00:00",
     "execution_paused": false,
     "execution_reason": null,
@@ -183,7 +184,7 @@
     "must_buy_now_kwh": 20.0,
     "pending_attempt": null,
     "pending_identity": null,
-    "price_identity": "2026-09-22/2026-09-23|916f2f8e05fd|2026-09-22T20:30:00+00:00",
+    "price_identity": "2026-09-22/2026-09-23|2026-09-22T20:30:00+00:00",
     "price_state": "waiting_for_tomorrow",
     "price_wait": "guarantee",
     "publication_at": "2026-09-22T11:45:00+00:00",
@@ -195,8 +196,8 @@
   },
   "prices": {
     "area_id": "SE4",
-    "index_revision": "916f2f8e05fd",
-    "index_state": "ready",
+    "index_revision": null,
+    "index_state": null,
     "interval_count": 96,
     "intervals": [
       {
@@ -1161,6 +1162,15 @@
       }
     ],
     "priced_slots": 0,
+    "provider": {
+      "key": null,
+      "name": null,
+      "notice": {
+        "code": "add_nordpool",
+        "params": {}
+      },
+      "url": null
+    },
     "reason": "waiting_for_tomorrow",
     "resolution_minutes": 15,
     "resolutions_minutes": [
@@ -1174,7 +1184,7 @@
     "today_source": "memory",
     "today_state": "ready",
     "tomorrow": "2026-09-23",
-    "tomorrow_attempt_at": null,
+    "tomorrow_attempt_at": "2026-09-22T20:30:00+00:00",
     "tomorrow_attempt_error": null,
     "tomorrow_fetched_at": null,
     "tomorrow_source": null,

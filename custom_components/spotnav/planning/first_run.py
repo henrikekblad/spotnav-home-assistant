@@ -4,7 +4,7 @@ Written once, when a charger has no settings a person has ever saved (`AutoSetti
 and recorded as `suggested` so the card can say the values came from Home Assistant and not from a
 person. Nothing here overwrites a saved value or runs again after a value is cleared.
 
-* area: the relay catalogue's area for Home Assistant's country. A country with one area gets it.
+* area: the area list's area for Home Assistant's country. A country with one area gets it.
   A country with several (SE, NO, DK today) gets the area whose reference point is nearest to Home
   Assistant's configured coordinates; see `AREA_REFERENCE_POINTS`. No country, a country the
   catalogue does not list, a multi-area country without a table, or coordinates far from every
@@ -57,7 +57,7 @@ MAX_REFERENCE_DISTANCE_KM: Final = 400.0
 #: point within a country decides. The points are the larger towns of each zone, placed where the
 #: zone borders run between them, so the answer is right in and around those towns and within about
 #: 50 km of a border it may fall in the neighbouring zone. Not a survey of the borders: the card
-#: shows the choice as a suggestion to check. Only countries the relay lists with several areas
+#: shows the choice as a suggestion to check. Only countries the area list has several areas for
 #: need an entry, and an area with no entry here is never chosen by location.
 AREA_REFERENCE_POINTS: Final[dict[str, tuple[tuple[float, float], ...]]] = {
     # Sweden: SE1 Norrbotten, SE2 the rest of the north (Västerbotten, Jämtland, Västernorrland),
@@ -324,7 +324,7 @@ async def _async_suggest_missing_area(
     hass: HomeAssistant, entry: ConfigEntry, store: Any, catalogue: AreaCatalogue | None, preview: Any
 ) -> bool:
     """Suggest the area on the first successful catalogue read while it is still unset, whatever the
-    settings' revision and only while no person has saved a setting since first run: first-run defaults written while the relay was unreachable have no area, and
+    settings' revision and only while no person has saved a setting since first run: first-run defaults written while no area list could be read have no area, and
     nothing else would ever fill it in.
     """
     # `suggested` is emptied by a person's own save, so an area a person cleared stays cleared.

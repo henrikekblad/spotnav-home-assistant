@@ -93,7 +93,9 @@ Precedence (first match wins the headline; "add" rows append a fact line)
    (its own enable switch is off, so it cannot start), site_measurement_problem (the phases that
    make the site's measurement unusable and why; site_meter_unavailable in its place when the meter's
    sensors are unavailable together, as an inverter in standby leaves them, and site_current_negative
-   when the meter reports export as a negative current on a site not set to read it signed), duplicate_charger (another entry is the same physical
+   when the meter reports export as a negative current on a site not set to read it signed; the capture
+   gives these facts only once the measurement has been lost for a minute, so a meter that drops out for
+   seconds shows nothing, except a negative current, at once), duplicate_charger (another entry is the same physical
    charger), load_balancing_limited, load_balancing_unavailable. Tone `notice` if any is present;
    otherwise `normal`. A proposal waiting for a window boundary is the normal line proposal_pending.
 

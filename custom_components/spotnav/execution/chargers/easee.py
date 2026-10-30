@@ -46,6 +46,7 @@ from .base import (
     call_service,
     current_description,
     CurrentPath,
+    device_entities,
     path_description,
     PhaseSwitch,
     PhaseSwitchResult,
@@ -58,7 +59,6 @@ from .base import (
     WRITE_SESSION_START,
     WriteRateLimiter,
 )
-from .phase_switches import device_entities
 from .registry import ChargerContext, register_current, register_phase_switch, register_start_stop
 
 _ADAPTER_LOGGER = logging.getLogger(__name__)

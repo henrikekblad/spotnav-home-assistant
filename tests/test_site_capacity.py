@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+from dataclasses import replace
 
 from custom_components.spotnav.site.site_capacity import (
     ACTIVE_CONTROL_READY,
@@ -1230,6 +1231,36 @@ def test_invalid_phase_measurement_yields_invalid_measurements_state() -> None:
     result = calculate_site_capacity(config, [])
 
     assert result.state == "invalid_measurements"
+
+
+def test_a_phase_current_far_beyond_the_main_fuse_is_invalid_but_a_real_overload_is_read() -> None:
+    # An AMS current mis-decoded as +408 A on a 25 A fuse.
+    spike = calculate_site_capacity(_config(direct=_direct(5.0, 408.0, 5.0)), [])
+    assert spike.state == "invalid_measurements"
+    assert spike.measured_phase_current_a["L2"] is None
+
+    # A 60 % overload is a load to cut, not a fault.
+    overload = calculate_site_capacity(_config(direct=_direct(5.0, 40.0, 5.0)), [])
+    assert overload.state != "invalid_measurements"
+    assert overload.measured_phase_current_a["L2"] == 40.0
+
+
+def test_a_phase_power_far_beyond_the_main_fuse_is_invalid_even_beside_the_meters_own_current() -> None:
+    # A power register read 1000 times too high (2.3 kW as 2.3 MW); the meter's own current is fine.
+    spiked = replace(_derived_input(2_300_000.0, 0.0, 230.0), current_a=PhaseValue(10.0, HEALTHY_AGE))
+    derived = DerivedPhaseMeasurement(
+        l1=spiked, l2=_derived_input(2300.0, 0.0, 230.0), l3=_derived_input(2300.0, 0.0, 230.0)
+    )
+
+    result = calculate_site_capacity(_config(derived=derived, mode="derived_phase_current"), [])
+
+    assert result.state == "invalid_measurements"
+    assert result.measured_phase_current_a["L1"] is None
+    # 9.2 kW on a 25 A phase (1.6 times the fuse) is still a reading.
+    heavy = DerivedPhaseMeasurement(
+        l1=_derived_input(9200.0, 0.0, 230.0), l2=_derived_input(2300.0, 0.0, 230.0), l3=_derived_input(2300.0, 0.0, 230.0)
+    )
+    assert calculate_site_capacity(_config(derived=heavy, mode="derived_phase_current"), []).measured_phase_current_a["L1"] == 40.0
 
 
 def test_invalid_takes_priority_over_missing_and_stale_in_the_reported_state() -> None:

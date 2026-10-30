@@ -150,6 +150,7 @@ from ..core.session import (
     OWNER_CHARGER_SELF,
     OWNER_NONE,
     SessionError,
+    STORED_VERSION,
 )
 from . import ownership_shadow as ownership_shadow_module
 from .ownership_coverage import OwnershipCoverage, STORE_VERSION as COVERAGE_STORE_VERSION, store_key as coverage_key
@@ -3163,7 +3164,7 @@ class ChargingController:
         if switch is None:
             return
         if switch.start_only and self.charging:
-            # Never mid-charge (Easee): the charge goes on as it is, and the next start sets three phases back.
+            # Never mid-charge (Easee, NRGkick, Wattpilot): the charge goes on as it is, and the next start sets three phases back.
             _LOGGER.debug(
                 "SpotNav charger %s: three phases are set back at the next start, not while it charges", self.entry_id
             )
@@ -4933,10 +4934,11 @@ class ChargingController:
     def _control_observation(self) -> bool | None:
         """`_control_on` as an observation: `None` while the charge control cannot be read
         (missing, unavailable or unknown) and no status says the charger is charging, so a charge
-        already running is never mistaken for one that just started (`window_hold.py`).
+        already running is never mistaken for one that just started (`window_hold.py`). A path whose
+        enabled state is another entity (`StartStopPath.control_entity_id`) is read on that one.
         """
         if not self.charging:
-            state = self.hass.states.get(self.charge_control)
+            state = self.hass.states.get(self.adapter.path.control_entity_id or self.charge_control)
             if state is None or state.state in (STATE_UNAVAILABLE, STATE_UNKNOWN):
                 return None
         return self._control_on
@@ -5172,6 +5174,16 @@ class ChargingController:
         raw = saved.get(SESSION_STORE_KEY) if saved else None
         if raw is None:
             return None, bool(saved)
+        version = raw.get("version") if isinstance(raw, dict) else None
+        if isinstance(version, int) and version > STORED_VERSION:
+            # Written by a later release (this one was rolled back to): its record is not ours to read, and today's
+            # keys, which every release still writes, are. Expected, so no failure.
+            _LOGGER.debug(
+                "SpotNav charger %s: the stored session is version %s, from a later release; read from the keys",
+                self.entry_id,
+                version,
+            )
+            return None, True
         try:
             return ChargeSession.from_store(raw), False
         except SessionError as err:
@@ -5507,6 +5519,7 @@ class ChargingController:
                     "window_start",
                     self._automatic_permitted(AUTOMATIC_START)
                     and not self._car_ended_holds_window()
+                    and not self._rearm_meets_balancing(trigger)
                     and self.adapter.vehicle_connected() is not False,
                     ("start", "plan_window") in verdict,
                 )
@@ -5523,7 +5536,7 @@ class ChargingController:
                     "SpotNav charger %s: a window opens while Auto is paused; nothing is started", self.entry_id
                 )
                 return False
-            elif self._car_ended_holds_window():
+            elif self._car_ended_holds_window() or self._rearm_meets_balancing(trigger):
                 return False
             elif self.adapter.vehicle_connected() is False:
                 # No car at the charger: a start would only wait for one (an OCPP charger takes it and shows
@@ -5549,6 +5562,11 @@ class ChargingController:
                 legacy=legacy,
                 outcome=outcome,
             )
+
+    def _rearm_meets_balancing(self, trigger: str) -> bool:
+        """A re-arm inside an open window (a restart, a follow, an install) while load balancing holds a charge back:
+        nothing starts and the memory stays, so its regulator resumes the charge with its own margin and dwell."""
+        return trigger == core_events.TRIGGER_REARM and self._balancing.paused
 
     async def _async_enforce_target(self) -> bool:
         """Make the target decision for the plan in force, and act on it. Takes the operation lock

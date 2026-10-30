@@ -133,6 +133,20 @@ It is best effort and is not a protective device. Turning it off gives back any 
   already at or below the lower current is not written again. The one exception is a home battery whose
   yield is verified on this site (see yield stepping below): up to the yield ceiling, yield stepping
   judges that overload as before.
+- **A lost measurement steps the car to its minimum.** While the site's measurement is stale, missing or
+  unusable, load balancing decides nothing and writes nothing on it: the site's status says **Measurement
+  stale** or **Measurement missing**. Once the measurement has been lost for 60 seconds on a phase a charger
+  may draw on (on top of the maximum measurement age, so a stale reading counts after some three minutes
+  and an unavailable one after one), every charger load balancing governs that draws above its minimum
+  current is set to that minimum, at once and through the charger's usual write. It is not paused or
+  stopped (a meter that is silent does not show an overload), nothing is started, and a charger load
+  balancing does not govern is not touched. The card says "The site's meter has no fresh reading: load
+  balancing holds the car at its minimum of 6 A until it is back." A reading that is merely unchanged
+  while Home Assistant keeps hearing from the sensor is not a lost one. When the measurement is back the
+  regulator works as before from its next pass, and raises the car by its usual damped steps, never
+  straight back to the old current. Like any other decision, this one waits while a meter reports too
+  seldom or a charger is claimed by more than one site. The site's diagnostics count the times it
+  happened, with the last (`measurement_lost`).
 - **A step up stops one amp short of the room there is**, so the car settles one step below the
   limit (the fuse less the site's safety margin, which may be 0) instead of landing on it and being
   cut. A charger's own current is read far less often than the site meter (OCPP: about once a

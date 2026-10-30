@@ -21,6 +21,7 @@ from typing import Any
 import pytest
 from homeassistant.core import HomeAssistant
 
+from .relay import stub_repository
 from custom_components.spotnav.pricing.market_observation import (
     MarketObservation,
 )
@@ -28,7 +29,7 @@ from custom_components.spotnav.pricing.price_refresh import PriceRefreshManager
 from custom_components.spotnav.pricing.price_repository import PriceRepository
 
 from tests.relay import FakeScheduler
-from tests.relay import BASE_URL, TODAY, Clock, StoreDouble, StubTransport
+from tests.relay import TODAY, Clock, StoreDouble, StubTransport
 
 SE4 = "SE4"
 DE_LU = "DE-LU"
@@ -57,7 +58,7 @@ class StoreStub:
 
 @pytest.fixture
 def repository(hass: HomeAssistant, transport: StubTransport, clock: Clock) -> PriceRepository:
-    return PriceRepository(hass, base_url=BASE_URL, session=transport, now=clock, store=StoreDouble())
+    return stub_repository(hass, transport, now=clock, store=StoreDouble())
 
 
 @pytest.fixture
@@ -74,9 +75,10 @@ def observation_for(
 
 
 def day_calls(transport: StubTransport, area: str) -> list[str]:
-    """Every upstream day-document request this transport was asked for, for one area."""
-    marker = f"/v1/{area}/"
-    return [url for url in transport.calls if marker in url]
+    """Every upstream request for one area's today this transport was asked for (tomorrow, not out in these
+    tests, is asked for once per cycle and answered "not published yet")."""
+    path = StubTransport.day_path(area, TODAY)
+    return [url for url in transport.calls if url == path]
 
 
 async def test_an_external_charger_keeps_its_area_fresh(hass: HomeAssistant, transport: StubTransport, manager: PriceRefreshManager, repository: PriceRepository) -> None:
@@ -183,11 +185,11 @@ async def test_close_releases_the_area_and_a_reload_does_not_leak_a_second_owner
     assert manager.owner_area(again.published_owner) == SE4
 
 
-async def test_a_setup_that_cannot_reach_the_catalogue_is_still_a_working_charger(
+async def test_an_area_the_list_does_not_name_is_still_a_working_charger(
     hass: HomeAssistant, transport: StubTransport, manager: PriceRefreshManager
 ) -> None:
-    """No catalogue, no area: nothing is subscribed, and nothing is guessed."""
-    observation = observation_for(hass, manager, "entry_a", SE4)
+    """An area the list does not name: nothing is subscribed, and nothing is guessed."""
+    observation = observation_for(hass, manager, "entry_a", "XX9")
     await observation.async_start()
 
     assert observation.subscribed_area is None, "an unknowable area is not observed"

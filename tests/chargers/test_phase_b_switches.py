@@ -150,7 +150,8 @@ async def test_the_control_is_found_on_the_chargers_device(hass: HomeAssistant, 
     switch = adapter.phase_switch
 
     assert switch is not None and switch.entity_id == entity_id
-    assert switch.start_only is False
+    # A live switch faulted a car on an NRGkick and may leave a Wattpilot paused: their phases are set before a start.
+    assert switch.start_only is (platform in ("nrgkick", "wattpilot"))
 
 
 @pytest.mark.parametrize("platform", PLATFORMS)

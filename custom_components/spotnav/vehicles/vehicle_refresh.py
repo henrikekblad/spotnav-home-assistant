@@ -2,9 +2,11 @@
 
 A car's entities go quiet and the dashboard reports whatever they last said; this is how the app
 asks "read it again". It calls `homeassistant.update_entity`, which re-reads an entity from the
-integration that owns it (cheap, generic, no effect on the car). A person's Refresh never calls a
-brand's own force-update service, which wakes the car, drains its 12 V battery and can exhaust or lock
-an account, so a sleeping car keeps reporting what it last knew.
+integration that owns it (cheap and generic; most integrations answer from their cloud's copy). It is not
+always without effect on the car: kia_uvo answers it with a real force refresh, which can wake the car, when
+the car's last report is older than the integration's force-refresh interval (in its AU region at every
+update). A person's Refresh never calls a brand's own force-update service, which wakes the car, drains its
+12 V battery and can exhaust or lock an account, so a sleeping car keeps reporting what it last knew.
 
 The one exception is opt-in per car: with "Wake the car for a reading" turned on, and an integration
 that offers a wake (`vehicle_wake.WAKE_METHODS`, the only place a brand is named), SpotNav's own ask at a

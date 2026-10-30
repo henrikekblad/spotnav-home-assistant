@@ -443,6 +443,17 @@ describe("the status line renders the block and nothing else", () => {
     );
   });
 
+  it("says the car is held at its minimum while the site's measurement is lost", () => {
+    const lost = block(statusLine("load_balancing_limited", { limit_a: 6, cause: "measurement_lost" }));
+    expect(statusText(lost, format("en"), NOW)).toBe(
+      "The site's meter has no fresh reading: load balancing holds the car at its minimum of 6 A until it is back.",
+    );
+    expect(statusText(lost, format("sv"), NOW)).toBe(
+      "Anläggningens mätare ger inga aktuella värden: lastbalanseringen håller bilen på sin lägsta ström, 6 A, tills mätningen är tillbaka.",
+    );
+    expect(issueText("en", issuesOf(lost, "en")[0]!)).toBe(statusText(lost, format("en"), NOW));
+  });
+
   it("words solar and hybrid, with the window in the market's clock", () => {
     expect(statusText(block(statusLine("solar_charging", { requested_a: 8 })), format("en"), NOW)).toBe(
       "Solar · charging 8 A from surplus",

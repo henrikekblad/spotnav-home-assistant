@@ -11,6 +11,7 @@
       "auto_price": true,
       "current_limit": false,
       "load_balancing": false,
+      "price_days": true,
       "refresh_vehicle": true,
       "regulated_current": false,
       "set_charge_limit": true,
@@ -102,7 +103,7 @@
     "area_id": "SE4",
     "area_name": "Malm\u00f6",
     "catalogue_attempt_error": null,
-    "catalogue_fetched_at": "2026-09-22T06:00:00+00:00",
+    "catalogue_fetched_at": null,
     "catalogue_state": "ready",
     "countries": [
       "SE"
@@ -192,7 +193,7 @@
     "must_buy_now_kwh": null,
     "pending_attempt": null,
     "pending_identity": null,
-    "price_identity": "2026-09-22/2026-09-23|916f2f8e05fd|2026-09-22T06:00:00+00:00",
+    "price_identity": "2026-09-22/2026-09-23|2026-09-22T06:00:00+00:00",
     "price_state": "ready",
     "price_wait": null,
     "publication_at": null,
@@ -204,8 +205,8 @@
   },
   "prices": {
     "area_id": "SE4",
-    "index_revision": "916f2f8e05fd",
-    "index_state": "ready",
+    "index_revision": null,
+    "index_state": null,
     "interval_count": 192,
     "intervals": [
       {
@@ -2130,6 +2131,15 @@
       }
     ],
     "priced_slots": 38,
+    "provider": {
+      "key": null,
+      "name": null,
+      "notice": {
+        "code": "add_nordpool",
+        "params": {}
+      },
+      "url": null
+    },
     "reason": "ready",
     "resolution_minutes": 15,
     "resolutions_minutes": [

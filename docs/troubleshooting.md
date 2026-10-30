@@ -123,13 +123,43 @@ changes.
   later.
 - **The plan is proposed but not applied.** The card shows a newer proposal until it has been
   installed; check *Auto execution state* and whether automatic charging is paused.
-- **Prices are stale or missing.** Prices come from the public SpotNav Relay. If the relay is unreachable, the last successful
-  fetch is used and the card says the prices are stale. No token or account is involved.
+- **Prices are stale.** If the area's source cannot be reached, the last successful fetch is used and the card says
+  the prices are stale. They update by themselves once the source answers again.
 - **A charger starts or stops when it should not, since the charge-ownership logic took over.** The charge-ownership
   core decides who owns a charge on every charger by default, with the previous logic still computed beside it and
   compared (`ownership_shadow.drives` is `true` in the charger's diagnostics). An administrator can take one charger
   back under its **Configure**: **Charging decisions**, **Previous logic** (saving reloads that charger). Download
   the debug info (card Settings, Support) first and send it with an issue: it records where the two disagreed.
+
+## Prices
+
+### Prices are missing
+
+Since SpotNav 2.0 your Home Assistant fetches the prices itself; the SpotNav relay no longer delivers them
+(see [Prices](prices.md#where-prices-come-from)). An area with no source of its own gets no new prices.
+The card's **Settings → Electricity price** then shows a notice with the one step that gives it one, and
+once there is nothing priced for today Home Assistant raises the Repairs issue *No electricity prices for
+…*, which goes away by itself when prices are back.
+
+- **"Add Nord Pool"** (Sweden, Norway, Denmark, Finland, the Baltic countries, Germany/Luxembourg, the
+  Netherlands, Belgium, France, Austria, Poland, Romania, Bulgaria): the button opens Home Assistant's own
+  dialog for the Nord Pool integration. The area and currency you pick there do not matter. **"Use my
+  ENTSO-E key instead"** works too.
+- **"Nord Pool is added in Home Assistant but did not start"**: open the Nord Pool integration under
+  **Settings → Devices & services** and look at its error; SpotNav follows it as soon as it is loaded.
+- **"Add your ENTSO-E key"** (the other European areas): follow the how-to under the key's field. Access to
+  ENTSO-E's API is granted by e-mail and can take a few days; until then the platform refuses the key.
+- **"ENTSO-E did not accept the saved key"**: the key was refused when it was saved or later. Generate a new
+  one under **My Account Settings** on transparency.entsoe.eu and enter it.
+- **"Add PVPC"** (Spain, regulated): add Home Assistant's PVPC integration.
+- **"Add Octopus Energy (HACS)"** (Great Britain): install the Octopus Energy integration from HACS and add
+  it with your account. **"Octopus Energy found no meter on an Agile tariff"** means the integration is
+  there but your meter is not on Agile; SpotNav has no prices for a fixed or other tariff. **"Your Octopus
+  meter is in region …"**: choose that region as the area.
+- **"There is no source for prices in …"**: the area has no source SpotNav can use. Choose another area.
+
+After an upgrade from 1.x, the days already stored keep showing until they run out, and they still count for
+the history profile and the charge history.
 
 ## Vehicles
 

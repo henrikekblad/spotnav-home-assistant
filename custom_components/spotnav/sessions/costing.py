@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import math
 from collections.abc import Iterable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, datetime, timezone
 from typing import Any
 
@@ -191,6 +191,17 @@ def merge_slices(existing: Sequence[Slice], new: Iterable[Slice]) -> tuple[Slice
             held.start, held.end, held.kwh + item.kwh, held.eur_per_kwh, held.fx, held.fx_date, held.day_avg_eur
         )
     return tuple(by_start[start] for start in sorted(by_start))
+
+
+def subtract_slices(after: Sequence[Slice], before: Sequence[Slice]) -> tuple[Slice, ...]:
+    """What `after` drew beyond `before` (the same session's slices at an earlier moment), per interval."""
+    held = {item.start: item.kwh for item in before}
+    out = []
+    for item in after:
+        kwh = item.kwh - held.get(item.start, 0.0)
+        if kwh > 1e-9:
+            out.append(replace(item, kwh=kwh))
+    return tuple(out)
 
 
 def price_slices(slices: Sequence[Slice], fiscal: FiscalChoice | None) -> Costing:

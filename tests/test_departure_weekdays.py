@@ -29,7 +29,7 @@ from custom_components.spotnav.planning.auto_settings import ALL_WEEKDAYS, AutoS
 
 from .harness import Harness
 from .messages import read_settings_message, update_settings_message
-from .relay import Clock, flat_day, index_listing, serve, serve_profile, SE4
+from .relay import Clock, flat_day, hold_history, index_listing, serve, SE4
 from .world import admin, settings_of, setup_charger, ws_call
 
 pytestmark = pytest.mark.usefixtures("offline_relay")
@@ -173,7 +173,7 @@ def _publish(harness: Harness) -> None:
     for day in days:
         transport.serve(transport.day_path(SE4, day), 200, flat_day(SE4, day, price=0.10))
     transport.serve("/v1/index.json", 200, index_listing(SE4, [day.isoformat() for day in days]))
-    serve_profile(transport, to=today.isoformat(), generated=f"{today.isoformat()}T14:05:00+02:00", cheap={})
+    hold_history(harness.repository, to=today.isoformat(), cheap={})
 
 
 @pytest.fixture(autouse=True)

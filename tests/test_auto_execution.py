@@ -79,9 +79,9 @@ from custom_components.spotnav.execution.controller import (
 
 from .helpers import make_entry
 from .test_auto_controller import assert_dump_is_summary
-from .relay import SE4, cheap_midday_day, cheap_night_day, serve, serve_index
+from .relay import SE4, cheap_midday_day, cheap_night_day, serve, today_fails
 from .relay import Clock, FakeScheduler, StubTransport
-from .relay import TODAY, TOMORROW, YESTERDAY, day_body
+from .relay import TODAY, TOMORROW, day_body
 from .harness import Session
 
 from .world import ENTRY
@@ -421,8 +421,8 @@ async def test_stale_prices_never_replace_cancel_or_stop_an_installed_plan(
     assert installed is not None
     saves, offs = len(plan_saves), len(session.off_calls)
 
-    # The relay stops listing today: the held document becomes stale (last good retained).
-    serve_index(session.transport, {SE4: [YESTERDAY]})
+    # Asking for today again fails: the held document becomes stale (last good retained).
+    await today_fails(session)
     await session.tick()
 
     stale = session.preview.snapshot()
@@ -792,7 +792,7 @@ async def test_two_chargers_apply_independently_while_sharing_one_price_fetch(
     await session.set_auto(amps=10, departure=time(20, 0))
     await second.set_auto(amps=16, departure=time(20, 0))
 
-    assert transport.call_count("/v1/index.json") == 1
+    assert transport.call_count(transport.day_path(SE4, TODAY)) == 1
     assert len(install_spy) == 2
     assert session.controller.plan is not second.controller.plan
     assert session.controller.plan.amps == 10 and second.controller.plan.amps == 16
@@ -946,9 +946,9 @@ async def test_pending_is_dropped_when_the_prices_become_stale(
     applied = session.executor.applied
     assert applied is not None
 
-    # The relay stops listing today: the preview publishes a stale snapshot from a *new*
+    # Asking for today again fails: the preview publishes a stale snapshot from a *new*
     # attempt, and a result that cannot be executed supersedes whatever was waiting.
-    serve_index(session.transport, {SE4: [YESTERDAY]})
+    await today_fails(session)
     await session.tick()
 
     assert session.preview.snapshot().state == "price_data_stale"
@@ -969,7 +969,7 @@ async def test_the_boundary_installs_nothing_when_no_change_waits(
     installed = await prepare_pending(session)
     assert session.executor.pending is not None and len(install_spy) == 1
 
-    serve_index(session.transport, {SE4: [YESTERDAY]})
+    await today_fails(session)
     await session.tick()
     assert session.executor.pending is None
 
@@ -1041,7 +1041,7 @@ async def test_a_late_older_calculation_cannot_recreate_pending(
     assert session.executor.pending is not None
 
     # A newer, non-executable result supersedes the wait ...
-    serve_index(session.transport, {SE4: [YESTERDAY]})
+    await today_fails(session)
     await session.tick()
     assert session.executor.pending is None
 

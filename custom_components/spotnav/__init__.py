@@ -31,6 +31,7 @@ from .api.region import async_setup_region_api
 from .api.pairing import async_register_pairing
 from .api.sessions import async_setup_sessions_api
 from .api.settings import async_setup_settings_api
+from .api.entsoe_key import async_setup_entsoe_key_api
 from .api.price_source import async_setup_price_source_api
 from .api.site_settings import async_setup_site_settings_api
 from .api.webhook import async_register_charger_webhook
@@ -105,7 +106,7 @@ from .site.site_join import (
     backfill_profile_measured_sources,
     prune_missing_members,
 )
-from .site.site_capacity_controller import SiteCapacityController
+from .site.site_capacity_controller import async_release_held_charges, SiteCapacityController
 from .texts import async_load as async_load_texts
 from .vehicles.discovery_decisions import async_setup_decisions
 from .vehicles.soc_estimate import SocReader
@@ -163,6 +164,7 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     async_setup_manual_action_api(hass)
     async_setup_site_settings_api(hass)
     async_setup_price_source_api(hass)
+    async_setup_entsoe_key_api(hass)
     async_setup_entity_config_api(hass)
     async_setup_identification_api(hass)
     async_setup_charge_limit_api(hass)
@@ -217,6 +219,12 @@ async def _async_stop(hass: HomeAssistant, _event: Event | None = None) -> None:
     if manager is not None:
         await manager.async_shutdown()
         domain_data(hass).price_refresh = None
+    repository = domain_data(hass).price_repository
+    if repository is not None:
+        repository.stop_following_providers()
+    fx_rates = domain_data(hass).fx_rates
+    if fx_rates is not None:
+        await fx_rates.async_stop()
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -351,8 +359,8 @@ async def _async_setup_charger_entry(hass: HomeAssistant, entry: ChargerConfigEn
         and settings_store.settings(entry.entry_id).area_id is None
         and settings_store.suggested(entry.entry_id)
     ):
-        # The relay was unreachable when the defaults were written, so the area is empty: suggest it
-        # when the relay first answers, then stop listening.
+        # No area list was there when the defaults were written, so the area is empty: suggest it when the
+        # list first answers, then stop listening.
         remove_listener: list[Any] = []
 
         @callback
@@ -661,7 +669,7 @@ async def _async_setup_price_entry(hass: HomeAssistant, entry: PriceConfigEntry)
     if manager is None:
         # Domain setup creates the manager before any entry; without it there is nothing to price with.
         return False
-    device = PriceDevice(hass, entry.entry_id, entry.data, manager)
+    device = PriceDevice(hass, entry.entry_id, entry.data, manager, title=entry.title)
     entry.runtime_data = PriceData(device)
     entry.async_on_unload(device.async_stop)
     await device.async_start()
@@ -717,6 +725,8 @@ async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
         return
     await async_sync_resolution_repairs(hass, (entry.entry_id,))
     if entry.data.get(CONF_ENTRY_TYPE) == ENTRY_TYPE_SITE:
+        # Its load balancing is gone with it: a charge it held back is given back or forgotten.
+        await async_release_held_charges(hass, entry.data.get(CONF_CHARGER_ENTRY_IDS) or [])
         return
     async_leave_sites(hass, entry.entry_id)
     if (price_store := domain_data(hass).price_store) is not None:

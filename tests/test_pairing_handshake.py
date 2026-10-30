@@ -405,7 +405,13 @@ async def test_nothing_sensitive_is_logged(hass: HomeAssistant, hass_client_no_a
     await _poll(client, request_id)
     await _post(client, {"version": 1, "action": "something-else"})
 
-    logged = caplog.text
+    # The test harness's own storage double logs every store write in full at debug (the price sources'
+    # record holds the charger's entry id); that is the harness, not a log line of Home Assistant or SpotNav.
+    logged = "\n".join(
+        caplog.handler.format(record)
+        for record in caplog.records
+        if not record.name.startswith("pytest_homeassistant_custom_component")
+    )
     # The code, the request id and the charger's own webhook id: none of them,
     # at debug either.
     assert CODE not in logged

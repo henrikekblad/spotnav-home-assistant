@@ -1,4 +1,4 @@
-"""The relay contract: every fixture, and every rule the parsers enforce.
+"""The `"v": 1` day document and the area list: every fixture, and every rule the parsers enforce.
 
 These are pure tests — no `hass`, no session, no clock — because the contract is a
 function of a document. The fixtures they read are checked in under
@@ -23,10 +23,8 @@ from custom_components.spotnav.pricing.relay_contract import (
     SUPPORTED_VERSION,
     PriceInterval,
     RelayParseError,
-    loads_document,
     parse_catalogue,
     parse_day,
-    parse_index,
     validate_intervals,
 )
 
@@ -37,13 +35,10 @@ STOCKHOLM = ZoneInfo("Europe/Stockholm")
 
 
 def document(name: str):
-    """Read a fixture through the production JSON reader, not `json.load` directly.
-
-    That distinction is the point for the two files carrying `NaN`/`Infinity`:
-    `json.loads` accepts them, the contract does not, and a test that bypassed the
-    reader would prove nothing about what a client does with the same body.
+    """Read a fixture as JSON. Python's reader takes `NaN`/`Infinity` as floats, which is the point for the two
+    files carrying them: the day parser itself must refuse a non-finite price, whoever built the document.
     """
-    return loads_document((FIXTURES / name).read_text(encoding="utf-8"))
+    return json.loads((FIXTURES / name).read_text(encoding="utf-8"))
 
 
 def day_at(name: str, area_id: str = SE4, day: date | None = None):
@@ -144,54 +139,6 @@ def test_catalogue_still_refuses_a_repeated_id_among_valid_entries():
     with pytest.raises(RelayParseError) as caught:
         parse_catalogue(twice)
     assert caught.value.code == "duplicate_area"
-
-
-def test_index_lists_today_and_tomorrow_and_omits_an_authoritative_absence():
-    index = parse_index(document("index.json"))
-
-    assert index.areas_rev == "916f2f8e05fd"
-    assert index.res_default == 60
-
-    se4 = index.area("SE4")
-    assert se4 is not None
-    assert se4.days == (date(2026, 9, 21), date(2026, 9, 22))
-    assert se4.resolution_minutes == 15
-    assert se4.lists(date(2026, 9, 22)) is True
-
-    listed = parse_index(document("index_missing_tomorrow.json")).area("SE4")
-    assert listed is not None
-    # "Not listed" is an answer: this is what stops a client asking for a day the
-    # relay has said it does not have.
-    assert listed.lists(date(2026, 9, 22)) is False
-    assert listed.lists(date(2026, 9, 21)) is True
-
-
-def test_index_skips_a_damaged_area_and_keeps_the_rest():
-    for name in ("index_days_unsorted.json", "index_days_duplicate.json"):
-        full = document(name)
-        damaged = [key for key in full["areas"]]
-        parsed = parse_index(full)
-        # The damaged entries are dropped one by one; nothing is read hopefully.
-        assert len(parsed.areas) < len(damaged)
-        assert all(entry.days == tuple(sorted(set(entry.days))) for entry in parsed.areas)
-
-    with pytest.raises(RelayParseError) as versioned:
-        parse_index(document("index_bad_version.json"))
-    assert versioned.value.code == "unsupported_version"
-
-    # A missing per-area `res` is legitimate: `res_default` covers the area.
-    assert parse_index(document("index_no_res.json")).area("SE4").resolution_minutes is None
-
-    broken = document("index.json")
-    broken["areas"]["SE4"]["res"] = 45
-    kept = parse_index(broken)
-    assert kept.area("SE4") is None
-    assert kept.area("NO1") is not None
-
-    # A damaged entry that is not even an object is skipped the same way.
-    odd = document("index.json")
-    odd["areas"]["XX1"] = "nope"
-    assert parse_index(odd).area("SE4") is not None
 
 
 def test_a_96_quarter_day_is_preserved_interval_by_interval():
@@ -469,23 +416,6 @@ def test_validation_accepts_the_autumn_fallback_and_still_refuses_a_real_reversa
     with pytest.raises(RelayParseError) as reversed_pair:
         validate_intervals((winter, summer), "a hand-built pair")
     assert reversed_pair.value.code == "interval_order"
-
-
-def test_a_body_that_is_not_json_is_refused_as_such():
-    # A proxy's error page, which is the shape this actually arrives in.
-    with pytest.raises(RelayParseError) as html:
-        loads_document("<!doctype html><html><body>502 Bad Gateway</body></html>")
-    assert html.value.code == "not_json"
-
-    # `json.loads` would read all three of these into floats; the contract will not.
-    for body in ('{"v": 1, "prices": [NaN]}', '{"v": 1, "prices": [Infinity]}', '{"v": 1, "prices": [-Infinity]}'):
-        with pytest.raises(RelayParseError) as constant:
-            loads_document(body)
-        assert constant.value.code == "invalid_number"
-
-    with pytest.raises(RelayParseError) as not_object:
-        parse_index([1, 2, 3])
-    assert not_object.value.code == "not_an_object"
 
 
 def test_provenance_is_optional_only_where_the_contract_says_so():

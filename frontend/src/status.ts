@@ -346,6 +346,9 @@ function loadBalancingLimitKey(cause: StatusParam | undefined): TranslationKey {
   if (cause === "house_consumption") {
     return "status.loadBalancingLimitedByHouse";
   }
+  if (cause === "measurement_lost") {
+    return "status.loadBalancingMeasurementLost";
+  }
   return "status.loadBalancingLimitedTo";
 }
 

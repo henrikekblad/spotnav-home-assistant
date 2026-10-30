@@ -111,6 +111,7 @@ import {
   type ReferenceAnswer,
 } from "./camera-editor";
 import { issueText } from "./status";
+import { keyEditor, priceProviderNodes } from "./price-provider";
 import { historyBody, type HistoryState, type HistoryUi } from "./history";
 import { connectionLabel, vehicleLineFor } from "./vehicle-line";
 import type { ChargeBarFacts } from "./charge-bar";
@@ -383,6 +384,22 @@ export interface CardView {
  * refresh arms a fresh one.
  */
 export const BOUNDARY_HORIZON_MS = 24 * 3_600_000;
+
+/** Whether Home Assistant has loaded an integration, from the `hass` object the card was given. */
+function hasComponent(hass: unknown, domain: string): boolean {
+  const components = (hass as { config?: { components?: unknown } } | null | undefined)?.config?.components;
+  return Array.isArray(components) && components.includes(domain);
+}
+
+/** Open one of Home Assistant's own pages, the way its frontend moves between them. */
+function navigateTo(doc: Document, path: string): void {
+  const view = doc.defaultView;
+  if (view === null) {
+    return;
+  }
+  view.history.pushState(null, "", path);
+  view.dispatchEvent(new CustomEvent("location-changed", { detail: { replace: false } }));
+}
 
 function element<K extends keyof HTMLElementTagNameMap>(
   doc: Document,
@@ -2559,7 +2576,36 @@ export function createCardView(input: CardViewInput): CardView {
       areaButton.dataset["setting"] = "market";
     }
     section.append(areaRow);
-    // The price source is named in the area dialog only, beside the area choice (not in this overview).
+    // Where the area's prices come from, and what an administrator can do when it has no source of its own.
+    section.append(
+      ...priceProviderNodes(doc, {
+        language: model.language,
+        provider: model.priceProvider,
+        areaLabel: area || (model.contextAreaId ?? ""),
+        areaId: model.contextAreaId,
+        isAdmin: input.isAdmin,
+        idPrefix: input.idPrefix,
+        hasComponent: (domain) => hasComponent(input.hass?.(), domain),
+        navigate: (path) => {
+          settingsOverviewDialog.hide({ restoreFocus: false });
+          navigateTo(doc, path);
+        },
+        openExternal: (url) => {
+          doc.defaultView?.open(url, "_blank", "noopener,noreferrer");
+        },
+        openArea: () => input.onOpenMarket(),
+        openKeyEditor: () =>
+          openValueEditor(translate(model.language, "price.key.title"), (handlers) =>
+            keyEditor(
+              doc,
+              model.language,
+              idPrefix,
+              (key) => writeValue({ kind: "entsoeKey", key, areaId: model.contextAreaId }),
+              handlers,
+            ),
+          ),
+      }),
+    );
     for (const fiscal of fiscalRows(model.language, model.dashboardFiscal)) {
       const component = fiscal.key as FiscalComponentName;
       const included = model.dashboardFiscal?.[component].policy === "included";

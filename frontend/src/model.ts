@@ -52,6 +52,7 @@ import type {
   Site,
   Soc,
   Vehicle,
+  PriceProvider,
 } from "./validate";
 
 export type { Issue } from "./status";
@@ -305,6 +306,8 @@ export interface CardModel {
   priceSource: { name: string; url: string } | null;
   /** The electricity price entry the charger uses, where its area and fees live; `null` for its own settings. */
   priceEntry: PriceEntryFacts | null;
+  /** The area's price provider and its notice (`prices.provider`); `null` without one. */
+  priceProvider: PriceProvider | null;
   technicalCodes: string[];
 }
 
@@ -939,6 +942,7 @@ export function buildModel(input: BuildInput): CardModel {
     contextAreaId: market?.area_id ?? null,
     priceSource: market?.source ?? null,
     priceEntry: priceEntryFor(dashboard),
+    priceProvider: dashboard.prices.provider,
     technicalCodes,
   };
 }

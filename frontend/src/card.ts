@@ -45,6 +45,7 @@ import {
   updateSiteSettings,
   choosePriceSource,
   answerPriceDuplicate,
+  setEntsoeKey,
   updateVehicle,
 } from "./api";
 import {
@@ -2167,6 +2168,11 @@ export class SpotnavCard extends HTMLElement {
       case "priceSource": {
         await choosePriceSource(hass, charger, write.priceEntryId);
         return null;
+      }
+      case "entsoeKey": {
+        const answer = await setEntsoeKey(hass, write.key, write.areaId);
+        // A key the platform could not be asked about is kept, and proved by the first day it is asked for.
+        return answer.ok || answer.error === "entsoe_unreachable" ? null : "price.key.rejected";
       }
       case "priceDuplicate": {
         await answerPriceDuplicate(hass, write.areaId, write.keepEntryId);

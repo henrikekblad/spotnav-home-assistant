@@ -6,6 +6,10 @@ state and, when the limit is set to 6 A or more again, resumes (Modbus manual v1
 the integration's own text for the number: "Set to 0 A to pause charging without ending the session").
 So Stop writes 0 to the limit and Start writes the current the charge is requested at. The start
 button is pressed only while the charger waits for authorization (state B1).
+
+Both are current writes, so both count against the write policy's interval (the charger freezes or
+resets on changes under about 15 s apart), but neither is ever refused by it: a stop is a safety action,
+and the regulator's next write waits instead.
 """
 
 from __future__ import annotations
@@ -18,7 +22,15 @@ from homeassistant.core import HomeAssistant
 
 from ...const import DEFAULT_MIN_CURRENT_A
 from ..charger_profiles import PATH_NUMBER_PAUSE
-from .base import _entity_unavailable, _finite, _not_executed, call_service, path_description, StartStopPath
+from .base import (
+    _entity_unavailable,
+    _finite,
+    _not_executed,
+    call_service,
+    path_description,
+    StartStopPath,
+    WriteRateLimiter,
+)
 from .registry import ChargerContext, register_start_stop
 
 
@@ -38,11 +50,14 @@ class NumberPausePath(StartStopPath):
         start_entity_id: str | None,
         *,
         status=lambda: None,
+        limiter: WriteRateLimiter | None = None,
     ) -> None:
         super().__init__(hass)
         self.number_entity_id = number_entity_id
+        self.control_entity_id = number_entity_id
         self.start_entity_id = start_entity_id
         self._status = status
+        self._limiter = limiter
         #: The limit the charge ran at when it was last paused, to resume at when no current is asked.
         self._resume_a: int | None = None
         #: The current the last start wrote (a start here is a current write), for the site to be told.
@@ -51,6 +66,9 @@ class NumberPausePath(StartStopPath):
     async def _write(self, value: int) -> bool:
         if _entity_unavailable(self.hass, self.number_entity_id):
             return _not_executed(self.number_entity_id)
+        # Counted against the current's write interval, never refused by it.
+        if self._limiter is not None:
+            self._limiter.record()
         await call_service(
             self.hass,
             "number", "set_value", {"entity_id": self.number_entity_id, "value": value}, blocking=True
@@ -128,6 +146,7 @@ def _number_pause_path(context: ChargerContext) -> StartStopPath | None:
         str(number),
         str(raw["start_entity_id"]) if raw.get("start_entity_id") else None,
         status=context.status,
+        limiter=context.limiter,
     )
 
 

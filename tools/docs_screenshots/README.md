@@ -16,10 +16,11 @@ unplugged (see [Car identification](#car-identification)).
 
 1. `run.sh` rebuilds `.config/` from nothing: a minimal `configuration.yaml`, the repository's
    `custom_components/spotnav` linked in, and the demo integrations below.
-2. `relay_stub.py` serves the recorded relay documents from `tests/fixtures/relay` with today's and
-   tomorrow's dates (port 8130). The integration's relay address is fixed in its code, so
-   `ha_launch.py` (this tool only) redirects requests for that address to the stub; the integration is
-   not modified.
+2. Prices come from the demo `nordpool` integration below, as they come from Home Assistant's own Nord Pool
+   integration in a real installation (the SpotNav relay delivers no prices since 2.0). Converting SE4's EUR
+   prices to SEK needs the ECB's reference rates: `rates_stub.py` serves the recorded rates
+   (`tests/fixtures/ecb/ecb_daily.xml`, dated yesterday) on port 8130, and `ha_launch.py` (this tool only)
+   redirects requests for the ECB's address to it; the integration is not modified.
 3. `driver/shots.mjs` onboards the instance through its onboarding API (user "demo", English, Sweden,
    southern Sweden, metric), signs in through the normal login flow, creates the demo devices, then
    drives headless chromium (1280 px wide, English, Home Assistant's own dark theme: the browser reports `prefers-color-scheme: dark` and the stored profile theme setting is `{"dark":true}`) through the flows and crops each
@@ -40,6 +41,10 @@ the detection reads (device tree, entity ids, unique ids, translation keys):
   service `kia_uvo.docs_set_plug` (`vehicle`: `family_car` or `city_car`, `plugged`) moves a car's plug sensor.
 - `ocpp` also has the screenshot-only service `ocpp.docs_set_status` (`status`, for example `Available` or
   `Preparing`), which unplugs or plugs in a car at the connector.
+- `nordpool`: Home Assistant's Nord Pool integration reduced to its `nordpool.get_prices_for_date` service, which
+  answers any area and date with the recorded SE4 day (`tests/fixtures/relay/day_SE4_2026-09-22_96.json`) in EUR/MWh
+  per quarter hour of the CET day; tomorrow is a rotated, slightly scaled copy, left out with `STUB_TOMORROW=0`.
+  It replaces the core integration in the throwaway instance (a custom integration of the same name wins).
 - `demo_vision`: a camera ("Driveway camera") whose picture is drawn by `scene.py` (a carport, a parking bay and
   the parked car seen from the front: no photograph, no number plate), and an AI Task entity ("Local vision
   model AI Task") that takes pictures and answers every comparison with the first car, "medium", so the camera
@@ -78,7 +83,7 @@ editor), card-reference-picture, card-settings-plan, card-identifying, card-iden
 diagnostics.
 
 Not produced (they need real-world state): card-waiting (only before about 13:45 local with no tomorrow
-prices; `STUB_TOMORROW=0` removes tomorrow from the stub, but the integration decides by the real clock),
+prices; `STUB_TOMORROW=0` removes tomorrow from the demo Nord Pool, but the integration decides by the real clock),
 card-charging (a running charge), card-solar (a sunny day and a forecast source), pairing-approve (a
 real app pairing).
 

@@ -64,6 +64,24 @@ def summarize_bucket(period: str, sessions: Sequence[ChargeSession]) -> dict[str
     }
 
 
+def cost_figures(session: ChargeSession | None) -> dict[str, Any]:
+    """A costed session's cost in the major unit, its currency, its average price per kWh (major unit) and
+    the energy that had no published price. Cost, currency and average are `None` when nothing was priced
+    (never zero); everything is `None` without a session."""
+    if session is None:
+        return {"cost": None, "currency": None, "average_price": None, "unpriced_kwh": None}
+    cost = session.cost_minor
+    average = session.average_price_minor_per_kwh
+    if cost is None or average is None:
+        return {"cost": None, "currency": None, "average_price": None, "unpriced_kwh": round(session.energy_kwh, 3)}
+    return {
+        "cost": round(cost / 100, 4),
+        "currency": session.currency,
+        "average_price": round(average / 100, 4),
+        "unpriced_kwh": round(max(session.energy_kwh - session.priced_kwh, 0.0), 3),
+    }
+
+
 def month_key(day: date) -> str:
     return f"{day.year:04d}-{day.month:02d}"
 

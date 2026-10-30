@@ -275,6 +275,35 @@ export async function answerPriceDuplicate(
   });
 }
 
+/** What saving the installation's ENTSO-E key answered: stored and accepted, or a stable code. */
+export interface EntsoeKeyAnswer {
+  ok: boolean;
+  error: string | null;
+  state: string | null;
+}
+
+/**
+ * Check and store the installation's ENTSO-E key (`spotnav/set_entsoe_key`, administrators only); `null` clears it.
+ * `areaId` is the area to check it against. The key is never answered back.
+ */
+export async function setEntsoeKey(
+  hass: HomeAssistantLike,
+  key: string | null,
+  areaId: string | null,
+): Promise<EntsoeKeyAnswer> {
+  const message: Record<string, unknown> = { type: "spotnav/set_entsoe_key", key };
+  if (areaId !== null) {
+    message.area_id = areaId;
+  }
+  const raw = await call<unknown>(hass, message);
+  const answer = typeof raw === "object" && raw !== null ? (raw as Record<string, unknown>) : {};
+  return {
+    ok: answer.ok === true,
+    error: typeof answer.error === "string" ? answer.error : null,
+    state: typeof answer.state === "string" ? answer.state : null,
+  };
+}
+
 /** The redacted installation-wide debug bundle (administrators only), `unknown` until decoded. */
 export async function getDebugBundle(hass: HomeAssistantLike): Promise<unknown> {
   return await call<unknown>(hass, {

@@ -14,6 +14,7 @@ import pytest
 
 from custom_components.spotnav.const import MEASUREMENT_MODE_DERIVED, MEASUREMENT_MODE_DIRECT
 from custom_components.spotnav.site.measurement_source import GridPowerSource
+from custom_components.spotnav.site.site_capacity import classify_current
 from custom_components.spotnav.site.site_detection import (
     apply_battery_candidate,
     apply_meter_candidate,
@@ -472,6 +473,16 @@ def ams_reader(*, list4: bool) -> Registry:
     return r
 
 
+def amshan_aidon() -> Registry:
+    """toreamun's `amshan` on an Aidon meter (HAN port, DLMS): `<meter id>-<key>` per phase."""
+    r = Registry()
+    r.device("han", model="6484", manufacturer="Aidon", name="HAN port", entry="amshan")
+    for n in "123":
+        r.add("amshan", f"han_current_l{n}", f"7359992890123456-current_l{n}", device_class="current", unit="A", device="han", entry="amshan")
+        r.add("amshan", f"han_voltage_l{n}", f"7359992890123456-voltage_l{n}", device_class="voltage", unit="V", device="han", entry="amshan")
+    return r
+
+
 def slimmelezer() -> Registry:
     r = Registry()
     r.device("sl", model="slimmelezer", manufacturer="zuidwijk", name="SlimmeLezer", entry="esphome")
@@ -610,6 +621,10 @@ CASES = {
     "ams_reader_list1": (
         lambda: ams_reader(list4=False),
         Expect(MEASUREMENT_MODE_DIRECT, roles=frozenset({"current"}), integration="mqtt"),
+    ),
+    "amshan_aidon": (
+        amshan_aidon,
+        Expect(MEASUREMENT_MODE_DIRECT, signed_current=True, roles=frozenset({"current"}), integration="amshan"),
     ),
     "slimmelezer": (
         slimmelezer,
@@ -938,6 +953,12 @@ def test_an_ams_reader_is_recognized_by_its_manufacturer_not_by_the_mqtt_platfor
     plain_mqtt.devices[0] = RegistryDevice("ams", manufacturer="someone else", model="x", config_entry_ids=("mqtt",))
 
     assert plain_mqtt.detect().meters == ()
+
+
+def test_an_aidon_phase_that_exports_reads_as_its_magnitude_not_as_invalid() -> None:
+    candidate = one_meter(amshan_aidon())
+
+    assert classify_current(-12.4, "A", signed=candidate.signed_current) == (12.4, None)
 
 
 def test_a_p1_reader_is_detected_whatever_its_esphome_device_model_and_ignores_reactive_power() -> None:

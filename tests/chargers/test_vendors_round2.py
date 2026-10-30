@@ -10,6 +10,7 @@ from pytest_homeassistant_custom_component.common import async_mock_service
 
 from custom_components.spotnav.execution.chargers.base import (
     ASSIGN_ASSIGNED,
+    ASSIGN_RATE_LIMITED,
     ASSIGN_UNCHANGED,
     STOP_HELD_AT_FLOOR,
     WRITE_REGULATOR,
@@ -279,6 +280,33 @@ async def test_abb_start_presses_the_start_button_only_while_authorization_is_pe
     hass.states.async_set("sensor.abb_terra_ac_charging_state", "State B1 - EV Plug in, pending authorization")
     await adapter.async_start(10)
     assert [call.data["entity_id"] for call in presses] == ["button.abb_terra_ac_start_charging"]
+
+
+async def test_abb_current_writes_are_30_s_apart_and_a_stop_or_start_is_never_held_back(
+    hass: HomeAssistant,
+) -> None:
+    """Changes under about 15 s apart can freeze or reset an ABB. Its stop and start are current writes
+    too: they count against the interval, so the regulator waits after them, but are never refused."""
+    clock = Clock()
+    adapter = _adapter(hass, "abb_terra_ac", clock)
+    writes = async_mock_service(hass, "number", "set_value")
+    number = "number.abb_terra_ac_current_limit"
+    attrs = {"unit_of_measurement": "A", "min": 0, "max": 32, "step": 1}
+
+    assert await adapter.async_set_current(10, reason=WRITE_REGULATOR) == ASSIGN_ASSIGNED
+    clock.advance(15)
+    assert await adapter.async_set_current(12, reason=WRITE_REGULATOR) == ASSIGN_RATE_LIMITED
+    assert await adapter.async_stop() is True
+    hass.states.async_set(number, "0", attrs)
+    clock.advance(1)
+    assert await adapter.async_start(10) is True
+    hass.states.async_set(number, "10", attrs)
+    clock.advance(20)
+    assert await adapter.async_set_current(12, reason=WRITE_REGULATOR) == ASSIGN_RATE_LIMITED
+    clock.advance(11)
+    assert await adapter.async_set_current(12, reason=WRITE_REGULATOR) == ASSIGN_ASSIGNED
+
+    assert [call.data["value"] for call in writes] == [10, 0, 10, 12]
 
 
 async def test_abb_is_enabled_by_the_limit_not_by_a_switch(hass: HomeAssistant) -> None:

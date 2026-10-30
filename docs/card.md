@@ -142,6 +142,7 @@ serious each is. Examples:
 | Stopped at 80 % (estimated, reading 40 min old) | The target was reached; shows the level the charge stopped at and how old or estimated it was. |
 | Charging is limited to 10 A by the site's load balancing. | Active load balancing has lowered the current. |
 | The home battery charges from the grid and shares the main fuse: the car gets 11 A. / House consumption limits the car to 11 A. | The same, with the cause when SpotNav knows it. |
+| The site's meter has no fresh reading: load balancing holds the car at its minimum of 6 A until it is back. | The site's measurement has been stale or missing for a minute: load balancing holds the car at its minimum current until the meter reads again. |
 | Paused – the house is using the whole fuse; trying again at 04:30 | Load balancing paused the plan's charge inside its window for want of room for the car's minimum; it is tried again then ("when there is room" when no time is set; "the home battery charges from the grid and fills the main fuse" when that is why). |
 | Charging to the minimum level (30 %) | The car is below its [minimum charge level](target-soc.md#minimum-charge-level), so SpotNav charges at once at the set current; the strategy takes over at the floor. |
 | Solar · charging 9 A from surplus | The solar strategy's state: waiting for sun, surplus found and starting soon, surplus fading, charging, or no usable reading. |
@@ -230,13 +231,16 @@ energy tax and grid fee as the plan applies them. Tapping the area or a tax open
   services**. **Keep both** keeps them as they are. Two prices with the same name are told apart by
   which one this charger uses.
 - **Area** decides which prices are used and which taxes are suggested. The list is grouped by
-  country and is what the public SpotNav Relay publishes; if it cannot be reached, the last list Home Assistant received is
-  shown with a note.
+  country and comes with SpotNav itself.
 - **VAT** (as a percentage), **Energy tax** and **Grid transfer** (both in the area's smallest
   currency unit) can each be switched off, use the area's suggested value, or use your own value.
   **Reset to suggestion** returns to the suggestion when the area publishes one.
-- Under the area, a small linked line names where its prices come from (ENTSO-E, Red Eléctrica
-  for Spain's regulated PVPC, or Octopus Energy (Agile) in Great Britain).
+- A line names where the area's prices come from: *Prices from Nord Pool (via Home Assistant)*, *Prices
+  from ENTSO-E (your key)*, *Prices from PVPC (Home Assistant)* or *Prices from Octopus Energy (your Agile
+  tariff)*. When the area has no source of its own, a notice says what to add instead (**Add Nord Pool**,
+  **Add your ENTSO-E key**, **Add PVPC**, **Add Octopus Energy**), with the button for an administrator, and
+  the ENTSO-E key's field with its how-to. The key is one for the whole installation. See
+  [Prices](prices.md#where-prices-come-from).
 - Where the published price already includes VAT, energy tax or grid transfer (all three in Great
   Britain), that component is checked, locked and marked **Included in the price**, and nothing is
   added for it. For Great Britain, **Find my region** looks the region up from a postcode (see
@@ -342,7 +346,8 @@ under **To check**.
 
 **Phase switching for solar**, below the priority, is **Off** by default or **Automatic**. It is shown only for
 a charger whose integration can switch between one and three phases (Peblar, Lektrico, NRGkick, go-e, Fronius
-Wattpilot, and Easee when it is alone on its circuit; see [strategies](strategies.md#solar)), that is wired for three
+Wattpilot, and Easee when it is alone on its circuit; NRGkick, Wattpilot and Easee only before a start; see
+[strategies](strategies.md#solar)), that is wired for three
 phases, on a site with a solar source; no other charger has the row. Set to Automatic, a solar charge with too
 little sun for three phases charges on one phase instead of drawing from the grid, and the status then says
 so with its power (*Solar · 1 phase · 2.9 kW*). SpotNav then sets the charger's phases itself, so the charger's

@@ -9,6 +9,9 @@ the plan and settings the reviewed backend ends up holding.
 
 from __future__ import annotations
 
+import dataclasses
+from types import SimpleNamespace
+
 import asyncio
 import json
 import math
@@ -31,7 +34,7 @@ from custom_components.spotnav.execution.controller import (
 )
 
 
-from .relay import DE_LU, SE4, serve, serve_index
+from .relay import BUNDLED, DE_LU, SE4, serve, today_fails
 
 #: The fixture catalogue's other markets, by id: NO1 publishes a literal zero fee, DK1
 #: publishes no grid fee at all, and DE-LU publishes no suggestion for anything.
@@ -340,7 +343,7 @@ async def test_the_departure_is_a_naive_wall_time_that_survives_a_reload(
 async def test_both_chargers_update_from_one_catalogue_fetch_and_one_listener_each(
     hass: HomeAssistant, transport: StubTransport
 ) -> None:
-    """A catalogue refresh is one request for the installation, and one listener per entity."""
+    """A changed market list is one broadcast for the installation, and one listener per consumer."""
     await setup_charger(hass, entry_id="entry_a", charge_control="switch.charger_a")
     await setup_charger(
         hass, entry_id="entry_b", charge_control="switch.charger_b", webhook_id="webhook-b"
@@ -354,20 +357,15 @@ async def test_both_chargers_update_from_one_catalogue_fetch_and_one_listener_ea
     # select is the electricity price device's.
     assert len(manager._catalogue_listeners) == 2, "two observations, and no more"
 
-    catalogs_before = transport.call_count("/v1/areas.json")
-    # The relay publishes a market list with one more market. One load, then one broadcast:
-    # no area subscription is asked for, and none is needed.
+    # The market list gains one more market. One broadcast: no area subscription is asked for, and none
+    # is needed.
     repository = domain_data(hass).price_repository
     assert repository is not None
-    catalogue = json.loads((Path("tests/fixtures/relay/areas.json")).read_text())
-    catalogue["areas"].append(dict(catalogue["areas"][0], id="NO2", name="Norway NO2"))
-    transport.serve("/v1/areas.json", 200, json.dumps(catalogue))
-    await repository.async_get_catalogue(refresh=True)
+    repository._bundled = with_area("NO9")  # noqa: SLF001
     await manager.async_ensure_catalogue()
     await hass.async_block_till_done()
 
-    assert transport.call_count("/v1/areas.json") - catalogs_before <= 1, "one fetch, not one per charger"
-    assert "NO2" in manager.catalogue_snapshot().catalogue.area_ids
+    assert "NO9" in manager.catalogue_snapshot().catalogue.area_ids
     assert len(manager._catalogue_listeners) == 2, "still exactly one listener per consumer"
 
 @freeze_time("2026-09-22 06:00:00")
@@ -393,9 +391,8 @@ async def test_the_published_states_are_the_backends_and_every_state_is_translat
     assert hass.states.get(plan_state).state in ("proposal_ready", "proposal_unpriced")
     snapshot_state = preview_for(hass, entry.entry_id).snapshot().state
 
-    # The relay stops listing today: the manager's own refresh path sees that, and the next
-    # calculation is stale rather than freshly served.
-    serve_index(transport, {"SE4": []})
+    # Asking for today again fails: the next calculation is stale rather than freshly served.
+    await today_fails(SimpleNamespace(transport=transport, repository=domain_data(hass).price_repository))
     manager = domain_data(hass).price_refresh
     assert manager is not None
     await manager.async_refresh_area(SE4)
@@ -641,8 +638,7 @@ async def test_unloading_removes_the_listeners_and_late_callbacks_are_inert(
     assert preview_for(hass, entry.entry_id) is None
     assert executor_for(hass, entry.entry_id) is None
 
-    # A catalogue change after the unload reaches nobody, and nothing raises.
-    transport.serve("/v1/areas.json", 500, "")
+    # A catalogue broadcast after the unload reaches nobody, and nothing raises.
     await manager.async_ensure_catalogue()
     await hass.async_block_till_done()
 
@@ -678,6 +674,13 @@ async def test_a_reload_creates_no_duplicate_entities_or_listeners(
 # ---------------------------------------------- catalogue notification (one shared broadcast)
 
 
+def with_area(area_id: str) -> Any:
+    """The bundled list with one more area (a copy of the first, renamed)."""
+    first = BUNDLED.catalogue.areas[0]
+    extra = dataclasses.replace(first, id=area_id, name=f"Area {area_id}")
+    return dataclasses.replace(BUNDLED, catalogue=dataclasses.replace(BUNDLED.catalogue, areas=(*BUNDLED.catalogue.areas, extra)))
+
+
 def catalogue_deliveries(count: list) -> int:
     """How many of these deliveries carried a catalogue with markets in it."""
     return sum(1 for snapshot in count if snapshot.catalogue is not None)
@@ -697,26 +700,24 @@ async def test_a_listener_registered_after_a_change_still_hears_it(
     assert first, "a new listener hears the current snapshot at once"
     before = catalogue_deliveries(first)
 
-    # The repository changes without any broadcast: exactly what a load from storage does.
-    catalogue = json.loads(Path("tests/fixtures/relay/areas.json").read_text())
-    catalogue["areas"].append(dict(catalogue["areas"][0], id="NO2", name="Norway NO2"))
-    transport.serve("/v1/areas.json", 200, json.dumps(catalogue))
-    await repository.async_get_catalogue(refresh=True)
+    # The repository changes without any broadcast (a list with one more area).
+    repository._bundled = with_area("NO9")  # noqa: SLF001
+    repository.catalogue_snapshot()
     assert catalogue_deliveries(first) == before, "a repository load is not a broadcast"
 
     second: list[Any] = []
     cancel_second = manager.add_catalogue_listener(second.append)
     assert second and second[0].catalogue is not None, "the newcomer hears it immediately"
-    assert "NO2" in second[0].catalogue.area_ids
+    assert "NO9" in second[0].catalogue.area_ids
     assert catalogue_deliveries(first) == before, "still nothing on the older listener's back"
 
     # The broadcast: the older listener hears the change exactly once, and the newcomer once
     # more (the same snapshot it just received, which is what "immediately" costs).
     await manager.async_ensure_catalogue()
     assert catalogue_deliveries(first) == before + 1, "exactly once, and not on the newcomer's behalf"
-    assert "NO2" in first[-1].catalogue.area_ids
+    assert "NO9" in first[-1].catalogue.area_ids
     assert catalogue_deliveries(second) >= 1
-    assert "NO2" in second[-1].catalogue.area_ids
+    assert "NO9" in second[-1].catalogue.area_ids
 
     cancel_first()
     cancel_second()
@@ -725,7 +726,7 @@ async def test_a_listener_registered_after_a_change_still_hears_it(
 async def test_concurrent_ensures_are_one_fetch_and_one_update_each(
     hass: HomeAssistant, transport: StubTransport
 ) -> None:
-    """Two chargers asking at the same moment share the fetch and the broadcast."""
+    """Two chargers asking at the same moment share the broadcast."""
     await setup_charger(hass, entry_id="entry_a", charge_control="switch.charger_a")
     await setup_charger(
         hass, entry_id="entry_b", charge_control="switch.charger_b", webhook_id="webhook-b"
@@ -737,13 +738,9 @@ async def test_concurrent_ensures_are_one_fetch_and_one_update_each(
     manager.add_catalogue_listener(first.append)
     manager.add_catalogue_listener(second.append)
 
-    before = transport.call_count("/v1/areas.json")
     await asyncio.gather(
         manager.async_ensure_catalogue(), manager.async_ensure_catalogue(), return_exceptions=True
     )
-    after = transport.call_count("/v1/areas.json")
-
-    assert after - before <= 1, "one fetch for the installation, not one per charger"
     for deliveries in (first, second):
         # One broadcast each, on top of the initial delivery a new listener always gets.
         assert len(deliveries) - catalogue_deliveries(deliveries[:-1]) == 1
@@ -768,14 +765,7 @@ async def test_a_removed_listener_hears_nothing_and_a_late_load_is_inert(
     cancel()
     cancel()
 
-    transport.hold("/v1/areas.json")
-    catalogue = json.loads(Path("tests/fixtures/relay/areas.json").read_text())
-    catalogue["areas"].append(dict(catalogue["areas"][0], id="NO3", name="Norway NO3"))
-    transport.serve("/v1/areas.json", 200, json.dumps(catalogue))
-    pending = asyncio.ensure_future(repository.async_get_catalogue(refresh=True))
-    await asyncio.wait_for(transport.entered["/v1/areas.json"].wait(), timeout=5)
-    transport.release("/v1/areas.json")
-    await asyncio.wait_for(pending, timeout=5)
+    repository._bundled = with_area("NO8")  # noqa: SLF001
     await manager.async_ensure_catalogue()
     await hass.async_block_till_done()
 

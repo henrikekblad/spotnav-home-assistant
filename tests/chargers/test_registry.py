@@ -47,3 +47,15 @@ async def test_the_easee_kind_builds_the_easee_path(hass: HomeAssistant) -> None
         energy_entity_id=None,
     )
     assert isinstance(adapter.path, EaseeCommandPath) and adapter.path.device_id == "dev"
+
+
+def test_every_platform_that_can_switch_phases_registers_its_phase_switch() -> None:
+    assert set(registry._PHASE_SWITCH) == {  # noqa: SLF001
+        "easee",
+        "goecharger_api2",
+        "goecharger_mqtt",
+        "lektrico",
+        "nrgkick",
+        "peblar",
+        "wattpilot",
+    }

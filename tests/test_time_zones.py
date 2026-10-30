@@ -16,13 +16,13 @@ from homeassistant.core import HomeAssistant
 from homeassistant.util import dt as dt_util
 
 from custom_components.spotnav import time_zones
+from custom_components.spotnav.pricing.area_catalogue import async_load_bundled
 from custom_components.spotnav.planning.price_wait import PUBLICATION_ZONE
 from custom_components.spotnav.pricing.market_day import display_day_span, market_day_of
 from custom_components.spotnav.pricing.price_refresh import in_publication_window, local_dates
-from custom_components.spotnav.pricing.price_repository import PriceRepository
 from custom_components.spotnav.pricing.relay_contract import DEFAULT_PUBLICATION
 
-from .relay import BASE_URL, Clock, StoreDouble, StubTransport, TODAY
+from .relay import stub_repository, Clock, StoreDouble, StubTransport, TODAY
 
 ZONES = ("Europe/Stockholm", "Europe/Berlin", "Europe/Copenhagen", "Europe/Oslo")
 
@@ -63,14 +63,15 @@ def test_the_fixed_zones_include_the_default_publication_clock() -> None:
     assert PUBLICATION_ZONE in time_zones.DEFAULT_ZONES
 
 
-async def test_a_fetched_catalogue_and_day_are_resolved_before_parsing(
+async def test_the_bundled_catalogue_and_a_fetched_day_are_resolved_before_parsing(
     hass: HomeAssistant, no_blocking_lookup: list[str]
 ) -> None:
     transport = StubTransport()
     transport.serve_area()
-    repository = PriceRepository(hass, base_url=BASE_URL, session=transport, now=Clock())
+    # The list is read as setup reads it, which resolves every zone it names off the loop.
+    repository = stub_repository(hass, transport, now=Clock(), bundled=await async_load_bundled(hass))
 
-    catalogue = await repository.async_get_catalogue()
+    catalogue = repository.catalogue_snapshot()
     day = await repository.async_get_day("SE4", TODAY)
 
     assert catalogue.state == "ready" and catalogue.catalogue is not None
@@ -93,8 +94,8 @@ async def test_a_restored_cache_is_resolved_before_it_is_parsed(
     transport = StubTransport()
     transport.serve_area()
     store = StoreDouble()
-    first = PriceRepository(hass, base_url=BASE_URL, session=transport, store=store, now=Clock())
-    await first.async_get_catalogue()
+    first = stub_repository(hass, transport, store=store, now=Clock(), bundled=await async_load_bundled(hass))
+    first.catalogue_snapshot()
     await first.async_get_day("SE4", TODAY)
     await hass.async_block_till_done()
     assert store.payload is not None
@@ -102,7 +103,9 @@ async def test_a_restored_cache_is_resolved_before_it_is_parsed(
     # A new process: nothing resolved, nothing fetched.
     time_zones.clear()
     idle = StubTransport()
-    restarted = PriceRepository(hass, base_url=BASE_URL, session=idle, store=StoreDouble(store.payload), now=Clock())
+    restarted = stub_repository(
+        hass, idle, store=StoreDouble(store.payload), now=Clock(), bundled=await async_load_bundled(hass)
+    )
     await restarted.async_restore()
 
     assert restarted.catalogue_snapshot().catalogue is not None
