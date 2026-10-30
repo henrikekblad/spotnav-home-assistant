@@ -49,7 +49,7 @@ from custom_components.spotnav.core.ownership import (
 )
 from custom_components.spotnav.core.session import CarEnded, CarEndedWait, ChargeSession, OWNERS, SCOPE_PLUG_IN
 from custom_components.spotnav.execution.controller import _CORE_OWNER_ORIGIN
-from custom_components.spotnav.execution.ownership_shadow import legacy_owner
+from custom_components.spotnav.core.migration import legacy_owner
 
 T0 = datetime(2026, 10, 4, 22, 0, tzinfo=timezone.utc)
 

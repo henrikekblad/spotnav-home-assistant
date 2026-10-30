@@ -50,9 +50,10 @@ async def test_bundle_has_every_section(hass: HomeAssistant) -> None:
     assert "dashboard" in section and "status" in section
     assert "plan" in section["dashboard"] and "strategy" in section["dashboard"]
     assert "commands" in section["diagnostics"]["controller"]["adapter"]
-    # Version 5: the ownership core's shadow, replayable as it is; version 6: its cumulative tally per event kind.
-    shadow = section["diagnostics"]["controller"]["ownership_shadow"]
-    assert shadow["counts"]["disagreements"] == 0 and shadow["events"]
+    # Version 5: the ownership core's events, replayable as they are; version 6: its cumulative tally per event kind;
+    # version 8: under `ownership`, the previous logic beside it gone.
+    shadow = section["diagnostics"]["controller"]["ownership"]
+    assert shadow["counts"]["failures"] == {} and shadow["events"]
     assert shadow["drives"] is True, "the core decides"
     assert shadow["coverage"]["kinds"]["restart"]["events"] >= 1 and shadow["coverage"]["version"]
     assert replay_bundle(json.loads(json.dumps(bundle)))[charger.entry_id].mismatches == ()

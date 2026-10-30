@@ -12,7 +12,6 @@ from typing import Any
 import pytest
 from homeassistant.core import HomeAssistant
 
-from custom_components.spotnav.execution import ownership_shadow
 from custom_components.spotnav.execution.controller import _CORE_OWNER_ORIGIN, SESSION_STORE_KEY
 from custom_components.spotnav.planning.auto_settings import STRATEGY_SOLAR
 from custom_components.spotnav.runtime import executor_for
@@ -68,40 +67,6 @@ async def test_the_suns_take_over_never_stops_a_charge_now_start_on_its_way(
     assert controller.charge_origin == "other"
     if drives:
         assert controller.ownership_shadow.session.owner == "charge_now"
-
-
-@pytest.mark.shadow_disagreement_expected
-async def test_the_owner_is_kept_as_the_core_decided_it_and_a_difference_is_mirror_drift(hass: HomeAssistant) -> None:
-    """Owned by the core (`OWNER`): the line-up never takes it from today's state; a difference is counted and told as
-    `mirror_drift` (not as drift), and the core's owner stays. Nobody's and the charger's own charge are one owner to
-    it: which of them it is is seen now, and taken from today's state with no mirror drift."""
-    from custom_components.spotnav.core import events as ev
-    from custom_components.spotnav.core.session import ChargeSession
-
-    today = {"session": ChargeSession(plugged=True, owner="person")}
-    heard: list[str] = []
-    ownership_shadow.LISTENERS.append(lambda kind, record: heard.append(kind))
-    try:
-        shadow = ownership_shadow.OwnershipShadow(lambda: today["session"], owned_fields=ownership_shadow.OWNER)
-        shadow.session = today["session"]
-        shadow.feed(ev.ConnectionUnknown())
-        assert heard == [] and shadow.counts["mirror_drift"] == 0
-        today["session"] = today["session"].with_changes(owner="solar")
-        shadow.feed(ev.ConnectionUnknown())
-        assert heard.count("mirror_drift") == 1 and "drift" not in heard
-        assert shadow.session.owner == "person", "never taken"
-        shadow.session = shadow.session.with_changes(owner="none")
-        today["session"] = today["session"].with_changes(owner="charger_self")
-        heard.clear()
-        shadow.feed(ev.ConnectionUnknown())
-        assert heard == [] and shadow.session.owner == "charger_self", "seen, not kept"
-        today["session"] = today["session"].with_changes(owner="none")
-        shadow.feed(ev.ConnectionUnknown())
-        assert heard == [] and shadow.session.owner == "none"
-    finally:
-        ownership_shadow.LISTENERS.pop()
-    (record,) = [item for item in shadow.diagnostics()["drift"] if item.get("mirror")]
-    assert record["fields"] == {"owner": {"core": "person", "today": "solar"}}
 
 
 # ---------------------------------------------------------------------------------------------- a bare charger
@@ -259,7 +224,6 @@ async def test_a_start_that_fails_in_the_middle_of_a_report_owns_nothing(
     await hass.async_block_till_done()
     assert _owner(world) == (None, False)
     shadow = controller.ownership_shadow
-    assert shadow.counts["mirror_drift"] == 0 and shadow.counts["disagreements"] == 0
     if drives:
         assert shadow.session.owner == "none" and not shadow.session.start_pending
     assert (await _stored(world))["charge_origin"] is None
@@ -307,7 +271,7 @@ async def test_an_owners_recording_replays_with_no_line_up(
     await world.executor.async_manual_stop()
     await hass.async_block_till_done()
     diagnostics = world.controller.ownership_shadow.diagnostics()
-    assert diagnostics["counts"]["disagreements"] == 0
+    assert diagnostics["counts"]["failures"] == {}
     bundle = json.loads(json.dumps(_bundle(diagnostics["events"]), default=str))
     alone = replay_bundle(bundle, line_up=False)["charger_a"]
     assert alone.events == len(diagnostics["events"]) and alone.skipped == 0

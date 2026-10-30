@@ -13,7 +13,6 @@ import pytest
 from homeassistant.core import HomeAssistant
 
 from custom_components.spotnav.core.session import ChargeSession
-from custom_components.spotnav.execution import ownership_shadow
 from custom_components.spotnav.execution.controller import SESSION_ORDER_KEY, SESSION_STORE_KEY
 
 from .helpers import install_schedule
@@ -357,33 +356,6 @@ async def test_todays_hold_key_is_read_where_the_keys_are_the_truth(
     assert (_session(restarted).held, _session(restarted).overridden) == (True, True)
     assert restarted.controller.hold_overridden and len(restarted.stops) == 1
     await restarted.shutdown()
-
-
-@pytest.mark.shadow_disagreement_expected
-async def test_the_holds_memory_is_kept_as_the_core_decided_it_and_a_difference_is_mirror_drift(
-    hass: HomeAssistant,
-) -> None:
-    """Owned by the core (`WINDOW_HOLD`): the line-up never takes it from today's state; a difference is counted and
-    told as `mirror_drift`, and the core's value stays."""
-    from custom_components.spotnav.core import events as ev
-
-    today = {"session": ChargeSession(plugged=True)}
-    heard: list[str] = []
-    ownership_shadow.LISTENERS.append(lambda kind, record: heard.append(kind))
-    try:
-        shadow = ownership_shadow.OwnershipShadow(lambda: today["session"], owned_fields=ownership_shadow.WINDOW_HOLD)
-        shadow.session = today["session"].with_changes(held=True, overridden=True)
-        today["session"] = today["session"].with_changes(held=True, overridden=True)
-        shadow.feed(ev.ConnectionUnknown())
-        assert heard == [] and shadow.counts["mirror_drift"] == 0
-        today["session"] = today["session"].with_changes(held=False, overridden=False)
-        shadow.feed(ev.ConnectionUnknown())
-    finally:
-        ownership_shadow.LISTENERS.pop()
-    assert heard == ["mirror_drift"] and shadow.counts["mirror_drift"] == 1
-    assert (shadow.session.held, shadow.session.overridden) == (True, True), "never taken"
-    (record,) = [item for item in shadow.diagnostics()["drift"] if item.get("mirror")]
-    assert set(record["fields"]) == {"held", "overridden"}
 
 
 async def test_a_held_plug_in_sessions_recording_replays_with_no_line_up(

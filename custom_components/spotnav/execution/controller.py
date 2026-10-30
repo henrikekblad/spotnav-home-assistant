@@ -156,19 +156,8 @@ from ..core.session import (
     STORED_VERSION,
 )
 from .ownership_coverage import OwnershipCoverage, STORE_VERSION as COVERAGE_STORE_VERSION, store_key as coverage_key
-from .ownership_shadow import (
-    CommandOutcome,
-    FIELD_OWNER,
-    legacy_intent,
-    legacy_owner,
-    BALANCING,
-    OWNER,
-    CAR_ENDED_AND_PLUG,
-    OwnershipShadow,
-    SAFETY_AND_C7,
-    ShadowToken,
-    WINDOW_HOLD,
-)
+from ..core.migration import car_ended_from_keys, legacy_intent, legacy_owner, migrate_from_keys
+from .ownership_shadow import CommandOutcome, OwnershipShadow, ShadowToken
 
 
 if TYPE_CHECKING:
@@ -558,22 +547,6 @@ def _validate_stored_amps(value: Any) -> int | None:
     return amps
 
 
-def _stored_car_ended_wait(raw: Any) -> dict[str, Any] | None:
-    """A stored car-ended wait (`ChargingController._car_ended_wait`), or `None` for anything that is not exactly one
-    (storage is untrusted)."""
-    if not isinstance(raw, dict):
-        return None
-    target = _safe_float(raw.get("target"))
-    level = raw.get("level")
-    level = None if level is None or isinstance(level, bool) else _safe_float(level)
-    estimated = raw.get("estimated")
-    if target is None or not 0.0 < target <= 100.0 or not isinstance(estimated, bool):
-        return None
-    if raw.get("level") is not None and level is None:
-        return None
-    return {"target": target, "level": level, "estimated": estimated}
-
-
 def _record_view(record: EndedRecord | None) -> CarEndedRecord:
     """The core's car-ended record as the controller reads it (`_car_ended`): nothing ended is all `None`."""
     if record is None:
@@ -872,10 +845,6 @@ class ChargingController:
         #: Who started the charge that is running (`manual`, `solar`, `plan_window`, `other`), for the
         #: grid-charging signal; `None` while unknown (a charger that started by itself).
         self._charge_origin: str | None = None
-        # When the core drives: the owner as today's `charge_origin` and `plan_charge` keys read it back, for the
-        # restart alone (`_restore_locked`), as `_balancing_read_back`. `None` at every other time: the session's
-        # owner is read then (`_core_owner`).
-        self._owner_read_back: tuple[str | None, bool] | None = None
         # When the core drives: the owner as today's two fields when readers were last told (`_notify`): a decision
         # that changes it after the feed's own `_notify` ran tells them again (`_owner_settled`).
         self._owner_told: tuple[str | None, bool] = (None, False)
@@ -984,11 +953,6 @@ class ChargingController:
         # want of headroom for the minimum current): any other stop or start clears it. Only the
         # battery probe reads it (`site/battery_probe.py`), to resume a charge balancing interrupted.
         self._paused_by_balancing = False
-        # When the core drives: load balancing's memory as today's `balancing_pause` key read it back, for a restart that
-        # migrates from today's keys alone (`_restore_locked`: no record of the core's own it can read, or an earlier
-        # build's whose order marks say the keys are newer). `None` at every other time, also at a restart from the
-        # core's record: the session is read then.
-        self._balancing_read_back: BalancingMemory | None = None
         # Whether the last start (`_start_locked`) was held back by load balancing for want of room below the floor:
         # what that start's result says (`balancing_held`), read where the start returns. Not ownership: an
         # observation of the start itself, so it reads the same whether or not the core keeps load balancing's memory.
@@ -1041,12 +1005,6 @@ class ChargingController:
         # drives, whether the charge is SpotNav's is the session's (`_spotnav_owned`), as are `held` and `overridden`
         # (`_hold_state`; the core end state plan, step 5).
         self._hold = WindowHold(owned=self._spotnav_owned if self._core_drives else None)
-        # When the core drives: the hold's memory as today's `hold` key read it back, for the restart alone
-        # (`_restore_locked`), as `_balancing_read_back`. `None` at every other time: the session is read then.
-        self._hold_read_back: HoldState | None = None
-        # When the core drives: the car-ended record as today's `car_ended_*` keys read it back, for the restart alone
-        # (`_restore_locked`), as `_balancing_read_back`. `None` at every other time: the session is read then.
-        self._car_ended_read_back: CarEndedRecord | None = None
         # Phase switching for solar (`phase_switching.py`): the charger's option (`CONF_PHASE_SWITCHING`, off unless its
         # entry data says true), what the switching of this plug-in has come to (persisted with the record), the timer
         # that gives up a switch the read-back never confirmed, and whether that was said in this plug-in.
@@ -1069,8 +1027,6 @@ class ChargingController:
         # A Repairs issue when the core's decisions keep failing while it drives (`OwnershipShadow.failed`).
         self._failure_repairs = CoreFailureRepairs(hass, entry_id, self._repairs_name)
         self._shadow = OwnershipShadow(
-            self._shadow_session,
-            drives=self._core_drives,
             persist=self._persist_session,
             settled=self._owner_settled,
             # What the core has seen per event kind, kept across restarts in a store of its own (read back at the
@@ -1078,14 +1034,8 @@ class ChargingController:
             coverage=OwnershipCoverage(store=Store(hass, COVERAGE_STORE_VERSION, coverage_key(entry_id))),
             name=entry_id,
             on_failure=self._failure_repairs.failed,
-            # The safety hold and C7's stops (the core end state plan, step 3), load balancing's memory (step 4), the
-            # hold's memory (step 5), the car-ended record and the connection (step 6) and the owner (step 7) are the
-            # core's when it drives: read from its session (`_safety`, `_c7`, `_balancing`, `_hold_state`,
-            # `_car_ended`, `_plugged`, `_owner_origin`, `_is_plan_charge`). With the option off, today's fields stay
-            # the truth, lined up as ever.
-            owned_fields=(*SAFETY_AND_C7, *BALANCING, *WINDOW_HOLD, *CAR_ENDED_AND_PLUG, *OWNER)
-            if self._core_drives
-            else (),
+            # The person intent the execution boundary keeps, which the session's must equal after the boundary wrote it.
+            intent=self._boundary_intent,
         )
 
     # One read path for ownership (the core end state plan, step 2). Every read and write of the owner, load
@@ -1097,9 +1047,6 @@ class ChargingController:
     def _core_owner(self) -> tuple[str | None, bool]:
         """When the core drives: the session's owner as today's two owner fields (`_CORE_OWNER_ORIGIN`: nobody's and
         the charger's own are `(None, False)`), or, during the restart alone, as today's keys read it back."""
-        read_back = self._owner_read_back
-        if read_back is not None:
-            return read_back
         return _CORE_OWNER_ORIGIN.get(owner_as_sent(self._shadow.session, self._command_unfed), (None, False))
 
     @property
@@ -1139,8 +1086,6 @@ class ChargingController:
         drives, the session's (step 4): only its decisions change it, and whose charge it was is today's origin and
         plan flag of the core's owner (`_CORE_OWNER_ORIGIN`; nobody's is `(None, False)`)."""
         if self._core_drives:
-            if self._balancing_read_back is not None:
-                return self._balancing_read_back
             session = self._shadow.session
             if not session.balancing_paused:
                 return BalancingMemory(paused=False, charge=None)
@@ -1211,8 +1156,6 @@ class ChargingController:
         session's (step 6): only its decisions change it (`CarEnded`, `CarLevelRead`, a plug-in, an unplug, a person's
         Start, a restart)."""
         if self._core_drives:
-            if self._car_ended_read_back is not None:
-                return self._car_ended_read_back
             return _record_view(self._shadow.session.car_ended)
         return CarEndedRecord(
             at=self._car_ended_at,
@@ -1239,9 +1182,6 @@ class ChargingController:
         (`_spotnav_owned`)."""
         hold = self._hold
         if self._core_drives:
-            read_back = self._hold_read_back
-            if read_back is not None:
-                return HoldState(held=read_back.held, overridden=read_back.overridden, owned=hold.owned)
             session = self._shadow.session
             return HoldState(held=session.held, overridden=session.overridden, owned=hold.owned)
         return HoldState(held=hold.held, overridden=hold.overridden, owned=hold.owned)
@@ -1310,48 +1250,19 @@ class ChargingController:
         # ownership half restored.
         await self._shadow.coverage.async_load(await self._integration_version())
         saved = await self._store.async_load()
-        # When the core drives, its own record is the truth and today's keys are not read into its session; they are
-        # read (`_*_read_back`) only to migrate: no record, one it cannot read, or an earlier build's saying the keys
-        # were written after it (`_stored_session`). With the option off, today's keys exactly, as ever.
-        session, migrate = self._stored_session(saved)
-        from_keys = self._core_drives and session is None
-        keys_ended: CarEndedRecord | None = None
+        # The core's own record is the truth. Today's keys are read only to migrate (`migrate_from_keys`): no record,
+        # one it cannot read, or an earlier build's saying the keys were written after it (`_stored_session`).
+        stored, migrate = self._stored_session(saved)
         if saved:
             if saved.get("plan"):
                 # Never a plain `ChargingPlan(**record)`: the record carries ownership, so it goes
                 # through the strict reader (`stored_plan`).
-                stored = stored_plan(saved["plan"])
-                if stored is None:
+                plan = stored_plan(saved["plan"])
+                if plan is None:
                     _LOGGER.warning("Discarding invalid saved SpotNav charging plan")
                 else:
-                    self.plan = stored
-            origin = saved.get("charge_origin")
-            read_back_owner = (origin if isinstance(origin, str) else None, saved.get("plan_charge") is True)
-            self._owner_origin, self._is_plan_charge = read_back_owner
-            if from_keys:
-                self._owner_read_back = read_back_owner
+                    self.plan = plan
             self._legacy_person_stopped = saved.get("person_stopped") is True
-            raw_car_ended = saved.get("car_ended_at")
-            parsed_car_ended = dt_util.parse_datetime(raw_car_ended) if isinstance(raw_car_ended, str) else None
-            ended_at = (
-                parsed_car_ended if parsed_car_ended is not None and parsed_car_ended.tzinfo is not None else None
-            )
-            ended_soc = saved.get("car_ended_soc")
-            ended_vehicle = saved.get("car_ended_vehicle")
-            read_back_ended = CarEndedRecord(
-                at=ended_at,
-                soc=(
-                    float(ended_soc)
-                    if ended_at is not None and isinstance(ended_soc, (int, float)) and not isinstance(ended_soc, bool)
-                    else None
-                ),
-                vehicle=ended_vehicle if isinstance(ended_vehicle, str) else None,
-                wait=_stored_car_ended_wait(saved.get("car_ended_wait")) if ended_at is not None else None,
-            )
-            self._car_ended = read_back_ended
-            keys_ended = read_back_ended
-            if from_keys:
-                self._car_ended_read_back = read_back_ended
             backoff = saved.get("solar_credit_backoff")
             if isinstance(backoff, dict):
                 until = backoff.get("until")
@@ -1390,82 +1301,57 @@ class ChargingController:
             self._top_off_until = (
                 parsed_top_off if parsed_top_off is not None and parsed_top_off.tzinfo is not None else None
             )
-            balancing = saved.get("balancing_pause")
-            if isinstance(balancing, dict):
-                origin = balancing.get("origin")
-                read_back = BalancingMemory(
-                    paused=True,
-                    charge=(origin if isinstance(origin, str) else None, balancing.get("plan_charge") is True),
-                )
-                self._balancing = read_back
-                if from_keys:
-                    self._balancing_read_back = read_back
-            hold = saved.get("hold")
-            if isinstance(hold, dict):
-                read_back_hold = replace(
-                    self._hold_state, held=hold.get("held") is True, overridden=hold.get("overridden") is True
-                )
-                self._hold_state = read_back_hold
-                if from_keys:
-                    self._hold_read_back = read_back_hold
             self.adapter.restore_memory(saved.get("adapter_memory"))
             # Forced to one phase by us before the restart: kept, until the charger's read-back says otherwise
             # (`reconcile_phases`).
             self._phases = PhaseSwitchState.from_store(saved.get(PHASE_SWITCHING_STORE_KEY))
             self._switched = SwitchedCurrent.from_store(saved.get(SWITCHED_CURRENT_STORE_KEY))
-        if from_keys:
-            # Migrated from today's keys: what they lack was nothing (not the session the controller began with).
-            if self._balancing_read_back is None:
-                self._balancing_read_back = BalancingMemory(paused=False, charge=None)
-            if self._hold_read_back is None:
-                self._hold_read_back = HoldState(held=False, overridden=False, owned=False)
-            if self._car_ended_read_back is None:
-                self._car_ended_read_back = _record_view(None)
-            if self._owner_read_back is None:
-                self._owner_read_back = (None, False)
-        # With the option off, or migrated: today's keys as read back. From the core's own record: set below, once the
-        # restart has read it.
-        self._saved_memory = self._memory_signature()
-        if session is not None:
-            session = self._car_ended_from_keys(saved, session, keys_ended)
-        # Migrated: the owner today's keys read back, in the core's words, which the session keeps if the restart
-        # cannot read today's state (`OwnershipShadow.restart`). From the core's own record, that record's.
-        keys_owner = None
-        if self._owner_read_back is not None:
-            keys_owner = legacy_owner(
-                origin=self._owner_read_back[0], top_off=False, charging=False, start_pending=False, stop_recent=False
+        session = (
+            migrate_from_keys(saved or {}) if stored is None else self._car_ended_from_keys(saved, stored)
+        )
+        # The core's session is what was read back, with the person intent the execution boundary keeps (the card shows
+        # it and the gate reads it) and whether the charger charges by itself, which is seen now, not stored.
+        manual, span = self._boundary_intent()
+        session = session.with_changes(manual=manual, span_pause=span)
+        if session.owner in (OWNER_NONE, OWNER_CHARGER_SELF):
+            session = session.with_changes(
+                owner=legacy_owner(
+                    origin=None,
+                    top_off=False,
+                    charging=self.charging,
+                    start_pending=self._shadow_start_pending(),
+                    stop_recent=self._shadow_stop_recent(),
+                )
             )
-        # The core's session is what was read back: its own record when it drives and one was read, else today's keys.
-        try:
-            self._shadow.restart(
-                core_events.Restart(
-                    legacy_person_stop=self._legacy_person_stopped and self._automatic_gate is not None
-                ),
-                session,
-                keys_owner=keys_owner,
-            )
-        finally:
-            # From here load balancing's memory, the hold's, the car-ended record and the owner are the session's alone.
-            self._balancing_read_back = None
-            self._hold_read_back = None
-            self._car_ended_read_back = None
-            self._owner_read_back = None
+        self._shadow.restart(
+            core_events.Restart(legacy_person_stop=self._legacy_person_stopped and self._automatic_gate is not None),
+            session,
+        )
         # Readers are told the owner the restart read back with everything else at the first `_notify`.
         self._owner_told = self._core_owner
-        if session is not None:
-            self._session_saved = session
-            self._saved_memory = self._memory_signature()
-        if migrate:
-            # Read from today's keys once: the core's own record is written now, beside them.
-            await self._async_save_quietly()
-        elif session is not None and self._keys_differ(saved):
-            # Today's keys on disk say otherwise than the record (an earlier build saved its record after them): written
-            # again, derived from it, so a rollback or the option off reads the same.
+        self._session_saved = stored
+        self._saved_memory = self._memory_signature()
+        if migrate or (stored is not None and self._keys_differ(saved)):
+            # Migrated from today's keys once (the core's own record is written now, beside them), or today's keys on
+            # disk say otherwise than the record (an earlier build saved its record after them): written again, derived
+            # from it, so a rollback reads the same.
             await self._async_save_quietly()
         await self._reschedule_locked()
         # Armed for the controller's whole life, not only while a plan is: a manual Start has no
         # plan, and a scheduled one is observed from acceptance.
         self._async_arm_progress_listener()
+
+    def _boundary_intent(self) -> tuple[Any, str | None]:
+        """The person intent the execution boundary keeps (`PauseIntent`), or a person's Stop an older release stored
+        that the boundary has not taken over yet, as the session's `manual` and `span_pause`."""
+        gate = self._automatic_gate
+        pause = None
+        if gate is not None:
+            try:
+                pause = getattr(gate, "pause_intent", None)
+            except Exception:  # noqa: BLE001 - an unreadable pause is read as none
+                pause = None
+        return legacy_intent(pause, gate is not None and self._legacy_person_stopped)
 
     @property
     def requested_current_a(self) -> int | None:
@@ -1831,8 +1717,6 @@ class ChargingController:
             self._shadow.end(
                 token,
                 core_events.PlugIn(previous=previous) if connected else core_events.Unplug(previous=previous),
-                fields=(FIELD_OWNER,),
-                defer_intent=True,
             )
 
     def _connection_changed(
@@ -1913,10 +1797,8 @@ class ChargingController:
         observer = self._connection_observer
         if observer is None:
             return
-        if self._core_drives and self._shadow.alone(own=1):
-            # Decided when the connection's feed began. Not while another feed is open (a person's Stop whose pause is
-            # being written): the connection is decided after it, and the boundary reads the core's session then.
-            self._core_connection_manual = self._shadow.session.manual
+        # Decided when the connection's feed began.
+        self._core_connection_manual = self._shadow.session.manual
         try:
             observer(previous, connected)
         except Exception:  # noqa: BLE001 - a failing observer must not stop the observation
@@ -2469,7 +2351,7 @@ class ChargingController:
         )
         note: dict[str, Any] = {"legacy": [], "outcome": None, "target": False}
         try:
-            verdict = self._core_window_start_verdict(trigger, facts)
+            verdict = self._core_window_start_verdict(trigger, facts, token)
             if verdict is not None:
                 return await self._core_plug_in_start(note, verdict, trigger=trigger)
             return await self._plug_in_start_body(note, trigger=trigger)
@@ -2523,7 +2405,7 @@ class ChargingController:
         return executed
 
     def _core_window_start_verdict(
-        self, trigger: str, facts: dict[str, Any] | None
+        self, trigger: str, facts: dict[str, Any] | None, token: ShadowToken
     ) -> frozenset[tuple[str, str]] | None:
         """When the core drives: its verdict on a window start, from the facts and the car-ended rule's (R3)."""
         if not self._core_drives or facts is None:
@@ -2534,7 +2416,7 @@ class ChargingController:
         except Exception as err:  # noqa: BLE001 - today's decision stands, not silently
             self._shadow.failed("window_start_facts", core_events.WindowStart.kind, err)
             return None
-        return self._shadow.verdict(event)
+        return self._shadow.verdict(event, token)
 
     async def _plug_in_start_body(self, note: dict[str, Any], *, trigger: str = core_events.TRIGGER_PLUG_IN) -> bool:
         if self._open_window_end() is None or self._target_stopping:
@@ -2611,7 +2493,7 @@ class ChargingController:
         try:
             handed_off = self._end_window_guard is not None and self._end_window_guard()
             stop = self._control_on and self._is_plan_charge and not self._hold_blocked() and not handed_off
-            verdict = None if facts is None else self._shadow.verdict(core_events.NeedMet(**facts))
+            verdict = None if facts is None else self._shadow.verdict(core_events.NeedMet(**facts), token)
             if verdict is not None:
                 stop = self._shadow.choose("need_met", stop, ("stop", "need_met") in verdict)
             _LOGGER.info(
@@ -3477,8 +3359,6 @@ class ChargingController:
                     core_events.PlugIn(previous=None)
                     if self._plugged
                     else core_events.Unplug(previous=None),
-                    fields=(FIELD_OWNER,),
-                    defer_intent=True,
                 )
         else:
             self._shadow.cancel(token)
@@ -3861,7 +3741,7 @@ class ChargingController:
             charging = self._shadow_facts(
                 lambda: {"charging": self.charging}, core_events.BalancingResume.kind, token=token
             )
-            note: dict[str, Any] = {"legacy": [], "outcome": None}
+            note: dict[str, Any] = {"legacy": [], "outcome": None, "token": token}
             try:
                 return await self._battery_probe_start_locked(amps, capped, note)
             finally:
@@ -3876,7 +3756,7 @@ class ChargingController:
     async def _battery_probe_start_locked(self, amps: int, capped: bool, note: dict[str, Any]) -> bool:
         """`async_battery_probe_start` itself, with the boundary's lock and the operation lock held."""
         origin, plan_charge = self._balancing.charge or (None, False)
-        verdict = self._shadow.verdict(core_events.BalancingResume(charging=self.charging))
+        verdict = self._shadow.verdict(core_events.BalancingResume(charging=self.charging), note["token"])
         if verdict is not None:
             # The core decides who may resume and when (the gate, a safety stop's gap).
             if self._shut_down or ("start", "balancing_resume") not in verdict:
@@ -5461,8 +5341,6 @@ class ChargingController:
         """When the core drives: its session as stored (`None`: none, or none it can read), and whether today's keys
         are to be migrated into its record (one is missing, of a version it does not know, or an earlier build's whose
         marks say today's keys were written after it). Off, `(None, False)`: today's restore exactly."""
-        if not self._core_drives:
-            return None, False
         raw = saved.get(SESSION_STORE_KEY) if saved else None
         if raw is None:
             return None, bool(saved)
@@ -5488,21 +5366,19 @@ class ChargingController:
             self._shadow.failed("stored_session", core_events.Restart.kind, err)
             return None, True
 
-    def _car_ended_from_keys(
-        self, saved: dict[str, Any] | None, stored: ChargeSession, keys: CarEndedRecord | None
-    ) -> ChargeSession:
+    def _car_ended_from_keys(self, saved: dict[str, Any] | None, stored: ChargeSession) -> ChargeSession:
         """The first restart after an upgrade from a version 1 record, which kept only when the car ended: today's
         `car_ended_*` keys, written beside it, hold the rest of that record (the level read then, the car, what the
         plan waits for). Taken from them when they are of the same end (their instant within `CLOCK_TOLERANCE_S` of
         the record's); a record of another end keeps only its instant, and the keys are not read for it."""
         raw = saved.get(SESSION_STORE_KEY) if saved else None
         record = stored.car_ended
-        if not isinstance(raw, dict) or raw.get("version") != 1 or record is None or keys is None or keys.at is None:
+        keys = car_ended_from_keys(saved or {})
+        if not isinstance(raw, dict) or raw.get("version") != 1 or record is None or keys is None:
             return stored
         if abs((keys.at - record.at).total_seconds()) > CLOCK_TOLERANCE_S:
             return stored
-        from_keys = _ended_record(replace(keys, at=record.at))
-        return stored.with_changes(car_ended=from_keys)
+        return stored.with_changes(car_ended=replace(keys, at=record.at))
 
     def _persist_session(self, session: ChargeSession) -> None:
         """The core decided (`OwnershipShadow`, only when it drives). A session whose stored record changed is saved
@@ -5628,7 +5504,7 @@ class ChargingController:
                 verdict = (
                     None
                     if facts is None
-                    else self._shadow.verdict(core_events.Rearm(past_last=True, top_off_resumes=False, **facts))
+                    else self._shadow.verdict(core_events.Rearm(past_last=True, top_off_resumes=False, **facts), token)
                 )
                 strays = self._plan_charge_strays() and self._automatic_permitted(AUTOMATIC_STOP)
                 if strays if verdict is None else self._shadow.choose("rearm_past_last", strays, ("stop", "stray") in verdict):
@@ -5687,7 +5563,7 @@ class ChargingController:
                     or self._hold_blocked()
                     or (self._end_window_guard is not None and self._end_window_guard())
                 )
-                verdict = None if facts is None else self._shadow.verdict(core_events.Rearm(past_last=False, **facts))
+                verdict = None if facts is None else self._shadow.verdict(core_events.Rearm(past_last=False, **facts), token)
                 if not spared if verdict is None else self._shadow.choose("rearm", not spared, ("stop", "rearm") in verdict):
                     was_charging = self.charging
                     generation = self._session_generation
@@ -5764,7 +5640,7 @@ class ChargingController:
         legacy: list[str] = []
         outcome: CommandOutcome | None = None
         try:
-            verdict = self._core_window_start_verdict(trigger, facts)
+            verdict = self._core_window_start_verdict(trigger, facts, token)
             if verdict is not None:
                 start = self._shadow.choose(
                     "window_start",
@@ -6390,7 +6266,7 @@ class ChargingController:
             legacy: list[str] = []
             outcome: CommandOutcome | None = None
             try:
-                verdict = self._shadow.verdict(event)
+                verdict = self._shadow.verdict(event, token)
                 spared = self._window_end_spared_owner()
                 stop = allowed and spared is None
                 if verdict is not None:
@@ -6541,7 +6417,7 @@ class ChargingController:
                 until = self._top_off_wanted()
                 spared = self._window_end_spared_owner()
                 stop = until is None and spared is None
-                verdict = self._shadow.verdict(core_events.FinalWindowEnd(top_off_wanted=until is not None))
+                verdict = self._shadow.verdict(core_events.FinalWindowEnd(top_off_wanted=until is not None), token)
                 if verdict is not None:
                     # The core decides: the last window's stop, a top-off, or a charge it leaves running.
                     stop = self._shadow.choose("final_window_end", stop, ("stop", "final_window_end") in verdict)
@@ -6674,7 +6550,7 @@ class ChargingController:
             if until is None or plan is None:
                 return
             token = self._shadow.begin()
-            note: dict[str, Any] = {"legacy": [], "outcome": None, "valid": False}
+            note: dict[str, Any] = {"legacy": [], "outcome": None, "valid": False, "token": token}
             try:
                 await self._end_top_off_locked(reason, allowed, until, plan, note)
             finally:
@@ -6707,7 +6583,7 @@ class ChargingController:
                 and self._car_drawing() is False
             )
         note["valid"] = valid
-        verdict = self._shadow.verdict(core_events.TopOffEnd(reason=reason, valid=valid))
+        verdict = self._shadow.verdict(core_events.TopOffEnd(reason=reason, valid=valid), note["token"])
         if verdict is None:
             if not (allowed and valid):
                 return
@@ -6872,7 +6748,7 @@ class ChargingController:
             if facts is not None and not self._core_drives:
                 # The car-ended rule's answer as today's own rule read it (nothing when it short-circuited first).
                 facts.update(self._shadow_take_car_facts())
-            verdict = None if facts is None else self._shadow.verdict(core_events.Recheck(what=what, **facts))
+            verdict = None if facts is None else self._shadow.verdict(core_events.Recheck(what=what, **facts), token)
             if verdict is not None:
                 due = self._shadow.choose(f"recheck_{what}", due, (command, what) in verdict)
             if not due:
@@ -6969,7 +6845,7 @@ class ChargingController:
                 if isinstance(event, core_events.ChargerReportedOn):
                     self._car_ended_holds_window()
                     event = replace(event, **self._shadow_car_facts.facts())
-                self._core_report_verdict = self._core_hold_verdict = self._shadow.verdict(event)
+                self._core_report_verdict = self._core_hold_verdict = self._shadow.verdict(event, token)
             except Exception as err:  # noqa: BLE001 - today's decision stands, not silently
                 self._shadow.failed("report_facts", event.kind, err, token=token)
                 self._core_report_verdict = self._core_hold_verdict = None
@@ -7007,7 +6883,7 @@ class ChargingController:
         previous = self._shadow_decisions
         self._shadow_decisions = []
         if facts is not None:
-            self._core_hold_verdict = self._shadow.verdict(core_events.Timer(**facts))
+            self._core_hold_verdict = self._shadow.verdict(core_events.Timer(**facts), token)
         try:
             self._observe_person_hold()
         finally:
@@ -7015,51 +6891,6 @@ class ChargingController:
             decisions = self._shadow_decisions or []
             self._shadow_decisions = previous
             self._shadow_end_event(token, facts, lambda: core_events.Timer(**facts), legacy=decisions)
-
-    def _shadow_session(self) -> ChargeSession:
-        """Today's ownership and person intent, read as the core's session (`ownership_shadow.legacy_session`)."""
-        gate = self._automatic_gate
-        pause = None
-        if gate is not None:
-            try:
-                pause = getattr(gate, "pause_intent", None)
-            except Exception:  # noqa: BLE001 - an unreadable pause is read as none
-                pause = None
-        manual, span = legacy_intent(pause, gate is not None and self._legacy_person_stopped)
-        top_off = self.top_off_until is not None
-        paused = self._balancing.charge if self._balancing.paused else None
-        paused_origin: str | None = None
-        if paused is not None and paused[0] is not None:
-            owner = legacy_owner(origin=paused[0], top_off=top_off, charging=False, start_pending=False, stop_recent=False)
-            paused_origin = None if owner == "none" else owner
-        return ChargeSession(
-            plugged=self._plugged,
-            owner=legacy_owner(
-                origin=self._owner_origin,
-                top_off=top_off,
-                charging=self.charging,
-                start_pending=self._shadow_start_pending(),
-                stop_recent=self._shadow_stop_recent(),
-            ),
-            manual=manual,
-            span_pause=span,
-            held=self._hold_state.held,
-            overridden=self._hold_state.overridden,
-            car_ended=_ended_record(self._car_ended),
-            balancing_paused=self._balancing.paused,
-            paused_origin=paused_origin,
-            held_for_safety=self._safety.held,
-            safety_stopped_at=self._safety.stopped_at,
-            hold_stop_times=tuple(self._c7.stop_times),
-            hold_tried_at=self._c7.tried_at,
-            hold_gave_up=self._c7.gave_up,
-            hold_stop_pending=self._c7.stop_pending,
-            # The core's own when it drives; today's: the hold counts the charge SpotNav's though nobody here owns it
-            # (only a balancing resume of the charger's own charge does that: every other start names its owner).
-            spotnav_resumed=self._shadow.session.spotnav_resumed
-            if self._core_drives
-            else self._hold_state.owned and self._owner_origin is None,
-        )
 
     def _async_spawn(self, work: Any, what: str) -> None:
         """Run one decision a timer or a report made, as a task whose failure is logged, not raised into

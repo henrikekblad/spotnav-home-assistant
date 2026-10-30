@@ -13,7 +13,6 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 
 from custom_components.spotnav.core.session import ChargeSession
-from custom_components.spotnav.execution import ownership_shadow
 from custom_components.spotnav.execution.controller import SESSION_ORDER_KEY, SESSION_STORE_KEY
 from custom_components.spotnav.planning.auto_settings import PAUSE_UNTIL_RESUMED
 
@@ -161,35 +160,6 @@ async def test_a_start_held_back_below_the_floor_is_told_by_its_own_outcome(
     await world.executor.async_manual_start(10)
     assert not controller.start_held_by_balancing and not controller.paused_by_balancing
     await world.shutdown()
-
-
-@pytest.mark.shadow_disagreement_expected
-async def test_load_balancings_memory_is_kept_as_the_core_decided_it_and_a_difference_is_mirror_drift(
-    hass: HomeAssistant,
-) -> None:
-    """Owned by the core (`BALANCING`): the line-up never takes it from today's state; a difference is counted and
-    told as `mirror_drift`, and the core's value stays."""
-    from custom_components.spotnav.core import events as ev
-
-    today = {"session": ChargeSession(plugged=True)}
-    heard: list[str] = []
-    ownership_shadow.LISTENERS.append(lambda kind, record: heard.append(kind))
-    try:
-        shadow = ownership_shadow.OwnershipShadow(
-            lambda: today["session"], owned_fields=(*ownership_shadow.SAFETY_AND_C7, *ownership_shadow.BALANCING)
-        )
-        shadow.session = today["session"].with_changes(balancing_paused=True, paused_origin="person")
-        today["session"] = today["session"].with_changes(balancing_paused=True, paused_origin="person")
-        shadow.feed(ev.ConnectionUnknown())
-        assert heard == [] and shadow.counts["mirror_drift"] == 0
-        today["session"] = today["session"].with_changes(balancing_paused=False, paused_origin=None)
-        shadow.feed(ev.ConnectionUnknown())
-    finally:
-        ownership_shadow.LISTENERS.pop()
-    assert heard == ["mirror_drift"] and shadow.counts["mirror_drift"] == 1
-    assert (shadow.session.balancing_paused, shadow.session.paused_origin) == (True, "person"), "never taken"
-    (record,) = [item for item in shadow.diagnostics()["drift"] if item.get("mirror")]
-    assert set(record["fields"]) == {"balancing_paused", "paused_origin"}
 
 
 async def _replugged(world: World, control: str) -> None:

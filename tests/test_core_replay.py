@@ -1,10 +1,10 @@
-"""The charge-ownership core's shadow (`execution/ownership_shadow.py`) and the replay of what it recorded
-(`core/replay.py`): a synthetic debug bundle, a real charger's recording, and the shadow's own guarantees (bounded,
-never raising into the real path, a disagreement reported)."""
+"""The charge-ownership core's runner (`execution/ownership_shadow.py`) and the replay of what it recorded
+(`core/replay.py`): a synthetic debug bundle, a real charger's recording, and the runner's own guarantees (bounded,
+never raising into the controller, a failure deciding nothing)."""
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 import json
 
 import pytest
@@ -16,7 +16,6 @@ from custom_components.spotnav.core.session import ChargeSession, ManualPause
 from custom_components.spotnav.execution import ownership_shadow
 from custom_components.spotnav.execution.ownership_shadow import (
     CommandOutcome,
-    DISAGREEMENT_RING,
     EVENT_RING,
     OwnershipShadow,
 )
@@ -232,7 +231,7 @@ async def test_a_real_chargers_recording_replays_without_a_difference(
     await world.plug.set(False)
     await hass.async_block_till_done()
     diagnostics = world.controller.ownership_shadow.diagnostics()
-    assert diagnostics["counts"]["events"] > 5 and diagnostics["counts"]["disagreements"] == 0
+    assert diagnostics["counts"]["events"] > 5 and diagnostics["counts"]["failures"] == {}
     bundle = json.loads(json.dumps(_bundle(diagnostics["events"]), default=str))
     report = replay_bundle(bundle)["charger_a"]
     assert report.events == len(diagnostics["events"])
@@ -244,102 +243,70 @@ async def test_a_real_chargers_recording_replays_without_a_difference(
     await world.shutdown()
 
 
-# ---------------------------------------------------------------------------------------------- the shadow itself
+# ---------------------------------------------------------------------------------------------- the runner itself
 
 
-@pytest.mark.shadow_disagreement_expected
-async def test_a_disagreement_is_reported_and_kept_with_the_events_before_it(hass: HomeAssistant) -> None:
-    today = ChargeSession(owner="plan")
+@pytest.mark.core_failure_expected
+async def test_a_core_that_raises_decides_nothing_and_the_runner_stays_bounded(hass: HomeAssistant, monkeypatch) -> None:
+    """The core raising for an event is a failure: the session is left as it was, nothing is decided for it, and the
+    runner never raises; its event ring stays bounded."""
     heard: list[str] = []
     ownership_shadow.LISTENERS.append(lambda kind, record: heard.append(kind))
     try:
-        shadow = OwnershipShadow(lambda: today, now=lambda: datetime(2026, 10, 4, 22, tzinfo=timezone.utc))
-        shadow.session = today
+        shadow = OwnershipShadow(now=lambda: datetime(2026, 10, 4, 22, tzinfo=timezone.utc))
+        shadow.session = ChargeSession(owner="plan")
+        real = ownership_shadow.decide
+
+        def broken(session, event, now):
+            if event.kind == "window_end":
+                raise RuntimeError("the core raised")
+            return real(session, event, now)
+
+        monkeypatch.setattr(ownership_shadow, "decide", broken)
         token = shadow.begin()
-        # Today's code says it stopped, but its owner stays the plan's: the core says nobody's.
-        shadow.end(token, ev.WindowEnd(), legacy=("stop",), outcome=CommandOutcome(True))
+        assert shadow.verdict(ev.WindowEnd(), token) is None
+        shadow.end(token, ev.WindowEnd())
     finally:
         ownership_shadow.LISTENERS.pop()
-    assert heard == ["disagreement"]
-    (disagreement,) = shadow.diagnostics()["disagreements"]
-    assert disagreement["where"] == "window_end"
-    assert disagreement["fields"] == {"owner": {"core": "none", "today": "plan"}}
-    assert disagreement["events"][-1]["event"]["kind"] == "window_end"
-    assert shadow.session.owner == "plan", "today's state stays the truth"
-
-
-@pytest.mark.shadow_disagreement_expected
-async def test_the_shadow_never_raises_into_the_real_path_and_stays_bounded(hass: HomeAssistant) -> None:
-    def broken() -> ChargeSession:
-        raise RuntimeError("today's state could not be read")
-
-    shadow = OwnershipShadow(broken)
-    shadow.feed(ev.WindowEnd())
-    assert shadow.counts["errors"] >= 1
-    today = ChargeSession(owner="plan")
-    shadow = OwnershipShadow(lambda: today)
+    assert heard[:1] == ["error"] and "failure" in heard
+    assert shadow.session.owner == "plan", "the session is left as it was"
+    assert shadow.counts["failures"] == {"decide_early/window_end": 1}
+    monkeypatch.setattr(ownership_shadow, "decide", real)
+    shadow = OwnershipShadow()
+    shadow.session = ChargeSession(owner="plan")
     for _ in range(EVENT_RING + 50):
-        shadow.end(shadow.begin(), ev.WindowEnd(), legacy=("stop",), outcome=CommandOutcome(True))
+        shadow.session = ChargeSession(owner="plan")
+        shadow.end(shadow.begin(), ev.WindowEnd(), outcome=CommandOutcome(True))
     diagnostics = shadow.diagnostics()
     assert len(diagnostics["events"]) == EVENT_RING
-    assert len(diagnostics["disagreements"]) == DISAGREEMENT_RING
-    assert diagnostics["counts"]["disagreements"] == EVENT_RING + 50
+    assert diagnostics["counts"]["events"] == EVENT_RING + 50
     json.dumps(diagnostics)
 
 
-@pytest.mark.shadow_disagreement_expected
-async def test_an_owned_field_is_kept_as_the_core_decided_it_and_a_difference_is_mirror_drift(
-    hass: HomeAssistant,
-) -> None:
-    """The fields the core owns (`owned_fields`) are not lined up from today's state: a difference there is counted
-    and told as `mirror_drift`, and the core's value stays. An instant read off two clocks is no difference."""
-    at = datetime(2026, 10, 4, 22, tzinfo=timezone.utc)
-    today = {"session": ChargeSession(plugged=True, manual=ManualPause("stop", "plug_in"))}
-    heard: list[str] = []
-    ownership_shadow.LISTENERS.append(lambda kind, record: heard.append(kind))
-    try:
-        shadow = OwnershipShadow(
-            lambda: today["session"], now=lambda: at, owned_fields=ownership_shadow.SAFETY_AND_C7
-        )
-        shadow.session = today["session"].with_changes(hold_stop_times=(at,), hold_tried_at=at)
-        today["session"] = today["session"].with_changes(
-            hold_stop_times=(at + timedelta(seconds=1),), hold_tried_at=at + timedelta(seconds=1)
-        )
-        shadow.feed(ev.ConnectionUnknown())
-        assert heard == [] and shadow.counts["mirror_drift"] == 0
-        today["session"] = today["session"].with_changes(hold_gave_up=True, held_for_safety=True)
-        shadow.feed(ev.ConnectionUnknown())
-    finally:
-        ownership_shadow.LISTENERS.pop()
-    assert heard == ["mirror_drift"] and shadow.counts["mirror_drift"] == 1
-    assert not shadow.session.hold_gave_up and not shadow.session.held_for_safety, "never taken"
-    assert shadow.session.hold_stop_times == (at,), "the core's own, kept"
-    (record,) = [item for item in shadow.diagnostics()["drift"] if item.get("mirror")]
-    assert set(record["fields"]) == {"hold_gave_up", "held_for_safety"}
-    json.dumps(shadow.diagnostics())
-
-
-async def test_a_feed_inside_another_is_decided_after_it(hass: HomeAssistant) -> None:
-    """A report that lands while a person's Start awaits its command is decided after the Start."""
-    state = {"session": ChargeSession(plugged=True, manual=ManualPause("stop", "plug_in"))}
-    shadow = OwnershipShadow(lambda: state["session"])
-    shadow.session = state["session"]
-    outer = shadow.begin()
+async def test_a_feed_inside_another_is_decided_when_it_happens(hass: HomeAssistant) -> None:
+    """A report that lands while a person's Start awaits its command is decided at once, with the Start's command in
+    flight in the session; the Start's result comes back where its feed ends."""
+    shadow = OwnershipShadow()
+    shadow.session = ChargeSession(plugged=True, manual=ManualPause("stop", "plug_in"))
+    outer = shadow.begin(early=ev.PersonStart(connected=True))
+    assert shadow.session.start_pending
     inner = shadow.begin()
-    shadow.end(inner, ev.ChargerReportedOn(charging=True, was_on=True), legacy=("stop",))
-    state["session"] = ChargeSession(plugged=True, owner="person", manual=ManualPause("start", "plug_in"))
-    shadow.end(outer, ev.PersonStart(connected=True), legacy=("start",), outcome=CommandOutcome(True))
+    assert shadow.verdict(ev.ChargerReportedOn(charging=True, was_on=True), inner) == frozenset(), (
+        "a start of ours on its way: nothing is stopped"
+    )
+    shadow.end(inner, ev.ChargerReportedOn(charging=True, was_on=True))
+    assert shadow.counts["quiet"] == 1, "a report that decided nothing is not kept"
+    shadow.end(outer, ev.PersonStart(connected=True), outcome=CommandOutcome(True))
     events = shadow.diagnostics()["events"]
-    assert [record["event"]["kind"] for record in events] == ["person_start", "charger_reported_on"]
-    assert events[1]["queued"] and events[1]["core"] == []
-    assert shadow.counts["disagreements"] == 0
+    assert [record["event"]["kind"] for record in events] == ["person_start"]
+    assert shadow.session.owner == "person" and not shadow.session.start_pending
 
 
 async def test_a_connection_read_that_raises_at_start_up_leaves_no_feed_open(
     hass: HomeAssistant, timers: FakeScheduler
 ) -> None:
     """The first connection read after a restart is taken before the shadow's feed opens: one that raises leaves
-    nothing open behind it, so later feeds are still compared."""
+    nothing open behind it, so later feeds are still decided and saved."""
     world = await pause_world(hass, timers, plan=two_windows())
     controller = world.controller
     shadow = controller.ownership_shadow
@@ -360,9 +327,9 @@ async def test_a_connection_read_that_raises_at_start_up_leaves_no_feed_open(
     if leftover is not None:
         leftover()
     controller._progress_listener_cancel = cancel  # noqa: SLF001
-    compared = shadow.counts["compared"]
+    events = shadow.counts["events"]
     await world.executor.async_manual_stop()
-    assert shadow.counts["compared"] > compared
+    assert shadow.counts["events"] > events
     await world.shutdown()
 
 
@@ -384,23 +351,7 @@ async def test_a_report_that_decides_nothing_keeps_the_plug_in_and_the_persons_a
     kinds = [record["event"]["kind"] for record in shadow.diagnostics()["events"]]
     assert "plug_in" in kinds and "person_stop" in kinds, kinds
     assert shadow.counts["quiet"] >= EVENT_RING
-    assert shadow.counts["disagreements"] == 0
     bundle = json.loads(json.dumps(_bundle(shadow.diagnostics()["events"]), default=str))
     assert replay_bundle(bundle)["charger_a"].mismatches == ()
     assert replay_bundle(bundle, line_up=False)["charger_a"].real == ()
     await world.shutdown()
-
-
-@pytest.mark.shadow_disagreement_expected
-async def test_a_quiet_report_a_disagreement_comes_of_is_kept(hass: HomeAssistant) -> None:
-    state = {"session": ChargeSession(plugged=True)}
-    shadow = OwnershipShadow(lambda: state["session"], now=lambda: datetime(2026, 10, 4, 22, tzinfo=timezone.utc))
-    shadow.session = state["session"]
-    shadow.feed(ev.ChargerReportedOff(notified=False))
-    assert shadow.counts["quiet"] == 1 and not shadow.diagnostics()["events"]
-    token = shadow.begin()
-    state["session"] = ChargeSession(plugged=True, owner="plan")
-    shadow.end(token, ev.ChargerReportedOff(notified=False))
-    (disagreement,) = shadow.diagnostics()["disagreements"]
-    assert [record["event"]["kind"] for record in disagreement["events"]] == ["charger_reported_off"]
-    assert len(shadow.diagnostics()["events"]) == 1

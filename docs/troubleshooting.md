@@ -14,7 +14,7 @@ public GitHub issue: open the issue with the **bug report** form, then email the
 **support@sensnology.se** with the issue's number in the subject.
 
 The site entry's file (and the card's **Download debug info** in Settings, Support, for
-administrators) also carries the whole installation as one debug bundle (`bundle_version` 8). It keeps
+administrators) also carries the whole installation as one debug bundle (`bundle_version` 9). It keeps
 the last day, also across restarts and updates: what it holds below is stored by SpotNav (written at
 most every five minutes and when Home Assistant stops) and read back after a restart, so a bundle
 downloaded in the evening still shows the afternoon. Nothing is read from the recorder.

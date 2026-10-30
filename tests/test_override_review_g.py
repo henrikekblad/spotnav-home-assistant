@@ -54,7 +54,7 @@ def mode(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) -> boo
     return request.param
 
 
-@pytest.mark.shadow_disagreement_expected
+@pytest.mark.core_failure_expected
 async def test_rev_g_suns_charge_survives_a_real_ha_restart(
     hass: HomeAssistant, timers: FakeScheduler, mode: bool
 ) -> None:

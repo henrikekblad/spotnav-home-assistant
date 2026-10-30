@@ -45,7 +45,6 @@ async def test_a_plan_charge_that_pauses_and_resumes_in_its_window_is_the_plans_
     await world.fire("_async_end_callback")
     assert len(world.stops) == stops + 1 and not controller.charging, "the window's end stops it as ever"
     assert _owner(controller)[2] == "none"
-    assert controller.ownership_shadow.counts["disagreements"] == 0
     await world.shutdown()
 
 
@@ -113,4 +112,3 @@ async def test_hybrid_a_charge_resumed_inside_a_window_is_not_taken_over_by_the_
     assert controller.charging
     assert coordinator.state is not None and coordinator.state.held_by_plan is True
     assert _owner(controller) == ("plan_window", True, "plan"), "claimed by the window, not left as nobody's"
-    assert controller.ownership_shadow.counts["disagreements"] == 0

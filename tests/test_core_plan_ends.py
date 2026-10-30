@@ -32,7 +32,7 @@ def drives(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) -> b
 def _agrees(car: Car, drives: bool) -> None:
     shadow = car.controller.ownership_shadow
     assert shadow.drives is drives
-    assert shadow.counts["disagreements"] == 0 and shadow.counts["errors"] == 0
+    assert shadow.counts["errors"] == 0
 
 
 async def _at(car: Car, frozen: Any, delta: timedelta) -> None:

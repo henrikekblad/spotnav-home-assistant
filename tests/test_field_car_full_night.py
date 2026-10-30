@@ -149,4 +149,4 @@ async def test_the_car_full_at_its_limit_ends_the_plan_and_nothing_more_is_plann
     assert preview.snapshot().state == "nothing_to_charge"
     assert len(night.refreshed) == asked
     shadow = controller._shadow.diagnostics()["coverage"]["kinds"]  # noqa: SLF001 - what the field report shows
-    assert shadow["car_ended"]["compared"] == 1 and shadow["target_reached"]["compared"] == 1
+    assert shadow["car_ended"]["events"] == 1 and shadow["target_reached"]["events"] == 1

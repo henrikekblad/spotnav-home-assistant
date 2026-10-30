@@ -189,10 +189,10 @@ async def test_todays_keys_are_migrated_once_into_the_cores_record(
     assert len(reads) == read + 1 and _but_the_plug(reads[-1]) == _but_the_plug(ChargeSession.from_store(stored))
     assert not [record for record in saves[before:] if record.get(SESSION_STORE_KEY, {}).get("plugged") is None]
     assert _intent(again) == (MANUAL_STOP, MANUAL_SCOPE_PLUG_IN)
-    assert again.controller.ownership_shadow.counts["disagreements"] == 0
     await again.shutdown()
 
 
+@pytest.mark.core_failure_expected  # a record it cannot read is a failure, told
 @pytest.mark.usefixtures("drives")
 @pytest.mark.parametrize("record", [{"version": 99, "owner": "plan"}, "garbled", {"version": 1}])
 @pytest.mark.usefixtures("both_restarts")
@@ -212,7 +212,6 @@ async def test_a_record_of_an_unknown_version_falls_back_to_todays_keys(
     assert stored["version"] == STORED_VERSION, "written again in the version the core knows"
     assert _but_the_plug(ChargeSession.from_store(stored)) == _but_the_plug(restarted.controller.ownership_shadow.session)
     assert _intent(restarted) == (MANUAL_STOP, MANUAL_SCOPE_PLUG_IN), "from today's keys and the stored pause"
-    assert restarted.controller.ownership_shadow.counts["disagreements"] == 0
     await restarted.shutdown()
 
 
@@ -264,7 +263,6 @@ async def test_a_restart_with_a_persons_stop_for_the_plug_in_reads_it_from_the_r
 
     await restarted.plug.set(False)
     assert _intent(restarted) == (None, None) and restarted.pause.choice != "manual"
-    assert restarted.controller.ownership_shadow.counts["disagreements"] == 0
     await restarted.shutdown()
 
 
@@ -286,7 +284,6 @@ async def test_a_restart_with_a_persons_stop_for_the_next_plug_in_reads_it_from_
     assert restarted.pause.scope == MANUAL_SCOPE_PLUG_IN
     await restarted.plug.set(False)
     assert _intent(restarted) == (None, None)
-    assert restarted.controller.ownership_shadow.counts["disagreements"] == 0
     await restarted.shutdown()
 
 
@@ -311,7 +308,6 @@ async def test_a_restart_with_a_persons_start_reads_it_from_the_record(
 
     await restarted.plug.set(False)
     assert _intent(restarted) == (None, None)
-    assert restarted.controller.ownership_shadow.counts["disagreements"] == 0
     await restarted.shutdown()
 
 
@@ -556,7 +552,6 @@ async def test_a_crash_between_a_persons_starts_save_and_its_pause_leaves_the_ch
     await hass.async_block_till_done()
     assert hass.states.get(SWITCH).state == "on", "the window's end does not stop the person's charge"
     assert shadow.session.owner == "person" and restarted.controller.charge_origin == "manual"
-    assert shadow.counts["verdict_differs"] == 1, "today's code would take it over at the window's start"
     await restarted.shutdown()
 
 
@@ -578,7 +573,7 @@ async def test_a_storm_of_reports_that_change_nothing_writes_nothing(
     await world.shutdown()
 
 
-@pytest.mark.shadow_disagreement_expected  # the record's owner against today's keys, compared at the restart
+@pytest.mark.core_failure_expected  # the record's owner against today's keys, compared at the restart
 @pytest.mark.usefixtures("drives", "both_restarts")
 @pytest.mark.parametrize("marks", ["none", "record_newer", "keys_newer"])
 async def test_at_a_restart_the_record_alone_is_read_but_for_an_earlier_builds_keys_written_after_it(
@@ -651,7 +646,6 @@ async def test_an_update_during_a_running_plan_charge_hands_it_to_the_core(
     await restarted.fire("_async_end_callback")
     assert len(world.stops) == stops + 1 and not controller.charging, "the window's end stops it"
     assert shadow.session.owner == "none"
-    assert shadow.counts["disagreements"] == 0
     await restarted.shutdown()
 
 
@@ -677,10 +671,8 @@ async def test_an_update_during_a_solar_charge_hands_it_to_the_core(
     hass.states.async_set(SWITCH, "on", {"report": "after the update"})
     await hass.async_block_till_done()
     assert len(world.stops) == stops and controller.charge_origin == "solar", "the sun's charge is spared"
-    assert controller.ownership_shadow.counts["disagreements"] == 0
 
     again = await restarted.restart()
     assert reads and reads[-1].owner == "solar", "read from the core's own record now"
     assert again.controller.charge_origin == "solar" and len(world.stops) == stops
-    assert again.controller.ownership_shadow.counts["disagreements"] == 0
     await again.shutdown()

@@ -41,7 +41,7 @@ def chargers_of(bundle: dict[str, Any]) -> list[dict[str, Any]]:
 
 def shadow_of(charger: dict[str, Any]) -> dict[str, Any] | None:
     controller = (charger.get("diagnostics") or {}).get("controller")
-    shadow = controller.get("ownership_shadow") if isinstance(controller, dict) else None
+    shadow = (controller.get("ownership") or controller.get("ownership_shadow")) if isinstance(controller, dict) else None
     return shadow if isinstance(shadow, dict) else None
 
 

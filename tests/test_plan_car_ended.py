@@ -147,8 +147,8 @@ async def test_the_night_of_10_october_the_car_full_by_the_estimate_ends_the_pla
     assert controller.completion_record is not None and controller.completion_record["reason"] == "vehicle_full"
     assert controller.car_ended_at is not None
     assert told == [("ev6", True)]
-    assert _coverage(controller, "car_ended")["compared"] == 1
-    assert _coverage(controller, "target_reached")["compared"] == 1
+    assert _coverage(controller, "car_ended")["events"] == 1
+    assert _coverage(controller, "target_reached")["events"] == 1
     await _later(hass, freezer, 4 * 3600)
     assert halo.calls == ["turn_on", "turn_off"], "no later window starts the full car again"
     await controller.async_shutdown()
@@ -177,7 +177,7 @@ async def test_a_car_that_ended_the_charge_short_of_full_keeps_the_plan(hass: Ho
     assert controller.target_stop_record is None
     assert controller.car_ended_at is not None
     assert told == [("ev6", False)]
-    assert _coverage(controller, "car_ended")["compared"] == 1
+    assert _coverage(controller, "car_ended")["events"] == 1
     assert _coverage(controller, "target_reached")["events"] == 0
     await _later(hass, freezer, 30 * 60)
     assert told == [("ev6", False)], "told once"
@@ -205,7 +205,7 @@ async def test_a_manual_amount_to_the_cars_limit_the_car_ended_full_is_a_met_nee
     assert controller.plan is None and halo.stops == 1
     assert controller.completion_record is not None and controller.completion_record["reason"] == "vehicle_full"
     assert told == [(None, True)]
-    assert _coverage(controller, "need_met")["compared"] == 1
+    assert _coverage(controller, "need_met")["events"] == 1
     await controller.async_shutdown()
 
 

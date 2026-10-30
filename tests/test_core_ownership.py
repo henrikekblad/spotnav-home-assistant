@@ -1580,7 +1580,7 @@ def test_a_top_off_is_the_plans_charge_past_the_last_window() -> None:
     for owner in ("person", "solar", "charge_now", "min_soc", "charger_self", "none"):
         session, commands = run(PLUGGED.with_changes(owner=owner), ev.FinalWindowEnd(top_off_wanted=True))
         assert session.owner != "top_off", owner
-    from custom_components.spotnav.execution.ownership_shadow import legacy_owner
+    from custom_components.spotnav.core.migration import legacy_owner
 
     unseen = {"charging": False, "start_pending": False, "stop_recent": False}
     assert legacy_owner(origin="plan_window", top_off=True, **unseen) == "top_off"

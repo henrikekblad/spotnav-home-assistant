@@ -195,20 +195,19 @@ async def test_the_holds_stop_is_sent_and_its_result_comes_back_to_the_core(
     assert len(world.stops) == stops + 1
     rechecks = _records(world, "recheck")
     assert rechecks and rechecks[-1]["event"]["what"] == "hold"
-    assert rechecks[-1]["core"] == [{"kind": "stop", "reason": "hold"}] and rechecks[-1]["today"] == ["stop"]
+    assert rechecks[-1]["core"] == [{"kind": "stop", "reason": "hold"}]
     assert rechecks[-1]["result"]["command"] == "stop" and rechecks[-1]["result"]["executed"] is True
     shadow = world.controller.ownership_shadow
-    assert shadow.session.pending == () and shadow.counts["disagreements"] == 0
+    assert shadow.session.pending == ()
     await world.shutdown()
 
 
-@pytest.mark.shadow_disagreement_expected
+@pytest.mark.core_failure_expected
 @pytest.mark.parametrize(("drives", "stopped"), [(True, False)])
 async def test_the_holds_task_acts_on_the_cores_recheck_when_it_drives(
     hass: HomeAssistant, timers: FakeScheduler, monkeypatch, drives: bool, stopped: bool
 ) -> None:
-    """A core whose re-check finds the hold's stop no longer due: driving, the task sends nothing (today's rule would
-    have, counted as `verdict_differs`); shadowing, today's rule stops it and the shadow reports the disagreement."""
+    """A core whose re-check finds the hold's stop no longer due: the task sends nothing."""
     real = ownership_shadow.decide
 
     def nothing_due(session, event, now):
@@ -220,9 +219,6 @@ async def test_the_holds_task_acts_on_the_cores_recheck_when_it_drives(
     monkeypatch.setattr(ownership_shadow, "decide", nothing_due)
     world, stops = await _held_world(hass, timers)
     assert (len(world.stops) > stops) is stopped
-    shadow = world.controller.ownership_shadow
-    assert (shadow.counts["verdict_differs"] > 0) is drives
-    assert (shadow.counts["disagreements"] > 0) is (not drives)
     await world.shutdown()
 
 
@@ -312,7 +308,6 @@ async def test_the_stops_under_a_persons_stop_keep_the_gap_and_give_up_in_both_m
         assert shadow.session.hold_gave_up and len(shadow.session.hold_stop_times) == 3
         fields = vars(world.controller)
         assert fields["_person_hold_stop_times"] == [] and not fields["_person_hold_gave_up"], "never written"
-    assert shadow.counts["mirror_drift"] == 0
 
     await world.executor.async_manual_stop()  # the person acts: afresh
     assert _c7(world) == (0, False) and not world.controller.ignores_person_stop
@@ -360,7 +355,6 @@ async def test_a_report_that_lands_while_the_stop_under_a_persons_stop_is_on_its
     assert len(calls) == 1
     assert not shadow.session.hold_stop_pending and not world.controller._c7.stop_pending  # noqa: SLF001
     assert len(world.controller._c7.stop_times) == 1, "counted once"  # noqa: SLF001
-    assert shadow.counts["mirror_drift"] == 0
     await world.shutdown()
 
 
@@ -381,7 +375,7 @@ def _break_the_first_person_hold_recheck(controller, monkeypatch) -> list[str]:
 
 
 # The failed feed is a failure on purpose: the core never hears the stop's result, so the owner after it differs once.
-@pytest.mark.shadow_disagreement_expected
+@pytest.mark.core_failure_expected
 @pytest.mark.parametrize("drives", [True])
 async def test_a_stop_whose_recheck_was_never_fed_does_not_hold_off_the_next(
     hass: HomeAssistant, timers: FakeScheduler, monkeypatch, freezer, drives: bool
@@ -403,11 +397,10 @@ async def test_a_stop_whose_recheck_was_never_fed_does_not_hold_off_the_next(
     await world.switch("on")  # it begins again, a gap later
     assert len(world.stops) == stops + 2, "stopped again: the awaited stop no longer holds the next off"
     assert not world.controller._c7.stop_pending  # noqa: SLF001
-    assert world.controller.ownership_shadow.counts["mirror_drift"] == 0
     await world.shutdown()
 
 
-@pytest.mark.shadow_disagreement_expected
+@pytest.mark.core_failure_expected
 async def test_an_overdue_stop_is_looked_at_again_even_without_a_report(
     hass: HomeAssistant, timers: FakeScheduler, monkeypatch, freezer
 ) -> None:
@@ -433,5 +426,4 @@ async def test_an_overdue_stop_is_looked_at_again_even_without_a_report(
     await hass.async_block_till_done()
     assert len(calls) == 2
     assert len(controller._c7.stop_times) == 1, "the stop the core heard of is counted"  # noqa: SLF001
-    assert controller.ownership_shadow.counts["mirror_drift"] == 0
     await world.shutdown()

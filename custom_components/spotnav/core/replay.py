@@ -1,9 +1,9 @@
 """Feed the events a debug bundle recorded to the charge-ownership core again.
 
-Pure: no Home Assistant imports. The shadow (`execution/ownership_shadow.py`) keeps, per charger, the last events it
-fed the core: the event, the instant, the session it decided from when it lined that up with today's code (`pre`,
-its non-default fields), the result of the command it asked for, what the core asked for, what today's code did,
-and today's owner and intent after it. `replay` decides each again, from the recorded `pre` where there is one and
+Pure: no Home Assistant imports. The runner (`execution/ownership_shadow.py`) keeps, per charger, the last events it
+fed the core: the event, the instant, the session it decided from (`pre`, its non-default fields), the result of the
+command it asked for and what the core asked for. A bundle before version 8 also recorded what the previous logic
+did (`today`) and its owner and intent after the event (`today_after`), from when the core still ran beside it. `replay` decides each again, from the recorded `pre` where there is one and
 from its own result otherwise, and says where the core now decides differently from the recording (a change of the
 core since), and where it differs from today's code (what a disagreement is).
 
@@ -234,9 +234,11 @@ def replay(
         if record.get("unchecked"):
             # Today's code decided it mid-way through another feed: only the state after both is comparable.
             continue
-        today = sorted(record.get("today", ()))
-        if replayed != today:
-            mismatches.append(ReplayMismatch(index, event.kind, "today", today, replayed))
+        if "today" in record:
+            # What the previous logic did, recorded until it was deleted (bundles before version 8).
+            today = sorted(record["today"])
+            if replayed != today:
+                mismatches.append(ReplayMismatch(index, event.kind, "today", today, replayed))
         if record.get("today_after") is not None:
             after = (index, event.kind, record["today_after"])
             pending_until = read_at[index]
@@ -249,7 +251,8 @@ def bundle_events(bundle: Mapping[str, Any]) -> dict[str, list[dict[str, Any]]]:
     found: dict[str, list[dict[str, Any]]] = {}
     for charger in bundle.get("chargers") or ():
         controller = ((charger or {}).get("diagnostics") or {}).get("controller") or {}
-        shadow = controller.get("ownership_shadow") or {}
+        # `ownership` from version 8, `ownership_shadow` before it.
+        shadow = controller.get("ownership") or controller.get("ownership_shadow") or {}
         found[str(charger.get("entry_id"))] = list(shadow.get("events") or ())
     return found
 

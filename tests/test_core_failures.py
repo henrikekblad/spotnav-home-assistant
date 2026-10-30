@@ -33,7 +33,7 @@ ISSUE = core_decision_issue_id(ENTRY)
 TITLE = "Garage charger"
 
 #: Every test here makes the core fail on purpose: the shadow's errors are what is tested, not a regression.
-pytestmark = pytest.mark.shadow_disagreement_expected
+pytestmark = pytest.mark.core_failure_expected
 
 
 @pytest.fixture(params=[True], ids=["core"])

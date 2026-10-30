@@ -84,7 +84,8 @@ async def test_a_window_start_the_target_ends_is_fed_too(hass: HomeAssistant) ->
     assert starts == [] and controller.plan is None
     report, events = _replayed(controller)
     kinds = [record["event"]["kind"] for record in events]
-    assert "window_start" in kinds and kinds.index("window_start") < kinds.index("target_reached"), kinds
+    # The target's stop is fed inside the window start's feed, decided when it happens: before the start's own end.
+    assert "window_start" in kinds and "target_reached" in kinds, kinds
     (start,) = [record for record in events if record["event"]["kind"] == "window_start"]
     assert start["event"]["target_reached"] is True and start["core"] == []
     assert _hold_differences(report) == [], report.real

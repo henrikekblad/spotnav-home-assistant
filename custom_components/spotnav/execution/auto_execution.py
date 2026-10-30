@@ -67,7 +67,7 @@ from .manual_pause import ManualChargeWatch
 from ..core import events as core_events
 from ..core.ownership import REASON_MIN_SOC
 from .min_soc_floor import ORIGIN_MIN_SOC
-from .ownership_shadow import CommandOutcome, INTENT, NullShadow, OwnershipShadow
+from .ownership_shadow import CommandOutcome, NullShadow, OwnershipShadow
 
 
 _LOGGER = logging.getLogger(__name__)
@@ -918,7 +918,7 @@ class AutoExecutor:
                 event = core_events.StrategyChange(strategy=STRATEGY_SOLAR, plan_applied=True, sun_keeps=sun_keeps)
                 token = self._shadow.begin()
                 stop = not sun_keeps and not floors
-                verdict = self._shadow.verdict(event)
+                verdict = self._shadow.verdict(event, token)
                 if verdict is not None:
                     stop = self._shadow.choose("strategy", stop, ("stop", "strategy") in verdict)
                 stopped: CommandOutcome | None = CommandOutcome(False) if stop else None
@@ -1927,7 +1927,7 @@ class AutoExecutor:
                 self._shadow.cancel(token)
             raise
         if token is None:
-            self._shadow.check(INTENT, "manual_pause_end")
+            self._shadow.check_intent("manual_pause_end")
         else:
             self._shadow.end(
                 token,
@@ -1976,8 +1976,8 @@ class AutoExecutor:
                 intent = self.pause_intent
                 if self._shutdown or not intent.manual:
                     return
-                if self._shadow.drives and want is ... and self._shadow.alone():
-                    # Decided while another feed was open: the core's session has decided it since.
+                if want is ...:
+                    # Told outside the controller's connection feed: the core's session has decided it since.
                     want = self._shadow.session.manual
                 if self._shadow.drives and want is not ...:
                     await self._core_connection_changed(intent, connected, want)
@@ -1992,7 +1992,7 @@ class AutoExecutor:
                         if current.pause == intent
                         else current,
                     )
-                    self._shadow.check(INTENT, "manual_pause_plug_in")
+                    self._shadow.check_intent("manual_pause_plug_in")
                     await self._notify_change()
                     return
                 if waiting:
@@ -2016,7 +2016,7 @@ class AutoExecutor:
             if current.pause == intent
             else current,
         )
-        self._shadow.check(INTENT, "manual_pause_plug_in")
+        self._shadow.check_intent("manual_pause_plug_in")
         await self._notify_change()
 
     def _sync_manual_watch(self) -> None:
@@ -2154,7 +2154,7 @@ class AutoExecutor:
             legacy: list[str] = []
             outcome: CommandOutcome | None = None
             try:
-                verdict = self._shadow.verdict(core_events.SolarStart(strategy_ok=strategy_ok))
+                verdict = self._shadow.verdict(core_events.SolarStart(strategy_ok=strategy_ok), token)
                 refused = pause_blocks_execution(settings) or not strategy_ok
                 if refused if verdict is None else not self._shadow.choose("solar_start", not refused, ("start", "solar") in verdict):
                     return False
@@ -2185,7 +2185,7 @@ class AutoExecutor:
             legacy: list[str] = []
             outcome: CommandOutcome | None = None
             try:
-                verdict = self._shadow.verdict(core_events.SolarStop())
+                verdict = self._shadow.verdict(core_events.SolarStop(), token)
                 # Never the floor's charge (`min_soc_floor.py`): it is not the sun's to stop.
                 allowed = self.automatic_allowed(AUTOMATIC_STOP) and self._controller.charge_origin != ORIGIN_MIN_SOC
                 if not allowed if verdict is None else not self._shadow.choose("solar_stop", allowed, ("stop", "solar") in verdict):
@@ -2239,7 +2239,7 @@ class AutoExecutor:
             legacy: list[str] = []
             outcome: CommandOutcome | None = None
             try:
-                verdict = None if facts is None else self._shadow.verdict(core_events.SolarStop(take_over=True, **facts))
+                verdict = None if facts is None else self._shadow.verdict(core_events.SolarStop(take_over=True, **facts), token)
                 if verdict is not None:
                     if ("stop", "take_over") not in verdict:
                         return False
@@ -2343,7 +2343,7 @@ class AutoExecutor:
             outcome: CommandOutcome | None = None
             started = False
             try:
-                verdict = self._shadow.verdict(event)
+                verdict = self._shadow.verdict(event, token)
                 refused = (
                     connected is False
                     or not self.automatic_allowed(AUTOMATIC_START)
@@ -2386,7 +2386,7 @@ class AutoExecutor:
             outcome: CommandOutcome | None = None
             ended = False
             try:
-                verdict = self._shadow.verdict(event)
+                verdict = self._shadow.verdict(event, token)
                 if handed:
                     await controller.async_take_min_soc_charge("plan_window" if handed == core_events.HAND_TO_PLAN else "solar")
                     ended = True
