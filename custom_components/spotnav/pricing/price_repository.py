@@ -879,7 +879,10 @@ class PriceRepository:
         try:
             parsed, document = self._accept(fetch, area_id, day)
         except (RelayParseError, _Refused) as err:
-            self._record_failure(key, err)
+            # A provider that lost the area while it was asked (its key rejected by this very answer) does not
+            # speak for it any more: the new provider's attempt, maybe already made, stands.
+            if self._router.provider_for(area_id) is provider:
+                self._record_failure(key, err)
             return self._day_snapshot(
                 area_id, day, authority=authority or self._authority_now(area_id, day), settled=True
             )
