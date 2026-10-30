@@ -334,7 +334,7 @@ It is best effort and is not a protective device. Turning it off gives back any 
 
 ### Chargers that can only be switched on and off
 
-A charger whose current SpotNav cannot set (Monta, myenergi zappi, Ohme, go-e legacy, ChargePoint,
+A charger whose current SpotNav cannot set (Monta, myenergi zappi, Ohme, go-e legacy, ChargePoint, NexBlue,
 a charger behind a smart plug, or any charger whose current control is not turned on) draws a
 current of its own. Load balancing reckons it as one load of that size, its **switched current**, and
 pauses or resumes it whole. There is no setting for it; SpotNav learns it, from the first of:
