@@ -39,7 +39,7 @@ from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
 from ..const import DOMAIN
-from ..pricing.price_repository import DEFAULT_BASE_URL
+from ..pricing.providers.relay import DEFAULT_BASE_URL
 from .settings import DEFAULT_EVENTS, EVENT_VEHICLE_IDENTIFY, NOTIFICATION_EVENTS
 
 _LOGGER = logging.getLogger(__name__)

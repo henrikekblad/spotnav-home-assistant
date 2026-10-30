@@ -1,4 +1,4 @@
-"""The shared SpotNav Relay price repository: one fetch/cache stream per resource.
+"""The shared price repository: one fetch/cache stream per resource.
 
 There is one repository per Home Assistant instance, published on `SpotNavData` by
 `async_setup_price_repository` and shared by every charger entry; a second charger adds no request,
@@ -31,7 +31,8 @@ parsed, so the parsers and everything after them read zones from `time_zones`' c
 from disk on the loop.
 
 Only explicit `refresh` operations live here: no cadence, backoff or timers (see the manager). Prices
-are stored as published.
+are stored as published. How a document is asked for is the providers' (`pricing/providers/`): a day file
+comes from the area's provider ([ProviderRouter]), the area list and the index from the relay's wire.
 
 Contract v2: the area list and the index are read from `/v2/…` first and from `/v1/…` when the relay
 answers v2 with a 404 or a body this client cannot read; the index is always read in the version the
@@ -60,9 +61,8 @@ from datetime import date, datetime, timedelta
 from typing import Any, Final, Literal
 from urllib.parse import quote
 
-from aiohttp import ClientError, ClientSession
+from aiohttp import ClientSession
 from homeassistant.core import callback, HomeAssistant
-from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
@@ -71,15 +71,15 @@ from ..runtime import domain_data
 from .. import time_zones
 from .area_catalogue import async_load_bundled, BundledCatalogue
 from .market_day import compose_display_day, local_midnight, market_days_for, principal_market_day
+from .providers import DayFetch, FailureCode, ProviderRouter, TRANSPORT_CODES
+from .providers.relay import CONTRACT_VERSIONS, DEFAULT_BASE_URL, RelayFailure, RelayProvider
 from .relay_contract import (
     AreaCatalogue,
     document_version,
-    loads_document,
     parse_catalogue,
     parse_day,
     parse_index,
     parse_profile,
-    ParseCode,
     PriceDocument,
     PriceProfile,
     RelayIndex,
@@ -89,28 +89,12 @@ from .relay_contract import (
 
 _LOGGER = logging.getLogger(__name__)
 
-#: The deployed relay; injected so tests can build a repository that cannot reach the network.
-DEFAULT_BASE_URL: Final = "https://spotnav.sensnology.se"
-
-#: Request timeout and body size limit. A day document is ~10 kB and an index ~1 kB; half a
-#: megabyte is generous but bounds a hung connection or a mistaken URL.
-REQUEST_TIMEOUT_S: Final = 20.0
-MAX_RESPONSE_BYTES: Final = 512 * 1024
-
-#: Bytes asked per read: small enough that a trickling stream yields to the event loop and meets
-#: the overall timeout.
-CHUNK_BYTES: Final = 64 * 1024
-
-
 #: A history profile older than this (by its own `generated`) is not used, whatever the cache holds:
 #: the relay withdraws a stale one itself, so an old copy means the relay could not be asked.
 PROFILE_MAX_AGE: Final = timedelta(days=2)
 
 #: After a failed profile request nobody asks again for this long (a calculation asks on every publication).
 PROFILE_RETRY_AFTER: Final = timedelta(minutes=30)
-
-#: The contract versions asked for, newest first: a relay that predates v2 answers it with a 404.
-CONTRACT_VERSIONS: Final = (2, 1)
 
 #: Archive files held in memory for one import run's neighbouring display days (a London day shares a
 #: Paris file with the next); never persisted, never the live cache.
@@ -129,11 +113,6 @@ LEGACY_SCHEMA: Final = 1
 #: Day files older than this many days (before today, UTC) are dropped on the next write: enough for the
 #: history profile's four weeks with a year of slack for statistics, and a bound on the store's size.
 HISTORY_KEEP_DAYS: Final = 400
-
-#: What a caller could not get, as a stable code: the transport half is here, the content half is
-#: `relay_contract`'s, kept in one snapshot field.
-FetchCode = Literal["timeout", "network", "http_status", "too_large"]
-FailureCode = FetchCode | ParseCode
 
 #: What the reader is looking at. `loading` is "nothing to show yet and a request is running"; a
 #: refresh while a document is on screen is [DaySnapshot.refreshing].
@@ -253,11 +232,16 @@ class _Cached:
     provider: str | None = None
 
 
-TRANSPORT_CODES: Final[frozenset[str]] = frozenset({"timeout", "network", "http_status", "too_large"})
-
-
 def is_transport(code: FailureCode | None) -> bool:
     return code is not None and code in TRANSPORT_CODES
+
+
+class _Refused(Exception):
+    """A provider's answer that brought no file, carrying the provider's stable code."""
+
+    def __init__(self, code: FailureCode) -> None:
+        super().__init__(code)
+        self.code: FailureCode = code
 
 
 def source_of(cached: _Cached, *, explicit: SnapshotSource | None) -> SnapshotSource:
@@ -267,37 +251,6 @@ def source_of(cached: _Cached, *, explicit: SnapshotSource | None) -> SnapshotSo
     if explicit is not None:
         return explicit
     return "store" if cached.source == "store" else "memory"
-
-
-async def _read_bounded(stream) -> bytes:
-    """Read a body to EOF, refusing to hold more than [MAX_RESPONSE_BYTES] of it.
-
-    One aiohttp `read(n)` may return fewer than `n` bytes short of EOF, so a chunked response would
-    otherwise be rejected as malformed JSON. This accumulates until the stream ends and stops as soon as
-    the limit would be exceeded (the caller's `async with` abandons the connection). The caller's timeout
-    wraps the whole loop.
-    """
-    chunks: list[bytes] = []
-    total = 0
-    while True:
-        # Ask for the rest of the allowance plus one byte to prove an overflow, in bounded slices.
-        chunk = await stream.read(min(CHUNK_BYTES, MAX_RESPONSE_BYTES + 1 - total))
-        if not chunk:
-            break
-        total += len(chunk)
-        if total > MAX_RESPONSE_BYTES:
-            raise _Failure("too_large")
-        chunks.append(chunk)
-    return b"".join(chunks)
-
-
-class _Failure(Exception):
-    """A fetch that did not produce a document, carrying its stable code (and the HTTP status, if any)."""
-
-    def __init__(self, code: FetchCode, status: int | None = None) -> None:
-        super().__init__(code)
-        self.code: FetchCode = code
-        self.status = status
 
 
 class PriceRepository:
@@ -316,12 +269,13 @@ class PriceRepository:
         store: Store[dict[str, Any]] | None = None,
         now=None,
         bundled: BundledCatalogue | None = None,
+        router: ProviderRouter | None = None,
     ) -> None:
         self._hass = hass
-        self._base_url = base_url.rstrip("/")
-        # `None` means the shared HA client when a request is made (`async_get_clientsession`
-        # needs a running loop, and setup constructs this before anything is asked).
-        self._session = session
+        # Which provider an area's files come from; without one, the relay at [base_url] for every area.
+        self._router = router if router is not None else ProviderRouter(
+            RelayProvider(hass, base_url=base_url, session=session)
+        )
         self._now = now if now is not None else dt_util.utcnow
 
         # Seams for tests (races and clock changes are timing); `None` means the real thing.
@@ -779,31 +733,14 @@ class PriceRepository:
             provider=provider if isinstance(provider, str) and provider else "relay",
         )
 
-    async def _fetch_versioned(self, name: str, parse, versions: tuple[int, ...]) -> tuple[Any, Any]:
-        """`/v<n>/<name>` parsed as version n, for the first of [versions] the relay answers readably.
-
-        A 404 or a body this client cannot read moves on to the next version; a transport failure does not
-        (an unreachable relay is not an old one). The last version's failure is the one raised.
-        """
-        for position, version in enumerate(versions):
-            last = position == len(versions) - 1
-            try:
-                document = await self._fetch_json(f"/v{version}/{name}")
-                return document, parse(document, version=version)
-            except _Failure as err:
-                if last or err.status != 404:
-                    raise
-            except RelayParseError:
-                if last:
-                    raise
-        raise AssertionError("unreachable")  # pragma: no cover
-
     async def _load_catalogue(self) -> CatalogueSnapshot:
         key = ("catalogue",)
         self._attempts[key] = (self._now(), None)
         try:
-            document, parsed = await self._fetch_versioned("areas.json", parse_catalogue, CONTRACT_VERSIONS)
-        except (RelayParseError, _Failure) as err:
+            document, parsed = await self._router.relay.async_fetch_versioned(
+                "areas.json", parse_catalogue, CONTRACT_VERSIONS
+            )
+        except (RelayParseError, RelayFailure) as err:
             return self._after_failure(key, err, self._catalogue_snapshot)
         previous = None if self._catalogue is None else self._catalogue.parsed.version
         self._catalogue = _Cached(document=document, fetched_at=self._now(), parsed=parsed)
@@ -821,8 +758,8 @@ class PriceRepository:
         held = self._catalogue
         versions = CONTRACT_VERSIONS if held is None else (held.parsed.version,)
         try:
-            document, parsed = await self._fetch_versioned("index.json", parse_index, versions)
-        except (RelayParseError, _Failure) as err:
+            document, parsed = await self._router.relay.async_fetch_versioned("index.json", parse_index, versions)
+        except (RelayParseError, RelayFailure) as err:
             return self._after_failure(key, err, self._index_snapshot)
         self._index = _Cached(document=document, fetched_at=self._now(), parsed=parsed)
         await self._persist()
@@ -831,15 +768,14 @@ class PriceRepository:
     async def _load_day(self, area_id: str, day: date, *, authority: IndexAuthority) -> DaySnapshot:
         key = ("day", area_id, day.isoformat())
         self._attempts[key] = (self._now(), None)
-        path = f"/v1/{quote(area_id, safe='')}/{day.year:04d}/{day.month:02d}-{day.day:02d}.json"
+        provider = self._router.provider_for(area_id)
         try:
-            document = await self._fetch_json(path)
-            parsed = self._parse_file(document, area_id, day)
-        except (RelayParseError, _Failure) as err:
+            parsed, document = self._accept(await provider.async_fetch_day(area_id, day), area_id, day)
+        except (RelayParseError, _Refused) as err:
             self._record_failure(key, err)
             return self._day_snapshot(area_id, day, authority=authority, settled=True)
         self._days.setdefault((area_id, day), {})[parsed.tz] = _Cached(
-            document=document, fetched_at=self._now(), parsed=parsed, provider="relay"
+            document=document, fetched_at=self._now(), parsed=parsed, provider=provider.key
         )
         await self._persist()
         return self._day_snapshot(area_id, day, authority=authority, source="network", settled=True)
@@ -847,22 +783,27 @@ class PriceRepository:
     async def _load_archive_day(self, area_id: str, day: date) -> PriceDocument | None:
         key = ("archive", area_id, day.isoformat())
         self._attempts[key] = (self._now(), None)
-        path = f"/v1/{quote(area_id, safe='')}/{day.year:04d}/{day.month:02d}-{day.day:02d}.json"
         try:
-            document = await self._fetch_json(path)
-            return self._parse_file(document, area_id, day)
-        except (RelayParseError, _Failure) as err:
+            parsed, _ = self._accept(await self._router.provider_for(area_id).async_fetch_day(area_id, day), area_id, day)
+        except (RelayParseError, _Refused) as err:
             self._record_failure(key, err)
             return None
+        return parsed
+
+    def _accept(self, fetch: DayFetch, area_id: str, day: date) -> tuple[PriceDocument, Any]:
+        """A provider's answer as a validated file and its raw document; anything else raises with its code."""
+        if fetch.outcome != "fetched":
+            raise _Refused(fetch.code or "network")
+        return self._parse_file(fetch.document, area_id, day), fetch.document
 
     async def _load_profile(self, area_id: str, today: date) -> PriceProfile | None:
         key = ("profile", area_id)
         self._attempts[key] = (self._now(), None)
         path = f"/v1/{quote(area_id, safe='')}/profile.json"
         try:
-            document = await self._fetch_json(path)
+            document = await self._router.relay.async_fetch_json(path)
             parsed = parse_profile(document, area_id=area_id)
-        except _Failure as err:
+        except RelayFailure as err:
             if err.status == 404:
                 # The relay's definite "no usable profile": nothing held is still true.
                 self._profiles.pop(area_id, None)
@@ -933,12 +874,12 @@ class PriceRepository:
         if held:
             # Last good stays what a reader sees; the failure is recorded beside it (`stale`).
             return snapshot(state="stale", settled=True)
-        if isinstance(err, _Failure):
+        if isinstance(err, RelayFailure):
             return snapshot(state="unavailable", settled=True)
         return snapshot(state="invalid", settled=True)
 
     def _record_failure(self, key: tuple[str, ...], err: Exception) -> None:
-        code: FailureCode = err.code if isinstance(err, (RelayParseError, _Failure)) else "network"
+        code: FailureCode = err.code if isinstance(err, (RelayParseError, RelayFailure, _Refused)) else "network"
         self._attempts[key] = (self._now(), code)
         _LOGGER.debug("Relay %s failed: %s", key[0], code)
 
@@ -1055,33 +996,6 @@ class PriceRepository:
 
     def _attempt(self, key: tuple[str, ...]) -> tuple[datetime | None, FailureCode | None]:
         return self._attempts.get(key, (None, None))
-
-    def _client(self) -> ClientSession:
-        if self._session is None:
-            self._session = async_get_clientsession(self._hass)
-        return self._session
-
-    async def _fetch_json(self, path: str) -> Any:
-        """One published document, bounded in time and size.
-
-        A non-200 is a failure, not a document; the body must be JSON (a proxy's HTML is `not_json`). It
-        is read to EOF in bounded slices under one overall timeout and never logged.
-        """
-        url = f"{self._base_url}{path}"
-        try:
-            async with asyncio.timeout(REQUEST_TIMEOUT_S):
-                async with self._client().get(url) as response:
-                    if response.status != 200:
-                        raise _Failure("http_status", response.status)
-                    body = await _read_bounded(response.content)
-        except TimeoutError as err:
-            raise _Failure("timeout") from err
-        except ClientError as err:
-            raise _Failure("network") from err
-        document = loads_document(body.decode("utf-8", errors="replace"))
-        # Every zone the document names, resolved off the loop before any parser reads it.
-        await time_zones.async_resolve_document(document)
-        return document
 
     def _payload(self) -> dict[str, Any]:
         """Everything worth restoring, as one document, rebuilt from the caches on every write so the last

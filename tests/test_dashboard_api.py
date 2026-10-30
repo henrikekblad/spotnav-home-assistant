@@ -586,7 +586,7 @@ def transport_of(hass: HomeAssistant) -> StubTransport:
     """The stub wire this installation is pointed at, for a test that needs to serve more."""
     repository = domain_data(hass).price_repository
     assert repository is not None
-    return repository._client()
+    return repository._router.relay._client()
 
 
 @freeze_time(NOW)

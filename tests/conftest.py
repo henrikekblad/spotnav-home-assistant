@@ -365,10 +365,10 @@ def offline_relay(monkeypatch: pytest.MonkeyPatch, transport: StubTransport) -> 
     set up real config entries; a test that needs a different answer overrides the routes.
     """
     from custom_components.spotnav import async_setup_price_repository as real_setup
-    from custom_components.spotnav.pricing import price_repository as repository_module
+    from custom_components.spotnav.pricing.providers import relay as relay_module
     import custom_components.spotnav as integration
 
-    monkeypatch.setattr(repository_module, "async_get_clientsession", lambda _hass: transport)
+    monkeypatch.setattr(relay_module, "async_get_clientsession", lambda _hass: transport)
     monkeypatch.setattr(
         integration, "async_setup_price_repository", partial(real_setup, base_url=BASE_URL)
     )
