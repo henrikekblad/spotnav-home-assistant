@@ -3075,7 +3075,7 @@ class ChargingController:
         if switch is None:
             return
         if switch.start_only and self.charging:
-            # Never mid-charge (Easee): the charge goes on as it is, and the next start sets three phases back.
+            # Never mid-charge (Easee, NRGkick, Wattpilot): the charge goes on as it is, and the next start sets three phases back.
             _LOGGER.debug(
                 "SpotNav charger %s: three phases are set back at the next start, not while it charges", self.entry_id
             )

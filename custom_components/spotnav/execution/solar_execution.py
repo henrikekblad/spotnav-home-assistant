@@ -75,8 +75,8 @@
   minimum current first. The charger does the interruption itself. A charger forced to one phase is reckoned as a
   single-phase "Automatic" one (`SiteCapacityController.reckoned_phases`, `_car_phases`), and while a switch settles the watch on
   the charge reads no car ending it and no start not taken (`_watch_charge`). A charger whose phases are set only before
-  a start (`PhaseSwitch.start_only`, Easee) gets the phase inputs only while no charge runs (`_start_only_charging`):
-  it starts on the phases the surplus carries, and a running charge is never switched.
+  a start (`PhaseSwitch.start_only`: Easee, NRGkick, Wattpilot) gets the phase inputs only while no charge runs
+  (`_start_only_charging`): it starts on the phases the surplus carries, and a running charge is never switched.
 """
 
 from __future__ import annotations
@@ -1136,8 +1136,8 @@ class SolarExecutionCoordinator:
         )
 
     def _start_only_charging(self) -> bool:
-        """A charger whose phases are set only before a start (`PhaseSwitch.start_only`, Easee) with a charge running:
-        no phase decision while it runs, so the charge follows the rules without switching."""
+        """A charger whose phases are set only before a start (`PhaseSwitch.start_only`: Easee, NRGkick, Wattpilot) with
+        a charge running: no phase decision while it runs, so the charge follows the rules without switching."""
         controller = self._controller
         switch = controller.adapter.phase_switch
         if switch is None or not switch.start_only:

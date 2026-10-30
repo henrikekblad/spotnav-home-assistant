@@ -7,10 +7,11 @@ that status counts as a settle (`PhaseSwitch.switching`). Each vendor's module r
 these:
 
 * `force_single_phase` (`ForceSinglePhaseSwitch`, on = one phase, off = three): `peblar.py`, `lektrico.py`.
-* `PhaseCountNumber` (1 or 3 is written): `nrgkick.py`.
+* `PhaseCountNumber` (1 or 3 is written): `nrgkick.py`, start-only there.
 * `phase_mode_select` (`PhaseModeSelect`): the `psm` select (auto / one phase / three phases) that go-e and Fronius
-  Wattpilot share, `goe.py` and `wattpilot.py`. One or three phases is written, never auto, and auto reads as
-  unknown. The `modelStatus` sensor's "not charging because of phase switch" (code 23) is the switching status.
+  Wattpilot share, `goe.py` and `wattpilot.py` (start-only there). One or three phases is written, never auto, and
+  auto reads as unknown. The `modelStatus` sensor's "not charging because of phase switch" (code 23) is the switching
+  status.
 
 Easee's phase mode is a service, not an entity of these kinds (`easee.py`).
 """
@@ -176,16 +177,21 @@ def force_single_phase(
 
 
 def phase_mode_select(
-    platform: str, one: tuple[str, ...], three: tuple[str, ...]
+    platform: str,
+    one: tuple[str, ...],
+    three: tuple[str, ...],
+    *,
+    switch_class: type[PhaseModeSelect] = PhaseModeSelect,
 ) -> Callable[[ChargerContext], PhaseSwitch | None]:
     """How a `platform` charger's `psm` select is found: `one` and `three` are its options for one and three phases,
-    and its model-status sensors say when it switches."""
+    and its model-status sensors say when it switches. `switch_class` is the vendor's own kind of it (Wattpilot's is
+    start-only)."""
 
     def factory(context: ChargerContext) -> PhaseSwitch | None:
         found = charger_entities(context, platform, "select", PSM_KEYS)
         if not found:
             return None
-        return PhaseModeSelect(
+        return switch_class(
             context.hass,
             found[0],
             one=one,

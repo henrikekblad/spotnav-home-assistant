@@ -455,7 +455,8 @@ class PhaseSwitch(ABC):
     """
 
     #: Set only before a charge starts, never while the charger charges (Easee: a change takes effect at a pause, and
-    #: the charger may keep the session on its phases). A charge on such a charger follows the rules without switching.
+    #: the charger may keep the session on its phases; NRGkick and Wattpilot: a switch under load may fault the car or
+    #: leave the charge paused). A charge on such a charger follows the rules without switching.
     start_only: bool = False
 
     def __init__(

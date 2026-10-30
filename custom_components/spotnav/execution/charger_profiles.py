@@ -387,7 +387,8 @@ _PROFILES: Final[tuple[PlatformProfile, ...]] = (
         charging_values=("charging",),
         vehicle_idle_values=("wait car",),
         own_modes=(_rule("select", ("lmo",), ("3", "default", "default mode"), "charging mode"),),
-        phase_switching="the Phase Switch select (1 Phase or 3 Phases, never Auto)",
+        phase_switching="the Phase Switch select (1 Phase or 3 Phases, never Auto), only before a solar start while "
+        "the charger does not charge",
     ),
     PlatformProfile(
         platform="peblar",
@@ -421,7 +422,7 @@ _PROFILES: Final[tuple[PlatformProfile, ...]] = (
         charging_values=("charging",),
         current_sensor_keys=("l1_current", "l2_current", "l3_current"),
         phase_switching="the phase count number (1 or 3; not with a single-phase connector; phase switching must be "
-        "allowed in the NRGkick app)",
+        "allowed in the NRGkick app), only before a solar start while the charger does not charge",
     ),
     PlatformProfile(
         platform="v2c",

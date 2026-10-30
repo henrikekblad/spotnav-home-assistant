@@ -342,7 +342,8 @@ under **To check**.
 
 **Phase switching for solar**, below the priority, is **Off** by default or **Automatic**. It is shown only for
 a charger whose integration can switch between one and three phases (Peblar, Lektrico, NRGkick, go-e, Fronius
-Wattpilot, and Easee when it is alone on its circuit; see [strategies](strategies.md#solar)), that is wired for three
+Wattpilot, and Easee when it is alone on its circuit; NRGkick, Wattpilot and Easee only before a start; see
+[strategies](strategies.md#solar)), that is wired for three
 phases, on a site with a solar source; no other charger has the row. Set to Automatic, a solar charge with too
 little sun for three phases charges on one phase instead of drawing from the grid, and the status then says
 so with its power (*Solar · 1 phase · 2.9 kW*). SpotNav then sets the charger's phases itself, so the charger's
