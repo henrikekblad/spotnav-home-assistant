@@ -194,6 +194,8 @@ class SessionRunner:
         # How many plug-ins ended (an unplug, or a plug-in after a known unplug, decided): what a feed's command was
         # decided in (`FeedToken.plug_ins`). Transient: no feed outlives a restart.
         self._plug_in_ends = 0
+        # A check of the person intent asked for while a feed was open (`check_intent`), run once none is (`_settle`).
+        self._intent_pending: str | None = None
 
     # ------------------------------------------------------------------ feeding
 
@@ -306,11 +308,15 @@ class SessionRunner:
     def check_intent(self, where: str) -> None:
         """The execution boundary wrote its person intent (`PauseIntent`) from a decision of the core's: the two must
         say the same. A difference is a failure (a bug: something wrote one without the other), and the session takes
-        the boundary's, which the card shows and the gate reads. Nothing is checked while a feed is open: its
-        decision may not be written yet."""
+        the boundary's, which the card shows and the gate reads. While a feed is open (its decision may not be
+        written yet) the check waits, and runs once no feed is open any more (`_settle`)."""
         reader = self._intent
-        if reader is None or self._any_open():
+        if reader is None:
             return
+        if self._any_open():
+            self._intent_pending = where
+            return
+        self._intent_pending = None
         try:
             manual, span = reader()
             if (manual, span) == (self.session.manual, self.session.span_pause):
@@ -330,6 +336,10 @@ class SessionRunner:
     # ------------------------------------------------------------------ inside
 
     def _decide(self, token: FeedToken, event: Event, outcome: CommandOutcome | None) -> None:
+        if token.early is None and token.early_pre is not None:
+            # Its decision at once failed (told then): nothing was sent for it, and it is not decided again here, where a
+            # success would leave the session awaiting a command nobody sent.
+            return
         now = self._now()
         if token.early is not None and token.early_pre is not None:
             # Decided at once: only its result is new.
@@ -426,14 +436,19 @@ class SessionRunner:
         return self._ticks
 
     def _settle(self) -> None:
-        """No feed is open any more: tell `settled` (never raises)."""
-        settled = self._settled
-        if settled is None or self._any_open():
+        """No feed is open any more: tell `settled`, and run an intent check that waited for it (never raises)."""
+        if self._any_open():
             return
-        try:
-            settled()
-        except Exception:  # noqa: BLE001 - the runner never raises into the controller
-            self._error("settled")
+        settled = self._settled
+        if settled is not None:
+            try:
+                settled()
+            except Exception:  # noqa: BLE001 - the runner never raises into the controller
+                self._error("settled")
+        pending = self._intent_pending
+        if pending is not None:
+            # A boundary write checked while another feed was open: checked now.
+            self.check_intent(pending)
 
     def _persisted(self) -> None:
         """Once no feed is open: tell the keeper of the stored record the session as it is now (never raises)."""
