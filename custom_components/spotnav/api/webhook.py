@@ -42,6 +42,7 @@ from .entity_config import (
     async_webhook_update_phase_switching,
     async_webhook_update_vehicle,
 )
+from .price_days import webhook_price_days
 from .price_source import async_webhook_answer_price_duplicate, async_webhook_choose_price_source
 from .camera import WEBHOOK_ACTIONS as CAMERA_ACTIONS
 from .identification import webhook_choose_vehicle_identification, webhook_identify_vehicle
@@ -401,7 +402,7 @@ def _bounded_write(
     return handler
 
 
-#: Every action the webhook answers. `dashboard` and `sessions` are the reads.
+#: Every action the webhook answers. `dashboard`, `sessions` and `price_days` are the reads.
 ACTIONS: Final[dict[str, Handler]] = {
     "start": _start,
     "stop": _stop,
@@ -410,6 +411,7 @@ ACTIONS: Final[dict[str, Handler]] = {
     "set_charge_limit": _set_charge_limit,
     "dashboard": _dashboard,
     "sessions": _sessions,
+    "price_days": webhook_price_days,
     "settings": _settings,
     "update_vehicle": _bounded_write(async_webhook_update_vehicle, "update_vehicle", _vehicle_answer_for_app),
     "update_site_settings": _bounded_write(async_webhook_update_site_settings, "update_site_settings"),
