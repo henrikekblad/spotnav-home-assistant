@@ -263,6 +263,18 @@ async def test_a_wrong_unit_total_is_invalid_not_a_number(hass: HomeAssistant) -
     assert site.grid_total_reading() == (None, "invalid")
 
 
+async def test_a_total_far_beyond_the_main_fuse_is_invalid_and_a_real_overload_is_not(hass: HomeAssistant) -> None:
+    _c, _s, site, *_ = await direct_solar_setup(hass, source={"power": TOTAL})
+    # Kilowatts read as watts: 1.5 kW of export as 1.5 MW, on a site behind 3 x 25 A.
+    _set_total(hass, TOTAL, -1_500_000.0)
+
+    assert site.grid_total_reading() == (None, "invalid")
+    assert site.grid_power_snapshot()["export_w"] is None
+
+    _set_total(hass, TOTAL, 25.0 * 3 * 230.0 * 1.5)
+    assert site.grid_total_reading() == (25875.0, "fresh")
+
+
 async def test_a_stale_total_is_unknown_and_a_flat_but_reporting_one_is_accepted(
     hass: HomeAssistant, freezer
 ) -> None:

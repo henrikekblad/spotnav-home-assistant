@@ -208,6 +208,8 @@ converted); remaining, available or added energy is never taken for it.
 Refreshing a vehicle (from the app) re-reads its Home Assistant entities: SpotNav only asks Home
 Assistant to update them, which is a request to the vehicle's own integration, and it never calls an
 integration's own force-update service, so SpotNav does not wake the car (only a car that
-[opted in](#waking-the-car-for-a-reading) is woken, and only at a charge's end). A sleeping car keeps
+[opted in](#waking-the-car-for-a-reading) is woken, and only at a charge's end). One integration does it by
+itself: Kia Uvo (`kia_uvo`) answers a re-read by asking the car when its last report is older than the
+integration's force-refresh interval, which can wake the car. A sleeping car keeps
 reporting what it last knew, and SpotNav asks at most once a minute per vehicle. Between readings
 the level is estimated from the charger's energy register.

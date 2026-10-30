@@ -65,6 +65,24 @@ SET_UP_ON: dict[tuple[str, str], str] = {
     ("vehicle", "toyota"): "Subaru e-Outback through the Toyota integration",
 }
 
+#: What others found on real hardware that a user should know, by (category, Home Assistant domain): appended to the
+#: row's notes. Short and plain; each from an upstream report, not from SpotNav's own tests.
+HARDWARE_NOTES: dict[tuple[str, str], str] = {
+    ("charger", "wallbox"): "Since mid-2025 the Wallbox cloud allows about one request a minute per account, and "
+    "Home Assistant's own polling already uses it: keep one charger per account, or use OCPP, which is recommended "
+    "for Wallbox.",
+    ("charger", "smartevse"): "Use firmware 3.10.1 or newer: on 3.9.3 to 3.10.0 some cars do not resume after a pause.",
+    ("charger", "zaptec"): "Firmware 2.3 and newer ends a session after 20 restarts plus one per hour of the session, "
+    "which solar on a cloudy day can reach. With APM or in stand-alone mode the charger ignores current writes "
+    "(Code 527), so there is no current control.",
+    ("charger", "goecharger_api2"): "Keep the hidden setting `sua` (simulate unplugging always) off: with it on, a stop "
+    "can leave the charger in \"minimum pause duration\" until it is rebooted.",
+    ("charger", "goecharger_mqtt"): "Keep the hidden setting `sua` (simulate unplugging always) off: with it on, a stop "
+    "can leave the charger in \"minimum pause duration\" until it is rebooted.",
+    ("meter", "edl21"): "Home Assistant writes each telegram that differs from the last, which on some meters is "
+    "several times a second. Some readers time out with no meter data since Home Assistant 2026.10.4.",
+}
+
 #: Display names by Home Assistant domain.
 NAMES: dict[str, str] = {
     # chargers: taken from the profiles themselves; see `charger_name`
@@ -284,6 +302,9 @@ def charger_notes(profile: cp.PlatformProfile) -> str:
         lines.append(f"Phase switching for solar through {profile.phase_switching}.")
         tested = PHASE_SWITCHING_TESTED_ON.get(profile.platform)
         lines.append(f"Phase switching tested on {tested}." if tested else "Phase switching: untested on real hardware.")
+    note = HARDWARE_NOTES.get(("charger", profile.platform))
+    if note:
+        lines.append(note)
     return " ".join(lines)
 
 
@@ -304,7 +325,10 @@ OCPP_ROW: tuple[str, ...] = (
     "AssignedCurrent through ChangeConfiguration, else the connector's session current limit number",
     "Energy.Active.Import.Register sensor",
     "SpotNav asks the charge point which of the two it supports when the charger is added. "
-    "A charge point with several connectors is added once per connector.",
+    "A charge point with several connectors is added once per connector. "
+    "The session current limit goes out as a relative charging profile, which Easee over OCPP, KEBA firmware 1.18 "
+    "and 1.19.0, Autel, and ABB firmware 1.8.37 with the integration's 0.12 versions reject: current control does "
+    "not work on those. A charging profile left behind can cap the charger; `ocpp.clear_profile` removes it.",
     verified("charger", "ocpp"),
 )
 
@@ -467,6 +491,7 @@ def meter_notes(row: sd.MeterRow) -> str:
     behaviour = [sd.UPDATE_BEHAVIOUR[p] for p in row.platforms if p in sd.UPDATE_BEHAVIOUR]
     if behaviour and behaviour[0].interval_s > 0:
         lines.append(f"Updates about every {duration(behaviour[0].interval_s)}.")
+    lines.extend(HARDWARE_NOTES[("meter", p)] for p in row.platforms if ("meter", p) in HARDWARE_NOTES)
     return " ".join(lines)
 
 
@@ -651,8 +676,10 @@ def vehicles_section() -> list[str]:
         "A device with only that sensor is not a vehicle.",
         "- **Sleeping cars.** Cloud readings can be an hour old in the middle of a charge. SpotNav "
         "estimates the level forward from the charger's energy meter and marks it as estimated. The app's "
-        "refresh only asks Home Assistant to re-read the vehicle's entities; SpotNav never calls an "
-        "integration's own force-update, so it does not wake the car.",
+        "refresh, like SpotNav's own re-reads, only asks Home Assistant to re-read the vehicle's entities; SpotNav "
+        "never calls an integration's own force-update. Most integrations answer that from their cloud's copy, but "
+        "Kia Uvo (`kia_uvo`) asks the car itself when its last report is older than the integration's force-refresh "
+        "interval (in the Australian region at every update), which can wake the car.",
         "- **No range sensor, no vehicle.** A device without a distance-class range sensor, or with no "
         "device classes at all, is not detected.",
     ]

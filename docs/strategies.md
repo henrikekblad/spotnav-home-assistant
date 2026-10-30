@@ -207,6 +207,9 @@ cannot, and for a direct site without the total it says the meter's total grid p
     Wattpilot's *Auto*, Easee's *auto phase*) is not used while the setting is on; it is not put back either.
   - **NRGkick**: phase switching must be allowed in the NRGkick app first, or the charger refuses the change
     (SpotNav then logs it and charges on as without switching).
+  - **NRGkick and Fronius Wattpilot** have their phases set only right before a solar start, as Easee (below): a
+    switch under load faulted a car on an NRGkick, and a Wattpilot may stay paused after one. A charge that runs on
+    them follows the rules without switching.
   - **Lektrico** forgets *Force single phase* when it restarts. SpotNav then goes by what the charger reads, three
     phases, from its next look on.
   - Only a solar charge switches. A plan's period, your **Start**, a top-off, the car's minimum charge level

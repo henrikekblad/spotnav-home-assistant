@@ -68,6 +68,14 @@ number is chosen when the charger is added.
 
 Without any of these, SpotNav still starts and stops the charge.
 
+Of the chargers seen so far, only Charge Amps lists `AssignedCurrent`, so most use the session current limit.
+The OCPP integration sends that number as a relative charging profile (TxProfile), and some chargers reject it:
+Easee over OCPP (absolute profiles only), KEBA firmware 1.18 and 1.19.0, Autel, and ABB firmware 1.8.37 with the
+integration's 0.12 versions. On those, current control does not work: the charge starts and stops, at the charger's
+own maximum. A charging profile left behind, by another system or by a stack level the integration fell back to,
+can cap the charger below what SpotNav writes while the number shows SpotNav's value: the OCPP integration's
+`ocpp.clear_profile` action removes it.
+
 ## The 6 A floor
 
 IEC 61851 chargers do not deliver under 6 A. SpotNav never writes a current below the charger's

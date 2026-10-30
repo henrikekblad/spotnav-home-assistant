@@ -47,7 +47,9 @@ connected never starts identification, so the choice stays yours.
 
 1. SpotNav asks Home Assistant to re-read each car's plug sensor and tracker. It uses
    `homeassistant.update_entity` and never a brand's wake-up, at most once a minute per car. Waking a car
-   costs its 12 V battery and part of the account's daily limit.
+   costs its 12 V battery and part of the account's daily limit. Kia Uvo (`kia_uvo`) answers even this
+   re-read by asking the car itself when its last report is older than the integration's force-refresh
+   interval, which can wake it.
 2. It then weighs what each car says:
    - **A car's plug sensor turned on** from five minutes before the plug-in. That car was plugged in.
    - **A car whose plug sensor went to "not plugged in"** around or after the plug-in is not here. A sensor

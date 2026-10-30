@@ -137,6 +137,7 @@ from .site_capacity import (
     DerivedPhaseInput,
     DerivedPhaseMeasurement,
     DirectPhaseMeasurement,
+    implausible_power,
     PhaseBasis,
     PhaseName,
     PHASES,
@@ -3439,7 +3440,8 @@ class SiteCapacityController:
         `None` only when no total is configured (`CONF_GRID_POWER_SOURCE`); a configured one always
         returns a `PhaseValue`, even if currently unusable. An import/export pair is import minus
         export, and a missing or invalid half makes the whole value missing or invalid, never zero.
-        `CONF_GRID_POWER_INVERTED` negates it for an export-positive meter. Used by the solar
+        `CONF_GRID_POWER_INVERTED` negates it for an export-positive meter. A total beyond what the main
+        fuse could carry on all three phases is invalid (`implausible_power`). Used by the solar
         executor and diagnostics, and on a direct site only to confirm the sign of its per-phase currents
         (`site/current_sign.py`); never as amps by the fuse protection, which stays per phase on the
         measured currents.
@@ -3447,11 +3449,17 @@ class SiteCapacityController:
         source = grid_power_source_from_dict(self.config.get(CONF_GRID_POWER_SOURCE))
         if source is None:
             return None
-        return combine_power_pair(
+        total = combine_power_pair(
             self._power_phase_value(source.power),
             self._power_phase_value(source.power_export) if source.power_export else None,
             invert=bool(self.config.get(CONF_GRID_POWER_INVERTED, False)),
         )
+        main_fuse_a = self.config.get(CONF_MAIN_FUSE_A)
+        if total.value is not None and implausible_power(
+            total.value, float(main_fuse_a) if main_fuse_a is not None else None, len(PHASES)
+        ):
+            return PhaseValue(None, total.age_s, "invalid", report_age_s=total.report_age_s)
+        return total
 
     def grid_total_reading(self) -> tuple[float | None, str]:
         """`(watts, state)` of the meter's total grid power, signed (positive = import).

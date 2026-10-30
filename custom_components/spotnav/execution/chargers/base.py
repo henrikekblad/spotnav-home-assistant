@@ -303,6 +303,9 @@ class StartStopPath(ABC):
     """How a charge is started and stopped, and whether the charger is enabled as commanded."""
 
     kind: str
+    #: The entity that says whether the charge is enabled when that is not the charge control (ABB: the charge
+    #: control is the start button, which reads `unknown` until it is first pressed, while the limit says it).
+    control_entity_id: str | None = None
 
     def __init__(self, hass: HomeAssistant) -> None:
         self.hass = hass
@@ -455,7 +458,8 @@ class PhaseSwitch(ABC):
     """
 
     #: Set only before a charge starts, never while the charger charges (Easee: a change takes effect at a pause, and
-    #: the charger may keep the session on its phases). A charge on such a charger follows the rules without switching.
+    #: the charger may keep the session on its phases; NRGkick and Wattpilot: a switch under load may fault the car or
+    #: leave the charge paused). A charge on such a charger follows the rules without switching.
     start_only: bool = False
 
     def __init__(

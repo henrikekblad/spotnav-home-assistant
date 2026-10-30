@@ -43,7 +43,7 @@ charger executed whose pause could not be saved answers `{"ok": true, "action": 
 | `start` | Start charging now; optional `amps`. Pauses automatic execution for the plug-in session (pause choice `manual`). |
 | `stop` | Stop now, which pauses automatic execution for the plug-in session (pause choice `manual`), or with a `choice` (`next_period`, `until_tomorrow`, `until_resumed`) pause it for that span instead. |
 | `resume` | Clear a pause. |
-| `refresh_vehicle` | Re-read the vehicle's Home Assistant entities (`vehicle_id`); never wakes the car. |
+| `refresh_vehicle` | Re-read the vehicle's Home Assistant entities (`vehicle_id`); never a brand's wake-up (Kia Uvo may still ask the car itself, see [target SoC](target-soc.md)). |
 | `set_charge_limit` | Write the vehicle's charge-limit entity (`vehicle_id`, `percent`). |
 | `update_vehicle` | Change a vehicle's capacity, consumption, onboard charger, target, minimum charge level or wake for a reading, with `expected` values. |
 | `update_site_settings` | Change solar priority or forecast sources of the charger's site. |
