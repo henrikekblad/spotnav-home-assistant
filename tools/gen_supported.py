@@ -65,6 +65,14 @@ SET_UP_ON: dict[tuple[str, str], str] = {
     ("vehicle", "toyota"): "Subaru e-Outback through the Toyota integration",
 }
 
+#: What others found on real hardware that a user should know, by (category, Home Assistant domain): appended to the
+#: row's notes. Short and plain; each from an upstream report, not from SpotNav's own tests.
+HARDWARE_NOTES: dict[tuple[str, str], str] = {
+    ("charger", "wallbox"): "Since mid-2025 the Wallbox cloud allows about one request a minute per account, and "
+    "Home Assistant's own polling already uses it: keep one charger per account, or use OCPP, which is recommended "
+    "for Wallbox.",
+}
+
 #: Display names by Home Assistant domain.
 NAMES: dict[str, str] = {
     # chargers: taken from the profiles themselves; see `charger_name`
@@ -284,6 +292,9 @@ def charger_notes(profile: cp.PlatformProfile) -> str:
         lines.append(f"Phase switching for solar through {profile.phase_switching}.")
         tested = PHASE_SWITCHING_TESTED_ON.get(profile.platform)
         lines.append(f"Phase switching tested on {tested}." if tested else "Phase switching: untested on real hardware.")
+    note = HARDWARE_NOTES.get(("charger", profile.platform))
+    if note:
+        lines.append(note)
     return " ".join(lines)
 
 
