@@ -2305,6 +2305,13 @@
         }
       },
       {
+        "code": "plan_saving",
+        "params": {
+          "amount_minor": 1810,
+          "currency": "SEK"
+        }
+      },
+      {
         "code": "plan_distance",
         "params": {
           "mil": 10.392

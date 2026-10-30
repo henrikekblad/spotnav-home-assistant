@@ -465,6 +465,9 @@ class PlanResult:
     #: The need cannot be met by the departure, so this is the best effort: every whole slot from the
     #: first usable one to the departure, `delivered_kwh` below `requested_kwh` (`_window`).
     short_of_deadline: bool = False
+    #: What the same energy would cost charged from the first usable slot on, at the same power, in the major
+    #: unit: what the plan is compared with ("against charging now"). `None` without a priced plan.
+    now_cost: float | None = None
 
     @property
     def has_plan(self) -> bool:
@@ -880,6 +883,11 @@ def calculate_plan(request: PlanRequest) -> PlanResult:
         per_slot * effective_minor_per_kwh(slot.local_major_per_kwh, request.fiscal)
         for slot in selected
     )
+    # The same number of slots straight from the first usable one: charging now, at the same power.
+    now_minor = sum(
+        per_slot * effective_minor_per_kwh(slot.local_major_per_kwh, request.fiscal)
+        for slot in candidates[:needed]
+    )
     return PlanResult(
         version=CONTRACT_VERSION,
         area_id=request.area_id,
@@ -912,6 +920,7 @@ def calculate_plan(request: PlanRequest) -> PlanResult:
         slots_needed=needed,
         horizon=_horizon(candidates, selected, zone=zone, fiscal=request.fiscal),
         short_of_deadline=window.short,
+        now_cost=now_minor / 100,
     )
 
 

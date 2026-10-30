@@ -108,6 +108,12 @@ APP_READS_CAR_ENDED_WAITING: Final = "car_ended_waiting"
 #: A solar charge the sun switched to one phase: an app that does not read `APP_READS_SOLAR_ONE_PHASE` gets the
 #: ordinary solar charging line, with the same current, in its place.
 APP_UNREAD_SOLAR_ONE_PHASE_CODES: Final = ("solar_charging_one_phase",)
+#: The plan's saving against charging now and the solar forecast beside the solar headline: left out for an app that
+#: does not read `APP_READS_PLAN_FACTS`, and hybrid's line goes to it without when the sun is expected
+#: (`sun_start`, `sun_end`).
+APP_UNREAD_PLAN_FACT_CODES: Final = ("plan_saving", "solar_forecast")
+APP_UNREAD_HYBRID_SUN_PARAMS: Final = ("sun_start", "sun_end")
+APP_READS_PLAN_FACTS: Final = "plan_facts"
 APP_READS_SOLAR_ONE_PHASE: Final = "solar_one_phase"
 #: Waking the car for a reading: an app that does not read `APP_READS_WAKE_FOR_READING` gets vehicle rows without
 #: `wake_for_reading` (its settings row is never offered).
@@ -157,6 +163,11 @@ def _status_for_app(line: Any, opted_in: set[str]) -> Any:
     if code in APP_UNREAD_SOLAR_ONE_PHASE_CODES and APP_READS_SOLAR_ONE_PHASE not in opted_in:
         params = line.get("params") if isinstance(line.get("params"), dict) else {}
         return {"code": "solar_charging", "params": {"requested_a": params.get("requested_a")}}
+    if code in APP_UNREAD_PLAN_FACT_CODES and APP_READS_PLAN_FACTS not in opted_in:
+        return None
+    if code == "hybrid_grid" and APP_READS_PLAN_FACTS not in opted_in and isinstance(line.get("params"), dict):
+        params = {key: value for key, value in line["params"].items() if key not in APP_UNREAD_HYBRID_SUN_PARAMS}
+        return {**line, "params": params}
     return line
 
 
@@ -189,7 +200,8 @@ def _for_app(body: dict[str, Any], payload: dict[str, Any]) -> dict[str, Any]:
     null; `balancing_paused` for the plan's charge load balancing paused; `car_ended_waiting` for the plan waiting for
     the car's level after the car ended its charge; `wake_for_reading` for the vehicle rows' `wake_for_reading`; `solar_one_phase` for a solar charge the sun
     switched to one phase; `price_source` for the dashboard's `price_source` block; `phase_switching` for its
-    `phase_switching` block; `price_provider` for `prices.provider`; `setup` for its `setup` block); anything else in it, or a `reads` that is not
+    `phase_switching` block; `price_provider` for `prices.provider`; `setup` for its `setup` block; `plan_facts` for the status lines
+    `plan_saving` and `solar_forecast` and hybrid's `sun_start`/`sun_end`); anything else in it, or a `reads` that is not
     a list, is ignored.
     """
     opted_in = _opted_in(payload)

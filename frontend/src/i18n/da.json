@@ -890,5 +890,10 @@
   "setup.phone.text": "Vælg en telefon, der får besked, når en opladning stopper uventet eller er færdig.",
   "setup.phone.action": "Vælg telefon",
   "setup.app.text": "Hent SpotNav-appen til Android, og følg og styr opladningen fra telefonen.",
-  "setup.app.action": "Hent appen"
+  "setup.app.action": "Hent appen",
+  "status.planSaving": "sparer ~{amount} i forhold til at lade nu",
+  "strategy.status.hybrid.creditSuffixWindow": ", {credit} kWh forventes fra solen {from}–{to}",
+  "strategy.status.solar.forecast": "{kwh} kWh forventes fra solen {from}–{to}",
+  "strategy.status.solar.forecastTomorrow": "{kwh} kWh forventes fra solen i morgen {from}–{to}",
+  "strategy.status.solar.forecastNoTime": "{kwh} kWh forventes fra solen"
 }

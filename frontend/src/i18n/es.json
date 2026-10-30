@@ -890,5 +890,10 @@
   "setup.phone.text": "Elige un teléfono que reciba un aviso cuando una carga se detenga inesperadamente o termine.",
   "setup.phone.action": "Elegir teléfono",
   "setup.app.text": "Consigue la app SpotNav para Android y sigue y controla la carga desde el teléfono.",
-  "setup.app.action": "Obtener la app"
+  "setup.app.action": "Obtener la app",
+  "status.planSaving": "ahorra ~{amount} frente a cargar ahora",
+  "strategy.status.hybrid.creditSuffixWindow": ", {credit} kWh esperados del sol {from}–{to}",
+  "strategy.status.solar.forecast": "{kwh} kWh esperados del sol {from}–{to}",
+  "strategy.status.solar.forecastTomorrow": "{kwh} kWh esperados del sol mañana {from}–{to}",
+  "strategy.status.solar.forecastNoTime": "{kwh} kWh esperados del sol"
 }

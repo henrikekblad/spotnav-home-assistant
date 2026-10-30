@@ -890,5 +890,10 @@
   "setup.phone.text": "Choose a phone to be told when a charge stops unexpectedly or is complete.",
   "setup.phone.action": "Choose a phone",
   "setup.app.text": "Get the SpotNav app for Android to follow and control charging from your phone.",
-  "setup.app.action": "Get the app"
+  "setup.app.action": "Get the app",
+  "status.planSaving": "saves ~{amount} against charging now",
+  "strategy.status.hybrid.creditSuffixWindow": ", {credit} kWh expected from sun {from}–{to}",
+  "strategy.status.solar.forecast": "{kwh} kWh expected from the sun {from}–{to}",
+  "strategy.status.solar.forecastTomorrow": "{kwh} kWh expected from the sun tomorrow {from}–{to}",
+  "strategy.status.solar.forecastNoTime": "{kwh} kWh expected from the sun"
 }

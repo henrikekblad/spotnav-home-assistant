@@ -890,5 +890,10 @@
   "setup.phone.text": "Valitse puhelin, joka saa tiedon, kun lataus pysähtyy odottamatta tai on valmis.",
   "setup.phone.action": "Valitse puhelin",
   "setup.app.text": "Hanki SpotNav-sovellus Androidille ja seuraa ja ohjaa latausta puhelimesta.",
-  "setup.app.action": "Hanki sovellus"
+  "setup.app.action": "Hanki sovellus",
+  "status.planSaving": "säästää ~{amount} verrattuna lataamiseen heti",
+  "strategy.status.hybrid.creditSuffixWindow": ", {credit} kWh odotetaan auringosta {from}–{to}",
+  "strategy.status.solar.forecast": "{kwh} kWh odotetaan auringosta {from}–{to}",
+  "strategy.status.solar.forecastTomorrow": "{kwh} kWh odotetaan auringosta huomenna {from}–{to}",
+  "strategy.status.solar.forecastNoTime": "{kwh} kWh odotetaan auringosta"
 }

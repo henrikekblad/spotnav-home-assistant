@@ -168,6 +168,7 @@ export const STATUS_WORDING: Readonly<Record<StatusCode, TranslationKey>> = {
   car_ended_waiting: "status.carEndedWaiting",
   plan_energy: "status.planEnergy",
   plan_cost: "status.planCost",
+  plan_saving: "status.planSaving",
   plan_distance: "status.planDistance",
   solar_charging: "strategy.status.solar.charging",
   solar_charging_one_phase: "strategy.status.solar.chargingOnePhase",
@@ -185,6 +186,7 @@ export const STATUS_WORDING: Readonly<Record<StatusCode, TranslationKey>> = {
   solar_charger_current_missing: "strategy.status.solar.chargerCurrentNotSet",
   solar_site_incomplete: "strategy.status.solar.siteIncomplete",
   solar_unknown: "strategy.status.solar.unknown",
+  solar_forecast: "strategy.status.solar.forecast",
   hybrid_grid: "strategy.status.hybrid.grid",
   hybrid_no_forecast: "strategy.status.hybrid.noForecast",
   hybrid_no_price_data: "strategy.status.hybrid.noPriceData",
@@ -252,6 +254,9 @@ export const STATUS_VARIANT_KEYS: readonly TranslationKey[] = [
   "strategy.status.solar.chargingUnknown",
   "strategy.status.solar.chargingOnePhaseUnknown",
   "strategy.status.hybrid.creditSuffix",
+  "strategy.status.hybrid.creditSuffixWindow",
+  "strategy.status.solar.forecastTomorrow",
+  "strategy.status.solar.forecastNoTime",
   "issue.needFromSessions",
   "strategy.status.solar.noGridPowerEntity",
   "strategy.status.solar.chargerCurrentUnreadable",
@@ -362,6 +367,17 @@ function ms(value: StatusParam | undefined): number | null {
 
 function num(value: StatusParam | undefined): number | null {
   return typeof value === "number" ? value : null;
+}
+
+/** A money line's `amount_minor` and `currency`, in the major unit with at most `decimals` decimals. */
+function moneyText(p: Readonly<Record<string, StatusParam>>, format: FormatContext, decimals: number): string {
+  const major = (num(p["amount_minor"]) ?? 0) / 100;
+  const currency = typeof p["currency"] === "string" ? p["currency"] : "";
+  if (currency === "GBP") {
+    return localeMoney(format.language, major, currency, format.majorUnit);
+  }
+  const unit = currency === format.currency && format.majorUnit !== null ? format.majorUnit : currency;
+  return `${formatNumber(format.language, major, decimals)} ${unit}`.trim();
 }
 
 /** A time today, else its weekday and date with the time, in the market's zone. */
@@ -479,15 +495,11 @@ export function lineText(
     }
     case "plan_energy":
       return say("status.planEnergy", { kwh: formatNumber(language, num(p["kwh"]) ?? 0, 1) });
-    case "plan_cost": {
-      const major = (num(p["amount_minor"]) ?? 0) / 100;
-      const currency = typeof p["currency"] === "string" ? p["currency"] : "";
-      if (currency === "GBP") {
-        return say("status.planCost", { cost: localeMoney(language, major, currency, format.majorUnit) });
-      }
-      const unit = currency === format.currency && format.majorUnit !== null ? format.majorUnit : currency;
-      return say("status.planCost", { cost: `${formatNumber(language, major, 2)} ${unit}`.trim() });
-    }
+    case "plan_cost":
+      return say("status.planCost", { cost: moneyText(p, format, 2) });
+    case "plan_saving":
+      // "About": the comparison is an estimate, so one decimal is enough.
+      return say("status.planSaving", { amount: moneyText(p, format, 1) });
     case "plan_distance":
       return say("status.planDistance", { distance: distanceText(language, num(p["mil"]) ?? 0, format.countries) });
     case "solar_car_stopped": {
@@ -525,9 +537,30 @@ export function lineText(
         window,
       });
       const credit = num(p["credit_kwh"]);
-      return credit !== null && credit > 0
-        ? `${grid}${say("strategy.status.hybrid.creditSuffix", { credit: formatNumber(language, credit, 1) })}`
-        : grid;
+      if (credit === null || credit <= 0) {
+        return grid;
+      }
+      const sunStart = ms(p["sun_start"]);
+      const sunEnd = ms(p["sun_end"]);
+      const kwh = formatNumber(language, credit, 1);
+      return sunStart !== null && sunEnd !== null && zoned
+        ? `${grid}${say("strategy.status.hybrid.creditSuffixWindow", { credit: kwh, from: clock(format, sunStart), to: clock(format, sunEnd) })}`
+        : `${grid}${say("strategy.status.hybrid.creditSuffix", { credit: kwh })}`;
+    }
+    case "solar_forecast": {
+      // The sun the forecast promises for the rest of today, else tomorrow, with its hours.
+      const start = ms(p["start"]);
+      const end = ms(p["end"]);
+      const kwh = formatNumber(language, num(p["kwh"]) ?? 0, 1);
+      if (start === null || end === null || !zoned) {
+        return say("strategy.status.solar.forecastNoTime", { kwh });
+      }
+      const today = localDayKey(start, format.timeZone) === localDayKey(nowMs, format.timeZone);
+      return say(today ? "strategy.status.solar.forecast" : "strategy.status.solar.forecastTomorrow", {
+        kwh,
+        from: clock(format, start),
+        to: clock(format, end),
+      });
     }
     case "car_ended_waiting": {
       // The car ended the plan's charge short of the target: at the level it ended at, "~" and "estimated" when that

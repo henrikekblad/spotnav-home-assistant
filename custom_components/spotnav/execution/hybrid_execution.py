@@ -70,6 +70,9 @@ class HybridChargerState:
     slack_kwh: float
     plan_window_active: bool
     forecast_sources: tuple[str, ...]
+    #: When the credited sun is expected (`HybridResult.sun_start`/`sun_end`), `None` when not known.
+    sun_start: datetime | None = None
+    sun_end: datetime | None = None
 
 
 def hybrid_state(hass: HomeAssistant, charger_entry_id: str) -> HybridChargerState | None:
@@ -134,6 +137,30 @@ class HybridPlanOutcome:
     replanned: bool
 
 
+def charge_power_limits(hass: HomeAssistant, charger_entry_id: str, settings: AutoSettings) -> tuple[float, float]:
+    """The charger's planned power (kW) and the least power a charge can start at (W), as hybrid reckons the sun.
+
+    The start power is the site's minimum current for the charger, raised to the charger's own start minimum (a
+    profile may set it above 6 A); without a site, the default minimum.
+    """
+    site = site_controller_for_charger(hass, charger_entry_id)
+    amps = settings.amps if settings.amps is not None else 0
+    phases = effective_phases(hass, charger_entry_id)
+    voltage_ll = voltage_between_phases_v(hass, charger_entry_id)
+    max_charge_kw = power_kw(amps, phases, voltage_ll)
+    if site is not None:
+        wiring = _phase_wiring(site, charger_entry_id)
+        min_current_a = float(wiring.get("min_current_a", DEFAULT_MIN_CURRENT_A))
+    else:
+        # No site: hybrid still runs (no readable forecast makes it plain cheapest) but needs some
+        # `solar_start_w` to build a valid `HybridConfig`.
+        min_current_a = DEFAULT_MIN_CURRENT_A
+    data = charger_data(hass, charger_entry_id)
+    if data is not None:
+        min_current_a = max(min_current_a, data.controller.adapter.min_start_current_a)
+    return max_charge_kw, power_kw(min_current_a, phases, voltage_ll) * 1000.0
+
+
 async def async_plan_hybrid(
     hass: HomeAssistant,
     charger_entry_id: str,
@@ -164,23 +191,7 @@ async def async_plan_hybrid(
         )
         forecast_read = await async_read_forecast_wh(hass, entries)
 
-    amps = settings.amps if settings.amps is not None else 0
-    phases = effective_phases(hass, charger_entry_id)
-    voltage_ll = voltage_between_phases_v(hass, charger_entry_id)
-    max_charge_kw = power_kw(amps, phases, voltage_ll)
-
-    if site is not None:
-        wiring = _phase_wiring(site, charger_entry_id)
-        min_current_a = float(wiring.get("min_current_a", DEFAULT_MIN_CURRENT_A))
-    else:
-        # No site: hybrid still runs (no readable forecast makes it plain cheapest) but needs some
-        # `solar_start_w` to build a valid `HybridConfig`.
-        min_current_a = DEFAULT_MIN_CURRENT_A
-    # The lowest power a charge can start at: the charger's own start minimum counts (a profile may set it above 6 A).
-    data = charger_data(hass, charger_entry_id)
-    if data is not None:
-        min_current_a = max(min_current_a, data.controller.adapter.min_start_current_a)
-    solar_start_w = power_kw(min_current_a, phases, voltage_ll) * 1000.0
+    max_charge_kw, solar_start_w = charge_power_limits(hass, charger_entry_id, settings)
 
     if documents:
         if settings.departure_enabled:
@@ -273,6 +284,8 @@ def record_hybrid_state(
             slack_kwh=result.slack_kwh,
             plan_window_active=plan_window_active,
             forecast_sources=outcome.sources_read,
+            sun_start=result.sun_start,
+            sun_end=result.sun_end,
         )
     log_hybrid_decision(charger_entry_id, outcome, plan_window_active=plan_window_active)
 

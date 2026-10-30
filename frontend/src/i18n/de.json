@@ -890,5 +890,10 @@
   "setup.phone.text": "Ein Telefon wählen, das benachrichtigt wird, wenn ein Ladevorgang unerwartet stoppt oder fertig ist.",
   "setup.phone.action": "Telefon wählen",
   "setup.app.text": "Die SpotNav-App für Android holen und das Laden vom Telefon aus verfolgen und steuern.",
-  "setup.app.action": "App holen"
+  "setup.app.action": "App holen",
+  "status.planSaving": "spart ~{amount} gegenüber sofortigem Laden",
+  "strategy.status.hybrid.creditSuffixWindow": ", {credit} kWh von der Sonne erwartet {from}–{to}",
+  "strategy.status.solar.forecast": "{kwh} kWh von der Sonne erwartet {from}–{to}",
+  "strategy.status.solar.forecastTomorrow": "{kwh} kWh von der Sonne erwartet morgen {from}–{to}",
+  "strategy.status.solar.forecastNoTime": "{kwh} kWh von der Sonne erwartet"
 }

@@ -890,5 +890,10 @@
   "setup.phone.text": "Välj en telefon som får veta när en laddning stannar oväntat eller är klar.",
   "setup.phone.action": "Välj telefon",
   "setup.app.text": "Skaffa SpotNav-appen för Android och följ och styr laddningen från telefonen.",
-  "setup.app.action": "Hämta appen"
+  "setup.app.action": "Hämta appen",
+  "status.planSaving": "sparar ~{amount} mot att ladda nu",
+  "strategy.status.hybrid.creditSuffixWindow": ", {credit} kWh väntas från solen {from}–{to}",
+  "strategy.status.solar.forecast": "{kwh} kWh väntas från solen {from}–{to}",
+  "strategy.status.solar.forecastTomorrow": "{kwh} kWh väntas från solen i morgon {from}–{to}",
+  "strategy.status.solar.forecastNoTime": "{kwh} kWh väntas från solen"
 }

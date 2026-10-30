@@ -890,5 +890,10 @@
   "setup.phone.text": "Kies een telefoon die bericht krijgt als het laden onverwacht stopt of klaar is.",
   "setup.phone.action": "Telefoon kiezen",
   "setup.app.text": "Haal de SpotNav-app voor Android en volg en bedien het laden vanaf je telefoon.",
-  "setup.app.action": "App downloaden"
+  "setup.app.action": "App downloaden",
+  "status.planSaving": "bespaart ~{amount} tegenover nu laden",
+  "strategy.status.hybrid.creditSuffixWindow": ", {credit} kWh verwacht van de zon {from}–{to}",
+  "strategy.status.solar.forecast": "{kwh} kWh verwacht van de zon {from}–{to}",
+  "strategy.status.solar.forecastTomorrow": "{kwh} kWh verwacht van de zon morgen {from}–{to}",
+  "strategy.status.solar.forecastNoTime": "{kwh} kWh verwacht van de zon"
 }
