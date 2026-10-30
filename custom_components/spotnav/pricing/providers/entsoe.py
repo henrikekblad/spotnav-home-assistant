@@ -133,7 +133,7 @@ class EntsoeProvider:
         *,
         session: ClientSession | None = None,
         now: Callable[[], datetime] | None = None,
-        min_spacing_s: float = MIN_SPACING_S,
+        min_spacing_s: float | None = None,
         endpoint: str | None = None,
     ) -> None:
         self._hass = hass
@@ -142,7 +142,7 @@ class EntsoeProvider:
         self._session = session
         self._now = now if now is not None else dt_util.utcnow
         self._rate = DayRate(fx, self._now)
-        self._min_spacing_s = min_spacing_s
+        self._min_spacing_s = MIN_SPACING_S if min_spacing_s is None else min_spacing_s
         self._endpoint = endpoint
         # One request at a time, spaced (loop time: the spacing is about the wire, not the planner's clock).
         self._lock = asyncio.Lock()
