@@ -161,6 +161,13 @@ cannot, and for a direct site without the total it says the meter's total grid p
   `active_control`, `solar`, or `none` for a charger whose current cannot be set).
 - The surplus is computed from the site's energy balance (grid, house battery and the car's
   own draw), never from export alone, so that the car's draw does not count as surplus.
+- A charger whose current cannot be set (start and stop only) is not modulated: it starts only when the
+  surplus covers its whole learned current (its *switched current*, see
+  [Chargers that can only be switched on and off](site-and-load-balancing.md#chargers-that-can-only-be-switched-on-and-off)),
+  and stops once the surplus, with its own draw added back, stays below that current for the stop delay.
+  A fixed 16 A charger therefore waits for about 11 kW of surplus on three phases, instead of starting at
+  6 A and importing the rest. Hybrid shares the surplus the same way, and the minimum on and off times
+  bound how often it switches.
 - Charging starts after the surplus has held for a while and stops after it has faded, to
   avoid rapid switching. With no usable measurement it stops rather than guesses.
 - A charge starts at the minimum current and stays there for two minutes while the car's own draw
