@@ -28,9 +28,9 @@ from .relay import (
     Clock,
     flat_day,
     index_listing,
+    hold_history,
     profile_path,
     serve,
-    serve_profile,
     SE4,
 )
 
@@ -46,7 +46,7 @@ SUNDAY_NIGHT = {(7, hour): 0.03 for hour in range(8)}
 
 
 def _publish(harness: Harness, today: date, **profile: Any) -> None:
-    """Today and tomorrow published, and (unless `profile` is `None`) a profile with Sunday night cheap."""
+    """Today and tomorrow published, and (unless `missing`) four weeks of history with Sunday night cheap."""
     transport = harness.transport
     tomorrow = today + timedelta(days=1)
     serve(transport, days=(today, tomorrow))
@@ -58,8 +58,7 @@ def _publish(harness: Harness, today: date, **profile: Any) -> None:
     if profile.get("missing"):
         return
     profile.setdefault("cheap", SUNDAY_NIGHT)
-    profile.setdefault("generated", f"{today.isoformat()}T14:05:00+02:00")
-    serve_profile(transport, to=today.isoformat(), **profile)
+    hold_history(harness.repository, to=today.isoformat(), **profile)
 
 
 @pytest.fixture(autouse=True)
@@ -114,7 +113,8 @@ async def test_without_a_profile_it_plans_on_the_published_prices(harness: Harne
     assert snapshot.state == "proposal_ready" and snapshot.reason == "ready"
     assert snapshot.history is not None and snapshot.history.outcome == "no_profile"
     assert snapshot.proposal is not None and snapshot.proposal.has_plan
-    assert harness.transport.call_count(profile_path()) == 1
+    # The profile is built from held days: the relay's own is never asked for.
+    assert harness.transport.call_count(profile_path()) == 0
 
 
 async def test_a_need_the_published_prices_cannot_hold_buys_only_what_cannot_wait(
@@ -320,16 +320,19 @@ async def test_a_daily_departure_never_asks_for_history(harness: Harness) -> Non
     assert harness.transport.call_count(profile_path()) == 0
 
 
-async def test_a_profile_is_asked_for_once_a_day_however_often_the_plan_is_recalculated(
+async def test_a_profile_is_built_once_and_never_asked_for_however_often_the_plan_is_recalculated(
     harness: Harness,
 ) -> None:
     _publish(harness, date(2026, 10, 1))
     controller = await harness.auto(
         departure=time(8, 0), departure_date=SUNDAY, requested_kwh=10.0
     )
+    built = harness.repository.profile_for(SE4)
+    assert built is not None
     for _ in range(3):
         await controller.async_recalculate()
-    assert harness.transport.call_count(profile_path()) == 1
+    assert harness.repository.profile_for(SE4) is built
+    assert harness.transport.call_count(profile_path()) == 0
 
 
 async def test_a_dated_departure_is_the_same_instant_for_the_delivered_energy_baseline(

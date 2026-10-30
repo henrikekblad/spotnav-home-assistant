@@ -464,6 +464,49 @@ def profile_document(
     }
 
 
-def serve_profile(transport: StubTransport, area: str = SE4, **kwargs: Any) -> None:
-    """Publish a history profile for one area (see [profile_document])."""
-    transport.serve(profile_path(area), 200, json.dumps(profile_document(area, **kwargs)))
+def history_days(
+    area: str = SE4,
+    *,
+    to: str,
+    median: float = 0.10,
+    std: float = 0.01,
+    cheap: dict[tuple[int, int], float] | None = None,
+) -> dict[str, Any]:
+    """The 27 market-day files before `to`, as a schema 2 store's `days`, whose profile is [profile_document]'s.
+
+    Each weekday-hour gets its median (`cheap` names the ones with a median of their own) from four
+    quarters a day: two at `median - std` and two at `median + std`, so its median is the median and its
+    population spread is `std`. Today (`to`) is left out: it is the published day the test serves, and
+    with it the window holds 28 files.
+    """
+    zone = ZoneInfo(AREA_TZ.get(area, "Europe/Stockholm"))
+    last = date.fromisoformat(to)
+    days: dict[str, Any] = {}
+    for back in range(27, 0, -1):
+        when = last - timedelta(days=back)
+        document = json.loads(day_body(area, when))
+        document["tz"] = zone.key
+        start = datetime(when.year, when.month, when.day, tzinfo=zone)
+        document["start"] = start.isoformat()
+        end = datetime.combine(when + timedelta(days=1), datetime.min.time(), tzinfo=zone)
+        count = int((end - start).total_seconds() // 900)
+        prices = []
+        for index in range(count):
+            at = (start.astimezone(timezone.utc) + timedelta(minutes=15 * index)).astimezone(zone)
+            centre = median if cheap is None else cheap.get((at.isoweekday(), at.hour), median)
+            prices.append(round(centre - std if at.minute < 30 else centre + std, 5))
+        document["prices"] = prices
+        days[f"{area}|{zone.key}|{when.isoformat()}"] = {
+            "document": document,
+            "fetched_at": "2026-01-01T00:00:00+00:00",
+            "provider": "relay",
+        }
+    return days
+
+
+def hold_history(repository: Any, area: str = SE4, **kwargs: Any) -> None:
+    """Have [repository] hold the files [history_days] describes, as if read from its store.
+
+    The profile is built from held day files, so this is how a test gives an area its history.
+    """
+    repository._adopt({"schema": 2, "days": history_days(area, **kwargs)})  # noqa: SLF001 - the store's own path

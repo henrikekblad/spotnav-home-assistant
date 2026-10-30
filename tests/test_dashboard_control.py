@@ -323,7 +323,7 @@ async def test_a_response_reads_memory_and_calls_nothing(
     client = await hass_ws_client(hass)
     repository = dashboard_api.domain_data(hass).price_repository
     assert repository is not None
-    calls = len(repository._client().calls)  # noqa: SLF001 - the stub wire's own record
+    calls = len(repository._router.relay._client().calls)  # noqa: SLF001 - the stub wire's own record
     installs = Counted(monkeypatch, ChargingController, "async_install")
     stops = Counted(monkeypatch, ChargingController, "async_stop")
 
@@ -334,7 +334,7 @@ async def test_a_response_reads_memory_and_calls_nothing(
 
     assert frame["success"] is True
     assert frame["result"]["control"]["can_act"] is True, "an administrative connection"
-    assert len(repository._client().calls) == calls, "no request to the relay"
+    assert len(repository._router.relay._client().calls) == calls, "no request to the relay"
     assert installs.calls == 0 and stops.calls == 0, "no schedule touched"
     assert store.settings(entry.entry_id).revision == revision, "no settings write"
 

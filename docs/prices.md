@@ -122,9 +122,10 @@ prices as able to arrive at any moment.
 ### The history profile
 
 For a departure on a particular day ("Sun 4 Oct", up to seven days ahead) or on chosen weekdays, the
-plan can reach past the last published price. The relay publishes a profile of the last four weeks
-for each area: the median price and its spread for every weekday and hour. SpotNav compares the
-cheapest published intervals with what the profile expects for the hours that are not published yet.
+plan can reach past the last published price. SpotNav keeps a profile of the last four weeks for
+each area, built in Home Assistant from the day prices it has stored: the median price and its spread
+for every weekday and hour. It compares the cheapest published intervals with what the profile
+expects for the hours that are not published yet.
 
 If the unpublished hours were clearly cheaper (by more than one standard deviation of the spread,
 after your tax, grid fee and VAT), it waits and says so: *Waiting for Sunday's prices (at 13:00), which have
@@ -136,8 +137,8 @@ it plans on the published prices.
 For an ordinary daily departure the profile only explains a wait for tomorrow's prices, or ends it
 when the published hours are clearly cheaper than the expected unpublished ones.
 
-SpotNav asks for an area's profile at most once a day and does not use one that is more than two
-days old.
+The profile is built the same way the relay builds its `profile.json`, and needs at least 21 of the
+last 28 days stored; until then there is no profile and the plan uses the published prices.
 
 ### Fetching and caching
 

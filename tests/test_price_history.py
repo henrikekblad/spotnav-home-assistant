@@ -108,7 +108,8 @@ async def test_a_schema_one_store_migrates_with_every_day_it_held(
     assert relay["catalogue"] == legacy["catalogue"]
     assert relay["catalogue_rev"] == "916f2f8e05fd"
     assert relay["index"] == legacy["index"]
-    assert relay["profiles"] == legacy["profiles"]
+    # The relay's profile is not kept: the profile is built from the held days.
+    assert "profiles" not in relay
     assert set(written) == {"schema", "days", "relay"}
 
     # And schema 2 restores to the same thing in a new process.
@@ -120,7 +121,6 @@ async def test_a_schema_one_store_migrates_with_every_day_it_held(
         after = again.file_snapshot(area, date.fromisoformat(raw_day))
         assert after.document is not None and after.document.prices == before.document.prices, key
         assert after.fetched_at == before.fetched_at
-    assert again.profile_summary("SE4")["held"] is True
 
 
 async def test_a_fetched_file_is_stored_under_its_calendar_with_its_provider(

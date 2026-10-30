@@ -17,10 +17,10 @@ from homeassistant.core import HomeAssistant
 from pytest_homeassistant_custom_component.common import async_mock_service
 
 from custom_components.spotnav.pricing import price_repository as price_repository_module
+from custom_components.spotnav.pricing.providers import relay as relay_module
 from custom_components.spotnav.const import DOMAIN
+from custom_components.spotnav.pricing.providers.relay import CHUNK_BYTES, MAX_RESPONSE_BYTES
 from custom_components.spotnav.pricing.price_repository import (
-    CHUNK_BYTES,
-    MAX_RESPONSE_BYTES,
     STORAGE_KEY,
     PriceRepository,
     async_setup_price_repository,
@@ -787,7 +787,7 @@ async def test_a_body_that_stalls_mid_stream_times_out_and_keeps_last_good(
     # The first chunk arrives, the rest never does. The production timeout is twenty
     # seconds, so the test shortens the module's own bound rather than waiting: the
     # policy under test is that the *whole body* is inside it.
-    monkeypatch.setattr(price_repository_module, "REQUEST_TIMEOUT_S", 0.05)
+    monkeypatch.setattr(relay_module, "REQUEST_TIMEOUT_S", 0.05)
     stalled = asyncio.Event()
     body = json.dumps(json.loads(day_body("SE4", TODAY))).encode("utf-8")
     transport.serve_chunks(
