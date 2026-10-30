@@ -173,6 +173,13 @@ The site uses a house battery's power to tell the car's draw from the house's, a
 | Solis Modbus (`solis_modbus`) | Discharge-positive, negated |  | Detected from the integration's source |
 | SMA (`sma`) | Charge and discharge are two entities, combined |  | Detected from the integration's source |
 | Ferroamp (`ferroamp`) | Discharge-positive, negated |  | Detected from the integration's source |
+| Zendure (`zendure_ha`) | Charge and discharge are two entities, combined | Each Zendure device has its own battery power and the integration has no total: with several devices on one account, SpotNav reads one of them. | Detected from the integration's source |
+| Anker Solix, all Solarbanks (`anker_solix`) | Charge-positive, used as it is | Read from Anker's cloud, at most once a minute and often only every five minutes, which is slow for telling the car's draw from the battery's. | Detected from the integration's source |
+| Anker Solix, one device (`anker_solix`) | Charge-positive, used as it is | Read from Anker's cloud, at most once a minute and often only every five minutes, which is slow for telling the car's draw from the battery's. | Detected from the integration's source |
+| EcoFlow PowerStream (`ecoflow_cloud`) | Discharge-positive, negated | PowerOcean and Stream batteries are not detected: which way their power counts is not known. | Detected from the integration's source |
+| EcoFlow Ocean Pro (`ecoflow_cloud`) | Charge-positive, used as it is | PowerOcean and Stream batteries are not detected: which way their power counts is not known. | Detected from the integration's source |
+| Marstek (local API), all batteries (`marstek_local_api`) | Charge-positive, used as it is |  | Detected from the integration's source |
+| Marstek (local API), one battery (`marstek_local_api`) | Charge-positive, used as it is |  | Detected from the integration's source |
 
 ## Supported vehicles
 
