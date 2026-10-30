@@ -1,24 +1,22 @@
-"""Phase switches (`PhaseSwitch`) built on an integration's own entities: a switch, a number or a select.
+"""The building blocks of a phase switch (`PhaseSwitch`) on an integration's own entity: a switch, a number or a select.
 
 Each is found on the charger's own device through the entity registry, by its translation key or unique id, never by
 its entity id; a disabled entity is not found, and without the entity the charger has no `PhaseSwitch` (the setting
 is then not offered). Where the integration reports that the charger is switching (it interrupts the charge for it),
-that status counts as a settle (`PhaseSwitch.switching`).
+that status counts as a settle (`PhaseSwitch.switching`). Each vendor's module registers its own phase switch from
+these:
 
-* Peblar (core, `peblar.py` registers it) and Lektrico (core): the `force_single_phase` switch, on = one phase, off =
-  three. Lektrico creates it only on its three-phase model (`3p22k`); its `limit_reason` sensor says
-  `switching_phases` while the charger switches.
-* NRGkick (core): the `phase_count` number (1 to 3); 1 or 3 is written. Its maximum is the attached connector's phase
-  count, so a single-phase connector (maximum 1) has no `PhaseSwitch`. The integration hides the 0 the charger reports
-  while it switches, so there is no switching status.
-* go-e (HACS, API v2 and MQTT) and Fronius Wattpilot (HACS): the `psm` select (auto / one phase / three phases); one or
-  three phases is written, never auto, and auto reads as unknown. The `modelStatus` sensor's
-  "not charging because of phase switch" (code 23) is the switching status.
+* `force_single_phase` (`ForceSinglePhaseSwitch`, on = one phase, off = three): `peblar.py`, `lektrico.py`.
+* `PhaseCountNumber` (1 or 3 is written): `nrgkick.py`.
+* `phase_mode_select` (`PhaseModeSelect`): the `psm` select (auto / one phase / three phases) that go-e and Fronius
+  Wattpilot share, `goe.py` and `wattpilot.py`. One or three phases is written, never auto, and auto reads as
+  unknown. The `modelStatus` sensor's "not charging because of phase switch" (code 23) is the switching status.
+
+Easee's phase mode is a service, not an entity of these kinds (`easee.py`).
 """
 
 from __future__ import annotations
 
-import math
 from collections.abc import Callable
 from typing import Final, Literal
 
@@ -37,25 +35,16 @@ from .base import (
     PHASES_INVALID,
     PHASES_TARGET_UNAVAILABLE,
 )
-from .registry import ChargerContext, register_phase_switch
-
-LEKTRICO_DOMAIN: Final = "lektrico"
-NRGKICK_DOMAIN: Final = "nrgkick"
-GOE_API2_DOMAIN: Final = "goecharger_api2"
-GOE_MQTT_DOMAIN: Final = "goecharger_mqtt"
-WATTPILOT_DOMAIN: Final = "wattpilot"
+from .registry import ChargerContext
 
 FORCE_SINGLE_PHASE_KEYS: Final = ("force_single_phase",)
-_LEKTRICO_LIMIT_REASON_KEYS: Final = ("limit_reason",)
-_LEKTRICO_SWITCHING: Final = frozenset({"switching_phases"})
-_NRGKICK_PHASE_COUNT_KEYS: Final = ("phase_count",)
-_PSM_KEYS: Final = ("psm",)
+PSM_KEYS: Final = ("psm",)
 #: go-e API v2's raw code sensor (`modelstatus`, disabled by default) and its worded one (`modelstatus_value`), go-e
 #: MQTT's `modelStatus` sensors (slug and code), Wattpilot's `modelStatus` sensor.
-_MODEL_STATUS_KEYS: Final = ("modelstatus", "modelstatus_value")
+MODEL_STATUS_KEYS: Final = ("modelstatus", "modelstatus_value")
 #: The model status "not charging because of phase switch" (23) as each integration words it: the code, go-e MQTT's
 #: slug, go-e API v2's English and German text, Wattpilot's enum name (all lower case).
-_GOE_SWITCHING: Final = frozenset(
+MODEL_STATUS_SWITCHING: Final = frozenset(
     {
         "23",
         "phase_switch",
@@ -66,7 +55,8 @@ _GOE_SWITCHING: Final = frozenset(
 )
 
 
-def _charger_entities(context: ChargerContext, platform: str, domain: str, keys: tuple[str, ...]) -> list[str]:
+def charger_entities(context: ChargerContext, platform: str, domain: str, keys: tuple[str, ...]) -> list[str]:
+    """`device_entities` on the charger's own device, found from any of its configured entities."""
     return device_entities(
         context.hass, platform, domain, keys, context.charge_control, context.status_entity_id, context.current_limit
     )
@@ -177,7 +167,7 @@ def force_single_phase(
     switching_values: frozenset[str] = frozenset(),
 ) -> PhaseSwitch | None:
     """The charger's force-single-phase switch of `platform`, or `None` when it has none."""
-    found = _charger_entities(context, platform, "switch", FORCE_SINGLE_PHASE_KEYS)
+    found = charger_entities(context, platform, "switch", FORCE_SINGLE_PHASE_KEYS)
     if not found:
         return None
     return ForceSinglePhaseSwitch(
@@ -185,32 +175,14 @@ def force_single_phase(
     )
 
 
-def _lektrico(context: ChargerContext) -> PhaseSwitch | None:
-    return force_single_phase(
-        context,
-        LEKTRICO_DOMAIN,
-        switching_entity_ids=tuple(_charger_entities(context, LEKTRICO_DOMAIN, "sensor", _LEKTRICO_LIMIT_REASON_KEYS)),
-        switching_values=_LEKTRICO_SWITCHING,
-    )
-
-
-def _nrgkick(context: ChargerContext) -> PhaseSwitch | None:
-    found = _charger_entities(context, NRGKICK_DOMAIN, "number", _NRGKICK_PHASE_COUNT_KEYS)
-    if not found:
-        return None
-    state = context.hass.states.get(found[0])
-    most = _finite(state.attributes.get("max")) if state is not None else None
-    if most is not None and math.floor(most + 1e-9) < 3:
-        # A single-phase connector: nothing to switch.
-        return None
-    return PhaseCountNumber(context.hass, found[0])
-
-
-def _phase_mode_select(
+def phase_mode_select(
     platform: str, one: tuple[str, ...], three: tuple[str, ...]
 ) -> Callable[[ChargerContext], PhaseSwitch | None]:
+    """How a `platform` charger's `psm` select is found: `one` and `three` are its options for one and three phases,
+    and its model-status sensors say when it switches."""
+
     def factory(context: ChargerContext) -> PhaseSwitch | None:
-        found = _charger_entities(context, platform, "select", _PSM_KEYS)
+        found = charger_entities(context, platform, "select", PSM_KEYS)
         if not found:
             return None
         return PhaseModeSelect(
@@ -218,18 +190,8 @@ def _phase_mode_select(
             found[0],
             one=one,
             three=three,
-            switching_entity_ids=tuple(_charger_entities(context, platform, "sensor", _MODEL_STATUS_KEYS)),
-            switching_values=_GOE_SWITCHING,
+            switching_entity_ids=tuple(charger_entities(context, platform, "sensor", MODEL_STATUS_KEYS)),
+            switching_values=MODEL_STATUS_SWITCHING,
         )
 
     return factory
-
-
-register_phase_switch(LEKTRICO_DOMAIN, _lektrico)
-register_phase_switch(NRGKICK_DOMAIN, _nrgkick)
-# go-e API v2 (marq24/ha-goecharger-api2): options "0" auto, "1" force one phase, "2" force three phases.
-register_phase_switch(GOE_API2_DOMAIN, _phase_mode_select(GOE_API2_DOMAIN, ("1",), ("2",)))
-# go-e MQTT (syssi/homeassistant-goecharger-mqtt): options auto, one_phase, three_phases.
-register_phase_switch(GOE_MQTT_DOMAIN, _phase_mode_select(GOE_MQTT_DOMAIN, ("one_phase",), ("three_phases",)))
-# Fronius Wattpilot (mk-maddin/wattpilot-HA): options Auto, 1 Phase, 3 Phases.
-register_phase_switch(WATTPILOT_DOMAIN, _phase_mode_select(WATTPILOT_DOMAIN, ("1 Phase",), ("3 Phases",)))
