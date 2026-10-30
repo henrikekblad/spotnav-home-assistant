@@ -1,0 +1,1158 @@
+{
+  "v": 2,
+  "generated": "2026-10-30T15:05:09Z",
+  "areas": [
+    {
+      "id": "AT",
+      "eic": "10YAT-APG------L",
+      "countries": [
+        "AT"
+      ],
+      "name": "Austria",
+      "tz": "Europe/Vienna",
+      "currency": "EUR",
+      "major_unit": "€",
+      "minor_unit": "cent",
+      "vat_percent": 20,
+      "suggested_tax": 0.1,
+      "publication": {
+        "time": "13:00",
+        "tz": "Europe/Brussels"
+      },
+      "source": {
+        "name": "SpotNav",
+        "url": "https://spotnav.sensnology.se"
+      },
+      "routes": {
+        "nordpool": "AT",
+        "entsoe": {
+          "eic": "10YAT-APG------L",
+          "sequence": "1",
+          "expected_sequences": [
+            "1",
+            "2"
+          ],
+          "half_hourly": false
+        },
+        "cet_market_tz": "Europe/Vienna"
+      }
+    },
+    {
+      "id": "BE",
+      "eic": "10YBE----------2",
+      "countries": [
+        "BE"
+      ],
+      "name": "Belgium",
+      "tz": "Europe/Brussels",
+      "currency": "EUR",
+      "major_unit": "€",
+      "minor_unit": "cent",
+      "vat_percent": 6,
+      "publication": {
+        "time": "13:00",
+        "tz": "Europe/Brussels"
+      },
+      "source": {
+        "name": "SpotNav",
+        "url": "https://spotnav.sensnology.se"
+      },
+      "routes": {
+        "nordpool": "BE",
+        "entsoe": {
+          "eic": "10YBE----------2",
+          "half_hourly": false
+        },
+        "cet_market_tz": "Europe/Brussels"
+      }
+    },
+    {
+      "id": "BG",
+      "eic": "10YCA-BULGARIA-R",
+      "countries": [
+        "BG"
+      ],
+      "name": "Bulgaria",
+      "tz": "Europe/Sofia",
+      "currency": "EUR",
+      "major_unit": "€",
+      "minor_unit": "cent",
+      "vat_percent": 20,
+      "publication": {
+        "time": "13:00",
+        "tz": "Europe/Brussels"
+      },
+      "source": {
+        "name": "SpotNav",
+        "url": "https://spotnav.sensnology.se"
+      },
+      "routes": {
+        "nordpool": "BG",
+        "entsoe": {
+          "eic": "10YCA-BULGARIA-R",
+          "half_hourly": false
+        },
+        "cet_market_tz": "Europe/Brussels"
+      }
+    },
+    {
+      "id": "CH",
+      "eic": "10YCH-SWISSGRIDZ",
+      "countries": [
+        "CH"
+      ],
+      "name": "Switzerland",
+      "tz": "Europe/Zurich",
+      "currency": "CHF",
+      "major_unit": "CHF",
+      "minor_unit": "Rp.",
+      "vat_percent": 8.1,
+      "publication": {
+        "time": "13:00",
+        "tz": "Europe/Brussels"
+      },
+      "source": {
+        "name": "SpotNav",
+        "url": "https://spotnav.sensnology.se"
+      },
+      "routes": {
+        "entsoe": {
+          "eic": "10YCH-SWISSGRIDZ",
+          "half_hourly": false
+        },
+        "cet_market_tz": "Europe/Zurich"
+      }
+    },
+    {
+      "id": "CZ",
+      "eic": "10YCZ-CEPS-----N",
+      "countries": [
+        "CZ"
+      ],
+      "name": "Czechia",
+      "tz": "Europe/Prague",
+      "currency": "CZK",
+      "major_unit": "Kč",
+      "minor_unit": "haléř",
+      "vat_percent": 21,
+      "suggested_tax": 2.83,
+      "publication": {
+        "time": "13:00",
+        "tz": "Europe/Brussels"
+      },
+      "source": {
+        "name": "SpotNav",
+        "url": "https://spotnav.sensnology.se"
+      },
+      "routes": {
+        "entsoe": {
+          "eic": "10YCZ-CEPS-----N",
+          "half_hourly": false
+        },
+        "cet_market_tz": "Europe/Prague"
+      }
+    },
+    {
+      "id": "DE-LU",
+      "eic": "10Y1001A1001A82H",
+      "countries": [
+        "DE",
+        "LU"
+      ],
+      "name": "Germany–Luxembourg",
+      "tz": "Europe/Berlin",
+      "currency": "EUR",
+      "major_unit": "€",
+      "minor_unit": "cent",
+      "publication": {
+        "time": "13:00",
+        "tz": "Europe/Brussels"
+      },
+      "source": {
+        "name": "SpotNav",
+        "url": "https://spotnav.sensnology.se"
+      },
+      "routes": {
+        "nordpool": "GER",
+        "entsoe": {
+          "eic": "10Y1001A1001A82H",
+          "sequence": "1",
+          "expected_sequences": [
+            "1",
+            "2"
+          ],
+          "half_hourly": false
+        },
+        "cet_market_tz": "Europe/Berlin"
+      }
+    },
+    {
+      "id": "DK1",
+      "eic": "10YDK-1--------W",
+      "countries": [
+        "DK"
+      ],
+      "name": "Västdanmark",
+      "tz": "Europe/Copenhagen",
+      "currency": "DKK",
+      "major_unit": "kr",
+      "minor_unit": "øre",
+      "vat_percent": 25,
+      "suggested_tax": 0.8,
+      "publication": {
+        "time": "13:00",
+        "tz": "Europe/Brussels"
+      },
+      "source": {
+        "name": "SpotNav",
+        "url": "https://spotnav.sensnology.se"
+      },
+      "routes": {
+        "nordpool": "DK1",
+        "entsoe": {
+          "eic": "10YDK-1--------W",
+          "half_hourly": false
+        },
+        "cet_market_tz": "Europe/Copenhagen"
+      }
+    },
+    {
+      "id": "DK2",
+      "eic": "10YDK-2--------M",
+      "countries": [
+        "DK"
+      ],
+      "name": "Östdanmark",
+      "tz": "Europe/Copenhagen",
+      "currency": "DKK",
+      "major_unit": "kr",
+      "minor_unit": "øre",
+      "vat_percent": 25,
+      "suggested_tax": 0.8,
+      "publication": {
+        "time": "13:00",
+        "tz": "Europe/Brussels"
+      },
+      "source": {
+        "name": "SpotNav",
+        "url": "https://spotnav.sensnology.se"
+      },
+      "routes": {
+        "nordpool": "DK2",
+        "entsoe": {
+          "eic": "10YDK-2--------M",
+          "half_hourly": false
+        },
+        "cet_market_tz": "Europe/Copenhagen"
+      }
+    },
+    {
+      "id": "EE",
+      "eic": "10Y1001A1001A39I",
+      "countries": [
+        "EE"
+      ],
+      "name": "Estonia",
+      "tz": "Europe/Tallinn",
+      "currency": "EUR",
+      "major_unit": "€",
+      "minor_unit": "cent",
+      "publication": {
+        "time": "13:00",
+        "tz": "Europe/Brussels"
+      },
+      "source": {
+        "name": "SpotNav",
+        "url": "https://spotnav.sensnology.se"
+      },
+      "routes": {
+        "nordpool": "EE",
+        "entsoe": {
+          "eic": "10Y1001A1001A39I",
+          "half_hourly": false
+        },
+        "cet_market_tz": "Europe/Brussels"
+      }
+    },
+    {
+      "id": "ES",
+      "eic": "10YES-REE------0",
+      "countries": [
+        "ES"
+      ],
+      "name": "Spain",
+      "tz": "Europe/Madrid",
+      "currency": "EUR",
+      "major_unit": "€",
+      "minor_unit": "cent",
+      "vat_percent": 21,
+      "publication": {
+        "time": "13:00",
+        "tz": "Europe/Brussels"
+      },
+      "source": {
+        "name": "SpotNav",
+        "url": "https://spotnav.sensnology.se"
+      },
+      "routes": {
+        "entsoe": {
+          "eic": "10YES-REE------0",
+          "half_hourly": false
+        },
+        "cet_market_tz": "Europe/Madrid"
+      }
+    },
+    {
+      "id": "FI",
+      "eic": "10YFI-1--------U",
+      "countries": [
+        "FI"
+      ],
+      "name": "Finland",
+      "tz": "Europe/Helsinki",
+      "currency": "EUR",
+      "major_unit": "€",
+      "minor_unit": "cent",
+      "vat_percent": 25.5,
+      "suggested_tax": 2.325,
+      "publication": {
+        "time": "13:00",
+        "tz": "Europe/Brussels"
+      },
+      "source": {
+        "name": "SpotNav",
+        "url": "https://spotnav.sensnology.se"
+      },
+      "routes": {
+        "nordpool": "FI",
+        "entsoe": {
+          "eic": "10YFI-1--------U",
+          "half_hourly": false
+        },
+        "cet_market_tz": "Europe/Brussels"
+      }
+    },
+    {
+      "id": "FR",
+      "eic": "10YFR-RTE------C",
+      "countries": [
+        "FR"
+      ],
+      "name": "France",
+      "tz": "Europe/Paris",
+      "currency": "EUR",
+      "major_unit": "€",
+      "minor_unit": "cent",
+      "vat_percent": 20,
+      "suggested_tax": 3.062,
+      "publication": {
+        "time": "13:00",
+        "tz": "Europe/Brussels"
+      },
+      "source": {
+        "name": "SpotNav",
+        "url": "https://spotnav.sensnology.se"
+      },
+      "routes": {
+        "nordpool": "FR",
+        "entsoe": {
+          "eic": "10YFR-RTE------C",
+          "half_hourly": false
+        },
+        "cet_market_tz": "Europe/Paris"
+      }
+    },
+    {
+      "id": "GR",
+      "eic": "10YGR-HTSO-----Y",
+      "countries": [
+        "GR"
+      ],
+      "name": "Greece",
+      "tz": "Europe/Athens",
+      "currency": "EUR",
+      "major_unit": "€",
+      "minor_unit": "cent",
+      "vat_percent": 6,
+      "suggested_tax": 0.5,
+      "publication": {
+        "time": "13:00",
+        "tz": "Europe/Brussels"
+      },
+      "source": {
+        "name": "SpotNav",
+        "url": "https://spotnav.sensnology.se"
+      },
+      "routes": {
+        "entsoe": {
+          "eic": "10YGR-HTSO-----Y",
+          "half_hourly": false
+        },
+        "cet_market_tz": "Europe/Brussels"
+      }
+    },
+    {
+      "id": "HR",
+      "eic": "10YHR-HEP------M",
+      "countries": [
+        "HR"
+      ],
+      "name": "Croatia",
+      "tz": "Europe/Zagreb",
+      "currency": "EUR",
+      "major_unit": "€",
+      "minor_unit": "cent",
+      "vat_percent": 13,
+      "publication": {
+        "time": "13:00",
+        "tz": "Europe/Brussels"
+      },
+      "source": {
+        "name": "SpotNav",
+        "url": "https://spotnav.sensnology.se"
+      },
+      "routes": {
+        "entsoe": {
+          "eic": "10YHR-HEP------M",
+          "half_hourly": false
+        },
+        "cet_market_tz": "Europe/Zagreb"
+      }
+    },
+    {
+      "id": "HU",
+      "eic": "10YHU-MAVIR----U",
+      "countries": [
+        "HU"
+      ],
+      "name": "Hungary",
+      "tz": "Europe/Budapest",
+      "currency": "HUF",
+      "major_unit": "Ft",
+      "minor_unit": "fillér",
+      "vat_percent": 27,
+      "suggested_tax": 41.5,
+      "publication": {
+        "time": "13:00",
+        "tz": "Europe/Brussels"
+      },
+      "source": {
+        "name": "SpotNav",
+        "url": "https://spotnav.sensnology.se"
+      },
+      "routes": {
+        "entsoe": {
+          "eic": "10YHU-MAVIR----U",
+          "half_hourly": false
+        },
+        "cet_market_tz": "Europe/Budapest"
+      }
+    },
+    {
+      "id": "IT-CALABRIA",
+      "eic": "10Y1001C--00096J",
+      "countries": [
+        "IT"
+      ],
+      "name": "Italy Calabria",
+      "tz": "Europe/Rome",
+      "currency": "EUR",
+      "major_unit": "€",
+      "minor_unit": "cent",
+      "vat_percent": 10,
+      "suggested_tax": 2.27,
+      "publication": {
+        "time": "13:00",
+        "tz": "Europe/Brussels"
+      },
+      "source": {
+        "name": "SpotNav",
+        "url": "https://spotnav.sensnology.se"
+      },
+      "routes": {
+        "entsoe": {
+          "eic": "10Y1001C--00096J",
+          "half_hourly": false
+        },
+        "cet_market_tz": "Europe/Rome"
+      }
+    },
+    {
+      "id": "IT-CNORTH",
+      "eic": "10Y1001A1001A70O",
+      "countries": [
+        "IT"
+      ],
+      "name": "Italy Centre-North",
+      "tz": "Europe/Rome",
+      "currency": "EUR",
+      "major_unit": "€",
+      "minor_unit": "cent",
+      "vat_percent": 10,
+      "suggested_tax": 2.27,
+      "publication": {
+        "time": "13:00",
+        "tz": "Europe/Brussels"
+      },
+      "source": {
+        "name": "SpotNav",
+        "url": "https://spotnav.sensnology.se"
+      },
+      "routes": {
+        "entsoe": {
+          "eic": "10Y1001A1001A70O",
+          "half_hourly": false
+        },
+        "cet_market_tz": "Europe/Rome"
+      }
+    },
+    {
+      "id": "IT-CSOUTH",
+      "eic": "10Y1001A1001A71M",
+      "countries": [
+        "IT"
+      ],
+      "name": "Italy Centre-South",
+      "tz": "Europe/Rome",
+      "currency": "EUR",
+      "major_unit": "€",
+      "minor_unit": "cent",
+      "vat_percent": 10,
+      "suggested_tax": 2.27,
+      "publication": {
+        "time": "13:00",
+        "tz": "Europe/Brussels"
+      },
+      "source": {
+        "name": "SpotNav",
+        "url": "https://spotnav.sensnology.se"
+      },
+      "routes": {
+        "entsoe": {
+          "eic": "10Y1001A1001A71M",
+          "half_hourly": false
+        },
+        "cet_market_tz": "Europe/Rome"
+      }
+    },
+    {
+      "id": "IT-NORTH",
+      "eic": "10Y1001A1001A73I",
+      "countries": [
+        "IT"
+      ],
+      "name": "Italy North",
+      "tz": "Europe/Rome",
+      "currency": "EUR",
+      "major_unit": "€",
+      "minor_unit": "cent",
+      "vat_percent": 10,
+      "suggested_tax": 2.27,
+      "publication": {
+        "time": "13:00",
+        "tz": "Europe/Brussels"
+      },
+      "source": {
+        "name": "SpotNav",
+        "url": "https://spotnav.sensnology.se"
+      },
+      "routes": {
+        "entsoe": {
+          "eic": "10Y1001A1001A73I",
+          "half_hourly": false
+        },
+        "cet_market_tz": "Europe/Rome"
+      }
+    },
+    {
+      "id": "IT-SARDINIA",
+      "eic": "10Y1001A1001A74G",
+      "countries": [
+        "IT"
+      ],
+      "name": "Italy Sardinia",
+      "tz": "Europe/Rome",
+      "currency": "EUR",
+      "major_unit": "€",
+      "minor_unit": "cent",
+      "vat_percent": 10,
+      "suggested_tax": 2.27,
+      "publication": {
+        "time": "13:00",
+        "tz": "Europe/Brussels"
+      },
+      "source": {
+        "name": "SpotNav",
+        "url": "https://spotnav.sensnology.se"
+      },
+      "routes": {
+        "entsoe": {
+          "eic": "10Y1001A1001A74G",
+          "half_hourly": false
+        },
+        "cet_market_tz": "Europe/Rome"
+      }
+    },
+    {
+      "id": "IT-SICILY",
+      "eic": "10Y1001A1001A75E",
+      "countries": [
+        "IT"
+      ],
+      "name": "Italy Sicily",
+      "tz": "Europe/Rome",
+      "currency": "EUR",
+      "major_unit": "€",
+      "minor_unit": "cent",
+      "vat_percent": 10,
+      "suggested_tax": 2.27,
+      "publication": {
+        "time": "13:00",
+        "tz": "Europe/Brussels"
+      },
+      "source": {
+        "name": "SpotNav",
+        "url": "https://spotnav.sensnology.se"
+      },
+      "routes": {
+        "entsoe": {
+          "eic": "10Y1001A1001A75E",
+          "half_hourly": false
+        },
+        "cet_market_tz": "Europe/Rome"
+      }
+    },
+    {
+      "id": "IT-SOUTH",
+      "eic": "10Y1001A1001A788",
+      "countries": [
+        "IT"
+      ],
+      "name": "Italy South",
+      "tz": "Europe/Rome",
+      "currency": "EUR",
+      "major_unit": "€",
+      "minor_unit": "cent",
+      "vat_percent": 10,
+      "suggested_tax": 2.27,
+      "publication": {
+        "time": "13:00",
+        "tz": "Europe/Brussels"
+      },
+      "source": {
+        "name": "SpotNav",
+        "url": "https://spotnav.sensnology.se"
+      },
+      "routes": {
+        "entsoe": {
+          "eic": "10Y1001A1001A788",
+          "half_hourly": false
+        },
+        "cet_market_tz": "Europe/Rome"
+      }
+    },
+    {
+      "id": "LT",
+      "eic": "10YLT-1001A0008Q",
+      "countries": [
+        "LT"
+      ],
+      "name": "Lithuania",
+      "tz": "Europe/Vilnius",
+      "currency": "EUR",
+      "major_unit": "€",
+      "minor_unit": "cent",
+      "publication": {
+        "time": "13:00",
+        "tz": "Europe/Brussels"
+      },
+      "source": {
+        "name": "SpotNav",
+        "url": "https://spotnav.sensnology.se"
+      },
+      "routes": {
+        "nordpool": "LT",
+        "entsoe": {
+          "eic": "10YLT-1001A0008Q",
+          "half_hourly": false
+        },
+        "cet_market_tz": "Europe/Brussels"
+      }
+    },
+    {
+      "id": "LV",
+      "eic": "10YLV-1001A00074",
+      "countries": [
+        "LV"
+      ],
+      "name": "Latvia",
+      "tz": "Europe/Riga",
+      "currency": "EUR",
+      "major_unit": "€",
+      "minor_unit": "cent",
+      "publication": {
+        "time": "13:00",
+        "tz": "Europe/Brussels"
+      },
+      "source": {
+        "name": "SpotNav",
+        "url": "https://spotnav.sensnology.se"
+      },
+      "routes": {
+        "nordpool": "LV",
+        "entsoe": {
+          "eic": "10YLV-1001A00074",
+          "half_hourly": false
+        },
+        "cet_market_tz": "Europe/Brussels"
+      }
+    },
+    {
+      "id": "NL",
+      "eic": "10YNL----------L",
+      "countries": [
+        "NL"
+      ],
+      "name": "Netherlands",
+      "tz": "Europe/Amsterdam",
+      "currency": "EUR",
+      "major_unit": "€",
+      "minor_unit": "cent",
+      "vat_percent": 21,
+      "suggested_tax": 9.161,
+      "publication": {
+        "time": "13:00",
+        "tz": "Europe/Brussels"
+      },
+      "source": {
+        "name": "SpotNav",
+        "url": "https://spotnav.sensnology.se"
+      },
+      "routes": {
+        "nordpool": "NL",
+        "entsoe": {
+          "eic": "10YNL----------L",
+          "half_hourly": false
+        },
+        "cet_market_tz": "Europe/Amsterdam"
+      }
+    },
+    {
+      "id": "NO1",
+      "eic": "10YNO-1--------2",
+      "countries": [
+        "NO"
+      ],
+      "name": "Oslo",
+      "tz": "Europe/Oslo",
+      "currency": "NOK",
+      "major_unit": "kr",
+      "minor_unit": "øre",
+      "vat_percent": 25,
+      "suggested_tax": 7.13,
+      "publication": {
+        "time": "13:00",
+        "tz": "Europe/Brussels"
+      },
+      "source": {
+        "name": "SpotNav",
+        "url": "https://spotnav.sensnology.se"
+      },
+      "routes": {
+        "nordpool": "NO1",
+        "entsoe": {
+          "eic": "10YNO-1--------2",
+          "half_hourly": false
+        },
+        "cet_market_tz": "Europe/Oslo"
+      }
+    },
+    {
+      "id": "NO2",
+      "eic": "10YNO-2--------T",
+      "countries": [
+        "NO"
+      ],
+      "name": "Kristiansand",
+      "tz": "Europe/Oslo",
+      "currency": "NOK",
+      "major_unit": "kr",
+      "minor_unit": "øre",
+      "vat_percent": 25,
+      "suggested_tax": 7.13,
+      "publication": {
+        "time": "13:00",
+        "tz": "Europe/Brussels"
+      },
+      "source": {
+        "name": "SpotNav",
+        "url": "https://spotnav.sensnology.se"
+      },
+      "routes": {
+        "nordpool": "NO2",
+        "entsoe": {
+          "eic": "10YNO-2--------T",
+          "half_hourly": false
+        },
+        "cet_market_tz": "Europe/Oslo"
+      }
+    },
+    {
+      "id": "NO3",
+      "eic": "10YNO-3--------J",
+      "countries": [
+        "NO"
+      ],
+      "name": "Trondheim",
+      "tz": "Europe/Oslo",
+      "currency": "NOK",
+      "major_unit": "kr",
+      "minor_unit": "øre",
+      "vat_percent": 25,
+      "suggested_tax": 7.13,
+      "publication": {
+        "time": "13:00",
+        "tz": "Europe/Brussels"
+      },
+      "source": {
+        "name": "SpotNav",
+        "url": "https://spotnav.sensnology.se"
+      },
+      "routes": {
+        "nordpool": "NO3",
+        "entsoe": {
+          "eic": "10YNO-3--------J",
+          "half_hourly": false
+        },
+        "cet_market_tz": "Europe/Oslo"
+      }
+    },
+    {
+      "id": "NO4",
+      "eic": "10YNO-4--------9",
+      "countries": [
+        "NO"
+      ],
+      "name": "Tromsø",
+      "tz": "Europe/Oslo",
+      "currency": "NOK",
+      "major_unit": "kr",
+      "minor_unit": "øre",
+      "vat_percent": 0,
+      "suggested_tax": 7.13,
+      "publication": {
+        "time": "13:00",
+        "tz": "Europe/Brussels"
+      },
+      "source": {
+        "name": "SpotNav",
+        "url": "https://spotnav.sensnology.se"
+      },
+      "routes": {
+        "nordpool": "NO4",
+        "entsoe": {
+          "eic": "10YNO-4--------9",
+          "half_hourly": false
+        },
+        "cet_market_tz": "Europe/Oslo"
+      }
+    },
+    {
+      "id": "NO5",
+      "eic": "10Y1001A1001A48H",
+      "countries": [
+        "NO"
+      ],
+      "name": "Bergen",
+      "tz": "Europe/Oslo",
+      "currency": "NOK",
+      "major_unit": "kr",
+      "minor_unit": "øre",
+      "vat_percent": 25,
+      "suggested_tax": 7.13,
+      "publication": {
+        "time": "13:00",
+        "tz": "Europe/Brussels"
+      },
+      "source": {
+        "name": "SpotNav",
+        "url": "https://spotnav.sensnology.se"
+      },
+      "routes": {
+        "nordpool": "NO5",
+        "entsoe": {
+          "eic": "10Y1001A1001A48H",
+          "half_hourly": false
+        },
+        "cet_market_tz": "Europe/Oslo"
+      }
+    },
+    {
+      "id": "PL",
+      "eic": "10YPL-AREA-----S",
+      "countries": [
+        "PL"
+      ],
+      "name": "Poland",
+      "tz": "Europe/Warsaw",
+      "currency": "PLN",
+      "major_unit": "zł",
+      "minor_unit": "gr",
+      "publication": {
+        "time": "13:00",
+        "tz": "Europe/Brussels"
+      },
+      "source": {
+        "name": "SpotNav",
+        "url": "https://spotnav.sensnology.se"
+      },
+      "routes": {
+        "nordpool": "PL",
+        "entsoe": {
+          "eic": "10YPL-AREA-----S",
+          "half_hourly": false
+        },
+        "cet_market_tz": "Europe/Warsaw"
+      }
+    },
+    {
+      "id": "PT",
+      "eic": "10YPT-REN------W",
+      "countries": [
+        "PT"
+      ],
+      "name": "Portugal",
+      "tz": "Europe/Lisbon",
+      "market_tz": "Europe/Madrid",
+      "currency": "EUR",
+      "major_unit": "€",
+      "minor_unit": "cent",
+      "vat_percent": 23,
+      "suggested_tax": 0.1,
+      "publication": {
+        "time": "13:00",
+        "tz": "Europe/Brussels"
+      },
+      "source": {
+        "name": "SpotNav",
+        "url": "https://spotnav.sensnology.se"
+      },
+      "routes": {
+        "entsoe": {
+          "eic": "10YPT-REN------W",
+          "half_hourly": false
+        },
+        "cet_market_tz": "Europe/Madrid"
+      }
+    },
+    {
+      "id": "RO",
+      "eic": "10YRO-TEL------P",
+      "countries": [
+        "RO"
+      ],
+      "name": "Romania",
+      "tz": "Europe/Bucharest",
+      "currency": "RON",
+      "major_unit": "lei",
+      "minor_unit": "bani",
+      "vat_percent": 21,
+      "publication": {
+        "time": "13:00",
+        "tz": "Europe/Brussels"
+      },
+      "source": {
+        "name": "SpotNav",
+        "url": "https://spotnav.sensnology.se"
+      },
+      "routes": {
+        "nordpool": "TEL",
+        "entsoe": {
+          "eic": "10YRO-TEL------P",
+          "half_hourly": false
+        },
+        "cet_market_tz": "Europe/Brussels"
+      }
+    },
+    {
+      "id": "SE1",
+      "eic": "10Y1001A1001A44P",
+      "countries": [
+        "SE"
+      ],
+      "name": "Luleå",
+      "tz": "Europe/Stockholm",
+      "currency": "SEK",
+      "major_unit": "kr",
+      "minor_unit": "öre",
+      "vat_percent": 25,
+      "suggested_tax": 36,
+      "suggested_grid_fee": 30,
+      "publication": {
+        "time": "13:00",
+        "tz": "Europe/Brussels"
+      },
+      "source": {
+        "name": "SpotNav",
+        "url": "https://spotnav.sensnology.se"
+      },
+      "routes": {
+        "nordpool": "SE1",
+        "entsoe": {
+          "eic": "10Y1001A1001A44P",
+          "half_hourly": false
+        },
+        "cet_market_tz": "Europe/Stockholm"
+      }
+    },
+    {
+      "id": "SE2",
+      "eic": "10Y1001A1001A45N",
+      "countries": [
+        "SE"
+      ],
+      "name": "Sundsvall",
+      "tz": "Europe/Stockholm",
+      "currency": "SEK",
+      "major_unit": "kr",
+      "minor_unit": "öre",
+      "vat_percent": 25,
+      "suggested_tax": 36,
+      "suggested_grid_fee": 30,
+      "publication": {
+        "time": "13:00",
+        "tz": "Europe/Brussels"
+      },
+      "source": {
+        "name": "SpotNav",
+        "url": "https://spotnav.sensnology.se"
+      },
+      "routes": {
+        "nordpool": "SE2",
+        "entsoe": {
+          "eic": "10Y1001A1001A45N",
+          "half_hourly": false
+        },
+        "cet_market_tz": "Europe/Stockholm"
+      }
+    },
+    {
+      "id": "SE3",
+      "eic": "10Y1001A1001A46L",
+      "countries": [
+        "SE"
+      ],
+      "name": "Stockholm",
+      "tz": "Europe/Stockholm",
+      "currency": "SEK",
+      "major_unit": "kr",
+      "minor_unit": "öre",
+      "vat_percent": 25,
+      "suggested_tax": 36,
+      "suggested_grid_fee": 30,
+      "publication": {
+        "time": "13:00",
+        "tz": "Europe/Brussels"
+      },
+      "source": {
+        "name": "SpotNav",
+        "url": "https://spotnav.sensnology.se"
+      },
+      "routes": {
+        "nordpool": "SE3",
+        "entsoe": {
+          "eic": "10Y1001A1001A46L",
+          "half_hourly": false
+        },
+        "cet_market_tz": "Europe/Stockholm"
+      }
+    },
+    {
+      "id": "SE4",
+      "eic": "10Y1001A1001A47J",
+      "countries": [
+        "SE"
+      ],
+      "name": "Malmö",
+      "tz": "Europe/Stockholm",
+      "currency": "SEK",
+      "major_unit": "kr",
+      "minor_unit": "öre",
+      "vat_percent": 25,
+      "suggested_tax": 36,
+      "suggested_grid_fee": 30,
+      "publication": {
+        "time": "13:00",
+        "tz": "Europe/Brussels"
+      },
+      "source": {
+        "name": "SpotNav",
+        "url": "https://spotnav.sensnology.se"
+      },
+      "routes": {
+        "nordpool": "SE4",
+        "entsoe": {
+          "eic": "10Y1001A1001A47J",
+          "half_hourly": false
+        },
+        "cet_market_tz": "Europe/Stockholm"
+      }
+    },
+    {
+      "id": "SI",
+      "eic": "10YSI-ELES-----O",
+      "countries": [
+        "SI"
+      ],
+      "name": "Slovenia",
+      "tz": "Europe/Ljubljana",
+      "currency": "EUR",
+      "major_unit": "€",
+      "minor_unit": "cent",
+      "vat_percent": 22,
+      "suggested_tax": 0.153,
+      "publication": {
+        "time": "13:00",
+        "tz": "Europe/Brussels"
+      },
+      "source": {
+        "name": "SpotNav",
+        "url": "https://spotnav.sensnology.se"
+      },
+      "routes": {
+        "entsoe": {
+          "eic": "10YSI-ELES-----O",
+          "half_hourly": false
+        },
+        "cet_market_tz": "Europe/Ljubljana"
+      }
+    },
+    {
+      "id": "SK",
+      "eic": "10YSK-SEPS-----K",
+      "countries": [
+        "SK"
+      ],
+      "name": "Slovakia",
+      "tz": "Europe/Bratislava",
+      "currency": "EUR",
+      "major_unit": "€",
+      "minor_unit": "cent",
+      "publication": {
+        "time": "13:00",
+        "tz": "Europe/Brussels"
+      },
+      "source": {
+        "name": "SpotNav",
+        "url": "https://spotnav.sensnology.se"
+      },
+      "routes": {
+        "entsoe": {
+          "eic": "10YSK-SEPS-----K",
+          "half_hourly": false
+        },
+        "cet_market_tz": "Europe/Bratislava"
+      }
+    }
+  ]
+}
