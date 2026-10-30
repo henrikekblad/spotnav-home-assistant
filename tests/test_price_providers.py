@@ -1,6 +1,6 @@
 """The provider seam under the repository: the relay's wire as a provider, and the router that picks it.
 
-Only the relay exists, so the router answers it for every area; what is tested here is the shape every
+Without a Nord Pool provider the router answers the relay for every area; what is tested here is the shape every
 provider will share: a file comes back as a raw document or as a stable code, never as an exception.
 """
 

@@ -217,6 +217,12 @@ async def _async_stop(hass: HomeAssistant, _event: Event | None = None) -> None:
     if manager is not None:
         await manager.async_shutdown()
         domain_data(hass).price_refresh = None
+    repository = domain_data(hass).price_repository
+    if repository is not None:
+        repository.stop_following_providers()
+    fx_rates = domain_data(hass).fx_rates
+    if fx_rates is not None:
+        await fx_rates.async_stop()
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:

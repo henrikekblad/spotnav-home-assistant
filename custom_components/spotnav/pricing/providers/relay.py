@@ -81,6 +81,9 @@ class RelayProvider:
 
     key: ProviderKey = "relay"
     has_index = True
+    #: The area list states each area's publication and calendar; the relay keeps its archive.
+    publication = None
+    history_reach = None
 
     def __init__(
         self, hass: HomeAssistant, *, base_url: str = DEFAULT_BASE_URL, session: ClientSession | None = None
@@ -90,6 +93,14 @@ class RelayProvider:
         # `None` means the shared HA client when a request is made (`async_get_clientsession`
         # needs a running loop, and setup constructs this before anything is asked).
         self._session = session
+
+    def market_calendar(self, area_id: str) -> str | None:
+        """The area list's own `market_tz`."""
+        return None
+
+    def wants_again(self, area_id: str, document: Any) -> bool:
+        """A relay file is final as published."""
+        return False
 
     async def async_fetch_day(self, area_id: str, market_day: date) -> DayFetch:
         """One market-day file as published (the relay's 404 is a failed request with `http_status`)."""

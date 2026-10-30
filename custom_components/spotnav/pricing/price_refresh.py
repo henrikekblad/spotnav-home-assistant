@@ -16,6 +16,11 @@ price timer.
 * Everything scheduled is cancelled and rescheduled from the injected `now` on every run, so a
   clock jump still leaves one timer per area. Only the exact area-local midnight rollover is not
   jittered; every interval and backoff is (see [jittered]).
+* Per provider: an area read from the relay follows its index (the catalogue and index steps run only while
+  some active area does); an area read from a provider without an index (Nord Pool through Home Assistant)
+  asks for a file when the schedule says it is out and it is not held, so a cycle with everything held makes
+  no request at all. When the choice of provider changes (a `nordpool` entry loaded or unloaded), the areas
+  take the new calendar and a cycle runs at once.
 * Each activation of an area carries a generation, and every completion checks it before publishing
   or scheduling, so a run that started before a re-subscribe, change or unsubscribe cannot resurrect
   the area. An in-flight refresh may still populate the shared repository, but cannot install a
@@ -38,6 +43,7 @@ from homeassistant.util import dt as dt_util
 
 from .. import time_zones
 from ..runtime import domain_data
+from . import providers
 from .market_day import market_days_for, principal_market_day
 from .price_repository import (
     CatalogueSnapshot,
@@ -60,7 +66,7 @@ _LOGGER = logging.getLogger(__name__)
 #: between 12:59:30 and 13:05 Brussels, with one late delivery around 13:30. The relay publishes complete
 #: days only; "listed" is still not "usable" until the day's document has been fetched and accepted here (see
 #: [refresh_interval]). A policy about when to look, never a claim that prices cannot appear outside it.
-PUBLICATION_WINDOW_LEAD: Final = timedelta(minutes=5)
+PUBLICATION_WINDOW_LEAD: Final = providers.PUBLICATION_WINDOW_LEAD
 PUBLICATION_WINDOW_TAIL: Final = timedelta(hours=2)
 
 #: While tomorrow is still unusable inside that window, ask the index often.
@@ -461,6 +467,15 @@ class PriceRefreshManager:
         self._catalogue_key: tuple[Any, ...] | None = None
         self._started = True
         self._shutdown = False
+        # A change of provider moves an area's calendar and asks for its files at once.
+        self._remove_provider_listener = repository.add_provider_listener(self._on_providers_changed)
+
+    @callback
+    def _on_providers_changed(self) -> None:
+        if self._shutdown:
+            return
+        self._sync_zones()
+        self._trigger_global_run()
 
     async def async_shutdown(self) -> None:
         """Cancel every timer, run and listener, and refuse new work (terminal). The generation is raised
@@ -469,6 +484,7 @@ class PriceRefreshManager:
         if self._shutdown:
             return
         self._shutdown = True
+        self._remove_provider_listener()
         runs: list[asyncio.Task[None]] = []
         self._global_generation += 1
         self._cancel("global")
@@ -571,10 +587,10 @@ class PriceRefreshManager:
         return self._owner_area(owner_id)
 
     async def _zone_for(self, area_id: str) -> tuple[str, str]:
-        entry = self._repository.catalogue_snapshot().area(area_id)
+        entry = self._repository.area_entry(area_id)
         if entry is None:
             await self._repository.async_get_catalogue()
-            entry = self._repository.catalogue_snapshot().area(area_id)
+            entry = self._repository.area_entry(area_id)
         if entry is None:
             raise PriceAreaUnavailable(area_id)
         return entry.tz, entry.market_tz
@@ -582,7 +598,7 @@ class PriceRefreshManager:
     def _market_zone_for(self, area_id: str, tz: str) -> str:
         """The market calendar of an area subscribed with a known display zone: the catalogue's when it
         lists the area in that zone, else the display zone itself."""
-        entry = self._repository.catalogue_snapshot().area(area_id)
+        entry = self._repository.area_entry(area_id)
         return entry.market_tz if entry is not None and entry.tz == tz else tz
 
     def _move_zones(self, record: _Area, tz: str, market_tz: str) -> None:
@@ -592,10 +608,10 @@ class PriceRefreshManager:
             self._schedule_rollover(record)
 
     def _sync_zones(self) -> None:
-        """Follow a refreshed catalogue's zones for every area it still lists (never drop an area here)."""
-        catalogue = self._repository.catalogue_snapshot()
+        """Follow a refreshed catalogue's zones (and the provider's calendar) for every area it still lists (never
+        drop an area here)."""
         for record in self._areas.values():
-            entry = catalogue.area(record.area_id)
+            entry = self._repository.area_entry(record.area_id)
             if entry is not None and (record.tz, record.market_tz) != (entry.tz, entry.market_tz):
                 self._move_zones(record, entry.tz, entry.market_tz)
 
@@ -675,11 +691,48 @@ class PriceRefreshManager:
         self._complete_cycle()
 
     async def _refresh_global(self) -> None:
-        """Catalogue (when due), one index, then every active area's days.
+        """Every active area's days: the relay's areas after its catalogue (when due) and one index, the
+        areas on a schedule by their schedule.
 
         The relay's own design: the catalogue changes rarely, the index is small and revalidated, and the
-        immutable day documents it points at are fetched only when the index we hold lists them.
+        immutable day documents it points at are fetched only when the index we hold lists them. None of that
+        is asked while no active area is read from the relay. An area that becomes active while the cycle runs
+        is served by it too (once).
         """
+        relay_read = False
+        handled: set[str] = set()
+        for _ in range(2):
+            if not relay_read and any(self._repository.uses_index(record.area_id) for record in self._active_areas()):
+                await self._refresh_relay_documents()
+                relay_read = True
+            pending = [record for record in self._active_areas() if record.area_id not in handled]
+            if not pending:
+                return
+            for record in pending:
+                handled.add(record.area_id)
+                try:
+                    if not self._repository.uses_index(record.area_id):
+                        await self._refresh_scheduled_days(record)
+                    elif self._repository.index_snapshot().index is not None:
+                        # Without an index (none held, none retained) fanning out would ask the index once per
+                        # area through the same unavailable relay (a day fetch consults it). The next cycle
+                        # retries one backoff step later and every relay area reports the same failure.
+                        await self._refresh_area_days(record)
+                except asyncio.CancelledError:
+                    raise
+                except Exception as err:  # noqa: BLE001 - one area must not block the rest
+                    _LOGGER.warning("Refreshing %s failed: %s", record.area_id, type(err).__name__)
+
+    async def _refresh_scheduled_days(self, record: _Area) -> None:
+        """Today's and tomorrow's files for an area on a provider without an index: each one not held and out by
+        the schedule, once per cycle."""
+        today, tomorrow = local_dates(self._now(), record.tz)
+        for key in dict.fromkeys((*record.files(today), *record.files(tomorrow))):
+            if self._repository.worth_asking(record.area_id, key):
+                await self._repository.async_get_file(record.area_id, key)
+
+    async def _refresh_relay_documents(self) -> None:
+        """The relay's catalogue (when due) and one index."""
         catalogue = self._repository.catalogue_snapshot()
         catalogue_fetched = False
         if catalogue.catalogue is None or self._catalogue_age() >= CATALOGUE_MAX_AGE_SECONDS:
@@ -712,20 +765,6 @@ class PriceRefreshManager:
         if revision is not None:
             self._last_areas_rev = revision
         self._sync_zones()
-
-        if index.index is None:
-            # No index and no retained copy: fanning out would ask the index once per area through
-            # the same unavailable relay (a day fetch consults the index). The next cycle retries one
-            # backoff step later and every area reports the same failure.
-            return
-
-        for record in self._active_areas():
-            try:
-                await self._refresh_area_days(record)
-            except asyncio.CancelledError:
-                raise
-            except Exception as err:  # noqa: BLE001 - one area must not block the rest
-                _LOGGER.warning("Refreshing %s failed: %s", record.area_id, type(err).__name__)
 
     async def _refresh_area_days(self, record: _Area) -> None:
         """Today and tomorrow for one area, subject to the index's authority.
@@ -859,10 +898,14 @@ class PriceRefreshManager:
         A transport failure drives the backoff; contract-invalid bodies raise the invalid floor instead; a
         day the index does not list is no failure.
         """
-        attempts = [
-            self._repository.catalogue_snapshot().attempt_error,
-            self._repository.index_snapshot().attempt_error,
-        ]
+        attempts = (
+            [
+                self._repository.catalogue_snapshot().attempt_error,
+                self._repository.index_snapshot().attempt_error,
+            ]
+            if self._repository.uses_index(record.area_id)
+            else []
+        )
         today, tomorrow = local_dates(self._now(), record.tz)
         for key in dict.fromkeys((*record.files(today), *record.files(tomorrow))):
             attempts.append(self._repository.file_snapshot(record.area_id, key).attempt_error)
@@ -881,23 +924,24 @@ class PriceRefreshManager:
         tomorrow_snapshot = self._repository.day_snapshot(record.area_id, tomorrow)
         index_snapshot = self._repository.index_snapshot()
         catalogue_snapshot = self._repository.catalogue_snapshot()
-        # The area's own expected publication; an area the list does not name (yet) gets the default.
-        entry = catalogue_snapshot.area(record.area_id)
+        relay = self._repository.uses_index(record.area_id)
+        # The area's own expected publication (its provider's); an area the list does not name (yet) gets the
+        # default.
+        entry = self._repository.area_entry(record.area_id)
         return CadenceInput(
             now=now,
             area_today=today,
             area_tomorrow=tomorrow,
             today_state=today_snapshot.state,
             tomorrow_state=tomorrow_snapshot.state,
-            tomorrow_listed=retained_listing(index_snapshot, record.area_id, record.principal(tomorrow)),
+            tomorrow_listed=self._repository.lists(record.area_id, record.principal(tomorrow)),
             index_state=index_snapshot.state,
             tomorrow_ready=tomorrow_snapshot.is_complete,
             failing=failing,
             backoff_step=max(self._backoff_step, 1),
             invalid=(
                 today_snapshot.state == "invalid"
-                or index_snapshot.state == "invalid"
-                or catalogue_snapshot.state == "invalid"
+                or (relay and (index_snapshot.state == "invalid" or catalogue_snapshot.state == "invalid"))
             ),
             in_publication_window=in_publication_window(
                 now, DEFAULT_PUBLICATION if entry is None else entry.publication
@@ -1021,8 +1065,8 @@ class PriceRefreshManager:
         # Authority is three-valued and taken from the index's freshness, not the presence of a
         # retained document: only a current valid index says something about now, and "waiting for
         # tomorrow" is claimed only for `not_listed`.
-        today_authority = day_authority(index_snapshot, record.area_id, record.principal(today))
-        tomorrow_authority = day_authority(index_snapshot, record.area_id, record.principal(tomorrow))
+        today_authority = self._repository.file_authority(record.area_id, record.principal(today))
+        tomorrow_authority = self._repository.file_authority(record.area_id, record.principal(tomorrow))
         waiting_for_tomorrow = tomorrow_authority == "not_listed"
         state, reason = combined_state(
             today_state=today_snapshot.state,
@@ -1031,12 +1075,14 @@ class PriceRefreshManager:
             tomorrow_authority=tomorrow_authority,
         )
         catalogue = self._repository.catalogue_snapshot()
-        entry: AreaEntry | None = catalogue.area(record.area_id)
+        # The area as it is read now: its provider's market calendar and publication.
+        entry: AreaEntry | None = self._repository.area_entry(record.area_id)
         fetched_at = today_snapshot.fetched_at
+        relay = self._repository.uses_index(record.area_id)
         attempted_at = _latest(
             today_snapshot.attempt_at,
-            index_snapshot.attempt_at,
-            None if entry is None else catalogue.fetched_at,
+            index_snapshot.attempt_at if relay else None,
+            None if entry is None or not relay else catalogue.fetched_at,
         )
         return AreaPriceSnapshot(
             area_id=record.area_id,
