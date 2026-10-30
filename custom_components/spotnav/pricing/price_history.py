@@ -208,7 +208,7 @@ class HistoryBackfill:
             await asyncio.gather(task, return_exceptions=True)
 
     async def async_wait(self) -> None:
-        """Wait until the queue is empty (for tests and diagnostics; the work runs on its own)."""
+        """Wait until the queue is empty (for tests; the work runs on its own)."""
         while (task := self._task) is not None and not task.done():
             await asyncio.gather(task, return_exceptions=True)
 

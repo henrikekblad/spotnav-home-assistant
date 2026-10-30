@@ -61,7 +61,10 @@ with the provider's `market_tz` and publication, and every calendar question her
 
 The history profile is built here from the held market-day files (`pricing/price_profile.py`, the relay's
 own rules), not fetched: [profile_for] reads the files of the 28-day window on the area's market calendar,
-keyed by market date, and keeps the result until the window or a file in it changes.
+keyed by market date, and keeps the result until the window or a file in it changes. The past files of that
+window (and, from a provider that keeps years, a year for statistics) are fetched by the history backfill
+(`pricing/price_history.py`) through [async_fetch_history], which never asks for a held day or one older than the
+provider keeps (`history_reach`).
 """
 
 from __future__ import annotations
