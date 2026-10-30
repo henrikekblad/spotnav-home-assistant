@@ -30,7 +30,7 @@ import logging
 import math
 from collections.abc import Callable
 from datetime import date, datetime, time, timedelta
-from typing import Any, Final, Protocol
+from typing import Any, Final
 
 import voluptuous as vol
 from homeassistant.config_entries import ConfigEntryState
@@ -42,6 +42,7 @@ from ..area_catalogue import BundledCatalogue
 from ..day_document import build_day_document
 from ..relay_contract import AreaPublication, PriceDocument
 from . import DayFetch, FailureCode, ProviderKey
+from .rates import DayRate, FX_SRC, RateSource
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -62,22 +63,8 @@ REQUEST_TIMEOUT_S: Final = 30.0
 #: The steps a Nord Pool day comes in, in minutes.
 RESOLUTIONS: Final = (15, 30, 60)
 
-#: A rate missing when a day is built is asked of the ECB at once, but not more often than this.
-FX_RETRY: Final = timedelta(minutes=15)
-
-#: Where the file says it came from (`src`) and where its rate came from (`fx_src`).
+#: Where the file says it came from (`src`).
 SRC: Final = "nordpool"
-FX_SRC: Final = "ECB"
-
-
-class RateSource(Protocol):
-    """What the provider needs from the exchange rates (`pricing/fx_rates.FxRates`)."""
-
-    def rate_for(self, currency: str, day: date) -> tuple[float, date] | None: ...
-
-    async def async_start(self) -> None: ...
-
-    async def async_refresh(self) -> bool: ...
 
 
 class _Refusal(Exception):
@@ -104,10 +91,8 @@ class NordPoolProvider:
     ) -> None:
         self._hass = hass
         self._bundled = bundled
-        self._fx = fx
         self._now = now if now is not None else dt_util.utcnow
-        self._fx_started = False
-        self._fx_asked_at: datetime | None = None
+        self._rate = DayRate(fx, self._now)
 
     def serves(self, area_id: str) -> bool:
         """Whether Nord Pool trades the area (it has a Nord Pool code in the bundled catalogue)."""
@@ -121,9 +106,8 @@ class NordPoolProvider:
     def wants_again(self, area_id: str, document: PriceDocument) -> bool:
         """A day built without its rate is asked for once more when the rate has arrived since."""
         currency = self._currency(area_id)
-        if currency is None or currency == "EUR" or document.fx_rate(currency) is not None or self._fx is None:
-            return False
-        return self._fx.rate_for(currency, document.day) is not None
+        held = None if currency is None else document.fx_rate(currency)
+        return self._rate.arrived(currency, document.day, held)
 
     def _currency(self, area_id: str) -> str | None:
         entry = self._bundled.catalogue.area(area_id)
@@ -157,7 +141,7 @@ class NordPoolProvider:
         except _Refusal as err:
             _LOGGER.debug("Nord Pool %s %s: %s", area_id, market_day, err.code)
             return DayFetch("failed", code=err.code)
-        fx, fx_date = await self._rate(entry.currency, market_day)
+        fx, fx_date = await self._rate.async_rate(entry.currency, market_day)
         document = build_day_document(
             area_id=area_id,
             market_day=market_day,
@@ -193,25 +177,6 @@ class NordPoolProvider:
             raise _Refusal("nordpool_rejected") from err
         except HomeAssistantError as err:
             raise _Refusal("nordpool_error") from err
-
-    async def _rate(self, currency: str, market_day: date) -> tuple[dict[str, float] | None, date | None]:
-        """The area's ECB rate for the day, asked of the ECB once (at most every [FX_RETRY]) when none is held."""
-        if currency == "EUR" or self._fx is None:
-            return None, None
-        if not self._fx_started:
-            # The rates' daily timer runs only for an installation that needs a rate.
-            self._fx_started = True
-            await self._fx.async_start()
-        found = self._fx.rate_for(currency, market_day)
-        now = self._now()
-        if found is None and (self._fx_asked_at is None or now - self._fx_asked_at >= FX_RETRY):
-            self._fx_asked_at = now
-            await self._fx.async_refresh()
-            found = self._fx.rate_for(currency, market_day)
-        if found is None:
-            return None, None
-        rate, table_day = found
-        return {currency: rate}, table_day
 
 
 def _validation_code(err: ServiceValidationError) -> FailureCode:
