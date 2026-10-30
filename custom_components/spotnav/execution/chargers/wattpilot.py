@@ -1,9 +1,8 @@
 """Fronius Wattpilot (HACS): phases through the `psm` select (auto / one phase / three phases).
 
-One or three phases is written as the select's own option, never auto, and auto reads as unknown. The integration
-creates the select only when the charger has the property. The `modelStatus` sensor's "not charging because of phase
-switch" (`NotChargingBecausePhaseSwitch`, code 23) is the switching status. The select and the status are the ones
-go-e has (`phase_switches.phase_mode_select`); only the option values differ.
+One or three phases is written as the select's own option, never auto, and auto reads as unknown. The `modelStatus`
+sensor's "not charging because of phase switch" (`NotChargingBecausePhaseSwitch`, code 23) is the switching status.
+The select and the status are the ones go-e has (`phase_switches.phase_mode_select`); only the option values differ.
 """
 
 from __future__ import annotations
