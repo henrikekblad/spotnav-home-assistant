@@ -1206,7 +1206,9 @@ async def test_a_fresh_unconfigured_charger_serializes_the_contract_shape(
         "refresh_vehicle",
         "set_charge_limit",
         "target_stop",
+        "price_days",
     ]
+    assert charger["capabilities"]["price_days"] is True
 
 
 @freeze_time(NOW)

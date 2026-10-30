@@ -24,6 +24,7 @@ async def test_every_documented_action_has_a_handler() -> None:
         "set_charge_limit",
         "dashboard",
         "sessions",
+        "price_days",
         "settings",
         "update_vehicle",
         "update_site_settings",

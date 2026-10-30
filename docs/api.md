@@ -39,6 +39,7 @@ charger executed whose pause could not be saved answers `{"ok": true, "action": 
 | ------ | ------ |
 | `dashboard` | The dashboard document below, for this charger. Takes an optional `api_version`. |
 | `sessions` | The charge history, the same request and answer as `spotnav/get_sessions` below (`month`, `format`, `limit`, `from`, `to`), with `"ok": true` and the `action` beside it. A refusal is HTTP 400 with `{"ok": false, "error": "spotnav_invalid_range" \| "spotnav_unsupported_api_version", "action": "sessions"}`. Nothing is withheld. |
+| `price_days` | The charger's electricity prices for today and tomorrow and the history profile, as the relay's own documents (see below). Takes an optional `api_version` (`1`). |
 | `settings` | Replace the charger's settings: `{"expected_revision": n, "settings": {...}}`. |
 | `start` | Start charging now; optional `amps`. Pauses automatic execution for the plug-in session (pause choice `manual`). |
 | `stop` | Stop now, which pauses automatic execution for the plug-in session (pause choice `manual`), or with a `choice` (`next_period`, `until_tomorrow`, `until_resumed`) pause it for that span instead. |
@@ -254,6 +255,40 @@ block re-read after the write (`null` while it prices with its own settings). HT
 `[{"field": "price_entry_id" | "area_id" | "keep_entry_id", "code": "invalid_value"}]` for a missing field or one
 of the wrong type; nothing is written on a refusal. Examples are in
 `tests/fixtures/webhook/choose_price_source_*.json` and `answer_price_duplicate_*.json`.
+
+**Prices for the app.** `price_days` answers the prices of the charger's electricity price (its price entry, else
+its own area), read from what Home Assistant holds: no request is made for it. The day files and the profile are
+the relay's own documents ([prices](prices.md#how-to-read-it)), so a client that reads the relay reads them unchanged:
+
+```json
+{"ok": true, "action": "price_days", "v": 1,
+ "area": {"id": "FI", "eic": "10YFI-1--------U", "countries": ["FI"], "name": "Finland",
+          "tz": "Europe/Helsinki", "market_tz": "Europe/Brussels", "currency": "EUR", "major_unit": "€",
+          "minor_unit": "cent", "vat_percent": 25.5, "suggested_tax": 2.325,
+          "publication": {"time": "12:45", "tz": "Europe/Brussels"},
+          "source": {"name": "Nord Pool", "url": "https://www.nordpoolgroup.com/"}},
+ "provider": {"key": "nordpool", "name": "Nord Pool", "url": "https://www.nordpoolgroup.com/", "notice": null},
+ "state": "ready", "reason": "ready", "waiting_for_tomorrow": false,
+ "publication": {"time": "12:45", "tz": "Europe/Brussels"},
+ "files": {"2026-10-29": {"v": 1, ...}, "2026-10-30": {"v": 1, ...}, "2026-10-31": {"v": 1, ...}},
+ "profile": null}
+```
+
+- `area` is the area as the relay's `/v2/areas.json` lists it, with the market calendar (`market_tz`, always
+  written) and `publication` of the source its prices come from now, and that source as `source`.
+- `provider` names that source: `key` `relay` or `nordpool`. `notice` is `null`.
+- `state`, `reason` and `waiting_for_tomorrow` are the dashboard's `prices` block's.
+- `files` are the held market-day files (`/v1/{area}/{YYYY}/{MM-DD}.json`, keyed by market date) that cover today
+  and tomorrow in the area's `tz`: two when its calendars agree, up to three when they do not (a Finnish day from
+  Nord Pool's CET days, a London day from Paris days). A file not held yet is absent; cut the display days from the
+  files as the relay's reader does.
+- `profile` is the history profile (`/v1/{area}/profile.json`), `null` until 21 of the last 28 days are held.
+
+Refusals are HTTP 400 `{"ok": false, "error", "action": "price_days"}`: `spotnav_no_price_area` (nothing names an
+area for this charger), `spotnav_unknown_price_area` (no area list knows it), `spotnav_no_prices` (no file for today
+or tomorrow is held), `spotnav_unsupported_api_version`. The dashboard's `charger.capabilities.price_days` is `true`
+where the webhook answers it, so a client asks only then. Examples are in
+`tests/fixtures/webhook/price_days_*.json`.
 
 **Permissions over the webhook.** The webhook id is the credential: whoever holds it acts as an administrator for
 its own charger (the dashboard's `writable` flags are true), so these writes, like `update_site_settings` and

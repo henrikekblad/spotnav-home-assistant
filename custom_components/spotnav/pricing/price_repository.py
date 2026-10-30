@@ -66,6 +66,7 @@ keyed by market date, and keeps the result until the window or a file in it chan
 from __future__ import annotations
 
 import asyncio
+import copy
 import logging
 from dataclasses import dataclass, replace
 from datetime import date, datetime, timedelta
@@ -378,6 +379,16 @@ class PriceRepository:
         return self._day_snapshot(
             area_id, day, authority=authority, stale_override=authority == "not_listed"
         )
+
+    def file_document(self, area_id: str, day: date) -> dict[str, Any] | None:
+        """The held market-day file as published (the raw `"v": 1` document, a copy), or `None`. No I/O.
+
+        The file read is the one [file_snapshot] shows: dated on the calendar the area is read in now.
+        """
+        cached = self._held_file(area_id, day)
+        if cached is None or not isinstance(cached.document, dict):
+            return None
+        return copy.deepcopy(cached.document)
 
     def _display_snapshot(self, area_id: str, day: date, tz: str, market_tz: str) -> DaySnapshot:
         """A display date cut from the files covering it; its facts are its principal file's."""

@@ -14,7 +14,8 @@
       "load_balancing": false,
       "refresh_vehicle": true,
       "set_charge_limit": true,
-      "target_stop": true
+      "target_stop": true,
+      "price_days": true
     }
   },
   "settings": {
