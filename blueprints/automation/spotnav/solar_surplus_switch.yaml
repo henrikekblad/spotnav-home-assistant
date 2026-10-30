@@ -1,0 +1,197 @@
+blueprint:
+  name: "SpotNav: run on solar surplus"
+  description: >-
+    Switches something on (a pool heater, a water heater, an immersion heater) when the sun gives a
+    surplus, from a SpotNav site's Solar surplus sensor, and off again when the surplus is gone.
+
+
+    It is switched on when the surplus is at or above the on threshold and off when the surplus is
+    at or below the off threshold. The surplus is never below zero: 0 means the site takes power
+    from the grid. A minimum on time and a minimum off time keep it from switching back and forth
+    when a cloud passes. It runs when the surplus changes, every 5 minutes, and when Home Assistant
+    starts.
+
+
+    With a time window it is only switched on inside the window, and switched off at the window's
+    end. With an allowed entity nothing is done while that entity is off, so you can run the load by
+    hand. SpotNav counts what its own chargers draw as surplus, so this load comes before a car
+    charging on solar.
+
+
+    A water heater should keep its own thermostat at 60 °C or more against legionella; this
+    automation does not see to that. Give a heat pump a setpoint rather than switching it on and
+    off.
+  domain: automation
+  source_url: https://github.com/henrikekblad/spotnav-home-assistant/blob/main/blueprints/automation/spotnav/solar_surplus_switch.yaml
+  author: SpotNav
+  homeassistant:
+    min_version: "2024.10.0"
+  input:
+    surplus_sensor:
+      name: Solar surplus
+      description: The Solar surplus sensor of a SpotNav site, such as sensor.home_solar_surplus.
+      selector:
+        entity:
+          filter:
+            - integration: spotnav
+              domain: sensor
+              device_class: power
+    target:
+      name: Load
+      description: A switch, an input boolean or a climate entity, turned on and off.
+      selector:
+        entity:
+          filter:
+            - domain:
+                - switch
+                - input_boolean
+                - climate
+    on_threshold:
+      name: On at surplus
+      description: Switch on when the surplus is at least this much. Set it to about the load's own power.
+      default: 3
+      selector:
+        number:
+          min: 0.1
+          max: 50
+          step: 0.1
+          unit_of_measurement: kW
+    off_threshold:
+      name: Off at surplus
+      description: >-
+        Switch off when the surplus is at or below this. 0 switches off as soon as the site takes
+        power from the grid; a little above 0 keeps a margin.
+      default: 0
+      selector:
+        number:
+          min: 0
+          max: 50
+          step: 0.1
+          unit_of_measurement: kW
+    timing:
+      name: Timing
+      collapsed: true
+      input:
+        min_on_minutes:
+          name: Minimum on time
+          default: 10
+          selector:
+            number:
+              min: 0
+              max: 240
+              step: 1
+              unit_of_measurement: min
+        min_off_minutes:
+          name: Minimum off time
+          default: 5
+          selector:
+            number:
+              min: 0
+              max: 240
+              step: 1
+              unit_of_measurement: min
+        window_start:
+          name: Window starts
+          description: Leave start and end the same (such as 00:00) for no window.
+          default: "00:00:00"
+          selector:
+            time: {}
+        window_end:
+          name: Window ends
+          default: "00:00:00"
+          selector:
+            time: {}
+    allowed:
+      name: Allowed (optional)
+      collapsed: true
+      input:
+        allowed_entity:
+          name: Allowed when on
+          description: An input boolean or switch that must be on for this automation to do anything. Leave empty to not use it.
+          default: ""
+          selector:
+            entity:
+              filter:
+                - domain:
+                    - input_boolean
+                    - switch
+
+mode: single
+max_exceeded: silent
+
+triggers:
+  - trigger: state
+    entity_id: !input surplus_sensor
+    to: null
+  - trigger: time_pattern
+    minutes: "/5"
+  - trigger: homeassistant
+    event: start
+  - trigger: time
+    at: !input window_end
+    id: window_end
+
+variables:
+  surplus_sensor: !input surplus_sensor
+  target: !input target
+  on_threshold: !input on_threshold
+  off_threshold: !input off_threshold
+  min_on_minutes: !input min_on_minutes
+  min_off_minutes: !input min_off_minutes
+  window_start: !input window_start
+  window_end: !input window_end
+  allowed_entity: !input allowed_entity
+  surplus_known: "{{ states(surplus_sensor) | is_number }}"
+  surplus_kw: >-
+    {% set value = states(surplus_sensor) | float(0) %}
+    {{ value if state_attr(surplus_sensor, 'unit_of_measurement') == 'kW' else value / 1000 }}
+  target_on: "{{ states(target) not in ['off', 'unavailable', 'unknown'] }}"
+  target_usable: "{{ states(target) not in ['unavailable', 'unknown'] }}"
+  minutes_in_state: >-
+    {% set entity = states[target] %}
+    {{ 0 if entity is none else ((now() - entity.last_changed).total_seconds() / 60) | round(2) }}
+  has_window: "{{ window_start != window_end }}"
+  in_window: >-
+    {% set now_time = now().strftime('%H:%M:%S') %}
+    {% if window_start == window_end %}
+      true
+    {% elif window_start < window_end %}
+      {{ window_start <= now_time < window_end }}
+    {% else %}
+      {{ now_time >= window_start or now_time < window_end }}
+    {% endif %}
+  allowed: "{{ allowed_entity == '' or is_state(allowed_entity, 'on') }}"
+  action_wanted: >-
+    {% if not allowed or not target_usable %}
+      none
+    {% elif trigger.id == 'window_end' and has_window %}
+      {{ 'off' if target_on else 'none' }}
+    {% elif not in_window or not surplus_known %}
+      none
+    {% elif not target_on and surplus_kw | float >= on_threshold | float
+         and minutes_in_state | float >= min_off_minutes | float %}
+      on
+    {% elif target_on and surplus_kw | float <= off_threshold | float
+         and minutes_in_state | float >= min_on_minutes | float %}
+      off
+    {% else %}
+      none
+    {% endif %}
+
+conditions:
+  - condition: template
+    value_template: "{{ action_wanted in ['on', 'off'] }}"
+
+actions:
+  - choose:
+      - conditions:
+          - condition: template
+            value_template: "{{ target.startswith('climate.') }}"
+        sequence:
+          - action: "climate.turn_{{ action_wanted }}"
+            target:
+              entity_id: "{{ target }}"
+    default:
+      - action: "homeassistant.turn_{{ action_wanted }}"
+        target:
+          entity_id: "{{ target }}"
