@@ -12,6 +12,7 @@
       "auto_price": true,
       "current_limit": false,
       "load_balancing": true,
+      "price_days": true,
       "refresh_vehicle": true,
       "regulated_current": false,
       "set_charge_limit": true,
