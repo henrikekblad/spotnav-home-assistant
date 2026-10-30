@@ -401,10 +401,12 @@ def ferroamp_energyhub() -> Registry:
     r.add("ferroamp", "ehub_grid_current", f"{h}-iext", device_class="current", unit="A", device="ehub", entry="ferroamp", original_name="Grid Current")
     r.add("ferroamp", "ehub_grid_power", f"{h}-pext", device_class="power", unit="W", device="ehub", entry="ferroamp", original_name="Grid Power")
     r.add("ferroamp", "ehub_battery_power", f"{h}-pbat", device_class="power", unit="W", device="ehub", entry="ferroamp", original_name="Battery Power")
+    r.add("ferroamp", "ehub_grid_power_reactive", f"{h}-pextreactive", device_class="power", unit="W", device="ehub", entry="ferroamp", original_name="Grid Power Reactive")
     for n in "123":
         r.add("ferroamp", f"ehub_grid_current_l{n}", f"{h}-iext-L{n}", device_class="current", unit="A", device="ehub", entry="ferroamp", original_name=f"Grid Current L{n}")
         r.add("ferroamp", f"ehub_active_current_l{n}", f"{h}-iextq-L{n}", device_class="current", unit="A", device="ehub", entry="ferroamp", original_name=f"External Active Current L{n}")
         r.add("ferroamp", f"ehub_grid_power_l{n}", f"{h}-pext-L{n}", device_class="power", unit="W", device="ehub", entry="ferroamp", original_name=f"Grid Power L{n}")
+        r.add("ferroamp", f"ehub_grid_power_reactive_l{n}", f"{h}-pextreactive-L{n}", device_class="power", unit="W", device="ehub", entry="ferroamp", original_name=f"Grid Power Reactive L{n}")
         r.add("ferroamp", f"ehub_voltage_l{n}", f"{h}-ul-L{n}", device_class="voltage", unit="V", device="ehub", entry="ferroamp", original_name=f"External Voltage L{n}")
     return r
 
@@ -596,7 +598,7 @@ CASES = {
     ),
     "ferroamp": (
         ferroamp_energyhub,
-        Expect(MEASUREMENT_MODE_DIRECT, signed_current=True, roles=frozenset({"current"}), integration="ferroamp"),
+        Expect(MEASUREMENT_MODE_DIRECT, signed_current=True, roles=frozenset({"current", "grid_power"}), integration="ferroamp"),
     ),
     "frient_emizb_zha": (
         frient_emizb_zha,
@@ -1506,14 +1508,24 @@ def test_cozify_han_pairs_import_and_export_and_leaves_the_daily_maximum_current
     assert not any("max" in item.entity_id for item in candidate.entities)
 
 
-def test_ferroamp_is_a_current_only_meter_because_its_power_signs_are_not_known() -> None:
+def test_ferroamp_is_a_current_meter_with_the_hubs_import_positive_total_grid_power() -> None:
     detection = ferroamp_energyhub().detect()
 
     assert [m.candidate_id.split(":")[0] for m in detection.meters] == ["ferroamp"]
     candidate = detection.meters[0]
     assert candidate.direct_entities == {phase: f"sensor.ehub_grid_current_l{n}" for phase, n in zip(PHASES, "123")}
-    assert candidate.grid_power is None
-    assert not detection.batteries
+    # The three-phase `pext`, never a phase of it nor the reactive power, and used as it is.
+    assert candidate.grid_power == GridPowerSource(power="sensor.ehub_grid_power")
+    assert not candidate.power_inverted
+    assert WARNING_SIGN_UNVERIFIED not in candidate.warnings
+
+
+def test_the_ferroamp_battery_is_discharge_positive_and_is_negated() -> None:
+    [battery] = ferroamp_energyhub().detect().batteries
+
+    assert battery.integration == "ferroamp"
+    assert battery.entity_id == "sensor.ehub_battery_power"
+    assert battery.inverted is True and battery.discharge_entity_id is None
 
 
 def test_frient_meter_interface_over_zha_gets_its_total_with_the_sign_unverified() -> None:

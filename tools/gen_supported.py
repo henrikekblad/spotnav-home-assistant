@@ -79,6 +79,12 @@ HARDWARE_NOTES: dict[tuple[str, str], str] = {
     "can leave the charger in \"minimum pause duration\" until it is rebooted.",
     ("charger", "goecharger_mqtt"): "Keep the hidden setting `sua` (simulate unplugging always) off: with it on, a stop "
     "can leave the charger in \"minimum pause duration\" until it is rebooted.",
+    ("battery", "zendure_ha"): "Each Zendure device has its own battery power and the integration has no total: "
+    "with several devices on one account, SpotNav reads one of them.",
+    ("battery", "anker_solix"): "Read from Anker's cloud, at most once a minute and often only every five "
+    "minutes, which is slow for telling the car's draw from the battery's.",
+    ("battery", "ecoflow_cloud"): "PowerOcean and Stream batteries are not detected: which way their power counts "
+    "is not known.",
     ("meter", "edl21"): "Home Assistant writes each telegram that differs from the last, which on some meters is "
     "several times a second. Some readers time out with no meter data since Home Assistant 2026.10.4.",
 }
@@ -128,6 +134,10 @@ NAMES: dict[str, str] = {
     "bitvis": "Bitvis Power Hub",
     "cozify_han": "Cozify HAN",
     "zha": "frient EMIZB-132 (ZHA)",
+    "zendure_ha": "Zendure",
+    "anker_solix": "Anker Solix",
+    "ecoflow_cloud": "EcoFlow",
+    "marstek_local_api": "Marstek (local API)",
     # vehicles
     "kia_uvo": "Kia Uvo",
     "ha_kia_hyundai": "Kia and Hyundai (community integration)",
@@ -571,6 +581,7 @@ def batteries_section() -> list[str]:
             for line in (
                 f"Only devices from {row.device_manufacturer}." if row.device_manufacturer else "",
                 f"Only devices whose model contains \"{row.device_model}\"." if row.device_model else "",
+                *(HARDWARE_NOTES[("battery", p)] for p in row.platforms if ("battery", p) in HARDWARE_NOTES),
             )
             if line
         )

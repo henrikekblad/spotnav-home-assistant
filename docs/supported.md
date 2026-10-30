@@ -60,6 +60,7 @@ SpotNav cannot start or stop these chargers, so the flow refuses them as a charg
 | Integration | Energy and status | Notes | Verification |
 | --- | --- | --- | --- |
 | Tesla Wall Connector (`tesla_wall_connector`) | Lifetime energy | Read only: the car is the actuator. | Detected from the integration's source |
+| NexBlue (`nexblue`) | Lifetime energy | Read only: the integration cannot set the current. | Detected from the integration's source |
 
 ### Controlled by another system
 
@@ -132,7 +133,7 @@ Solar and hybrid need the grid's signed power. A derived site has it per phase; 
 | Bitvis Power Hub (`bitvis`) | Derived from power and voltage, current exact | Import and export are two entities | Total grid power for solar and hybrid: an import and an export entity. | Detected from the integration's source |
 | Solis Modbus (`solis_modbus`) | Derived from power and voltage, current exact | Export-positive power, negated | Check that the meter measures the whole main feed, not a sub-circuit. Total grid power for solar and hybrid: one signed entity. Updates about every 10 s. | Detected from the integration's source |
 | Cozify HAN (`cozify_han`) | Derived from power and voltage, current exact | Import and export are two entities | Total grid power for solar and hybrid: an import and an export entity. | Detected from the integration's source |
-| Ferroamp (`ferroamp`) | Direct phase current | Negative current while exporting, read as its size | Updates about every 30 s. | Detected from the integration's source |
+| Ferroamp (`ferroamp`) | Direct phase current | Negative current while exporting, read as its size | Total grid power for solar and hybrid: one signed entity. Updates about every 30 s. | Detected from the integration's source |
 | frient EMIZB-132 (ZHA) (`zha`) | Direct phase current | None needed | Only devices whose model contains "emizb-132". Which way the power counts is read from the source, not confirmed on a device. Total grid power for solar and hybrid: one signed entity. Updates about every 15 min. | Detected from the integration's source |
 | Victron GX / Victron MQTT / Victron (`victron_gx`, `victron_mqtt`, `victron`) | Derived from power and voltage, current exact | Negative current while exporting, read as its size |  | Detected from the integration's source |
 | GoodWe (`goodwe`) | Derived from power and voltage, current exact | Export-positive power, negated |  | Detected from the integration's source |
@@ -172,6 +173,14 @@ The site uses a house battery's power to tell the car's draw from the house's, a
 | Sungrow (`sungrow`) | Charge and discharge are two entities, combined |  | Detected from the integration's source |
 | Solis Modbus (`solis_modbus`) | Discharge-positive, negated |  | Detected from the integration's source |
 | SMA (`sma`) | Charge and discharge are two entities, combined |  | Detected from the integration's source |
+| Ferroamp (`ferroamp`) | Discharge-positive, negated |  | Detected from the integration's source |
+| Zendure (`zendure_ha`) | Charge and discharge are two entities, combined | Each Zendure device has its own battery power and the integration has no total: with several devices on one account, SpotNav reads one of them. | Detected from the integration's source |
+| Anker Solix, all Solarbanks (`anker_solix`) | Charge-positive, used as it is | Read from Anker's cloud, at most once a minute and often only every five minutes, which is slow for telling the car's draw from the battery's. | Detected from the integration's source |
+| Anker Solix, one device (`anker_solix`) | Charge-positive, used as it is | Read from Anker's cloud, at most once a minute and often only every five minutes, which is slow for telling the car's draw from the battery's. | Detected from the integration's source |
+| EcoFlow PowerStream (`ecoflow_cloud`) | Discharge-positive, negated | PowerOcean and Stream batteries are not detected: which way their power counts is not known. | Detected from the integration's source |
+| EcoFlow Ocean Pro (`ecoflow_cloud`) | Charge-positive, used as it is | PowerOcean and Stream batteries are not detected: which way their power counts is not known. | Detected from the integration's source |
+| Marstek (local API), all batteries (`marstek_local_api`) | Charge-positive, used as it is |  | Detected from the integration's source |
+| Marstek (local API), one battery (`marstek_local_api`) | Charge-positive, used as it is |  | Detected from the integration's source |
 
 ## Supported vehicles
 
