@@ -78,7 +78,8 @@ at once (`card-identify-question`).
 Written: add-type, charger-type, charger-device, charger-found, charger-adjust, join-site, site-basic,
 site-meter, site-found, site-options, card-picker, card-hero, card-from-now (the card on the From now axis), card-history, card-settings (the whole Settings
 page as it opens), card-settings-price, card-settings-vehicle (the car section with a tab per car),
-card-settings-charger (with identification and the camera), card-settings-site, card-camera-frame (the crop
+card-settings-charger (with identification and the camera), card-settings-site, card-settings-support (with
+the Automations row), card-automations (the blueprints it lists), card-camera-frame (the crop
 editor), card-reference-picture, card-settings-plan, card-identifying, card-identified, card-identify-question,
 diagnostics.
 

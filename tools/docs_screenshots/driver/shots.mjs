@@ -302,6 +302,14 @@ await tapRow("reference");
 await cardShot("card-reference-picture", CARD_DIALOG);
 await closeCardDialog();
 await closeCardDialog();
+// Support, with its Automations row, and the list that row opens: SpotNav's blueprints, each with its import button.
+await openCard();
+await cardButton("^Card settings$");
+await sleep(1500);
+await sectionShot("card-settings-support", "support");
+await tapRow("automations");
+await cardShot("card-automations", CARD_DIALOG);
+await closeCardDialog();
 await openCard();
 await cardButton("^Plan:");
 await sleep(800);
