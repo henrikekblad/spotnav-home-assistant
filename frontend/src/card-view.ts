@@ -2038,6 +2038,33 @@ export function createCardView(input: CardViewInput): CardView {
     });
   }
 
+  /**
+   * Settings, at one section, and the editor of one of its rows. A row of the charger's section appears only once
+   * its entity configuration is read, so the row is looked for a few times before the section alone is left shown.
+   */
+  function openSettingAt(section: string, edit: string): void {
+    openSettingsOverview();
+    overviewPanel().querySelector<HTMLElement>(`[data-section="${section}"]`)?.scrollIntoView?.({ block: "start" });
+    let tries = 0;
+    const look = (): void => {
+      if (destroyed || !settingsOverviewDialog.isOpen()) {
+        return;
+      }
+      const row = Array.from(overviewPanel().querySelectorAll<HTMLElement>("[data-edit]")).find(
+        (node) => node.dataset["edit"] === edit,
+      );
+      if (row !== undefined) {
+        row.click();
+        return;
+      }
+      tries += 1;
+      if (tries < 10) {
+        setTimer(look, 300);
+      }
+    };
+    look();
+  }
+
   /** The dialog's "Get started" section, for an administrator with something left to set up; else `null`. */
   function setupNode(): HTMLElement | null {
     if (!input.isAdmin || model.setup.length === 0) {
@@ -2050,12 +2077,8 @@ export function createCardView(input: CardViewInput): CardView {
         issuesDialog.hide({ restoreFocus: false });
         input.onOpenSettings("plan");
       },
-      openNotifications: () => {
-        openSettingsOverview();
-        const section = overviewPanel().querySelector<HTMLElement>('[data-section="notifications"]');
-        section?.scrollIntoView?.({ block: "start" });
-        section?.querySelector<HTMLElement>("button")?.focus({ preventScroll: true });
-      },
+      openSetting: (section, edit) => openSettingAt(section, edit),
+      forecastChoosable: (model.site?.solarForecastChoices.length ?? 0) > 0,
       navigate: (path) => {
         issuesDialog.hide({ restoreFocus: false });
         navigateTo(doc, path);

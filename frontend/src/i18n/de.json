@@ -887,8 +887,15 @@
   "setup.carLevel.action": "Plan öffnen",
   "setup.site.text": "Einen Standort mit dem Stromzähler des Hauses hinzufügen, für Lastmanagement unter der Hauptsicherung und Laden mit Solarstrom.",
   "setup.site.action": "Standort hinzufügen",
-  "setup.phone.text": "Ein Telefon wählen, das benachrichtigt wird, wenn ein Ladevorgang unerwartet stoppt oder fertig ist.",
-  "setup.phone.action": "Telefon wählen",
+  "setup.phone.text": "Wähle, welche Telefone Lade-Benachrichtigungen bekommen, über die Home-Assistant-App oder die SpotNav-App.",
+  "setup.phone.action": "Telefone wählen",
   "setup.app.text": "Die SpotNav-App für Android holen und das Laden vom Telefon aus verfolgen und steuern.",
-  "setup.app.action": "App holen"
+  "setup.app.action": "App holen",
+  "setup.vehicle.text": "Füge dein Auto hinzu, damit ein Ziel in Prozent und die Reichweite stimmen.",
+  "setup.vehicle.action": "Integration des Autos hinzufügen",
+  "setup.solarForecast.text": "Füge eine Solarprognose hinzu (zum Beispiel Forecast.Solar oder Solcast), damit Hybrid mit der Sonne rechnen kann und der Status sagt, wann sie erwartet wird.",
+  "setup.solarForecast.action": "Prognose wählen",
+  "setup.solarForecast.add": "Forecast.Solar hinzufügen",
+  "setup.phaseSwitching.text": "Phasenumschaltung für Solar einschalten: an einem bewölkten Tag lädt das Auto einphasig von der Sonne statt aus dem Netz.",
+  "setup.phaseSwitching.action": "Einstellung öffnen"
 }

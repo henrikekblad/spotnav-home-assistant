@@ -1156,9 +1156,12 @@ def capture_dashboard(
             hass,
             entry_id,
             settings=settings,
+            has_vehicle=bool(vehicles),
             has_soc_source=soc is not None,
             has_site=site is not None,
-            notify_available=notify_available,
+            site_solar_capable=site is not None and site.solar_capable,
+            has_solar_forecast=site is not None and bool(site.solar_forecast_selected),
+            phase_switching=capture_phase_switching(hass, entry),
         ),
     )
 

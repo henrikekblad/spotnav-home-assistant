@@ -2269,6 +2269,14 @@
     "items": [
       {
         "dismissible": true,
+        "id": "vehicle"
+      },
+      {
+        "dismissible": true,
+        "id": "phone"
+      },
+      {
+        "dismissible": true,
         "id": "app"
       }
     ]

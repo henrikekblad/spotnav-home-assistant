@@ -887,8 +887,15 @@
   "setup.carLevel.action": "Open Plan",
   "setup.site.text": "Add a site with your home's grid meter, for load balancing under the main fuse and charging from solar.",
   "setup.site.action": "Add a site",
-  "setup.phone.text": "Choose a phone to be told when a charge stops unexpectedly or is complete.",
-  "setup.phone.action": "Choose a phone",
+  "setup.phone.text": "Choose which phones get charging notifications, through the Home Assistant app or the SpotNav app.",
+  "setup.phone.action": "Choose phones",
   "setup.app.text": "Get the SpotNav app for Android to follow and control charging from your phone.",
-  "setup.app.action": "Get the app"
+  "setup.app.action": "Get the app",
+  "setup.vehicle.text": "Add your car, so a target in percent and the range are right.",
+  "setup.vehicle.action": "Add the car's integration",
+  "setup.solarForecast.text": "Add a solar forecast (for example Forecast.Solar or Solcast), so Hybrid can count on the sun and the status says when it is expected.",
+  "setup.solarForecast.action": "Choose a forecast",
+  "setup.solarForecast.add": "Add Forecast.Solar",
+  "setup.phaseSwitching.text": "Turn on phase switching for solar: on a cloudy day the car charges on one phase from the sun instead of from the grid.",
+  "setup.phaseSwitching.action": "Open the setting"
 }

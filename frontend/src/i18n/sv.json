@@ -887,8 +887,15 @@
   "setup.carLevel.action": "Öppna Plan",
   "setup.site.text": "Lägg till en anläggning med husets elmätare, för lastbalansering under huvudsäkringen och laddning med solel.",
   "setup.site.action": "Lägg till anläggning",
-  "setup.phone.text": "Välj en telefon som får veta när en laddning stannar oväntat eller är klar.",
-  "setup.phone.action": "Välj telefon",
+  "setup.phone.text": "Välj vilka telefoner som får laddnotiser, via Home Assistant-appen eller SpotNav-appen.",
+  "setup.phone.action": "Välj telefoner",
   "setup.app.text": "Skaffa SpotNav-appen för Android och följ och styr laddningen från telefonen.",
-  "setup.app.action": "Hämta appen"
+  "setup.app.action": "Hämta appen",
+  "setup.vehicle.text": "Lägg till din bil, så blir ett mål i procent och räckvidden rätt.",
+  "setup.vehicle.action": "Lägg till bilens integration",
+  "setup.solarForecast.text": "Lägg till en solprognos (till exempel Forecast.Solar eller Solcast), så kan Hybrid räkna med solen och statusen visa när den väntas.",
+  "setup.solarForecast.action": "Välj prognos",
+  "setup.solarForecast.add": "Lägg till Forecast.Solar",
+  "setup.phaseSwitching.text": "Slå på fasväxling för sol: en molnig dag laddar bilen på en fas från solen i stället för från nätet.",
+  "setup.phaseSwitching.action": "Öppna inställningen"
 }

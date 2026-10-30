@@ -887,8 +887,15 @@
   "setup.carLevel.action": "Abrir Plan",
   "setup.site.text": "Añade una instalación con el contador eléctrico de la casa, para el equilibrado de carga bajo el interruptor general y la carga solar.",
   "setup.site.action": "Añadir instalación",
-  "setup.phone.text": "Elige un teléfono que reciba un aviso cuando una carga se detenga inesperadamente o termine.",
-  "setup.phone.action": "Elegir teléfono",
+  "setup.phone.text": "Elige qué teléfonos reciben avisos de carga, a través de la app de Home Assistant o la app SpotNav.",
+  "setup.phone.action": "Elegir teléfonos",
   "setup.app.text": "Consigue la app SpotNav para Android y sigue y controla la carga desde el teléfono.",
-  "setup.app.action": "Obtener la app"
+  "setup.app.action": "Obtener la app",
+  "setup.vehicle.text": "Añade tu coche, para que un objetivo en porcentaje y la autonomía sean correctos.",
+  "setup.vehicle.action": "Añadir la integración del coche",
+  "setup.solarForecast.text": "Añade una previsión solar (por ejemplo Forecast.Solar o Solcast), para que Híbrida pueda contar con el sol y el estado diga cuándo se espera.",
+  "setup.solarForecast.action": "Elegir previsión",
+  "setup.solarForecast.add": "Añadir Forecast.Solar",
+  "setup.phaseSwitching.text": "Activa el cambio de fases para solar: en un día nublado el coche carga en una fase desde el sol en lugar de desde la red.",
+  "setup.phaseSwitching.action": "Abrir el ajuste"
 }

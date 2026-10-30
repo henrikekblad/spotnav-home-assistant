@@ -10,7 +10,7 @@ import type { SetupBlock } from "./validate";
 import { VISUAL_CLASSES as C } from "./visual-styles";
 
 /** The rows this card knows, in the order it lists them. */
-export const SETUP_ROWS = ["car_level", "site", "phone", "app"] as const;
+export const SETUP_ROWS = ["vehicle", "car_level", "site", "solar_forecast", "phase_switching", "phone", "app"] as const;
 export type SetupRowId = (typeof SETUP_ROWS)[number];
 
 export interface SetupRow {
@@ -18,12 +18,19 @@ export interface SetupRow {
   dismissible: boolean;
 }
 
-/** The SpotNav app's own page: what it does, and where to get it (Google Play, or a release on GitHub). */
-export const APP_STORE_URL = "https://github.com/henrikekblad/spotnav";
+/** The SpotNav app on Google Play. */
+export const APP_STORE_URL = "https://play.google.com/store/apps/details?id=se.sensnology.spotnav";
+/** Home Assistant's integrations page, where a car's integration is added. */
+export const INTEGRATIONS_PATH = "/config/integrations/dashboard";
+/** The solar forecast integration offered when none is there yet. */
+export const FORECAST_DOMAIN = "forecast_solar";
 
 const WORDS: Record<SetupRowId, { text: TranslationKey; action: TranslationKey }> = {
+  vehicle: { text: "setup.vehicle.text", action: "setup.vehicle.action" },
   car_level: { text: "setup.carLevel.text", action: "setup.carLevel.action" },
   site: { text: "setup.site.text", action: "setup.site.action" },
+  solar_forecast: { text: "setup.solarForecast.text", action: "setup.solarForecast.action" },
+  phase_switching: { text: "setup.phaseSwitching.text", action: "setup.phaseSwitching.action" },
   phone: { text: "setup.phone.text", action: "setup.phone.action" },
   app: { text: "setup.app.text", action: "setup.app.action" },
 };
@@ -50,8 +57,10 @@ export interface SetupSectionInput {
   rows: readonly SetupRow[];
   /** Open the Plan popover (where the car's charge-level sensor is chosen). */
   openPlan: () => void;
-  /** Open Settings at its Notifications section. */
-  openNotifications: () => void;
+  /** Open Settings at one of its sections and, once it is there, the editor of one of its rows (`data-edit`). */
+  openSetting: (section: string, edit: string) => void;
+  /** Whether a solar forecast source can be chosen already (one is added to Home Assistant). */
+  forecastChoosable: boolean;
   /** Move to one of Home Assistant's own pages. */
   navigate: (path: string) => void;
   openExternal: (url: string) => void;
@@ -90,7 +99,9 @@ export function setupSection(doc: Document, input: SetupSectionInput): HTMLEleme
       created.addEventListener("click", run);
       answers.append(created);
     };
-    button(WORDS[row.id].action, "open", () => open(input, row.id));
+    const action =
+      row.id === "solar_forecast" && !input.forecastChoosable ? "setup.solarForecast.add" : WORDS[row.id].action;
+    button(action, "open", () => open(input, row.id));
     if (row.dismissible) {
       button("setup.dismiss", "dismiss", () => input.dismiss(row.id));
     }
@@ -102,14 +113,29 @@ export function setupSection(doc: Document, input: SetupSectionInput): HTMLEleme
 
 function open(input: SetupSectionInput, id: SetupRowId): void {
   switch (id) {
+    case "vehicle":
+      input.navigate(INTEGRATIONS_PATH);
+      return;
     case "car_level":
       input.openPlan();
       return;
     case "site":
       input.navigate(addIntegrationPath("spotnav"));
       return;
+    case "solar_forecast":
+      // With a forecast integration already added the site's choice of source is the place; without one, adding
+      // Forecast.Solar comes first (the row then stays, and its button then opens the choice).
+      if (input.forecastChoosable) {
+        input.openSetting("solar", "solar_forecast");
+      } else {
+        input.navigate(addIntegrationPath(FORECAST_DOMAIN));
+      }
+      return;
+    case "phase_switching":
+      input.openSetting("entities", "phase_switching");
+      return;
     case "phone":
-      input.openNotifications();
+      input.openSetting("notifications", "notification_targets");
       return;
     case "app":
       input.openExternal(APP_STORE_URL);

@@ -887,8 +887,15 @@
   "setup.carLevel.action": "Åpne Plan",
   "setup.site.text": "Legg til et anlegg med husets strømmåler, for lastbalansering under hovedsikringen og lading med solstrøm.",
   "setup.site.action": "Legg til anlegg",
-  "setup.phone.text": "Velg en telefon som får beskjed når en lading stopper uventet eller er ferdig.",
-  "setup.phone.action": "Velg telefon",
+  "setup.phone.text": "Velg hvilke telefoner som får ladevarsler, via Home Assistant-appen eller SpotNav-appen.",
+  "setup.phone.action": "Velg telefoner",
   "setup.app.text": "Skaff SpotNav-appen for Android og følg og styr ladingen fra telefonen.",
-  "setup.app.action": "Hent appen"
+  "setup.app.action": "Hent appen",
+  "setup.vehicle.text": "Legg til bilen din, så blir et mål i prosent og rekkevidden riktig.",
+  "setup.vehicle.action": "Legg til bilens integrasjon",
+  "setup.solarForecast.text": "Legg til en solprognose (for eksempel Forecast.Solar eller Solcast), så kan Hybrid regne med solen og statusen vise når den ventes.",
+  "setup.solarForecast.action": "Velg prognose",
+  "setup.solarForecast.add": "Legg til Forecast.Solar",
+  "setup.phaseSwitching.text": "Slå på faseveksling for sol: en overskyet dag lader bilen på én fase fra solen i stedet for fra nettet.",
+  "setup.phaseSwitching.action": "Åpne innstillingen"
 }

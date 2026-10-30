@@ -2232,6 +2232,10 @@
       },
       {
         "dismissible": true,
+        "id": "phone"
+      },
+      {
+        "dismissible": true,
         "id": "app"
       }
     ]

@@ -9,7 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { LANGUAGES, translate, type Language } from "../src/i18n";
 import { TRANSLATIONS } from "../src/i18n/all";
 import { addIntegrationPath } from "../src/price-provider";
-import { APP_STORE_URL, setupLineText, setupRowsOf } from "../src/setup-checklist";
+import { APP_STORE_URL, INTEGRATIONS_PATH, setupLineText, setupRowsOf } from "../src/setup-checklist";
 import { decodeDashboard } from "../src/validate";
 import { FakeHass, mountCard } from "./helpers";
 
@@ -181,12 +181,6 @@ describe("the dialog's Get started section", () => {
     button(row(element, "app"), "open")!.click();
     expect(opened).toEqual([APP_STORE_URL]);
 
-    line(element)!.click();
-    await settle();
-    button(row(element, "phone"), "open")!.click();
-    await settle();
-    expect(openDialog(element).querySelector("[data-section='notifications']")).not.toBeNull();
-
     // The car's level: the Plan popover reads the settings record first.
     const before = hass.messages.length;
     line(element)!.click();
@@ -194,6 +188,47 @@ describe("the dialog's Get started section", () => {
     button(row(element, "car_level"), "open")!.click();
     await settle();
     expect(hass.messages.slice(before).some((message) => message["type"] === "spotnav/get_settings")).toBe(true);
+  });
+
+  it("opens the phones' own editor in Settings for the phone row", async () => {
+    const { element } = await open(dashboard(ALL));
+    line(element)!.click();
+    await settle();
+    button(row(element, "phone"), "open")!.click();
+    await settle();
+    expect(shadow(element).querySelector("[data-section='notifications']")).not.toBeNull();
+    expect(openDialog(element).textContent).toContain(translate("en", "notifications.phones"));
+  });
+
+  it("sends the car, the forecast and phase switching rows where each is done", async () => {
+    const rows: Row[] = [
+      { id: "vehicle", dismissible: true },
+      { id: "solar_forecast", dismissible: true },
+      { id: "phase_switching", dismissible: true },
+    ];
+    const { element } = await open(dashboard(rows));
+    expect(line(element)?.textContent).toBe("Get started: 3 things left");
+    line(element)!.click();
+    await settle();
+    expect(row(element, "vehicle").querySelector(".spotnav-suggestion-text")?.textContent).toBe(
+      "Add your car, so a target in percent and the range are right.",
+    );
+    // No forecast integration yet (the fixture's charger has no site to choose one on): adding Forecast.Solar comes first.
+    expect(button(row(element, "solar_forecast"), "open")?.textContent).toBe("Add Forecast.Solar");
+    button(row(element, "vehicle"), "open")!.click();
+    expect(pushed).toEqual([INTEGRATIONS_PATH]);
+    line(element)!.click();
+    await settle();
+    button(row(element, "solar_forecast"), "open")!.click();
+    expect(pushed.at(-1)).toBe(addIntegrationPath("forecast_solar"));
+    line(element)!.click();
+    await settle();
+    button(row(element, "phase_switching"), "open")!.click();
+    await settle();
+    expect(shadow(element).querySelector("[data-section='entities']")).not.toBeNull();
+    for (const id of ["vehicle", "solar_forecast", "phase_switching"]) {
+      expect(setupRowsOf({ items: rows }).find((entry) => entry.id === id)).toBeDefined();
+    }
   });
 
   it("asks the integration to keep a row away, then reads the dashboard again", async () => {
@@ -216,7 +251,18 @@ describe("the words", () => {
   it("are in every language", () => {
     for (const language of LANGUAGES) {
       const words = TRANSLATIONS[language] as Record<string, string>;
-      for (const key of ["setup.line.one", "setup.line.other", "setup.heading", "setup.dismiss", "setup.app.text"]) {
+      for (const key of [
+        "setup.line.one",
+        "setup.line.other",
+        "setup.heading",
+        "setup.dismiss",
+        "setup.app.text",
+        "setup.vehicle.text",
+        "setup.solarForecast.text",
+        "setup.solarForecast.add",
+        "setup.phaseSwitching.text",
+        "setup.phone.text",
+      ]) {
         expect(words[key], `${language} ${key}`).toBeTruthy();
       }
       expect(words["setup.line.other"]).toContain("{count}");

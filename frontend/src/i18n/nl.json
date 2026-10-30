@@ -887,8 +887,15 @@
   "setup.carLevel.action": "Plan openen",
   "setup.site.text": "Voeg een locatie toe met de elektriciteitsmeter van je huis, voor load balancing onder de hoofdzekering en laden met zonnestroom.",
   "setup.site.action": "Locatie toevoegen",
-  "setup.phone.text": "Kies een telefoon die bericht krijgt als het laden onverwacht stopt of klaar is.",
-  "setup.phone.action": "Telefoon kiezen",
+  "setup.phone.text": "Kies welke telefoons laadmeldingen krijgen, via de Home Assistant-app of de SpotNav-app.",
+  "setup.phone.action": "Telefoons kiezen",
   "setup.app.text": "Haal de SpotNav-app voor Android en volg en bedien het laden vanaf je telefoon.",
-  "setup.app.action": "App downloaden"
+  "setup.app.action": "App downloaden",
+  "setup.vehicle.text": "Voeg je auto toe, zodat een doel in procent en de actieradius kloppen.",
+  "setup.vehicle.action": "Integratie van de auto toevoegen",
+  "setup.solarForecast.text": "Voeg een zonneprognose toe (bijvoorbeeld Forecast.Solar of Solcast), zodat Hybride op de zon kan rekenen en de status zegt wanneer die verwacht wordt.",
+  "setup.solarForecast.action": "Prognose kiezen",
+  "setup.solarForecast.add": "Forecast.Solar toevoegen",
+  "setup.phaseSwitching.text": "Zet faseomschakeling voor zon aan: op een bewolkte dag laadt de auto op één fase van de zon in plaats van van het net.",
+  "setup.phaseSwitching.action": "Instelling openen"
 }

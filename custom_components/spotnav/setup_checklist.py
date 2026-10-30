@@ -5,11 +5,19 @@ the thing is done. The optional ones can also be dismissed ("Not needed"); a dis
 installation in the decision store (`vehicles/discovery_decisions.py`, domain `setup`), so it holds in every
 browser and for every charger.
 
-* `car_level`: the plan charges to a charge level (%) but nothing reports the car's level. Not dismissible:
-  the plan cannot work without it.
+* `vehicle`: no vehicle is set up for the charger, so a target in percent and the range lack the car's battery
+  size and consumption. Dismissible (a household without a car integration charges by kWh). In place of
+  `car_level`, never beside it.
+* `car_level`: the plan charges to a charge level (%), a vehicle is set up, but nothing reports its level. Not
+  dismissible: the plan cannot work without it.
 * `site`: the charger has no site, so there is no grid meter for load balancing or solar. Dismissible.
-* `phone`: no phone is chosen for this charger's notifications while the Companion app offers at least one,
-  and the paired SpotNav app does not take the notifications either. Dismissible.
+* `solar_forecast`: the charger's site can measure solar surplus but no solar forecast source is chosen for it.
+  Dismissible.
+* `phase_switching`: the charger can switch phases and its site can do solar (the setting is offered), but phase
+  switching for solar is off. Dismissible.
+* `phone`: no phone is chosen for this charger's notifications, and the paired SpotNav app does not take them
+  either (no push registration). Shown also with no phone at all: the notification settings say how to get one,
+  through either app. Dismissible.
 * `app`: the SpotNav app has never been used with this installation (no charger's webhook has had a request
   from it, and no charger holds its push registration). Dismissible.
 
@@ -29,14 +37,27 @@ from .const import DOMAIN
 from .planning.auto_settings import DRIVER_TARGET_SOC, AutoSettings
 from .runtime import charger_data, domain_data
 
+SETUP_VEHICLE: Final = "vehicle"
 SETUP_CAR_LEVEL: Final = "car_level"
 SETUP_SITE: Final = "site"
+SETUP_SOLAR_FORECAST: Final = "solar_forecast"
+SETUP_PHASE_SWITCHING: Final = "phase_switching"
 SETUP_PHONE: Final = "phone"
 SETUP_APP: Final = "app"
 #: Every row, in the order the card lists them.
-SETUP_ITEMS: Final = (SETUP_CAR_LEVEL, SETUP_SITE, SETUP_PHONE, SETUP_APP)
+SETUP_ITEMS: Final = (
+    SETUP_VEHICLE,
+    SETUP_CAR_LEVEL,
+    SETUP_SITE,
+    SETUP_SOLAR_FORECAST,
+    SETUP_PHASE_SWITCHING,
+    SETUP_PHONE,
+    SETUP_APP,
+)
 #: The rows a person may answer "Not needed" to.
-DISMISSIBLE_ITEMS: Final = frozenset({SETUP_SITE, SETUP_PHONE, SETUP_APP})
+DISMISSIBLE_ITEMS: Final = frozenset(
+    {SETUP_VEHICLE, SETUP_SITE, SETUP_SOLAR_FORECAST, SETUP_PHASE_SWITCHING, SETUP_PHONE, SETUP_APP}
+)
 
 #: The decision store's domain for dismissed rows, and for the fact that the app has been used.
 DECISION_DOMAIN_SETUP: Final = "setup"
@@ -93,25 +114,30 @@ def capture_setup(
     entry_id: str,
     *,
     settings: AutoSettings | None,
+    has_vehicle: bool,
     has_soc_source: bool,
     has_site: bool,
-    notify_available: tuple[tuple[str, str], ...],
+    site_solar_capable: bool,
+    has_solar_forecast: bool,
+    phase_switching: bool | None,
 ) -> tuple[SetupItem, ...]:
-    """The rows still left for this charger, in `SETUP_ITEMS` order."""
+    """The rows still left for this charger, in `SETUP_ITEMS` order. `phase_switching` is the setting's value,
+    `None` while it is not offered (`api/dashboard.py:capture_phase_switching`)."""
     data = charger_data(hass, entry_id)
     push = None if data is None else data.push
     app_notifies = push is not None and push.registration is not None
     left: list[str] = []
-    if settings is not None and settings.driver == DRIVER_TARGET_SOC and not has_soc_source:
+    if not has_vehicle:
+        left.append(SETUP_VEHICLE)
+    elif settings is not None and settings.driver == DRIVER_TARGET_SOC and not has_soc_source:
         left.append(SETUP_CAR_LEVEL)
     if not has_site:
         left.append(SETUP_SITE)
-    if (
-        settings is not None
-        and not settings.notifications.targets
-        and notify_available
-        and not app_notifies
-    ):
+    elif site_solar_capable and not has_solar_forecast:
+        left.append(SETUP_SOLAR_FORECAST)
+    if phase_switching is False:
+        left.append(SETUP_PHASE_SWITCHING)
+    if settings is not None and not settings.notifications.targets and not app_notifies:
         left.append(SETUP_PHONE)
     if not app_used(hass):
         left.append(SETUP_APP)
