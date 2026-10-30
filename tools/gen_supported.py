@@ -75,6 +75,8 @@ HARDWARE_NOTES: dict[tuple[str, str], str] = {
     ("charger", "zaptec"): "Firmware 2.3 and newer ends a session after 20 restarts plus one per hour of the session, "
     "which solar on a cloudy day can reach. With APM or in stand-alone mode the charger ignores current writes "
     "(Code 527), so there is no current control.",
+    ("meter", "edl21"): "Home Assistant writes each telegram that differs from the last, which on some meters is "
+    "several times a second. Some readers time out with no meter data since Home Assistant 2026.10.4.",
 }
 
 #: Display names by Home Assistant domain.
@@ -485,6 +487,7 @@ def meter_notes(row: sd.MeterRow) -> str:
     behaviour = [sd.UPDATE_BEHAVIOUR[p] for p in row.platforms if p in sd.UPDATE_BEHAVIOUR]
     if behaviour and behaviour[0].interval_s > 0:
         lines.append(f"Updates about every {duration(behaviour[0].interval_s)}.")
+    lines.extend(HARDWARE_NOTES[("meter", p)] for p in row.platforms if ("meter", p) in HARDWARE_NOTES)
     return " ".join(lines)
 
 
