@@ -212,7 +212,7 @@ async def test_the_profile_survives_a_restart_through_the_store(
     first = PriceRepository(hass, base_url=BASE_URL, session=transport, now=clock, store=store)
     serve_profile(transport)
     await first.async_get_profile("SE4", TODAY)
-    assert store.payload["profiles"]["SE4"]["document"]["weeks"] == 4
+    assert store.payload["relay"]["profiles"]["SE4"]["document"]["weeks"] == 4
 
     second = PriceRepository(hass, base_url=BASE_URL, session=transport, now=clock, store=store)
     await second.async_restore()

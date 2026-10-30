@@ -41,6 +41,14 @@ per **market** day. Everything a caller asks by date ([day_snapshot], [async_get
 agree that is exactly one file, and for one whose do not (Great Britain, v2 Portugal) the display day
 is cut from the files that cover it (`pricing/market_day.py`). The file-level calls ([file_snapshot],
 [async_get_file]) are for the refresh manager, which decides which files to ask for.
+
+The store (schema 2) keeps each day file under its area, its own market calendar and its market day
+(`"FI|Europe/Helsinki|2026-10-30"`), so files of one area on two calendars (the relay's Helsinki days and
+CET days from another source) are held side by side; a lookup reads the one dated on the calendar the area
+is read in now, compared by instant (a Stockholm-dated and a Berlin-dated file start at the same moment).
+Files are kept for [HISTORY_KEEP_DAYS] and pruned on every write. A schema 1 store (`"AREA|date"`, the
+relay's area list, index and profiles beside the days) is read through the same parsers and rewritten as
+schema 2 on the next write, losing nothing.
 """
 
 from __future__ import annotations
@@ -62,7 +70,7 @@ from ..const import DOMAIN
 from ..runtime import domain_data
 from .. import time_zones
 from .area_catalogue import async_load_bundled, BundledCatalogue
-from .market_day import compose_display_day, market_days_for, principal_market_day
+from .market_day import compose_display_day, local_midnight, market_days_for, principal_market_day
 from .relay_contract import (
     AreaCatalogue,
     document_version,
@@ -108,8 +116,19 @@ CONTRACT_VERSIONS: Final = (2, 1)
 #: Paris file with the next); never persisted, never the live cache.
 ARCHIVE_MEMO_SIZE: Final = 8
 
+#: Home Assistant's own version of the store file, kept at 1 so an older release still opens it (and then
+#: ignores a schema it does not know, starting with an empty cache).
 STORAGE_VERSION: Final = 1
 STORAGE_KEY: Final = f"{DOMAIN}_relay_cache"
+
+#: The layout of the stored document: 2 keys day files by market calendar and keeps the relay's own
+#: resources under `relay`; 1 is the layout before it, read once and rewritten.
+STORAGE_SCHEMA: Final = 2
+LEGACY_SCHEMA: Final = 1
+
+#: Day files older than this many days (before today, UTC) are dropped on the next write: enough for the
+#: history profile's four weeks with a year of slack for statistics, and a bound on the store's size.
+HISTORY_KEEP_DAYS: Final = 400
 
 #: What a caller could not get, as a stable code: the transport half is here, the content half is
 #: `relay_contract`'s, kept in one snapshot field.
@@ -230,6 +249,8 @@ class _Cached:
     # How this document entered the process (network or store); a later read of it is `memory`,
     # a fact about the call.
     source: SnapshotSource = "network"
+    # Who published a day file (`relay` for every file so far); stored beside it, `None` for the rest.
+    provider: str | None = None
 
 
 TRANSPORT_CODES: Final[frozenset[str]] = frozenset({"timeout", "network", "http_status", "too_large"})
@@ -313,7 +334,8 @@ class PriceRepository:
         #: `None` when unknown (nothing noted yet, or a store written before it was kept).
         self._catalogue_rev: str | None = None
         self._index: _Cached | None = None
-        self._days: dict[tuple[str, date], _Cached] = {}
+        # Day files per (area, market day), one per market calendar they are dated in (see [_held_file]).
+        self._days: dict[tuple[str, date], dict[str, _Cached]] = {}
         # The history profile per area; the local day it was last asked for with a definite answer (a
         # document, or the relay's 404), so it is requested once per area per day; and the last failed try.
         self._profiles: dict[str, _Cached] = {}
@@ -450,7 +472,7 @@ class PriceRepository:
         """
         await self.async_restore()
         authority = await self._authority_for(area_id, day)
-        cached = self._days.get((area_id, day))
+        cached = self._held_file(area_id, day)
 
         if authority == "not_listed":
             # Authoritative absence: held data is kept but reported as no longer published.
@@ -493,7 +515,7 @@ class PriceRepository:
         return compose_display_day(area_id, day, tz, files)
 
     async def _archive_file(self, area_id: str, day: date) -> PriceDocument | None:
-        cached = self._days.get((area_id, day))
+        cached = self._held_file(area_id, day)
         if cached is not None:
             return cached.parsed
         remembered = self._archive_memo.get((area_id, day))
@@ -649,18 +671,24 @@ class PriceRepository:
 
         if raw is None:
             return
-        if not isinstance(raw, dict) or raw.get("schema") != STORAGE_VERSION:
+        schema = raw.get("schema") if isinstance(raw, dict) else None
+        if schema not in (STORAGE_SCHEMA, LEGACY_SCHEMA):
             _LOGGER.warning("Ignoring stored relay cache: unknown schema version")
             return
+        legacy = schema == LEGACY_SCHEMA
+        # Schema 1 kept the relay's resources beside the days; schema 2 keeps them under `relay`.
+        relay = raw if legacy else raw.get("relay")
+        if not isinstance(relay, dict):
+            relay = {}
 
         # A stored list and index say which version they are; each is re-read by that version's rules,
         # so a v1 cache from an older release restores as it was and is replaced by the next fetch.
-        catalogue = self._restore_one(raw.get("catalogue"), "catalogue", _parse_versioned(parse_catalogue))
+        catalogue = self._restore_one(relay.get("catalogue"), "catalogue", _parse_versioned(parse_catalogue))
         if catalogue is not None and _older_than(self._catalogue, catalogue):
             self._catalogue = catalogue
-            stored_rev = raw.get("catalogue_rev")
+            stored_rev = relay.get("catalogue_rev")
             self._catalogue_rev = stored_rev if isinstance(stored_rev, str) and stored_rev else None
-        index = self._restore_one(raw.get("index"), "index", _parse_versioned(parse_index))
+        index = self._restore_one(relay.get("index"), "index", _parse_versioned(parse_index))
         if index is not None and _older_than(self._index, index):
             self._index = index
         if (
@@ -670,7 +698,7 @@ class PriceRepository:
         ):
             # The index is only ever read beside a list of its own version.
             self._index = None
-        profiles = raw.get("profiles")
+        profiles = relay.get("profiles")
         if isinstance(profiles, dict):
             for area_id, entry in profiles.items():
                 restored_profile = self._restore_profile(area_id, entry)
@@ -679,15 +707,16 @@ class PriceRepository:
         days = raw.get("days")
         if isinstance(days, dict):
             for key, entry in days.items():
-                restored = self._restore_day(key, entry)
+                restored = self._restore_day(key, entry, legacy=legacy)
                 if restored is None:
                     continue
                 where, cached = restored
+                files = self._days.setdefault(where, {})
                 # Adoption is by acquisition time, not arrival order, so a late restore cannot
                 # replace something fetched since. Loaders await the restore before fetching, so
                 # this is the invariant that keeps it true if a path ever forgets to.
-                if _older_than(self._days.get(where), cached):
-                    self._days[where] = cached
+                if _older_than(files.get(cached.parsed.tz), cached):
+                    files[cached.parsed.tz] = cached
 
     def _restore_one(self, entry: Any, what: str, parse) -> _Cached | None:
         if not isinstance(entry, dict):
@@ -711,10 +740,17 @@ class PriceRepository:
             entry, f"profile {area_id}", lambda document: parse_profile(document, area_id=area_id)
         )
 
-    def _restore_day(self, key: Any, entry: Any) -> tuple[tuple[str, date], _Cached] | None:
-        if not isinstance(key, str) or "|" not in key or not isinstance(entry, dict):
+    def _restore_day(self, key: Any, entry: Any, *, legacy: bool) -> tuple[tuple[str, date], _Cached] | None:
+        """One stored day file, filed under `AREA|market calendar|date` (schema 1: `AREA|date`, its calendar
+        then read from the document itself, which is what makes the migration lossless).
+        """
+        if not isinstance(key, str) or not isinstance(entry, dict):
             return None
-        area_id, _, raw_day = key.partition("|")
+        parts = key.split("|")
+        if len(parts) != (2 if legacy else 3):
+            return None
+        area_id, raw_day = parts[0], parts[-1]
+        calendar = None if legacy else parts[1]
         try:
             day = date.fromisoformat(raw_day)
         except ValueError:
@@ -731,7 +767,17 @@ class PriceRepository:
         except RelayParseError as err:
             _LOGGER.warning("Ignoring stored day %s: %s", key, err.code)
             return None
-        return (area_id, day), _Cached(document=document, fetched_at=fetched_at, parsed=parsed, source="store")
+        if calendar is not None and calendar != parsed.tz:
+            _LOGGER.warning("Ignoring stored day %s: dated on another calendar", key)
+            return None
+        provider = entry.get("provider")
+        return (area_id, day), _Cached(
+            document=document,
+            fetched_at=fetched_at,
+            parsed=parsed,
+            source="store",
+            provider=provider if isinstance(provider, str) and provider else "relay",
+        )
 
     async def _fetch_versioned(self, name: str, parse, versions: tuple[int, ...]) -> tuple[Any, Any]:
         """`/v<n>/<name>` parsed as version n, for the first of [versions] the relay answers readably.
@@ -788,11 +834,13 @@ class PriceRepository:
         path = f"/v1/{quote(area_id, safe='')}/{day.year:04d}/{day.month:02d}-{day.day:02d}.json"
         try:
             document = await self._fetch_json(path)
-            parsed = parse_day(document, area_id=area_id, day=day)
+            parsed = self._parse_file(document, area_id, day)
         except (RelayParseError, _Failure) as err:
             self._record_failure(key, err)
             return self._day_snapshot(area_id, day, authority=authority, settled=True)
-        self._days[(area_id, day)] = _Cached(document=document, fetched_at=self._now(), parsed=parsed)
+        self._days.setdefault((area_id, day), {})[parsed.tz] = _Cached(
+            document=document, fetched_at=self._now(), parsed=parsed, provider="relay"
+        )
         await self._persist()
         return self._day_snapshot(area_id, day, authority=authority, source="network", settled=True)
 
@@ -802,7 +850,7 @@ class PriceRepository:
         path = f"/v1/{quote(area_id, safe='')}/{day.year:04d}/{day.month:02d}-{day.day:02d}.json"
         try:
             document = await self._fetch_json(path)
-            return parse_day(document, area_id=area_id, day=day)
+            return self._parse_file(document, area_id, day)
         except (RelayParseError, _Failure) as err:
             self._record_failure(key, err)
             return None
@@ -835,6 +883,49 @@ class PriceRepository:
         self._profile_checked[area_id] = today
         await self._persist()
         return self.profile_for(area_id)
+
+    def _parse_file(self, document: Any, area_id: str, day: date) -> PriceDocument:
+        """A fetched day file, validated, and refused when it is not dated on the calendar the area is read
+        in: it could never be found by a lookup, so taking it would only ask for it again and again.
+        """
+        parsed = parse_day(document, area_id=area_id, day=day)
+        calendar = self._market_calendar(area_id)
+        if calendar is not None and not _dated_on(parsed, calendar):
+            raise RelayParseError(
+                "invalid_coverage", f"the day document is dated on {parsed.tz}, not on the area's {calendar}"
+            )
+        return parsed
+
+    def _market_calendar(self, area_id: str) -> str | None:
+        """The calendar an area's day files are dated in (its `market_tz`), from the held catalogue (the
+        bundled one while the relay's is not held); `None` for an area no catalogue lists.
+        """
+        catalogue = self._held_catalogue()
+        entry = None if catalogue is None else catalogue.area(area_id)
+        return None if entry is None else entry.market_tz
+
+    def _held_file(self, area_id: str, day: date) -> _Cached | None:
+        """The held file for a market day on the calendar the area is read in, or `None`.
+
+        Calendars are compared by the file's first instant, not by name: a file dated in Stockholm is the
+        same day as one dated in Berlin, while a Helsinki file is another day than a CET one and is not read
+        (it stays held, under its own key, until retention drops it). With no catalogue entry to say which
+        calendar, the newest file held for the day is the answer.
+        """
+        files = self._days.get((area_id, day))
+        if not files:
+            return None
+        calendar = self._market_calendar(area_id)
+        candidates = [
+            cached for cached in files.values() if calendar is None or _dated_on(cached.parsed, calendar)
+        ]
+        return max(candidates, key=lambda cached: cached.fetched_at, default=None)
+
+    def _prune(self) -> None:
+        """Drop the day files older than [HISTORY_KEEP_DAYS] (by market day, against today in UTC)."""
+        oldest = self._now().astimezone(dt_util.UTC).date() - timedelta(days=HISTORY_KEEP_DAYS)
+        for where in [where for where in self._days if where[1] < oldest]:
+            del self._days[where]
 
     def _after_failure(self, key: tuple[str, ...], err: Exception, snapshot):
         self._record_failure(key, err)
@@ -935,7 +1026,7 @@ class PriceRepository:
         settled: bool = False,
     ) -> DaySnapshot:
         key = ("day", area_id, day.isoformat())
-        cached = self._days.get((area_id, day))
+        cached = self._held_file(area_id, day)
         attempt_at, error = self._attempt(key)
         refreshing = not settled and key in self._inflight
 
@@ -997,17 +1088,26 @@ class PriceRepository:
         writer writes the union.
         """
         return {
-            "schema": STORAGE_VERSION,
-            "catalogue": _entry(self._catalogue),
-            "catalogue_rev": self._catalogue_rev,
-            "index": _entry(self._index),
-            "days": {f"{area_id}|{day.isoformat()}": _entry(cached) for (area_id, day), cached in self._days.items()},
-            "profiles": {area_id: _entry(cached) for area_id, cached in self._profiles.items()},
+            "schema": STORAGE_SCHEMA,
+            "days": {
+                f"{area_id}|{calendar}|{day.isoformat()}": {**_entry(cached), "provider": cached.provider}
+                for (area_id, day), files in self._days.items()
+                for calendar, cached in files.items()
+            },
+            "relay": {
+                "catalogue": _entry(self._catalogue),
+                "catalogue_rev": self._catalogue_rev,
+                "index": _entry(self._index),
+                "profiles": {area_id: _entry(cached) for area_id, cached in self._profiles.items()},
+            },
         }
 
     async def _persist(self) -> None:
-        """Write the cache, serialized against other writers and never against a request."""
+        """Write the cache, serialized against other writers and never against a request, after dropping
+        the day files retention no longer keeps.
+        """
         async with self._write_lock:
+            self._prune()
             await self._store.async_save(self._payload())
 
 def _authority_of(snapshot: IndexSnapshot, area_id: str, day: date) -> IndexAuthority:
@@ -1047,6 +1147,11 @@ def _parse_versioned(parse):
         return parse(document, version=version)
 
     return parsed
+
+
+def _dated_on(document: PriceDocument, calendar: str) -> bool:
+    """Whether a day file starts at its date's midnight on [calendar], i.e. covers that calendar's day."""
+    return document.start_instant == local_midnight(document.day, calendar).astimezone(dt_util.UTC)
 
 
 def _older_than(existing: _Cached | None, candidate: _Cached) -> bool:

@@ -180,7 +180,7 @@ async def test_the_bundled_list_is_never_stored(
     hass: HomeAssistant, transport: StubTransport, clock: Clock, bundled
 ) -> None:
     repository = PriceRepository(hass, base_url=BASE_URL, session=transport, now=clock, bundled=bundled)
-    assert repository._payload()["catalogue"] is None
+    assert repository._payload()["relay"]["catalogue"] is None
 
 
 # ------------------------------------------------------------------ the sync tool's guard
