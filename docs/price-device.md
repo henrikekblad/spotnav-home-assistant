@@ -41,7 +41,9 @@ own, named **Electricity price** and its area; you can rename it.
 With more than one, the card's **Electricity price** section has a **Price from** row where an
 administrator chooses which one the charger uses. For a charger on a site, the choice is the site's:
 every charger on it follows. Its prices are fetched once per area for the whole installation, so a
-second electricity price in the same area asks the relay for nothing more.
+second electricity price in the same area asks the source for nothing more. Where the prices come from
+(Nord Pool, PVPC or Octopus Energy through Home Assistant, or your own ENTSO-E key) is described in
+[Prices](prices.md#where-prices-come-from); the device's problem names what to add when its area has none.
 
 ## Upgrading from an earlier version
 
@@ -132,7 +134,7 @@ run warm and how long it should hold back.
 
 `spotnav.get_prices` answers with the prices of one electricity price entry, for an automation or a
 script to work with. It changes nothing, so every user may call it. It reads only what Home Assistant
-already holds and never asks the relay.
+already holds and never asks a source.
 
 | Field | |
 |---|---|
