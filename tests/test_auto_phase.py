@@ -292,11 +292,12 @@ async def test_the_site_follows_two_automatic_chargers_to_l3_and_shares_it(hass:
     assert snapshot[entry_a.entry_id]["phase"] == "L3" and snapshot[entry_a.entry_id]["phase_basis"] == "measured"
     assert snapshot[entry_b.entry_id]["phase"] == "L3" and snapshot[entry_b.entry_id]["phase_basis"] == "measured"
     assert site.followed_phase(entry_a.entry_id) == "L3"
-    # L3 has 24 - 18 = 6 A left for the two of them, L1 (14 A) does not limit them.
+    # L3 has 24 - 18 = 6 A left for the two of them, L1 (14 A) does not limit them. They can only be switched on
+    # and off, so each is reckoned at its whole switched current (16 A): neither fits there whole.
     allocations = {allocation.charger_entry_id: allocation for allocation in site.result.allocations}
     assert allocations[entry_a.entry_id].limiting_phase == "L3"
     proposed = [allocations[entry.entry_id].proposed_current_a for entry in (entry_a, entry_b)]
-    assert sorted(proposed) == [0.0, 6.0]
+    assert sorted(proposed) == [0.0, 0.0]
 
     # A stale reading (the source unavailable): the worst phase again at once.
     hass.states.async_set("sensor.ca_l3", "unavailable")
