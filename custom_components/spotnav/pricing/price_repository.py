@@ -1,4 +1,4 @@
-"""The shared SpotNav Relay price repository: one fetch/cache stream per resource.
+"""The shared price repository: one fetch/cache stream per resource.
 
 There is one repository per Home Assistant instance, published on `SpotNavData` by
 `async_setup_price_repository` and shared by every charger entry; a second charger adds no request,
@@ -10,9 +10,9 @@ Four facts are kept apart, because collapsing any two makes a price layer lie:
    failed to validate replaces it or relabels it as fresh.
 2. the current attempt: when it happened and why it failed (a stable code), recorded beside last
    good, never instead of it.
-3. authority: a parsed index is the relay's statement of which recent days exist. A day it does not
-   list is authoritatively absent and not requested; an unreadable index is "authority
-   unavailable", which is not proof of absence.
+3. authority: which days exist, by the area's provider's publication schedule and its last answer
+   (`providers.schedule_authority`): today and earlier when not held, tomorrow from just before its expected
+   publication, and an empty answer ("not published yet") is remembered in memory until the next attempt.
 4. the body's validity: a document failing the contract is `invalid`, and the day keeps its last good.
 
 Coalescing: concurrent callers for one resource share one request, owned by the repository (a task
@@ -25,111 +25,124 @@ The restore is single-flight the same way: one repository-owned task reads the s
 it finds, callers await it under `shield`, and adoption is ordered by acquisition time so a late
 store read never overwrites a newer fetch. A failed restore is logged and treated as an absent store.
 
-Every zone a document names (an area's `tz` and `market_tz`, a publication's clock, a day file's or
-profile's zone) is resolved off the event loop when the document is fetched or restored, before it is
-parsed, so the parsers and everything after them read zones from `time_zones`' cache and never build one
-from disk on the loop.
+Every zone a stored document names is resolved off the event loop before it is parsed, so the parsers and
+everything after them read zones from `time_zones`' cache and never build one from disk on the loop.
 
 Only explicit `refresh` operations live here: no cadence, backoff or timers (see the manager). Prices
-are stored as published.
+are stored as published. How a document is asked for is the providers' (`pricing/providers/`): a day file
+comes from the area's provider ([ProviderRouter]); an area with no provider has no source, nothing is asked
+for it, and the attempt is recorded as `source_missing` (no request is made). The area list is the one bundled
+with the integration (`pricing/areas.json`, [area_entry]), with the market calendar and publication of the
+area's provider.
 
-Contract v2: the area list and the index are read from `/v2/…` first and from `/v1/…` when the relay
-answers v2 with a 404 or a body this client cannot read; the index is always read in the version the
-held area list came in. Day files keep their `/v1/<AREA>/<YYYY>/<MM-DD>.json` paths and are cached
-per **market** day. Everything a caller asks by date ([day_snapshot], [async_get_day],
-[async_get_archive_day]) is a **display** date in the area's `tz`: for an area whose two calendars
-agree that is exactly one file, and for one whose do not (Great Britain, v2 Portugal) the display day
-is cut from the files that cover it (`pricing/market_day.py`). The file-level calls ([file_snapshot],
-[async_get_file]) are for the refresh manager, which decides which files to ask for.
+Day files are cached per **market** day. Everything a caller asks by date ([day_snapshot], [async_get_day],
+[async_get_archive_day]) is a **display** date in the area's `tz`: for an area whose two calendars agree that is
+exactly one file, and for one whose do not (Great Britain, Portugal) the display day is cut from the files that
+cover it (`pricing/market_day.py`). The file-level calls ([file_snapshot], [async_get_file]) are for the refresh
+manager, which decides which files to ask for.
+
+The store (schema 2) keeps each day file under its area, its own market calendar and its market day
+(`"FI|Europe/Helsinki|2026-10-30"`), so files of one area on two calendars (Helsinki days kept from before 2.0
+and CET days from Nord Pool) are held side by side; a lookup reads the one dated on the calendar the area is read
+in now, compared by instant (a Stockholm-dated and a Berlin-dated file start at the same moment). Files are kept
+for [HISTORY_KEEP_DAYS] and pruned on every write. The day files delivered by the SpotNav relay before 2.0 stay
+held, labelled `"provider": "relay"`, until retention drops them: they are prices the installation already has,
+and the profile and statistics keep their history. A schema 1 store (`"AREA|date"`) is read the same way and
+rewritten as schema 2 on the next write, losing no day; the relay's area list, index and profiles that older
+stores kept beside the days are no longer read and are dropped on that write.
+
+The history profile is built here from the held market-day files (`pricing/price_profile.py`): [profile_for]
+reads the files of the 28-day window on the area's market calendar, keyed by market date, and keeps the result
+until the window or a file in it changes. The past files of that window (and, from a provider that keeps years,
+a year for statistics) are fetched by the history backfill (`pricing/price_history.py`) through
+[async_fetch_history], which never asks for a held day or one older than the provider keeps (`history_reach`).
 """
 
 from __future__ import annotations
 
 import asyncio
+import copy
 import logging
-from dataclasses import dataclass
+from collections.abc import Sequence
+from dataclasses import dataclass, field, replace
 from datetime import date, datetime, timedelta
 from typing import Any, Final, Literal
-from urllib.parse import quote
 
-from aiohttp import ClientError, ClientSession
 from homeassistant.core import callback, HomeAssistant
-from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
 from ..const import DOMAIN
 from ..runtime import domain_data
 from .. import time_zones
-from .market_day import compose_display_day, market_days_for, principal_market_day
+from .area_catalogue import async_load_bundled, BundledCatalogue
+from .market_day import compose_display_day, local_midnight, market_days_for, principal_market_day
+from .price_profile import build_profile, profile_window
+from .price_store import async_setup_price_store
+from .fx_rates import FxRates
+from .providers import (
+    Authority,
+    DayFetch,
+    FailureCode,
+    market_today,
+    PriceProvider,
+    ProviderRouter,
+    schedule_authority,
+    schedule_open,
+    TRANSPORT_CODES,
+)
+from .providers.entsoe import EntsoeProvider
+from .providers.nordpool import NordPoolProvider
+from .providers.octopus import OctopusProvider
+from .providers.pvpc import PvpcProvider
+from .providers.notices import SourceStatus
 from .relay_contract import (
     AreaCatalogue,
-    document_version,
-    loads_document,
-    parse_catalogue,
+    AreaEntry,
     parse_day,
-    parse_index,
-    parse_profile,
-    ParseCode,
     PriceDocument,
     PriceProfile,
-    RelayIndex,
     RelayParseError,
 )
 
 
 _LOGGER = logging.getLogger(__name__)
 
-#: The deployed relay; injected so tests can build a repository that cannot reach the network.
-DEFAULT_BASE_URL: Final = "https://spotnav.sensnology.se"
-
-#: Request timeout and body size limit. A day document is ~10 kB and an index ~1 kB; half a
-#: megabyte is generous but bounds a hung connection or a mistaken URL.
-REQUEST_TIMEOUT_S: Final = 20.0
-MAX_RESPONSE_BYTES: Final = 512 * 1024
-
-#: Bytes asked per read: small enough that a trickling stream yields to the event loop and meets
-#: the overall timeout.
-CHUNK_BYTES: Final = 64 * 1024
-
-
-#: A history profile older than this (by its own `generated`) is not used, whatever the cache holds:
-#: the relay withdraws a stale one itself, so an old copy means the relay could not be asked.
-PROFILE_MAX_AGE: Final = timedelta(days=2)
-
-#: After a failed profile request nobody asks again for this long (a calculation asks on every publication).
-PROFILE_RETRY_AFTER: Final = timedelta(minutes=30)
-
-#: The contract versions asked for, newest first: a relay that predates v2 answers it with a 404.
-CONTRACT_VERSIONS: Final = (2, 1)
-
 #: Archive files held in memory for one import run's neighbouring display days (a London day shares a
 #: Paris file with the next); never persisted, never the live cache.
 ARCHIVE_MEMO_SIZE: Final = 8
 
+#: Home Assistant's own version of the store file, kept at 1 so an older release still opens it (and then
+#: ignores a schema it does not know, starting with an empty cache).
 STORAGE_VERSION: Final = 1
 STORAGE_KEY: Final = f"{DOMAIN}_relay_cache"
 
-#: What a caller could not get, as a stable code: the transport half is here, the content half is
-#: `relay_contract`'s, kept in one snapshot field.
-FetchCode = Literal["timeout", "network", "http_status", "too_large"]
-FailureCode = FetchCode | ParseCode
+#: The layout of the stored document: 2 keys day files by market calendar; 1 is the layout before it
+#: (`"AREA|date"`), read once and rewritten. A `relay` part (the relay's area list and index, written before
+#: 2.0) is ignored and not written again.
+STORAGE_SCHEMA: Final = 2
+LEGACY_SCHEMA: Final = 1
+
+#: Day files older than this many days (before today, UTC) are dropped on the next write: enough for the
+#: history profile's four weeks with a year of slack for statistics, and a bound on the store's size.
+HISTORY_KEEP_DAYS: Final = 400
 
 #: What the reader is looking at. `loading` is "nothing to show yet and a request is running"; a
 #: refresh while a document is on screen is [DaySnapshot.refreshing].
 DayState = Literal["loading", "ready", "incomplete", "stale", "unavailable", "invalid"]
 CatalogueState = Literal["loading", "ready", "stale", "unavailable", "invalid"]
 
-#: Where the index says a day is. "Not listed" is authoritative only when the index itself was read.
-IndexAuthority = Literal["listed", "not_listed", "unknown"]
+#: What the schedule and the provider's last answer say about a day (`providers.schedule_authority`).
+IndexAuthority = Authority
 
-#: Where a snapshot's document came from; a restored one is not freshly fetched.
-SnapshotSource = Literal["memory", "store", "network"]
+#: Where a snapshot's document came from; a restored one is not freshly fetched. `bundled` is the area list
+#: shipped with the integration (`pricing/areas.json`), the only one there is.
+SnapshotSource = Literal["memory", "store", "network", "bundled"]
 
 
 @dataclass(frozen=True, slots=True)
 class CatalogueSnapshot:
-    """The relay's area list, and the state of the attempt to have one."""
+    """The area list (the bundled one), and whether there is one."""
 
     state: CatalogueState
     catalogue: AreaCatalogue | None
@@ -160,19 +173,6 @@ class CatalogueSnapshot:
 
 
 @dataclass(frozen=True, slots=True)
-class IndexSnapshot:
-    """The relay's index, and the state of the attempt to have one."""
-
-    state: CatalogueState
-    index: RelayIndex | None
-    source: SnapshotSource | None
-    fetched_at: datetime | None
-    attempt_at: datetime | None
-    attempt_error: FailureCode | None
-    refreshing: bool
-
-
-@dataclass(frozen=True, slots=True)
 class DaySnapshot:
     """One `(area, date)`: what we can show, and what we last tried.
 
@@ -184,8 +184,8 @@ class DaySnapshot:
 
     `document` is last good only, replaced only by a validated document; `fetched_at` is its
     acquisition time, so a failed refresh leaves both alone. `attempt_at`/`attempt_error` describe the
-    newest try. `index_authority` says whether the index listed this day; an unreadable index leaves
-    it `unknown`.
+    newest try. `index_authority` is what the schedule and the provider's last answer say about the day
+    (`unknown` after a failed attempt or with no source).
     """
 
     area_id: str
@@ -197,7 +197,6 @@ class DaySnapshot:
     attempt_at: datetime | None
     attempt_error: FailureCode | None
     index_authority: IndexAuthority
-    index_revision: str | None
     refreshing: bool
     #: Set for a composed display day; `None` means "the document covers its whole day" decides.
     complete: bool | None = None
@@ -211,6 +210,23 @@ class DaySnapshot:
         if self.complete is not None:
             return self.document is not None and self.complete
         return self.document is not None and self.document.covers_whole_day()
+
+
+@dataclass(frozen=True, slots=True)
+class HistoryFetch:
+    """What one [PriceRepository.async_fetch_history] call brought.
+
+    `stored` are the days now held; `missing` the days the provider answered without a usable file (nothing
+    published for it, or a file the parser refused), with the code; `failed` the first transport failure (the
+    provider could not be asked: back off), with the provider's `retry_after` when it named one; `switched` that
+    the area moved to another provider while it was asked, so nothing was kept.
+    """
+
+    stored: tuple[date, ...] = ()
+    missing: dict[date, FailureCode] = field(default_factory=dict)
+    failed: FailureCode | None = None
+    retry_after: timedelta | None = None
+    switched: bool = False
 
 
 @dataclass(slots=True)
@@ -228,13 +244,20 @@ class _Cached:
     # How this document entered the process (network or store); a later read of it is `memory`,
     # a fact about the call.
     source: SnapshotSource = "network"
-
-
-TRANSPORT_CODES: Final[frozenset[str]] = frozenset({"timeout", "network", "http_status", "too_large"})
+    # Which provider delivered a day file (`relay` for one kept from before 2.0); stored beside it.
+    provider: str | None = None
 
 
 def is_transport(code: FailureCode | None) -> bool:
     return code is not None and code in TRANSPORT_CODES
+
+
+class _Refused(Exception):
+    """A provider's answer that brought no file, carrying the provider's stable code."""
+
+    def __init__(self, code: FailureCode) -> None:
+        super().__init__(code)
+        self.code: FailureCode = code
 
 
 def source_of(cached: _Cached, *, explicit: SnapshotSource | None) -> SnapshotSource:
@@ -246,39 +269,8 @@ def source_of(cached: _Cached, *, explicit: SnapshotSource | None) -> SnapshotSo
     return "store" if cached.source == "store" else "memory"
 
 
-async def _read_bounded(stream) -> bytes:
-    """Read a body to EOF, refusing to hold more than [MAX_RESPONSE_BYTES] of it.
-
-    One aiohttp `read(n)` may return fewer than `n` bytes short of EOF, so a chunked response would
-    otherwise be rejected as malformed JSON. This accumulates until the stream ends and stops as soon as
-    the limit would be exceeded (the caller's `async with` abandons the connection). The caller's timeout
-    wraps the whole loop.
-    """
-    chunks: list[bytes] = []
-    total = 0
-    while True:
-        # Ask for the rest of the allowance plus one byte to prove an overflow, in bounded slices.
-        chunk = await stream.read(min(CHUNK_BYTES, MAX_RESPONSE_BYTES + 1 - total))
-        if not chunk:
-            break
-        total += len(chunk)
-        if total > MAX_RESPONSE_BYTES:
-            raise _Failure("too_large")
-        chunks.append(chunk)
-    return b"".join(chunks)
-
-
-class _Failure(Exception):
-    """A fetch that did not produce a document, carrying its stable code (and the HTTP status, if any)."""
-
-    def __init__(self, code: FetchCode, status: int | None = None) -> None:
-        super().__init__(code)
-        self.code: FetchCode = code
-        self.status = status
-
-
 class PriceRepository:
-    """The relay's catalogue, index and dated documents, fetched once each.
+    """The bundled area list and the dated documents, each fetched once.
 
     Constructed once per instance (see [async_setup_price_repository]). Every public method returns an
     immutable snapshot; callers never reach into the cache.
@@ -288,31 +280,27 @@ class PriceRepository:
         self,
         hass: HomeAssistant,
         *,
-        base_url: str = DEFAULT_BASE_URL,
-        session: ClientSession | None = None,
         store: Store[dict[str, Any]] | None = None,
         now=None,
+        bundled: BundledCatalogue | None = None,
+        router: ProviderRouter | None = None,
     ) -> None:
         self._hass = hass
-        self._base_url = base_url.rstrip("/")
-        # `None` means the shared HA client when a request is made (`async_get_clientsession`
-        # needs a running loop, and setup constructs this before anything is asked).
-        self._session = session
+        # Which provider an area's files come from; without a router, none for any area.
+        self._router = router if router is not None else ProviderRouter()
         self._now = now if now is not None else dt_util.utcnow
 
         # Seams for tests (races and clock changes are timing); `None` means the real thing.
         self._store: Store[dict[str, Any]] = store if store is not None else Store(hass, STORAGE_VERSION, STORAGE_KEY)
-        self._catalogue: _Cached | None = None
-        #: The index revision (`areas_rev`) the held area list belongs to, as noted by the refresh manager;
-        #: `None` when unknown (nothing noted yet, or a store written before it was kept).
-        self._catalogue_rev: str | None = None
-        self._index: _Cached | None = None
-        self._days: dict[tuple[str, date], _Cached] = {}
-        # The history profile per area; the local day it was last asked for with a definite answer (a
-        # document, or the relay's 404), so it is requested once per area per day; and the last failed try.
-        self._profiles: dict[str, _Cached] = {}
-        self._profile_checked: dict[str, date] = {}
-        self._profile_failed_at: dict[str, datetime] = {}
+        #: The area list shipped with the integration, the only one: never fetched, never stored.
+        self._bundled = bundled
+        # Day files per (area, market day), one per market calendar they are dated in (see [_held_file]).
+        self._days: dict[tuple[str, date], dict[str, _Cached]] = {}
+        # The last profile built per area, with what it was built from (see [profile_for]).
+        self._profiles: dict[str, tuple[tuple[Any, ...], PriceProfile | None]] = {}
+        # When a provider without an index last answered "not published yet", per (area, market calendar, day);
+        # not stored (a restart asks once).
+        self._not_published: dict[tuple[str, str, date], datetime] = {}
         # One entry per resource key ever attempted: when it was tried and how it failed (`None` on success).
         self._attempts: dict[tuple[str, ...], tuple[datetime, FailureCode | None]] = {}
         self._inflight: dict[tuple[str, ...], asyncio.Task[Any]] = {}
@@ -323,13 +311,48 @@ class PriceRepository:
         # Guards the store write only (local disk, never a request).
         self._write_lock = asyncio.Lock()
 
+    def provider_for(self, area_id: str) -> PriceProvider | None:
+        """The provider an area's files come from now, or `None` when it has no source."""
+        return self._router.provider_for(area_id)
+
+    def source_status(self, area_id: str) -> SourceStatus:
+        """The area's price source now and its notice (`providers/notices.py`)."""
+        return self._router.source_status(area_id)
+
+    def entsoe_provider(self) -> EntsoeProvider | None:
+        """The ENTSO-E provider (for checking a key before it is stored); `None` without the bundled catalogue."""
+        return self._router.entsoe
+
+    def add_provider_listener(self, listener) -> Any:
+        """Call [listener] whenever the choice of provider may have changed for some area; returns the remover."""
+        return self._router.add_listener(listener)
+
+    @callback
+    def stop_following_providers(self) -> None:
+        """Stop following the config entries the choice of provider depends on (Home Assistant is stopping)."""
+        self._router.async_stop()
+
+    def area_entry(self, area_id: str) -> AreaEntry | None:
+        """The area as it is read now: the bundled catalogue's entry with the market calendar and publication of
+        the area's provider. `None` for an area the catalogue does not list. An area with no provider keeps the
+        entry's own calendar (the one its files kept from before 2.0 are dated on), so what it holds still shows.
+        """
+        catalogue = self._held_catalogue()
+        entry = None if catalogue is None else catalogue.area(area_id)
+        if entry is None:
+            return None
+        provider = self._router.provider_for(area_id)
+        calendar = None if provider is None else provider.market_calendar(area_id)
+        if provider is None or calendar is None:
+            return entry
+        return replace(entry, market_tz=calendar, publication=provider.publication)
+
     def calendars(self, area_id: str) -> tuple[str, str] | None:
         """`(tz, market_tz)` for an area whose display day is cut from market-day files, else `None`.
 
-        From the held catalogue: an area it does not list (or none held) is read one file per day.
+        From [area_entry]: an area no catalogue lists (or none held) is read one file per day.
         """
-        catalogue = self._catalogue
-        entry = None if catalogue is None else catalogue.parsed.area(area_id)
+        entry = self.area_entry(area_id)
         if entry is None or not entry.split_calendar:
             return None
         return entry.tz, entry.market_tz
@@ -337,8 +360,7 @@ class PriceRepository:
     def day_snapshot(self, area_id: str, day: date) -> DaySnapshot:
         """What is on record for a display date right now, without asking the network.
 
-        Never fetches. Answers exactly what [async_get_day] would without fetching, including a day the
-        index no longer lists but we still hold: `stale` (valid, no longer published).
+        Never fetches. Answers exactly what [async_get_day] would without fetching.
         """
         calendars = self.calendars(area_id)
         if calendars is None:
@@ -347,10 +369,17 @@ class PriceRepository:
 
     def file_snapshot(self, area_id: str, day: date) -> DaySnapshot:
         """What is on record for one market-day file right now, without asking the network."""
-        authority = self._authority_now(area_id, day)
-        return self._day_snapshot(
-            area_id, day, authority=authority, stale_override=authority == "not_listed"
-        )
+        return self._day_snapshot(area_id, day, authority=self._authority_now(area_id, day))
+
+    def file_document(self, area_id: str, day: date) -> dict[str, Any] | None:
+        """The held market-day file as published (the raw `"v": 1` document, a copy), or `None`. No I/O.
+
+        The file read is the one [file_snapshot] shows: dated on the calendar the area is read in now.
+        """
+        cached = self._held_file(area_id, day)
+        if cached is None or not isinstance(cached.document, dict):
+            return None
+        return copy.deepcopy(cached.document)
 
     def _display_snapshot(self, area_id: str, day: date, tz: str, market_tz: str) -> DaySnapshot:
         """A display date cut from the files covering it; its facts are its principal file's."""
@@ -371,54 +400,26 @@ class PriceRepository:
             attempt_at=principal.attempt_at,
             attempt_error=principal.attempt_error,
             index_authority=principal.index_authority,
-            index_revision=principal.index_revision,
             refreshing=any(item.refreshing for item in files),
             complete=principal.is_complete,
         )
 
     def catalogue_snapshot(self) -> CatalogueSnapshot:
-        """What is on record for the area list right now, without any I/O."""
-        attempt_at, error = self._attempt(("catalogue",))
-        refreshing = ("catalogue",) in self._inflight
-        return self._catalogue_snapshot(
-            state=read_state(self._catalogue is not None, error, refreshing), settled=not refreshing
+        """The area list (the bundled one), without any I/O: `ready`, or `unavailable` when the file could not be
+        read."""
+        catalogue = self._held_catalogue()
+        return CatalogueSnapshot(
+            state="ready" if catalogue is not None else "unavailable",
+            catalogue=catalogue,
+            source=None if catalogue is None else "bundled",
+            fetched_at=None,
+            attempt_at=None,
+            attempt_error=None,
+            refreshing=False,
         )
-
-    def index_snapshot(self) -> IndexSnapshot:
-        """What is on record for the index right now, without any I/O."""
-        attempt_at, error = self._attempt(("index",))
-        refreshing = ("index",) in self._inflight
-        return self._index_snapshot(
-            state=read_state(self._index is not None, error, refreshing), settled=not refreshing
-        )
-
-    def catalogue_revision(self) -> str | None:
-        """The index revision the held area list belongs to, or `None` when unknown."""
-        return self._catalogue_rev
-
-    async def async_note_catalogue_revision(self, revision: str) -> None:
-        """Record that the held area list is the one of this index revision, and keep it in the store."""
-        if self._catalogue is None or revision == self._catalogue_rev:
-            return
-        self._catalogue_rev = revision
-        await self._persist()
-
-    async def async_get_catalogue(self, *, refresh: bool = False) -> CatalogueSnapshot:
-        """The relay's area list, from memory, from the store, or over the network."""
-        await self.async_restore()
-        if self._catalogue is not None and not refresh:
-            return self._catalogue_snapshot(state="ready", source="memory")
-        return await self._shared(("catalogue",), self._load_catalogue)
-
-    async def async_get_index(self, *, refresh: bool = False) -> IndexSnapshot:
-        """The relay's index: this client's authority on which days exist."""
-        await self.async_restore()
-        if self._index is not None and not refresh:
-            return self._index_snapshot(state="ready", source="memory")
-        return await self._shared(("index",), self._load_index)
 
     async def async_get_day(self, area_id: str, day: date, *, refresh: bool = False) -> DaySnapshot:
-        """One display date's document, subject to the index's authority over each file behind it.
+        """One display date's document, each file behind it asked for under the schedule's rules.
 
         For a split-calendar area every file covering the date is asked for under the file rules, then the
         date is cut from them ([day_snapshot]); otherwise this is [async_get_file] for that one day.
@@ -428,42 +429,70 @@ class PriceRepository:
         if calendars is None:
             return await self.async_get_file(area_id, day, refresh=refresh)
         tz, market_tz = calendars
-        principal = principal_market_day(day, tz, market_tz)
         for key in market_days_for(day, tz, market_tz):
-            # A later file nobody listed is not published yet: asking would only collect a 404.
-            if key == principal or self._authority_now(area_id, key) == "listed":
-                await self.async_get_file(area_id, key, refresh=refresh)
+            # Each file is asked for under the schedule (the file call keeps to it).
+            await self.async_get_file(area_id, key, refresh=refresh)
         return self._display_snapshot(area_id, day, tz, market_tz)
 
     async def async_get_file(self, area_id: str, day: date, *, refresh: bool = False) -> DaySnapshot:
-        """One market-day file's document, subject to the index's authority.
-
-        A day the index does not list is not requested (that is what the index prevents); a day whose index
-        could not be read is requested, since an unread index is not proof of absence.
+        """One market-day file's document: a held file is answered as it is (unless its provider wants it once
+        more, see `wants_again`), a missing one is asked for when the schedule says it is out. An area with no
+        provider answers what it holds; a missing file of a published day is recorded as `source_missing`, with no
+        request.
         """
         await self.async_restore()
-        authority = await self._authority_for(area_id, day)
-        cached = self._days.get((area_id, day))
+        provider = self._router.provider_for(area_id)
+        if provider is None:
+            return self._without_source(area_id, day)
+        return await self._get_scheduled_file(area_id, day, provider, refresh=refresh)
 
-        if authority == "not_listed":
-            # Authoritative absence: held data is kept but reported as no longer published.
-            return self._day_snapshot(area_id, day, authority=authority, stale_override=True)
+    def _without_source(self, area_id: str, day: date) -> DaySnapshot:
+        """A file of an area with no provider: what is held, or (a published day) the attempt recorded as
+        `source_missing`, so the area reads as having tried and found no source. No I/O."""
+        if self._held_file(area_id, day) is None:
+            calendar = self._market_calendar(area_id)
+            if calendar is not None and day <= market_today(self._now(), calendar):
+                self._attempts[("day", area_id, day.isoformat())] = (self._now(), "source_missing")
+        return self._day_snapshot(area_id, day, authority=self._authority_now(area_id, day))
 
-        if cached is not None and not refresh:
-            return self._day_snapshot(area_id, day, authority=authority)
-
+    async def _get_scheduled_file(
+        self, area_id: str, day: date, provider: PriceProvider, *, refresh: bool
+    ) -> DaySnapshot:
+        """One file from the area's provider: a held file is answered as it is (unless its provider wants
+        it once more, see `wants_again`), a missing one is asked for when the schedule says it is out."""
+        cached = self._held_file(area_id, day)
+        again = cached is not None and provider.wants_again(area_id, cached.parsed)
+        if cached is not None and not refresh and not again:
+            return self._day_snapshot(area_id, day, authority="listed")
+        if cached is None and not self.worth_asking(area_id, day):
+            return self._day_snapshot(area_id, day, authority=self._authority_now(area_id, day))
         key = ("day", area_id, day.isoformat())
 
         async def load() -> DaySnapshot:
-            return await self._load_day(area_id, day, authority=authority)
+            return await self._load_day(area_id, day, provider)
 
         return await self._shared(key, load)
 
-    async def async_get_archive_day(self, area_id: str, day: date) -> PriceDocument | None:
-        """One past display date's document, asked of the relay whatever the index lists (the index
-        governs live days).
+    def worth_asking(self, area_id: str, day: date) -> bool:
+        """Whether a file is worth a request now: the area has a provider, the file is not held (or held and wanted
+        once more) and it is out by the schedule. No I/O."""
+        provider = self._router.provider_for(area_id)
+        calendar = self._market_calendar(area_id)
+        if provider is None or calendar is None:
+            return False
+        cached = self._held_file(area_id, day)
+        if cached is not None and not provider.wants_again(area_id, cached.parsed):
+            return False
+        return schedule_open(day, now=self._now(), market_tz=calendar, publication=provider.publication)
 
-        For the one-off history import. Each file is validated like any other; the relay's 404 and every
+    def file_authority(self, area_id: str, day: date) -> IndexAuthority:
+        """What the schedule and the provider's last answer say about one market-day file right now. No I/O."""
+        return self._authority_now(area_id, day)
+
+    async def async_get_archive_day(self, area_id: str, day: date) -> PriceDocument | None:
+        """One past display date's document, asked of the area's provider.
+
+        For the one-off history import. Each file is validated like any other; an empty answer and every
         failure answer `None` (the caller remembers the miss for its run, so nothing is asked twice). The
         documents are returned and not cached: archive days never enter the live-day cache or the persisted
         store (a few are kept in memory so two neighbouring display days sharing a file ask for it once). A
@@ -486,12 +515,16 @@ class PriceRepository:
         return compose_display_day(area_id, day, tz, files)
 
     async def _archive_file(self, area_id: str, day: date) -> PriceDocument | None:
-        cached = self._days.get((area_id, day))
+        cached = self._held_file(area_id, day)
         if cached is not None:
             return cached.parsed
         remembered = self._archive_memo.get((area_id, day))
         if remembered is not None:
             return remembered
+        if self._out_of_reach(area_id, day):
+            # Older than the provider keeps: asking would only collect a refusal.
+            self._attempts[("archive", area_id, day.isoformat())] = (self._now(), "history_out_of_reach")
+            return None
 
         async def load() -> PriceDocument | None:
             return await self._load_archive_day(area_id, day)
@@ -503,58 +536,140 @@ class PriceRepository:
                 self._archive_memo.pop(next(iter(self._archive_memo)))
         return document
 
-    def profile_for(self, area_id: str) -> PriceProfile | None:
-        """The area's history profile when one is held and recent enough to use, else `None`. No I/O.
+    def _out_of_reach(self, area_id: str, day: date) -> bool:
+        provider = self._router.provider_for(area_id)
+        reach = None if provider is None else provider.history_reach
+        calendar = self._market_calendar(area_id)
+        if reach is None or calendar is None:
+            return False
+        return day < market_today(self._now(), calendar) - reach
 
-        "No profile" covers every reason (never fetched, the relay's 404, an invalid body, too old): the
-        planner treats them alike and plans on published prices.
-        """
-        cached = self._profiles.get(area_id)
-        if cached is None:
-            return None
-        profile: PriceProfile = cached.parsed
-        if self._now() - profile.generated >= PROFILE_MAX_AGE:
-            return None
-        return profile
+    def archive_reachable(self, area_id: str, day: date) -> bool:
+        """Whether a past display date can be asked of the area's provider at all: its principal file is not older
+        than the provider keeps (`history_reach`). No I/O; a held date is answered from the store either way."""
+        calendars = self.calendars(area_id)
+        principal = day if calendars is None else principal_market_day(day, *calendars)
+        return not self._out_of_reach(area_id, principal)
 
-    async def async_get_profile(self, area_id: str, today: date, *, refresh: bool = False) -> PriceProfile | None:
-        """The area's history profile, requested at most once per local day (`today`).
+    def holds_file(self, area_id: str, day: date) -> bool:
+        """Whether the market-day file is held on the calendar the area is read in now. No I/O."""
+        return self._held_file(area_id, day) is not None
 
-        The relay's 404 is a definite "no profile" (a cached copy is dropped: the relay withdrew it) and, like a
-        valid document, is not asked again until the next day. A transport failure or an invalid body keeps
-        the last good copy and is retried after [PROFILE_RETRY_AFTER].
+    def history_reachable(self, area_id: str, day: date) -> bool:
+        """Whether a past market-day file is within the area's provider's `history_reach`. No I/O."""
+        return not self._out_of_reach(area_id, day)
+
+    async def async_fetch_history(self, area_id: str, days: Sequence[date], *, persist: bool = True) -> HistoryFetch:
+        """Past market-day files for the history store, asked of the area's provider (the backfill,
+        `pricing/price_history.py`).
+
+        A day held, not yet over (the market's today or later: the refresh manager's) or older than the provider
+        keeps is not asked. One day is one `async_fetch_day`; several consecutive days are one `async_fetch_days`,
+        for a provider that answers a range. Each file is validated like any other and kept under the provider that
+        sent it; the store is written once (unless [persist] is false: the caller writes later with
+        [async_persist_history]). A provider that no longer serves the area when the answer arrives has its files
+        dropped (`switched`).
         """
         await self.async_restore()
-        if not refresh:
-            if self._profile_checked.get(area_id) == today:
-                return self.profile_for(area_id)
-            failed = self._profile_failed_at.get(area_id)
-            if failed is not None and self._now() - failed < PROFILE_RETRY_AFTER:
-                return self.profile_for(area_id)
+        provider = self._router.provider_for(area_id)
+        calendar = self._market_calendar(area_id)
+        if provider is None or calendar is None:
+            return HistoryFetch(failed="source_missing")
+        today = market_today(self._now(), calendar)
+        wanted = sorted(
+            day
+            for day in set(days)
+            if day < today and self._held_file(area_id, day) is None and not self._out_of_reach(area_id, day)
+        )
+        if not wanted:
+            return HistoryFetch()
+        if len(wanted) == 1:
+            fetches = {wanted[0]: await provider.async_fetch_day(area_id, wanted[0])}
+        else:
+            fetch_days = getattr(provider, "async_fetch_days", None)
+            if fetch_days is None:
+                raise ValueError("this provider answers one day at a time")
+            fetches = await fetch_days(area_id, wanted)
+        if self._router.provider_for(area_id) is not provider:
+            return HistoryFetch(switched=True)
+        stored: list[date] = []
+        missing: dict[date, FailureCode] = {}
+        failed: FailureCode | None = None
+        retry_after: timedelta | None = None
+        for day in wanted:
+            # A day a range answer did not carry is a day the provider has nothing for.
+            fetch = fetches.get(day) or DayFetch("not_published", code="not_published")
+            if fetch.retry_after is not None:
+                retry_after = max(retry_after or fetch.retry_after, fetch.retry_after)
+            if fetch.outcome == "failed" and is_transport(fetch.code):
+                failed = failed or fetch.code
+                continue
+            try:
+                parsed, document = self._accept(fetch, area_id, day)
+            except (RelayParseError, _Refused) as err:
+                missing[day] = err.code
+                continue
+            self._days.setdefault((area_id, day), {})[parsed.tz] = _Cached(
+                document=document, fetched_at=self._now(), parsed=parsed, provider=provider.key
+            )
+            stored.append(day)
+        if stored and persist:
+            await self._persist()
+        return HistoryFetch(stored=tuple(stored), missing=missing, failed=failed, retry_after=retry_after)
 
-        async def load() -> PriceProfile | None:
-            return await self._load_profile(area_id, today)
+    async def async_persist_history(self) -> None:
+        """Write the store now (after [async_fetch_history] calls made with `persist=False`)."""
+        await self._persist()
 
-        return await self._shared(("profile", area_id), load)
+    def profile_for(self, area_id: str) -> PriceProfile | None:
+        """The area's history profile, built from the held day files, or `None`. No I/O.
+
+        The window is the 28 market days ending with the market's today; its files are the ones held on the
+        area's market calendar, keyed by market date (never a display day cut from two files, which would
+        count an hour twice). Fewer than 21 of them, or an area no catalogue lists, is no profile: the planner
+        treats that like any other "no profile" and plans on published prices. Built once per window and set
+        of files: a new day file or the next market day builds it again.
+        """
+        entry = self.area_entry(area_id)
+        if entry is None:
+            return None
+        from_date, to_date = profile_window(self._now(), entry.market_tz)
+        documents: dict[date, PriceDocument] = {}
+        held: list[tuple[Any, ...]] = []
+        day = from_date
+        while day <= to_date:
+            cached = self._held_file(area_id, day)
+            if cached is not None:
+                documents[day] = cached.parsed
+                held.append((day, cached.parsed.tz, cached.fetched_at))
+            day += timedelta(days=1)
+        key = (entry.tz, entry.market_tz, from_date, to_date, tuple(held))
+        built = self._profiles.get(area_id)
+        if built is not None and built[0] == key:
+            return built[1]
+        profile = build_profile(area_id, entry.tz, entry.market_tz, self._now(), documents)
+        self._profiles[area_id] = (key, profile)
+        return profile
+
+    async def async_get_profile(self, area_id: str) -> PriceProfile | None:
+        """The area's history profile ([profile_for]) once the store has been read; never a request."""
+        await self.async_restore()
+        return self.profile_for(area_id)
 
     def profile_summary(self, area_id: str) -> dict[str, Any]:
         """The profile as diagnostics prints it: identity, window and coverage, never the price rows."""
-        cached = self._profiles.get(area_id)
-        profile = None if cached is None else cached.parsed
-        failed = self._profile_failed_at.get(area_id)
-        checked = self._profile_checked.get(area_id)
+        profile = self.profile_for(area_id)
+        built = self._profiles.get(area_id)
         return {
             "area": area_id,
-            "held": profile is not None,
-            "usable": self.profile_for(area_id) is not None,
-            "fetched_at": None if cached is None else _stamp(cached.fetched_at),
+            "usable": profile is not None,
+            # How many of the window's files are held (21 make a profile).
+            "days_held": None if built is None else len(built[0][-1]),
             "generated": None if profile is None else _stamp(profile.generated),
             "from": None if profile is None else profile.from_date.isoformat(),
             "to": None if profile is None else profile.to_date.isoformat(),
             "weeks": None if profile is None else profile.weeks,
             "hour_entries": None if profile is None else len(profile.hours),
-            "checked_day": None if checked is None else checked.isoformat(),
-            "last_failure_at": _stamp(failed),
         }
 
     async def _shared(self, key: tuple[str, ...], load) -> Any:
@@ -614,7 +729,7 @@ class PriceRepository:
         except asyncio.CancelledError:
             raise
         except Exception:  # pragma: no cover - _restore_and_adopt swallows its own
-            _LOGGER.warning("Restoring the stored relay cache failed; continuing without it")
+            _LOGGER.warning("Restoring the stored price days failed; continuing without them")
 
     @callback
     def _restore_finished(self, task: asyncio.Task[None]) -> None:
@@ -625,13 +740,13 @@ class PriceRepository:
                 self._restore_task = None
             return
         if task.exception() is not None:
-            _LOGGER.warning("Restoring the stored relay cache raised")
+            _LOGGER.warning("Restoring the stored price days raised")
 
     async def _restore_and_adopt(self) -> None:
         try:
             raw = await self._store.async_load()
         except Exception as err:  # noqa: BLE001 - any store failure means "no store"
-            _LOGGER.warning("Could not read the stored relay cache (%s); continuing without it", type(err).__name__)
+            _LOGGER.warning("Could not read the stored price days (%s); continuing without them", type(err).__name__)
             return
         # Every zone the stored documents name, resolved off the loop before they are parsed.
         await time_zones.async_resolve_document(raw)
@@ -642,72 +757,38 @@ class PriceRepository:
 
         if raw is None:
             return
-        if not isinstance(raw, dict) or raw.get("schema") != STORAGE_VERSION:
-            _LOGGER.warning("Ignoring stored relay cache: unknown schema version")
+        schema = raw.get("schema") if isinstance(raw, dict) else None
+        if schema not in (STORAGE_SCHEMA, LEGACY_SCHEMA):
+            _LOGGER.warning("Ignoring stored price days: unknown schema version")
             return
-
-        # A stored list and index say which version they are; each is re-read by that version's rules,
-        # so a v1 cache from an older release restores as it was and is replaced by the next fetch.
-        catalogue = self._restore_one(raw.get("catalogue"), "catalogue", _parse_versioned(parse_catalogue))
-        if catalogue is not None and _older_than(self._catalogue, catalogue):
-            self._catalogue = catalogue
-            stored_rev = raw.get("catalogue_rev")
-            self._catalogue_rev = stored_rev if isinstance(stored_rev, str) and stored_rev else None
-        index = self._restore_one(raw.get("index"), "index", _parse_versioned(parse_index))
-        if index is not None and _older_than(self._index, index):
-            self._index = index
-        if (
-            self._catalogue is not None
-            and self._index is not None
-            and self._index.parsed.version != self._catalogue.parsed.version
-        ):
-            # The index is only ever read beside a list of its own version.
-            self._index = None
-        profiles = raw.get("profiles")
-        if isinstance(profiles, dict):
-            for area_id, entry in profiles.items():
-                restored_profile = self._restore_profile(area_id, entry)
-                if restored_profile is not None and _older_than(self._profiles.get(area_id), restored_profile):
-                    self._profiles[area_id] = restored_profile
+        legacy = schema == LEGACY_SCHEMA
+        # The relay's area list, index and profiles that stores before 2.0 kept beside the days are not read: the
+        # area list is the bundled one, and the next write leaves them out.
         days = raw.get("days")
         if isinstance(days, dict):
             for key, entry in days.items():
-                restored = self._restore_day(key, entry)
+                restored = self._restore_day(key, entry, legacy=legacy)
                 if restored is None:
                     continue
                 where, cached = restored
+                files = self._days.setdefault(where, {})
                 # Adoption is by acquisition time, not arrival order, so a late restore cannot
                 # replace something fetched since. Loaders await the restore before fetching, so
                 # this is the invariant that keeps it true if a path ever forgets to.
-                if _older_than(self._days.get(where), cached):
-                    self._days[where] = cached
+                if _older_than(files.get(cached.parsed.tz), cached):
+                    files[cached.parsed.tz] = cached
 
-    def _restore_one(self, entry: Any, what: str, parse) -> _Cached | None:
-        if not isinstance(entry, dict):
+    def _restore_day(self, key: Any, entry: Any, *, legacy: bool) -> tuple[tuple[str, date], _Cached] | None:
+        """One stored day file, filed under `AREA|market calendar|date` (schema 1: `AREA|date`, its calendar
+        then read from the document itself, which is what makes the migration lossless).
+        """
+        if not isinstance(key, str) or not isinstance(entry, dict):
             return None
-        document = entry.get("document")
-        fetched_at = _aware(entry.get("fetched_at"))
-        if document is None or fetched_at is None:
-            _LOGGER.warning("Ignoring stored %s: incomplete entry", what)
+        parts = key.split("|")
+        if len(parts) != (2 if legacy else 3):
             return None
-        try:
-            parsed = parse(document)
-        except RelayParseError as err:
-            _LOGGER.warning("Ignoring stored %s: %s", what, err.code)
-            return None
-        return _Cached(document=document, fetched_at=fetched_at, parsed=parsed, source="store")
-
-    def _restore_profile(self, area_id: Any, entry: Any) -> _Cached | None:
-        if not isinstance(area_id, str) or not isinstance(entry, dict):
-            return None
-        return self._restore_one(
-            entry, f"profile {area_id}", lambda document: parse_profile(document, area_id=area_id)
-        )
-
-    def _restore_day(self, key: Any, entry: Any) -> tuple[tuple[str, date], _Cached] | None:
-        if not isinstance(key, str) or "|" not in key or not isinstance(entry, dict):
-            return None
-        area_id, _, raw_day = key.partition("|")
+        area_id, raw_day = parts[0], parts[-1]
+        calendar = None if legacy else parts[1]
         try:
             day = date.fromisoformat(raw_day)
         except ValueError:
@@ -724,178 +805,141 @@ class PriceRepository:
         except RelayParseError as err:
             _LOGGER.warning("Ignoring stored day %s: %s", key, err.code)
             return None
-        return (area_id, day), _Cached(document=document, fetched_at=fetched_at, parsed=parsed, source="store")
+        if calendar is not None and calendar != parsed.tz:
+            _LOGGER.warning("Ignoring stored day %s: dated on another calendar", key)
+            return None
+        provider = entry.get("provider")
+        return (area_id, day), _Cached(
+            document=document,
+            fetched_at=fetched_at,
+            parsed=parsed,
+            source="store",
+            provider=provider if isinstance(provider, str) and provider else "relay",
+        )
 
-    async def _fetch_versioned(self, name: str, parse, versions: tuple[int, ...]) -> tuple[Any, Any]:
-        """`/v<n>/<name>` parsed as version n, for the first of [versions] the relay answers readably.
-
-        A 404 or a body this client cannot read moves on to the next version; a transport failure does not
-        (an unreachable relay is not an old one). The last version's failure is the one raised.
-        """
-        for position, version in enumerate(versions):
-            last = position == len(versions) - 1
-            try:
-                document = await self._fetch_json(f"/v{version}/{name}")
-                return document, parse(document, version=version)
-            except _Failure as err:
-                if last or err.status != 404:
-                    raise
-            except RelayParseError:
-                if last:
-                    raise
-        raise AssertionError("unreachable")  # pragma: no cover
-
-    async def _load_catalogue(self) -> CatalogueSnapshot:
-        key = ("catalogue",)
-        self._attempts[key] = (self._now(), None)
-        try:
-            document, parsed = await self._fetch_versioned("areas.json", parse_catalogue, CONTRACT_VERSIONS)
-        except (RelayParseError, _Failure) as err:
-            return self._after_failure(key, err, self._catalogue_snapshot)
-        previous = None if self._catalogue is None else self._catalogue.parsed.version
-        self._catalogue = _Cached(document=document, fetched_at=self._now(), parsed=parsed)
-        self._catalogue_rev = None
-        if previous is not None and previous != parsed.version and self._index is not None:
-            # A list of another version: the index beside it must be read again in that version.
-            self._index = None
-        await self._persist()
-        return self._catalogue_snapshot(state="ready", source="network", settled=True)
-
-    async def _load_index(self) -> IndexSnapshot:
-        key = ("index",)
-        self._attempts[key] = (self._now(), None)
-        # Always the version of the list held; with none held yet, newest first like the list.
-        held = self._catalogue
-        versions = CONTRACT_VERSIONS if held is None else (held.parsed.version,)
-        try:
-            document, parsed = await self._fetch_versioned("index.json", parse_index, versions)
-        except (RelayParseError, _Failure) as err:
-            return self._after_failure(key, err, self._index_snapshot)
-        self._index = _Cached(document=document, fetched_at=self._now(), parsed=parsed)
-        await self._persist()
-        return self._index_snapshot(state="ready", source="network", settled=True)
-
-    async def _load_day(self, area_id: str, day: date, *, authority: IndexAuthority) -> DaySnapshot:
+    async def _load_day(self, area_id: str, day: date, provider: PriceProvider) -> DaySnapshot:
+        """Ask [provider] for one file; the snapshot carries the schedule's answer after this attempt."""
         key = ("day", area_id, day.isoformat())
         self._attempts[key] = (self._now(), None)
-        path = f"/v1/{quote(area_id, safe='')}/{day.year:04d}/{day.month:02d}-{day.day:02d}.json"
+        fetch = await provider.async_fetch_day(area_id, day)
+        calendar = self._market_calendar(area_id)
+        if fetch.outcome == "not_published":
+            # Not out yet: no failure, nothing cached, and tomorrow is "not listed" until the next attempt.
+            if calendar is not None:
+                self._not_published[(area_id, calendar, day)] = self._now()
+            return self._day_snapshot(area_id, day, authority=self._authority_now(area_id, day), settled=True)
         try:
-            document = await self._fetch_json(path)
-            parsed = parse_day(document, area_id=area_id, day=day)
-        except (RelayParseError, _Failure) as err:
-            self._record_failure(key, err)
-            return self._day_snapshot(area_id, day, authority=authority, settled=True)
-        self._days[(area_id, day)] = _Cached(document=document, fetched_at=self._now(), parsed=parsed)
+            parsed, document = self._accept(fetch, area_id, day)
+        except (RelayParseError, _Refused) as err:
+            # A provider that lost the area while it was asked (its key rejected by this very answer) does not
+            # speak for it any more: the new provider's attempt, maybe already made, stands.
+            if self._router.provider_for(area_id) is provider:
+                self._record_failure(key, err)
+            return self._day_snapshot(area_id, day, authority=self._authority_now(area_id, day), settled=True)
+        if calendar is not None:
+            self._not_published.pop((area_id, calendar, day), None)
+        self._days.setdefault((area_id, day), {})[parsed.tz] = _Cached(
+            document=document, fetched_at=self._now(), parsed=parsed, provider=provider.key
+        )
         await self._persist()
-        return self._day_snapshot(area_id, day, authority=authority, source="network", settled=True)
+        return self._day_snapshot(
+            area_id, day, authority=self._authority_now(area_id, day), source="network", settled=True
+        )
 
     async def _load_archive_day(self, area_id: str, day: date) -> PriceDocument | None:
         key = ("archive", area_id, day.isoformat())
         self._attempts[key] = (self._now(), None)
-        path = f"/v1/{quote(area_id, safe='')}/{day.year:04d}/{day.month:02d}-{day.day:02d}.json"
+        provider = self._router.provider_for(area_id)
+        if provider is None:
+            self._attempts[key] = (self._now(), "source_missing")
+            return None
         try:
-            document = await self._fetch_json(path)
-            return parse_day(document, area_id=area_id, day=day)
-        except (RelayParseError, _Failure) as err:
+            parsed, _ = self._accept(await provider.async_fetch_day(area_id, day), area_id, day)
+        except (RelayParseError, _Refused) as err:
             self._record_failure(key, err)
             return None
+        return parsed
 
-    async def _load_profile(self, area_id: str, today: date) -> PriceProfile | None:
-        key = ("profile", area_id)
-        self._attempts[key] = (self._now(), None)
-        path = f"/v1/{quote(area_id, safe='')}/profile.json"
-        try:
-            document = await self._fetch_json(path)
-            parsed = parse_profile(document, area_id=area_id)
-        except _Failure as err:
-            if err.status == 404:
-                # The relay's definite "no usable profile": nothing held is still true.
-                self._profiles.pop(area_id, None)
-                self._profile_failed_at.pop(area_id, None)
-                self._profile_checked[area_id] = today
-                await self._persist()
-                return None
-            self._record_failure(key, err)
-            self._profile_failed_at[area_id] = self._now()
-            return self.profile_for(area_id)
-        except RelayParseError as err:
-            self._record_failure(key, err)
-            self._profile_failed_at[area_id] = self._now()
-            self._profile_checked[area_id] = today
-            return self.profile_for(area_id)
-        self._profiles[area_id] = _Cached(document=document, fetched_at=self._now(), parsed=parsed)
-        self._profile_failed_at.pop(area_id, None)
-        self._profile_checked[area_id] = today
-        await self._persist()
-        return self.profile_for(area_id)
+    def _accept(self, fetch: DayFetch, area_id: str, day: date) -> tuple[PriceDocument, Any]:
+        """A provider's answer as a validated file and its raw document; anything else raises with its code."""
+        if fetch.outcome != "fetched":
+            raise _Refused(fetch.code or "network")
+        return self._parse_file(fetch.document, area_id, day), fetch.document
 
-    def _after_failure(self, key: tuple[str, ...], err: Exception, snapshot):
-        self._record_failure(key, err)
-        cached = self._catalogue if key == ("catalogue",) else self._index
-        if cached is not None:
-            # Last good stays what a reader sees; the failure is recorded beside it (`stale`).
-            return snapshot(state="stale", settled=True)
-        if isinstance(err, _Failure):
-            return snapshot(state="unavailable", settled=True)
-        return snapshot(state="invalid", settled=True)
+    def _parse_file(self, document: Any, area_id: str, day: date) -> PriceDocument:
+        """A fetched day file, validated, and refused when it is not dated on the calendar the area is read
+        in: it could never be found by a lookup, so taking it would only ask for it again and again.
+        """
+        parsed = parse_day(document, area_id=area_id, day=day)
+        calendar = self._market_calendar(area_id)
+        if calendar is not None and not _dated_on(parsed, calendar):
+            raise RelayParseError(
+                "invalid_coverage", f"the day document is dated on {parsed.tz}, not on the area's {calendar}"
+            )
+        return parsed
+
+    def _market_calendar(self, area_id: str) -> str | None:
+        """The calendar an area's day files are dated in now (its provider's `market_tz`, [area_entry]); `None`
+        for an area no catalogue lists.
+        """
+        entry = self.area_entry(area_id)
+        return None if entry is None else entry.market_tz
+
+    def _held_file(self, area_id: str, day: date) -> _Cached | None:
+        """The held file for a market day on the calendar the area is read in, or `None`.
+
+        Calendars are compared by the file's first instant, not by name: a file dated in Stockholm is the
+        same day as one dated in Berlin, while a Helsinki file is another day than a CET one and is not read
+        (it stays held, under its own key, until retention drops it). With no catalogue entry to say which
+        calendar, the newest file held for the day is the answer.
+        """
+        files = self._days.get((area_id, day))
+        if not files:
+            return None
+        calendar = self._market_calendar(area_id)
+        candidates = [
+            cached for cached in files.values() if calendar is None or _dated_on(cached.parsed, calendar)
+        ]
+        return max(candidates, key=lambda cached: cached.fetched_at, default=None)
+
+    def _prune(self) -> None:
+        """Drop the day files older than [HISTORY_KEEP_DAYS] (by market day, against today in UTC), and the
+        "not published yet" answers for days already past."""
+        today = self._now().astimezone(dt_util.UTC).date()
+        oldest = today - timedelta(days=HISTORY_KEEP_DAYS)
+        for where in [where for where in self._days if where[1] < oldest]:
+            del self._days[where]
+        # "Not published yet" only ever concerns tomorrow; yesterday's answers are of no use.
+        for key in [key for key in self._not_published if key[2] < today - timedelta(days=1)]:
+            del self._not_published[key]
 
     def _record_failure(self, key: tuple[str, ...], err: Exception) -> None:
-        code: FailureCode = err.code if isinstance(err, (RelayParseError, _Failure)) else "network"
+        code: FailureCode = err.code if isinstance(err, (RelayParseError, _Refused)) else "network"
         self._attempts[key] = (self._now(), code)
-        _LOGGER.debug("Relay %s failed: %s", key[0], code)
-
-    async def _authority_for(self, area_id: str, day: date) -> IndexAuthority:
-        """What the index currently says about a day, reading it only if there is none.
-
-        Same freshness rule as [index_snapshot]: only a `ready` index is authority. A retained last-good
-        index after a failed refresh answers `unknown`, because a possibly hours-old list is not the relay
-        saying what exists now; otherwise this would suppress a day the manager (which treats authority as
-        `unknown`) is asking for.
-
-        Only an index never asked for is read here, so a first day fetch is not blind; a failed one is not
-        re-asked inside a day request (one failed global attempt would become one per day).
-        """
-        snapshot = self.index_snapshot()
-        if snapshot.index is None and snapshot.attempt_at is None:
-            snapshot = await self.async_get_index()
-        return _authority_of(snapshot, area_id, day)
+        _LOGGER.debug("Price %s failed: %s", key[0], code)
 
     def _authority_now(self, area_id: str, day: date) -> IndexAuthority:
-        """The same answer without any I/O, by the same freshness rule."""
-        return _authority_of(self.index_snapshot(), area_id, day)
-
-    def _index_revision(self) -> str | None:
-        return None if self._index is None else self._index.parsed.areas_rev
-
-    def _catalogue_snapshot(
-        self, *, state: CatalogueState, source: SnapshotSource | None = None, settled: bool = False
-    ) -> CatalogueSnapshot:
-        cached = self._catalogue
-        attempt_at, error = self._attempt(("catalogue",))
-        return CatalogueSnapshot(
-            state=state,
-            catalogue=None if cached is None else cached.parsed,
-            source=None if cached is None else (source or cached.source),
-            fetched_at=None if cached is None else cached.fetched_at,
+        """What the provider's schedule and its last answer say about a file, without any I/O; `unknown` for an
+        area with no provider (a held file is still `listed`)."""
+        provider = self._router.provider_for(area_id)
+        calendar = self._market_calendar(area_id)
+        if provider is None or calendar is None:
+            return "listed" if self._held_file(area_id, day) is not None else "unknown"
+        attempt_at, error = self._attempt(("day", area_id, day.isoformat()))
+        return schedule_authority(
+            day,
+            held=self._held_file(area_id, day) is not None,
+            now=self._now(),
+            market_tz=calendar,
+            publication=provider.publication,
             attempt_at=attempt_at,
-            attempt_error=error,
-            refreshing=not settled and ("catalogue",) in self._inflight,
+            attempt_failed=error is not None,
+            not_published_at=self._not_published.get((area_id, calendar, day)),
         )
 
-    def _index_snapshot(
-        self, *, state: CatalogueState, source: SnapshotSource | None = None, settled: bool = False
-    ) -> IndexSnapshot:
-        cached = self._index
-        attempt_at, error = self._attempt(("index",))
-        return IndexSnapshot(
-            state=state,
-            index=None if cached is None else cached.parsed,
-            source=None if cached is None else (source or cached.source),
-            fetched_at=None if cached is None else cached.fetched_at,
-            attempt_at=attempt_at,
-            attempt_error=error,
-            refreshing=not settled and ("index",) in self._inflight,
-        )
+    def _held_catalogue(self) -> AreaCatalogue | None:
+        """The bundled area list, or `None` when it could not be read."""
+        return None if self._bundled is None else self._bundled.catalogue
 
     def _day_snapshot(
         self,
@@ -903,12 +947,11 @@ class PriceRepository:
         day: date,
         *,
         authority: IndexAuthority,
-        stale_override: bool = False,
         source: SnapshotSource | None = None,
         settled: bool = False,
     ) -> DaySnapshot:
         key = ("day", area_id, day.isoformat())
-        cached = self._days.get((area_id, day))
+        cached = self._held_file(area_id, day)
         attempt_at, error = self._attempt(key)
         refreshing = not settled and key in self._inflight
 
@@ -916,7 +959,7 @@ class PriceRepository:
             state: DayState = "loading" if refreshing else (
                 "invalid" if error is not None and not is_transport(error) else "unavailable"
             )
-        elif stale_override or error is not None:
+        elif error is not None:
             state = "stale"
         else:
             state = "ready" if cached.parsed.covers_whole_day() else "incomplete"
@@ -931,69 +974,32 @@ class PriceRepository:
             attempt_at=attempt_at,
             attempt_error=error,
             index_authority=authority,
-            index_revision=self._index_revision(),
             refreshing=refreshing,
         )
 
     def _attempt(self, key: tuple[str, ...]) -> tuple[datetime | None, FailureCode | None]:
         return self._attempts.get(key, (None, None))
 
-    def _client(self) -> ClientSession:
-        if self._session is None:
-            self._session = async_get_clientsession(self._hass)
-        return self._session
-
-    async def _fetch_json(self, path: str) -> Any:
-        """One published document, bounded in time and size.
-
-        A non-200 is a failure, not a document; the body must be JSON (a proxy's HTML is `not_json`). It
-        is read to EOF in bounded slices under one overall timeout and never logged.
-        """
-        url = f"{self._base_url}{path}"
-        try:
-            async with asyncio.timeout(REQUEST_TIMEOUT_S):
-                async with self._client().get(url) as response:
-                    if response.status != 200:
-                        raise _Failure("http_status", response.status)
-                    body = await _read_bounded(response.content)
-        except TimeoutError as err:
-            raise _Failure("timeout") from err
-        except ClientError as err:
-            raise _Failure("network") from err
-        document = loads_document(body.decode("utf-8", errors="replace"))
-        # Every zone the document names, resolved off the loop before any parser reads it.
-        await time_zones.async_resolve_document(document)
-        return document
-
     def _payload(self) -> dict[str, Any]:
         """Everything worth restoring, as one document, rebuilt from the caches on every write so the last
         writer writes the union.
         """
         return {
-            "schema": STORAGE_VERSION,
-            "catalogue": _entry(self._catalogue),
-            "catalogue_rev": self._catalogue_rev,
-            "index": _entry(self._index),
-            "days": {f"{area_id}|{day.isoformat()}": _entry(cached) for (area_id, day), cached in self._days.items()},
-            "profiles": {area_id: _entry(cached) for area_id, cached in self._profiles.items()},
+            "schema": STORAGE_SCHEMA,
+            "days": {
+                f"{area_id}|{calendar}|{day.isoformat()}": {**_entry(cached), "provider": cached.provider}
+                for (area_id, day), files in self._days.items()
+                for calendar, cached in files.items()
+            },
         }
 
     async def _persist(self) -> None:
-        """Write the cache, serialized against other writers and never against a request."""
+        """Write the cache, serialized against other writers and never against a request, after dropping
+        the day files retention no longer keeps.
+        """
         async with self._write_lock:
+            self._prune()
             await self._store.async_save(self._payload())
-
-def _authority_of(snapshot: IndexSnapshot, area_id: str, day: date) -> IndexAuthority:
-    """The one place a snapshot becomes an authority answer, shared by the reading and fetching paths so
-    they cannot describe the same index differently.
-    """
-    if snapshot.state != "ready" or snapshot.index is None:
-        return "unknown"
-    area = snapshot.index.area(area_id)
-    if area is None:
-        return "not_listed"
-    return "listed" if area.lists(day) else "not_listed"
-
 
 def read_state(present: bool, error: FailureCode | None, refreshing: bool) -> CatalogueState:
     """The state of a resource as a reader sees it, with no attempt started.
@@ -1010,16 +1016,9 @@ def read_state(present: bool, error: FailureCode | None, refreshing: bool) -> Ca
     return "invalid"
 
 
-def _parse_versioned(parse):
-    """A restore parser for a stored area list or index: read by the version the document states."""
-
-    def parsed(document: Any) -> Any:
-        version = document_version(document)
-        if version is None:
-            raise RelayParseError("unsupported_version", "the stored document is not a version this client reads")
-        return parse(document, version=version)
-
-    return parsed
+def _dated_on(document: PriceDocument, calendar: str) -> bool:
+    """Whether a day file starts at its date's midnight on [calendar], i.e. covers that calendar's day."""
+    return document.start_instant == local_midnight(document.day, calendar).astimezone(dt_util.UTC)
 
 
 def _older_than(existing: _Cached | None, candidate: _Cached) -> bool:
@@ -1065,23 +1064,6 @@ def catalogue_summary(snapshot: CatalogueSnapshot) -> dict[str, Any]:
     }
 
 
-def index_summary(snapshot: IndexSnapshot) -> dict[str, Any]:
-    index = snapshot.index
-    return {
-        "state": snapshot.state,
-        "source": snapshot.source,
-        "fetched_at": _stamp(snapshot.fetched_at),
-        "attempt_at": _stamp(snapshot.attempt_at),
-        "error": snapshot.attempt_error,
-        "refreshing": snapshot.refreshing,
-        "area_count": None if index is None else len(index.areas),
-        "version": None if index is None else index.version,
-        "areas_rev": None if index is None else index.areas_rev,
-        "res_default": None if index is None else index.res_default,
-        "generated": None if index is None else _stamp(index.generated),
-    }
-
-
 def day_summary(snapshot: DaySnapshot) -> dict[str, Any]:
     document = snapshot.document
     return {
@@ -1094,7 +1076,6 @@ def day_summary(snapshot: DaySnapshot) -> dict[str, Any]:
         "attempt_at": _stamp(snapshot.attempt_at),
         "error": snapshot.attempt_error,
         "index_authority": snapshot.index_authority,
-        "index_revision": snapshot.index_revision,
         "interval_count": snapshot.interval_count,
         "resolution_minutes": None if document is None else document.resolution_minutes,
         "unit": None if document is None else document.unit,
@@ -1113,8 +1094,6 @@ def day_summary(snapshot: DaySnapshot) -> dict[str, Any]:
 async def async_setup_price_repository(
     hass: HomeAssistant,
     *,
-    base_url: str = DEFAULT_BASE_URL,
-    session: ClientSession | None = None,
     store: Store[dict[str, Any]] | None = None,
     now=None,
 ) -> PriceRepository:
@@ -1131,7 +1110,32 @@ async def async_setup_price_repository(
     if data.price_repository is not None:
         await data.price_repository.async_restore()
         return data.price_repository
-    repository = PriceRepository(hass, base_url=base_url, session=session, store=store, now=now)
+    # The bundled area list, read off the loop; without it no area is listed and none has a provider. Read
+    # before the second lookup, so that lookup and the publish below stay one synchronous step.
+    bundled = await async_load_bundled(hass)
+    if data.price_repository is not None:
+        await data.price_repository.async_restore()
+        return data.price_repository
+    # The ECB rates a provider needs for an area priced in another currency (started by the first day that needs a rate).
+    if data.fx_rates is None:
+        data.fx_rates = FxRates(hass)
+    # The installation's ENTSO-E key lives in the price entries' store, loaded here when it is not yet.
+    keys = await async_setup_price_store(hass)
+    if data.price_repository is not None:
+        await data.price_repository.async_restore()
+        return data.price_repository
+    # Nord Pool through Home Assistant for the areas it trades while a `nordpool` entry is loaded; else ENTSO-E
+    # with the installation's key; none otherwise (the area's notice says what to add). Spain's PVPC and the GB
+    # Agile regions are read from the PVPC and Octopus Energy integrations when the person has added them. The
+    # bundled catalogue holds every provider's routes, so without it there is no provider.
+    router = ProviderRouter(
+        None if bundled is None else NordPoolProvider(hass, bundled, data.fx_rates, now=now),
+        None if bundled is None else EntsoeProvider(hass, bundled, keys, data.fx_rates, now=now),
+        pvpc=None if bundled is None else PvpcProvider(hass, bundled, now=now),
+        octopus=None if bundled is None else OctopusProvider(hass, bundled, data.fx_rates, now=now),
+    )
+    repository = PriceRepository(hass, store=store, now=now, bundled=bundled, router=router)
+    router.async_start(hass)
     data.price_repository = repository
     await repository.async_restore()
     return repository

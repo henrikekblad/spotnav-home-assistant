@@ -14,8 +14,10 @@ only before the charger's first live session, so nothing overlaps:
 * the sessions say `source: "imported_hourly"`, start `unknown`, and have no solar share.
 
 The marker the store keeps per charger says the import ran and what it covered. If hours were unpriced
-(the relay's history backfill may still be running), a later start tries again, at most once a day;
-day files are fetched one at a time with a pause between requests. Nothing here blocks setup or raises.
+(the price history's backfill may still be running), a later start tries again, at most once a day;
+day files are fetched one at a time with a pause between requests, and a day older than the area's provider
+keeps (Nord Pool: about two months) is never asked for, so its hours stay unpriced without a request. Nothing
+here blocks setup or raises.
 
 `migrate_legacy` is the other half of the storage change: a record that only has a stored cost gets its
 intervals re-derived from the day files the repository holds, when it holds them all.
@@ -53,7 +55,7 @@ _LOGGER = logging.getLogger(__name__)
 IMPORT_DAYS: Final = 730
 #: An hour with less energy than this is not charging.
 MIN_HOUR_KWH: Final = 0.1
-#: The pause after every day file asked of the relay.
+#: The pause after every day file asked of the area's provider.
 FETCH_GAP_S: Final = 2.0
 #: How long after start-up the import begins.
 START_DELAY_S: Final = 120.0
@@ -388,13 +390,15 @@ class HistoryImporter:
         return build_sessions(self._charger_id, groups, spot, market=market, energy_source=source)
 
     async def _day(self, market: PriceMarket, day: date) -> Any:
-        """The day's document: what the repository holds, else asked of the relay (archive) one request at a time."""
+        """The day's document: what the repository holds, else asked of the area's provider (archive) one request at
+        a time; `None` without a request for a day beyond the provider's history (`history_out_of_reach`)."""
         if day in self._days:
             return self._days[day]
         repository = market.repository
         document = repository.day_snapshot(market.area_id, day).document
-        if document is None:
-            # An archive read: the index lists only the recent days, the relay has the older ones.
+        if document is None and repository.archive_reachable(market.area_id, day):
+            # An archive read: the provider's own history (the relay's archive, Nord Pool's last two months,
+            # ENTSO-E's years). A day older than the provider keeps is not asked at all, and needs no pause.
             document = await repository.async_get_archive_day(market.area_id, day)
             await self._sleep(self._gap)
         self._days[day] = document

@@ -274,7 +274,7 @@ describe("the compact fiscal row", () => {
     expect(units).toEqual(["%", "öre", "öre"]);
   });
 
-  it("lists the published areas in the relay's order, and keeps the stored one selectable", () => {
+  it("lists the published areas in the list's order, and keeps the stored one selectable", () => {
     const listed = build(form()).body;
     const select = listed.querySelector<HTMLSelectElement>("select");
     expect(Array.from(select?.options ?? []).map((option) => option.value)).toEqual(["SE4", "DE-LU"]);
@@ -296,7 +296,7 @@ describe("the compact fiscal row", () => {
       "SE4 · no longer published",
     ]);
     expect(unlisted.body.querySelector(`.${C.marketState}`)?.textContent).toBe(
-      "This is the last area list Home Assistant received; the relay could not be reached since.",
+      "This is the last area list read; a newer one could not be read.",
     );
   });
 

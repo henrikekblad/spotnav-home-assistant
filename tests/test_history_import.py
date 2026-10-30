@@ -69,10 +69,21 @@ def document(day: date, prices_eur: list[float]):
 class Repository:
     """Holds some day documents; `later` ones appear only when the relay is asked (one request each)."""
 
-    def __init__(self, held: dict[date, object] | None = None, later: dict[date, object] | None = None) -> None:
+    def __init__(
+        self,
+        held: dict[date, object] | None = None,
+        later: dict[date, object] | None = None,
+        *,
+        oldest: date | None = None,
+    ) -> None:
         self.held = dict(held or {})
         self.later = dict(later or {})
         self.asked: list[date] = []
+        #: The oldest day the provider keeps (`None`: no limit, like the relay or ENTSO-E).
+        self.oldest = oldest
+
+    def archive_reachable(self, area_id: str, day: date) -> bool:
+        return self.oldest is None or day >= self.oldest
 
     async def async_restore(self) -> None:
         return None
@@ -329,6 +340,29 @@ async def test_a_day_the_relay_lacks_stays_unpriced_and_is_asked_once_per_run(
     assert repository.asked == [D1]
     assert all(item.cost_minor is None for item in store.closed(CHARGER))
     assert store.import_marker(CHARGER)["unpriced_hours"] == 3  # type: ignore[index]
+
+
+async def test_a_day_beyond_the_providers_history_is_never_asked_nor_waited_for(
+    hass: HomeAssistant, store: SessionStore
+) -> None:
+    # Nord Pool keeps about two months: D1 is older than that, D2 is not.
+    repository = Repository(later={D1: document(D1, [0.2] * 24), D2: document(D2, [0.3] * 24)}, oldest=D2)
+    statistics = Statistics([hour(D1, 5, 5.0), hour(D2, 5, 5.0)])
+    clock = [TODAY]
+    sleeps: list[float] = []
+
+    await importer_for(hass, store, statistics, repository, clock=clock, sleeps=sleeps).async_run()
+
+    assert repository.asked == [D2] and sleeps == [FETCH_GAP_S]
+    by_start = {item.start: item for item in store.closed(CHARGER)}
+    assert by_start[at(D1, 5)].cost_minor is None and by_start[at(D1, 5)].energy_kwh == 5.0
+    assert store.import_marker(CHARGER)["unpriced_hours"] == 1  # type: ignore[index]
+
+    # The daily re-price looks again for the unpriced hour, but asks nothing for a day out of reach.
+    clock[0] = TODAY + timedelta(days=1)
+    await importer_for(hass, store, statistics, repository, clock=clock, sleeps=sleeps).async_run()
+    assert D1 not in repository.asked and repository.asked == [D2, D2]
+    assert sleeps == [FETCH_GAP_S, FETCH_GAP_S]
 
 
 async def test_a_version_one_marker_with_unpriced_hours_is_priced_at_once(

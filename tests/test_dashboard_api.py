@@ -61,7 +61,7 @@ from custom_components.spotnav.planning.planner import (
 from .helpers import make_site_entry
 from .relay import DE_LU, SE4, flat_day, serve, serve_index
 from .relay import StubTransport
-from .relay import TODAY, TOMORROW, YESTERDAY, fixture
+from .relay import TODAY, TOMORROW, fixture
 from .world import go_auto, setup_charger, ws_call
 from custom_components.spotnav.runtime import domain_data
 from custom_components.spotnav.runtime import preview_for
@@ -177,6 +177,9 @@ PRIVATE_KEYS = frozenset(
 #: Fragments a *string value* may never contain: an entity id, a webhook id or url, a bare url.
 PRIVATE_FRAGMENTS = ("switch.", "sensor.", "number.", "webhook-", "http://", "https://", "/api/webhook")
 
+#: The one place a public address is stated: where the prices come from (a price provider's own site).
+PUBLIC_URL_PATHS = frozenset({"$.market.source.url", "$.prices.provider.url"})
+
 
 def assert_no_private_identifiers(payload: dict[str, Any]) -> None:
     """The recursive, path-based audit: leaf keys first, then string values.
@@ -189,7 +192,7 @@ def assert_no_private_identifiers(payload: dict[str, Any]) -> None:
         key = path.rsplit(".", 1)[-1]
         if not path.startswith("$.charger.capabilities."):
             assert key not in PRIVATE_KEYS, path
-        if isinstance(value, str):
+        if isinstance(value, str) and path not in PUBLIC_URL_PATHS:
             assert not any(fragment in value for fragment in PRIVATE_FRAGMENTS), path
 
 
@@ -586,7 +589,7 @@ def transport_of(hass: HomeAssistant) -> StubTransport:
     """The stub wire this installation is pointed at, for a test that needs to serve more."""
     repository = domain_data(hass).price_repository
     assert repository is not None
-    return repository._client()
+    return repository._router.stub.transport
 
 
 @freeze_time(NOW)
@@ -742,8 +745,8 @@ async def test_fiscal_states_stay_distinct_in_the_response(hass: HomeAssistant) 
     assert fiscal["transfer"]["effective_value"] is None, "and not applied"
     assert fiscal["transfer"]["unit"].endswith("/kWh")
 
-    # A literal zero suggestion, and a market that publishes none at all.
-    for area, expected in ((NO1, ("suggested", 0.0)), (DE_LU, ("suggestion_unavailable", None))):
+    # A market that states no grid-fee suggestion at all.
+    for area, expected in ((NO1, ("suggestion_unavailable", None)), (DE_LU, ("suggestion_unavailable", None))):
         await preview.async_apply_settings(
             mutate=lambda settings, area=area: replace(settings, area_id=area)
         )
@@ -1160,7 +1163,9 @@ async def test_a_fresh_unconfigured_charger_serializes_the_contract_shape(
         "unpriced",
         "interval_count",
         "intervals",
+        "provider",
     }
+    assert prices["provider"] is None, "no area, no source"
     assert prices["intervals"] == []
     assert prices["interval_count"] == 0
     assert prices["resolutions_minutes"] == []
@@ -1206,7 +1211,9 @@ async def test_a_fresh_unconfigured_charger_serializes_the_contract_shape(
         "refresh_vehicle",
         "set_charge_limit",
         "target_stop",
+        "price_days",
     ]
+    assert charger["capabilities"]["price_days"] is True
 
 
 @freeze_time(NOW)
@@ -1805,13 +1812,11 @@ async def test_a_failed_same_area_refresh_keeps_se4s_rows_and_reports_stale(
 ) -> None:
     """The area's own refresh cannot get current prices: the last good day is retained, and said so.
 
-    The failure is made deterministic through the one thing that *can* fail for a held area: the
-    relay's own authority. Day documents are immutable, so a held day is never re-fetched (the rule
-    `test_price_refresh` pins), which means current prices can only go missing by the index ceasing
-    to list the day -- the case the product documents as `stale` / `last_good_retained`. The
-    manager's real refresh path is driven for it, and the assertion is about what the dashboard then
-    reports: exactly the rows that were held, still SE4's, and a region honest about their age. Then
-    the relay is restored and a later successful refresh clears it.
+    Day documents are immutable, so a held day is never re-fetched on its own (the rule
+    `test_price_refresh` pins); the failure is made deterministic by asking for both held days again while
+    the source fails -- the case the product documents as `stale` / `last_good_retained`. The assertion is
+    about what the dashboard then reports: exactly the rows that were held, still SE4's, and a region
+    honest about their age. Then the source is back and a later successful refresh clears it.
     """
     entry = await setup_charger(hass)
     serve(transport, flat=True)
@@ -1827,9 +1832,12 @@ async def test_a_failed_same_area_refresh_keeps_se4s_rows_and_reports_stale(
     assert before["today_state"] == "ready" and before["tomorrow_state"] == "ready"
     assert before["intervals"]
 
-    # The relay's index stops listing the days it served: SE4's next refresh cannot obtain current
-    # prices, and the held documents are precisely what must survive that.
-    serve_index(transport, {SE4: [YESTERDAY]})
+    # The source fails: SE4's refresh cannot obtain current prices, and the held documents are
+    # precisely what must survive that.
+    repository = domain_data(hass).price_repository
+    for day in (TODAY, TOMORROW):
+        transport.serve(transport.day_path(SE4, day), 500, "the source is unwell")
+        await repository.async_get_day(SE4, day, refresh=True)
     await manager.async_refresh_area(SE4)
     await hass.async_block_till_done()
 
@@ -1851,9 +1859,11 @@ async def test_a_failed_same_area_refresh_keeps_se4s_rows_and_reports_stale(
         row["day"] in {before["today"], before["tomorrow"]} for row in after["intervals"]
     ), "no row is relabelled to another day"
 
-    # The relay is restored: the next successful refresh clears the stale region, on the same two
-    # documents (nothing is re-requested, because nothing about them changed).
+    # The source is back: the next successful refresh clears the stale region, with the same two
+    # documents' contents.
     serve(transport, flat=True)
+    for day in (TODAY, TOMORROW):
+        await repository.async_get_day(SE4, day, refresh=True)
     await manager.async_refresh_area(SE4)
     await hass.async_block_till_done()
 
@@ -1861,7 +1871,6 @@ async def test_a_failed_same_area_refresh_keeps_se4s_rows_and_reports_stale(
     assert recovered["state"] == "ready" and recovered["reason"] == "ready"
     assert recovered["today_state"] == "ready" and recovered["tomorrow_state"] == "ready"
     assert recovered["intervals"] == before["intervals"], "same published documents"
-    assert recovered["today_fetched_at"] == before["today_fetched_at"]
 
 
 @freeze_time(NOW)
@@ -1897,8 +1906,6 @@ async def test_capturing_the_dashboard_never_touches_the_network(
     serve(transport, flat=True)
     await go_area_only(hass, entry)
     paths = (
-        "/v1/areas.json",
-        "/v1/index.json",
         transport.day_path(SE4, TODAY),
         transport.day_path(SE4, TOMORROW),
     )

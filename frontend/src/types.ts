@@ -262,14 +262,14 @@ export const SESSIONS_API_VERSION = 1;
 
 /**
  * The five catalogue states in the backend's vocabulary: `loading` (attempt running, nothing held),
- * `ready`, `stale` (held but the last attempt failed), `unavailable` (nothing held, relay unreachable),
+ * `ready`, `stale` (held but the last attempt failed), `unavailable` (no list: the bundled one could not be read),
  * `invalid` (nothing held, response unreadable). Any other value is refused.
  */
 export const MARKET_STATES = ["loading", "ready", "stale", "unavailable", "invalid"] as const;
 export type MarketState = (typeof MARKET_STATES)[number];
 
 /**
- * The two public reasons a non-ready catalogue carries (or `null`): the relay could not be reached,
+ * The two public reasons a non-ready catalogue carries (or `null`): the list could not be reached,
  * or what it sent could not be read. No internal code or exception text travels.
  */
 export const MARKET_REASONS = ["offline", "invalid"] as const;
@@ -282,7 +282,7 @@ export interface MarketSuggestionsV1 {
 }
 
 /**
- * One area the relay publishes: name, place, time zone and how its money is named. The EIC is
+ * One area of the area list: name, place, time zone and how its money is named. The EIC is
  * not part of the shape, since the editor does not need it.
  */
 /** Where an area's prices come from (relay contract v2), shown beside them as attribution. */

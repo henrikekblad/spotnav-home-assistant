@@ -14,7 +14,8 @@
       "load_balancing": false,
       "refresh_vehicle": true,
       "set_charge_limit": true,
-      "target_stop": true
+      "target_stop": true,
+      "price_days": true
     }
   },
   "settings": {
@@ -112,7 +113,7 @@
   },
   "market": {
     "catalogue_state": "ready",
-    "catalogue_fetched_at": "2026-09-22T06:00:00+00:00",
+    "catalogue_fetched_at": null,
     "catalogue_attempt_error": null,
     "area_id": "SE4",
     "area_name": "Malm\u00f6",
@@ -146,8 +147,8 @@
     "tomorrow_attempt_at": "2026-09-22T06:00:00+00:00",
     "today_attempt_error": null,
     "tomorrow_attempt_error": null,
-    "index_state": "ready",
-    "index_revision": "916f2f8e05fd",
+    "index_state": null,
+    "index_revision": null,
     "waiting_for_tomorrow": false,
     "resolution_minutes": 15,
     "resolutions_minutes": [
@@ -2078,7 +2079,16 @@
         "proposal_planned": false,
         "installed_planned": false
       }
-    ]
+    ],
+    "provider": {
+      "key": null,
+      "name": null,
+      "url": null,
+      "notice": {
+        "code": "add_nordpool",
+        "params": {}
+      }
+    }
   },
   "plan": {
     "proposal": {

@@ -121,6 +121,9 @@ async def test_the_webhook_dashboard_is_the_websocket_dashboard_bar_writability(
     # The one other documented difference: the webhook leaves out what the app cannot read yet.
     assert "departure_date" in expected["settings"]
     expected["settings"] = as_app_sees(expected["settings"])
+    # And `prices.provider`, read only with `reads: ["price_provider"]`.
+    assert "provider" in expected["prices"]
+    del expected["prices"]["provider"]
     assert payload == expected
     _pinned("dashboard.json", _pin(body))
 
@@ -679,6 +682,11 @@ async def test_no_fixture_is_left_unwritten() -> None:
             "choose_price_source_unknown_entry.json",
             "dashboard.json",
             "dashboard_unsupported_version.json",
+            "price_days_no_price_area.json",
+            "price_days_no_prices.json",
+            "price_days_nordpool_fi.json",
+            "price_days_held_gb.json",
+            "price_days_held_se4.json",
             "push_register_invalid.json",
             "push_register_success.json",
             "update_charger_priority_conflict.json",

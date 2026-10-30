@@ -2,8 +2,10 @@
 
 [![Open your Home Assistant instance and open this repository in HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=henrikekblad&repository=spotnav-home-assistant&category=integration)
 
-SpotNav plans and runs your EV charging inside Home Assistant. It reads spot prices from the
-public SpotNav Relay (no account or API key) and follows them.
+SpotNav plans and runs your EV charging inside Home Assistant. It follows the spot prices your Home
+Assistant fetches itself: through Home Assistant's built-in Nord Pool integration, the PVPC integration
+in Spain, the Octopus Energy integration for Agile in Great Britain, or your own free ENTSO-E key
+everywhere else (see [Prices](docs/prices.md#where-prices-come-from)).
 
 - **Charges when power is cheapest.** It picks the cheapest hours before your departure, or a
   target state of charge, and starts and stops your charger to follow the plan.
@@ -81,7 +83,7 @@ match and choose **Approve**. No Home Assistant password or token is stored on t
 - [Supported chargers, meters, batteries and cars](docs/supported.md).
 - [The card](docs/card.md): graph, plan, buttons, status lines and settings.
 - [Charging strategies](docs/strategies.md): cheapest, solar and hybrid.
-- [Prices](docs/prices.md): sources, taxes and fees, and the relay's published files.
+- [Prices](docs/prices.md): where prices come from, taxes and fees, and the day document.
 - [The electricity price](docs/price-device.md): where the area and fees live for every charger, its
   sensors and `spotnav.get_prices`, with a floor-heating and a washing-machine example.
 - [Target state of charge](docs/target-soc.md): vehicles, estimates and stopping at a target.

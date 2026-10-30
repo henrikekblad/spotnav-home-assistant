@@ -495,7 +495,7 @@ async def test_the_history_wait_fixture_is_the_serializers_own_output(
     weekday, saving and weeks as typed status params, and the date carried in the settings record."""
     from datetime import date, timedelta
 
-    from tests.relay import flat_day, index_listing, serve_profile
+    from tests.relay import flat_day, hold_history, index_listing
 
     charger = await _setup_charger(hass, entry_id="history_wait")
     today = date(2026, 10, 1)
@@ -504,9 +504,8 @@ async def test_the_history_wait_fixture_is_the_serializers_own_output(
     for day in days:
         transport.serve(transport.day_path(SE4, day), 200, flat_day(SE4, day, price=0.10))
     transport.serve("/v1/index.json", 200, index_listing(SE4, [day.isoformat() for day in days]))
-    serve_profile(
-        transport, to="2026-10-01", generated="2026-10-01T14:05:00+02:00",
-        cheap={(7, hour): 0.03 for hour in range(8)},
+    hold_history(
+        domain_data(hass).price_repository, to="2026-10-01", cheap={(7, hour): 0.03 for hour in range(8)}
     )
     await go_auto(
         hass,

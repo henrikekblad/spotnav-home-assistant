@@ -1570,7 +1570,7 @@ class AutoPlannerController:
             if preserved is not None:
                 return preserved
             if today_state == "unavailable" and area_snapshot.today_authority == "not_listed":
-                # A valid index says today does not exist: a fact about the relay, not a wait.
+                # The provider says today is not published: a fact about the source, not a wait.
                 return self._fresh_snapshot(
                     settings, "planning_unavailable", "no_published_prices", calculated_at,
                     entry=entry, price_snapshot=area_snapshot,
@@ -2496,14 +2496,13 @@ class AutoPlannerController:
         """Build one immutable snapshot from the settings and whatever is known."""
         execution, applied_identity, pending_identity, latest_attempt = self._execution_facts()
         area_snapshot = price_snapshot
-        index_revision = None if area_snapshot is None else area_snapshot.index_revision
         fetched_at = None if area_snapshot is None else area_snapshot.fetched_at
         today = None if area_snapshot is None else area_snapshot.today.isoformat()
         tomorrow = None if area_snapshot is None else area_snapshot.tomorrow.isoformat()
         identity = None
         if area_snapshot is not None:
             stamp = None if fetched_at is None else fetched_at.isoformat()
-            identity = f"{today}/{tomorrow}|{index_revision or '-'}|{stamp or '-'}"
+            identity = f"{today}/{tomorrow}|{stamp or '-'}"
         return AutoSnapshot(
             state=state,
             reason=reason,

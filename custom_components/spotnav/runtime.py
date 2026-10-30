@@ -38,6 +38,7 @@ if TYPE_CHECKING:
     from .pricing.market_observation import MarketObservation
     from .price_device import PriceDevice
     from .api.pairing import PairingRegister
+    from .pricing.fx_rates import FxRates
     from .pricing.price_refresh import PriceRefreshManager
     from .pricing.price_repository import PriceRepository
     from .pricing.price_store import PriceSourceStore
@@ -102,6 +103,8 @@ class SpotNavData:
     auto_store: AutoSettingsStore | None = None
     price_repository: PriceRepository | None = None
     price_refresh: PriceRefreshManager | None = None
+    #: The ECB reference rates (`pricing/fx_rates.py`), for the days a provider without the relay builds.
+    fx_rates: FxRates | None = None
     #: The price entries' migration marker, same-area duplicates and wire revision ledger (`pricing/price_store.py`).
     price_store: PriceSourceStore | None = None
     #: Held while a price entry is being created for the installation (first install, migration, a card write).

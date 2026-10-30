@@ -25,7 +25,7 @@ from custom_components.spotnav.pricing.price_repository import PriceRepository
 from custom_components.spotnav.runtime import ChargerData
 
 from .helpers import set_charger_phases
-from .relay import BASE_URL, Clock, FakeScheduler, SE4, StoreDouble, StubTransport
+from .relay import Clock, FakeScheduler, SE4, StoreDouble, stub_repository, StubTransport
 from .world import ENTRY
 
 
@@ -94,13 +94,7 @@ class Session:
         self.hass.states.async_set(self.charge_control, "off")
         self.on_calls = async_mock_service(self.hass, "switch", "turn_on")
         self.off_calls = async_mock_service(self.hass, "switch", "turn_off")
-        self.repository = PriceRepository(
-            self.hass,
-            base_url="https://relay.test",
-            session=self.transport,
-            now=self.clock,
-            store=StoreDouble(),
-        )
+        self.repository = stub_repository(self.hass, self.transport, now=self.clock, store=StoreDouble())
         self.manager = await async_setup_price_refresh(
             self.hass,
             self.repository,
@@ -174,8 +168,7 @@ class Harness:
         self.hass = hass
         self.transport = transport
         self.clock = clock
-        self.repository = PriceRepository(
-            hass, base_url=BASE_URL, session=transport, now=clock, store=StoreDouble()
+        self.repository = stub_repository(hass, transport, now=clock, store=StoreDouble()
         )
         self.scheduler = FakeScheduler()
         self.manager: PriceRefreshManager | None = None

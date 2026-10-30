@@ -122,7 +122,7 @@ describe("the market options decoder", () => {
     ]);
   });
 
-  it("keeps the relay's own area order and its minor-unit labels", () => {
+  it("keeps the list's own area order and its minor-unit labels", () => {
     const value = decoded(
       payload({
         areas: [

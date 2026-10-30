@@ -39,6 +39,7 @@ charger executed whose pause could not be saved answers `{"ok": true, "action": 
 | ------ | ------ |
 | `dashboard` | The dashboard document below, for this charger. Takes an optional `api_version`. |
 | `sessions` | The charge history, the same request and answer as `spotnav/get_sessions` below (`month`, `format`, `limit`, `from`, `to`), with `"ok": true` and the `action` beside it. A refusal is HTTP 400 with `{"ok": false, "error": "spotnav_invalid_range" \| "spotnav_unsupported_api_version", "action": "sessions"}`. Nothing is withheld. |
+| `price_days` | The charger's electricity prices for today and tomorrow and the history profile, as day documents (see below). Takes an optional `api_version` (`1`). |
 | `settings` | Replace the charger's settings: `{"expected_revision": n, "settings": {...}}`. |
 | `start` | Start charging now; optional `amps`. Pauses automatic execution for the plug-in session (pause choice `manual`). |
 | `stop` | Stop now, which pauses automatic execution for the plug-in session (pause choice `manual`), or with a `choice` (`next_period`, `until_tomorrow`, `until_resumed`) pause it for that span instead. |
@@ -259,6 +260,60 @@ block re-read after the write (`null` while it prices with its own settings). HT
 of the wrong type; nothing is written on a refusal. Examples are in
 `tests/fixtures/webhook/choose_price_source_*.json` and `answer_price_duplicate_*.json`.
 
+**Where the prices come from.** The dashboard's `prices` block carries an additive `provider` object, sent to the
+webhook only when the request asks for it (`"reads": ["price_provider"]`):
+
+```json
+"provider": {"key": null, "name": null, "url": null,
+             "notice": {"code": "add_nordpool", "params": {}}}
+```
+
+`key` is `nordpool`, `entsoe`, `pvpc` or `octopus` (`null`, with `name` and `url`, when the area has no
+source at all; since 2.0 no area is read from the relay, and a reader should treat an unknown key as no key); `null` for the whole object without an area. `notice` is `null` while the area has a source of its
+own, else the one thing an administrator can do: `add_nordpool`, `nordpool_not_loaded`, `add_entsoe_key`,
+`entsoe_key_rejected`, `add_pvpc`, `pvpc_not_loaded`, `add_octopus`, `octopus_not_loaded`, `octopus_no_agile`,
+`octopus_region_mismatch` (`params.region`, the meter's region, whose rates are used) or `source_missing`. An area
+with no source keeps showing the days it holds, with its notice. A source that is there but failing is no notice
+(the prices are `stale` or `degraded` as before). `market.source` is the provider's attribution, `null` with no
+source. `prices.index_state` and `prices.index_revision` are always `null` since 2.0 (there is no index); they stay
+for readers that require them. The table is in `pricing/providers/notices.py`.
+
+**Prices for the app.** `price_days` answers the prices of the charger's electricity price (its price entry, else
+its own area), read from what Home Assistant holds: no request is made for it. The day files and the profile are
+the day documents SpotNav keeps ([prices](prices.md#the-day-document)), the format the relay published before 2.0,
+so a client that read the relay reads them unchanged:
+
+```json
+{"ok": true, "action": "price_days", "v": 1,
+ "area": {"id": "FI", "eic": "10YFI-1--------U", "countries": ["FI"], "name": "Finland",
+          "tz": "Europe/Helsinki", "market_tz": "Europe/Brussels", "currency": "EUR", "major_unit": "€",
+          "minor_unit": "cent", "vat_percent": 25.5, "suggested_tax": 2.325,
+          "publication": {"time": "12:45", "tz": "Europe/Brussels"},
+          "source": {"name": "Nord Pool", "url": "https://www.nordpoolgroup.com/"}},
+ "provider": {"key": "nordpool", "name": "Nord Pool", "url": "https://www.nordpoolgroup.com/", "notice": null},
+ "state": "ready", "reason": "ready", "waiting_for_tomorrow": false,
+ "publication": {"time": "12:45", "tz": "Europe/Brussels"},
+ "files": {"2026-10-29": {"v": 1, ...}, "2026-10-30": {"v": 1, ...}, "2026-10-31": {"v": 1, ...}},
+ "profile": null}
+```
+
+- `area` is the area as the area list bundled with SpotNav states it (the contract-v2 shape), with the market calendar (`market_tz`, always
+  written) and `publication` of the source its prices come from now, and that source as `source`.
+- `provider` names that source, as the dashboard's `prices.provider` does (below).
+- `state`, `reason` and `waiting_for_tomorrow` are the dashboard's `prices` block's.
+- `files` are the held market-day files (day documents, keyed by market date) that cover today
+  and tomorrow in the area's `tz`: two when its calendars agree, up to three when they do not (a Finnish day from
+  Nord Pool's CET days, a London day from Paris days). A file not held yet is absent; cut the display days from the
+  files by instant.
+- `profile` is the history profile ([prices](prices.md#the-history-profile-1)), `null` until 21 of the last 28 days
+  are held.
+
+Refusals are HTTP 400 `{"ok": false, "error", "action": "price_days"}`: `spotnav_no_price_area` (nothing names an
+area for this charger), `spotnav_unknown_price_area` (no area list knows it), `spotnav_no_prices` (no file for today
+or tomorrow is held), `spotnav_unsupported_api_version`. The dashboard's `charger.capabilities.price_days` is `true`
+where the webhook answers it, so a client asks only then. Examples are in
+`tests/fixtures/webhook/price_days_*.json`.
+
 **Permissions over the webhook.** The webhook id is the credential: whoever holds it acts as an administrator for
 its own charger (the dashboard's `writable` flags are true), so these writes, like `update_site_settings` and
 `update_charger_priority`, need nothing more. Only switching active load balancing and choosing the entities SpotNav
@@ -281,8 +336,8 @@ and `charger_priority.writable` say whether it may change those (an administrato
 | `spotnav/get_dashboard` | The dashboard document for one charger. |
 | `spotnav/get_settings`, `spotnav/update_settings` | Read and replace the settings record. |
 | `spotnav/manual_action` | `start`, `stop` (with an optional pause `choice`) or `resume`; any signed-in user. |
-| `spotnav/get_market_options` | Price areas from the relay and their suggested fiscal values. |
-| `spotnav/find_region` | A Great Britain postcode to its price region (`GB-A` … `GB-P`): `{"postcode": "SW1A 1AA"}` answers `region` (one), `regions` (the relay-listed ones) and `reason` (`null`, `invalid_postcode`, `not_found`, `unavailable`). Home Assistant asks Octopus Energy's public lookup directly; the postcode never reaches the relay and is neither stored nor logged. |
+| `spotnav/get_market_options` | Price areas from the area list bundled with SpotNav and their suggested fiscal values. |
+| `spotnav/find_region` | A Great Britain postcode to its price region (`GB-A` … `GB-P`): `{"postcode": "SW1A 1AA"}` answers `region` (one), `regions` (the listed ones) and `reason` (`null`, `invalid_postcode`, `not_found`, `unavailable`). Home Assistant asks Octopus Energy's public lookup directly; the postcode never reaches the relay and is neither stored nor logged. |
 | `spotnav/get_entity_config`, `spotnav/update_entity_config` | The entities a charger and its site use. |
 | `spotnav/choose_vehicle_soc` | Choose (or clear) a vehicle's state-of-charge sensor. |
 | `spotnav/update_vehicle` | A vehicle's battery capacity, consumption, onboard charger, target, minimum charge level and wake for a reading. |
@@ -447,14 +502,15 @@ allocation and solar surplus both follow: `null` for a charger on no site, else 
 the webhook (`update_charger_priority`) and for an administrator's socket (`spotnav/update_entity_config`),
 false for a reader. An older backend has no block; a client then shows no priority.
 
-**Price areas from relay contract v2.** `market` carries three additive fields: `market_timezone` (the
-zone whose calendar day one relay day file covers; equal to `timezone` except for Great Britain,
+**Price areas in the contract-v2 shape.** `market` carries three additive fields: `market_timezone` (the
+zone whose calendar day one day file covers; equal to `timezone` except for Great Britain,
 `Europe/Paris` beside `Europe/London`, and Portugal, `Europe/Madrid` beside `Europe/Lisbon`), `included`
-(the relay's names, `vat`, `tax`, `grid_fee`, of what the published price already contains) and `source`
-(`{"name", "url"}`, where the prices come from, or `null`). Each `fiscal` component of an included part has
+(the names `vat`, `tax`, `grid_fee`, of what the published price already contains) and `source`
+(`{"name", "url"}`, where the prices come from: the area's provider, or `null` with none). Each `fiscal` component of an included part has
 the policy `included`, with no effective value. `spotnav/get_market_options` gives every area the same
-`market_timezone` and `source`, and `included` in the settings' own component names. Days in `prices` are
-always days in `timezone`; a Great Britain day is cut from the two relay files that cover it.
+`market_timezone` and `included` in the settings' own component names, and `source` `null` since 2.0 (the list
+names no source; the dashboard's `market.source` does). Days in `prices` are
+always days in `timezone`; a Great Britain day is cut from the two day files that cover it.
 
 **Phases.** A charge uses the smaller of the charger's wiring (1 or 3: the site's phase wiring for the
 charger, or, for a charger in no site, its own `charger_phases` field in `spotnav/get_entity_config`

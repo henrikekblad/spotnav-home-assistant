@@ -105,6 +105,7 @@ from ..planning.status_compose import (
 from ..planning.strategy_options import strategy_options_for
 from ..pricing.price_refresh import AreaPriceSnapshot, PriceRefreshManager
 from ..pricing.price_repository import CatalogueSnapshot
+from ..pricing.providers.notices import SourceStatus
 from ..runtime import (
     charger_data,
     controller_for,
@@ -133,6 +134,7 @@ from ..vehicles.vehicle_wake import wake_supported
 from .charge_bar import charge_bar, ProgressFacts
 from .entity_fields import phase_switching_offered
 from .price_source import capture_price_source, CapturedPriceSource, serialize_price_source
+from .price_days import serialize_source as source_attribution
 from .common import (
     ERROR_CHARGER_REQUIRED,
     ERROR_CHARGER_UNLOADED,
@@ -170,9 +172,9 @@ STRATEGY_HYBRID_REASON: Final = "needs_solar_and_price_control"
 MAX_RESPONSE_BYTES: Final = 256 * 1024
 
 #: Capability facts every charger advertises, all of them, in this order. The first six are about
-#: this charger's configuration and adapter (`execution/chargers/`); the last three are the
-#: server's abilities and always `true`. `current_limit`: the charger has a dynamic current limit
-#: (a configured number, or a service path); `set_current`: SpotNav may write a current to it (the
+#: this charger's configuration and adapter (`execution/chargers/`); the last four are the
+#: server's abilities and always `true` (`price_days`: the webhook answers the `price_days` read).
+#: `current_limit`: the charger has a dynamic current limit (a configured number, or a service path); `set_current`: SpotNav may write a current to it (the
 #: person opted in and its adapter can); `regulated_current`: load balancing may write it during a
 #: session (false for a flash-stored setting, which is written at a session start only).
 CAPABILITY_KEYS: Final = (
@@ -185,6 +187,7 @@ CAPABILITY_KEYS: Final = (
     "refresh_vehicle",
     "set_charge_limit",
     "target_stop",
+    "price_days",
 )
 
 
@@ -498,6 +501,8 @@ class CapturedDashboard:
     #: The settings record's `revision` on the wire, `None` for the stored one: the charger's own plus its price
     #: entry's write counter (`pricing/price_source.py:wire_revision`).
     wire_revision: int | None = None
+    #: The area's price source and its notice (`pricing/providers/notices.py`), `None` without an area.
+    source_status: SourceStatus | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -622,7 +627,7 @@ def capabilities_for(
     `auto_price`: the Auto preview exists; `current_limit`: a current-limit entity is configured, or
     the adapter sets a current some other way; `set_current` and `regulated_current`: what the
     charger's adapter supports now (see `CAPABILITY_KEYS`); `target_soc`: `target_soc_capable`;
-    `load_balancing`: a loaded site lists it; the last three are the server's abilities.
+    `load_balancing`: a loaded site lists it; the last four are the server's abilities.
     """
     adapter_capabilities = None if controller is None else controller.adapter.capabilities
     set_current = bool(adapter_capabilities is not None and adapter_capabilities.set_current)
@@ -639,6 +644,7 @@ def capabilities_for(
         ("refresh_vehicle", True),
         ("set_charge_limit", True),
         ("target_stop", True),
+        ("price_days", True),
     )
 
 
@@ -1067,6 +1073,7 @@ def capture_dashboard(
         snapshot=snapshot,
         catalogue=catalogue,
         area_entry=area_entry,
+        source_status=None if repository is None or area_id is None else repository.source_status(area_id),
         area=None if manager is None or area_id is None else manager.area_snapshot(area_id),
         days=days,
         plan=None if controller is None else controller.plan,
@@ -1365,14 +1372,19 @@ def serialize_market(capture: CapturedDashboard) -> dict[str, Any] | None:
         "suggested_tax": None if entry is None else finite_number(entry.suggested_tax),
         "suggested_grid_fee": None if entry is None else finite_number(entry.suggested_grid_fee),
         # Contract v2, additive: the market calendar behind the display zone, what the price already
-        # includes (as the relay names it), and where the prices come from (`null` from a v1 list).
+        # includes, and where the prices come from: the area's provider, `null` with no source.
         "market_timezone": None if entry is None else _text(entry.market_tz),
         "included": None if entry is None else list(entry.included),
-        "source": None if entry is None or entry.source is None else {
-            "name": entry.source.name,
-            "url": entry.source.url,
-        },
+        "source": _market_source(entry, capture.source_status),
     }
+
+
+def _market_source(entry: Any, status: SourceStatus | None) -> dict[str, str] | None:
+    if entry is None:
+        return None
+    if status is None:
+        return None if entry.source is None else {"name": entry.source.name, "url": entry.source.url}
+    return source_attribution(entry, status)
 
 
 def _utc(moment: Any) -> datetime | None:
@@ -1576,8 +1588,10 @@ def serialize_prices(capture: CapturedDashboard) -> dict[str, Any]:
         "tomorrow_attempt_at": aware_iso(None if tomorrow is None else tomorrow.attempt_at),
         "today_attempt_error": None if today is None else _text(today.attempt_error),
         "tomorrow_attempt_error": None if tomorrow is None else _text(tomorrow.attempt_error),
-        "index_state": None if area is None else area.index_state,
-        "index_revision": None if area is None else area.index_revision,
+        # No index since 2.0 (prices are asked for on a schedule); the keys stay, always `null`, for readers that
+        # require them.
+        "index_state": None,
+        "index_revision": None,
         "waiting_for_tomorrow": None if area is None else area.waiting_for_tomorrow,
         "resolution_minutes": _resolution_of(capture),
         "resolutions_minutes": resolutions,
@@ -1586,6 +1600,10 @@ def serialize_prices(capture: CapturedDashboard) -> dict[str, Any]:
         "unpriced": None if snapshot is None else snapshot.unpriced,
         "interval_count": len(rows),
         "intervals": rows,
+        # Additive: where the area's prices come from and what the person can do when it has no source of its
+        # own (`pricing/providers/notices.py`); `null` without an area. An app reads it only with
+        # `reads: ["price_provider"]` (`api/webhook.py`).
+        "provider": None if capture.source_status is None else capture.source_status.as_dict(),
     }
 
 

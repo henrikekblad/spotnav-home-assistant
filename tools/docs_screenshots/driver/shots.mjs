@@ -23,7 +23,7 @@ const tokens = await ha.login();
 const api = new ha.Api(tokens);
 await ha.promoteHttp(api);
 await ha.setLocation(api);
-for (const demo of ["ocpp", "sigen", "kia_uvo", "demo_vision"]) {
+for (const demo of ["ocpp", "sigen", "kia_uvo", "demo_vision", "nordpool"]) {
   if ((await api.entries(demo)).length === 0) await api.flow(demo);
 }
 // A clean slate for the integration under test, so a re-run against a live instance starts the same way.
@@ -123,8 +123,9 @@ await submit();
 await shot("charger-adjust");
 await cancelDialog();
 
-// The charger itself, added for real so that the site and the card have something to work with.
-const garage = await api.flow("spotnav", [{ entry_type: "charger" }, { mode: "detected" }, { device: deviceId("Garage charger Connector 1") }, {}, { charger_phases: "3" }]);
+// The charger itself, added for real so that the site and the card have something to work with. The last answer
+// passes the first setup's step about where prices come from (shown while the area has no source of its own).
+const garage = await api.flow("spotnav", [{ entry_type: "charger" }, { mode: "detected" }, { device: deviceId("Garage charger Connector 1") }, {}, { charger_phases: "3" }, {}]);
 if (garage.type !== "create_entry") throw new Error("could not add the demo charger: " + JSON.stringify(garage).slice(0, 300));
 // Two cars can charge there: the camera with a reference picture of each, and "Family car" identified by its
 // charging cable at the plug-in SpotNav sees when the charger is added.

@@ -1,0 +1,5 @@
+{
+  "action": "price_days",
+  "error": "spotnav_no_prices",
+  "ok": false
+}

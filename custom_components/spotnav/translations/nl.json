@@ -249,6 +249,34 @@
           "transfer_mode": "Nettarief",
           "transfer_value": "Nettarief, eigen bedrag"
         }
+      },
+      "prices_nordpool": {
+        "title": "Stroomprijzen",
+        "description": "SpotNav haalt de prijzen voor {area} op via de ingebouwde Nord Pool-integratie van Home Assistant: [Nord Pool in Home Assistant]({link}). Welk gebied je kiest bij het toevoegen maakt niet uit.\n\nOf vul hieronder in plaats daarvan je eigen ENTSO-E-sleutel in. Dat kan ook later, in de instellingen van de SpotNav-kaart onder Stroomprijs.",
+        "data": {
+          "entsoe_key": "ENTSO-E-sleutel (optioneel)"
+        },
+        "data_description": {
+          "entsoe_key": "Registreer je op [transparency.entsoe.eu]({entsoe_url}) en mail daarna transparency@entsoe.eu met als onderwerp \"Restful API access\" en het e-mailadres van je account in de tekst. Zodra je toegang hebt (dat kan een paar dagen duren), maak je de beveiligingssleutel aan onder My Account Settings en plak je hem hier. Eén sleutel voor de hele installatie."
+        }
+      },
+      "prices_entsoe": {
+        "title": "Stroomprijzen",
+        "description": "De prijzen voor {area} komen van het Transparency Platform van ENTSO-E, met je eigen gratis sleutel. Vul hem hieronder in, of later in de instellingen van de SpotNav-kaart onder Stroomprijs.",
+        "data": {
+          "entsoe_key": "ENTSO-E-sleutel (optioneel)"
+        },
+        "data_description": {
+          "entsoe_key": "Registreer je op [transparency.entsoe.eu]({entsoe_url}) en mail daarna transparency@entsoe.eu met als onderwerp \"Restful API access\" en het e-mailadres van je account in de tekst. Zodra je toegang hebt (dat kan een paar dagen duren), maak je de beveiligingssleutel aan onder My Account Settings en plak je hem hier. Eén sleutel voor de hele installatie."
+        }
+      },
+      "prices_pvpc": {
+        "title": "Stroomprijzen",
+        "description": "SpotNav leest de Spaanse PVPC-prijzen uit de eigen PVPC-integratie van Home Assistant: [Spain electricity hourly pricing (PVPC)]({link}). Dat kan ook later; de instellingen van de SpotNav-kaart herinneren je eraan onder Stroomprijs."
+      },
+      "prices_octopus": {
+        "title": "Stroomprijzen",
+        "description": "SpotNav leest je Agile-tarieven voor {area} uit de integratie Octopus Energy, die via HACS wordt geïnstalleerd: [Octopus Energy]({link}). Het tarief van je meter moet Agile zijn. Dat kan ook later; de instellingen van de SpotNav-kaart herinneren je eraan onder Stroomprijs."
       }
     },
     "abort": {
@@ -265,7 +293,8 @@
       "not_a_charger": "Dat apparaat is geen laadpaal voor elektrische auto's (maar een verwarmings- of stopcontactregelaar).",
       "charger_not_recognised": "SpotNav kent deze integratie niet. Kies in plaats daarvan Handmatig.",
       "charger_not_controllable": "SpotNav kan deze laadpaal niet starten of stoppen. Hij kan alleen worden uitgelezen.",
-      "no_price_areas": "De lijst met prijsgebieden kon niet worden gelezen. Probeer het over een minuut opnieuw."
+      "no_price_areas": "De lijst met prijsgebieden kon niet worden gelezen. Probeer het over een minuut opnieuw.",
+      "no_pending_entry": "Er wachtte niets om opgeslagen te worden."
     },
     "error": {
       "safety_margin_at_or_above_fuse": "De veiligheidsmarge moet lager zijn dan de hoofdzekering, anders blijft er geen stroom over voor de laadpalen.",
@@ -291,7 +320,8 @@
       "unit_expected_apparent_power": "Deze sensor moet schijnbaar vermogen doorgeven in VA of kVA.",
       "manual_entities_duplicate": "Elke fase heeft een eigen entiteit nodig.",
       "fee_value_required": "Vul een eigen bedrag in, of kies het voorstel.",
-      "fee_no_suggestion": "Dit prijsgebied heeft er geen voorstel voor: vul een eigen bedrag in of kies niets."
+      "fee_no_suggestion": "Dit prijsgebied heeft er geen voorstel voor: vul een eigen bedrag in of kies niets.",
+      "entsoe_key_rejected": "ENTSO-E heeft deze sleutel niet geaccepteerd. Controleer hem, of maak een nieuwe aan op transparency.entsoe.eu."
     }
   },
   "options": {
@@ -431,7 +461,12 @@
         "title": "Elektriciteitsprijs",
         "description": "Prijzen voor automatiseringen die niet over een auto gaan, zoals vloerverwarming of een wasmachine. Welk prijsgebied?",
         "data": {
-          "area_id": "Prijsgebied"
+          "area_id": "Prijsgebied",
+          "entsoe_key": "ENTSO-E-sleutel (hele installatie, optioneel)",
+          "entsoe_key_remove": "ENTSO-E-sleutel verwijderen"
+        },
+        "data_description": {
+          "entsoe_key": "Je eigen beveiligingssleutel voor het Transparency Platform van ENTSO-E. Daarmee halen prijsgebieden die Nord Pool niet verhandelt hun prijzen bij ENTSO-E. Eén sleutel voor de hele installatie; laat leeg om de opgeslagen sleutel te houden. Hij wordt nooit meer getoond."
         }
       },
       "price_fees": {
@@ -469,7 +504,8 @@
       "unit_expected_apparent_power": "Deze sensor moet schijnbaar vermogen doorgeven in VA of kVA.",
       "manual_entities_duplicate": "Elke fase heeft een eigen entiteit nodig.",
       "fee_value_required": "Vul een eigen bedrag in, of kies het voorstel.",
-      "fee_no_suggestion": "Dit prijsgebied heeft er geen voorstel voor: vul een eigen bedrag in of kies niets."
+      "fee_no_suggestion": "Dit prijsgebied heeft er geen voorstel voor: vul een eigen bedrag in of kies niets.",
+      "entsoe_key_rejected": "ENTSO-E heeft deze sleutel niet geaccepteerd. Controleer hem, of maak een nieuwe aan op transparency.entsoe.eu."
     }
   },
   "selector": {
@@ -845,6 +881,10 @@
     "core_decision_failed": {
       "title": "De laadbeslissingen van een laadpaal mislukten",
       "description": "De huidige logica van SpotNav kon het afgelopen etmaal meerdere keren niet beslissen voor **{charger}**, dus de vorige logica besliste in plaats daarvan. Het laden gaat door. Om te helpen het op te lossen: download de debuginfo (het tandwiel op de SpotNav-kaart → Debuginfo downloaden) en voeg die toe aan een issue op GitHub. Als de laadpaal zich vreemd gedraagt, schakel dan naar Vorige logica: Configureren van de laadpaal → Laadbeslissingen. Deze melding verdwijnt na een etmaal zonder fouten."
+    },
+    "price_source_missing": {
+      "title": "Geen stroomprijzen voor {area}",
+      "description": "**{price}** heeft geen prijzen: er is geen bron ingesteld voor {area}. Open de instellingen van de SpotNav-kaart, Stroomprijs: daar staat wat je moet toevoegen (de Nord Pool-integratie van Home Assistant, je eigen ENTSO-E-sleutel, de PVPC- of de Octopus Energy-integratie). Deze melding verdwijnt vanzelf zodra er weer prijzen zijn."
     }
   },
   "exceptions": {
