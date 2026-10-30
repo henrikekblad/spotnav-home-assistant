@@ -303,6 +303,9 @@ class StartStopPath(ABC):
     """How a charge is started and stopped, and whether the charger is enabled as commanded."""
 
     kind: str
+    #: The entity that says whether the charge is enabled when that is not the charge control (ABB: the charge
+    #: control is the start button, which reads `unknown` until it is first pressed, while the limit says it).
+    control_entity_id: str | None = None
 
     def __init__(self, hass: HomeAssistant) -> None:
         self.hass = hass

@@ -54,6 +54,7 @@ class NumberPausePath(StartStopPath):
     ) -> None:
         super().__init__(hass)
         self.number_entity_id = number_entity_id
+        self.control_entity_id = number_entity_id
         self.start_entity_id = start_entity_id
         self._status = status
         self._limiter = limiter

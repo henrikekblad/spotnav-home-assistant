@@ -4842,10 +4842,11 @@ class ChargingController:
     def _control_observation(self) -> bool | None:
         """`_control_on` as an observation: `None` while the charge control cannot be read
         (missing, unavailable or unknown) and no status says the charger is charging, so a charge
-        already running is never mistaken for one that just started (`window_hold.py`).
+        already running is never mistaken for one that just started (`window_hold.py`). A path whose
+        enabled state is another entity (`StartStopPath.control_entity_id`) is read on that one.
         """
         if not self.charging:
-            state = self.hass.states.get(self.charge_control)
+            state = self.hass.states.get(self.adapter.path.control_entity_id or self.charge_control)
             if state is None or state.state in (STATE_UNAVAILABLE, STATE_UNKNOWN):
                 return None
         return self._control_on
