@@ -111,6 +111,7 @@ from ..const import (
     ENTRY_TYPE_SITE,
     MEASUREMENT_MODE_DIRECT,
 )
+from ..core.ownership import SOC_DROP_PCT as CORE_SOC_DROP_PCT
 from ..planning.phases import effective_phases
 from ..planning.grid_voltage import stored_voltage_between_phases_v
 from ..planning.auto_settings import AutoSettingsStore, STRATEGY_HYBRID, STRATEGY_SOLAR
@@ -163,8 +164,9 @@ TAKES_LESS_GRACE_S: Final = 60.0
 CAR_IDLE_S: Final = 300.0
 #: How long (seconds) a car must draw before a charge it ends again waits only the shortest retry.
 CAR_DREW_S: Final = 600.0
-#: A state of charge this many percent below the one the car ended its charge at: it may take one again.
-SOC_DROP_PCT: Final = 2.0
+#: A state of charge this many percent below the one the car ended its charge at: it may take one again. The same
+#: hysteresis says a car known full after it ended a charge needs a plan's window again (`core.ownership`).
+SOC_DROP_PCT: Final = CORE_SOC_DROP_PCT
 #: The connector status of a charger holding the car back itself (its own pilot, a load balancer).
 SUSPENDED_EVSE: Final = "SuspendedEVSE"
 

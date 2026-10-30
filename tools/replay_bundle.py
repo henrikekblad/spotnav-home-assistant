@@ -90,6 +90,11 @@ def _fields(fields: dict[str, Any]) -> str:
     return "; ".join(parts)
 
 
+#: What the gate before the owner moves to the core reads besides the disagreements, drift and errors (a tally kept
+#: since step 6 of the core end state plan; `execution/ownership_coverage.py`).
+_GATE = ("mirror_drift", "written_back", "verdict_differs", "failures")
+
+
 def _coverage_lines(coverage: dict[str, Any] | None) -> list[str]:
     """The tally per event kind: how many kinds were seen, which never were, and every kind with a disagreement,
     drift or error."""
@@ -103,13 +108,23 @@ def _coverage_lines(coverage: dict[str, Any] | None) -> list[str]:
     if never:
         lines.append("    never seen: " + ", ".join(never))
     for kind, counts in kinds.items():
-        if isinstance(counts, dict) and any(counts.get(name) for name in ("disagreements", "drift", "errors")):
-            lines.append(f"    {kind}: {counts.get('events')} events, {counts.get('compared')} compared, "
-                         f"{counts.get('disagreements')} disagreements, {counts.get('drift')} drift, "
-                         f"{counts.get('errors')} errors")
+        if isinstance(counts, dict) and any(counts.get(name) for name in ("disagreements", "drift", "errors", *_GATE)):
+            line = (f"    {kind}: {counts.get('events')} events, {counts.get('compared')} compared, "
+                    f"{counts.get('disagreements')} disagreements, {counts.get('drift')} drift, "
+                    f"{counts.get('errors')} errors")
+            # Counted since the tally kept them (a tally from before shows none of them).
+            line += "".join(f", {counts.get(name)} {name}" for name in _GATE if counts.get(name))
+            lines.append(line)
+    window_start = kinds.get("window_start")
+    triggers = window_start.get("triggers") if isinstance(window_start, dict) else None
+    if isinstance(triggers, dict) and triggers:
+        lines.append("    window_start by trigger: " + ", ".join(f"{k} {v}" for k, v in sorted(triggers.items())))
     unattributed = coverage.get("unattributed")
     if isinstance(unattributed, dict) and any(unattributed.values()):
         lines.append("    no event kind: " + ", ".join(f"{k} {v}" for k, v in unattributed.items() if v))
+    previous = coverage.get("previous")
+    if isinstance(previous, dict):
+        lines.append(f"    previous release: since {previous.get('since')} ({previous.get('version')})")
     return lines
 
 

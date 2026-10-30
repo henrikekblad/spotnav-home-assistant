@@ -7,6 +7,14 @@ first and last saw one; `since` and `version` say when and under which release o
 Counts that belong to no event (a later comparison of the execution boundary, a failure outside a feed) are
 `unattributed`. It says when the core has seen every kind often enough to take over, and changes nothing else.
 
+Besides those, per kind: `mirror_drift` (a field the core owns that today's state reads otherwise), `written_back`
+(today's owner fields the core's owner overrode), `verdict_differs` (today's rule, on the same state, would have chosen
+otherwise where the core's choice acted) and `failures` (a decision that could not be taken). A window's start also
+counts what started it (`triggers`: timer, re-arm, plug-in, retry). So the gate before the owner moves to the core
+(the core end state plan, step 7: every kind decided live with no disagreement, drift or failure since a release)
+reads from the tally alone. It is per release: when the integration's version is not the one the stored tally began
+under, a new tally begins, and the one before is kept under `previous` (one period back, never more).
+
 Kept in a small store of its own (`store_key`), written debounced: at most one write waits at a time, written
 `SAVE_DELAY_S` after the first change since the last one, at the controller's shutdown, or at Home Assistant's
 final write. Nothing is written before the stored tally is read (`async_load`), which what was counted meanwhile
@@ -33,7 +41,19 @@ STORE_VERSION: Final = 1
 #: How long a change waits for its write (more changes meanwhile are written with it).
 SAVE_DELAY_S: Final = 300.0
 #: What is counted per event kind (and `unattributed`).
-COVERAGE_FIELDS: Final = ("events", "compared", "disagreements", "drift", "errors")
+COVERAGE_FIELDS: Final = (
+    "events",
+    "compared",
+    "disagreements",
+    "drift",
+    "errors",
+    "mirror_drift",
+    "written_back",
+    "verdict_differs",
+    "failures",
+)
+#: The kind whose events are also counted by what started them (`OwnershipCoverage.add_trigger`).
+TRIGGERED_KIND: Final = "window_start"
 
 
 def store_key(entry_id: str) -> str:
@@ -83,7 +103,10 @@ class OwnershipCoverage:
         self._kinds: dict[str, dict[str, Any]] = {
             kind: {**_zero(), "first_seen": None, "last_seen": None} for kind in EVENT_TYPES
         }
+        self._kinds[TRIGGERED_KIND]["triggers"] = {}
         self._unattributed = _zero()
+        # The tally of the release before this one's began (`async_load`), as it was stored; `None`: none.
+        self._previous: dict[str, Any] | None = None
         # Whether the stored tally was read (no write before it), and whether a write waits.
         self._loaded = False
         self._dirty = False
@@ -108,6 +131,18 @@ class OwnershipCoverage:
         except Exception:  # noqa: BLE001 - the tally never breaks the shadow
             _LOGGER.debug("SpotNav ownership coverage could not count %s %s", kind, field, exc_info=True)
 
+    def add_trigger(self, kind: str, trigger: str) -> None:
+        """One more event of `kind` started by `trigger` (only `TRIGGERED_KIND` keeps them). Never raises."""
+        try:
+            triggers = self._kinds.get(kind, {}).get("triggers")
+            if not isinstance(triggers, dict):
+                return
+            triggers[trigger] = triggers.get(trigger, 0) + 1
+            self._dirty = True
+            self._schedule()
+        except Exception:  # noqa: BLE001 - the tally never breaks the shadow
+            _LOGGER.debug("SpotNav ownership coverage could not count %s %s", kind, trigger, exc_info=True)
+
     def _schedule(self) -> None:
         if self._store is None or not self._loaded or self._save_waits:
             return
@@ -129,10 +164,23 @@ class OwnershipCoverage:
                 stored = await self._store.async_load()
             except Exception:  # noqa: BLE001 - a tally that cannot be read starts again
                 _LOGGER.debug("SpotNav ownership coverage could not be read", exc_info=True)
-        if isinstance(stored, dict) and _instant(stored.get("since")) is not None:
+        stored_version = stored.get("version") if isinstance(stored, dict) else None
+        if (
+            isinstance(stored, dict)
+            and _instant(stored.get("since")) is not None
+            and version is not None
+            and stored_version != version
+        ):
+            # Another release: its tally is kept as the previous period, and this release's begins now (with what was
+            # counted meanwhile, which is this release's).
+            self._previous = {key: value for key, value in stored.items() if key != "previous"}
+            self._version = version
+            self._dirty = True
+        elif isinstance(stored, dict) and _instant(stored.get("since")) is not None:
             self._since = stored["since"]
-            raw_version = stored.get("version")
-            self._version = raw_version if isinstance(raw_version, str) else None
+            self._version = stored_version if isinstance(stored_version, str) else None
+            previous = stored.get("previous")
+            self._previous = previous if isinstance(previous, dict) else None
             self._merge(stored)
         else:
             self._version = version
@@ -150,6 +198,11 @@ class OwnershipCoverage:
                 continue
             for field in COVERAGE_FIELDS:
                 mine[field] += _count(counts.get(field))
+            triggers = counts.get("triggers")
+            if isinstance(mine.get("triggers"), dict) and isinstance(triggers, dict):
+                for trigger, count in triggers.items():
+                    if isinstance(trigger, str) and _count(count):
+                        mine["triggers"][trigger] = mine["triggers"].get(trigger, 0) + _count(count)
             mine["first_seen"] = _earliest(_instant(counts.get("first_seen")), mine["first_seen"])
             mine["last_seen"] = _latest(_instant(counts.get("last_seen")), mine["last_seen"])
         unattributed = stored.get("unattributed")
@@ -179,6 +232,10 @@ class OwnershipCoverage:
         return {
             "since": self._since,
             "version": self._version,
-            "kinds": {kind: dict(counts) for kind, counts in self._kinds.items()},
+            "kinds": {
+                kind: {key: dict(value) if isinstance(value, dict) else value for key, value in counts.items()}
+                for kind, counts in self._kinds.items()
+            },
             "unattributed": dict(self._unattributed),
+            "previous": self._previous,
         }

@@ -131,3 +131,18 @@ def test_a_version_6_bundle_shows_the_coverage_tally() -> None:
     assert "never seen: " in text and "plug_in" in text.split("never seen: ")[1]
     assert "person_stop: 12 events, 12 compared, 1 disagreements, 0 drift, 0 errors" in text
     assert "unplug: 30 events" not in text, "only kinds with something to look at are listed"
+
+
+def test_the_tally_since_step_6_shows_the_gates_counts_the_triggers_and_the_release_before() -> None:
+    bundle = _bundle()
+    bundle["bundle_version"] = 6
+    coverage = _coverage()
+    coverage["kinds"]["rearm"] = {**coverage["kinds"]["rearm"], "events": 3, "failures": 1, "mirror_drift": 2}
+    coverage["kinds"]["window_start"] = {**coverage["kinds"]["window_start"], "events": 3,
+                                         "triggers": {"timer": 2, "plug_in": 1}}
+    coverage["previous"] = {"since": "2026-09-01T00:00:00+00:00", "version": "1.12.0"}
+    bundle["chargers"][0]["diagnostics"]["controller"]["ownership_shadow"]["coverage"] = coverage
+    text = tool.render(tool.analyse(bundle))
+    assert "rearm: 3 events, 0 compared, 0 disagreements, 0 drift, 0 errors, 2 mirror_drift, 1 failures" in text
+    assert "window_start by trigger: plug_in 1, timer 2" in text
+    assert "previous release: since 2026-09-01T00:00:00+00:00 (1.12.0)" in text

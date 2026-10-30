@@ -18,6 +18,8 @@ from pytest_homeassistant_custom_component.common import async_mock_service, Moc
 
 from custom_components.spotnav.api import dashboard as dashboard_api
 from custom_components.spotnav.api.webhook import _for_app
+from custom_components.spotnav.core.session import CarEnded, CarEndedWait
+from custom_components.spotnav.execution.ownership_state import CarEndedRecord
 from custom_components.spotnav.execution.target_stop import ESTIMATE_CONFIRM_WAIT_S
 from custom_components.spotnav.runtime import charger_data, domain_data
 from custom_components.spotnav.vehicles import vehicle_properties, vehicle_wake
@@ -80,9 +82,16 @@ async def _ask_for_target(hass: HomeAssistant, charger: Any, car: str) -> None:
 
 async def _car_ended(hass: HomeAssistant, charger: Any, car: str, ended_at: datetime) -> None:
     controller = charger_data(hass, charger.entry_id).controller
-    controller._car_ended_at = ended_at
-    controller._car_ended_vehicle = car
-    controller._car_ended_wait = {"level": 86.0, "estimated": True, "target": 91.0}
+    # The car ended the plan's charge on an estimate short of the target (a plan charge this world does not run): the
+    # record as the core keeps it when it drives, else today's fields, each through its own keeper.
+    wait = {"level": 86.0, "estimated": True, "target": 91.0}
+    shadow = controller.ownership_shadow
+    if shadow.drives:
+        shadow.session = shadow.session.with_changes(
+            car_ended=CarEnded(at=ended_at, vehicle=car, wait=CarEndedWait(**wait))
+        )
+    else:
+        controller._car_ended = CarEndedRecord(at=ended_at, soc=None, vehicle=car, wait=wait)
     assert controller.car_ended_wait is not None
     controller._car_ended_observer(car, False)
     await hass.async_block_till_done()

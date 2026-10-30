@@ -16,7 +16,9 @@ charger_state_machine_2026-10-04.md`, section 1); this record names each once:
   stored at a time, so `manual` and `span_pause` are never both set.
 * `held`/`overridden`: the hold of a charge that began by itself outside a window (`window_hold.py`), and a
   person's override of it.
-* `car_ended_at`: the car ended a person's charge by itself in this plug-in (R3).
+* `car_ended`: the car ended a charge by itself in this plug-in (R3), a person's or the plan's: when, its level then
+  when one was read (not an estimate), which car was read, and what the plan waits for after the car ended its
+  charge short of the target (`CarEnded`).
 * `balancing_paused`/`paused_origin`: load balancing holds a charge back, and whose it was.
 * `held_for_safety`/`safety_stopped_at`: the hold was a safety stop (not the below-floor pause): resumed no
   sooner than its gap.
@@ -30,6 +32,11 @@ charger_state_machine_2026-10-04.md`, section 1); this record names each once:
 Serialised as JSON with a version field (`to_dict`/`from_dict`); a record of another version is refused. The
 record a charger keeps across restarts (`to_store`/`from_store`) leaves out what a restart clears anyway
 (`TRANSIENT_FIELDS`: commands awaiting a result, the stops under a person's Stop, the safety stop's gap).
+
+Version 2 keeps the whole car-ended record (`car_ended`) where version 1 kept only its instant (`car_ended_at`). A
+version 1 record is still read (`from_dict`, `from_store`): its car-ended record has that instant and nothing else
+known (no level, no car, no wait). Only version 2 is written; a build that knows only version 1 refuses it and reads
+today's keys instead, which are still written.
 """
 
 from __future__ import annotations
@@ -40,9 +47,11 @@ import json
 from typing import Any, Final
 
 #: The version of the serialised record (`to_dict`).
-SESSION_VERSION: Final = 1
+SESSION_VERSION: Final = 2
 #: The version of the stored record (`to_store`): a stored record of any other version is read as none.
-STORED_VERSION: Final = 1
+STORED_VERSION: Final = 2
+#: The earlier versions still read (`from_dict`, `from_store`): version 1 kept only when the car ended a charge.
+READ_VERSIONS: Final = (1, 2)
 #: What a restart clears (`ownership._restart`), so never stored: commands awaiting a result, the stops under a
 #: person's Stop and their give-up, and the safety stop's gap.
 TRANSIENT_FIELDS: Final = (
@@ -134,6 +143,41 @@ class PendingCommand:
 
 
 @dataclass(frozen=True)
+class CarEndedWait:
+    """What the plan waits for after the car ended its charge short of the target with no level read then that says
+    it is full: the plan's target then, the level the car ended at (an estimate from delivered energy, or a reading
+    older than the end; `None` when none was known), and whether it was estimated. Serialised in today's
+    `car_ended_wait` shape, `{"target", "level", "estimated"}`."""
+
+    target: float
+    level: float | None = None
+    estimated: bool = False
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"target": self.target, "level": self.level, "estimated": self.estimated}
+
+
+@dataclass(frozen=True)
+class CarEnded:
+    """The car ended a charge by itself in this plug-in (R3): when, its level then when one was read (never an
+    estimate: only a read level says the car is full), which car was read (`None`: not known), and what the plan
+    waits for (`None`: nothing)."""
+
+    at: datetime
+    soc: float | None = None
+    vehicle: str | None = None
+    wait: CarEndedWait | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "at": _iso(self.at),
+            "soc": self.soc,
+            "vehicle": self.vehicle,
+            "wait": None if self.wait is None else self.wait.to_dict(),
+        }
+
+
+@dataclass(frozen=True)
 class ChargeSession:
     """One charger's ownership and person intent. Frozen: `ownership.decide` returns a new one."""
 
@@ -143,7 +187,7 @@ class ChargeSession:
     span_pause: str | None = None
     held: bool = False
     overridden: bool = False
-    car_ended_at: datetime | None = None
+    car_ended: CarEnded | None = None
     balancing_paused: bool = False
     paused_origin: str | None = None
     held_for_safety: bool = False
@@ -183,6 +227,11 @@ class ChargeSession:
         return any(command.command == "start" for command in self.pending)
 
     @property
+    def car_ended_at(self) -> datetime | None:
+        """When the car ended a charge by itself in this plug-in (`car_ended`), or `None`."""
+        return None if self.car_ended is None else self.car_ended.at
+
+    @property
     def person_started(self) -> bool:
         """Whether a person's Start pauses Auto: nothing automatic stops their charge."""
         return self.manual is not None and self.manual.action == MANUAL_START
@@ -204,7 +253,7 @@ class ChargeSession:
             "span_pause": self.span_pause,
             "held": self.held,
             "overridden": self.overridden,
-            "car_ended_at": _iso(self.car_ended_at),
+            "car_ended": None if self.car_ended is None else self.car_ended.to_dict(),
             "balancing_paused": self.balancing_paused,
             "paused_origin": self.paused_origin,
             "held_for_safety": self.held_for_safety,
@@ -233,10 +282,7 @@ class ChargeSession:
     @classmethod
     def from_dict(cls, raw: Any) -> ChargeSession:
         """A session from `to_dict`'s output, or `SessionError`: every field checked, none coerced."""
-        if not isinstance(raw, dict):
-            raise SessionError("a session is an object")
-        if raw.get("version") != SESSION_VERSION:
-            raise SessionError(f"session version {raw.get('version')!r} is not {SESSION_VERSION}")
+        raw = upgraded(raw)
         expected = {"version"} | {item.name for item in fields(cls)}
         if not expected - LATER_FIELDS <= set(raw) <= expected:
             raise SessionError(f"session fields differ: {sorted((set(raw) ^ expected) - (LATER_FIELDS - set(raw)))}")
@@ -251,7 +297,7 @@ class ChargeSession:
                 span_pause=_optional_text(raw["span_pause"], "span_pause"),
                 held=_bool(raw["held"], "held"),
                 overridden=_bool(raw["overridden"], "overridden"),
-                car_ended_at=_instant(raw["car_ended_at"], "car_ended_at"),
+                car_ended=_car_ended(raw["car_ended"]),
                 balancing_paused=_bool(raw["balancing_paused"], "balancing_paused"),
                 paused_origin=_optional_text(raw["paused_origin"], "paused_origin"),
                 held_for_safety=_bool(raw["held_for_safety"], "held_for_safety"),
@@ -299,8 +345,9 @@ class ChargeSession:
         version, a missing or unknown field, or a field of the wrong shape."""
         if not isinstance(raw, dict):
             raise SessionError("a stored session is an object")
-        if raw.get("version") != STORED_VERSION:
-            raise SessionError(f"stored session version {raw.get('version')!r} is not {STORED_VERSION}")
+        if raw.get("version") not in READ_VERSIONS or isinstance(raw.get("version"), bool):
+            raise SessionError(f"stored session version {raw.get('version')!r} is not one of {READ_VERSIONS}")
+        raw = upgraded(raw)
         expected = {"version"} | {item.name for item in fields(cls) if item.name not in TRANSIENT_FIELDS}
         if set(raw) != expected:
             raise SessionError(f"stored session fields differ: {sorted(set(raw) ^ expected)}")
@@ -319,6 +366,57 @@ class ChargeSession:
         except ValueError as err:
             raise SessionError("not JSON") from err
         return cls.from_dict(raw)
+
+
+def upgraded(raw: Any) -> dict[str, Any]:
+    """A serialised session (`to_dict`'s, or `to_store`'s) in the current version's shape, or `SessionError`: version
+    1's `car_ended_at` becomes a car-ended record with only that instant known. Nothing else is checked here."""
+    if not isinstance(raw, dict):
+        raise SessionError("a session is an object")
+    version = raw.get("version")
+    if isinstance(version, bool) or version not in READ_VERSIONS:
+        raise SessionError(f"session version {version!r} is not one of {READ_VERSIONS}")
+    if version == SESSION_VERSION:
+        return raw
+    upgraded_raw = {key: value for key, value in raw.items() if key != "car_ended_at"}
+    if "car_ended_at" not in raw:
+        raise SessionError("missing 'car_ended_at'")
+    at = raw["car_ended_at"]
+    upgraded_raw["car_ended"] = None if at is None else {"at": at, "soc": None, "vehicle": None, "wait": None}
+    upgraded_raw["version"] = SESSION_VERSION
+    return upgraded_raw
+
+
+def _car_ended(raw: Any) -> CarEnded | None:
+    if raw is None:
+        return None
+    if not isinstance(raw, dict) or set(raw) != {"at", "soc", "vehicle", "wait"}:
+        raise SessionError("car_ended is not a car-ended record")
+    wait = raw["wait"]
+    if wait is not None:
+        if not isinstance(wait, dict) or set(wait) != {"target", "level", "estimated"}:
+            raise SessionError("car_ended.wait is not a wait")
+        wait = CarEndedWait(
+            target=_number(wait["target"], "car_ended.wait.target"),
+            level=_optional_number(wait["level"], "car_ended.wait.level"),
+            estimated=_bool(wait["estimated"], "car_ended.wait.estimated"),
+        )
+    return CarEnded(
+        at=_required_instant(raw["at"], "car_ended.at"),
+        soc=_optional_number(raw["soc"], "car_ended.soc"),
+        vehicle=_optional_text(raw["vehicle"], "car_ended.vehicle"),
+        wait=wait,
+    )
+
+
+def _number(value: Any, what: str) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or value != value:
+        raise SessionError(f"{what} is not a number")
+    return float(value)
+
+
+def _optional_number(value: Any, what: str) -> float | None:
+    return None if value is None else _number(value, what)
 
 
 def _iso(moment: datetime | None) -> str | None:

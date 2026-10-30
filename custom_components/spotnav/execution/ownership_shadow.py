@@ -42,10 +42,11 @@ from homeassistant.util import dt as dt_util
 
 from .ownership_coverage import OwnershipCoverage
 
-from ..core.events import CommandResult, Event
+from ..core.events import CommandResult, Event, PlugIn, Unplug
 from ..core.ownership import Command, decide, ORIGIN_OWNER
 from ..core.replay import CLOCK_TOLERANCE_S
 from ..core.session import (
+    CarEnded,
     ChargeSession,
     ManualPause,
     MANUAL_STOP,
@@ -90,6 +91,11 @@ BALANCING: Final = ("balancing_paused", "paused_origin")
 #: derived from the session, so an older build reads it as before. With them, whether load balancing gave back a charge
 #: nobody here owns with a start of SpotNav's (transient: today's `WindowHold.owned` is not kept across a restart).
 WINDOW_HOLD: Final = ("held", "overridden", "spotnav_resumed")
+#: Step 6: the car-ended record (when, the level read then, which car, what the plan waits for) and the connection
+#: the charger last stated. The record is stored in the session's record (version 2) and still written to today's
+#: `car_ended_*` keys, derived from the session, so an older build reads them as before; `plugged` is never stored (a
+#: restart clears it).
+CAR_ENDED_AND_PLUG: Final = ("car_ended", "plugged")
 #: How far apart two readings of the clock may be and still be one instant in an owned field: the core takes the
 #: instant it decided, today's code its own a moment earlier or later (`core.replay.CLOCK_TOLERANCE_S`).
 MIRROR_CLOCK_S: Final = CLOCK_TOLERANCE_S
@@ -141,6 +147,11 @@ class ShadowToken:
     #: Whether lining up found drift, or failed: counted under the kind of the event this feed ends with.
     drift: bool = False
     failed: bool = False
+    #: Whether lining up found a field the core owns read otherwise by today's state (`mirror_drift`), and how many
+    #: choices in this feed today's rule would have made otherwise (`verdict_differs`): counted at its end under the
+    #: kind of its event, as `drift`.
+    mirror: bool = False
+    verdict_differs: int = 0
     #: When the core drives: the event decided at `begin` (its facts known up front), the session it was decided
     #: from, and the commands it asked for. `end` then only feeds back the result.
     early: Event | None = None
@@ -225,12 +236,17 @@ def _same(core: Any, today: Any) -> bool:
         return abs((core - today).total_seconds()) <= MIRROR_CLOCK_S
     if isinstance(core, tuple) and isinstance(today, tuple) and len(core) == len(today):
         return all(_same(a, b) for a, b in zip(core, today, strict=True))
+    if isinstance(core, CarEnded) and isinstance(today, CarEnded):
+        # The car-ended record: the same but for its instant, read off two clocks.
+        return replace(core, at=today.at) == today and _same(core.at, today.at)
     return False
 
 
 def _plain(value: Any) -> Any:
     if isinstance(value, datetime):
         return value.isoformat()
+    if isinstance(value, CarEnded):
+        return value.to_dict()
     if isinstance(value, tuple):
         return [_plain(item) for item in value]
     return value
@@ -311,6 +327,8 @@ class OwnershipShadow:
         self._quiet: tuple[dict[str, Any], int] | None = None
         # The decision clock (`_tick`).
         self._ticks = 0
+        # Whether the last line-up found mirror drift (`begin` hands it to its token for the tally).
+        self._mirrored = False
         # How many plug-ins ended (an unplug, or a plug-in after a known unplug, decided): what a feed's command was
         # decided in (`ShadowToken.plug_ins`). Transient: no feed outlives a restart.
         self._plug_in_ends = 0
@@ -352,13 +370,14 @@ class OwnershipShadow:
             # landed while it awaited a command): today's state is not to be read as a whole now.
             token = ShadowToken(key, True, lined_up=False)
         else:
+            self._mirrored = False
             try:
                 drifted = self._line_up() if line_up else False
             except Exception as err:  # noqa: BLE001 - the shadow never raises into the real path
                 # Counted under the kind of the event the feed ends with (`end`), or none (`cancel`).
                 self._error("begin", cover=False)
                 return ShadowToken(key, True, ok=False, failed=True, error=err, plug_ins=self._plug_in_ends)
-            token = ShadowToken(key, True, drift=drifted)
+            token = ShadowToken(key, True, drift=drifted, mirror=self._mirrored)
         token.plug_ins = self._plug_in_ends
         self._stack.setdefault(key, []).append(token)
         if early is not None and self.drives:
@@ -369,7 +388,7 @@ class OwnershipShadow:
         try:
             token.early_pre = self.session
             token.early_order = self._tick()
-            self.session, token.early_commands = decide(self.session, event, self._now())
+            self.session, token.early_commands = self._decide_or_observe(self.session, event)
             token.early = event
             self._note_plug_in_end(event)
         except Exception as err:  # noqa: BLE001 - decided at `end` as ever
@@ -553,6 +572,7 @@ class OwnershipShadow:
             "after": self.events[-1]["event"]["kind"] if self.events else None,
         }
         self._count("mirror_drift")
+        self._mirrored = True
         self.drift.append(record)
         _LOGGER.debug("SpotNav ownership shadow: mirror drift %s", record)
         self._tell("mirror_drift", record)
@@ -576,7 +596,7 @@ class OwnershipShadow:
             pre, session, commands = item.token.early_pre, self.session, item.token.early_commands
         else:
             pre = self.session
-            session, commands = decide(pre, item.event, now)
+            session, commands = self._decide_or_observe(pre, item.event, now)
         acted = next((command for command in commands if command.kind in ("start", "stop")), None)
         result: CommandResult | None = None
         if item.outcome is not None and acted is not None:
@@ -604,6 +624,12 @@ class OwnershipShadow:
             self._note_plug_in_end(item.event)
         self._count("events")
         self._cover(item.event.kind, "events")
+        trigger = getattr(item.event, "trigger", None)
+        if isinstance(trigger, str):
+            try:
+                self.coverage.add_trigger(item.event.kind, trigger)
+            except Exception:  # noqa: BLE001 - the tally never breaks the shadow
+                _LOGGER.debug("SpotNav ownership coverage failed", exc_info=True)
         TOTALS[f"event:{item.event.kind}"] = TOTALS.get(f"event:{item.event.kind}", 0) + 1
         record: dict[str, Any] = {
             "at": now.isoformat(),
@@ -636,6 +662,21 @@ class OwnershipShadow:
         if item.defer_intent and (session.manual, session.span_pause) != (pre.manual, pre.span_pause):
             self._intent_deferred = True
         return record, tuple(sorted(command.kind for command in commands if command.kind != "keep"))
+
+    def _decide_or_observe(
+        self, session: ChargeSession, event: Event, now: datetime | None = None
+    ) -> tuple[ChargeSession, tuple[Command, ...]]:
+        """`decide`, which raises as it does (a failure, told by the caller). A plug-in or an unplug whose decision
+        failed still moves the connection the session keeps: it is what the charger stated, an observation and not a
+        decision, and the controller reads it from the session when the core drives. Left as it was, every next report
+        would find the connection changed again and feed the same plug-in or unplug, failing each time. What the
+        plug-in's end decides (a pause, the car-ended record, the hold, load balancing's memory) is not guessed."""
+        try:
+            return decide(session, event, self._now() if now is None else now)
+        except Exception:
+            if isinstance(event, (PlugIn, Unplug)):
+                self.session = session.with_changes(plugged=isinstance(event, PlugIn))
+            raise
 
     def _note_plug_in_end(self, event: Event) -> None:
         """An unplug, or a plug-in after a known unplug, was decided: the plug-in a command in flight began in ended."""
@@ -687,7 +728,7 @@ class OwnershipShadow:
         if record is not None:
             record["today_after"] = {name: _field(today, name) for name in COMPARED}
         if self.drives:
-            self._write_back(self._today_fields())
+            self._write_back(self._today_fields(), kind=kind)
         if not differs and core_kinds == legacy:
             return
         self._keep_quiet(record)
@@ -734,7 +775,7 @@ class OwnershipShadow:
         except Exception:  # noqa: BLE001 - the shadow never raises into the real path
             self._error("persist")
 
-    def _write_back(self, today: str | None = None) -> None:
+    def _write_back(self, today: str | None = None, *, kind: str | None = None) -> None:
         writer = self._writer
         if writer is None:
             return
@@ -746,6 +787,7 @@ class OwnershipShadow:
         if changed:
             # Today's own fields said otherwise: the core's owner overrode them.
             self._count("written_back")
+            self._cover(kind, "written_back")
             self._tell(
                 "write_back",
                 {"owner": self.session.owner, "today": today, "events": list(self.events)[-CONTEXT_EVENTS:]},
@@ -790,6 +832,12 @@ class OwnershipShadow:
         differently is counted and told (`verdict_differs`)."""
         if today != core:
             self._count("verdict_differs")
+            stack = self._stack.get(_task_key())
+            if stack:
+                # Counted under the kind of the event this feed ends with.
+                stack[-1].verdict_differs += 1
+            else:
+                self._cover(None, "verdict_differs")
             self._tell("verdict_differs", {"site": site, "today": today, "core": core, "events": list(self.events)[-8:]})
         return core
 
@@ -807,6 +855,10 @@ class OwnershipShadow:
         """What lining the feed up met, under the kind of the event it ends with (`None`: it ended with none)."""
         if token.drift:
             self._cover(kind, "drift")
+        if token.mirror:
+            self._cover(kind, "mirror_drift")
+        for _ in range(token.verdict_differs):
+            self._cover(kind, "verdict_differs")
         if token.failed:
             self._cover(kind, "errors")
             # The session could not be lined up with today's state: whatever was decided from it is not to be trusted.
@@ -843,6 +895,7 @@ class OwnershipShadow:
             failures = self.counts["failures"]
             label = f"{where}/{kind or '-'}"
             failures[label] = failures.get(label, 0) + 1
+            self._cover(kind, "failures")
             self.counts["last_failure"] = self._now().isoformat()
             TOTALS["failures"] = TOTALS.get("failures", 0) + 1
             if self.drives and (where, kind) not in self._warned:

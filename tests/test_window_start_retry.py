@@ -355,7 +355,7 @@ async def test_a_switch_on_while_the_charger_idles_is_not_the_car_ending_the_cha
         hass.states.async_set(STATUS, status, {"tick": tick})
         await hass.async_block_till_done()
     assert len(starts) == 1, "a switch already on gets no stop-and-start kick"
-    assert controller._car_ended_at is None  # noqa: SLF001
+    assert controller.car_ended_at is None
     assert controller.plan is not None and controller.plan_window_active_now
 
 
@@ -372,7 +372,7 @@ async def test_a_full_car_refusing_at_once_is_the_car_ending_the_charge(
         await _after(hass, freezer, 30)
         hass.states.async_set(STATUS, "SuspendedEV", {"tick": tick})
         await hass.async_block_till_done()
-    assert controller._car_ended_at is not None  # noqa: SLF001
+    assert controller.car_ended_at is not None
     assert len(starts) == 1
 
 

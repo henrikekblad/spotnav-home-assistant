@@ -32,6 +32,9 @@ the core again.
 Version 6 adds, inside `ownership_shadow`, `coverage`: per event kind of the core (every kind, zeros until seen) how
 many events the shadow decided, compared, disagreed on, found drift at and failed on, and when it first and last saw
 one, kept across restarts since `since` (under the integration's `version` then; `execution/ownership_coverage.py`).
+The same version 6 tally later gained, per kind, `mirror_drift`, `written_back`, `verdict_differs` and `failures`,
+`triggers` under `window_start`, and `previous` (the tally of the release before this one's began): added keys only,
+so a reader of the earlier shape reads it as before.
 
 Version 7 adds, inside the site's `diagnostics`, `yield_stepping`, `solar_surplus` and `hybrid` (per member charger),
 which the site state sensor carried as attributes until it stopped carrying what moves with each reading.

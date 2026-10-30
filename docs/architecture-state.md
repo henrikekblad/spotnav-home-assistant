@@ -21,7 +21,7 @@ set to the previous logic. Step 2 (the default since the shadow ran without a di
 | `manual` | A person's Start or Stop pausing Auto for the plug-in session: `action` and `scope` (`plug_in`, or `next_plug_in` for a Stop given with no car). |
 | `span_pause` | A pause the person picked for a span (`next_period`, `until_tomorrow`, `until_resumed`). Never beside `manual`. |
 | `held`, `overridden` | The hold of a charge that began by itself outside a window, and a person's override of it. |
-| `car_ended_at` | The car ended a charge by itself in this plug-in (R3): a person's, or the plan's in an open window (`car_ended` with `plan`). |
+| `car_ended` | The car ended a charge by itself in this plug-in (R3): a person's, or the plan's in an open window (`car_ended` with `plan`). One record (`CarEnded`): when, its level read then (never an estimate), which car was read, and what the plan waits for (`CarEndedWait`: the target then, the level it ended at, whether that was an estimate). Version 2 of the record; version 1 kept only the instant (`car_ended_at`) and is still read. |
 | `balancing_paused`, `paused_origin` | Load balancing holds a charge back, and whose it was. |
 | `held_for_safety`, `safety_stopped_at` | That hold was a safety stop, resumed no sooner than its gap. |
 | `hold_stop_*` | The stops under a person's Stop (C7): when they went out, the last try, the give-up, one on its way. |
@@ -42,11 +42,20 @@ Events: `plug_in`, `unplug`, `connection_unknown`, `window_start` (timer, re-arm
 `min_soc_end` (the car's minimum charge level), `charger_reported_on`,
 `charger_reported_off`, `car_ended` (a person's charge, or with `plan` the plan's: the car stopped taking it in an open
 window; a car full for the plan then also gives `target_reached`, or `need_met` without a target; one that ended the
-plan's charge short of the target on a level nobody read then makes the plan wait for the car's level: the facts
-`car_ended_awaits_level` on `window_start`, `charger_reported_on` and `recheck` then hold every window until a level read
-after the end says it is below the target), `charger_reported_unreadable` (a report whose control cannot be read, fed when it states no car: it decides nothing of the charge and only ends the hold), `balancing_pause`, `balancing_resume`, `balancing_dropped` (the regulator
+plan's charge short of the target on a level nobody read then makes the plan wait for the car's level; the event
+carries the record's facts: the level read then, the car, the wait), `car_level_read` (a level read after the end that
+is not full for the plan ends the wait), `charger_reported_unreadable` (a report whose control cannot be read, fed when it states no car: it decides nothing of the charge and only ends the hold), `balancing_pause`, `balancing_resume`, `balancing_dropped` (the regulator
 finds the charge it holds back no longer wanted), `target_reached`, `need_met`,
 `top_off_end`, `plan_installed`, `plan_dropped`, `restart`, `timer`, `command_result`.
+
+The car-ended rule (R3, `ownership.car_ended_holds_window`) decides from the session's record and the car facts
+(`CarFacts`, `events.CAR_FACTS`) on `window_start`, `charger_reported_on` and `recheck`: the plan's target, its car, the
+level a car read at the end must have reached to be known full (the car's ceiling when the plan charges to it, else the
+target), and the car's level read now, when, and whether it says full. A car known full holds every later window of
+the plug-in unless its level dropped by `SOC_DROP_PCT` since (the sun's hysteresis); else a plan that waits for the
+car's level holds every window until a level read since the end is below the target (a target raised above the one it
+ended at, or another car's plan, waits for nothing); else only the window open at the end holds. The controller reads
+the car's level only when the rule reads it (`car_ended_reads_level`), as today's rule did.
 
 The rules are today's (`plans/ha_manual_override_and_fixes.md` and its three review rounds): the gate every
 automatic decision asks, the manual pause and its scopes (C1, C2, C6), C7 with its gap and give-up (R5), the
@@ -206,8 +215,8 @@ written: so a charger that starts driving mid-session (the update that made it t
 sun's charge, or a charger set back from the previous logic) takes the running charge over as today's keys describe
 it. With the option off nothing of it is written or read: today's restore, exactly, and the first save of today's
 keys drops a record left from when it drove, so a charger set back to the current logic later reads no stale one. In the shadow's facts, the
-car-ended rule's answer is read only when the core drives; off, it is what today's rule read itself (a read of the
-car's state of charge may move and save its anchor, so the shadow makes none).
+car facts are read only when the core drives; off, they are what today's rule read itself (a read of the car's state
+of charge may move and save its anchor, so the shadow makes none).
 
 When the core drives, the safety hold (`held_for_safety`, `safety_stopped_at`) and C7's stops (`hold_stop_*`) are
 the session's (`OwnershipShadow.owned_fields`): the line-up leaves them as the core decided them, the controller reads
@@ -250,8 +259,23 @@ still computed beside the core's, from the core's memory as it was before the re
 `hold` key is still written, derived from the session, and a restart takes it into the session where today's keys
 are the truth, as load balancing's.
 
-Not yet the core's: the car-ended record, and the session itself after the restart (read from today's fields at
-each feed, which lines the session up).
+The car-ended record (`car_ended`) and the connection (`plugged`) are the session's the same way when the core drives
+(`_car_ended` and `_plugged` read them). The record is set whole at the car's end with the facts the controller read
+for it (`async_note_car_ended` returns them for the boundary's feed of a person's charge; the plan's watch and the
+battery probe feed the plan's): a person's Start that the car ended (their pause ends), or the plan's charge in an open
+window, also one load balancing holds back. Its wait ends at `car_level_read`; the record ends at an unplug, at a
+plug-in after a known unplug (not the first connection known after a restart, either way), and at a person's Start,
+decided where it begins (also one through the controller, `direct_start` with `manual`, so the record is gone before
+the command goes out, as today's code clears it then). A car's end of a person's charge fed after an unplug that came
+while it was on its way records nothing. `plugged` changes only at a plug-in or an unplug the charger stated, decided
+where its feed begins (so the controller's own reads inside the feed see it), and a restart clears it. Today's
+`car_ended_*` keys are still written, derived from the session (saved soon after every change the core decides,
+`_persist_session`), and a restart takes them into the session where today's keys are the truth, as load balancing's.
+An older build refuses the version 2 record and reads those keys. One difference in the keys: once the record ends,
+its car is no longer kept (`car_ended_vehicle` is `null` with `car_ended_at`); nothing reads it without the instant.
+
+Not yet the core's: the owner (`_charge_origin`, `_plan_charge`), and the session itself after the restart (read from
+today's keys where they are newer).
 
 ## Tests
 
@@ -268,6 +292,9 @@ each feed, which lines the session up).
 * `tests/test_core_session_store.py`: the stored record: round trip, migration from today's keys, an unknown version,
   no save at every report, a restart in each scope of a manual pause, and the core taking over at an update during
   a plan's and the sun's charge, and after a charger was set to the previous logic and back.
+* `tests/test_core_car_ended_memory.py`: the car-ended record and the connection in both modes: a restart in both
+  restart kinds, the wait's end, the record's end with its plug-in and at a person's Start, an older build's view of
+  the version 2 record, a version 1 record, mirror drift, and a recording replayed with no line-up.
 * `tests/test_core_plan_ends.py`: 1.11's plan ends and replans in both modes: the best-effort plan's charge taken over
   at its departure by the next departure's plan, the replan a returning register reading asks for while the plan's charge runs, and a need met by that
   same reading.

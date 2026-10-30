@@ -13,7 +13,7 @@ import pytest
 
 from custom_components.spotnav.core import events as ev
 from custom_components.spotnav.core.ownership import decide
-from custom_components.spotnav.core.session import ChargeSession, ManualPause
+from custom_components.spotnav.core.session import CarEnded, CarEndedWait, ChargeSession, ManualPause
 from custom_components.spotnav.execution.plan_car_ended import PLAN_CAR_IDLE_S, PlanChargeWatch
 from custom_components.spotnav.execution.target_stop import (
     CAR_ENDED_ESTIMATE_MARGIN_PERCENT,
@@ -284,4 +284,19 @@ def test_the_car_ending_a_plan_charge_starts_the_car_ended_record() -> None:
     start = ManualPause("start", "plug_in")
     session, _ = decide(ChargeSession(manual=start, owner="person"), ev.CarEnded(), T0)
     assert session.manual is None and session.car_ended_at == T0
-    assert ev.CarEnded(plan=True).to_dict() == {"kind": "car_ended", "plan": True}
+    assert ev.CarEnded(plan=True).to_dict() == {
+        "kind": "car_ended",
+        "plan": True,
+        "soc": None,
+        "vehicle": None,
+        "wait_target": None,
+        "wait_level": None,
+        "wait_estimated": False,
+    }
+    # The record keeps what the shell read at the end: the level read then, the car, and what the plan waits for.
+    ended = ev.CarEnded(plan=True, soc=88.0, vehicle="car", wait_target=91.0, wait_level=86.0, wait_estimated=True)
+    session, _ = decide(ChargeSession(owner="plan"), ended, T0)
+    assert session.car_ended == CarEnded(
+        at=T0, soc=88.0, vehicle="car", wait=CarEndedWait(target=91.0, level=86.0, estimated=True)
+    )
+    assert ev.event_from_dict(ended.to_dict()) == ended

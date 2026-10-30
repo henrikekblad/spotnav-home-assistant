@@ -13,7 +13,7 @@ from homeassistant.util import dt as dt_util
 
 from custom_components.spotnav.core import events as ev
 from custom_components.spotnav.core.ownership import decide, Keep, Stop
-from custom_components.spotnav.core.session import ChargeSession, ManualPause, PendingCommand
+from custom_components.spotnav.core.session import CarEnded, ChargeSession, ManualPause, PendingCommand
 from custom_components.spotnav.execution import ownership_shadow
 
 from .pause_world import later_window, open_window, pause_world, SWITCH
@@ -86,7 +86,7 @@ def test_a_stray_charges_stop_is_decided_again(owner: str, facts: dict, due: boo
         (PLUGGED.with_changes(span_pause="next_period"), {"window_open": True, "control_on": True}, False),
         (PLUGGED.with_changes(manual=STOP), {"window_open": True, "control_on": True}, False),
         (
-            PLUGGED.with_changes(car_ended_at=T0 - timedelta(minutes=5)),
+            PLUGGED.with_changes(car_ended=CarEnded(at=T0 - timedelta(minutes=5))),
             {"window_open": True, "control_on": True, "open_window_start": T0 - timedelta(minutes=30)},
             False,
         ),

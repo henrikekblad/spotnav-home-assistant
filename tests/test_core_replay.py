@@ -148,7 +148,7 @@ def test_the_chargers_own_charge_and_two_clocks_are_drift(tmp_path, capsys) -> N
 #: was kept first: a debug bundle's, its facts as recorded.
 _REPORT_FACTS = {
     "window_ahead_outside": True, "window_open": False, "in_window": False, "plan_present": True,
-    "open_window_start": None, "car_ended_known_full": False, "need_grew": False, "car_ended_awaits_level": False,
+    "open_window_start": None,
     "solar_holds": False, "plan_auto_owned": True, "handed_off": False, "start_pending": False, "owned": False,
 }
 

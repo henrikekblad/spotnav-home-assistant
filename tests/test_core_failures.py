@@ -16,6 +16,7 @@ from homeassistant.helpers import issue_registry as ir
 from pytest_homeassistant_custom_component.common import async_fire_time_changed, MockConfigEntry
 
 from custom_components.spotnav.const import DOMAIN
+from custom_components.spotnav.core.session import STORED_VERSION
 from custom_components.spotnav.execution import ownership_shadow
 from custom_components.spotnav.execution.controller import SESSION_STORE_KEY
 from custom_components.spotnav.repairs import (
@@ -24,7 +25,7 @@ from custom_components.spotnav.repairs import (
     core_decision_issue_id,
 )
 
-from .pause_world import ENTRY, open_window, pause_world, World
+from .pause_world import ENTRY, open_window, pause_world, SWITCH, World
 from .helpers import install_schedule
 from .relay import FakeScheduler
 
@@ -254,7 +255,7 @@ async def test_a_stored_session_from_a_later_release_is_no_failure(
     await world.executor.async_manual_stop()
     world.controller._cancel_session_save()  # noqa: SLF001
     record = dict(await world.controller._store.async_load())  # noqa: SLF001
-    record[SESSION_STORE_KEY] = {**record[SESSION_STORE_KEY], "version": 2, "car_ended": None}
+    record[SESSION_STORE_KEY] = {**record[SESSION_STORE_KEY], "version": STORED_VERSION + 1, "car_ended": None}
     await world.controller._store.async_save(record)  # noqa: SLF001
 
     restarted = await world.restart()
@@ -296,3 +297,37 @@ async def test_a_stored_session_that_cannot_be_read_is_a_failure(
     await hass.async_block_till_done()
     assert _issue(hass) is not None
     await restarted.shutdown()
+
+
+@pytest.mark.parametrize("kind", ["unplug", "plug_in"])
+async def test_a_plug_in_or_unplug_the_core_cannot_decide_is_fed_once_and_the_connection_still_moves(
+    hass: HomeAssistant, timers: FakeScheduler, monkeypatch: pytest.MonkeyPatch, drives: bool, kind: str
+) -> None:
+    """The connection is what the charger stated, an observation: it moves in the session also when the decision of
+    the plug-in or the unplug fails, so the reports after it do not find it changed again and feed it once more (when
+    the core drives, the controller reads the connection from the session)."""
+    world = await _world(hass, timers, connected=kind == "unplug")
+    controller = world.controller
+    shadow = controller.ownership_shadow
+    fed: list[str] = []
+    real = controller._connection_changed  # noqa: SLF001
+
+    def counting(previous: Any, connected: bool, **kwargs: Any) -> None:
+        fed.append("unplug" if not connected else "plug_in")
+        real(previous, connected, **kwargs)
+
+    monkeypatch.setattr(controller, "_connection_changed", counting)
+    _break(monkeypatch, kind)
+    await world.plug.set(kind == "plug_in")
+    for stamp in range(3):
+        # Reports that state the same connection again.
+        current = hass.states.get(SWITCH)
+        hass.states.async_set(SWITCH, current.state, {**current.attributes, "stamp": stamp})
+        await hass.async_block_till_done()
+
+    assert fed == [kind], "fed once, not at every report after it"
+    expected = kind == "plug_in"
+    assert controller.known_connected is expected and shadow.session.plugged is expected
+    failures = shadow.counts["failures"]
+    assert sum(failures.values()) == 1 and all(label.endswith(f"/{kind}") for label in failures)
+    await world.shutdown()
