@@ -249,6 +249,34 @@
           "transfer_mode": "Nettarif",
           "transfer_value": "Nettarif, mit eget tal"
         }
+      },
+      "prices_nordpool": {
+        "title": "Elpriser",
+        "description": "SpotNav henter priserne for {area} fra Home Assistants egen Nord Pool-integration: [Nord Pool i Home Assistant]({link}). Uanset hvilket område og hvilken valuta du vælger der, virker det; SpotNav beder om sine egne.\n\nEller indtast din egen ENTSO-E-nøgle nedenfor i stedet. Du kan også gøre det senere, i SpotNav-kortets indstillinger under Elpris.",
+        "data": {
+          "entsoe_key": "ENTSO-E-nøgle (valgfri)"
+        },
+        "data_description": {
+          "entsoe_key": "Opret en konto på transparency.entsoe.eu, og send så en e-mail til transparency@entsoe.eu med emnet \"Restful API access\" og kontoens e-mailadresse i teksten. Når du har fået adgang (det kan tage et par dage), opretter du sikkerhedsnøglen under My Account Settings og indsætter den her. Én nøgle til hele installationen."
+        }
+      },
+      "prices_entsoe": {
+        "title": "Elpriser",
+        "description": "Priserne for {area} kommer fra ENTSO-E's Transparency Platform, med din egen gratis nøgle. Indtast den nedenfor, eller senere i SpotNav-kortets indstillinger under Elpris.",
+        "data": {
+          "entsoe_key": "ENTSO-E-nøgle (valgfri)"
+        },
+        "data_description": {
+          "entsoe_key": "Opret en konto på transparency.entsoe.eu, og send så en e-mail til transparency@entsoe.eu med emnet \"Restful API access\" og kontoens e-mailadresse i teksten. Når du har fået adgang (det kan tage et par dage), opretter du sikkerhedsnøglen under My Account Settings og indsætter den her. Én nøgle til hele installationen."
+        }
+      },
+      "prices_pvpc": {
+        "title": "Elpriser",
+        "description": "SpotNav henter Spaniens PVPC-priser fra Home Assistants egen PVPC-integration: [Spain electricity hourly pricing (PVPC)]({link}). Du kan også gøre det senere; SpotNav-kortets indstillinger minder dig om det under Elpris."
+      },
+      "prices_octopus": {
+        "title": "Elpriser",
+        "description": "SpotNav henter dine Agile-priser for {area} fra integrationen Octopus Energy, som installeres via HACS: [Octopus Energy]({link}). Målerens tarif skal være Agile. Du kan også gøre det senere; SpotNav-kortets indstillinger minder dig om det under Elpris."
       }
     },
     "abort": {
@@ -265,7 +293,8 @@
       "not_a_charger": "Den enhed er ikke en elbillader (men en styring til varmeapparat eller stikkontakt).",
       "charger_not_recognised": "SpotNav kender ikke denne integration. Vælg Manuel i stedet.",
       "charger_not_controllable": "SpotNav kan ikke starte eller stoppe denne lader. Den kan kun aflæses.",
-      "no_price_areas": "Listen over prisområder kunne ikke læses. Prøv igen om et minut."
+      "no_price_areas": "Listen over prisområder kunne ikke læses. Prøv igen om et minut.",
+      "no_pending_entry": "Intet ventede på at blive gemt."
     },
     "error": {
       "safety_margin_at_or_above_fuse": "Sikkerhedsmarginen skal være lavere end hovedsikringen, ellers er der ingen strøm tilbage til laderne.",
@@ -291,7 +320,8 @@
       "unit_expected_apparent_power": "Denne sensor skal angive tilsyneladende effekt i VA eller kVA.",
       "manual_entities_duplicate": "Hver fase skal have sin egen entitet.",
       "fee_value_required": "Indtast dit eget tal, eller vælg forslaget.",
-      "fee_no_suggestion": "Prisområdet har intet forslag til den: indtast dit eget tal eller vælg intet."
+      "fee_no_suggestion": "Prisområdet har intet forslag til den: indtast dit eget tal eller vælg intet.",
+      "entsoe_key_rejected": "ENTSO-E godtog ikke nøglen. Tjek den, eller opret en ny på transparency.entsoe.eu."
     }
   },
   "options": {

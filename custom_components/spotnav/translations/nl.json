@@ -249,6 +249,34 @@
           "transfer_mode": "Nettarief",
           "transfer_value": "Nettarief, eigen bedrag"
         }
+      },
+      "prices_nordpool": {
+        "title": "Stroomprijzen",
+        "description": "SpotNav leest de prijzen voor {area} uit de eigen Nord Pool-integratie van Home Assistant: [Nord Pool in Home Assistant]({link}). Welk gebied en welke valuta je daar ook kiest, het werkt; SpotNav vraagt om zijn eigen.\n\nOf vul hieronder in plaats daarvan je eigen ENTSO-E-sleutel in. Dat kan ook later, in de instellingen van de SpotNav-kaart onder Stroomprijs.",
+        "data": {
+          "entsoe_key": "ENTSO-E-sleutel (optioneel)"
+        },
+        "data_description": {
+          "entsoe_key": "Registreer je op transparency.entsoe.eu en mail daarna transparency@entsoe.eu met als onderwerp \"Restful API access\" en het e-mailadres van je account in de tekst. Zodra je toegang hebt (dat kan een paar dagen duren), maak je de beveiligingssleutel aan onder My Account Settings en plak je hem hier. Eén sleutel voor de hele installatie."
+        }
+      },
+      "prices_entsoe": {
+        "title": "Stroomprijzen",
+        "description": "De prijzen voor {area} komen van het Transparency Platform van ENTSO-E, met je eigen gratis sleutel. Vul hem hieronder in, of later in de instellingen van de SpotNav-kaart onder Stroomprijs.",
+        "data": {
+          "entsoe_key": "ENTSO-E-sleutel (optioneel)"
+        },
+        "data_description": {
+          "entsoe_key": "Registreer je op transparency.entsoe.eu en mail daarna transparency@entsoe.eu met als onderwerp \"Restful API access\" en het e-mailadres van je account in de tekst. Zodra je toegang hebt (dat kan een paar dagen duren), maak je de beveiligingssleutel aan onder My Account Settings en plak je hem hier. Eén sleutel voor de hele installatie."
+        }
+      },
+      "prices_pvpc": {
+        "title": "Stroomprijzen",
+        "description": "SpotNav leest de Spaanse PVPC-prijzen uit de eigen PVPC-integratie van Home Assistant: [Spain electricity hourly pricing (PVPC)]({link}). Dat kan ook later; de instellingen van de SpotNav-kaart herinneren je eraan onder Stroomprijs."
+      },
+      "prices_octopus": {
+        "title": "Stroomprijzen",
+        "description": "SpotNav leest je Agile-tarieven voor {area} uit de integratie Octopus Energy, die via HACS wordt geïnstalleerd: [Octopus Energy]({link}). Het tarief van je meter moet Agile zijn. Dat kan ook later; de instellingen van de SpotNav-kaart herinneren je eraan onder Stroomprijs."
       }
     },
     "abort": {
@@ -265,7 +293,8 @@
       "not_a_charger": "Dat apparaat is geen laadpaal voor elektrische auto's (maar een verwarmings- of stopcontactregelaar).",
       "charger_not_recognised": "SpotNav kent deze integratie niet. Kies in plaats daarvan Handmatig.",
       "charger_not_controllable": "SpotNav kan deze laadpaal niet starten of stoppen. Hij kan alleen worden uitgelezen.",
-      "no_price_areas": "De lijst met prijsgebieden kon niet worden gelezen. Probeer het over een minuut opnieuw."
+      "no_price_areas": "De lijst met prijsgebieden kon niet worden gelezen. Probeer het over een minuut opnieuw.",
+      "no_pending_entry": "Er wachtte niets om opgeslagen te worden."
     },
     "error": {
       "safety_margin_at_or_above_fuse": "De veiligheidsmarge moet lager zijn dan de hoofdzekering, anders blijft er geen stroom over voor de laadpalen.",
@@ -291,7 +320,8 @@
       "unit_expected_apparent_power": "Deze sensor moet schijnbaar vermogen doorgeven in VA of kVA.",
       "manual_entities_duplicate": "Elke fase heeft een eigen entiteit nodig.",
       "fee_value_required": "Vul een eigen bedrag in, of kies het voorstel.",
-      "fee_no_suggestion": "Dit prijsgebied heeft er geen voorstel voor: vul een eigen bedrag in of kies niets."
+      "fee_no_suggestion": "Dit prijsgebied heeft er geen voorstel voor: vul een eigen bedrag in of kies niets.",
+      "entsoe_key_rejected": "ENTSO-E heeft deze sleutel niet geaccepteerd. Controleer hem, of maak een nieuwe aan op transparency.entsoe.eu."
     }
   },
   "options": {

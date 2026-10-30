@@ -249,6 +249,34 @@
           "transfer_mode": "Netzentgelt",
           "transfer_value": "Netzentgelt, eigener Wert"
         }
+      },
+      "prices_nordpool": {
+        "title": "Strompreise",
+        "description": "SpotNav liest die Preise für {area} aus Home Assistants eigener Nord-Pool-Integration: [Nord Pool in Home Assistant]({link}). Welche Zone und Währung du dort wählst, ist gleich; SpotNav fragt nach seinen eigenen.\n\nOder gib stattdessen unten deinen eigenen ENTSO-E-Schlüssel ein. Das geht auch später in den Einstellungen der SpotNav-Karte unter Strompreis.",
+        "data": {
+          "entsoe_key": "ENTSO-E-Schlüssel (optional)"
+        },
+        "data_description": {
+          "entsoe_key": "Registriere dich auf transparency.entsoe.eu und schreibe dann eine E-Mail an transparency@entsoe.eu mit dem Betreff \"Restful API access\" und der E-Mail-Adresse deines Kontos im Text. Sobald der Zugang freigeschaltet ist (das kann ein paar Tage dauern), erzeugst du den Sicherheitsschlüssel unter My Account Settings und fügst ihn hier ein. Ein Schlüssel für die ganze Installation."
+        }
+      },
+      "prices_entsoe": {
+        "title": "Strompreise",
+        "description": "Die Preise für {area} kommen von der Transparency Platform von ENTSO-E, mit deinem eigenen kostenlosen Schlüssel. Gib ihn unten ein oder später in den Einstellungen der SpotNav-Karte unter Strompreis.",
+        "data": {
+          "entsoe_key": "ENTSO-E-Schlüssel (optional)"
+        },
+        "data_description": {
+          "entsoe_key": "Registriere dich auf transparency.entsoe.eu und schreibe dann eine E-Mail an transparency@entsoe.eu mit dem Betreff \"Restful API access\" und der E-Mail-Adresse deines Kontos im Text. Sobald der Zugang freigeschaltet ist (das kann ein paar Tage dauern), erzeugst du den Sicherheitsschlüssel unter My Account Settings und fügst ihn hier ein. Ein Schlüssel für die ganze Installation."
+        }
+      },
+      "prices_pvpc": {
+        "title": "Strompreise",
+        "description": "SpotNav liest Spaniens PVPC-Preise aus Home Assistants eigener PVPC-Integration: [Spain electricity hourly pricing (PVPC)]({link}). Das geht auch später; die Einstellungen der SpotNav-Karte erinnern unter Strompreis daran."
+      },
+      "prices_octopus": {
+        "title": "Strompreise",
+        "description": "SpotNav liest deine Agile-Preise für {area} aus der Integration Octopus Energy, die über HACS installiert wird: [Octopus Energy]({link}). Der Tarif deines Zählers muss Agile sein. Das geht auch später; die Einstellungen der SpotNav-Karte erinnern unter Strompreis daran."
       }
     },
     "abort": {
@@ -265,7 +293,8 @@
       "not_a_charger": "Dieses Gerät ist keine Ladestation für E-Autos (sondern eine Heizungs- oder Steckdosensteuerung).",
       "charger_not_recognised": "SpotNav kennt diese Integration nicht. Wähle stattdessen Manuell.",
       "charger_not_controllable": "SpotNav kann diese Ladestation nicht starten oder stoppen. Sie lässt sich nur auslesen.",
-      "no_price_areas": "Die Liste der Preiszonen konnte nicht gelesen werden. Versuche es in einer Minute erneut."
+      "no_price_areas": "Die Liste der Preiszonen konnte nicht gelesen werden. Versuche es in einer Minute erneut.",
+      "no_pending_entry": "Es wartete nichts darauf, gespeichert zu werden."
     },
     "error": {
       "safety_margin_at_or_above_fuse": "Die Sicherheitsreserve muss kleiner als die Hauptsicherung sein, sonst bleibt kein Strom für die Ladestationen.",
@@ -291,7 +320,8 @@
       "unit_expected_apparent_power": "Dieser Sensor muss Scheinleistung in VA oder kVA melden.",
       "manual_entities_duplicate": "Jede Phase braucht eine eigene Entität.",
       "fee_value_required": "Gib einen eigenen Wert ein oder wähle den Vorschlag.",
-      "fee_no_suggestion": "Diese Preiszone hat dafür keinen Vorschlag: gib einen eigenen Wert ein oder wähle nichts."
+      "fee_no_suggestion": "Diese Preiszone hat dafür keinen Vorschlag: gib einen eigenen Wert ein oder wähle nichts.",
+      "entsoe_key_rejected": "ENTSO-E hat diesen Schlüssel nicht akzeptiert. Prüfe ihn oder erzeuge einen neuen auf transparency.entsoe.eu."
     }
   },
   "options": {

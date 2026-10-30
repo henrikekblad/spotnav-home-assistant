@@ -128,6 +128,7 @@ from .measured_source import (
 )
 from .options import SiteCapacityOptionsFlow, SpotNavChargingOptionsFlow
 from .price import PriceConfigSteps, PriceOptionsFlow
+from .price_source_step import PriceSourceSteps
 from ..setup_hints import add_charger_hint
 from ..texts import async_load as async_load_texts, table
 from .site_confirm import charger_found_summary, site_confirm_summary, site_join_summary
@@ -163,7 +164,9 @@ PROBE_UNREACHABLE = "unreachable"
 FIELD_CHARGING_STATE_ENTITY = "charging_state_entity"
 
 
-class SpotNavChargingConfigFlow(ChargerWiringSteps, PriceConfigSteps, config_entries.ConfigFlow, domain=DOMAIN):
+class SpotNavChargingConfigFlow(
+    ChargerWiringSteps, PriceConfigSteps, PriceSourceSteps, config_entries.ConfigFlow, domain=DOMAIN
+):
     """Configure SpotNav charging control."""
 
     VERSION = CONFIG_ENTRY_VERSION
@@ -1032,7 +1035,7 @@ class SpotNavChargingConfigFlow(ChargerWiringSteps, PriceConfigSteps, config_ent
             if entry.data.get(CONF_ENTRY_TYPE) == ENTRY_TYPE_SITE
         ]
         if len(sites) != 1:
-            return self.async_create_entry(title=title, data=data)
+            return await self._async_create_with_prices(title, data)
         self._join_charger = (title, data)
         self._join_site_entry = sites[0]
         return await self.async_step_join_site()
@@ -1422,7 +1425,7 @@ class SpotNavChargingConfigFlow(ChargerWiringSteps, PriceConfigSteps, config_ent
             enable_disabled_entities(self.hass, self._site_detected.disabled_entity_ids)
             if self._site_battery is not None:
                 enable_disabled_entities(self.hass, self._site_battery.disabled_entity_ids)
-        return self.async_create_entry(title=name, data=data)
+        return await self._async_create_with_prices(name, data)
 
     def _config_entry_domains(self) -> dict[str, str]:
         return {entry.entry_id: entry.domain for entry in self.hass.config_entries.async_entries()}

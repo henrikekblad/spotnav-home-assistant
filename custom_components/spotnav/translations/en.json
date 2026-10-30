@@ -249,6 +249,34 @@
           "transfer_mode": "Grid fee",
           "transfer_value": "Grid fee, my own figure"
         }
+      },
+      "prices_nordpool": {
+        "title": "Electricity prices",
+        "description": "SpotNav reads the prices for {area} from Home Assistant's own Nord Pool integration: [Nord Pool in Home Assistant]({link}). Any area and currency you choose there works; SpotNav asks for its own.\n\nOr enter your own ENTSO-E key below instead. You can also do this later, from the SpotNav card's settings under Electricity price.",
+        "data": {
+          "entsoe_key": "ENTSO-E key (optional)"
+        },
+        "data_description": {
+          "entsoe_key": "Register at transparency.entsoe.eu, then e-mail transparency@entsoe.eu with the subject \"Restful API access\" and your account's e-mail address in the text. Once access is granted (it can take a few days), generate the security token under My Account Settings and paste it here. One key for the whole installation."
+        }
+      },
+      "prices_entsoe": {
+        "title": "Electricity prices",
+        "description": "Prices for {area} come from ENTSO-E's Transparency Platform, with your own free key. Enter it below, or later from the SpotNav card's settings under Electricity price.",
+        "data": {
+          "entsoe_key": "ENTSO-E key (optional)"
+        },
+        "data_description": {
+          "entsoe_key": "Register at transparency.entsoe.eu, then e-mail transparency@entsoe.eu with the subject \"Restful API access\" and your account's e-mail address in the text. Once access is granted (it can take a few days), generate the security token under My Account Settings and paste it here. One key for the whole installation."
+        }
+      },
+      "prices_pvpc": {
+        "title": "Electricity prices",
+        "description": "SpotNav reads Spain's PVPC prices from Home Assistant's own PVPC integration: [Spain electricity hourly pricing (PVPC)]({link}). You can also do this later; the SpotNav card's settings say so under Electricity price."
+      },
+      "prices_octopus": {
+        "title": "Electricity prices",
+        "description": "SpotNav reads your Agile rates for {area} from the Octopus Energy integration, which is installed through HACS: [Octopus Energy]({link}). Your meter's tariff has to be Agile. You can also do this later; the SpotNav card's settings say so under Electricity price."
       }
     },
     "abort": {
@@ -265,7 +293,8 @@
       "not_a_charger": "That device is not an EV charger (a heater or outlet controller).",
       "charger_not_recognised": "SpotNav does not know this integration. Choose Manual instead.",
       "charger_not_controllable": "SpotNav cannot start or stop this charger. It can only be read.",
-      "no_price_areas": "The list of price areas could not be read. Try again in a minute."
+      "no_price_areas": "The list of price areas could not be read. Try again in a minute.",
+      "no_pending_entry": "Nothing was waiting to be saved."
     },
     "error": {
       "safety_margin_at_or_above_fuse": "The safety margin must be lower than the main fuse, or no current is left for the chargers.",
@@ -291,7 +320,8 @@
       "unit_expected_apparent_power": "This sensor must report apparent power in VA or kVA.",
       "manual_entities_duplicate": "Each phase needs its own entity.",
       "fee_value_required": "Enter your own figure, or choose the suggestion.",
-      "fee_no_suggestion": "This area has no suggestion for it: enter your own figure or choose nothing."
+      "fee_no_suggestion": "This area has no suggestion for it: enter your own figure or choose nothing.",
+      "entsoe_key_rejected": "ENTSO-E did not accept this key. Check it, or generate a new one on transparency.entsoe.eu."
     }
   },
   "options": {
