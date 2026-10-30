@@ -59,6 +59,8 @@ PROVIDER_NAMES: Final = {
     "relay": ("SpotNav relay", "https://spotnav.sensnology.se"),
     "nordpool": ("Nord Pool", "https://www.nordpoolgroup.com/"),
     "entsoe": ("ENTSO-E Transparency Platform", "https://transparency.entsoe.eu/"),
+    "pvpc": ("Red Eléctrica (ESIOS) – PVPC", "https://www.esios.ree.es/es/pvpc"),
+    "octopus": ("Octopus Energy (Agile)", "https://octopus.energy/smart/agile/"),
 }
 
 
