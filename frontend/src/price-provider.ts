@@ -241,6 +241,7 @@ export function keyEditor(
   site.rel = "noopener noreferrer";
   site.textContent = "transparency.entsoe.eu";
   howto.append(before ?? "", site, after);
+  howto.dataset["entsoeHowto"] = "";
   howto.id = `${field.id}-howto`;
   field.setAttribute("aria-describedby", howto.id);
   const line = element(doc, "div", C.settingsField);

@@ -696,7 +696,8 @@ export const VISUAL_STYLES = `
     margin: 4px 0 0;
     font-size: 0.85em;
   }
-  .spotnav-market-source a {
+  .spotnav-market-source a,
+  [data-entsoe-howto] a {
     color: var(--primary-color, #03a9f4);
   }
   .spotnav-market-postcode-row {
