@@ -1943,6 +1943,22 @@ class SiteCapacityController:
         an overload would stop charges on every meter hiccup, as for a charger already at its minimum.
         """
         damper = self._damper_for(charger_entry_id)
+        if decision.reason == REASON_MAGNITUDE_LOWERING and decision.proposed_current_a is not None:
+            # A charge whose direction was lost mid-charge on a direct site, over the limit by |I|: paused while the
+            # fresh reading still shows it (as `_async_apply_magnitude_lowering` lowers a charger whose current is set).
+            request = next(
+                (r for r in self._build_requests(credit=False) if r.charger_entry_id == charger_entry_id), None
+            )
+            again = (
+                None
+                if request is None or fresh.state != "observing"
+                else magnitude_overload_lowering(site_result=fresh, request=request, max_age_s=max_age_s)
+            )
+            if again is None or again.proposed_current_a is None:
+                self._log_active_control_outcome(charger_entry_id, decision, outcome="held", detail="overload_over")
+                return
+            await self._async_pause_switch_only(charger_entry_id, charger_controller, decision, damper)
+            return
         if is_import_overload(decision) and decision.proposed_current_a is not None:
             failure = applyability_failure(
                 decision=decision,
@@ -1957,21 +1973,7 @@ class SiteCapacityController:
                     charger_entry_id, decision, outcome="held", detail=failure.kind, detail_phase=failure.phase
                 )
                 return
-            if not (charger_controller.charging or charger_controller.start_pending):
-                self._log_active_control_outcome(charger_entry_id, decision, outcome="held", detail="not_charging")
-                return
-            if not self._active_control_allowed() or self._closed:
-                return
-            await self._async_write_regulated(
-                charger_entry_id,
-                charger_controller,
-                decision,
-                damper,
-                DampingDecision(True, 0.0, "urgent"),
-                0,
-                damper.last_written_a,
-                None,
-            )
+            await self._async_pause_switch_only(charger_entry_id, charger_controller, decision, damper)
             return
         if charger_controller.paused_by_balancing:
             await self._async_maybe_resume_paused_charge(
@@ -1979,6 +1981,42 @@ class SiteCapacityController:
             )
             return
         self._log_active_control_outcome(charger_entry_id, decision, outcome="held", detail="switch_only_kept")
+
+    async def _async_pause_switch_only(
+        self,
+        charger_entry_id: str,
+        charger_controller: ChargingController,
+        decision: RegulatorDecision,
+        damper: RegulatorDamper,
+    ) -> None:
+        """Pause a switch-only charger in a charge, through the regulator's own pause. A pause of ours still settling
+        (the charger has not answered it yet) is not sent again, as for a charger whose current is set; once it has
+        had its time, a charger still charging is paused again."""
+        if not (charger_controller.charging or charger_controller.start_pending):
+            self._log_active_control_outcome(charger_entry_id, decision, outcome="held", detail="not_charging")
+            return
+        previous = damper.last_written_a
+        if previous is not None and previous < DEFAULT_MIN_CURRENT_A:
+            if charger_controller.stop_settling:
+                self._log_active_control_outcome(
+                    charger_entry_id, decision, outcome="held", detail="overload_already_lowered"
+                )
+                return
+            # Paused before, and charging again: what it draws is not what was last written.
+            damper.forget_write(None)
+            previous = None
+        if not self._active_control_allowed() or self._closed:
+            return
+        await self._async_write_regulated(
+            charger_entry_id,
+            charger_controller,
+            decision,
+            damper,
+            DampingDecision(True, 0.0, "urgent"),
+            0,
+            previous,
+            None,
+        )
 
     async def _async_apply_must_lower(
         self,
@@ -3711,9 +3749,13 @@ class SiteCapacityController:
                 and self._direction_at_charge_start.get(charger_entry_id)
                 and self._in_charge(charger_entry_id)
             ):
-                decisions[charger_entry_id] = magnitude_overload_lowering(
+                lowering = magnitude_overload_lowering(
                     site_result=self.result, request=request, max_age_s=config.max_age_s
                 )
+                if request.switch_only and lowering.proposed_current_a is not None:
+                    # It cannot be lowered: any lowering the overload by |I| calls for is a pause.
+                    lowering = replace(lowering, proposed_current_a=0.0, reason=REASON_MAGNITUDE_LOWERING)
+                decisions[charger_entry_id] = lowering
         return decisions
 
     def charger_measured_current(self, charger_entry_id: str) -> DirectPhaseMeasurement | None:

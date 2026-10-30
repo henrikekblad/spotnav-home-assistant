@@ -386,3 +386,52 @@ async def test_a_site_step_is_learned_through_the_site_for_a_charger_with_no_rea
     await edge(False, 15.0, 2.0)
     assert cc.switched_current().source == "site_step"
     assert cc.switched_current().amps == 13.0
+
+
+async def test_a_lost_direction_on_a_direct_site_still_pauses_a_switch_only_charger_over_the_fuse(
+    hass: HomeAssistant,
+) -> None:
+    from .test_direct_signed_active_control import _charger_reads, _confirm, _report, _site, _start, _tick
+
+    prefix = "lost_switch"
+    hass.states.async_set(f"switch.{prefix}", "off")
+    charger = make_entry(
+        hass,
+        entry_id=prefix,
+        charge_control=f"switch.{prefix}",
+        current_limit=None,
+        webhook_id=f"webhook-{prefix}",
+        title="Switch",
+    )
+    assert await hass.config_entries.async_setup(charger.entry_id)
+    await hass.async_block_till_done()
+    async_mock_service(hass, "switch", "turn_on")
+    turn_off = async_mock_service(hass, "switch", "turn_off")
+    _charger_reads(hass, prefix, 0.0)
+    _report(hass, "lost_switch_site", (12.0, 13.0, 14.0), 39.0 * 230.0)
+    site_entry = _site(hass, "lost_switch_site", [charger], [prefix])
+    assert await hass.config_entries.async_setup(site_entry.entry_id)
+    await hass.async_block_till_done()
+    site = controller_of(hass, site_entry.entry_id)
+    await _confirm(hass, "lost_switch_site")
+
+    await _start(hass, charger, prefix, 10)
+    _charger_reads(hass, prefix, 10.0)
+    await _confirm(hass, "lost_switch_site", currents=(12.0, 13.0, 14.0), times=4)
+    assert controller_of(hass, charger.entry_id).is_switch_only
+
+    # The total turns against the currents: the direction is withdrawn mid-charge; nothing over, nothing done.
+    _report(hass, "lost_switch_site", (12.0, 13.0, 14.0), -39.0 * 230.0)
+    await _tick(hass)
+    assert site.regulator_decisions[charger.entry_id].proposed_current_a is None
+    assert turn_off == []
+
+    # L3 over the limit by |I|: it cannot be lowered, so it is paused.
+    _report(hass, "lost_switch_site", (12.0, 13.0, 26.0), -51.0 * 230.0)
+    await _tick(hass)
+    decision = site.regulator_decisions[charger.entry_id]
+    assert (decision.proposed_current_a, decision.reason) == (
+        0.0,
+        "lowering_overload_on_current_magnitude_direction_unknown",
+    )
+    assert [call.data.get("entity_id") for call in turn_off] == [f"switch.{prefix}"]
