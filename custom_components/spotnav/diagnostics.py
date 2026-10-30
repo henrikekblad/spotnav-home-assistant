@@ -160,6 +160,10 @@ def _charger_diagnostics(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, A
             "resolved_current": None
             if resolved is None
             else {"amps": resolved.amps, "source": resolved.source},
+            # A charger whose current cannot be set, only switched on and off: the current load balancing and the sun
+            # reckon it at, and where it came from (`measured`, `site_step`, `charging_current` or `default`); null
+            # for a charger whose current is set.
+            "switched_current": controller.switched_current_snapshot(),
             # OCPP identity and role facts: which connector a write would go to, whether a unique
             # target exists, whether the station ceiling and session limit were found. Role facts,
             # not entity ids, so the redaction above stays the only place that knows what is private.

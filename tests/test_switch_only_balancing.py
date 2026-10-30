@@ -21,6 +21,7 @@ from custom_components.spotnav.const import (
     MEASUREMENT_MODE_DERIVED,
     REGULATOR_DWELL_S,
 )
+from custom_components.spotnav.diagnostics import entry_diagnostics
 from custom_components.spotnav.site.regulator_damping import RegulatorDamper
 
 from .charger_helpers import mock_ocpp_assigned_current
@@ -212,6 +213,8 @@ async def test_the_switched_current_is_learned_from_the_chargers_own_current_sen
     assert cc.switched_current().source == "measured"
     assert cc.switched_current().amps == 15.8
     assert cc.switched_current_snapshot()["measured_a"] == 15.8
+    diagnostics = entry_diagnostics(hass, world.chargers["b"])["controller"]["switched_current"]
+    assert diagnostics["source"] == "measured" and diagnostics["amps"] == 15.8
     # The load balancer reckons it at its whole switched current, rounded up.
     request = next(r for r in world.site._build_requests() if r.charger_entry_id == world.entry_id("b"))  # noqa: SLF001
     assert request.switch_only and request.requested_current_a == 16.0 and request.min_current_a == 16.0
