@@ -431,7 +431,12 @@
         "title": "Strompreis",
         "description": "Preise für Automationen, die nichts mit einem Auto zu tun haben, etwa Fußbodenheizung oder Waschmaschine. Welche Preiszone?",
         "data": {
-          "area_id": "Preiszone"
+          "area_id": "Preiszone",
+          "entsoe_key": "ENTSO-E-Schlüssel (ganze Installation, optional)",
+          "entsoe_key_remove": "ENTSO-E-Schlüssel entfernen"
+        },
+        "data_description": {
+          "entsoe_key": "Dein eigener Sicherheitsschlüssel für die Transparency Platform von ENTSO-E. Damit erhalten Preiszonen, die Nord Pool nicht handelt, ihre Preise von ENTSO-E. Ein Schlüssel für die ganze Installation; leer lassen, um den gespeicherten zu behalten. Er wird nie wieder angezeigt."
         }
       },
       "price_fees": {
@@ -469,7 +474,8 @@
       "unit_expected_apparent_power": "Dieser Sensor muss Scheinleistung in VA oder kVA melden.",
       "manual_entities_duplicate": "Jede Phase braucht eine eigene Entität.",
       "fee_value_required": "Gib einen eigenen Wert ein oder wähle den Vorschlag.",
-      "fee_no_suggestion": "Diese Preiszone hat dafür keinen Vorschlag: gib einen eigenen Wert ein oder wähle nichts."
+      "fee_no_suggestion": "Diese Preiszone hat dafür keinen Vorschlag: gib einen eigenen Wert ein oder wähle nichts.",
+      "entsoe_key_rejected": "ENTSO-E hat diesen Schlüssel nicht akzeptiert. Prüfe ihn oder erzeuge einen neuen auf transparency.entsoe.eu."
     }
   },
   "selector": {

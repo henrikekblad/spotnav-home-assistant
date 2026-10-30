@@ -431,7 +431,12 @@
         "title": "Sähkön hinta",
         "description": "Hinnat automaatioille, jotka eivät koske autoa, kuten lattialämmitykselle tai pesukoneelle. Mikä hinta-alue?",
         "data": {
-          "area_id": "Hinta-alue"
+          "area_id": "Hinta-alue",
+          "entsoe_key": "ENTSO-E-avain (koko asennus, valinnainen)",
+          "entsoe_key_remove": "Poista ENTSO-E-avain"
+        },
+        "data_description": {
+          "entsoe_key": "Oma suojausavaimesi ENTSO-E:n Transparency Platformiin. Sen avulla alueet, joilla Nord Pool ei käy kauppaa, saavat hintansa ENTSO-E:ltä. Yksi avain koko asennukselle; jätä tyhjäksi, niin tallennettu avain säilyy. Avainta ei näytetä enää."
         }
       },
       "price_fees": {
@@ -469,7 +474,8 @@
       "unit_expected_apparent_power": "Tämän anturin on ilmoitettava näennäisteho yksikössä VA tai kVA.",
       "manual_entities_duplicate": "Jokainen vaihe tarvitsee oman entiteettinsä.",
       "fee_value_required": "Anna oma luku tai valitse ehdotus.",
-      "fee_no_suggestion": "Hinta-alueella ei ole tälle ehdotusta: anna oma luku tai valitse ei mitään."
+      "fee_no_suggestion": "Hinta-alueella ei ole tälle ehdotusta: anna oma luku tai valitse ei mitään.",
+      "entsoe_key_rejected": "ENTSO-E ei hyväksynyt avainta. Tarkista se tai luo uusi osoitteessa transparency.entsoe.eu."
     }
   },
   "selector": {

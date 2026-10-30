@@ -17,10 +17,11 @@ price timer.
   clock jump still leaves one timer per area. Only the exact area-local midnight rollover is not
   jittered; every interval and backoff is (see [jittered]).
 * Per provider: an area read from the relay follows its index (the catalogue and index steps run only while
-  some active area does); an area read from a provider without an index (Nord Pool through Home Assistant)
-  asks for a file when the schedule says it is out and it is not held, so a cycle with everything held makes
-  no request at all. When the choice of provider changes (a `nordpool` entry loaded or unloaded), the areas
-  take the new calendar and a cycle runs at once.
+  some active area does); an area read from a provider without an index (Nord Pool through Home Assistant,
+  ENTSO-E) asks for a file when the schedule says it is out and it is not held, so a cycle with everything held makes
+  no request at all. When the choice of provider changes (a `nordpool` entry loaded or unloaded, the ENTSO-E key
+  set, cleared or rejected), the areas take the new calendar and a cycle runs at once, or right after the one
+  running (a key rejected during a cycle moves its areas, which that cycle has already asked).
 * Each activation of an area carries a generation, and every completion checks it before publishing
   or scheduling, so a run that started before a re-subscribe, change or unsubscribe cannot resurrect
   the area. An in-flight refresh may still populate the shared repository, but cannot install a
@@ -454,6 +455,8 @@ class PriceRefreshManager:
         # timer, one backoff count and one next-attempt instant however many areas subscribe.
         self._global_run: asyncio.Task[None] | None = None
         self._global_generation = 0
+        # A change of provider while a cycle runs: one more cycle right after it.
+        self._rerun_for_providers = False
         self._cancel_global: Callable[[], None] | None = None
         self._backoff_step = 0
         self._next_global_attempt: datetime | None = None
@@ -475,6 +478,9 @@ class PriceRefreshManager:
         if self._shutdown:
             return
         self._sync_zones()
+        if self._global_run is not None and not self._global_run.done():
+            self._rerun_for_providers = True
+            return
         self._trigger_global_run()
 
     async def async_shutdown(self) -> None:
@@ -689,6 +695,10 @@ class PriceRefreshManager:
         if self._stale_generation(generation):
             return
         self._complete_cycle()
+        if self._rerun_for_providers:
+            self._rerun_for_providers = False
+            self._global_run = None
+            self._trigger_global_run()
 
     async def _refresh_global(self) -> None:
         """Every active area's days: the relay's areas after its catalogue (when due) and one index, the

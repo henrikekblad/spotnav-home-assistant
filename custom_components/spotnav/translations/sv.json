@@ -431,7 +431,12 @@
         "title": "Elpris",
         "description": "Priser för automationer som inte handlar om en bil, till exempel golvvärme eller tvättmaskin. Vilket elområde?",
         "data": {
-          "area_id": "Elområde"
+          "area_id": "Elområde",
+          "entsoe_key": "ENTSO-E-nyckel (hela installationen, valfri)",
+          "entsoe_key_remove": "Ta bort ENTSO-E-nyckeln"
+        },
+        "data_description": {
+          "entsoe_key": "Din egen säkerhetsnyckel för ENTSO-E:s Transparency Platform. Med den hämtar områden som Nord Pool inte handlar sina priser från ENTSO-E. En nyckel för hela installationen; lämna tomt för att behålla den sparade. Den visas aldrig igen."
         }
       },
       "price_fees": {
@@ -469,7 +474,8 @@
       "unit_expected_apparent_power": "Sensorn måste rapportera skenbar effekt i VA eller kVA.",
       "manual_entities_duplicate": "Varje fas behöver en egen entitet.",
       "fee_value_required": "Ange en egen siffra, eller välj förslaget.",
-      "fee_no_suggestion": "Elområdet har inget förslag för den: ange en egen siffra eller välj inget."
+      "fee_no_suggestion": "Elområdet har inget förslag för den: ange en egen siffra eller välj inget.",
+      "entsoe_key_rejected": "ENTSO-E godtog inte nyckeln. Kontrollera den, eller skapa en ny på transparency.entsoe.eu."
     }
   },
   "selector": {

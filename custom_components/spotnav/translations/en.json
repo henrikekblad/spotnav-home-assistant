@@ -431,7 +431,12 @@
         "title": "Electricity price",
         "description": "Prices for automations that are not about a car, such as floor heating or a washing machine. Which price area?",
         "data": {
-          "area_id": "Price area"
+          "area_id": "Price area",
+          "entsoe_key": "ENTSO-E key (whole installation, optional)",
+          "entsoe_key_remove": "Remove the ENTSO-E key"
+        },
+        "data_description": {
+          "entsoe_key": "Your own security token for ENTSO-E's Transparency Platform. With it, areas Nord Pool does not trade get their prices from ENTSO-E. One key for the whole installation; leave empty to keep the one saved. It is never shown again."
         }
       },
       "price_fees": {
@@ -469,7 +474,8 @@
       "unit_expected_apparent_power": "This sensor must report apparent power in VA or kVA.",
       "manual_entities_duplicate": "Each phase needs its own entity.",
       "fee_value_required": "Enter your own figure, or choose the suggestion.",
-      "fee_no_suggestion": "This area has no suggestion for it: enter your own figure or choose nothing."
+      "fee_no_suggestion": "This area has no suggestion for it: enter your own figure or choose nothing.",
+      "entsoe_key_rejected": "ENTSO-E did not accept this key. Check it, or generate a new one on transparency.entsoe.eu."
     }
   },
   "selector": {

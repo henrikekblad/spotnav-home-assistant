@@ -431,7 +431,12 @@
         "title": "Prix de l'électricité",
         "description": "Des prix pour les automatisations qui ne concernent pas une voiture, comme un plancher chauffant ou un lave-linge. Quelle zone de prix ?",
         "data": {
-          "area_id": "Zone de prix"
+          "area_id": "Zone de prix",
+          "entsoe_key": "Clé ENTSO-E (toute l'installation, facultative)",
+          "entsoe_key_remove": "Supprimer la clé ENTSO-E"
+        },
+        "data_description": {
+          "entsoe_key": "Votre propre jeton de sécurité pour la Transparency Platform d'ENTSO-E. Avec lui, les zones que Nord Pool ne négocie pas obtiennent leurs prix d'ENTSO-E. Une clé pour toute l'installation ; laissez vide pour garder celle enregistrée. Elle n'est plus jamais affichée."
         }
       },
       "price_fees": {
@@ -469,7 +474,8 @@
       "unit_expected_apparent_power": "Ce capteur doit indiquer une puissance apparente en VA ou kVA.",
       "manual_entities_duplicate": "Chaque phase doit avoir sa propre entité.",
       "fee_value_required": "Saisissez votre propre montant, ou choisissez la suggestion.",
-      "fee_no_suggestion": "Cette zone n'a pas de suggestion pour cela : saisissez votre propre montant ou choisissez rien."
+      "fee_no_suggestion": "Cette zone n'a pas de suggestion pour cela : saisissez votre propre montant ou choisissez rien.",
+      "entsoe_key_rejected": "ENTSO-E n'a pas accepté cette clé. Vérifiez-la ou générez-en une nouvelle sur transparency.entsoe.eu."
     }
   },
   "selector": {

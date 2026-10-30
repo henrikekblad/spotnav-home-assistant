@@ -12,22 +12,37 @@ One domain store (`spotnav.price_sources`), loaded at the integration's setup:
   (`price_source.wire_revision`); when the source moves (a pointer written, an entry added or removed, the
   migration), that sum can fall. The charger then gets an offset that puts it above the highest revision
   answered before, so the card's and the app's revision only grows.
+* `entsoe_token` and `entsoe_token_state`: the installation's one ENTSO-E security token (the person's own, for the
+  areas Nord Pool does not trade) and what is known of it: `ok` (the platform accepted it), `rejected` (it answered
+  401/403) or `unchecked` (saved while the platform could not be asked). The token is read only through
+  [PriceSourceStore.entsoe_key], which wraps it so that no rendering shows it; it is never logged, never in
+  diagnostics and never in a payload. Listeners hear when it is set, cleared or its state changes.
 """
 
 from __future__ import annotations
 
-from typing import Any, Final
+import logging
+from collections.abc import Callable
+from typing import Any, Final, Literal
 
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.storage import Store
 
 from ..const import DOMAIN
 from ..runtime import domain_data
+from .entsoe_parse import EntsoeToken
+
+_LOGGER = logging.getLogger(__name__)
 
 STORAGE_VERSION: Final = 1
 STORAGE_KEY: Final = f"{DOMAIN}.price_sources"
 #: Seconds a change to the revision ledger waits before it is saved (several reads at once save once).
 _SAVE_DELAY_S: Final = 1
+
+
+#: What is known of the stored ENTSO-E token.
+EntsoeKeyState = Literal["ok", "rejected", "unchecked"]
+ENTSOE_KEY_STATES: Final = ("ok", "rejected", "unchecked")
 
 
 def _whole(value: Any) -> int:
@@ -42,6 +57,9 @@ class PriceSourceStore:
         self.migrated = False
         self._duplicates: list[dict[str, Any]] = []
         self._wire: dict[str, dict[str, Any]] = {}
+        self._entsoe_token: str | None = None
+        self._entsoe_token_state: EntsoeKeyState = "unchecked"
+        self._entsoe_listeners: list[Callable[[], None]] = []
 
     async def async_load(self) -> None:
         stored = await self._store.async_load()
@@ -70,9 +88,18 @@ class PriceSourceStore:
                 for charger_id, item in wire.items()
                 if isinstance(item, dict)
             }
+        token = stored.get("entsoe_token")
+        if isinstance(token, str) and token.strip():
+            self._entsoe_token = token.strip()
+            state = stored.get("entsoe_token_state")
+            self._entsoe_token_state = state if state in ENTSOE_KEY_STATES else "unchecked"
 
     def _data(self) -> dict[str, Any]:
-        return {"migrated": self.migrated, "duplicates": self._duplicates, "wire": self._wire}
+        data: dict[str, Any] = {"migrated": self.migrated, "duplicates": self._duplicates, "wire": self._wire}
+        if self._entsoe_token is not None:
+            data["entsoe_token"] = self._entsoe_token
+            data["entsoe_token_state"] = self._entsoe_token_state
+        return data
 
     async def async_save(self) -> None:
         await self._store.async_save(self._data())
@@ -112,6 +139,65 @@ class PriceSourceStore:
                 await self.async_save()
                 return True
         return False
+
+    # ------------------------------------------------------------ the ENTSO-E key
+
+    def entsoe_key(self) -> EntsoeToken | None:
+        """The stored token, wrapped (every rendering of it says `<redacted>`), or `None` when none is set."""
+        return None if self._entsoe_token is None else EntsoeToken(self._entsoe_token)
+
+    @property
+    def entsoe_key_set(self) -> bool:
+        return self._entsoe_token is not None
+
+    @property
+    def entsoe_key_state(self) -> EntsoeKeyState | None:
+        """`ok`, `rejected` or `unchecked` for a stored token; `None` when none is set."""
+        return None if self._entsoe_token is None else self._entsoe_token_state
+
+    @property
+    def entsoe_key_usable(self) -> bool:
+        """Whether a token is set that the platform has not rejected."""
+        return self._entsoe_token is not None and self._entsoe_token_state != "rejected"
+
+    async def async_set_entsoe_key(self, token: EntsoeToken | None, state: EntsoeKeyState = "unchecked") -> None:
+        """Store a new token with what its check found, or with `None` clear it; saved at once."""
+        value = None if token is None or token.empty else token.reveal()
+        if value == self._entsoe_token and (value is None or state == self._entsoe_token_state):
+            return
+        self._entsoe_token = value
+        self._entsoe_token_state = state if value is not None else "unchecked"
+        await self.async_save()
+        _LOGGER.debug("The ENTSO-E key was %s", "set" if value is not None else "cleared")
+        self._notify_entsoe()
+
+    async def async_mark_entsoe_key(self, token: EntsoeToken, state: EntsoeKeyState) -> bool:
+        """Record what the platform answered to [token]: only while it is still the stored one (a key replaced
+        while a request was out keeps its own state). Whether anything changed."""
+        if self._entsoe_token is None or token.reveal() != self._entsoe_token or state == self._entsoe_token_state:
+            return False
+        self._entsoe_token_state = state
+        await self.async_save()
+        _LOGGER.debug("The ENTSO-E key is now %s", state)
+        self._notify_entsoe()
+        return True
+
+    def add_entsoe_listener(self, listener: Callable[[], None]) -> Callable[[], None]:
+        """Call [listener] (on the loop, no arguments) when the key is set, cleared or its state changes."""
+        self._entsoe_listeners.append(listener)
+
+        def remove() -> None:
+            if listener in self._entsoe_listeners:
+                self._entsoe_listeners.remove(listener)
+
+        return remove
+
+    def _notify_entsoe(self) -> None:
+        for listener in list(self._entsoe_listeners):
+            try:
+                listener()
+            except Exception as err:  # noqa: BLE001 - one listener must not stop the rest
+                _LOGGER.warning("An ENTSO-E key listener failed: %s", type(err).__name__)
 
     # ------------------------------------------------------------ the wire revision
 

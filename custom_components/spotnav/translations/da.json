@@ -431,7 +431,12 @@
         "title": "Elpris",
         "description": "Priser til automatiseringer, der ikke handler om en bil, for eksempel gulvvarme eller vaskemaskine. Hvilket prisområde?",
         "data": {
-          "area_id": "Prisområde"
+          "area_id": "Prisområde",
+          "entsoe_key": "ENTSO-E-nøgle (hele installationen, valgfri)",
+          "entsoe_key_remove": "Fjern ENTSO-E-nøglen"
+        },
+        "data_description": {
+          "entsoe_key": "Din egen sikkerhedsnøgle til ENTSO-E's Transparency Platform. Med den henter områder, som Nord Pool ikke handler, deres priser fra ENTSO-E. Én nøgle for hele installationen; lad feltet stå tomt for at beholde den gemte. Den vises aldrig igen."
         }
       },
       "price_fees": {
@@ -469,7 +474,8 @@
       "unit_expected_apparent_power": "Denne sensor skal angive tilsyneladende effekt i VA eller kVA.",
       "manual_entities_duplicate": "Hver fase skal have sin egen entitet.",
       "fee_value_required": "Indtast dit eget tal, eller vælg forslaget.",
-      "fee_no_suggestion": "Prisområdet har intet forslag til den: indtast dit eget tal eller vælg intet."
+      "fee_no_suggestion": "Prisområdet har intet forslag til den: indtast dit eget tal eller vælg intet.",
+      "entsoe_key_rejected": "ENTSO-E godtog ikke nøglen. Tjek den, eller opret en ny på transparency.entsoe.eu."
     }
   },
   "selector": {

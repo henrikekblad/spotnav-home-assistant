@@ -431,7 +431,12 @@
         "title": "Elektriciteitsprijs",
         "description": "Prijzen voor automatiseringen die niet over een auto gaan, zoals vloerverwarming of een wasmachine. Welk prijsgebied?",
         "data": {
-          "area_id": "Prijsgebied"
+          "area_id": "Prijsgebied",
+          "entsoe_key": "ENTSO-E-sleutel (hele installatie, optioneel)",
+          "entsoe_key_remove": "ENTSO-E-sleutel verwijderen"
+        },
+        "data_description": {
+          "entsoe_key": "Je eigen beveiligingssleutel voor het Transparency Platform van ENTSO-E. Daarmee halen prijsgebieden die Nord Pool niet verhandelt hun prijzen bij ENTSO-E. Eén sleutel voor de hele installatie; laat leeg om de opgeslagen sleutel te houden. Hij wordt nooit meer getoond."
         }
       },
       "price_fees": {
@@ -469,7 +474,8 @@
       "unit_expected_apparent_power": "Deze sensor moet schijnbaar vermogen doorgeven in VA of kVA.",
       "manual_entities_duplicate": "Elke fase heeft een eigen entiteit nodig.",
       "fee_value_required": "Vul een eigen bedrag in, of kies het voorstel.",
-      "fee_no_suggestion": "Dit prijsgebied heeft er geen voorstel voor: vul een eigen bedrag in of kies niets."
+      "fee_no_suggestion": "Dit prijsgebied heeft er geen voorstel voor: vul een eigen bedrag in of kies niets.",
+      "entsoe_key_rejected": "ENTSO-E heeft deze sleutel niet geaccepteerd. Controleer hem, of maak een nieuwe aan op transparency.entsoe.eu."
     }
   },
   "selector": {

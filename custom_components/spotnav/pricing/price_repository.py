@@ -52,7 +52,8 @@ relay's area list, index and profiles beside the days) is read through the same 
 schema 2 on the next write, losing nothing (a stored relay profile is no longer read: see below).
 
 A day file comes from the area's provider. The relay's index is its authority on which days exist; a provider
-without an index (Nord Pool through Home Assistant) is asked on its publication schedule instead
+without an index (Nord Pool through Home Assistant, ENTSO-E with the installation's key) is asked on its
+publication schedule instead
 (`providers.schedule_authority`): today and earlier when not held, tomorrow from just before its expected
 publication, and an empty answer ("not published yet") is remembered in memory until the next attempt. Such a
 provider dates its files on its own calendar (the CET delivery day), so [area_entry] answers the area list's entry
@@ -83,6 +84,7 @@ from .. import time_zones
 from .area_catalogue import async_load_bundled, BundledCatalogue
 from .market_day import compose_display_day, local_midnight, market_days_for, principal_market_day
 from .price_profile import build_profile, profile_window
+from .price_store import async_setup_price_store
 from .fx_rates import FxRates
 from .providers import (
     DayFetch,
@@ -94,6 +96,7 @@ from .providers import (
     schedule_open,
     TRANSPORT_CODES,
 )
+from .providers.entsoe import EntsoeProvider
 from .providers.nordpool import NordPoolProvider
 from .providers.relay import CONTRACT_VERSIONS, DEFAULT_BASE_URL, RelayFailure, RelayProvider
 from .relay_contract import (
@@ -324,6 +327,10 @@ class PriceRepository:
     def provider_for(self, area_id: str) -> PriceProvider:
         """The provider an area's files come from now."""
         return self._router.provider_for(area_id)
+
+    def entsoe_provider(self) -> EntsoeProvider | None:
+        """The ENTSO-E provider (for checking a key before it is stored); `None` without the bundled catalogue."""
+        return self._router.entsoe
 
     def uses_index(self, area_id: str) -> bool:
         """Whether the area's provider has an index (the relay) rather than a publication schedule."""
@@ -884,7 +891,10 @@ class PriceRepository:
         try:
             parsed, document = self._accept(fetch, area_id, day)
         except (RelayParseError, _Refused) as err:
-            self._record_failure(key, err)
+            # A provider that lost the area while it was asked (its key rejected by this very answer) does not
+            # speak for it any more: the new provider's attempt, maybe already made, stands.
+            if self._router.provider_for(area_id) is provider:
+                self._record_failure(key, err)
             return self._day_snapshot(
                 area_id, day, authority=authority or self._authority_now(area_id, day), settled=True
             )
@@ -1297,11 +1307,18 @@ async def async_setup_price_repository(
     # The ECB rates a provider without the relay needs (started by the first day that needs a rate).
     if data.fx_rates is None:
         data.fx_rates = FxRates(hass)
-    # Nord Pool through Home Assistant for the areas it trades while a `nordpool` entry is loaded; the relay
-    # otherwise. The bundled catalogue holds the Nord Pool codes, so without it there is only the relay.
+    # The installation's ENTSO-E key lives in the price entries' store, loaded here when it is not yet.
+    keys = await async_setup_price_store(hass)
+    if data.price_repository is not None:
+        await data.price_repository.async_restore()
+        return data.price_repository
+    # Nord Pool through Home Assistant for the areas it trades while a `nordpool` entry is loaded; else ENTSO-E
+    # with the installation's key; the relay otherwise. The bundled catalogue holds the Nord Pool codes and the
+    # ENTSO-E routes, so without it there is only the relay.
     router = ProviderRouter(
         RelayProvider(hass, base_url=base_url, session=session),
         None if bundled is None else NordPoolProvider(hass, bundled, data.fx_rates, now=now),
+        None if bundled is None else EntsoeProvider(hass, bundled, keys, data.fx_rates, now=now),
     )
     repository = PriceRepository(hass, store=store, now=now, bundled=bundled, router=router)
     router.async_start(hass)
