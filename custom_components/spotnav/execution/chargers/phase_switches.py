@@ -24,15 +24,14 @@ from typing import Final, Literal
 
 from homeassistant.const import STATE_OFF, STATE_ON
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers import entity_registry as er
 
-from ..charger_profiles import entity_matches_keys
 from .base import (
     _entity_unavailable,
     _finite,
     _lower,
     _not_executed,
     call_service,
+    device_entities,
     PhaseSwitch,
     PhaseSwitchResult,
     PHASES_INVALID,
@@ -65,26 +64,6 @@ _GOE_SWITCHING: Final = frozenset(
         "notchargingbecausephaseswitch",
     }
 )
-
-
-def device_entities(
-    hass: HomeAssistant, platform: str, domain: str, keys: tuple[str, ...], *entity_ids: str | None
-) -> list[str]:
-    """The enabled `domain` entities of `platform` that are one of `keys`, on the device of the first of `entity_ids`
-    that is an entity of `platform` on a device (the charger's own device). Empty when there is none."""
-    registry = er.async_get(hass)
-    for entity_id in entity_ids:
-        own = registry.async_get(entity_id) if entity_id else None
-        if own is None or own.platform != platform or own.device_id is None:
-            continue
-        return [
-            entry.entity_id
-            for entry in er.async_entries_for_device(registry, own.device_id)
-            if entry.domain == domain
-            and entry.platform == platform
-            and entity_matches_keys(translation_key=entry.translation_key, unique_id=entry.unique_id, keys=keys)
-        ]
-    return []
 
 
 def _charger_entities(context: ChargerContext, platform: str, domain: str, keys: tuple[str, ...]) -> list[str]:
