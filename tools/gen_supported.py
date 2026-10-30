@@ -75,6 +75,10 @@ HARDWARE_NOTES: dict[tuple[str, str], str] = {
     ("charger", "zaptec"): "Firmware 2.3 and newer ends a session after 20 restarts plus one per hour of the session, "
     "which solar on a cloudy day can reach. With APM or in stand-alone mode the charger ignores current writes "
     "(Code 527), so there is no current control.",
+    ("charger", "goecharger_api2"): "Keep the hidden setting `sua` (simulate unplugging always) off: with it on, a stop "
+    "can leave the charger in \"minimum pause duration\" until it is rebooted.",
+    ("charger", "goecharger_mqtt"): "Keep the hidden setting `sua` (simulate unplugging always) off: with it on, a stop "
+    "can leave the charger in \"minimum pause duration\" until it is rebooted.",
     ("meter", "edl21"): "Home Assistant writes each telegram that differs from the last, which on some meters is "
     "several times a second. Some readers time out with no meter data since Home Assistant 2026.10.4.",
 }
