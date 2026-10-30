@@ -22,6 +22,9 @@ price timer.
   no request at all. When the choice of provider changes (a `nordpool` entry loaded or unloaded, the ENTSO-E key
   set, cleared or rejected), the areas take the new calendar and a cycle runs at once, or right after the one
   running (a key rejected during a cycle moves its areas, which that cycle has already asked).
+* After every cycle the active areas are handed to the price history's backfill (`pricing/price_history.py`),
+  which fills the past days the profile needs at its own slow pace; it asks this manager when it may make a
+  request ([async_wait_idle], [history_busy], [history_wanted]), so today and tomorrow always come first.
 * Each activation of an area carries a generation, and every completion checks it before publishing
   or scheduling, so a run that started before a re-subscribe, change or unsubscribe cannot resurrect
   the area. An in-flight refresh may still populate the shared repository, but cannot install a
@@ -46,6 +49,7 @@ from .. import time_zones
 from ..runtime import domain_data
 from . import providers
 from .market_day import market_days_for, principal_market_day
+from .price_history import HistoryBackfill
 from .price_repository import (
     CatalogueSnapshot,
     DaySnapshot,
@@ -472,6 +476,8 @@ class PriceRefreshManager:
         self._shutdown = False
         # A change of provider moves an area's calendar and asks for its files at once.
         self._remove_provider_listener = repository.add_provider_listener(self._on_providers_changed)
+        # The price history's backfill (`pricing/price_history.py`), fed after every cycle; `None` until attached.
+        self._backfill: HistoryBackfill | None = None
 
     @callback
     def _on_providers_changed(self) -> None:
@@ -491,6 +497,8 @@ class PriceRefreshManager:
             return
         self._shutdown = True
         self._remove_provider_listener()
+        if self._backfill is not None:
+            await self._backfill.async_stop()
         runs: list[asyncio.Task[None]] = []
         self._global_generation += 1
         self._cancel("global")
@@ -695,6 +703,9 @@ class PriceRefreshManager:
         if self._stale_generation(generation):
             return
         self._complete_cycle()
+        if self._backfill is not None:
+            # Today and tomorrow have been asked for: the past days may follow (the backfill keeps its own pace).
+            self._backfill.request(record.area_id for record in self._active_areas())
         if self._rerun_for_providers:
             self._rerun_for_providers = False
             self._global_run = None
@@ -851,6 +862,40 @@ class PriceRefreshManager:
         for record in areas:
             self._notify(record)
         self._notify_catalogue()
+
+    def attach_backfill(self, backfill: HistoryBackfill) -> None:
+        """Feed the price history's backfill the active areas after every cycle (it asks the gate below)."""
+        self._backfill = backfill
+
+    def backfill_summary(self, area_id: str) -> dict[str, Any] | None:
+        return None if self._backfill is None else self._backfill.summary(area_id)
+
+    async def async_wait_idle(self) -> None:
+        """Return when no refresh cycle is in flight (the backfill's turn: today and tomorrow first)."""
+        while (run := self._global_run) is not None and not run.done():
+            await asyncio.wait((run,))
+
+    def history_busy(self) -> bool:
+        """Whether an active area is inside its publication window still waiting for tomorrow: the backfill asks
+        nothing then, so the frequent polls for tomorrow have the provider to themselves."""
+        now = self._now()
+        for record in self._active_areas():
+            entry = self._repository.area_entry(record.area_id)
+            publication = DEFAULT_PUBLICATION if entry is None else entry.publication
+            if not in_publication_window(now, publication):
+                continue
+            _, tomorrow = local_dates(now, record.tz)
+            if not self._repository.day_snapshot(record.area_id, tomorrow).is_complete:
+                return True
+        return False
+
+    def history_wanted(self, area_id: str) -> bool:
+        """Whether an area's history is worth filling now: it is in use and its today is held."""
+        record = self._areas.get(area_id)
+        if self._shutdown or record is None or not record.active:
+            return False
+        today, _ = local_dates(self._now(), record.tz)
+        return self._repository.holds_file(area_id, record.principal(today))
 
     def schedule_at(self, when: datetime, action: Callable[[datetime], Any]) -> Callable[[], None]:
         """One appointment on the manager's scheduler for a consumer that must look again at an instant
@@ -1189,5 +1234,9 @@ async def async_setup_price_refresh(
     if data.price_refresh is not None:
         return data.price_refresh
     manager = PriceRefreshManager(hass, repository, now=now, jitter=jitter, scheduler=scheduler)
+    # The past days the profile and statistics need, filled once Home Assistant has started and settled.
+    backfill = HistoryBackfill(hass, repository, manager, now=now, scheduler=scheduler)
+    manager.attach_backfill(backfill)
+    backfill.arm_after_start()
     data.price_refresh = manager
     return manager
