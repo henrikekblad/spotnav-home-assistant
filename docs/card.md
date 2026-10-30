@@ -36,6 +36,21 @@ When something needs attention, a banner says so: a notice in a neutral colour, 
 red when something must be fixed before charging can be planned. The banner counts the items to
 review and opens the full list with the integration's own wording.
 
+While nothing more serious is shown, an administrator sees **Get started: 3 things left** in the same place
+until the setup is complete. It opens the same list, whose **Get started** section has one row per thing left,
+each with a button to where it is done:
+
+- **the car's charge level**, when the plan charges to a target level and nothing reports the car's level (opens
+  Plan);
+- **a site** with the home's grid meter, for load balancing and solar (starts adding one);
+- **a phone** for notifications, when the Home Assistant app is signed in on one and none is chosen (opens
+  Settings at Notifications);
+- **the SpotNav app**, until it has been used with this Home Assistant (opens the app's page).
+
+The last three can be answered **Not needed**; that holds for every charger and every browser. Each row goes by
+itself once the thing is done. The prices are not a row: the Electricity price section already says what an area
+without a source needs.
+
 ## The price graph
 
 The graph shows the price of every interval per kWh, in the price area's small unit (öre, cent) or, if
