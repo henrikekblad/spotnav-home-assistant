@@ -71,6 +71,7 @@ HARDWARE_NOTES: dict[tuple[str, str], str] = {
     ("charger", "wallbox"): "Since mid-2025 the Wallbox cloud allows about one request a minute per account, and "
     "Home Assistant's own polling already uses it: keep one charger per account, or use OCPP, which is recommended "
     "for Wallbox.",
+    ("charger", "smartevse"): "Use firmware 3.10.1 or newer: on 3.9.3 to 3.10.0 some cars do not resume after a pause.",
 }
 
 #: Display names by Home Assistant domain.
