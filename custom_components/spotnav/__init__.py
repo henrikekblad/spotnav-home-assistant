@@ -105,7 +105,7 @@ from .site.site_join import (
     backfill_profile_measured_sources,
     prune_missing_members,
 )
-from .site.site_capacity_controller import SiteCapacityController
+from .site.site_capacity_controller import async_release_held_charges, SiteCapacityController
 from .texts import async_load as async_load_texts
 from .vehicles.discovery_decisions import async_setup_decisions
 from .vehicles.soc_estimate import SocReader
@@ -717,6 +717,8 @@ async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
         return
     await async_sync_resolution_repairs(hass, (entry.entry_id,))
     if entry.data.get(CONF_ENTRY_TYPE) == ENTRY_TYPE_SITE:
+        # Its load balancing is gone with it: a charge it held back is given back or forgotten.
+        await async_release_held_charges(hass, entry.data.get(CONF_CHARGER_ENTRY_IDS) or [])
         return
     async_leave_sites(hass, entry.entry_id)
     if (price_store := domain_data(hass).price_store) is not None:
