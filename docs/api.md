@@ -312,12 +312,31 @@ Each charger has one **Charger events** entity (an `event` entity). It fires:
 | `event_type` | When | Attributes |
 |---|---|---|
 | `charge_started` | the charger starts charging | `energy_register_kwh` |
-| `charge_finished` | the charger stops charging | `unplugged`, and `energy_kwh` the charger's energy register counted since the start, when it has one |
+| `charge_finished` | the charger stops charging | `unplugged`, `energy_kwh` the charger's energy register counted since the start (when it has one), and the charge's cost: `cost`, `currency`, `average_price`, `unpriced_kwh` (below) |
 | `plugged_in` / `unplugged` | the vehicle is connected / disconnected, for a charger that can say | none |
 | `plan_installed` | a charging plan different from the one before is installed, by Auto or by hand | `start`, `end`, `periods`, `amps`, `energy_kwh`, `automatic` |
 | `plan_at_risk` | the departure cannot be met with the energy that remains (the plan is the best effort, or not one whole quarter-hour is left); once each time it becomes so | `departure_time`, `requested_kwh` |
 
-Starting Home Assistant is not an event, and neither is a charger integration that reloads: while its charging state reads unavailable or unknown nothing is observed, and the charge is as it was last seen. Example, a notification when a charge ends:
+Starting Home Assistant is not an event, and neither is a charger integration that reloads: while its charging state reads unavailable or unknown nothing is observed, and the charge is as it was last seen.
+
+**What a finished charge cost.** `charge_finished` prices the energy delivered since the charge started from its
+[charge session](card.md#charge-history), as the session sensors do: the spot price of each interval plus the
+energy tax and grid fee you enabled, times VAT, with your current settings.
+
+| Attribute | Meaning |
+|---|---|
+| `cost` | What the priced energy cost, in the major unit (kronor, euro), as the *Last charge cost* sensor rounds it. |
+| `currency` | The ISO code of that cost (`SEK`, `EUR`, …). |
+| `average_price` | `cost` per priced kWh, in the major unit. |
+| `unpriced_kwh` | The charge's energy that had no published price, counted but not in `cost`; `0.0` when all of it was priced. |
+
+When none of the energy could be priced (no published price, or the price settings cannot be resolved), `cost`,
+`currency` and `average_price` are `null`, never `0`. Without a session record (none was kept) all four are `null`.
+A pause shorter than two minutes continues the session; the event
+after it covers only the energy since the charge started again, so two events add up to the session. The figures
+are those the session holds when the charge stops: a reading the charger sends after the stop goes into the
+session, and so into the *Last charge* sensors, but not into the event that has already fired. Example, a
+notification when a charge ends:
 
 ```yaml
 automation:
@@ -331,9 +350,14 @@ automation:
       - action: notify.mobile_app_phone
         data:
           message: >
-            Charging finished
-            {{ trigger.to_state.attributes.energy_kwh | default('?') }} kWh.
+            {%- set a = trigger.to_state.attributes -%}
+            Charging finished:
+            {{ '%.1f' | format(a.energy_kwh) if a.energy_kwh is defined else '?' }} kWh
+            {%- if a.cost is not none %} for {{ '%.2f' | format(a.cost) }} {{ a.currency }},
+            average {{ '%.2f' | format(a.average_price) }} {{ a.currency }}/kWh{% endif %}.
 ```
+
+This says, for example, "Charging finished: 12.4 kWh for 18.60 SEK, average 1.50 SEK/kWh".
 
 ## The dashboard document
 
