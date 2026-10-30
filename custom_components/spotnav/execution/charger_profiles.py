@@ -66,6 +66,9 @@ PATH_BUTTONS_TOGGLE: Final = "buttons_toggle"
 PATH_SELECT_APPROVE: Final = "select_approve"
 #: A switch whose pauses are counted against the vendor's relay-protection budget (Peblar).
 PATH_SWITCH_BUDGET: Final = "switch_budget"
+#: A switch whose state is assumed for a while after each command, read from the charger's status meanwhile
+#: (NexBlue).
+PATH_SWITCH_ASSUMED: Final = "switch_assumed"
 PATH_KINDS: Final = (
     PATH_SWITCH,
     PATH_SELECT,
@@ -76,6 +79,7 @@ PATH_KINDS: Final = (
     PATH_BUTTONS_TOGGLE,
     PATH_SELECT_APPROVE,
     PATH_SWITCH_BUDGET,
+    PATH_SWITCH_ASSUMED,
 )
 
 
@@ -216,6 +220,10 @@ class PlatformProfile:
     held_values: tuple[str, ...] = ()
     #: The integration puts the entity key first in the `unique_id` (`<key>-<serial>`).
     key_first: bool = False
+    #: The Home Assistant version whose integration added the start/stop entity, for a platform whose older
+    #: versions have none (NexBlue's `charging` switch came in 2026.10). Without that entity the charger is
+    #: read only, as a `ROLE_MEASUREMENT_ONLY` profile is. `""`: every version has it.
+    start_stop_since: str = ""
     note: str = ""
     #: How phase switching for solar switches this platform's chargers between one and three phases, in the words
     #: `docs/supported.md` uses (the entity and what it needs), or `""` where it cannot. Matches the platforms that
@@ -681,19 +689,30 @@ _PROFILES: Final[tuple[PlatformProfile, ...]] = (
         current_sensor_keys=("current_a_a", "current_b_a", "current_c_a"),
         note="Read only: the car is the actuator.",
     ),
-    # NexBlue (core `nexblue`, Home Assistant 2026.9; `<serial>_<key>` unique ids). It has no number to set the
-    # current in any version: 2026.9 is sensors only, and Home Assistant 2026.10 and the vendor's own HACS
-    # integration add just a `charging` switch, whose state is a cloud status polled once a minute and assumed
-    # for a while after each command. With no current to set, it is read only. The lifetime register is
-    # `lifetime_energy`; the session's `energy` is left out because its key is also the tail of that one.
-    # The phase currents are `current_1` to `current_3` (all three share the translation key `current`).
+    # NexBlue (core `nexblue`; `<serial>_<key>` unique ids). It has no number to set the current in any version.
+    # Home Assistant 2026.9 is sensors only, so there it is read only; 2026.10 adds a `charging` switch, whose
+    # state is the cloud status polled once a minute and assumed for up to 20 s after each command, so it is
+    # read from the status meanwhile (`execution/chargers/nexblue.py`). The status sensor's values are the
+    # integration's `CHARGING_STATE_MAP`: `idle` (no cable), `connected` (ready, not started), `charging`,
+    # `finished`, `error`, `lb_waiting` (its own load balancing holds it), `delay_waiting` (its schedule holds
+    # it) and `ev_waiting` (started, the car draws nothing). The lifetime register is `lifetime_energy`; the
+    # session's `energy` is left out because its key is also the tail of that one. The phase currents are
+    # `current_1` to `current_3` (all three share the translation key `current`).
     PlatformProfile(
         platform="nexblue",
         name="NexBlue",
-        role=ROLE_MEASUREMENT_ONLY,
+        start_stop=StartStop(PATH_SWITCH_ASSUMED, keys=("charging",)),
+        policy=_CLOUD,
         energy_keys=("lifetime_energy",),
+        status_keys=("charging_state",),
+        charging_values=("charging",),
+        vehicle_idle_values=("ev_waiting", "finished"),
+        held_values=("lb_waiting", "delay_waiting"),
         current_sensor_keys=("current_1", "current_2", "current_3"),
-        note="Read only: the integration cannot set the current.",
+        start_stop_since="2026.10",
+        note="Start and stop only; read only on older Home Assistant. No current control: switched on and off "
+        "whole, at the current SpotNav learns it draws. The switch's state is assumed for up to 20 s after a "
+        "command, so SpotNav reads the charger's status meanwhile.",
     ),
     PlatformProfile(platform="evcc_intg", name="evcc", role=ROLE_EXTERNAL_CONTROLLER),
     PlatformProfile(platform="openwb2mqtt", name="openWB", role=ROLE_EXTERNAL_CONTROLLER),

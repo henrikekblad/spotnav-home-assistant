@@ -7,6 +7,7 @@ from . import (  # noqa: F401 - the imports register the paths
     generic,
     goe,
     lektrico,
+    nexblue,
     nrgkick,
     ocpp,
     ohme,

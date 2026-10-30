@@ -497,7 +497,8 @@ class ChargerAdapter:
         entity_ids = list(self.path.entity_ids())
         if self.status_entity_id:
             entity_ids.append(self.status_entity_id)
-        return tuple(entity_ids)
+        # A path may read the status sensor itself (NexBlue's assumed switch): each entity once.
+        return tuple(dict.fromkeys(entity_ids))
 
     # -- what it supports
 
