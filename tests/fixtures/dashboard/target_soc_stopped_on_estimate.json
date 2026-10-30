@@ -2224,6 +2224,18 @@
     "users_change_plan": false,
     "vehicle_ids": null
   },
+  "setup": {
+    "items": [
+      {
+        "dismissible": true,
+        "id": "site"
+      },
+      {
+        "dismissible": true,
+        "id": "app"
+      }
+    ]
+  },
   "site": null,
   "soc": {
     "age_s": 2405,

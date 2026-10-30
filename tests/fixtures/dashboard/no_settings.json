@@ -1174,6 +1174,18 @@
     }
   },
   "settings": null,
+  "setup": {
+    "items": [
+      {
+        "dismissible": true,
+        "id": "site"
+      },
+      {
+        "dismissible": true,
+        "id": "app"
+      }
+    ]
+  },
   "site": null,
   "soc": null,
   "starting_up": {

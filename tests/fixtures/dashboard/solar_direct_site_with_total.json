@@ -278,6 +278,14 @@
     "users_change_plan": false,
     "vehicle_ids": null
   },
+  "setup": {
+    "items": [
+      {
+        "dismissible": true,
+        "id": "app"
+      }
+    ]
+  },
   "site": {
     "active_control": {
       "available": false,

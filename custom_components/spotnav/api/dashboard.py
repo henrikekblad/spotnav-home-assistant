@@ -75,6 +75,7 @@ from ..execution.controller import (
     CURRENT_RANGE_SOURCE_DEFAULT,
 )
 from ..notifications.targets import available_targets
+from ..setup_checklist import SetupItem, capture_setup, serialize_setup
 from ..planning.auto_controller import AutoSnapshot, fiscal_choice_for
 from ..pricing.price_source import effective_settings, wire_revision
 from ..planning.auto_settings import (
@@ -503,6 +504,8 @@ class CapturedDashboard:
     wire_revision: int | None = None
     #: The area's price source and its notice (`pricing/providers/notices.py`), `None` without an area.
     source_status: SourceStatus | None = None
+    #: What is still left to set up for this charger (`setup_checklist.py`), the card's "Get started" rows.
+    setup: tuple[SetupItem, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -1059,6 +1062,8 @@ def capture_dashboard(
 
     vehicles, target_vehicle_id = capture_vehicles(hass, entry_id, settings)
     site = capture_site(hass, entry_id, forecast_domains=forecast_domains)
+    soc = capture_soc(hass, entry_id, settings)
+    notify_available = available_targets(hass)
     starting_up = startup_state(
         now=now,
         started_at=domain_data(hass).started_at,
@@ -1117,7 +1122,7 @@ def capture_dashboard(
             if controller is None
             else controller.current_range()
         ),
-        soc=capture_soc(hass, entry_id, settings),
+        soc=soc,
         vehicles=vehicles,
         target_vehicle_id=target_vehicle_id,
         charging_phases=charging_phases(hass, entry_id, vehicle_id=target_vehicle_id),
@@ -1136,7 +1141,7 @@ def capture_dashboard(
         connection=(CONNECTION_UNKNOWN, None) if controller is None else controller.connection(),
         starting_up=starting_up,
         charger_priority=capture_charger_priority(hass, entry),
-        notify_available=available_targets(hass),
+        notify_available=notify_available,
         entity_names=_status_entity_names(hass, site),
         identification=_identification(hass, entry_id),
         camera_identification=_camera_identification(hass, entry_id, settings),
@@ -1147,6 +1152,14 @@ def capture_dashboard(
         session=capture_session(hass, entry_id),
         plan_notice=_plan_notice(hass, entry_id),
         price_source=capture_price_source(hass, entry_id),
+        setup=capture_setup(
+            hass,
+            entry_id,
+            settings=settings,
+            has_soc_source=soc is not None,
+            has_site=site is not None,
+            notify_available=notify_available,
+        ),
     )
 
 
@@ -1821,6 +1834,9 @@ def serialize_dashboard(
             if capture.price_source is None
             else {"price_source": serialize_price_source(capture.price_source, can_act=can_act)}
         ),
+        # Additive: what is still left to set up (`setup_checklist.py`); the card shows it to an administrator.
+        # An app reads it only with `reads: ["setup"]` (`api/webhook.py`).
+        "setup": serialize_setup(capture.setup),
     }
 
 

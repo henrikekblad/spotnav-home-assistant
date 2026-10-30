@@ -293,6 +293,19 @@ export interface Dashboard {
    * with its own settings, from an older backend, or unreadable.
    */
   price_source: PriceSourceBlock | null;
+  /** What is still left to set up for this charger, the "Get started" rows; `null` from an older backend or unreadable. */
+  setup: SetupBlock | null;
+}
+
+/** One "Get started" row the backend says is still left (`setup`). */
+export interface SetupBlockItem {
+  id: string;
+  dismissible: boolean;
+}
+
+/** The dashboard's `setup` block. */
+export interface SetupBlock {
+  items: SetupBlockItem[];
 }
 
 /** The electricity price entry a charger uses (`price_source`). */
@@ -1664,6 +1677,7 @@ export function decodeDashboard(raw: unknown): DecodeResult {
         progress: chargeBarOrNull(root),
         camera_identification: cameraIdentificationOrNull(root),
         price_source: priceSourceOrNull(root),
+        setup: setupOrNull(root),
       },
     };
   } catch {
@@ -1720,7 +1734,27 @@ const OPTIONAL_DASHBOARD_KEYS = [
   // The notifier's count of the plans it told, for the app's background check: accepted and never read.
   "plan_notice",
   "price_source",
+  "setup",
 ] as const;
+
+/** The `setup` block, or `null` when it is missing or unreadable: the card then lists nothing to set up. */
+function setupOrNull(root: Record<string, unknown>): SetupBlock | null {
+  const value = root.setup;
+  if (!isRecord(value)) {
+    return null;
+  }
+  try {
+    exactKeys(value, ["items"]);
+    const items = arrayValue(value, "items").map((entry) => {
+      const item = record(entry);
+      exactKeys(item, ["id", "dismissible"]);
+      return { id: text(item, "id"), dismissible: booleanValue(item, "dismissible") };
+    });
+    return { items };
+  } catch {
+    return null;
+  }
+}
 
 /** The `price_source` block, or `null` when it is missing or unreadable: the price section shows no source. */
 function priceSourceOrNull(root: Record<string, unknown>): PriceSourceBlock | null {

@@ -22,6 +22,7 @@ from homeassistant.components import webhook
 from homeassistant.core import HomeAssistant
 
 from ..const import CONF_WEBHOOK_ID, DOMAIN
+from ..setup_checklist import async_note_app_used
 from ..notifications.push import ERROR_INVALID_PUSH, parse_push_register, PushRegisterError
 from ..execution.auto_execution import (
     ACTION_RESUME,
@@ -117,11 +118,15 @@ APP_READS_PRICE_SOURCE: Final = "price_source"
 #: Phase switching for solar: the webhook dashboard's `phase_switching` block is left out for an app that does not
 #: read `APP_READS_PHASE_SWITCHING` (its decoder refuses a dashboard with an unknown key).
 APP_READS_PHASE_SWITCHING: Final = "phase_switching"
+#: What is still left to set up (`setup_checklist.py`): the dashboard's `setup` block is left out for an app that
+#: does not read `APP_READS_SETUP` (its decoder refuses a dashboard with an unknown key).
+APP_READS_SETUP: Final = "setup"
 #: Each optional top-level dashboard block an app released before it does not read, with the `reads` name that opts
 #: into it.
 APP_DASHBOARD_BLOCK_READS: Final = {
     "price_source": APP_READS_PRICE_SOURCE,
     "phase_switching": APP_READS_PHASE_SWITCHING,
+    "setup": APP_READS_SETUP,
 }
 #: Where the area's prices come from and what to do when it has no source of its own: the dashboard's
 #: `prices.provider` is left out for an app that does not read `APP_READS_PRICE_PROVIDER`.
@@ -184,7 +189,7 @@ def _for_app(body: dict[str, Any], payload: dict[str, Any]) -> dict[str, Any]:
     null; `balancing_paused` for the plan's charge load balancing paused; `car_ended_waiting` for the plan waiting for
     the car's level after the car ended its charge; `wake_for_reading` for the vehicle rows' `wake_for_reading`; `solar_one_phase` for a solar charge the sun
     switched to one phase; `price_source` for the dashboard's `price_source` block; `phase_switching` for its
-    `phase_switching` block; `price_provider` for `prices.provider`); anything else in it, or a `reads` that is not
+    `phase_switching` block; `price_provider` for `prices.provider`; `setup` for its `setup` block); anything else in it, or a `reads` that is not
     a list, is ignored.
     """
     opted_in = _opted_in(payload)
@@ -455,6 +460,8 @@ def _handler_for(entry: ChargerConfigEntry) -> Callable[..., Awaitable[web.Respo
             handler = ACTIONS.get(action) if isinstance(action, str) else None
             if handler is None:
                 raise ValueError("Unsupported action")
+            # Only the SpotNav app speaks to this webhook: once it has, "Pair the app" is done for good.
+            await async_note_app_used(hass)
             outcome = await handler(hass, entry, payload)
             if isinstance(outcome, web.Response):
                 return outcome

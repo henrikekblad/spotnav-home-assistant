@@ -551,6 +551,7 @@ describe("the backend's dashboard strategy_state, site and status fixtures", () 
           "progress",
           "sessions_summary",
           "settings",
+          "setup",
           "site",
           "soc",
           "starting_up",
