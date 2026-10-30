@@ -36,6 +36,28 @@ When something needs attention, a banner says so: a notice in a neutral colour, 
 red when something must be fixed before charging can be planned. The banner counts the items to
 review and opens the full list with the integration's own wording.
 
+While nothing more serious is shown, an administrator sees **Get started: 3 things left** in the same place
+until the setup is complete. It opens the same list, whose **Get started** section has one row per thing left,
+each with a button to where it is done:
+
+- **your car**, when no vehicle is set up for the charger: a target in percent and the range need its battery
+  size and consumption (opens Home Assistant's integrations, where the car's integration is added);
+- **the car's charge level**, when the plan charges to a target level, the car is set up and nothing reports its
+  level (opens Plan);
+- **a site** with the home's grid meter, for load balancing and solar (starts adding one);
+- **a solar forecast**, when the site can measure solar surplus but has no forecast source: Hybrid then counts
+  on the sun and the status says when it is expected (opens the site's choice of forecast, or adds Forecast.Solar
+  first when no forecast integration is there yet);
+- **phase switching for solar**, when the charger can switch phases on a solar site and the setting is off
+  (opens the setting);
+- **phones** for charging notifications, through the Home Assistant app or the SpotNav app, until a phone is
+  chosen or the paired SpotNav app has its instant notifications on (opens the phones in Settings → Notifications);
+- **the SpotNav app**, until it has been used with this Home Assistant (opens it on Google Play).
+
+Every row but the car's charge level can be answered **Not needed**; that holds for every charger and every browser. Each row goes by
+itself once the thing is done. The prices are not a row: the Electricity price section already says what an area
+without a source needs.
+
 ## The price graph
 
 The graph shows the price of every interval per kWh, in the price area's small unit (öre, cent) or, if
@@ -134,6 +156,7 @@ serious each is. Examples:
 | Waiting for tomorrow's prices (~13:45), will plan then. | Prices for the deadline are not published yet; SpotNav plans when they are. The time is the area's expected publication plus 45 minutes, and is left out once it has passed. |
 | Buying 12 kWh now, the rest when the prices are published. | The deadline needs hours that are not priced yet, so part of the charge is bought now. |
 | Charging is scheduled from 02:00. / Planned from 02:00. | The installed plan, or a plan that is proposed. |
+| Planned from 02:00 · 20 kWh · 32.94 kr · saves ~18.1 kr against charging now | What the plan saves against charging the same energy from now at the same power, with your fees and VAT. Shown only before the charge has started and when the difference is at least 5 %. |
 | A new charging proposal is ready. | A newer proposal exists and is not installed yet. |
 | Charging waits for the planned start at 22:30 · 16.6 kWh · 17.1 kr · 87 km | A car is plugged in and the installed plan waits for its first window (or a charge that started by itself outside the plan was stopped). The plan's energy, cost and distance follow while they are the installed plan's own. |
 | Charging now; scheduled until 05:30. | A charge is running inside a planned period. |
@@ -148,7 +171,8 @@ serious each is. Examples:
 | Solar · charging 9 A from surplus | The solar strategy's state: waiting for sun, surplus found and starting soon, surplus fading, charging, or no usable reading. |
 | Solar · 1 phase · 2.9 kW | A solar charge the sun has switched to one phase (see *Phase switching for solar* below), with the power it charges at on that phase. |
 | Solar · surplus available (4.2 kW) / Solar · no car plugged in | Solar with no car plugged in: the surplus is enough to start a charge (plug the car in now), or it is not. |
-| Hybrid · 12 kWh from grid, 8 kWh expected from sun | The hybrid plan's split; with no forecast source it says it plans like Cheapest. |
+| Hybrid · 12 kWh from grid, 8 kWh expected from sun 10:00–15:00 | The hybrid plan's split, and the hours the sun it counts on is expected; with no forecast source it says it plans like Cheapest. |
+| Solar · waiting for sun · 6.3 kWh expected from the sun 11:00–16:00 | With a forecast source on the site, the solar strategy says how much sun the car can expect for the rest of today (else *tomorrow*), and when, reckoned as hybrid reckons it. |
 | The energy meter cannot be read: 6.5 kWh remains, from its last reading. / No energy meter: 3 kWh remains, counted from this charger's recorded charges. | The requested energy is counted without the charger's energy register, see [counting the requested energy](strategies.md#cheapest). |
 | Charging was started, but the vehicle is not requesting current. | The connector reports the car is not asking for current. It is an observation only: check the car's charging settings or reconnect the cable. |
 

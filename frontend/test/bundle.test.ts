@@ -11,6 +11,7 @@ import { resolve } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { translate } from "../src/i18n";
+import { APP_STORE_URL } from "../src/setup-checklist";
 import { API_VERSION } from "../src/types";
 
 const ASSET = resolve(__dirname, "../../custom_components/spotnav/www/spotnav-card.js");
@@ -57,7 +58,8 @@ describe("the committed asset", () => {
   });
 
   it.each(FORBIDDEN)("does not mention %s", (needle) => {
-    expect(SOURCE).not.toContain(needle);
+    // The one allowed mention: the app's Google Play address, whose package name carries the company's name.
+    expect(SOURCE.split(APP_STORE_URL).join("")).not.toContain(needle);
   });
 
   it("fetches once, its language file from Home Assistant's own /spotnav/i18n/ path", () => {
@@ -141,6 +143,8 @@ describe("the asset's only absolute URLs", () => {
       // The Octopus Energy integration's page, opened in a new tab by its notice when HACS is not there.
       "https://github.com/BottlecapDave/HomeAssistant-OctopusEnergy",
       "https://github.com/henrikekblad/spotnav-home-assistant",
+      // The SpotNav app on Google Play, opened in a new tab by "Get started" (where to get the app).
+      "https://play.google.com/store/apps/details?id=se.sensnology.spotnav",
       // ENTSO-E's Transparency Platform, linked from the key's how-to (a new tab).
       "https://transparency.entsoe.eu/",
       "http://www.w3.org/2000/svg",

@@ -384,6 +384,8 @@ const PRICE_WAIT_EXPECTED: Record<
 
 /** What the backend's composer said for each v7 fixture: its tone, its codes, and the card's English line. */
 const PLANNED = ["auto_planned", "plan_energy", "plan_cost", "plan_distance"];
+/** A plan that saves 5 % or more against charging now says so beside its cost. */
+const PLANNED_SAVING = ["auto_planned", "plan_energy", "plan_cost", "plan_saving", "plan_distance"];
 const V7_STATUS_EXPECTED: Record<string, { tone: string; codes: string[]; english: string }> = {
   "buying_before_publication.json": {
     tone: "normal",
@@ -392,8 +394,8 @@ const V7_STATUS_EXPECTED: Record<string, { tone: string; codes: string[]; englis
   },
   "charger_states_its_maximum.json": {
     tone: "normal",
-    codes: PLANNED,
-    english: "Planned from 10:30 · 20.1 kWh · 32.94 kr · 101 km",
+    codes: PLANNED_SAVING,
+    english: "Planned from 10:30 · 20.1 kWh · 32.94 kr · saves ~2.6 kr against charging now · 101 km",
   },
   "charging_without_prices.json": {
     tone: "notice",
@@ -403,17 +405,21 @@ const V7_STATUS_EXPECTED: Record<string, { tone: string; codes: string[]; englis
   // The site's phase sensors read nothing here, so the status says which phases and where from.
   "cheapest_direct_site_admin.json": {
     tone: "notice",
-    codes: [...PLANNED, "site_measurement_problem"],
+    codes: [...PLANNED_SAVING, "site_measurement_problem"],
     english:
-      "Planned from 12:15 · 20.8 kWh · 28.74 kr · 104 km · L1, L2, and L3 have no value (sensor.cheapest_direct_admin_site_l1, sensor.cheapest_direct_admin_site_l2, sensor.cheapest_direct_admin_site_l3).",
+      "Planned from 12:15 · 20.8 kWh · 28.74 kr · saves ~18.1 kr against charging now · 104 km · L1, L2, and L3 have no value (sensor.cheapest_direct_admin_site_l1, sensor.cheapest_direct_admin_site_l2, sensor.cheapest_direct_admin_site_l3).",
   },
   "cheapest_direct_site_read_only.json": {
     tone: "notice",
-    codes: [...PLANNED, "site_measurement_problem"],
+    codes: [...PLANNED_SAVING, "site_measurement_problem"],
     english:
-      "Planned from 12:15 · 20.8 kWh · 28.74 kr · 104 km · L1, L2, and L3 have no value (sensor.cheapest_direct_reader_site_l1, sensor.cheapest_direct_reader_site_l2, sensor.cheapest_direct_reader_site_l3).",
+      "Planned from 12:15 · 20.8 kWh · 28.74 kr · saves ~18.1 kr against charging now · 104 km · L1, L2, and L3 have no value (sensor.cheapest_direct_reader_site_l1, sensor.cheapest_direct_reader_site_l2, sensor.cheapest_direct_reader_site_l3).",
   },
-  "cheapest_no_site.json": { tone: "normal", codes: PLANNED, english: "Planned from 10:30 · 20.1 kWh · 32.94 kr · 101 km" },
+  "cheapest_no_site.json": {
+    tone: "normal",
+    codes: PLANNED_SAVING,
+    english: "Planned from 10:30 · 20.1 kWh · 32.94 kr · saves ~2.6 kr against charging now · 101 km",
+  },
   "hybrid_derived_site_no_forecast.json": {
     tone: "normal",
     codes: ["hybrid_no_forecast"],
@@ -437,10 +443,15 @@ const V7_STATUS_EXPECTED: Record<string, { tone: string; codes: string[]; englis
   "target_soc_estimated.json": { tone: "normal", codes: PLANNED, english: "Planned from 09:15 · 34.5 kWh · 62.55 kr · 173 km" },
   "target_soc_stopped_on_estimate.json": {
     tone: "normal",
-    codes: [...PLANNED, "target_reached"],
-    english: "Planned from 09:15 · 34.5 kWh · 62.55 kr · 173 km · Stopped at 83 % at 08:40 (estimated)",
+    codes: [...PLANNED_SAVING, "target_reached"],
+    english:
+      "Planned from 09:15 · 34.5 kWh · 62.55 kr · saves ~21.8 kr against charging now · 173 km · Stopped at 83 % at 08:40 (estimated)",
   },
-  "target_soc_two_vehicles.json": { tone: "normal", codes: PLANNED, english: "Planned from 09:15 · 34.5 kWh · 62.55 kr · 173 km" },
+  "target_soc_two_vehicles.json": {
+    tone: "normal",
+    codes: PLANNED_SAVING,
+    english: "Planned from 09:15 · 34.5 kWh · 62.55 kr · saves ~21.8 kr against charging now · 173 km",
+  },
   "waiting_for_publication.json": {
     tone: "normal",
     codes: ["waiting_for_publication"],
@@ -555,6 +566,7 @@ describe("the backend's dashboard strategy_state, site and status fixtures", () 
           "progress",
           "sessions_summary",
           "settings",
+          "setup",
           "site",
           "soc",
           "starting_up",

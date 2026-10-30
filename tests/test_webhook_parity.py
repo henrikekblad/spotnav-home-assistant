@@ -124,6 +124,12 @@ async def test_the_webhook_dashboard_is_the_websocket_dashboard_bar_writability(
     # And `prices.provider`, read only with `reads: ["price_provider"]`.
     assert "provider" in expected["prices"]
     del expected["prices"]["provider"]
+    # And the `setup` block, read only with `reads: ["setup"]`.
+    assert "setup" in expected
+    del expected["setup"]
+    # And the plan's saving against charging now, read only with `reads: ["plan_facts"]`.
+    assert "plan_saving" in [line["code"] for line in expected["status"]["lines"]]
+    expected["status"]["lines"] = [line for line in expected["status"]["lines"] if line["code"] != "plan_saving"]
     assert payload == expected
     _pinned("dashboard.json", _pin(body))
 

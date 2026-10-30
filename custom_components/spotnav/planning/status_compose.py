@@ -211,6 +211,9 @@ STATUS_CODES: Final[dict[str, tuple[str, tuple[str, ...]]]] = {
     "car_ended_waiting": (TONE_NORMAL, ("soc_percent", "estimated")),
     "plan_energy": (TONE_NORMAL, ("kwh",)),
     "plan_cost": (TONE_NORMAL, ("amount_minor", "currency")),
+    # What the plan saves against charging the same energy now at full power (`amount_minor`, the minor unit,
+    # in `currency`): beside plan_cost while nothing of the plan has started, and only from a 5 % difference.
+    "plan_saving": (TONE_NORMAL, ("amount_minor", "currency")),
     "plan_distance": (TONE_NORMAL, ("mil",)),
     "solar_charging": (TONE_NORMAL, ("requested_a",)),
     # A solar charge the sun switched to one phase (`execution/phase_switching.py`), in place of solar_charging:
@@ -246,7 +249,11 @@ STATUS_CODES: Final[dict[str, tuple[str, tuple[str, ...]]]] = {
     # only. A fact beside the solar headline.
     "solar_site_incomplete": (TONE_NORMAL, ("phases",)),
     "solar_unknown": (TONE_NORMAL, ()),
-    "hybrid_grid": (TONE_NORMAL, ("grid_kwh", "credit_kwh", "window_start", "window_end")),
+    # The sun the site's forecast promises the car (`kwh`, as hybrid trusts a forecast) between `start` and `end`:
+    # the rest of today, else tomorrow. Beside the solar headline, only where a forecast source is set.
+    "solar_forecast": (TONE_NORMAL, ("kwh", "start", "end")),
+    # `sun_start`/`sun_end`: when the credited sun is expected (null without a credit).
+    "hybrid_grid": (TONE_NORMAL, ("grid_kwh", "credit_kwh", "window_start", "window_end", "sun_start", "sun_end")),
     "hybrid_no_forecast": (TONE_NORMAL, ()),
     "hybrid_no_price_data": (TONE_NORMAL, ()),
     "hybrid_satisfied": (TONE_NORMAL, ()),
@@ -349,6 +356,8 @@ class ProposalFacts:
     unpriced: bool | None = None
     #: The need cannot be met by the departure; the plan is every slot up to it (best effort).
     short_of_deadline: bool = False
+    #: The same energy charged from now at full power, in the major unit (`PlanResult.now_cost`).
+    now_cost: float | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -377,6 +386,10 @@ class SolarFacts:
     start_a: float | None = None
     #: The sun switched the charge to one phase (`ChargingController.switched_phases == 1`).
     one_phase: bool = False
+    #: What the site's forecast promises the car, and when (`api/dashboard.py:solar_forecast_window`).
+    forecast_kwh: float | None = None
+    forecast_start: datetime | None = None
+    forecast_end: datetime | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -385,6 +398,9 @@ class HybridFacts:
     grid_kwh: float | None = None
     credit_kwh: float | None = None
     forecast_configured: bool = False
+    #: When the credited sun is expected (`HybridResult.sun_start`/`sun_end`).
+    sun_start: datetime | None = None
+    sun_end: datetime | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -511,6 +527,9 @@ class StatusFacts:
     balancing_paused: bool = False
     balancing_retry_at: datetime | None = None
     balancing_cause: str | None = None
+    #: A charge session is open (the charger was seen charging in it): a plan's saving against charging now is
+    #: then not said.
+    charge_started: bool = False
 
 
 def _line(code: str, **params: Any) -> dict[str, Any]:
@@ -592,10 +611,26 @@ def _normal_horizon_gap(facts: StatusFacts) -> bool:
     return unfinished or not facts.departure_enabled
 
 
+#: The least difference against charging now that is worth saying, as a fraction of charging now.
+SAVING_MIN_FRACTION: Final = 0.05
+
+
+def _saving_minor(proposal: ProposalFacts) -> int | None:
+    """What the plan saves against charging now, in the minor unit, when it is at least `SAVING_MIN_FRACTION`."""
+    cost, now_cost = proposal.cost, proposal.now_cost
+    if cost is None or now_cost is None or now_cost <= 0:
+        return None
+    saving = now_cost - cost
+    if saving < SAVING_MIN_FRACTION * now_cost:
+        return None
+    return int(round(saving * 100))
+
+
 def _plan_facts(
-    proposal: ProposalFacts | None, *, energy: bool, cost: bool, distance: bool
+    proposal: ProposalFacts | None, *, energy: bool, cost: bool, distance: bool, saving: bool = False
 ) -> list[dict[str, Any]]:
-    """The compound facts a headline may carry: what the proposal reported, never "unknown"."""
+    """The compound facts a headline may carry: what the proposal reported, never "unknown". `saving` adds what
+    the plan saves against charging now, for a plan nothing of which has started."""
     if proposal is None:
         return []
     lines: list[dict[str, Any]] = []
@@ -610,6 +645,9 @@ def _plan_facts(
                 currency=proposal.currency,
             )
         )
+        saved = _saving_minor(proposal) if saving else None
+        if saved is not None:
+            lines.append(_line("plan_saving", amount_minor=saved, currency=proposal.currency))
     if distance and proposal.distance_mil is not None:
         lines.append(_line("plan_distance", mil=round(proposal.distance_mil, 3)))
     return lines
@@ -661,6 +699,15 @@ def _solar_lines(solar: SolarFacts, *, charging: bool) -> list[dict[str, Any]]:
         )
     if solar.site_incomplete_phases:
         lines.append(_line("solar_site_incomplete", phases=list(solar.site_incomplete_phases)))
+    if solar.forecast_kwh is not None and solar.forecast_start is not None and solar.forecast_end is not None:
+        lines.append(
+            _line(
+                "solar_forecast",
+                kwh=round(solar.forecast_kwh, 3),
+                start=aware_iso(solar.forecast_start),
+                end=aware_iso(solar.forecast_end),
+            )
+        )
     return lines
 
 
@@ -717,6 +764,8 @@ def _hybrid_line(hybrid: HybridFacts, proposal: ProposalFacts | None) -> dict[st
         credit_kwh=None if credit is None else round(credit, 3),
         window_start=aware_iso(periods[0][0]) if periods else None,
         window_end=aware_iso(periods[-1][1]) if periods else None,
+        sun_start=aware_iso(hybrid.sun_start) if credit is not None and hybrid.sun_start is not None else None,
+        sun_end=aware_iso(hybrid.sun_end) if credit is not None and hybrid.sun_end is not None else None,
     )
 
 
@@ -757,6 +806,8 @@ def _plan_headline(facts: StatusFacts) -> list[dict[str, Any]]:
     proposed = () if proposal is None else proposal.periods
     active = next((span for span in installed if span[0] <= now < span[1]), None)
     upcoming = next((span for span in installed if span[1] > now), None)
+    # "Against charging now" means something only while nothing of the plan has started.
+    fresh = not facts.charging and not facts.charge_started and not any(start <= now for start, _ in installed)
 
     if planning is not None and planning.reason == "charging_without_prices":
         return [_line("charging_without_prices"), *_plan_facts(proposal, energy=True, cost=False, distance=False)]
@@ -796,7 +847,7 @@ def _plan_headline(facts: StatusFacts) -> list[dict[str, Any]]:
         held = proposal if facts.relation_applied is True else None
         return [
             _line("held_until_window", time=aware_iso(facts.hold_until)),
-            *_plan_facts(held, energy=True, cost=True, distance=True),
+            *_plan_facts(held, energy=True, cost=True, distance=True, saving=fresh),
         ]
     wait = _price_wait_line(facts)
     if wait is not None:
@@ -807,14 +858,14 @@ def _plan_headline(facts: StatusFacts) -> list[dict[str, Any]]:
     if facts.relation_applied is True and proposed and planned is not None:
         return [
             _line("auto_planned", start=aware_iso(proposed[0][0])),
-            *_plan_facts(proposal, energy=True, cost=True, distance=True),
+            *_plan_facts(proposal, energy=True, cost=True, distance=True, saving=fresh),
         ]
     if installed:
         return [_line("auto_installed", start=aware_iso((upcoming or installed[0])[0]))]
     if facts.relation_applied is False and proposed:
         return [
             _line("proposal_pending", installs_at=None, waits_for=None),
-            *_plan_facts(proposal, energy=True, cost=True, distance=True),
+            *_plan_facts(proposal, energy=True, cost=True, distance=True, saving=fresh),
         ]
     if facts.waiting_for_tomorrow is True:
         return [_line("waiting_for_tomorrow")]

@@ -278,6 +278,29 @@ with no source keeps showing the days it holds, with its notice. A source that i
 source. `prices.index_state` and `prices.index_revision` are always `null` since 2.0 (there is no index); they stay
 for readers that require them. The table is in `pricing/providers/notices.py`.
 
+**What is left to set up.** The dashboard's additive `setup` block lists the card's "Get started" rows still left
+for this charger, sent to the webhook only when the request asks for it (`"reads": ["setup"]`):
+
+```json
+"setup": {"items": [{"id": "site", "dismissible": true}, {"id": "app", "dismissible": true}]}
+```
+
+`id` is `vehicle` (no vehicle is set up for the charger), `car_level` (the plan charges to a target level, a
+vehicle is set up and no source reports its level; never dismissible, and never beside `vehicle`), `site` (the
+charger has no site), `solar_forecast` (the site can measure solar surplus and has no forecast source),
+`phase_switching` (offered for the charger and off), `phone` (no phone is chosen for notifications and the paired
+app has no push registration) or `app` (no charger's webhook has been used yet); a reader should skip an id it does not know. `spotnav/dismiss_setup_item {"item"}` (administrators
+only) keeps a dismissible row away for the whole installation and answers `{"ok": true}`, else
+`spotnav_setup_item_not_dismissible`. The rows are in `setup_checklist.py`.
+
+**What the status line says about a plan.** Three facts are sent to the webhook only when the request asks for
+them (`"reads": ["plan_facts"]`): the line `plan_saving` (`amount_minor`, `currency`), what a plan saves against
+charging the same energy from now at the same power, beside `plan_cost` while nothing of the plan has started and
+only from a 5 % difference; the line `solar_forecast` (`kwh`, `start`, `end`), the sun the site's forecast
+promises a charger on the solar strategy for the rest of today, else tomorrow; and `hybrid_grid`'s `sun_start`
+and `sun_end`, when the sun hybrid counts on is expected (null without a credit). Without the read the first two
+are left out and `hybrid_grid` comes without the two keys.
+
 **Prices for the app.** `price_days` answers the prices of the charger's electricity price (its price entry, else
 its own area), read from what Home Assistant holds: no request is made for it. The day files and the profile are
 the day documents SpotNav keeps ([prices](prices.md#the-day-document)), the format the relay published before 2.0,

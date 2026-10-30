@@ -2253,6 +2253,22 @@
     "users_change_plan": false,
     "vehicle_ids": null
   },
+  "setup": {
+    "items": [
+      {
+        "dismissible": true,
+        "id": "vehicle"
+      },
+      {
+        "dismissible": true,
+        "id": "phone"
+      },
+      {
+        "dismissible": true,
+        "id": "app"
+      }
+    ]
+  },
   "site": {
     "active_control": {
       "available": false,
@@ -2293,6 +2309,13 @@
         "code": "plan_cost",
         "params": {
           "amount_minor": 2874,
+          "currency": "SEK"
+        }
+      },
+      {
+        "code": "plan_saving",
+        "params": {
+          "amount_minor": 1810,
           "currency": "SEK"
         }
       },

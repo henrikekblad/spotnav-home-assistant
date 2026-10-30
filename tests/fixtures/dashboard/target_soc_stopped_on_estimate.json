@@ -2224,6 +2224,22 @@
     "users_change_plan": false,
     "vehicle_ids": null
   },
+  "setup": {
+    "items": [
+      {
+        "dismissible": true,
+        "id": "site"
+      },
+      {
+        "dismissible": true,
+        "id": "phone"
+      },
+      {
+        "dismissible": true,
+        "id": "app"
+      }
+    ]
+  },
   "site": null,
   "soc": {
     "age_s": 2405,
@@ -2264,6 +2280,13 @@
         "code": "plan_cost",
         "params": {
           "amount_minor": 6255,
+          "currency": "SEK"
+        }
+      },
+      {
+        "code": "plan_saving",
+        "params": {
+          "amount_minor": 2180,
           "currency": "SEK"
         }
       },

@@ -3445,6 +3445,8 @@ class SiteCapacityController:
                 "slack_kwh": state.slack_kwh if state else None,
                 "plan_window_active": state.plan_window_active if state else False,
                 "forecast_sources": list(state.forecast_sources) if state else [],
+                "sun_start": None if state is None or state.sun_start is None else state.sun_start.isoformat(),
+                "sun_end": None if state is None or state.sun_end is None else state.sun_end.isoformat(),
             }
         return snapshot
 

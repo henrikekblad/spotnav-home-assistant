@@ -2265,6 +2265,22 @@
     "users_change_plan": false,
     "vehicle_ids": null
   },
+  "setup": {
+    "items": [
+      {
+        "dismissible": true,
+        "id": "vehicle"
+      },
+      {
+        "dismissible": true,
+        "id": "phone"
+      },
+      {
+        "dismissible": true,
+        "id": "app"
+      }
+    ]
+  },
   "site": {
     "active_control": {
       "available": true,
@@ -2301,6 +2317,8 @@
         "params": {
           "credit_kwh": null,
           "grid_kwh": 20.0,
+          "sun_end": null,
+          "sun_start": null,
           "window_end": "2026-09-22T13:15:00+00:00",
           "window_start": "2026-09-22T10:15:00+00:00"
         }

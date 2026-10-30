@@ -75,6 +75,7 @@ from ..execution.controller import (
     CURRENT_RANGE_SOURCE_DEFAULT,
 )
 from ..notifications.targets import available_targets
+from ..setup_checklist import SetupItem, capture_setup, serialize_setup
 from ..planning.auto_controller import AutoSnapshot, fiscal_choice_for
 from ..pricing.price_source import effective_settings, wire_revision
 from ..planning.auto_settings import (
@@ -85,7 +86,9 @@ from ..planning.auto_settings import (
     PauseIntent,
     STRATEGY_CHEAPEST,
 )
-from ..planning.hybrid_forecast import async_forecast_capable_domains
+from ..execution.hybrid_execution import charge_power_limits
+from ..planning.hybrid_forecast import async_forecast_capable_domains, async_read_forecast_wh
+from ..planning.hybrid_plan import HybridConfig, forecast_credit
 from ..planning.grid_voltage import voltage_between_phases_v
 from ..planning.phases import charging_phases, ChargingPhases, onboard_suggestion
 from ..planning.planner import chart_intervals, ChartInterval
@@ -506,6 +509,11 @@ class CapturedDashboard:
     wire_revision: int | None = None
     #: The area's price source and its notice (`pricing/providers/notices.py`), `None` without an area.
     source_status: SourceStatus | None = None
+    #: What is still left to set up for this charger (`setup_checklist.py`), the card's "Get started" rows.
+    setup: tuple[SetupItem, ...] = ()
+    #: For the solar strategy with a forecast source: the sun it promises the car and when
+    #: (`solar_forecast_window`), else `None`.
+    solar_forecast: tuple[float, datetime, datetime] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -1021,12 +1029,14 @@ def capture_dashboard(
     entry: ConfigEntry,
     *,
     forecast_domains: frozenset[str] = frozenset(),
+    solar_forecast_wh: Mapping[datetime, float] | None = None,
 ) -> CapturedDashboard:
     """Read this charger's whole state once.
 
     Everything a response can carry is read here: the settings record, the preview snapshot, the
     catalogue snapshot, the held documents, the controller's and execution boundary's facts and the
-    site summary. `forecast_domains` is passed straight to `capture_site`.
+    site summary. `forecast_domains` is passed straight to `capture_site`; `solar_forecast_wh` is the site's
+    forecast (`async_solar_forecast_wh`), read first because this capture is synchronous.
     """
     entry_id = entry.entry_id
     store: AutoSettingsStore | None = domain_data(hass).auto_store
@@ -1063,6 +1073,8 @@ def capture_dashboard(
 
     vehicles, target_vehicle_id = capture_vehicles(hass, entry_id, settings)
     site = capture_site(hass, entry_id, forecast_domains=forecast_domains)
+    soc = capture_soc(hass, entry_id, settings)
+    notify_available = available_targets(hass)
     starting_up = startup_state(
         now=now,
         started_at=domain_data(hass).started_at,
@@ -1121,7 +1133,7 @@ def capture_dashboard(
             if controller is None
             else controller.current_range()
         ),
-        soc=capture_soc(hass, entry_id, settings),
+        soc=soc,
         vehicles=vehicles,
         target_vehicle_id=target_vehicle_id,
         charging_phases=charging_phases(hass, entry_id, vehicle_id=target_vehicle_id),
@@ -1140,7 +1152,7 @@ def capture_dashboard(
         connection=(CONNECTION_UNKNOWN, None) if controller is None else controller.connection(),
         starting_up=starting_up,
         charger_priority=capture_charger_priority(hass, entry),
-        notify_available=available_targets(hass),
+        notify_available=notify_available,
         entity_names=_status_entity_names(hass, site),
         identification=_identification(hass, entry_id),
         camera_identification=_camera_identification(hass, entry_id, settings),
@@ -1151,7 +1163,74 @@ def capture_dashboard(
         session=capture_session(hass, entry_id),
         plan_notice=_plan_notice(hass, entry_id),
         price_source=capture_price_source(hass, entry_id),
+        setup=capture_setup(
+            hass,
+            entry_id,
+            settings=settings,
+            has_vehicle=bool(vehicles),
+            has_soc_source=soc is not None,
+            has_site=site is not None,
+            site_solar_capable=site is not None and site.solar_capable,
+            has_solar_forecast=site is not None and bool(site.solar_forecast_selected),
+            phase_switching=capture_phase_switching(hass, entry),
+        ),
+        solar_forecast=(
+            None
+            if solar_forecast_wh is None or settings is None or strategy_of(settings) != STRATEGY_SOLAR
+            else solar_forecast_window(
+                solar_forecast_wh,
+                now=now,
+                tz=None if area_entry is None else area_entry.tz,
+                limits=charge_power_limits(hass, entry_id, settings),
+            )
+        ),
     )
+
+
+#: The least sun worth telling, in kWh to the car.
+SOLAR_FORECAST_MIN_KWH: Final = 0.1
+
+
+def solar_forecast_window(
+    forecast_wh: Mapping[datetime, float],
+    *,
+    now: datetime,
+    tz: str | None,
+    limits: tuple[float, float],
+) -> tuple[float, datetime, datetime] | None:
+    """The sun the forecast promises the car for the rest of today, else for tomorrow: kWh and the hours it falls in.
+
+    Reckoned as hybrid reckons it (`hybrid_plan.forecast_credit`, the same house baseline, start power and trust),
+    so the solar strategy's figure and hybrid's agree. Days are the market's (`tz`), else Home Assistant's.
+    """
+    max_charge_kw, solar_start_w = limits
+    if max_charge_kw <= 0:
+        return None
+    zone = time_zones.zone(tz) if tz else None
+    zone = zone or dt_util.get_default_time_zone()
+    local = now.astimezone(zone)
+    midnight = datetime.combine(local.date() + timedelta(days=1), datetime.min.time(), tzinfo=zone)
+    after = datetime.combine(local.date() + timedelta(days=2), datetime.min.time(), tzinfo=zone)
+    config = HybridConfig(solar_start_w=solar_start_w)
+    for start, end in ((now, midnight), (midnight, after)):
+        credit = forecast_credit(forecast_wh, now=start, departure=end, config=config, max_charge_kw=max_charge_kw)
+        kwh = credit.kwh * config.confidence
+        if kwh >= SOLAR_FORECAST_MIN_KWH and credit.first_creditable_start and credit.last_creditable_end:
+            return kwh, credit.first_creditable_start, credit.last_creditable_end
+    return None
+
+
+async def async_solar_forecast_wh(hass: HomeAssistant, entry: ConfigEntry) -> Mapping[datetime, float] | None:
+    """The site's hourly forecast for a charger on the solar strategy, or `None` (another strategy, no source)."""
+    store = domain_data(hass).auto_store
+    settings = None if store is None else store.settings(entry.entry_id)
+    if settings is None or strategy_of(settings) != STRATEGY_SOLAR:
+        return None
+    site = site_binding(hass, entry.entry_id)
+    entries = list((None if site is None else site.data.get(CONF_SOLAR_FORECAST_ENTRIES)) or [])
+    if not entries:
+        return None
+    return (await async_read_forecast_wh(hass, entries)).wh_hours
 
 
 def _plan_notice(hass: HomeAssistant, entry_id: str) -> dict[str, Any] | None:
@@ -1825,6 +1904,9 @@ def serialize_dashboard(
             if capture.price_source is None
             else {"price_source": serialize_price_source(capture.price_source, can_act=can_act)}
         ),
+        # Additive: what is still left to set up (`setup_checklist.py`); the card shows it to an administrator.
+        # An app reads it only with `reads: ["setup"]` (`api/webhook.py`).
+        "setup": serialize_setup(capture.setup),
     }
 
 
@@ -2225,6 +2307,7 @@ def status_facts(capture: CapturedDashboard) -> StatusFacts:
             distance_mil=section["distance_mil"],
             unpriced=section["unpriced"],
             short_of_deadline=bool(source.short_of_deadline),
+            now_cost=finite_number(source.now_cost),
         )
     area = capture.area
     state = serialize_strategy_state(capture)
@@ -2254,13 +2337,20 @@ def status_facts(capture: CapturedDashboard) -> StatusFacts:
             available_w=finite_number(basis.get("available_w")),
             start_a=finite_number(basis.get("start_a")),
             one_phase=one_phase,
+            forecast_kwh=None if capture.solar_forecast is None else capture.solar_forecast[0],
+            forecast_start=None if capture.solar_forecast is None else capture.solar_forecast[1],
+            forecast_end=None if capture.solar_forecast is None else capture.solar_forecast[2],
         )
     elif state is not None and strategy == STRATEGY_HYBRID:
+        # When the sun is expected is the live snapshot's, not part of the `strategy_state` contract.
+        live = (None if capture.site is None else capture.site.hybrid_state) or {}
         hybrid = HybridFacts(
             reason=state["reason"],
             grid_kwh=state["grid_kwh"],
             credit_kwh=state["credit_kwh"],
             forecast_configured=state["forecast_configured"],
+            sun_start=_instant(live.get("sun_start")),
+            sun_end=_instant(live.get("sun_end")),
         )
     soc = serialize_soc(capture.soc)
     site = capture.site
@@ -2296,6 +2386,7 @@ def status_facts(capture: CapturedDashboard) -> StatusFacts:
         balancing_paused=site is not None and site.balancing_paused,
         balancing_retry_at=None if site is None else _utc(site.balancing_retry_at),
         balancing_cause=None if site is None else site.balancing_cause,
+        charge_started=capture.session is not None,
         paused=capture.execution.paused is True,
         pause_until=None if pause is None else _utc(pause.expires_at),
         pause_choice=None if pause is None else pause.choice,
@@ -2422,7 +2513,10 @@ async def websocket_get_dashboard(
         connection.send_error(msg["id"], failure.code, failure.message)
         return
     capture = capture_dashboard(
-        hass, resolved, forecast_domains=await async_forecast_capable_domains(hass)  # type: ignore[arg-type]
+        hass,
+        resolved,  # type: ignore[arg-type]
+        forecast_domains=await async_forecast_capable_domains(hass),
+        solar_forecast_wh=await async_solar_forecast_wh(hass, resolved),  # type: ignore[arg-type]
     )
     # Start, Stop, Pause and Resume are any signed-in user's; the settings and the site an administrator's.
     connection.send_result(
@@ -2444,7 +2538,10 @@ async def async_webhook_dashboard(
     if isinstance(api_version, bool) or api_version != DASHBOARD_API_VERSION:
         return _unsupported_version()
     capture = capture_dashboard(
-        hass, entry, forecast_domains=await async_forecast_capable_domains(hass)
+        hass,
+        entry,
+        forecast_domains=await async_forecast_capable_domains(hass),
+        solar_forecast_wh=await async_solar_forecast_wh(hass, entry),
     )
     body = serialize_dashboard(capture, can_act=True, active_control_writable=False)
     # Additive, webhook only and only where it is offered: the card reads it from its entity configuration.

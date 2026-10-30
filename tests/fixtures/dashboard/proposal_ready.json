@@ -2306,5 +2306,25 @@
   "plan_notice": {
     "seq": 0,
     "at": null
+  },
+  "setup": {
+    "items": [
+      {
+        "id": "vehicle",
+        "dismissible": true
+      },
+      {
+        "id": "site",
+        "dismissible": true
+      },
+      {
+        "id": "phone",
+        "dismissible": true
+      },
+      {
+        "id": "app",
+        "dismissible": true
+      }
+    ]
   }
 }

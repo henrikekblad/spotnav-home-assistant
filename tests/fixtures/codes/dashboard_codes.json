@@ -233,6 +233,8 @@
       "params": [
         "credit_kwh",
         "grid_kwh",
+        "sun_end",
+        "sun_start",
         "window_end",
         "window_start"
       ],
@@ -315,6 +317,13 @@
     "plan_energy": {
       "params": [
         "kwh"
+      ],
+      "tone": "normal"
+    },
+    "plan_saving": {
+      "params": [
+        "amount_minor",
+        "currency"
       ],
       "tone": "normal"
     },
@@ -446,6 +455,14 @@
     },
     "solar_disarming": {
       "params": [],
+      "tone": "normal"
+    },
+    "solar_forecast": {
+      "params": [
+        "end",
+        "kwh",
+        "start"
+      ],
       "tone": "normal"
     },
     "solar_no_car": {

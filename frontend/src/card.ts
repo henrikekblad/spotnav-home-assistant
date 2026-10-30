@@ -45,6 +45,7 @@ import {
   updateSiteSettings,
   choosePriceSource,
   answerPriceDuplicate,
+  dismissSetupItem,
   setEntsoeKey,
   updateVehicle,
 } from "./api";
@@ -1841,6 +1842,23 @@ export class SpotnavCard extends HTMLElement {
     }
   }
 
+  /** A "Get started" row answered "Not needed": kept away by the integration, then the dashboard is read again. */
+  private async dismissSetup(item: string): Promise<void> {
+    const hass = this.hassObject;
+    if (!this.connected || hass === null || !this.isAdmin) {
+      return;
+    }
+    const generation = this.generation;
+    try {
+      await dismissSetupItem(hass, item);
+    } catch {
+      // Not kept: the row stays until the next read says otherwise.
+    }
+    if (generation === this.generation && this.connected) {
+      await this.refresh({ purpose: "confirm" });
+    }
+  }
+
   /**
    * The active load-balancing switch: one admin-only write, never optimistic. The popover adopts the
    * returned site block and says what happened; a failed restore on disable is worded as "the charger may
@@ -2514,6 +2532,9 @@ export class SpotnavCard extends HTMLElement {
           void this.saveEntities(scope, draft);
         },
         onCancelEntities: () => !this.entitySaving,
+        onDismissSetup: (item) => {
+          void this.dismissSetup(item);
+        },
         onAnswerOnboardPhases: (vehicleId, phases) => {
           void this.answerOnboardPhases(vehicleId, phases);
         },
