@@ -781,3 +781,49 @@ async def test_no_block_with_one_car_at_the_charger_or_no_car_plugged_in(world: 
     )
     await world.plug_in()
     assert world.identifier.dashboard() is None, "one car at the charger"
+
+
+# ------------------------------------------- a person's choice before the cars have said anything
+
+
+@pytest.mark.parametrize("chosen", ["Tesla", "Kia"], ids=["another-car", "the-current-car"])
+async def test_a_choice_in_the_card_before_the_cars_report_stands_against_their_late_reports(
+    world: World, hass: HomeAssistant, hass_ws_client, hass_read_only_user, chosen: str
+) -> None:
+    """A person picks the car while identification still listens and nothing is asked yet; the cars' own
+    reports come in afterwards and name the other car. The person's choice stands for this plug-in."""
+    await world.start()
+    await world.plug_in()
+    await world.later(30)
+    assert world.identifier.dashboard()["state"] == "waiting"
+    result = await _identify(world, hass, hass_ws_client, hass_read_only_user, world.cars[chosen])
+    assert result["ok"] is True and world.identifier.method == METHOD_ANSWERED
+    other = "Kia" if chosen == "Tesla" else "Tesla"
+    world.car_says(other, "plug", "on")
+    world.car_says(chosen, "location", "not_home")
+    await world.later(ASK_AFTER_S)
+    await world.later(LISTEN_FOR_S)
+    assert world.settings.target.vehicle_id == world.cars[chosen], "the late reports change nothing"
+    assert world.identifier.method == METHOD_ANSWERED
+    assert world.sent() == [], "nothing asked after a person chose"
+
+
+async def test_a_choice_in_the_settings_before_the_cars_report_stands_against_their_late_reports(
+    world: World,
+) -> None:
+    await world.start()
+    await world.plug_in()
+    await world.later(30)
+    preview = charger_data(world.hass, world.entry.entry_id).preview
+    tesla = world.cars["Tesla"]
+    await preview.async_apply_settings(
+        mutate=lambda settings: replace(settings, target=TargetSocIntent(vehicle_id=tesla, target_percent=60.0))
+    )
+    await world.hass.async_block_till_done()
+    assert world.identifier.method == METHOD_MANUAL
+    world.car_says("Kia", "plug", "on")
+    world.car_says("Tesla", "location", "not_home")
+    await world.later(ASK_AFTER_S)
+    await world.later(LISTEN_FOR_S)
+    assert world.settings.target.vehicle_id == tesla and world.identifier.method == METHOD_MANUAL
+    assert world.sent() == [], "nothing asked after a person chose"
