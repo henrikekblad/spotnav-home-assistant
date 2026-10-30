@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 from homeassistant.core import HomeAssistant
 
-pytestmark = pytest.mark.usefixtures("offline_relay")
+pytestmark = pytest.mark.usefixtures("offline_relay", "chargers_not_switch_only")
 
 
 async def test_c_a_held_solar_start_resumed_at_night_is_stopped_within_the_stop_delay(hass: HomeAssistant) -> None:

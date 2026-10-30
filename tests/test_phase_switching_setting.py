@@ -28,7 +28,7 @@ from .messages import field, get_message, update_entity_config_message
 from .test_solar_phase_execution import _switched_down, _world
 from .world import admin, setup_charger_and_site, ws_call
 
-pytestmark = pytest.mark.usefixtures("offline_relay")
+pytestmark = pytest.mark.usefixtures("offline_relay", "chargers_not_switch_only")
 
 
 def _names(result: dict[str, Any]) -> list[str]:

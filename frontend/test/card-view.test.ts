@@ -738,6 +738,19 @@ describe("the capability dialog", () => {
     expect(root.querySelector(`.${VISUAL_CLASSES.name}`)?.textContent).toBe("Garage");
     card.destroy();
   });
+
+  it("says load balancing can only pause the charge of a charger whose current SpotNav cannot set", () => {
+    const capabilities = { ...decoded().charger.capabilities, load_balancing: true, set_current: false };
+    const model = modelWith({ charger: { charger_id: "entry_a", charger_name: "Garage", available: true, capabilities } });
+    const { view: card, root } = view(model, {}, "caps-pause");
+    card.openCapabilities();
+    const row = root.querySelector("[data-capability='load_balancing']");
+    expect(row?.getAttribute("data-state")).toBe("available");
+    const note = root.querySelector("[data-capability-note='load_balancing']");
+    expect(note?.textContent).toBe(translate("en", "cap.loadBalancingPauseOnly"));
+    expect(note?.textContent).toBe("Can only pause the charge; this charger's current cannot be set.");
+    card.destroy();
+  });
 });
 
 describe("hostile input, widths and isolation", () => {

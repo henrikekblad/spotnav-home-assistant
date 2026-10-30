@@ -14,7 +14,7 @@ from custom_components.spotnav.execution.controller import ChargingController
 from .helpers import install_schedule
 from .pause_world import later_window
 
-pytestmark = pytest.mark.usefixtures("offline_relay")
+pytestmark = pytest.mark.usefixtures("offline_relay", "chargers_not_switch_only")
 
 BUTTONS = {
     CONF_CHARGE_CONTROL: "button.start",

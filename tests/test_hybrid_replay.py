@@ -52,7 +52,7 @@ from .world import (
 from .world import controller_of
 from custom_components.spotnav.runtime import preview_for
 
-pytestmark = pytest.mark.usefixtures("offline_relay")
+pytestmark = pytest.mark.usefixtures("offline_relay", "chargers_not_switch_only")
 
 
 AMPS = 10

@@ -25,7 +25,7 @@ from custom_components.spotnav.planning.status_compose import compose_status
 
 from .world import controller_of, go_auto, set_charger_delivered_a, set_site_power_w, solar_setup, tick_site
 
-pytestmark = pytest.mark.usefixtures("offline_relay")
+pytestmark = pytest.mark.usefixtures("offline_relay", "chargers_not_switch_only")
 
 CPID = "halo"
 STATUS = f"sensor.{CPID}_connector_1_status_connector"

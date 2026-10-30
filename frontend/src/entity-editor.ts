@@ -318,11 +318,12 @@ export async function ensureHaSelector(win: Window | null | undefined, timeoutMs
 /**
  * The restrictions the charger's control description puts on the current limit that the person should
  * know about, one sentence each; none for a charger whose current can be written freely (an OCPP
- * charger with ChangeConfiguration). A charger whose current SpotNav does not set has none to name.
+ * charger with ChangeConfiguration). A charger whose current SpotNav does not set but can start and
+ * stop has one: load balancing can only pause it, and the sun starts it only for its whole current.
  */
 export function currentRestrictions(language: Language, control: EntityControl): string[] {
   if (control.current.kind === "none") {
-    return [];
+    return control.capabilities.startStop ? [translate(language, "control.limit.switchOnly")] : [];
   }
   const { policy, capabilities } = control;
   const lines: string[] = [];

@@ -413,6 +413,8 @@ class LoadBalancingFacts:
     limiting_phase: str | None = None
     #: Why load balancing holds the car below its plan, where known (see `load_balancing_limited`).
     cause: str | None = None
+    #: Whether load balancing can set the charger's current; nothing limits one it can only pause.
+    current_settable: bool = True
 
 
 @dataclass(frozen=True, slots=True)
@@ -894,6 +896,7 @@ def _notices(facts: StatusFacts) -> list[dict[str, Any]]:
         if (
             (site.state == "capacity_limited" or site.cause is not None)
             and site.active_control_enabled
+            and site.current_settable
             and facts.charging
         ):
             lines.append(

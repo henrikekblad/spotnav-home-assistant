@@ -271,7 +271,8 @@ const V7_EXPECTED: Record<string, ExpectedV7> = {
       solar_priority: "car_first",
       forecastSelected: [],
       forecastChoices: [],
-      activeControlReason: "no_commandable_charger",
+      // Its plain-switch charger can be paused by load balancing, so active control is available.
+      activeControlReason: null,
       writable: true,
     },
   },
@@ -293,7 +294,8 @@ const V7_EXPECTED: Record<string, ExpectedV7> = {
       solar_priority: "car_first",
       forecastSelected: ["roof_hybrid"],
       forecastChoices: [{ id: "roof_hybrid", title: "Roof (hybrid)" }],
-      activeControlReason: "no_commandable_charger",
+      // Its plain-switch charger can be paused by load balancing, so active control is available.
+      activeControlReason: null,
       writable: true,
     },
   },
@@ -313,7 +315,8 @@ const V7_EXPECTED: Record<string, ExpectedV7> = {
       solar_priority: "car_first",
       forecastSelected: [],
       forecastChoices: [],
-      activeControlReason: "no_commandable_charger",
+      // Its plain-switch charger can be paused by load balancing, so active control is available.
+      activeControlReason: null,
       writable: true,
     },
   },
@@ -333,7 +336,8 @@ const V7_EXPECTED: Record<string, ExpectedV7> = {
       solar_priority: "car_first",
       forecastSelected: [],
       forecastChoices: [],
-      activeControlReason: "no_commandable_charger",
+      // Its plain-switch charger can be paused by load balancing, so active control is available.
+      activeControlReason: null,
       writable: true,
     },
   },

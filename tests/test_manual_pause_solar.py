@@ -24,7 +24,7 @@ from custom_components.spotnav.runtime import domain_data, executor_for
 
 from .world import controller_of, set_charger_delivered_a, set_site_power_w, solar_setup, tick_site
 
-pytestmark = pytest.mark.usefixtures("offline_relay")
+pytestmark = pytest.mark.usefixtures("offline_relay", "chargers_not_switch_only")
 
 
 async def _solar_on(hass: HomeAssistant, strategy: str = STRATEGY_SOLAR):

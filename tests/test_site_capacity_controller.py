@@ -811,16 +811,17 @@ async def test_requested_current_change_with_no_state_transition_still_triggers_
     await hass.async_block_till_done()
 
     site_controller = controller_of(hass, entry.entry_id)
-    # Charging (switch already "on") but nothing explicitly requested yet: unknown, not 0.
-    assert site_controller.result.allocations[0].requested_current_a is None
-    assert site_controller.result.allocations[0].state == "requested_current_unknown"
+    # Charging (switch already "on") but nothing explicitly requested yet: a charger that can only be switched is
+    # reckoned at its switched current, before anything is learned or set the default, never an unknown one.
+    assert site_controller.result.allocations[0].requested_current_a == 16.0
 
     charger_controller = controller_of(hass, charger.entry_id)
-    await charger_controller.async_start(amps=16)
+    await charger_controller.async_start(amps=10)
     await hass.async_block_till_done()
 
-    # No time advanced and the switch state never changed: only the controller-listener path could have caused this update.
-    assert site_controller.result.allocations[0].requested_current_a == 16.0
+    # No time advanced and the switch state never changed: only the controller-listener path could have caused this
+    # update (the charging current asked for is now its switched current).
+    assert site_controller.result.allocations[0].requested_current_a == 10.0
     assert site_controller.result.allocations[0].state == "capacity_available"
     # The switch was already on, so async_start made no service call; the site controller's reaction is not itself a service call.
     assert switch_on_calls == []
@@ -1306,10 +1307,11 @@ async def test_capability_snapshot_separates_available_from_enabled(
     assert load_balancing.active_enabled is False
 
 
-async def test_capability_snapshot_is_unavailable_without_a_commandable_charger(
+async def test_capability_snapshot_counts_a_charger_it_can_only_pause(
     hass: HomeAssistant,
 ) -> None:
-    """A charger with a current-limit entity but no write-path opt-in: `current_control_available` true, `active_available` false, and nothing written."""
+    """A charger with a current-limit entity but no write-path opt-in can still be paused by load balancing:
+    `active_available` true, and no current is ever written to it."""
     site_entry, _charger_entry, configure_calls = await _active_control_setup(
         hass, entry_id="capability_other_mode", current_control=""
     )
@@ -1317,7 +1319,7 @@ async def test_capability_snapshot_is_unavailable_without_a_commandable_charger(
 
     snapshot = controller.capability_snapshot
     assert snapshot.current_control_available is True
-    assert snapshot.load_balancing.active_available is False
+    assert snapshot.load_balancing.active_available is True
     assert configure_calls == []
 
 
@@ -1425,7 +1427,8 @@ async def test_active_control_logs_a_held_decision_with_the_check_that_stopped_i
 async def test_active_control_logs_a_held_decision_for_an_uncommandable_charger(
     hass: HomeAssistant, caplog
 ) -> None:
-    """A charger that never opted into the write path is skipped by design, and the skip is visible in the log."""
+    """A charger that never opted into the write path is never written a current: with no overload it is kept as it
+    is, and that is visible in the log."""
     caplog.set_level(
         logging.INFO, logger="custom_components.spotnav.site.site_capacity_controller"
     )
@@ -1435,7 +1438,7 @@ async def test_active_control_logs_a_held_decision_for_an_uncommandable_charger(
 
     assert configure_calls == []
     held = [
-        message for message in caplog.messages if "stopped_by=charger_not_commandable" in message
+        message for message in caplog.messages if "stopped_by=switch_only_kept" in message
     ]
     # Once, not once per recompute, though setup ran several.
     assert len(held) == 1

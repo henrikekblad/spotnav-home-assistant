@@ -20,7 +20,7 @@ from custom_components.spotnav.site.solar_surplus import SolarConfig, SolarContr
 from .test_solar_car_ended import _car_ends_the_charge, _started
 from .world import controller_of, go_auto, tick_site
 
-pytestmark = pytest.mark.usefixtures("offline_relay")
+pytestmark = pytest.mark.usefixtures("offline_relay", "chargers_not_switch_only")
 
 ENTRY_KEYS = {
     "time",

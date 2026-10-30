@@ -2263,9 +2263,9 @@
   },
   "site": {
     "active_control": {
-      "available": false,
+      "available": true,
       "enabled": false,
-      "reason": "no_commandable_charger",
+      "reason": null,
       "writable": true
     },
     "charger_count": 1,

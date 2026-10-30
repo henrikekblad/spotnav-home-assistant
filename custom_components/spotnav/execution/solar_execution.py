@@ -1024,12 +1024,16 @@ class SolarExecutionCoordinator:
 
         if self._solar is None:
             self._solar = self._build_controller(site)
-        elif not (held_by_plan or held_by_floor) and self._state is not None and self._state.held_by_plan:
-            # A plan window held the charge until now (its end handed it over, or the strategy left the plan): what
-            # the sun asked for meanwhile was never written, so its next modulation writes again. A start
-            # not taken is timed afresh: the watch did not run meanwhile.
-            self._solar.release_request()
-            self._unseen_since = None
+        else:
+            if self._controller.is_switch_only and self._solar.config != (limits := self._solar_config(site)):
+                # Its learned current moved: the thresholds follow it, the state is kept.
+                self._solar.update_limits(limits)
+            if not (held_by_plan or held_by_floor) and self._state is not None and self._state.held_by_plan:
+                # A plan window held the charge until now (its end handed it over, or the strategy left the plan):
+                # what the sun asked for meanwhile was never written, so its next modulation writes again. A start
+                # not taken is timed afresh: the watch did not run meanwhile.
+                self._solar.release_request()
+                self._unseen_since = None
         if not (held_by_plan or held_by_floor):
             if await self._adopt_solar_charge(site, self._solar):
                 # Solar's own charge resumed by load balancing was decided this tick (kept or stopped).
@@ -1436,6 +1440,14 @@ class SolarExecutionCoordinator:
         wiring: dict[str, Any] = (site.config.get(CONF_PHASE_WIRING) or {}).get(
             self._charger_entry_id
         ) or {}
+        if self._controller.is_switch_only:
+            # A charger whose current cannot be set draws its whole switched current or nothing: it starts only on a
+            # surplus that covers all of it, and stops once the surplus (its own draw added back) stays below that for
+            # the stop delay. Nothing is modulated (`current_writer` is nobody).
+            switched = self._controller.switched_current().amps
+            return SolarConfig(
+                priority=priority, min_current_a=switched, max_current_a=switched, start_a=switched, stop_a=switched
+            )
         min_current_a = float(wiring.get("min_current_a", DEFAULT_MIN_CURRENT_A))
         config_kwargs: dict[str, Any] = {"priority": priority, "min_current_a": min_current_a}
         # A charge starts at the charger's own start minimum (a profile may set it above 6 A); once running it may still

@@ -77,6 +77,8 @@ export interface CapabilityItem {
   key: "auto_price" | "current_limit" | "load_balancing" | "target_soc";
   labelKey: TranslationKey;
   state: "available" | "unavailable";
+  /** A sentence under an available capability that is narrower than it sounds. */
+  noteKey?: TranslationKey;
 }
 
 /**
@@ -367,12 +369,17 @@ export function capabilitiesFor(dashboard: Dashboard): CapabilityItem[] {
     }
     return { key, labelKey, state: "unavailable" };
   };
+  // A charger whose current SpotNav cannot set is still balanced, but only by pausing its charge.
+  const pauseOnly = (entry: CapabilityItem): CapabilityItem =>
+    entry.state === "available" && !capabilities.set_current
+      ? { ...entry, noteKey: "cap.loadBalancingPauseOnly" }
+      : entry;
   return [
     item("auto_price", "cap.autoPrice"),
     // "Dynamic current limit" is what SpotNav can do to this charger, not whether it has a limit
     // entity: a charger whose current SpotNav may not or cannot set is unavailable here.
     item("current_limit", "cap.currentLimit", capabilities.set_current),
-    item("load_balancing", "cap.loadBalancing"),
+    pauseOnly(item("load_balancing", "cap.loadBalancing")),
     item("target_soc", "cap.targetSoc"),
   ];
 }

@@ -560,6 +560,11 @@ class SolarController:
     def config(self) -> SolarConfig:
         return self._config
 
+    def update_limits(self, config: SolarConfig) -> None:
+        """The same charge with new current limits (a switch-only charger's learned current moved): the state, its
+        timers and back-offs are kept; only the thresholds read from here on change."""
+        self._config = config
+
     @property
     def running(self) -> bool:
         """Whether this controller has the charger charging (`on` or `disarming`)."""
