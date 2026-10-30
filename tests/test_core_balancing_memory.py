@@ -263,3 +263,45 @@ async def test_a_command_across_an_unplug_and_a_new_plug_in_holds_nothing_back(
     _nothing_held_back(world, drives)
     assert (await _stored(world))["balancing_pause"] is None
     await world.shutdown()
+
+
+async def _plans_charge_held_back(world: World) -> None:
+    """The plan's charge in its open window, then load balancing's pause of it (no room for the minimum current)."""
+    from .pause_world import SWITCH
+
+    controller = world.controller
+    assert controller.charge_origin == "plan_window" and world.hass.states.get(SWITCH).state == "on"
+    await controller._regulated_stop("pause")  # noqa: SLF001 - the regulator's own pause
+    await world.hass.async_block_till_done()
+    assert controller.paused_by_balancing and controller.paused_charge_origin == "plan_window"
+
+
+@pytest.mark.usefixtures("both_restarts")
+async def test_a_restart_in_an_open_window_leaves_the_plans_charge_load_balancing_holds_back(
+    hass: HomeAssistant, timers: FakeScheduler, drives: bool
+) -> None:
+    """The restart's re-arm finds the plan's window open and the plan's charge held back by load balancing: it starts
+    nothing and keeps the memory, so the regulator gives the charge back by its own rules, as without a restart."""
+    from .pause_world import open_window, SWITCH
+
+    world = await pause_world(hass, timers, plan=open_window())
+    await _plans_charge_held_back(world)
+    starts = len(world.starts)
+
+    restarted = await world.restart()
+    controller = restarted.controller
+    assert len(restarted.starts) == starts and hass.states.get(SWITCH).state == "off"
+    assert controller.paused_by_balancing and controller.paused_charge_origin == "plan_window"
+    assert (await _stored(restarted))["balancing_pause"] == {"origin": "plan_window", "plan_charge": True}
+    if drives:
+        assert (_session(restarted).balancing_paused, _session(restarted).paused_origin) == (True, "plan")
+
+    # Room again: the regulator's resume gives the charge back as the plan's.
+    assert await controller.async_battery_probe_start(8)
+    await hass.async_block_till_done()
+    assert len(restarted.starts) == starts + 1 and hass.states.get(SWITCH).state == "on"
+    assert controller.charge_origin == "plan_window" and not controller.paused_by_balancing
+    assert (await _stored(restarted))["balancing_pause"] is None
+    if drives:
+        assert not _session(restarted).balancing_paused and _session(restarted).paused_origin is None
+    await restarted.shutdown()

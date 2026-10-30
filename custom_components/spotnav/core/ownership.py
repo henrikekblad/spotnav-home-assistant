@@ -22,6 +22,8 @@ The rules are today's, as the manual-pause specs and their three review rounds s
   need grew; otherwise only the window open then is skipped (R3).
 * A window that opens (its timer, a re-arm) while the charger says no car is plugged in starts nothing: the plug-in
   inside it does. A charger that cannot say is started as before.
+* A re-arm inside an open window (a restart, a follow, an install) while load balancing holds a charge back starts
+  nothing and keeps that memory: the regulator gives the charge back when there is room, as without the re-arm.
 * The hold of a charge that began by itself outside a window, its override, the claim of one inside a window
   as the plan's, the stop of a plan charge that strays, the re-arm's stop outside the windows, the window ends,
   the top-off, the target and need-met stops, the sun's start, stop and take-over (I4), load balancing's pause,
@@ -88,6 +90,7 @@ from .events import (
     Timer,
     TopOffEnd,
     TRIGGER_PLUG_IN,
+    TRIGGER_REARM,
     TRIGGER_RETRY,
     Unplug,
     WindowEnd,
@@ -406,6 +409,9 @@ def _window_start(session: ChargeSession, event: WindowStart, now: datetime) -> 
             # A pause holds Auto (one whose stop failed leaves its plan): no window of it starts (bug 8).
             return s, ()
         if ended_holds:
+            return s, ()
+        if event.trigger == TRIGGER_REARM and s.balancing_paused:
+            # Load balancing holds a charge back: its regulator resumes it, with its own margin and dwell.
             return s, ()
         if event.connected is False:
             # No car at the charger: nothing to start (a charger takes a start without one and waits). The plug-in

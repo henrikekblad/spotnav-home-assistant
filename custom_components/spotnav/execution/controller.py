@@ -5399,6 +5399,7 @@ class ChargingController:
                     "window_start",
                     self._automatic_permitted(AUTOMATIC_START)
                     and not self._car_ended_holds_window()
+                    and not self._rearm_meets_balancing(trigger)
                     and self.adapter.vehicle_connected() is not False,
                     ("start", "plan_window") in verdict,
                 )
@@ -5415,7 +5416,7 @@ class ChargingController:
                     "SpotNav charger %s: a window opens while Auto is paused; nothing is started", self.entry_id
                 )
                 return False
-            elif self._car_ended_holds_window():
+            elif self._car_ended_holds_window() or self._rearm_meets_balancing(trigger):
                 return False
             elif self.adapter.vehicle_connected() is False:
                 # No car at the charger: a start would only wait for one (an OCPP charger takes it and shows
@@ -5441,6 +5442,11 @@ class ChargingController:
                 legacy=legacy,
                 outcome=outcome,
             )
+
+    def _rearm_meets_balancing(self, trigger: str) -> bool:
+        """A re-arm inside an open window (a restart, a follow, an install) while load balancing holds a charge back:
+        nothing starts and the memory stays, so its regulator resumes the charge with its own margin and dwell."""
+        return trigger == core_events.TRIGGER_REARM and self._balancing.paused
 
     async def _async_enforce_target(self) -> bool:
         """Make the target decision for the plan in force, and act on it. Takes the operation lock
