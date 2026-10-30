@@ -134,12 +134,14 @@ describe("loading the compiled asset", () => {
 });
 
 describe("the asset's only absolute URLs", () => {
-  it("are the W3C namespace and the documentation link, and nothing that could be a network address", () => {
+  it("are the W3C namespace and the documentation links, and nothing that could be a network address", () => {
     const asset = readFileSync(ASSET, "utf8");
     const found = new Set(asset.match(/https?:\/\/[^"'`)\s]+/g) ?? []);
     expect(Array.from(found).sort()).toEqual([
-      "http://www.w3.org/2000/svg",
+      // The Octopus Energy integration's page, opened in a new tab by its notice when HACS is not there.
+      "https://github.com/BottlecapDave/HomeAssistant-OctopusEnergy",
       "https://github.com/henrikekblad/spotnav-home-assistant",
-    ]);
+      "http://www.w3.org/2000/svg",
+    ].sort());
   });
 });

@@ -585,7 +585,8 @@ describe("12-13. hostile input and the audits", () => {
     expect(sources[0]).toContain("getDashboard(hass, charger, API_VERSION)");
     expect(sources[0]).not.toContain("callWS");
     expect(bundle).toContain("spotnav/get_dashboard");
-    expect(bundle).not.toContain("spotnav/set_");
+    // The one `set_` command is the installation's ENTSO-E key, an administrator's, sent from its own editor.
+    expect(bundle.replaceAll("spotnav/set_entsoe_key", "")).not.toContain("spotnav/set_");
     expect(bundle).not.toContain("spotnav/pause");
   });
 });
