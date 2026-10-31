@@ -186,7 +186,27 @@ async def test_a_stored_session_register_of_a_charger_without_a_lifetime_one_giv
         "register": integrated,
         "power": "sensor.myenergi_ct1_power",
     }
-    assert "and the charger has none; it is no longer used" in caplog.text
+    assert "its energy is counted from its power sensor instead" in caplog.text
+
+
+async def test_a_stored_session_register_is_kept_when_the_charger_has_no_power_sensor_either(hass: HomeAssistant) -> None:
+    shape = SHAPES["myenergi"]
+    entities = tuple(entity for entity in shape.entities if "power" not in entity.key)
+    ids = register_shape(hass, replace(shape, entities=entities))
+    found = detect_charger(hass, ids["device_id"])
+    data = {
+        CONF_ENTRY_TYPE: ENTRY_TYPE_CHARGER,
+        "webhook_id": "hook-zappi",
+        **detected_config(found),
+        CONF_ENERGY_REGISTER_ENTITY: "sensor.myenergi_charge_added",
+    }
+    entry = MockConfigEntry(domain=DOMAIN, entry_id="det_zappi", title="zappi", data=data)
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    assert entry.data[CONF_ENERGY_REGISTER_ENTITY] == "sensor.myenergi_charge_added"
+    assert controller_of(hass, entry.entry_id).energy_count()["source"] == "register"
 
 
 async def test_a_register_chosen_in_the_entity_editor_is_kept_from_then_on(

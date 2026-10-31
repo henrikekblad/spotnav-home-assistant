@@ -17,8 +17,9 @@ behind a smart plug keeps its power.
 
 A detected charger's stored register that its profile now knows is not a lifetime one (a per-session or daily
 counter, one phase of three, or any energy sensor of an integration that has no lifetime register) is replaced at
-setup by the one detection finds now, or by none (then the charger's own power is counted, where its profile
-names a power sensor), with an INFO line. Never one a person chose (`CONF_ENERGY_REGISTER_CHOSEN`, or a
+setup by the one detection finds now, or by none where the charger's own power sensor is counted instead (its
+profile names one and the device has it), with an INFO line; with neither, it is kept, since a counter that
+resets still ends a need where no count would not. Never one a person chose (`CONF_ENERGY_REGISTER_CHOSEN`, or a
 per-session register taken knowingly in the flow, `CONF_ENERGY_REGISTER_IS_SESSION`). An entry from before
 2.2 does not say whether its register was suggested or chosen: since a register of the charger's own
 integration that is not its lifetime one stops a kWh need late (one phase of three counts a third) or loses
@@ -161,7 +162,12 @@ def _replace_known_wrong(hass: HomeAssistant, entry: ConfigEntry) -> None:
     if not stored_register_known_wrong(hass, data):
         return
     stored = data[CONF_ENERGY_REGISTER_ENTITY]
-    found = lifetime_energy_register(hass, _charger_device_id(hass, data))
+    device_id = _charger_device_id(hass, data)
+    found = lifetime_energy_register(hass, device_id)
+    if found is None and charger_power_for_energy(hass, device_id) is None:
+        # Nothing better to count with: a counter that resets still ends a need (the count carries it over a reset),
+        # where no count at all would not.
+        return
     hass.config_entries.async_update_entry(entry, data={**data, CONF_ENERGY_REGISTER_ENTITY: found or ""})
     if found is not None:
         _LOGGER.info(
@@ -171,7 +177,7 @@ def _replace_known_wrong(hass: HomeAssistant, entry: ConfigEntry) -> None:
     else:
         _LOGGER.info(
             "%s: the energy register %s is not the charger's lifetime register, and the charger has none; "
-            "it is no longer used",
+            "its energy is counted from its power sensor instead",
             entry.title, stored,
         )
 
