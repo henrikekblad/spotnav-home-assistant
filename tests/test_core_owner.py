@@ -397,3 +397,39 @@ async def test_a_record_newer_than_the_keys_is_the_owner_at_a_restart_and_the_ke
     assert hass.states.get(SWITCH).state == "on", "the charge goes on"
     await _keys_follow(restarted, True, ORIGINS[owner])
     await restarted.shutdown()
+
+
+class _Day:
+    """The debug bundle's keeper of a charger's plug-ins (`debug_day.ChargerDay`), as far as the controller tells it."""
+
+    def __init__(self) -> None:
+        self.commands: list[dict[str, Any]] = []
+        self.records: list[dict[str, Any]] = []
+
+    def note_command(self, record: dict[str, Any]) -> None:
+        self.commands.append(record)
+
+    def note_ownership(self, record: dict[str, Any]) -> None:
+        self.records.append(record)
+
+    def note_phase_switch(self, *_args: Any, **_kwargs: Any) -> None:
+        pass
+
+
+async def test_the_debug_day_hears_every_owner_decision(hass: HomeAssistant, timers: FakeScheduler, drives: bool) -> None:
+    """The debug bundle hears each event the core decided (`OwnershipShadow.on_record`) and each command sent, also
+    when the core keeps the owner: a person's Start and the charger seen off are both in its records."""
+    world = await pause_world(hass, timers)
+    day = _Day()
+    world.controller.set_debug_day(day)  # type: ignore[arg-type]
+    before = world.controller.ownership_shadow._recorded  # noqa: SLF001
+    await world.executor.async_manual_start()
+    await hass.async_block_till_done()
+    await world.switch("off")
+    await hass.async_block_till_done()
+    kinds = [record.get("event", {}).get("kind") for record in day.records]
+    assert kinds[0] == "person_start" and kinds[-1] == "charger_reported_off", kinds
+    assert day.commands, "the start sent through the adapter is heard"
+    assert len(day.records) == world.controller.ownership_shadow._recorded - before  # noqa: SLF001
+    world.controller.set_debug_day(None)
+    await world.shutdown()
