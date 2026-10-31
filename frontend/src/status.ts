@@ -25,6 +25,18 @@ export interface Issue {
   technical: string | null;
   /** A sentence composed from the line's facts, shown instead of `textKey` when present. */
   text?: string;
+  /** The one write that ends it, offered to an administrator as a button (`spotnav/fix_own_mode`). */
+  fix?: IssueFix;
+  /** Said after the text where no button is shown: where to change it instead. */
+  hintKey?: TranslationKey;
+}
+
+/** A charger's own setting set back by one press: the entity, the value the backend named, and the button's words. */
+export interface IssueFix {
+  entity: string;
+  value: string;
+  labelKey: TranslationKey;
+  labelParams: Record<string, string>;
 }
 
 /** What an issue says, in the reader's language. */
@@ -203,6 +215,7 @@ export const STATUS_WORDING: Readonly<Record<StatusCode, TranslationKey>> = {
   load_balancing_unavailable: "issue.loadBalancing",
   held_by_charger: "issue.heldByCharger",
   charger_disabled: "issue.chargerDisabled",
+  charger_own_mode: "issue.ownMode",
   held_until_window: "status.heldUntilWindow",
   hold_overridden: "issue.holdOverridden",
   need_limited_by_room: "status.needLimitedByRoom",
@@ -326,6 +339,14 @@ const MISSING_FIELD_KEYS: Readonly<Record<string, TranslationKey>> = {
   vehicle: "status.missing.vehicle",
   target_percent: "status.missing.target_percent",
 };
+
+/** The words of a `charger_own_mode` line: the mode in the profile's words and what it reads. */
+function ownModeParams(p: StatusLine["params"]): Record<string, string> {
+  return {
+    label: typeof p["label"] === "string" ? p["label"] : "",
+    state: typeof p["state"] === "string" ? p["state"] : "",
+  };
+}
 
 /** A manual need counted without the energy register: its kept remainder's wording, or the sessions'. */
 function needEstimated(language: Language, p: StatusLine["params"]): { key: TranslationKey; params: Record<string, string> } {
@@ -644,6 +665,8 @@ export function lineText(
       return say("status.minSocCharging", { percent: formatNumber(language, num(p["percent"]) ?? 0, 0) });
     case "duplicate_charger":
       return say("issue.duplicateCharger", { other: typeof p["other"] === "string" ? p["other"] : "" });
+    case "charger_own_mode":
+      return say("issue.ownMode", ownModeParams(p));
     case "departure_shortfall": {
       const departure = ms(p["departure"]);
       const wording = shortfallWording(language, p, departure === null || !zoned ? null : clock(format, departure));
@@ -757,6 +780,33 @@ export function issuesOf(status: Status | null, language: Language): Issue[] {
         textKey: planningUnavailableKey(line.params["reason"]),
         params: {},
         technical: reasonOf(line),
+      });
+      continue;
+    }
+    if (line.code === "charger_own_mode") {
+      const value = typeof line.params["value"] === "string" ? line.params["value"] : null;
+      const entity = typeof line.params["entity"] === "string" ? line.params["entity"] : "";
+      issues.push({
+        code: line.code,
+        severity,
+        textKey: "issue.ownMode",
+        params: ownModeParams(line.params),
+        technical: null,
+        hintKey: "issue.ownMode.where",
+        ...(value === null || entity === ""
+          ? {}
+          : { fix: { entity, value, labelKey: "issue.ownMode.set", labelParams: { value } } }),
+      });
+      continue;
+    }
+    if (line.code === "charger_disabled" && typeof line.params["entity"] === "string" && line.params["entity"] !== "") {
+      issues.push({
+        code: line.code,
+        severity,
+        textKey: STATUS_WORDING[line.code],
+        params: {},
+        technical: null,
+        fix: { entity: line.params["entity"], value: "on", labelKey: "issue.chargerDisabled.turnOn", labelParams: {} },
       });
       continue;
     }

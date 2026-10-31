@@ -110,7 +110,7 @@ import {
   type PictureKind,
   type ReferenceAnswer,
 } from "./camera-editor";
-import { issueText } from "./status";
+import { issueText, type IssueFix } from "./status";
 import { keyEditor, priceProviderNodes } from "./price-provider";
 import { setupLineText, setupSection, type SetupRowId } from "./setup-checklist";
 import { automationsBody, type BlueprintUse } from "./automations";
@@ -276,6 +276,8 @@ export interface CardViewInput {
   onWriteValue?: (write: ValueWrite) => Promise<string | null>;
   /** A "Get started" row answered "Not needed": the card asks the integration to keep it away, then reads again. */
   onDismissSetup?: (id: SetupRowId) => void;
+  /** An issue's "Set to …" or "Turn on" (administrators only): the card writes that fix, then reads again. */
+  onFixOwnMode?: (entity: string, value: string) => void;
   /** Where Settings was left for a child dialog: the page returns there (owned by the card, kept across renders). */
   overviewPlace?: OverviewPlaceHolder;
   /** A picture for the camera's editors: the camera's picture now, or a car's reference thumbnail. */
@@ -849,15 +851,21 @@ function capabilityStateText(language: Language, state: "available" | "unavailab
 
 /**
  * The issue list, in the model's stable order, with codes only as subdued technical detail; then, for an
- * administrator, the "Get started" section (`setup`) when anything is left to set up.
+ * administrator, the "Get started" section (`setup`) when anything is left to set up. `fix` is given to an
+ * administrator only: an issue with a fix then has its button, and every other one its hint.
  */
-export function issueListBody(doc: Document, model: CardModel, setup: HTMLElement | null = null): HTMLElement {
+export function issueListBody(
+  doc: Document,
+  model: CardModel,
+  setup: HTMLElement | null = null,
+  fix: ((fix: IssueFix) => void) | null = null,
+): HTMLElement {
   const body = element(doc, "div");
   if (model.issues.length > 0 || setup === null) {
     body.append(element(doc, "p", `${C.muted} ${C.dialogIntro}`, translate(model.language, "dialog.issuesIntro")));
   }
   for (const issue of model.issues) {
-    body.append(issueRow(doc, model, issue));
+    body.append(issueRow(doc, model, issue, fix));
   }
   if (setup !== null) {
     body.append(setup);
@@ -865,13 +873,26 @@ export function issueListBody(doc: Document, model: CardModel, setup: HTMLElemen
   return body;
 }
 
-function issueRow(doc: Document, model: CardModel, issue: Issue): HTMLElement {
+function issueRow(doc: Document, model: CardModel, issue: Issue, fix: ((fix: IssueFix) => void) | null): HTMLElement {
   const row = element(doc, "div", C.issueItem);
   row.dataset["code"] = issue.code;
   row.dataset["severity"] = issue.severity;
-  row.append(
-    element(doc, "span", C.issueText, issueText(model.language, issue)),
-  );
+  const offered = fix !== null && issue.fix !== undefined ? issue.fix : null;
+  const text = issueText(model.language, issue);
+  const hint = offered === null && issue.hintKey !== undefined ? ` ${translate(model.language, issue.hintKey)}` : "";
+  row.append(element(doc, "span", C.issueText, `${text}${hint}`));
+  if (offered !== null && fix !== null) {
+    // The charger's own setting, set back by one press: what the backend named, never anything else.
+    const answers = element(doc, "div", C.suggestionAnswers);
+    const button = doc.createElement("button");
+    button.type = "button";
+    button.className = C.choiceButton;
+    button.dataset["fixEntity"] = offered.entity;
+    button.append(element(doc, "span", C.choiceLabel, translate(model.language, offered.labelKey, offered.labelParams)));
+    button.addEventListener("click", () => fix(offered));
+    answers.append(button);
+    row.append(answers);
+  }
   return row;
 }
 
@@ -2043,7 +2064,7 @@ export function createCardView(input: CardViewInput): CardView {
     issuesDialog.show({
       // Only setup rows to show: the dialog is "Get started" itself.
       title: translate(model.language, model.issues.length === 0 && setup !== null ? "setup.heading" : "dialog.issues"),
-      body: issueListBody(doc, model, setup),
+      body: issueListBody(doc, model, setup, input.isAdmin && input.onFixOwnMode !== undefined ? fixOwnMode : null),
       opener,
     });
   }
@@ -2073,6 +2094,12 @@ export function createCardView(input: CardViewInput): CardView {
       }
     };
     look();
+  }
+
+  /** An issue's button was pressed: the dialog closes and the card writes the fix, then reads the dashboard again. */
+  function fixOwnMode(fix: IssueFix): void {
+    issuesDialog.hide({ restoreFocus: false });
+    input.onFixOwnMode?.(fix.entity, fix.value);
   }
 
   /** The dialog's "Get started" section, for an administrator with something left to set up; else `null`. */
