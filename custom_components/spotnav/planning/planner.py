@@ -16,7 +16,7 @@ Pure: no `hass`, entity, service, timer, storage or network.
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, datetime, time, timedelta, timezone
 from typing import Any, Final, Literal
 
@@ -468,10 +468,33 @@ class PlanResult:
     #: What the same energy would cost charged from the first usable slot on, at the same power, in the major
     #: unit: what the plan is compared with ("against charging now"). `None` without a priced plan.
     now_cost: float | None = None
+    #: The charge stops once the need is delivered (`ending_at_need`): `delivered_kwh` is the need, and the costs
+    #: count the last slot only for the share of it the need takes.
+    ends_at_need: bool = False
 
     @property
     def has_plan(self) -> bool:
         return self.reason is None
+
+    @property
+    def need_met_at(self) -> datetime | None:
+        """When a plan that stops at its need is expected to have delivered it: inside its last slot, by the share
+        of that slot the need takes. `None` for a plan that runs its whole slots, or one whose need fills them."""
+        if not self.ends_at_need or not self.periods or self.power_kw <= 0:
+            return None
+        extra = self.slots_needed * self.power_kw * SLOT_HOURS - self.delivered_kwh
+        if extra <= _WHOLE_SLOTS_KWH:
+            return None
+        return self.periods[-1][1] - timedelta(hours=extra / self.power_kw)
+
+    @property
+    def shown_periods(self) -> tuple[tuple[datetime, datetime], ...]:
+        """The periods as a person is shown them: the last one ending where the need is expected to be met.
+        Never what is installed, which keeps whole slots (the count ends the charge)."""
+        met = self.need_met_at
+        if met is None:
+            return self.periods
+        return (*self.periods[:-1], (self.periods[-1][0], met))
 
 
 def first_start_for(documents: tuple[PriceDocument, ...], *, now: datetime, tz: str) -> datetime:
@@ -921,6 +944,40 @@ def calculate_plan(request: PlanRequest) -> PlanResult:
         horizon=_horizon(candidates, selected, zone=zone, fiscal=request.fiscal),
         short_of_deadline=window.short,
         now_cost=now_minor / 100,
+    )
+
+
+#: Less than this left over in the last slot is a need that fills its slots exactly (float noise).
+_WHOLE_SLOTS_KWH: Final = 1e-6
+
+
+def ending_at_need(result: PlanResult) -> PlanResult:
+    """A plan whose charge stops once its need is delivered, as a kWh need counted with an energy register does.
+
+    The planner buys whole slots, so the last one would deliver more than the need: the stated energy is the need
+    itself, and the cost counts every slot whole but the last one in time, which counts only for the share of it
+    the need takes (the same for the cost of charging now, whose last slot is the last of the first ones). The
+    slots and periods stay whole (what is installed); `need_met_at` says where in the last one the need is met.
+    A plan short of its departure, one with no slots, or one whose need fills its slots exactly is unchanged
+    beyond the flag.
+    """
+    if not result.has_plan or result.short_of_deadline or not result.slots or result.power_kw <= 0:
+        return result
+    per_slot = result.power_kw * SLOT_HOURS
+    extra = result.delivered_kwh - result.requested_kwh
+    if extra <= _WHOLE_SLOTS_KWH or extra >= per_slot:
+        return replace(result, ends_at_need=True)
+    last = max(result.slots, key=lambda slot: slot.start)
+    now_cost = result.now_cost
+    if now_cost is not None and len(result.horizon) >= result.slots_needed:
+        now_cost -= extra * result.horizon[result.slots_needed - 1].effective_minor_per_kwh / 100
+    return replace(
+        result,
+        delivered_kwh=result.requested_kwh,
+        distance_mil=result.distance_mil * result.requested_kwh / result.delivered_kwh,
+        estimated_cost=result.estimated_cost - extra * last.effective_minor_per_kwh / 100,
+        now_cost=now_cost,
+        ends_at_need=True,
     )
 
 

@@ -77,6 +77,7 @@ from .grid_voltage import voltage_between_phases_v
 from .phases import effective_phases
 from .planner import (
     calculate_plan,
+    ending_at_need,
     FiscalChoice,
     local_instant,
     MAX_DEPARTURE_DAYS_AHEAD,
@@ -1296,6 +1297,9 @@ class AutoPlannerController:
                 settings, "planning_unavailable", self._map_planner_code(result.reason or ""), calculated_at,
                 entry=entry, price_snapshot=area_snapshot, proposal=result,
             )
+        if self._stops_at_need(settings, resolved, result, energy_kwh):
+            # The count ends the charge at the need: the plan says the need and its share of the last slot.
+            result = ending_at_need(result)
         state: AutoState = "proposal_unpriced" if result.unpriced else "proposal_ready"
         reason: AutoReason = "unpriced" if result.unpriced else "ready"
         if wait_facts.get("price_wait_action") == "buy_now":
@@ -1317,6 +1321,22 @@ class AutoPlannerController:
             self._publish(failed, force=True)
             return failed
         return snapshot
+
+    def _stops_at_need(
+        self, settings: AutoSettings, resolved: _EnergyResolution, result: PlanResult, need_kwh: float
+    ) -> bool:
+        """Whether this plan's charge stops once its need is delivered (`_on_energy_reading`): a manual kWh need
+        counted with an energy register (the charger's own, or the energy integrated from a power sensor), planned
+        whole by the cheapest strategy. Not a target (the level stops it), not hybrid (part of the need is
+        the sun's), not a need the car ends itself when full (`room_limited`), and not a purchase of only the
+        part that cannot wait for prices (`must_buy_kwh`), which the count does not end."""
+        return (
+            settings.driver != DRIVER_TARGET_SOC
+            and settings.strategy != STRATEGY_HYBRID
+            and not resolved.room_limited
+            and self._energy_register_entity_id() is not None
+            and abs(result.requested_kwh - need_kwh) <= price_wait.EPSILON_KWH
+        )
 
     def _plan_while_prices_are_missing(
         self,
