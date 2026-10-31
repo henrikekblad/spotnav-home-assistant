@@ -1,3 +1,5 @@
+# Installed by SpotNav in blueprints/automation/spotnav/ and overwritten whenever SpotNav is updated.
+# To keep changes of your own, copy this file to another folder under blueprints/automation/ and edit the copy.
 blueprint:
   name: "SpotNav: setpoint by electricity price"
   description: >-
@@ -16,7 +18,7 @@ blueprint:
     sets a thermostat only when its setpoint differs. A thermostat that cannot be set is skipped and
     the others are still set. A setpoint you change by hand lasts until the next run.
   domain: automation
-  source_url: https://github.com/henrikekblad/spotnav-home-assistant/blob/main/blueprints/automation/spotnav/price_setpoint.yaml
+  source_url: https://raw.githubusercontent.com/henrikekblad/spotnav-home-assistant/main/custom_components/spotnav/blueprints/automation/price_setpoint.yaml
   author: SpotNav
   homeassistant:
     min_version: "2024.10.0"

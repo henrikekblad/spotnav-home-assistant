@@ -1,4 +1,4 @@
-"""The automation blueprints in `blueprints/automation/spotnav/`: valid for Home Assistant's blueprint schema, and
+"""The automation blueprints SpotNav ships (`custom_components/spotnav/blueprints/automation/`): valid for Home Assistant's blueprint schema, and
 doing what they say with sample states, run as real automations."""
 
 from __future__ import annotations
@@ -17,7 +17,7 @@ from homeassistant.util import dt as dt_util
 from homeassistant.util.yaml import load_yaml_dict
 from pytest_homeassistant_custom_component.common import async_fire_time_changed, async_mock_service
 
-BLUEPRINTS = Path(__file__).resolve().parent.parent / "blueprints" / "automation" / "spotnav"
+BLUEPRINTS = Path(__file__).resolve().parent.parent / "custom_components" / "spotnav" / "blueprints" / "automation"
 NAMES = ("price_setpoint.yaml", "solar_surplus_switch.yaml")
 
 CHEAP = "binary_sensor.electricity_price_se4_cheap_now"
@@ -52,7 +52,12 @@ def test_each_blueprint_passes_home_assistants_schema(name: str) -> None:
     )
     assert blueprint.domain == "automation"
     assert blueprint.name.startswith("SpotNav: ")
-    assert blueprint.metadata["source_url"].endswith(f"/blob/main/blueprints/automation/spotnav/{name}")
+    assert blueprint.metadata["source_url"] == (
+        f"https://raw.githubusercontent.com/henrikekblad/spotnav-home-assistant/main/custom_components/spotnav/blueprints/automation/{name}"
+    )
+    # The first lines say SpotNav overwrites the file, and how to keep a changed copy.
+    first = (BLUEPRINTS / name).read_text().splitlines()[0]
+    assert first.startswith("# Installed by SpotNav") and "overwritten" in first
 
 
 async def _automation(hass: HomeAssistant, tmp_path: Path, name: str, inputs: dict[str, Any]) -> None:

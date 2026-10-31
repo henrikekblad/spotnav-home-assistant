@@ -1,3 +1,5 @@
+# Installed by SpotNav in blueprints/automation/spotnav/ and overwritten whenever SpotNav is updated.
+# To keep changes of your own, copy this file to another folder under blueprints/automation/ and edit the copy.
 blueprint:
   name: "SpotNav: run on solar surplus"
   description: >-
@@ -22,7 +24,7 @@ blueprint:
     automation does not see to that. Give a heat pump a setpoint rather than switching it on and
     off.
   domain: automation
-  source_url: https://github.com/henrikekblad/spotnav-home-assistant/blob/main/blueprints/automation/spotnav/solar_surplus_switch.yaml
+  source_url: https://raw.githubusercontent.com/henrikekblad/spotnav-home-assistant/main/custom_components/spotnav/blueprints/automation/solar_surplus_switch.yaml
   author: SpotNav
   homeassistant:
     min_version: "2024.10.0"
