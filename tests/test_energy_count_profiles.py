@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import replace
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import pytest
@@ -33,6 +33,9 @@ from custom_components.spotnav.execution.power_energy import (
     power_max_age_s,
 )
 from custom_components.spotnav.flows.charger_detection import detect_charger
+from custom_components.spotnav.planning.auto_controller import advance_register
+from custom_components.spotnav.planning.auto_settings import EnergyBaseline
+from custom_components.spotnav.planning.planner import power_kw
 
 from .charger_helpers import detected_config
 from .charger_shapes import E, ENERGY_WH, register_shape, SHAPES
@@ -322,3 +325,56 @@ def test_a_chargers_own_power_stands_for_one_slow_poll_and_a_plugs_for_the_measu
     assert power_max_age_s(120.0, smart_plug=True) == 120.0
     assert power_max_age_s(120.0, smart_plug=False) == CHARGER_POWER_MAX_AGE_S
     assert CHARGER_POWER_MAX_AGE_S > timedelta(minutes=10).total_seconds()
+
+
+# ------------------------------------------------------------------ a register that resets in the middle of a charge
+
+
+def _count_until(need_kwh: float, poll_s: int, register_at: Any) -> tuple[float, float]:
+    """Readings every `poll_s` of a charge at 11.085 kW, taken into Auto's count (`advance_register`) until the count
+    says the need is delivered: `(true energy then, count then)`. `register_at(true_kwh)` is what the register shows."""
+    start = datetime(2026, 10, 31, 23, 50, tzinfo=timezone.utc)
+    first = register_at(0.0)
+    baseline = EnergyBaseline(
+        register_kwh=first, departure_key="k", last_register_kwh=first, last_register_at=start, charge_mark_s=0.0
+    )
+    true_kwh, moment = 0.0, start
+    while true_kwh < need_kwh * 4:
+        moment += timedelta(seconds=poll_s)
+        true_kwh += 11.085 * poll_s / 3600
+        step = advance_register(
+            baseline,
+            register_at(true_kwh),
+            moment,
+            max_kw=power_kw(63, 3),
+            plugged_in_at=None,
+            charged_s=(moment - start).total_seconds(),
+            changed_at=moment,
+        )
+        baseline = step.baseline
+        if step.accepted and step.delivered_kwh >= need_kwh:
+            return true_kwh, step.delivered_kwh
+    raise AssertionError("the count never reached the need")
+
+
+@pytest.mark.parametrize("poll_s", [10, 60, 300])
+def test_a_daily_or_session_counter_that_resets_mid_charge_stops_at_most_one_reading_late(poll_s: int) -> None:
+    """What the count did before 2.2 with the zappi's daily counter (back to 0 at midnight) or a session counter
+    that starts again: the drop is held for two readings over two minutes, then counted on from zero, so only
+    what was delivered between the last reading before the reset and the reset itself is lost."""
+    reading_kwh = 11.085 * poll_s / 3600
+
+    def daily(true_kwh: float) -> float:
+        return 40.0 + true_kwh if true_kwh < 10.0 else true_kwh - 10.0
+
+    stopped, counted = _count_until(30.5, poll_s, daily)
+
+    assert counted >= 30.5
+    assert stopped - 30.5 <= 2 * reading_kwh + 1e-9
+
+
+def test_one_phase_of_three_counts_a_third_and_runs_the_charge_far_past_its_need() -> None:
+    """Alfen Modbus before 2.2: the register taken was L1's alone."""
+    stopped, counted = _count_until(30.5, 10, lambda true_kwh: 500.0 + true_kwh / 3)
+
+    assert stopped == pytest.approx(3 * 30.5, abs=0.1)
