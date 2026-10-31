@@ -904,5 +904,15 @@
   "setup.solarForecast.action": "Välj prognos",
   "setup.solarForecast.add": "Lägg till Forecast.Solar",
   "setup.phaseSwitching.text": "Slå på fasväxling för sol: en molnig dag laddar bilen på en fas från solen i stället för från nätet.",
-  "setup.phaseSwitching.action": "Öppna inställningen"
+  "setup.phaseSwitching.action": "Öppna inställningen",
+  "settings.automations.label": "Automationer",
+  "settings.automations.value": "Visa",
+  "automations.intro": "SpotNav installerar de här blueprints i Home Assistant och håller dem uppdaterade. Skapa en automation från en av dem under Blueprints och välj dess entiteter där.",
+  "automations.add": "Skapa automation",
+  "automations.priceSetpoint.name": "Börvärde efter elpris",
+  "automations.priceSetpoint.text": "Golvvärme, element eller värmepump får högre temperatur när elen är billig och lägre när den är dyr.",
+  "automations.solarSurplus.name": "Kör vid solöverskott",
+  "automations.solarSurplus.text": "En pool, varmvattenberedare eller elpatron slås på när solen ger överskott.",
+  "automations.usedBy.one": "Används av {count} automation",
+  "automations.usedBy.other": "Används av {count} automationer"
 }

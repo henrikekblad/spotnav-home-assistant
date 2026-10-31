@@ -904,5 +904,15 @@
   "setup.solarForecast.action": "Vælg prognose",
   "setup.solarForecast.add": "Tilføj Forecast.Solar",
   "setup.phaseSwitching.text": "Slå faseskift for sol til: en overskyet dag lader bilen på én fase fra solen i stedet for fra nettet.",
-  "setup.phaseSwitching.action": "Åbn indstillingen"
+  "setup.phaseSwitching.action": "Åbn indstillingen",
+  "settings.automations.label": "Automatiseringer",
+  "settings.automations.value": "Vis",
+  "automations.intro": "SpotNav installerer disse blueprints i Home Assistant og holder dem opdateret. Opret en automatisering fra en af dem under Blueprints, og vælg dens entiteter der.",
+  "automations.add": "Opret automatisering",
+  "automations.priceSetpoint.name": "Setpunkt efter elpris",
+  "automations.priceSetpoint.text": "Gulvvarme, radiatorer eller en varmepumpe får højere temperatur, når strømmen er billig, og lavere, når den er dyr.",
+  "automations.solarSurplus.name": "Kør på soloverskud",
+  "automations.solarSurplus.text": "En poolvarmer, en varmtvandsbeholder eller en elpatron tændes, når solen giver overskud.",
+  "automations.usedBy.one": "Bruges af {count} automatisering",
+  "automations.usedBy.other": "Bruges af {count} automatiseringer"
 }

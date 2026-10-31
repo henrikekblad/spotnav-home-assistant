@@ -30,6 +30,7 @@ import {
   getDashboard,
   getCardInfo,
   getDebugBundle,
+  getBlueprints,
   getEntityConfig,
   getSessions,
   getSessionsCsv,
@@ -71,6 +72,7 @@ import {
   type EntityDraft,
   type EntityScope,
 } from "./entity-config";
+import { decodeBlueprintUse, type BlueprintUse } from "./automations";
 import { decodeDebugAnswer, saveDebugBundle } from "./debug-download";
 import { cardOutdated, clientBlock, decodeCardInfo, ownCardBundleHash, servedHashFromBundle } from "./card-identity";
 import { saveTextFile } from "./download";
@@ -1487,6 +1489,19 @@ export class SpotnavCard extends HTMLElement {
     }
   }
 
+  /** How many automations use each blueprint, for the Automations list; `null` on any failure (no count shown). */
+  private async loadBlueprintUse(): Promise<BlueprintUse | null> {
+    const hass = this.hassObject;
+    if (!this.connected || hass === null || !this.isAdmin) {
+      return null;
+    }
+    try {
+      return decodeBlueprintUse(await getBlueprints(hass));
+    } catch {
+      return null;
+    }
+  }
+
   /** Fetch the redacted bundle and save it as a file; any failure is a sentence in the Settings popover. */
   private async downloadDebug(): Promise<void> {
     const hass = this.hassObject;
@@ -2528,6 +2543,7 @@ export class SpotnavCard extends HTMLElement {
         onDownloadDebug: () => {
           void this.downloadDebug();
         },
+        onLoadBlueprintUse: () => this.loadBlueprintUse(),
         onSaveEntities: (scope, draft) => {
           void this.saveEntities(scope, draft);
         },

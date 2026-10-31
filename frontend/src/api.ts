@@ -6,6 +6,7 @@ import {
   ACTION_API_VERSION,
   ACTION_STOP,
   API_VERSION,
+  BLUEPRINTS_API_VERSION,
   DEBUG_API_VERSION,
   ENTITY_CONFIG_API_VERSION,
   MARKET_API_VERSION,
@@ -317,6 +318,14 @@ export async function getDebugBundle(hass: HomeAssistantLike): Promise<unknown> 
   return await call<unknown>(hass, {
     type: "spotnav/get_debug_bundle",
     api_version: DEBUG_API_VERSION,
+  });
+}
+
+/** How many automations use each of SpotNav's blueprints (administrators only): `unknown` until decoded. */
+export async function getBlueprints(hass: HomeAssistantLike): Promise<unknown> {
+  return await call<unknown>(hass, {
+    type: "spotnav/get_blueprints",
+    api_version: BLUEPRINTS_API_VERSION,
   });
 }
 

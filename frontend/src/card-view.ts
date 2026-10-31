@@ -113,6 +113,7 @@ import {
 import { issueText } from "./status";
 import { keyEditor, priceProviderNodes } from "./price-provider";
 import { setupLineText, setupSection, type SetupRowId } from "./setup-checklist";
+import { automationsBody, type BlueprintUse } from "./automations";
 import { historyBody, type HistoryState, type HistoryUi } from "./history";
 import { connectionLabel, vehicleLineFor } from "./vehicle-line";
 import type { ChargeBarFacts } from "./charge-bar";
@@ -263,6 +264,8 @@ export interface CardViewInput {
   onOpenEntityEditor?: (scope: EntityScope) => void;
   /** The admin pressed "Download debug info" in the Settings popover. */
   onDownloadDebug?: () => void;
+  /** How many automations use each of SpotNav's blueprints (`automations.ts`), `null` when it could not be read. */
+  onLoadBlueprintUse?: () => Promise<BlueprintUse | null>;
   onSaveEntities?: (scope: EntityScope, draft: EntityDraft) => void;
   onCancelEntities?: () => boolean | void;
   /** The one-tap answer to "set its onboard charger to 1-phase?": `1` accepts, `3` keeps it as it was. */
@@ -2114,6 +2117,30 @@ export function createCardView(input: CardViewInput): CardView {
     });
   }
 
+  /** "Automations" from Settings: the blueprints, each with its import button, in the info dialog. Administrators only. */
+  function openAutomations(): void {
+    if (destroyed || !input.isAdmin) {
+      return;
+    }
+    issuesDialog.hide({ restoreFocus: false });
+    settingsOverviewDialog.hide({ restoreFocus: false });
+    const list = automationsBody(doc, model.language, (path) => {
+      capabilityDialog.hide({ restoreFocus: false });
+      navigateTo(doc, path);
+    });
+    capabilityDialog.show({
+      title: translate(model.language, "settings.automations.label"),
+      body: list.body,
+      opener: settingsGeneral,
+    });
+    // How many automations use each one, once Home Assistant answers; none shown while it has not.
+    void input.onLoadBlueprintUse?.().then((use) => {
+      if (use !== null && !destroyed) {
+        list.showUse(use);
+      }
+    });
+  }
+
   function openPause(): void {
     if (destroyed || model.control.choices.length === 0) {
       // No choices is not an empty menu: it is this charger having none to offer, and opening a
@@ -2454,7 +2481,7 @@ export function createCardView(input: CardViewInput): CardView {
 
   /**
    * Support: "About this card" (the capability list, for everyone) and, for administrators only, the
-   * button that saves the debug bundle. Nothing is sent anywhere.
+   * "Automations" row (SpotNav's blueprints) and the button that saves the debug bundle. Nothing is sent anywhere.
    */
   function supportSectionBody(): HTMLElement {
     const section = element(doc, "section", C.settingsSection);
@@ -2469,6 +2496,14 @@ export function createCardView(input: CardViewInput): CardView {
     paintCardOutdated();
     section.append(outdatedNote);
     if (input.isAdmin) {
+      section.append(
+        overviewRow(
+          "automations",
+          translate(model.language, "settings.automations.label"),
+          translate(model.language, "settings.automations.value"),
+          () => openAutomations(),
+        ),
+      );
       section.append(element(doc, "p", C.muted, translate(model.language, "debug.intro")));
     }
     const actions = element(doc, "div", C.settingsSupportActions);

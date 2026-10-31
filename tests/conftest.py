@@ -81,6 +81,21 @@ def no_history_import(request, monkeypatch):
     monkeypatch.setattr(integration, "_async_schedule_history_import", lambda *args, **kwargs: None)
 
 
+@pytest.fixture(autouse=True)
+def no_blueprint_install(request, monkeypatch):
+    """Setting the integration up writes no blueprints into the shared test configuration folder;
+    `tests/test_blueprint_install.py` opts back in with the `blueprint_install` marker."""
+    if request.node.get_closest_marker("blueprint_install") is not None:
+        return
+
+    async def _nothing(*_args: Any, **_kwargs: Any) -> list[str]:
+        return []
+
+    import custom_components.spotnav as integration
+
+    monkeypatch.setattr(integration, "async_install_blueprints", _nothing)
+
+
 @pytest.fixture
 def no_price_entry_from_settings(monkeypatch):
     """A settings write that sets the area keeps the record the charger stores, as it did before price entries:

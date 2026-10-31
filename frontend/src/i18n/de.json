@@ -904,5 +904,15 @@
   "setup.solarForecast.action": "Prognose wählen",
   "setup.solarForecast.add": "Forecast.Solar hinzufügen",
   "setup.phaseSwitching.text": "Phasenumschaltung für Solar einschalten: an einem bewölkten Tag lädt das Auto einphasig von der Sonne statt aus dem Netz.",
-  "setup.phaseSwitching.action": "Einstellung öffnen"
+  "setup.phaseSwitching.action": "Einstellung öffnen",
+  "settings.automations.label": "Automationen",
+  "settings.automations.value": "Anzeigen",
+  "automations.intro": "SpotNav installiert diese Blueprints in Home Assistant und hält sie aktuell. Erstelle unter Blueprints eine Automation aus einem davon und wähle dort ihre Entitäten.",
+  "automations.add": "Automation erstellen",
+  "automations.priceSetpoint.name": "Sollwert nach Strompreis",
+  "automations.priceSetpoint.text": "Fußbodenheizung, Heizkörper oder eine Wärmepumpe bekommen eine höhere Temperatur, wenn Strom günstig ist, und eine niedrigere, wenn er teuer ist.",
+  "automations.solarSurplus.name": "Bei Solarüberschuss einschalten",
+  "automations.solarSurplus.text": "Eine Poolheizung, ein Warmwasserspeicher oder ein Heizstab wird eingeschaltet, wenn die Sonne einen Überschuss liefert.",
+  "automations.usedBy.one": "Von {count} Automation verwendet",
+  "automations.usedBy.other": "Von {count} Automationen verwendet"
 }

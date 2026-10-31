@@ -433,6 +433,16 @@ money, such as the plan's cost, are always in the main unit. The choice is not o
 without a small unit. Where the browser cannot store these choices, for example in a private window,
 they hold until the page is reloaded and the card then starts on **Day** and the small unit.
 
+### Support
+
+**About this card** opens **What this charger can do** (see [Header](#header)). For an administrator,
+**Automations** lists the blueprints SpotNav installs, *Setpoint by electricity price* and *Run on
+solar surplus*, with how many automations use each and **Create automation**, which opens Home
+Assistant's Blueprints page; see [Automations](automations.md). **Download debug info** saves one file for a bug report (see
+[Diagnostics and troubleshooting](troubleshooting.md)).
+
+![Support: Automations, the debug info and About this card](images/card-settings-support.png)
+
 ## Plan settings
 
 The **Plan** cell opens **Charging plan**. Its title names the car the plan is for, as the app's

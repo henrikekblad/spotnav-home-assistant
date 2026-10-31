@@ -904,5 +904,15 @@
   "setup.solarForecast.action": "Choose a forecast",
   "setup.solarForecast.add": "Add Forecast.Solar",
   "setup.phaseSwitching.text": "Turn on phase switching for solar: on a cloudy day the car charges on one phase from the sun instead of from the grid.",
-  "setup.phaseSwitching.action": "Open the setting"
+  "setup.phaseSwitching.action": "Open the setting",
+  "settings.automations.label": "Automations",
+  "settings.automations.value": "Show",
+  "automations.intro": "SpotNav installs these blueprints in Home Assistant and keeps them up to date. Create an automation from one under Blueprints and choose its entities there.",
+  "automations.add": "Create automation",
+  "automations.priceSetpoint.name": "Setpoint by electricity price",
+  "automations.priceSetpoint.text": "Floor heating, radiators or a heat pump get a higher temperature when electricity is cheap and a lower one when it is expensive.",
+  "automations.solarSurplus.name": "Run on solar surplus",
+  "automations.solarSurplus.text": "A pool heater, water heater or immersion heater is switched on when the sun gives a surplus.",
+  "automations.usedBy.one": "Used by {count} automation",
+  "automations.usedBy.other": "Used by {count} automations"
 }

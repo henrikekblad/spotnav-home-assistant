@@ -904,5 +904,15 @@
   "setup.solarForecast.action": "Valitse ennuste",
   "setup.solarForecast.add": "Lisää Forecast.Solar",
   "setup.phaseSwitching.text": "Ota käyttöön vaiheenvaihto aurinkolataukselle: pilvisenä päivänä auto latautuu yhdellä vaiheella auringosta eikä verkosta.",
-  "setup.phaseSwitching.action": "Avaa asetus"
+  "setup.phaseSwitching.action": "Avaa asetus",
+  "settings.automations.label": "Automaatiot",
+  "settings.automations.value": "Näytä",
+  "automations.intro": "SpotNav asentaa nämä mallipohjat Home Assistantiin ja pitää ne ajan tasalla. Luo automaatio jostakin niistä kohdassa Mallipohjat ja valitse sen entiteetit siellä.",
+  "automations.add": "Luo automaatio",
+  "automations.priceSetpoint.name": "Asetusarvo sähkön hinnan mukaan",
+  "automations.priceSetpoint.text": "Lattialämmitys, patterit tai lämpöpumppu saavat korkeamman lämpötilan, kun sähkö on halpaa, ja matalamman, kun se on kallista.",
+  "automations.solarSurplus.name": "Käy aurinkoylijäämällä",
+  "automations.solarSurplus.text": "Altaan lämmitin, lämminvesivaraaja tai sähkövastus kytketään päälle, kun aurinko tuottaa ylijäämää.",
+  "automations.usedBy.one": "Käytössä {count} automaatiossa",
+  "automations.usedBy.other": "Käytössä {count} automaatiossa"
 }
