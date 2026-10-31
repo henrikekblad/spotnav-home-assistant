@@ -178,7 +178,8 @@ nothing; the card then lists the register it finds under **To check**, so you ca
 
 A stored register that SpotNav now knows is not the charger's lifetime one (a per-session or daily
 counter, or one phase of three) is replaced at the next start by the lifetime register, or dropped where
-the integration has none; a register you chose yourself in the card is kept. Where the charger's
+the integration has none. A register of another integration is always kept, and so is one you choose in
+the card from 2.2.0 on (an older choice of such a counter is replaced once: choose it again to keep it). Where the charger's
 integration has no lifetime register at all (myenergi zappi, ABB Terra AC, Ohme, ChargePoint,
 Hypervolt), SpotNav counts the energy from the charger's own power sensor instead, as it does for a
 charger behind a smart plug.
