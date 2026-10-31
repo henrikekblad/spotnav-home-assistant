@@ -270,6 +270,40 @@ def expected_soc_percent(resolution: _EnergyResolution, planned_kwh: float) -> f
     return min(100.0, soc + planned_kwh * CHARGE_EFFICIENCY / capacity * 100.0)
 
 
+def follow_register(
+    baseline: EnergyBaseline, entity_id: str | None, reading: float | None, now: datetime, *, charged_s: float
+) -> EnergyBaseline:
+    """A baseline whose readings come from `entity_id` from now on.
+
+    Two registers count from different origins (a session counter at 5 kWh, a lifetime one at 6989 kWh, the energy
+    integrated from a power sensor at its own total), so a count never runs across them: on another entity what was
+    counted is carried, and the count starts again from the new register's first reading (`reading`, or, while it
+    cannot be read, the first one it gives: `register_kwh` is `None` then, which `_manual_kwh_remaining` rebases).
+    Whatever was pending or rejected was the old register's. A baseline that names no register (no register when
+    it began) takes this one as it is.
+    """
+    if baseline.register_entity == entity_id:
+        return baseline
+    if baseline.register_entity is None:
+        return replace(baseline, register_entity=entity_id)
+    return replace(
+        baseline,
+        register_entity=entity_id,
+        register_kwh=reading,
+        carried_kwh=round(counted_kwh(baseline), 6),
+        last_register_kwh=reading,
+        last_register_at=None if reading is None else now,
+        previous_register_kwh=None,
+        pending_drop_kwh=None,
+        pending_drop_at=None,
+        pending_drop_count=0,
+        rejected_kwh=None,
+        rejected_at=None,
+        rejected_mark_s=None,
+        charge_mark_s=charged_s,
+    )
+
+
 def counted_kwh(baseline: EnergyBaseline) -> float:
     """The energy a baseline's epoch has counted so far, as its believed readings say."""
     reference = baseline.register_kwh
@@ -2128,6 +2162,8 @@ class AutoPlannerController:
         stored = self._baseline()
         reading = self._read_energy_register()
         self._note_register_read(reading)
+        if stored is not None:
+            stored = self._follow_register(stored, reading)
         if stored is None or reading is None or stored.register_kwh is None:
             return
         entity_id = self._energy_register_entity_id()
@@ -2270,6 +2306,21 @@ class AutoPlannerController:
             return live
         return stored
 
+    def _follow_register(self, stored: EnergyBaseline, reading: float | None) -> EnergyBaseline:
+        """`follow_register` to this charger's register now, saved when it moved to another one."""
+        entity_id = self._energy_register_entity_id()
+        followed = follow_register(stored, entity_id, reading, self._now(), charged_s=self._charged_s())
+        if followed != stored:
+            if stored.register_entity is not None:
+                _LOGGER.info(
+                    "The energy register changed from %s to %s while a need was counted: %.3f kWh counted are "
+                    "kept and the count goes on from the new register",
+                    stored.register_entity, entity_id, followed.carried_kwh,
+                )
+            self._live_baseline = followed
+            self._hass.async_create_task(self._save_baseline(followed))
+        return followed
+
     def _charged_s(self) -> float:
         """The charger's charge clock now (`ChargingController.charging_seconds`), 0 without one."""
         return 0.0 if self._executor is None else self._executor.controller.charging_seconds()
@@ -2336,6 +2387,7 @@ class AutoPlannerController:
             await self._save_baseline(
                 EnergyBaseline(
                     register_kwh=current_reading,
+                    register_entity=self._energy_register_entity_id(),
                     departure_key=departure_key,
                     started_at=self._epoch_start(departure_key, calculated_at),
                     last_register_kwh=current_reading,
@@ -2352,6 +2404,7 @@ class AutoPlannerController:
                 delivered_kwh=0.0 if current_reading is not None else None,
             )
 
+        stored = self._follow_register(stored, current_reading)
         if current_reading is None:
             self._note_register_read(None)
             unread = self._unread_remainder(settings, stored, departure_key)
