@@ -104,6 +104,7 @@
   "issue.ownMode": "La función propia «{label}» del cargador está activada ({state}). Va en contra de SpotNav.",
   "issue.ownMode.where": "Cámbiala en la página del dispositivo del cargador en Home Assistant.",
   "issue.ownMode.set": "Poner en {value}",
+  "issue.ownMode.turnOff": "Desactivar",
   "issue.chargerIgnoresStop": "El cargador sigue cargando aunque se ha detenido, así que SpotNav no envía más órdenes de parada. Detenlo en el cargador o desenchufa el coche.",
   "issue.holdOverridden": "La carga se ha iniciado fuera del plan y se permite que continúe.",
   "status.fillingToLimit": "Cargando hasta que el coche esté lleno, {kwh} kWh ahora.",

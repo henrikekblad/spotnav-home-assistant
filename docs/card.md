@@ -39,7 +39,7 @@ review and opens the full list with the integration's own wording.
 One of those items is the charger's own mode working against SpotNav, for as long as it does: *The charger's own
 smart charging is on (pure_solar). It works against SpotNav.* (Peblar's smart charging other than *Default*,
 Easee's smart charging, go-e's charging mode and PV surplus, and the like). An administrator gets a button beside
-it, *Set to default* (or *Turn off* words as the charger offers it), which sets that one entity back; SpotNav
+it, *Set to default* (the value as the charger names it) or *Turn off* for a switch, which sets that one entity back; SpotNav
 checks again first that the mode is still on and that the entity is the charger's own. Where the charger offers
 no single safe value, or for a user who is not an administrator, the item says to change it on the charger's
 device page instead. A charger whose own enable switch is off (Easee) gets a *Turn on* button the same way.

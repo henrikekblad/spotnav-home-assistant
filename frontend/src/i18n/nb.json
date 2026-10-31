@@ -104,6 +104,7 @@
   "issue.ownMode": "Laderens egen {label} er på ({state}). Den motarbeider SpotNav.",
   "issue.ownMode.where": "Endre den på laderens enhetsside i Home Assistant.",
   "issue.ownMode.set": "Sett til {value}",
+  "issue.ownMode.turnOff": "Slå av",
   "issue.chargerIgnoresStop": "Laderen fortsetter å lade selv om den ble stoppet, så SpotNav sender ikke flere stopp. Stopp den ved laderen eller koble fra bilen.",
   "issue.holdOverridden": "Ladingen ble startet utenfor planen og får fortsette.",
   "status.fillingToLimit": "Lader til bilen er full, nå {kwh} kWh.",

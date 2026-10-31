@@ -115,6 +115,16 @@ describe("a charger's own mode that works against SpotNav", () => {
     card.destroy();
   });
 
+  it("turns a switch mode off rather than setting it to off", () => {
+    const fup = statusLine("charger_own_mode", { entity: "switch.goe_fup", label: "PV surplus", state: "on", value: "off" });
+    const { card, rows, fixes } = dialog([fup]);
+    const button = rows("charger_own_mode")[0]?.querySelector<HTMLButtonElement>("button");
+    expect(button?.textContent).toBe("Turn off");
+    button?.click();
+    expect(fixes).toEqual([["switch.goe_fup", "off"]]);
+    card.destroy();
+  });
+
   it("has no button where the backend named no single safe value", () => {
     const { card, rows } = dialog([NO_VALUE]);
     const [row] = rows("charger_own_mode");

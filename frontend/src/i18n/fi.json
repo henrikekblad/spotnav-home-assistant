@@ -104,6 +104,7 @@
   "issue.ownMode": "Laturin oma {label} on päällä ({state}). Se toimii SpotNavia vastaan.",
   "issue.ownMode.where": "Muuta se laturin laitesivulla Home Assistantissa.",
   "issue.ownMode.set": "Aseta: {value}",
+  "issue.ownMode.turnOff": "Poista käytöstä",
   "issue.chargerIgnoresStop": "Laturi jatkaa lataamista, vaikka se pysäytettiin, joten SpotNav ei lähetä enää pysäytyksiä. Pysäytä se laturista tai irrota auto.",
   "issue.holdOverridden": "Lataus käynnistettiin suunnitelman ulkopuolella ja sen annetaan jatkua.",
   "status.fillingToLimit": "Ladataan, kunnes auto on täynnä, nyt {kwh} kWh.",

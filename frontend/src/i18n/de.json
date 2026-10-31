@@ -104,6 +104,7 @@
   "issue.ownMode": "Die eigene Funktion „{label}“ der Ladestation ist an ({state}). Sie arbeitet gegen SpotNav.",
   "issue.ownMode.where": "Ändere sie auf der Geräteseite der Ladestation in Home Assistant.",
   "issue.ownMode.set": "Auf {value} setzen",
+  "issue.ownMode.turnOff": "Ausschalten",
   "issue.chargerIgnoresStop": "Die Ladestation lädt weiter, obwohl sie gestoppt wurde, daher sendet SpotNav keine weiteren Stopps. Stoppe sie an der Ladestation oder ziehe das Kabel ab.",
   "issue.holdOverridden": "Das Laden wurde außerhalb des Ladeplans gestartet und darf weiterlaufen.",
   "status.fillingToLimit": "Lädt, bis das Auto voll ist, derzeit {kwh} kWh.",

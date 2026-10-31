@@ -104,6 +104,7 @@
   "issue.ownMode": "The charger's own {label} is on ({state}). It works against SpotNav.",
   "issue.ownMode.where": "Change it on the charger's device page in Home Assistant.",
   "issue.ownMode.set": "Set to {value}",
+  "issue.ownMode.turnOff": "Turn off",
   "issue.chargerIgnoresStop": "The charger keeps charging although it was stopped, so SpotNav sends no more stops. Stop it at the charger or unplug the car.",
   "issue.holdOverridden": "Charging was started outside the plan and is allowed to continue.",
   "status.fillingToLimit": "Charging until the car is full, {kwh} kWh now.",

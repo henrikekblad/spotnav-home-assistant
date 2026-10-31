@@ -340,6 +340,13 @@ const MISSING_FIELD_KEYS: Readonly<Record<string, TranslationKey>> = {
   target_percent: "status.missing.target_percent",
 };
 
+/** The button of a `charger_own_mode` line: a switch is turned off, anything else set to the value named. */
+function ownModeFix(entity: string, value: string): IssueFix {
+  return entity.startsWith("switch.") && value === "off"
+    ? { entity, value, labelKey: "issue.ownMode.turnOff", labelParams: {} }
+    : { entity, value, labelKey: "issue.ownMode.set", labelParams: { value } };
+}
+
 /** The words of a `charger_own_mode` line: the mode in the profile's words and what it reads. */
 function ownModeParams(p: StatusLine["params"]): Record<string, string> {
   return {
@@ -795,7 +802,7 @@ export function issuesOf(status: Status | null, language: Language): Issue[] {
         hintKey: "issue.ownMode.where",
         ...(value === null || entity === ""
           ? {}
-          : { fix: { entity, value, labelKey: "issue.ownMode.set", labelParams: { value } } }),
+          : { fix: ownModeFix(entity, value) }),
       });
       continue;
     }

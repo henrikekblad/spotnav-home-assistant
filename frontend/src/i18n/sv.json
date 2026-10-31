@@ -104,6 +104,7 @@
   "issue.ownMode": "Laddboxens egen {label} är på ({state}). Den motverkar SpotNav.",
   "issue.ownMode.where": "Ändra den på laddboxens enhetssida i Home Assistant.",
   "issue.ownMode.set": "Ställ in {value}",
+  "issue.ownMode.turnOff": "Stäng av",
   "issue.chargerIgnoresStop": "Laddaren fortsätter ladda fast den stoppades, så SpotNav skickar inga fler stopp. Stoppa den vid laddaren eller koppla ur bilen.",
   "issue.holdOverridden": "Laddningen startades utanför planen och får fortsätta.",
   "status.fillingToLimit": "Laddar tills bilen är full, nu {kwh} kWh.",

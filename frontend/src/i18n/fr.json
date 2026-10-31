@@ -104,6 +104,7 @@
   "issue.ownMode": "La fonction propre « {label} » de la borne est active ({state}). Elle va à l'encontre de SpotNav.",
   "issue.ownMode.where": "Modifiez-la sur la page de l'appareil de la borne dans Home Assistant.",
   "issue.ownMode.set": "Régler sur {value}",
+  "issue.ownMode.turnOff": "Désactiver",
   "issue.chargerIgnoresStop": "La borne continue de charger bien qu'elle ait été arrêtée, SpotNav n'envoie donc plus d'ordres d'arrêt. Arrêtez-la sur la borne ou débranchez la voiture.",
   "issue.holdOverridden": "La charge a été démarrée en dehors du plan et peut continuer.",
   "status.fillingToLimit": "Charge jusqu'à ce que la voiture soit pleine, {kwh} kWh pour l'instant.",
