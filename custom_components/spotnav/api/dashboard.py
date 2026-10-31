@@ -1507,6 +1507,24 @@ def _proposal_spans(capture: CapturedDashboard) -> tuple[tuple[datetime, datetim
     return _spans(proposal.periods)
 
 
+def _installed_shown(
+    capture: CapturedDashboard, windows: list[tuple[datetime, datetime]]
+) -> list[tuple[datetime, datetime]]:
+    """The installed windows as a person is shown them: when they are the proposal's, which stops at its need, the
+    last one ends where the need is expected to be met (`PlanResult.shown_periods`). The windows themselves, and
+    which one is active, stay whole: the count ends the charge."""
+    snapshot = capture.snapshot
+    proposal = None if snapshot is None else snapshot.proposal
+    met = None if proposal is None or snapshot.applied is not True else _utc(proposal.need_met_at)
+    if met is None or not windows or not proposal.periods:
+        return list(windows)
+    start, end = windows[-1]
+    first, last, planned_end = _utc(start), _utc(end), _utc(proposal.periods[-1][1])
+    if first is None or last is None or last != planned_end or not first < met < last:
+        return list(windows)
+    return [*windows[:-1], (start, met)]
+
+
 def _installed_spans(capture: CapturedDashboard) -> tuple[tuple[datetime, datetime], ...]:
     return () if capture.plan is None else _spans(capture.plan.windows)
 
@@ -1771,7 +1789,8 @@ def _proposal_section(capture: CapturedDashboard) -> dict[str, Any] | None:
     return {
         "identity": None if snapshot is None else _text(snapshot.proposal_identity),
         "settings_revision": current,
-        "periods": [{"start": aware_iso(start), "end": aware_iso(end)} for start, end in proposal.periods],
+        # A plan that stops at its need ends its last period where the need is expected to be met.
+        "periods": [{"start": aware_iso(start), "end": aware_iso(end)} for start, end in proposal.shown_periods],
         "amps": _count(settings.amps) if same_generation else None,
         "phases": _count(_effective_phases(capture)) if same_generation else None,
         "power_kw": finite_number(proposal.power_kw),
@@ -1800,7 +1819,7 @@ def _installed_section(capture: CapturedDashboard) -> dict[str, Any] | None:
     return {
         "identity": _text(plan.auto_identity),
         "periods": [
-            {"start": aware_iso(start), "end": aware_iso(end)} for start, end in plan.windows
+            {"start": aware_iso(start), "end": aware_iso(end)} for start, end in _installed_shown(capture, plan.windows)
         ],
         "amps": _count(plan.amps),
         "phases": _count(plan.phases),
@@ -2298,7 +2317,7 @@ def status_facts(capture: CapturedDashboard) -> StatusFacts:
         source = snapshot.proposal
         cost = section["cost"]
         proposal = ProposalFacts(
-            periods=_spans(source.periods),
+            periods=_spans(source.shown_periods),
             identity=section["identity"],
             planned_kwh=section["planned_kwh"],
             requested_kwh=section["requested_kwh"],
@@ -2308,6 +2327,7 @@ def status_facts(capture: CapturedDashboard) -> StatusFacts:
             unpriced=section["unpriced"],
             short_of_deadline=bool(source.short_of_deadline),
             now_cost=finite_number(source.now_cost),
+            need_met_at=_utc(source.need_met_at),
         )
     area = capture.area
     state = serialize_strategy_state(capture)
