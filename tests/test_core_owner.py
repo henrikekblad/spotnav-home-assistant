@@ -433,3 +433,52 @@ async def test_the_debug_day_hears_every_owner_decision(hass: HomeAssistant, tim
     assert len(day.records) == world.controller.ownership_shadow._recorded - before  # noqa: SLF001
     world.controller.set_debug_day(None)
     await world.shutdown()
+
+
+async def test_a_plan_cleared_for_its_settings_while_its_start_is_on_its_way_is_fed_as_dropped(
+    hass: HomeAssistant, timers: FakeScheduler, drives: bool
+) -> None:
+    """The settings changed and the answer for them is to wait while the plan's window start is on its way, not yet
+    reported charging. The wait does not clear the plan then: its window is open, which counts as its charge running
+    (`AutoExecutor._plan_charge_runs`), so the clear waits for the window's boundary. A clear that does go through
+    (`_clear_superseded_locked`, here called directly while the start is on its way) is fed to the core as a dropped
+    plan, as `async_drop_plan` feeds it: the charge goes on, its owner as after any dropped plan
+    (`test_a_dropped_plan_keeps_its_charge_the_plans`), with no stop, no mirror drift and no disagreement."""
+    world = await pause_world(hass, timers)
+    controller = world.controller
+    shadow = controller.ownership_shadow
+    original = controller.adapter.async_start
+    called = asyncio.Event()
+    release = asyncio.Event()
+
+    async def slow_start(*args: Any, **kwargs: Any) -> bool:
+        called.set()
+        await release.wait()
+        return await original(*args, **kwargs)
+
+    controller.adapter.async_start = slow_start  # type: ignore[method-assign]
+    install = hass.async_create_task(install_schedule(controller, open_window()))
+    await called.wait()
+    assert not controller.charging
+    assert world.executor._plan_charge_runs()  # noqa: SLF001 - what the wait's answer reads: it defers the clear
+    clear = hass.async_create_task(world.executor._clear_superseded_locked())  # noqa: SLF001
+    await asyncio.sleep(0)
+    release.set()
+    await install
+    await clear
+    await hass.async_block_till_done()
+
+    assert controller.plan is None and controller.charging
+    assert _owner(world) == ("plan_window", drives)
+    kinds = [record["event"]["kind"] for record in shadow.events]
+    assert "plan_dropped" in kinds, kinds
+    if drives:
+        assert shadow.session.owner == "plan" and not shadow.session.start_pending
+    for index in range(3):
+        hass.states.async_set(SWITCH, "on", {"report": index})
+        await hass.async_block_till_done()
+    assert world.stops == [] and hass.states.get(SWITCH).state == "on"
+    assert shadow.counts["mirror_drift"] == 0 and shadow.counts["disagreements"] == 0
+    stored = await _stored(world)
+    assert (stored["charge_origin"], stored["plan_charge"]) == ("plan_window", drives)
+    await world.shutdown()
