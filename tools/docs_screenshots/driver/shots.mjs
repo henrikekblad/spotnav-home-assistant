@@ -302,7 +302,13 @@ await tapRow("reference");
 await cardShot("card-reference-picture", CARD_DIALOG);
 await closeCardDialog();
 await closeCardDialog();
-// Support, with its Automations row, and the list that row opens: SpotNav's blueprints, each with its import button.
+// Support, with its Automations row, and the list that row opens: the blueprints SpotNav installed, each with how
+// many automations use it (one made here from the solar blueprint) and its button.
+await api.post("/api/config/automation/config/docs_pool_on_sun", {
+  alias: "Pool heater on solar surplus",
+  use_blueprint: { path: "spotnav/solar_surplus_switch.yaml", input: { surplus_sensor: "sensor.home_solar_surplus", target: "switch.pool_heater" } },
+});
+await sleep(1500);
 await openCard();
 await cardButton("^Card settings$");
 await sleep(1500);

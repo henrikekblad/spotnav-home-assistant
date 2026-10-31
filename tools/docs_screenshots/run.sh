@@ -63,12 +63,14 @@ for demo in "$HERE"/demo_components/*/; do
   cp -r "${demo%/}" "$target"
   mv "$target/manifest.demo.json" "$target/manifest.json"
 done
+echo "[]" > "$CONFIG/automations.yaml"
 cat > "$CONFIG/configuration.yaml" <<YAML
 http:
   server_host: 127.0.0.1
   server_port: $HA_PORT
 frontend:
 config:
+automation: !include automations.yaml
 logger:
   default: warning
   logs:
