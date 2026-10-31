@@ -6,11 +6,14 @@ import { describe, expect, it } from "vitest";
 
 import { createCardView, type CardViewInput } from "../src/card-view";
 import { decodeDashboard } from "../src/validate";
+import { entityWordsOf } from "../src/entity-words";
+import { buildModel } from "../src/model";
 import { issuesOf, statusText } from "../src/status";
+import type { HassStateLike, HomeAssistantLike } from "../src/types";
 import type { Status } from "../src/validate";
 import { VISUAL_CLASSES } from "../src/visual-styles";
-import { rawDashboard, statusLine } from "./dashboard-fixtures";
-import { modelWith, mountPoint } from "./visual-fixtures";
+import { decoded, rawDashboard, statusLine } from "./dashboard-fixtures";
+import { mountPoint } from "./visual-fixtures";
 
 const NOW = Date.parse("2026-09-22T08:00:00Z");
 const PEBLAR = statusLine("charger_own_mode", {
@@ -27,8 +30,38 @@ const NO_VALUE = statusLine("charger_own_mode", {
 });
 const DISABLED = statusLine("charger_disabled", { entity: "switch.easee_is_enabled" });
 
-function dialog(lines: Array<ReturnType<typeof statusLine>>, overrides: Partial<CardViewInput> = {}, language = "en") {
-  const model = { ...modelWith({ status: { tone: "notice", lines } }), language } as ReturnType<typeof modelWith>;
+/** Home Assistant's frontend as the card sees it: the Peblar select, named and translated by its integration. */
+function hassWith(language: "en" | "sv"): HomeAssistantLike {
+  const options: Record<string, Record<string, string>> = {
+    en: { default: "Default", pure_solar: "Pure solar", comfort_solar: "Comfort solar" },
+    sv: { default: "Standard", pure_solar: "Endast sol", comfort_solar: "Komfortsol" },
+  };
+  const smart: HassStateLike = {
+    entity_id: "select.peblar_smart_charging",
+    state: "pure_solar",
+    attributes: { friendly_name: language === "sv" ? "Peblar charger Smart laddning" : "Peblar charger Smart charging" },
+  };
+  return {
+    callWS: async () => ({}) as never,
+    states: { [smart.entity_id]: smart },
+    entities: { [smart.entity_id]: { device_id: "dev1" } },
+    devices: { dev1: { name: "Peblar charger" } },
+    formatEntityState: (stateObj, state) => options[language]![state ?? stateObj.state] ?? state ?? stateObj.state,
+  };
+}
+
+function dialog(
+  lines: Array<ReturnType<typeof statusLine>>,
+  overrides: Partial<CardViewInput> = {},
+  language: "en" | "sv" = "en",
+  hass: HomeAssistantLike | null = null,
+) {
+  const model = buildModel({
+    dashboard: decoded({ status: { tone: "notice", lines } }),
+    language,
+    nowMs: NOW,
+    entityWords: entityWordsOf(hass),
+  });
   const mount = mountPoint("own");
   const fixes: Array<[string, string]> = [];
   const card = createCardView({
@@ -148,5 +181,100 @@ describe("a charger's own mode that works against SpotNav", () => {
     const { card, rows } = dialog([statusLine("charger_disabled")]);
     expect(rows("charger_disabled")[0]?.querySelector("button")).toBeNull();
     card.destroy();
+  });
+});
+
+describe("Home Assistant's own words for the entity", () => {
+  it("name the entity and its states as Home Assistant shows them, in the reader's language", () => {
+    const en = dialog([PEBLAR], {}, "en", hassWith("en"));
+    const row = en.rows("charger_own_mode")[0];
+    expect(row?.textContent).toContain("The charger's own smart charging is on (Pure solar). It works against SpotNav.");
+    expect(row?.querySelector("button")?.textContent).toBe("Set to Default");
+    expect(en.fixes).toEqual([]);
+    row?.querySelector<HTMLButtonElement>("button")?.click();
+    // What is sent is the raw option, whatever the button says.
+    expect(en.fixes).toEqual([["select.peblar_smart_charging", "default"]]);
+    en.card.destroy();
+
+    const sv = dialog([PEBLAR], {}, "sv", hassWith("sv"));
+    const svRow = sv.rows("charger_own_mode")[0];
+    expect(svRow?.textContent).toContain("Laddboxens egen smart laddning är på (Endast sol). Den motverkar SpotNav.");
+    expect(svRow?.querySelector("button")?.textContent).toBe("Ställ in Standard");
+    sv.card.destroy();
+  });
+
+  it("prefer Home Assistant's own name formatter, and keep a name's capital in German and for an abbreviation", () => {
+    const hass = { ...hassWith("en"), formatEntityName: () => "PV surplus" };
+    expect(entityWordsOf(hass)?.name("select.peblar_smart_charging")).toBe("PV surplus");
+    const model = buildModel({
+      dashboard: decoded({ status: { tone: "notice", lines: [PEBLAR] } }),
+      language: "en",
+      nowMs: NOW,
+      entityWords: entityWordsOf(hass),
+    });
+    expect(model.issues[0]?.params["label"]).toBe("PV surplus");
+    const de = buildModel({
+      dashboard: decoded({ status: { tone: "notice", lines: [PEBLAR] } }),
+      language: "de",
+      nowMs: NOW,
+      entityWords: entityWordsOf(hassWith("en")),
+    });
+    expect(de.issues[0]?.params["label"]).toBe("Smart charging");
+  });
+
+  it("fall back to the profile's label and the raw values for an entity the frontend does not know", () => {
+    const { card, rows } = dialog([NO_VALUE], {}, "en", hassWith("en"));
+    expect(rows("charger_own_mode")[0]?.textContent).toContain("The charger's own schedule is on (schema).");
+    card.destroy();
+    expect(entityWordsOf(null)).toBeUndefined();
+    expect(entityWordsOf({ callWS: async () => ({}) as never })).toBeUndefined();
+  });
+});
+
+describe("the attention line while a charger setting works against SpotNav", () => {
+  function line(lines: Array<ReturnType<typeof statusLine>>) {
+    const base = buildModel({ dashboard: decoded({ status: { tone: "notice", lines } }), language: "en", nowMs: NOW });
+    const model = { ...base, setup: [{ id: "vehicle" as const, dismissible: true }] };
+    const mount = mountPoint("line");
+    const card = createCardView({
+      model,
+      mount: mount.root,
+      idPrefix: "line",
+      now: () => NOW,
+      measure: () => ({ width: 320, height: 150 }),
+      observe: () => null,
+      onAction: () => {},
+      onOpenSettings: () => {},
+      onSaveSettings: () => {},
+      onReloadSettings: () => {},
+      onReapplySettings: () => {},
+      onOpenMarket: () => {},
+      onSaveMarket: () => {},
+      onReloadMarket: () => {},
+      onReapplyMarket: () => {},
+      onMarketAreaChange: () => {},
+      isAdmin: true,
+      onSelectStrategy: () => {},
+    });
+    const banner = mount.root.querySelector<HTMLElement>(`.${VISUAL_CLASSES.banner}`);
+    const text = banner?.textContent ?? null;
+    const setup = banner?.dataset["banner"] === "setup";
+    card.destroy();
+    return { text, setup, statusSaysIt: model.status?.includes("works against SpotNav") ?? false };
+  }
+
+  it("names the notice, not Get started, even though the status line says it too", () => {
+    const own = line([PEBLAR]);
+    expect(own.statusSaysIt).toBe(true);
+    expect(own.setup).toBe(false);
+    expect(own.text).toBe("Good to know.1 item to review");
+    const disabled = line([DISABLED]);
+    expect(disabled.setup).toBe(false);
+    expect(disabled.text).toContain("1 item to review");
+  });
+
+  it("still leaves Get started in place for a notice the status line already says and nothing to act on", () => {
+    const held = line([statusLine("held_by_charger")]);
+    expect(held.setup).toBe(true);
   });
 });

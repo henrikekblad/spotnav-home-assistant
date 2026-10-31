@@ -495,11 +495,20 @@ export function bannerSeverity(model: CardModel): "blocking" | "notice" | null {
 }
 
 /**
+ * Notices about the charger's own settings working against SpotNav: something to act on, so the attention line
+ * names them even when the status line says them too, and "Get started" never takes their place.
+ */
+const ACT_ON_CODES: ReadonlySet<string> = new Set(["charger_own_mode", "charger_disabled"]);
+
+/**
  * A neutral banner whose issues are all already worded in the status headline adds nothing: the
- * headline says it. A blocking banner is always kept.
+ * headline says it. A blocking banner is always kept, and so is one with a charger setting to act on.
  */
 export function bannerRepeatsStatus(model: CardModel, severity: "blocking" | "notice"): boolean {
   if (severity !== "notice" || model.status === null || model.issues.length === 0) {
+    return false;
+  }
+  if (model.issues.some((issue) => ACT_ON_CODES.has(issue.code))) {
     return false;
   }
   const strip = (text: string): string => text.trim().replace(/[.。]$/u, "");

@@ -170,6 +170,7 @@ import {
 } from "./chart-preference";
 import type { ChartAxisMode } from "./chart";
 import type { PriceUnit } from "./format";
+import { entityWordsOf } from "./entity-words";
 import { VISUAL_CLASSES, VISUAL_STYLES } from "./visual-styles";
 
 /** One bounded refresh cycle; the retry action exists because a timer alone is not a promise. */
@@ -2471,6 +2472,7 @@ export class SpotnavCard extends HTMLElement {
         shownAutomatic: this.shownAutomatic,
         chartAxis: chartAxisNow(),
         priceUnit: priceUnitNow(),
+        entityWords: entityWordsOf(this.hassObject),
       });
       this.rememberControls(model.control);
       this.view = createCardView({

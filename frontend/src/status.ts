@@ -11,6 +11,7 @@ import {
   localeMoney,
   weekdayDate,
   weekdaySingular,
+  type EntityWords,
   type FormatContext,
 } from "./format";
 import { pluralForm, translate, type Language, type TranslationKey } from "./i18n";
@@ -340,19 +341,35 @@ const MISSING_FIELD_KEYS: Readonly<Record<string, TranslationKey>> = {
   target_percent: "status.missing.target_percent",
 };
 
-/** The button of a `charger_own_mode` line: a switch is turned off, anything else set to the value named. */
-function ownModeFix(entity: string, value: string): IssueFix {
+/**
+ * The button of a `charger_own_mode` line: a switch is turned off, anything else set to the value named, in Home
+ * Assistant's words for that option where the frontend knows the entity. What is sent is always the raw value.
+ */
+function ownModeFix(entity: string, value: string, words?: EntityWords): IssueFix {
   return entity.startsWith("switch.") && value === "off"
     ? { entity, value, labelKey: "issue.ownMode.turnOff", labelParams: {} }
-    : { entity, value, labelKey: "issue.ownMode.set", labelParams: { value } };
+    : { entity, value, labelKey: "issue.ownMode.set", labelParams: { value: words?.state(entity, value) ?? value } };
 }
 
-/** The words of a `charger_own_mode` line: the mode in the profile's words and what it reads. */
-function ownModeParams(p: StatusLine["params"]): Record<string, string> {
+/**
+ * The words of a `charger_own_mode` line: the entity's name and state as Home Assistant shows them, else the
+ * profile's label and the raw state. A name starts in lower case inside the sentence ("smart charging"), except in
+ * German, where a noun keeps its capital, and for a name that starts with an abbreviation ("PV surplus").
+ */
+function ownModeParams(language: Language, p: StatusLine["params"], words?: EntityWords): Record<string, string> {
+  const entity = typeof p["entity"] === "string" ? p["entity"] : "";
+  const name = entity === "" ? null : (words?.name(entity) ?? null);
+  const state = entity === "" ? null : (words?.state(entity) ?? null);
   return {
-    label: typeof p["label"] === "string" ? p["label"] : "",
-    state: typeof p["state"] === "string" ? p["state"] : "",
+    label: name === null ? (typeof p["label"] === "string" ? p["label"] : "") : inSentence(language, name),
+    state: state ?? (typeof p["state"] === "string" ? p["state"] : ""),
   };
+}
+
+function inSentence(language: Language, name: string): string {
+  const [first, second] = [name.charAt(0), name.charAt(1)];
+  const lowers = language !== "de" && first !== first.toLowerCase() && second !== "" && second === second.toLowerCase();
+  return lowers ? first.toLowerCase() + name.slice(1) : name;
 }
 
 /** A manual need counted without the energy register: its kept remainder's wording, or the sessions'. */
@@ -673,7 +690,7 @@ export function lineText(
     case "duplicate_charger":
       return say("issue.duplicateCharger", { other: typeof p["other"] === "string" ? p["other"] : "" });
     case "charger_own_mode":
-      return say("issue.ownMode", ownModeParams(p));
+      return say("issue.ownMode", ownModeParams(language, p, format.entityWords));
     case "departure_shortfall": {
       const departure = ms(p["departure"]);
       const wording = shortfallWording(language, p, departure === null || !zoned ? null : clock(format, departure));
@@ -727,7 +744,7 @@ function reasonOf(line: StatusLine): string | null {
  * The Info dialog's list: the block's own non-normal lines, worded. Severity is the line's tone.
  * A normal line is never an item to review, whatever the block's tone says.
  */
-export function issuesOf(status: Status | null, language: Language): Issue[] {
+export function issuesOf(status: Status | null, language: Language, words?: EntityWords): Issue[] {
   if (status === null) {
     return [];
   }
@@ -797,12 +814,12 @@ export function issuesOf(status: Status | null, language: Language): Issue[] {
         code: line.code,
         severity,
         textKey: "issue.ownMode",
-        params: ownModeParams(line.params),
+        params: ownModeParams(language, line.params, words),
         technical: null,
         hintKey: "issue.ownMode.where",
         ...(value === null || entity === ""
           ? {}
-          : { fix: ownModeFix(entity, value) }),
+          : { fix: ownModeFix(entity, value, words) }),
       });
       continue;
     }

@@ -28,6 +28,7 @@ import {
   formatNumber,
   type FormatContext,
   type PriceUnit,
+  type EntityWords,
 } from "./format";
 import { chargeBarFor, type ChargeBarFacts } from "./charge-bar";
 import { issuesOf, statusNote, statusText, type Issue } from "./status";
@@ -851,6 +852,8 @@ export interface BuildInput {
   chartAxis?: ChartAxisMode;
   /** This browser's price unit preference; the market's minor unit when omitted. */
   priceUnit?: PriceUnit;
+  /** Home Assistant's own words for the entities status lines name (`entity-words.ts`); raw values when omitted. */
+  entityWords?: EntityWords;
 }
 
 export function buildModel(input: BuildInput): CardModel {
@@ -864,13 +867,14 @@ export function buildModel(input: BuildInput): CardModel {
     majorUnit: market?.major_unit ?? null,
     priceUnit: input.priceUnit ?? DEFAULT_PRICE_UNIT,
     countries: market?.countries ?? [],
+    ...(input.entityWords === undefined ? {} : { entityWords: input.entityWords }),
   };
   const rows = dashboard.prices.intervals;
   const chartAxis = input.chartAxis ?? DEFAULT_CHART_AXIS;
   const chart = chartSeries(rows, format.timeZone, input.nowMs, chartAxis);
   const bands = plannedBands(rows, chart.days, format.timeZone, pendingProposalOf(dashboard, input.nowMs), chart.time);
   const status = dashboard.status;
-  const issues = issuesOf(status, language);
+  const issues = issuesOf(status, language, input.entityWords);
   const zone = hasZone(format);
   // A fact nobody has is omitted from the plot, never shown as "unknown": this returns `null` rather than
   // `missing`'s text, and `card-view.ts` hides the whole line.

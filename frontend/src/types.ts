@@ -369,6 +369,19 @@ export interface HomeAssistantLike {
   language?: string;
   /** The reader's locale; its `language` is preferred over `language` above when present. */
   locale?: { language?: string };
+  /** Home Assistant's own entity state, registry and formatting, all optional (`entity-words.ts`). */
+  states?: Record<string, HassStateLike | undefined>;
+  entities?: Record<string, { device_id?: string | null; name?: string | null } | undefined>;
+  devices?: Record<string, { name?: string | null; name_by_user?: string | null } | undefined>;
+  formatEntityName?: (stateObj: HassStateLike, type: unknown) => string;
+  formatEntityState?: (stateObj: HassStateLike, state?: string) => string;
+}
+
+/** One entity's state as Home Assistant's frontend holds it. */
+export interface HassStateLike {
+  entity_id: string;
+  state: string;
+  attributes: Record<string, unknown>;
 }
 
 declare global {
