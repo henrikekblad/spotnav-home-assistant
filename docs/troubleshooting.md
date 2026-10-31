@@ -14,17 +14,32 @@ public GitHub issue: open the issue with the **bug report** form, then email the
 **support@sensnology.se** with the issue's number in the subject.
 
 The site entry's file (and the card's **Download debug info** in Settings, Support, for
-administrators) also carries the whole installation as one debug bundle (`bundle_version` 7):
+administrators) also carries the whole installation as one debug bundle (`bundle_version` 8). It keeps
+the last day, also across restarts and updates: what it holds below is stored by SpotNav (written at
+most every five minutes and when Home Assistant stops) and read back after a restart, so a bundle
+downloaded in the evening still shows the afternoon. Nothing is read from the recorder.
 
-- `history_60min` per site: the last hour, one sample a minute kept in memory (nothing is read from
-  the recorder). Each sample has the grid's total power, the site's current per phase, the house
-  battery's power and, per charger, its measured current, charge control, connection and connector
-  status and the car's state of charge. There is no PV power: a site has no PV sensor to read.
-- `solar_decision_log` in the site's diagnostics, per charger: what solar and hybrid decided, the
-  last 200 (time, strategy, state from and to, action, reason, the current asked for, the surplus,
-  export, battery, grid and car power and the priority). Only changes and actions are kept, never an
-  unchanged tick. While a plan's period holds the charge (hybrid), nothing the sun decides reaches the
-  charger, so only a change of its state is kept.
+- `history_24h` per site: the last 24 hours, one row a minute. Each row is one line of text, its
+  values separated by `;` in the order `columns` names them (empty for unknown, `1` and `0` for yes
+  and no): the grid's total power and where it came from, the site's current per phase and the house
+  battery's power. Under `chargers`, each charger has its own row at the same minutes: its measured
+  current per phase, charge control, charging, connection, connector status, the car's state of
+  charge and where it came from, the strategy, what solar decided that minute (state, action,
+  reason), the phases the charger reads back, whether SpotNav switched it to one phase, the current
+  last written and the current asked for. There is no PV power: a site has no PV sensor to read. A
+  charger in no site has the same rows in its own `history_24h` (with the current it measures).
+- `sessions` per charger: its last five plug-ins, the current one included, oldest first. Each has
+  when the car was plugged in and unplugged, the car and how it was identified, the strategy at the
+  start and when it changed, and its own logs: `solar` (what solar and hybrid decided: only changes and
+  actions, never an unchanged tick; while a plan's period holds the charge, only a change of its
+  state), `phase_switch` (switches sent, not sent, confirmed, given up and reconciled with the
+  charger's read-back), `commands` (what was sent to the charger and how it ended), `actions` (a
+  person's or the app's Start, Stop, pause, resume and strategy change) and `regulator` (what load
+  balancing decided for this charger). Each log keeps its last 300 entries (commands and load
+  balancing 150), and `dropped` counts the older ones it let go. A new plug-in starts a new entry;
+  what happens while no car is plugged in goes with the plug-in before.
+- `log.warnings_24h`: SpotNav's warnings and errors of the last 24 hours (at most 500), also from
+  before a restart. `log.records` stays as it was: the last records at INFO and above since the start.
 - `client`, added by the card to the file it saves: the card version and bundle hash this browser runs
   and a short user agent, next to the backend's `versions.card_bundle_hash` (the file) and
   `card_bundle_hash_served` (the one browsers are handed). When they differ, the file says so in
