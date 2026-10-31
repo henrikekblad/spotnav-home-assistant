@@ -37,9 +37,11 @@ red when something must be fixed before charging can be planned. The banner coun
 review and opens the full list with the integration's own wording.
 
 One of those items is the charger's own mode working against SpotNav, for as long as it does: *The charger's own
-smart charging is on (pure_solar). It works against SpotNav.* (Peblar's smart charging other than *Default*,
-Easee's smart charging, go-e's charging mode and PV surplus, and the like). An administrator gets a button beside
-it, *Set to default* (the value as the charger names it) or *Turn off* for a switch, which sets that one entity back; SpotNav
+smart charging is on (Pure solar). It works against SpotNav.* (Peblar's smart charging other than *Default*,
+Easee's smart charging, go-e's charging mode and PV surplus, and the like). The setting's name and values are
+Home Assistant's own, in your language, as the charger's integration words them. The banner then names it even
+when the status line says it too, and *Get started* waits until it is gone. An administrator gets a button beside
+it, *Set to Default* (the value as the charger's integration words it) or *Turn off* for a switch, which sets that one entity back; SpotNav
 checks again first that the mode is still on and that the entity is the charger's own. Where the charger offers
 no single safe value, or for a user who is not an administrator, the item says to change it on the charger's
 device page instead. A charger whose own enable switch is off (Easee) gets a *Turn on* button the same way.
