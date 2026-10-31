@@ -224,6 +224,10 @@ def energy_per_slot_kwh(
     return power_kw(amps, phases, voltage_between_phases_v) * SLOT_HOURS
 
 
+#: Decimals the slot count is rounded to before its ceiling (a nanoslot is far below any meter's resolution).
+_SLOT_DIGITS: Final = 9
+
+
 def slots_needed(
     requested_kwh: float,
     amps: int,
@@ -235,9 +239,9 @@ def slots_needed(
     Delivered energy may exceed the request by up to one slot; rounding down would
     deliver less than asked for.
     """
-    return max(
-        1, math.ceil(requested_kwh / energy_per_slot_kwh(amps, phases, voltage_between_phases_v))
-    )
+    # Rounded before the ceiling: a need of exactly N slots must not become N + 1 through float noise in the division.
+    quotient = round(requested_kwh / energy_per_slot_kwh(amps, phases, voltage_between_phases_v), _SLOT_DIGITS)
+    return max(1, math.ceil(quotient))
 
 
 @dataclass(frozen=True, slots=True)

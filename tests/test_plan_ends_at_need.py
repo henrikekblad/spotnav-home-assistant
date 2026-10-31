@@ -14,7 +14,7 @@ import pytest
 from homeassistant.util import dt as dt_util
 
 from custom_components.spotnav.api.dashboard import _installed_shown, _proposal_section
-from custom_components.spotnav.planning.planner import calculate_plan, ending_at_need, energy_per_slot_kwh
+from custom_components.spotnav.planning.planner import calculate_plan, ending_at_need, energy_per_slot_kwh, slots_needed
 from custom_components.spotnav.planning.status_compose import compose_status, ProposalFacts, StatusFacts
 
 from .harness import Session
@@ -114,8 +114,7 @@ def test_charging_now_is_counted_the_same_way() -> None:
 
 
 def test_a_need_that_fills_its_quarters_exactly_is_unchanged() -> None:
-    # Twelve quarters to the last float digit (`12 * PER_SLOT_KWH` itself is a hair over twelve).
-    whole = _plan(12 * PER_SLOT_KWH * (1 - 1e-12))
+    whole = _plan(12 * PER_SLOT_KWH)
     assert whole.slots_needed == 12
 
     result = ending_at_need(whole)
@@ -248,3 +247,9 @@ def test_without_a_count_the_cards_periods_are_the_whole_quarters() -> None:
     assert section["planned_kwh"] == pytest.approx(12 * PER_SLOT_KWH)
     assert section["periods"][-1]["end"] == whole.periods[-1][1].astimezone(dt_util.UTC).isoformat()
     assert _installed_shown(_capture(whole, applied=True), list(whole.periods)) == list(whole.periods)
+
+
+def test_a_need_of_exactly_whole_quarters_buys_no_extra_quarter() -> None:
+    assert slots_needed(12 * PER_SLOT_KWH, 16, 3) == 12
+    assert slots_needed(12 * PER_SLOT_KWH + 0.001, 16, 3) == 13
+    assert _plan(12 * PER_SLOT_KWH).slots_needed == 12
