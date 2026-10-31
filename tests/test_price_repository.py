@@ -338,7 +338,7 @@ async def test_summaries_describe_the_data_without_carrying_it(
     assert summary["resolution_minutes"] == 15 and summary["unit"] == "EUR/kWh"
     assert summary["src"] == "entsoe.eu" and summary["fx_currencies"] == ["SEK"]
     assert summary["fetched_at"] is not None and summary["error"] is None
-    assert catalogue_summary(catalogue)["area_count"] == 54
+    assert catalogue_summary(catalogue)["area_count"] == 55
     assert catalogue_summary(catalogue)["source"] == "bundled"
 
     # No interval array, no response body, and nothing that says what a price was.

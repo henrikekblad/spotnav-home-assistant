@@ -748,7 +748,7 @@ async def test_diagnostics_describe_the_manager_in_every_state_without_leaking_d
     assert area["today_data"]["state"] == "ready"
     assert area["currency"] == "SEK" and area["timezone"] == "Europe/Stockholm"
     assert area["next_attempt"] is not None and area["fetched_at"] is not None
-    assert ready["catalogue"]["area_count"] == 54 and "index" not in ready
+    assert ready["catalogue"]["area_count"] == 55 and "index" not in ready
     # The test's repository has no real provider objects: no source, and nothing that names one.
     assert area["price_source"]["key"] is None
     assert redacted(ready)
