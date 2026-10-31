@@ -71,6 +71,7 @@ _OPTIONAL_FIELDS: Final = frozenset(
         "source", "area_id", "intervals", "legacy_priced_kwh", "legacy_cost_minor", "legacy_reference_cost_minor",
         "vehicle_decided_by",
         "start_soc_percent",
+        "register_entity",
     }
 )
 #: How the session's vehicle was decided (`vehicles/identification.py`'s `METHODS`).
@@ -141,6 +142,10 @@ class ChargeSession:
     vehicle_decided_by: str | None = None
     #: Open sessions only: the car's level when the charge began (the dashboard's `progress` block).
     start_soc_percent: float | None = None
+    #: Open sessions only: the energy register `last_register_kwh` was read from. Another register counts from
+    #: another origin, so a reading of it is never measured against this one's (`recorder._accrue`). An open record
+    #: from before it was written is taken, when loaded, as the register the charger's entry names then.
+    register_entity: str | None = None
 
     @property
     def cost_basis(self) -> str:
@@ -240,6 +245,8 @@ class ChargeSession:
             record["vehicle_decided_by"] = self.vehicle_decided_by
         if self.start_soc_percent is not None:
             record["start_soc_percent"] = self.start_soc_percent
+        if self.register_entity is not None:
+            record["register_entity"] = self.register_entity
         return record
 
     @classmethod
@@ -338,6 +345,7 @@ class ChargeSession:
             area_id=area_id,
             vehicle_decided_by=decided_by,
             start_soc_percent=None if start_soc is None else _number(start_soc),
+            register_entity=_text(raw.get("register_entity")),
         )
 
     def public(self, zone: tzinfo | None = None) -> dict[str, Any]:

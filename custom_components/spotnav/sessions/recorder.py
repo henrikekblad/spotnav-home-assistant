@@ -93,6 +93,8 @@ class SessionFacts:
     solar_share: float | None
     #: How the vehicle was decided at this plug-in (`vehicles/identification.py`), `None` when nothing decided it.
     vehicle_decided_by: str | None = None
+    #: The entity `register_kwh` is read from.
+    register_entity: str | None = None
 
 
 def started_by(hint: str | None, strategy: str | None) -> str:
@@ -254,6 +256,7 @@ class SessionRecorder:
             solar_kwh=0.0,
             solar_known_kwh=0.0,
             last_register_kwh=facts.register_kwh,
+            register_entity=facts.register_entity if facts.register_kwh is not None else None,
             last_sample_at=now,
             start_soc_percent=None if self._start_soc is None else finite_number(self._start_soc()),
         )
@@ -273,7 +276,12 @@ class SessionRecorder:
                 delivered = facts.estimate_kw * (now - since).total_seconds() / 3600.0
         else:
             reading = facts.register_kwh
+            if session.register_entity is not None and facts.register_entity != session.register_entity:
+                # Another register counts from another origin: measured on from its first reading, never against
+                # the last one's.
+                session.last_register_kwh = None
             if reading is not None:
+                session.register_entity = facts.register_entity
                 baseline = session.last_register_kwh
                 if baseline is not None:
                     if reading >= baseline:
@@ -304,6 +312,7 @@ class SessionRecorder:
         self._idle_since = self._idle_seen_at = self._resumed_at = None
         session.end = min(max(ended, session.start), now)
         session.last_register_kwh = None
+        session.register_entity = None
         session.last_sample_at = None
         # The level at the start serves the running charge's bar only; a closed record keeps its old shape.
         session.start_soc_percent = None
