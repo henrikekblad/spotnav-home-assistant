@@ -91,6 +91,11 @@ changes.
   and submit again, or choose how yourself.
 - **"The charger's own control is still on."** The charger's own smart, solar or load-balancing mode
   is on. Turn it off in the charger's integration or app and continue, or choose to continue anyway.
+- **"The charger's own smart charging is on (pure_solar). It works against SpotNav."** The card says this
+  for as long as one of the charger's own modes is on, also after setup. Press **Set to default** in the list
+  (administrators), or change it on the charger's device page. Peblar ignores its *Force single phase* switch
+  unless smart charging is *Default*, so solar charging stays on three phases while it is not. A *Turn on*
+  button beside "The charger's own enable switch is off" turns Easee's enable switch on the same way.
 - **A start is sent but the charger does not charge, or something else changes it back.** Only one
   controller may drive a charger. Turn off the charger's own smart charging (Easee: its smart
   charging switch) and any other integration that controls it, such as EV Smart Charging. A window's
