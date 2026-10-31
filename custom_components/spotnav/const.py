@@ -58,6 +58,10 @@ CONF_CHARGER_CURRENT_ENTITIES = "charger_current_entities"
 CONF_CHARGER_PHASES = "charger_phases"
 # Whether the energy register is a per-session one (it resets), chosen knowingly.
 CONF_ENERGY_REGISTER_IS_SESSION = "energy_register_is_session"
+#: A person chose this charger's energy register entity (the entity editor, the options flow, or the flow with
+#: another entity than detection suggested): kept as it is, even where detection would now take another
+#: (`energy_register.py`). Absent for one detection suggested or found, and for every entry older than 2.2.
+CONF_ENERGY_REGISTER_CHOSEN = "energy_register_chosen"
 #: A person chose "no energy register" (the card's None, or a suggested or stored register cleared): nothing
 #: is looked up or detected for this charger until an entity or Automatic is chosen again.
 CONF_ENERGY_REGISTER_NONE = "energy_register_none"
