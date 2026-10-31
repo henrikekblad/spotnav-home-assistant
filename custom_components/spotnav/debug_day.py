@@ -345,9 +345,13 @@ class ChargerDay:
         if not isinstance(stored, dict):
             return
         now = self._now()
-        sessions = [s for s in map(session_from_store, stored.get("sessions") or []) if s is not None]
+        try:
+            sessions = [s for s in map(session_from_store, stored.get("sessions") or []) if s is not None]
+            rows = rows_from_store(stored.get("rows"), now)
+        except Exception:  # noqa: BLE001 - what was kept is a diagnostic: a setup never fails on it
+            _LOGGER.debug("SpotNav debug day: what %s kept could not be read", self.entry_id, exc_info=True)
+            return
         noted, self._sessions = self._sessions, (sessions + self._sessions)[-SESSIONS_KEPT:]
-        rows = rows_from_store(stored.get("rows"), now)
         rows.extend(self.rows)
         self.rows = rows
         if noted:

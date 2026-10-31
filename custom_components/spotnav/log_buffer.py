@@ -83,7 +83,10 @@ class SpotNavLogBuffer(logging.Handler):
 
         store = DayStore(hass, LOG_STORE_KEY, lambda: {"warnings": self.warnings()})
         stored = await store.async_load()
-        kept = _warnings_from_store(stored.get("warnings") if isinstance(stored, dict) else None)
+        try:
+            kept = _warnings_from_store(stored.get("warnings") if isinstance(stored, dict) else None)
+        except Exception:  # noqa: BLE001 - kept warnings are a diagnostic: SpotNav's setup never fails on them
+            kept = []
         self._warnings = deque([*kept, *self._warnings], maxlen=MAX_WARNINGS)
         self._hass, self._store = hass, store
         if self._warnings:

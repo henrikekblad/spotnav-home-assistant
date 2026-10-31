@@ -95,18 +95,26 @@ class SiteHistory:
         stored = await self._store.async_load()
         if not isinstance(stored, dict):
             return
+        try:
+            self._restore(stored)
+        except Exception:  # noqa: BLE001 - what was kept is a diagnostic: a site never fails to start on it
+            _LOGGER.debug("SpotNav site history: the kept rows could not be read", exc_info=True)
+
+    def _restore(self, stored: dict[str, Any]) -> None:
         now = dt_util.utcnow()
         rows = rows_from_store(stored.get("rows"), now)
-        rows.extend(self._rows)
-        self._rows = rows
         chargers = stored.get("chargers")
+        restored: dict[str, Any] = {}
         for charger_entry_id, raw in (chargers.items() if isinstance(chargers, dict) else ()):
             if not isinstance(charger_entry_id, str):
                 continue
             kept = rows_from_store(raw, now)
             kept.extend(self._chargers.get(charger_entry_id, ()))
             if kept:
-                self._chargers[charger_entry_id] = kept
+                restored[charger_entry_id] = kept
+        rows.extend(self._rows)
+        self._rows = rows
+        self._chargers.update(restored)
 
     async def async_close(self) -> None:
         """The site's shutdown: write what waits, then nothing more."""
