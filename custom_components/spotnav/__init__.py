@@ -20,7 +20,9 @@ from homeassistant.helpers.event import async_call_later
 from homeassistant.helpers.start import async_at_started
 
 from .api.dashboard import async_setup_dashboard_api
+from .api.blueprints import async_setup_blueprints_api
 from .api.debug import async_setup_debug_api
+from .blueprint_install import async_install_blueprints
 from .api.entity_config import async_setup_entity_config_api
 from .api.camera import async_setup_camera_api
 from .api.charge_limit import async_setup_charge_limit_api
@@ -172,9 +174,12 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     async_setup_charge_limit_api(hass)
     async_setup_camera_api(hass)
     async_setup_debug_api(hass)
+    async_setup_blueprints_api(hass)
     # Static route for the bundled card asset, versioned by the manifest.
     await async_setup_card_asset(hass)
     async_register_pairing(hass)
+    # SpotNav's automation blueprints, copied to blueprints/automation/spotnav/ when they differ (`blueprint_install.py`).
+    hass.async_create_background_task(async_install_blueprints(hass), "spotnav blueprints")
     # Once Home Assistant has started (every entry known), the chargers' own area and fees move to electricity
     # price entries, once per installation (`pricing/price_setup.py`).
     async_at_started(hass, _async_at_started_migration)
