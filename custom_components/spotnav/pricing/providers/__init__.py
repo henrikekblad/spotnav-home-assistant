@@ -6,7 +6,7 @@ states; a provider only answers "this area's file for this market day" as a `"v"
 other. So every source is checked by one parser, the store keeps one format, and nothing that reads a
 [PriceDocument] knows where it came from.
 
-Four providers, each fetched by this installation for its own use. None has an index: the publication schedule says
+Five providers, each fetched by this installation for its own use. None has an index: the publication schedule says
 when a day is worth asking for ([schedule_authority]).
 
 * Nord Pool through Home Assistant's own `nordpool` integration ([NordPoolProvider], `providers/nordpool.py`):
@@ -16,17 +16,20 @@ when a day is worth asking for ([schedule_authority]).
 * Spain's PVPC through Home Assistant's own `pvpc_hourly_pricing` integration ([PvpcProvider],
   `providers/pvpc.py`): the prices it already holds, on the Madrid day;
 * Great Britain's Agile rates through the Octopus Energy integration ([OctopusProvider], `providers/octopus.py`):
-  the customer's own meter's rates, on the Paris day (23:00 to 23:00 UK time).
+  the customer's own meter's rates, on the Paris day (23:00 to 23:00 UK time);
+* Zonneplan's dynamic tariff through the Zonneplan integration ([ZonneplanProvider], `providers/zonneplan.py`):
+  the all-in prices it already holds, on the Amsterdam day, for the area `NL-ZONNEPLAN` only.
 
 [ProviderRouter] picks one per area ([choose_provider]): the PVPC integration for the PVPC area while one of its
-entries is loaded; the Octopus integration for a GB area while an Agile meter's rates are there for it; Nord Pool
-for an area Nord Pool trades while a `nordpool` config entry is loaded; else ENTSO-E for an area the platform
+entries is loaded; the Octopus integration for a GB area while an Agile meter's rates are there for it; the
+Zonneplan integration for the Zonneplan area while its tariff sensor is there; Nord Pool for an area Nord Pool trades while a `nordpool` config entry is loaded; else ENTSO-E for an area the platform
 publishes while a key is set that it has not rejected; else **none**: the area has no source, nothing is asked for,
 and its notice names the action that gives it one. There is no fallback from one to the other within an attempt.
-The choice is taken again whenever a `nordpool`, `pvpc_hourly_pricing` or `octopus_energy` entry is added, removed,
-loaded or unloaded (Home Assistant's `SIGNAL_CONFIG_ENTRY_CHANGED`, which it sends for each of those, a load or
-unload being a state change of the entry), whenever one of the Octopus integration's rate entities changes (the
-meter's tariff is read from it), and whenever the ENTSO-E key is set, cleared or rejected.
+The choice is taken again whenever a `nordpool`, `pvpc_hourly_pricing`, `octopus_energy` or `zonneplan_one` entry is
+added, removed, loaded or unloaded (Home Assistant's `SIGNAL_CONFIG_ENTRY_CHANGED`, which it sends for each of those,
+a load or unload being a state change of the entry), whenever one of the Octopus integration's rate entities changes
+(the meter's tariff is read from it), whenever a sensor is added to, removed from, enabled or disabled in the entity
+registry (Zonneplan's tariff sensor), and whenever the ENTSO-E key is set, cleared or rejected.
 
 [ProviderRouter.source_status] says which provider an area is read from and, when it has none, the one action that
 gives it one: the notices of `providers/notices.py`.
@@ -43,6 +46,7 @@ from typing import Any, Final, Literal, Protocol, TYPE_CHECKING
 from homeassistant.config_entries import ConfigEntryState, SIGNAL_CONFIG_ENTRY_CHANGED
 from homeassistant.const import EVENT_STATE_CHANGED
 from homeassistant.core import callback, HomeAssistant
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 
 from ... import time_zones
@@ -55,12 +59,13 @@ if TYPE_CHECKING:
     from .nordpool import NordPoolProvider
     from .octopus import OctopusProvider
     from .pvpc import PvpcProvider
+    from .zonneplan import ZonneplanProvider
 
 _LOGGER = logging.getLogger(__name__)
 
 #: Which provider a file came from, as stored beside it (`"provider"` in the store's day entries). Files kept from
 #: before 2.0, when the SpotNav relay delivered prices, carry `"relay"`; no provider has that key any more.
-ProviderKey = Literal["nordpool", "entsoe", "pvpc", "octopus"]
+ProviderKey = Literal["nordpool", "entsoe", "pvpc", "octopus", "zonneplan"]
 
 #: How a provider's attempt for one file ended. An empty answer (Nord Pool's empty list, ENTSO-E's "no matching
 #: data") is `not_published`: the day is not out yet, which is not a failure.
@@ -81,6 +86,8 @@ FetchOutcome = Literal["fetched", "not_published", "failed"]
 #: * `entsoe_rejected`: ENTSO-E refused the request otherwise (another status, a bad-request acknowledgement);
 #: * `pvpc_unavailable`: no loaded `pvpc_hourly_pricing` entry, or it holds no prices for a day that is out;
 #: * `octopus_unavailable`: no Agile meter's rates for the area, or they do not reach back to the day's start;
+#: * `zonneplan_unavailable`: no Zonneplan tariff sensor, no forecast on it yet, or a today it does not hold to the
+#:   day's end;
 #: * `fx_missing`: no ECB rate to convert a day priced in another currency (Octopus, in GBP) to EUR;
 #: * `source_missing`: no way to ask this provider for the area (no key, no route);
 #: * `not_published`: carried by a `not_published` outcome, never recorded as a failure;
@@ -99,6 +106,7 @@ FetchCode = Literal[
     "entsoe_rejected",
     "pvpc_unavailable",
     "octopus_unavailable",
+    "zonneplan_unavailable",
     "fx_missing",
     "source_missing",
     "provider_refused",
@@ -124,6 +132,7 @@ TRANSPORT_CODES: frozenset[str] = frozenset(
         "entsoe_rejected",
         "pvpc_unavailable",
         "octopus_unavailable",
+        "zonneplan_unavailable",
         "fx_missing",
         "source_missing",
     }
@@ -238,16 +247,20 @@ def choose_provider(
     pvpc_serves: bool = False,
     pvpc_loaded: bool = False,
     octopus_serves: bool = False,
+    zonneplan_serves: bool = False,
 ) -> ProviderKey | None:
     """The rule, per area: the PVPC integration for the PVPC area while one of its entries is loaded; the Octopus
-    integration for a GB area while an Agile meter's rates are there for it; Nord Pool for an area it trades while
-    a `nordpool` entry is loaded; else ENTSO-E for an area the platform publishes while a key is set that it has
-    not rejected; else none (the area has no source). No area is served by more than one of the first three, so
-    their order is only for reading."""
+    integration for a GB area while an Agile meter's rates are there for it; the Zonneplan integration for the
+    Zonneplan area while its tariff sensor is there; Nord Pool for an area it trades while a `nordpool` entry is
+    loaded; else ENTSO-E for an area the platform publishes while a key is set that it has not rejected; else none
+    (the area has no source). No area is served by more than one of the first four, so their order is only for
+    reading."""
     if pvpc_serves and pvpc_loaded:
         return "pvpc"
     if octopus_serves:
         return "octopus"
+    if zonneplan_serves:
+        return "zonneplan"
     if nordpool_serves and nordpool_loaded:
         return "nordpool"
     if entsoe_serves and entsoe_key_usable:
@@ -257,8 +270,8 @@ def choose_provider(
 
 class ProviderRouter:
     """Which provider serves an area ([choose_provider]). Listeners hear when that choice may have changed for some
-    area: a `nordpool` or `pvpc_hourly_pricing` entry loaded or unloaded, an Agile meter found or gone, the
-    ENTSO-E key set, cleared, accepted or rejected.
+    area: a `nordpool`, `pvpc_hourly_pricing` or `zonneplan_one` entry loaded or unloaded, an Agile meter or a
+    Zonneplan tariff sensor found or gone, the ENTSO-E key set, cleared, accepted or rejected.
     """
 
     def __init__(
@@ -268,11 +281,13 @@ class ProviderRouter:
         *,
         pvpc: PvpcProvider | None = None,
         octopus: OctopusProvider | None = None,
+        zonneplan: ZonneplanProvider | None = None,
     ) -> None:
         self._nordpool = nordpool
         self._entsoe = entsoe
         self._pvpc = pvpc
         self._octopus = octopus
+        self._zonneplan = zonneplan
         self._nordpool_loaded = False
         self._pvpc_loaded = False
         # The integrations' entries as last seen ([entry_state]), for the notices; `None` until started.
@@ -305,11 +320,14 @@ class ProviderRouter:
             pvpc_serves=self._pvpc is not None and self._pvpc.serves(area_id),
             pvpc_loaded=self._pvpc_loaded,
             octopus_serves=self._octopus is not None and self._octopus.serves(area_id),
+            zonneplan_serves=self._zonneplan is not None and self._zonneplan.serves(area_id),
         )
         if key == "pvpc" and self._pvpc is not None:
             return self._pvpc
         if key == "octopus" and self._octopus is not None:
             return self._octopus
+        if key == "zonneplan" and self._zonneplan is not None:
+            return self._zonneplan
         if key == "nordpool" and self._nordpool is not None:
             return self._nordpool
         if key == "entsoe" and self._entsoe is not None:
@@ -330,6 +348,8 @@ class ProviderRouter:
         octopus = self._octopus
         octopus_meter = octopus is not None and octopus.serves(area_id)
         key_state = None if self._entsoe is None else self._entsoe.key_state()
+        zonneplan = self._zonneplan
+        zonneplan_entry = self._entry_state(ZONNEPLAN_DOMAIN)
         return SourceFacts(
             nordpool_route=self._nordpool is not None and self._nordpool.serves(area_id),
             nordpool_entry=self._entry_state("nordpool"),
@@ -341,6 +361,12 @@ class ProviderRouter:
             octopus_entry=self._entry_state(OCTOPUS_DOMAIN),
             octopus_meter=octopus_meter,
             octopus_region=octopus.region_mismatch(area_id) if octopus_meter and octopus is not None else None,
+            zonneplan_route=zonneplan is not None and zonneplan.has_route(area_id),
+            zonneplan_entry=zonneplan_entry,
+            zonneplan_tariff=zonneplan is not None and zonneplan.serves(area_id),
+            zonneplan_elsewhere=zonneplan is not None
+            and zonneplan_entry == "loaded"
+            and zonneplan.alternative_for(area_id),
         )
 
     def _entry_state(self, domain: str) -> EntryState:
@@ -348,14 +374,17 @@ class ProviderRouter:
 
     @callback
     def async_start(self, hass: HomeAssistant) -> Callable[[], None]:
-        """Follow the `nordpool`, `pvpc_hourly_pricing` and `octopus_energy` config entries, the Octopus rate
-        entities and the ENTSO-E key from now on; returns the call that stops following."""
+        """Follow the `nordpool`, `pvpc_hourly_pricing`, `octopus_energy` and `zonneplan_one` config entries, the
+        Octopus rate entities, the sensors in the entity registry and the ENTSO-E key from now on; returns the call
+        that stops following."""
         self._hass = hass
         self._entry_states = {domain: entry_state(hass, domain) for domain in FOLLOWED_DOMAINS}
         self._nordpool_loaded = _nordpool_loaded(hass)
         self._pvpc_loaded = self._pvpc is not None and self._pvpc.loaded()
         if self._octopus is not None:
             self._octopus.refresh()
+        if self._zonneplan is not None:
+            self._zonneplan.refresh()
 
         @callback
         def changed(_change: Any, entry: Any) -> None:
@@ -381,6 +410,9 @@ class ProviderRouter:
             elif domain == OCTOPUS_DOMAIN and self._octopus is not None and self._octopus.refresh():
                 _LOGGER.debug("Agile meters through Octopus Energy: %d", len(self._octopus.meters))
                 moved = True
+            elif domain == ZONNEPLAN_DOMAIN and self._zonneplan is not None and self._zonneplan.refresh():
+                _LOGGER.debug("Zonneplan tariff sensors: %d", len(self._zonneplan.entities))
+                moved = True
             if moved:
                 self._notify()
 
@@ -404,6 +436,25 @@ class ProviderRouter:
             # The meter's tariff, and so its region and whether it is Agile, is read from its rate entities.
             self._unsubscribe.append(
                 hass.bus.async_listen(EVENT_STATE_CHANGED, rate_entity_changed, event_filter=rate_entity_filter)
+            )
+        if self._zonneplan is not None:
+            # The tariff sensor is found in the registry: added with the entry, gone or disabled by the person.
+
+            @callback
+            def sensor_registry_changed(_event: Any) -> None:
+                if self._zonneplan is not None and self._zonneplan.refresh():
+                    _LOGGER.debug("Zonneplan tariff sensors: %d", len(self._zonneplan.entities))
+                    self._notify()
+
+            @callback
+            def sensor_registry_filter(event_data: Any) -> bool:
+                entity_id = event_data.get("entity_id")
+                return isinstance(entity_id, str) and entity_id.startswith("sensor.")
+
+            self._unsubscribe.append(
+                hass.bus.async_listen(
+                    er.EVENT_ENTITY_REGISTRY_UPDATED, sensor_registry_changed, event_filter=sensor_registry_filter
+                )
             )
         if self._entsoe is not None:
             self._unsubscribe.append(self._entsoe.add_key_listener(self._notify))
@@ -437,8 +488,9 @@ class ProviderRouter:
 #: so this module does not import the providers it is imported by).
 PVPC_DOMAIN: Final = "pvpc_hourly_pricing"
 OCTOPUS_DOMAIN: Final = "octopus_energy"
+ZONNEPLAN_DOMAIN: Final = "zonneplan_one"
 #: Every integration whose entries decide a provider or a notice.
-FOLLOWED_DOMAINS: Final = ("nordpool", PVPC_DOMAIN, OCTOPUS_DOMAIN)
+FOLLOWED_DOMAINS: Final = ("nordpool", PVPC_DOMAIN, OCTOPUS_DOMAIN, ZONNEPLAN_DOMAIN)
 
 
 def _nordpool_loaded(hass: HomeAssistant) -> bool:

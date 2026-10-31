@@ -129,7 +129,8 @@ class PriceNowSensor(SpotNavPriceEntity, SensorEntity):
             "spot_price": None if point is None else rounded(point.spot),
             "next_change": _iso(device.next_price_change()),
             "tomorrow_published": device.tomorrow_published,
-            # Where the prices come from: `nordpool`, `entsoe`, `pvpc`, `octopus`, or `None` with no source.
+            # Where the prices come from: `nordpool`, `entsoe`, `pvpc`, `octopus`, `zonneplan`, or `None` with no
+            # source.
             "source": device.source,
         }
 

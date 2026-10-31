@@ -1,8 +1,8 @@
 """What an area's price source is, and the one thing the person can do when it has none they can keep.
 
 The choice itself is [choose_provider] (`providers/__init__.py`): Home Assistant's PVPC integration for Spain's
-PVPC, the Octopus Energy integration's Agile rates for a Great Britain region, Home Assistant's Nord Pool
-integration for an area Nord Pool trades, the person's ENTSO-E key for an area the platform publishes. An area that
+PVPC, the Octopus Energy integration's Agile rates for a Great Britain region, the Zonneplan integration's tariff for
+the Zonneplan area, Home Assistant's Nord Pool integration for an area Nord Pool trades, the person's ENTSO-E key for an area the platform publishes. An area that
 gets none of these has no source: nothing is fetched for it (the SpotNav relay delivers no prices since 2.0), so it
 carries a **notice** naming the action that gives it one ([source_notice]). Nothing else is a notice: a source
 that is there but failing (Nord Pool unreachable, ENTSO-E asking to wait) stays what it is today, `stale` or
@@ -18,6 +18,11 @@ that is there but failing (Nord Pool unreachable, ENTSO-E asking to wait) stays 
 | GB region | an `octopus_energy` entry, not loaded | `octopus_not_loaded` |
 | GB region | the integration loaded, no Agile meter for the region | `octopus_no_agile` |
 | GB region | no entry | `add_octopus` |
+| Zonneplan | a `zonneplan_one` entry loaded, its tariff sensor there | none |
+| Zonneplan | an entry, not loaded | `zonneplan_not_loaded` |
+| Zonneplan | the integration loaded, no enabled tariff sensor | `zonneplan_no_tariff` |
+| Zonneplan | no entry | `add_zonneplan` |
+| another area of Zonneplan's country (NL) | a `zonneplan_one` entry loaded | `zonneplan_area` |
 | Nord Pool area | a `nordpool` entry loaded, or a usable ENTSO-E key | none |
 | Nord Pool area | a `nordpool` entry, not loaded | `nordpool_not_loaded` |
 | Nord Pool area | no entry, the ENTSO-E key rejected | `entsoe_key_rejected` |
@@ -26,6 +31,10 @@ that is there but failing (Nord Pool unreachable, ENTSO-E asking to wait) stays 
 | ENTSO-E area | the key rejected | `entsoe_key_rejected` |
 | ENTSO-E area | no key | `add_entsoe_key` |
 | any other | | `source_missing` |
+
+`zonneplan_area` is the one notice beside a source: Zonneplan is set up, so the person likely pays its tariff, and
+the area that holds it (`NL-ZONNEPLAN`) is a choice away. It shows whatever NL's own source is, and goes with the
+integration.
 
 The notice shows as soon as the area has no source, also while it still holds today's prices (kept from before
 2.0); only the Repairs issue waits for prices to have stopped (`price_device.py`).
@@ -56,6 +65,10 @@ NOTICE_CODES: Final = (
     "octopus_not_loaded",
     "octopus_no_agile",
     "add_octopus",
+    "zonneplan_not_loaded",
+    "zonneplan_no_tariff",
+    "add_zonneplan",
+    "zonneplan_area",
     "nordpool_not_loaded",
     "entsoe_key_rejected",
     "add_nordpool",
@@ -69,6 +82,10 @@ NoticeCode = Literal[
     "octopus_not_loaded",
     "octopus_no_agile",
     "add_octopus",
+    "zonneplan_not_loaded",
+    "zonneplan_no_tariff",
+    "add_zonneplan",
+    "zonneplan_area",
     "nordpool_not_loaded",
     "entsoe_key_rejected",
     "add_nordpool",
@@ -93,6 +110,12 @@ class SourceFacts:
     octopus_meter: bool = False
     #: The meter's region when it is not the area's own.
     octopus_region: str | None = None
+    zonneplan_route: bool = False
+    zonneplan_entry: EntryState = "none"
+    #: Whether a loaded entry's enabled tariff sensor is there for the area.
+    zonneplan_tariff: bool = False
+    #: Whether the area is another area of Zonneplan's country while a `zonneplan_one` entry is loaded.
+    zonneplan_elsewhere: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -144,6 +167,16 @@ def source_notice(facts: SourceFacts) -> ProviderNotice | None:
         if facts.octopus_entry == "loaded":
             return ProviderNotice("octopus_no_agile")
         return ProviderNotice("add_octopus")
+    if facts.zonneplan_route:
+        if facts.zonneplan_tariff:
+            return None
+        if facts.zonneplan_entry == "not_loaded":
+            return ProviderNotice("zonneplan_not_loaded")
+        if facts.zonneplan_entry == "loaded":
+            return ProviderNotice("zonneplan_no_tariff")
+        return ProviderNotice("add_zonneplan")
+    if facts.zonneplan_elsewhere:
+        return ProviderNotice("zonneplan_area")
     key_usable = facts.entsoe_route and facts.entsoe_key in ("ok", "unchecked")
     if facts.nordpool_route:
         if facts.nordpool_entry == "loaded" or key_usable:

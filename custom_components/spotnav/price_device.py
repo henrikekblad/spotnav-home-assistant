@@ -379,8 +379,8 @@ class PriceDevice:
 
     @property
     def source(self) -> str | None:
-        """The key of the provider the area's prices come from (`nordpool`, `entsoe`, `pvpc`, `octopus`),
-        `None` with no source at all or before it is known."""
+        """The key of the provider the area's prices come from (`nordpool`, `entsoe`, `pvpc`, `octopus`,
+        `zonneplan`), `None` with no source at all or before it is known."""
         return None if self._source is None else self._source.key
 
     def hours(self, kind: str) -> float:
