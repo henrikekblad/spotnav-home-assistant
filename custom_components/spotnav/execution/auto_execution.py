@@ -975,13 +975,14 @@ class AutoExecutor:
             if (
                 applied is not None
                 and self.current(attempt)
-                # The sun is expected to cover the need: hybrid's own hand-off decides, as above.
-                and getattr(snapshot, "reason", None) != "solar_covers_need"
+                and getattr(snapshot, "state", None) == "waiting_for_publication"
                 and self._superseded_by_settings(applied)
             ):
-                # The person changed what they want and the answer for it is to wait (for prices, or for a cheaper
-                # night the history shows): the plan built from their old settings must not run. A charge of it that
-                # runs now is not cut; it is cleared at its window's boundary, as a waiting change would install.
+                # The person changed what they want and the answer for it is to wait for prices still to be published
+                # (or for a cheaper night the history shows): the plan built from their old settings must not run. A
+                # charge of it that runs now is not cut; it is cleared at its window's boundary, as a waiting change
+                # would install. Only that answer: one that says nothing about the settings (prices not in yet after a
+                # start, stale or unavailable prices, incomplete settings) leaves the plan alone, as ever.
                 if self._plan_charge_runs():
                     self._clear_waiting = attempt
                     await self._notify_change()

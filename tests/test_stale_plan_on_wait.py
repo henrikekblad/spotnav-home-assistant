@@ -168,6 +168,33 @@ async def test_a_wait_over_unchanged_settings_keeps_the_plan(session: Session) -
     assert session.timers.pending
 
 
+async def test_an_answer_that_says_nothing_about_the_settings_keeps_the_plan(session: Session) -> None:
+    """Prices not in yet (after a start, say) are no answer for the settings: a plan from older settings stays, as a
+    stale or unavailable price stream or incomplete settings leave it."""
+    _publish(session)
+    other = Session(
+        session.hass, session.transport, session.clock, session.timers, entry_id="entry-b", charge_control="switch.b"
+    )
+    await other.start()
+    path = session.transport.day_path(SE4, TODAY_DATE)
+    session.transport.hold(path)
+    await other.set_auto(departure=time(9, 0))
+    not_in_yet = other.preview.snapshot()
+    assert not_in_yet.state == "waiting_for_prices"
+    session.transport.release(path)
+    await session.hass.async_block_till_done()
+
+    await session.set_auto(departure=time(8, 0), requested_kwh=10.0)
+    installed = session.executor.applied
+    assert installed is not None
+    await session.store.async_update(session.entry_id, mutate=lambda settings: settings)
+    assert session.settings().revision > installed.settings_revision
+
+    session.executor.begin_attempt()
+    await session.executor.async_reconcile(session.settings(), not_in_yet, attempt=session.executor.attempt)
+    assert session.controller.plan is installed.plan
+
+
 @pytest.mark.parametrize("two_windows", [True, False], ids=["a-window-left", "the-last-window"])
 async def test_a_window_charging_now_is_not_cut_and_the_plan_is_cleared_at_its_boundary(
     session: Session, two_windows: bool
