@@ -5,7 +5,7 @@ and recorded as `suggested` so the card can say the values came from Home Assist
 person. Nothing here overwrites a saved value or runs again after a value is cleared.
 
 * area: the area list's area for Home Assistant's country. A country with one area gets it.
-  A country with several (SE, NO, DK today) gets the area whose reference point is nearest to Home
+  A country with several (SE, NO, DK, NL today) gets the area whose reference point is nearest to Home
   Assistant's configured coordinates; see `AREA_REFERENCE_POINTS`. No country, a country the
   catalogue does not list, a multi-area country without a table, or coordinates far from every
   reference point (Home Assistant's unset default is in California) leaves the area empty.
@@ -171,6 +171,16 @@ AREA_REFERENCE_POINTS: Final[dict[str, tuple[tuple[float, float], ...]]] = {
         (56.03, 12.61),  # Helsingør
         (55.33, 11.14),  # Korsør
         (55.72, 11.72),  # Holbæk
+    ),
+    # The Netherlands: one bidding zone, NL. Its second area, NL-ZONNEPLAN (one supplier's own tariff), has no
+    # points: it is chosen by a person, never by location.
+    "NL": (
+        (52.37, 4.90),  # Amsterdam
+        (51.92, 4.48),  # Rotterdam
+        (53.22, 6.57),  # Groningen
+        (51.44, 5.47),  # Eindhoven
+        (50.85, 5.69),  # Maastricht
+        (52.22, 6.89),  # Enschede
     ),
 }
 
