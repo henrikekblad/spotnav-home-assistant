@@ -425,8 +425,8 @@ class SiteCapacityController:
         # Bounded in-memory log of what the regulator did, newest last; read through
         # `regulator_decision_log` by the diagnostics and the debug bundle, never by a decision.
         self._decision_log: deque[dict[str, Any]] = deque(maxlen=DECISION_LOG_LENGTH)
-        # The last hour, one sample a minute (`site/site_history.py`), for the debug bundle only.
-        self._history = SiteHistory()
+        # The last 24 hours, one row a minute (`site/site_history.py`), for the debug bundle only.
+        self._history = SiteHistory(hass, entry_id)
         self._history_cancel: Callable[[], None] | None = None
         # Logging-only memory of the last conflict list; `membership_conflicts` itself is always
         # live.
@@ -514,6 +514,7 @@ class SiteCapacityController:
                 self.hass, cadence_entity_ids, self._async_state_reported
             )
         self._register_controller_listeners()
+        await self._history.async_load()
         self._history_cancel = async_track_time_interval(
             self.hass, self._async_sample_history, timedelta(seconds=HISTORY_SAMPLE_INTERVAL_S)
         )
@@ -523,8 +524,8 @@ class SiteCapacityController:
         self._history.sample(self)
 
     @property
-    def history_samples(self) -> list[dict[str, Any]]:
-        """The last hour's minute samples, oldest first (`site/site_history.py`)."""
+    def history_samples(self) -> dict[str, Any]:
+        """The last 24 hours' minute rows, the site's and each member charger's (`site/site_history.py`)."""
         return self._history.samples
 
     async def async_shutdown(self) -> None:
@@ -534,6 +535,7 @@ class SiteCapacityController:
         if self._history_cancel is not None:
             self._history_cancel()
             self._history_cancel = None
+        await self._history.async_close()
         if self._timer_cancel is not None:
             self._timer_cancel()
             self._timer_cancel = None
@@ -954,31 +956,35 @@ class SiteCapacityController:
         requested = next(
             (basis.requested_current_a for basis in decision.basis.values()), None
         )
-        self._decision_log.append(
-            {
-                "time": dt_util.utcnow().isoformat(),
-                "charger_id": charger_entry_id,
-                "outcome": outcome,
-                "from_a": from_a,
-                "to_a": setpoint,
-                "proposed_a": decision.proposed_current_a,
-                "requested_a": requested,
-                "reason": decision.reason,
-                "detail": detail,
-                "yield_reason": None if yield_verdict is None else yield_verdict.reason,
-                "yield_state": None if yield_verdict is None else yield_verdict.state,
-                "limiting_phase": detail_phase or decision.limiting_phase,
-                "battery_power_w": None if battery is None else battery.value,
-                "site_current_a": dict(self.result.measured_phase_current_a),
-                "charger_current_a": (
-                    None
-                    if delivered is None
-                    else {phase: delivered.get(phase).value for phase in PHASES}
-                ),
-                # What a charger just started was credited with while its own reading lagged (`START_CREDIT_S`).
-                "start_credit_a": dict(self._credited_a.get(charger_entry_id) or {}) or None,
-            }
-        )
+        entry: dict[str, Any] = {
+            "time": dt_util.utcnow().isoformat(),
+            "charger_id": charger_entry_id,
+            "outcome": outcome,
+            "from_a": from_a,
+            "to_a": setpoint,
+            "proposed_a": decision.proposed_current_a,
+            "requested_a": requested,
+            "reason": decision.reason,
+            "detail": detail,
+            "yield_reason": None if yield_verdict is None else yield_verdict.reason,
+            "yield_state": None if yield_verdict is None else yield_verdict.state,
+            "limiting_phase": detail_phase or decision.limiting_phase,
+            "battery_power_w": None if battery is None else battery.value,
+            "site_current_a": dict(self.result.measured_phase_current_a),
+            "charger_current_a": (
+                None
+                if delivered is None
+                else {phase: delivered.get(phase).value for phase in PHASES}
+            ),
+            # What a charger just started was credited with while its own reading lagged (`START_CREDIT_S`).
+            "start_credit_a": dict(self._credited_a.get(charger_entry_id) or {}) or None,
+        }
+        self._decision_log.append(entry)
+        # The charger's plug-in keeps it too, across restarts (`debug_day.ChargerDay`).
+        data = charger_data(self.hass, charger_entry_id)
+        day = None if data is None else data.debug_day
+        if day is not None:
+            day.note_regulator(entry)
 
     @property
     def regulator_decision_log(self) -> list[dict[str, Any]]:

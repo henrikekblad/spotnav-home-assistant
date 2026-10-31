@@ -66,11 +66,12 @@ async def test_the_log_holds_changes_and_actions_only(hass: HomeAssistant) -> No
         await tick_site(hass, site)
     assert len(coordinator.decision_log) == count, "an unchanged hold is not logged again"
 
-    # The site's diagnostics (and with them the debug bundle) carry it per member charger.
+    # The site's diagnostics carry it per member charger; the debug bundle in the charger's plug-ins (version 8).
     dump = await async_get_config_entry_diagnostics(hass, site_entry)
     assert dump["solar_decision_log"][world[0].entry_id] == coordinator.decision_log
-    bundle_site = dump["debug_bundle"]["sites"][0]
-    assert bundle_site["diagnostics"]["solar_decision_log"][world[0].entry_id][-1]["reason"] == "car_stopped"
+    assert "solar_decision_log" not in dump["debug_bundle"]["sites"][0]["diagnostics"]
+    (bundle_charger,) = [c for c in dump["debug_bundle"]["chargers"] if c["entry_id"] == world[0].entry_id]
+    assert bundle_charger["sessions"][-1]["solar"][-1]["reason"] == "car_stopped"
     json.dumps(dump)
 
 

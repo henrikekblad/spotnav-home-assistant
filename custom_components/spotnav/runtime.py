@@ -28,6 +28,7 @@ from .const import CONF_ENTRY_TYPE, DOMAIN, ENTRY_TYPE_CHARGER, ENTRY_TYPE_PRICE
 
 
 if TYPE_CHECKING:
+    from .debug_day import ChargerDay
     from .log_buffer import SpotNavLogBuffer
     from .planning.auto_controller import AutoPlannerController
     from .execution.auto_execution import AutoExecutor
@@ -80,6 +81,8 @@ class ChargerData:
     push: ChargerPush | None = None
     #: The car's minimum charge level at this charger (`execution/min_soc_floor.py`).
     min_soc: MinSocFloor | None = None
+    #: The debug bundle's last plug-ins and, in no site, minute rows, kept across restarts (`debug_day.py`).
+    debug_day: ChargerDay | None = None
 
 
 @dataclass
