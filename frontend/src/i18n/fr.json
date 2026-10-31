@@ -907,10 +907,12 @@
   "setup.phaseSwitching.action": "Ouvrir le réglage",
   "settings.automations.label": "Automatisations",
   "settings.automations.value": "Afficher",
-  "automations.intro": "Des automatisations toutes prêtes pour Home Assistant (blueprints) qui utilisent les prix ou le surplus solaire de SpotNav. Chacune s'ouvre dans votre Home Assistant, où vous choisissez ses entités et l'enregistrez.",
-  "automations.add": "Ajouter à Home Assistant",
+  "automations.intro": "SpotNav installe ces blueprints dans Home Assistant et les tient à jour. Créez une automatisation à partir de l'un d'eux sous Blueprints et choisissez-y ses entités.",
+  "automations.add": "Créer une automatisation",
   "automations.priceSetpoint.name": "Consigne selon le prix de l'électricité",
   "automations.priceSetpoint.text": "Le plancher chauffant, les radiateurs ou une pompe à chaleur reçoivent une température plus haute quand l'électricité est bon marché et plus basse quand elle est chère.",
   "automations.solarSurplus.name": "Marche sur surplus solaire",
-  "automations.solarSurplus.text": "Un chauffage de piscine, un chauffe-eau ou une résistance électrique est allumé quand le soleil donne un surplus."
+  "automations.solarSurplus.text": "Un chauffage de piscine, un chauffe-eau ou une résistance électrique est allumé quand le soleil donne un surplus.",
+  "automations.usedBy.one": "Utilisé par {count} automatisation",
+  "automations.usedBy.other": "Utilisé par {count} automatisations"
 }

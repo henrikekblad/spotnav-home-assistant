@@ -907,10 +907,12 @@
   "setup.phaseSwitching.action": "Åpne innstillingen",
   "settings.automations.label": "Automasjoner",
   "settings.automations.value": "Vis",
-  "automations.intro": "Ferdige automasjoner for Home Assistant (blueprints) som bruker SpotNavs priser eller soloverskudd. Hver åpnes i din Home Assistant, der du velger entiteter og lagrer den.",
-  "automations.add": "Legg til i Home Assistant",
+  "automations.intro": "SpotNav installerer disse blåkopiene i Home Assistant og holder dem oppdatert. Lag en automasjon fra en av dem under Blåkopier og velg entitetene der.",
+  "automations.add": "Lag automasjon",
   "automations.priceSetpoint.name": "Settpunkt etter strømpris",
   "automations.priceSetpoint.text": "Gulvvarme, ovner eller en varmepumpe får høyere temperatur når strømmen er billig og lavere når den er dyr.",
   "automations.solarSurplus.name": "Kjør på soloverskudd",
-  "automations.solarSurplus.text": "En bassengvarmer, en varmtvannsbereder eller en elkolbe slås på når solen gir overskudd."
+  "automations.solarSurplus.text": "En bassengvarmer, en varmtvannsbereder eller en elkolbe slås på når solen gir overskudd.",
+  "automations.usedBy.one": "Brukes av {count} automasjon",
+  "automations.usedBy.other": "Brukes av {count} automasjoner"
 }

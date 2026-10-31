@@ -1,34 +1,62 @@
-// "Automations": the Home Assistant blueprints SpotNav ships (`blueprints/automation/spotnav/` in the repository),
-// listed for an administrator from Settings. Each has a name, one sentence, and a button that opens Home Assistant's
-// blueprint import (through my.home-assistant.io, which forwards to the reader's own Home Assistant) with the
-// blueprint's raw file on the main branch. The list is the card's own; nothing is asked of the backend. Both are
-// always listed: the blueprint's own inputs say what it needs (a site's solar surplus sensor, for one).
+// "Automations": the Home Assistant blueprints SpotNav installs in `blueprints/automation/spotnav/` and keeps up to
+// date (`blueprint_install.py`), listed for an administrator from Settings. Each has a name, one sentence, how many
+// automations use it (from `spotnav/get_blueprints`, once the list is open; nothing when none or unknown, which then
+// links to Home Assistant's automation list filtered by it) and a button to Home Assistant's blueprint page, where
+// "Create automation" on it starts one. Home Assistant has no address that opens a new automation from a given
+// blueprint, so the button opens the page that lists the blueprints. Both are always listed: the blueprint's own inputs
+// say what it needs (a site's solar surplus sensor, for one).
 
-import { translate, type Language, type TranslationKey } from "./i18n";
+import { pluralForm, translate, type Language, type TranslationKey } from "./i18n";
 import { VISUAL_CLASSES as C } from "./visual-styles";
 
-/**
- * The import links, written out whole (not built at run time) so the compiled card carries exactly these addresses:
- * `https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=` and the URL-encoded raw file of
- * `https://raw.githubusercontent.com/henrikekblad/spotnav-home-assistant/main/blueprints/automation/spotnav/<file>`.
- */
-export const BLUEPRINT_IMPORT_URLS = {
-  priceSetpoint:
-    "https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fraw.githubusercontent.com%2Fhenrikekblad%2Fspotnav-home-assistant%2Fmain%2Fblueprints%2Fautomation%2Fspotnav%2Fprice_setpoint.yaml",
-  solarSurplus:
-    "https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fraw.githubusercontent.com%2Fhenrikekblad%2Fspotnav-home-assistant%2Fmain%2Fblueprints%2Fautomation%2Fspotnav%2Fsolar_surplus_switch.yaml",
-} as const;
-
-export type BlueprintId = keyof typeof BLUEPRINT_IMPORT_URLS;
-
-/** The blueprints, in the order they are listed. */
-export const BLUEPRINTS: readonly { id: BlueprintId; name: TranslationKey; text: TranslationKey }[] = [
-  { id: "priceSetpoint", name: "automations.priceSetpoint.name", text: "automations.priceSetpoint.text" },
-  { id: "solarSurplus", name: "automations.solarSurplus.name", text: "automations.solarSurplus.text" },
+/** The blueprints, by the file SpotNav installs them under, in the order they are listed. */
+export const BLUEPRINTS: readonly { file: string; name: TranslationKey; text: TranslationKey }[] = [
+  { file: "price_setpoint.yaml", name: "automations.priceSetpoint.name", text: "automations.priceSetpoint.text" },
+  { file: "solar_surplus_switch.yaml", name: "automations.solarSurplus.name", text: "automations.solarSurplus.text" },
 ];
 
-/** The dialog's body: a line on what blueprints are, then one box per blueprint with its import button. */
-export function automationsBody(doc: Document, language: Language, openExternal: (url: string) => void): HTMLElement {
+/** Home Assistant's page of blueprints. */
+export const BLUEPRINTS_PATH = "/config/blueprint/dashboard";
+
+/** Home Assistant's automation list, showing the automations made from one of SpotNav's blueprints. */
+export function automationsUsingPath(file: string): string {
+  return `/config/automation/dashboard?blueprint=${encodeURIComponent(`spotnav/${file}`)}`;
+}
+
+/** How many automations use each blueprint, by file name; `null` when the answer is not a usable one. */
+export type BlueprintUse = Record<string, number>;
+
+/** `spotnav/get_blueprints`'s answer as counts by file; anything unexpected is `null` (and the list shows no counts). */
+export function decodeBlueprintUse(raw: unknown): BlueprintUse | null {
+  if (typeof raw !== "object" || raw === null) {
+    return null;
+  }
+  const answer = raw as Record<string, unknown>;
+  if (answer["api_version"] !== 1 || answer["ok"] !== true || !Array.isArray(answer["blueprints"])) {
+    return null;
+  }
+  const use: BlueprintUse = {};
+  for (const row of answer["blueprints"] as unknown[]) {
+    if (typeof row !== "object" || row === null) {
+      return null;
+    }
+    const { file, automations } = row as Record<string, unknown>;
+    if (typeof file !== "string" || typeof automations !== "number" || !Number.isInteger(automations) || automations < 0) {
+      return null;
+    }
+    use[file] = automations;
+  }
+  return use;
+}
+
+export interface AutomationsList {
+  body: HTMLElement;
+  /** Show how many automations use each blueprint (a count of 0 shows nothing). */
+  showUse: (use: BlueprintUse) => void;
+}
+
+/** The dialog's body: a line on the blueprints, then one box per blueprint with its use and its button. */
+export function automationsBody(doc: Document, language: Language, navigate: (path: string) => void): AutomationsList {
   const say = (key: TranslationKey): string => translate(language, key);
   const body = doc.createElement("div");
   body.dataset["automations"] = "list";
@@ -36,30 +64,59 @@ export function automationsBody(doc: Document, language: Language, openExternal:
   intro.className = `${C.muted} ${C.dialogIntro}`;
   intro.textContent = say("automations.intro");
   body.append(intro);
+  const useSlots = new Map<string, HTMLElement>();
   for (const blueprint of BLUEPRINTS) {
     const box = doc.createElement("div");
     box.className = C.suggestion;
-    box.dataset["blueprint"] = blueprint.id;
+    box.dataset["blueprint"] = blueprint.file;
     const name = doc.createElement("p");
     name.className = C.automationName;
     name.textContent = say(blueprint.name);
     const text = doc.createElement("p");
     text.className = C.suggestionText;
     text.textContent = say(blueprint.text);
+    const used = doc.createElement("p");
+    used.className = C.automationUse;
+    used.hidden = true;
+    useSlots.set(blueprint.file, used);
     const answers = doc.createElement("div");
     answers.className = C.suggestionAnswers;
     const button = doc.createElement("button");
     button.type = "button";
     button.className = C.choiceButton;
-    button.dataset["blueprintImport"] = blueprint.id;
+    button.dataset["blueprintCreate"] = blueprint.file;
     const label = doc.createElement("span");
     label.className = C.choiceLabel;
     label.textContent = say("automations.add");
     button.append(label);
-    button.addEventListener("click", () => openExternal(BLUEPRINT_IMPORT_URLS[blueprint.id]));
+    button.addEventListener("click", () => navigate(BLUEPRINTS_PATH));
     answers.append(button);
-    box.append(name, text, answers);
+    box.append(name, text, used, answers);
     body.append(box);
   }
-  return body;
+  const showUse = (use: BlueprintUse): void => {
+    for (const blueprint of BLUEPRINTS) {
+      const slot = useSlots.get(blueprint.file);
+      const count = use[blueprint.file] ?? 0;
+      if (slot === undefined) {
+        continue;
+      }
+      slot.replaceChildren();
+      slot.hidden = count === 0;
+      if (count === 0) {
+        continue;
+      }
+      const link = doc.createElement("a");
+      link.href = automationsUsingPath(blueprint.file);
+      link.dataset["blueprintUse"] = blueprint.file;
+      const key: TranslationKey = pluralForm(language, count) === "one" ? "automations.usedBy.one" : "automations.usedBy.other";
+      link.textContent = translate(language, key, { count: String(count) });
+      link.addEventListener("click", (event) => {
+        event.preventDefault();
+        navigate(automationsUsingPath(blueprint.file));
+      });
+      slot.append(link);
+    }
+  };
+  return { body, showUse };
 }

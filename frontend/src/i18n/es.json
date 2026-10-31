@@ -907,10 +907,12 @@
   "setup.phaseSwitching.action": "Abrir el ajuste",
   "settings.automations.label": "Automatizaciones",
   "settings.automations.value": "Mostrar",
-  "automations.intro": "Automatizaciones listas para Home Assistant (blueprints) que usan los precios o el excedente solar de SpotNav. Cada una se abre en tu Home Assistant, donde eliges sus entidades y la guardas.",
-  "automations.add": "Añadir a Home Assistant",
+  "automations.intro": "SpotNav instala estos planos en Home Assistant y los mantiene al día. Crea una automatización a partir de uno de ellos en Planos y elige allí sus entidades.",
+  "automations.add": "Crear automatización",
   "automations.priceSetpoint.name": "Consigna según el precio de la electricidad",
   "automations.priceSetpoint.text": "La calefacción por suelo, los radiadores o una bomba de calor reciben una temperatura más alta cuando la electricidad es barata y más baja cuando es cara.",
   "automations.solarSurplus.name": "Funcionar con excedente solar",
-  "automations.solarSurplus.text": "Un calentador de piscina, un termo o una resistencia eléctrica se enciende cuando el sol da un excedente."
+  "automations.solarSurplus.text": "Un calentador de piscina, un termo o una resistencia eléctrica se enciende cuando el sol da un excedente.",
+  "automations.usedBy.one": "Usado por {count} automatización",
+  "automations.usedBy.other": "Usado por {count} automatizaciones"
 }

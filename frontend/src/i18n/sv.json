@@ -907,10 +907,12 @@
   "setup.phaseSwitching.action": "Öppna inställningen",
   "settings.automations.label": "Automationer",
   "settings.automations.value": "Visa",
-  "automations.intro": "Färdiga automationer för Home Assistant (blueprints) som använder SpotNavs priser eller solöverskott. Var och en öppnas i din Home Assistant, där du väljer entiteter och sparar den.",
-  "automations.add": "Lägg till i Home Assistant",
+  "automations.intro": "SpotNav installerar de här blueprints i Home Assistant och håller dem uppdaterade. Skapa en automation från en av dem under Blueprints och välj dess entiteter där.",
+  "automations.add": "Skapa automation",
   "automations.priceSetpoint.name": "Börvärde efter elpris",
   "automations.priceSetpoint.text": "Golvvärme, element eller värmepump får högre temperatur när elen är billig och lägre när den är dyr.",
   "automations.solarSurplus.name": "Kör vid solöverskott",
-  "automations.solarSurplus.text": "En pool, varmvattenberedare eller elpatron slås på när solen ger överskott."
+  "automations.solarSurplus.text": "En pool, varmvattenberedare eller elpatron slås på när solen ger överskott.",
+  "automations.usedBy.one": "Används av {count} automation",
+  "automations.usedBy.other": "Används av {count} automationer"
 }

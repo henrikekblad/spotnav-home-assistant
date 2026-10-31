@@ -37,6 +37,7 @@ export const VISUAL_CLASSES = {
   suggestionAnswers: "spotnav-suggestion-answers",
   setupHeading: "spotnav-setup-heading",
   automationName: "spotnav-automation-name",
+  automationUse: "spotnav-automation-use",
   pauseChoices: "spotnav-pause-choices",
   choiceButton: "spotnav-choice-button",
   choiceLabel: "spotnav-choice-label",
@@ -930,6 +931,13 @@ export const VISUAL_STYLES = `
   .spotnav-automation-name {
     margin: 0 0 2px;
     font-weight: 500;
+  }
+  .spotnav-automation-use {
+    margin: 4px 0 0;
+    font-size: 0.9em;
+  }
+  .spotnav-automation-use a {
+    color: var(--primary-color, #03a9f4);
   }
   .spotnav-pause-choices,
   .spotnav-strategy-row {

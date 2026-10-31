@@ -113,7 +113,7 @@ import {
 import { issueText } from "./status";
 import { keyEditor, priceProviderNodes } from "./price-provider";
 import { setupLineText, setupSection, type SetupRowId } from "./setup-checklist";
-import { automationsBody } from "./automations";
+import { automationsBody, type BlueprintUse } from "./automations";
 import { historyBody, type HistoryState, type HistoryUi } from "./history";
 import { connectionLabel, vehicleLineFor } from "./vehicle-line";
 import type { ChargeBarFacts } from "./charge-bar";
@@ -264,6 +264,8 @@ export interface CardViewInput {
   onOpenEntityEditor?: (scope: EntityScope) => void;
   /** The admin pressed "Download debug info" in the Settings popover. */
   onDownloadDebug?: () => void;
+  /** How many automations use each of SpotNav's blueprints (`automations.ts`), `null` when it could not be read. */
+  onLoadBlueprintUse?: () => Promise<BlueprintUse | null>;
   onSaveEntities?: (scope: EntityScope, draft: EntityDraft) => void;
   onCancelEntities?: () => boolean | void;
   /** The one-tap answer to "set its onboard charger to 1-phase?": `1` accepts, `3` keeps it as it was. */
@@ -2122,12 +2124,20 @@ export function createCardView(input: CardViewInput): CardView {
     }
     issuesDialog.hide({ restoreFocus: false });
     settingsOverviewDialog.hide({ restoreFocus: false });
+    const list = automationsBody(doc, model.language, (path) => {
+      capabilityDialog.hide({ restoreFocus: false });
+      navigateTo(doc, path);
+    });
     capabilityDialog.show({
       title: translate(model.language, "settings.automations.label"),
-      body: automationsBody(doc, model.language, (url) => {
-        doc.defaultView?.open(url, "_blank", "noopener,noreferrer");
-      }),
+      body: list.body,
       opener: settingsGeneral,
+    });
+    // How many automations use each one, once Home Assistant answers; none shown while it has not.
+    void input.onLoadBlueprintUse?.().then((use) => {
+      if (use !== null && !destroyed) {
+        list.showUse(use);
+      }
     });
   }
 

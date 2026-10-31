@@ -14,7 +14,7 @@ import { SETTINGS_API_VERSION, type SettingsRecord } from "../src/types";
 import { VISUAL_CLASSES } from "../src/visual-styles";
 import { CARD_OUTDATED_NOTE, setOwnCardBundleHashForTest } from "../src/card-identity";
 import { CARD_VERSION } from "../src/generated/version";
-import { BLUEPRINT_IMPORT_URLS } from "../src/automations";
+import { automationsUsingPath, BLUEPRINTS, BLUEPRINTS_PATH, decodeBlueprintUse } from "../src/automations";
 import { FakeHass, mountCard, settingsOffered, shownSections } from "./helpers";
 
 const DASHBOARD_DIR = join(__dirname, "..", "..", "tests", "fixtures", "dashboard");
@@ -407,13 +407,34 @@ describe("Support says when the card here is older than the one served", () => {
 });
 
 describe("Automations", () => {
-  afterEach(() => {
-    vi.restoreAllMocks();
-  });
-
   function automationsRow(element: Element): HTMLButtonElement | null {
     return shadow(element).querySelector<HTMLButtonElement>("[data-section='support'] [data-edit='automations']");
   }
+
+  async function openAutomations(element: ReturnType<typeof mountCard>, language: Language = "en"): Promise<HTMLElement | null> {
+    settingsGeneralButton(element, language).click();
+    await settle();
+    automationsRow(element)?.click();
+    await settle();
+    return openDialog(element);
+  }
+
+  function navigations(element: Element): string[] {
+    const win = element.ownerDocument.defaultView as Window & typeof globalThis;
+    const paths: string[] = [];
+    win.addEventListener("location-changed", () => paths.push(win.location.pathname + win.location.search));
+    return paths;
+  }
+
+  const ANSWER = (price: number, solar: number) => ({
+    api_version: 1,
+    ok: true,
+    error: null,
+    blueprints: [
+      { file: "price_setpoint.yaml", path: "spotnav/price_setpoint.yaml", automations: price },
+      { file: "solar_surplus_switch.yaml", path: "spotnav/solar_surplus_switch.yaml", automations: solar },
+    ],
+  });
 
   it("is a row in Support for administrators only", async () => {
     const admin = await mounted();
@@ -430,49 +451,66 @@ describe("Automations", () => {
     expect(automationsRow(reader.element)).toBeNull();
   });
 
-  it.each(["en", "sv"] as const)("lists both blueprints, each opening Home Assistant's import of it (%s)", async (language) => {
+  it.each(["en", "sv"] as const)("lists both blueprints, each with a button to Home Assistant's blueprints (%s)", async (language) => {
     const { element } = await mounted(fixture("start_idle"), true, language);
-    const win = element.ownerDocument.defaultView as Window & typeof globalThis;
-    const opened: unknown[][] = [];
-    vi.spyOn(win, "open").mockImplementation((...args: unknown[]) => {
-      opened.push(args);
-      return null;
-    });
-    settingsGeneralButton(element, language).click();
-    await settle();
-    automationsRow(element)?.click();
-    await settle();
+    const paths = navigations(element);
+    const dialog = await openAutomations(element, language);
 
-    const dialog = openDialog(element);
     expect(dialog?.textContent).toContain(translate(language, "settings.automations.label"));
-    expect(dialog?.querySelector("[data-section='support']")).toBeNull();
+    expect(dialog?.textContent).toContain(translate(language, "automations.intro"));
     const boxes = Array.from(dialog?.querySelectorAll<HTMLElement>("[data-blueprint]") ?? []);
-    expect(boxes.map((box) => box.dataset["blueprint"])).toEqual(["priceSetpoint", "solarSurplus"]);
+    expect(boxes.map((box) => box.dataset["blueprint"])).toEqual(BLUEPRINTS.map((blueprint) => blueprint.file));
     expect(boxes[0]?.textContent).toContain(translate(language, "automations.priceSetpoint.name"));
     expect(boxes[0]?.textContent).toContain(translate(language, "automations.priceSetpoint.text"));
     expect(boxes[1]?.textContent).toContain(translate(language, "automations.solarSurplus.name"));
     expect(boxes[1]?.textContent).toContain(translate(language, "automations.solarSurplus.text"));
 
-    for (const box of boxes) {
-      const button = box.querySelector<HTMLButtonElement>("[data-blueprint-import]");
-      expect(button?.textContent).toBe(translate(language, "automations.add"));
-      button?.click();
-    }
-    expect(opened).toEqual([
-      [BLUEPRINT_IMPORT_URLS.priceSetpoint, "_blank", "noopener,noreferrer"],
-      [BLUEPRINT_IMPORT_URLS.solarSurplus, "_blank", "noopener,noreferrer"],
-    ]);
+    const button = boxes[1]?.querySelector<HTMLButtonElement>("[data-blueprint-create]");
+    expect(button?.textContent).toBe(translate(language, "automations.add"));
+    button?.click();
+    await settle();
+    expect(paths).toEqual([BLUEPRINTS_PATH]);
+    expect(openDialog(element)).toBeNull();
   });
 
-  it("points at the blueprints' raw files on main, through Home Assistant's blueprint import", () => {
-    const prefix = "https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=";
-    const raw = "https://raw.githubusercontent.com/henrikekblad/spotnav-home-assistant/main/blueprints/automation/spotnav/";
-    expect(BLUEPRINT_IMPORT_URLS).toEqual({
-      priceSetpoint: prefix + encodeURIComponent(raw + "price_setpoint.yaml"),
-      solarSurplus: prefix + encodeURIComponent(raw + "solar_surplus_switch.yaml"),
-    });
-    for (const name of ["price_setpoint.yaml", "solar_surplus_switch.yaml"]) {
-      expect(() => readFileSync(join(__dirname, "..", "..", "blueprints", "automation", "spotnav", name))).not.toThrow();
+  it("says how many automations use each, and nothing for none", async () => {
+    const { hass, element } = await mounted(fixture("start_idle"), true, "sv");
+    hass.blueprintHandler = async () => ANSWER(2, 0);
+    const paths = navigations(element);
+    const dialog = await openAutomations(element, "sv");
+    expect(hass.blueprintMessages).toEqual([{ type: "spotnav/get_blueprints", api_version: 1 }]);
+
+    const used = dialog?.querySelector<HTMLAnchorElement>("[data-blueprint-use='price_setpoint.yaml']");
+    expect(used?.textContent).toBe("Används av 2 automationer");
+    expect(dialog?.querySelector("[data-blueprint-use='solar_surplus_switch.yaml']")).toBeNull();
+    used?.click();
+    await settle();
+    expect(paths).toEqual(["/config/automation/dashboard?blueprint=spotnav%2Fprice_setpoint.yaml"]);
+    expect(translate("en", "automations.usedBy.one", { count: "1" })).toBe("Used by 1 automation");
+  });
+
+  it("shows no count when the answer cannot be read", async () => {
+    const { hass, element } = await mounted();
+    hass.blueprintHandler = async () => {
+      throw new Error("unknown command");
+    };
+    const dialog = await openAutomations(element);
+    expect(dialog?.querySelectorAll("[data-blueprint]").length).toBe(2);
+    expect(dialog?.querySelector("[data-blueprint-use]")).toBeNull();
+    expect(decodeBlueprintUse({ ...ANSWER(1, 1), api_version: 2 })).toBeNull();
+    expect(decodeBlueprintUse({ ...ANSWER(1, 1), ok: false })).toBeNull();
+    expect(decodeBlueprintUse(ANSWER(1, 3))).toEqual({ "price_setpoint.yaml": 1, "solar_surplus_switch.yaml": 3 });
+  });
+
+  it("links to Home Assistant's own pages only", () => {
+    expect(BLUEPRINTS_PATH).toBe("/config/blueprint/dashboard");
+    expect(automationsUsingPath("solar_surplus_switch.yaml")).toBe(
+      "/config/automation/dashboard?blueprint=spotnav%2Fsolar_surplus_switch.yaml",
+    );
+    for (const blueprint of BLUEPRINTS) {
+      expect(() =>
+        readFileSync(join(__dirname, "..", "..", "custom_components", "spotnav", "blueprints", "automation", blueprint.file)),
+      ).not.toThrow();
     }
   });
 });

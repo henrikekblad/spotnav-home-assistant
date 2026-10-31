@@ -907,10 +907,12 @@
   "setup.phaseSwitching.action": "Open the setting",
   "settings.automations.label": "Automations",
   "settings.automations.value": "Show",
-  "automations.intro": "Ready-made Home Assistant automations (blueprints) that use SpotNav's prices or solar surplus. Each opens in your Home Assistant, where you choose its entities and save it.",
-  "automations.add": "Add to Home Assistant",
+  "automations.intro": "SpotNav installs these blueprints in Home Assistant and keeps them up to date. Create an automation from one under Blueprints and choose its entities there.",
+  "automations.add": "Create automation",
   "automations.priceSetpoint.name": "Setpoint by electricity price",
   "automations.priceSetpoint.text": "Floor heating, radiators or a heat pump get a higher temperature when electricity is cheap and a lower one when it is expensive.",
   "automations.solarSurplus.name": "Run on solar surplus",
-  "automations.solarSurplus.text": "A pool heater, water heater or immersion heater is switched on when the sun gives a surplus."
+  "automations.solarSurplus.text": "A pool heater, water heater or immersion heater is switched on when the sun gives a surplus.",
+  "automations.usedBy.one": "Used by {count} automation",
+  "automations.usedBy.other": "Used by {count} automations"
 }
