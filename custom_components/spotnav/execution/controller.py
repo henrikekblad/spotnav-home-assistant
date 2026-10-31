@@ -3773,11 +3773,20 @@ class ChargingController:
             await self._async_save_quietly()
             self._notify()
 
-    async def async_clear_plan_keep_charge(self) -> None:
+    async def async_clear_plan_keep_charge(self, *, dropped: bool = False) -> None:
         """Clear the plan without touching the charger: the strategy left it while a charge that is not the plan's
-        runs (the car's minimum charge level's)."""
+        runs (the car's minimum charge level's), decided in the strategy change's feed. `dropped`: nothing fed the
+        core this clear (a plan whose settings are gone, `AutoExecutor._clear_superseded_locked`), so it is fed as
+        a dropped plan (`PlanDropped`), as `async_drop_plan` feeds it."""
         async with self._lock:
-            await self._end_plan_locked()
+            if not dropped:
+                await self._end_plan_locked()
+                return
+            token = self._shadow.begin()
+            try:
+                await self._end_plan_locked()
+            finally:
+                self._shadow.end(token, core_events.PlanDropped())
 
     def forget_balancing_pause(self) -> None:
         """The wish to charge is gone (Auto paused by a person, say): balancing's pause is not a charge

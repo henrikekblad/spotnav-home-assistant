@@ -1046,7 +1046,7 @@ class AutoExecutor:
         this boundary's lock held. Returns what remains applied."""
         self._clear_waiting = None
         try:
-            await self._controller.async_clear_plan_keep_charge()
+            await self._controller.async_clear_plan_keep_charge(dropped=True)
         except Exception as err:  # noqa: BLE001 - reported, the next calculation retries
             _LOGGER.warning("Clearing a plan whose settings changed failed: %s", type(err).__name__)
             return self.applied
