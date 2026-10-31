@@ -11,15 +11,19 @@ area is asked for by), never a price. Its shape is the relay's contract-v2 area 
                "cet_market_tz": "Europe/Berlin"}
     "routes": {"octopus": "C", "cet_market_tz": "Europe/Paris"}
     "routes": {"pvpc": "2.0TD", "cet_market_tz": "Europe/Madrid"}
+    "routes": {"zonneplan": true, "cet_market_tz": "Europe/Amsterdam"}
 
 * `nordpool`: Nord Pool's delivery area code; absent for an area Nord Pool does not trade.
 * `entsoe`: the ENTSO-E area code and the sequence policy its documents are read by; absent for an area the
-  platform does not publish (the Great Britain Agile regions, Spain's PVPC).
+  platform does not publish (the Great Britain Agile regions, Spain's PVPC, Zonneplan's tariff).
 * `octopus`: a Great Britain Agile region's GSP group letter (`A` to `P`), matched against the region of the
   customer's own meter in the Octopus Energy integration.
 * `pvpc`: the PVPC tariff the area is priced at (`2.0TD`), as Home Assistant's PVPC integration names it.
+* `zonneplan`: `true` for the area priced at Zonneplan's own dynamic tariff (`NL-ZONNEPLAN`), read from the
+  Zonneplan integration; absent otherwise.
 * `cet_market_tz`: the market calendar the providers date their files on: the CET delivery day for Nord Pool and
-  ENTSO-E, the Paris day for Octopus (23:00 to 23:00 UK time) and the Madrid day for the PVPC. `market_tz` stays
+  ENTSO-E, the Paris day for Octopus (23:00 to 23:00 UK time), the Madrid day for the PVPC and the Amsterdam day
+  for Zonneplan. `market_tz` stays
   the calendar the relay dated its files on before 2.0, which an area with no provider is still read in (so the
   days it holds from then still show).
 
@@ -79,6 +83,7 @@ class AreaRoutes:
     cet_market_tz: str
     octopus: str | None = None
     pvpc: str | None = None
+    zonneplan: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -136,10 +141,20 @@ def _routes(raw: Any, area_id: str) -> AreaRoutes:
     pvpc = raw.get("pvpc")
     if pvpc is not None:
         pvpc = _code(pvpc, f"{what}.pvpc")
+    zonneplan = raw.get("zonneplan", False)
+    if not isinstance(zonneplan, bool):
+        _fail(f"{what}.zonneplan must be true or false")
     cet_market_tz = _code(raw.get("cet_market_tz"), f"{what}.cet_market_tz")
     if time_zones.zone(cet_market_tz) is None:
         _fail(f"{what}: {cet_market_tz!r} is not a known timezone")
-    return AreaRoutes(nordpool=nordpool, entsoe=entsoe, cet_market_tz=cet_market_tz, octopus=octopus, pvpc=pvpc)
+    return AreaRoutes(
+        nordpool=nordpool,
+        entsoe=entsoe,
+        cet_market_tz=cet_market_tz,
+        octopus=octopus,
+        pvpc=pvpc,
+        zonneplan=zonneplan,
+    )
 
 
 def parse_bundled(document: Any) -> BundledCatalogue:
