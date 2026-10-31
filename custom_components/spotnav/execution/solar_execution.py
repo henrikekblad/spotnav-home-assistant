@@ -801,6 +801,8 @@ class SolarExecutionCoordinator:
         self._decision_log: deque[dict[str, Any]] = deque(maxlen=SOLAR_DECISION_LOG_LENGTH)
         self._decision_signature: tuple[Any, ...] | None = None
         self._decision_state: str | None = None
+        # Who also keeps each entry (the debug bundle's plug-ins, `debug_day.py`), which outlives a restart.
+        self.decision_listener: Callable[[dict[str, Any]], None] | None = None
         self._strategy: str | None = None
         # Coalescing guard: `_on_site_update` fires often, but an evaluation awaits
         # `AutoExecutor`'s lock and `SolarController` is not reentrant, so a trigger arriving mid-
@@ -1647,24 +1649,29 @@ class SolarExecutionCoordinator:
             return
         if action == "hold" and signature == last:
             return
-        self._decision_log.append(
-            {
-                "time": dt_util.utcnow().isoformat(),
-                "strategy": self._strategy,
-                "from": self._decision_state,
-                "to": state,
-                "action": action,
-                "reason": reason,
-                "held_by_plan": held_by_plan,
-                "requested_a": requested_a,
-                "available_w": available_w,
-                "export_w": export_w,
-                "battery_w": battery_w,
-                "net_grid_w": net_grid_w,
-                "car_w": car_w,
-                "priority": priority,
-            }
-        )
+        entry: dict[str, Any] = {
+            "time": dt_util.utcnow().isoformat(),
+            "strategy": self._strategy,
+            "from": self._decision_state,
+            "to": state,
+            "action": action,
+            "reason": reason,
+            "held_by_plan": held_by_plan,
+            "requested_a": requested_a,
+            "available_w": available_w,
+            "export_w": export_w,
+            "battery_w": battery_w,
+            "net_grid_w": net_grid_w,
+            "car_w": car_w,
+            "priority": priority,
+        }
+        self._decision_log.append(entry)
+        listener = self.decision_listener
+        if listener is not None:
+            try:
+                listener(dict(entry))
+            except Exception:  # noqa: BLE001 - a diagnostic listener must never disturb a decision
+                _LOGGER.debug("The solar decision listener failed", exc_info=True)
         self._decision_signature = signature
         self._decision_state = state
 

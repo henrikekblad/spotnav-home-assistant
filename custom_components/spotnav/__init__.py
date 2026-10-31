@@ -8,7 +8,7 @@ entry starts is stopped by `entry.async_on_unload` where it is started; live obj
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from functools import partial
 from typing import Any, Callable
 
@@ -18,6 +18,7 @@ from homeassistant.core import CoreState, Event, HomeAssistant, callback
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.event import async_call_later
 from homeassistant.helpers.start import async_at_started
+from homeassistant.util import dt as dt_util
 
 from .api.dashboard import async_setup_dashboard_api
 from .api.blueprints import async_setup_blueprints_api
@@ -52,6 +53,7 @@ from .const import (
 )
 from .energy_register import async_store_detected_register, async_watch_for_register
 from .entity_renames import async_setup_entity_renames
+from .debug_day import ChargerDay
 from .log_buffer import attach_log_buffer
 from .execution.auto_execution import AutoExecutor, pause_blocks_execution
 from .execution.controller import ChargingController
@@ -110,6 +112,7 @@ from .site.site_join import (
     prune_missing_members,
 )
 from .site.site_capacity_controller import async_release_held_charges, SiteCapacityController
+from .site.site_history import charger_alone_values, SiteHistory
 from .texts import async_load as async_load_texts
 from .vehicles.discovery_decisions import async_setup_decisions
 from .vehicles.soc_estimate import SocReader
@@ -137,6 +140,8 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     await async_load_texts(hass)
     # Keep SpotNav's own recent log records for the debug bundle; changes no log level.
     data.log_buffer = attach_log_buffer()
+    # Its warnings of the last 24 hours are kept across restarts (`log_buffer.py`).
+    await data.log_buffer.async_attach_store(hass)
     await async_setup_decisions(hass)
     # Every outstanding decision becomes one fixable Repairs issue (see repairs.py), re-synced on
     # every mutation. Domain setup is never unloaded, so the cancel callable is kept, not called.
@@ -219,6 +224,9 @@ async def _async_stop(hass: HomeAssistant, _event: Event | None = None) -> None:
     for data in loaded:
         # No entry is unloaded, so no controller's shutdown saves what the charge-ownership core still has unsaved.
         await data.controller.async_flush_session()
+        # Nor what the debug bundle keeps of its plug-ins (Home Assistant's final write would, a little later).
+        if (day := getattr(data, "debug_day", None)) is not None:
+            await day.async_flush()
     for data in loaded:
         if data.preview is not None:
             await data.preview.async_shutdown()
@@ -232,6 +240,8 @@ async def _async_stop(hass: HomeAssistant, _event: Event | None = None) -> None:
     fx_rates = domain_data(hass).fx_rates
     if fx_rates is not None:
         await fx_rates.async_stop()
+    if (buffer := getattr(domain_data(hass), "log_buffer", None)) is not None:
+        await buffer.async_flush()
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -291,6 +301,7 @@ async def _async_setup_charger_entry(hass: HomeAssistant, entry: ChargerConfigEn
     )
     data = entry.runtime_data = ChargerData(controller=controller, soc_reader=soc_reader)
     entry.async_on_unload(controller.async_shutdown)
+    await _async_start_debug_day(hass, entry, data, controller)
 
     settings_store = domain_data(hass).auto_store
     price_manager = domain_data(hass).price_refresh
@@ -306,6 +317,8 @@ async def _async_setup_charger_entry(hass: HomeAssistant, entry: ChargerConfigEn
             hass, entry.entry_id, controller, executor, settings_store
         )
         entry.async_on_unload(solar.async_stop)
+        if data.debug_day is not None:
+            solar.decision_listener = data.debug_day.note_solar
         # A strategy change to `solar` hands a charge the sun keeps over to it instead of stopping it.
         executor.set_sun_keeps_probe(solar.sun_keeps_charge)
         entry.async_on_unload(lambda: executor.set_sun_keeps_probe(None))
@@ -341,6 +354,11 @@ async def _async_setup_charger_entry(hass: HomeAssistant, entry: ChargerConfigEn
     await push.async_load()
     async_register_charger_webhook(hass, entry)
     await controller.async_initialize()
+    if data.debug_day is not None:
+        # A car plugged in before this release kept plug-ins: its plug-in is the first one kept.
+        data.debug_day.ensure_session(
+            controller.plugged_in_at if controller.adapter.vehicle_connected() is True else None
+        )
     if data.executor is not None:
         # The restored record may carry an older release's person's Stop, and a manual Start's charge is
         # watched again.
@@ -432,6 +450,48 @@ async def _async_start_notifier(
     await notifier.async_load()
     entry.async_on_unload(notifier.async_shutdown)
     notifier.async_start(data.preview)
+
+
+async def _async_start_debug_day(
+    hass: HomeAssistant, entry: ChargerConfigEntry, data: ChargerData, controller: ChargingController
+) -> None:
+    """The debug bundle's last plug-ins of this charger and, while it is in no site, its minute rows, kept across
+    restarts (`debug_day.py`). Read before the controller starts, so the plug-in it sees first finds them."""
+
+    def _strategy() -> str | None:
+        store = domain_data(hass).auto_store
+        return None if store is None else store.settings(entry.entry_id).strategy
+
+    def _vehicle(plugged_in_at: str | None) -> dict[str, Any] | None:
+        identifier = data.identifier
+        last = None if identifier is None else identifier.last_plug_in()
+        if last is None or not last.get("vehicle_id"):
+            return None
+        # Only a car identified at this plug-in (its identification began at most a minute before it was seen).
+        began = dt_util.parse_datetime(last.get("plugged_in_at") or "")
+        plugged = dt_util.parse_datetime(plugged_in_at or "")
+        if began is None or (plugged is not None and began < plugged - timedelta(minutes=1)):
+            return None
+        return {"vehicle_id": last["vehicle_id"], "method": last.get("method")}
+
+    day = data.debug_day = ChargerDay(
+        hass,
+        entry.entry_id,
+        strategy=_strategy,
+        vehicle=_vehicle,
+        row=lambda: charger_alone_values(hass, entry.entry_id),
+    )
+    await day.async_load()
+    controller.set_debug_day(day)
+    day.start()
+
+    async def _stop() -> None:
+        controller.set_debug_day(None)
+        if data.solar is not None:
+            data.solar.decision_listener = None
+        await day.async_shutdown()
+
+    entry.async_on_unload(_stop)
 
 
 async def _async_start_identifier(
@@ -734,6 +794,7 @@ async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
     if entry.data.get(CONF_ENTRY_TYPE) == ENTRY_TYPE_SITE:
         # Its load balancing is gone with it: a charge it held back is given back or forgotten.
         await async_release_held_charges(hass, entry.data.get(CONF_CHARGER_ENTRY_IDS) or [])
+        await SiteHistory.async_remove_stored(hass, entry.entry_id)
         return
     async_leave_sites(hass, entry.entry_id)
     if (price_store := domain_data(hass).price_store) is not None:
@@ -745,6 +806,7 @@ async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
     await ReferenceStore.async_remove_stored(hass, entry.entry_id)
     await ChargerNotifier.async_remove_stored(hass, entry.entry_id)
     await OwnershipCoverage.async_remove_stored(hass, entry.entry_id)
+    await ChargerDay.async_remove_stored(hass, entry.entry_id)
     session_store = domain_data(hass).session_store
     if session_store is not None:
         await session_store.async_remove_charger(entry.entry_id)

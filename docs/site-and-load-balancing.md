@@ -327,8 +327,10 @@ It is best effort and is not a protective device. Turning it off gives back any 
     safe level, and the measured per-phase current stays the fuse protection throughout.
 - **Decision log.** Every change the regulator makes or holds (time, from and to amps, the reason,
   the limiting phase, the battery power and the measured currents) is kept in a bounded list per
-  site, the last 200, shown as `regulator_decision_log` in the site's diagnostics (and so in the
-  debug bundle). What solar and hybrid decide is beside it, per charger, as `solar_decision_log`.
+  site, the last 200, shown as `regulator_decision_log` in the site's diagnostics. What solar and
+  hybrid decide is beside it, per charger, as `solar_decision_log`. The debug bundle keeps both per
+  charger plug-in instead, also across restarts (`sessions`, see
+  [Diagnostics and troubleshooting](troubleshooting.md)).
 - Reading a measurement that has not changed is told apart from a dead link before the reading
   is treated as stale.
 

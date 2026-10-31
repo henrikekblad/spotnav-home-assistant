@@ -327,6 +327,8 @@ class OwnershipShadow:
         self._quiet: tuple[dict[str, Any], int] | None = None
         # The decision clock (`_tick`).
         self._ticks = 0
+        # Who also hears each record kept (the debug bundle's plug-ins, `debug_day.py`); never raises into the shadow.
+        self.on_record: Callable[[dict[str, Any]], None] | None = None
         # Whether the last line-up found mirror drift (`begin` hands it to its token for the tally).
         self._mirrored = False
         # How many plug-ins ended (an unplug, or a plug-in after a known unplug, decided): what a feed's command was
@@ -690,6 +692,12 @@ class OwnershipShadow:
     def _record(self, record: dict[str, Any]) -> None:
         self.events.append(record)
         self._recorded += 1
+        listener = self.on_record
+        if listener is not None:
+            try:
+                listener(record)
+            except Exception:  # noqa: BLE001 - a diagnostic listener must never break the shadow
+                _LOGGER.debug("Shadow record listener failed", exc_info=True)
 
     def _keep_quiet(self, record: dict[str, Any] | None) -> None:
         """A quiet report a disagreement came of is kept after all, in its place before the records decided after
