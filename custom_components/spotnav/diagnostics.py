@@ -164,6 +164,9 @@ def _charger_diagnostics(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, A
             # reckon it at, and where it came from (`measured`, `site_step`, `charging_current` or `default`); null
             # for a charger whose current is set.
             "switched_current": controller.switched_current_snapshot(),
+            # What the delivered energy is counted with (`ChargingController.energy_count`): the charger's register,
+            # the energy integrated from a smart plug's or the charger's own power, or nothing, with the entities.
+            "energy_count": controller.energy_count(),
             # OCPP identity and role facts: which connector a write would go to, whether a unique
             # target exists, whether the station ceiling and session limit were found. Role facts,
             # not entity ids, so the redaction above stays the only place that knows what is private.

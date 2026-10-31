@@ -34,7 +34,7 @@ from .entity import AutoSurface, SpotNavAutoEntity, SpotNavChargingEntity, SpotN
 from .execution.controller import ChargingController
 from .execution.solar_execution import site_solar_surplus
 from .setup_hints import add_charger_hint
-from .execution.power_energy import fresh_power_w, integrated_energy_unique_id, PowerIntegrator
+from .execution.power_energy import fresh_power_w, integrated_energy_unique_id, power_max_age_s, PowerIntegrator
 from .runtime import controller_for, price_data
 from .sessions.sensors import session_entities
 from .vehicles.choices import flow_language
@@ -43,7 +43,7 @@ from .site.site_capacity_controller import SiteCapacityController
 from .site.solar_surplus import SiteSurplus
 
 
-#: How often a smart plug's power is sampled between its own reports.
+#: How often the integrated power is sampled between its sensor's own reports.
 INTEGRATION_TICK_S = 30
 
 
@@ -108,11 +108,11 @@ def remove_pairing_sensors(hass: HomeAssistant, entry: ConfigEntry) -> None:
 def integrated_energy_entities(
     hass: HomeAssistant, entry: ConfigEntry, controller: ChargingController
 ) -> list[Any]:
-    """The energy SpotNav integrates from a smart plug's power sensor, only while it stands in for an
-    energy register (a power sensor and no register of the person's own); otherwise a leftover one is
-    removed from the registry.
+    """The energy SpotNav integrates from a power sensor (a smart plug's, or the charger's own where its
+    integration has no lifetime register), only while it stands in for an energy register; otherwise a
+    leftover one is removed from the registry.
     """
-    if controller.power_entity_id is not None and controller.energy_from_power:
+    if controller.energy_power_entity_id is not None and controller.energy_from_power:
         return [IntegratedEnergySensor(hass, entry, controller)]
     registry = er.async_get(hass)
     leftover = registry.async_get_entity_id("sensor", DOMAIN, integrated_energy_unique_id(entry.entry_id))
@@ -142,11 +142,13 @@ def auto_entities(
 
 
 class IntegratedEnergySensor(SpotNavChargingEntity, RestoreEntity, SensorEntity):
-    """Energy from a smart plug's power sensor: a cumulative kWh counter SpotNav integrates itself.
+    """Energy from a power sensor: a cumulative kWh counter SpotNav integrates itself.
 
-    Trapezoid over fresh samples (`power_energy.PowerIntegrator`); an interval longer than the maximum
-    measurement age is not integrated, and the total survives a restart. It is the charger's energy
-    register for delivered-energy accounting and the stopping estimate.
+    The power is a smart plug's, or the charger's own where its integration has no lifetime register.
+    Trapezoid over fresh samples (`power_energy.PowerIntegrator`); a sample older than the maximum age
+    (`power_energy.power_max_age_s`: the measurement age for a plug, longer for a charger's own sensor that
+    a cloud polls every few minutes) is a gap and nothing is integrated over it, and the total survives a
+    restart. It is the charger's energy register for delivered-energy accounting and the stopping estimate.
     """
 
     _attr_translation_key = "integrated_energy"
@@ -159,7 +161,9 @@ class IntegratedEnergySensor(SpotNavChargingEntity, RestoreEntity, SensorEntity)
         super().__init__(entry, controller)
         self._hass = hass
         self._attr_unique_id = integrated_energy_unique_id(entry.entry_id)
-        self._integrator = PowerIntegrator(DEFAULT_MAX_AGE_S)
+        self._integrator = PowerIntegrator(
+            power_max_age_s(DEFAULT_MAX_AGE_S, smart_plug=controller.power_entity_id is not None)
+        )
 
     @property
     def native_value(self) -> float:
@@ -176,7 +180,7 @@ class IntegratedEnergySensor(SpotNavChargingEntity, RestoreEntity, SensorEntity)
             if math.isfinite(restored) and restored > 0:
                 self._integrator.total_kwh = restored
         self.controller.set_integrated_energy_entity(self.entity_id)
-        power_entity = self.controller.power_entity_id
+        power_entity = self.controller.energy_power_entity_id
         if power_entity is not None:
             self.async_on_remove(
                 async_track_state_change_event(self._hass, [power_entity], self._on_power_changed)
@@ -202,7 +206,7 @@ class IntegratedEnergySensor(SpotNavChargingEntity, RestoreEntity, SensorEntity)
         now = dt_util.utcnow()
         self._integrator.sample(
             now,
-            fresh_power_w(self._hass, self.controller.power_entity_id, now, self._integrator.max_age_s),
+            fresh_power_w(self._hass, self.controller.energy_power_entity_id, now, self._integrator.max_age_s),
         )
         self.async_write_ha_state()
 
