@@ -13,6 +13,7 @@ from custom_components.spotnav.planning.status_compose import (
     STATUS_CODES,
     HybridFacts,
     LoadBalancingFacts,
+    OwnModeFacts,
     PlanningFacts,
     ProposalFacts,
     SiteMeasurementFacts,
@@ -735,9 +736,39 @@ CASES: list[tuple[str, StatusFacts, str, list[dict[str, Any]]]] = [
     ),
     (
         "a charger whose own enable switch is off says so, and only while it is not charging",
-        base(charger_disabled=True, waiting_for_tomorrow=True),
+        base(charger_disabled=True, charger_disabled_entity="switch.easee_is_enabled", waiting_for_tomorrow=True),
         "notice",
-        [{"code": "waiting_for_tomorrow", "params": {}}, {"code": "charger_disabled", "params": {}}],
+        [
+            {"code": "waiting_for_tomorrow", "params": {}},
+            {"code": "charger_disabled", "params": {"entity": "switch.easee_is_enabled"}},
+        ],
+    ),
+    (
+        "a charger's own mode that works against SpotNav is a notice, charging or not, with the value that ends it",
+        base(
+            charging=True,
+            own_modes=(
+                OwnModeFacts("select.peblar_smart_charging", "smart charging", "pure_solar", "default"),
+                OwnModeFacts("select.garo_mode", "schedule", "schema", None),
+            ),
+        ),
+        "notice",
+        [
+            {"code": "charging_now", "params": {"until": None}},
+            {
+                "code": "charger_own_mode",
+                "params": {
+                    "entity": "select.peblar_smart_charging",
+                    "label": "smart charging",
+                    "state": "pure_solar",
+                    "value": "default",
+                },
+            },
+            {
+                "code": "charger_own_mode",
+                "params": {"entity": "select.garo_mode", "label": "schedule", "state": "schema", "value": None},
+            },
+        ],
     ),
     (
         "a charger that kept charging after the stops sent under a person's Stop is a blocking line, then the charge",

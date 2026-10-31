@@ -59,7 +59,12 @@ from ..execution.auto_execution import (
     EXECUTION_NOT_APPLIED,
     pause_blocks_execution,
 )
-from ..execution.charger_entities import charge_control_problem
+from ..execution.charger_entities import (
+    charge_control_problem,
+    CONFLICT_DISABLED,
+    CONFLICT_OWN_MODE,
+    FixableConflict,
+)
 from ..startup import NOT_STARTING, StartupState, startup_state
 from ..execution.charger_connection import CONNECTION_STATES, UNKNOWN as CONNECTION_UNKNOWN
 from ..execution.charge_progress import (
@@ -97,6 +102,7 @@ from ..planning.status_compose import (
     compose_status,
     HybridFacts,
     LoadBalancingFacts,
+    OwnModeFacts,
     PlanningFacts,
     ProposalFacts,
     SocFacts,
@@ -256,6 +262,8 @@ class CapturedLive:
     held_by_charger: bool = False
     #: The charger's own enable switch is off, so it cannot start.
     charger_disabled: bool = False
+    #: The charger's own modes that are on and its own enable switch when it is off, each with its fix.
+    conflicts: tuple[FixableConflict, ...] = ()
     #: Under a person's Stop the charger kept charging after the stops SpotNav sent; no more are sent.
     ignores_person_stop: bool = False
     #: The next window's start while a charge is held back for it, and whether a person overrode it.
@@ -1102,6 +1110,7 @@ def capture_dashboard(
             measured_current_a=measured_current_of(hass, entry_id, controller),
             held_by_charger=bool(controller is not None and controller.held_by_charger),
             charger_disabled=bool(controller is not None and controller.charger_disabled),
+            conflicts=() if controller is None else tuple(controller.charger_conflicts),
             ignores_person_stop=bool(controller is not None and controller.ignores_person_stop),
             hold_until=None if controller is None else controller.hold_until,
             hold_overridden=bool(controller is not None and controller.hold_overridden),
@@ -2373,6 +2382,14 @@ def status_facts(capture: CapturedDashboard) -> StatusFacts:
         charging=capture.live.charging,
         held_by_charger=capture.live.held_by_charger,
         charger_disabled=capture.live.charger_disabled,
+        charger_disabled_entity=next(
+            (found.entity_id for found in capture.live.conflicts if found.kind == CONFLICT_DISABLED), None
+        ),
+        own_modes=tuple(
+            OwnModeFacts(entity=found.entity_id, label=found.label, state=found.state, value=found.value)
+            for found in capture.live.conflicts
+            if found.kind == CONFLICT_OWN_MODE
+        ),
         ignores_person_stop=capture.live.ignores_person_stop,
         hold_until=None if capture.live.hold_until is None else _utc(capture.live.hold_until),
         hold_overridden=capture.live.hold_overridden,

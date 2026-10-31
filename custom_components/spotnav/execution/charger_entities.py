@@ -2,7 +2,8 @@
 
 Shared by the detected-charger config flow (`config_flow/charger_detection.py`) and the entity
 configuration (`api/entity_fields.py`), which must agree on which entity is which and on which of
-the charger's own modes is on. Nothing here writes anything.
+the charger's own modes is on. Nothing here writes anything: `charger_conflicts` only names the one
+write that would end a conflict, and `api/own_mode.py` makes it when a person asks.
 """
 
 from __future__ import annotations
@@ -37,6 +38,20 @@ class OwnModeConflict:
     entity_id: str
     label: str
     state: str
+
+
+@dataclass(frozen=True, slots=True)
+class FixableConflict:
+    """One of the charger's own settings that works against SpotNav now (`kind` is `CONFLICT_OWN_MODE` or
+    `CONFLICT_DISABLED`), and the value the one write that ends it sets: a select's option as the entity
+    offers it, `off` or `on` for a switch. `value` is `None` where no single safe value can be told.
+    """
+
+    kind: str
+    entity_id: str
+    label: str
+    state: str
+    value: str | None
 
 
 def state_text(hass: HomeAssistant, entity_id: str) -> str | None:
@@ -97,10 +112,49 @@ def own_mode_conflicts(
     cannot be read is not (nothing is claimed from silence).
     """
     matcher = EntityMatcher(hass, entries, profile)
-    conflicts: list[OwnModeConflict] = []
-    for rule in profile.own_modes:
-        conflicts.extend(_rule_conflicts(hass, matcher, rule))
-    return conflicts
+    return [OwnModeConflict(found[0], rule.label, found[1]) for rule, found in _active_rules(hass, matcher, profile)]
+
+
+def fix_value(hass: HomeAssistant, entity_id: str, rule: OwnModeRule) -> str | None:
+    """The value that ends `rule`'s conflict on `entity_id`, or `None` when no single safe one exists.
+
+    A select: the one inactive option the entity offers, as it offers it; none or several of them (a
+    schedule's "always on" and "always off" are both inactive and mean opposite things) is no fix. A
+    switch: `off`, where off is the rule's only inactive value.
+    """
+    if rule.domain == "switch":
+        return "off" if rule.inactive_values == ("off",) else None
+    if rule.domain != "select":
+        return None
+    state = hass.states.get(entity_id)
+    options = state.attributes.get("options") if state is not None else None
+    if not isinstance(options, list):
+        return None
+    offered = [
+        option for option in options if isinstance(option, str) and option.strip().lower() in rule.inactive_values
+    ]
+    return offered[0] if len(offered) == 1 else None
+
+
+def charger_conflicts(hass: HomeAssistant, charge_control: str, platform: str | None) -> list[FixableConflict]:
+    """The charger's own modes that are on and its own enable switch when it is off, each with the value
+    that ends it (`fix_value`; `on` for the enable switch). Only entities of the charger's own device
+    and integration that a profile rule names are ever listed.
+    """
+    profile = profile_for(platform)
+    if profile is None:
+        return []
+    entries = charger_entries(hass, charge_control, profile)
+    matcher = EntityMatcher(hass, entries, profile)
+    found = [
+        FixableConflict(CONFLICT_OWN_MODE, entity_id, rule.label, text, fix_value(hass, entity_id, rule))
+        for rule, (entity_id, text) in _active_rules(hass, matcher, profile)
+    ]
+    found.extend(
+        FixableConflict(CONFLICT_DISABLED, item.entity_id, item.label, item.state, "on")
+        for item in disabled_switches(hass, entries, profile)
+    )
+    return found
 
 
 def disabled_switches(
@@ -144,7 +198,19 @@ def charger_is_disabled(hass: HomeAssistant, charge_control: str, platform: str 
     return bool(disabled_switches(hass, charger_entries(hass, charge_control, profile), profile))
 
 
-def _rule_conflicts(hass: HomeAssistant, matcher: EntityMatcher, rule: OwnModeRule) -> list[OwnModeConflict]:
+def _active_rules(
+    hass: HomeAssistant, matcher: EntityMatcher, profile: PlatformProfile
+) -> list[tuple[OwnModeRule, tuple[str, str]]]:
+    """Each of the profile's rules that is on now, with its entity and that entity's state."""
+    found: list[tuple[OwnModeRule, tuple[str, str]]] = []
+    for rule in profile.own_modes:
+        match = _rule_match(hass, matcher, rule)
+        if match is not None:
+            found.append((rule, match))
+    return found
+
+
+def _rule_match(hass: HomeAssistant, matcher: EntityMatcher, rule: OwnModeRule) -> tuple[str, str] | None:
     entry = next(
         (
             candidate
@@ -154,11 +220,11 @@ def _rule_conflicts(hass: HomeAssistant, matcher: EntityMatcher, rule: OwnModeRu
         None,
     )
     if entry is None or entry.disabled_by is not None:
-        return []
+        return None
     text = state_text(hass, entry.entity_id)
     if text is None or text in rule.inactive_values:
-        return []
-    return [OwnModeConflict(entry.entity_id, rule.label, text)]
+        return None
+    return entry.entity_id, text
 
 
 #: Option names that, on a select the platform is not known for, unambiguously start or stop a charge.

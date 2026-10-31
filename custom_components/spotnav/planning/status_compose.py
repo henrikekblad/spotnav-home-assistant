@@ -90,7 +90,8 @@ Precedence (first match wins the headline; "add" rows append a fact line)
    kept, or the charger's recorded charges; not for `kept_recent`, a register that was read and is
    unread for less than half an hour, nor `rebased`, one that reads again),
    held_by_charger (the charger's own scheduler or load balancer holds the charge), charger_disabled
-   (its own enable switch is off, so it cannot start), site_measurement_problem (the phases that
+   (its own enable switch is off, so it cannot start), charger_own_mode (one per own mode of the charger
+   that is on and works against SpotNav, charging or not), site_measurement_problem (the phases that
    make the site's measurement unusable and why; site_meter_unavailable in its place when the meter's
    sensors are unavailable together, as an inverter in standby leaves them, and site_current_negative
    when the meter reports export as a negative current on a site not set to read it signed; the capture
@@ -272,7 +273,13 @@ STATUS_CODES: Final[dict[str, tuple[str, tuple[str, ...]]]] = {
     # wrong, and nothing SpotNav sends releases it.
     "held_by_charger": (TONE_NOTICE, ()),
     # The charger's own enable switch is off (Easee's `is_enabled`): it cannot start, whatever is sent.
-    "charger_disabled": (TONE_NOTICE, ()),
+    # `entity` is that switch, which an administrator may turn on from the card (`spotnav/fix_own_mode`).
+    "charger_disabled": (TONE_NOTICE, ("entity",)),
+    # One of the charger's own modes is on and works against SpotNav (Peblar's smart charging other than
+    # Default): `entity` reads `state`, `label` names the mode in the profile's words. `value` is the one
+    # value that ends it (a select's option as the entity offers it, or `off`), which an administrator may
+    # write from the card (`spotnav/fix_own_mode`); `null` where no single safe value can be told.
+    "charger_own_mode": (TONE_NOTICE, ("entity", "label", "state", "value")),
     # A charge that started by itself outside every planned window was stopped (or a car waits): it
     # starts at `time`, the next window's start.
     "held_until_window": (TONE_NORMAL, ("time",)),
@@ -404,6 +411,16 @@ class HybridFacts:
 
 
 @dataclass(frozen=True, slots=True)
+class OwnModeFacts:
+    """One of the charger's own modes that is on (`charger_entities.FixableConflict`)."""
+
+    entity: str
+    label: str
+    state: str
+    value: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class SocFacts:
     missing: tuple[str, ...] = ()
 
@@ -473,8 +490,11 @@ class StatusFacts:
     charging: bool = False
     #: The charger itself reports that its own scheduler or load balancer holds the charge.
     held_by_charger: bool = False
-    #: The charger's own enable switch is off, so it cannot start.
+    #: The charger's own enable switch is off, so it cannot start; that switch, where it is known.
     charger_disabled: bool = False
+    charger_disabled_entity: str | None = None
+    #: The charger's own modes that are on and work against SpotNav.
+    own_modes: tuple[OwnModeFacts, ...] = ()
     #: Under a person's Stop the charger kept charging after the stops SpotNav sent; no more are sent.
     ignores_person_stop: bool = False
     #: The next window's start while a charge is held back for it (`ChargingController.hold_until`).
@@ -540,6 +560,18 @@ def _line(code: str, **params: Any) -> dict[str, Any]:
 
 def _tone_of(line: dict[str, Any]) -> str:
     return STATUS_CODES[line["code"]][0]
+
+
+def status_tone(lines: list[Any]) -> str:
+    """The tone of a block of composed lines: its strongest line's, `normal` for none. A line whose code is not
+    composed here (none is) counts as normal."""
+    tone = TONE_NORMAL
+    for line in lines:
+        code = line.get("code") if isinstance(line, dict) else None
+        found = STATUS_CODES.get(code, (TONE_NORMAL,))[0] if isinstance(code, str) else TONE_NORMAL
+        if _RANK[found] > _RANK[tone]:
+            tone = found
+    return tone
 
 
 def _blocking_lines(facts: StatusFacts) -> list[dict[str, Any]]:
@@ -913,7 +945,9 @@ def _notices(facts: StatusFacts) -> list[dict[str, Any]]:
     if facts.held_by_charger and not facts.charging:
         lines.append(_line("held_by_charger"))
     if facts.charger_disabled and not facts.charging:
-        lines.append(_line("charger_disabled"))
+        lines.append(_line("charger_disabled", entity=facts.charger_disabled_entity))
+    for mode in facts.own_modes:
+        lines.append(_line("charger_own_mode", entity=mode.entity, label=mode.label, state=mode.state, value=mode.value))
     measurement = facts.site_measurement
     if measurement is not None and measurement.negative_phases:
         lines.append(_line("site_current_negative", phases=list(measurement.negative_phases)))

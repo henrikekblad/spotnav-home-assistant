@@ -158,12 +158,23 @@
       "tone": "normal"
     },
     "charger_disabled": {
-      "params": [],
+      "params": [
+        "entity"
+      ],
       "tone": "notice"
     },
     "charger_ignores_stop": {
       "params": [],
       "tone": "blocking"
+    },
+    "charger_own_mode": {
+      "params": [
+        "entity",
+        "label",
+        "state",
+        "value"
+      ],
+      "tone": "notice"
     },
     "charger_unavailable": {
       "params": [
