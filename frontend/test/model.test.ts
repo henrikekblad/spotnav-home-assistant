@@ -61,6 +61,24 @@ describe("capabilities and figures", () => {
     expect(capabilitiesWith({ current_limit: true, set_current: true })).toBe("available");
   });
 
+  it("notes that load balancing can only pause a charger whose current SpotNav cannot set", () => {
+    const loadBalancingWith = (changes: Record<string, boolean>) => {
+      const base = rawDashboard();
+      const charger = base.charger as { capabilities: Record<string, boolean> };
+      const raw = patchSection("charger", { capabilities: { ...charger.capabilities, ...changes } });
+      const result = decodeDashboard(rawDashboard(raw));
+      if (!result.ok) {
+        throw new Error("did not decode");
+      }
+      return capabilitiesFor(result.value).find((item) => item.key === "load_balancing");
+    };
+    const pauseOnly = loadBalancingWith({ load_balancing: true, set_current: false });
+    expect(pauseOnly?.state).toBe("available");
+    expect(pauseOnly?.noteKey).toBe("cap.loadBalancingPauseOnly");
+    expect(loadBalancingWith({ load_balancing: true, set_current: true })?.noteKey).toBeUndefined();
+    expect(loadBalancingWith({ load_balancing: false, set_current: false })?.noteKey).toBeUndefined();
+  });
+
   it("takes figures from the proposal only, and never borrows from the installed schedule", () => {
     const withProposal = model().figures;
     expect(withProposal.energy).toBe("20 kWh");

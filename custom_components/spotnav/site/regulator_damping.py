@@ -45,6 +45,9 @@ DampingReason = Literal[
     "margin_unusable",
     "urgent",
     "verified_step",
+    # Not `consider`'s: the site's measurement was lost and the charger is stepped to its minimum
+    # (`SiteCapacityController`), past the dwell, yet never a must-lower (it must not stop the charge).
+    "measurement_lost",
 ]
 
 # Remaining uncredited margin (A) at or below which a reduction is protection;

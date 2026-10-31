@@ -14,6 +14,7 @@ import pytest
 
 from custom_components.spotnav.const import MEASUREMENT_MODE_DERIVED, MEASUREMENT_MODE_DIRECT
 from custom_components.spotnav.site.measurement_source import GridPowerSource
+from custom_components.spotnav.site.site_capacity import classify_current
 from custom_components.spotnav.site.site_detection import (
     apply_battery_candidate,
     apply_meter_candidate,
@@ -400,10 +401,12 @@ def ferroamp_energyhub() -> Registry:
     r.add("ferroamp", "ehub_grid_current", f"{h}-iext", device_class="current", unit="A", device="ehub", entry="ferroamp", original_name="Grid Current")
     r.add("ferroamp", "ehub_grid_power", f"{h}-pext", device_class="power", unit="W", device="ehub", entry="ferroamp", original_name="Grid Power")
     r.add("ferroamp", "ehub_battery_power", f"{h}-pbat", device_class="power", unit="W", device="ehub", entry="ferroamp", original_name="Battery Power")
+    r.add("ferroamp", "ehub_grid_power_reactive", f"{h}-pextreactive", device_class="power", unit="W", device="ehub", entry="ferroamp", original_name="Grid Power Reactive")
     for n in "123":
         r.add("ferroamp", f"ehub_grid_current_l{n}", f"{h}-iext-L{n}", device_class="current", unit="A", device="ehub", entry="ferroamp", original_name=f"Grid Current L{n}")
         r.add("ferroamp", f"ehub_active_current_l{n}", f"{h}-iextq-L{n}", device_class="current", unit="A", device="ehub", entry="ferroamp", original_name=f"External Active Current L{n}")
         r.add("ferroamp", f"ehub_grid_power_l{n}", f"{h}-pext-L{n}", device_class="power", unit="W", device="ehub", entry="ferroamp", original_name=f"Grid Power L{n}")
+        r.add("ferroamp", f"ehub_grid_power_reactive_l{n}", f"{h}-pextreactive-L{n}", device_class="power", unit="W", device="ehub", entry="ferroamp", original_name=f"Grid Power Reactive L{n}")
         r.add("ferroamp", f"ehub_voltage_l{n}", f"{h}-ul-L{n}", device_class="voltage", unit="V", device="ehub", entry="ferroamp", original_name=f"External Voltage L{n}")
     return r
 
@@ -469,6 +472,16 @@ def ams_reader(*, list4: bool) -> Registry:
         if list4:
             r.add("mqtt", f"ams_p{n}", f"amsreader_ab12_P{n}", device_class="power", unit="W", device="ams", entry="mqtt")
             r.add("mqtt", f"ams_po{n}", f"amsreader_ab12_PO{n}", device_class="power", unit="W", device="ams", entry="mqtt")
+    return r
+
+
+def amshan_aidon() -> Registry:
+    """toreamun's `amshan` on an Aidon meter (HAN port, DLMS): `<meter id>-<key>` per phase."""
+    r = Registry()
+    r.device("han", model="6484", manufacturer="Aidon", name="HAN port", entry="amshan")
+    for n in "123":
+        r.add("amshan", f"han_current_l{n}", f"7359992890123456-current_l{n}", device_class="current", unit="A", device="han", entry="amshan")
+        r.add("amshan", f"han_voltage_l{n}", f"7359992890123456-voltage_l{n}", device_class="voltage", unit="V", device="han", entry="amshan")
     return r
 
 
@@ -585,7 +598,7 @@ CASES = {
     ),
     "ferroamp": (
         ferroamp_energyhub,
-        Expect(MEASUREMENT_MODE_DIRECT, signed_current=True, roles=frozenset({"current"}), integration="ferroamp"),
+        Expect(MEASUREMENT_MODE_DIRECT, signed_current=True, roles=frozenset({"current", "grid_power"}), integration="ferroamp"),
     ),
     "frient_emizb_zha": (
         frient_emizb_zha,
@@ -610,6 +623,10 @@ CASES = {
     "ams_reader_list1": (
         lambda: ams_reader(list4=False),
         Expect(MEASUREMENT_MODE_DIRECT, roles=frozenset({"current"}), integration="mqtt"),
+    ),
+    "amshan_aidon": (
+        amshan_aidon,
+        Expect(MEASUREMENT_MODE_DIRECT, signed_current=True, roles=frozenset({"current"}), integration="amshan"),
     ),
     "slimmelezer": (
         slimmelezer,
@@ -938,6 +955,12 @@ def test_an_ams_reader_is_recognized_by_its_manufacturer_not_by_the_mqtt_platfor
     plain_mqtt.devices[0] = RegistryDevice("ams", manufacturer="someone else", model="x", config_entry_ids=("mqtt",))
 
     assert plain_mqtt.detect().meters == ()
+
+
+def test_an_aidon_phase_that_exports_reads_as_its_magnitude_not_as_invalid() -> None:
+    candidate = one_meter(amshan_aidon())
+
+    assert classify_current(-12.4, "A", signed=candidate.signed_current) == (12.4, None)
 
 
 def test_a_p1_reader_is_detected_whatever_its_esphome_device_model_and_ignores_reactive_power() -> None:
@@ -1485,14 +1508,24 @@ def test_cozify_han_pairs_import_and_export_and_leaves_the_daily_maximum_current
     assert not any("max" in item.entity_id for item in candidate.entities)
 
 
-def test_ferroamp_is_a_current_only_meter_because_its_power_signs_are_not_known() -> None:
+def test_ferroamp_is_a_current_meter_with_the_hubs_import_positive_total_grid_power() -> None:
     detection = ferroamp_energyhub().detect()
 
     assert [m.candidate_id.split(":")[0] for m in detection.meters] == ["ferroamp"]
     candidate = detection.meters[0]
     assert candidate.direct_entities == {phase: f"sensor.ehub_grid_current_l{n}" for phase, n in zip(PHASES, "123")}
-    assert candidate.grid_power is None
-    assert not detection.batteries
+    # The three-phase `pext`, never a phase of it nor the reactive power, and used as it is.
+    assert candidate.grid_power == GridPowerSource(power="sensor.ehub_grid_power")
+    assert not candidate.power_inverted
+    assert WARNING_SIGN_UNVERIFIED not in candidate.warnings
+
+
+def test_the_ferroamp_battery_is_discharge_positive_and_is_negated() -> None:
+    [battery] = ferroamp_energyhub().detect().batteries
+
+    assert battery.integration == "ferroamp"
+    assert battery.entity_id == "sensor.ehub_battery_power"
+    assert battery.inverted is True and battery.discharge_entity_id is None
 
 
 def test_frient_meter_interface_over_zha_gets_its_total_with_the_sign_unverified() -> None:

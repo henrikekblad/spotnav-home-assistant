@@ -2,7 +2,7 @@
 
 A dated departure ("Sunday 08:00") reaches past the last published price. What the market will do in
 those unknown hours is not known, but what it did on the same weekdays and hours over the last weeks is
-(the relay's profile, `pricing/relay_contract.PriceProfile`). This module weighs the two, and only
+(the profile built from the held days, `pricing/price_profile.py`). This module weighs the two, and only
 decides whether history *argues for waiting*; whether waiting is safe is `planning/price_wait.py`'s
 capacity rule and stays there.
 

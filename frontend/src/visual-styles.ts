@@ -35,6 +35,9 @@ export const VISUAL_CLASSES = {
   suggestion: "spotnav-suggestion",
   suggestionText: "spotnav-suggestion-text",
   suggestionAnswers: "spotnav-suggestion-answers",
+  setupHeading: "spotnav-setup-heading",
+  automationName: "spotnav-automation-name",
+  automationUse: "spotnav-automation-use",
   pauseChoices: "spotnav-pause-choices",
   choiceButton: "spotnav-choice-button",
   choiceLabel: "spotnav-choice-label",
@@ -696,7 +699,8 @@ export const VISUAL_STYLES = `
     margin: 4px 0 0;
     font-size: 0.85em;
   }
-  .spotnav-market-source a {
+  .spotnav-market-source a,
+  [data-entsoe-howto] a {
     color: var(--primary-color, #03a9f4);
   }
   .spotnav-market-postcode-row {
@@ -904,6 +908,37 @@ export const VISUAL_STYLES = `
     gap: 6px;
     margin-top: 6px;
   }
+  /** "Get started" in the attention dialog: a heading over its rows, apart from the issues above it. */
+  .spotnav-setup-heading {
+    margin: 12px 0 0;
+    font-size: 0.9rem;
+    font-weight: 500;
+  }
+  section:first-child > .spotnav-setup-heading {
+    margin-top: 0;
+  }
+  /** "Get started": a box per thing left, apart from each other. */
+  .spotnav-suggestion[data-banner="setup-row"] {
+    margin-top: 10px;
+  }
+  .spotnav-suggestion[data-banner="setup-row"]:first-child {
+    margin-top: 0;
+  }
+  /** "Automations": a blueprint's name over its sentence, each blueprint apart from the one above. */
+  .spotnav-suggestion[data-blueprint] {
+    margin-top: 14px;
+  }
+  .spotnav-automation-name {
+    margin: 0 0 2px;
+    font-weight: 500;
+  }
+  .spotnav-automation-use {
+    margin: 4px 0 0;
+    font-size: 0.9em;
+  }
+  .spotnav-automation-use a {
+    color: var(--primary-color, #03a9f4);
+  }
   .spotnav-pause-choices,
   .spotnav-strategy-row {
     display: flex;
@@ -940,7 +975,8 @@ export const VISUAL_STYLES = `
    * electricity price question in Settings stands out the same way.
    */
   .spotnav-suggestion[data-banner="identify"],
-  .spotnav-suggestion[data-banner="price"] {
+  .spotnav-suggestion[data-banner="price"],
+  .spotnav-suggestion[data-banner="setup-row"] {
     padding: 8px 10px;
     border-left: 3px solid var(--primary-color, #03a9f4);
     border-radius: 4px;

@@ -100,7 +100,20 @@ export interface PriceInterval {
   installed_planned: boolean;
 }
 
+/**
+ * Where the area's prices come from (`prices.provider`, additive): the provider's key, name and address (`null`
+ * with no source at all), and the one thing an administrator can do when the area has no source of its own.
+ */
+export interface PriceProvider {
+  key: string | null;
+  name: string | null;
+  url: string | null;
+  notice: { code: string; params: Record<string, string> } | null;
+}
+
 export interface Prices {
+  /** `null` without an area, from an older backend, or unreadable. */
+  provider: PriceProvider | null;
   state: string | null;
   reason: string | null;
   waiting_for_tomorrow: boolean | null;
@@ -280,6 +293,19 @@ export interface Dashboard {
    * with its own settings, from an older backend, or unreadable.
    */
   price_source: PriceSourceBlock | null;
+  /** What is still left to set up for this charger, the "Get started" rows; `null` from an older backend or unreadable. */
+  setup: SetupBlock | null;
+}
+
+/** One "Get started" row the backend says is still left (`setup`). */
+export interface SetupBlockItem {
+  id: string;
+  dismissible: boolean;
+}
+
+/** The dashboard's `setup` block. */
+export interface SetupBlock {
+  items: SetupBlockItem[];
 }
 
 /** The electricity price entry a charger uses (`price_source`). */
@@ -887,6 +913,7 @@ function decodePrices(source: Record<string, unknown>, timeZone: string | null):
     previous = next;
   }
   return {
+    provider: priceProviderOrNull(source["provider"]),
     state: textOrNull(source, "state"),
     reason: textOrNull(source, "reason"),
     waiting_for_tomorrow: booleanOrNull(source, "waiting_for_tomorrow"),
@@ -898,6 +925,37 @@ function decodePrices(source: Record<string, unknown>, timeZone: string | null):
     resolutions_minutes: numberList(source, "resolutions_minutes"),
     intervals,
   };
+}
+
+/**
+ * `prices.provider`, read leniently: anything that is not the contract's shape is `null` (the section shows no
+ * source line and no notice) rather than refusing the dashboard. The address is kept only when it is http(s).
+ */
+export function priceProviderOrNull(raw: unknown): PriceProvider | null {
+  if (!isRecord(raw)) {
+    return null;
+  }
+  try {
+    exactKeys(raw, ["key", "name", "url", "notice"]);
+    const key = textOrNull(raw, "key");
+    const name = textOrNull(raw, "name");
+    const url = textOrNull(raw, "url");
+    const rawNotice = raw["notice"];
+    let notice: PriceProvider["notice"] = null;
+    if (rawNotice !== null) {
+      const item = record(rawNotice);
+      exactKeys(item, ["code", "params"]);
+      const params: Record<string, string> = {};
+      for (const [param, value] of Object.entries(record(item["params"]))) {
+        params[param] = typeof value === "string" ? value : bad();
+      }
+      notice = { code: text(item, "code"), params };
+    }
+    const attribution = name !== null && url !== null ? priceSource({ name, url }) : null;
+    return { key, name, url: attribution?.url ?? null, notice };
+  } catch {
+    return null;
+  }
 }
 
 function decodePeriods(source: Record<string, unknown>): Period[] {
@@ -1417,6 +1475,7 @@ export const STATUS_CODE_TABLE = {
   car_ended_waiting: ["normal", { soc_percent: "numberOrNull", estimated: "boolean" }],
   plan_energy: ["normal", { kwh: "number" }],
   plan_cost: ["normal", { amount_minor: "int", currency: "text" }],
+  plan_saving: ["normal", { amount_minor: "int", currency: "text" }],
   plan_distance: ["normal", { mil: "number" }],
   solar_charging: ["normal", { requested_a: "numberOrNull" }],
   solar_charging_one_phase: ["normal", { requested_a: "numberOrNull" }],
@@ -1434,9 +1493,17 @@ export const STATUS_CODE_TABLE = {
   solar_charger_current_missing: ["notice", { entity: "textOrNull", entity_name: "textOrNull" }],
   solar_site_incomplete: ["normal", { phases: "codes" }],
   solar_unknown: ["normal", {}],
+  solar_forecast: ["normal", { kwh: "number", start: "instant", end: "instant" }],
   hybrid_grid: [
     "normal",
-    { grid_kwh: "number", credit_kwh: "numberOrNull", window_start: "instantOrNull", window_end: "instantOrNull" },
+    {
+      grid_kwh: "number",
+      credit_kwh: "numberOrNull",
+      window_start: "instantOrNull",
+      window_end: "instantOrNull",
+      sun_start: "instantOrNull",
+      sun_end: "instantOrNull",
+    },
   ],
   hybrid_no_forecast: ["normal", {}],
   hybrid_no_price_data: ["normal", {}],
@@ -1619,6 +1686,7 @@ export function decodeDashboard(raw: unknown): DecodeResult {
         progress: chargeBarOrNull(root),
         camera_identification: cameraIdentificationOrNull(root),
         price_source: priceSourceOrNull(root),
+        setup: setupOrNull(root),
       },
     };
   } catch {
@@ -1675,7 +1743,27 @@ const OPTIONAL_DASHBOARD_KEYS = [
   // The notifier's count of the plans it told, for the app's background check: accepted and never read.
   "plan_notice",
   "price_source",
+  "setup",
 ] as const;
+
+/** The `setup` block, or `null` when it is missing or unreadable: the card then lists nothing to set up. */
+function setupOrNull(root: Record<string, unknown>): SetupBlock | null {
+  const value = root.setup;
+  if (!isRecord(value)) {
+    return null;
+  }
+  try {
+    exactKeys(value, ["items"]);
+    const items = arrayValue(value, "items").map((entry) => {
+      const item = record(entry);
+      exactKeys(item, ["id", "dismissible"]);
+      return { id: text(item, "id"), dismissible: booleanValue(item, "dismissible") };
+    });
+    return { items };
+  } catch {
+    return null;
+  }
+}
 
 /** The `price_source` block, or `null` when it is missing or unreadable: the price section shows no source. */
 function priceSourceOrNull(root: Record<string, unknown>): PriceSourceBlock | null {

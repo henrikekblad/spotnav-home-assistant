@@ -22,6 +22,7 @@ from homeassistant.components import webhook
 from homeassistant.core import HomeAssistant
 
 from ..const import CONF_WEBHOOK_ID, DOMAIN
+from ..setup_checklist import async_note_app_used
 from ..notifications.push import ERROR_INVALID_PUSH, parse_push_register, PushRegisterError
 from ..execution.auto_execution import (
     ACTION_RESUME,
@@ -42,6 +43,7 @@ from .entity_config import (
     async_webhook_update_phase_switching,
     async_webhook_update_vehicle,
 )
+from .price_days import webhook_price_days
 from .price_source import async_webhook_answer_price_duplicate, async_webhook_choose_price_source
 from .camera import WEBHOOK_ACTIONS as CAMERA_ACTIONS
 from .identification import webhook_choose_vehicle_identification, webhook_identify_vehicle
@@ -106,6 +108,12 @@ APP_READS_CAR_ENDED_WAITING: Final = "car_ended_waiting"
 #: A solar charge the sun switched to one phase: an app that does not read `APP_READS_SOLAR_ONE_PHASE` gets the
 #: ordinary solar charging line, with the same current, in its place.
 APP_UNREAD_SOLAR_ONE_PHASE_CODES: Final = ("solar_charging_one_phase",)
+#: The plan's saving against charging now and the solar forecast beside the solar headline: left out for an app that
+#: does not read `APP_READS_PLAN_FACTS`, and hybrid's line goes to it without when the sun is expected
+#: (`sun_start`, `sun_end`).
+APP_UNREAD_PLAN_FACT_CODES: Final = ("plan_saving", "solar_forecast")
+APP_UNREAD_HYBRID_SUN_PARAMS: Final = ("sun_start", "sun_end")
+APP_READS_PLAN_FACTS: Final = "plan_facts"
 APP_READS_SOLAR_ONE_PHASE: Final = "solar_one_phase"
 #: Waking the car for a reading: an app that does not read `APP_READS_WAKE_FOR_READING` gets vehicle rows without
 #: `wake_for_reading` (its settings row is never offered).
@@ -116,12 +124,22 @@ APP_READS_PRICE_SOURCE: Final = "price_source"
 #: Phase switching for solar: the webhook dashboard's `phase_switching` block is left out for an app that does not
 #: read `APP_READS_PHASE_SWITCHING` (its decoder refuses a dashboard with an unknown key).
 APP_READS_PHASE_SWITCHING: Final = "phase_switching"
+#: What is still left to set up (`setup_checklist.py`): the dashboard's `setup` block is left out for an app that
+#: does not read `APP_READS_SETUP` (its decoder refuses a dashboard with an unknown key).
+APP_READS_SETUP: Final = "setup"
 #: Each optional top-level dashboard block an app released before it does not read, with the `reads` name that opts
 #: into it.
 APP_DASHBOARD_BLOCK_READS: Final = {
     "price_source": APP_READS_PRICE_SOURCE,
     "phase_switching": APP_READS_PHASE_SWITCHING,
+    "setup": APP_READS_SETUP,
 }
+#: Where the area's prices come from and what to do when it has no source of its own: the dashboard's
+#: `prices.provider` is left out for an app that does not read `APP_READS_PRICE_PROVIDER`.
+APP_READS_PRICE_PROVIDER: Final = "price_provider"
+#: Each optional key inside a dashboard block an app released before it does not read, as `(block, key)`, with the
+#: `reads` name that opts into it.
+APP_DASHBOARD_NESTED_READS: Final = {("prices", "provider"): APP_READS_PRICE_PROVIDER}
 #: Each vehicle-row field an app released before it does not read, with the `reads` name that opts into it.
 APP_VEHICLE_FIELD_READS: Final = {"min_percent": APP_READS_MIN_SOC, "wake_for_reading": APP_READS_WAKE_FOR_READING}
 
@@ -145,6 +163,11 @@ def _status_for_app(line: Any, opted_in: set[str]) -> Any:
     if code in APP_UNREAD_SOLAR_ONE_PHASE_CODES and APP_READS_SOLAR_ONE_PHASE not in opted_in:
         params = line.get("params") if isinstance(line.get("params"), dict) else {}
         return {"code": "solar_charging", "params": {"requested_a": params.get("requested_a")}}
+    if code in APP_UNREAD_PLAN_FACT_CODES and APP_READS_PLAN_FACTS not in opted_in:
+        return None
+    if code == "hybrid_grid" and APP_READS_PLAN_FACTS not in opted_in and isinstance(line.get("params"), dict):
+        params = {key: value for key, value in line["params"].items() if key not in APP_UNREAD_HYBRID_SUN_PARAMS}
+        return {**line, "params": params}
     return line
 
 
@@ -177,12 +200,18 @@ def _for_app(body: dict[str, Any], payload: dict[str, Any]) -> dict[str, Any]:
     null; `balancing_paused` for the plan's charge load balancing paused; `car_ended_waiting` for the plan waiting for
     the car's level after the car ended its charge; `wake_for_reading` for the vehicle rows' `wake_for_reading`; `solar_one_phase` for a solar charge the sun
     switched to one phase; `price_source` for the dashboard's `price_source` block; `phase_switching` for its
-    `phase_switching` block); anything else in it, or a `reads` that is not a list, is ignored.
+    `phase_switching` block; `price_provider` for `prices.provider`; `setup` for its `setup` block; `plan_facts` for the status lines
+    `plan_saving` and `solar_forecast` and hybrid's `sun_start`/`sun_end`); anything else in it, or a `reads` that is not
+    a list, is ignored.
     """
     opted_in = _opted_in(payload)
     withheld_blocks = {block for block, read in APP_DASHBOARD_BLOCK_READS.items() if read not in opted_in}
     if withheld_blocks & set(body):
         body = {key: value for key, value in body.items() if key not in withheld_blocks}
+    for (block, field), read in APP_DASHBOARD_NESTED_READS.items():
+        inner = body.get(block)
+        if read not in opted_in and isinstance(inner, dict) and field in inner:
+            body = {**body, block: {key: value for key, value in inner.items() if key != field}}
     if isinstance(body.get("vehicles"), list):
         body = {**body, "vehicles": [_vehicle_for_app(row, opted_in) for row in body["vehicles"]]}
     status = body.get("status")
@@ -401,7 +430,7 @@ def _bounded_write(
     return handler
 
 
-#: Every action the webhook answers. `dashboard` and `sessions` are the reads.
+#: Every action the webhook answers. `dashboard`, `sessions` and `price_days` are the reads.
 ACTIONS: Final[dict[str, Handler]] = {
     "start": _start,
     "stop": _stop,
@@ -410,6 +439,7 @@ ACTIONS: Final[dict[str, Handler]] = {
     "set_charge_limit": _set_charge_limit,
     "dashboard": _dashboard,
     "sessions": _sessions,
+    "price_days": webhook_price_days,
     "settings": _settings,
     "update_vehicle": _bounded_write(async_webhook_update_vehicle, "update_vehicle", _vehicle_answer_for_app),
     "update_site_settings": _bounded_write(async_webhook_update_site_settings, "update_site_settings"),
@@ -442,6 +472,8 @@ def _handler_for(entry: ChargerConfigEntry) -> Callable[..., Awaitable[web.Respo
             handler = ACTIONS.get(action) if isinstance(action, str) else None
             if handler is None:
                 raise ValueError("Unsupported action")
+            # Only the SpotNav app speaks to this webhook: once it has, "Pair the app" is done for good.
+            await async_note_app_used(hass)
             outcome = await handler(hass, entry, payload)
             if isinstance(outcome, web.Response):
                 return outcome

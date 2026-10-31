@@ -13,9 +13,6 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from custom_components.spotnav.pricing.price_repository import IndexSnapshot
-from custom_components.spotnav.pricing.relay_contract import RelayIndex, loads_document, parse_index
-
 from custom_components.spotnav.pricing.price_refresh import (
     BACKOFF_STEPS_SECONDS,
     HEALTHY_POLL_SECONDS,
@@ -26,35 +23,15 @@ from custom_components.spotnav.pricing.price_refresh import (
     CadenceInput,
     backoff_delay,
     combined_state,
-    day_authority,
     in_publication_window,
     jittered,
     local_dates,
     next_local_midnight,
     refresh_interval,
-    retained_listing,
 )
 
 STOCKHOLM = ZoneInfo("Europe/Stockholm")
 FIXTURES = Path(__file__).parent / "fixtures" / "relay"
-
-
-def _index_document() -> RelayIndex:
-    """The checked-in index, parsed: SE4 lists 2026-09-21 and 2026-09-22."""
-    return parse_index(loads_document((FIXTURES / "index.json").read_text(encoding="utf-8")))
-
-
-def _index_snapshot(document: RelayIndex | None, *, state: str) -> IndexSnapshot:
-    """An index snapshot in a given state, to ask authority questions of."""
-    return IndexSnapshot(
-        state=state,  # type: ignore[arg-type]
-        index=document,
-        source="memory",
-        fetched_at=None,
-        attempt_at=None,
-        attempt_error=None,
-        refreshing=False,
-    )
 
 
 def context(**overrides: object) -> CadenceInput:
@@ -66,7 +43,6 @@ def context(**overrides: object) -> CadenceInput:
         today_state="ready",
         tomorrow_state="ready",
         tomorrow_listed=True,
-        index_state="ready",
         tomorrow_ready=True,
         failing=False,
         backoff_step=0,
@@ -173,32 +149,6 @@ def test_the_publication_window_is_the_observed_midday_range_with_margin():
     instant = datetime(2026, 9, 22, 11, 0, tzinfo=timezone.utc)
     for zone in ("UTC", "Europe/Stockholm", "Europe/Helsinki", "Pacific/Auckland"):
         assert in_publication_window(instant.astimezone(ZoneInfo(zone))) is True
-
-
-def test_the_index_authority_is_three_valued_and_needs_a_current_index():
-    """Only a `ready` index is the relay saying anything about right now."""
-    document = _index_document()
-    ready = _index_snapshot(document, state="ready")
-    stale = _index_snapshot(document, state="stale")
-    missing = _index_snapshot(None, state="unavailable")
-
-    # A current valid index answers both ways, and "not listed" is an answer.
-    assert day_authority(ready, "SE4", date(2026, 9, 21)) == "listed"
-    assert day_authority(ready, "SE4", date(2026, 9, 23)) == "not_listed"
-    assert day_authority(ready, "NO9", date(2026, 9, 22)) == "not_listed"
-
-    # Last-good retained after a failed refresh is *not* authority, however
-    # plausible its day list looks, and neither is no index at all.
-    assert day_authority(stale, "SE4", date(2026, 9, 21)) == "unknown"
-    assert day_authority(stale, "SE4", date(2026, 9, 23)) == "unknown"
-    assert day_authority(missing, "SE4", date(2026, 9, 22)) == "unknown"
-
-    # The retained listing is a separate, deliberately weaker question: it decides
-    # whether asking for a day is worth a request, and it *does* use a stale list.
-    assert retained_listing(ready, "SE4", date(2026, 9, 21)) is True
-    assert retained_listing(stale, "SE4", date(2026, 9, 21)) is True
-    assert retained_listing(stale, "SE4", date(2026, 9, 23)) is False
-    assert retained_listing(missing, "SE4", date(2026, 9, 21)) is False
 
 
 def test_every_cadence_and_backoff_step_is_the_documented_number():
@@ -343,36 +293,3 @@ def test_the_combined_state_table_is_the_documented_one():
     ) == ("incomplete", "incomplete_day")
 
 
-def test_a_stale_index_never_claims_tomorrow_is_not_published():
-    """A retained index yields unknown authority, as states rather than as functions.
-
-    1. a fresh index omits tomorrow: waiting, and that is an answer;
-    2. the next index refresh fails with last-good retained: authority is *unknown*,
-       so the area is degraded rather than waiting;
-    3. a later successful index still omits tomorrow: waiting again;
-    4. a later successful index lists tomorrow: listed, and the day is fetched.
-    """
-    document = _index_document()
-    today = date(2026, 9, 22)
-    tomorrow = date(2026, 9, 23)
-
-    fresh = _index_snapshot(document, state="ready")
-    assert day_authority(fresh, "SE4", tomorrow) == "not_listed"
-    assert combined_state(
-        today_state="ready", tomorrow_state="unavailable",
-        today_authority=day_authority(fresh, "SE4", today),
-        tomorrow_authority=day_authority(fresh, "SE4", tomorrow),
-    ) == ("waiting_for_tomorrow", "waiting_for_tomorrow")
-
-    # The index refresh fails; the valid index is retained, and is not authority.
-    retained = _index_snapshot(document, state="stale")
-    assert day_authority(retained, "SE4", tomorrow) == "unknown"
-    assert combined_state(
-        today_state="ready", tomorrow_state="unavailable",
-        today_authority=day_authority(retained, "SE4", today),
-        tomorrow_authority=day_authority(retained, "SE4", tomorrow),
-    ) == ("degraded", "index_unavailable")
-
-    # A later successful index that still omits tomorrow: waiting again.
-    later = _index_snapshot(document, state="ready")
-    assert day_authority(later, "SE4", tomorrow) == "not_listed"

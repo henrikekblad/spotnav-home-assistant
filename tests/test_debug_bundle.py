@@ -32,9 +32,13 @@ async def test_bundle_has_every_section(hass: HomeAssistant) -> None:
     charger, site = await setup_charger_and_site(hass)
     bundle = await async_build_debug_bundle(hass)
 
-    assert bundle["bundle_version"] == 7
+    assert bundle["bundle_version"] == 8
     for key in ("versions", "related_integrations", "price_data", "sites", "chargers", "log"):
         assert key in bundle
+    # Version 8: a day, kept across restarts.
+    assert "history_60min" not in bundle["sites"][0] and "history_24h" in bundle["sites"][0]
+    assert {"sessions", "history_24h"} <= set(bundle["chargers"][0])
+    assert "warnings_24h" in bundle["log"]
     versions = bundle["versions"]
     assert {"spotnav", "card_bundle_hash", "card_bundle_hash_served", "home_assistant", "python", "installation_type"} <= set(versions)
     assert versions["spotnav"]
@@ -310,28 +314,41 @@ async def _sample_minutes(hass: HomeAssistant, minutes: int) -> None:
         await hass.async_block_till_done()
 
 
-async def test_bundle_has_the_last_hour_one_sample_a_minute(hass: HomeAssistant) -> None:
+def _table(block: dict) -> list[dict[str, str]]:
+    """A minute table of the bundle as one mapping per row (column -> text)."""
+    from custom_components.spotnav.debug_day import parse_row
+
+    columns = block["columns"].split(";")
+    return [dict(zip(columns, parse_row(row), strict=False)) for row in block["rows"]]
+
+
+async def test_bundle_has_the_last_day_one_row_a_minute(hass: HomeAssistant) -> None:
     from custom_components.spotnav.site.site_history import SAMPLE_COUNT
 
     charger, site = await setup_charger_and_site(hass)
     bundle = await async_build_debug_bundle(hass)
-    assert bundle["sites"][0]["history_60min"] == []
+    assert bundle["sites"][0]["history_24h"]["rows"] == []
 
     await _sample_minutes(hass, 3)
-    history = (await async_build_debug_bundle(hass))["sites"][0]["history_60min"]
-    assert len(history) == 3
-    sample = history[-1]
-    assert {"time", "grid_w", "grid_source", "site_current_a", "battery_w", "chargers"} <= set(sample)
-    assert "pv_w" not in sample  # no PV sensor is known to a site
-    assert set(sample["site_current_a"]) == {"L1", "L2", "L3"}
-    item = sample["chargers"][charger.entry_id]
-    assert {"current_a", "charge_control", "charging", "connection", "connector_status", "soc_percent"} <= set(item)
-    assert item["charge_control"] == hass.states.get(charger.data["charge_control"]).state
+    history = (await async_build_debug_bundle(hass))["sites"][0]["history_24h"]
+    assert history["interval_s"] == 60
+    rows = _table(history)
+    assert len(rows) == 3
+    assert set(rows[-1]) == {"time", "grid_w", "grid_source", "L1_a", "L2_a", "L3_a", "battery_w"}  # no PV sensor
+    item = _table(history["chargers"][charger.entry_id])[-1]
+    assert item["time"] == rows[-1]["time"]
+    for column in (
+        "L1_a", "control", "charging", "connection", "connector", "soc", "strategy", "solar_state", "solar_action",
+        "solar_reason", "phases_read", "phases_switched", "setpoint_a", "requested_a",
+    ):
+        assert column in item
+    assert item["control"] == hass.states.get(charger.data["charge_control"]).state
+    assert item["strategy"] == "cheapest"
+    # A member of a site has its rows in its site's history, none of its own.
+    assert bundle["chargers"][0]["history_24h"]["rows"] == []
 
-    # Bounded to the last hour.
-    await _sample_minutes(hass, SAMPLE_COUNT + 5)
-    history = (await async_build_debug_bundle(hass))["sites"][0]["history_60min"]
-    assert len(history) == SAMPLE_COUNT
+    # Bounded to the last 24 hours.
+    assert SAMPLE_COUNT == 24 * 60
 
 
 async def test_the_history_and_the_solar_log_are_redacted_with_the_rest(hass: HomeAssistant) -> None:
@@ -349,8 +366,10 @@ async def test_the_history_and_the_solar_log_are_redacted_with_the_rest(hass: Ho
     text = json.dumps(bundle)
     assert "tok-sampled-1" not in text and "Zebediah" not in text
     site_section = bundle["sites"][0]
-    assert site_section["history_60min"][-1]["chargers"][charger.entry_id]["charge_control"] == f"{REDACTED} <user>"
-    assert site_section["diagnostics"]["solar_decision_log"][charger.entry_id][-1]["reason"] == "<user>"
+    assert _table(site_section["history_24h"]["chargers"][charger.entry_id])[-1]["control"] == f"{REDACTED} <user>"
+    # Version 8: the solar log is in the charger's plug-ins, not again in the site's diagnostics.
+    assert "solar_decision_log" not in site_section["diagnostics"]
+    assert bundle["chargers"][0]["sessions"][-1]["solar"][-1]["reason"] == "<user>"
 
 
 async def test_card_info_answers_any_user(

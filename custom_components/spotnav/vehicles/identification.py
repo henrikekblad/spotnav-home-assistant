@@ -564,6 +564,16 @@ class VehicleIdentifier:
             "evidence": session.all_evidence(),
         }
 
+    def last_plug_in(self) -> dict[str, Any] | None:
+        """The last plug-in's car as decided (`plugged_in_at`, `vehicle_id`, `method`; corrected by a later choice), for
+        the debug bundle's plug-ins (`debug_day.py`); `None` before the first."""
+        if not self._history:
+            return None
+        entry = self._history[-1]
+        corrections = entry.get("corrections") or []
+        last = corrections[-1] if corrections and isinstance(corrections[-1], dict) else entry
+        return {"plugged_in_at": entry.get("plugged_in_at"), "vehicle_id": last.get("vehicle_id"), "method": last.get("method")}
+
     def diagnostics(self) -> dict[str, Any]:
         """Method, timings and the evidence the car was judged by: entity ids and states, never car names, plates,
         positions or zone names (a position says only home or away)."""

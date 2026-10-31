@@ -33,6 +33,9 @@ export class FakeHass implements HomeAssistantLike {
    */
   readonly cardInfoMessages: Record<string, unknown>[] = [];
   cardInfoHandler: ((message: Record<string, unknown>) => Promise<unknown>) | null = null;
+  /** `spotnav/get_blueprints`, read when the Automations list opens, on its own line too; the default never answers. */
+  readonly blueprintMessages: Record<string, unknown>[] = [];
+  blueprintHandler: ((message: Record<string, unknown>) => Promise<unknown>) | null = null;
   /** The camera commands (`spotnav/camera_snapshot`, `*_reference_picture`, `save_camera_frame`), on their own line too. */
   readonly cameraMessages: Record<string, unknown>[] = [];
   cameraHandler: ((message: Record<string, unknown>) => Promise<unknown>) | null = null;
@@ -50,6 +53,10 @@ export class FakeHass implements HomeAssistantLike {
     if (typeof message["type"] === "string" && /^spotnav\/(camera_snapshot|save_camera_frame|\w+_reference_picture|reference_picture)$/.test(message["type"])) {
       this.cameraMessages.push(message);
       return (this.cameraHandler === null ? new Promise<unknown>(() => undefined) : this.cameraHandler(message)) as Promise<T>;
+    }
+    if (message["type"] === "spotnav/get_blueprints") {
+      this.blueprintMessages.push(message);
+      return (this.blueprintHandler === null ? new Promise<unknown>(() => undefined) : this.blueprintHandler(message)) as Promise<T>;
     }
     if (message["type"] === "spotnav/get_card_info") {
       this.cardInfoMessages.push(message);

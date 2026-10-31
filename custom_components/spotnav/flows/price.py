@@ -3,6 +3,11 @@
 The fees mean what a charger's mean (`pricing/price_points.py`): nothing, the area's suggestion, or a
 figure of the person's own, stored as `FiscalOverride`. A fee the area's published price already holds
 is not asked for and is stored off. The area list is the relay catalogue the chargers use.
+
+An electricity price's Configure also holds the installation's one ENTSO-E key (an optional password field, for the
+whole installation, not this entry): left empty it keeps what is stored; a new key is checked with one request
+before the fees step (`pricing/entsoe_key.py`) and a rejected one keeps the form open; with a key stored, a box
+removes it. The key is never shown back, never put in the entry's data or options, and never logged.
 """
 
 from __future__ import annotations
@@ -20,6 +25,7 @@ from homeassistant.setup import async_setup_component
 from ..const import CONF_ENTRY_TYPE, CONF_PRICE_AREA, DOMAIN, ENTRY_TYPE_PRICE
 from ..planning.auto_settings import AutoSettingsError, FiscalOverride
 from ..planning.first_run import suggest_area
+from ..pricing.entsoe_key import async_save_entsoe_key, ERROR_KEY_REJECTED
 from ..pricing.price_points import (
     default_fee_mode,
     FEE_MANUAL,
@@ -33,11 +39,16 @@ from ..pricing.price_points import (
     suggestion,
 )
 from ..pricing.price_source import async_write_price_entry, default_price_title, FEE_COMPONENTS
+from ..pricing.price_store import async_setup_price_store
 from ..pricing.relay_contract import AreaCatalogue, AreaEntry
 from ..runtime import domain_data
 
 
 _LOGGER = logging.getLogger(__name__)
+
+#: The options form's fields for the installation's ENTSO-E key.
+CONF_ENTSOE_KEY = "entsoe_key"
+CONF_ENTSOE_KEY_REMOVE = "entsoe_key_remove"
 
 #: The largest fee a form accepts, in the area's minor unit per kWh (the charger's number allows the same).
 MAX_FEE = 10000.0
@@ -77,6 +88,17 @@ def area_schema(catalogue: AreaCatalogue, default: str | None) -> vol.Schema:
             )
         }
     )
+
+
+def price_init_schema(catalogue: AreaCatalogue, default: str | None, *, key_set: bool) -> vol.Schema:
+    """The area, the optional ENTSO-E key (never prefilled) and, with a key stored, the box that removes it."""
+    fields: dict[Any, Any] = dict(area_schema(catalogue, default).schema)
+    fields[vol.Optional(CONF_ENTSOE_KEY)] = selector.TextSelector(
+        selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD, autocomplete="off")
+    )
+    if key_set:
+        fields[vol.Optional(CONF_ENTSOE_KEY_REMOVE, default=False)] = selector.BooleanSelector()
+    return vol.Schema(fields)
 
 
 def _unit(area: AreaEntry, component: str) -> str:
@@ -263,13 +285,36 @@ class PriceOptionsFlow(config_entries.OptionsFlow):
         catalogue = await async_price_catalogue(self.hass)
         if catalogue is None or not catalogue.areas:
             return self.async_abort(reason="no_price_areas")
+        store = await async_setup_price_store(self.hass)
+        errors: dict[str, str] = {}
         if user_input is not None:
-            self._area = catalogue.area(user_input[CONF_PRICE_AREA])
-            if self._area is not None:
+            area = catalogue.area(user_input[CONF_PRICE_AREA])
+            errors = await self._async_entsoe_key(user_input, None if area is None else area.id)
+            self._area = area
+            if self._area is not None and not errors:
                 return await self.async_step_price_fees()
+        default = self._entry.data.get(CONF_PRICE_AREA)
+        if user_input is not None and isinstance(user_input.get(CONF_PRICE_AREA), str):
+            default = user_input[CONF_PRICE_AREA]
         return self.async_show_form(
-            step_id="price_init", data_schema=area_schema(catalogue, self._entry.data.get(CONF_PRICE_AREA))
+            step_id="price_init",
+            data_schema=price_init_schema(catalogue, default, key_set=store.entsoe_key_set),
+            errors=errors,
         )
+
+    async def _async_entsoe_key(self, user_input: dict[str, Any], area_id: str | None) -> dict[str, str]:
+        """Store, check or remove the installation's ENTSO-E key from the form; the errors that keep it open."""
+        if user_input.get(CONF_ENTSOE_KEY_REMOVE):
+            await async_save_entsoe_key(self.hass, None)
+            return {}
+        value = user_input.get(CONF_ENTSOE_KEY)
+        if not isinstance(value, str) or not value.strip():
+            return {}
+        saved = await async_save_entsoe_key(self.hass, value, area_id=area_id)
+        if saved.error == ERROR_KEY_REJECTED:
+            return {CONF_ENTSOE_KEY: ERROR_KEY_REJECTED}
+        # Stored; when the platform could not be asked, as unchecked (the first day it asks for proves it).
+        return {}
 
     async def async_step_price_fees(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         area = self._area

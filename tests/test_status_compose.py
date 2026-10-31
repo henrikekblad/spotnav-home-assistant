@@ -439,15 +439,118 @@ CASES: list[tuple[str, StatusFacts, str, list[dict[str, Any]]]] = [
         [
             {
                 "code": "hybrid_grid",
-                "params": {"grid_kwh": 12.0, "credit_kwh": 5.0, "window_start": iso(2), "window_end": iso(4)},
+                "params": {
+                    "grid_kwh": 12.0, "credit_kwh": 5.0, "window_start": iso(2), "window_end": iso(4),
+                    "sun_start": None, "sun_end": None,
+                },
             }
+        ],
+    ),
+    (
+        "hybrid says when the sun it counts on is expected",
+        base(
+            strategy="hybrid",
+            hybrid=HybridFacts("waiting_for_sun_within_slack", 12.0, 5.0, True, sun_start=at(14), sun_end=at(19)),
+            proposal=proposal(),
+        ),
+        "normal",
+        [
+            {
+                "code": "hybrid_grid",
+                "params": {
+                    "grid_kwh": 12.0, "credit_kwh": 5.0, "window_start": iso(2), "window_end": iso(4),
+                    "sun_start": iso(14), "sun_end": iso(19),
+                },
+            }
+        ],
+    ),
+    (
+        "hybrid with no credit names no sun, whatever the forecast says",
+        base(strategy="hybrid", hybrid=HybridFacts("not_worth_it", 12.0, 0.0, True, sun_start=at(14), sun_end=at(19))),
+        "normal",
+        [
+            {
+                "code": "hybrid_grid",
+                "params": {
+                    "grid_kwh": 12.0, "credit_kwh": None, "window_start": None, "window_end": None,
+                    "sun_start": None, "sun_end": None,
+                },
+            }
+        ],
+    ),
+    (
+        "solar tells the sun its forecast promises, beside the headline",
+        base(
+            strategy="solar",
+            solar=SolarFacts("off", "waiting_for_sun", forecast_kwh=6.25, forecast_start=at(13), forecast_end=at(18)),
+        ),
+        "normal",
+        [
+            {"code": "solar_waiting_for_sun", "params": {}},
+            {"code": "solar_forecast", "params": {"kwh": 6.25, "start": iso(13), "end": iso(18)}},
+        ],
+    ),
+    (
+        "a plan cheaper than charging now by 5 % or more says what it saves",
+        base(relation_applied=True, proposal=proposal(now_cost=20.0)),
+        "normal",
+        [*PLANNED[:3], {"code": "plan_saving", "params": {"amount_minor": 750, "currency": "SEK"}}, PLANNED[3]],
+    ),
+    (
+        "a saving under 5 % of charging now is not worth saying",
+        base(relation_applied=True, proposal=proposal(now_cost=13.1)),
+        "normal",
+        PLANNED,
+    ),
+    (
+        "exactly 5 % is said, rounded to the minor unit",
+        base(relation_applied=True, proposal=proposal(cost=19.0, now_cost=20.0)),
+        "normal",
+        [
+            *PLANNED[:2],
+            {"code": "plan_cost", "params": {"amount_minor": 1900, "currency": "SEK"}},
+            {"code": "plan_saving", "params": {"amount_minor": 100, "currency": "SEK"}},
+            PLANNED[3],
+        ],
+    ),
+    (
+        "a plan that costs what charging now costs says nothing about it",
+        base(relation_applied=True, proposal=proposal(now_cost=12.5)),
+        "normal",
+        PLANNED,
+    ),
+    (
+        "no saving once the charge has started in this plug-in",
+        base(relation_applied=True, proposal=proposal(now_cost=20.0), charge_started=True),
+        "normal",
+        PLANNED,
+    ),
+    (
+        "no saving once the plan's first window has begun",
+        base(
+            relation_applied=True,
+            proposal=proposal(now_cost=20.0),
+            installed_periods=((at(-1), at(-0.5)), (at(2), at(4))),
+        ),
+        "normal",
+        PLANNED,
+    ),
+    (
+        "a proposal waiting to be installed says its saving",
+        base(relation_applied=False, proposal=proposal(now_cost=20.0)),
+        "normal",
+        [
+            {"code": "proposal_pending", "params": {"installs_at": None, "waits_for": None}},
+            *PLANNED[1:3],
+            {"code": "plan_saving", "params": {"amount_minor": 750, "currency": "SEK"}},
+            PLANNED[3],
         ],
     ),
     (
         "hybrid, no credit, no window",
         base(strategy="hybrid", hybrid=HybridFacts("last_call_no_slack", 12.0, 0.0, True)),
         "normal",
-        [{"code": "hybrid_grid", "params": {"grid_kwh": 12.0, "credit_kwh": None, "window_start": None, "window_end": None}}],
+        [{"code": "hybrid_grid", "params": {"grid_kwh": 12.0, "credit_kwh": None, "window_start": None, "window_end": None, "sun_start": None, "sun_end": None}}],
     ),
     (
         "hybrid without a forecast source",
@@ -495,7 +598,7 @@ CASES: list[tuple[str, StatusFacts, str, list[dict[str, Any]]]] = [
         ),
         "normal",
         [
-            {"code": "hybrid_grid", "params": {"grid_kwh": 12.0, "credit_kwh": None, "window_start": None, "window_end": None}},
+            {"code": "hybrid_grid", "params": {"grid_kwh": 12.0, "credit_kwh": None, "window_start": None, "window_end": None, "sun_start": None, "sun_end": None}},
             {"code": "waiting_for_publication", "params": {"publication_at": iso(15)}},
         ],
     ),
@@ -561,6 +664,16 @@ CASES: list[tuple[str, StatusFacts, str, list[dict[str, Any]]]] = [
             {"code": "charging_now", "params": {"until": None}},
             {"code": "load_balancing_limited", "params": {"limit_a": 10.0, "phase": "L2", "cause": None}},
         ],
+    ),
+    (
+        "no limit is shown for a charger whose current load balancing cannot set",
+        base(
+            charging=True,
+            load_balancing=LoadBalancingFacts("capacity_limited", True, 10.0, "L2", current_settable=False),
+            load_balancing_capable=True,
+        ),
+        "normal",
+        [{"code": "charging_now", "params": {"until": None}}],
     ),
     (
         "load balancing names the battery sharing the fuse, even when the allocation itself is not limited",

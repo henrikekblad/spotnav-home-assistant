@@ -44,7 +44,7 @@ from .world import (
     tick_site,
 )
 
-pytestmark = pytest.mark.usefixtures("offline_relay")
+pytestmark = pytest.mark.usefixtures("offline_relay", "chargers_not_switch_only")
 
 V = 230.0
 THREE_PHASE_W_PER_A = 3 * V  # 690 W per amp on three phases

@@ -30,6 +30,7 @@ import {
   getDashboard,
   getCardInfo,
   getDebugBundle,
+  getBlueprints,
   getEntityConfig,
   getSessions,
   getSessionsCsv,
@@ -45,6 +46,8 @@ import {
   updateSiteSettings,
   choosePriceSource,
   answerPriceDuplicate,
+  dismissSetupItem,
+  setEntsoeKey,
   updateVehicle,
 } from "./api";
 import {
@@ -69,6 +72,7 @@ import {
   type EntityDraft,
   type EntityScope,
 } from "./entity-config";
+import { decodeBlueprintUse, type BlueprintUse } from "./automations";
 import { decodeDebugAnswer, saveDebugBundle } from "./debug-download";
 import { cardOutdated, clientBlock, decodeCardInfo, ownCardBundleHash, servedHashFromBundle } from "./card-identity";
 import { saveTextFile } from "./download";
@@ -1485,6 +1489,19 @@ export class SpotnavCard extends HTMLElement {
     }
   }
 
+  /** How many automations use each blueprint, for the Automations list; `null` on any failure (no count shown). */
+  private async loadBlueprintUse(): Promise<BlueprintUse | null> {
+    const hass = this.hassObject;
+    if (!this.connected || hass === null || !this.isAdmin) {
+      return null;
+    }
+    try {
+      return decodeBlueprintUse(await getBlueprints(hass));
+    } catch {
+      return null;
+    }
+  }
+
   /** Fetch the redacted bundle and save it as a file; any failure is a sentence in the Settings popover. */
   private async downloadDebug(): Promise<void> {
     const hass = this.hassObject;
@@ -1840,6 +1857,23 @@ export class SpotnavCard extends HTMLElement {
     }
   }
 
+  /** A "Get started" row answered "Not needed": kept away by the integration, then the dashboard is read again. */
+  private async dismissSetup(item: string): Promise<void> {
+    const hass = this.hassObject;
+    if (!this.connected || hass === null || !this.isAdmin) {
+      return;
+    }
+    const generation = this.generation;
+    try {
+      await dismissSetupItem(hass, item);
+    } catch {
+      // Not kept: the row stays until the next read says otherwise.
+    }
+    if (generation === this.generation && this.connected) {
+      await this.refresh({ purpose: "confirm" });
+    }
+  }
+
   /**
    * The active load-balancing switch: one admin-only write, never optimistic. The popover adopts the
    * returned site block and says what happened; a failed restore on disable is worded as "the charger may
@@ -2167,6 +2201,11 @@ export class SpotnavCard extends HTMLElement {
       case "priceSource": {
         await choosePriceSource(hass, charger, write.priceEntryId);
         return null;
+      }
+      case "entsoeKey": {
+        const answer = await setEntsoeKey(hass, write.key, write.areaId);
+        // A key the platform could not be asked about is kept, and proved by the first day it is asked for.
+        return answer.ok || answer.error === "entsoe_unreachable" ? null : "price.key.rejected";
       }
       case "priceDuplicate": {
         await answerPriceDuplicate(hass, write.areaId, write.keepEntryId);
@@ -2504,10 +2543,14 @@ export class SpotnavCard extends HTMLElement {
         onDownloadDebug: () => {
           void this.downloadDebug();
         },
+        onLoadBlueprintUse: () => this.loadBlueprintUse(),
         onSaveEntities: (scope, draft) => {
           void this.saveEntities(scope, draft);
         },
         onCancelEntities: () => !this.entitySaving,
+        onDismissSetup: (item) => {
+          void this.dismissSetup(item);
+        },
         onAnswerOnboardPhases: (vehicleId, phases) => {
           void this.answerOnboardPhases(vehicleId, phases);
         },

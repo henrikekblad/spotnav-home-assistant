@@ -106,6 +106,16 @@ EXPECTED: dict[str, dict[str, str]] = {
         "State F - Fault": ERROR,
     },
     "monta": {"available": DISCONNECTED, "busy-charging": CHARGING, "busy-non-charging": PAUSED, "error": ERROR},
+    "nexblue": {
+        "idle": DISCONNECTED,
+        "connected": CONNECTED,
+        "charging": CHARGING,
+        "lb_waiting": PAUSED,
+        "delay_waiting": PAUSED,
+        "ev_waiting": PAUSED,
+        "finished": FINISHED,
+        "error": ERROR,
+    },
 }
 
 OCPP_EXPECTED = {

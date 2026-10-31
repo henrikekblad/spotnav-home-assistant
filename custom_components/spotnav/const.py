@@ -1,6 +1,11 @@
 """Constants for SpotNav charging control."""
 
 DOMAIN = "spotnav"
+
+#: The Repairs issue of an electricity price whose area has no price source and whose prices have stopped (translation
+#: key under `issues`, and the issue id's prefix before the price entry's id; `price_device.py`).
+PRICE_SOURCE_MISSING_ISSUE = "price_source_missing"
+
 CONF_MODE = "mode"
 CONF_CHARGE_CONTROL = "charge_control"
 CONF_CURRENT_LIMIT = "current_limit"

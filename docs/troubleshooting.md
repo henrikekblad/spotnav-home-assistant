@@ -14,17 +14,32 @@ public GitHub issue: open the issue with the **bug report** form, then email the
 **support@sensnology.se** with the issue's number in the subject.
 
 The site entry's file (and the card's **Download debug info** in Settings, Support, for
-administrators) also carries the whole installation as one debug bundle (`bundle_version` 7):
+administrators) also carries the whole installation as one debug bundle (`bundle_version` 8). It keeps
+the last day, also across restarts and updates: what it holds below is stored by SpotNav (written at
+most every five minutes and when Home Assistant stops) and read back after a restart, so a bundle
+downloaded in the evening still shows the afternoon. Nothing is read from the recorder.
 
-- `history_60min` per site: the last hour, one sample a minute kept in memory (nothing is read from
-  the recorder). Each sample has the grid's total power, the site's current per phase, the house
-  battery's power and, per charger, its measured current, charge control, connection and connector
-  status and the car's state of charge. There is no PV power: a site has no PV sensor to read.
-- `solar_decision_log` in the site's diagnostics, per charger: what solar and hybrid decided, the
-  last 200 (time, strategy, state from and to, action, reason, the current asked for, the surplus,
-  export, battery, grid and car power and the priority). Only changes and actions are kept, never an
-  unchanged tick. While a plan's period holds the charge (hybrid), nothing the sun decides reaches the
-  charger, so only a change of its state is kept.
+- `history_24h` per site: the last 24 hours, one row a minute. Each row is one line of text, its
+  values separated by `;` in the order `columns` names them (empty for unknown, `1` and `0` for yes
+  and no): the grid's total power and where it came from, the site's current per phase and the house
+  battery's power. Under `chargers`, each charger has its own row at the same minutes: its measured
+  current per phase, charge control, charging, connection, connector status, the car's state of
+  charge and where it came from, the strategy, what solar decided that minute (state, action,
+  reason), the phases the charger reads back, whether SpotNav switched it to one phase, the current
+  last written and the current asked for. There is no PV power: a site has no PV sensor to read. A
+  charger in no site has the same rows in its own `history_24h` (with the current it measures).
+- `sessions` per charger: its last five plug-ins, the current one included, oldest first. Each has
+  when the car was plugged in and unplugged, the car and how it was identified, the strategy at the
+  start and when it changed, and its own logs: `solar` (what solar and hybrid decided: only changes and
+  actions, never an unchanged tick; while a plan's period holds the charge, only a change of its
+  state), `phase_switch` (switches sent, not sent, confirmed, given up and reconciled with the
+  charger's read-back), `commands` (what was sent to the charger and how it ended), `actions` (a
+  person's or the app's Start, Stop, pause, resume and strategy change) and `regulator` (what load
+  balancing decided for this charger). Each log keeps its last 300 entries (commands and load
+  balancing 150), and `dropped` counts the older ones it let go. A new plug-in starts a new entry;
+  what happens while no car is plugged in goes with the plug-in before.
+- `log.warnings_24h`: SpotNav's warnings and errors of the last 24 hours (at most 500), also from
+  before a restart. `log.records` stays as it was: the last records at INFO and above since the start.
 - `client`, added by the card to the file it saves: the card version and bundle hash this browser runs
   and a short user agent, next to the backend's `versions.card_bundle_hash` (the file) and
   `card_bundle_hash_served` (the one browsers are handed). When they differ, the file says so in
@@ -123,13 +138,43 @@ changes.
   later.
 - **The plan is proposed but not applied.** The card shows a newer proposal until it has been
   installed; check *Auto execution state* and whether automatic charging is paused.
-- **Prices are stale or missing.** Prices come from the public SpotNav Relay. If the relay is unreachable, the last successful
-  fetch is used and the card says the prices are stale. No token or account is involved.
+- **Prices are stale.** If the area's source cannot be reached, the last successful fetch is used and the card says
+  the prices are stale. They update by themselves once the source answers again.
 - **A charger starts or stops when it should not, since the charge-ownership logic took over.** The charge-ownership
   core decides who owns a charge on every charger by default, with the previous logic still computed beside it and
   compared (`ownership_shadow.drives` is `true` in the charger's diagnostics). An administrator can take one charger
   back under its **Configure**: **Charging decisions**, **Previous logic** (saving reloads that charger). Download
   the debug info (card Settings, Support) first and send it with an issue: it records where the two disagreed.
+
+## Prices
+
+### Prices are missing
+
+Since SpotNav 2.0 your Home Assistant fetches the prices itself; the SpotNav relay no longer delivers them
+(see [Prices](prices.md#where-prices-come-from)). An area with no source of its own gets no new prices.
+The card's **Settings → Electricity price** then shows a notice with the one step that gives it one, and
+once there is nothing priced for today Home Assistant raises the Repairs issue *No electricity prices for
+…*, which goes away by itself when prices are back.
+
+- **"Add Nord Pool"** (Sweden, Norway, Denmark, Finland, the Baltic countries, Germany/Luxembourg, the
+  Netherlands, Belgium, France, Austria, Poland, Romania, Bulgaria): the button opens Home Assistant's own
+  dialog for the Nord Pool integration. The area and currency you pick there do not matter. **"Use my
+  ENTSO-E key instead"** works too.
+- **"Nord Pool is added in Home Assistant but did not start"**: open the Nord Pool integration under
+  **Settings → Devices & services** and look at its error; SpotNav follows it as soon as it is loaded.
+- **"Add your ENTSO-E key"** (the other European areas): follow the how-to under the key's field. Access to
+  ENTSO-E's API is granted by e-mail and can take a few days; until then the platform refuses the key.
+- **"ENTSO-E did not accept the saved key"**: the key was refused when it was saved or later. Generate a new
+  one under **My Account Settings** on transparency.entsoe.eu and enter it.
+- **"Add PVPC"** (Spain, regulated): add Home Assistant's PVPC integration.
+- **"Add Octopus Energy (HACS)"** (Great Britain): install the Octopus Energy integration from HACS and add
+  it with your account. **"Octopus Energy found no meter on an Agile tariff"** means the integration is
+  there but your meter is not on Agile; SpotNav has no prices for a fixed or other tariff. **"Your Octopus
+  meter is in region …"**: choose that region as the area.
+- **"There is no source for prices in …"**: the area has no source SpotNav can use. Choose another area.
+
+After an upgrade from 1.x, the days already stored keep showing until they run out, and they still count for
+the history profile and the charge history.
 
 ## Vehicles
 

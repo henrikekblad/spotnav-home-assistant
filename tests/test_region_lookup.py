@@ -19,7 +19,7 @@ from custom_components.spotnav.api.region import (
 from custom_components.spotnav.pricing.price_repository import PriceRepository
 from custom_components.spotnav.runtime import domain_data
 
-from .relay import BASE_URL, Clock, StoreDouble, StubTransport
+from .relay import stub_repository, Clock, StoreDouble, StubTransport
 from .test_relay_v2 import serve_v2
 
 POSTCODE = "SW1A 1AA"
@@ -28,8 +28,8 @@ POSTCODE = "SW1A 1AA"
 @pytest.fixture
 async def gb_catalogue(hass: HomeAssistant, transport: StubTransport, clock: Clock) -> PriceRepository:
     serve_v2(transport)
-    repository = PriceRepository(hass, base_url=BASE_URL, session=transport, now=clock, store=StoreDouble())
-    await repository.async_get_catalogue(refresh=True)
+    repository = stub_repository(hass, transport, now=clock, store=StoreDouble())
+    repository.catalogue_snapshot()
     domain_data(hass).price_repository = repository
     return repository
 
@@ -77,8 +77,8 @@ async def test_a_postcode_finds_its_region_and_goes_to_octopus_only(
 async def test_a_region_the_catalogue_does_not_list_is_not_offered(
     hass: HomeAssistant, gb_catalogue: PriceRepository, aioclient_mock
 ) -> None:
-    # The fixture catalogue lists GB-C only.
-    aioclient_mock.get(OCTOPUS_GSP_URL, json={"count": 1, "results": [{"group_id": "_P"}]})
+    # The bundled list has no region I.
+    aioclient_mock.get(OCTOPUS_GSP_URL, json={"count": 1, "results": [{"group_id": "_I"}]})
     answer = await async_find_region(hass, POSTCODE)
     assert answer["reason"] == "not_found" and answer["region"] is None and answer["regions"] == []
 
@@ -116,7 +116,7 @@ async def test_the_command_answers_over_the_socket(
     client = await hass_ws_client(hass, hass_read_only_access_token)
     frame = await ws_call(client, {"id": 1, "type": "spotnav/find_region", "api_version": 1, "postcode": POSTCODE})
     assert frame["success"] is True
-    # The offline relay's catalogue is v1 (no Great Britain): nothing it does not list is offered.
-    assert frame["result"]["reason"] == "not_found"
+    # The offline relay's catalogue is not held; the bundled one lists the Great Britain Agile regions.
+    assert frame["result"]["reason"] is None and frame["result"]["regions"] == ["GB-C"]
     refused = await ws_call(client, {"id": 2, "type": "spotnav/find_region", "api_version": 2, "postcode": POSTCODE})
     assert refused["success"] is False

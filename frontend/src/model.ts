@@ -5,6 +5,7 @@
 // `plan.installed`, `plan.relation` decides labelling, chart rows only from `prices.intervals`, and
 // "charging" only from `live.charging`.
 
+import { setupRowsOf, type SetupRow } from "./setup-checklist";
 import {
   chartSeries,
   DEFAULT_CHART_AXIS,
@@ -52,6 +53,7 @@ import type {
   Site,
   Soc,
   Vehicle,
+  PriceProvider,
 } from "./validate";
 
 export type { Issue } from "./status";
@@ -76,6 +78,8 @@ export interface CapabilityItem {
   key: "auto_price" | "current_limit" | "load_balancing" | "target_soc";
   labelKey: TranslationKey;
   state: "available" | "unavailable";
+  /** A sentence under an available capability that is narrower than it sounds. */
+  noteKey?: TranslationKey;
 }
 
 /**
@@ -305,6 +309,10 @@ export interface CardModel {
   priceSource: { name: string; url: string } | null;
   /** The electricity price entry the charger uses, where its area and fees live; `null` for its own settings. */
   priceEntry: PriceEntryFacts | null;
+  /** The area's price provider and its notice (`prices.provider`); `null` without one. */
+  priceProvider: PriceProvider | null;
+  /** What is still left to set up for this charger, the "Get started" rows (shown to an administrator only). */
+  setup: SetupRow[];
   technicalCodes: string[];
 }
 
@@ -364,12 +372,17 @@ export function capabilitiesFor(dashboard: Dashboard): CapabilityItem[] {
     }
     return { key, labelKey, state: "unavailable" };
   };
+  // A charger whose current SpotNav cannot set is still balanced, but only by pausing its charge.
+  const pauseOnly = (entry: CapabilityItem): CapabilityItem =>
+    entry.state === "available" && !capabilities.set_current
+      ? { ...entry, noteKey: "cap.loadBalancingPauseOnly" }
+      : entry;
   return [
     item("auto_price", "cap.autoPrice"),
     // "Dynamic current limit" is what SpotNav can do to this charger, not whether it has a limit
     // entity: a charger whose current SpotNav may not or cannot set is unavailable here.
     item("current_limit", "cap.currentLimit", capabilities.set_current),
-    item("load_balancing", "cap.loadBalancing"),
+    pauseOnly(item("load_balancing", "cap.loadBalancing")),
     item("target_soc", "cap.targetSoc"),
   ];
 }
@@ -939,6 +952,8 @@ export function buildModel(input: BuildInput): CardModel {
     contextAreaId: market?.area_id ?? null,
     priceSource: market?.source ?? null,
     priceEntry: priceEntryFor(dashboard),
+    priceProvider: dashboard.prices.provider,
+    setup: setupRowsOf(dashboard.setup),
     technicalCodes,
   };
 }

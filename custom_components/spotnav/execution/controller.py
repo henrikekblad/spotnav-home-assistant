@@ -20,7 +20,7 @@ from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from dataclasses import asdict, dataclass, replace
 from datetime import datetime, timedelta
-from typing import Any, AsyncContextManager, Final, Literal, Protocol
+from typing import Any, AsyncContextManager, Final, Literal, Protocol, TYPE_CHECKING
 
 from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN
 from homeassistant.core import callback, Event, EventStateChangedData, HassJob, HomeAssistant, State
@@ -110,6 +110,7 @@ from .phase_switching import (
     STORE_KEY as PHASE_SWITCHING_STORE_KEY,
 )
 from .plan_car_ended import PlanChargeWatch
+from .switched_current import SwitchedCurrent, SwitchedCurrentValue
 from .target_stop import (
     car_ended_full,
     charge_ceiling_percent,
@@ -150,6 +151,7 @@ from ..core.session import (
     OWNER_CHARGER_SELF,
     OWNER_NONE,
     SessionError,
+    STORED_VERSION,
 )
 from . import ownership_shadow as ownership_shadow_module
 from .ownership_coverage import OwnershipCoverage, STORE_VERSION as COVERAGE_STORE_VERSION, store_key as coverage_key
@@ -167,6 +169,9 @@ from .ownership_shadow import (
     WINDOW_HOLD,
 )
 
+
+if TYPE_CHECKING:
+    from ..debug_day import ChargerDay
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -308,6 +313,9 @@ def _stored_ocpp_target(config: dict[str, Any]) -> OcppConnectorTarget | None:
 # own min/max (which may narrow but never widen them).
 ABSOLUTE_MIN_AMPS = 1
 ABSOLUTE_MAX_AMPS = 80
+
+# The stored record's key for a switched charger's learned current (`SwitchedCurrent.to_store`).
+SWITCHED_CURRENT_STORE_KEY = "switched_current"
 
 # Unit strings accepted for a current-limit entity. A missing or unknown unit is never
 # assumed to be amperes (same rule as `site_capacity.classify_current`).
@@ -936,6 +944,12 @@ class ChargingController:
         # with no schedule sets it too) and from `setpoint_current_a` (the entity's live value,
         # which can drift).
         self._requested_current_a: int | None = None
+        # The current this charger draws when its current cannot be set, only switched on and off
+        # (`execution/switched_current.py`): learned by the site from its readings, kept across a restart.
+        self._switched = SwitchedCurrent()
+        # The last start or stop command sent to the charge control, and when: a site step is learned only from an
+        # edge SpotNav made (`SwitchedCurrent.begin_edge`).
+        self._last_switch_command: tuple[str, datetime] | None = None
         # Whether the last thing done to the charge control was the regulator's pause (a stop for
         # want of headroom for the minimum current): any other stop or start clears it. Only the
         # battery probe reads it (`site/battery_probe.py`), to resume a charge balancing interrupted.
@@ -1009,6 +1023,8 @@ class ChargingController:
         # that gives up a switch the read-back never confirmed, and whether that was said in this plug-in.
         self._phase_switching_config: bool = config.get(CONF_PHASE_SWITCHING) is True
         self._phases = PhaseSwitchState()
+        # The debug bundle's keeper of this charger's plug-ins (`set_debug_day`), `None` until setup gives it.
+        self._debug_day: ChargerDay | None = None
         self._phase_confirm_cancel: Callable[[], None] | None = None
         self._phase_warned = False
         # Three phases were tried back once after switching was given up in this plug-in (`_restore_three_phases_locked`).
@@ -1376,6 +1392,7 @@ class ChargingController:
             # Forced to one phase by us before the restart: kept, until the charger's read-back says otherwise
             # (`reconcile_phases`).
             self._phases = PhaseSwitchState.from_store(saved.get(PHASE_SWITCHING_STORE_KEY))
+            self._switched = SwitchedCurrent.from_store(saved.get(SWITCHED_CURRENT_STORE_KEY))
         self._saved_memory = self._memory_signature()
         if self._core_drives and self._balancing_read_back is None:
             # No balancing pause in today's keys: none read back (not the session the controller began with).
@@ -3094,6 +3111,7 @@ class ChargingController:
         read_back = self._phases_read_back()
         outcome = self._phases.confirm(read_back, dt_util.utcnow())
         if outcome == "confirmed":
+            self._note_phase_switch("confirmed", read_back=read_back)
             self._cancel_phase_confirm()
             _LOGGER.debug(
                 "SpotNav charger %s: the charger confirmed %s phase(s)", self.entry_id, read_back
@@ -3103,6 +3121,7 @@ class ChargingController:
         elif outcome == "given_up":
             self._phase_switch_given_up(read_back)
         elif not self.phase_switch_settling and self._phases.reconcile(read_back):
+            self._note_phase_switch("reconciled", read_back=read_back)
             _LOGGER.info(
                 "SpotNav charger %s: the charger reads %s phase(s), which is what it is reckoned on now",
                 self.entry_id,
@@ -3114,6 +3133,7 @@ class ChargingController:
     def _phase_switch_given_up(self, read_back: int | None) -> None:
         """A switch the charger did not take: logged once per plug-in, counted in the diagnostics, nothing more (the
         person cannot act on it). The charge goes on, by the rules without switching, on what the read-back shows."""
+        self._note_phase_switch("given_up", read_back=read_back)
         self._cancel_phase_confirm()
         if not self._phase_warned:
             self._phase_warned = True
@@ -3153,8 +3173,22 @@ class ChargingController:
         if outcome == "given_up":
             self._phase_switch_given_up(read_back)
         elif outcome == "confirmed":
+            self._note_phase_switch("confirmed", read_back=read_back)
             self._save_memory_soon()
             self._notify()
+
+    def set_debug_day(self, day: ChargerDay | None) -> None:
+        """Who keeps this charger's plug-ins for the debug bundle across restarts (`debug_day.ChargerDay`): told each
+        phase switch, each command the adapter sends and each event the charge-ownership core decides. Diagnostics
+        only; nothing it keeps is read back by a decision."""
+        self._debug_day = day
+        self.adapter.command_listener = None if day is None else day.note_command
+        self._shadow.on_record = None if day is None else day.note_ownership
+
+    def _note_phase_switch(self, what: str, *, phases: int | None = None, read_back: int | None = None) -> None:
+        day = self._debug_day
+        if day is not None:
+            day.note_phase_switch(what, phases=phases, read_back=read_back)
 
     def _new_phase_plug_in(self) -> None:
         """A plug-in or an unplug: the switch budget and a give-up start afresh (`PhaseSwitchState.new_plug_in`)."""
@@ -3192,6 +3226,7 @@ class ChargingController:
                 )
                 if counted:
                     self._phases.counted_attempt(now)
+                self._note_phase_switch("not_sent", phases=phases)
                 await self._async_save_quietly()
                 return False
         result = await self.adapter.async_set_phases(phases)
@@ -3199,9 +3234,11 @@ class ChargingController:
             if counted:
                 self._phases.counted_attempt(now)
             read_back = self._phases_read_back()
+            self._note_phase_switch("not_sent", phases=phases, read_back=read_back)
             if self._phases.given_up:
                 # Already given up (three tried back once): no new give-up, only what the read-back shows.
-                self._phases.reconcile(read_back)
+                if self._phases.reconcile(read_back):
+                    self._note_phase_switch("reconciled", read_back=read_back)
             else:
                 self._phases.give_up(read_back)
                 self._phase_switch_given_up(read_back)
@@ -3209,6 +3246,7 @@ class ChargingController:
             return False
         _LOGGER.info("SpotNav charger %s: switching to %s phase(s)", self.entry_id, phases)
         self._phases.sent(phases, now, counted=counted)
+        self._note_phase_switch("sent", phases=phases)
         self._arm_phase_confirm()
         # A read-back that already shows it confirms it at once.
         self.reconcile_phases()
@@ -3229,7 +3267,7 @@ class ChargingController:
         if switch is None:
             return
         if switch.start_only and self.charging:
-            # Never mid-charge (Easee): the charge goes on as it is, and the next start sets three phases back.
+            # Never mid-charge (Easee, NRGkick, Wattpilot): the charge goes on as it is, and the next start sets three phases back.
             _LOGGER.debug(
                 "SpotNav charger %s: three phases are set back at the next start, not while it charges", self.entry_id
             )
@@ -3856,6 +3894,23 @@ class ChargingController:
         finally:
             self._start_in_flight = False
 
+    async def _hold_start_for_room(
+        self, manual: bool, cause: str | None, allowance: float, floor: float
+    ) -> None:
+        """A start load balancing held back for want of room (`allowance` below `floor`): the charge that was asked
+        for waits for headroom as what it is (the plan's, a person's, the sun's); the regulator's resume gives it
+        back that origin."""
+        self._start_held_back = True
+        self._remember_paused_charge("manual" if manual else cause or "other", cause == "plan_window" and not manual)
+        _LOGGER.info(
+            "SpotNav charger %s: not started, the site allows %.1fA (below the %sA floor)",
+            self.entry_id,
+            allowance,
+            floor,
+        )
+        await self._async_save()
+        self._notify()
+
     async def _start_command_locked(
         self,
         amps: int | None = None,
@@ -3900,7 +3955,33 @@ class ChargingController:
             # asked for, so the start is still capped by load balancing as every start is.
             explicit_amps = self._requested_current_a
         reserved = False
-        if explicit_amps is not None:
+        if self.is_switch_only:
+            # A charger whose current cannot be set draws its whole switched current from the moment it starts: with
+            # active control on it starts only where the site has room for all of it, and the request is recorded
+            # (never written). Held back, the charge waits for the regulator's resume as any held-back start does.
+            if explicit_amps is not None:
+                self._validate_amps(explicit_amps)
+                self._requested_current_a = explicit_amps
+            needed = self.switched_current().amps
+            switch_too_low: float | None = None
+            try:
+                async with self._assign_lock:
+                    allowance = self._start_allowance_a() if capped else None
+                    if allowance is not None and allowance < needed:
+                        switch_too_low = allowance
+                    elif allowance is not None:
+                        self._reserve_start(math.ceil(needed - 1e-9))
+                        reserved = True
+                if switch_too_low is None and explicit_amps is not None:
+                    await self._async_save()
+            except BaseException:
+                if reserved:
+                    self._reserve_start(None)
+                raise
+            if switch_too_low is not None:
+                await self._hold_start_for_room(manual, cause, switch_too_low, needed)
+                return False
+        elif explicit_amps is not None:
             self._validate_amps(explicit_amps)
             self._requested_current_a = explicit_amps
             too_low: float | None = None
@@ -3941,20 +4022,7 @@ class ChargingController:
                     self._reserve_start(None)
                 raise
             if too_low is not None:
-                # The charge that was asked for waits for headroom as what it is (the plan's, a person's, the
-                # sun's); the regulator's resume gives it back that origin.
-                self._start_held_back = True
-                self._remember_paused_charge(
-                    "manual" if manual else cause or "other", cause == "plan_window" and not manual
-                )
-                _LOGGER.info(
-                    "SpotNav charger %s: not started, the site allows %.1fA (below the %sA floor)",
-                    self.entry_id,
-                    too_low,
-                    DEFAULT_MIN_CURRENT_A,
-                )
-                await self._async_save()
-                self._notify()
+                await self._hold_start_for_room(manual, cause, too_low, DEFAULT_MIN_CURRENT_A)
                 return False
         executed = True
         # From here the charge is SpotNav's, whoever asked (a window, a manual Start, a webhook,
@@ -3977,6 +4045,7 @@ class ChargingController:
             # Recorded before the first await: an accepted Start the charger has not answered is not
             # a failure, and the observation must not blame the car (see `charge_progress.py`).
             sent_at = self._start_sent_at = dt_util.utcnow()
+            self._last_switch_command = ("on", sent_at)
             # Recorded before the command: a charger that reports charging before the command returns
             # opens its session record at once, and the record must know who started it.
             was_cause = self._start_cause
@@ -4536,6 +4605,7 @@ class ChargingController:
         elif needed:
             was_sent_at = self._stop_sent_at
             self._stop_sent_at = dt_util.utcnow()
+            self._last_switch_command = ("off", self._stop_sent_at)
             self._stop_in_flight = True
             failure: Exception | None = None
             try:
@@ -5021,10 +5091,11 @@ class ChargingController:
     def _control_observation(self) -> bool | None:
         """`_control_on` as an observation: `None` while the charge control cannot be read
         (missing, unavailable or unknown) and no status says the charger is charging, so a charge
-        already running is never mistaken for one that just started (`window_hold.py`).
+        already running is never mistaken for one that just started (`window_hold.py`). A path whose
+        enabled state is another entity (`StartStopPath.control_entity_id`) is read on that one.
         """
         if not self.charging:
-            state = self.hass.states.get(self.charge_control)
+            state = self.hass.states.get(self.adapter.path.control_entity_id or self.charge_control)
             if state is None or state.state in (STATE_UNAVAILABLE, STATE_UNKNOWN):
                 return None
         return self._control_on
@@ -5055,6 +5126,56 @@ class ChargingController:
         if self.current_control == CURRENT_CONTROL_CHANGE_CONFIGURATION:
             return True
         return self.adapter.capabilities.set_current
+
+    @property
+    def is_switch_only(self) -> bool:
+        """Whether this charger can only be switched on and off: SpotNav can start and stop it but not set its
+        current (`is_commandable` is not). Load balancing and the sun reckon it at its switched current
+        (`switched_current`) and pause or start it whole."""
+        return not self.is_commandable and self.adapter.capabilities.start_stop
+
+    @property
+    def switched_current_learner(self) -> SwitchedCurrent:
+        """The learner the site feeds this charger's readings to (`site/site_capacity_controller.py`)."""
+        return self._switched
+
+    @property
+    def last_switch_command(self) -> tuple[str, datetime] | None:
+        """The last start (`on`) or stop (`off`) sent to the charge control, and when."""
+        return self._last_switch_command
+
+    def configured_charging_current_a(self) -> float | None:
+        """The charging current the person set for this charger: the current Auto plans with ("Laddström"), else
+        the plan's, else the last one asked for; `None` when none is set."""
+        from ..runtime import domain_data  # imported here: `runtime` reaches this module
+
+        store = domain_data(self.hass).auto_store
+        amps = None if store is None else store.settings(self.entry_id).amps
+        if amps is None and self.plan is not None:
+            amps = self.plan.amps
+        if amps is None:
+            amps = self._requested_current_a
+        return None if amps is None or amps <= 0 else float(amps)
+
+    def switched_current(self) -> SwitchedCurrentValue:
+        """The current this switch-only charger is reckoned at, and its source (`SwitchedCurrent.value`). Never
+        raises: load balancing reads it on every pass, and an unreadable setting falls back to the default."""
+        try:
+            configured = self.configured_charging_current_a()
+        except Exception:  # noqa: BLE001 - the fuse's protection must not depend on reading a setting
+            _LOGGER.debug("SpotNav charger %s: the charging current could not be read", self.entry_id, exc_info=True)
+            configured = None
+        return self._switched.value(configured)
+
+    def switched_current_snapshot(self) -> dict[str, Any] | None:
+        """For the diagnostics: the learned current of a switch-only charger, else `None`."""
+        if not self.is_switch_only:
+            return None
+        return self._switched.snapshot(self.configured_charging_current_a())
+
+    def switched_current_observed(self) -> None:
+        """The site fed the learner: save soon when what it learned moved enough to keep."""
+        self._save_memory_soon()
 
     def add_charge_state_listener(self, listener: Callable[[], None]) -> Callable[[], None]:
         """Be told when Home Assistant's state for the charge control changes.
@@ -5154,6 +5275,7 @@ class ChargingController:
             self._is_plan_charge,
             tuple(sorted(self.adapter.memory().items())),
             self._phases.to_store(),
+            self._switched.signature(),
             # Last: `_persist_session` compares it alone.
             self._car_ended_signature(),
         )
@@ -5237,6 +5359,10 @@ class ChargingController:
         if phases is not None:
             # Only while there is something to keep: a charger that never switched keeps exactly its old record.
             record[PHASE_SWITCHING_STORE_KEY] = phases
+        switched = self._switched.to_store()
+        if switched is not None:
+            # Only once something is learned: a charger whose current is set keeps exactly its old record.
+            record[SWITCHED_CURRENT_STORE_KEY] = switched
         return record
 
     # ------------------------------------------------------------------ the core's stored session
@@ -5262,6 +5388,16 @@ class ChargingController:
         raw = saved.get(SESSION_STORE_KEY) if saved else None
         if raw is None:
             return None, bool(saved)
+        version = raw.get("version") if isinstance(raw, dict) else None
+        if isinstance(version, int) and version > STORED_VERSION:
+            # Written by a later release (this one was rolled back to): its record is not ours to read, and today's
+            # keys, which every release still writes, are. Expected, so no failure.
+            _LOGGER.debug(
+                "SpotNav charger %s: the stored session is version %s, from a later release; read from the keys",
+                self.entry_id,
+                version,
+            )
+            return None, True
         try:
             return ChargeSession.from_store(raw), False
         except SessionError as err:
@@ -5614,6 +5750,7 @@ class ChargingController:
                     "window_start",
                     self._automatic_permitted(AUTOMATIC_START)
                     and not self._car_ended_holds_window()
+                    and not self._rearm_meets_balancing(trigger)
                     and self.adapter.vehicle_connected() is not False,
                     ("start", "plan_window") in verdict,
                 )
@@ -5630,7 +5767,7 @@ class ChargingController:
                     "SpotNav charger %s: a window opens while Auto is paused; nothing is started", self.entry_id
                 )
                 return False
-            elif self._car_ended_holds_window():
+            elif self._car_ended_holds_window() or self._rearm_meets_balancing(trigger):
                 return False
             elif self.adapter.vehicle_connected() is False:
                 # No car at the charger: a start would only wait for one (an OCPP charger takes it and shows
@@ -5656,6 +5793,11 @@ class ChargingController:
                 legacy=legacy,
                 outcome=outcome,
             )
+
+    def _rearm_meets_balancing(self, trigger: str) -> bool:
+        """A re-arm inside an open window (a restart, a follow, an install) while load balancing holds a charge back:
+        nothing starts and the memory stays, so its regulator resumes the charge with its own margin and dwell."""
+        return trigger == core_events.TRIGGER_REARM and self._balancing.paused
 
     async def _async_enforce_target(self) -> bool:
         """Make the target decision for the plan in force, and act on it. Takes the operation lock

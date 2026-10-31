@@ -4,6 +4,10 @@ SpotNav can tell a phone when something about a charge needs attention, through 
 Companion app (the iOS and Android app). It uses the app's own notify service, `notify.mobile_app_<phone>`,
 which exists for every phone signed in to Home Assistant with the app. Nothing else has to be set up.
 
+The paired [SpotNav app](https://play.google.com/store/apps/details?id=se.sensnology.spotnav) can show the same
+notifications itself, woken instantly (see [Instant notifications in the SpotNav app](#instant-notifications-in-the-spotnav-app)), so a phone with only the SpotNav app
+needs no Companion app. Until either is set up, the card's *Get started* list asks you to choose phones.
+
 ## Choosing phones and events
 
 In the card: **Settings → Notifications → Change notifications**. Tick the phones that should be told
@@ -59,7 +63,7 @@ last thing it did say.
 
 A charger can tell when it is an OCPP connector, or when its status sensor says it the way the card's connection
 shows it (*disconnected*): Easee, Wallbox, Zaptec, go-e, Wattpilot, Peblar, NRGkick, Charge Amps, Lektrico,
-OpenEVSE, Alfen, Heidelberg, GARO, DEFA, ABB Terra AC, Ohme and Monta. A status that does not prove the car is away
+OpenEVSE, Alfen, Heidelberg, GARO, DEFA, ABB Terra AC, Ohme, Monta and NexBlue. A status that does not prove the car is away
 counts as neither: Charge Amps says *Unavailable* while its switch has the connector off, so a window opening then
 still starts it (a car plugged in meanwhile would not be seen), and nothing is told once it says *Available*.
 SmartEVSE's *Ready to Charge* is also said with a car plugged in while the charger is paused, so a SmartEVSE cannot

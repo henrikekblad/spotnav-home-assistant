@@ -75,8 +75,8 @@
   minimum current first. The charger does the interruption itself. A charger forced to one phase is reckoned as a
   single-phase "Automatic" one (`SiteCapacityController.reckoned_phases`, `_car_phases`), and while a switch settles the watch on
   the charge reads no car ending it and no start not taken (`_watch_charge`). A charger whose phases are set only before
-  a start (`PhaseSwitch.start_only`, Easee) gets the phase inputs only while no charge runs (`_start_only_charging`):
-  it starts on the phases the surplus carries, and a running charge is never switched.
+  a start (`PhaseSwitch.start_only`: Easee, NRGkick, Wattpilot) gets the phase inputs only while no charge runs
+  (`_start_only_charging`): it starts on the phases the surplus carries, and a running charge is never switched.
 """
 
 from __future__ import annotations
@@ -801,6 +801,8 @@ class SolarExecutionCoordinator:
         self._decision_log: deque[dict[str, Any]] = deque(maxlen=SOLAR_DECISION_LOG_LENGTH)
         self._decision_signature: tuple[Any, ...] | None = None
         self._decision_state: str | None = None
+        # Who also keeps each entry (the debug bundle's plug-ins, `debug_day.py`), which outlives a restart.
+        self.decision_listener: Callable[[dict[str, Any]], None] | None = None
         self._strategy: str | None = None
         # Coalescing guard: `_on_site_update` fires often, but an evaluation awaits
         # `AutoExecutor`'s lock and `SolarController` is not reentrant, so a trigger arriving mid-
@@ -1024,12 +1026,16 @@ class SolarExecutionCoordinator:
 
         if self._solar is None:
             self._solar = self._build_controller(site)
-        elif not (held_by_plan or held_by_floor) and self._state is not None and self._state.held_by_plan:
-            # A plan window held the charge until now (its end handed it over, or the strategy left the plan): what
-            # the sun asked for meanwhile was never written, so its next modulation writes again. A start
-            # not taken is timed afresh: the watch did not run meanwhile.
-            self._solar.release_request()
-            self._unseen_since = None
+        else:
+            if self._controller.is_switch_only and self._solar.config != (limits := self._solar_config(site)):
+                # Its learned current moved: the thresholds follow it, the state is kept.
+                self._solar.update_limits(limits)
+            if not (held_by_plan or held_by_floor) and self._state is not None and self._state.held_by_plan:
+                # A plan window held the charge until now (its end handed it over, or the strategy left the plan):
+                # what the sun asked for meanwhile was never written, so its next modulation writes again. A start
+                # not taken is timed afresh: the watch did not run meanwhile.
+                self._solar.release_request()
+                self._unseen_since = None
         if not (held_by_plan or held_by_floor):
             if await self._adopt_solar_charge(site, self._solar):
                 # Solar's own charge resumed by load balancing was decided this tick (kept or stopped).
@@ -1138,8 +1144,8 @@ class SolarExecutionCoordinator:
         )
 
     def _start_only_charging(self) -> bool:
-        """A charger whose phases are set only before a start (`PhaseSwitch.start_only`, Easee) with a charge running:
-        no phase decision while it runs, so the charge follows the rules without switching."""
+        """A charger whose phases are set only before a start (`PhaseSwitch.start_only`: Easee, NRGkick, Wattpilot) with
+        a charge running: no phase decision while it runs, so the charge follows the rules without switching."""
         controller = self._controller
         switch = controller.adapter.phase_switch
         if switch is None or not switch.start_only:
@@ -1436,6 +1442,14 @@ class SolarExecutionCoordinator:
         wiring: dict[str, Any] = (site.config.get(CONF_PHASE_WIRING) or {}).get(
             self._charger_entry_id
         ) or {}
+        if self._controller.is_switch_only:
+            # A charger whose current cannot be set draws its whole switched current or nothing: it starts only on a
+            # surplus that covers all of it, and stops once the surplus (its own draw added back) stays below that for
+            # the stop delay. Nothing is modulated (`current_writer` is nobody).
+            switched = self._controller.switched_current().amps
+            return SolarConfig(
+                priority=priority, min_current_a=switched, max_current_a=switched, start_a=switched, stop_a=switched
+            )
         min_current_a = float(wiring.get("min_current_a", DEFAULT_MIN_CURRENT_A))
         config_kwargs: dict[str, Any] = {"priority": priority, "min_current_a": min_current_a}
         # A charge starts at the charger's own start minimum (a profile may set it above 6 A); once running it may still
@@ -1635,24 +1649,29 @@ class SolarExecutionCoordinator:
             return
         if action == "hold" and signature == last:
             return
-        self._decision_log.append(
-            {
-                "time": dt_util.utcnow().isoformat(),
-                "strategy": self._strategy,
-                "from": self._decision_state,
-                "to": state,
-                "action": action,
-                "reason": reason,
-                "held_by_plan": held_by_plan,
-                "requested_a": requested_a,
-                "available_w": available_w,
-                "export_w": export_w,
-                "battery_w": battery_w,
-                "net_grid_w": net_grid_w,
-                "car_w": car_w,
-                "priority": priority,
-            }
-        )
+        entry: dict[str, Any] = {
+            "time": dt_util.utcnow().isoformat(),
+            "strategy": self._strategy,
+            "from": self._decision_state,
+            "to": state,
+            "action": action,
+            "reason": reason,
+            "held_by_plan": held_by_plan,
+            "requested_a": requested_a,
+            "available_w": available_w,
+            "export_w": export_w,
+            "battery_w": battery_w,
+            "net_grid_w": net_grid_w,
+            "car_w": car_w,
+            "priority": priority,
+        }
+        self._decision_log.append(entry)
+        listener = self.decision_listener
+        if listener is not None:
+            try:
+                listener(dict(entry))
+            except Exception:  # noqa: BLE001 - a diagnostic listener must never disturb a decision
+                _LOGGER.debug("The solar decision listener failed", exc_info=True)
         self._decision_signature = signature
         self._decision_state = state
 

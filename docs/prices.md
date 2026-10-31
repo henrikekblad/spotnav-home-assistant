@@ -1,39 +1,67 @@
 # Prices
 
 Where SpotNav's prices come from, what is added to them, and how the integration uses them. The
-second half describes the files the SpotNav Relay publishes, for anyone who wants to read them
+last part describes the day document SpotNav keeps and hands to the app, for anyone who reads it
 directly.
 
 - [Where prices come from](#where-prices-come-from)
 - [What you pay](#what-you-pay)
 - [How the integration uses the prices](#how-the-integration-uses-the-prices)
-- [The relay's published files](#the-relays-published-files)
+- [The day document](#the-day-document)
 
 ## Where prices come from
 
-Prices come from the SpotNav Relay ([spotnav.sensnology.se](https://spotnav.sensnology.se)), which
-collects them once for everyone and publishes them with ECB exchange rates. There is no account and
-no API key.
+Your Home Assistant fetches the prices itself, for its own use, from a source you add once. Which
+source an area uses follows from what you have set up; there is no setting to choose it:
 
-- **Day-ahead spot prices** from the ENTSO-E Transparency Platform for 26 countries: the Nordic and
-  Baltic countries, Germany/Luxembourg, the Netherlands, Belgium, France, Austria, Switzerland,
-  Poland, Czechia, Slovakia, Hungary, Slovenia, Croatia, Romania, Bulgaria, Greece, Italy (all
-  zones), Spain and Portugal.
-- **Spain – PVPC (regulated)** from Red Eléctrica, with the network charges already in the price.
-- **Great Britain – Octopus Agile** in all 14 regions, with VAT and network charges already in the
-  price. These are your prices only if you are on Agile; see
+| Area | Source | What you add |
+|---|---|---|
+| Sweden, Norway, Denmark, Finland, Estonia, Latvia, Lithuania, Germany/Luxembourg, the Netherlands, Belgium, France, Austria, Poland, Romania, Bulgaria | Nord Pool, through Home Assistant's built-in [Nord Pool](https://www.home-assistant.io/integrations/nordpool/) integration | The Nord Pool integration (**Settings → Devices & services → Add integration → Nord Pool**) |
+| Spain – PVPC (regulated) | Red Eléctrica, through Home Assistant's built-in [PVPC](https://www.home-assistant.io/integrations/pvpc_hourly_pricing/) integration | The PVPC integration |
+| Great Britain – Octopus Agile (14 regions) | Your own Agile rates, through the [Octopus Energy](https://github.com/BottlecapDave/HomeAssistant-OctopusEnergy) integration | The Octopus Energy integration, from HACS, with your Agile meter |
+| Every other area: Switzerland, Czechia, Slovakia, Hungary, Slovenia, Croatia, Greece, Italy (all zones), Spain (day-ahead) and Portugal | The ENTSO-E Transparency Platform | Your own free ENTSO-E key |
+
+- **Nord Pool.** SpotNav asks the integration's `nordpool.get_prices_for_date` for each day of the area it
+  needs, in euro. The area and currency you pick when adding the integration do not matter. Nord Pool's
+  day is the CET day, so a Finnish, Baltic, Romanian or Bulgarian day is cut from two of Nord Pool's days.
+  Nord Pool keeps about two months of past days.
+- **Your ENTSO-E key** works for every area the platform publishes, the Nord Pool areas included; where
+  both are there, Nord Pool is used. To get one: register at
+  [transparency.entsoe.eu](https://transparency.entsoe.eu/), then e-mail transparency@entsoe.eu with the
+  subject "Restful API access" and your account's e-mail address in the text. Once access is granted (it can
+  take a few days), generate the security token under **My Account Settings**. Enter it in the card under
+  **Settings → Electricity price**, or in the electricity price's **Configure**. There is one key for the
+  whole installation. It is stored in Home Assistant, never logged and never shown in diagnostics; ENTSO-E
+  checks it once when you save it.
+- **PVPC** reads the prices the PVPC integration already holds. **Octopus Agile** reads your meter's rates
+  from the Octopus Energy integration, so they are your own tariff's prices; see
   [Great Britain](supported.md#great-britain-octopus-agile).
+
+An area with no source of its own shows a notice in the card (**Settings → Electricity price**) with the
+one step that gives it one ("Add Nord Pool", "Add your ENTSO-E key", "Add PVPC", "Add Octopus Energy"),
+and the electricity price device names it as its problem. Prices it already holds keep showing. Once
+there is nothing priced for today, Home Assistant also raises a Repairs issue; it goes away by itself
+when prices arrive. See [Troubleshooting](troubleshooting.md#prices-are-missing).
+
+The SpotNav relay no longer delivers prices (since SpotNav 2.0); it only wakes the app for its
+notifications.
+
+**What SpotNav contacts for prices.** Only Home Assistant's own integrations that you added (which
+contact Nord Pool, Red Eléctrica or Octopus Energy themselves), the ENTSO-E platform
+(`web-api.tp.entsoe.eu`) when you have entered a key, and the European Central Bank's public reference
+rates (`www.ecb.europa.eu`, once a day) for an area priced in another currency than the euro. Nothing
+about your charging is sent anywhere.
 
 You choose the price area in the card (**Settings, Electricity price**; see [the card](card.md#electricity-price)). It belongs to
 the installation's [electricity price](price-device.md), so every charger that uses it follows. A country with several
 bidding zones (Sweden, Norway, Denmark, Italy) has one area per zone. The card names each area's
-price source, linked, under the area.
+price source under the area's prices.
 
 ### Currency
 
-The relay publishes every price in euro per kWh, together with the ECB reference rate for the area's
-currency and the date of that rate. Home Assistant converts with that rate, the one in the day's own
-file, and shows the price in the area's currency: kronor and öre in Sweden, pounds and pence in Great
+Every day is stored in euro per kWh, together with the ECB reference rate for the area's currency
+and the date of that rate (the newest rate at most a week before the day). Home Assistant converts with
+that rate, the one in the day's own file, and shows the price in the area's currency: kronor and öre in Sweden, pounds and pence in Great
 Britain, euro and cent in the euro areas. If a day's file has no rate for a non-euro area, SpotNav
 does not guess one: the card says the prices cannot be converted.
 
@@ -50,12 +78,12 @@ Prices for tomorrow are published once a day, at a time that depends on the sour
 
 | Source | Expected publication |
 |---|---|
-| ENTSO-E day-ahead (most areas) | about 13:00 Brussels time |
+| Nord Pool through Home Assistant | about 12:45 Brussels time |
+| ENTSO-E day-ahead (your key) | about 13:00 Brussels time |
 | Octopus Agile (Great Britain) | about 16:00 UK time |
 | Red Eléctrica PVPC (Spain, regulated) | about 20:15 Madrid time |
 
-Each area states its own expected time in the relay's area list (`publication`), so SpotNav knows
-when to look and how long to wait. Until then only today's prices are known. SpotNav never plans on prices that are not published; see
+SpotNav knows each source's time, so it knows when to look and how long to wait. Until then only today's prices are known. SpotNav never plans on prices that are not published; see
 [Waiting for tomorrow's prices](#waiting-for-tomorrows-prices).
 
 ## What you pay
@@ -73,7 +101,7 @@ percentage.
 
 - **Each addition is off, the suggestion, or your own value.** All three are off on a new area, so
   the plan starts on the bare spot price. Switch on the ones that apply to you.
-- **Suggestions are per area and editable.** The relay suggests a VAT rate and an electricity tax
+- **Suggestions are per area and editable.** SpotNav suggests a VAT rate and an electricity tax
   where they are known, and a grid fee for a few areas (the Swedish ones). An area without a suggestion leaves the
   field for you to fill in. A suggested zero is a real value: northern Norway (NO4) has no VAT.
 - **Grid fees are yours to check.** They depend on your network operator and your agreement, and a
@@ -113,7 +141,7 @@ publication, at the charger's rate with a margin, before the departure.
 - If the prices are late and the latest safe start arrives, the remainder is charged at once. The
   departure is kept; only the price is given up. A plan bought without published prices is flagged.
 
-The expected publication is the area's own `publication` time plus a 45-minute margin, worked out
+The expected publication is the area's own publication time plus a 45-minute margin, worked out
 in that time's zone, so a clock change cannot shift it. An area that states no time is expected at
 13:00 Brussels time. Until the expected time the card says when the prices are due ("Waiting for
 tomorrow's prices (~16:45)" in Great Britain); after it, the card names no time and SpotNav treats the
@@ -122,9 +150,10 @@ prices as able to arrive at any moment.
 ### The history profile
 
 For a departure on a particular day ("Sun 4 Oct", up to seven days ahead) or on chosen weekdays, the
-plan can reach past the last published price. The relay publishes a profile of the last four weeks
-for each area: the median price and its spread for every weekday and hour. SpotNav compares the
-cheapest published intervals with what the profile expects for the hours that are not published yet.
+plan can reach past the last published price. SpotNav keeps a profile of the last four weeks for
+each area, built in Home Assistant from the day prices it has stored: the median price and its spread
+for every weekday and hour. It compares the cheapest published intervals with what the profile
+expects for the hours that are not published yet.
 
 If the unpublished hours were clearly cheaper (by more than one standard deviation of the spread,
 after your tax, grid fee and VAT), it waits and says so: *Waiting for Sunday's prices (at 13:00), which have
@@ -136,158 +165,44 @@ it plans on the published prices.
 For an ordinary daily departure the profile only explains a wait for tomorrow's prices, or ends it
 when the published hours are clearly cheaper than the expected unpublished ones.
 
-SpotNav asks for an area's profile at most once a day and does not use one that is more than two
-days old.
+The profile needs at least 21 of the last 28 days stored; until then there is no profile and the plan
+uses the published prices. After you add a source, SpotNav fills the missing past days from it in the
+background, one request at a time and two seconds apart, so a profile is usually there within minutes.
+With an ENTSO-E key it then also fills a year of past days, for statistics, one request every two minutes.
 
 ### Fetching and caching
 
 There is one price cache per Home Assistant instance, shared by every charger: two chargers on the
 same area make one set of requests.
 
-- The relay's index says which days exist. SpotNav fetches a day only after the index lists it, so
-  it does not ask for days that are not published yet.
-- It reads the index every 30 minutes, every 5 minutes from 5 minutes before an area's expected
-  publication until two hours after it while that area's tomorrow is still missing, and every hour
-  once tomorrow is in hand. Each interval varies by ±10 %
-  so installations do not ask at the same moment. After a network failure it backs off from one
-  minute up to 30 minutes.
-- The area list is read again once a day, and at once when the index says it has changed.
-- Everything fetched is stored in Home Assistant, so after a restart the last prices are there
-  before the relay answers.
+- Today's prices are asked for when they are missing, and tomorrow's from 5 minutes before the source's
+  expected publication, until they arrive. Once both days are held, a check asks nothing.
+- It checks every 30 minutes, every 5 minutes from 5 minutes before an area's expected publication until
+  two hours after it while that area's tomorrow is still missing, and every hour once tomorrow is in hand.
+  Each interval varies by ±10 % so installations do not ask at the same moment. After a failure it backs off
+  from one minute up to 30 minutes.
+- The area list comes with SpotNav itself; it is never fetched.
+- Everything fetched is stored in Home Assistant, so after a restart the last prices are there at once.
+  Day prices are kept for 400 days and then dropped, so the stored file stays a bounded size. Days stored
+  before 2.0 (fetched from the SpotNav relay) are kept the same way and count for the profile and the
+  charge history.
 
-### When the relay cannot be reached
+### When a source cannot be reached
 
 The last good prices are kept and never relabelled as fresh. A plan already calculated is kept as it
 stands, and the card says *The prices are stale: the last successful fetch is still being used.*
-Nothing new is calculated from stale data. If the area list cannot be fetched, the card's area picker
-shows the last list Home Assistant received, with a note. Once the relay answers again, the prices
-and the plan update by themselves.
+Nothing new is calculated from stale data. Once the source answers again, the prices and the plan update
+by themselves. A source that is there but failing (Nord Pool unreachable, ENTSO-E asking to wait) shows no
+notice: there is nothing to do but wait.
 
-## The relay's published files
+## The day document
 
-This part is technical. It describes what a client fetches from
-`https://spotnav.sensnology.se` and what the files contain. The files are public static JSON. They
-need no key or account and are served with CORS open to any origin. They are the contract SpotNav's
-own clients read; if you build on them, follow the [versioning](#versioning) rules and cache as the
-headers say.
+This part is technical. Every source's day is kept as one JSON document per area and market day, in
+one format, whatever the source. It is the format the app reads through the webhook's `price_days`
+([API](api.md#charger-webhook)) and the format the SpotNav relay published before 2.0, so a reader of
+those files reads these unchanged.
 
-| Path | What it is | `Cache-Control` |
-| --- | --- | --- |
-| `/v2/areas.json` | Every area: identity, time zones, currency, suggestions, source | `public, max-age=3600, must-revalidate` |
-| `/v2/index.json` | Which recent days exist for each area, and their resolution | `public, max-age=30, must-revalidate` |
-| `/v1/{area}/{YYYY}/{MM-DD}.json` | One area's prices for one day | `public, max-age=604800, immutable` |
-| `/v1/{area}/profile.json` | Four weeks of prices by weekday and hour | `public, max-age=300, must-revalidate` |
-| `/v1/areas.json`, `/v1/index.json` | The v1 area list and index, frozen | as their v2 counterparts |
-
-There are no `/v2/` day or profile paths: day files and profiles keep their `/v1/` paths under both
-contract versions.
-
-### How to read it
-
-1. Read `/v2/areas.json` to learn the areas.
-2. Read `/v2/index.json` to learn which days each area has. It is small and cheap to revalidate.
-3. Fetch a day only once the index lists it. A published day never changes, so cache it for good.
-
-Do not poll a day URL waiting for it to appear; poll the index. The index carries `areas_rev`, so a
-client also notices a changed area list without polling `areas.json` often.
-
-### `/v2/areas.json`
-
-```json
-{
-  "v": 2,
-  "generated": "2026-10-05T20:22:35+02:00",
-  "areas": [
-    {
-      "id": "ES-PVPC",
-      "countries": ["ES"],
-      "name": "Spain – PVPC (regulated)",
-      "tz": "Europe/Madrid",
-      "currency": "EUR",
-      "major_unit": "€",
-      "minor_unit": "cent",
-      "included": ["grid_fee"],
-      "vat_percent": 21,
-      "source": { "name": "Red Eléctrica (ESIOS) – PVPC", "url": "https://www.esios.ree.es/es/pvpc" }
-    },
-    {
-      "id": "GB-C",
-      "countries": ["GB"],
-      "name": "GB C – London",
-      "tz": "Europe/London",
-      "market_tz": "Europe/Paris",
-      "currency": "GBP",
-      "major_unit": "£",
-      "minor_unit": "p",
-      "included": ["vat", "tax", "grid_fee"],
-      "source": { "name": "Octopus Energy (Agile)", "url": "https://octopus.energy/smart/agile/" }
-    },
-    {
-      "id": "SE3",
-      "eic": "10Y1001A1001A46L",
-      "countries": ["SE"],
-      "name": "Stockholm",
-      "tz": "Europe/Stockholm",
-      "currency": "SEK",
-      "major_unit": "kr",
-      "minor_unit": "öre",
-      "vat_percent": 25,
-      "suggested_tax": 36,
-      "suggested_grid_fee": 30,
-      "publication": { "time": "13:00", "tz": "Europe/Brussels" },
-      "source": { "name": "ENTSO-E Transparency Platform", "url": "https://transparency.entsoe.eu/" }
-    }
-  ]
-}
-```
-
-Areas are sorted by `id`. Only areas the relay can serve are listed.
-
-| Field | Meaning |
-| --- | --- |
-| `id` | The area's id, `[A-Z0-9-]`, up to 32 characters: `SE3`, `DE-LU`, `GB-C`, `ES-PVPC`. |
-| `eic` | Optional. The ENTSO-E area code. A Great Britain region and `ES-PVPC` have none. |
-| `countries` | ISO country codes the area covers. |
-| `name` | One neutral display name, not a translation. |
-| `tz` | The IANA time zone people read the times in. |
-| `market_tz` | Optional; absent means `tz`. The zone whose calendar day one day file covers. Great Britain is `Europe/Paris`, because Agile runs 23:00 to 23:00 UK time. Portugal is `Europe/Madrid`. |
-| `currency` | ISO 4217 code. Use this, not the unit labels, for arithmetic and exchange rates. |
-| `major_unit`, `minor_unit` | Display labels for the whole and the hundredth unit (`kr`/`öre`, `€`/`cent`, `£`/`p`). Not unique: SEK, NOK and DKK are all `kr`. Display them; do not parse them. |
-| `vat_percent` | Optional. Suggested VAT in percent. |
-| `suggested_tax` | Optional. Suggested electricity tax, in the minor unit per kWh. |
-| `publication` | Optional. `{ "time": "HH:MM", "tz": "<IANA zone>" }`: when tomorrow's prices are expected, in that zone (`13:00` `Europe/Brussels` for ENTSO-E). A client that does not know it, or an area without it, assumes 13:00 Brussels; the integration does the same for one it cannot read, and keeps the area. |
-| `suggested_grid_fee` | Optional. Suggested grid fee, in the minor unit per kWh. |
-| `included` | Optional; absent means `[]`. Which of `vat`, `tax` and `grid_fee` the published price already contains. A client applies none of those. |
-| `source` | `{ "name", "url" }`: where the prices come from, for attribution. |
-
-The suggestions are best effort. An area without a known figure omits the field, and zero and absent
-are different facts: `"vat_percent": 0` means there is no VAT; no field means it is not known.
-
-### `/v2/index.json`
-
-```json
-{
-  "v": 2,
-  "generated": "2026-10-05T20:22:35+02:00",
-  "res_default": 60,
-  "areas_rev": "4d3df4fb93ba",
-  "areas": {
-    "CH": { "days": ["2026-10-04", "2026-10-05", "2026-10-06"] },
-    "GB-C": { "days": ["2026-10-04", "2026-10-05", "2026-10-06"], "res": 30 },
-    "SE3": { "days": ["2026-10-04", "2026-10-05", "2026-10-06"], "res": 15 }
-  }
-}
-```
-
-| Field | Meaning |
-| --- | --- |
-| `generated` | When the index was written. |
-| `res_default` | The resolution in minutes for an area that states none. |
-| `areas_rev` | The first twelve hex digits of the SHA-256 of `/v2/areas.json`. When it changes, read the area list again. The area list is always written before the index that points at it. |
-| `areas.{id}.days` | The recent days that exist: yesterday, today and tomorrow, on the area's market calendar. Older days are not listed but stay at their URLs. |
-| `areas.{id}.res` | Optional; absent means `res_default`. The resolution in minutes: 15, 30 or 60. |
-
-### A day: `/v1/{area}/{YYYY}/{MM-DD}.json`
+### A day
 
 ```json
 {
@@ -323,18 +238,18 @@ The real file has 96 prices; it is cut to four here. A Great Britain day looks t
 | `prices` | One price per interval. Element *n* starts at `start + n × res` minutes. There are no per-element timestamps. Prices can be negative. |
 | `fx` | Exchange rates from EUR: local price = EUR price × rate. Empty for a euro area, and for an old day with no rate from near that day. |
 | `fx_date`, `fx_src` | The date of the rate and where it comes from (`ECB`). Absent when `fx` is empty. |
-| `src` | The source that produced the prices: `entsoe.eu`, `octopus.energy` or `esios.ree.es`. |
+| `src` | The source that produced the prices: `nordpool`, `entsoe.eu`, `octopus.energy` or `esios.ree.es`. |
 | `published` | When the source published the prices, or `null` when the source does not say. |
-| `retrieved` | When the relay fetched them. |
+| `retrieved` | When they were fetched. |
 
 Clock changes need no special case. Walk `start + n × res` in absolute time, not local wall time: a
 23-hour spring day has 92 quarter-hours and a 25-hour autumn day has 100.
 
 The prices are what the source published, converted to EUR/kWh. They contain only what the area's
-`included` says. For Great Britain the relay converts Octopus's pence to EUR with the ECB rate in
-`fx`, so multiplying back by `fx.GBP` gives Octopus's price.
+`included` says. For Great Britain Octopus's pence are converted to EUR with the ECB rate in `fx`, so
+multiplying back by `fx.GBP` gives Octopus's price.
 
-### The history profile: `/v1/{area}/profile.json`
+### The history profile
 
 ```json
 {
@@ -362,36 +277,6 @@ The prices are what the source published, converted to EUR/kWh. They contain onl
 | `median`, `std` | The median price and the population standard deviation of that weekday and hour, in EUR/kWh. |
 | `n` | How many prices went into it (four per hour for a quarter-hour area). |
 
-A weekday and hour with too few prices is left out. An area with too little history has no profile,
-and the relay answers 404. A profile is recalculated as days arrive, so it is served with a short
-cache time, unlike a day.
-
-### What a 404 means
-
-A 404 means the file does not exist yet, or not at all: a day that is not published, a profile there
-is not enough history for, or an area that does not exist. It is cached for only 60 seconds, so a
-client can ask again soon, but it is better to wait until the index lists the day. The body of a 404
-is not JSON.
-
-### Versioning
-
-The path segment (`/v1/`, `/v2/`) and the `"v"` field change together. A change that could break a
-reader gets a new version, served alongside the old one. Adding a field is not such a change, so a
-reader must ignore fields it does not know.
-
-- **v1** (`/v1/areas.json`, `/v1/index.json`) is frozen. It lists the ENTSO-E bidding zones in the v1
-  shape and never gains a field.
-- **v2** (`/v2/areas.json`, `/v2/index.json`) lists every area, including those v1 does not (Great
-  Britain, `ES-PVPC`), and adds `market_tz`, `included`, `source`, an optional `eic` and 30-minute
-  days.
-- **Day files and profiles** have one path and `"v": 1` under both. A day for a v2-only area may
-  carry v2 fields such as `market_tz`.
-
-A client reads v2 first and falls back to v1 when v2 is absent. It skips an area entry it cannot use
-(an unknown `included` value, a resolution it cannot plan with) instead of refusing the whole list.
-
-The integration does exactly this (`custom_components/spotnav/pricing/relay_contract.py` and
-`price_repository.py`): it reads `/v2/` first and falls back to `/v1/` when the relay answers v2 with
-a 404 or a body it cannot read, and it reads the index in the same version as the area list it holds.
-Every document is checked against the contract, and one that fails is never used in place of the last
-good one.
+A weekday and hour with too few prices is left out. An area with too little history has no profile
+(`null` in `price_days`). The profile is built in Home Assistant from the stored days and recalculated as
+days arrive.

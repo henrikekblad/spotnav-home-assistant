@@ -133,6 +133,20 @@ It is best effort and is not a protective device. Turning it off gives back any 
   already at or below the lower current is not written again. The one exception is a home battery whose
   yield is verified on this site (see yield stepping below): up to the yield ceiling, yield stepping
   judges that overload as before.
+- **A lost measurement steps the car to its minimum.** While the site's measurement is stale, missing or
+  unusable, load balancing decides nothing and writes nothing on it: the site's status says **Measurement
+  stale** or **Measurement missing**. Once the measurement has been lost for 60 seconds on a phase a charger
+  may draw on (on top of the maximum measurement age, so a stale reading counts after some three minutes
+  and an unavailable one after one), every charger load balancing governs that draws above its minimum
+  current is set to that minimum, at once and through the charger's usual write. It is not paused or
+  stopped (a meter that is silent does not show an overload), nothing is started, and a charger load
+  balancing does not govern is not touched. The card says "The site's meter has no fresh reading: load
+  balancing holds the car at its minimum of 6 A until it is back." A reading that is merely unchanged
+  while Home Assistant keeps hearing from the sensor is not a lost one. When the measurement is back the
+  regulator works as before from its next pass, and raises the car by its usual damped steps, never
+  straight back to the old current. Like any other decision, this one waits while a meter reports too
+  seldom or a charger is claimed by more than one site. The site's diagnostics count the times it
+  happened, with the last (`measurement_lost`).
 - **A step up stops one amp short of the room there is**, so the car settles one step below the
   limit (the fuse less the site's safety margin, which may be 0) instead of landing on it and being
   cut. A charger's own current is read far less often than the site meter (OCPP: about once a
@@ -208,7 +222,8 @@ It is best effort and is not a protective device. Turning it off gives back any 
   the same plug-in.
 - It requires a site with usable measurement and a charger SpotNav can command: one whose
   current SpotNav is set to change (an OCPP charger set through ChangeConfiguration, or a charger
-  with a current number or service, see [supported hardware](supported.md)). A charger whose
+  with a current number or service, see [supported hardware](supported.md)), or one it can only
+  switch on and off (below). A charger whose
   current is stored in the charger cannot be adjusted during a charge, but can be stopped when the
   fuse needs less than its setting. It is refused while a charger belongs to more than one site, and
   held while a meter it reads reports too seldom; an import overload is still lowered then.
@@ -312,10 +327,60 @@ It is best effort and is not a protective device. Turning it off gives back any 
     safe level, and the measured per-phase current stays the fuse protection throughout.
 - **Decision log.** Every change the regulator makes or holds (time, from and to amps, the reason,
   the limiting phase, the battery power and the measured currents) is kept in a bounded list per
-  site, the last 200, shown as `regulator_decision_log` in the site's diagnostics (and so in the
-  debug bundle). What solar and hybrid decide is beside it, per charger, as `solar_decision_log`.
+  site, the last 200, shown as `regulator_decision_log` in the site's diagnostics. What solar and
+  hybrid decide is beside it, per charger, as `solar_decision_log`. The debug bundle keeps both per
+  charger plug-in instead, also across restarts (`sessions`, see
+  [Diagnostics and troubleshooting](troubleshooting.md)).
 - Reading a measurement that has not changed is told apart from a dead link before the reading
   is treated as stale.
+
+### Chargers that can only be switched on and off
+
+A charger whose current SpotNav cannot set (Monta, myenergi zappi, Ohme, go-e legacy, ChargePoint, NexBlue,
+a charger behind a smart plug, or any charger whose current control is not turned on) draws a
+current of its own. Load balancing reckons it as one load of that size, its **switched current**, and
+pauses or resumes it whole. There is no setting for it; SpotNav learns it, from the first of:
+
+1. **Its own measurement**: the charger's current sensors (the highest phase), or a smart plug's power
+   divided by its phases times 230 V, read while it charges and the car draws at least 2 A. A rise is
+   taken quickly and a fall slowly, so a car tapering off at the end of a charge does not make the next
+   charge look small.
+2. **The site meter's step**, for a charger with neither: when SpotNav switches it on or off, the change
+   in the site's phase currents on the phases it is wired to, less what the other chargers' own readings
+   changed by, from the reading just before the command to the first reading after it that has held
+   still (within 0.5 A for ten seconds, from ten seconds after the switch, within two minutes). A step
+   is used only when it is the same on every phase the charger is wired to, the other phases stayed
+   quiet, it is at least 2 A, and it is not above the charger's maximum (its current setting's upper
+   bound, else the main fuse). It is trusted once a second step agrees with it (an on and an off, or the
+   same edge again). An "Automatic" single-phase charger learns no step until it is wired to a phase.
+3. **The charging current you set** (*Laddström* in Auto, else the plan's current, else the last one
+   asked for), before anything is learned; 16 A when none is set. It is the current you told SpotNav the
+   charger uses and what the plan already reckons with.
+
+The current and where it came from are in the charger's diagnostics (`switched_current`). With it:
+
+- **It never blocks the other chargers.** Its request is its switched current, never "unknown".
+- **An import overload pauses it whole.** While a phase is over the limit on a net import and such a
+  charger takes part, the overload is resolved in one pass, by charger priority, Last first, then Normal,
+  then First; within each priority: the chargers whose current can be set are lowered, at most to their
+  minimum; if the site is still over, the switch-only chargers are paused whole, through the same
+  balancing pause as any other charger; only then are the chargers whose current can be set paused. An
+  electric car at 10 A beside a 10 A switch-only charger, 10 A over, ends at its minimum with the other
+  one paused, not paused itself while the other runs on. If the switch-only charger's pause cannot be
+  sent (its command fails or is refused), the chargers held at their minimum for it are paused in that
+  same pass. It is never paused on a merely tight margin, and on an export or unclear overload nothing is
+  done, as for any charger. A site of only such chargers is protected the same way.
+- **It is resumed whole.** A charge load balancing paused, or a start it held back for want of room, is
+  started again once every phase it uses has room for its whole switched current plus 1 A, for the
+  dwell (60 s), with the usual limit on resumes. A start goes out only where the site has room for all of
+  it.
+- **A lost measurement does nothing to it.** It cannot be stepped to a minimum, and pausing it on a meter
+  that merely went quiet would stop charges with no overload shown; it is treated as a charger already at
+  its minimum.
+- A charger with no reading of its own is taken to draw its whole switched current while it is on, the
+  safe side for the fuse.
+- The card never says it is limited to a current, and its capabilities say load balancing can only pause
+  the charge.
 
 ## Charger priority
 
@@ -324,6 +389,11 @@ other. Every charger has a **Charger priority** in the card's charger entities e
 charger that belongs to a site has one): **First**, **Normal** (the default) or **Last**. A charger
 set to First is served before the others and keeps what it asks for; one set to Last gets what is
 left. Chargers with the same priority are served in the order they joined the site.
+
+When the site is over its limit and load balancing has to cut, the cut is taken in the opposite
+order: from Last first, then Normal, then First, in the same pass. Within one priority the chargers
+are cut in the order they joined the site. A charger set to First keeps its current as long as the
+others can give way.
 
 Solar surplus follows the same order. Of the chargers on solar (or on hybrid outside a plan window
 and short of their target), the first in the order is offered the whole surplus; the next is

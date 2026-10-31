@@ -569,6 +569,12 @@ class AutoExecutor:
         self._shutdown = False
         self._applied: AutoApplication | None = None
         self._pending: PendingApplication | None = None
+        # The attempt whose wait found the plan built from older settings while that plan's charge ran: the plan is
+        # cleared at that window's boundary (`async_clear_superseded_plan`), as a waiting change would be installed there.
+        self._clear_waiting: int | None = None
+        # The installed plan's identity and the settings revision whose calculation proposed the same thing for the
+        # charger (`_is_material`): built from older settings, it still says what those settings want.
+        self._confirmed: tuple[str, int] | None = None
         self._last_error: str | None = None
         self._cancel_listener: Callable[[], None] | None = None
         # The one appointment at which a bounded pause ends; cancelled by `async_shutdown` and
@@ -824,9 +830,12 @@ class AutoExecutor:
     @callback
     def _on_controller_changed(self) -> None:
         """The charger's state changed: a window boundary may have arrived."""
-        if self._pending is None or self._shutdown:
+        if self._shutdown:
             return
-        self._hass.async_create_task(self.async_apply_pending())
+        if self._pending is not None:
+            self._hass.async_create_task(self.async_apply_pending())
+        elif self._clear_waiting is not None:
+            self._hass.async_create_task(self.async_clear_superseded_plan())
 
     async def async_start(self) -> None:
         """Adopt what the charger already holds, after a restart or reload."""
@@ -899,6 +908,7 @@ class AutoExecutor:
             # change was built from would be speculation.
             if self.current(attempt):
                 self._pending = None
+                self._clear_waiting = None
             if settings.strategy == STRATEGY_SOLAR and applied is not None:
                 # A charge the sun's rules keep is handed over to the sun with no stop (the plan's window, or the
                 # sun carrying it past one); anything else is stopped once, as ever. The floor's charge is not the
@@ -962,6 +972,22 @@ class AutoExecutor:
                 self._applied = applied
                 await self._notify_change()
                 return None
+            if (
+                applied is not None
+                and self.current(attempt)
+                and getattr(snapshot, "state", None) == "waiting_for_publication"
+                and self._superseded_by_settings(applied)
+            ):
+                # The person changed what they want and the answer for it is to wait for prices still to be published
+                # (or for a cheaper night the history shows): the plan built from their old settings must not run. A
+                # charge of it that runs now is not cut; it is cleared at its window's boundary, as a waiting change
+                # would install. Only that answer: one that says nothing about the settings (prices not in yet after a
+                # start, stale or unavailable prices, incomplete settings) leaves the plan alone, as ever.
+                if self._plan_charge_runs():
+                    self._clear_waiting = attempt
+                    await self._notify_change()
+                    return applied
+                return await self._clear_superseded_locked()
             return applied
         if not self._may_apply(application, attempt):
             # Nothing installs and a waiting change is superseded by this attempt's answer, but a
@@ -976,6 +1002,8 @@ class AutoExecutor:
         if not self._is_material(application, applied):
             self._applied = applied
             self._pending = None
+            if applied is not None:
+                self._confirmed = (applied.identity, application.settings_revision)
             return applied
         if self.window_charging_now():
             # A window is charging and is never shortened: the change waits for the boundary
@@ -992,6 +1020,68 @@ class AutoExecutor:
             return applied
         await self._install_application(application)
         return self.applied
+
+    def _superseded_by_settings(self, applied: AutoApplication) -> bool:
+        """Whether the installed plan was built from settings older than the stored ones, and no calculation of these
+        settings proposed the same thing. A recalculation over the same settings (new prices, a new reading) that
+        answers "wait" keeps the plan: the plan is still what the person asked for, bought on the prices known when
+        it was made, and dropping it would leave the need to a later answer that may never buy it. Under a pause
+        the pause decides."""
+        settings = self._store.settings(self._entry_id)
+        if pause_blocks_execution(settings) or applied.settings_revision < 0:
+            return False
+        if applied.settings_revision >= settings.revision:
+            return False
+        return self._confirmed != (applied.identity, settings.revision)
+
+    def _plan_charge_runs(self) -> bool:
+        """Whether the installed plan's charge runs now: a window of it is open (or its top-off), or the charge it
+        started still runs."""
+        if self.window_charging_now():
+            return True
+        return self._controller.charge_origin == "plan_window" and self._controller.charging
+
+    async def _clear_superseded_locked(self) -> AutoApplication | None:
+        """Clear a plan whose settings are gone, with its timers, touching no charge (none of the plan's runs), with
+        this boundary's lock held. Returns what remains applied."""
+        self._clear_waiting = None
+        try:
+            await self._controller.async_clear_plan_keep_charge()
+        except Exception as err:  # noqa: BLE001 - reported, the next calculation retries
+            _LOGGER.warning("Clearing a plan whose settings changed failed: %s", type(err).__name__)
+            return self.applied
+        _LOGGER.info(
+            "SpotNav charger %s: the settings changed and the answer for them is to wait; the earlier plan is cleared",
+            self._entry_id,
+        )
+        self._applied = None
+        self._confirmed = None
+        await self._notify_change()
+        return None
+
+    async def async_clear_superseded_plan(self) -> AutoApplication | None:
+        """A boundary arrived: clear the plan a waiting answer superseded while its charge ran, if that still holds."""
+        async with self._lock:
+            attempt = self._clear_waiting
+            if attempt is None:
+                return self.applied
+            if self._shutdown or not self.current(attempt):
+                # A newer calculation decides.
+                self._clear_waiting = None
+                return self.applied
+            applied = self.applied
+            if applied is None:
+                # Its last window ended it: the plan is over, not complete for what the person now wants.
+                self._clear_waiting = None
+                self._applied = None
+                await self._notify_change()
+                return None
+            if not self._superseded_by_settings(applied):
+                self._clear_waiting = None
+                return applied
+            if self._plan_charge_runs():
+                return applied
+            return await self._clear_superseded_locked()
 
     async def async_apply_pending(self) -> AutoApplication | None:
         """A boundary arrived: install the waiting proposal, if it still holds.

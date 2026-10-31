@@ -1,10 +1,10 @@
-"""Each area's own expected publication time (`publication` in `/v2/areas.json`).
+"""Each area's own expected publication time (`publication` in the area list, `pricing/areas.json`).
 
 ENTSO-E areas publish tomorrow around 13:00 Brussels, Octopus Agile (GB-*) around 16:00 UK and Spain's PVPC
 around 20:15 Madrid. The area list states it per area; an area that states nothing, or states it in a shape this
 client cannot read, is expected at 13:00 Brussels and is never dropped for it. The time decides two things: when
 the waiting text says the prices are due (the time plus a 45-minute margin, built in the stated zone) and when
-the refresh polls the index often (from 5 minutes before to 2 hours after, while tomorrow is missing).
+the refresh polls often (from 5 minutes before to 2 hours after, while tomorrow is missing).
 """
 
 from __future__ import annotations
@@ -28,7 +28,6 @@ from custom_components.spotnav.pricing.price_refresh import (
     PriceRefreshManager,
     in_publication_window,
 )
-from custom_components.spotnav.pricing.price_repository import PriceRepository
 from custom_components.spotnav.pricing.relay_contract import (
     DEFAULT_PUBLICATION,
     AreaPublication,
@@ -36,7 +35,7 @@ from custom_components.spotnav.pricing.relay_contract import (
 )
 
 from .harness import Harness, assert_nothing_executed
-from .relay import SE4, TODAY, BASE_URL, Clock, FakeScheduler, StoreDouble, StubTransport, cheap_night_day, fixture, serve
+from .relay import INDEX_PATH, stub_repository, SE4, TODAY, Clock, FakeScheduler, StoreDouble, StubTransport, cheap_night_day, fixture, serve
 
 V2 = Path(__file__).parent / "fixtures" / "relay_v2"
 LONDON = "Europe/London"
@@ -257,19 +256,18 @@ def test_a_window_that_runs_past_midnight_is_still_open_after_it() -> None:
 
 
 def manager_for(hass: HomeAssistant, transport: StubTransport, clock: Clock) -> PriceRefreshManager:
-    repository = PriceRepository(hass, base_url=BASE_URL, session=transport, now=clock, store=StoreDouble())
+    repository = stub_repository(hass, transport, now=clock, store=StoreDouble())
     return PriceRefreshManager(hass, repository, now=clock, jitter=lambda: 0.5, scheduler=FakeScheduler())
 
 
 def serve_published_list(transport: StubTransport, listing: dict[str, list[date]]) -> None:
-    """The stated list, an index listing only these days, and every fixture day file there is."""
-    transport.serve("/v2/areas.json", 200, fixture("areas-v2-publication.json"))
+    """A listing of only these days (what is out), and every fixture day file there is."""
     index = json.loads((V2 / "index-v2.json").read_text("utf-8"))
     index["areas"] = {
         area: {"days": sorted(day.isoformat() for day in days), "res": 30 if area.startswith("GB") else 15}
         for area, days in listing.items()
     }
-    transport.serve("/v2/index.json", 200, json.dumps(index))
+    transport.serve(INDEX_PATH, 200, json.dumps(index))
     for path in V2.glob("*_*.json"):
         area, _, rest = path.stem.partition("_")
         day = date.fromisoformat(rest)
@@ -310,42 +308,17 @@ async def test_the_refresh_polls_often_around_the_subscribed_areas_own_time(
 # --- the planner, end to end ---------------------------------------------------------------------
 
 
-def _serve_as_v2(transport: StubTransport, publication: Any) -> None:
-    """The v1 fixtures served as a v2 relay, SE4 stating `publication` (or nothing, for `None`)."""
-    areas = json.loads(fixture("areas.json"))
-    areas["v"] = 2
-    for area in areas["areas"]:
-        area["source"] = {"name": "ENTSO-E Transparency Platform", "url": "https://transparency.entsoe.eu/"}
-        if area["id"] == SE4 and publication is not None:
-            area["publication"] = publication
-    transport.serve("/v2/areas.json", 200, json.dumps(areas))
-    status, chunks, _ = transport.routes["/v1/index.json"]
-    index = json.loads(b"".join(chunks))
-    index["v"] = 2
-    transport.serve("/v2/index.json", status, json.dumps(index))
-
-
-@pytest.mark.parametrize(
-    ("publication", "expected"),
-    [
-        # An artificial 16:00 London for SE4, so only the stated time can explain the answer.
-        ({"time": "16:00", "tz": LONDON}, datetime(2026, 9, 22, 15, 45, tzinfo=timezone.utc)),
-        # Stated as ENTSO-E's, absent, and malformed: 13:00 Brussels plus 45 minutes.
-        ({"time": "13:00", "tz": BRUSSELS}, datetime(2026, 9, 22, 11, 45, tzinfo=timezone.utc)),
-        (None, datetime(2026, 9, 22, 11, 45, tzinfo=timezone.utc)),
-        ({"time": "16", "tz": LONDON}, datetime(2026, 9, 22, 11, 45, tzinfo=timezone.utc)),
-    ],
-)
 async def test_a_wait_for_tomorrow_says_the_areas_own_time(
-    harness: Harness, no_execution: dict[str, Any], publication: Any, expected: datetime
+    harness: Harness, no_execution: dict[str, Any]
 ) -> None:
+    """SE4's publication in the bundled list is 13:00 Brussels: the wait says 13:45 Brussels."""
     serve(harness.transport, days=(TODAY,), listed=(TODAY,))
     harness.transport.serve(harness.transport.day_path(SE4, TODAY), 200, cheap_night_day(SE4, TODAY))
-    _serve_as_v2(harness.transport, publication)
     controller = await harness.auto(departure=time(8, 0))
 
     snapshot = controller.snapshot()
-    assert harness.transport.call_count("/v2/areas.json") >= 1
     assert snapshot.state == "waiting_for_publication" and snapshot.reason == "publication_pending"
-    assert snapshot.publication_at == expected
+    assert snapshot.publication_at == datetime(2026, 9, 22, 11, 45, tzinfo=timezone.utc)
     assert_nothing_executed(no_execution)
+
+

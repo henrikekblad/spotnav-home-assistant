@@ -21,7 +21,7 @@ from custom_components.spotnav.site.solar_surplus import UP_DELAY_S
 
 from .test_solar_phase_execution import _charging_three_phases, _switched_down, _world, FORCE, SWITCH
 
-pytestmark = pytest.mark.usefixtures("offline_relay")
+pytestmark = pytest.mark.usefixtures("offline_relay", "chargers_not_switch_only")
 
 
 @pytest.fixture

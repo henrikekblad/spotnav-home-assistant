@@ -34,7 +34,7 @@ from .helpers import make_site_entry, set_current_sensor
 from .test_solar_total_power import _set_total, direct_solar_setup, TOTAL
 from .world import controller_of, set_charger_delivered_a, tick_site
 
-pytestmark = pytest.mark.usefixtures("offline_relay")
+pytestmark = pytest.mark.usefixtures("offline_relay", "chargers_not_switch_only")
 
 
 def _lose_l1(hass: HomeAssistant) -> None:
@@ -90,6 +90,8 @@ async def test_solar_starts_on_the_total_with_an_incomplete_measurement_and_says
     charger, _s, site, coordinator, clock, turn_on_calls = await direct_solar_setup(
         hass, source={"power": TOTAL}, site_amps=3.0
     )
+    # The card names the lost phase once it has been lost for a minute, on the same clock.
+    site._yield_now = clock.now  # noqa: SLF001
     _lose_l1(hass)
     _set_total(hass, TOTAL, -4500.0)
 

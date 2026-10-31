@@ -61,7 +61,7 @@ from ..execution.charger_profiles import profile_for
 from ..execution.controller import RESTORE_FAILED
 from ..planning.hybrid_forecast import async_forecast_capable_domains
 from ..runtime import site_controller_for
-from ..site.site_capacity_controller import SiteCapacityController, SiteControllerClosed
+from ..site.site_capacity_controller import async_release_held_charges, SiteCapacityController, SiteControllerClosed
 from ..site.site_membership import site_membership_errors
 from ..vehicles.choices import entity_option, flow_language
 from ..texts import table
@@ -822,12 +822,20 @@ class SiteCapacityOptionsFlow(ChargerWiringSteps, config_entries.OptionsFlow):
           `async_disable_active_control` runs first, restoring lowered currents through the charger's
           serialized write path, and only then is the entry persisted and reloaded;
         * anything else writes nothing to any charger here. Turning on stays the reload path: the rebuilt
-          controller passes every gate the apply path has, and no write happens inside the flow.
+          controller passes every gate the apply path has, and no write happens inside the flow;
+        * a charger taken off the site, after the reload: a charge its load balancing held back is given back or
+          forgotten (`async_release_held_charges`), since no regulator governs it any more.
 
         The options flow cannot show a rich answer, so a restore that did not fully succeed is logged
         at warning level and raised as a persistent notification; the flow still saves.
         """
         entry_id = self._entry.entry_id
+        # A charger taken off the site is governed by its load balancing no more, once the site is reloaded.
+        left = [
+            charger_entry_id
+            for charger_entry_id in self._entry.data.get(CONF_CHARGER_ENTRY_IDS) or []
+            if charger_entry_id not in (updated_data.get(CONF_CHARGER_ENTRY_IDS) or [])
+        ]
         for _attempt in range(3):
             controller = site_controller_for(self.hass, entry_id)
             if controller is None:
@@ -844,9 +852,11 @@ class SiteCapacityOptionsFlow(ChargerWiringSteps, config_entries.OptionsFlow):
                     self._entry, data=updated_data, title=title
                 )
                 await self.hass.config_entries.async_reload(entry_id)
+            await async_release_held_charges(self.hass, left)
             return
         self.hass.config_entries.async_update_entry(self._entry, data=updated_data, title=title)
         await self.hass.config_entries.async_reload(entry_id)
+        await async_release_held_charges(self.hass, left)
 
     async def _async_disable_before_save(self, controller: SiteCapacityController) -> None:
         """Run the off transition and report anything but a clean restore (`transition_lock` held)."""

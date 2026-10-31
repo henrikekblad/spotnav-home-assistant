@@ -25,7 +25,7 @@ from custom_components.spotnav.planning.status_compose import compose_status
 from .test_solar_current_writer import _sun_for, _watty
 from .world import controller_of, go_auto, set_charger_delivered_a, set_site_power_w, solar_setup, tick_site
 
-pytestmark = pytest.mark.usefixtures("offline_relay")
+pytestmark = pytest.mark.usefixtures("offline_relay", "chargers_not_switch_only")
 
 
 def _status_codes(hass: HomeAssistant, charger_entry_id: str) -> list[str]:

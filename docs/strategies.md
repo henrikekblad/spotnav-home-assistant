@@ -37,10 +37,11 @@ energy to charge (or a [target state of charge](target-soc.md)), the charger's *
   plugged in, only Resume ends it, and the status says so.
 - **Settings are one record.** The card, the app and the entities all edit the same settings.
   A write names the revision it edited, so two clients cannot silently overwrite each other.
-- **Prices** come from the SpotNav Relay, exactly as published: EUR per kWh with each area's
-  currency, units, time zone and the day's ECB rate, which the planner applies. Home Assistant never guesses a price. Fiscal components
-  (VAT, energy tax, grid transfer fee) can each be off, use the relay's suggestion for the
-  area, or use your own value. See [Prices](prices.md).
+- **Prices** come from the source your Home Assistant uses for the area (Nord Pool, PVPC or Octopus
+  Energy through Home Assistant, or your own ENTSO-E key), exactly as published: EUR per kWh with each
+  area's currency, units, time zone and the day's ECB rate, which the planner applies. Home Assistant
+  never guesses a price. Fiscal components (VAT, energy tax, grid transfer fee) can each be off, use the
+  area's suggestion, or use your own value. See [Prices](prices.md).
 - **Tomorrow's prices** are published in the afternoon. If a deadline needs hours that are not
   priced yet, SpotNav buys what it must now and plans the rest when the prices arrive. Part of
   a plan that had to be bought without published prices is flagged.
@@ -77,7 +78,7 @@ at once.
 choose a date up to seven days ahead ("Sun 4 Oct"); clearing it returns to a departure that repeats
 every day. With a date the plan reaches that far, but SpotNav still only charges in prices that are
 published. If the weeks behind show that the same weekday and hours that are not published yet were
-clearly cheaper (more than one standard deviation of the spread, from a history the relay publishes),
+clearly cheaper (more than one standard deviation of the spread, from the prices Home Assistant has stored),
 it waits and says so: *Waiting for Sunday's prices (at 13:00), which have been 30 % cheaper over the last 4 weeks*. It only waits while the
 charge can still be finished in time, buys what cannot wait, and plans again each time prices are
 published. Without a usable history, or without a clear saving, it plans on the published prices.
@@ -160,6 +161,13 @@ cannot, and for a direct site without the total it says the meter's total grid p
   `active_control`, `solar`, or `none` for a charger whose current cannot be set).
 - The surplus is computed from the site's energy balance (grid, house battery and the car's
   own draw), never from export alone, so that the car's draw does not count as surplus.
+- A charger whose current cannot be set (start and stop only) is not modulated: it starts only when the
+  surplus covers its whole learned current (its *switched current*, see
+  [Chargers that can only be switched on and off](site-and-load-balancing.md#chargers-that-can-only-be-switched-on-and-off)),
+  and stops once the surplus, with its own draw added back, stays below that current for the stop delay.
+  A fixed 16 A charger therefore waits for about 11 kW of surplus on three phases, instead of starting at
+  6 A and importing the rest. Hybrid shares the surplus the same way, and the minimum on and off times
+  bound how often it switches.
 - Charging starts after the surplus has held for a while and stops after it has faded, to
   avoid rapid switching. With no usable measurement it stops rather than guesses.
 - A charge starts at the minimum current and stays there for two minutes while the car's own draw
@@ -207,6 +215,9 @@ cannot, and for a direct site without the total it says the meter's total grid p
     Wattpilot's *Auto*, Easee's *auto phase*) is not used while the setting is on; it is not put back either.
   - **NRGkick**: phase switching must be allowed in the NRGkick app first, or the charger refuses the change
     (SpotNav then logs it and charges on as without switching).
+  - **NRGkick and Fronius Wattpilot** have their phases set only right before a solar start, as Easee (below): a
+    switch under load faulted a car on an NRGkick, and a Wattpilot may stay paused after one. A charge that runs on
+    them follows the rules without switching.
   - **Lektrico** forgets *Force single phase* when it restarts. SpotNav then goes by what the charger reads, three
     phases, from its next look on.
   - Only a solar charge switches. A plan's period, your **Start**, a top-off, the car's minimum charge level

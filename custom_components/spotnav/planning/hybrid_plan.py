@@ -103,6 +103,10 @@ class HybridResult:
     slack_kwh: float
     state: HybridState
     reason: HybridReason
+    #: When the credited sun is expected: the start of the first and the end of the last hour that counts towards
+    #: `forecast_credit_kwh` (UTC), `None` when no hour does.
+    sun_start: datetime | None = None
+    sun_end: datetime | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -135,28 +139,32 @@ def _as_utc_instant(value: datetime, what: str) -> datetime:
 
 
 @dataclass(frozen=True, slots=True)
-class _ForecastCredit:
-    """Raw forecast kWh, and the start of the earliest creditable overlap (or `None`)."""
+class ForecastCredit:
+    """Raw forecast kWh, and the start of the earliest and the end of the latest creditable overlap (or `None`)."""
 
     kwh: float
     first_creditable_start: datetime | None
+    last_creditable_end: datetime | None = None
 
 
-def _forecast_credit(
+def forecast_credit(
     forecast_wh: Mapping[datetime, float],
     *,
     now: datetime,
     departure: datetime,
     config: HybridConfig,
     max_charge_kw: float,
-) -> _ForecastCredit:
+) -> ForecastCredit:
     """The raw forecast credit for `[now, departure)`, before `confidence` and
-    the caps. Every key is checked for timezone-awareness; `now` and `departure`
-    arrive as UTC.
+    the caps, and when it is expected. Every key is checked for timezone-awareness;
+    `now` and `departure` are aware (any zone).
     """
+    now = _as_utc_instant(now, "now")
+    departure = _as_utc_instant(departure, "departure")
     max_charge_w = max_charge_kw * 1000.0
     total_wh = 0.0
     first_creditable_start: datetime | None = None
+    last_creditable_end: datetime | None = None
     for hour_start, wh in forecast_wh.items():
         hour_start_utc = _as_utc_instant(hour_start, "a forecast hour")
         hour_end_utc = hour_start_utc + timedelta(hours=1)
@@ -176,7 +184,13 @@ def _forecast_credit(
         total_wh += car_w * hour_fraction
         if first_creditable_start is None or overlap_start < first_creditable_start:
             first_creditable_start = overlap_start
-    return _ForecastCredit(kwh=total_wh / 1000.0, first_creditable_start=first_creditable_start)
+        if last_creditable_end is None or overlap_end > last_creditable_end:
+            last_creditable_end = overlap_end
+    return ForecastCredit(
+        kwh=total_wh / 1000.0,
+        first_creditable_start=first_creditable_start,
+        last_creditable_end=last_creditable_end,
+    )
 
 
 def _priced_capacities(
@@ -315,7 +329,7 @@ def plan_hybrid(
             reason="no_forecast_cheapest",
         )
 
-    forecast = _forecast_credit(
+    forecast = forecast_credit(
         forecast_wh,
         now=now_utc,
         departure=departure_utc,
@@ -390,6 +404,8 @@ def plan_hybrid(
         slack_kwh=slack_kwh,
         state=state,
         reason=reason,
+        sun_start=forecast.first_creditable_start,
+        sun_end=forecast.last_creditable_end,
     )
 
 

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from functools import partial
 from typing import Any, Callable
 
 import pytest
@@ -14,7 +13,7 @@ from custom_components.spotnav import time_zones
 from custom_components.spotnav.execution import auto_execution as auto_execution_module, controller as controller_module
 from custom_components.spotnav.execution.controller import ChargingController, ChargingPlan
 
-from .relay import BASE_URL, Clock, FakeScheduler, serve, StubTransport
+from .relay import Clock, FakeScheduler, serve, StubProvider, StubRouter, StubTransport
 from .harness import FlakyStore, Harness, RecordedAppointments, Session
 
 
@@ -80,6 +79,21 @@ def no_history_import(request, monkeypatch):
     import custom_components.spotnav as integration
 
     monkeypatch.setattr(integration, "_async_schedule_history_import", lambda *args, **kwargs: None)
+
+
+@pytest.fixture(autouse=True)
+def no_blueprint_install(request, monkeypatch):
+    """Setting the integration up writes no blueprints into the shared test configuration folder;
+    `tests/test_blueprint_install.py` opts back in with the `blueprint_install` marker."""
+    if request.node.get_closest_marker("blueprint_install") is not None:
+        return
+
+    async def _nothing(*_args: Any, **_kwargs: Any) -> list[str]:
+        return []
+
+    import custom_components.spotnav as integration
+
+    monkeypatch.setattr(integration, "async_install_blueprints", _nothing)
 
 
 @pytest.fixture
@@ -231,6 +245,15 @@ DRIFTS: list[tuple[str, dict[str, Any]]] = []
 COMMANDS: dict[str, list[str]] | None = None
 
 
+@pytest.fixture
+def chargers_not_switch_only(monkeypatch):
+    """For tests about the sun's state machine and its hand-overs, written before chargers that can only be switched
+    on and off were reckoned at their whole current: their plain-switch chargers start and stop on the minimum-current
+    thresholds as a charger whose current is set does, not on a switched current (`tests/test_switch_only_solar.py`
+    covers those)."""
+    monkeypatch.setattr(ChargingController, "is_switch_only", property(lambda self: False))
+
+
 @pytest.fixture(autouse=True)
 def ownership_shadow_agrees(request):
     """Every test runs the charge-ownership core in shadow mode beside today's code
@@ -359,21 +382,31 @@ def clock() -> Clock:
 
 @pytest.fixture
 def offline_relay(monkeypatch: pytest.MonkeyPatch, transport: StubTransport) -> StubTransport:
-    """Point the whole installation's price repository at the stub wire, catalogue and days served.
+    """Give the whole installation's price repository the stub price source (`tests/relay.py`), days served.
 
-    Opt in with `pytestmark = pytest.mark.usefixtures("offline_relay")` for a module whose tests
-    set up real config entries; a test that needs a different answer overrides the routes.
+    Every area with no real provider reads its day files from the stub wire. Opt in with
+    `pytestmark = pytest.mark.usefixtures("offline_relay")` for a module whose tests set up real config entries; a
+    test that needs a different answer overrides the routes.
     """
-    from custom_components.spotnav import async_setup_price_repository as real_setup
     from custom_components.spotnav.pricing import price_repository as repository_module
-    import custom_components.spotnav as integration
 
-    monkeypatch.setattr(repository_module, "async_get_clientsession", lambda _hass: transport)
+    stub = StubProvider(transport)
     monkeypatch.setattr(
-        integration, "async_setup_price_repository", partial(real_setup, base_url=BASE_URL)
+        repository_module, "ProviderRouter", lambda *args, **kwargs: StubRouter(stub, *args, **kwargs)
     )
     serve(transport)
     return transport
+
+
+@pytest.fixture
+def no_bundled_catalogue(monkeypatch: pytest.MonkeyPatch) -> None:
+    """An installation whose bundled area list could not be read: no area is listed."""
+    from custom_components.spotnav.pricing import price_repository as repository_module
+
+    async def absent(_hass):
+        return None
+
+    monkeypatch.setattr(repository_module, "async_load_bundled", absent)
 
 
 @pytest.fixture

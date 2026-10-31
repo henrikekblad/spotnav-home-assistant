@@ -21,7 +21,7 @@ import pytest
 from custom_components.spotnav.planning.status_compose import QUIET_PLANNING_REASONS
 
 from .harness import Harness
-from .relay import Clock, flat_day, index_listing, serve, serve_profile, SE4
+from .relay import Clock, flat_day, hold_history, index_listing, serve, SE4
 
 pytestmark = pytest.mark.usefixtures("offline_relay")
 
@@ -35,7 +35,7 @@ SATURDAY_NIGHT = {(6, hour): 0.03 for hour in range(8)}
 
 
 def _publish(harness: Harness, *, tomorrow: bool = False, **profile: Any) -> None:
-    """Today (and optionally tomorrow) published; a profile with Saturday night cheap unless `missing`."""
+    """Today (and optionally tomorrow) published; four weeks of history with Saturday night cheap unless `missing`."""
     transport = harness.transport
     days = (FRIDAY, SATURDAY) if tomorrow else (FRIDAY,)
     serve(transport, days=days)
@@ -45,8 +45,7 @@ def _publish(harness: Harness, *, tomorrow: bool = False, **profile: Any) -> Non
     if profile.get("missing"):
         return
     profile.setdefault("cheap", SATURDAY_NIGHT)
-    profile.setdefault("generated", f"{FRIDAY.isoformat()}T07:05:00+02:00")
-    serve_profile(transport, to=FRIDAY.isoformat(), **profile)
+    hold_history(harness.repository, to=FRIDAY.isoformat(), **profile)
 
 
 @pytest.fixture(autouse=True)

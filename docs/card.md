@@ -36,6 +36,28 @@ When something needs attention, a banner says so: a notice in a neutral colour, 
 red when something must be fixed before charging can be planned. The banner counts the items to
 review and opens the full list with the integration's own wording.
 
+While nothing more serious is shown, an administrator sees **Get started: 3 things left** in the same place
+until the setup is complete. It opens the same list, whose **Get started** section has one row per thing left,
+each with a button to where it is done:
+
+- **your car**, when no vehicle is set up for the charger: a target in percent and the range need its battery
+  size and consumption (opens Home Assistant's integrations, where the car's integration is added);
+- **the car's charge level**, when the plan charges to a target level, the car is set up and nothing reports its
+  level (opens Plan);
+- **a site** with the home's grid meter, for load balancing and solar (starts adding one);
+- **a solar forecast**, when the site can measure solar surplus but has no forecast source: Hybrid then counts
+  on the sun and the status says when it is expected (opens the site's choice of forecast, or adds Forecast.Solar
+  first when no forecast integration is there yet);
+- **phase switching for solar**, when the charger can switch phases on a solar site and the setting is off
+  (opens the setting);
+- **phones** for charging notifications, through the Home Assistant app or the SpotNav app, until a phone is
+  chosen or the paired SpotNav app has its instant notifications on (opens the phones in Settings → Notifications);
+- **the SpotNav app**, until it has been used with this Home Assistant (opens it on Google Play).
+
+Every row but the car's charge level can be answered **Not needed**; that holds for every charger and every browser. Each row goes by
+itself once the thing is done. The prices are not a row: the Electricity price section already says what an area
+without a source needs.
+
 ## The price graph
 
 The graph shows the price of every interval per kWh, in the price area's small unit (öre, cent) or, if
@@ -134,6 +156,7 @@ serious each is. Examples:
 | Waiting for tomorrow's prices (~13:45), will plan then. | Prices for the deadline are not published yet; SpotNav plans when they are. The time is the area's expected publication plus 45 minutes, and is left out once it has passed. |
 | Buying 12 kWh now, the rest when the prices are published. | The deadline needs hours that are not priced yet, so part of the charge is bought now. |
 | Charging is scheduled from 02:00. / Planned from 02:00. | The installed plan, or a plan that is proposed. |
+| Planned from 02:00 · 20 kWh · 32.94 kr · saves ~18.1 kr against charging now | What the plan saves against charging the same energy from now at the same power, with your fees and VAT. Shown only before the charge has started and when the difference is at least 5 %. |
 | A new charging proposal is ready. | A newer proposal exists and is not installed yet. |
 | Charging waits for the planned start at 22:30 · 16.6 kWh · 17.1 kr · 87 km | A car is plugged in and the installed plan waits for its first window (or a charge that started by itself outside the plan was stopped). The plan's energy, cost and distance follow while they are the installed plan's own. |
 | Charging now; scheduled until 05:30. | A charge is running inside a planned period. |
@@ -142,12 +165,14 @@ serious each is. Examples:
 | Stopped at 80 % (estimated, reading 40 min old) | The target was reached; shows the level the charge stopped at and how old or estimated it was. |
 | Charging is limited to 10 A by the site's load balancing. | Active load balancing has lowered the current. |
 | The home battery charges from the grid and shares the main fuse: the car gets 11 A. / House consumption limits the car to 11 A. | The same, with the cause when SpotNav knows it. |
+| The site's meter has no fresh reading: load balancing holds the car at its minimum of 6 A until it is back. | The site's measurement has been stale or missing for a minute: load balancing holds the car at its minimum current until the meter reads again. |
 | Paused – the house is using the whole fuse; trying again at 04:30 | Load balancing paused the plan's charge inside its window for want of room for the car's minimum; it is tried again then ("when there is room" when no time is set; "the home battery charges from the grid and fills the main fuse" when that is why). |
 | Charging to the minimum level (30 %) | The car is below its [minimum charge level](target-soc.md#minimum-charge-level), so SpotNav charges at once at the set current; the strategy takes over at the floor. |
 | Solar · charging 9 A from surplus | The solar strategy's state: waiting for sun, surplus found and starting soon, surplus fading, charging, or no usable reading. |
 | Solar · 1 phase · 2.9 kW | A solar charge the sun has switched to one phase (see *Phase switching for solar* below), with the power it charges at on that phase. |
 | Solar · surplus available (4.2 kW) / Solar · no car plugged in | Solar with no car plugged in: the surplus is enough to start a charge (plug the car in now), or it is not. |
-| Hybrid · 12 kWh from grid, 8 kWh expected from sun | The hybrid plan's split; with no forecast source it says it plans like Cheapest. |
+| Hybrid · 12 kWh from grid, 8 kWh expected from sun 10:00–15:00 | The hybrid plan's split, and the hours the sun it counts on is expected; with no forecast source it says it plans like Cheapest. |
+| Solar · waiting for sun · 6.3 kWh expected from the sun 11:00–16:00 | With a forecast source on the site, the solar strategy says how much sun the car can expect for the rest of today (else *tomorrow*), and when, reckoned as hybrid reckons it. |
 | The energy meter cannot be read: 6.5 kWh remains, from its last reading. / No energy meter: 3 kWh remains, counted from this charger's recorded charges. | The requested energy is counted without the charger's energy register, see [counting the requested energy](strategies.md#cheapest). |
 | Charging was started, but the vehicle is not requesting current. | The connector reports the car is not asking for current. It is an observation only: check the car's charging settings or reconnect the cable. |
 
@@ -230,13 +255,16 @@ energy tax and grid fee as the plan applies them. Tapping the area or a tax open
   services**. **Keep both** keeps them as they are. Two prices with the same name are told apart by
   which one this charger uses.
 - **Area** decides which prices are used and which taxes are suggested. The list is grouped by
-  country and is what the public SpotNav Relay publishes; if it cannot be reached, the last list Home Assistant received is
-  shown with a note.
+  country and comes with SpotNav itself.
 - **VAT** (as a percentage), **Energy tax** and **Grid transfer** (both in the area's smallest
   currency unit) can each be switched off, use the area's suggested value, or use your own value.
   **Reset to suggestion** returns to the suggestion when the area publishes one.
-- Under the area, a small linked line names where its prices come from (ENTSO-E, Red Eléctrica
-  for Spain's regulated PVPC, or Octopus Energy (Agile) in Great Britain).
+- A line names where the area's prices come from: *Prices from Nord Pool (via Home Assistant)*, *Prices
+  from ENTSO-E (your key)*, *Prices from PVPC (Home Assistant)* or *Prices from Octopus Energy (your Agile
+  tariff)*. When the area has no source of its own, a notice says what to add instead (**Add Nord Pool**,
+  **Add your ENTSO-E key**, **Add PVPC**, **Add Octopus Energy**), with the button for an administrator, and
+  the ENTSO-E key's field with its how-to. The key is one for the whole installation. See
+  [Prices](prices.md#where-prices-come-from).
 - Where the published price already includes VAT, energy tax or grid transfer (all three in Great
   Britain), that component is checked, locked and marked **Included in the price**, and nothing is
   added for it. For Great Britain, **Find my region** looks the region up from a postcode (see
@@ -342,7 +370,8 @@ under **To check**.
 
 **Phase switching for solar**, below the priority, is **Off** by default or **Automatic**. It is shown only for
 a charger whose integration can switch between one and three phases (Peblar, Lektrico, NRGkick, go-e, Fronius
-Wattpilot, and Easee when it is alone on its circuit; see [strategies](strategies.md#solar)), that is wired for three
+Wattpilot, and Easee when it is alone on its circuit; NRGkick, Wattpilot and Easee only before a start; see
+[strategies](strategies.md#solar)), that is wired for three
 phases, on a site with a solar source; no other charger has the row. Set to Automatic, a solar charge with too
 little sun for three phases charges on one phase instead of drawing from the grid, and the status then says
 so with its power (*Solar · 1 phase · 2.9 kW*). SpotNav then sets the charger's phases itself, so the charger's
@@ -403,6 +432,16 @@ the main unit two decimals (1,63 kr/kWh), and the axis as many decimals as its r
 money, such as the plan's cost, are always in the main unit. The choice is not offered for an area
 without a small unit. Where the browser cannot store these choices, for example in a private window,
 they hold until the page is reloaded and the card then starts on **Day** and the small unit.
+
+### Support
+
+**About this card** opens **What this charger can do** (see [Header](#header)). For an administrator,
+**Automations** lists the blueprints SpotNav installs, *Setpoint by electricity price* and *Run on
+solar surplus*, with how many automations use each and **Create automation**, which opens Home
+Assistant's Blueprints page; see [Automations](automations.md). **Download debug info** saves one file for a bug report (see
+[Diagnostics and troubleshooting](troubleshooting.md)).
+
+![Support: Automations, the debug info and About this card](images/card-settings-support.png)
 
 ## Plan settings
 

@@ -307,6 +307,9 @@ METER_ROWS: Final[tuple[MeterRow, ...]] = (
             _p("current", r"[-_]current_l(?P<n>[123])$"),
             _p("voltage", r"[-_]voltage_l(?P<n>[123])$"),
         ),
+        # Aidon meters send phase current as a signed `long`: a phase that exports reads negative. The
+        # flag only reads |I|, so it changes nothing for the meters whose current never goes negative.
+        signed_current=True,
     ),
     MeterRow(
         platforms=("edl21",),
@@ -451,13 +454,18 @@ METER_ROWS: Final[tuple[MeterRow, ...]] = (
             _p("grid_power_export", r"_pe_0$"),
         ),
     ),
-    # Ferroamp EnergyHub (henricm, `1842058`). `<slug>_ehub-iext-L1..L3` is the grid current. The grid power
-    # (`pext`) and the battery power (`pbat`) are passed on from the hub unchanged and nothing in the
-    # integration says which way they count, so neither is used: the current alone protects the fuse.
+    # Ferroamp EnergyHub (henricm, `aad7f8f`). `<slug>_ehub-iext-L1..L3` is the grid current, which protects
+    # the fuse. `<slug>_ehub-pext` is the hub's total grid power, passed on unchanged (`sensor.py` L365-367,
+    # summed from the phases by `ThreePhaseFerroampSensor`). It counts import as positive: in the hub
+    # message the integration's tests replay (`tests/test_sensor.py` L95-L133), each phase's load `pload`
+    # is exactly `pext - pinv` while the inverter delivers (`pinv` -2224.66 W, `pext` -1595.28 W, `pload`
+    # 629.38 W on L1), so a negative `pext` is the 5.3 kW the site exports; evcc reads the hub's grid power
+    # (Modbus 3100) as import-positive too (`ferroamp-energyhub.yaml`).
     MeterRow(
         platforms=("ferroamp",),
         patterns=(_p("current", r"-iext-l(?P<n>[123])$"),),
         signed_current=True,
+        totals=(_p("grid_power", r"-pext$"),),
     ),
     # frient Electricity Meter Interface (EMIZB-132) through ZHA. The electrical measurement cluster gives
     # the current of phase A as `rms_current` and of B and C as `rms_current_ph_b` and `_ph_c`, and the
@@ -626,6 +634,53 @@ BATTERY_ROWS: Final[tuple[BatteryRow, ...]] = (
     BatteryRow(("solis_modbus",), _re(r"battery_power_net$"), inverted=True),
     # Charge and discharge as two non-negative entities.
     BatteryRow(("sma",), _re(r"battery_power_charge$"), discharge_regex=_re(r"battery_power_discharge$")),
+    # Ferroamp EnergyHub (henricm, `aad7f8f`): `<slug>_ehub-pbat`, the hub's battery power passed on unchanged
+    # (`sensor.py` L737-L744). Discharge-positive: in the hub message the integration's tests replay
+    # (`tests/test_sensor.py` L95-L133) the solar's 10.1 kW goes 6.7 kW to the inverter (`pinv` -6722 W over the
+    # phases) while `pbat` reads -3219 W, the rest, going into the battery. evcc's Modbus template reads the
+    # hub's battery output power the same way ("negative implies charging").
+    BatteryRow(("ferroamp",), _re(r"-pbat$"), inverted=True),
+    # Zendure (`zendure_ha`, `8d59bac`). Each SolarFlow, Hyper or AIO is its own device, with `outputPackPower`
+    # ("<device>_output_pack_power") the power into its battery and `packInputPower` the power out of it, both
+    # non-negative: the integration counts the first as charged energy and the second as discharged
+    # (`device.py` L180-L181, L253-L262) and its own battery power is the second minus the first (L295). With
+    # several devices on one entry only the first device's battery is read.
+    BatteryRow(
+        ("zendure_ha",),
+        _re(r"output_?pack_?power$"),
+        discharge_regex=_re(r"pack_?input_?power$"),
+    ),
+    # Anker Solix (`anker_solix`, `285cce7`). The integration computes each Solarbank's battery power as solar
+    # minus output, "positive charge power and negative discharge", and the system's "SB battery power" as the
+    # sum over its Solarbanks (README, "Combined Solarbank 2 systems"); its status logic reads a positive
+    # `charging_power` as charging and a negative one as discharging (`solixapi/api.py` L604-L621), and its
+    # MQTT map negates the devices that report the other way (`solixapi/mqttmap.py` L5034, `FACTOR: -1`). The
+    # system total comes first, so a system with several Solarbanks is read whole. Cloud: a minute or more
+    # between values.
+    BatteryRow(
+        ("anker_solix",), _re(r"(?:^|_)solarbank_battery_power_signed$"), label="Anker Solix, all Solarbanks"
+    ),
+    BatteryRow(
+        ("anker_solix",),
+        _re(r"(?:^|_)battery_power_signed$"),
+        reject=_re(r"(?:solarbank|pps)_battery_power_signed$"),
+        label="Anker Solix, one device",
+    ),
+    # EcoFlow (`ecoflow_cloud`, `300d6d2`). PowerStream's "Battery Input Watts" (`20_1.batInputWatts`, in
+    # tenths of a watt) is the battery's power into the micro-inverter, so discharge-positive: in the
+    # integration's own PowerStream dump (`diag/powerstream.json`) both strings' 67.0 W go to the battery
+    # while the inverter outputs nothing and the value reads -67.0 W, with a charge time left and the
+    # discharge time at its no-discharge value.
+    BatteryRow(("ecoflow_cloud",), _re(r"-20-1-batinputwatts$"), inverted=True, label="EcoFlow PowerStream"),
+    # Ocean Pro's "Battery Power" (`ocean_batt_pwr`) is the inverter's own figure, "+ charge / - discharge"
+    # (`devices/internal/ocean_pro.py` L469, L692).
+    BatteryRow(("ecoflow_cloud",), _re(r"-ocean-batt-pwr$"), label="EcoFlow Ocean Pro"),
+    # Marstek over the local API (`marstek_local_api`, jaapp, `624881c`). The integration reads `bat_power`
+    # as charging when positive and discharging when negative (`sensor.py` L146-L170), per device as
+    # `<mac>_battery_power` and summed over the devices as `<macs>_system_total_power` ("Total battery
+    # power", L411-L418, `coordinator.py` L114-L118), which comes first.
+    BatteryRow(("marstek_local_api",), _re(r"(?:^|_)system_total_power$"), label="Marstek (local API), all batteries"),
+    BatteryRow(("marstek_local_api",), _re(r"(?:^|_)battery_power$"), label="Marstek (local API), one battery"),
 )
 
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from datetime import timedelta
 
+import pytest
 from homeassistant.core import HomeAssistant
 from homeassistant.util import dt as dt_util
 from pytest_homeassistant_custom_component.common import async_fire_time_changed, async_mock_service
@@ -17,12 +18,21 @@ from custom_components.spotnav.const import (
     SITE_RECOMPUTE_INTERVAL_S,
 )
 
+from custom_components.spotnav.execution.controller import ChargingController
+
 from .helpers import make_entry, make_site_entry, set_current_sensor
 from .world import measured_site_world, set_derived_site_entities
 from .world import separate_entities_source
 from .world import controller_of
 
 MAIN_FUSE_A = 20.0
+
+
+@pytest.fixture(autouse=True)
+def _chargers_take_a_current(monkeypatch: pytest.MonkeyPatch) -> None:
+    """These tests follow the regulator's current decisions: their plain-switch chargers are taken as chargers whose
+    current can be set, not as ones that can only be switched on and off (`decide_switched_load`)."""
+    monkeypatch.setattr(ChargingController, "is_switch_only", property(lambda self: False))
 
 
 async def _tick(hass: HomeAssistant) -> None:

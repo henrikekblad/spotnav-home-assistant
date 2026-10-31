@@ -39,11 +39,12 @@ from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
 from ..const import DOMAIN
-from ..pricing.price_repository import DEFAULT_BASE_URL
 from .settings import DEFAULT_EVENTS, EVENT_VEHICLE_IDENTIFY, NOTIFICATION_EVENTS
 
 _LOGGER = logging.getLogger(__name__)
 
+#: The deployed SpotNav relay: since 2.0 it carries push only (no prices). Injected so tests never reach it.
+DEFAULT_BASE_URL: Final = "https://spotnav.sensnology.se"
 #: The relay's wake-up endpoint and its contract version.
 WAKE_PATH: Final = "/v1/push/wake"
 WAKE_VERSION: Final = 1

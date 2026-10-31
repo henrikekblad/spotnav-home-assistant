@@ -111,6 +111,9 @@ import {
   type ReferenceAnswer,
 } from "./camera-editor";
 import { issueText } from "./status";
+import { keyEditor, priceProviderNodes } from "./price-provider";
+import { setupLineText, setupSection, type SetupRowId } from "./setup-checklist";
+import { automationsBody, type BlueprintUse } from "./automations";
 import { historyBody, type HistoryState, type HistoryUi } from "./history";
 import { connectionLabel, vehicleLineFor } from "./vehicle-line";
 import type { ChargeBarFacts } from "./charge-bar";
@@ -261,6 +264,8 @@ export interface CardViewInput {
   onOpenEntityEditor?: (scope: EntityScope) => void;
   /** The admin pressed "Download debug info" in the Settings popover. */
   onDownloadDebug?: () => void;
+  /** How many automations use each of SpotNav's blueprints (`automations.ts`), `null` when it could not be read. */
+  onLoadBlueprintUse?: () => Promise<BlueprintUse | null>;
   onSaveEntities?: (scope: EntityScope, draft: EntityDraft) => void;
   onCancelEntities?: () => boolean | void;
   /** The one-tap answer to "set its onboard charger to 1-phase?": `1` accepts, `3` keeps it as it was. */
@@ -269,6 +274,8 @@ export interface CardViewInput {
   onAnswerIdentification?: (vehicleId: string) => void;
   /** One value of the Settings page: the card writes it and answers `null`, or the sentence to show. */
   onWriteValue?: (write: ValueWrite) => Promise<string | null>;
+  /** A "Get started" row answered "Not needed": the card asks the integration to keep it away, then reads again. */
+  onDismissSetup?: (id: SetupRowId) => void;
   /** Where Settings was left for a child dialog: the page returns there (owned by the card, kept across renders). */
   overviewPlace?: OverviewPlaceHolder;
   /** A picture for the camera's editors: the camera's picture now, or a car's reference thumbnail. */
@@ -383,6 +390,22 @@ export interface CardView {
  * refresh arms a fresh one.
  */
 export const BOUNDARY_HORIZON_MS = 24 * 3_600_000;
+
+/** Whether Home Assistant has loaded an integration, from the `hass` object the card was given. */
+function hasComponent(hass: unknown, domain: string): boolean {
+  const components = (hass as { config?: { components?: unknown } } | null | undefined)?.config?.components;
+  return Array.isArray(components) && components.includes(domain);
+}
+
+/** Open one of Home Assistant's own pages, the way its frontend moves between them. */
+function navigateTo(doc: Document, path: string): void {
+  const view = doc.defaultView;
+  if (view === null) {
+    return;
+  }
+  view.history.pushState(null, "", path);
+  view.dispatchEvent(new CustomEvent("location-changed", { detail: { replace: false } }));
+}
 
 function element<K extends keyof HTMLElementTagNameMap>(
   doc: Document,
@@ -824,12 +847,20 @@ function capabilityStateText(language: Language, state: "available" | "unavailab
   return translate(language, state === "available" ? "cap.available" : "cap.unavailable");
 }
 
-/** The issue list, in the model's stable order, with codes only as subdued technical detail. */
-export function issueListBody(doc: Document, model: CardModel): HTMLElement {
+/**
+ * The issue list, in the model's stable order, with codes only as subdued technical detail; then, for an
+ * administrator, the "Get started" section (`setup`) when anything is left to set up.
+ */
+export function issueListBody(doc: Document, model: CardModel, setup: HTMLElement | null = null): HTMLElement {
   const body = element(doc, "div");
-  body.append(element(doc, "p", `${C.muted} ${C.dialogIntro}`, translate(model.language, "dialog.issuesIntro")));
+  if (model.issues.length > 0 || setup === null) {
+    body.append(element(doc, "p", `${C.muted} ${C.dialogIntro}`, translate(model.language, "dialog.issuesIntro")));
+  }
   for (const issue of model.issues) {
     body.append(issueRow(doc, model, issue));
+  }
+  if (setup !== null) {
+    body.append(setup);
   }
   return body;
 }
@@ -857,6 +888,11 @@ export function capabilityBody(doc: Document, model: CardModel): HTMLElement {
     body.append(row);
     if (item.key === "target_soc" && item.state === "unavailable") {
       body.append(element(doc, "span", C.capabilityNote, translate(model.language, "cap.targetSocNote")));
+    }
+    if (item.noteKey !== undefined) {
+      const note = element(doc, "span", C.capabilityNote, translate(model.language, item.noteKey));
+      note.dataset["capabilityNote"] = item.key;
+      body.append(note);
     }
   }
   return body;
@@ -1195,7 +1231,8 @@ export function createCardView(input: CardViewInput): CardView {
   }
 
   const severity = bannerSeverity(model);
-  if (severity !== null && !bannerRepeatsStatus(model, severity)) {
+  const issueBannerShown = severity !== null && !bannerRepeatsStatus(model, severity);
+  if (severity !== null && issueBannerShown) {
     const banner = element(doc, "button", `${C.banner} ${severity === "blocking" ? C.bannerBlocking : C.bannerNotice}`);
     banner.type = "button";
     banner.append(
@@ -1207,6 +1244,16 @@ export function createCardView(input: CardViewInput): CardView {
       ),
     );
     banner.append(element(doc, "span", C.bannerCount, issueCountText(model.language, model.issues.length)));
+    banner.addEventListener("click", () => {
+      openIssues(banner);
+    });
+    card.append(banner);
+  } else if (input.isAdmin && model.setup.length > 0) {
+    // Nothing more serious to say: the same line says what is left to set up, and opens the same dialog.
+    const banner = element(doc, "button", `${C.banner} ${C.bannerNotice}`);
+    banner.type = "button";
+    banner.dataset["banner"] = "setup";
+    banner.append(element(doc, "span", undefined, setupLineText(model.language, model.setup.length)));
     banner.addEventListener("click", () => {
       openIssues(banner);
     });
@@ -1992,10 +2039,68 @@ export function createCardView(input: CardViewInput): CardView {
     // not restore focus on the way out (that would briefly focus a background control).
     capabilityDialog.hide({ restoreFocus: false });
     settingsOverviewDialog.hide({ restoreFocus: false });
+    const setup = setupNode();
     issuesDialog.show({
-      title: translate(model.language, "dialog.issues"),
-      body: issueListBody(doc, model),
+      // Only setup rows to show: the dialog is "Get started" itself.
+      title: translate(model.language, model.issues.length === 0 && setup !== null ? "setup.heading" : "dialog.issues"),
+      body: issueListBody(doc, model, setup),
       opener,
+    });
+  }
+
+  /**
+   * Settings, at one section, and the editor of one of its rows. A row of the charger's section appears only once
+   * its entity configuration is read, so the row is looked for a few times before the section alone is left shown.
+   */
+  function openSettingAt(section: string, edit: string): void {
+    openSettingsOverview();
+    overviewPanel().querySelector<HTMLElement>(`[data-section="${section}"]`)?.scrollIntoView?.({ block: "start" });
+    let tries = 0;
+    const look = (): void => {
+      if (destroyed || !settingsOverviewDialog.isOpen()) {
+        return;
+      }
+      const row = Array.from(overviewPanel().querySelectorAll<HTMLElement>("[data-edit]")).find(
+        (node) => node.dataset["edit"] === edit,
+      );
+      if (row !== undefined) {
+        row.click();
+        return;
+      }
+      tries += 1;
+      if (tries < 10) {
+        setTimer(look, 300);
+      }
+    };
+    look();
+  }
+
+  /** The dialog's "Get started" section, for an administrator with something left to set up; else `null`. */
+  function setupNode(): HTMLElement | null {
+    if (!input.isAdmin || model.setup.length === 0) {
+      return null;
+    }
+    return setupSection(doc, {
+      language: model.language,
+      rows: model.setup,
+      heading: model.issues.length > 0,
+      openPlan: () => {
+        issuesDialog.hide({ restoreFocus: false });
+        input.onOpenSettings("plan");
+      },
+      openSetting: (section, edit) => openSettingAt(section, edit),
+      forecastChoosable: (model.site?.solarForecastChoices.length ?? 0) > 0,
+      navigate: (path) => {
+        issuesDialog.hide({ restoreFocus: false });
+        navigateTo(doc, path);
+      },
+      openExternal: (url) => {
+        doc.defaultView?.open(url, "_blank", "noopener,noreferrer");
+      },
+      dismiss: (id: SetupRowId) => {
+        issuesDialog.hide({ restoreFocus: false });
+        input.onDismissSetup?.(id);
+      },
     });
   }
 
@@ -2009,6 +2114,30 @@ export function createCardView(input: CardViewInput): CardView {
       title: translate(model.language, "cap.title"),
       body: capabilityBody(doc, model),
       opener: settingsGeneral,
+    });
+  }
+
+  /** "Automations" from Settings: the blueprints, each with its import button, in the info dialog. Administrators only. */
+  function openAutomations(): void {
+    if (destroyed || !input.isAdmin) {
+      return;
+    }
+    issuesDialog.hide({ restoreFocus: false });
+    settingsOverviewDialog.hide({ restoreFocus: false });
+    const list = automationsBody(doc, model.language, (path) => {
+      capabilityDialog.hide({ restoreFocus: false });
+      navigateTo(doc, path);
+    });
+    capabilityDialog.show({
+      title: translate(model.language, "settings.automations.label"),
+      body: list.body,
+      opener: settingsGeneral,
+    });
+    // How many automations use each one, once Home Assistant answers; none shown while it has not.
+    void input.onLoadBlueprintUse?.().then((use) => {
+      if (use !== null && !destroyed) {
+        list.showUse(use);
+      }
     });
   }
 
@@ -2352,7 +2481,7 @@ export function createCardView(input: CardViewInput): CardView {
 
   /**
    * Support: "About this card" (the capability list, for everyone) and, for administrators only, the
-   * button that saves the debug bundle. Nothing is sent anywhere.
+   * "Automations" row (SpotNav's blueprints) and the button that saves the debug bundle. Nothing is sent anywhere.
    */
   function supportSectionBody(): HTMLElement {
     const section = element(doc, "section", C.settingsSection);
@@ -2367,6 +2496,14 @@ export function createCardView(input: CardViewInput): CardView {
     paintCardOutdated();
     section.append(outdatedNote);
     if (input.isAdmin) {
+      section.append(
+        overviewRow(
+          "automations",
+          translate(model.language, "settings.automations.label"),
+          translate(model.language, "settings.automations.value"),
+          () => openAutomations(),
+        ),
+      );
       section.append(element(doc, "p", C.muted, translate(model.language, "debug.intro")));
     }
     const actions = element(doc, "div", C.settingsSupportActions);
@@ -2559,7 +2696,36 @@ export function createCardView(input: CardViewInput): CardView {
       areaButton.dataset["setting"] = "market";
     }
     section.append(areaRow);
-    // The price source is named in the area dialog only, beside the area choice (not in this overview).
+    // Where the area's prices come from, and what an administrator can do when it has no source of its own.
+    section.append(
+      ...priceProviderNodes(doc, {
+        language: model.language,
+        provider: model.priceProvider,
+        areaLabel: area || (model.contextAreaId ?? ""),
+        areaId: model.contextAreaId,
+        isAdmin: input.isAdmin,
+        idPrefix: input.idPrefix,
+        hasComponent: (domain) => hasComponent(input.hass?.(), domain),
+        navigate: (path) => {
+          settingsOverviewDialog.hide({ restoreFocus: false });
+          navigateTo(doc, path);
+        },
+        openExternal: (url) => {
+          doc.defaultView?.open(url, "_blank", "noopener,noreferrer");
+        },
+        openArea: () => input.onOpenMarket(),
+        openKeyEditor: () =>
+          openValueEditor(translate(model.language, "price.key.title"), (handlers) =>
+            keyEditor(
+              doc,
+              model.language,
+              idPrefix,
+              (key) => writeValue({ kind: "entsoeKey", key, areaId: model.contextAreaId }),
+              handlers,
+            ),
+          ),
+      }),
+    );
     for (const fiscal of fiscalRows(model.language, model.dashboardFiscal)) {
       const component = fiscal.key as FiscalComponentName;
       const included = model.dashboardFiscal?.[component].policy === "included";

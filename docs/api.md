@@ -39,11 +39,12 @@ charger executed whose pause could not be saved answers `{"ok": true, "action": 
 | ------ | ------ |
 | `dashboard` | The dashboard document below, for this charger. Takes an optional `api_version`. |
 | `sessions` | The charge history, the same request and answer as `spotnav/get_sessions` below (`month`, `format`, `limit`, `from`, `to`), with `"ok": true` and the `action` beside it. A refusal is HTTP 400 with `{"ok": false, "error": "spotnav_invalid_range" \| "spotnav_unsupported_api_version", "action": "sessions"}`. Nothing is withheld. |
+| `price_days` | The charger's electricity prices for today and tomorrow and the history profile, as day documents (see below). Takes an optional `api_version` (`1`). |
 | `settings` | Replace the charger's settings: `{"expected_revision": n, "settings": {...}}`. |
 | `start` | Start charging now; optional `amps`. Pauses automatic execution for the plug-in session (pause choice `manual`). |
 | `stop` | Stop now, which pauses automatic execution for the plug-in session (pause choice `manual`), or with a `choice` (`next_period`, `until_tomorrow`, `until_resumed`) pause it for that span instead. |
 | `resume` | Clear a pause. |
-| `refresh_vehicle` | Re-read the vehicle's Home Assistant entities (`vehicle_id`); never wakes the car. |
+| `refresh_vehicle` | Re-read the vehicle's Home Assistant entities (`vehicle_id`); never a brand's wake-up (Kia Uvo may still ask the car itself, see [target SoC](target-soc.md)). |
 | `set_charge_limit` | Write the vehicle's charge-limit entity (`vehicle_id`, `percent`). |
 | `update_vehicle` | Change a vehicle's capacity, consumption, onboard charger, target, minimum charge level or wake for a reading, with `expected` values. |
 | `update_site_settings` | Change solar priority or forecast sources of the charger's site. |
@@ -177,6 +178,10 @@ is room; `cause` is `battery_shares_fuse` (a home battery charging from the grid
 `load_balancing_limited` (`limit_a` `0`, `phase` `null`, the same `cause`) in its place unless the request asks for
 it (`"reads": ["balancing_paused"]`).
 
+**A car held at its minimum on a lost measurement.** While the site's measurement has been stale or missing long
+enough for load balancing to hold the car at its minimum current, `load_balancing_limited` carries `cause`
+`measurement_lost` and `limit_a` that minimum. An app that does not know the value words it as a plain limit.
+
 **A car's charge limit range.** A vehicle row carries the additive `charge_limit_range`: `{"min", "max", "step"}`,
 the percents `set_charge_limit` (and `spotnav/write_charge_limit`) can write to the car's own limit, or `null` when
 there is no limit to write or its range is unknown. For a `number` limit these are the entity's own `min`, `max` and
@@ -255,6 +260,83 @@ block re-read after the write (`null` while it prices with its own settings). HT
 of the wrong type; nothing is written on a refusal. Examples are in
 `tests/fixtures/webhook/choose_price_source_*.json` and `answer_price_duplicate_*.json`.
 
+**Where the prices come from.** The dashboard's `prices` block carries an additive `provider` object, sent to the
+webhook only when the request asks for it (`"reads": ["price_provider"]`):
+
+```json
+"provider": {"key": null, "name": null, "url": null,
+             "notice": {"code": "add_nordpool", "params": {}}}
+```
+
+`key` is `nordpool`, `entsoe`, `pvpc` or `octopus` (`null`, with `name` and `url`, when the area has no
+source at all; since 2.0 no area is read from the relay, and a reader should treat an unknown key as no key); `null` for the whole object without an area. `notice` is `null` while the area has a source of its
+own, else the one thing an administrator can do: `add_nordpool`, `nordpool_not_loaded`, `add_entsoe_key`,
+`entsoe_key_rejected`, `add_pvpc`, `pvpc_not_loaded`, `add_octopus`, `octopus_not_loaded`, `octopus_no_agile`,
+`octopus_region_mismatch` (`params.region`, the meter's region, whose rates are used) or `source_missing`. An area
+with no source keeps showing the days it holds, with its notice. A source that is there but failing is no notice
+(the prices are `stale` or `degraded` as before). `market.source` is the provider's attribution, `null` with no
+source. `prices.index_state` and `prices.index_revision` are always `null` since 2.0 (there is no index); they stay
+for readers that require them. The table is in `pricing/providers/notices.py`.
+
+**What is left to set up.** The dashboard's additive `setup` block lists the card's "Get started" rows still left
+for this charger, sent to the webhook only when the request asks for it (`"reads": ["setup"]`):
+
+```json
+"setup": {"items": [{"id": "site", "dismissible": true}, {"id": "app", "dismissible": true}]}
+```
+
+`id` is `vehicle` (no vehicle is set up for the charger), `car_level` (the plan charges to a target level, a
+vehicle is set up and no source reports its level; never dismissible, and never beside `vehicle`), `site` (the
+charger has no site), `solar_forecast` (the site can measure solar surplus and has no forecast source),
+`phase_switching` (offered for the charger and off), `phone` (no phone is chosen for notifications and the paired
+app has no push registration) or `app` (no charger's webhook has been used yet); a reader should skip an id it does not know. `spotnav/dismiss_setup_item {"item"}` (administrators
+only) keeps a dismissible row away for the whole installation and answers `{"ok": true}`, else
+`spotnav_setup_item_not_dismissible`. The rows are in `setup_checklist.py`.
+
+**What the status line says about a plan.** Three facts are sent to the webhook only when the request asks for
+them (`"reads": ["plan_facts"]`): the line `plan_saving` (`amount_minor`, `currency`), what a plan saves against
+charging the same energy from now at the same power, beside `plan_cost` while nothing of the plan has started and
+only from a 5 % difference; the line `solar_forecast` (`kwh`, `start`, `end`), the sun the site's forecast
+promises a charger on the solar strategy for the rest of today, else tomorrow; and `hybrid_grid`'s `sun_start`
+and `sun_end`, when the sun hybrid counts on is expected (null without a credit). Without the read the first two
+are left out and `hybrid_grid` comes without the two keys.
+
+**Prices for the app.** `price_days` answers the prices of the charger's electricity price (its price entry, else
+its own area), read from what Home Assistant holds: no request is made for it. The day files and the profile are
+the day documents SpotNav keeps ([prices](prices.md#the-day-document)), the format the relay published before 2.0,
+so a client that read the relay reads them unchanged:
+
+```json
+{"ok": true, "action": "price_days", "v": 1,
+ "area": {"id": "FI", "eic": "10YFI-1--------U", "countries": ["FI"], "name": "Finland",
+          "tz": "Europe/Helsinki", "market_tz": "Europe/Brussels", "currency": "EUR", "major_unit": "€",
+          "minor_unit": "cent", "vat_percent": 25.5, "suggested_tax": 2.325,
+          "publication": {"time": "12:45", "tz": "Europe/Brussels"},
+          "source": {"name": "Nord Pool", "url": "https://www.nordpoolgroup.com/"}},
+ "provider": {"key": "nordpool", "name": "Nord Pool", "url": "https://www.nordpoolgroup.com/", "notice": null},
+ "state": "ready", "reason": "ready", "waiting_for_tomorrow": false,
+ "publication": {"time": "12:45", "tz": "Europe/Brussels"},
+ "files": {"2026-10-29": {"v": 1, ...}, "2026-10-30": {"v": 1, ...}, "2026-10-31": {"v": 1, ...}},
+ "profile": null}
+```
+
+- `area` is the area as the area list bundled with SpotNav states it (the contract-v2 shape), with the market calendar (`market_tz`, always
+  written) and `publication` of the source its prices come from now, and that source as `source`.
+- `provider` names that source, as the dashboard's `prices.provider` does (below).
+- `state`, `reason` and `waiting_for_tomorrow` are the dashboard's `prices` block's.
+- `files` are the held market-day files (day documents, keyed by market date) that cover today
+  and tomorrow in the area's `tz`: two when its calendars agree, up to three when they do not (a Finnish day from
+  Nord Pool's CET days, a London day from Paris days). A file not held yet is absent; cut the display days from the
+  files by instant.
+- `profile` is the history profile ([prices](prices.md#the-history-profile-1)), `null` until 21 of the last 28 days
+  are held.
+
+Refusals are HTTP 400 `{"ok": false, "error", "action": "price_days"}`: `spotnav_no_price_area` (nothing names an
+area for this charger), `spotnav_unknown_price_area` (no area list knows it), `spotnav_no_prices` (no file for today
+or tomorrow is held), `spotnav_unsupported_api_version`. The dashboard's `charger.capabilities.price_days` is `true`
+where the webhook answers it, so a client asks only then. Examples are in
+`tests/fixtures/webhook/price_days_*.json`.
+
 **Permissions over the webhook.** The webhook id is the credential: whoever holds it acts as an administrator for
 its own charger (the dashboard's `writable` flags are true), so these writes, like `update_site_settings` and
 `update_charger_priority`, need nothing more. Only switching active load balancing and choosing the entities SpotNav
@@ -277,14 +359,15 @@ and `charger_priority.writable` say whether it may change those (an administrato
 | `spotnav/get_dashboard` | The dashboard document for one charger. |
 | `spotnav/get_settings`, `spotnav/update_settings` | Read and replace the settings record. |
 | `spotnav/manual_action` | `start`, `stop` (with an optional pause `choice`) or `resume`; any signed-in user. |
-| `spotnav/get_market_options` | Price areas from the relay and their suggested fiscal values. |
-| `spotnav/find_region` | A Great Britain postcode to its price region (`GB-A` … `GB-P`): `{"postcode": "SW1A 1AA"}` answers `region` (one), `regions` (the relay-listed ones) and `reason` (`null`, `invalid_postcode`, `not_found`, `unavailable`). Home Assistant asks Octopus Energy's public lookup directly; the postcode never reaches the relay and is neither stored nor logged. |
+| `spotnav/get_market_options` | Price areas from the area list bundled with SpotNav and their suggested fiscal values. |
+| `spotnav/find_region` | A Great Britain postcode to its price region (`GB-A` … `GB-P`): `{"postcode": "SW1A 1AA"}` answers `region` (one), `regions` (the listed ones) and `reason` (`null`, `invalid_postcode`, `not_found`, `unavailable`). Home Assistant asks Octopus Energy's public lookup directly; the postcode never reaches the relay and is neither stored nor logged. |
 | `spotnav/get_entity_config`, `spotnav/update_entity_config` | The entities a charger and its site use. |
 | `spotnav/choose_vehicle_soc` | Choose (or clear) a vehicle's state-of-charge sensor. |
 | `spotnav/update_vehicle` | A vehicle's battery capacity, consumption, onboard charger, target, minimum charge level and wake for a reading. |
 | `spotnav/write_charge_limit` | Write a car's own charge limit (`vehicle_id`, `percent`), the webhook's `set_charge_limit` over the WebSocket: same entity, range checks and one write a minute per car. Answers `{"api_version": 1, "ok", "error", "retry_after_s"}`; refusals `spotnav_invalid_value` (not a car with a writable limit, or a percent it cannot take), `spotnav_too_soon` (with `retry_after_s`), `spotnav_charge_limit_failed` (the car's integration failed the write). |
 | `spotnav/update_site_settings` | Solar priority, forecast sources, active load balancing. |
 | `spotnav/get_debug_bundle` | The redacted installation-wide debug bundle (administrators only). |
+| `spotnav/get_blueprints` | How many automations use each of SpotNav's [blueprints](automations.md) (administrators only): `{"api_version": 1, "ok": true, "error": null, "blueprints": [{"file", "path", "automations"}]}`, one row per blueprint, `path` being `spotnav/<file>` as an automation refers to it. A non-administrator gets `spotnav_not_admin` and no rows. Not a dashboard field, so the app is never handed a key it does not know. |
 | `spotnav/get_card_info` | Which card the integration serves, for any signed-in user: `{"api_version": 1, "ok": true, "error": null, "spotnav_version", "card_bundle_hash"}`. The card compares the hash with the one in the URL it was loaded from. Not a dashboard field, so an older card is never handed a key it does not know. |
 | `spotnav/identify_vehicle`, `spotnav/choose_vehicle_identification` | Answer "which car is plugged in?", and choose a car's plug or location source (see [vehicle identification](#vehicle-identification)). |
 | `spotnav/get_sessions` | A charger's charge sessions: summaries per month and day and the latest sessions, the same for one chosen `month`, or with `format: "csv"` and optional `from` and `to` dates (or a `month`) the sessions of that range as CSV text. |
@@ -308,12 +391,31 @@ Each charger has one **Charger events** entity (an `event` entity). It fires:
 | `event_type` | When | Attributes |
 |---|---|---|
 | `charge_started` | the charger starts charging | `energy_register_kwh` |
-| `charge_finished` | the charger stops charging | `unplugged`, and `energy_kwh` the charger's energy register counted since the start, when it has one |
+| `charge_finished` | the charger stops charging | `unplugged`, `energy_kwh` the charger's energy register counted since the start (when it has one), and the charge's cost: `cost`, `currency`, `average_price`, `unpriced_kwh` (below) |
 | `plugged_in` / `unplugged` | the vehicle is connected / disconnected, for a charger that can say | none |
 | `plan_installed` | a charging plan different from the one before is installed, by Auto or by hand | `start`, `end`, `periods`, `amps`, `energy_kwh`, `automatic` |
 | `plan_at_risk` | the departure cannot be met with the energy that remains (the plan is the best effort, or not one whole quarter-hour is left); once each time it becomes so | `departure_time`, `requested_kwh` |
 
-Starting Home Assistant is not an event, and neither is a charger integration that reloads: while its charging state reads unavailable or unknown nothing is observed, and the charge is as it was last seen. Example, a notification when a charge ends:
+Starting Home Assistant is not an event, and neither is a charger integration that reloads: while its charging state reads unavailable or unknown nothing is observed, and the charge is as it was last seen.
+
+**What a finished charge cost.** `charge_finished` prices the energy delivered since the charge started from its
+[charge session](card.md#charge-history), as the session sensors do: the spot price of each interval plus the
+energy tax and grid fee you enabled, times VAT, with your current settings.
+
+| Attribute | Meaning |
+|---|---|
+| `cost` | What the priced energy cost, in the major unit (kronor, euro), as the *Last charge cost* sensor rounds it. |
+| `currency` | The ISO code of that cost (`SEK`, `EUR`, …). |
+| `average_price` | `cost` per priced kWh, in the major unit. |
+| `unpriced_kwh` | The charge's energy that had no published price, counted but not in `cost`; `0.0` when all of it was priced. |
+
+When none of the energy could be priced (no published price, or the price settings cannot be resolved), `cost`,
+`currency` and `average_price` are `null`, never `0`. Without a session record (none was kept) all four are `null`.
+A pause shorter than two minutes continues the session; the event
+after it covers only the energy since the charge started again, so two events add up to the session. The figures
+are those the session holds when the charge stops: a reading the charger sends after the stop goes into the
+session, and so into the *Last charge* sensors, but not into the event that has already fired. Example, a
+notification when a charge ends:
 
 ```yaml
 automation:
@@ -327,9 +429,14 @@ automation:
       - action: notify.mobile_app_phone
         data:
           message: >
-            Charging finished
-            {{ trigger.to_state.attributes.energy_kwh | default('?') }} kWh.
+            {%- set a = trigger.to_state.attributes -%}
+            Charging finished:
+            {{ '%.1f' | format(a.energy_kwh) if a.energy_kwh is defined else '?' }} kWh
+            {%- if a.cost is not none %} for {{ '%.2f' | format(a.cost) }} {{ a.currency }},
+            average {{ '%.2f' | format(a.average_price) }} {{ a.currency }}/kWh{% endif %}.
 ```
+
+This says, for example, "Charging finished: 12.4 kWh for 18.60 SEK, average 1.50 SEK/kWh".
 
 ## The dashboard document
 
@@ -419,14 +526,15 @@ allocation and solar surplus both follow: `null` for a charger on no site, else 
 the webhook (`update_charger_priority`) and for an administrator's socket (`spotnav/update_entity_config`),
 false for a reader. An older backend has no block; a client then shows no priority.
 
-**Price areas from relay contract v2.** `market` carries three additive fields: `market_timezone` (the
-zone whose calendar day one relay day file covers; equal to `timezone` except for Great Britain,
+**Price areas in the contract-v2 shape.** `market` carries three additive fields: `market_timezone` (the
+zone whose calendar day one day file covers; equal to `timezone` except for Great Britain,
 `Europe/Paris` beside `Europe/London`, and Portugal, `Europe/Madrid` beside `Europe/Lisbon`), `included`
-(the relay's names, `vat`, `tax`, `grid_fee`, of what the published price already contains) and `source`
-(`{"name", "url"}`, where the prices come from, or `null`). Each `fiscal` component of an included part has
+(the names `vat`, `tax`, `grid_fee`, of what the published price already contains) and `source`
+(`{"name", "url"}`, where the prices come from: the area's provider, or `null` with none). Each `fiscal` component of an included part has
 the policy `included`, with no effective value. `spotnav/get_market_options` gives every area the same
-`market_timezone` and `source`, and `included` in the settings' own component names. Days in `prices` are
-always days in `timezone`; a Great Britain day is cut from the two relay files that cover it.
+`market_timezone` and `included` in the settings' own component names, and `source` `null` since 2.0 (the list
+names no source; the dashboard's `market.source` does). Days in `prices` are
+always days in `timezone`; a Great Britain day is cut from the two day files that cover it.
 
 **Phases.** A charge uses the smaller of the charger's wiring (1 or 3: the site's phase wiring for the
 charger, or, for a charger in no site, its own `charger_phases` field in `spotnav/get_entity_config`

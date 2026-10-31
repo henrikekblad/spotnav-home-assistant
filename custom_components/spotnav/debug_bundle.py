@@ -50,6 +50,21 @@ came later with no version change.
 Inside each charger's `diagnostics.controller`, `phase_switching` (`allowed`, `switched_phases`,
 `switches_this_plug_in`, `last_switch_at`, `settling`, `given_up`, `given_up_count`: the sun's switching between one
 and three phases on that charger) came later with no version change.
+
+Version 8 keeps a day, also across restarts and updates (`debug_day.py`). A site's `history_60min` became
+`history_24h`: the last 24 hours, one row a minute, as compact text rows under a `columns` line (`;` between values,
+empty for unknown, 1 and 0 for yes and no), the site's own and, under `chargers`, each member charger's at the same
+minutes, which now also state the strategy, what solar decided that minute (state, action, reason), the phases the
+charger reads back and whether we switched it to one, the current last written and the current asked for
+(`site/site_history.py`). Each charger gains `sessions` (its last five plug-ins, the current one included, oldest
+first: when plugged in and unplugged, the car and how it was identified, the strategy at the start and its changes,
+and per plug-in the logs `solar`, `phase_switch`, `commands`, `actions` and `regulator`, each bounded with a
+`dropped` count) and `history_24h` (its own minute rows while it is in no site; a site's member has them in its
+site's). The log gains `warnings_24h`: WARNING and above of the last 24 hours, also from before a restart. A site's
+`diagnostics` no longer carry `solar_decision_log` and `regulator_decision_log` in the bundle (the site's own
+diagnostics still do): the chargers' `sessions` hold the same entries, also from before a restart. In a plug-in, a
+solar entry leaves out `strategy` and `from` (the plug-in's strategy and the entry before's `to`), and a load-balancing
+entry its `charger_id`, with each current per phase as `L1/L2/L3`.
 """
 
 from __future__ import annotations
@@ -86,6 +101,7 @@ from .const import (
     ENTRY_TYPE_PRICE,
     ENTRY_TYPE_SITE,
 )
+from .debug_day import history_block
 from .diagnostics import _price_data, entry_diagnostics, TO_REDACT
 from .execution.other_controllers import CONTROLLERS
 from .planning.hybrid_forecast import async_forecast_capable_domains
@@ -94,7 +110,7 @@ from .site.measurement_source import grid_power_source_from_dict, source_from_di
 
 _LOGGER = logging.getLogger(__name__)
 
-BUNDLE_VERSION: Final = 7
+BUNDLE_VERSION: Final = 8
 REDACTED: Final = "**REDACTED**"
 
 #: Keys whose value is never shown, wherever they sit in the bundle.
@@ -401,11 +417,28 @@ def _entry_diagnostics(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, Any
     return diagnostics
 
 
+#: A site's diagnostics the bundle leaves out: each member charger's `sessions` keep the same entries, from before a
+#: restart too, and two copies of a sunny day's would double the file.
+_SITE_LOGS_IN_SESSIONS: Final = ("solar_decision_log", "regulator_decision_log")
+
+
+def _site_diagnostics(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, Any]:
+    diagnostics = _entry_diagnostics(hass, entry)
+    for key in _SITE_LOGS_IN_SESSIONS:
+        diagnostics.pop(key, None)
+    return diagnostics
+
+
 async def _charger_section(
     hass: HomeAssistant, entry: ConfigEntry, forecast: frozenset[str]
 ) -> dict[str, Any]:
     section: dict[str, Any] = {"entry_id": entry.entry_id, "title": entry.title}
     section["diagnostics"] = _entry_diagnostics(hass, entry)
+    try:
+        section.update(_charger_day(hass, entry))
+    except Exception as err:  # noqa: BLE001 - one broken charger must not cost the whole bundle
+        _LOGGER.warning("The debug bundle could not read a charger's last plug-ins: %s", type(err).__name__)
+        section.update(sessions=[], history_24h=None)
     try:
         dashboard = serialize_dashboard(
             capture_dashboard(hass, entry, forecast_domains=forecast), can_act=False
@@ -418,6 +451,18 @@ async def _charger_section(
     section["dashboard"] = _trim_dashboard(dashboard)
     section["status"] = dashboard.get("status")
     return section
+
+
+def _charger_day(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, Any]:
+    """A charger's last plug-ins and, while it is in no site, its minute rows (`debug_day.ChargerDay`)."""
+    from .runtime import charger_data
+    from .site.site_history import CHARGER_ALONE_COLUMNS
+
+    data = charger_data(hass, entry.entry_id)
+    day = None if data is None else data.debug_day
+    if day is None:
+        return {"sessions": [], "history_24h": None}
+    return {"sessions": day.sessions(), "history_24h": history_block(CHARGER_ALONE_COLUMNS, day.rows)}
 
 
 async def async_build_debug_bundle(hass: HomeAssistant) -> dict[str, Any]:
@@ -440,9 +485,9 @@ async def async_build_debug_bundle(hass: HomeAssistant) -> dict[str, Any]:
             {
                 "entry_id": entry.entry_id,
                 "title": entry.title,
-                "diagnostics": _entry_diagnostics(hass, entry),
+                "diagnostics": _site_diagnostics(hass, entry),
                 "measurement_entities": measurement_entities,
-                "history_60min": [] if controller is None else controller.history_samples,
+                "history_24h": None if controller is None else controller.history_samples,
             }
         )
     vehicle_entities = [
@@ -468,9 +513,13 @@ async def async_build_debug_bundle(hass: HomeAssistant) -> dict[str, Any]:
             for entry in prices
         ],
         "log": {
-            "note": "The last SpotNav log records at INFO and above; DEBUG ones only if DEBUG was enabled.",
+            "note": (
+                "The last SpotNav log records at INFO and above since the start; DEBUG ones only if DEBUG was "
+                "enabled; WARNING and above of the last 24 hours, also from before a restart."
+            ),
             "records": [] if buffer is None else buffer.records(),
             "debug_records": [] if buffer is None else buffer.debug_records(),
+            "warnings_24h": [] if buffer is None else buffer.warnings(),
         },
     }
     return redact_bundle(bundle, await _scrubber(hass, entries))

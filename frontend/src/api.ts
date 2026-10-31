@@ -6,6 +6,7 @@ import {
   ACTION_API_VERSION,
   ACTION_STOP,
   API_VERSION,
+  BLUEPRINTS_API_VERSION,
   DEBUG_API_VERSION,
   ENTITY_CONFIG_API_VERSION,
   MARKET_API_VERSION,
@@ -275,11 +276,56 @@ export async function answerPriceDuplicate(
   });
 }
 
+/**
+ * A "Get started" row answered "Not needed" (`spotnav/dismiss_setup_item`, administrators only): kept away for the
+ * whole installation. Answers `{ok: true}`; a row that cannot be dismissed is an error with a stable code.
+ */
+export async function dismissSetupItem(hass: HomeAssistantLike, item: string): Promise<unknown> {
+  return await call<unknown>(hass, { type: "spotnav/dismiss_setup_item", item });
+}
+
+/** What saving the installation's ENTSO-E key answered: stored and accepted, or a stable code. */
+export interface EntsoeKeyAnswer {
+  ok: boolean;
+  error: string | null;
+  state: string | null;
+}
+
+/**
+ * Check and store the installation's ENTSO-E key (`spotnav/set_entsoe_key`, administrators only); `null` clears it.
+ * `areaId` is the area to check it against. The key is never answered back.
+ */
+export async function setEntsoeKey(
+  hass: HomeAssistantLike,
+  key: string | null,
+  areaId: string | null,
+): Promise<EntsoeKeyAnswer> {
+  const message: Record<string, unknown> = { type: "spotnav/set_entsoe_key", key };
+  if (areaId !== null) {
+    message.area_id = areaId;
+  }
+  const raw = await call<unknown>(hass, message);
+  const answer = typeof raw === "object" && raw !== null ? (raw as Record<string, unknown>) : {};
+  return {
+    ok: answer.ok === true,
+    error: typeof answer.error === "string" ? answer.error : null,
+    state: typeof answer.state === "string" ? answer.state : null,
+  };
+}
+
 /** The redacted installation-wide debug bundle (administrators only), `unknown` until decoded. */
 export async function getDebugBundle(hass: HomeAssistantLike): Promise<unknown> {
   return await call<unknown>(hass, {
     type: "spotnav/get_debug_bundle",
     api_version: DEBUG_API_VERSION,
+  });
+}
+
+/** How many automations use each of SpotNav's blueprints (administrators only): `unknown` until decoded. */
+export async function getBlueprints(hass: HomeAssistantLike): Promise<unknown> {
+  return await call<unknown>(hass, {
+    type: "spotnav/get_blueprints",
+    api_version: BLUEPRINTS_API_VERSION,
   });
 }
 

@@ -66,6 +66,9 @@ PATH_BUTTONS_TOGGLE: Final = "buttons_toggle"
 PATH_SELECT_APPROVE: Final = "select_approve"
 #: A switch whose pauses are counted against the vendor's relay-protection budget (Peblar).
 PATH_SWITCH_BUDGET: Final = "switch_budget"
+#: A switch whose state is assumed for a while after each command, read from the charger's status meanwhile
+#: (NexBlue).
+PATH_SWITCH_ASSUMED: Final = "switch_assumed"
 PATH_KINDS: Final = (
     PATH_SWITCH,
     PATH_SELECT,
@@ -76,6 +79,7 @@ PATH_KINDS: Final = (
     PATH_BUTTONS_TOGGLE,
     PATH_SELECT_APPROVE,
     PATH_SWITCH_BUDGET,
+    PATH_SWITCH_ASSUMED,
 )
 
 
@@ -216,6 +220,10 @@ class PlatformProfile:
     held_values: tuple[str, ...] = ()
     #: The integration puts the entity key first in the `unique_id` (`<key>-<serial>`).
     key_first: bool = False
+    #: The Home Assistant version whose integration added the start/stop entity, for a platform whose older
+    #: versions have none (NexBlue's `charging` switch came in 2026.10). Without that entity the charger is
+    #: read only, as a `ROLE_MEASUREMENT_ONLY` profile is. `""`: every version has it.
+    start_stop_since: str = ""
     note: str = ""
     #: How phase switching for solar switches this platform's chargers between one and three phases, in the words
     #: `docs/supported.md` uses (the entity and what it needs), or `""` where it cannot. Matches the platforms that
@@ -374,7 +382,7 @@ _PROFILES: Final[tuple[PlatformProfile, ...]] = (
         status_keys=("car_status",),
         charging_values=("charging",),
         vehicle_idle_values=("waiting for vehicle",),
-        note="Current is only reachable through a service: start and stop only. The switch means "
+        note="Current is only reachable through a service: switched on and off whole, at the current SpotNav learns it draws. The switch means "
         "charging is allowed, so the status sensor decides whether it is charging.",
     ),
     PlatformProfile(
@@ -387,7 +395,8 @@ _PROFILES: Final[tuple[PlatformProfile, ...]] = (
         charging_values=("charging",),
         vehicle_idle_values=("wait car",),
         own_modes=(_rule("select", ("lmo",), ("3", "default", "default mode"), "charging mode"),),
-        phase_switching="the Phase Switch select (1 Phase or 3 Phases, never Auto)",
+        phase_switching="the Phase Switch select (1 Phase or 3 Phases, never Auto), only before a solar start while "
+        "the charger does not charge",
     ),
     PlatformProfile(
         platform="peblar",
@@ -421,7 +430,7 @@ _PROFILES: Final[tuple[PlatformProfile, ...]] = (
         charging_values=("charging",),
         current_sensor_keys=("l1_current", "l2_current", "l3_current"),
         phase_switching="the phase count number (1 or 3; not with a single-phase connector; phase switching must be "
-        "allowed in the NRGkick app)",
+        "allowed in the NRGkick app), only before a solar start while the charger does not charge",
     ),
     PlatformProfile(
         platform="v2c",
@@ -615,7 +624,9 @@ _PROFILES: Final[tuple[PlatformProfile, ...]] = (
         name="ABB Terra AC",
         start_stop=StartStop(PATH_NUMBER_PAUSE, keys=("current_limit",), start_keys=("start_charging",)),
         current_keys=("current_limit",),
-        policy=WritePolicy(min_interval_s=10.0, ignored_while_paused=True),
+        # Current changes under about 15 s apart can freeze or reset the charger; the integration's
+        # maintainer advises about 30 s.
+        policy=WritePolicy(min_interval_s=30.0, ignored_while_paused=True),
         status_keys=("charging_state",),
         charging_values=("state c2 - charging",),
         vehicle_idle_values=("state c1 - ev ready for charge", "state b2 - ev plug in, charging complete"),
@@ -627,7 +638,7 @@ _PROFILES: Final[tuple[PlatformProfile, ...]] = (
         platform="myenergi",
         name="myenergi zappi",
         start_stop=_select(("charge_mode",), ("fast",), ("stopped",)),
-        note="No current control: start and stop only.",
+        note="No current control: switched on and off whole, at the current SpotNav learns it draws.",
     ),
     PlatformProfile(
         platform="ohme",
@@ -654,7 +665,7 @@ _PROFILES: Final[tuple[PlatformProfile, ...]] = (
         status_keys=("charger_state",),
         charging_values=("busy-charging",),
         vehicle_idle_values=("busy-non-charging",),
-        note="No current control: start and stop only.",
+        note="No current control: switched on and off whole, at the current SpotNav learns it draws.",
     ),
     PlatformProfile(
         platform="pod_point",
@@ -667,7 +678,7 @@ _PROFILES: Final[tuple[PlatformProfile, ...]] = (
         platform="chargepoint",
         name="ChargePoint",
         start_stop=_buttons(("start_charging_session",), ("stop_charging_session",)),
-        note="Its current limit is a select: start and stop only. Stop ends the session and Start may stay "
+        note="Its current limit is a select: switched on and off whole, at the current SpotNav learns it draws. Stop ends the session and Start may stay "
         "refused until the cable is replugged.",
     ),
     PlatformProfile(
@@ -677,6 +688,31 @@ _PROFILES: Final[tuple[PlatformProfile, ...]] = (
         energy_keys=("energy_kwh",),
         current_sensor_keys=("current_a_a", "current_b_a", "current_c_a"),
         note="Read only: the car is the actuator.",
+    ),
+    # NexBlue (core `nexblue`; `<serial>_<key>` unique ids). It has no number to set the current in any version.
+    # Home Assistant 2026.9 is sensors only, so there it is read only; 2026.10 adds a `charging` switch, whose
+    # state is the cloud status polled once a minute and assumed for up to 20 s after each command, so it is
+    # read from the status meanwhile (`execution/chargers/nexblue.py`). The status sensor's values are the
+    # integration's `CHARGING_STATE_MAP`: `idle` (no cable), `connected` (ready, not started), `charging`,
+    # `finished`, `error`, `lb_waiting` (its own load balancing holds it), `delay_waiting` (its schedule holds
+    # it) and `ev_waiting` (started, the car draws nothing). The lifetime register is `lifetime_energy`; the
+    # session's `energy` is left out because its key is also the tail of that one. The phase currents are
+    # `current_1` to `current_3` (all three share the translation key `current`).
+    PlatformProfile(
+        platform="nexblue",
+        name="NexBlue",
+        start_stop=StartStop(PATH_SWITCH_ASSUMED, keys=("charging",)),
+        policy=_CLOUD,
+        energy_keys=("lifetime_energy",),
+        status_keys=("charging_state",),
+        charging_values=("charging",),
+        vehicle_idle_values=("ev_waiting", "finished"),
+        held_values=("lb_waiting", "delay_waiting"),
+        current_sensor_keys=("current_1", "current_2", "current_3"),
+        start_stop_since="2026.10",
+        note="Start and stop only; read only on older Home Assistant. No current control: switched on and off "
+        "whole, at the current SpotNav learns it draws. The switch's state is assumed for up to 20 s after a "
+        "command, so SpotNav reads the charger's status meanwhile.",
     ),
     PlatformProfile(platform="evcc_intg", name="evcc", role=ROLE_EXTERNAL_CONTROLLER),
     PlatformProfile(platform="openwb2mqtt", name="openWB", role=ROLE_EXTERNAL_CONTROLLER),

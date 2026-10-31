@@ -21,12 +21,13 @@ from typing import Any
 import pytest
 from homeassistant.core import HomeAssistant
 
+from .relay import stub_repository
 from custom_components.spotnav.pricing.market_observation import MarketObservation
 from custom_components.spotnav.pricing.price_refresh import PriceRefreshManager
 from custom_components.spotnav.pricing.price_repository import PriceRepository
 
 from tests.relay import FakeScheduler
-from tests.relay import BASE_URL, Clock, StoreDouble, StubTransport
+from tests.relay import Clock, StoreDouble, StubTransport
 
 SE4 = "SE4"
 DE_LU = "DE-LU"
@@ -83,7 +84,7 @@ class DeferredManager:
 
 @pytest.fixture
 def repository(hass: HomeAssistant, transport: StubTransport, clock: Clock) -> PriceRepository:
-    return PriceRepository(hass, base_url=BASE_URL, session=transport, now=clock, store=StoreDouble())
+    return stub_repository(hass, transport, now=clock, store=StoreDouble())
 
 
 @pytest.fixture

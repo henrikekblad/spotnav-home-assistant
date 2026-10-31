@@ -11,6 +11,7 @@
       "auto_price": true,
       "current_limit": false,
       "load_balancing": true,
+      "price_days": true,
       "refresh_vehicle": true,
       "regulated_current": false,
       "set_charge_limit": true,
@@ -99,7 +100,7 @@
     "area_id": null,
     "area_name": null,
     "catalogue_attempt_error": null,
-    "catalogue_fetched_at": "2026-09-22T06:00:00+00:00",
+    "catalogue_fetched_at": null,
     "catalogue_state": "ready",
     "countries": null,
     "currency": null,
@@ -165,6 +166,7 @@
     "interval_count": 0,
     "intervals": [],
     "priced_slots": 0,
+    "provider": null,
     "reason": null,
     "resolution_minutes": null,
     "resolutions_minutes": [],
@@ -264,11 +266,31 @@
     "users_change_plan": false,
     "vehicle_ids": null
   },
+  "setup": {
+    "items": [
+      {
+        "dismissible": true,
+        "id": "vehicle"
+      },
+      {
+        "dismissible": true,
+        "id": "solar_forecast"
+      },
+      {
+        "dismissible": true,
+        "id": "phone"
+      },
+      {
+        "dismissible": true,
+        "id": "app"
+      }
+    ]
+  },
   "site": {
     "active_control": {
-      "available": false,
+      "available": true,
       "enabled": false,
-      "reason": "no_commandable_charger",
+      "reason": null,
       "writable": true
     },
     "charger_count": 1,

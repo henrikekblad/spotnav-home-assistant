@@ -303,7 +303,7 @@ async def test_a_balancing_pause_ends_with_its_plug_in_and_the_next_plug_in_star
     await plug.set(True)
     await install_schedule(controller, _open_window())
     assert starts == [] and controller.paused_by_balancing
-    allowance["a"] = 6.5  # headroom, but within the regulator's resume margin
+    allowance["a"] = 20.0  # room for its whole switched current, but the resume waits for the regulator
     await plug.set(False)
     assert not controller.paused_by_balancing, "the unplug ends the plug-in the pause held a charge for"
 

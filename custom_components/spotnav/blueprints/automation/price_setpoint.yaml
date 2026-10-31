@@ -1,0 +1,217 @@
+# Installed by SpotNav in blueprints/automation/spotnav/ and overwritten whenever SpotNav is updated.
+# To keep changes of your own, copy this file to another folder under blueprints/automation/ and edit the copy.
+blueprint:
+  name: "SpotNav: setpoint by electricity price"
+  description: >-
+    Gives thermostats (floor heating, radiators, a heat pump) a higher temperature when electricity
+    is cheap and a lower one when it is expensive, from a SpotNav electricity price's Cheap now and
+    Expensive now sensors.
+
+
+    In this order: when the away entity is in its away state, the away temperature; when the price
+    now is above the max price, the expensive temperature; when Cheap now is on, the cheap
+    temperature; when Expensive now is on, the expensive temperature; otherwise the normal
+    temperature.
+
+
+    It runs when these sensors change, when Home Assistant starts and at a regular interval, and
+    sets a thermostat only when its setpoint differs. A thermostat that cannot be set is skipped and
+    the others are still set. A setpoint you change by hand lasts until the next run.
+  domain: automation
+  source_url: https://raw.githubusercontent.com/henrikekblad/spotnav-home-assistant/main/custom_components/spotnav/blueprints/automation/price_setpoint.yaml
+  author: SpotNav
+  homeassistant:
+    min_version: "2024.10.0"
+  input:
+    thermostats:
+      name: Thermostats
+      description: The thermostats to set. Use a heat pump's setpoint rather than switching it on and off.
+      selector:
+        entity:
+          filter:
+            - domain: climate
+          multiple: true
+    prices:
+      name: Electricity price
+      description: The entities of a SpotNav electricity price (for example SE4).
+      input:
+        cheap_now:
+          name: Cheap now
+          description: SpotNav's Cheap now binary sensor, such as binary_sensor.electricity_price_se4_cheap_now.
+          selector:
+            entity:
+              filter:
+                - integration: spotnav
+                  domain: binary_sensor
+        expensive_now:
+          name: Expensive now
+          description: SpotNav's Expensive now binary sensor, such as binary_sensor.electricity_price_se4_expensive_now.
+          selector:
+            entity:
+              filter:
+                - integration: spotnav
+                  domain: binary_sensor
+        price_now:
+          name: Price now
+          description: SpotNav's Price now sensor, such as sensor.electricity_price_se4_price_now. Used with the max price.
+          selector:
+            entity:
+              filter:
+                - integration: spotnav
+                  domain: sensor
+        max_price:
+          name: Max price
+          description: >-
+            Above this price per kWh (in the unit of Price now, with fees and VAT) the expensive
+            temperature is used, whatever the hours say. 0 turns it off.
+          default: 0
+          selector:
+            number:
+              min: 0
+              max: 100
+              step: 0.01
+              mode: box
+    temperatures:
+      name: Temperatures
+      input:
+        cheap_temperature:
+          name: Cheap temperature
+          default: 21
+          selector:
+            number:
+              min: 5
+              max: 35
+              step: 0.5
+              unit_of_measurement: °C
+        normal_temperature:
+          name: Normal temperature
+          default: 19
+          selector:
+            number:
+              min: 5
+              max: 35
+              step: 0.5
+              unit_of_measurement: °C
+        expensive_temperature:
+          name: Expensive temperature
+          default: 17
+          selector:
+            number:
+              min: 5
+              max: 35
+              step: 0.5
+              unit_of_measurement: °C
+    away:
+      name: Away (optional)
+      collapsed: true
+      input:
+        away_entity:
+          name: Away entity
+          description: >-
+            An alarm panel, a person, an input boolean or any other entity that says no one is
+            home. Leave empty to not use it.
+          default: ""
+          selector:
+            entity: {}
+        away_state:
+          name: Away state
+          description: >-
+            The state that means away, such as armed_away for an alarm panel, not_home for a person
+            or on for an input boolean.
+          default: armed_away
+          selector:
+            text: {}
+        away_temperature:
+          name: Away temperature
+          default: 17
+          selector:
+            number:
+              min: 5
+              max: 35
+              step: 0.5
+              unit_of_measurement: °C
+    timing:
+      name: Interval
+      collapsed: true
+      input:
+        interval:
+          name: Also run every
+          description: A run at a regular interval sets back a thermostat that was changed by hand.
+          default: "/15"
+          selector:
+            select:
+              options:
+                - label: 5 minutes
+                  value: "/5"
+                - label: 15 minutes
+                  value: "/15"
+                - label: 30 minutes
+                  value: "/30"
+                - label: Hour
+                  value: "0"
+
+mode: queued
+max: 10
+
+trigger_variables:
+  away_entity: !input away_entity
+  away_state: !input away_state
+
+triggers:
+  - trigger: state
+    entity_id:
+      - !input cheap_now
+      - !input expensive_now
+      - !input price_now
+    to: null
+  - trigger: homeassistant
+    event: start
+  - trigger: time_pattern
+    minutes: !input interval
+  # The away entity is optional, so it is watched by templates rather than a state trigger.
+  - trigger: template
+    value_template: "{{ away_entity != '' and is_state(away_entity, away_state) }}"
+  - trigger: template
+    value_template: "{{ away_entity != '' and not is_state(away_entity, away_state) }}"
+
+variables:
+  thermostats: !input thermostats
+  cheap_now: !input cheap_now
+  expensive_now: !input expensive_now
+  price_now: !input price_now
+  max_price: !input max_price
+  cheap_temperature: !input cheap_temperature
+  normal_temperature: !input normal_temperature
+  expensive_temperature: !input expensive_temperature
+  away_temperature: !input away_temperature
+  target_temperature: >-
+    {% set price = states(price_now) | float(none) %}
+    {% if away_entity != '' and is_state(away_entity, away_state) %}
+      {{ away_temperature | float }}
+    {% elif max_price | float(0) > 0 and price is not none and price > max_price | float %}
+      {{ expensive_temperature | float }}
+    {% elif is_state(cheap_now, 'on') %}
+      {{ cheap_temperature | float }}
+    {% elif is_state(expensive_now, 'on') %}
+      {{ expensive_temperature | float }}
+    {% else %}
+      {{ normal_temperature | float }}
+    {% endif %}
+
+actions:
+  - repeat:
+      for_each: "{{ [thermostats] if thermostats is string else thermostats }}"
+      sequence:
+        - if:
+            - condition: template
+              value_template: >-
+                {% set current = state_attr(repeat.item, 'temperature') | float(none) %}
+                {{ states(repeat.item) not in ['unavailable', 'unknown']
+                   and (current is none or (current - target_temperature | float) | abs > 0.01) }}
+          then:
+            - action: climate.set_temperature
+              continue_on_error: true
+              target:
+                entity_id: "{{ repeat.item }}"
+              data:
+                temperature: "{{ target_temperature | float }}"
