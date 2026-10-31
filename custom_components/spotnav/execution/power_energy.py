@@ -24,6 +24,9 @@ from typing import Final
 
 from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN
 from homeassistant.core import HomeAssistant, State
+from homeassistant.helpers import entity_registry as er
+
+from ..const import CONF_ENERGY_REGISTER_ENTITY, CONF_POWER_ENTITY, DOMAIN
 
 #: The unique id suffix of the integrated-energy sensor, `{entry_id}_{suffix}`.
 INTEGRATED_ENERGY_KEY: Final = "integrated_energy"
@@ -38,6 +41,24 @@ _WATTS_PER_UNIT: Final = {"W": 1.0, "kW": 1000.0}
 
 def integrated_energy_unique_id(entry_id: str) -> str:
     return f"{entry_id}_{INTEGRATED_ENERGY_KEY}"
+
+
+def configured_register_entity(hass: HomeAssistant, entry_id: str) -> str | None:
+    """The energy register a charger entry's stored settings name now: its stored register, else the energy
+    integrated from its smart plug, else `None` (an OCPP connector's automatic register, or none).
+
+    For a stored count from before counts recorded their register: the stores read it when they load, before any
+    charger is set up (and so before setup may replace a register, `energy_register.py`), so it names the register
+    that count's readings came from."""
+    entry = hass.config_entries.async_get_entry(entry_id)
+    if entry is None:
+        return None
+    stored = entry.data.get(CONF_ENERGY_REGISTER_ENTITY)
+    if stored:
+        return str(stored)
+    if entry.data.get(CONF_POWER_ENTITY):
+        return er.async_get(hass).async_get_entity_id("sensor", DOMAIN, integrated_energy_unique_id(entry_id))
+    return None
 
 
 def power_max_age_s(measurement_max_age_s: float, *, smart_plug: bool) -> float:

@@ -27,6 +27,7 @@ from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
 from ..const import DOMAIN
+from ..execution.power_energy import configured_register_entity
 from ..notifications.settings import NotificationSettings, NotificationSettingsError
 from ..runtime import domain_data
 from ..vehicles.camera_settings import CameraSettings, CameraSettingsError
@@ -963,7 +964,10 @@ class EnergyBaseline:
     * `met_requested_kwh`: the request when the need was met, so a raised request is told from a count
       that wavers;
     * `charge_mark_s`: the charger's charge clock at the last believed reading
-      (`ChargingController.charging_seconds`), so a rise is judged by the charging time since.
+      (`ChargingController.charging_seconds`), so a rise is judged by the charging time since;
+    * `register_entity`: the entity the readings came from. Another register counts from another origin, so a
+      count never runs across two (`auto_controller.follow_register`). A record from before it was written is
+      taken, when loaded, as the register the charger's entry names then (`configured_register_entity`).
     """
 
     register_kwh: float | None
@@ -984,9 +988,12 @@ class EnergyBaseline:
     rejected_mark_s: float | None = None
     charge_mark_s: float | None = None
     met_requested_kwh: float | None = None
+    register_entity: str | None = None
 
     def as_dict(self) -> dict[str, Any]:
         record: dict[str, Any] = {"register_kwh": self.register_kwh, "departure_key": self.departure_key}
+        if self.register_entity is not None:
+            record["register_entity"] = self.register_entity
         for name in _BASELINE_INSTANTS:
             value = getattr(self, name)
             if value is not None:
@@ -1020,9 +1027,13 @@ class EnergyBaseline:
                     "rejected_mark_s",
                     "charge_mark_s",
                     "met_requested_kwh",
+                    "register_entity",
                 }
             ),
         )
+        register_entity = stored.get("register_entity")
+        if register_entity is not None and (not isinstance(register_entity, str) or not register_entity):
+            _refuse("invalid_energy_baseline", "a stored energy baseline's register must be an entity")
         register_kwh = stored["register_kwh"]
         if register_kwh is not None:
             register_kwh = _finite(register_kwh, "invalid_energy_baseline", "register_kwh")
@@ -1069,6 +1080,7 @@ class EnergyBaseline:
             rejected_mark_s=numbers["rejected_mark_s"],
             charge_mark_s=numbers["charge_mark_s"],
             met_requested_kwh=numbers["met_requested_kwh"],
+            register_entity=register_entity,
         )
 
 
@@ -1117,6 +1129,7 @@ class AutoSettingsStore:
 
         `store` is `None` in production (HA's own `Store`); tests pass a double that can fail.
         """
+        self._hass = hass
         self._store: Store[dict[str, Any]] = (
             store
             if store is not None
@@ -1204,6 +1217,12 @@ class AutoSettingsStore:
                         energy_baseline = EnergyBaseline.from_stored(record["energy_baseline"])
                     except AutoSettingsError as err:
                         _LOGGER.warning("Ignoring a stored energy baseline: %s", err.code)
+                if energy_baseline is not None and energy_baseline.register_entity is None:
+                    # A count from before counts named their register: its readings came from the one the charger's
+                    # entry names now, before setup may replace it.
+                    energy_baseline = replace(
+                        energy_baseline, register_entity=configured_register_entity(self._hass, entry_id)
+                    )
                 stored_suggested = record.get("suggested")
                 suggested: tuple[str, ...] = ()
                 if isinstance(stored_suggested, list) and all(
