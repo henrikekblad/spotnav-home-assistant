@@ -20,7 +20,7 @@ from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from dataclasses import asdict, dataclass, replace
 from datetime import datetime, timedelta
-from typing import Any, AsyncContextManager, Final, Literal, Protocol
+from typing import Any, AsyncContextManager, Final, Literal, Protocol, TYPE_CHECKING
 
 from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN
 from homeassistant.core import callback, Event, EventStateChangedData, HassJob, HomeAssistant, State
@@ -168,6 +168,9 @@ from .ownership_shadow import (
     WINDOW_HOLD,
 )
 
+
+if TYPE_CHECKING:
+    from ..debug_day import ChargerDay
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -1005,6 +1008,8 @@ class ChargingController:
         # that gives up a switch the read-back never confirmed, and whether that was said in this plug-in.
         self._phase_switching_config: bool = config.get(CONF_PHASE_SWITCHING) is True
         self._phases = PhaseSwitchState()
+        # The debug bundle's keeper of this charger's plug-ins (`set_debug_day`), `None` until setup gives it.
+        self._debug_day: ChargerDay | None = None
         self._phase_confirm_cancel: Callable[[], None] | None = None
         self._phase_warned = False
         # Three phases were tried back once after switching was given up in this plug-in (`_restore_three_phases_locked`).
@@ -3040,6 +3045,7 @@ class ChargingController:
         read_back = self._phases_read_back()
         outcome = self._phases.confirm(read_back, dt_util.utcnow())
         if outcome == "confirmed":
+            self._note_phase_switch("confirmed", read_back=read_back)
             self._cancel_phase_confirm()
             _LOGGER.debug(
                 "SpotNav charger %s: the charger confirmed %s phase(s)", self.entry_id, read_back
@@ -3049,6 +3055,7 @@ class ChargingController:
         elif outcome == "given_up":
             self._phase_switch_given_up(read_back)
         elif not self.phase_switch_settling and self._phases.reconcile(read_back):
+            self._note_phase_switch("reconciled", read_back=read_back)
             _LOGGER.info(
                 "SpotNav charger %s: the charger reads %s phase(s), which is what it is reckoned on now",
                 self.entry_id,
@@ -3060,6 +3067,7 @@ class ChargingController:
     def _phase_switch_given_up(self, read_back: int | None) -> None:
         """A switch the charger did not take: logged once per plug-in, counted in the diagnostics, nothing more (the
         person cannot act on it). The charge goes on, by the rules without switching, on what the read-back shows."""
+        self._note_phase_switch("given_up", read_back=read_back)
         self._cancel_phase_confirm()
         if not self._phase_warned:
             self._phase_warned = True
@@ -3099,8 +3107,22 @@ class ChargingController:
         if outcome == "given_up":
             self._phase_switch_given_up(read_back)
         elif outcome == "confirmed":
+            self._note_phase_switch("confirmed", read_back=read_back)
             self._save_memory_soon()
             self._notify()
+
+    def set_debug_day(self, day: ChargerDay | None) -> None:
+        """Who keeps this charger's plug-ins for the debug bundle across restarts (`debug_day.ChargerDay`): told each
+        phase switch, each command the adapter sends and each event the charge-ownership core decides. Diagnostics
+        only; nothing it keeps is read back by a decision."""
+        self._debug_day = day
+        self.adapter.command_listener = None if day is None else day.note_command
+        self._shadow.on_record = None if day is None else day.note_ownership
+
+    def _note_phase_switch(self, what: str, *, phases: int | None = None, read_back: int | None = None) -> None:
+        day = self._debug_day
+        if day is not None:
+            day.note_phase_switch(what, phases=phases, read_back=read_back)
 
     def _new_phase_plug_in(self) -> None:
         """A plug-in or an unplug: the switch budget and a give-up start afresh (`PhaseSwitchState.new_plug_in`)."""
@@ -3138,6 +3160,7 @@ class ChargingController:
                 )
                 if counted:
                     self._phases.counted_attempt(now)
+                self._note_phase_switch("not_sent", phases=phases)
                 await self._async_save_quietly()
                 return False
         result = await self.adapter.async_set_phases(phases)
@@ -3145,9 +3168,11 @@ class ChargingController:
             if counted:
                 self._phases.counted_attempt(now)
             read_back = self._phases_read_back()
+            self._note_phase_switch("not_sent", phases=phases, read_back=read_back)
             if self._phases.given_up:
                 # Already given up (three tried back once): no new give-up, only what the read-back shows.
-                self._phases.reconcile(read_back)
+                if self._phases.reconcile(read_back):
+                    self._note_phase_switch("reconciled", read_back=read_back)
             else:
                 self._phases.give_up(read_back)
                 self._phase_switch_given_up(read_back)
@@ -3155,6 +3180,7 @@ class ChargingController:
             return False
         _LOGGER.info("SpotNav charger %s: switching to %s phase(s)", self.entry_id, phases)
         self._phases.sent(phases, now, counted=counted)
+        self._note_phase_switch("sent", phases=phases)
         self._arm_phase_confirm()
         # A read-back that already shows it confirms it at once.
         self.reconcile_phases()

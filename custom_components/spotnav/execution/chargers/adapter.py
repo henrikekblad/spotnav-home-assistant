@@ -162,6 +162,8 @@ class ChargerAdapter:
         self._commands: deque[dict[str, Any]] = deque(maxlen=COMMAND_LOG_SIZE)
         #: What the last current assignment came to, whether or not anything was sent.
         self._last_current: dict[str, Any] | None = None
+        #: Who also keeps each command logged, as the same record (the debug bundle's plug-ins, `debug_day.py`).
+        self.command_listener: Callable[[dict[str, Any]], None] | None = None
         self._after_reads: set[CALLBACK_TYPE] = set()
 
     # -- what a restart must not forget
@@ -274,6 +276,16 @@ class ChargerAdapter:
             if not only_when_sent or calls or record["result"] == RESULT_ERROR:
                 self._commands.append(record)
                 self._schedule_after_read(record)
+                self._tell_command(record)
+
+    def _tell_command(self, record: dict[str, Any]) -> None:
+        listener = self.command_listener
+        if listener is None:
+            return
+        try:
+            listener(record)
+        except Exception:  # noqa: BLE001 - a diagnostic listener must never fail a command
+            _LOGGER.debug("The command listener failed", exc_info=True)
 
     def _schedule_after_read(self, record: dict[str, Any]) -> None:
         """Read the status again shortly: best effort, in the background, never awaited."""
@@ -301,6 +313,11 @@ class ChargerAdapter:
             return None
         state = self.hass.states.get(self.status_entity_id)
         return None if state is None else str(state.state)
+
+    @property
+    def last_current_a(self) -> int | None:
+        """The amps of the last current assignment, whether or not anything was sent (`None`: none yet)."""
+        return None if self._last_current is None else self._last_current.get("amps")
 
     def command_log(self) -> list[dict[str, Any]]:
         """The remembered commands, oldest first, as plain data."""
