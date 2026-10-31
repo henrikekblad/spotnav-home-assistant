@@ -436,9 +436,9 @@ they hold until the page is reloaded and the card then starts on **Day** and the
 ### Support
 
 **About this card** opens **What this charger can do** (see [Header](#header)). For an administrator,
-**Automations** lists SpotNav's blueprints, *Setpoint by electricity price* and *Run on solar
-surplus*, each with **Add to Home Assistant**, which opens Home Assistant's blueprint import with it;
-see [Automations](automations.md). **Download debug info** saves one file for a bug report (see
+**Automations** lists the blueprints SpotNav installs, *Setpoint by electricity price* and *Run on
+solar surplus*, with how many automations use each and **Create automation**, which opens Home
+Assistant's Blueprints page; see [Automations](automations.md). **Download debug info** saves one file for a bug report (see
 [Diagnostics and troubleshooting](troubleshooting.md)).
 
 ![Support: Automations, the debug info and About this card](images/card-settings-support.png)

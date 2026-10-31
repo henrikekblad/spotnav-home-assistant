@@ -1,31 +1,43 @@
 # Automations
 
 SpotNav ships two Home Assistant **blueprints**: ready-made automations that use SpotNav's
-[electricity price](price-device.md) and a site's solar surplus for the rest of the house. You import a
-blueprint once, then make as many automations from it as you like, each with its own entities.
+[electricity price](price-device.md) and a site's solar surplus for the rest of the house. SpotNav
+installs them itself; you make as many automations from each as you like, each with its own entities.
 
 | Blueprint | What it does |
 |---|---|
 | [Setpoint by electricity price](#setpoint-by-electricity-price) | Floor heating, radiators or a heat pump get a higher temperature when electricity is cheap and a lower one when it is expensive. |
 | [Run on solar surplus](#run-on-solar-surplus) | A pool heater, water heater or immersion heater is switched on when the sun gives a surplus. |
 
-## Importing a blueprint
+## SpotNav keeps them up to date
 
-Use the button under each blueprint below, or, as an administrator, the card's **Card settings**,
-**Support**, **Automations**, where each has an **Add to Home Assistant** button. Either opens
-my.home-assistant.io, which forwards to your own Home Assistant (it asks for its address the first
-time) and shows **Import blueprint** with the blueprint's address filled in. Choose **Preview** and
-**Import blueprint**. Then, under **Settings**, **Automations & scenes**, **Blueprints**, choose the
-blueprint and **Create automation**, pick your entities and save.
+Each time Home Assistant starts, SpotNav copies its blueprints to the folder
+`blueprints/automation/spotnav/` in your configuration, writing a file only when it differs from the one
+SpotNav ships. An update of SpotNav that changes a blueprint therefore replaces it at the next start, and
+automations made from it are reloaded so they run the new version. Your automations themselves, their
+chosen entities and values, and every other folder are left alone.
 
-![Automations in the card's Settings: the two blueprints, each with Add to Home Assistant](images/card-automations.png)
+**Changes you make to these files are overwritten.** To change a blueprint for yourself, copy the file
+to another folder, for example `blueprints/automation/mine/`, change the copy, and make your
+automations from that one. The first lines of each file say the same.
 
-The blueprints are fetched from this repository's main branch. Home Assistant keeps the copy you
-imported; **Re-import blueprint** in its menu fetches the newest one.
+## Making an automation from one
+
+In Home Assistant, go to **Settings**, **Automations & scenes**, **Blueprints**, choose one of the
+*SpotNav:* blueprints and **Create automation**, pick your entities and save. As an administrator you
+can also start from the card: **Card settings**, **Support**, **Automations** lists both, with how many
+automations already use each (which opens those automations), and **Create automation** opens the
+Blueprints page. Home Assistant has no link that opens a new automation from a given blueprint, so the
+last step, **Create automation** on the blueprint, is taken there.
+
+![Automations in the card's Settings: the two blueprints, how many automations use each, and Create automation](images/card-automations.png)
+
+On a Home Assistant without SpotNav, or to fetch one by hand, the buttons below import a blueprint from
+this repository's main branch through my.home-assistant.io. With SpotNav installed you do not need them.
 
 ## Setpoint by electricity price
 
-[![Open your Home Assistant instance and show the blueprint import dialog with this blueprint filled in.](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fraw.githubusercontent.com%2Fhenrikekblad%2Fspotnav-home-assistant%2Fmain%2Fblueprints%2Fautomation%2Fspotnav%2Fprice_setpoint.yaml)
+[![Open your Home Assistant instance and show the blueprint import dialog with this blueprint filled in.](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fraw.githubusercontent.com%2Fhenrikekblad%2Fspotnav-home-assistant%2Fmain%2Fcustom_components%2Fspotnav%2Fblueprints%2Fautomation%2Fprice_setpoint.yaml)
 
 Sets one or more thermostats from the electricity price's **Cheap now** and **Expensive now** sensors. The
 temperature is chosen in this order, the first that applies:
@@ -75,7 +87,7 @@ that is allowed to modulate.
 
 ## Run on solar surplus
 
-[![Open your Home Assistant instance and show the blueprint import dialog with this blueprint filled in.](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fraw.githubusercontent.com%2Fhenrikekblad%2Fspotnav-home-assistant%2Fmain%2Fblueprints%2Fautomation%2Fspotnav%2Fsolar_surplus_switch.yaml)
+[![Open your Home Assistant instance and show the blueprint import dialog with this blueprint filled in.](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fraw.githubusercontent.com%2Fhenrikekblad%2Fspotnav-home-assistant%2Fmain%2Fcustom_components%2Fspotnav%2Fblueprints%2Fautomation%2Fsolar_surplus_switch.yaml)
 
 Switches a load on and off from a SpotNav site's **Solar surplus** sensor (see
 [Site and load balancing](site-and-load-balancing.md#solar-and-forecast-settings)), so it needs a site
