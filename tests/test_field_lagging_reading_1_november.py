@@ -26,6 +26,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.util import dt as dt_util
 
 from custom_components.spotnav.execution import ownership_shadow
+from custom_components.spotnav.site.site_capacity_controller import RaiseCredit, SiteCapacityController
 
 from .helpers import install_schedule
 from .test_balancing_retry import _battery_entity
@@ -53,6 +54,12 @@ class _Morning:
         self.car_max_a = car_max_a
         self.heater = False
         self.heater_a = _HEATER_A
+        #: The phases the heater draws on (the field's is on L1 only), and every how many passes the HALO sends a
+        #: meter value.
+        self.heater_phases: tuple[str, ...] = ("L1",)
+        self.meter_passes = _METER_VALUE_PASSES
+        #: The site's current per phase on every pass.
+        self.site_log: list[list[float]] = []
         self.car_a = 0.0
         self.on = False
         self.offs = 0
@@ -87,13 +94,16 @@ class _Morning:
         self.car_a = min(self.assigned_a(), self.car_max_a) if self.on else 0.0
         if self.on:
             self.lowest_a = self.car_a if self.lowest_a is None else min(self.lowest_a, self.car_a)
-        if self.passes % _METER_VALUE_PASSES == 0:
+        if self.passes % self.meter_passes == 0:
             halo.reads(round(self.car_a * 0.995 + _WOBBLE[self.wobble] / 4, 2))
         flicker = _WOBBLE[(self.wobble + 3) % len(_WOBBLE)] / 3
-        heater = (self.heater_a if self.heater else 0.0, 0.0, 0.0)
+        heater = tuple(
+            self.heater_a if self.heater and phase in self.heater_phases else 0.0 for phase in ("L1", "L2", "L3")
+        )
         site = [
             round(house + extra + flicker + self.car_a, 2) for house, extra in zip(self.house, heater, strict=True)
         ]
+        self.site_log.append(site)
         self.peak = list(site) if self.peak is None else [max(a, b) for a, b in zip(self.peak, site, strict=True)]
         _site_a(hass, halo.site, *site)
         for phase in ("l1", "l2", "l3"):
@@ -200,12 +210,13 @@ async def test_1019_a_load_after_a_raise_lowers_the_car_and_does_not_pause_it(
 
 
 @pytest.mark.parametrize("drives", [True, False])
-async def test_a_car_that_draws_less_than_written_still_fits(
+async def test_a_car_that_draws_less_than_written_is_not_credited_with_the_raise(
     hass: HomeAssistant, monkeypatch, freezer, drives: bool
 ) -> None:
-    """The car takes no more than 10 A, whatever is written. Raised to 14 A or more with the heater off, it goes to 10
-    A, and the site shows those 10 A, not what was written. A larger load on L1 then comes on before the HALO's next meter value: the car is
-    credited with what the site shows it took, never with what was written, and lowered to what fits at once."""
+    """The car takes no more than 10 A, whatever is written. Raised to 14 A or more with the heater off, it goes to
+    10 A: the site rises by 2 A where 6 were written, which is not the step, so nothing is credited. A larger load on
+    L1 then comes on before the HALO's next meter value: the car is decided on its own reading, and the site is within
+    the fuse from the next pass."""
     _drives(monkeypatch, drives)
     morning = await _the_morning(hass, monkeypatch, freezer, f"nov1less{int(drives)}", car_max_a=10.0)
     morning.heater = False
@@ -216,9 +227,131 @@ async def test_a_car_that_draws_less_than_written_still_fits(
     morning.heater_a = 11.6
     await morning.step()
     trace = "\n".join(morning.trace[raised_at - 3 :])
-    credited = morning.halo.log()[-1]["raise_credit_a"]
-    assert credited and max(credited.values()) <= 10.0, f"credited what the site shows, not what was written:\n{trace}"
-    assert len(morning.halo.turn_off) == 0 and morning.assigned_a() <= 6.0, f"lowered to what fits:\n{trace}"
+    assert not morning.halo.log()[-1]["raise_credit_a"], f"nothing credited:\n{trace}"
     morning.peak = None
     await morning.step()
     assert max(morning.peak) <= _FUSE_A, f"within the fuse from the next pass:\n{trace}"
+
+
+@pytest.mark.parametrize("drives", [True, False])
+async def test_a_load_on_every_phase_with_a_raise_the_car_does_not_take_is_never_the_car(
+    hass: HomeAssistant, monkeypatch, freezer, drives: bool
+) -> None:
+    """The car takes no more than 10 A. Raised with the heater off, it goes to 10 A; an 11.6 A load on all three phases
+    comes on before the HALO's next meter value. The site rose by far more than the step on every phase, so it is not
+    the car's: nothing is credited, and the site is over the fuse for no more than the pass that saw the load."""
+    _drives(monkeypatch, drives)
+    morning = await _the_morning(hass, monkeypatch, freezer, f"nov1three{int(drives)}", car_max_a=10.0)
+    morning.heater = False
+    await morning.until_raised(12.0)
+    raised_at = len(morning.trace)
+
+    morning.heater = True
+    morning.heater_a = 11.6
+    morning.heater_phases = ("L1", "L2", "L3")
+    passes_over = 0
+    for _ in range(24):
+        await morning.step()
+        assert not morning.halo.log()[-1]["raise_credit_a"], "\n".join(morning.trace[raised_at - 2 :])
+        if max(morning.site_log[-1]) > _FUSE_A + 0.3:
+            passes_over += 1
+    assert passes_over <= 1, "\n".join(morning.trace[raised_at - 2 :])
+
+
+@pytest.mark.parametrize("drives", [True, False])
+async def test_a_lowering_after_a_raise_is_never_raised_back_on_the_credit(
+    hass: HomeAssistant, monkeypatch, freezer, drives: bool
+) -> None:
+    """The car takes the raise to 16 A; an 11.6 A load on all three phases comes on right after it, and the HALO's
+    meter values come a minute apart. The car is lowered (or paused), never raised again on what the raise was
+    credited with while the load is on, and the site stays within the fuse once lowered."""
+    _drives(monkeypatch, drives)
+    morning = await _the_morning(hass, monkeypatch, freezer, f"nov1low{int(drives)}")
+    morning.meter_passes = 12
+    morning.heater = False
+    await morning.until_raised(16.0)
+    raised_at = len(morning.trace)
+
+    morning.heater = True
+    morning.heater_a = 11.6
+    morning.heater_phases = ("L1", "L2", "L3")
+    await morning.step()
+    lowered = morning.assigned_a()
+    writes_before = len(morning.halo.written())
+    morning.peak = None
+    for _ in range(20):
+        await morning.step()
+        credited = morning.halo.log()[-1]["raise_credit_a"]
+        assert not credited or max(credited.values()) <= morning.assigned_a() + 0.5, "\n".join(
+            morning.trace[raised_at - 2 :]
+        )
+    trace = "\n".join(morning.trace[raised_at - 2 :])
+    raises = [
+        written for written in morning.halo.written()[writes_before:] if float(written.split(",")[0].split(".")[1]) > lowered
+    ]
+    assert not raises, f"raised again to {raises}:\n{trace}"
+    assert max(morning.peak) <= _FUSE_A + 0.3, trace
+
+
+@pytest.mark.parametrize("drives", [True, False])
+async def test_the_credit_follows_a_lowering(hass: HomeAssistant, monkeypatch, freezer, drives: bool) -> None:
+    """The field case with the HALO's meter values a minute apart: after the lowering to what fits beside the heater,
+    the car is never credited with more than it was lowered to, and it is not raised again while the heater is on."""
+    _drives(monkeypatch, drives)
+    morning = await _the_morning(hass, monkeypatch, freezer, f"nov1follow{int(drives)}")
+    morning.meter_passes = 12
+    morning.heater = False
+    await morning.until_raised(16.0)
+    raised_at = len(morning.trace)
+
+    morning.heater = True
+    await morning.step()
+    lowered = morning.assigned_a()
+    trace = "\n".join(morning.trace[raised_at - 2 :])
+    assert len(morning.halo.turn_off) == 0 and lowered <= 10.0, trace
+    for _ in range(11):
+        await morning.step()
+        credited = morning.halo.log()[-1]["raise_credit_a"]
+        trace = "\n".join(morning.trace[raised_at - 2 :])
+        assert not credited or max(credited.values()) <= lowered + 0.01, trace
+        assert morning.assigned_a() <= lowered, trace
+    assert max(morning.site_log[-1]) <= _FUSE_A, trace
+
+
+@pytest.mark.parametrize("drives", [True, False])
+async def test_a_load_of_the_step_on_every_phase_costs_at_most_one_pass_more(
+    hass: HomeAssistant, monkeypatch, freezer, drives: bool
+) -> None:
+    """The worst case left: the car takes no more than 9 A and is raised to 16 A, and at once a load of the step's
+    size (7 A) comes on all three phases, with the heater on L1. The site's rise matches the step, so it is credited;
+    the lowering on it does not bring the site down, and the next site reading ends the credit: the car is decided on
+    its own reading in that pass. The site is over the fuse for two passes at most, one more than without the credit."""
+    _drives(monkeypatch, drives)
+    morning = await _the_morning(hass, monkeypatch, freezer, f"nov1step{int(drives)}", car_max_a=9.0)
+    morning.heater = False
+    await morning.until_raised(16.0)
+    raised_at = len(morning.trace)
+
+    step_a = 16.0 - morning.car_a
+    morning.house = tuple(amps + step_a for amps in _HOUSE)
+    morning.heater = True
+    passes_over = 0
+    for _ in range(24):
+        await morning.step()
+        if max(morning.site_log[-1]) > _FUSE_A + 0.3:
+            passes_over += 1
+    trace = "\n".join(morning.trace[raised_at - 2 :])
+    assert any(entry["raise_credit_a"] for entry in morning.halo.log()[-30:]), f"the step was credited:\n{trace}"
+    assert passes_over <= 2, trace
+
+
+def test_the_credit_s_cap_follows_every_write_after_the_raise() -> None:
+    """What is on the charger as the site read a phase: the last write before the reading, a lowering included; a
+    write of the same moment is not in it yet, and before the raise there is nothing to credit."""
+    credit = RaiseCredit(100.0, ((100.0, 16.0), (110.0, 6.0), (130.0, 0.0)), {}, {}, {})
+    in_force = SiteCapacityController._raise_credit_in_force  # noqa: SLF001
+    assert in_force(credit, 100.0) is None
+    assert in_force(credit, 105.0) == 16.0
+    assert in_force(credit, 110.0) == 16.0
+    assert in_force(credit, 111.0) == 6.0
+    assert in_force(credit, 131.0) == 0.0
