@@ -803,9 +803,10 @@ def prices_section() -> list[str]:
         "on). SpotNav does not contact Zonneplan itself. While that integration is loaded, the area "
         "*Netherlands* shows a hint to choose *Netherlands – Zonneplan*. When it is down there is no fallback "
         "to the spot price: the days already held keep planning, and tomorrow waits.",
-        "- **When.** Tomorrow's tariff appears in the afternoon, after the day-ahead auction. Right after "
-        "Zonneplan is added, today may start at the current quarter-hour; the hours already past then carry "
-        "the middle of today's known prices.",
+        "- **When.** Tomorrow's tariff appears in the afternoon, after the day-ahead auction. If the "
+        "integration's forecast right after Zonneplan is added starts at the current quarter-hour rather than "
+        "at midnight, that first day is not used (SpotNav never fills in prices it does not have): planning "
+        "starts with tomorrow's tariff.",
         "",
         "Prices: Zonneplan. SpotNav is not affiliated with Zonneplan.",
         "",
