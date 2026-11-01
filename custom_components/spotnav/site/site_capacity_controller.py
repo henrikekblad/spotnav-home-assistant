@@ -222,8 +222,10 @@ class RaiseCredit:
 #: the house's flicker. A rise further from the step is something else (a load that came on with it, a car that did not
 #: take it) and is never credited.
 RAISE_CREDIT_STEP_TOLERANCE_A = 1.0
-#: How long (s) after a lowering made on a raise credit the site is given to show it, one site reading or so; a site
-#: still over the limit on a reading taken that long after the lowering ends the credit
+#: How long (s) after a lowering (or a pause) written to a charger with a raise credit the car is given to come down,
+#: about one site reading: a car takes a few seconds to ramp, so a site reading taken within this of the write may still
+#: show it at the higher current. Only a site reading taken more than this after the write counts the lower current as
+#: on the charger (`_raise_credit_in_force`), and only such a reading that is still over the limit ends the credit
 #: (`_raise_credited_measurements`).
 RAISE_CREDIT_LOWERING_SETTLE_S = 5.0
 
@@ -1279,11 +1281,14 @@ class SiteCapacityController:
 
     @staticmethod
     def _raise_credit_in_force(credit: RaiseCredit, reading_at: float) -> float | None:
-        """What was on the charger, by the credit's writes, when a site reading was taken at `reading_at`: the last
-        write before it (one of the same moment is not in it yet), `None` before the raise."""
+        """What was on the charger, by the credit's writes, when a site reading was taken at `reading_at`, `None` before
+        the raise. A raise counts on a reading taken after it (one of the same moment is not in it yet); a lowering or a
+        pause only on one taken more than `RAISE_CREDIT_LOWERING_SETTLE_S` after it, the car having had the time to come
+        down: until then the current before it stays in force, as the site still shows it."""
         in_force: float | None = None
         for at, amps in credit.writes:
-            if at < reading_at:
+            lowering = in_force is not None and amps < in_force
+            if (reading_at - at > RAISE_CREDIT_LOWERING_SETTLE_S) if lowering else (at < reading_at):
                 in_force = amps
         return in_force
 
@@ -1316,8 +1321,8 @@ class SiteCapacityController:
         than its own reading now (a reading that shows part of the step is not counted twice). Only a raise is
         credited: a lowering keeps the reading, the higher of the two.
 
-        As a last line, a lowering made on the credit that the site does not show `RAISE_CREDIT_LOWERING_SETTLE_S`
-        after it, with a phase still over the limit, ends the credit, and the same decision is taken on the
+        As a last line, a lowering made on the credit that the site does not show more than
+        `RAISE_CREDIT_LOWERING_SETTLE_S` after it, with a phase still over the limit, ends the credit, and the same decision is taken on the
         charger's own reading. The credit also ends once the charger's own reading was taken `CATCH_UP_S` after the
         raise (it has had the time to show it, `charger_above_written`), once that reading is missing, unusable or
         shows the car idle, after `START_CREDIT_S`, at a start (the regulator no longer knows what it gave the
@@ -1383,7 +1388,7 @@ class SiteCapacityController:
                 None,
             )
             if lowered_at is not None and any(
-                reading_at[phase] - lowered_at >= RAISE_CREDIT_LOWERING_SETTLE_S
+                reading_at[phase] - lowered_at > RAISE_CREDIT_LOWERING_SETTLE_S
                 and (margins.get(phase) is not None and margins[phase] < 0.0)
                 for phase in phases
             ):
