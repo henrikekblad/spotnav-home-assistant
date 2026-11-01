@@ -371,7 +371,8 @@ class SiteCapacityController:
         # that re-evaluates a running probe when its window ends.
         self._battery_probes: dict[str, BatteryProbe] = {}
         # The chargers whose running probe is a car held at its minimum rather than started from a pause
-        # (`_async_maybe_probe_at_minimum`): their own readings are judged as they are.
+        # (`_async_maybe_probe_at_current`): their own readings are judged as they are, and a failed one is lowered by
+        # the regulator as ever instead of being stopped.
         self._probes_on_running_car: set[str] = set()
         # When a paused charge first had headroom for its minimum again (for the resume's dwell).
         self._resume_ready_since: dict[str, float] = {}
@@ -1679,10 +1680,9 @@ class SiteCapacityController:
             # this charger until it is over, on the freshly read measurements. It is a safety judge of its
             # own, an import overload included: bounded by the fuse (`PROBE_MAX_FUSE_FACTOR`), by what the car
             # can explain and by its window, and ended by a hard stop (`_async_battery_probe_pass`).
-            await self._async_battery_probe_pass(
-                charger_entry_id, charger_controller, decision, fresh, probe
-            )
-            return True
+            if await self._async_battery_probe_pass(charger_entry_id, charger_controller, decision, fresh, probe):
+                return True
+            # A car held at its current as the probe, and the probe failed: lowered (or paused) as ever, now.
         lost = self._measurement_lost_due(charger_entry_id, fresh)
         if lost is not None and self._draws_above_minimum(charger_entry_id, charger_controller):
             await self._async_step_to_minimum(charger_entry_id, charger_controller, decision, lost)
@@ -1895,10 +1895,10 @@ class SiteCapacityController:
                 else None
             )
             target_a = proposed if stepped is None else stepped
-            if target_a < self._min_current_a(charger_entry_id) and await self._async_maybe_probe_at_minimum(
-                charger_entry_id, charger_controller, decision, fresh, previous_setpoint
+            if await self._async_maybe_probe_at_current(
+                charger_entry_id, charger_controller, decision, fresh, previous_setpoint, target_a
             ):
-                # Not paused: held at its minimum as the battery probe, judged by it from the next pass.
+                # Not lowered: held at its current as the battery probe, judged by it from the next pass.
                 return True
             return await self._async_apply_must_lower(
                 charger_entry_id,
@@ -2942,27 +2942,30 @@ class SiteCapacityController:
         )
         return True
 
-    async def _async_maybe_probe_at_minimum(
+    async def _async_maybe_probe_at_current(
         self,
         charger_entry_id: str,
         charger_controller: Any,
         decision: RegulatorDecision,
         fresh: SiteCapacityResult,
         previous_setpoint: float | None,
+        target_a: float,
     ) -> bool:
-        """Instead of pausing a car already at its minimum, hold it there as the battery probe; `True` when the probe
-        started (nothing is written: the car runs at its minimum already).
+        """Instead of lowering (or pausing) a running car for an import overload within the band, hold it at the
+        current it has as the battery probe; `True` when the probe started (nothing is written).
 
         A grid-charging battery that holds the grid at the fuse fills whatever the car frees, so an overload of a few
-        hundredths lowers the car amp by amp to its minimum and then pauses it, and only a probe started from that
-        pause can show that the battery gives way (the night of 2026-11-01: 16 A to a pause in three and a half
-        minutes, the battery growing to 12.5 kW). A car at its minimum on such a grid is the probe's own situation
-        without the stop and the start: the same conditions as a probe of the paused charge
-        (`_async_maybe_start_battery_probe`: `car_first` with yield stepping, the charge still wanted, every phase
-        within the band above the limit, the battery charging at least the car's minimum, no phase past
-        `PROBE_MAX_FUSE_FACTOR` times the fuse, no back-off), judged the same way (`_async_battery_probe_pass`): a phase
-        that rises past what the car explains, or above the band at the end of the window, pauses the car at once
-        and backs the probe off; a battery that gives way is verified and the car climbs into its share."""
+        hundredths lowered the car amp by amp to its minimum and then paused it, and only a probe started from that
+        pause could show that the battery gives way (the night of 2026-11-01: 16 A to a pause in three and a half
+        minutes, the battery growing to 12.5 kW). A running car on such a grid is the probe's own situation without
+        the stop and the start: the same conditions as a probe of the paused charge (`_async_maybe_start_battery_probe`:
+        `car_first` with yield stepping, the charge still wanted, every phase within the band above the limit, no phase
+        past `PROBE_MAX_FUSE_FACTOR` times the fuse, no back-off), with the battery charging at least what the car
+        would be lowered by (all of its minimum for a pause), so the battery can give up the whole cut. Judged the same
+        way (`_async_battery_probe_pass`): a phase that rises past what the car explains, or is above the band at the
+        end of the window, ends the probe at once and the car is lowered (or paused) as it would have been; a battery
+        that gives way is verified, and the stepper holds the car there while the battery absorbs. An overload above
+        the band is lowered first, as ever, and the car is held from wherever that leaves it."""
         if not self._battery_rules_apply():
             return False
         wiring: dict[str, Any] = (self.config.get(CONF_PHASE_WIRING) or {}).get(charger_entry_id) or {}
@@ -2974,7 +2977,8 @@ class SiteCapacityController:
             not phases
             or main_fuse_a is None
             or previous_setpoint is None
-            or previous_setpoint >= min_current_a + 1.0
+            or previous_setpoint < min_current_a - 1e-9
+            or target_a >= previous_setpoint
             or requested is None
             or requested < min_current_a
             or fresh.state != "observing"
@@ -2984,10 +2988,11 @@ class SiteCapacityController:
             or charger_controller.adapter.vehicle_connected() is not True
         ):
             return False
+        # What the battery must be able to give up: the cut, all of the car's minimum for a pause.
+        cut_a = previous_setpoint - (target_a if target_a >= min_current_a else 0.0)
         margins = fresh.measured_margin_a
-        if not within_held_band(margins, phases) or not self._battery_covers_car(fresh, phases, min_current_a):
+        if not within_held_band(margins, phases) or not self._battery_covers_car(fresh, phases, cut_a):
             return False
-        probe_a = float(math.ceil(min_current_a))
         currents = fresh.measured_phase_current_a
         if any(currents.get(phase) is None for phase in PHASES) or any(
             currents[phase] > PROBE_MAX_FUSE_FACTOR * float(main_fuse_a) for phase in PHASES
@@ -2999,11 +3004,15 @@ class SiteCapacityController:
         probe = self._probe_for(charger_entry_id)
         if not probe.may_start(now):
             return False
+        # The car's draw is what the probe judges it by: what it was given, or less where it takes less.
+        drawn = [value for value in delivered_a.values() if value is not None]
+        probe_a = min([float(previous_setpoint), *drawn]) if drawn else float(previous_setpoint)
+        probe_a = max(PROBE_IDLE_BELOW_A, probe_a)
         self._probes_on_running_car.add(charger_entry_id)
         probe.start(
             now,
             probe_a,
-            # The grid as it would be without the car's minimum: the probe allows what the car explains on top.
+            # The grid as it would be without the car: the probe allows what the car explains on top.
             {phase: float(currents[phase]) - (probe_a if phase in phases else 0.0) for phase in PHASES},
             phases,
             delivered_a,
@@ -3015,7 +3024,7 @@ class SiteCapacityController:
             charger_entry_id,
             decision,
             outcome="probe_started",
-            detail="held_at_minimum",
+            detail="held_at_current",
             setpoint=None,
             previous_setpoint=previous_setpoint,
         )
@@ -3028,9 +3037,10 @@ class SiteCapacityController:
         decision: RegulatorDecision,
         fresh: SiteCapacityResult,
         probe: BatteryProbe,
-    ) -> None:
+    ) -> bool:
         """One pass of a running probe: judge it on the fresh readings, and stop the car if it
-        failed (retrying the stop each pass until it is confirmed)."""
+        failed (retrying the stop each pass until it is confirmed). `False` when a car held at its current as the
+        probe failed: it is not stopped, and the pass goes on to lower it as the regulator decides."""
         now = self._yield_now()
         damper = self._damper_for(charger_entry_id)
         if probe.state == "probing":
@@ -3085,12 +3095,13 @@ class SiteCapacityController:
                         setpoint=None,
                         previous_setpoint=damper.last_written_a,
                     )
-                return
+                return True
+            held_running = charger_entry_id in self._probes_on_running_car
             self._probes_on_running_car.discard(charger_entry_id)
             if verdict.state == "succeeded":
                 probe.succeeded(now)
-                # The car runs at its minimum on a grid the battery holds at the limit; the stepper
-                # starts from nothing and climbs it as it always does, on a battery now verified to give way
+                # The car runs on a grid the battery holds at the limit; the stepper starts from nothing, holds the
+                # car while the battery absorbs and climbs as it always does, on a battery now verified to give way
                 # (the yield ceiling holds, `YieldConfig.unverified_ceiling_a`).
                 self._yield_steppers.pop(charger_entry_id, None)
                 self._yield_stepper_for(charger_entry_id).note_battery_yielded()
@@ -3102,7 +3113,7 @@ class SiteCapacityController:
                     setpoint=None,
                     previous_setpoint=damper.last_written_a,
                 )
-                return
+                return True
             probe.failed(now, verdict.reason)
             self._record_probe_event(
                 charger_entry_id,
@@ -3112,6 +3123,11 @@ class SiteCapacityController:
                 setpoint=None,
                 previous_setpoint=damper.last_written_a,
             )
+            if held_running:
+                # A car held at its current: nothing was started, so nothing is stopped. The probe backs off, and the
+                # regulator lowers (or pauses) the car as it would have, in this same pass.
+                probe.stopped()
+                return False
         # Stopping: the failed probe's stop, hard (a refusal that the fuse needs is a safety stop).
         write = await charger_controller.async_apply_regulated_current(0, must_lower=True)
         if write.written or write.outcome == REGULATED_STOPPED:
@@ -3131,7 +3147,7 @@ class SiteCapacityController:
                     previous_setpoint=damper.last_written_a,
                 )
                 charger_controller.note_car_refused_probe()
-            return
+            return True
         if write.outcome == REGULATED_FLOORED:
             # Not paused: the charge runs on at the floor, which is what the charger draws until the stop is taken.
             damper.record_write(float(DEFAULT_MIN_CURRENT_A))
@@ -3141,6 +3157,7 @@ class SiteCapacityController:
             charger_entry_id,
             write.code,
         )
+        return True
 
     @property
     def battery_probe_snapshot(self) -> dict[str, dict[str, Any]]:
