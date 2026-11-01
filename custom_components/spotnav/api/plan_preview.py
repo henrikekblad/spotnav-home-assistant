@@ -11,8 +11,8 @@ armed, the charger and the car are asked nothing, no listener, notice or event h
 calculates the same plan at the same moment.
 
 Who may ask: whoever may Save that body (an administrator, or under `users_change_plan` any signed-in user for the
-plan's fields). At most `RATE_PER_S` requests a second per connection (`spotnav_rate_limited`), and a body of at
-most `MAX_BODY_BYTES` (`spotnav_body_too_large`).
+plan's fields). At most `RATE_PER_S` requests a second per connection and `MAX_IN_FLIGHT` being calculated at once
+across all of them (`spotnav_rate_limited`), and a body of at most `MAX_BODY_BYTES` (`spotnav_body_too_large`).
 
 The answer: `{api_version, ok, error, preview}`. A body a Save would refuse is `ok: false` with the Save's own code
 (`invalid_amps`, `invalid_departure`, ...) and `preview: null`. Otherwise `preview` is
@@ -56,6 +56,8 @@ _LOGGER = logging.getLogger(__name__)
 
 #: Requests a second one connection may make; the card asks once ~300 ms after the last change.
 RATE_PER_S: Final = 5
+#: Previews calculated at once across every connection; one more is `spotnav_rate_limited`.
+MAX_IN_FLIGHT: Final = 4
 #: The largest body judged, as JSON; a whole settings body is far smaller.
 MAX_BODY_BYTES: Final = 16_384
 
@@ -65,6 +67,8 @@ ERROR_BODY_TOO_LARGE: Final = "spotnav_body_too_large"
 #: Where each open connection's recent request times are kept (dropped when it closes).
 _RATE_DATA: Final = "spotnav_plan_preview_rate"
 _RATE_KEY: Final = "spotnav_plan_preview_rate"
+#: How many previews are being calculated now, installation-wide.
+_IN_FLIGHT_DATA: Final = "spotnav_plan_preview_in_flight"
 
 #: The states a plan comes with.
 _PLANNED_STATES: Final = frozenset({"proposal_ready", "proposal_unpriced"})
@@ -252,6 +256,10 @@ async def websocket_plan_preview(
     if len(json_bytes(msg.get("settings"))) > MAX_BODY_BYTES:
         connection.send_error(msg["id"], ERROR_BODY_TOO_LARGE, "That settings body is too large")
         return
+    if hass.data.get(_IN_FLIGHT_DATA, 0) >= MAX_IN_FLIGHT:
+        connection.send_error(msg["id"], ERROR_RATE_LIMITED, "Too many plan previews; try again in a moment")
+        return
+    hass.data[_IN_FLIGHT_DATA] = hass.data.get(_IN_FLIGHT_DATA, 0) + 1
     try:
         answer = await async_plan_preview(
             hass, msg.get("charger_id"), msg.get("settings"), plan_only=not is_admin(connection)
@@ -260,6 +268,8 @@ async def websocket_plan_preview(
         message = "Only an administrator may change that" if refusal.code == ERROR_NOT_ADMIN else "That charger is not available"
         connection.send_error(msg["id"], refusal.code, message)
         return
+    finally:
+        hass.data[_IN_FLIGHT_DATA] -= 1
     connection.send_result(msg["id"], answer)
 
 

@@ -420,6 +420,19 @@ async def test_previews_are_limited_per_connection(
     assert (await ws_call(socket, preview_message(entry.entry_id, body)))["success"] is True
 
 
+async def test_previews_in_flight_are_limited_across_connections(hass: HomeAssistant, hass_ws_client) -> None:
+    entry = await setup_charger(hass)
+    await go_auto(hass)
+    socket = await admin(hass, hass_ws_client)
+    body = body_of(hass, entry.entry_id)
+    hass.data[plan_preview._IN_FLIGHT_DATA] = plan_preview.MAX_IN_FLIGHT  # noqa: SLF001 - as many as are calculating
+    limited = await ws_call(socket, preview_message(entry.entry_id, body))
+    assert limited["error"]["code"] == "spotnav_rate_limited"
+    hass.data[plan_preview._IN_FLIGHT_DATA] = plan_preview.MAX_IN_FLIGHT - 1  # noqa: SLF001
+    assert (await ws_call(socket, preview_message(entry.entry_id, body)))["success"] is True
+    assert hass.data[plan_preview._IN_FLIGHT_DATA] == plan_preview.MAX_IN_FLIGHT - 1, "counted down again"  # noqa: SLF001
+
+
 async def test_a_body_beyond_the_cap_is_refused_unread(hass: HomeAssistant, hass_ws_client) -> None:
     entry = await setup_charger(hass)
     await go_auto(hass)
