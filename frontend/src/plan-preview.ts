@@ -11,9 +11,9 @@
 import { localDayKey } from "./chart";
 import { clock, dayCue, hasZone, hourLabel, type FormatContext } from "./format";
 import { translate } from "./i18n";
-import { lineText, statusText } from "./status";
+import { lineText } from "./status";
 import { VISUAL_CLASSES as C } from "./visual-styles";
-import type { PlanPreview, PlanPreviewDecode, PlanPreviewStrip, StatusLine } from "./validate";
+import { STATUS_CODE_TABLE, type PlanPreview, type PlanPreviewDecode, type PlanPreviewStrip, type StatusLine } from "./validate";
 
 /** How long the scheduler waits after the last change before it asks. */
 export const PREVIEW_DEBOUNCE_MS = 300;
@@ -149,18 +149,45 @@ function periodsText(preview: PlanPreview, times: Times): string {
   return more > 0 ? `${shown.join(", ")} +${more}` : shown.join(", ");
 }
 
-/**
- * The result line: `03:30–05:15 · 18.5 kWh · 72.40 kr · ready 05:15`, then the plan's own status lines (a departure
- * it does not make, a need capped at the battery's room, ...). Without a plan, why not, as the card's status words
- * those codes. `null` when there is nothing to say (no zone to tell times in, or nothing to preview).
- */
-export function previewLineText(preview: PlanPreview, format: FormatContext, nowMs: number): string | null {
-  const plan = preview.plan;
-  if (plan === null) {
-    return statusText(preview.status, format, nowMs);
+/** One of the plan's own status lines, worded, and whether it warns (the card's notice or blocking tone). */
+export interface PreviewNote {
+  text: string;
+  warning: boolean;
+}
+
+export interface PreviewLines {
+  /** `03:30–05:15 · 18.5 kWh · 72.40 kr · ready 05:15`; `null` without a plan (or a zone to tell times in). */
+  plan: string | null;
+  /** The plan's own status lines, each on a line of its own: a departure it does not make, why there is no plan. */
+  notes: PreviewNote[];
+}
+
+/** When a departure shortfall line names the departure, the instant it names. */
+function shortfallAt(preview: PlanPreview): number | null {
+  for (const line of preview.status.lines) {
+    const departure = line.params["departure"];
+    if (line.code === "departure_shortfall" && typeof departure === "string") {
+      const at = Date.parse(departure);
+      return Number.isFinite(at) ? at : null;
+    }
   }
-  if (!hasZone(format)) {
-    return null;
+  return null;
+}
+
+/**
+ * The result in words: the plan's line and, below it, its own status lines in the card's wording. "ready …" is left
+ * out when the shortfall line already says that time, so nothing is said twice.
+ */
+export function previewLines(preview: PlanPreview, format: FormatContext, nowMs: number): PreviewLines {
+  const notes = preview.status.lines
+    .filter((line) => line.code !== "settings_suggested")
+    .map((line): PreviewNote => ({
+      text: lineText(line, format, nowMs).replace(/[.。]$/u, ""),
+      warning: (STATUS_CODE_TABLE[line.code] as readonly [string, unknown])[0] !== "normal",
+    }));
+  const plan = preview.plan;
+  if (plan === null || !hasZone(format)) {
+    return { plan: null, notes };
   }
   const times = new Times(format, nowMs);
   const parts: string[] = [periodsText(preview, times)];
@@ -175,9 +202,11 @@ export function previewLineText(preview: PlanPreview, format: FormatContext, now
     };
     parts.push(lineText(cost, format, nowMs));
   }
-  parts.push(translate(format.language, "settings.preview.ready", { time: times.at(plan.finishMs) }));
-  const notes = statusText(preview.status, format, nowMs);
-  return notes === null ? parts.join(" · ") : `${parts.join(" · ")} · ${notes}`;
+  const shortfall = shortfallAt(preview);
+  if (shortfall === null || clock(format, shortfall) !== clock(format, plan.finishMs)) {
+    parts.push(translate(format.language, "settings.preview.ready", { time: times.at(plan.finishMs) }));
+  }
+  return { plan: parts.join(" · "), notes };
 }
 
 export interface PreviewCell {
@@ -316,12 +345,19 @@ export function renderPlanPreview(
     delete slot.dataset["pending"];
     return;
   }
-  const text = previewLineText(state.preview, format, nowMs);
+  const lines = previewLines(state.preview, format, nowMs);
   const nodes: HTMLElement[] = [];
-  if (text !== null) {
+  if (lines.plan !== null) {
     const line = doc.createElement("p");
     line.className = C.planPreviewLine;
-    line.textContent = text;
+    line.textContent = lines.plan;
+    nodes.push(line);
+  }
+  for (const note of lines.notes) {
+    const line = doc.createElement("p");
+    line.className = C.planPreviewNote;
+    line.dataset["tone"] = note.warning ? "warning" : "normal";
+    line.textContent = note.text;
     nodes.push(line);
   }
   if (state.preview.strip !== null && state.preview.plan !== null) {

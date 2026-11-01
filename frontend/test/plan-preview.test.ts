@@ -11,7 +11,7 @@ import type { FormatContext } from "../src/format";
 import {
   PREVIEW_DEBOUNCE_MS,
   PreviewScheduler,
-  previewLineText,
+  previewLines,
   previewStripModel,
   renderPlanPreview,
   tickStepHours,
@@ -180,17 +180,26 @@ describe("the scheduler", () => {
 
 describe("the line", () => {
   it("says the periods, the energy, the cost and when it is ready, in the card's formats", () => {
-    expect(previewLineText(preview("ready"), SV, NOW)).toBe("08:00–13:00 · 11,5 kWh · 12,97 kr · klar 13:00");
+    expect(previewLines(preview("ready"), SV, NOW)).toEqual({
+      plan: "08:00–13:00 · 11,5 kWh · 12,97 kr · klar 13:00",
+      notes: [],
+    });
   });
 
   it("adds the plan's own status lines: a departure it does not make", () => {
-    const text = previewLineText(preview("shortfall"), SV, NOW)!;
-    expect(text.startsWith("08:00–09:00 · 2,3 kWh · 2,59 kr · klar 09:00 · ")).toBe(true);
-    expect(text).toContain("Hinner inte bli klar till avresan");
+    const lines = previewLines(preview("shortfall"), SV, NOW);
+    // The plan alone; "ready 09:00" is the shortfall's own time, so it is said there only, on a line of its own.
+    expect(lines.plan).toBe("08:00–09:00 · 2,3 kWh · 2,59 kr");
+    expect(lines.notes).toEqual([
+      { text: "Hinner inte bli klar till avresan: cirka 2,3 av 60 kWh till 09:00", warning: true },
+    ]);
   });
 
   it("says why there is no plan, as the status words it", () => {
-    expect(previewLineText(preview("no_area"), SV, NOW)).toMatch(/elområde|prisområde/i);
+    const lines = previewLines(preview("no_area"), SV, NOW);
+    expect(lines.plan).toBeNull();
+    expect(lines.notes).toHaveLength(1);
+    expect(lines.notes[0]!.text).toMatch(/elområde|prisområde/i);
   });
 });
 
@@ -220,6 +229,11 @@ describe("the strip", () => {
     }
     expect(slot.querySelector(`.${C.planPreviewLine}`)?.textContent).toContain("klar 13:00");
     expect(slot.dataset["pending"]).toBe("false");
+    renderPlanPreview(document, slot, { kind: "shown", preview: preview("shortfall"), pending: false }, SV, NOW);
+    const note = slot.querySelector<HTMLElement>(`.${C.planPreviewNote}`)!;
+    expect(note.dataset["tone"]).toBe("warning");
+    expect(note.textContent).toContain("Hinner inte bli klar");
+    expect(slot.querySelector(`.${C.planPreviewLine}`)?.textContent).not.toContain("klar");
     renderPlanPreview(document, slot, { kind: "shown", preview: preview("ready"), pending: true }, SV, NOW);
     expect(slot.dataset["pending"]).toBe("true");
   });
@@ -319,7 +333,7 @@ describe("the line's days", () => {
   it("names a day once, and never today", () => {
     const ready = preview("ready");
     const tomorrow = NOW - 86_400_000;
-    expect(previewLineText(ready, SV, tomorrow)).toBe("tis 22 08:00–13:00 · 11,5 kWh · 12,97 kr · klar 13:00");
+    expect(previewLines(ready, SV, tomorrow).plan).toBe("tis 22 08:00–13:00 · 11,5 kWh · 12,97 kr · klar 13:00");
     const late = {
       ...ready,
       plan: {
@@ -328,6 +342,6 @@ describe("the line's days", () => {
         finishMs: Date.parse("2026-09-22T22:30:00Z"),
       },
     };
-    expect(previewLineText(late, SV, NOW)).toBe("23:15–ons 23 00:30 · 11,5 kWh · 12,97 kr · klar 00:30");
+    expect(previewLines(late, SV, NOW).plan).toBe("23:15–ons 23 00:30 · 11,5 kWh · 12,97 kr · klar 00:30");
   });
 });

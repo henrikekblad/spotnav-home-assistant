@@ -128,6 +128,7 @@ export const VISUAL_CLASSES = {
   stripDivider: "spotnav-strip-divider",
   planPreview: "spotnav-plan-preview",
   planPreviewLine: "spotnav-plan-preview-line",
+  planPreviewNote: "spotnav-plan-preview-note",
   planPreviewStrip: "spotnav-plan-preview-strip",
   planPreviewCell: "spotnav-plan-preview-cell",
   planPreviewTick: "spotnav-plan-preview-tick",
@@ -1649,6 +1650,13 @@ export const VISUAL_STYLES = `
   .${VISUAL_CLASSES.planPreviewLine} {
     margin: 0;
     font-variant-numeric: tabular-nums;
+  }
+  .${VISUAL_CLASSES.planPreviewNote} {
+    margin: 4px 0 0;
+  }
+  .${VISUAL_CLASSES.planPreviewNote}[data-tone="warning"] {
+    color: var(--warning-color, #b26a00);
+    font-weight: 500;
   }
   .${VISUAL_CLASSES.planPreviewStrip} {
     margin-top: 6px;
