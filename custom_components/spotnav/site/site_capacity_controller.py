@@ -2364,8 +2364,12 @@ class SiteCapacityController:
             if write.outcome == REGULATED_STOPPED:
                 # Paused (or stopped for safety): the charger is at nothing now. Remembered so the next pass
                 # does not pause the stopped charger again, and the resume (`_async_maybe_resume_paused_charge`)
-                # is not held back by the current it had before the pause.
+                # is not held back by the current it had before the pause. When: a reading the charger sent before
+                # the pause shows the current before it, not a charger above the nothing written
+                # (`charger_above_written`), which paused the stopped charger again on every pass until that reading
+                # was too old to use (the night of 2026-11-01).
                 damper.record_write(0.0)
+                self._written_at[charger_entry_id] = dt_util.utcnow().timestamp()
             elif write.outcome == REGULATED_FLOORED:
                 # The stop did not pause the charge: the charger holds it at the 6 A floor (a Peblar out of
                 # pauses), and that is what is counted until a later pass pauses it.
