@@ -505,10 +505,9 @@ class OwnershipShadow:
                 # Only feeds of other tasks that began while this one was on its way are open (a person's Start
                 # waiting for the lock this feed's stop held): they landed in it, so it is decided first, as its
                 # command went out first, and they after it. What landed meanwhile is decided now, after it. Today's
-                # state is mid-way through those feeds: nothing is compared, and the last of them to end saves.
-                held = self._quiet
+                # state is mid-way through those feeds: nothing is compared (a quiet report held back for a comparison
+                # is dropped, as at every feed's end), and the last of them to end saves.
                 record, _kinds = self._decide(item)
-                self._quiet = held
                 record["unchecked"] = True
                 self._drain()
                 return
