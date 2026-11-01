@@ -4050,7 +4050,8 @@ class SiteCapacityController:
             # The charger's last word on it: a value sent again unchanged after the write still holds.
             reported_age_s = value.age_s if value.report_age_s is None else min(value.age_s, value.report_age_s)
             before_write = written_at is not None and now - reported_age_s <= written_at
-            if before_write or value.age_s > max_age_s:
+            # Stale as the charger's own reports say: a flat reading it keeps sending is alive.
+            if before_write or reported_age_s > max_age_s:
                 return replace(value, value=0.0)
             return value
 
