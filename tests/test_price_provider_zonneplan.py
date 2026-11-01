@@ -552,3 +552,33 @@ async def test_the_apps_price_days_say_the_files_are_all_in_and_from_zonneplan(w
     assert (answer["provider"]["key"], answer["provider"]["name"]) == ("zonneplan", "Zonneplan")
     assert list(answer["files"]) == ["2026-10-04"]
     assert answer["files"]["2026-10-04"]["prices"] == expected(instants(TODAY))
+
+
+# ------------------------------------------------------------------ a real forecast
+
+
+async def test_a_forecast_captured_from_a_real_installation_gives_today_and_tomorrow_whole(world: World) -> None:
+    """The tariff sensor's attributes as one installation showed them on 2026-11-01 (YAML from the developer
+    tools, turned into JSON, so the instants are text): 232 quarter-hours from 2026-10-31 14:00 to 2026-11-03 00:00
+    Amsterdam time. The forecast reaches back into yesterday, which stays out of reach; today and tomorrow are whole."""
+    import json
+    from pathlib import Path
+
+    captured = json.loads((Path(__file__).parent / "fixtures" / "zonneplan" / "forecast_2026-11-01.json").read_text())
+    world.clock.now = datetime(2026, 11, 1, 13, 0, tzinfo=UTC)
+    await world.start()
+    world.connection.publish(captured["forecast"], world.clock.now)
+    await world.hass.async_block_till_done()
+
+    today = await world.fetch(date(2026, 11, 1))
+    tomorrow = await world.fetch(date(2026, 11, 2))
+    yesterday = await world.fetch(date(2026, 10, 31))
+
+    assert today.outcome == "fetched" and tomorrow.outcome == "fetched"
+    assert today.document["start"] == "2026-11-01T00:00:00+01:00" and today.document["res"] == 15
+    assert len(today.document["prices"]) == 96 and len(tomorrow.document["prices"]) == 96
+    # What the customer pays, tax included: 4 422 888 is 0.4422888 EUR/kWh; tax excluded (3 314 407) is not read.
+    assert today.document["prices"][0] == pytest.approx(0.4422888, abs=1e-5)
+    assert tomorrow.document["prices"][-1] == pytest.approx(0.3953771, abs=1e-5)
+    assert parse_day(today.document, area_id=AREA, day=date(2026, 11, 1)).covers_whole_day()
+    assert yesterday.outcome != "fetched"

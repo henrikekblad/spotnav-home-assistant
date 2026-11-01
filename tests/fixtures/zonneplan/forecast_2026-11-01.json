@@ -1,0 +1,3022 @@
+{
+ "captured": "2026-11-01",
+ "unit_of_measurement": "\u20ac/kWh",
+ "forecast": [
+  {
+   "start_date": "2026-10-31T14:00:00+01:00",
+   "end_date": "2026-10-31T14:15:00+01:00",
+   "price_tax_included": {
+    "amount": 3863263
+   },
+   "price_tax_excluded": {
+    "amount": 2754782
+   },
+   "sustainability_score": {
+    "permille": 590
+   }
+  },
+  {
+   "start_date": "2026-10-31T14:15:00+01:00",
+   "end_date": "2026-10-31T14:30:00+01:00",
+   "price_tax_included": {
+    "amount": 3999751
+   },
+   "price_tax_excluded": {
+    "amount": 2891270
+   },
+   "sustainability_score": {
+    "permille": 590
+   }
+  },
+  {
+   "start_date": "2026-10-31T14:30:00+01:00",
+   "end_date": "2026-10-31T14:45:00+01:00",
+   "price_tax_included": {
+    "amount": 4024314
+   },
+   "price_tax_excluded": {
+    "amount": 2915833
+   },
+   "sustainability_score": {
+    "permille": 590
+   }
+  },
+  {
+   "start_date": "2026-10-31T14:45:00+01:00",
+   "end_date": "2026-10-31T15:00:00+01:00",
+   "price_tax_included": {
+    "amount": 4255908
+   },
+   "price_tax_excluded": {
+    "amount": 3147427
+   },
+   "sustainability_score": {
+    "permille": 590
+   }
+  },
+  {
+   "start_date": "2026-10-31T15:00:00+01:00",
+   "end_date": "2026-10-31T15:15:00+01:00",
+   "price_tax_included": {
+    "amount": 4059525
+   },
+   "price_tax_excluded": {
+    "amount": 2951044
+   },
+   "sustainability_score": {
+    "permille": 324
+   }
+  },
+  {
+   "start_date": "2026-10-31T15:15:00+01:00",
+   "end_date": "2026-10-31T15:30:00+01:00",
+   "price_tax_included": {
+    "amount": 4179799
+   },
+   "price_tax_excluded": {
+    "amount": 3071318
+   },
+   "sustainability_score": {
+    "permille": 324
+   }
+  },
+  {
+   "start_date": "2026-10-31T15:30:00+01:00",
+   "end_date": "2026-10-31T15:45:00+01:00",
+   "price_tax_included": {
+    "amount": 4332017
+   },
+   "price_tax_excluded": {
+    "amount": 3223536
+   },
+   "sustainability_score": {
+    "permille": 324
+   }
+  },
+  {
+   "start_date": "2026-10-31T15:45:00+01:00",
+   "end_date": "2026-10-31T16:00:00+01:00",
+   "price_tax_included": {
+    "amount": 4726961
+   },
+   "price_tax_excluded": {
+    "amount": 3618480
+   },
+   "sustainability_score": {
+    "permille": 324
+   }
+  },
+  {
+   "start_date": "2026-10-31T16:00:00+01:00",
+   "end_date": "2026-10-31T16:15:00+01:00",
+   "price_tax_included": {
+    "amount": 4493189
+   },
+   "price_tax_excluded": {
+    "amount": 3384708
+   },
+   "sustainability_score": {
+    "permille": 127
+   }
+  },
+  {
+   "start_date": "2026-10-31T16:15:00+01:00",
+   "end_date": "2026-10-31T16:30:00+01:00",
+   "price_tax_included": {
+    "amount": 4708085
+   },
+   "price_tax_excluded": {
+    "amount": 3599604
+   },
+   "sustainability_score": {
+    "permille": 127
+   }
+  },
+  {
+   "start_date": "2026-10-31T16:30:00+01:00",
+   "end_date": "2026-10-31T16:45:00+01:00",
+   "price_tax_included": {
+    "amount": 4815654
+   },
+   "price_tax_excluded": {
+    "amount": 3707173
+   },
+   "sustainability_score": {
+    "permille": 127
+   }
+  },
+  {
+   "start_date": "2026-10-31T16:45:00+01:00",
+   "end_date": "2026-10-31T17:00:00+01:00",
+   "price_tax_included": {
+    "amount": 4937380
+   },
+   "price_tax_excluded": {
+    "amount": 3828899
+   },
+   "sustainability_score": {
+    "permille": 127
+   }
+  },
+  {
+   "start_date": "2026-10-31T17:00:00+01:00",
+   "end_date": "2026-10-31T17:15:00+01:00",
+   "price_tax_included": {
+    "amount": 4876033
+   },
+   "price_tax_excluded": {
+    "amount": 3767552
+   },
+   "sustainability_score": {
+    "permille": 46
+   }
+  },
+  {
+   "start_date": "2026-10-31T17:15:00+01:00",
+   "end_date": "2026-10-31T17:30:00+01:00",
+   "price_tax_included": {
+    "amount": 4901322
+   },
+   "price_tax_excluded": {
+    "amount": 3792841
+   },
+   "sustainability_score": {
+    "permille": 46
+   }
+  },
+  {
+   "start_date": "2026-10-31T17:30:00+01:00",
+   "end_date": "2026-10-31T17:45:00+01:00",
+   "price_tax_included": {
+    "amount": 4858972
+   },
+   "price_tax_excluded": {
+    "amount": 3750491
+   },
+   "sustainability_score": {
+    "permille": 46
+   }
+  },
+  {
+   "start_date": "2026-10-31T17:45:00+01:00",
+   "end_date": "2026-10-31T18:00:00+01:00",
+   "price_tax_included": {
+    "amount": 4925764
+   },
+   "price_tax_excluded": {
+    "amount": 3817283
+   },
+   "sustainability_score": {
+    "permille": 46
+   }
+  },
+  {
+   "start_date": "2026-10-31T18:00:00+01:00",
+   "end_date": "2026-10-31T18:15:00+01:00",
+   "price_tax_included": {
+    "amount": 4913059
+   },
+   "price_tax_excluded": {
+    "amount": 3804578
+   },
+   "sustainability_score": {
+    "permille": 40
+   }
+  },
+  {
+   "start_date": "2026-10-31T18:15:00+01:00",
+   "end_date": "2026-10-31T18:30:00+01:00",
+   "price_tax_included": {
+    "amount": 4929394
+   },
+   "price_tax_excluded": {
+    "amount": 3820913
+   },
+   "sustainability_score": {
+    "permille": 40
+   }
+  },
+  {
+   "start_date": "2026-10-31T18:30:00+01:00",
+   "end_date": "2026-10-31T18:45:00+01:00",
+   "price_tax_included": {
+    "amount": 4914874
+   },
+   "price_tax_excluded": {
+    "amount": 3806393
+   },
+   "sustainability_score": {
+    "permille": 40
+   }
+  },
+  {
+   "start_date": "2026-10-31T18:45:00+01:00",
+   "end_date": "2026-10-31T19:00:00+01:00",
+   "price_tax_included": {
+    "amount": 4963636
+   },
+   "price_tax_excluded": {
+    "amount": 3855155
+   },
+   "sustainability_score": {
+    "permille": 40
+   }
+  },
+  {
+   "start_date": "2026-10-31T19:00:00+01:00",
+   "end_date": "2026-10-31T19:15:00+01:00",
+   "price_tax_included": {
+    "amount": 4927942
+   },
+   "price_tax_excluded": {
+    "amount": 3819461
+   },
+   "sustainability_score": {
+    "permille": 35
+   }
+  },
+  {
+   "start_date": "2026-10-31T19:15:00+01:00",
+   "end_date": "2026-10-31T19:30:00+01:00",
+   "price_tax_included": {
+    "amount": 4927942
+   },
+   "price_tax_excluded": {
+    "amount": 3819461
+   },
+   "sustainability_score": {
+    "permille": 35
+   }
+  },
+  {
+   "start_date": "2026-10-31T19:30:00+01:00",
+   "end_date": "2026-10-31T19:45:00+01:00",
+   "price_tax_included": {
+    "amount": 4929999
+   },
+   "price_tax_excluded": {
+    "amount": 3821518
+   },
+   "sustainability_score": {
+    "permille": 35
+   }
+  },
+  {
+   "start_date": "2026-10-31T19:45:00+01:00",
+   "end_date": "2026-10-31T20:00:00+01:00",
+   "price_tax_included": {
+    "amount": 4845057
+   },
+   "price_tax_excluded": {
+    "amount": 3736576
+   },
+   "sustainability_score": {
+    "permille": 35
+   }
+  },
+  {
+   "start_date": "2026-10-31T20:00:00+01:00",
+   "end_date": "2026-10-31T20:15:00+01:00",
+   "price_tax_included": {
+    "amount": 4941252
+   },
+   "price_tax_excluded": {
+    "amount": 3832771
+   },
+   "sustainability_score": {
+    "permille": 30
+   }
+  },
+  {
+   "start_date": "2026-10-31T20:15:00+01:00",
+   "end_date": "2026-10-31T20:30:00+01:00",
+   "price_tax_included": {
+    "amount": 4863812
+   },
+   "price_tax_excluded": {
+    "amount": 3755331
+   },
+   "sustainability_score": {
+    "permille": 30
+   }
+  },
+  {
+   "start_date": "2026-10-31T20:30:00+01:00",
+   "end_date": "2026-10-31T20:45:00+01:00",
+   "price_tax_included": {
+    "amount": 4804159
+   },
+   "price_tax_excluded": {
+    "amount": 3695678
+   },
+   "sustainability_score": {
+    "permille": 30
+   }
+  },
+  {
+   "start_date": "2026-10-31T20:45:00+01:00",
+   "end_date": "2026-10-31T21:00:00+01:00",
+   "price_tax_included": {
+    "amount": 4690298
+   },
+   "price_tax_excluded": {
+    "amount": 3581817
+   },
+   "sustainability_score": {
+    "permille": 30
+   }
+  },
+  {
+   "start_date": "2026-10-31T21:00:00+01:00",
+   "end_date": "2026-10-31T21:15:00+01:00",
+   "price_tax_included": {
+    "amount": 4790244
+   },
+   "price_tax_excluded": {
+    "amount": 3681763
+   },
+   "sustainability_score": {
+    "permille": 27
+   }
+  },
+  {
+   "start_date": "2026-10-31T21:15:00+01:00",
+   "end_date": "2026-10-31T21:30:00+01:00",
+   "price_tax_included": {
+    "amount": 4644802
+   },
+   "price_tax_excluded": {
+    "amount": 3536321
+   },
+   "sustainability_score": {
+    "permille": 27
+   }
+  },
+  {
+   "start_date": "2026-10-31T21:30:00+01:00",
+   "end_date": "2026-10-31T21:45:00+01:00",
+   "price_tax_included": {
+    "amount": 4476854
+   },
+   "price_tax_excluded": {
+    "amount": 3368373
+   },
+   "sustainability_score": {
+    "permille": 27
+   }
+  },
+  {
+   "start_date": "2026-10-31T21:45:00+01:00",
+   "end_date": "2026-10-31T22:00:00+01:00",
+   "price_tax_included": {
+    "amount": 4393969
+   },
+   "price_tax_excluded": {
+    "amount": 3285488
+   },
+   "sustainability_score": {
+    "permille": 27
+   }
+  },
+  {
+   "start_date": "2026-10-31T22:00:00+01:00",
+   "end_date": "2026-10-31T22:15:00+01:00",
+   "price_tax_included": {
+    "amount": 4552600
+   },
+   "price_tax_excluded": {
+    "amount": 3444119
+   },
+   "sustainability_score": {
+    "permille": 28
+   }
+  },
+  {
+   "start_date": "2026-10-31T22:15:00+01:00",
+   "end_date": "2026-10-31T22:30:00+01:00",
+   "price_tax_included": {
+    "amount": 4479274
+   },
+   "price_tax_excluded": {
+    "amount": 3370793
+   },
+   "sustainability_score": {
+    "permille": 28
+   }
+  },
+  {
+   "start_date": "2026-10-31T22:30:00+01:00",
+   "end_date": "2026-10-31T22:45:00+01:00",
+   "price_tax_included": {
+    "amount": 4458220
+   },
+   "price_tax_excluded": {
+    "amount": 3349739
+   },
+   "sustainability_score": {
+    "permille": 28
+   }
+  },
+  {
+   "start_date": "2026-10-31T22:45:00+01:00",
+   "end_date": "2026-10-31T23:00:00+01:00",
+   "price_tax_included": {
+    "amount": 4379086
+   },
+   "price_tax_excluded": {
+    "amount": 3270605
+   },
+   "sustainability_score": {
+    "permille": 28
+   }
+  },
+  {
+   "start_date": "2026-10-31T23:00:00+01:00",
+   "end_date": "2026-10-31T23:15:00+01:00",
+   "price_tax_included": {
+    "amount": 4435834
+   },
+   "price_tax_excluded": {
+    "amount": 3327353
+   },
+   "sustainability_score": {
+    "permille": 26
+   }
+  },
+  {
+   "start_date": "2026-10-31T23:15:00+01:00",
+   "end_date": "2026-10-31T23:30:00+01:00",
+   "price_tax_included": {
+    "amount": 4270186
+   },
+   "price_tax_excluded": {
+    "amount": 3161705
+   },
+   "sustainability_score": {
+    "permille": 26
+   }
+  },
+  {
+   "start_date": "2026-10-31T23:30:00+01:00",
+   "end_date": "2026-10-31T23:45:00+01:00",
+   "price_tax_included": {
+    "amount": 4260990
+   },
+   "price_tax_excluded": {
+    "amount": 3152509
+   },
+   "sustainability_score": {
+    "permille": 26
+   }
+  },
+  {
+   "start_date": "2026-10-31T23:45:00+01:00",
+   "end_date": "2026-11-01T00:00:00+01:00",
+   "price_tax_included": {
+    "amount": 4118815
+   },
+   "price_tax_excluded": {
+    "amount": 3010334
+   },
+   "sustainability_score": {
+    "permille": 26
+   }
+  },
+  {
+   "start_date": "2026-11-01T00:00:00+01:00",
+   "end_date": "2026-11-01T00:15:00+01:00",
+   "price_tax_included": {
+    "amount": 4422888
+   },
+   "price_tax_excluded": {
+    "amount": 3314407
+   },
+   "sustainability_score": {
+    "permille": 25
+   }
+  },
+  {
+   "start_date": "2026-11-01T00:15:00+01:00",
+   "end_date": "2026-11-01T00:30:00+01:00",
+   "price_tax_included": {
+    "amount": 4346053
+   },
+   "price_tax_excluded": {
+    "amount": 3237572
+   },
+   "sustainability_score": {
+    "permille": 25
+   }
+  },
+  {
+   "start_date": "2026-11-01T00:30:00+01:00",
+   "end_date": "2026-11-01T00:45:00+01:00",
+   "price_tax_included": {
+    "amount": 4208960
+   },
+   "price_tax_excluded": {
+    "amount": 3100479
+   },
+   "sustainability_score": {
+    "permille": 25
+   }
+  },
+  {
+   "start_date": "2026-11-01T00:45:00+01:00",
+   "end_date": "2026-11-01T01:00:00+01:00",
+   "price_tax_included": {
+    "amount": 4151969
+   },
+   "price_tax_excluded": {
+    "amount": 3043488
+   },
+   "sustainability_score": {
+    "permille": 25
+   }
+  },
+  {
+   "start_date": "2026-11-01T01:00:00+01:00",
+   "end_date": "2026-11-01T01:15:00+01:00",
+   "price_tax_included": {
+    "amount": 4351619
+   },
+   "price_tax_excluded": {
+    "amount": 3243138
+   },
+   "sustainability_score": {
+    "permille": 21
+   }
+  },
+  {
+   "start_date": "2026-11-01T01:15:00+01:00",
+   "end_date": "2026-11-01T01:30:00+01:00",
+   "price_tax_included": {
+    "amount": 4259054
+   },
+   "price_tax_excluded": {
+    "amount": 3150573
+   },
+   "sustainability_score": {
+    "permille": 21
+   }
+  },
+  {
+   "start_date": "2026-11-01T01:30:00+01:00",
+   "end_date": "2026-11-01T01:45:00+01:00",
+   "price_tax_included": {
+    "amount": 4244413
+   },
+   "price_tax_excluded": {
+    "amount": 3135932
+   },
+   "sustainability_score": {
+    "permille": 21
+   }
+  },
+  {
+   "start_date": "2026-11-01T01:45:00+01:00",
+   "end_date": "2026-11-01T02:00:00+01:00",
+   "price_tax_included": {
+    "amount": 4210896
+   },
+   "price_tax_excluded": {
+    "amount": 3102415
+   },
+   "sustainability_score": {
+    "permille": 21
+   }
+  },
+  {
+   "start_date": "2026-11-01T02:00:00+01:00",
+   "end_date": "2026-11-01T02:15:00+01:00",
+   "price_tax_included": {
+    "amount": 4350288
+   },
+   "price_tax_excluded": {
+    "amount": 3241807
+   },
+   "sustainability_score": {
+    "permille": 17
+   }
+  },
+  {
+   "start_date": "2026-11-01T02:15:00+01:00",
+   "end_date": "2026-11-01T02:30:00+01:00",
+   "price_tax_included": {
+    "amount": 4294023
+   },
+   "price_tax_excluded": {
+    "amount": 3185542
+   },
+   "sustainability_score": {
+    "permille": 17
+   }
+  },
+  {
+   "start_date": "2026-11-01T02:30:00+01:00",
+   "end_date": "2026-11-01T02:45:00+01:00",
+   "price_tax_included": {
+    "amount": 4233039
+   },
+   "price_tax_excluded": {
+    "amount": 3124558
+   },
+   "sustainability_score": {
+    "permille": 17
+   }
+  },
+  {
+   "start_date": "2026-11-01T02:45:00+01:00",
+   "end_date": "2026-11-01T03:00:00+01:00",
+   "price_tax_included": {
+    "amount": 4132609
+   },
+   "price_tax_excluded": {
+    "amount": 3024128
+   },
+   "sustainability_score": {
+    "permille": 17
+   }
+  },
+  {
+   "start_date": "2026-11-01T03:00:00+01:00",
+   "end_date": "2026-11-01T03:15:00+01:00",
+   "price_tax_included": {
+    "amount": 4212590
+   },
+   "price_tax_excluded": {
+    "amount": 3104109
+   },
+   "sustainability_score": {
+    "permille": 17
+   }
+  },
+  {
+   "start_date": "2026-11-01T03:15:00+01:00",
+   "end_date": "2026-11-01T03:30:00+01:00",
+   "price_tax_included": {
+    "amount": 4161649
+   },
+   "price_tax_excluded": {
+    "amount": 3053168
+   },
+   "sustainability_score": {
+    "permille": 17
+   }
+  },
+  {
+   "start_date": "2026-11-01T03:30:00+01:00",
+   "end_date": "2026-11-01T03:45:00+01:00",
+   "price_tax_included": {
+    "amount": 4190205
+   },
+   "price_tax_excluded": {
+    "amount": 3081724
+   },
+   "sustainability_score": {
+    "permille": 17
+   }
+  },
+  {
+   "start_date": "2026-11-01T03:45:00+01:00",
+   "end_date": "2026-11-01T04:00:00+01:00",
+   "price_tax_included": {
+    "amount": 4183187
+   },
+   "price_tax_excluded": {
+    "amount": 3074706
+   },
+   "sustainability_score": {
+    "permille": 17
+   }
+  },
+  {
+   "start_date": "2026-11-01T04:00:00+01:00",
+   "end_date": "2026-11-01T04:15:00+01:00",
+   "price_tax_included": {
+    "amount": 4185123
+   },
+   "price_tax_excluded": {
+    "amount": 3076642
+   },
+   "sustainability_score": {
+    "permille": 15
+   }
+  },
+  {
+   "start_date": "2026-11-01T04:15:00+01:00",
+   "end_date": "2026-11-01T04:30:00+01:00",
+   "price_tax_included": {
+    "amount": 4191415
+   },
+   "price_tax_excluded": {
+    "amount": 3082934
+   },
+   "sustainability_score": {
+    "permille": 15
+   }
+  },
+  {
+   "start_date": "2026-11-01T04:30:00+01:00",
+   "end_date": "2026-11-01T04:45:00+01:00",
+   "price_tax_included": {
+    "amount": 4174475
+   },
+   "price_tax_excluded": {
+    "amount": 3065994
+   },
+   "sustainability_score": {
+    "permille": 15
+   }
+  },
+  {
+   "start_date": "2026-11-01T04:45:00+01:00",
+   "end_date": "2026-11-01T05:00:00+01:00",
+   "price_tax_included": {
+    "amount": 4193351
+   },
+   "price_tax_excluded": {
+    "amount": 3084870
+   },
+   "sustainability_score": {
+    "permille": 15
+   }
+  },
+  {
+   "start_date": "2026-11-01T05:00:00+01:00",
+   "end_date": "2026-11-01T05:15:00+01:00",
+   "price_tax_included": {
+    "amount": 4205935
+   },
+   "price_tax_excluded": {
+    "amount": 3097454
+   },
+   "sustainability_score": {
+    "permille": 13
+   }
+  },
+  {
+   "start_date": "2026-11-01T05:15:00+01:00",
+   "end_date": "2026-11-01T05:30:00+01:00",
+   "price_tax_included": {
+    "amount": 4205814
+   },
+   "price_tax_excluded": {
+    "amount": 3097333
+   },
+   "sustainability_score": {
+    "permille": 13
+   }
+  },
+  {
+   "start_date": "2026-11-01T05:30:00+01:00",
+   "end_date": "2026-11-01T05:45:00+01:00",
+   "price_tax_included": {
+    "amount": 4236306
+   },
+   "price_tax_excluded": {
+    "amount": 3127825
+   },
+   "sustainability_score": {
+    "permille": 13
+   }
+  },
+  {
+   "start_date": "2026-11-01T05:45:00+01:00",
+   "end_date": "2026-11-01T06:00:00+01:00",
+   "price_tax_included": {
+    "amount": 4214526
+   },
+   "price_tax_excluded": {
+    "amount": 3106045
+   },
+   "sustainability_score": {
+    "permille": 13
+   }
+  },
+  {
+   "start_date": "2026-11-01T06:00:00+01:00",
+   "end_date": "2026-11-01T06:15:00+01:00",
+   "price_tax_included": {
+    "amount": 4193714
+   },
+   "price_tax_excluded": {
+    "amount": 3085233
+   },
+   "sustainability_score": {
+    "permille": 13
+   }
+  },
+  {
+   "start_date": "2026-11-01T06:15:00+01:00",
+   "end_date": "2026-11-01T06:30:00+01:00",
+   "price_tax_included": {
+    "amount": 4243566
+   },
+   "price_tax_excluded": {
+    "amount": 3135085
+   },
+   "sustainability_score": {
+    "permille": 13
+   }
+  },
+  {
+   "start_date": "2026-11-01T06:30:00+01:00",
+   "end_date": "2026-11-01T06:45:00+01:00",
+   "price_tax_included": {
+    "amount": 4248769
+   },
+   "price_tax_excluded": {
+    "amount": 3140288
+   },
+   "sustainability_score": {
+    "permille": 13
+   }
+  },
+  {
+   "start_date": "2026-11-01T06:45:00+01:00",
+   "end_date": "2026-11-01T07:00:00+01:00",
+   "price_tax_included": {
+    "amount": 4294023
+   },
+   "price_tax_excluded": {
+    "amount": 3185542
+   },
+   "sustainability_score": {
+    "permille": 13
+   }
+  },
+  {
+   "start_date": "2026-11-01T07:00:00+01:00",
+   "end_date": "2026-11-01T07:15:00+01:00",
+   "price_tax_included": {
+    "amount": 4337704
+   },
+   "price_tax_excluded": {
+    "amount": 3229223
+   },
+   "sustainability_score": {
+    "permille": 15
+   }
+  },
+  {
+   "start_date": "2026-11-01T07:15:00+01:00",
+   "end_date": "2026-11-01T07:30:00+01:00",
+   "price_tax_included": {
+    "amount": 4337704
+   },
+   "price_tax_excluded": {
+    "amount": 3229223
+   },
+   "sustainability_score": {
+    "permille": 15
+   }
+  },
+  {
+   "start_date": "2026-11-01T07:30:00+01:00",
+   "end_date": "2026-11-01T07:45:00+01:00",
+   "price_tax_included": {
+    "amount": 4307212
+   },
+   "price_tax_excluded": {
+    "amount": 3198731
+   },
+   "sustainability_score": {
+    "permille": 15
+   }
+  },
+  {
+   "start_date": "2026-11-01T07:45:00+01:00",
+   "end_date": "2026-11-01T08:00:00+01:00",
+   "price_tax_included": {
+    "amount": 4243566
+   },
+   "price_tax_excluded": {
+    "amount": 3135085
+   },
+   "sustainability_score": {
+    "permille": 15
+   }
+  },
+  {
+   "start_date": "2026-11-01T08:00:00+01:00",
+   "end_date": "2026-11-01T08:15:00+01:00",
+   "price_tax_included": {
+    "amount": 4404254
+   },
+   "price_tax_excluded": {
+    "amount": 3295773
+   },
+   "sustainability_score": {
+    "permille": 71
+   }
+  },
+  {
+   "start_date": "2026-11-01T08:15:00+01:00",
+   "end_date": "2026-11-01T08:30:00+01:00",
+   "price_tax_included": {
+    "amount": 4339519
+   },
+   "price_tax_excluded": {
+    "amount": 3231038
+   },
+   "sustainability_score": {
+    "permille": 71
+   }
+  },
+  {
+   "start_date": "2026-11-01T08:30:00+01:00",
+   "end_date": "2026-11-01T08:45:00+01:00",
+   "price_tax_included": {
+    "amount": 4274300
+   },
+   "price_tax_excluded": {
+    "amount": 3165819
+   },
+   "sustainability_score": {
+    "permille": 71
+   }
+  },
+  {
+   "start_date": "2026-11-01T08:45:00+01:00",
+   "end_date": "2026-11-01T09:00:00+01:00",
+   "price_tax_included": {
+    "amount": 4139143
+   },
+   "price_tax_excluded": {
+    "amount": 3030662
+   },
+   "sustainability_score": {
+    "permille": 71
+   }
+  },
+  {
+   "start_date": "2026-11-01T09:00:00+01:00",
+   "end_date": "2026-11-01T09:15:00+01:00",
+   "price_tax_included": {
+    "amount": 4332743
+   },
+   "price_tax_excluded": {
+    "amount": 3224262
+   },
+   "sustainability_score": {
+    "permille": 168
+   }
+  },
+  {
+   "start_date": "2026-11-01T09:15:00+01:00",
+   "end_date": "2026-11-01T09:30:00+01:00",
+   "price_tax_included": {
+    "amount": 4177500
+   },
+   "price_tax_excluded": {
+    "amount": 3069019
+   },
+   "sustainability_score": {
+    "permille": 168
+   }
+  },
+  {
+   "start_date": "2026-11-01T09:30:00+01:00",
+   "end_date": "2026-11-01T09:45:00+01:00",
+   "price_tax_included": {
+    "amount": 4155236
+   },
+   "price_tax_excluded": {
+    "amount": 3046755
+   },
+   "sustainability_score": {
+    "permille": 168
+   }
+  },
+  {
+   "start_date": "2026-11-01T09:45:00+01:00",
+   "end_date": "2026-11-01T10:00:00+01:00",
+   "price_tax_included": {
+    "amount": 4120993
+   },
+   "price_tax_excluded": {
+    "amount": 3012512
+   },
+   "sustainability_score": {
+    "permille": 168
+   }
+  },
+  {
+   "start_date": "2026-11-01T10:00:00+01:00",
+   "end_date": "2026-11-01T10:15:00+01:00",
+   "price_tax_included": {
+    "amount": 4254577
+   },
+   "price_tax_excluded": {
+    "amount": 3146096
+   },
+   "sustainability_score": {
+    "permille": 251
+   }
+  },
+  {
+   "start_date": "2026-11-01T10:15:00+01:00",
+   "end_date": "2026-11-01T10:30:00+01:00",
+   "price_tax_included": {
+    "amount": 4222149
+   },
+   "price_tax_excluded": {
+    "amount": 3113668
+   },
+   "sustainability_score": {
+    "permille": 251
+   }
+  },
+  {
+   "start_date": "2026-11-01T10:30:00+01:00",
+   "end_date": "2026-11-01T10:45:00+01:00",
+   "price_tax_included": {
+    "amount": 4267040
+   },
+   "price_tax_excluded": {
+    "amount": 3158559
+   },
+   "sustainability_score": {
+    "permille": 251
+   }
+  },
+  {
+   "start_date": "2026-11-01T10:45:00+01:00",
+   "end_date": "2026-11-01T11:00:00+01:00",
+   "price_tax_included": {
+    "amount": 4206298
+   },
+   "price_tax_excluded": {
+    "amount": 3097817
+   },
+   "sustainability_score": {
+    "permille": 251
+   }
+  },
+  {
+   "start_date": "2026-11-01T11:00:00+01:00",
+   "end_date": "2026-11-01T11:15:00+01:00",
+   "price_tax_included": {
+    "amount": 4252520
+   },
+   "price_tax_excluded": {
+    "amount": 3144039
+   },
+   "sustainability_score": {
+    "permille": 314
+   }
+  },
+  {
+   "start_date": "2026-11-01T11:15:00+01:00",
+   "end_date": "2026-11-01T11:30:00+01:00",
+   "price_tax_included": {
+    "amount": 4179194
+   },
+   "price_tax_excluded": {
+    "amount": 3070713
+   },
+   "sustainability_score": {
+    "permille": 314
+   }
+  },
+  {
+   "start_date": "2026-11-01T11:30:00+01:00",
+   "end_date": "2026-11-01T11:45:00+01:00",
+   "price_tax_included": {
+    "amount": 4170603
+   },
+   "price_tax_excluded": {
+    "amount": 3062122
+   },
+   "sustainability_score": {
+    "permille": 314
+   }
+  },
+  {
+   "start_date": "2026-11-01T11:45:00+01:00",
+   "end_date": "2026-11-01T12:00:00+01:00",
+   "price_tax_included": {
+    "amount": 4075134
+   },
+   "price_tax_excluded": {
+    "amount": 2966653
+   },
+   "sustainability_score": {
+    "permille": 314
+   }
+  },
+  {
+   "start_date": "2026-11-01T12:00:00+01:00",
+   "end_date": "2026-11-01T12:15:00+01:00",
+   "price_tax_included": {
+    "amount": 4183429
+   },
+   "price_tax_excluded": {
+    "amount": 3074948
+   },
+   "sustainability_score": {
+    "permille": 280
+   }
+  },
+  {
+   "start_date": "2026-11-01T12:15:00+01:00",
+   "end_date": "2026-11-01T12:30:00+01:00",
+   "price_tax_included": {
+    "amount": 4212469
+   },
+   "price_tax_excluded": {
+    "amount": 3103988
+   },
+   "sustainability_score": {
+    "permille": 280
+   }
+  },
+  {
+   "start_date": "2026-11-01T12:30:00+01:00",
+   "end_date": "2026-11-01T12:45:00+01:00",
+   "price_tax_included": {
+    "amount": 4157172
+   },
+   "price_tax_excluded": {
+    "amount": 3048691
+   },
+   "sustainability_score": {
+    "permille": 280
+   }
+  },
+  {
+   "start_date": "2026-11-01T12:45:00+01:00",
+   "end_date": "2026-11-01T13:00:00+01:00",
+   "price_tax_included": {
+    "amount": 4128979
+   },
+   "price_tax_excluded": {
+    "amount": 3020498
+   },
+   "sustainability_score": {
+    "permille": 280
+   }
+  },
+  {
+   "start_date": "2026-11-01T13:00:00+01:00",
+   "end_date": "2026-11-01T13:15:00+01:00",
+   "price_tax_included": {
+    "amount": 4037261
+   },
+   "price_tax_excluded": {
+    "amount": 2928780
+   },
+   "sustainability_score": {
+    "permille": 224
+   }
+  },
+  {
+   "start_date": "2026-11-01T13:15:00+01:00",
+   "end_date": "2026-11-01T13:30:00+01:00",
+   "price_tax_included": {
+    "amount": 3871007
+   },
+   "price_tax_excluded": {
+    "amount": 2762526
+   },
+   "sustainability_score": {
+    "permille": 224
+   }
+  },
+  {
+   "start_date": "2026-11-01T13:30:00+01:00",
+   "end_date": "2026-11-01T13:45:00+01:00",
+   "price_tax_included": {
+    "amount": 4040165
+   },
+   "price_tax_excluded": {
+    "amount": 2931684
+   },
+   "sustainability_score": {
+    "permille": 224
+   }
+  },
+  {
+   "start_date": "2026-11-01T13:45:00+01:00",
+   "end_date": "2026-11-01T14:00:00+01:00",
+   "price_tax_included": {
+    "amount": 3991765
+   },
+   "price_tax_excluded": {
+    "amount": 2883284
+   },
+   "sustainability_score": {
+    "permille": 224
+   }
+  },
+  {
+   "start_date": "2026-11-01T14:00:00+01:00",
+   "end_date": "2026-11-01T14:15:00+01:00",
+   "price_tax_included": {
+    "amount": 3963814
+   },
+   "price_tax_excluded": {
+    "amount": 2855333
+   },
+   "sustainability_score": {
+    "permille": 182
+   }
+  },
+  {
+   "start_date": "2026-11-01T14:15:00+01:00",
+   "end_date": "2026-11-01T14:30:00+01:00",
+   "price_tax_included": {
+    "amount": 3976035
+   },
+   "price_tax_excluded": {
+    "amount": 2867554
+   },
+   "sustainability_score": {
+    "permille": 182
+   }
+  },
+  {
+   "start_date": "2026-11-01T14:30:00+01:00",
+   "end_date": "2026-11-01T14:45:00+01:00",
+   "price_tax_included": {
+    "amount": 4130552
+   },
+   "price_tax_excluded": {
+    "amount": 3022071
+   },
+   "sustainability_score": {
+    "permille": 182
+   }
+  },
+  {
+   "start_date": "2026-11-01T14:45:00+01:00",
+   "end_date": "2026-11-01T15:00:00+01:00",
+   "price_tax_included": {
+    "amount": 4337583
+   },
+   "price_tax_excluded": {
+    "amount": 3229102
+   },
+   "sustainability_score": {
+    "permille": 182
+   }
+  },
+  {
+   "start_date": "2026-11-01T15:00:00+01:00",
+   "end_date": "2026-11-01T15:15:00+01:00",
+   "price_tax_included": {
+    "amount": 4045368
+   },
+   "price_tax_excluded": {
+    "amount": 2936887
+   },
+   "sustainability_score": {
+    "permille": 128
+   }
+  },
+  {
+   "start_date": "2026-11-01T15:15:00+01:00",
+   "end_date": "2026-11-01T15:30:00+01:00",
+   "price_tax_included": {
+    "amount": 4240299
+   },
+   "price_tax_excluded": {
+    "amount": 3131818
+   },
+   "sustainability_score": {
+    "permille": 128
+   }
+  },
+  {
+   "start_date": "2026-11-01T15:30:00+01:00",
+   "end_date": "2026-11-01T15:45:00+01:00",
+   "price_tax_included": {
+    "amount": 4530941
+   },
+   "price_tax_excluded": {
+    "amount": 3422460
+   },
+   "sustainability_score": {
+    "permille": 128
+   }
+  },
+  {
+   "start_date": "2026-11-01T15:45:00+01:00",
+   "end_date": "2026-11-01T16:00:00+01:00",
+   "price_tax_included": {
+    "amount": 4949843
+   },
+   "price_tax_excluded": {
+    "amount": 3841362
+   },
+   "sustainability_score": {
+    "permille": 128
+   }
+  },
+  {
+   "start_date": "2026-11-01T16:00:00+01:00",
+   "end_date": "2026-11-01T16:15:00+01:00",
+   "price_tax_included": {
+    "amount": 4461003
+   },
+   "price_tax_excluded": {
+    "amount": 3352522
+   },
+   "sustainability_score": {
+    "permille": 60
+   }
+  },
+  {
+   "start_date": "2026-11-01T16:15:00+01:00",
+   "end_date": "2026-11-01T16:30:00+01:00",
+   "price_tax_included": {
+    "amount": 4726718
+   },
+   "price_tax_excluded": {
+    "amount": 3618237
+   },
+   "sustainability_score": {
+    "permille": 60
+   }
+  },
+  {
+   "start_date": "2026-11-01T16:30:00+01:00",
+   "end_date": "2026-11-01T16:45:00+01:00",
+   "price_tax_included": {
+    "amount": 4899264
+   },
+   "price_tax_excluded": {
+    "amount": 3790783
+   },
+   "sustainability_score": {
+    "permille": 60
+   }
+  },
+  {
+   "start_date": "2026-11-01T16:45:00+01:00",
+   "end_date": "2026-11-01T17:00:00+01:00",
+   "price_tax_included": {
+    "amount": 4928788
+   },
+   "price_tax_excluded": {
+    "amount": 3820307
+   },
+   "sustainability_score": {
+    "permille": 60
+   }
+  },
+  {
+   "start_date": "2026-11-01T17:00:00+01:00",
+   "end_date": "2026-11-01T17:15:00+01:00",
+   "price_tax_included": {
+    "amount": 5001873
+   },
+   "price_tax_excluded": {
+    "amount": 3893392
+   },
+   "sustainability_score": {
+    "permille": 21
+   }
+  },
+  {
+   "start_date": "2026-11-01T17:15:00+01:00",
+   "end_date": "2026-11-01T17:30:00+01:00",
+   "price_tax_included": {
+    "amount": 4891883
+   },
+   "price_tax_excluded": {
+    "amount": 3783402
+   },
+   "sustainability_score": {
+    "permille": 21
+   }
+  },
+  {
+   "start_date": "2026-11-01T17:30:00+01:00",
+   "end_date": "2026-11-01T17:45:00+01:00",
+   "price_tax_included": {
+    "amount": 4942825
+   },
+   "price_tax_excluded": {
+    "amount": 3834344
+   },
+   "sustainability_score": {
+    "permille": 21
+   }
+  },
+  {
+   "start_date": "2026-11-01T17:45:00+01:00",
+   "end_date": "2026-11-01T18:00:00+01:00",
+   "price_tax_included": {
+    "amount": 4926369
+   },
+   "price_tax_excluded": {
+    "amount": 3817888
+   },
+   "sustainability_score": {
+    "permille": 21
+   }
+  },
+  {
+   "start_date": "2026-11-01T18:00:00+01:00",
+   "end_date": "2026-11-01T18:15:00+01:00",
+   "price_tax_included": {
+    "amount": 4943793
+   },
+   "price_tax_excluded": {
+    "amount": 3835312
+   },
+   "sustainability_score": {
+    "permille": 19
+   }
+  },
+  {
+   "start_date": "2026-11-01T18:15:00+01:00",
+   "end_date": "2026-11-01T18:30:00+01:00",
+   "price_tax_included": {
+    "amount": 4943793
+   },
+   "price_tax_excluded": {
+    "amount": 3835312
+   },
+   "sustainability_score": {
+    "permille": 19
+   }
+  },
+  {
+   "start_date": "2026-11-01T18:30:00+01:00",
+   "end_date": "2026-11-01T18:45:00+01:00",
+   "price_tax_included": {
+    "amount": 4938469
+   },
+   "price_tax_excluded": {
+    "amount": 3829988
+   },
+   "sustainability_score": {
+    "permille": 19
+   }
+  },
+  {
+   "start_date": "2026-11-01T18:45:00+01:00",
+   "end_date": "2026-11-01T19:00:00+01:00",
+   "price_tax_included": {
+    "amount": 4929757
+   },
+   "price_tax_excluded": {
+    "amount": 3821276
+   },
+   "sustainability_score": {
+    "permille": 19
+   }
+  },
+  {
+   "start_date": "2026-11-01T19:00:00+01:00",
+   "end_date": "2026-11-01T19:15:00+01:00",
+   "price_tax_included": {
+    "amount": 4959886
+   },
+   "price_tax_excluded": {
+    "amount": 3851405
+   },
+   "sustainability_score": {
+    "permille": 17
+   }
+  },
+  {
+   "start_date": "2026-11-01T19:15:00+01:00",
+   "end_date": "2026-11-01T19:30:00+01:00",
+   "price_tax_included": {
+    "amount": 4879542
+   },
+   "price_tax_excluded": {
+    "amount": 3771061
+   },
+   "sustainability_score": {
+    "permille": 17
+   }
+  },
+  {
+   "start_date": "2026-11-01T19:30:00+01:00",
+   "end_date": "2026-11-01T19:45:00+01:00",
+   "price_tax_included": {
+    "amount": 4891279
+   },
+   "price_tax_excluded": {
+    "amount": 3782798
+   },
+   "sustainability_score": {
+    "permille": 17
+   }
+  },
+  {
+   "start_date": "2026-11-01T19:45:00+01:00",
+   "end_date": "2026-11-01T20:00:00+01:00",
+   "price_tax_included": {
+    "amount": 4910397
+   },
+   "price_tax_excluded": {
+    "amount": 3801916
+   },
+   "sustainability_score": {
+    "permille": 17
+   }
+  },
+  {
+   "start_date": "2026-11-01T20:00:00+01:00",
+   "end_date": "2026-11-01T20:15:00+01:00",
+   "price_tax_included": {
+    "amount": 4974769
+   },
+   "price_tax_excluded": {
+    "amount": 3866288
+   },
+   "sustainability_score": {
+    "permille": 17
+   }
+  },
+  {
+   "start_date": "2026-11-01T20:15:00+01:00",
+   "end_date": "2026-11-01T20:30:00+01:00",
+   "price_tax_included": {
+    "amount": 4805248
+   },
+   "price_tax_excluded": {
+    "amount": 3696767
+   },
+   "sustainability_score": {
+    "permille": 17
+   }
+  },
+  {
+   "start_date": "2026-11-01T20:30:00+01:00",
+   "end_date": "2026-11-01T20:45:00+01:00",
+   "price_tax_included": {
+    "amount": 4726477
+   },
+   "price_tax_excluded": {
+    "amount": 3617996
+   },
+   "sustainability_score": {
+    "permille": 17
+   }
+  },
+  {
+   "start_date": "2026-11-01T20:45:00+01:00",
+   "end_date": "2026-11-01T21:00:00+01:00",
+   "price_tax_included": {
+    "amount": 4509282
+   },
+   "price_tax_excluded": {
+    "amount": 3400801
+   },
+   "sustainability_score": {
+    "permille": 17
+   }
+  },
+  {
+   "start_date": "2026-11-01T21:00:00+01:00",
+   "end_date": "2026-11-01T21:15:00+01:00",
+   "price_tax_included": {
+    "amount": 4683280
+   },
+   "price_tax_excluded": {
+    "amount": 3574799
+   },
+   "sustainability_score": {
+    "permille": 23
+   }
+  },
+  {
+   "start_date": "2026-11-01T21:15:00+01:00",
+   "end_date": "2026-11-01T21:30:00+01:00",
+   "price_tax_included": {
+    "amount": 4501658
+   },
+   "price_tax_excluded": {
+    "amount": 3393177
+   },
+   "sustainability_score": {
+    "permille": 23
+   }
+  },
+  {
+   "start_date": "2026-11-01T21:30:00+01:00",
+   "end_date": "2026-11-01T21:45:00+01:00",
+   "price_tax_included": {
+    "amount": 4444789
+   },
+   "price_tax_excluded": {
+    "amount": 3336308
+   },
+   "sustainability_score": {
+    "permille": 23
+   }
+  },
+  {
+   "start_date": "2026-11-01T21:45:00+01:00",
+   "end_date": "2026-11-01T22:00:00+01:00",
+   "price_tax_included": {
+    "amount": 4309995
+   },
+   "price_tax_excluded": {
+    "amount": 3201514
+   },
+   "sustainability_score": {
+    "permille": 23
+   }
+  },
+  {
+   "start_date": "2026-11-01T22:00:00+01:00",
+   "end_date": "2026-11-01T22:15:00+01:00",
+   "price_tax_included": {
+    "amount": 4454469
+   },
+   "price_tax_excluded": {
+    "amount": 3345988
+   },
+   "sustainability_score": {
+    "permille": 33
+   }
+  },
+  {
+   "start_date": "2026-11-01T22:15:00+01:00",
+   "end_date": "2026-11-01T22:30:00+01:00",
+   "price_tax_included": {
+    "amount": 4345811
+   },
+   "price_tax_excluded": {
+    "amount": 3237330
+   },
+   "sustainability_score": {
+    "permille": 33
+   }
+  },
+  {
+   "start_date": "2026-11-01T22:30:00+01:00",
+   "end_date": "2026-11-01T22:45:00+01:00",
+   "price_tax_included": {
+    "amount": 4333469
+   },
+   "price_tax_excluded": {
+    "amount": 3224988
+   },
+   "sustainability_score": {
+    "permille": 33
+   }
+  },
+  {
+   "start_date": "2026-11-01T22:45:00+01:00",
+   "end_date": "2026-11-01T23:00:00+01:00",
+   "price_tax_included": {
+    "amount": 4243566
+   },
+   "price_tax_excluded": {
+    "amount": 3135085
+   },
+   "sustainability_score": {
+    "permille": 33
+   }
+  },
+  {
+   "start_date": "2026-11-01T23:00:00+01:00",
+   "end_date": "2026-11-01T23:15:00+01:00",
+   "price_tax_included": {
+    "amount": 4253125
+   },
+   "price_tax_excluded": {
+    "amount": 3144644
+   },
+   "sustainability_score": {
+    "permille": 49
+   }
+  },
+  {
+   "start_date": "2026-11-01T23:15:00+01:00",
+   "end_date": "2026-11-01T23:30:00+01:00",
+   "price_tax_included": {
+    "amount": 4172418
+   },
+   "price_tax_excluded": {
+    "amount": 3063937
+   },
+   "sustainability_score": {
+    "permille": 49
+   }
+  },
+  {
+   "start_date": "2026-11-01T23:30:00+01:00",
+   "end_date": "2026-11-01T23:45:00+01:00",
+   "price_tax_included": {
+    "amount": 4123534
+   },
+   "price_tax_excluded": {
+    "amount": 3015053
+   },
+   "sustainability_score": {
+    "permille": 49
+   }
+  },
+  {
+   "start_date": "2026-11-01T23:45:00+01:00",
+   "end_date": "2026-11-02T00:00:00+01:00",
+   "price_tax_included": {
+    "amount": 4047667
+   },
+   "price_tax_excluded": {
+    "amount": 2939186
+   },
+   "sustainability_score": {
+    "permille": 49
+   }
+  },
+  {
+   "start_date": "2026-11-02T00:00:00+01:00",
+   "end_date": "2026-11-02T00:15:00+01:00",
+   "price_tax_included": {
+    "amount": 4345085
+   },
+   "price_tax_excluded": {
+    "amount": 3236604
+   },
+   "sustainability_score": {
+    "permille": 78
+   }
+  },
+  {
+   "start_date": "2026-11-02T00:15:00+01:00",
+   "end_date": "2026-11-02T00:30:00+01:00",
+   "price_tax_included": {
+    "amount": 4284948
+   },
+   "price_tax_excluded": {
+    "amount": 3176467
+   },
+   "sustainability_score": {
+    "permille": 78
+   }
+  },
+  {
+   "start_date": "2026-11-02T00:30:00+01:00",
+   "end_date": "2026-11-02T00:45:00+01:00",
+   "price_tax_included": {
+    "amount": 4212469
+   },
+   "price_tax_excluded": {
+    "amount": 3103988
+   },
+   "sustainability_score": {
+    "permille": 78
+   }
+  },
+  {
+   "start_date": "2026-11-02T00:45:00+01:00",
+   "end_date": "2026-11-02T01:00:00+01:00",
+   "price_tax_included": {
+    "amount": 4152574
+   },
+   "price_tax_excluded": {
+    "amount": 3044093
+   },
+   "sustainability_score": {
+    "permille": 78
+   }
+  },
+  {
+   "start_date": "2026-11-02T01:00:00+01:00",
+   "end_date": "2026-11-02T01:15:00+01:00",
+   "price_tax_included": {
+    "amount": 4260143
+   },
+   "price_tax_excluded": {
+    "amount": 3151662
+   },
+   "sustainability_score": {
+    "permille": 145
+   }
+  },
+  {
+   "start_date": "2026-11-02T01:15:00+01:00",
+   "end_date": "2026-11-02T01:30:00+01:00",
+   "price_tax_included": {
+    "amount": 4222754
+   },
+   "price_tax_excluded": {
+    "amount": 3114273
+   },
+   "sustainability_score": {
+    "permille": 145
+   }
+  },
+  {
+   "start_date": "2026-11-02T01:30:00+01:00",
+   "end_date": "2026-11-02T01:45:00+01:00",
+   "price_tax_included": {
+    "amount": 4136844
+   },
+   "price_tax_excluded": {
+    "amount": 3028363
+   },
+   "sustainability_score": {
+    "permille": 145
+   }
+  },
+  {
+   "start_date": "2026-11-02T01:45:00+01:00",
+   "end_date": "2026-11-02T02:00:00+01:00",
+   "price_tax_included": {
+    "amount": 4094252
+   },
+   "price_tax_excluded": {
+    "amount": 2985771
+   },
+   "sustainability_score": {
+    "permille": 145
+   }
+  },
+  {
+   "start_date": "2026-11-02T02:00:00+01:00",
+   "end_date": "2026-11-02T02:15:00+01:00",
+   "price_tax_included": {
+    "amount": 4131520
+   },
+   "price_tax_excluded": {
+    "amount": 3023039
+   },
+   "sustainability_score": {
+    "permille": 250
+   }
+  },
+  {
+   "start_date": "2026-11-02T02:15:00+01:00",
+   "end_date": "2026-11-02T02:30:00+01:00",
+   "price_tax_included": {
+    "amount": 4088686
+   },
+   "price_tax_excluded": {
+    "amount": 2980205
+   },
+   "sustainability_score": {
+    "permille": 250
+   }
+  },
+  {
+   "start_date": "2026-11-02T02:30:00+01:00",
+   "end_date": "2026-11-02T02:45:00+01:00",
+   "price_tax_included": {
+    "amount": 4060130
+   },
+   "price_tax_excluded": {
+    "amount": 2951649
+   },
+   "sustainability_score": {
+    "permille": 250
+   }
+  },
+  {
+   "start_date": "2026-11-02T02:45:00+01:00",
+   "end_date": "2026-11-02T03:00:00+01:00",
+   "price_tax_included": {
+    "amount": 4084935
+   },
+   "price_tax_excluded": {
+    "amount": 2976454
+   },
+   "sustainability_score": {
+    "permille": 250
+   }
+  },
+  {
+   "start_date": "2026-11-02T03:00:00+01:00",
+   "end_date": "2026-11-02T03:15:00+01:00",
+   "price_tax_included": {
+    "amount": 4069568
+   },
+   "price_tax_excluded": {
+    "amount": 2961087
+   },
+   "sustainability_score": {
+    "permille": 316
+   }
+  },
+  {
+   "start_date": "2026-11-02T03:15:00+01:00",
+   "end_date": "2026-11-02T03:30:00+01:00",
+   "price_tax_included": {
+    "amount": 4074166
+   },
+   "price_tax_excluded": {
+    "amount": 2965685
+   },
+   "sustainability_score": {
+    "permille": 316
+   }
+  },
+  {
+   "start_date": "2026-11-02T03:30:00+01:00",
+   "end_date": "2026-11-02T03:45:00+01:00",
+   "price_tax_included": {
+    "amount": 4081668
+   },
+   "price_tax_excluded": {
+    "amount": 2973187
+   },
+   "sustainability_score": {
+    "permille": 316
+   }
+  },
+  {
+   "start_date": "2026-11-02T03:45:00+01:00",
+   "end_date": "2026-11-02T04:00:00+01:00",
+   "price_tax_included": {
+    "amount": 4022378
+   },
+   "price_tax_excluded": {
+    "amount": 2913897
+   },
+   "sustainability_score": {
+    "permille": 316
+   }
+  },
+  {
+   "start_date": "2026-11-02T04:00:00+01:00",
+   "end_date": "2026-11-02T04:15:00+01:00",
+   "price_tax_included": {
+    "amount": 4118936
+   },
+   "price_tax_excluded": {
+    "amount": 3010455
+   },
+   "sustainability_score": {
+    "permille": 374
+   }
+  },
+  {
+   "start_date": "2026-11-02T04:15:00+01:00",
+   "end_date": "2026-11-02T04:30:00+01:00",
+   "price_tax_included": {
+    "amount": 4062913
+   },
+   "price_tax_excluded": {
+    "amount": 2954432
+   },
+   "sustainability_score": {
+    "permille": 374
+   }
+  },
+  {
+   "start_date": "2026-11-02T04:30:00+01:00",
+   "end_date": "2026-11-02T04:45:00+01:00",
+   "price_tax_included": {
+    "amount": 4031937
+   },
+   "price_tax_excluded": {
+    "amount": 2923456
+   },
+   "sustainability_score": {
+    "permille": 374
+   }
+  },
+  {
+   "start_date": "2026-11-02T04:45:00+01:00",
+   "end_date": "2026-11-02T05:00:00+01:00",
+   "price_tax_included": {
+    "amount": 4011851
+   },
+   "price_tax_excluded": {
+    "amount": 2903370
+   },
+   "sustainability_score": {
+    "permille": 374
+   }
+  },
+  {
+   "start_date": "2026-11-02T05:00:00+01:00",
+   "end_date": "2026-11-02T05:15:00+01:00",
+   "price_tax_included": {
+    "amount": 4091469
+   },
+   "price_tax_excluded": {
+    "amount": 2982988
+   },
+   "sustainability_score": {
+    "permille": 425
+   }
+  },
+  {
+   "start_date": "2026-11-02T05:15:00+01:00",
+   "end_date": "2026-11-02T05:30:00+01:00",
+   "price_tax_included": {
+    "amount": 4120993
+   },
+   "price_tax_excluded": {
+    "amount": 3012512
+   },
+   "sustainability_score": {
+    "permille": 425
+   }
+  },
+  {
+   "start_date": "2026-11-02T05:30:00+01:00",
+   "end_date": "2026-11-02T05:45:00+01:00",
+   "price_tax_included": {
+    "amount": 4069205
+   },
+   "price_tax_excluded": {
+    "amount": 2960724
+   },
+   "sustainability_score": {
+    "permille": 425
+   }
+  },
+  {
+   "start_date": "2026-11-02T05:45:00+01:00",
+   "end_date": "2026-11-02T06:00:00+01:00",
+   "price_tax_included": {
+    "amount": 3928845
+   },
+   "price_tax_excluded": {
+    "amount": 2820364
+   },
+   "sustainability_score": {
+    "permille": 425
+   }
+  },
+  {
+   "start_date": "2026-11-02T06:00:00+01:00",
+   "end_date": "2026-11-02T06:15:00+01:00",
+   "price_tax_included": {
+    "amount": 4078522
+   },
+   "price_tax_excluded": {
+    "amount": 2970041
+   },
+   "sustainability_score": {
+    "permille": 404
+   }
+  },
+  {
+   "start_date": "2026-11-02T06:15:00+01:00",
+   "end_date": "2026-11-02T06:30:00+01:00",
+   "price_tax_included": {
+    "amount": 4030969
+   },
+   "price_tax_excluded": {
+    "amount": 2922488
+   },
+   "sustainability_score": {
+    "permille": 404
+   }
+  },
+  {
+   "start_date": "2026-11-02T06:30:00+01:00",
+   "end_date": "2026-11-02T06:45:00+01:00",
+   "price_tax_included": {
+    "amount": 4198312
+   },
+   "price_tax_excluded": {
+    "amount": 3089831
+   },
+   "sustainability_score": {
+    "permille": 404
+   }
+  },
+  {
+   "start_date": "2026-11-02T06:45:00+01:00",
+   "end_date": "2026-11-02T07:00:00+01:00",
+   "price_tax_included": {
+    "amount": 4333469
+   },
+   "price_tax_excluded": {
+    "amount": 3224988
+   },
+   "sustainability_score": {
+    "permille": 404
+   }
+  },
+  {
+   "start_date": "2026-11-02T07:00:00+01:00",
+   "end_date": "2026-11-02T07:15:00+01:00",
+   "price_tax_included": {
+    "amount": 4334679
+   },
+   "price_tax_excluded": {
+    "amount": 3226198
+   },
+   "sustainability_score": {
+    "permille": 399
+   }
+  },
+  {
+   "start_date": "2026-11-02T07:15:00+01:00",
+   "end_date": "2026-11-02T07:30:00+01:00",
+   "price_tax_included": {
+    "amount": 4636695
+   },
+   "price_tax_excluded": {
+    "amount": 3528214
+   },
+   "sustainability_score": {
+    "permille": 399
+   }
+  },
+  {
+   "start_date": "2026-11-02T07:30:00+01:00",
+   "end_date": "2026-11-02T07:45:00+01:00",
+   "price_tax_included": {
+    "amount": 4737246
+   },
+   "price_tax_excluded": {
+    "amount": 3628765
+   },
+   "sustainability_score": {
+    "permille": 399
+   }
+  },
+  {
+   "start_date": "2026-11-02T07:45:00+01:00",
+   "end_date": "2026-11-02T08:00:00+01:00",
+   "price_tax_included": {
+    "amount": 4867442
+   },
+   "price_tax_excluded": {
+    "amount": 3758961
+   },
+   "sustainability_score": {
+    "permille": 399
+   }
+  },
+  {
+   "start_date": "2026-11-02T08:00:00+01:00",
+   "end_date": "2026-11-02T08:15:00+01:00",
+   "price_tax_included": {
+    "amount": 5218584
+   },
+   "price_tax_excluded": {
+    "amount": 4110103
+   },
+   "sustainability_score": {
+    "permille": 436
+   }
+  },
+  {
+   "start_date": "2026-11-02T08:15:00+01:00",
+   "end_date": "2026-11-02T08:30:00+01:00",
+   "price_tax_included": {
+    "amount": 5152881
+   },
+   "price_tax_excluded": {
+    "amount": 4044400
+   },
+   "sustainability_score": {
+    "permille": 436
+   }
+  },
+  {
+   "start_date": "2026-11-02T08:30:00+01:00",
+   "end_date": "2026-11-02T08:45:00+01:00",
+   "price_tax_included": {
+    "amount": 5058138
+   },
+   "price_tax_excluded": {
+    "amount": 3949657
+   },
+   "sustainability_score": {
+    "permille": 436
+   }
+  },
+  {
+   "start_date": "2026-11-02T08:45:00+01:00",
+   "end_date": "2026-11-02T09:00:00+01:00",
+   "price_tax_included": {
+    "amount": 4941736
+   },
+   "price_tax_excluded": {
+    "amount": 3833255
+   },
+   "sustainability_score": {
+    "permille": 436
+   }
+  },
+  {
+   "start_date": "2026-11-02T09:00:00+01:00",
+   "end_date": "2026-11-02T09:15:00+01:00",
+   "price_tax_included": {
+    "amount": 5079797
+   },
+   "price_tax_excluded": {
+    "amount": 3971316
+   },
+   "sustainability_score": {
+    "permille": 574
+   }
+  },
+  {
+   "start_date": "2026-11-02T09:15:00+01:00",
+   "end_date": "2026-11-02T09:30:00+01:00",
+   "price_tax_included": {
+    "amount": 4937864
+   },
+   "price_tax_excluded": {
+    "amount": 3829383
+   },
+   "sustainability_score": {
+    "permille": 574
+   }
+  },
+  {
+   "start_date": "2026-11-02T09:30:00+01:00",
+   "end_date": "2026-11-02T09:45:00+01:00",
+   "price_tax_included": {
+    "amount": 4696106
+   },
+   "price_tax_excluded": {
+    "amount": 3587625
+   },
+   "sustainability_score": {
+    "permille": 574
+   }
+  },
+  {
+   "start_date": "2026-11-02T09:45:00+01:00",
+   "end_date": "2026-11-02T10:00:00+01:00",
+   "price_tax_included": {
+    "amount": 4444426
+   },
+   "price_tax_excluded": {
+    "amount": 3335945
+   },
+   "sustainability_score": {
+    "permille": 574
+   }
+  },
+  {
+   "start_date": "2026-11-02T10:00:00+01:00",
+   "end_date": "2026-11-02T10:15:00+01:00",
+   "price_tax_included": {
+    "amount": 4479032
+   },
+   "price_tax_excluded": {
+    "amount": 3370551
+   },
+   "sustainability_score": {
+    "permille": 710
+   }
+  },
+  {
+   "start_date": "2026-11-02T10:15:00+01:00",
+   "end_date": "2026-11-02T10:30:00+01:00",
+   "price_tax_included": {
+    "amount": 4292813
+   },
+   "price_tax_excluded": {
+    "amount": 3184332
+   },
+   "sustainability_score": {
+    "permille": 710
+   }
+  },
+  {
+   "start_date": "2026-11-02T10:30:00+01:00",
+   "end_date": "2026-11-02T10:45:00+01:00",
+   "price_tax_included": {
+    "amount": 4056742
+   },
+   "price_tax_excluded": {
+    "amount": 2948261
+   },
+   "sustainability_score": {
+    "permille": 710
+   }
+  },
+  {
+   "start_date": "2026-11-02T10:45:00+01:00",
+   "end_date": "2026-11-02T11:00:00+01:00",
+   "price_tax_included": {
+    "amount": 3978455
+   },
+   "price_tax_excluded": {
+    "amount": 2869974
+   },
+   "sustainability_score": {
+    "permille": 710
+   }
+  },
+  {
+   "start_date": "2026-11-02T11:00:00+01:00",
+   "end_date": "2026-11-02T11:15:00+01:00",
+   "price_tax_included": {
+    "amount": 3970832
+   },
+   "price_tax_excluded": {
+    "amount": 2862351
+   },
+   "sustainability_score": {
+    "permille": 835
+   }
+  },
+  {
+   "start_date": "2026-11-02T11:15:00+01:00",
+   "end_date": "2026-11-02T11:30:00+01:00",
+   "price_tax_included": {
+    "amount": 3919528
+   },
+   "price_tax_excluded": {
+    "amount": 2811047
+   },
+   "sustainability_score": {
+    "permille": 835
+   }
+  },
+  {
+   "start_date": "2026-11-02T11:30:00+01:00",
+   "end_date": "2026-11-02T11:45:00+01:00",
+   "price_tax_included": {
+    "amount": 3915051
+   },
+   "price_tax_excluded": {
+    "amount": 2806570
+   },
+   "sustainability_score": {
+    "permille": 835
+   }
+  },
+  {
+   "start_date": "2026-11-02T11:45:00+01:00",
+   "end_date": "2026-11-02T12:00:00+01:00",
+   "price_tax_included": {
+    "amount": 3966597
+   },
+   "price_tax_excluded": {
+    "amount": 2858116
+   },
+   "sustainability_score": {
+    "permille": 835
+   }
+  },
+  {
+   "start_date": "2026-11-02T12:00:00+01:00",
+   "end_date": "2026-11-02T12:15:00+01:00",
+   "price_tax_included": {
+    "amount": 4022136
+   },
+   "price_tax_excluded": {
+    "amount": 2913655
+   },
+   "sustainability_score": {
+    "permille": 829
+   }
+  },
+  {
+   "start_date": "2026-11-02T12:15:00+01:00",
+   "end_date": "2026-11-02T12:30:00+01:00",
+   "price_tax_included": {
+    "amount": 3904524
+   },
+   "price_tax_excluded": {
+    "amount": 2796043
+   },
+   "sustainability_score": {
+    "permille": 829
+   }
+  },
+  {
+   "start_date": "2026-11-02T12:30:00+01:00",
+   "end_date": "2026-11-02T12:45:00+01:00",
+   "price_tax_included": {
+    "amount": 3889641
+   },
+   "price_tax_excluded": {
+    "amount": 2781160
+   },
+   "sustainability_score": {
+    "permille": 829
+   }
+  },
+  {
+   "start_date": "2026-11-02T12:45:00+01:00",
+   "end_date": "2026-11-02T13:00:00+01:00",
+   "price_tax_included": {
+    "amount": 3845113
+   },
+   "price_tax_excluded": {
+    "amount": 2736632
+   },
+   "sustainability_score": {
+    "permille": 829
+   }
+  },
+  {
+   "start_date": "2026-11-02T13:00:00+01:00",
+   "end_date": "2026-11-02T13:15:00+01:00",
+   "price_tax_included": {
+    "amount": 4019111
+   },
+   "price_tax_excluded": {
+    "amount": 2910630
+   },
+   "sustainability_score": {
+    "permille": 726
+   }
+  },
+  {
+   "start_date": "2026-11-02T13:15:00+01:00",
+   "end_date": "2026-11-02T13:30:00+01:00",
+   "price_tax_included": {
+    "amount": 3924852
+   },
+   "price_tax_excluded": {
+    "amount": 2816371
+   },
+   "sustainability_score": {
+    "permille": 726
+   }
+  },
+  {
+   "start_date": "2026-11-02T13:30:00+01:00",
+   "end_date": "2026-11-02T13:45:00+01:00",
+   "price_tax_included": {
+    "amount": 3830229
+   },
+   "price_tax_excluded": {
+    "amount": 2721748
+   },
+   "sustainability_score": {
+    "permille": 726
+   }
+  },
+  {
+   "start_date": "2026-11-02T13:45:00+01:00",
+   "end_date": "2026-11-02T14:00:00+01:00",
+   "price_tax_included": {
+    "amount": 3936588
+   },
+   "price_tax_excluded": {
+    "amount": 2828107
+   },
+   "sustainability_score": {
+    "permille": 726
+   }
+  },
+  {
+   "start_date": "2026-11-02T14:00:00+01:00",
+   "end_date": "2026-11-02T14:15:00+01:00",
+   "price_tax_included": {
+    "amount": 3455735
+   },
+   "price_tax_excluded": {
+    "amount": 2347254
+   },
+   "sustainability_score": {
+    "permille": 665
+   }
+  },
+  {
+   "start_date": "2026-11-02T14:15:00+01:00",
+   "end_date": "2026-11-02T14:30:00+01:00",
+   "price_tax_included": {
+    "amount": 3728469
+   },
+   "price_tax_excluded": {
+    "amount": 2619988
+   },
+   "sustainability_score": {
+    "permille": 665
+   }
+  },
+  {
+   "start_date": "2026-11-02T14:30:00+01:00",
+   "end_date": "2026-11-02T14:45:00+01:00",
+   "price_tax_included": {
+    "amount": 3690112
+   },
+   "price_tax_excluded": {
+    "amount": 2581631
+   },
+   "sustainability_score": {
+    "permille": 665
+   }
+  },
+  {
+   "start_date": "2026-11-02T14:45:00+01:00",
+   "end_date": "2026-11-02T15:00:00+01:00",
+   "price_tax_included": {
+    "amount": 4031090
+   },
+   "price_tax_excluded": {
+    "amount": 2922609
+   },
+   "sustainability_score": {
+    "permille": 665
+   }
+  },
+  {
+   "start_date": "2026-11-02T15:00:00+01:00",
+   "end_date": "2026-11-02T15:15:00+01:00",
+   "price_tax_included": {
+    "amount": 4001808
+   },
+   "price_tax_excluded": {
+    "amount": 2893327
+   },
+   "sustainability_score": {
+    "permille": 572
+   }
+  },
+  {
+   "start_date": "2026-11-02T15:15:00+01:00",
+   "end_date": "2026-11-02T15:30:00+01:00",
+   "price_tax_included": {
+    "amount": 4094857
+   },
+   "price_tax_excluded": {
+    "amount": 2986376
+   },
+   "sustainability_score": {
+    "permille": 572
+   }
+  },
+  {
+   "start_date": "2026-11-02T15:30:00+01:00",
+   "end_date": "2026-11-02T15:45:00+01:00",
+   "price_tax_included": {
+    "amount": 4067148
+   },
+   "price_tax_excluded": {
+    "amount": 2958667
+   },
+   "sustainability_score": {
+    "permille": 572
+   }
+  },
+  {
+   "start_date": "2026-11-02T15:45:00+01:00",
+   "end_date": "2026-11-02T16:00:00+01:00",
+   "price_tax_included": {
+    "amount": 4358274
+   },
+   "price_tax_excluded": {
+    "amount": 3249793
+   },
+   "sustainability_score": {
+    "permille": 572
+   }
+  },
+  {
+   "start_date": "2026-11-02T16:00:00+01:00",
+   "end_date": "2026-11-02T16:15:00+01:00",
+   "price_tax_included": {
+    "amount": 4334679
+   },
+   "price_tax_excluded": {
+    "amount": 3226198
+   },
+   "sustainability_score": {
+    "permille": 457
+   }
+  },
+  {
+   "start_date": "2026-11-02T16:15:00+01:00",
+   "end_date": "2026-11-02T16:30:00+01:00",
+   "price_tax_included": {
+    "amount": 4666461
+   },
+   "price_tax_excluded": {
+    "amount": 3557980
+   },
+   "sustainability_score": {
+    "permille": 457
+   }
+  },
+  {
+   "start_date": "2026-11-02T16:30:00+01:00",
+   "end_date": "2026-11-02T16:45:00+01:00",
+   "price_tax_included": {
+    "amount": 4695622
+   },
+   "price_tax_excluded": {
+    "amount": 3587141
+   },
+   "sustainability_score": {
+    "permille": 457
+   }
+  },
+  {
+   "start_date": "2026-11-02T16:45:00+01:00",
+   "end_date": "2026-11-02T17:00:00+01:00",
+   "price_tax_included": {
+    "amount": 4865264
+   },
+   "price_tax_excluded": {
+    "amount": 3756783
+   },
+   "sustainability_score": {
+    "permille": 457
+   }
+  },
+  {
+   "start_date": "2026-11-02T17:00:00+01:00",
+   "end_date": "2026-11-02T17:15:00+01:00",
+   "price_tax_included": {
+    "amount": 4701067
+   },
+   "price_tax_excluded": {
+    "amount": 3592586
+   },
+   "sustainability_score": {
+    "permille": 405
+   }
+  },
+  {
+   "start_date": "2026-11-02T17:15:00+01:00",
+   "end_date": "2026-11-02T17:30:00+01:00",
+   "price_tax_included": {
+    "amount": 4807668
+   },
+   "price_tax_excluded": {
+    "amount": 3699187
+   },
+   "sustainability_score": {
+    "permille": 405
+   }
+  },
+  {
+   "start_date": "2026-11-02T17:30:00+01:00",
+   "end_date": "2026-11-02T17:45:00+01:00",
+   "price_tax_included": {
+    "amount": 4864416
+   },
+   "price_tax_excluded": {
+    "amount": 3755935
+   },
+   "sustainability_score": {
+    "permille": 405
+   }
+  },
+  {
+   "start_date": "2026-11-02T17:45:00+01:00",
+   "end_date": "2026-11-02T18:00:00+01:00",
+   "price_tax_included": {
+    "amount": 5031638
+   },
+   "price_tax_excluded": {
+    "amount": 3923157
+   },
+   "sustainability_score": {
+    "permille": 405
+   }
+  },
+  {
+   "start_date": "2026-11-02T18:00:00+01:00",
+   "end_date": "2026-11-02T18:15:00+01:00",
+   "price_tax_included": {
+    "amount": 5132069
+   },
+   "price_tax_excluded": {
+    "amount": 4023588
+   },
+   "sustainability_score": {
+    "permille": 391
+   }
+  },
+  {
+   "start_date": "2026-11-02T18:15:00+01:00",
+   "end_date": "2026-11-02T18:30:00+01:00",
+   "price_tax_included": {
+    "amount": 5125777
+   },
+   "price_tax_excluded": {
+    "amount": 4017296
+   },
+   "sustainability_score": {
+    "permille": 391
+   }
+  },
+  {
+   "start_date": "2026-11-02T18:30:00+01:00",
+   "end_date": "2026-11-02T18:45:00+01:00",
+   "price_tax_included": {
+    "amount": 5125534
+   },
+   "price_tax_excluded": {
+    "amount": 4017053
+   },
+   "sustainability_score": {
+    "permille": 391
+   }
+  },
+  {
+   "start_date": "2026-11-02T18:45:00+01:00",
+   "end_date": "2026-11-02T19:00:00+01:00",
+   "price_tax_included": {
+    "amount": 5122993
+   },
+   "price_tax_excluded": {
+    "amount": 4014512
+   },
+   "sustainability_score": {
+    "permille": 391
+   }
+  },
+  {
+   "start_date": "2026-11-02T19:00:00+01:00",
+   "end_date": "2026-11-02T19:15:00+01:00",
+   "price_tax_included": {
+    "amount": 5100367
+   },
+   "price_tax_excluded": {
+    "amount": 3991886
+   },
+   "sustainability_score": {
+    "permille": 369
+   }
+  },
+  {
+   "start_date": "2026-11-02T19:15:00+01:00",
+   "end_date": "2026-11-02T19:30:00+01:00",
+   "price_tax_included": {
+    "amount": 5051362
+   },
+   "price_tax_excluded": {
+    "amount": 3942881
+   },
+   "sustainability_score": {
+    "permille": 369
+   }
+  },
+  {
+   "start_date": "2026-11-02T19:30:00+01:00",
+   "end_date": "2026-11-02T19:45:00+01:00",
+   "price_tax_included": {
+    "amount": 5015425
+   },
+   "price_tax_excluded": {
+    "amount": 3906944
+   },
+   "sustainability_score": {
+    "permille": 369
+   }
+  },
+  {
+   "start_date": "2026-11-02T19:45:00+01:00",
+   "end_date": "2026-11-02T20:00:00+01:00",
+   "price_tax_included": {
+    "amount": 4941614
+   },
+   "price_tax_excluded": {
+    "amount": 3833133
+   },
+   "sustainability_score": {
+    "permille": 369
+   }
+  },
+  {
+   "start_date": "2026-11-02T20:00:00+01:00",
+   "end_date": "2026-11-02T20:15:00+01:00",
+   "price_tax_included": {
+    "amount": 5048579
+   },
+   "price_tax_excluded": {
+    "amount": 3940098
+   },
+   "sustainability_score": {
+    "permille": 352
+   }
+  },
+  {
+   "start_date": "2026-11-02T20:15:00+01:00",
+   "end_date": "2026-11-02T20:30:00+01:00",
+   "price_tax_included": {
+    "amount": 4876396
+   },
+   "price_tax_excluded": {
+    "amount": 3767915
+   },
+   "sustainability_score": {
+    "permille": 352
+   }
+  },
+  {
+   "start_date": "2026-11-02T20:30:00+01:00",
+   "end_date": "2026-11-02T20:45:00+01:00",
+   "price_tax_included": {
+    "amount": 4833925
+   },
+   "price_tax_excluded": {
+    "amount": 3725444
+   },
+   "sustainability_score": {
+    "permille": 352
+   }
+  },
+  {
+   "start_date": "2026-11-02T20:45:00+01:00",
+   "end_date": "2026-11-02T21:00:00+01:00",
+   "price_tax_included": {
+    "amount": 4665856
+   },
+   "price_tax_excluded": {
+    "amount": 3557375
+   },
+   "sustainability_score": {
+    "permille": 352
+   }
+  },
+  {
+   "start_date": "2026-11-02T21:00:00+01:00",
+   "end_date": "2026-11-02T21:15:00+01:00",
+   "price_tax_included": {
+    "amount": 4553568
+   },
+   "price_tax_excluded": {
+    "amount": 3445087
+   },
+   "sustainability_score": {
+    "permille": 333
+   }
+  },
+  {
+   "start_date": "2026-11-02T21:15:00+01:00",
+   "end_date": "2026-11-02T21:30:00+01:00",
+   "price_tax_included": {
+    "amount": 4332622
+   },
+   "price_tax_excluded": {
+    "amount": 3224141
+   },
+   "sustainability_score": {
+    "permille": 333
+   }
+  },
+  {
+   "start_date": "2026-11-02T21:30:00+01:00",
+   "end_date": "2026-11-02T21:45:00+01:00",
+   "price_tax_included": {
+    "amount": 4279624
+   },
+   "price_tax_excluded": {
+    "amount": 3171143
+   },
+   "sustainability_score": {
+    "permille": 333
+   }
+  },
+  {
+   "start_date": "2026-11-02T21:45:00+01:00",
+   "end_date": "2026-11-02T22:00:00+01:00",
+   "price_tax_included": {
+    "amount": 4040044
+   },
+   "price_tax_excluded": {
+    "amount": 2931563
+   },
+   "sustainability_score": {
+    "permille": 333
+   }
+  },
+  {
+   "start_date": "2026-11-02T22:00:00+01:00",
+   "end_date": "2026-11-02T22:15:00+01:00",
+   "price_tax_included": {
+    "amount": 4422041
+   },
+   "price_tax_excluded": {
+    "amount": 3313560
+   },
+   "sustainability_score": {
+    "permille": 320
+   }
+  },
+  {
+   "start_date": "2026-11-02T22:15:00+01:00",
+   "end_date": "2026-11-02T22:30:00+01:00",
+   "price_tax_included": {
+    "amount": 4298258
+   },
+   "price_tax_excluded": {
+    "amount": 3189777
+   },
+   "sustainability_score": {
+    "permille": 320
+   }
+  },
+  {
+   "start_date": "2026-11-02T22:30:00+01:00",
+   "end_date": "2026-11-02T22:45:00+01:00",
+   "price_tax_included": {
+    "amount": 4255787
+   },
+   "price_tax_excluded": {
+    "amount": 3147306
+   },
+   "sustainability_score": {
+    "permille": 320
+   }
+  },
+  {
+   "start_date": "2026-11-02T22:45:00+01:00",
+   "end_date": "2026-11-02T23:00:00+01:00",
+   "price_tax_included": {
+    "amount": 4101149
+   },
+   "price_tax_excluded": {
+    "amount": 2992668
+   },
+   "sustainability_score": {
+    "permille": 320
+   }
+  },
+  {
+   "start_date": "2026-11-02T23:00:00+01:00",
+   "end_date": "2026-11-02T23:15:00+01:00",
+   "price_tax_included": {
+    "amount": 4169635
+   },
+   "price_tax_excluded": {
+    "amount": 3061154
+   },
+   "sustainability_score": {
+    "permille": 344
+   }
+  },
+  {
+   "start_date": "2026-11-02T23:15:00+01:00",
+   "end_date": "2026-11-02T23:30:00+01:00",
+   "price_tax_included": {
+    "amount": 4122687
+   },
+   "price_tax_excluded": {
+    "amount": 3014206
+   },
+   "sustainability_score": {
+    "permille": 344
+   }
+  },
+  {
+   "start_date": "2026-11-02T23:30:00+01:00",
+   "end_date": "2026-11-02T23:45:00+01:00",
+   "price_tax_included": {
+    "amount": 4056016
+   },
+   "price_tax_excluded": {
+    "amount": 2947535
+   },
+   "sustainability_score": {
+    "permille": 344
+   }
+  },
+  {
+   "start_date": "2026-11-02T23:45:00+01:00",
+   "end_date": "2026-11-03T00:00:00+01:00",
+   "price_tax_included": {
+    "amount": 3953771
+   },
+   "price_tax_excluded": {
+    "amount": 2845290
+   },
+   "sustainability_score": {
+    "permille": 344
+   }
+  }
+ ]
+}
