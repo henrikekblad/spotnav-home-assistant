@@ -579,8 +579,7 @@ class YieldStepper:
                 # into the battery's share.
                 step5_verdict = self._verdict(now, "hold", None, "held_for_battery_probe", False)
             elif battery_charging and (
-                # A battery the site's probe saw give way to this car takes back what the car would free.
-                self._battery_absorbs or self._battery_verified or self._probe_verified or self._down is not None
+                self._battery_absorbs or self._battery_verified or self._down is not None
             ) and not self._real_excess(site_a, limit_a):
                 step5_verdict = self._verdict(
                     now,

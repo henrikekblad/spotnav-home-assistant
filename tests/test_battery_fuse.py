@@ -795,18 +795,23 @@ async def _running_site(hass: HomeAssistant, entry_id: str, **setup):
     return controller, charger, calls, yield_clock, damper_clock, site, prefix
 
 
-async def test_the_grid_held_at_20_03_amps_lowers_the_car_on_an_unverified_battery(
+async def test_the_grid_held_at_20_03_amps_holds_the_car_on_an_unverified_battery(
     hass: HomeAssistant,
 ) -> None:
-    """An import overload is lowered at once, whatever the band, the stepper or the dwell would say, while the
-    battery's yield is not verified on the site."""
+    """An import overload within the band, a battery charging from the grid at least as hard as the cut would free:
+    the battery's own regulation, so the car keeps its current (the night of 2026-11-01, when it was lowered to a pause
+    amp by amp). Nothing is verified by it: the yield ceiling stays the fuse."""
     controller, charger, calls, yield_clock, damper_clock, site, prefix = await _running_site(
         hass, "bfbandunverified"
     )
     set_site_current_a(hass, site, 20.03)
-    await controller._async_apply_active_control()
-    assert _values(calls) == ["1.11,2.10"]
-    assert not any(e["detail"] == "held_battery_at_limit" for e in controller.regulator_decision_log)
+    for _ in range(4):
+        yield_clock.advance(31.0)
+        damper_clock.advance(61.0)
+        await controller._async_apply_active_control()
+    assert calls == []
+    assert controller.regulator_decision_log[-1]["detail"] == "held_battery_at_limit"
+    assert controller._yield_stepping_last[charger.entry_id]["battery_verified"] is False
 
 
 async def test_a_verified_battery_holding_the_grid_at_20_03_amps_does_not_ratchet_the_car_down(
@@ -867,9 +872,8 @@ async def test_the_band_is_not_granted_without_its_conditions(
     if case == "battery_not_charging":
         battery_w = 0.0
     if case == "small":
-        # Under the car's minimum power, and under a 2 A step's (1380 W), which would otherwise be
-        # tried into the battery's share.
-        battery_w = 1000.0
+        # Under what the 1 A cut frees on three phases (690 W): the battery could not take it back.
+        battery_w = 600.0
     controller, charger, calls, yield_clock, damper_clock, site, prefix = await _running_site(
         hass, f"bfbandno{case}", battery_w=battery_w, **setup
     )
@@ -1231,13 +1235,16 @@ async def _step_once(controller, yield_clock, damper_clock) -> None:
     await controller._async_apply_active_control()
 
 
-async def test_the_night_car_is_lowered_while_the_battery_is_not_verified(hass: HomeAssistant) -> None:
-    """The grid at 20.26 A on a 20 A fuse and a battery not yet seen to give way: the regulator's cut goes out at
-    once, not a step into the battery's share above the fuse."""
+async def test_the_night_car_is_held_while_the_battery_is_not_verified(hass: HomeAssistant) -> None:
+    """The grid at 20.26 A on a 20 A fuse, within the band, the battery charging 7.3 kW and not yet seen to give way:
+    the car keeps its 7 A (until 2026-11-01 the regulator's cut went out), and no step goes into the battery's share
+    above the fuse."""
     controller, charger, calls, yield_clock, damper_clock, site, prefix = await _night_site(hass, "bfnightunverified")
 
-    await controller._async_apply_active_control()
-    assert _values(calls) == ["1.6,2.10"]
+    for _ in range(4):
+        await _step_once(controller, yield_clock, damper_clock)
+    assert calls == []
+    assert controller.regulator_decision_log[-1]["detail"] == "held_battery_at_limit"
     assert controller._yield_stepping_last[charger.entry_id]["reason"] == "passthrough_ceiling"
 
 
