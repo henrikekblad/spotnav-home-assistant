@@ -303,6 +303,16 @@ It is best effort and is not a protective device. Turning it off gives back any 
     the home battery charged from the grid.) The outcome is in the site's diagnostics under
     `battery_probe` (with `car_refusals`, the refusals in a row) and in the decision log (`probe_started`,
     `probe_extended`, `probe_succeeded`, `probe_failed`, `probe_car_ended`).
+    A car that is already at its minimum when such a battery would have it paused (an import overload in the
+    band, the battery charging at least the car's minimum) is not paused: it is held at its minimum as the
+    probe itself (`probe_started` with `held_at_minimum`), under the same conditions and judged the same way,
+    so a battery that gives way is verified and the car climbs back into its share, and one that does not
+    has the car stopped at once. For the resume and the probe a stopped charger's own current read before
+    its pause, or not reported for longer than the site's maximum age, counts as nothing drawn: an OCPP
+    charger sends no meter values while stopped and keeps showing the car's last draw. (On 1 November a
+    Sigenergy battery held a 20 A fuse at 20.0-20.1 A from 03:15 and grew to 12.5 kW as the car was lowered
+    to its minimum and paused; the HALO kept showing 6 A, and the paused charge was not resumed when the
+    battery stopped at 04:07.)
   - **A running car below its plan while the battery fills the fuse.** Only with *car first* and yield
     stepping on. While the car draws what it was given and the battery charges from the grid by at
     least a 2 A step's worth over the car's phases (2 A x 230 V x 3 = 1380 W on three phases, on a
