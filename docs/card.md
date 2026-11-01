@@ -196,8 +196,13 @@ serious each is. Examples:
 ## Charge history
 
 Every charge is recorded as a session, from the moment the charger starts charging, whatever
-started it, until it stops or the car is unplugged. A pause of a couple of minutes (load balancing,
-a window boundary) stays in the same session. The **Charge history** dialog shows one month at a
+started it, until it stops or the car is unplugged. A stop SpotNav makes itself while the car stays
+plugged in stays in the same session however long it lasts: a load balancing pause, the sun waiting
+for surplus, a phase switch, and the gap between two windows of one plan. The session ends when the
+car is unplugged, you stop the charge (or pause Auto), the plan has charged what it needed, or the
+car ends the charge itself; a Start of yours after that is a new session. A session shows the
+time from its first start to its last stop, its energy and cost are the sum of every part, and it
+keeps how it started. The **Charge history** dialog shows one month at a
 time, this month first: pick another with the arrows or the list of months that have charges (up to
 24 months back). It shows the month's energy, cost, average price, number of charges and solar share,
 a bar for every day (the height is the day's energy; the colour is the day's average price against

@@ -532,3 +532,256 @@ async def test_an_open_session_stored_before_registers_were_named_is_taken_as_th
     await sessions.async_load()
 
     assert sessions.open_raw(CHARGER).register_entity == "sensor.old"
+
+
+# ------------------------------------------------------------------------------ one entry per charge
+
+
+def held(world: World, **changes) -> None:
+    """Set what says whether a stop is SpotNav's own pause of the charge."""
+    world.set(pause=replace(world.facts.pause, **changes))
+
+
+async def test_load_balancing_pauses_longer_than_the_debounce_stay_one_entry(
+    hass: HomeAssistant, store: SessionStore
+) -> None:
+    """The field case: a charge started by hand at 11:04, paused twice by load balancing (11:07-11:12, 11:19-11:22),
+    each pause longer than the debounce, is one entry, as started by hand, until the person's Stop."""
+    world = World(hass, store, prices=[100.0] * 11 + [50.0] + [100.0] * 12)
+    world.cause = "manual"
+    world.at(at(11, 4), charging=True)
+    world.at(at(11, 7), register_kwh=101.0)
+    held(world, balancing_paused=True)
+    world.at(at(11, 7), charging=False)
+    world.at(at(11, 10))
+    world.at(at(11, 11, 59))
+    assert store.closed(CHARGER) == () and world.recorder.session is not None
+    held(world, balancing_paused=False)
+    world.cause = "manual"  # the regulator's resume gives the charge back as the person's
+    world.at(at(11, 12), charging=True)
+    world.at(at(11, 19), register_kwh=103.0)
+    held(world, balancing_paused=True)
+    world.at(at(11, 19), charging=False)
+    world.at(at(11, 21, 59))
+    held(world, balancing_paused=False)
+    world.cause = "other"
+    world.at(at(11, 22), charging=True)
+    world.at(at(11, 40), register_kwh=105.0)
+    held(world, auto_paused=True)  # the person's Stop
+    world.at(at(11, 40), charging=False)
+    world.at(at(11, 41))
+    assert store.closed(CHARGER) == (), "a person's Stop is the end once it has lasted"
+    world.at(at(11, 40) + timedelta(seconds=END_DEBOUNCE_S))
+
+    (done,) = store.closed(CHARGER)
+    assert (done.start, done.end) == (at(11, 4), at(11, 40))
+    assert done.started_by == STARTED_MANUAL
+    assert done.energy_kwh == pytest.approx(5.0)
+    assert done.cost_minor == pytest.approx(5.0 * 50.0)
+
+
+async def test_two_windows_of_one_plan_are_one_entry(hass: HomeAssistant, store: SessionStore) -> None:
+    world = World(hass, store)
+    held(world, plan_windows=((at(1), at(2)), (at(4), at(5))))
+    world.cause = "plan_window"
+    world.at(at(1), charging=True)
+    world.at(at(2), register_kwh=106.0)
+    world.at(at(2, 0, 20), charging=False)  # the window's end
+    world.at(at(2, 30))
+    world.at(at(3, 59))
+    assert store.closed(CHARGER) == ()
+    world.cause = "plan_window"
+    world.at(at(4), charging=True)
+    world.at(at(5), register_kwh=112.0)
+    world.at(at(5, 0, 20), charging=False)
+    world.at(at(5, 0, 20) + timedelta(seconds=END_DEBOUNCE_S))
+
+    (done,) = store.closed(CHARGER)
+    assert (done.start, done.end) == (at(1), at(5, 0, 20))
+    assert done.started_by == STARTED_PLAN_WINDOW and done.energy_kwh == pytest.approx(12.0)
+
+
+async def test_the_gap_to_the_next_window_holds_after_a_new_plan_drops_the_window_that_ended(
+    hass: HomeAssistant, store: SessionStore
+) -> None:
+    world = World(hass, store)
+    held(world, plan_windows=((at(1), at(2)), (at(4), at(5))))
+    world.at(at(1), charging=True)
+    world.at(at(2), charging=False, register_kwh=106.0)
+    world.at(at(2, 1))
+    held(world, plan_windows=((at(4, 15), at(5)),))  # new prices, a new plan
+    world.at(at(3))
+    world.at(at(4, 15), charging=True)
+    world.at(at(5), charging=False, connected=False, register_kwh=110.0)
+
+    (done,) = store.closed(CHARGER)
+    assert (done.start, done.end) == (at(1), at(5)) and done.energy_kwh == pytest.approx(10.0)
+
+
+async def test_a_next_window_whose_start_never_takes_ends_the_entry_at_the_last_stop(
+    hass: HomeAssistant, store: SessionStore
+) -> None:
+    world = World(hass, store)
+    held(world, plan_windows=((at(1), at(2)), (at(4), at(5))))
+    world.at(at(1), charging=True)
+    world.at(at(2), charging=False, register_kwh=106.0)
+    world.at(at(4))
+    world.at(at(4, 59))
+    assert store.closed(CHARGER) == (), "the next window is open and its start on its way"
+    world.at(at(5, 1))
+    world.at(at(5, 3))
+
+    (done,) = store.closed(CHARGER)
+    assert done.end == at(2)
+
+
+async def test_a_stop_with_no_window_ending_is_not_held_by_a_window_ahead(
+    hass: HomeAssistant, store: SessionStore
+) -> None:
+    """A charge that stops by itself outside the windows (a car that is done) is not held until tonight's window."""
+    world = World(hass, store)
+    held(world, plan_windows=((at(22), at(23)),))
+    world.at(at(14), charging=True)
+    world.at(at(15), charging=False, register_kwh=104.0)
+    world.at(at(15) + timedelta(seconds=END_DEBOUNCE_S))
+
+    (done,) = store.closed(CHARGER)
+    assert done.end == at(15)
+
+
+async def test_a_persons_stop_then_start_are_two_entries(hass: HomeAssistant, store: SessionStore) -> None:
+    world = World(hass, store)
+    world.cause = "manual"
+    world.at(at(8), charging=True)
+    world.at(at(9), register_kwh=104.0)
+    held(world, auto_paused=True)
+    world.at(at(9), charging=False)
+    world.cause = "manual"
+    world.at(at(9, 1), charging=True)  # within the debounce: still a new decision
+    world.at(at(10), register_kwh=107.0)
+    world.at(at(10), charging=False, connected=False)
+
+    first, second = store.closed(CHARGER)
+    assert (first.start, first.end, first.energy_kwh) == (at(8), at(9), pytest.approx(4.0))
+    assert (second.start, second.end, second.energy_kwh) == (at(9, 1), at(10), pytest.approx(3.0))
+    assert first.started_by == second.started_by == STARTED_MANUAL
+
+
+async def test_a_start_that_changed_nothing_is_not_taken_for_a_later_one(
+    hass: HomeAssistant, store: SessionStore
+) -> None:
+    """A person presses Start on a running charge; a balancing pause later is resumed by the regulator."""
+    world = World(hass, store)
+    world.at(at(8), charging=True)
+    world.cause = "manual"
+    world.at(at(8, 30), register_kwh=103.0)
+    held(world, balancing_paused=True)
+    world.at(at(9), charging=False)
+    held(world, balancing_paused=False)
+    world.at(at(9, 10), charging=True)
+    world.at(at(10), charging=False, connected=False, register_kwh=105.0)
+
+    (done,) = store.closed(CHARGER)
+    assert (done.start, done.end) == (at(8), at(10))
+
+
+async def test_an_unplug_ends_a_held_pause_at_its_stop(hass: HomeAssistant, store: SessionStore) -> None:
+    world = World(hass, store)
+    world.at(at(8), charging=True)
+    held(world, balancing_paused=True)
+    world.at(at(9), charging=False, register_kwh=104.0)
+    world.at(at(9, 30))
+    world.at(at(10), connected=False)
+
+    (done,) = store.closed(CHARGER)
+    assert done.end == at(9)
+
+
+async def test_the_car_ending_the_charge_ends_the_entry_however_the_plan_goes_on(
+    hass: HomeAssistant, store: SessionStore
+) -> None:
+    world = World(hass, store)
+    held(world, plan_windows=((at(1), at(2)), (at(4), at(5))))
+    world.at(at(1), charging=True)
+    world.at(at(1, 59), charging=False, register_kwh=106.0)
+    held(world, car_ended_at=at(1, 59, 30))
+    world.at(at(2, 0, 20))
+    world.at(at(2, 0, 20) + timedelta(seconds=END_DEBOUNCE_S))
+
+    (done,) = store.closed(CHARGER)
+    assert done.end == at(1, 59)
+
+
+async def test_the_sun_waiting_for_surplus_holds_the_entry_until_the_charge_goes_again(
+    hass: HomeAssistant, store: SessionStore
+) -> None:
+    world = World(hass, store)
+    world.set(strategy="solar")
+    world.cause = "solar"
+    world.at(at(10), charging=True)
+    held(world, solar_waiting=True)
+    world.at(at(11), charging=False, register_kwh=103.0)
+    world.at(at(13))
+    held(world, solar_waiting=False)
+    world.at(at(13, 30), charging=True)
+    world.at(at(14), register_kwh=105.0)
+    world.at(at(14), charging=False, connected=False)
+
+    (done,) = store.closed(CHARGER)
+    assert (done.start, done.end) == (at(10), at(14)) and done.started_by == STARTED_SOLAR
+
+
+async def test_a_pause_of_auto_ends_the_suns_and_the_windows_hold_but_not_load_balancings(
+    hass: HomeAssistant, store: SessionStore
+) -> None:
+    world = World(hass, store)
+    held(world, solar_waiting=True, plan_windows=((at(1), at(2)), (at(4), at(5))), auto_paused=True)
+    world.at(at(1), charging=True)
+    world.at(at(2), charging=False, register_kwh=103.0)
+    world.at(at(2) + timedelta(seconds=END_DEBOUNCE_S))
+    assert len(store.closed(CHARGER)) == 1
+
+    held(world, balancing_paused=True)
+    world.at(at(6), charging=True)
+    world.at(at(7), charging=False, register_kwh=105.0)
+    world.at(at(8))
+    assert len(store.closed(CHARGER)) == 1, "load balancing gives a person's charge back"
+
+
+@pytest.mark.parametrize("unplugged_while_down", [False, True])
+async def test_a_restart_in_a_held_pause_resumes_the_same_entry(
+    hass: HomeAssistant, store: SessionStore, unplugged_while_down: bool
+) -> None:
+    world = World(hass, store)
+    world.cause = "manual"
+    world.at(at(11, 4), charging=True)
+    world.at(at(11, 7), register_kwh=101.0)
+    held(world, balancing_paused=True)
+    world.at(at(11, 7), charging=False)
+    world.at(at(11, 8))
+    world.at(at(11, 9))
+    world.recorder.async_shutdown()
+    await store.async_flush()
+
+    reloaded = SessionStore(hass)
+    reloaded.set_fiscal_resolver(lambda charger_id, area_id: FiscalChoice())
+    await reloaded.async_load()
+    world.store = reloaded
+    world.recorder = world.build(hass)
+    world.clock = at(11, 15)
+    world.recorder.async_start()
+    assert world.recorder.session is not None and world.recorder.session.start == at(11, 4)
+    if unplugged_while_down:
+        world.at(at(11, 16), connected=False)
+        (done,) = reloaded.closed(CHARGER)
+        assert done.end == at(11, 7), "the charge last went at the stop, not at the last look before the restart"
+        return
+    world.at(at(11, 20))
+    held(world, balancing_paused=False)
+    world.at(at(11, 22), charging=True)
+    world.at(at(11, 40), register_kwh=104.0)
+    world.at(at(11, 40), charging=False, connected=False)
+
+    (done,) = reloaded.closed(CHARGER)
+    assert (done.start, done.end) == (at(11, 4), at(11, 40)) and done.started_by == STARTED_MANUAL
+    assert done.energy_kwh == pytest.approx(4.0)
