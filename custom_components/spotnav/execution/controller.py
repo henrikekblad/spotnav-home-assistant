@@ -3781,7 +3781,11 @@ class ChargingController:
                 # (its facts are known now): a report of the charger off that lands while the stop is on its way is
                 # decided after it, so the core holds back the charge it paused, not the nobody's charge that report
                 # leaves. The stop itself never waits for the core: the fuse needs it whatever the core decides.
-                pause = core_events.BalancingPause(code=code, was_on=self._control_on)
+                # A start of ours the charger has not answered is a charge on its way: the pause stops it
+                # (`_stop_locked`), and holds it back as it would a running one, so the resume gives it back.
+                pause = core_events.BalancingPause(
+                    code=code, was_on=self._control_on or self._core_start_pending()
+                )
                 token = self._runner.begin(early=pause)
                 outcome = CommandOutcome(False)
                 try:
@@ -4010,10 +4014,17 @@ class ChargingController:
             # The plan ends with its top-off.
             _LOGGER.info("SpotNav charger %s: the top-off is stopped", self.entry_id)
             clear_schedule = True
-        await self._stop_locked(clear_schedule=clear_schedule, urgent=urgent, defer_unready=defer_unready)
+        await self._stop_locked(
+            clear_schedule=clear_schedule, urgent=urgent, defer_unready=defer_unready, balancing=balancing
+        )
 
     async def _stop_locked(
-        self, *, clear_schedule: bool = False, urgent: bool = False, defer_unready: bool = False
+        self,
+        *,
+        clear_schedule: bool = False,
+        urgent: bool = False,
+        defer_unready: bool = False,
+        balancing: bool = False,
     ) -> None:
         """The stop itself, with the operation lock held: stop charging, optionally removing the saved
         schedule.
@@ -4039,9 +4050,12 @@ class ChargingController:
         # What cannot be read (a restart before the charger's entities exist) says nothing about whether the charge is
         # still running, so its owner survives until it can be seen.
         was_owner = self._core_owner
-        # A person's or a safety stop (`urgent`) also goes out while a Start of ours is unanswered: the control
-        # still reads off, and the start would land after a stop that sent nothing.
-        needed = self._stop_needed or (urgent and self._core_start_pending())
+        # A person's, a safety stop (`urgent`) or load balancing's pause (`balancing`) also goes out while a Start of
+        # ours is unanswered: the control still reads off, and the start would land after a stop that sent nothing
+        # (05:15 on 2026-11-01: a pause five seconds after the window's start, the car then charging against it).
+        # Sent, it answers that start: nothing awaits the start's answer any more.
+        start_on_its_way = (urgent or balancing) and not self._stop_needed and self._core_start_pending()
+        needed = self._stop_needed or start_on_its_way
         # For the core: a stop that sends nothing because the control says nothing keeps the owner.
         self._core_unobserved = not needed and self._control_observation is None
         self._stop_settled = False
@@ -4099,6 +4113,8 @@ class ChargingController:
             self._stop_settle_since = self._stop_sent_at
             self._seen_charging = self.charging
             self._command_unfed = SENT_STOP
+            if start_on_its_way:
+                self._start_sent_at = None
         elif self._control_observation is not None:
             self._command_unfed = SENT_STOP
         # Whatever start was on its way is over: its share of the site's margin is free for another.

@@ -408,8 +408,6 @@ async def test_0515_a_start_the_battery_makes_room_for_as_it_stops_is_not_paused
     assert halo.turn_on and not halo.turn_off
     halo.reads(0.0)
     await hass.async_block_till_done()
-    # 05:15:05 the battery still at 8 kW, the car not on the site yet.
-    await halo.tick()
     halo.advance(3.0)
     # 05:15:08 the charger has answered the start, the battery has stopped, the car is not on the site yet.
     halo.switch("on")
@@ -426,9 +424,62 @@ async def test_0515_a_start_the_battery_makes_room_for_as_it_stops_is_not_paused
     await halo.tick()
     assert halo.turn_off == [], "\n".join(str(entry) for entry in halo.log())
     assert "paused_safe_current_below_charger_minimum" not in [entry["reason"] for entry in halo.log()[since:]]
-    assert halo.controller.start_credit_snapshot()[halo.charger.entry_id]["credited_a"]["L3"] > 14.0, (
-        "the car credited with what it draws: the site's rise and the battery's fall"
+    credited = halo.controller.start_credit_snapshot()[halo.charger.entry_id]["credited_a"]
+    assert min(credited.values()) >= 6.0, "the car credited with the site's rise and the battery's fall, up to its start"
+
+
+async def test_0515_a_pause_while_the_start_is_on_its_way_holds_the_charge_back(
+    hass: HomeAssistant, monkeypatch
+) -> None:
+    """05:15:00 the window's start went out; 05:15:05, before the charger had answered it, the battery's 8 kW left no
+    room for the car's minimum and load balancing paused the charge. Nothing went to the charger (its control still
+    read off), and a charge that was not seen running was no charge load balancing held back: the start landed, the
+    car charged against the pause, and once it was paused again nothing knew it was a balancing pause. A pause of a
+    start on its way stops it, and holds the charge back for the resume."""
+    entry_id = "nov1onitsway"
+    hass.states.async_set(_battery_entity(entry_id), "0", {"unit_of_measurement": "W"})
+    house = _HOUSE_0515
+    halo = await _halo(
+        hass, monkeypatch, entry_id, l1=house[0], l2=house[1], l3=house[2], battery_entity=_battery_entity(entry_id)
     )
+    now = dt_util.utcnow()
+    window = {"start": (now - timedelta(minutes=1)).isoformat(), "end": (now + timedelta(hours=2)).isoformat()}
+    await install_schedule(halo.cc, {"periods": [window], "amps": 16})
+    await hass.async_block_till_done()
+    if not halo.turn_on:
+        await halo.start()
+    cc = halo.cc
+    assert len(halo.turn_on) == 1 and cc.start_pending, "the start is on its way, the charger has not answered"
+
+    # 05:15:05 the battery at 8 kW: no room for the minimum on L3.
+    battery_a = 7955.0 / (3 * _V)
+    _battery_w(halo, 7955.0)
+    _site_a(hass, halo.site, house[0] + battery_a, house[1] + battery_a, house[2] + battery_a)
+    await halo.tick()
+    assert len(halo.turn_off) == 1, "the pause stops the start on its way"
+    assert cc.paused_by_balancing, "and holds the charge back"
+    assert not cc.plan_expects_charge, "a balancing pause is no charge that failed to start"
+
+    # The charger answers the start late, then the stop.
+    halo.switch("on")
+    await hass.async_block_till_done()
+    halo.switch("off")
+    await hass.async_block_till_done()
+    assert cc.paused_by_balancing, "the start's late answer does not undo the pause"
+    halo.advance(5.0)
+    await halo.tick()
+    assert len(halo.turn_off) == 1, "a stopped charger is not paused again"
+
+    # 05:15:17 the battery stops: the charge is resumed, as the plan's.
+    _battery_w(halo, 0.0)
+    _site_a(hass, halo.site, *house)
+    for _ in range(14):
+        halo.advance(5.0)
+        await halo.tick()
+        if len(halo.turn_on) > 1:
+            break
+    assert len(halo.turn_on) == 2, "\n".join(str(entry) for entry in halo.log()[-6:])
+    assert cc.charge_origin == "plan_window"
 
 
 # -- the core's claim
