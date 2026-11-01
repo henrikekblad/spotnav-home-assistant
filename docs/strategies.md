@@ -160,8 +160,9 @@ sample must mean an efficiency between 0.70 and 1.0 for the car's battery size (
 of 10 to 200 kWh at 0.9); one outside is not kept, and a battery size changed later drops the samples
 that no longer fit. After three samples, the last five all within 10 % of their median, the need and
 what a plan short of the departure reaches use the median, so a car that really charges at 0.8 gets
-about 12 % more energy planned. A fixed amount of kWh is never changed by it, nor is the room a battery has
-left. There is no setting.
+about 12 % more energy planned. The card shows the same need, and its target slider works one out the
+same way. A fixed amount of kWh is never changed by it, nor is the room a battery has left. There is no
+setting.
 
 **No more than the battery has room for.** When the car's level (a reading or an estimate) and its battery
 size are known, a requested amount is capped at the room left: battery size x (the car's own charge
