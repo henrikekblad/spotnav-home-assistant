@@ -56,7 +56,8 @@ downloaded in the evening still shows the afternoon. Nothing is read from the re
 - `auto_price.plan_watch` in each charger's diagnostics: `behind_check`, the last look at a running
   period (when, the period, the energy the plan expected by then and the energy delivered, the decision:
   `on_plan`, `behind_unconfirmed`, `replan`, `replanned_recently`, `held_by_spotnav` with what held it,
-  `start_settling`, `car_ended`, `no_count`, `window_end_ok` or `window_end_replan`), and
+  `start_settling`, `not_charging`, `car_ended`, `no_count`, `no_recent_reading`, `awaiting_reading`,
+  `window_end_ok` or `window_end_replan`), and
   `learned_power`, the power the car is learned to draw (`kw`), what it is for (`subject`: a car or the
   charger), the minutes and plug-ins it rests on, whether it is trusted and whether the plan counts on it
   (`planned_with`).

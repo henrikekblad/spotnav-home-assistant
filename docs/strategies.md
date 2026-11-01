@@ -124,9 +124,14 @@ quarter-hours are bought, later or right after the running period; at most once 
 period that delivered less than 80 % of what the plan expected of it is planned again just after it ends.
 A shortfall SpotNav made itself (load balancing pausing or lowering the current, a home battery's band, a
 phase switch, the sun) is not planned again while the period runs, since it may lift any minute, but the
-rest is planned again when the period ends. The first two minutes of a period (a car waking up), a car that
-ended the charge itself, and a charger without an energy count are not judged. Such a plan is installed
-quietly: no new notice is sent for it during the plug-in.
+rest is planned again when the period ends. Both sides are counted between two readings of the energy
+meter, so a meter that reports every few minutes is not taken for a car falling behind; a period's end is
+judged once the meter has reported after it (at most 20 minutes later). Not judged: the first two minutes
+of a period (a car waking up), a charger that is not charging or a car that is ending the charge (full, or
+no longer drawing), a meter that has not reported for ten minutes or not yet within the period, and a
+charger without an energy count. A replan that changed nothing doubles the wait before the next one. Such
+a plan is installed quietly: no new notice is sent for it during the plug-in, and the log says it once per
+period.
 
 **The plan counts on the power the car really draws.** The plan counts the charger's current times its
 phases (16 A on three phases is about 11 kW). A car whose onboard charger takes less gets too few
@@ -136,8 +141,9 @@ no load balancing limit or pause, no phase switch, not solar, and the car below 
 known. It is kept per car when the charger knows which car it charges, else per charger, as the median of
 the last five plug-ins. Once there are at least 20 such minutes over two plug-ins, the plan counts on the
 lower of the learned power and the current's power; the card's plan, its times and its cost follow. It is
-never above the current's power, never below the power at the charger's least current, and never lowers
-the current SpotNav sends. A change of the phases the charge uses, the voltage between phases or the
+never above the current's power, never below the power at the charger's least current (on one phase while
+the car's onboard phases are not set), and never lowers the current SpotNav sends. A restart during a
+plug-in does not count as another plug-in. A change of the phases the charge uses, the voltage between phases or the
 charging current starts the learning again. There is no setting.
 
 **No more than the battery has room for.** When the car's level (a reading or an estimate) and its battery
