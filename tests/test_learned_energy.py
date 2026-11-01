@@ -580,3 +580,86 @@ def test_the_efficiency_the_card_is_given() -> None:
     assert target_need(trusted, soc_percent=20.0, capacity_kwh=None, target_percent=80)[1] == pytest.approx(60 * RATIO)
     untrusted = learned_from(CAR, [])
     assert efficiency_for(untrusted, CAPACITY) == CHARGE_EFFICIENCY
+
+
+# ------------------------------------------------------------------ the estimate between readings
+
+
+def _meter(hass: HomeAssistant, kwh: float) -> None:
+    from .world import REGISTER  # noqa: PLC0415
+
+    hass.states.async_set(
+        REGISTER, str(1000.0 + kwh),
+        {"unit_of_measurement": "kWh", "device_class": "energy", "state_class": "total_increasing"},
+    )
+
+
+@pytest.mark.usefixtures("offline_relay")
+@pytest.mark.parametrize("trusted", [False, True])
+async def test_a_replan_from_an_estimated_level_keeps_the_learned_figure(
+    hass: HomeAssistant, transport: Any, trusted: bool
+) -> None:
+    """The level carried forward from a stale reading by the energy since counts that energy at the learned figure,
+    so the replan's need is the rest of the learned need, not less."""
+    serve(transport, rising=True)
+    with freeze_time(NOW) as frozen:
+        charger, device_id, _ = await charger_and_car(hass, soc_percent="40", amps=16, phases=3)
+        preview = preview_for(hass, charger.entry_id)
+        if trusted:
+            _trusted(preview._learned_energy, device_id, 3)  # noqa: SLF001
+        await preview.async_recalculate()
+        frozen.tick(timedelta(minutes=30))  # the reading is no longer fresh
+        delivered = 20.0 * RATIO  # 20 points at the learned figure
+        _meter(hass, delivered)
+        await hass.async_block_till_done()
+        await preview.async_recalculate()
+        snapshot = preview.snapshot()
+    if trusted:
+        assert snapshot.proposal.requested_kwh == pytest.approx(20.0 * RATIO, rel=0.01), "60 % estimated: 20 to go"
+    else:
+        estimate = 40.0 + delivered * CHARGE_EFFICIENCY / CAPACITY * 100.0
+        assert snapshot.proposal.requested_kwh == pytest.approx(
+            (80.0 - estimate) * CAPACITY / 100.0 / CHARGE_EFFICIENCY, rel=0.01
+        )
+
+
+async def test_the_estimate_stop_waits_for_the_learned_energy(hass: HomeAssistant) -> None:
+    """With a car that takes 0.9625 kWh a percent, the 36.9 kWh that stops a fixed-efficiency estimate at 83 % is
+    only 78 %: the stop comes at the energy the learned figure needs."""
+    from pytest_homeassistant_custom_component.common import async_fire_time_changed, async_mock_service  # noqa: PLC0415
+
+    from custom_components.spotnav.execution.controller import ChargingPlan  # noqa: PLC0415
+    from custom_components.spotnav.execution.target_stop import (  # noqa: PLC0415
+        ESTIMATE_CONFIRM_WAIT_S,
+        ESTIMATE_STOP_MARGIN_PERCENT,
+    )
+
+    from .helpers import future_window  # noqa: PLC0415
+    from .world import controller_of  # noqa: PLC0415
+
+    with freeze_time(NOW) as frozen:
+        charger, device_id, _ = await charger_and_car(hass)
+        controller = controller_of(hass, charger.entry_id)
+        _trusted(preview_for(hass, charger.entry_id)._learned_energy, device_id, 3)  # noqa: SLF001
+        turn_off = async_mock_service(hass, "homeassistant", "turn_off")
+        async_mock_service(hass, "homeassistant", "turn_on")
+        start, end = future_window()
+        await controller.async_install(
+            ChargingPlan(start=start, end=end, amps=16, phases=3, target_soc_percent=80.0, vehicle_id=device_id)
+        )
+        frozen.tick(timedelta(minutes=30))
+        _meter(hass, 36.9)  # stops the fixed-efficiency estimate (83 %)
+        await hass.async_block_till_done()
+        frozen.tick(timedelta(seconds=ESTIMATE_CONFIRM_WAIT_S + 5))
+        async_fire_time_changed(hass)
+        await hass.async_block_till_done()
+        assert controller.plan is not None and not turn_off, "78 % at the learned figure"
+        _meter(hass, (40.0 + 0.5 + ESTIMATE_STOP_MARGIN_PERCENT) * RATIO)
+        await hass.async_block_till_done()
+        frozen.tick(timedelta(seconds=ESTIMATE_CONFIRM_WAIT_S + 5))
+        async_fire_time_changed(hass)
+        await hass.async_block_till_done()
+        assert controller.plan is None
+        record = controller.target_stop_record
+    assert record is not None and record["basis"] == "estimate"
+    assert record["soc_percent"] == pytest.approx(80.0 + ESTIMATE_STOP_MARGIN_PERCENT + 0.5, abs=0.3)

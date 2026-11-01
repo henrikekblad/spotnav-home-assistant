@@ -889,8 +889,12 @@ class SocReader:
         remembered_capacity: Callable[[str | None], float | None],
         now: Callable[[], datetime] | None = None,
         plugged_in_since: Callable[[], datetime | None] | None = None,
+        learned_kwh_per_percent: Callable[[str | None, float | None], float | None] | None = None,
     ) -> None:
         self._hass = hass
+        # The planned car's learned wall kWh per percent once trusted (`planning/learned_energy.py`), given its
+        # battery size; `None` carries the estimate forward at `CHARGE_EFFICIENCY` and the battery size.
+        self._learned_kwh_per_percent = learned_kwh_per_percent
         self._entry_id = entry_id
         self._now: Callable[[], datetime] = now if now is not None else dt_util.utcnow
         self._raw_reader = raw_reader
@@ -1157,7 +1161,7 @@ class SocReader:
             anchor=anchor,
             register_kwh=register_kwh,
             register_updated_at=register_updated_at,
-            capacity_kwh=self.capacity_kwh(vehicle_id),
+            capacity_kwh=self._estimate_capacity_kwh(vehicle_id),
             now=self._now(),
             vehicle_id=vehicle_id,
             register_entity_id=register_entity_id,
@@ -1167,6 +1171,18 @@ class SocReader:
             register_history=self._register_samples,
             report_time_untrusted=bool(vehicle_id) and vehicle_id in self._report_time_untrusted,
         )
+
+    def _estimate_capacity_kwh(self, vehicle_id: str | None) -> float | None:
+        """The battery size the estimate carries a level forward with: the car's own, or, once its wall kWh per
+        percent is learned and trusted, the size that takes that at `CHARGE_EFFICIENCY` (so the estimate, the replan
+        from it and the stop on it count as the need does: `learned_energy.with_learned`)."""
+        capacity = self.capacity_kwh(vehicle_id)
+        if self._learned_kwh_per_percent is None or not vehicle_id:
+            return capacity
+        ratio = self._learned_kwh_per_percent(vehicle_id, capacity)
+        if ratio is None or not math.isfinite(ratio) or ratio <= 0:
+            return capacity
+        return ratio * 100.0 * CHARGE_EFFICIENCY
 
     def _watch_register(self, entity_id: str | None) -> None:
         """Keep the register's values as they are posted (`register_history`); another register starts afresh."""
