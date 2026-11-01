@@ -14,7 +14,12 @@ import pytest
 from homeassistant.core import HomeAssistant
 from pytest_homeassistant_custom_component.common import async_mock_service
 
-from custom_components.spotnav.const import CONF_CHARGE_CONTROL, CONF_CURRENT_LIMIT, CONF_MAIN_FUSE_A
+from custom_components.spotnav.const import (
+    CONF_ACTIVE_CONTROL_ENABLED,
+    CONF_CHARGE_CONTROL,
+    CONF_CURRENT_LIMIT,
+    CONF_MAIN_FUSE_A,
+)
 from custom_components.spotnav.runtime import domain_data
 
 from .test_solar_phase_execution import _switched_down
@@ -180,6 +185,20 @@ async def test_the_fuse_still_bounds_the_sun(hass: HomeAssistant) -> None:
     assert coordinator._solar.config.max_current_a == 32.0  # noqa: SLF001
     assert controller.requested_current_a == 19
     assert easee.limits == [7, 19]
+
+
+async def test_the_fuse_bounds_the_sun_on_a_derived_site_without_load_balancing(hass: HomeAssistant) -> None:
+    """6 kW of sun spread over three phases, a 32 A single-phase charger on L1, a 16 A fuse (1 A margin) and load
+    balancing off: the sun alone would ask for 26 A and import 17.3 A on L1. The car is held where L1 stays within
+    the fuse: 15 A of import plus the 8.7 A the sun covers there, 23 A."""
+    s = await _site(hass, phases=1, max_a=32, main_fuse_a=16.0)
+    assert not s.site.config.get(CONF_ACTIVE_CONTROL_ENABLED)
+    await s.charge_on_sun(6000.0)
+    assert s.ceiling() == 32.0
+    assert s.controller.requested_current_a == 23
+    l1_import_a = float(hass.states.get("sensor.solar_site_power_l1").state) / VOLTAGE_V
+    assert l1_import_a <= 15.0
+    assert s.coordinator.state.state == "on"
 
 
 async def test_the_ceiling_follows_the_chargers_stated_maximum_and_falls_back_with_it(hass: HomeAssistant) -> None:
