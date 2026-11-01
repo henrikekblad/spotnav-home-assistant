@@ -484,6 +484,12 @@ class PriceDevice:
                 "tax_minor_per_kwh": fiscal.tax_minor_per_kwh if fiscal.tax_enabled else None,
                 "transfer_minor_per_kwh": fiscal.transfer_minor_per_kwh if fiscal.transfer_enabled else None,
             },
+            # Only while the entry stores a grid tariff, so an entry without one reads as before.
+            **(
+                {}
+                if self.overrides.grid_tariff is None
+                else {"grid_tariff": self.overrides.grid_tariff.as_dict()}
+            ),
             "hours": dict(self._hours),
             "price_state": None if snapshot is None else snapshot.state,
             "today": None if snapshot is None else snapshot.today.isoformat(),

@@ -328,3 +328,13 @@ async def test_the_grid_tariff_entities_are_unavailable_where_the_price_includes
     price = await add_price(hass, area="GB-C")
     for key in ("grid_fee_percent", "grid_fee_high"):
         assert hass.states.get(entity_id(hass, price.entry_id, key, "number")).state == STATE_UNAVAILABLE
+
+
+async def test_the_price_devices_diagnostics_name_a_stored_tariff_only(hass: HomeAssistant, freezer) -> None:
+    from custom_components.spotnav.runtime import price_data
+
+    freezer.move_to(NOW)
+    plain = await add_price(hass)
+    assert "grid_tariff" not in price_data(hass, plain.entry_id).device.diagnostics()
+    owner = await add_price(hass, entry_id="price_b", transfer_percent=OWNER_PERCENT)
+    assert price_data(hass, owner.entry_id).device.diagnostics()["grid_tariff"]["transfer_percent"] == OWNER_PERCENT
