@@ -1262,7 +1262,7 @@ class AutoExecutor:
         """
         connected = self._shadow_connected(fallback=False, kind=core_events.PersonStart.kind)
         token = self._shadow.begin(early=None if connected is ... else core_events.PersonStart(connected=connected))
-        note: dict[str, Any] = {"legacy": [], "outcome": None}
+        note: dict[str, Any] = {"legacy": [], "outcome": None, "token": token}
         try:
             await self._manual_start_body(amps, note)
         finally:
@@ -1326,6 +1326,9 @@ class AutoExecutor:
             note["outcome"] = CommandOutcome(
                 started is not False, balancing_held=started is False and self._controller.start_held_by_balancing
             )
+            # Its result is the core's now, before the pause is stored: load balancing's pause of the charge, landing
+            # meanwhile, is decided after it, as the commands went out (a person's charge it holds back).
+            self._shadow.result(note["token"], note["outcome"])
             if started is False and not self._controller.start_held_by_balancing:
                 # The charger's control was unavailable and the command never went out: a failed command
                 # like any other, with nothing pending and a retry possible.
