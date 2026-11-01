@@ -1,9 +1,15 @@
 """One charger's session recorder: watches the charge and keeps the session record.
 
 A session opens when the charger is seen charging (whatever started it) and closes when it has stopped
-for `END_DEBOUNCE_S`, or at once when the car is unplugged. A pause shorter than that (load balancing,
-a window boundary, a car that hesitates) is the same session. The session ends when the charge stopped,
-not when the debounce ran out.
+for `END_DEBOUNCE_S`, or at once when the car is unplugged. A pause shorter than that (a car that hesitates)
+is the same session. The session ends when the charge stopped, not when the debounce ran out.
+
+A stop SpotNav itself made while the car stays plugged in, to give the charge back later, ends nothing however
+long it lasts (`PauseFacts`, `_held`): load balancing's pause, a phase switch that settles, the sun waiting for
+surplus, and the gap between two windows of one plan. The debounce counts only from when nothing holds the
+charge any more: the car is unplugged, a person stopped it (or paused Auto), the plan ended its charge, or the
+car ended it itself. The entry keeps its start cause and runs from the first start to the last stop. A person's
+Start seen after a stop that SpotNav did not hold is a new decision and opens a new entry.
 
 Energy is read as the difference between samples, from the charger's energy register (or SpotNav's own
 integration of a smart plug's power, which stands in for one), or, with neither, estimated from the
@@ -60,6 +66,27 @@ RESET_TOLERANCE_KWH: Final = 0.5
 MIN_ENERGY_KWH: Final = 0.01
 #: An estimated session shorter than this is not recorded.
 MIN_ESTIMATED_S: Final = 120.0
+#: How far a window's end, or the car ending the charge, may lie before the stop the recorder saw and still be
+#: that stop's cause (the recorder may see a stop up to a tick late, and a stop sent at a window's end lands after it).
+STOP_CAUSE_TOLERANCE_S: Final = 300.0
+
+
+@dataclass(frozen=True, slots=True)
+class PauseFacts:
+    """What says whether a stopped charge is one SpotNav holds back to give back later (`SessionRecorder._held`)."""
+
+    #: Load balancing holds the charge back (`ChargingController.paused_by_balancing`).
+    balancing_paused: bool = False
+    #: A phase switch settles (`ChargingController.phase_switch_settling`).
+    phase_switch_settling: bool = False
+    #: The sun (solar or hybrid) waits for surplus to charge again (`inputs.SOLAR_WAITING_REASONS`).
+    solar_waiting: bool = False
+    #: A pause of Auto is admitted: a person's Start or Stop, or a pause they chose.
+    auto_paused: bool = False
+    #: The installed plan's windows.
+    plan_windows: tuple[tuple[datetime, datetime], ...] = ()
+    #: When the car last ended a charge by itself in this plug-in (`ChargingController.car_ended_at`).
+    car_ended_at: datetime | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -95,6 +122,18 @@ class SessionFacts:
     vehicle_decided_by: str | None = None
     #: The entity `register_kwh` is read from.
     register_entity: str | None = None
+    #: Whether a stop now is SpotNav's own pause of the charge.
+    pause: PauseFacts = PauseFacts()
+
+
+def window_gap(windows: tuple[tuple[datetime, datetime], ...], stopped: datetime, now: datetime) -> tuple[bool, bool]:
+    """Whether a window of the plan ended at or after the stop (`stopped`, give or take `STOP_CAUSE_TOLERANCE_S`)
+    and by now; and whether a window that begins after the stop has not ended yet: the plan's next window, ahead, or
+    open with its start on its way."""
+    tolerance = timedelta(seconds=STOP_CAUSE_TOLERANCE_S)
+    ended = any(stopped - tolerance <= end <= now for _start, end in windows)
+    ahead = any(start > stopped and end > now for start, end in windows)
+    return ended, ahead
 
 
 def started_by(hint: str | None, strategy: str | None) -> str:
@@ -138,6 +177,11 @@ class SessionRecorder:
         self._idle_since: datetime | None = None
         self._idle_seen_at: datetime | None = None
         self._resumed_at: datetime | None = None
+        #: A window's end stopped the charge in this run: the gap to the plan's next window holds it, even once a new
+        #: plan no longer lists the window that ended.
+        self._window_stop = False
+        #: When the stopped charge was last seen held (`_held`).
+        self._held_at: datetime | None = None
         self._cancels: list[Callable[[], None]] = []
         self._shutdown = False
 
@@ -186,7 +230,7 @@ class SessionRecorder:
         session = self._session
         if session is None:
             if facts.charging:
-                self._open(facts, now)
+                self._open(facts, now, self._consume_cause())
                 self._was_charging = True
             return
         delivered = self._accrue(session, facts, now)
@@ -202,6 +246,8 @@ class SessionRecorder:
             # taken, as after a restart, to have gone on until then (`_resumed_at`); an idle debounce runs on.
             if self._was_charging and self._resumed_at is None:
                 self._resumed_at = now
+            if self._idle_seen_at is not None:
+                self._look_held(facts, self._idle_since or now, now)
             if self._idle_seen_at is not None and (now - self._idle_seen_at).total_seconds() >= END_DEBOUNCE_S:
                 self._close(session, self._idle_since or now, now)
             else:
@@ -209,8 +255,16 @@ class SessionRecorder:
             return
         self._was_charging = facts.charging
         if facts.charging:
-            self._idle_since = self._idle_seen_at = None
-            self._resumed_at = None
+            # Who started the charge, taken while it runs too, so a Start that changed nothing is never read later.
+            cause = self._consume_cause()
+            held_lately = self._held_at is not None and (now - self._held_at).total_seconds() <= 2 * TICK_S
+            if self._idle_since is not None and cause == STARTED_MANUAL and not held_lately:
+                # A person's Start after a stop that was not SpotNav's pause (a resume of a person's charge that load
+                # balancing held back also reads as theirs): a new decision, a new entry.
+                self._close(session, self._idle_since, now)
+                self._open(facts, now, cause)
+                return
+            self._reset_idle()
             self._store.set_open(session, charger_id=self._charger_id)
             return
         if self._idle_since is None:
@@ -220,6 +274,8 @@ class SessionRecorder:
             self._idle_since = now if resumed is None or delivered > 0 else resumed
             self._idle_seen_at = now
             self._resumed_at = None
+        if facts.connected is not False:
+            self._look_held(facts, self._idle_since, now)
         if facts.connected is False or (
             self._idle_seen_at is not None
             and (now - self._idle_seen_at).total_seconds() >= END_DEBOUNCE_S
@@ -228,7 +284,34 @@ class SessionRecorder:
         else:
             self._store.set_open(session, charger_id=self._charger_id)
 
-    def _open(self, facts: SessionFacts, now: datetime) -> None:
+    def _reset_idle(self) -> None:
+        self._idle_since = self._idle_seen_at = self._resumed_at = self._held_at = None
+        self._window_stop = False
+
+    def _look_held(self, facts: SessionFacts, stopped: datetime, now: datetime) -> None:
+        """SpotNav holds the charge back to give it back: the debounce counts from when nothing holds it any more."""
+        if self._held(facts, stopped, now):
+            self._idle_seen_at = self._held_at = now
+
+    def _held(self, facts: SessionFacts, stopped: datetime, now: datetime) -> bool:
+        """Whether the charge that stopped at `stopped` is SpotNav's own pause of it, given back while the car stays
+        plugged in. Never when the car ended it. Load balancing's pause and a phase switch's settle are; while no pause
+        of Auto is admitted, so are the sun waiting for surplus and the gap from a window's end to the plan's next."""
+        pause = facts.pause
+        tolerance = timedelta(seconds=STOP_CAUSE_TOLERANCE_S)
+        if pause.car_ended_at is not None and pause.car_ended_at >= stopped - tolerance:
+            return False
+        if pause.balancing_paused or pause.phase_switch_settling:
+            return True
+        if pause.auto_paused:
+            return False
+        if pause.solar_waiting:
+            return True
+        ended, ahead = window_gap(pause.plan_windows, stopped, now)
+        self._window_stop = ahead and (self._window_stop or ended)
+        return self._window_stop
+
+    def _open(self, facts: SessionFacts, now: datetime, cause: str | None) -> None:
         if facts.register_kwh is not None:
             source = SOURCE_INTEGRATED if facts.register_integrated else SOURCE_REGISTER
         else:
@@ -248,7 +331,7 @@ class SessionRecorder:
             currency=None if book is None else book.currency,
             major_unit=None if book is None else book.major_unit,
             minor_unit=None if book is None else book.minor_unit,
-            started_by=started_by(self._consume_cause(), facts.strategy),
+            started_by=started_by(cause, facts.strategy),
             strategy=facts.strategy,
             vehicle_id=facts.vehicle_id,
             vehicle_name=facts.vehicle_name,
@@ -261,7 +344,7 @@ class SessionRecorder:
             start_soc_percent=None if self._start_soc is None else finite_number(self._start_soc()),
         )
         self._session = session
-        self._idle_since = self._idle_seen_at = self._resumed_at = None
+        self._reset_idle()
         self._store.set_open(session, charger_id=self._charger_id)
 
     def _accrue(self, session: ChargeSession, facts: SessionFacts, now: datetime) -> float:
@@ -269,6 +352,10 @@ class SessionRecorder:
         since = session.last_sample_at or session.start
         if now <= since:
             return 0.0
+        if facts.charging and not self._was_charging and self._idle_since is not None:
+            # The charge goes again after a stop this run saw: the sample stood still at the stop, and what the
+            # charger reports now was drawn since the last tick at most.
+            since = max(since, now - timedelta(seconds=TICK_S))
         delivered = 0.0
         if session.energy_source == SOURCE_ESTIMATED:
             # Charging at either end of the span counts: a stop is seen at its first report, after the last tick.
@@ -289,7 +376,10 @@ class SessionRecorder:
                     elif reading <= RESET_TOLERANCE_KWH:
                         delivered = reading
                 session.last_register_kwh = reading
-        session.last_sample_at = now
+        if delivered > 0 or facts.charging or self._was_charging:
+            # While the charge stands still the sample stays at its stop, so a restart in a long pause still knows
+            # when the charge last went.
+            session.last_sample_at = now
         if delivered <= 0:
             return 0.0
         session.energy_kwh += delivered
@@ -309,7 +399,7 @@ class SessionRecorder:
 
     def _close(self, session: ChargeSession, ended: datetime, now: datetime) -> None:
         self._session = None
-        self._idle_since = self._idle_seen_at = self._resumed_at = None
+        self._reset_idle()
         session.end = min(max(ended, session.start), now)
         session.last_register_kwh = None
         session.register_entity = None

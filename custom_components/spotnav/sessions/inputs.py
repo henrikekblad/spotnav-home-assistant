@@ -15,16 +15,16 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Any
+from typing import Any, Final
 
 from homeassistant.core import HomeAssistant
 from homeassistant.util import dt as dt_util
 
 from .. import time_zones
 from ..execution.controller import ChargingController
-from ..execution.solar_execution import solar_execution_state
+from ..execution.solar_execution import solar_execution_state, SolarExecutionState
 from ..planning.auto_controller import fiscal_choice_for
-from ..planning.auto_settings import STRATEGY_HYBRID, STRATEGY_SOLAR
+from ..planning.auto_settings import AutoSettings, STRATEGY_HYBRID, STRATEGY_SOLAR
 from ..planning.grid_voltage import voltage_between_phases_v
 from ..planning.planner import FiscalChoice, power_kw
 from ..pricing.price_repository import PriceRepository
@@ -34,7 +34,7 @@ from ..planning.phases import charger_wiring, charging_phases
 from ..site.phase_detection import async_detect_phases
 from ..vehicles.vehicle_discovery import resolve_target_vehicle
 from .costing import spot_intervals
-from .recorder import PriceBook, SessionFacts
+from .recorder import PauseFacts, PriceBook, SessionFacts
 from .summary import sessions_summary
 
 #: Days around today whose prices a session may need.
@@ -53,6 +53,56 @@ def solar_share_of(hass: HomeAssistant, charger_id: str, strategy: str | None) -
     if state.car_w is None or state.available_w is None or state.car_w <= 0:
         return None
     return min(1.0, max(0.0, state.available_w) / state.car_w)
+
+
+#: Why the sun holds a charger off while it waits for surplus to charge again (`site/solar_surplus.py`'s
+#: `SolarReason`): too little surplus, a start delay, no basis or no measurement for a while, a stop it made for want of
+#: surplus. Not the car ending the charge (`vehicle_full`, `car_stopped`), something else ending it
+#: (`charger_stopped`), no car, a pause of Auto, a strategy left or a hybrid need met.
+SOLAR_WAITING_REASONS: Final = frozenset(
+    {
+        "no_basis_off",
+        "no_basis_grace",
+        "no_basis_stopped",
+        "charger_measurement_missing",
+        "unmeasured_arming",
+        "off_no_surplus",
+        "arming_delay",
+        "arming_min_off_wait",
+        "arming_dip",
+        "battery_credit_false",
+        "stop_after_delay",
+    }
+)
+
+
+def pause_facts(
+    controller: ChargingController,
+    settings: AutoSettings | None,
+    solar: SolarExecutionState | None,
+) -> PauseFacts:
+    """Whether a stop now is SpotNav's own pause of the charge, read where the card's status reads it: the
+    controller's public facts (load balancing's pause, a phase switch's settle, the plan, the car ending a charge),
+    the stored pause of Auto, and the sun's last verdict."""
+    plan = controller.plan
+    try:
+        windows = () if plan is None else tuple(plan.windows)
+    except ValueError:
+        windows = ()
+    strategy = None if settings is None else settings.strategy
+    return PauseFacts(
+        balancing_paused=controller.paused_by_balancing,
+        phase_switch_settling=controller.phase_switch_settling,
+        solar_waiting=(
+            strategy in (STRATEGY_SOLAR, STRATEGY_HYBRID)
+            and solar is not None
+            and not solar.held_by_plan
+            and solar.reason in SOLAR_WAITING_REASONS
+        ),
+        auto_paused=settings is not None and settings.pause.admitted,
+        plan_windows=windows,
+        car_ended_at=controller.car_ended_at,
+    )
 
 
 def session_facts(hass: HomeAssistant, controller: ChargingController) -> SessionFacts:
@@ -96,6 +146,7 @@ def session_facts(hass: HomeAssistant, controller: ChargingController) -> Sessio
         vehicle_name=vehicle_name,
         solar_share=solar_share_of(hass, charger_id, strategy),
         vehicle_decided_by=None if identifier is None else identifier.method,
+        pause=pause_facts(controller, settings, solar_execution_state(hass, charger_id)),
     )
 
 
