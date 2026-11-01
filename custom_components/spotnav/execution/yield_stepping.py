@@ -57,9 +57,12 @@ YieldReason = Literal[
     # Step 3 expiry, step absorbed (`y >= confirm_y`). A hold: the stepped assignment is
     # not touched again this tick; a further step waits for a later observation.
     "confirmed_after_settling",
-    # Step 3 expiry, step not absorbed (`y < confirm_y`): urgent revert to the pre-step
-    # value, and `backoff` begins.
+    # Step 3 expiry, step not absorbed (`y < confirm_y`) and the site over its limit: urgent revert
+    # to the pre-step value, and `backoff` begins.
     "revert_not_absorbed",
+    # Step 3 expiry, step not absorbed with every phase within its limit: the grid carries the
+    # raise, so it stays; nothing was verified, and `backoff` begins.
+    "kept_not_absorbed_within_limit",
     # Step 4: real headroom exists on the raw decision's own evidence.
     "passthrough_raw_increase",
     # Step 5, confirmed and flat: the site sits where the yielding load holds it.
@@ -527,10 +530,15 @@ class YieldStepper:
                     # A hold: a further step waits for a later observation.
                     return self._verdict(now, "hold", None, "confirmed_after_settling", False)
                 else:
-                    revert_to = self._baseline_assigned
                     self._enter_backoff(now)
+                    if limit_a is not None and all(site_a[phase] <= limit_a[phase] for phase in phases):
+                        # Nothing gave way, but the grid carries the raise within its limit: an ordinary
+                        # raise, not one to take back. A revert is for a step that took the site over.
+                        return self._verdict(
+                            now, "passthrough", None, "kept_not_absorbed_within_limit", False
+                        )
                     return self._verdict(
-                        now, "write", revert_to, "revert_not_absorbed", True
+                        now, "write", self._baseline_assigned, "revert_not_absorbed", True
                     )
 
         # 3b. A lowering awaiting its measurement.

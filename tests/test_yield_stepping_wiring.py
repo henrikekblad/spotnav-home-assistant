@@ -355,10 +355,12 @@ async def test_a_hold_results_in_no_call_to_the_assign_path(hass: HomeAssistant)
 
 
 async def test_urgent_revert_reaches_the_charger_without_the_dwell(hass: HomeAssistant) -> None:
-    """A step that is not absorbed is reverted urgently, in the very pass it is decided, never waiting out the damper's dwell.
+    """A step that is not absorbed and takes the site over its limit is reverted urgently, in the very pass it is
+    decided, never waiting out the damper's dwell.
 
-    The site has generous margin (regulation band throughout) so only `urgent=True`, not the
-    damper's "protection" rule, can explain an instant write.
+    Fuse 40 A, margin 1 A: the limit is 39 A. The site sits at 37.5 A before the step (room for it under the fuse,
+    the unverified ceiling) and at 39.5 A after it, over the limit and under the fuse. A step the grid carries within
+    the limit is not taken back (`test_a_step_not_absorbed_within_the_limit_is_kept`).
     """
     site_entry, charger, configure_calls = await _yield_setup(
         hass, entry_id="revert", main_fuse_a=40.0, safety_margin_a=1.0
@@ -376,7 +378,7 @@ async def test_urgent_revert_reaches_the_charger_without_the_dwell(hass: HomeAss
     configure_calls.clear()
 
     # Pass 1: baseline. Delivered/site steady: the stepper records its pre-step reference.
-    set_site_current_a(hass, "revert_site", 10.0)
+    set_site_current_a(hass, "revert_site", 37.5)
     set_charger_delivered_a(hass, "revert_charger", 5.9)
     probe_decision = _decision(
         proposed_a=0.0, requested_a=16.0, reason="paused_safe_current_below_charger_minimum"
@@ -394,14 +396,16 @@ async def test_urgent_revert_reaches_the_charger_without_the_dwell(hass: HomeAss
     configure_calls.clear()
 
     # Pass 3: the car's delivered current rises (>= min_delta_a) while the site rises almost in lockstep: nothing yielded. Detected from the delivered-current jump alone; enters `settling`, holds.
-    set_site_current_a(hass, "revert_site", 11.0)
+    set_site_current_a(hass, "revert_site", 39.5)
     set_charger_delivered_a(hass, "revert_charger", 7.6)
     controller.regulator_decisions = {charger.entry_id: probe_decision}
     await controller._async_apply_active_control()
     assert controller._yield_stepping_last[charger.entry_id]["state"] == "settling"
     assert configure_calls == []
 
-    # Pass 4 (yield clock only, past settle_s): the step is measured and not absorbed (y well below confirm_y), so an urgent revert to the pre-step assigned value (6.0) reaches the charger in this pass, far from the protection band and without advancing the damper's dwell.
+    # Pass 4 (yield clock only, past settle_s): the step is measured, not absorbed (y well below confirm_y) and the
+    # site over its limit, so an urgent revert to the pre-step assigned value (6.0) reaches the charger in this pass,
+    # without advancing the damper's dwell.
     yield_clock.advance(31.0)
     await controller._async_apply_active_control()
 
@@ -411,6 +415,50 @@ async def test_urgent_revert_reaches_the_charger_without_the_dwell(hass: HomeAss
     assert verdict["state"] == "backoff"
     assert len(configure_calls) == 1
     assert configure_calls[0].data["value"] == "1.6,2.10"
+
+
+async def test_a_step_not_absorbed_within_the_limit_is_kept(hass: HomeAssistant) -> None:
+    """The same step on a site with room for it (10 A, then 11 A, on a 39 A limit): nothing gave way, but the grid
+    carries the raise, so it is not taken back. Nothing was verified either: no further step for the backoff."""
+    site_entry, charger, configure_calls = await _yield_setup(
+        hass, entry_id="kept", main_fuse_a=40.0, safety_margin_a=1.0
+    )
+    controller = controller_of(hass, site_entry.entry_id)
+    controller._yield_steppers.clear()
+    yield_clock = _SecondsClock()
+    controller._yield_now = yield_clock
+    damper_clock = _DamperClock()
+    controller._dampers[charger.entry_id] = RegulatorDamper(now=damper_clock)
+    _seed_assigned_a(controller, charger.entry_id, 6.0)
+    await controller._async_apply_active_control()
+    configure_calls.clear()
+
+    set_site_current_a(hass, "kept_site", 10.0)
+    set_charger_delivered_a(hass, "kept_charger", 5.9)
+    probe_decision = _decision(
+        proposed_a=0.0, requested_a=16.0, reason="paused_safe_current_below_charger_minimum"
+    )
+    controller.regulator_decisions = {charger.entry_id: probe_decision}
+    await controller._async_apply_active_control()
+    damper_clock.advance(61.0)
+    await controller._async_apply_active_control()
+    assert [call.data["value"] for call in configure_calls] == ["1.8,2.10"]
+    configure_calls.clear()
+
+    set_site_current_a(hass, "kept_site", 11.0)
+    set_charger_delivered_a(hass, "kept_charger", 7.6)
+    await controller._async_apply_active_control()
+    assert controller._yield_stepping_last[charger.entry_id]["state"] == "settling"
+
+    yield_clock.advance(31.0)
+    await controller._async_apply_active_control()
+    verdict = controller._yield_stepping_last[charger.entry_id]
+    assert (verdict["action"], verdict["reason"], verdict["state"]) == (
+        "passthrough",
+        "kept_not_absorbed_within_limit",
+        "backoff",
+    )
+    assert configure_calls == [], "the raise the grid carries stays"
 
 
 async def test_options_round_trip_the_yield_stepping_fields(hass: HomeAssistant) -> None:
