@@ -282,7 +282,7 @@ published price already holds the grid fee: locked like `transfer`, nothing is a
 `explicit_value` is what is stored (kept while off), `effective_value` what is added (`null` while off or
 included). There is no `suggested` policy: no area suggests either figure. `high_load_window` is `null` or whole
 hours of the area's own clock, `from_hour` 0-23 and `to_hour` 1-24 after it, on weekdays only or every day
-(public holidays count as weekdays), November to March only or all year. `write_revision` is the electricity
+(public holidays count as weekdays), November to March only or all year; winter is fixed to November to March. `write_revision` is the electricity
 price's write counter, which a write names. See [Prices](prices.md#what-you-pay) for the arithmetic.
 
 `update_grid_tariff {"expected_write_revision", "grid_tariff"}` replaces the three parts in full; `grid_tariff` is
@@ -295,7 +295,8 @@ on success; 409 `revision_conflict` (the electricity price was written since `wr
 "grid_tariff", "code": "invalid_value"}]`), `invalid_number` (`expected_write_revision` is not a whole number) or
 `spotnav_no_price_entry` (the charger prices with its own settings). Nothing is written on a refusal. The write
 counts as a write of the electricity price: every charger using it replans, and their settings records' `revision`
-moves with it. The settings record itself never carries the grid tariff: its `overrides` rows keep exactly their
+moves with it. A write of the tariff as stored (all off where nothing is stored) passes the compare-and-set and
+writes nothing: `write_revision` stays and nothing replans. The settings record itself never carries the grid tariff: its `overrides` rows keep exactly their
 four keys, and a full `settings` replacement from a client that does not know the tariff leaves it as stored.
 
 **Where the prices come from.** The dashboard's `prices` block carries an additive `provider` object, sent to the

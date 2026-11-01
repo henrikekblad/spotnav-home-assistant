@@ -238,3 +238,57 @@ async def test_an_older_apps_full_settings_write_keeps_the_grid_tariff(
     )
     assert echo.status == 200, await echo.text()
     assert price_write_revision(price) == written
+
+
+async def test_a_write_of_the_tariff_as_stored_counts_nothing(hass: HomeAssistant, hass_ws_client, freezer) -> None:
+    await setup_charger(hass)
+    client = await admin(hass, hass_ws_client)
+    freezer.move_to(NOW)
+    await go_auto(hass)
+    price = await add_price(hass)
+    revision = price_source_for(hass, "entry_a").revision
+
+    # All off on an entry that stores nothing is the same tariff: no keys, no count, no replan.
+    all_off = {"transfer_percent": OFF, "transfer_high": OFF, "high_load_window": None}
+    frame = await ws_call(client, update("entry_a", 0, all_off))
+    assert frame["success"] is True and frame["result"]["grid_tariff"]["write_revision"] == 0
+    assert price_write_revision(price) == 0 and "transfer_percent" not in price.data
+    assert price_source_for(hass, "entry_a").revision == revision
+
+    assert (await ws_call(client, update("entry_a", 0, OWNER)))["success"] is True
+    assert price_write_revision(price) == 1
+    again = await ws_call(client, update("entry_a", 1, OWNER))
+    assert again["success"] is True and again["result"]["grid_tariff"]["write_revision"] == 1
+    assert price_write_revision(price) == 1
+    # The compare-and-set still judges an identical write.
+    stale = await ws_call(client, update("entry_a", 0, OWNER))
+    assert stale["success"] is False and stale["error"]["code"] == "revision_conflict"
+
+
+async def test_the_apps_area_change_keeps_the_high_fees_figure_off(
+    hass: HomeAssistant, hass_client_no_auth, freezer
+) -> None:
+    await setup_charger(hass)
+    client = await hass_client_no_auth()
+    freezer.move_to(NOW)
+    await go_auto(hass)
+    price = await add_price(hass, **OWNER)
+    record = (await webhook_dashboard(client, "webhook-a"))["settings"]
+    body = {key: value for key, value in record.items() if key != "revision"}
+    rows = [row for row in body["overrides"] if row["area_id"] != "NO1"]
+    rows.append({"area_id": "NO1", "vat": OFF, "tax": OFF, "transfer": OFF})
+
+    response = await client.post(
+        "/api/webhook/webhook-a",
+        json={
+            "version": 1, "action": "settings", "expected_revision": record["revision"],
+            "settings": {**body, "area_id": "NO1", "overrides": sorted(rows, key=lambda row: row["area_id"])},
+        },
+    )
+    await hass.async_block_till_done()
+
+    assert response.status == 200, await response.text()
+    assert price.data["area_id"] == "NO1"
+    assert price.data["transfer_high"] == {"enabled": False, "value": 60.0}
+    assert price.data["transfer_percent"] == OWNER["transfer_percent"]
+    assert price.data["high_load_window"] == WINDOW

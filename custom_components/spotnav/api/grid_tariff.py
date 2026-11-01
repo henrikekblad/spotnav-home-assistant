@@ -26,7 +26,8 @@ One write, a full replacement of the three parts, compare-and-set against the en
   `{ok, error, field_errors, grid_tariff}` with the block re-read now.
 
 `grid_tariff` is `{transfer_percent: {enabled, value}, transfer_high: {enabled, value}, high_load_window}`. A fee
-that is on needs its figure (no area suggests one); the high-load fee needs a window. Refusals: `invalid_fiscal`
+that is on needs its figure (no area suggests one); the high-load fee needs a window. A tariff equal to the stored
+one (all off equals none stored) writes nothing and leaves the write counter. Refusals: `invalid_fiscal`
 (the body), `revision_conflict` (the entry was written since), `spotnav_no_price_entry` (the charger prices with
 its own settings; the block is absent then), and the charger lookup's codes.
 """
@@ -192,7 +193,8 @@ def _expected(raw: Any) -> int:
 def update_grid_tariff(hass: HomeAssistant, charger_id: str, expected_write_revision: Any, body: Any) -> None:
     """Store the grid tariff on the charger's electricity price entry, in place, compare-and-set (see the module).
 
-    Every charger pricing with the entry replans (its revision moves).
+    Every charger pricing with the entry replans (its revision moves). A tariff equal to the stored one (all off
+    equals none stored) passes the compare-and-set and writes nothing: the write counter stays.
     """
     expected = _expected(expected_write_revision)
     tariff = decode_grid_tariff(body)
@@ -202,6 +204,13 @@ def update_grid_tariff(hass: HomeAssistant, charger_id: str, expected_write_revi
     entry = hass.config_entries.async_get_entry(source.entry_id)
     if entry is None:
         raise GridTariffRefusal(ERROR_NO_PRICE_ENTRY, "The electricity price entry is gone")
+    if expected != source.write_revision:
+        raise GridTariffRefusal(
+            "revision_conflict", f"the electricity price is at write {source.write_revision}, not {expected}"
+        )
+    if tariff == (source.overrides.grid_tariff or GridTariff()):
+        # The tariff as stored (nothing stored reads as all off): nothing to write, and no replan.
+        return
     try:
         async_write_price_entry(
             hass, entry, replace(source.overrides, grid_tariff=tariff), expected_write_revision=expected
