@@ -524,3 +524,16 @@ async def test_a_restart_that_cannot_read_todays_state_keeps_the_owner(
     assert _owner(restarted) == ("manual", False)
     await restarted.shutdown()
 
+async def test_a_quiet_report_kept_after_all_is_told_to_the_debug_day(hass: HomeAssistant) -> None:
+    """A quiet report is held back (`_decide`) and kept only if a disagreement comes of it (`_keep_quiet`): the debug
+    bundle hears it then, as it hears every record kept."""
+    from custom_components.spotnav.core.session import ChargeSession
+
+    shadow = ownership_shadow.OwnershipShadow(lambda: ChargeSession(), drives=False)
+    heard: list[dict[str, Any]] = []
+    shadow.on_record = heard.append
+    record: dict[str, Any] = {"event": {"kind": "charger_reported_on"}}
+    shadow._quiet = (record, shadow._recorded)  # noqa: SLF001
+    shadow._keep_quiet(record)  # noqa: SLF001
+    assert heard == [record] and list(shadow.events) == [record]
+

@@ -811,6 +811,10 @@ class OwnershipShadow:
     def _record(self, record: dict[str, Any]) -> None:
         self.events.append(record)
         self._recorded += 1
+        self._tell_record(record)
+
+    def _tell_record(self, record: dict[str, Any]) -> None:
+        """Tell `on_record` a record kept (never raises)."""
         listener = self.on_record
         if listener is not None:
             try:
@@ -829,6 +833,8 @@ class OwnershipShadow:
         items.insert(len(items) - min(self._recorded - quiet[1], len(items)), record)
         self.events = deque(items, maxlen=EVENT_RING)
         self._recorded += 1
+        # Told now, after the records decided after it: the debug bundle keeps it all the same.
+        self._tell_record(record)
 
     def _compare(
         self,
