@@ -31,7 +31,7 @@ async def test_bundle_has_every_section(hass: HomeAssistant) -> None:
     charger, site = await setup_charger_and_site(hass)
     bundle = await async_build_debug_bundle(hass)
 
-    assert bundle["bundle_version"] == 8
+    assert bundle["bundle_version"] == 9
     for key in ("versions", "related_integrations", "price_data", "sites", "chargers", "log"):
         assert key in bundle
     # Version 8: a day, kept across restarts.
@@ -51,7 +51,7 @@ async def test_bundle_has_every_section(hass: HomeAssistant) -> None:
     assert "plan" in section["dashboard"] and "strategy" in section["dashboard"]
     assert "commands" in section["diagnostics"]["controller"]["adapter"]
     # Version 5: the ownership core's events, replayable as they are; version 6: its cumulative tally per event kind;
-    # version 8: under `ownership`, the previous logic beside it gone.
+    # version 9: under `ownership`, the previous logic beside it gone.
     shadow = section["diagnostics"]["controller"]["ownership"]
     assert shadow["counts"]["failures"] == {} and shadow["events"]
     assert shadow["drives"] is True, "the core decides"

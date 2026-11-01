@@ -242,7 +242,7 @@ async def test_a_stored_session_from_a_later_release_is_no_failure(
     await world.controller._store.async_save(record)  # noqa: SLF001
 
     restarted = await world.restart()
-    shadow = restarted.controller.ownership_shadow
+    shadow = restarted.controller.session_runner
     assert shadow.counts.get("failures", {}) == {}
     assert _warnings(caplog) == []
     assert shadow.session.manual is not None, "the person's Stop is read from today's keys"

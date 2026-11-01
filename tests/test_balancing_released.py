@@ -9,16 +9,14 @@ import pytest
 from homeassistant.core import HomeAssistant
 
 from custom_components.spotnav.const import MEASUREMENT_MODE_DERIVED
-from custom_components.spotnav.execution import ownership_shadow
 from custom_components.spotnav.planning.auto_settings import PAUSE_UNTIL_RESUMED
 from custom_components.spotnav.runtime import executor_for
 
 from .test_lb_start_credit import _halo, _Halo, _site_a
 
 
-@pytest.fixture(params=[True, False], ids=["core", "previous"])
-def drives(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) -> bool:
-    monkeypatch.setattr(ownership_shadow, "CORE_OWNERSHIP_DEFAULT", request.param)
+@pytest.fixture(params=[True], ids=["core"])
+def drives(request: pytest.FixtureRequest) -> bool:
     return request.param
 
 
@@ -44,7 +42,7 @@ def _given_back(halo: _Halo, starts: int, drives: bool) -> None:
     assert halo.cc.charge_origin == "plan_window" and not halo.cc.paused_by_balancing
     assert halo.cc.paused_charge_origin is None
     if drives:
-        session = halo.cc.ownership_shadow.session
+        session = halo.cc.session_runner.session
         assert (session.owner, session.balancing_paused, session.paused_origin) == ("plan", False, None)
 
 
@@ -77,8 +75,8 @@ async def test_turning_load_balancing_off_forgets_a_charge_no_longer_wanted(
     await _turn_off(halo)
     assert len(halo.turn_on) == starts, "nothing started"
     assert not halo.cc.paused_by_balancing and halo.cc.paused_charge_origin is None
-    assert not halo.cc.ownership_shadow.session.balancing_paused
-    kinds = [record["event"]["kind"] for record in halo.cc.ownership_shadow.diagnostics()["events"]]
+    assert not halo.cc.session_runner.session.balancing_paused
+    kinds = [record["event"]["kind"] for record in halo.cc.session_runner.diagnostics()["events"]]
     assert kinds[-1] == "balancing_dropped"
 
 

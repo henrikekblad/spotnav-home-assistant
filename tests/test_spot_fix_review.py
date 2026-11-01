@@ -48,7 +48,7 @@ async def test_solar_start_held_by_balancing_then_resumed_by_regulator_is_still_
     hass: HomeAssistant,
 ) -> None:
     """Bug 3's "solar back to off" also fires when load balancing holds the start back (`_start_locked`
-    returns False after `_remember_paused_charge("solar")`). Solar goes `off`, but the controller keeps the
+    returns False, its result `balancing_held` keeping it as solar's). Solar goes `off`, but the controller keeps the
     balancing pause as solar's charge, and the regulator's resume later starts it with origin `solar`.
     Solar (off, `self_started_charge()` False because the origin is `solar`) never takes it back, so when the
     surplus is gone nobody stops a solar charge that now runs on grid power."""

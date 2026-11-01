@@ -11,8 +11,8 @@ unchanged settings that answers "wait" (new prices, a new reading) keeps the pla
 for, bought on the prices known when it was made.
 
 Real price repository, settings store, preview, execution boundary and charging controller; the wire, the clock and
-the controller's window timers are the doubles. Every test runs in both ownership modes (the core driving, and the
-previous logic with the core in shadow) and the shadow must agree (`conftest.ownership_shadow_agrees`).
+the controller's window timers are the doubles. The charge-ownership core decides, and a test fails on any decision
+it could not take (`conftest`).
 """
 
 from __future__ import annotations
