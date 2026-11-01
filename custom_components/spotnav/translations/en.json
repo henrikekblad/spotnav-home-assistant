@@ -998,6 +998,9 @@
     },
     "price_range_invalid": {
       "message": "The end must be after the start."
+    },
+    "high_load_window_required": {
+      "message": "Set the high-load hours first: on the electricity price device (High-load hours start and end, shown under its hidden entities) or in the card."
     }
   },
   "services": {

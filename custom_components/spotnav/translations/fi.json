@@ -998,6 +998,9 @@
     },
     "price_range_invalid": {
       "message": "Lopun on oltava alun jälkeen."
+    },
+    "high_load_window_required": {
+      "message": "Aseta huippukuormitustunnit ensin: sähkön hinnan laitteella (Huippukuormitustunnit alkavat ja päättyvät, piilotettujen entiteettien joukossa) tai kortissa."
     }
   },
   "services": {

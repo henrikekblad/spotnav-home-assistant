@@ -998,6 +998,9 @@
     },
     "price_range_invalid": {
       "message": "La fin doit être après le début."
+    },
+    "high_load_window_required": {
+      "message": "Définissez d'abord les heures de forte charge : sur l'appareil du prix de l'électricité (Début et Fin des heures de forte charge, parmi ses entités masquées) ou dans la carte."
     }
   },
   "services": {

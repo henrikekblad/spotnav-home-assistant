@@ -998,6 +998,9 @@
     },
     "price_range_invalid": {
       "message": "Slutet måste vara efter starten."
+    },
+    "high_load_window_required": {
+      "message": "Ställ först in höglasttiden: på elprisenheten (Höglasttid börjar och slutar, bland dess dolda entiteter) eller i kortet."
     }
   },
   "services": {

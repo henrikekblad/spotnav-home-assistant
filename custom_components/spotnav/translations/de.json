@@ -998,6 +998,9 @@
     },
     "price_range_invalid": {
       "message": "Das Ende muss nach dem Beginn liegen."
+    },
+    "high_load_window_required": {
+      "message": "Lege zuerst die Hochlastzeit fest: am Strompreis-Gerät (Hochlastzeit beginnt und endet, unter seinen ausgeblendeten Entitäten) oder in der Karte."
     }
   },
   "services": {

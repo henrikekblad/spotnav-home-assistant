@@ -998,6 +998,9 @@
     },
     "price_range_invalid": {
       "message": "Slut skal være efter start."
+    },
+    "high_load_window_required": {
+      "message": "Angiv spidslasttimerne først: på elprisenheden (Spidslasttimer starter og slutter, blandt dens skjulte entiteter) eller i kortet."
     }
   },
   "services": {

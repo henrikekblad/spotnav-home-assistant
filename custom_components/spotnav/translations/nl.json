@@ -998,6 +998,9 @@
     },
     "price_range_invalid": {
       "message": "Het einde moet na het begin liggen."
+    },
+    "high_load_window_required": {
+      "message": "Stel eerst de piekuren in: op het elektriciteitsprijsapparaat (Piekuren beginnen en eindigen, bij de verborgen entiteiten) of in de kaart."
     }
   },
   "services": {

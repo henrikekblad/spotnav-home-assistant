@@ -998,6 +998,9 @@
     },
     "price_range_invalid": {
       "message": "El fin debe ser posterior al inicio."
+    },
+    "high_load_window_required": {
+      "message": "Configure primero las horas de alta carga: en el dispositivo del precio de la electricidad (Inicio y Fin de las horas de alta carga, entre sus entidades ocultas) o en la tarjeta."
     }
   },
   "services": {

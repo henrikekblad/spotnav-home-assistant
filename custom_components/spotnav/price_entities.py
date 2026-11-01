@@ -14,7 +14,9 @@ The grid tariff (`planning/auto_settings.py:GridTariff`) is written the same way
 spot" and "Grid fee in high-load hours" (setting one switches that fee on with the figure), and, hidden by default
 (the card and the app are where it is set), a policy select per fee (off or manual) and the high-load window as two
 numbers and two switches. A part of the window set while none is stored starts from the usual window (weekdays
-07-19, November to March), as does the high-load fee switched on while no window is stored.
+07-19, November to March): touching a window entity is choosing a window. The high-load fee never makes one up:
+switching it on while no window is stored is refused (`high_load_window_required`), saying to set the high-load
+hours first.
 """
 
 from __future__ import annotations
@@ -394,7 +396,7 @@ GRID_FEE_NUMBER_KEYS = {"transfer_percent": "grid_fee_percent", "transfer_high":
 GRID_FEE_POLICY_KEYS = {"transfer_percent": "grid_fee_percent_policy", "transfer_high": "grid_fee_high_policy"}
 #: A grid tariff fee is off or the person's own figure: no area suggests one.
 GRID_FEE_OPTIONS = [FISCAL_OFF, FISCAL_MANUAL]
-#: The window a part set while none is stored starts from: weekdays 07-19, November to March.
+#: The window a window entity set while none is stored starts from: weekdays 07-19, November to March.
 DEFAULT_WINDOW = HighLoadWindow()
 
 
@@ -419,11 +421,13 @@ class SpotNavGridTariffSetting(SpotNavPriceSetting):
 
 
 def _with_fee(tariff: GridTariff, fee: str, value: FiscalOverride) -> GridTariff:
-    """`tariff` with one fee replaced; the high-load fee switched on without a window gets the usual one."""
-    updated = replace(tariff, **{fee: value})
-    if fee == "transfer_high" and value.enabled and updated.high_load_window is None:
-        updated = replace(updated, high_load_window=DEFAULT_WINDOW)
-    return updated
+    """`tariff` with one fee replaced. The high-load fee switched on while no window is stored is refused: the
+    window is the person's to choose (the window entities, or the card), never made up here."""
+    if fee == "transfer_high" and value.enabled and tariff.high_load_window is None:
+        raise ServiceValidationError(
+            "set the high-load hours first", translation_domain=DOMAIN, translation_key="high_load_window_required"
+        )
+    return replace(tariff, **{fee: value})
 
 
 class GridFeeNumber(SpotNavGridTariffSetting, NumberEntity):

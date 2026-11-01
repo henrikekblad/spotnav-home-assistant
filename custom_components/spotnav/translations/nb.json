@@ -998,6 +998,9 @@
     },
     "price_range_invalid": {
       "message": "Slutten må være etter starten."
+    },
+    "high_load_window_required": {
+      "message": "Angi høylasttimene først: på strømprisenheten (Høylasttimer starter og slutter, blant de skjulte entitetene) eller i kortet."
     }
   },
   "services": {
