@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from dataclasses import replace
 from datetime import datetime, timezone
+from types import SimpleNamespace
+from typing import get_args
 
 import pytest
 from freezegun import freeze_time
@@ -14,7 +16,16 @@ from custom_components.spotnav.execution.solar_execution import SolarExecutionSt
 from custom_components.spotnav.runtime import charger_data
 from custom_components.spotnav.sessions import inputs
 from custom_components.spotnav.planning.planner import effective_minor_per_kwh
-from custom_components.spotnav.sessions.inputs import current_fiscal, price_book_for, session_facts, solar_share_of
+from custom_components.spotnav.planning.auto_settings import PAUSE_MANUAL, PauseIntent
+from custom_components.spotnav.sessions.inputs import (
+    current_fiscal,
+    pause_facts,
+    price_book_for,
+    session_facts,
+    SOLAR_WAITING_REASONS,
+    solar_share_of,
+)
+from custom_components.spotnav.site.solar_surplus import SolarReason
 
 from .world import go_auto, setup_charger
 
@@ -90,3 +101,50 @@ async def test_no_market_means_no_price_book(hass: HomeAssistant) -> None:
     entry = await setup_charger(hass)
 
     assert price_book_for(hass, entry.entry_id, datetime.now(timezone.utc)) is None
+
+
+def _controller(**changes) -> SimpleNamespace:
+    base = {"plan": None, "paused_by_balancing": False, "phase_switch_settling": False, "car_ended_at": None}
+    return SimpleNamespace(**{**base, **changes})
+
+
+def _settings(strategy: str = "solar", pause: PauseIntent | None = None) -> SimpleNamespace:
+    return SimpleNamespace(strategy=strategy, pause=pause or PauseIntent())
+
+
+@pytest.mark.parametrize(
+    ("strategy", "state", "waiting"),
+    [
+        ("solar", solar_state(state="off", reason="off_no_surplus"), True),
+        ("hybrid", solar_state(state="off", reason="stop_after_delay"), True),
+        ("hybrid", solar_state(state="off", reason="off_no_surplus", held_by_plan=True), False),
+        ("solar", solar_state(state="off", reason="vehicle_full"), False),
+        ("solar", solar_state(state="off", reason="car_stopped"), False),
+        ("solar", solar_state(state="off", reason="charger_stopped"), False),
+        ("solar", solar_state(state="off", reason="paused"), False),
+        ("hybrid", solar_state(state="off", reason="hybrid_satisfied"), False),
+        ("cheapest", solar_state(state="off", reason="off_no_surplus"), False),
+        ("solar", None, False),
+    ],
+)
+def test_the_sun_holds_a_charge_only_while_it_waits_for_surplus(strategy: str, state, waiting: bool) -> None:
+    facts = pause_facts(_controller(), _settings(strategy), state)  # type: ignore[arg-type]
+
+    assert facts.solar_waiting is waiting
+
+
+def test_every_waiting_reason_is_one_the_sun_gives() -> None:
+    assert SOLAR_WAITING_REASONS <= set(get_args(SolarReason))
+
+
+def test_the_pause_facts_are_the_controllers_and_the_stored_pause_of_auto() -> None:
+    ended = datetime(2026, 9, 22, 4, tzinfo=timezone.utc)
+    plan = SimpleNamespace(windows=[(ended, ended), (ended, ended)])
+    controller = _controller(plan=plan, paused_by_balancing=True, phase_switch_settling=True, car_ended_at=ended)
+    pause = PauseIntent(choice=PAUSE_MANUAL, admitted_at=ended)
+
+    facts = pause_facts(controller, _settings("cheapest", pause), None)  # type: ignore[arg-type]
+
+    assert facts.balancing_paused and facts.phase_switch_settling and facts.auto_paused
+    assert facts.plan_windows == ((ended, ended), (ended, ended)) and facts.car_ended_at == ended
+    assert pause_facts(_controller(), None, None).auto_paused is False  # type: ignore[arg-type]
