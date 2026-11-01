@@ -884,7 +884,7 @@
     },
     "price_source_missing": {
       "title": "Alueella {area} ei ole sähkön hintoja",
-      "description": "Kohteella **{price}** ei ole hintoja: alueelle {area} ei ole määritetty lähdettä. Avaa SpotNav-kortin asetukset, Sähkön hinta: siellä kerrotaan, mitä lisätä (Home Assistantin Nord Pool -integraatio, oma ENTSO-E-avaimesi, PVPC- tai Octopus Energy -integraatio). Ilmoitus poistuu itsestään, kun hinnat palaavat."
+      "description": "Kohteella **{price}** ei ole hintoja: alueelle {area} ei ole määritetty lähdettä. Avaa SpotNav-kortin asetukset, Sähkön hinta: siellä kerrotaan, mitä lisätä (Home Assistantin Nord Pool -integraatio, oma ENTSO-E-avaimesi, PVPC-, Octopus Energy- tai Zonneplan-integraatio). Ilmoitus poistuu itsestään, kun hinnat palaavat."
     }
   },
   "exceptions": {

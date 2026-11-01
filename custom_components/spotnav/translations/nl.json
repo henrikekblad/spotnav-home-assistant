@@ -884,7 +884,7 @@
     },
     "price_source_missing": {
       "title": "Geen stroomprijzen voor {area}",
-      "description": "**{price}** heeft geen prijzen: er is geen bron ingesteld voor {area}. Open de instellingen van de SpotNav-kaart, Stroomprijs: daar staat wat je moet toevoegen (de Nord Pool-integratie van Home Assistant, je eigen ENTSO-E-sleutel, de PVPC- of de Octopus Energy-integratie). Deze melding verdwijnt vanzelf zodra er weer prijzen zijn."
+      "description": "**{price}** heeft geen prijzen: er is geen bron ingesteld voor {area}. Open de instellingen van de SpotNav-kaart, Stroomprijs: daar staat wat je moet toevoegen (de Nord Pool-integratie van Home Assistant, je eigen ENTSO-E-sleutel, de PVPC-, de Octopus Energy- of de Zonneplan-integratie). Deze melding verdwijnt vanzelf zodra er weer prijzen zijn."
     }
   },
   "exceptions": {

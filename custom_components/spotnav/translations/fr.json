@@ -884,7 +884,7 @@
     },
     "price_source_missing": {
       "title": "Pas de prix de l'électricité pour {area}",
-      "description": "**{price}** n'a pas de prix : aucune source n'est configurée pour {area}. Ouvrez les réglages de la carte SpotNav, Prix de l'électricité : ils indiquent quoi ajouter (l'intégration Nord Pool de Home Assistant, votre propre clé ENTSO-E, l'intégration PVPC ou Octopus Energy). Ce message disparaît de lui-même dès que les prix sont de retour."
+      "description": "**{price}** n'a pas de prix : aucune source n'est configurée pour {area}. Ouvrez les réglages de la carte SpotNav, Prix de l'électricité : ils indiquent quoi ajouter (l'intégration Nord Pool de Home Assistant, votre propre clé ENTSO-E, l'intégration PVPC, Octopus Energy ou Zonneplan). Ce message disparaît de lui-même dès que les prix sont de retour."
     }
   },
   "exceptions": {
