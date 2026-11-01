@@ -53,20 +53,36 @@ class Charge:
         vehicle: str | None = CAR,
         capacity: float | None = CAPACITY,
         ratio: float = RATIO,
+        source: str = "vehicle",
     ) -> None:
         self.sampler, self.now, self.soc, self.register = sampler, at, soc, register
         self.kw, self.session, self.vehicle, self.capacity, self.ratio = kw, session, vehicle, capacity, ratio
+        self.source = source
+        #: When the register last posted: each minute while it posts steadily, else held (`posting`).
+        self.posting = True
+        self.posted_at = at
 
-    def look(self, *, fresh: bool = True, age_s: float = 30.0, estimated: bool = False, soc: float | None = None) -> None:
-        made = self.soc - self.kw * age_s / 3600.0 / self.ratio if soc is None else soc
+    def look(
+        self,
+        *,
+        fresh: bool = True,
+        age_s: float = 30.0,
+        estimated: bool = False,
+        soc: float | None = None,
+        charging: bool = True,
+    ) -> None:
+        made = self.soc - (self.kw if charging else 0.0) * age_s / 3600.0 / self.ratio if soc is None else soc
+        if self.posting:
+            self.posted_at = self.now
         self.sampler.observe(
             self.now,
             vehicle_id=self.vehicle,
             session=self.session,
-            soc=SocSeen(soc_percent=made, age_s=age_s if fresh else 3600.0, estimated=estimated),
+            soc=SocSeen(soc_percent=made, age_s=age_s if fresh else 3600.0, estimated=estimated, source=self.source),
             register_kwh=self.register,
-            register_posted_at=self.now,
+            register_posted_at=self.posted_at,
             capacity_kwh=self.capacity,
+            charging=charging,
         )
 
     def run(self, minutes: int, *, read_every: int = 5, charging: bool = True) -> None:
@@ -76,7 +92,15 @@ class Charge:
                 kwh = self.kw / 60.0
                 self.register += kwh
                 self.soc = min(100.0, self.soc + kwh / self.ratio)
-            self.look(fresh=minute % read_every == 0)
+            self.look(fresh=minute % read_every == 0, charging=charging)
+
+    def unplug(self) -> None:
+        """The charger says the car is unplugged: the plug-in ends."""
+        self.now += timedelta(minutes=1)
+        self.sampler.observe(
+            self.now, vehicle_id=self.vehicle, session=None, soc=SocSeen(None, None, False),
+            register_kwh=self.register, register_posted_at=self.now, capacity_kwh=self.capacity, charging=False,
+        )
 
     def to(self, soc: float) -> None:
         """Charge until the level reaches `soc`."""
@@ -92,7 +116,14 @@ def _session(sampler: EnergySampler, index: int, **kwargs: Any) -> Charge:
     charge = Charge(sampler, at=START + timedelta(days=index), session=f"plug_in:{index}", **kwargs)
     charge.look()
     charge.to(80.0)
+    charge.unplug()
     return charge
+
+
+def _seen(store: LearnedEnergyStore) -> tuple[EnergySample, ...]:
+    """Every sample of the car, the open plug-in's included."""
+    learned = store.learned(CAR, CAPACITY)
+    return learned.samples + (() if learned.pending is None else (learned.pending,))
 
 
 # ------------------------------------------------------------------ the rule
@@ -118,6 +149,33 @@ def test_trusted_with_three_samples_near_their_median() -> None:
     assert not spread.trusted, "one of them 20 % off the median"
     many = learned_from(CAR, [sample(index, RATIO * (2.0 if index < 3 else 1.0)) for index in range(8)])
     assert len(many.samples) == 5 and many.kwh_per_percent == pytest.approx(RATIO), "the last five"
+
+
+def test_one_odd_charge_neither_moves_the_figure_nor_takes_the_trust_away() -> None:
+    def sample(index: int, ratio: float) -> EnergySample:
+        return EnergySample(f"s{index}", ratio * 50.0, 50.0, START + timedelta(days=index))
+
+    ratios = [RATIO, RATIO * 1.02, RATIO * 0.98, RATIO * 1.6, RATIO, RATIO * 0.5, RATIO * 1.01]
+    history = [sample(index, ratio) for index, ratio in enumerate(ratios)]
+    for end in range(3, len(history) + 1):
+        learned = learned_from(CAR, history[:end])
+        assert learned.trusted, f"after {end} plug-ins"
+        assert learned.kwh_per_percent == pytest.approx(RATIO, rel=0.02), "the median of those that agree"
+    odd = learned_from(CAR, [sample(0, RATIO), sample(1, RATIO * 1.5), sample(2, RATIO * 0.6), sample(3, RATIO)])
+    assert not odd.trusted, "two agree, not three"
+
+
+def test_the_open_plug_ins_sample_waits_for_its_end() -> None:
+    def sample(index: int, ratio: float) -> EnergySample:
+        return EnergySample(f"s{index}", ratio * 50.0, 50.0, START + timedelta(days=index))
+
+    closed = [sample(0, RATIO), sample(1, RATIO), sample(2, RATIO)]
+    for growing in (RATIO * 3.0, RATIO * 0.2, RATIO * 1.05):
+        learned = learned_from(CAR, [*closed, sample(3, growing)], open_session="s3")
+        assert learned.trusted and learned.kwh_per_percent == pytest.approx(RATIO), "the open one does not count"
+        assert learned.pending is not None and learned.pending.id == "s3" and len(learned.samples) == 3
+    two = learned_from(CAR, [sample(0, RATIO), sample(1, RATIO), sample(2, RATIO)], open_session="s2")
+    assert not two.trusted, "two ended plug-ins"
 
 
 def test_the_learned_ratio_as_a_battery_size() -> None:
@@ -154,8 +212,10 @@ async def test_a_charge_over_several_windows_is_one_sample(hass: HomeAssistant) 
     charge.to(60.0)
     charge.run(60, charging=False)
     charge.to(80.0)
+    assert len(_seen(store)) == 1 and store.learned(CAR, CAPACITY).samples == (), "the plug-in is open"
+    charge.unplug()
     learned = store.learned(CAR, CAPACITY)
-    assert len(learned.samples) == 1
+    assert len(learned.samples) == 1 and learned.pending is None
     assert learned.samples[0].delta_percent == pytest.approx(60.0, abs=1.5)
     assert learned.kwh_per_percent == pytest.approx(RATIO, rel=0.02)
 
@@ -167,6 +227,7 @@ async def test_rounded_levels_still_give_the_ratio(hass: HomeAssistant) -> None:
     for _ in range(60):
         charge.run(5, read_every=1000)
         charge.look(soc=float(int(charge.soc - 11.0 * 30 / 3600 / RATIO)))
+    charge.unplug()
     assert store.learned(CAR, CAPACITY).kwh_per_percent == pytest.approx(RATIO, rel=0.03)
 
 
@@ -183,7 +244,7 @@ async def test_a_stale_level_at_either_end_gives_no_sample(hass: HomeAssistant, 
         charge.run(int(60 * RATIO / 11 * 60), read_every=10_000)
         charge.look(fresh=False)
         charge.look(estimated=True)
-    assert store.learned(CAR, CAPACITY).samples == ()
+    assert _seen(store) == ()
 
 
 async def test_less_than_ten_points_gives_no_sample(hass: HomeAssistant) -> None:
@@ -191,9 +252,9 @@ async def test_less_than_ten_points_gives_no_sample(hass: HomeAssistant) -> None
     charge = Charge(EnergySampler(store))
     charge.look()
     charge.to(20.0 + MIN_DELTA_PERCENT - 1.0)
-    assert store.learned(CAR, CAPACITY).samples == ()
+    assert _seen(store) == ()
     charge.to(20.0 + MIN_DELTA_PERCENT + 3.0)
-    assert len(store.learned(CAR, CAPACITY).samples) == 1
+    assert len(_seen(store)) == 1
 
 
 async def test_a_plug_out_in_the_middle_gives_no_sample(hass: HomeAssistant) -> None:
@@ -203,7 +264,35 @@ async def test_a_plug_out_in_the_middle_gives_no_sample(hass: HomeAssistant) -> 
     charge.to(28.0)
     charge.session = "plug_in:2"
     charge.to(36.0)
-    assert store.learned(CAR, CAPACITY).samples == (), "8 points either side of the plug-out"
+    assert _seen(store) == (), "8 points either side of the plug-out"
+
+
+async def test_an_unplug_ends_the_stretch(hass: HomeAssistant) -> None:
+    """The charger says unplugged; the car is charged elsewhere and read fresh at our charger later, on the same
+    plug-in the charger remembers: no sample."""
+    store = _store(hass)
+    charge = Charge(EnergySampler(store))
+    charge.look()
+    charge.to(28.0)
+    charge.unplug()
+    assert store.anchor is None and store.open is None
+    charge.soc = 60.0  # charged elsewhere
+    charge.run(30)
+    assert _seen(store) == (), "no stretch over the unplug, and the 8 and 5 points either side are too few"
+
+
+async def test_another_source_of_the_level_starts_again(hass: HomeAssistant) -> None:
+    """The charger's own reading (ISO 15118) and the car's cloud entity differ: a stretch is read from one."""
+    store = _store(hass)
+    charge = Charge(EnergySampler(store), source="charger")
+    charge.look()
+    charge.to(28.0)
+    charge.source = "vehicle"
+    charge.to(36.0)
+    assert _seen(store) == ()
+    assert store.anchor is not None and store.anchor.source == "vehicle"
+    charge.to(48.0)
+    assert len(_seen(store)) == 1
 
 
 async def test_another_car_or_none_gives_no_sample(hass: HomeAssistant) -> None:
@@ -215,7 +304,8 @@ async def test_another_car_or_none_gives_no_sample(hass: HomeAssistant) -> None:
     charge.to(36.0)
     charge.vehicle = CAR
     charge.to(44.0)
-    assert store.learned(CAR, CAPACITY).samples == () and store.learned("car-two", CAPACITY).samples == ()
+    two = store.learned("car-two", CAPACITY)
+    assert _seen(store) == () and two.samples == () and two.pending is None
     charge.vehicle = None
     charge.look()
     assert store.anchor is None, "an unidentified car is not one car"
@@ -229,7 +319,7 @@ async def test_a_register_that_went_back_starts_again(hass: HomeAssistant) -> No
     charge.to(28.0)
     charge.register = 0.0
     charge.to(36.0)
-    assert store.learned(CAR, CAPACITY).samples == ()
+    assert _seen(store) == ()
 
 
 async def test_an_out_of_bounds_sample_is_discarded_and_counted_once(hass: HomeAssistant) -> None:
@@ -249,9 +339,12 @@ async def test_a_new_battery_size_rechecks_the_samples(hass: HomeAssistant) -> N
         _session(sampler, index)
     assert store.learned(CAR, CAPACITY).trusted
     # 40 kWh at 0.9625 kWh per percent would be an efficiency of 0.42: none of them fits any more.
-    learned = store.learned(CAR, 40.0)
+    looked = store.learned(CAR, 40.0)
+    assert looked.samples == () and looked.discarded == 3 and not looked.trusted
+    assert store.learned(CAR, CAPACITY).trusted, "a look drops nothing"
+    learned = store.learned(CAR, 40.0, drop=True)
     assert learned.samples == () and learned.discarded == 3 and not learned.trusted
-    assert store.learned(CAR, CAPACITY).samples == (), "dropped, not hidden"
+    assert store.learned(CAR, CAPACITY).samples == (), "the need drops them for good"
 
 
 async def test_without_a_battery_size_the_wide_bounds_apply(hass: HomeAssistant) -> None:
@@ -271,6 +364,7 @@ async def test_a_dst_night_counts_real_time(hass: HomeAssistant) -> None:
         charge = Charge(sampler, at=local + timedelta(minutes=index), session=f"plug_in:{index}")
         charge.look()
         charge.to(80.0)
+        charge.unplug()
     learned = store.learned(CAR, CAPACITY)
     assert learned.trusted and learned.kwh_per_percent == pytest.approx(RATIO, rel=0.02)
 
@@ -280,7 +374,7 @@ async def test_a_restart_mid_charge_keeps_the_start(hass: HomeAssistant, hass_st
     charge = Charge(EnergySampler(store))
     charge.look()
     charge.to(50.0)
-    assert store.learned(CAR, CAPACITY).samples[0].delta_percent == pytest.approx(30.0, abs=1.5)
+    assert _seen(store)[0].delta_percent == pytest.approx(30.0, abs=1.5)
     start = store.anchor
     assert start is not None and start.soc_percent == pytest.approx(20.0, abs=1.0)
     hass_storage["spotnav.learned_energy.entry"] = {
@@ -288,9 +382,10 @@ async def test_a_restart_mid_charge_keeps_the_start(hass: HomeAssistant, hass_st
     }
     restarted = _store(hass)
     await restarted.async_load()
-    assert restarted.anchor == start
+    assert restarted.anchor == start and restarted.open == (CAR, "plug_in:1")
     charge.sampler = EnergySampler(restarted)  # a new process: no register values in memory
     charge.to(80.0)
+    charge.unplug()
     learned = restarted.learned(CAR, CAPACITY)
     assert len(learned.samples) == 1 and learned.samples[0].delta_percent == pytest.approx(60.0, abs=1.5)
 
@@ -312,14 +407,17 @@ async def test_a_restart_mid_charge_keeps_the_start(hass: HomeAssistant, hass_st
     ],
 )
 def test_a_malformed_store_is_ignored(raw: Any) -> None:
-    cars, anchor = parse_stored(raw)
-    assert all(not car.samples for car in cars.values()) and anchor is None
+    cars, anchor, plug_in = parse_stored(raw)
+    assert all(not car.samples for car in cars.values()) and anchor is None and plug_in is None
 
 
 def test_a_malformed_anchor_is_ignored() -> None:
-    good = Anchor(CAR, "plug_in:1", 20.0, START, 1000.0)
+    good = Anchor(CAR, "plug_in:1", 20.0, START, 1000.0, "vehicle")
     assert parse_stored({"anchor": good.as_dict()})[1] == good
-    for broken in ({**good.as_dict(), "soc_percent": 120}, {**good.as_dict(), "at": "2026-09-22T01:00:00"}, 3):
+    for broken in (
+        {**good.as_dict(), "soc_percent": 120}, {**good.as_dict(), "at": "2026-09-22T01:00:00"},
+        {**good.as_dict(), "source": 7}, 3,
+    ):
         assert parse_stored({"anchor": broken})[1] is None
 
 
@@ -439,8 +537,10 @@ async def test_a_plan_charge_is_learned_from_at_the_plan_watch(hass: HomeAssista
             await hass.async_block_till_done()
         learned = preview._learned_energy.learned(device_id, CAPACITY)  # noqa: SLF001
     assert seen >= 60, "the plan charged"
-    assert len(learned.samples) == 1 and learned.samples[0].delta_percent >= MIN_DELTA_PERCENT
-    assert learned.kwh_per_percent == pytest.approx(RATIO, rel=0.12)
+    assert learned.samples == (), "the plug-in is open: its sample waits"
+    pending = learned.pending
+    assert pending is not None and pending.delta_percent >= MIN_DELTA_PERCENT
+    assert pending.kwh_per_percent == pytest.approx(RATIO, rel=0.12)
 
 
 # ------------------------------------------------------------------ the dashboard

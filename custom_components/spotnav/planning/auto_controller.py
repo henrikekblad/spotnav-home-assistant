@@ -49,7 +49,7 @@ from ..pricing.market_observation import MarketObservation
 from ..pricing.price_refresh import PriceRefreshManager
 from ..pricing.price_source import entry_source_for, PriceSource, SIGNAL_PRICE_SOURCES, with_source
 from ..pricing.relay_contract import AreaEntry
-from ..runtime import domain_data
+from ..runtime import charger_data, domain_data
 from ..execution.controller import CONNECTION_PLUGGED_IN
 from ..sessions.model import STARTED_OTHER
 from ..sessions.recorder import RESET_TOLERANCE_KWH
@@ -1648,8 +1648,13 @@ class AutoPlannerController:
         settings = self._effective(self._store.settings(self._entry_id))
         check = self._watch.last_check
         learned = self._learned_power(settings)
-        facts = None if self._vehicle_reader is None else self._vehicle_reader(settings.target.vehicle_id or "")
-        energy = self._learned_energy_for(facts)
+        # Read without a reading of the car's level (which would move the estimate's anchor): the planned car and
+        # its battery size only.
+        vehicle_id = resolved_vehicle_id(self._hass, self._entry_id)
+        data = charger_data(self._hass, self._entry_id)
+        reader = None if data is None else data.soc_reader
+        capacity = None if reader is None or vehicle_id is None else reader.capacity_kwh(vehicle_id)
+        energy = self.learned_energy(vehicle_id, capacity)
         anchor = None if self._learned_energy is None else self._learned_energy.anchor
         return {
             "behind_check": None if check is None else check.as_dict(),
@@ -1664,14 +1669,16 @@ class AutoPlannerController:
             },
         }
 
-    def _learned_energy_for(self, facts: LiveVehicleFacts | None) -> LearnedEnergy:
+    def _learned_energy_for(self, facts: LiveVehicleFacts | None, *, drop: bool = False) -> LearnedEnergy:
         """What is learned of the wall kWh per percent of the car the level is read from, when that is the car this
         charger plans for (`learned_energy.py`); nothing otherwise."""
         if facts is None:
             return NOTHING_LEARNED
-        return self.learned_energy(facts.vehicle_id, facts.reported_capacity_kwh)
+        return self.learned_energy(facts.vehicle_id, facts.reported_capacity_kwh, drop=drop)
 
-    def learned_energy(self, vehicle_id: str | None, capacity_kwh: float | None) -> LearnedEnergy:
+    def learned_energy(
+        self, vehicle_id: str | None, capacity_kwh: float | None, *, drop: bool = False
+    ) -> LearnedEnergy:
         """What is learned of `vehicle_id`'s wall kWh per percent at this charger, checked against `capacity_kwh`,
         when it is the car this charger plans for; nothing otherwise. The dashboard reads the same figure
         (`learned_energy.target_need`)."""
@@ -1679,7 +1686,7 @@ class AutoPlannerController:
             return NOTHING_LEARNED
         if vehicle_id != resolved_vehicle_id(self._hass, self._entry_id):
             return NOTHING_LEARNED
-        return self._learned_energy.learned(vehicle_id, capacity_kwh)
+        return self._learned_energy.learned(vehicle_id, capacity_kwh, drop=drop)
 
     def _arm_watch(self) -> None:
         """Keep the one appointment to look at the plan's windows (`plan_watch.next_check_at`): an earlier one is
@@ -1768,6 +1775,8 @@ class AutoPlannerController:
         car_ended_at = controller.car_ended_at
         car_ended = window is not None and car_ended_at is not None and car_ended_at >= window[0]
         learned = self._learned_power(settings)
+        # The car's facts, read once for this look (the learned power's taper and the learned energy).
+        facts = None if self._vehicle_reader is None else self._vehicle_reader(settings.target.vehicle_id or "")
         wiring = self._wiring(settings)
         planned_kw = power_kw(amps, wiring.phases, wiring.voltage_v) if wiring is not None and amps else 0.0
         power = planned_kw if learned.cap_kw is None else min(planned_kw, learned.cap_kw)
@@ -1802,7 +1811,7 @@ class AutoPlannerController:
                 and not self._car_ending(controller)
                 and (now - window[0]).total_seconds() >= START_GRACE_S
                 and self._at_planned_current(controller, amps)
-                and not self._tapering(settings)
+                and not self._tapering(facts)
             )
             sample = None
             if clean:
@@ -1812,7 +1821,7 @@ class AutoPlannerController:
             self._sampler.sample(sample, planned_kw)
         if self._energy_sampler is not None:
             try:
-                self._sample_energy(controller, settings, now, reading, reading_at)
+                self._sample_energy(controller, facts, now, reading, reading_at)
             except Exception:  # noqa: BLE001 - learning is a convenience, never worth the behind-plan decision
                 _LOGGER.debug("Learning the energy per percent failed", exc_info=True)
         return decision
@@ -1820,7 +1829,7 @@ class AutoPlannerController:
     def _sample_energy(
         self,
         controller: Any,
-        settings: AutoSettings,
+        facts: LiveVehicleFacts | None,
         now: datetime,
         reading: float | None,
         reading_at: datetime | None,
@@ -1828,23 +1837,25 @@ class AutoPlannerController:
         """One look for the learned wall kWh per percent (`learned_energy.py`): the car this charger plans for and
         its level, the plug-in, and the count."""
         assert self._energy_sampler is not None
-        facts = None if self._vehicle_reader is None else self._vehicle_reader(settings.target.vehicle_id or "")
-        vehicle_id = resolved_vehicle_id(self._hass, self._entry_id)
-        if facts is None or not vehicle_id or facts.vehicle_id != vehicle_id:
-            vehicle_id = None
-        plugged_in = controller.plugged_in_at or controller.plugged_in_for_count
+        # The plug-in: the last one the charger saw (kept across a restart, so a restart keeps the stretch), else the
+        # one it counts from; none while the charger says the car is unplugged, which ends the stretch.
+        plugged_in = None if controller.known_connected is False else (
+            controller.plugged_in_at or controller.plugged_in_for_count
+        )
         self._energy_sampler.observe(
             now,
-            vehicle_id=vehicle_id,
+            vehicle_id=None if facts is None else facts.vehicle_id or None,
             session=None if plugged_in is None else f"plug_in:{plugged_in.isoformat()}",
             soc=SocSeen(
                 soc_percent=None if facts is None else facts.soc_percent,
                 age_s=None if facts is None else facts.soc_age_s,
                 estimated=facts is not None and facts.soc_estimated,
+                source=None if facts is None else facts.soc_source,
             ),
             register_kwh=reading,
             register_posted_at=reading_at,
             capacity_kwh=None if facts is None else facts.reported_capacity_kwh,
+            charging=bool(controller.charging),
         )
 
     @staticmethod
@@ -1892,11 +1903,9 @@ class AutoPlannerController:
             return not controller.adapter.capabilities.set_current
         return setpoint == amps
 
-    def _tapering(self, settings: AutoSettings) -> bool:
+    @staticmethod
+    def _tapering(facts: LiveVehicleFacts | None) -> bool:
         """The car's known level is where a car tapers by itself (`TAPER_PERCENT`)."""
-        if self._vehicle_reader is None:
-            return False
-        facts = self._vehicle_reader(settings.target.vehicle_id or "")
         return facts is not None and facts.soc_percent is not None and facts.soc_percent >= TAPER_PERCENT
 
     def _republish_execution(self, snapshot: AutoSnapshot) -> AutoSnapshot:
@@ -2085,7 +2094,8 @@ class AutoPlannerController:
         # Energy the wall must deliver: battery need divided by charging efficiency
         # (`soc_estimate.CHARGE_EFFICIENCY`), or, once trusted, the car's learned wall kWh per percent
         # (`learned_energy.py`), given as the battery size that takes it at that efficiency.
-        learned = self._learned_energy_for(facts)
+        # The need drops samples a changed battery size no longer fits; every other read only looks.
+        learned = self._learned_energy_for(facts, drop=True)
         reason, wall_kwh = target_need(
             learned,
             soc_percent=planned_from,

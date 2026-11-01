@@ -63,6 +63,8 @@ MIN_EFFICIENCY: Final = 0.70
 MAX_EFFICIENCY: Final = 1.0
 MIN_CAPACITY_KWH: Final = 10.0
 MAX_CAPACITY_KWH: Final = 200.0
+#: The samples stored per car: the last `MAX_SAMPLES` of ended plug-ins and the open one's.
+_STORED_SAMPLES: Final = MAX_SAMPLES + 1
 #: How far back (s) the register's values are kept (in memory) to read its value when a level was made.
 HISTORY_S: Final = 1800.0
 #: How long, in seconds, after a write the store waits to save.
@@ -120,6 +122,8 @@ class Anchor:
     soc_percent: float
     at: datetime
     kwh: float
+    #: Where the level was read (`charger` or `vehicle`, `SocReading.source`): another source starts again.
+    source: str | None = None
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -128,6 +132,7 @@ class Anchor:
             "soc_percent": self.soc_percent,
             "at": self.at.isoformat(),
             "kwh": self.kwh,
+            "source": self.source,
         }
 
     @staticmethod
@@ -140,7 +145,12 @@ class Anchor:
             return None
         if not 0.0 <= float(soc) <= 100.0 or float(kwh) < 0:
             return None
-        return Anchor(vehicle_id=vehicle, session=session, soc_percent=float(soc), at=at, kwh=float(kwh))
+        source = raw.get("source")
+        if source is not None and not _ident(source):
+            return None
+        return Anchor(
+            vehicle_id=vehicle, session=session, soc_percent=float(soc), at=at, kwh=float(kwh), source=source
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -153,6 +163,8 @@ class LearnedEnergy:
     samples: tuple[EnergySample, ...]
     trusted: bool
     discarded: int = 0
+    #: The open plug-in's own sample, not counted until the plug-in ends.
+    pending: EnergySample | None = None
 
     @property
     def use_kwh_per_percent(self) -> float | None:
@@ -169,6 +181,11 @@ class LearnedEnergy:
                 str(index): {"kwh": round(s.kwh, 3), "delta_percent": round(s.delta_percent, 1), "at": s.at.isoformat()}
                 for index, s in enumerate(self.samples, start=1)
             },
+            "pending_sample": None if self.pending is None else {
+                "kwh": round(self.pending.kwh, 3),
+                "delta_percent": round(self.pending.delta_percent, 1),
+                "at": self.pending.at.isoformat(),
+            },
             "trusted": self.trusted,
             "discarded": self.discarded,
         }
@@ -177,15 +194,23 @@ class LearnedEnergy:
 NOTHING_LEARNED: Final = LearnedEnergy(vehicle_id=None, kwh_per_percent=None, samples=(), trusted=False)
 
 
-def learned_from(vehicle_id: str | None, samples: list[EnergySample], discarded: int = 0) -> LearnedEnergy:
-    """The median of the last `MAX_SAMPLES` samples, trusted with `TRUST_SAMPLES` or more all near it."""
-    kept = samples[-MAX_SAMPLES:]
+def learned_from(
+    vehicle_id: str | None, samples: list[EnergySample], discarded: int = 0, open_session: str | None = None
+) -> LearnedEnergy:
+    """From the last `MAX_SAMPLES` samples of ended plug-ins (the open plug-in's own, still growing, is left out until
+    it ends): trusted when at least `TRUST_SAMPLES` of them lie within `TRUST_SPREAD` of their median, and then the
+    figure is the median of those that agree, so one odd charge neither moves it nor takes the trust away."""
+    pending = next((sample for sample in samples if sample.id == open_session), None) if open_session else None
+    kept = [sample for sample in samples if sample is not pending][-MAX_SAMPLES:]
     if not kept:
-        return LearnedEnergy(vehicle_id, None, (), False, discarded)
-    ratios = [sample.kwh_per_percent for sample in kept]
-    median = statistics.median(ratios)
-    trusted = len(kept) >= TRUST_SAMPLES and all(abs(ratio - median) <= TRUST_SPREAD * median for ratio in ratios)
-    return LearnedEnergy(vehicle_id, median, tuple(kept), trusted, discarded)
+        return LearnedEnergy(vehicle_id, None, (), False, discarded, pending)
+    median = statistics.median(sample.kwh_per_percent for sample in kept)
+    agreeing = [
+        sample.kwh_per_percent for sample in kept if abs(sample.kwh_per_percent - median) <= TRUST_SPREAD * median
+    ]
+    trusted = len(agreeing) >= TRUST_SAMPLES
+    figure = statistics.median(agreeing) if trusted else median
+    return LearnedEnergy(vehicle_id, figure, tuple(kept), trusted, discarded, pending)
 
 
 @dataclass(slots=True)
@@ -203,6 +228,8 @@ class LearnedEnergyStore:
         self._store: Store[dict[str, Any]] = Store(hass, _STORE_VERSION, f"{_STORE_PREFIX}.{entry_id}")
         self._cars: dict[str, _Car] = {}
         self.anchor: Anchor | None = None
+        #: The plug-in (car, plug-in) last seen going on: its sample is not counted until it ends.
+        self.open: tuple[str, str] | None = None
 
     async def async_load(self) -> None:
         """Read what was stored; anything that is not exactly what this writes is dropped. A file that cannot be read
@@ -214,27 +241,29 @@ class LearnedEnergyStore:
                 "SpotNav: the learned energy per percent could not be read (%s); learning again", type(err).__name__
             )
             raw = None
-        self._cars, self.anchor = parse_stored(raw)
+        self._cars, self.anchor, self.open = parse_stored(raw)
 
     @staticmethod
     async def async_remove_stored(hass: HomeAssistant, entry_id: str) -> None:
         """The charger is gone for good: what was learned at it goes too."""
         await Store(hass, _STORE_VERSION, f"{_STORE_PREFIX}.{entry_id}").async_remove()
 
-    def learned(self, vehicle_id: str | None, capacity_kwh: float | None) -> LearnedEnergy:
-        """What is learned for this car, its samples checked against today's battery size (those that no longer
-        fit are dropped and counted); nothing without an identified car."""
+    def learned(self, vehicle_id: str | None, capacity_kwh: float | None, *, drop: bool = False) -> LearnedEnergy:
+        """What is learned for this car, counting only the samples that fit today's battery size; nothing without an
+        identified car. With `drop` (the planner's need) those that no longer fit are dropped for good and counted;
+        without it (the estimate, the dashboard, the diagnostics) this only looks."""
         if not vehicle_id:
             return NOTHING_LEARNED
         car = self._cars.get(vehicle_id)
         if car is None:
             return learned_from(vehicle_id, [])
         fitting = [sample for sample in car.samples if fits(sample.kwh_per_percent, capacity_kwh)]
-        if len(fitting) != len(car.samples):
-            car.discarded = min(_MAX_DISCARDED, car.discarded + len(car.samples) - len(fitting))
-            car.samples = fitting
+        discarded = min(_MAX_DISCARDED, car.discarded + len(car.samples) - len(fitting))
+        if drop and len(fitting) != len(car.samples):
+            car.discarded, car.samples = discarded, fitting
             self._save()
-        return learned_from(vehicle_id, car.samples, car.discarded)
+        open_session = self.open[1] if self.open is not None and self.open[0] == vehicle_id else None
+        return learned_from(vehicle_id, fitting, discarded, open_session)
 
     def put(self, vehicle_id: str, sample: EnergySample, capacity_kwh: float | None) -> bool:
         """Keep `sample` as its plug-in's sample (replacing that plug-in's shorter one), or, when it is out of
@@ -252,13 +281,18 @@ class LearnedEnergyStore:
             # The stretch came back within bounds as it grew: it was not a bad one after all.
             car.discarded_session = None
             car.discarded = max(0, car.discarded - 1)
-        car.samples = [*others, sample][-MAX_SAMPLES:]
+        car.samples = [*others, sample][-_STORED_SAMPLES:]
         self._save()
         return True
 
     def set_anchor(self, anchor: Anchor | None) -> None:
         if anchor != self.anchor:
             self.anchor = anchor
+            self._save()
+
+    def set_open(self, plug_in: tuple[str, str] | None) -> None:
+        if plug_in != self.open:
+            self.open = plug_in
             self._save()
 
     def _save(self) -> None:
@@ -275,16 +309,19 @@ class LearnedEnergyStore:
                 for vehicle_id, car in self._cars.items()
             },
             "anchor": None if self.anchor is None else self.anchor.as_dict(),
+            "open": None if self.open is None else {"vehicle_id": self.open[0], "session": self.open[1]},
         }
 
 
 @dataclass(frozen=True, slots=True)
 class SocSeen:
-    """The car's level as one look sees it: the percentage, its age (s) and whether it is an estimate."""
+    """The car's level as one look sees it: the percentage, its age (s), whether it is an estimate, and where it was
+    read (`charger` or `vehicle`)."""
 
     soc_percent: float | None
     age_s: float | None
     estimated: bool
+    source: str | None = None
 
     @property
     def fresh(self) -> bool:
@@ -315,16 +352,27 @@ class EnergySampler:
         register_kwh: float | None,
         register_posted_at: datetime | None,
         capacity_kwh: float | None,
+        charging: bool = True,
     ) -> None:
-        """One look: what the car's level and the count say now."""
+        """One look: what the car's level and the count say now. `session` is `None` with no plug-in known or the
+        car unplugged; `charging` says whether the charger charges now (a value the register held is believed only
+        while it does not)."""
         self._remember(now, register_kwh, register_posted_at)
         anchor = self._store.anchor
-        if not vehicle_id or not session:
-            # No car identified, or no plug-in known: an unidentified car is not one car.
+        if not session:
+            # Unplugged, or no plug-in known: the stretch ends, and so does the open plug-in.
+            self._store.set_anchor(None)
+            self._store.set_open(None)
+            return
+        if not vehicle_id:
+            # No car identified: an unidentified car is not one car.
             self._store.set_anchor(None)
             return
-        if anchor is not None and (anchor.vehicle_id, anchor.session) != (vehicle_id, session):
-            anchor = None  # a plug-out, or another car: the stretch starts again
+        self._store.set_open((vehicle_id, session))
+        if anchor is not None and (anchor.vehicle_id, anchor.session, anchor.source) != (
+            vehicle_id, session, soc.source,
+        ):
+            anchor = None  # a plug-out, another car, or the level read elsewhere: the stretch starts again
         if anchor is not None and register_kwh is not None and register_kwh < anchor.kwh - REGISTER_TOLERANCE_KWH:
             anchor = None  # the count went back (a reset, a meter replaced)
         if register_kwh is None or not soc.fresh:
@@ -332,12 +380,12 @@ class EnergySampler:
             return
         assert soc.soc_percent is not None and soc.age_s is not None
         made_at = now - timedelta(seconds=soc.age_s)
-        kwh = self._value_at(made_at, now, register_kwh)
+        kwh = self._value_at(made_at, now, register_kwh, charging=charging)
         if kwh is None:
             self._store.set_anchor(anchor)
             return
         if anchor is None or soc.soc_percent < anchor.soc_percent or kwh < anchor.kwh - REGISTER_TOLERANCE_KWH:
-            self._store.set_anchor(Anchor(vehicle_id, session, soc.soc_percent, made_at, kwh))
+            self._store.set_anchor(Anchor(vehicle_id, session, soc.soc_percent, made_at, kwh, soc.source))
             return
         self._store.set_anchor(anchor)
         if made_at <= anchor.at:
@@ -355,12 +403,15 @@ class EnergySampler:
         self._posts = {at: value for at, value in self._posts.items() if at >= horizon}
         self._looks = [(at, value) for at, value in self._looks if at >= horizon]
 
-    def _value_at(self, made_at: datetime, now: datetime, register_kwh: float) -> float | None:
+    def _value_at(self, made_at: datetime, now: datetime, register_kwh: float, *, charging: bool) -> float | None:
         """The count when the level was made: interpolated between the register's posts while it posts steadily,
-        else the value it stood at from a look at or before then to now; `None` when neither is known."""
+        else, while the charger is not charging, the value it stood at from a look at or before then to now (a
+        register that books in chunks while charging would skew it); `None` when neither is known."""
         value = register_value_at(self._posts.items(), made_at, now)
         if value is not None:
             return value
+        if charging:
+            return None
         before = [kwh for at, kwh in self._looks if at <= made_at]
         if before and abs(before[-1] - register_kwh) <= REGISTER_TOLERANCE_KWH:
             # A count that only rises stood still from that look to now, so it held this value when the level was
@@ -369,11 +420,12 @@ class EnergySampler:
         return None
 
 
-def parse_stored(raw: Any) -> tuple[dict[str, _Car], Anchor | None]:
-    """The stored cars and the open stretch's start that are well formed; anything malformed is left out."""
+def parse_stored(raw: Any) -> tuple[dict[str, _Car], Anchor | None, tuple[str, str] | None]:
+    """The stored cars, the open stretch's start and the open plug-in that are well formed; anything malformed is
+    left out."""
     cars: dict[str, _Car] = {}
     if not isinstance(raw, dict):
-        return cars, None
+        return cars, None, None
     vehicles = raw.get("vehicles")
     if isinstance(vehicles, dict):
         for vehicle_id, item in vehicles.items():
@@ -387,9 +439,13 @@ def parse_stored(raw: Any) -> tuple[dict[str, _Car], Anchor | None]:
             count = int(discarded) if _finite(discarded) and 0 <= discarded <= _MAX_DISCARDED else 0
             session = item.get("discarded_session")
             cars[vehicle_id] = _Car(
-                samples=samples[-MAX_SAMPLES:], discarded=count, discarded_session=session if _ident(session) else None
+                samples=samples[-_STORED_SAMPLES:], discarded=count, discarded_session=session if _ident(session) else None
             )
-    return cars, Anchor.from_stored(raw.get("anchor"))
+    stored_open = raw.get("open")
+    plug_in = None
+    if isinstance(stored_open, dict) and _ident(stored_open.get("vehicle_id")) and _ident(stored_open.get("session")):
+        plug_in = (stored_open["vehicle_id"], stored_open["session"])
+    return cars, Anchor.from_stored(raw.get("anchor")), plug_in
 
 
 def with_learned(learned: LearnedEnergy, capacity_kwh: float | None) -> float | None:
