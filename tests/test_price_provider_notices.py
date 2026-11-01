@@ -75,9 +75,13 @@ NL_BESIDE_ZONNEPLAN = {**NP, "zonneplan_entry": "loaded", "zonneplan_elsewhere":
         (SourceFacts(**ZONNEPLAN, zonneplan_entry="not_loaded"), "zonneplan_not_loaded"),
         (SourceFacts(**ZONNEPLAN, zonneplan_entry="loaded"), "zonneplan_no_tariff"),
         (SourceFacts(**ZONNEPLAN), "add_zonneplan"),
-        # NL while Zonneplan is set up: the hint, whatever NL's own source.
+        # NL while Zonneplan is set up: the hint only beside a working source of NL's own; without one, NL's own
+        # notice (what gives it prices, and what its Repairs issue points to) comes first.
         (SourceFacts(**NL_BESIDE_ZONNEPLAN, nordpool_entry="loaded"), "zonneplan_area"),
-        (SourceFacts(**NL_BESIDE_ZONNEPLAN), "zonneplan_area"),
+        (SourceFacts(**NL_BESIDE_ZONNEPLAN, entsoe_key="ok"), "zonneplan_area"),
+        (SourceFacts(**NL_BESIDE_ZONNEPLAN), "add_nordpool"),
+        (SourceFacts(**NL_BESIDE_ZONNEPLAN, nordpool_entry="not_loaded"), "nordpool_not_loaded"),
+        (SourceFacts(**NL_BESIDE_ZONNEPLAN, entsoe_key="rejected"), "entsoe_key_rejected"),
         (SourceFacts(**NP, nordpool_entry="loaded"), None),
         (SourceFacts(**NP, entsoe_key="ok"), None),
         (SourceFacts(**NP, entsoe_key="unchecked"), None),

@@ -488,13 +488,23 @@ async def test_without_the_integration_the_notice_asks_for_it(world: World) -> N
 async def test_nl_hints_at_the_zonneplan_area_while_the_integration_is_loaded(world: World) -> None:
     await world.start(loaded=False)
     assert world.notice("NL") == (None, "add_nordpool")
+    # Zonneplan loaded, but NL has no source of its own: NL's own notice first, the one its Repairs issue names.
     world.entry.mock_state(world.hass, ConfigEntryState.LOADED)
-    assert world.notice("NL") == (None, "zonneplan_area")
-    # Only the Netherlands' other area: Belgium and Spain's PVPC are not Zonneplan's.
-    assert world.notice("BE") == (None, "add_nordpool")
-    assert world.notice("ES-PVPC") == (None, "add_pvpc")
-    world.entry.mock_state(world.hass, ConfigEntryState.NOT_LOADED)
     assert world.notice("NL") == (None, "add_nordpool")
+
+    nordpool = MockConfigEntry(domain="nordpool", title="Nord Pool", data={})
+    nordpool.add_to_hass(world.hass)
+    nordpool.mock_state(world.hass, ConfigEntryState.LOADED)
+    try:
+        # NL has prices of its own: now the hint, beside the source.
+        assert world.notice("NL") == ("nordpool", "zonneplan_area")
+        # Only the Netherlands' other area: Belgium and Spain's PVPC are not Zonneplan's.
+        assert world.notice("BE") == ("nordpool", None)
+        assert world.notice("ES-PVPC") == (None, "add_pvpc")
+        world.entry.mock_state(world.hass, ConfigEntryState.NOT_LOADED)
+        assert world.notice("NL") == ("nordpool", None)
+    finally:
+        nordpool.mock_state(world.hass, ConfigEntryState.NOT_LOADED)
 
 
 # ------------------------------------------------------------------ the app's price days

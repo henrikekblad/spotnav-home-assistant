@@ -22,7 +22,7 @@ that is there but failing (Nord Pool unreachable, ENTSO-E asking to wait) stays 
 | Zonneplan | an entry, not loaded | `zonneplan_not_loaded` |
 | Zonneplan | the integration loaded, no enabled tariff sensor | `zonneplan_no_tariff` |
 | Zonneplan | no entry | `add_zonneplan` |
-| another area of Zonneplan's country (NL) | a `zonneplan_one` entry loaded | `zonneplan_area` |
+| another area of Zonneplan's country (NL) | a source of its own, a `zonneplan_one` entry loaded | `zonneplan_area` |
 | Nord Pool area | a `nordpool` entry loaded, or a usable ENTSO-E key | none |
 | Nord Pool area | a `nordpool` entry, not loaded | `nordpool_not_loaded` |
 | Nord Pool area | no entry, the ENTSO-E key rejected | `entsoe_key_rejected` |
@@ -32,9 +32,10 @@ that is there but failing (Nord Pool unreachable, ENTSO-E asking to wait) stays 
 | ENTSO-E area | no key | `add_entsoe_key` |
 | any other | | `source_missing` |
 
-`zonneplan_area` is the one notice beside a source: Zonneplan is set up, so the person likely pays its tariff, and
-the area that holds it (`NL-ZONNEPLAN`) is a choice away. It shows whatever NL's own source is, and goes with the
-integration.
+`zonneplan_area` is a hint beside a source: Zonneplan is set up, so the person likely pays its tariff, and the area
+that holds it (`NL-ZONNEPLAN`) is a choice away. It shows only while NL has a working source of its own (no notice
+of its own); without one NL's own notice comes first (`add_nordpool`, ...), the action that gives it prices and the
+one its Repairs issue points to. It goes with the integration.
 
 The notice shows as soon as the area has no source, also while it still holds today's prices (kept from before
 2.0); only the Repairs issue waits for prices to have stopped (`price_device.py`).
@@ -152,7 +153,15 @@ NO_SOURCE: Final = SourceStatus(key=None, name=None, url=None, notice=ProviderNo
 
 
 def source_notice(facts: SourceFacts) -> ProviderNotice | None:
-    """The table of the module, row by row."""
+    """The table of the module, row by row: the area's own notice, else the Zonneplan hint."""
+    own = _own_notice(facts)
+    if own is None and facts.zonneplan_elsewhere:
+        return ProviderNotice("zonneplan_area")
+    return own
+
+
+def _own_notice(facts: SourceFacts) -> ProviderNotice | None:
+    """The notice that gives the area a source of its own, `None` when it has one."""
     if facts.pvpc_route:
         if facts.pvpc_entry == "loaded":
             return None
@@ -175,8 +184,6 @@ def source_notice(facts: SourceFacts) -> ProviderNotice | None:
         if facts.zonneplan_entry == "loaded":
             return ProviderNotice("zonneplan_no_tariff")
         return ProviderNotice("add_zonneplan")
-    if facts.zonneplan_elsewhere:
-        return ProviderNotice("zonneplan_area")
     key_usable = facts.entsoe_route and facts.entsoe_key in ("ok", "unchecked")
     if facts.nordpool_route:
         if facts.nordpool_entry == "loaded" or key_usable:

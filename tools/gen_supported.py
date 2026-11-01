@@ -800,8 +800,8 @@ def prices_section() -> list[str]:
         "setting, off by default: Dutch network costs are per connection, not per kWh.",
         "- **Your prices.** They are read from the [Zonneplan](https://github.com/fsaris/home-assistant-zonneplan-one) "
         "integration, installed through HACS (its sensor *Current quarter hourly electricity tariff* must be "
-        "on). SpotNav does not contact Zonneplan itself. While that integration is loaded, the area "
-        "*Netherlands* shows a hint to choose *Netherlands – Zonneplan*. When it is down there is no fallback "
+        "on). SpotNav does not contact Zonneplan itself. While that integration is loaded and the "
+        "area *Netherlands* has prices of its own, it shows a hint to choose *Netherlands – Zonneplan*. When it is down there is no fallback "
         "to the spot price: the days already held keep planning, and tomorrow waits.",
         "- **When.** Tomorrow's tariff appears in the afternoon, after the day-ahead auction. If the "
         "integration's forecast right after Zonneplan is added starts at the current quarter-hour rather than "

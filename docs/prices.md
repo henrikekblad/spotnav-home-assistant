@@ -41,8 +41,8 @@ source an area uses follows from what you have set up; there is no setting to ch
   *Netherlands – Zonneplan*. That tariff already contains Zonneplan's purchase fee, energy tax and VAT, so
   VAT and tax show as *Included in the price* and nothing is added. The area *Netherlands* stays the spot
   price with your own fees: the two areas never share days or a price history, and when the Zonneplan
-  integration is down there is no fallback to the spot price. While the Zonneplan integration is loaded, the
-  area *Netherlands* shows a hint to choose *Netherlands – Zonneplan*. See
+  integration is down there is no fallback to the spot price. While the Zonneplan integration is loaded and
+  the area *Netherlands* has prices of its own, it shows a hint to choose *Netherlands – Zonneplan*. See
   [the Netherlands](supported.md#netherlands-zonneplan).
 
 An area with no source of its own shows a notice in the card (**Settings → Electricity price**) with the
