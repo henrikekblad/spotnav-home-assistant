@@ -572,13 +572,22 @@ class OwnershipShadow:
         decides with no state of its own changing (a hand-off at a window's end)."""
         self.end(self.begin(), event, legacy=legacy, outcome=outcome, fields=fields)
 
-    def restart(self, event: Event, stored: ChargeSession | None = None, *, keys_newer: bool = False) -> None:
+    def restart(
+        self,
+        event: Event,
+        stored: ChargeSession | None = None,
+        *,
+        keys_newer: bool = False,
+        keys_owner: str | None = None,
+    ) -> None:
         """The record was read back after a restart, and the restart is fed. The core's session is today's as read;
         when the core drives and its own stored record was read (`stored`), that record, decided from as it is and
         then compared with today's. Whether the charger charges by itself is seen now, not stored: an owner of
         nobody or of the charger itself is today's. Today's keys written after the record's last change
         (`keys_newer`) are the newer: what the session reads from them is today's, and only the person intent
-        (kept by the execution boundary, not in those keys) is the record's."""
+        (kept by the execution boundary, not in those keys) is the record's. If reading today's state fails while the
+        core drives, the owner is not lost: the record's session where it is the truth, else the owner today's keys
+        read back (`keys_owner`, in the core's words)."""
         from_store = stored is not None and self.drives
         try:
             today = self._legacy()
@@ -594,6 +603,10 @@ class OwnershipShadow:
         except Exception as err:  # noqa: BLE001 - the shadow never raises into the real path
             self._error("restart", event.kind)
             self.failed("restart", event.kind, err)
+            if from_store and stored is not None and not keys_newer:
+                self.session = stored
+            elif self.drives and keys_owner is not None:
+                self.session = self.session.with_changes(owner=keys_owner)
             return
         self.end(self.begin(line_up=not from_store), event)
 

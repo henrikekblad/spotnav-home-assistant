@@ -482,3 +482,45 @@ async def test_a_plan_cleared_for_its_settings_while_its_start_is_on_its_way_is_
     stored = await _stored(world)
     assert (stored["charge_origin"], stored["plan_charge"]) == ("plan_window", drives)
     await world.shutdown()
+
+
+@pytest.mark.shadow_disagreement_expected
+@pytest.mark.parametrize("record", [True, False], ids=["record", "keys"])
+async def test_a_restart_that_cannot_read_todays_state_keeps_the_owner(
+    hass: HomeAssistant, timers: FakeScheduler, monkeypatch: pytest.MonkeyPatch, record: bool
+) -> None:
+    """When the core drives and the restart fails to read today's state (a shadow error, told), the owner is not
+    lost: the core's own record where it is the truth, else the owner today's keys read back."""
+    monkeypatch.setattr(ownership_shadow, "CORE_OWNERSHIP_DEFAULT", True)
+    world = await pause_world(hass, timers)
+    await world.executor.async_manual_start()
+    await hass.async_block_till_done()
+    assert _owner(world) == ("manual", False)
+    if not record:
+        stored = await _stored(world)
+        stored.pop(SESSION_STORE_KEY, None)
+        await world.controller._store.async_save(stored)  # noqa: SLF001
+    real_restart = ownership_shadow.OwnershipShadow.restart
+
+    def unreadable(self: ownership_shadow.OwnershipShadow, *args: Any, **kwargs: Any) -> None:
+        legacy = self._legacy  # noqa: SLF001
+
+        def fails() -> Any:
+            raise RuntimeError("today's state cannot be read")
+
+        self._legacy = fails  # noqa: SLF001
+        try:
+            real_restart(self, *args, **kwargs)
+        finally:
+            self._legacy = legacy  # noqa: SLF001
+
+    monkeypatch.setattr(ownership_shadow.OwnershipShadow, "restart", unreadable)
+    await world.controller.async_shutdown()
+    await world.executor.async_shutdown()
+    restarted = await world._start_again()  # noqa: SLF001 - the old controller is down already
+    await hass.async_block_till_done()
+    assert restarted.controller.ownership_shadow.counts["errors"] >= 1
+    assert restarted.controller.ownership_shadow.session.owner == "person"
+    assert _owner(restarted) == ("manual", False)
+    await restarted.shutdown()
+

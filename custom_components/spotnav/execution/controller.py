@@ -1411,6 +1411,13 @@ class ChargingController:
             stored = self._car_ended_from_keys(saved, stored)
         keys_newer = self._restore_order(saved) if stored is not None else False
         await self._shadow.coverage.async_load(await self._integration_version())
+        # The owner today's keys read back, in the core's words: what the session keeps if the restart cannot read
+        # today's state (`OwnershipShadow.restart`).
+        keys_owner = None
+        if self._owner_read_back is not None:
+            keys_owner = legacy_owner(
+                origin=self._owner_read_back[0], top_off=False, charging=False, start_pending=False, stop_recent=False
+            )
         if stored is not None and not keys_newer:
             # The core's own record is the truth: the owner is read from the session it restarts with, not the keys
             # (a record saved alone may be newer than them). Dropped right before the restart, so nothing reads the
@@ -1425,6 +1432,7 @@ class ChargingController:
                 ),
                 stored,
                 keys_newer=keys_newer,
+                keys_owner=keys_owner,
             )
         finally:
             # From here load balancing's memory, the hold's, the car-ended record and the owner are the session's alone.
