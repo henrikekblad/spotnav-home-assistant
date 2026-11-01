@@ -260,6 +260,7 @@ async def test_solar_starts_at_the_chargers_start_minimum_and_runs_down_to_the_f
         fake = SimpleNamespace(
             _charger_entry_id="entry",
             _controller=SimpleNamespace(adapter=adapter, charging=False, is_switch_only=False),
+            _solar_ceiling_a=lambda: 16.0,
         )
         return SolarExecutionCoordinator._solar_config(fake, site)  # noqa: SLF001
 

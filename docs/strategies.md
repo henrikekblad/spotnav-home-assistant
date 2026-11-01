@@ -211,6 +211,14 @@ cannot, and for a direct site without the total it says the meter's total grid p
   `active_control`, `solar`, or `none` for a charger whose current cannot be set).
 - The surplus is computed from the site's energy balance (grid, house battery and the car's
   own draw), never from export alone, so that the car's draw does not count as surplus.
+- The sun asks the charger for as much as the surplus carries, up to the charger's own maximum (the
+  lowest maximum its current entities state, the same top as the card's current slider; 32 A when
+  none states one) and never above the charging current set in Auto, as a planned charge. A 32 A
+  single-phase charger thus takes about 7.4 kW of sun, a 32 A three-phase one about 22 kW. On a site
+  that knows its main fuse, the sun never asks for more than each phase the car uses can still carry
+  within the fuse and its safety margin, whether load balancing is on or not; with it on, load
+  balancing also keeps every phase within the fuse. A changed maximum (or a phase switch) is
+  followed at the next reading.
 - A charger whose current cannot be set (start and stop only) is not modulated: it starts only when the
   surplus covers its whole learned current (its *switched current*, see
   [Chargers that can only be switched on and off](site-and-load-balancing.md#chargers-that-can-only-be-switched-on-and-off)),

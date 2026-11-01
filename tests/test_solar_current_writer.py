@@ -184,11 +184,14 @@ async def test_the_written_current_never_exceeds_the_amps_set(hass: HomeAssistan
     charger, site, controller, coordinator, clock, easee = await _watty(hass, amps=8)
     await _started(hass, site, clock, easee)
 
-    clock.value = 250.0
+    # 14.5 A of sun, 8 A set: the sun asks for no more than the 8 A (one amp up, made once it lasted), and 8 A is
+    # what reaches the charger.
     _sun_for(hass, car_a=7.0, available_a=14.5)
-    await tick_site(hass, site)
+    for at in (250.0, 261.0):
+        clock.value = at
+        await tick_site(hass, site)
 
-    assert controller.requested_current_a == 14
+    assert controller.requested_current_a == 8
     assert easee.limits == [7, 8]
 
 
