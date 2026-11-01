@@ -334,12 +334,10 @@
           "current_control": "Régler le courant de la borne",
           "energy_register_entity": "Compteur d'énergie (cumulé, facultatif)",
           "power_entity": "Capteur de puissance, prise connectée (facultatif)",
-          "idle_power_w": "Ne consomme pas en dessous de (W)",
-          "charging_decisions": "Décisions de charge"
+          "idle_power_w": "Ne consomme pas en dessous de (W)"
         },
         "data_description": {
-          "idle_power_w": "En dessous de cette puissance pendant cinq minutes lors d'une charge planifiée, SpotNav considère que la voiture ne consomme pas. Par défaut 100 W.",
-          "charging_decisions": "Quelle logique décide quand cette borne démarre et s'arrête. Choisissez Logique précédente uniquement si l'actuelle ne fonctionne pas correctement sur cette borne ; l'enregistrement recharge la borne."
+          "idle_power_w": "En dessous de cette puissance pendant cinq minutes lors d'une charge planifiée, SpotNav considère que la voiture ne consomme pas. Par défaut 100 W."
         }
       },
       "site_init": {
@@ -560,12 +558,6 @@
         "off": "Rien",
         "suggested": "La suggestion de la zone",
         "manual": "Mon propre montant"
-      }
-    },
-    "charging_decisions": {
-      "options": {
-        "current": "Actuelle (par défaut)",
-        "previous": "Logique précédente"
       }
     }
   },
@@ -880,7 +872,7 @@
     },
     "core_decision_failed": {
       "title": "Les décisions de charge d'une borne ont échoué",
-      "description": "La logique actuelle de SpotNav n'a pas pu décider pour **{charger}** plusieurs fois au cours de la dernière journée ; la logique précédente a donc décidé à sa place. La charge continue. Pour aider à corriger le problème : téléchargez les infos de débogage (l'engrenage sur la carte SpotNav → Télécharger les infos de débogage) et joignez-les à un ticket sur GitHub. Si la borne se comporte de façon étrange, passez à Logique précédente : Configurer de la borne → Décisions de charge. Ce message disparaît après une journée sans échec."
+      "description": "SpotNav n'a pas pu prendre sa décision de charge pour **{charger}** plusieurs fois au cours de la dernière journée ; à ces moments, il n'a donc rien démarré ni arrêté automatiquement et a décidé à nouveau la fois suivante. Ce que vous démarrez ou arrêtez vous-même fonctionne toujours, et l'équilibrage de charge protège toujours le fusible. Pour aider à corriger le problème : téléchargez les infos de débogage (l'engrenage sur la carte SpotNav → Télécharger les infos de débogage) et joignez-les à un ticket sur GitHub. Ce message disparaît après une journée sans échec."
     },
     "price_source_missing": {
       "title": "Pas de prix de l'électricité pour {area}",

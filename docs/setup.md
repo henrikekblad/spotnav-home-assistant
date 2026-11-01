@@ -373,11 +373,7 @@ each with its own private webhook secret. Treat webhook ids as secrets. See
 - **A charger's entities.** Open the charger's card, then **Card settings**, then **Charger
   entities, Change charger entities**. Administrators can also use **Configure** on the charger's
   entry under **Settings, Devices & services, SpotNav**, which shows **Charge control**, **Charging
-  current (optional)**, the energy meter and **Set the charger current**. **Charging decisions** is
-  an administrator's way back for one charger: **Current (default)** is the charge-ownership logic
-  that decides when the charger starts and stops; **Previous logic** is the logic before it, for a
-  charger where the current one misbehaves. Saving reloads that charger only. Please report a
-  charger that needs the previous logic, with its debug info.
+  current (optional)**, the energy meter and **Set the charger current**.
 - **A site.** Use **Configure** on the site's entry. The first page, **Site settings**, has the
   site's basics, load balancing, whether the car may take the home battery's share, solar priority, the home
   battery power sensor and the solar forecast sources, each with a line on what it does, and last the

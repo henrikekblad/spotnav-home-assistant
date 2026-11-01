@@ -1,7 +1,6 @@
-"""The ownership core beside the plan ends and replans 1.11 brought (the best-effort plan for a departure the need
-cannot be met by, the replan a returning register reading asks for, and a need met at that same reading), in both
-modes: the core agrees with today's code (`conftest.ownership_shadow_agrees` fails a test otherwise) and the charger
-sees the same starts and stops whether it shadows or drives."""
+"""The ownership core at the plan ends and replans 1.11 brought (the best-effort plan for a departure the need cannot
+be met by, the replan a returning register reading asks for, and a need met at that same reading): the charger sees
+the starts and stops those plans call for, and the core never fails (`conftest.core_never_fails`)."""
 
 from __future__ import annotations
 
@@ -15,7 +14,6 @@ from homeassistant.util import dt as dt_util
 from pytest_homeassistant_custom_component.common import async_fire_time_changed
 
 from custom_components.spotnav.core.session import OWNER_NONE, OWNER_PLAN
-from custom_components.spotnav.execution import ownership_shadow
 from tests.relay import serve as serve_prices
 
 from .test_dashboard_api import NOW
@@ -25,16 +23,15 @@ from .test_replug import _car, _meter, _record_charger_commands, Car
 pytestmark = pytest.mark.usefixtures("offline_relay")
 
 
-@pytest.fixture(params=[False, True], ids=["shadows", "drives"])
+@pytest.fixture(params=[True], ids=["core"])
 def drives(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) -> bool:
-    monkeypatch.setattr(ownership_shadow, "CORE_OWNERSHIP_DEFAULT", request.param)
     return request.param
 
 
 def _agrees(car: Car, drives: bool) -> None:
-    shadow = car.controller.ownership_shadow
+    shadow = car.controller.session_runner
     assert shadow.drives is drives
-    assert shadow.counts["disagreements"] == 0 and shadow.counts["errors"] == 0
+    assert shadow.counts["errors"] == 0
 
 
 async def _at(car: Car, frozen: Any, delta: timedelta) -> None:
@@ -58,7 +55,7 @@ async def test_a_best_effort_plan_charges_to_the_departure_and_the_next_departur
         assert proposal is not None and proposal.short_of_deadline
         assert car.executor.window_charging_now()
         assert [call[0] for call in calls] == ["turn_on"]
-        assert car.controller.ownership_shadow.session.owner == OWNER_PLAN
+        assert car.controller.session_runner.session.owner == OWNER_PLAN
         assert car.controller.charge_origin == "plan_window"
 
         await _at(car, frozen, timedelta(hours=1, minutes=59))
@@ -76,7 +73,7 @@ async def test_a_best_effort_plan_charges_to_the_departure_and_the_next_departur
         assert car.controller.charging
         snapshot = car.preview.snapshot()
         assert snapshot.departure_at is not None and snapshot.departure_at > dt_util.utcnow() + timedelta(hours=20)
-        assert car.controller.ownership_shadow.session.owner == OWNER_PLAN
+        assert car.controller.session_runner.session.owner == OWNER_PLAN
         assert car.controller.charge_origin == "plan_window"
         _agrees(car, drives)
 
@@ -90,7 +87,7 @@ async def _window_charging_after_restart(hass: HomeAssistant, transport: Any, fr
     assert car.executor.window_charging_now()
     assert [call[0] for call in calls] == ["turn_on"]
     assert car.preview.snapshot().energy_basis == "kept_recent"
-    assert car.controller.ownership_shadow.session.owner == OWNER_PLAN
+    assert car.controller.session_runner.session.owner == OWNER_PLAN
     assert car.controller.charge_origin == "plan_window"
     calls.clear()
     return car, calls
@@ -111,7 +108,7 @@ async def test_a_returning_reading_replans_a_running_plan_charge_without_touchin
         assert car.preview.snapshot().energy_basis == "register"
         assert calls == [], "the replan neither stops nor starts the plan's charge"
         assert car.executor.window_charging_now()
-        assert car.controller.ownership_shadow.session.owner == OWNER_PLAN
+        assert car.controller.session_runner.session.owner == OWNER_PLAN
         assert car.controller.charge_origin == "plan_window"
         _agrees(car, drives)
 
@@ -130,6 +127,6 @@ async def test_a_returning_reading_that_meets_the_need_ends_the_plan_once(
 
         assert [call[0] for call in calls] == ["turn_off"]
         assert not car.executor.window_charging_now()
-        assert car.controller.ownership_shadow.session.owner == OWNER_NONE
+        assert car.controller.session_runner.session.owner == OWNER_NONE
         assert car.controller.charge_origin is None
         _agrees(car, drives)

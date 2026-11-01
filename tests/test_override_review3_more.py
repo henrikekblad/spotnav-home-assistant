@@ -391,7 +391,7 @@ def _person_hold_rechecks(controller: Any) -> int:
     """How many stops under a person's Stop went to their task (each decides again under the lock, `Recheck`)."""
     return sum(
         1
-        for record in controller.ownership_shadow.diagnostics()["events"]
+        for record in controller.session_runner.diagnostics()["events"]
         if record["event"]["kind"] == "recheck" and record["event"].get("what") == "person_hold"
     )
 

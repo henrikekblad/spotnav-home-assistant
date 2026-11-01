@@ -334,12 +334,10 @@
           "current_control": "Set the charger current",
           "energy_register_entity": "Energy meter (lifetime, optional)",
           "power_entity": "Power sensor, smart plug (optional)",
-          "idle_power_w": "Not drawing below (W)",
-          "charging_decisions": "Charging decisions"
+          "idle_power_w": "Not drawing below (W)"
         },
         "data_description": {
-          "idle_power_w": "Below this power for five minutes during a planned charge, SpotNav says the car is not drawing. Default 100 W.",
-          "charging_decisions": "Which logic decides when this charger starts and stops. Choose Previous logic only if the current one misbehaves on this charger; saving reloads the charger."
+          "idle_power_w": "Below this power for five minutes during a planned charge, SpotNav says the car is not drawing. Default 100 W."
         }
       },
       "site_init": {
@@ -560,12 +558,6 @@
         "off": "Nothing",
         "suggested": "The area's suggestion",
         "manual": "My own figure"
-      }
-    },
-    "charging_decisions": {
-      "options": {
-        "current": "Current (default)",
-        "previous": "Previous logic"
       }
     }
   },
@@ -880,7 +872,7 @@
     },
     "core_decision_failed": {
       "title": "A charger's charging decisions failed",
-      "description": "SpotNav's current logic could not decide for **{charger}** several times in the last day, so the previous logic decided instead. Charging goes on. To help fix it, download the debug info (the gear icon on the SpotNav card → Download debug info) and attach it to an issue on GitHub. If the charger behaves oddly, switch it to Previous logic: the charger's Configure → Charging decisions. This message goes away after a day without failures."
+      "description": "SpotNav could not take its charging decision for **{charger}** several times in the last day, so at those moments it started or stopped nothing automatically and decided again at the next one. What you start or stop yourself still works, and load balancing still protects the fuse. To help fix it, download the debug info (the gear icon on the SpotNav card → Download debug info) and attach it to an issue on GitHub. This message goes away after a day without failures."
     },
     "price_source_missing": {
       "title": "No electricity prices for {area}",

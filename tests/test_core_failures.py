@@ -1,12 +1,13 @@
-"""A charging decision the core could not take is surfaced, never silent (`OwnershipShadow.failed`): the core raised,
-its facts could not be read, or its stored session could not be read. The previous logic decides that event, as
-ever. While the core drives: a warning once per (charger, where, kind) per run, then only a count (diagnostics and
-the debug bundle); a Repairs issue only when three fall within a day on one charger, gone after a day without one
-and at the charger's unload. While it only shadows (the previous logic set): a debug line and a count, no issue."""
+"""A charging decision the core could not take is surfaced, never silent (`SessionRunner.failed`): the core raised,
+its facts could not be read, or its stored session could not be read. Nothing automatic is sent for that event (the
+core's `Keep`), and the next event decides again; a person's own command still goes out. A warning once per
+(charger, where, kind) per run, then only a count (diagnostics and the debug bundle); a Repairs issue only when three
+fall within a day on one charger, gone after a day without one and at the charger's unload."""
 
 from __future__ import annotations
 
 import logging
+import sys
 from datetime import timedelta
 from typing import Any
 
@@ -17,7 +18,7 @@ from pytest_homeassistant_custom_component.common import async_fire_time_changed
 
 from custom_components.spotnav.const import DOMAIN
 from custom_components.spotnav.core.session import STORED_VERSION
-from custom_components.spotnav.execution import ownership_shadow
+from custom_components.spotnav.execution import session_runner
 from custom_components.spotnav.execution.controller import SESSION_STORE_KEY
 from custom_components.spotnav.repairs import (
     async_sync_resolution_repairs,
@@ -33,31 +34,19 @@ ISSUE = core_decision_issue_id(ENTRY)
 TITLE = "Garage charger"
 
 #: Every test here makes the core fail on purpose: the shadow's errors are what is tested, not a regression.
-pytestmark = pytest.mark.shadow_disagreement_expected
-
-
-@pytest.fixture(params=[True, False], ids=["drives", "shadows"])
-def drives(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) -> bool:
-    """The core drives (the default), or the charger keeps the previous logic (`SPOTNAV_CORE_OWNERSHIP=0`)."""
-    monkeypatch.setattr(ownership_shadow, "CORE_OWNERSHIP_DEFAULT", request.param)
-    return request.param
-
-
-@pytest.fixture
-def driving(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(ownership_shadow, "CORE_OWNERSHIP_DEFAULT", True)
+pytestmark = pytest.mark.core_failure_expected
 
 
 def _break(monkeypatch: pytest.MonkeyPatch, kind: str) -> None:
     """The core raises for every event of `kind`, and decides every other as ever."""
-    real = ownership_shadow.decide
+    real = session_runner.decide
 
     def broken(session: Any, event: Any, now: Any) -> Any:
         if event.kind == kind:
             raise RuntimeError(f"the core cannot decide {kind}")
         return real(session, event, now)
 
-    monkeypatch.setattr(ownership_shadow, "decide", broken)
+    monkeypatch.setattr(session_runner, "decide", broken)
 
 
 async def _world(hass: HomeAssistant, timers: FakeScheduler, **kwargs: Any) -> World:
@@ -82,7 +71,7 @@ async def _person_start(world: World) -> None:
     before = len(world.starts)
     await world.executor.async_manual_start()
     await world.hass.async_block_till_done()
-    assert len(world.starts) == before + 1, "the previous logic's start is still sent"
+    assert len(world.starts) == before + 1, "a person's own command still goes out"
     await world.executor.async_manual_stop()
     await world.hass.async_block_till_done()
 
@@ -97,39 +86,32 @@ async def _later(hass: HomeAssistant, freezer: Any, delta: timedelta) -> None:
 
 
 async def test_a_failing_decision_warns_once_and_raises_the_issue_at_the_third(
-    hass: HomeAssistant, timers: FakeScheduler, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture,
-    drives: bool,
+    hass: HomeAssistant, timers: FakeScheduler, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
     _break(monkeypatch, "person_start")
     world = await _world(hass, timers)
-    shadow = world.controller.ownership_shadow
-    assert shadow.drives is drives
+    shadow = world.controller.session_runner
 
     await _person_start(world)
     await _person_start(world)
     assert _issue(hass) is None, "one or two failures are a log line and a count only"
     await _person_start(world)
 
-    # Driving, the core decides a person's Start before anything acts; shadowing, after today's code did.
-    where = "decide_early" if drives else "decide"
-    assert shadow.counts["failures"] == {f"{where}/person_start": 3}
+    # The core decides a person's Start before anything acts.
+    assert shadow.counts["failures"] == {"decide_early/person_start": 3}
     assert shadow.counts["last_failure"] is not None
-    assert shadow.diagnostics()["counts"]["failures"] == {f"{where}/person_start": 3}
-    if drives:
-        (warning,) = _warnings(caplog)
-        assert ENTRY in warning.getMessage() and warning.exc_info is not None
-        issue = _issue(hass)
-        assert issue is not None
-        assert issue.translation_key == CORE_DECISION_FAILED_ISSUE
-        assert issue.translation_placeholders == {"charger": TITLE}
-        assert issue.severity == ir.IssueSeverity.WARNING and not issue.is_fixable
-    else:
-        assert _warnings(caplog) == [], "the previous logic decides: the core's failure is a debug line"
-        assert _issue(hass) is None, "no Repairs for a core that only shadows"
+    assert shadow.diagnostics()["counts"]["failures"] == {"decide_early/person_start": 3}
+    (warning,) = _warnings(caplog)
+    assert ENTRY in warning.getMessage() and warning.exc_info is not None
+    assert "nothing automatic was sent" in warning.getMessage()
+    issue = _issue(hass)
+    assert issue is not None
+    assert issue.translation_key == CORE_DECISION_FAILED_ISSUE
+    assert issue.translation_placeholders == {"charger": TITLE}
+    assert issue.severity == ir.IssueSeverity.WARNING and not issue.is_fixable
     await world.shutdown()
 
 
-@pytest.mark.usefixtures("driving")
 async def test_failures_spread_over_more_than_a_day_raise_no_issue(
     hass: HomeAssistant, timers: FakeScheduler, monkeypatch: pytest.MonkeyPatch, freezer: Any
 ) -> None:
@@ -140,14 +122,13 @@ async def test_failures_spread_over_more_than_a_day_raise_no_issue(
     await _person_start(world)
     await _later(hass, freezer, timedelta(hours=13))
     await _person_start(world)
-    assert world.controller.ownership_shadow.counts["failures"] == {"decide_early/person_start": 3}
+    assert world.controller.session_runner.counts["failures"] == {"decide_early/person_start": 3}
     assert _issue(hass) is None, "never three within one day"
     await _person_start(world)
     assert _issue(hass) is not None, "the last three fall within a day"
     await world.shutdown()
 
 
-@pytest.mark.usefixtures("driving")
 async def test_the_issue_goes_after_a_day_without_failures(
     hass: HomeAssistant, timers: FakeScheduler, monkeypatch: pytest.MonkeyPatch, freezer: Any
 ) -> None:
@@ -166,7 +147,6 @@ async def test_the_issue_goes_after_a_day_without_failures(
     await world.shutdown()
 
 
-@pytest.mark.usefixtures("driving")
 async def test_an_issue_left_from_before_a_crash_goes_when_the_charger_starts(
     hass: HomeAssistant, timers: FakeScheduler
 ) -> None:
@@ -179,7 +159,6 @@ async def test_an_issue_left_from_before_a_crash_goes_when_the_charger_starts(
     await world.shutdown()
 
 
-@pytest.mark.usefixtures("driving")
 async def test_the_issue_goes_at_a_reload_and_survives_a_resync(
     hass: HomeAssistant, timers: FakeScheduler, monkeypatch: pytest.MonkeyPatch, freezer: Any
 ) -> None:
@@ -197,7 +176,6 @@ async def test_the_issue_goes_at_a_reload_and_survives_a_resync(
     await restarted.shutdown()
 
 
-@pytest.mark.usefixtures("driving")
 async def test_the_issue_goes_when_its_entry_is_removed(
     hass: HomeAssistant, timers: FakeScheduler, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -213,39 +191,114 @@ async def test_the_issue_goes_when_its_entry_is_removed(
 # ---------------------------------------------------------------------------------------------- facts unreadable
 
 
-async def test_facts_that_cannot_be_read_are_a_failure(
-    hass: HomeAssistant, timers: FakeScheduler, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture,
-    drives: bool,
+async def test_facts_that_cannot_be_read_are_a_failure_and_send_nothing(
+    hass: HomeAssistant, timers: FakeScheduler, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
-    """A window start whose facts cannot be read is decided by the previous logic: the start goes out (once at the
-    window's start, then at each plug-in inside it)."""
+    """A window start whose facts cannot be read is the core's `Keep`: no start goes out (at the window's start, nor
+    at each plug-in inside it), the session is left as it was, and the window starts once the facts can be read."""
     world = await _world(hass, timers)
+    real = world.controller._core_start_facts  # noqa: SLF001
 
     def unreadable() -> dict[str, Any]:
         raise RuntimeError("the start's facts cannot be read")
 
-    monkeypatch.setattr(world.controller, "_shadow_start_facts", unreadable)
+    monkeypatch.setattr(world.controller, "_core_start_facts", unreadable)
     await install_schedule(world.controller, open_window())
     await hass.async_block_till_done()
-    assert len(world.starts) == 1, "the previous logic starts the window"
-    for round_ in range(2):
+    assert world.starts == [], "nothing is started for an event the core could not decide"
+    for _ in range(2):
         assert _issue(hass) is None
         await world.plug.set(False, control="off")
         await world.plug.set(True)
         await hass.async_block_till_done()
-        assert len(world.starts) == round_ + 2, "the previous logic starts the window at the plug-in"
-
-    shadow = world.controller.ownership_shadow
+        assert world.starts == [], "nor at the plug-in"
+    shadow = world.controller.session_runner
     assert shadow.counts["failures"] == {"facts/window_start": 3}
-    assert (len(_warnings(caplog)) == 1) is drives
-    assert (_issue(hass) is not None) is drives
+    assert shadow.session.owner == "none"
+    assert len(_warnings(caplog)) == 1
+    assert _issue(hass) is not None
+
+    monkeypatch.setattr(world.controller, "_core_start_facts", real)
+    await world.plug.set(False, control="off")
+    await world.plug.set(True)
+    await hass.async_block_till_done()
+    assert len(world.starts) == 1, "decided again at the next event"
+    assert world.controller.charge_origin == "plan_window"
+    await world.shutdown()
+
+
+async def test_a_window_start_whose_car_facts_fail_is_not_decided_at_its_end(
+    hass: HomeAssistant, timers: FakeScheduler, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The car-ended rule's facts fail before the window start's verdict: a failure, nothing sent, and the event is
+    not decided at its feed's end either, which would leave a start nobody sent in the session's record."""
+    world = await _world(hass, timers)
+    runner = world.controller.session_runner
+
+    real = world.controller._car_ended_holds_window  # noqa: SLF001
+
+    def unreadable() -> bool:
+        if sys._getframe(1).f_code.co_name == "_core_window_start_verdict":  # noqa: SLF001 - only the verdict's read
+            raise RuntimeError("the car's facts cannot be read")
+        return real()
+
+    monkeypatch.setattr(world.controller, "_car_ended_holds_window", unreadable)
+    before = len(runner.events)
+    await install_schedule(world.controller, open_window())
+    await hass.async_block_till_done()
+    assert world.starts == []
+    assert runner.counts["failures"] == {"window_start_facts/window_start": 1}
+    kinds = [record["event"]["kind"] for record in list(runner.events)[before:]]
+    assert "window_start" not in kinds, kinds
+    assert runner.session.owner == "none" and runner.session.pending == ()
+    await world.shutdown()
+
+
+# ---------------------------------------------------------------------------------------------- a person's own action
+
+
+async def test_a_persons_stop_the_core_cannot_decide_is_stored_and_held(
+    hass: HomeAssistant, timers: FakeScheduler, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A person's Stop whose own decision fails once: the charger is stopped, their pause is stored all the same (Auto
+    holds, so the next window starts nothing) and the session takes it, with one failure told."""
+    world = await _world(hass, timers, charging=True)
+    _break(monkeypatch, "person_stop")
+    await world.executor.async_manual_stop()
+    await hass.async_block_till_done()
+    runner = world.controller.session_runner
+    assert hass.states.get(SWITCH).state == "off"
+    assert world.pause.manual and world.pause.action == "stop", "the person's Stop is stored"
+    assert runner.session.manual is not None and runner.session.manual.action == "stop"
+    assert runner.counts["failures"] == {"decide_early/person_stop": 1}
+    monkeypatch.undo()
+    starts = len(world.starts)
+    await install_schedule(world.controller, open_window())
+    await hass.async_block_till_done()
+    assert len(world.starts) == starts, "Auto is paused: the window starts nothing"
+    await world.shutdown()
+
+
+async def test_a_persons_start_the_core_cannot_decide_is_stored_in_the_session(
+    hass: HomeAssistant, timers: FakeScheduler, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A person's Start whose own decision fails once: the start goes out, their pause is stored and the session
+    takes it, so automation leaves their charge alone; one failure told."""
+    world = await _world(hass, timers)
+    _break(monkeypatch, "person_start")
+    await world.executor.async_manual_start()
+    await hass.async_block_till_done()
+    runner = world.controller.session_runner
+    assert hass.states.get(SWITCH).state == "on"
+    assert world.pause.manual and world.pause.action == "start"
+    assert runner.session.manual is not None and runner.session.manual.action == "start"
+    assert runner.counts["failures"] == {"decide_early/person_start": 1}
     await world.shutdown()
 
 
 # ---------------------------------------------------------------------------------------------- the stored session
 
 
-@pytest.mark.usefixtures("driving")
 async def test_a_stored_session_from_a_later_release_is_no_failure(
     hass: HomeAssistant, timers: FakeScheduler, caplog: pytest.LogCaptureFixture
 ) -> None:
@@ -259,7 +312,7 @@ async def test_a_stored_session_from_a_later_release_is_no_failure(
     await world.controller._store.async_save(record)  # noqa: SLF001
 
     restarted = await world.restart()
-    shadow = restarted.controller.ownership_shadow
+    shadow = restarted.controller.session_runner
     assert shadow.counts.get("failures", {}) == {}
     assert _warnings(caplog) == []
     assert shadow.session.manual is not None, "the person's Stop is read from today's keys"
@@ -267,7 +320,6 @@ async def test_a_stored_session_from_a_later_release_is_no_failure(
     await restarted.shutdown()
 
 
-@pytest.mark.usefixtures("driving")
 async def test_a_stored_session_that_cannot_be_read_is_a_failure(
     hass: HomeAssistant, timers: FakeScheduler, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
@@ -281,7 +333,7 @@ async def test_a_stored_session_that_cannot_be_read_is_a_failure(
     await world.controller._store.async_save(record)  # noqa: SLF001
 
     restarted = await world.restart()
-    shadow = restarted.controller.ownership_shadow
+    shadow = restarted.controller.session_runner
     assert shadow.counts["failures"] == {"stored_session/restart": 1}
     (warning,) = _warnings(caplog)
     assert "stored_session" in warning.getMessage()
@@ -301,14 +353,14 @@ async def test_a_stored_session_that_cannot_be_read_is_a_failure(
 
 @pytest.mark.parametrize("kind", ["unplug", "plug_in"])
 async def test_a_plug_in_or_unplug_the_core_cannot_decide_is_fed_once_and_the_connection_still_moves(
-    hass: HomeAssistant, timers: FakeScheduler, monkeypatch: pytest.MonkeyPatch, drives: bool, kind: str
+    hass: HomeAssistant, timers: FakeScheduler, monkeypatch: pytest.MonkeyPatch, kind: str
 ) -> None:
     """The connection is what the charger stated, an observation: it moves in the session also when the decision of
-    the plug-in or the unplug fails, so the reports after it do not find it changed again and feed it once more (when
-    the core drives, the controller reads the connection from the session)."""
+    the plug-in or the unplug fails, so the reports after it do not find it changed again and feed it once more (the
+    controller reads the connection from the session)."""
     world = await _world(hass, timers, connected=kind == "unplug")
     controller = world.controller
-    shadow = controller.ownership_shadow
+    shadow = controller.session_runner
     fed: list[str] = []
     real = controller._connection_changed  # noqa: SLF001
 
@@ -330,4 +382,25 @@ async def test_a_plug_in_or_unplug_the_core_cannot_decide_is_fed_once_and_the_co
     assert controller.known_connected is expected and shadow.session.plugged is expected
     failures = shadow.counts["failures"]
     assert sum(failures.values()) == 1 and all(label.endswith(f"/{kind}") for label in failures)
+    await world.shutdown()
+
+
+# ---------------------------------------------------------------------------------------------- the fuse
+
+
+@pytest.mark.parametrize("code", ["pause", "safety_stop"])
+async def test_load_balancings_stop_goes_out_when_the_core_cannot_decide(
+    hass: HomeAssistant, timers: FakeScheduler, monkeypatch: pytest.MonkeyPatch, code: str
+) -> None:
+    """The site regulator's pause and its safety stop do not wait for the core: one the core cannot decide still
+    stops the charge (the fuse is never left unprotected), and the failure is told."""
+    world = await _world(hass, timers, plan=open_window())
+    assert world.controller.charging
+    stops = len(world.stops)
+    _break(monkeypatch, "balancing_pause")
+    result = await world.controller._regulated_stop(code)  # noqa: SLF001 - the regulator's own stop
+    await hass.async_block_till_done()
+    assert len(world.stops) == stops + 1 and not world.controller.charging
+    assert result.code == code
+    assert world.controller.session_runner.counts["failures"] == {"decide_early/balancing_pause": 1}
     await world.shutdown()

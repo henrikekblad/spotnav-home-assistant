@@ -144,10 +144,9 @@ async def _restart_before_the_charger(
 
 
 def _core_agrees(controller: ChargingController) -> None:
-    """The core, in shadow or driving, came to what today's code did: no disagreement and no drift."""
-    shadow = controller._shadow.diagnostics()  # noqa: SLF001 - the comparison is what is tested
-    assert shadow["disagreements"] == [], shadow["disagreements"]
-    assert shadow["drift"] == [], shadow["drift"]
+    """The core decided every event: no failure."""
+    counts = controller._runner.diagnostics()["counts"]  # noqa: SLF001 - what the decisions met is what is tested
+    assert counts["failures"] == {} and counts["errors"] == 0, counts
 
 
 async def _after(hass: HomeAssistant, freezer, seconds: float) -> None:

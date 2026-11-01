@@ -23,7 +23,6 @@ from custom_components.spotnav.log_buffer import (
 from custom_components.spotnav.runtime import domain_data
 
 from custom_components.spotnav.core.replay import replay_bundle
-from custom_components.spotnav.execution import ownership_shadow
 
 from .world import admin, non_admin, setup_charger_and_site, ws_call
 
@@ -32,7 +31,7 @@ async def test_bundle_has_every_section(hass: HomeAssistant) -> None:
     charger, site = await setup_charger_and_site(hass)
     bundle = await async_build_debug_bundle(hass)
 
-    assert bundle["bundle_version"] == 8
+    assert bundle["bundle_version"] == 9
     for key in ("versions", "related_integrations", "price_data", "sites", "chargers", "log"):
         assert key in bundle
     # Version 8: a day, kept across restarts.
@@ -51,10 +50,11 @@ async def test_bundle_has_every_section(hass: HomeAssistant) -> None:
     assert "dashboard" in section and "status" in section
     assert "plan" in section["dashboard"] and "strategy" in section["dashboard"]
     assert "commands" in section["diagnostics"]["controller"]["adapter"]
-    # Version 5: the ownership core's shadow, replayable as it is; version 6: its cumulative tally per event kind.
-    shadow = section["diagnostics"]["controller"]["ownership_shadow"]
-    assert shadow["counts"]["disagreements"] == 0 and shadow["events"]
-    assert shadow["drives"] is ownership_shadow.CORE_OWNERSHIP_DEFAULT, "which side decides, beside the comparison"
+    # Version 5: the ownership core's events, replayable as they are; version 6: its cumulative tally per event kind;
+    # version 9: under `ownership`, the previous logic beside it gone.
+    shadow = section["diagnostics"]["controller"]["ownership"]
+    assert shadow["counts"]["failures"] == {} and shadow["events"]
+    assert shadow["drives"] is True, "the core decides"
     assert shadow["coverage"]["kinds"]["restart"]["events"] >= 1 and shadow["coverage"]["version"]
     assert replay_bundle(json.loads(json.dumps(bundle)))[charger.entry_id].mismatches == ()
     # Each fact once: the price data at the top only, the rest inside the entry's diagnostics or dashboard.

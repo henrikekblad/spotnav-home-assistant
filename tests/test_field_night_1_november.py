@@ -36,7 +36,6 @@ from homeassistant.util import dt as dt_util
 from custom_components.spotnav.core.events import BalancingPause, CommandResult, Recheck
 from custom_components.spotnav.core.ownership import decide
 from custom_components.spotnav.core.session import ChargeSession
-from custom_components.spotnav.execution import ownership_shadow
 
 from .helpers import install_schedule
 from .test_balancing_retry import _battery_entity, _battery_w
@@ -167,7 +166,7 @@ class _Night:
         return [f"{entry['outcome']}:{entry.get('detail')}" for entry in self.halo.log() if "probe" in entry["outcome"]]
 
     def pauses_fed(self) -> int:
-        return sum(1 for event in self.halo.cc.ownership_shadow.events if event["event"]["kind"] == "balancing_pause")
+        return sum(1 for event in self.halo.cc.session_runner.events if event["event"]["kind"] == "balancing_pause")
 
     async def battery_starts(self) -> None:
         """03:15: the battery starts its grid charge on top of the car (the site read 20.52/21.60/21.05 A at 03:15:03,
@@ -196,10 +195,6 @@ async def _the_night(
     await night.run(300.0)
     assert night.on and night.car_a >= (16.0 if house == _HOUSE else 10.0)
     return night
-
-
-def _drives(monkeypatch, drives: bool) -> None:
-    monkeypatch.setattr(ownership_shadow, "CORE_OWNERSHIP_DEFAULT", drives)
 
 
 # -- 03:15: the battery takes the fuse while the car charges
@@ -279,16 +274,14 @@ async def test_0315_a_held_car_is_not_stepped_above_the_fuse(hass: HomeAssistant
 # -- 03:18 to 04:07: a charge paused anyway, the battery holding the fuse, and the battery done
 
 
-@pytest.mark.parametrize("drives", [True, False])
 async def test_0318_a_paused_charge_is_probed_although_the_halo_still_shows_its_last_current(
-    hass: HomeAssistant, monkeypatch, freezer, drives: bool
+    hass: HomeAssistant, monkeypatch, freezer
 ) -> None:
     """Paused for an overload far above the band (the battery at 13 kW on top of the car), the charge stays the one
     load balancing holds back through the charger's last report of it, is paused once, and is probed as soon as the
     battery holds the grid at the fuse, although the HALO's current still reads its last value from before the
     pause."""
-    _drives(monkeypatch, drives)
-    night = await _the_night(hass, monkeypatch, freezer, f"nov1paused{int(drives)}")
+    night = await _the_night(hass, monkeypatch, freezer, "nov1paused")
     night.battery = "fixed"
     night.fixed_w = 13000.0
     for _ in range(6):
@@ -320,12 +313,10 @@ async def test_0318_a_paused_charge_is_probed_although_the_halo_still_shows_its_
 # -- 05:15: the next window's charge paused while the battery stops
 
 
-@pytest.mark.parametrize("drives", [True, False])
 async def test_0515_a_charge_paused_as_the_battery_stops_is_resumed(
-    hass: HomeAssistant, monkeypatch, freezer, drives: bool
+    hass: HomeAssistant, monkeypatch, freezer
 ) -> None:
-    _drives(monkeypatch, drives)
-    night = await _the_night(hass, monkeypatch, freezer, f"nov1late{int(drives)}", house=_HOUSE_0515)
+    night = await _the_night(hass, monkeypatch, freezer, "nov1late", house=_HOUSE_0515)
     # The battery charges at 8 kW and does not hold the grid: L3 far over the fuse, the car is paused.
     night.battery = "fixed"
     night.fixed_w = 7955.0

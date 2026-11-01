@@ -1,11 +1,10 @@
-"""What the charging controller reads and writes of charge ownership, one group at a time.
+"""What the charging controller reads of charge ownership, one group at a time.
 
-Pure: no Home Assistant imports. The controller still keeps each group in its own fields; these frozen views are
-what its accessors (`_balancing`, `_safety`, `_c7`, `_car_ended`, `_hold_state`) give and take, so every read and
-write of a group goes through one place. A group the core owns is read from the charge session instead of the
-fields, in that accessor only, while the core drives: the safety hold and C7's stops (the core end state plan, step 3),
-load balancing's memory (step 4), the hold's memory (step 5), the car-ended record and the connection (step 6), and
-the owner (step 7, `ChargingController._owner_origin`/`_is_plan_charge`, derived from the session's owner).
+Pure: no Home Assistant imports. The charge session (`core/session.py`) is the truth; these frozen views are what the
+controller's read-only accessors (`_balancing`, `_safety`, `_c7`, `_car_ended`, `_hold_state`) give, in the shapes the
+controller and today's stored keys read them: load balancing's memory, the safety hold, C7's stops, the car-ended
+record and the hold's memory. The owner is read as two fields (`ChargingController._owner_origin`/`_is_plan_charge`,
+derived from the session's owner).
 """
 
 from __future__ import annotations

@@ -14,7 +14,7 @@ from homeassistant.util import dt as dt_util
 from custom_components.spotnav.core import events as ev
 from custom_components.spotnav.core.ownership import decide, Keep, Stop
 from custom_components.spotnav.core.session import CarEnded, ChargeSession, ManualPause, PendingCommand
-from custom_components.spotnav.execution import ownership_shadow
+from custom_components.spotnav.execution import session_runner
 
 from .pause_world import later_window, open_window, pause_world, SWITCH
 from .relay import FakeScheduler
@@ -184,34 +184,30 @@ async def _held_world(hass: HomeAssistant, timers: FakeScheduler):
 
 
 def _records(world, kind: str) -> list[dict]:
-    return [record for record in world.controller.ownership_shadow.events if record["event"]["kind"] == kind]
+    return [record for record in world.controller.session_runner.events if record["event"]["kind"] == kind]
 
 
-@pytest.mark.parametrize("drives", [False, True])
+@pytest.mark.parametrize("drives", [True])
 async def test_the_holds_stop_is_sent_and_its_result_comes_back_to_the_core(
     hass: HomeAssistant, timers: FakeScheduler, monkeypatch, drives: bool
 ) -> None:
-    monkeypatch.setattr(ownership_shadow, "CORE_OWNERSHIP_DEFAULT", drives)
     world, stops = await _held_world(hass, timers)
     assert len(world.stops) == stops + 1
     rechecks = _records(world, "recheck")
     assert rechecks and rechecks[-1]["event"]["what"] == "hold"
-    assert rechecks[-1]["core"] == [{"kind": "stop", "reason": "hold"}] and rechecks[-1]["today"] == ["stop"]
+    assert rechecks[-1]["core"] == [{"kind": "stop", "reason": "hold"}]
     assert rechecks[-1]["result"]["command"] == "stop" and rechecks[-1]["result"]["executed"] is True
-    shadow = world.controller.ownership_shadow
-    assert shadow.session.pending == () and shadow.counts["disagreements"] == 0
+    shadow = world.controller.session_runner
+    assert shadow.session.pending == ()
     await world.shutdown()
 
 
-@pytest.mark.shadow_disagreement_expected
-@pytest.mark.parametrize(("drives", "stopped"), [(True, False), (False, True)])
+@pytest.mark.parametrize(("drives", "stopped"), [(True, False)])
 async def test_the_holds_task_acts_on_the_cores_recheck_when_it_drives(
     hass: HomeAssistant, timers: FakeScheduler, monkeypatch, drives: bool, stopped: bool
 ) -> None:
-    """A core whose re-check finds the hold's stop no longer due: driving, the task sends nothing (today's rule would
-    have, counted as `verdict_differs`); shadowing, today's rule stops it and the shadow reports the disagreement."""
-    monkeypatch.setattr(ownership_shadow, "CORE_OWNERSHIP_DEFAULT", drives)
-    real = ownership_shadow.decide
+    """A core whose re-check finds the hold's stop no longer due: the task sends nothing."""
+    real = session_runner.decide
 
     def nothing_due(session, event, now):
         session, commands = real(session, event, now)
@@ -219,22 +215,18 @@ async def test_the_holds_task_acts_on_the_cores_recheck_when_it_drives(
             commands = tuple(command for command in commands if not isinstance(command, Stop))
         return session, commands
 
-    monkeypatch.setattr(ownership_shadow, "decide", nothing_due)
+    monkeypatch.setattr(session_runner, "decide", nothing_due)
     world, stops = await _held_world(hass, timers)
     assert (len(world.stops) > stops) is stopped
-    shadow = world.controller.ownership_shadow
-    assert (shadow.counts["verdict_differs"] > 0) is drives
-    assert (shadow.counts["disagreements"] > 0) is (not drives)
     await world.shutdown()
 
 
-@pytest.mark.parametrize("drives", [False, True])
+@pytest.mark.parametrize("drives", [True])
 async def test_the_claim_of_a_window_charge_comes_back_to_the_core(
     hass: HomeAssistant, timers: FakeScheduler, monkeypatch, drives: bool
 ) -> None:
     """The charger begins by itself inside a window of the plan: the claim's task asks the core again and the charge
     is the plan's, in both modes."""
-    monkeypatch.setattr(ownership_shadow, "CORE_OWNERSHIP_DEFAULT", drives)
     world = await pause_world(hass, timers, plan=open_window())
     await world.controller.async_stop()  # the window's own start, stopped: nobody's charge now
     await world.switch("on")
@@ -251,15 +243,14 @@ async def test_the_claim_of_a_window_charge_comes_back_to_the_core(
         "earlier_plug_in": False,
     }
     assert world.controller.charge_origin == "plan_window"
-    assert world.controller.ownership_shadow.session.owner == "plan"
+    assert world.controller.session_runner.session.owner == "plan"
     await world.shutdown()
 
 
-@pytest.mark.parametrize("drives", [False, True])
+@pytest.mark.parametrize("drives", [True])
 async def test_the_stop_under_a_persons_stop_is_rechecked_by_the_core(
     hass: HomeAssistant, timers: FakeScheduler, monkeypatch, drives: bool
 ) -> None:
-    monkeypatch.setattr(ownership_shadow, "CORE_OWNERSHIP_DEFAULT", drives)
     world = await pause_world(hass, timers)
     await world.executor.async_manual_stop()
     stops = len(world.stops)
@@ -269,7 +260,7 @@ async def test_the_stop_under_a_persons_stop_is_rechecked_by_the_core(
     rechecks = _records(world, "recheck")
     assert rechecks and rechecks[-1]["event"]["what"] == "person_hold"
     assert rechecks[-1]["result"]["executed"] is True
-    shadow = world.controller.ownership_shadow
+    shadow = world.controller.session_runner
     assert not shadow.session.hold_stop_pending and len(shadow.session.hold_stop_times) == 1
     await world.shutdown()
 
@@ -284,14 +275,13 @@ def _c7(world) -> tuple[int, bool]:
     return len(stops.stop_times), stops.gave_up
 
 
-@pytest.mark.parametrize("drives", [False, True])
+@pytest.mark.parametrize("drives", [True])
 async def test_the_stops_under_a_persons_stop_keep_the_gap_and_give_up_in_both_modes(
     hass: HomeAssistant, timers: FakeScheduler, monkeypatch, freezer, drives: bool
 ) -> None:
     """C7 and R5 through the controller: a charger that begins again by itself under a person's Stop is stopped at
     most once per gap, each stop counted once, and after three in ten minutes SpotNav gives up and says so. When the
     core drives, all of it is the session's, and the controller's own fields are never written."""
-    monkeypatch.setattr(ownership_shadow, "CORE_OWNERSHIP_DEFAULT", drives)
     world = await pause_world(hass, timers)
     await world.executor.async_manual_stop()
     stops = len(world.stops)
@@ -312,19 +302,16 @@ async def test_the_stops_under_a_persons_stop_keep_the_gap_and_give_up_in_both_m
     await world.switch("on")  # a fourth within ten minutes: given up, and said
     assert len(world.stops) == stops + 3 and _c7(world) == (3, True)
     assert world.controller.ignores_person_stop
-    shadow = world.controller.ownership_shadow
+    shadow = world.controller.session_runner
     if drives:
         assert shadow.session.hold_gave_up and len(shadow.session.hold_stop_times) == 3
-        fields = vars(world.controller)
-        assert fields["_person_hold_stop_times"] == [] and not fields["_person_hold_gave_up"], "never written"
-    assert shadow.counts["mirror_drift"] == 0
 
     await world.executor.async_manual_stop()  # the person acts: afresh
     assert _c7(world) == (0, False) and not world.controller.ignores_person_stop
     await world.shutdown()
 
 
-@pytest.mark.parametrize("drives", [False, True])
+@pytest.mark.parametrize("drives", [True])
 async def test_a_report_that_lands_while_the_stop_under_a_persons_stop_is_on_its_way_keeps_it_pending(
     hass: HomeAssistant, timers: FakeScheduler, monkeypatch, drives: bool
 ) -> None:
@@ -333,7 +320,6 @@ async def test_a_report_that_lands_while_the_stop_under_a_persons_stop_is_on_its
     drifts from what the controller reads."""
     import asyncio
 
-    monkeypatch.setattr(ownership_shadow, "CORE_OWNERSHIP_DEFAULT", drives)
     world = await pause_world(hass, timers)
     await world.executor.async_manual_stop()
     release = asyncio.Event()
@@ -351,7 +337,7 @@ async def test_a_report_that_lands_while_the_stop_under_a_persons_stop_is_on_its
         if calls:
             break
     assert len(calls) == 1, "the stop is on its way"
-    shadow = world.controller.ownership_shadow
+    shadow = world.controller.session_runner
     hass.states.async_set(SWITCH, "on", {"report": 1})  # a report lands mid-command
     for _ in range(10):
         await asyncio.sleep(0)
@@ -366,13 +352,12 @@ async def test_a_report_that_lands_while_the_stop_under_a_persons_stop_is_on_its
     assert len(calls) == 1
     assert not shadow.session.hold_stop_pending and not world.controller._c7.stop_pending  # noqa: SLF001
     assert len(world.controller._c7.stop_times) == 1, "counted once"  # noqa: SLF001
-    assert shadow.counts["mirror_drift"] == 0
     await world.shutdown()
 
 
 def _break_the_first_person_hold_recheck(controller, monkeypatch) -> list[str]:
     """The facts of the first re-check of a stop under a person's Stop cannot be read: that `Recheck` is never fed
-    (a failure; today's rule acts for that one event)."""
+    (a failure: nothing is sent for that one event)."""
     real = controller._recheck_facts  # noqa: SLF001
     broken: list[str] = []
 
@@ -386,41 +371,38 @@ def _break_the_first_person_hold_recheck(controller, monkeypatch) -> list[str]:
     return broken
 
 
-# The failed feed is a failure on purpose: the core never hears the stop's result, so the owner after it differs once.
-@pytest.mark.shadow_disagreement_expected
-@pytest.mark.parametrize("drives", [False, True])
+# The failed feed is a failure on purpose: nothing is sent for it, and the core never hears of a stop.
+@pytest.mark.core_failure_expected
 async def test_a_stop_whose_recheck_was_never_fed_does_not_hold_off_the_next(
-    hass: HomeAssistant, timers: FakeScheduler, monkeypatch, freezer, drives: bool
+    hass: HomeAssistant, timers: FakeScheduler, monkeypatch, freezer
 ) -> None:
-    """The stop under a person's Stop went out, but its re-check could not be fed, so the core never heard of it and
-    still awaits it. Once its task has ended a gap ago, that awaited stop is dropped (`hold_stop_overdue`): the
-    charger beginning again is stopped as ever, not left alone until the next plug-in."""
-    monkeypatch.setattr(ownership_shadow, "CORE_OWNERSHIP_DEFAULT", drives)
+    """The stop under a person's Stop was decided, but its re-check could not be fed: nothing is sent for it, and the
+    core still awaits it. Once its task has ended a gap ago, that awaited stop is dropped (`hold_stop_overdue`): the
+    charger reporting it charges is stopped as ever, not left alone until the next plug-in."""
     world = await pause_world(hass, timers)
     await world.executor.async_manual_stop()
     broken = _break_the_first_person_hold_recheck(world.controller, monkeypatch)
     stops = len(world.stops)
 
-    await world.switch("on")  # the charger begins by itself: stopped (today's rule acts for the failed event)
-    assert broken and len(world.stops) == stops + 1
-    if drives:
-        assert world.controller.ownership_shadow.session.hold_stop_pending, "the core never heard back"
+    await world.switch("on")  # the charger begins by itself: its stop's re-check fails, so nothing is sent
+    assert broken and len(world.stops) == stops
+    assert world.controller.session_runner.session.hold_stop_pending, "the core never heard back"
 
     freezer.tick(timedelta(seconds=31))
-    await world.switch("on")  # it begins again, a gap later
-    assert len(world.stops) == stops + 2, "stopped again: the awaited stop no longer holds the next off"
+    world.controller._cancel_person_hold_retry()  # noqa: SLF001 - the report below looks again first
+    hass.states.async_set(SWITCH, "on", {"report": "a gap later"})  # it reports charging again, a gap later
+    await hass.async_block_till_done()
+    assert len(world.stops) == stops + 1, "stopped now: the awaited stop no longer holds the next off"
     assert not world.controller._c7.stop_pending  # noqa: SLF001
-    assert world.controller.ownership_shadow.counts["mirror_drift"] == 0
     await world.shutdown()
 
 
-@pytest.mark.shadow_disagreement_expected
+@pytest.mark.core_failure_expected
 async def test_an_overdue_stop_is_looked_at_again_even_without_a_report(
     hass: HomeAssistant, timers: FakeScheduler, monkeypatch, freezer
 ) -> None:
     """The same, with a charger that ignores the stop and reports nothing new: the controller looks again once the
     awaited stop is overdue (its retry), and the core stops the charge again."""
-    monkeypatch.setattr(ownership_shadow, "CORE_OWNERSHIP_DEFAULT", True)
     world = await pause_world(hass, timers)
     await world.executor.async_manual_stop()
     _break_the_first_person_hold_recheck(world.controller, monkeypatch)
@@ -431,7 +413,7 @@ async def test_an_overdue_stop_is_looked_at_again_even_without_a_report(
 
     hass.services.async_register("switch", "turn_off", ignored)
     await world.switch("on")
-    assert len(calls) == 1
+    assert calls == [], "nothing is sent for the event that failed"
     controller = world.controller
     assert controller._person_hold_retry_cancel is not None, "looked at again once overdue"  # noqa: SLF001
 
@@ -439,7 +421,7 @@ async def test_an_overdue_stop_is_looked_at_again_even_without_a_report(
     controller._cancel_person_hold_retry()  # noqa: SLF001 - fired by hand below, so not left behind
     controller._person_hold_retry_callback(dt_util.utcnow())  # noqa: SLF001 - that timer's own entry
     await hass.async_block_till_done()
-    assert len(calls) == 2
+    assert len(calls) == 1
     assert len(controller._c7.stop_times) == 1, "the stop the core heard of is counted"  # noqa: SLF001
-    assert controller.ownership_shadow.counts["mirror_drift"] == 0
+    controller._cancel_person_hold_retry()  # noqa: SLF001 - the charger ignores it: not left behind
     await world.shutdown()

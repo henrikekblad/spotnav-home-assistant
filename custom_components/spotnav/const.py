@@ -15,9 +15,8 @@ CONF_CURRENT_CONTROL = "current_control"
 # does not fall back to the OCPP session limit it would otherwise find by itself. Stored only while
 # true, so a charger that never chose it keeps exactly its old data.
 CONF_CURRENT_LIMIT_NONE = "current_limit_none"
-# Development option, off unless a charger's entry data says `true` (no card or flow sets it): the charge-ownership
-# core (`core/ownership.py`) decides who owns the charge and which person intent holds, and today's code follows it
-# (`execution/ownership_shadow.py`). Off, today's code decides exactly as before and the core only shadows it.
+# A charger's choice of an earlier release between the charge-ownership core and the logic before it. The core decides
+# for every charger now; the key is only read at setup, to drop it from the entry's data (`__init__.py`).
 CONF_CORE_OWNERSHIP = "core_ownership"
 # Per charger, off unless a charger's entry data says `true` (no card or flow sets it yet): the solar controller may
 # switch the charge between one and three phases, where the charger's integration can (`execution/phase_switching.py`).

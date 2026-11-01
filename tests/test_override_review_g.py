@@ -9,8 +9,6 @@ import pytest
 from homeassistant.core import HomeAssistant
 
 from custom_components.spotnav.const import CONF_CHARGE_CONTROL
-from custom_components.spotnav.core.ownership import CarFacts
-from custom_components.spotnav.execution import ownership_shadow
 from custom_components.spotnav.execution.auto_execution import AutoExecutor
 from custom_components.spotnav.execution.controller import ChargingController, SESSION_STORE_KEY
 
@@ -20,8 +18,8 @@ from .test_replug import Plug
 
 
 @pytest.fixture
-def drives(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(ownership_shadow, "CORE_OWNERSHIP_DEFAULT", True)
+def drives() -> None:
+    """The core drives (for every charger now)."""
 
 
 async def _ha_restart(world: World) -> World:
@@ -50,13 +48,11 @@ async def _ha_restart(world: World) -> World:
 # ---------------------------------------------------------------------------------------------- (b) restart
 
 
-@pytest.fixture(params=[False, True], ids=["off", "on"])
+@pytest.fixture(params=[True], ids=["core"])
 def mode(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) -> bool:
-    monkeypatch.setattr(ownership_shadow, "CORE_OWNERSHIP_DEFAULT", request.param)
     return request.param
 
 
-@pytest.mark.shadow_disagreement_expected
 async def test_rev_g_suns_charge_survives_a_real_ha_restart(
     hass: HomeAssistant, timers: FakeScheduler, mode: bool
 ) -> None:
@@ -86,79 +82,10 @@ async def test_rev_g_suns_charge_survives_a_real_ha_restart(
 # ---------------------------------------------------------------------------------------------- (a) inertness
 
 
-async def test_rev_g_off_the_stop_under_a_persons_stop_reads_no_state_of_charge(
-    hass: HomeAssistant, timers: FakeScheduler, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """Option off. Inside a window, after the car ended a person's charge (known full), with the hold guard
-    blocking (an Auto plan under the person's Stop, as `__init__` wires it): the charger begins by itself and the
-    stop under the person's Stop is sent. Main reads no state of charge for that stop; the branch's
-    `_recheck_facts` calls `_car_ended_holds_window` -> `_car_facts` -> `SocReader.read`, which may move
-    and save the SoC anchor (`soc_estimate.SocReader.read` -> `_save`): a read and a storage write the shadow adds."""
-    from homeassistant.util import dt as dt_util
-
-    from .pause_world import two_windows
-
-    monkeypatch.setattr(ownership_shadow, "CORE_OWNERSHIP_DEFAULT", False, raising=False)
-    world = await pause_world(hass, timers, plan=two_windows())
-    controller = world.controller
-    controller.set_hold_guard(lambda: True)
-    await world.executor.async_manual_stop()
-    # A schedule installed after the Stop (the person's Stop clears the plan it found; a webhook or a service call
-    # installs another), with a window open now.
-    from .helpers import install_schedule
-
-    await install_schedule(controller, two_windows())
-    await hass.async_block_till_done()
-    assert controller.plan is not None
-    reads: list[Any] = []
-    controller._soc_reader = lambda vehicle: reads.append(vehicle)  # noqa: SLF001
-    controller._car_ended_at = dt_util.utcnow() - timedelta(minutes=5)  # noqa: SLF001
-    controller._car_ended_soc = 90  # noqa: SLF001
-    # Known full for the plan (read at 90 % against a target of 90 %): the rule would read whether its need grew.
-    monkeypatch.setattr(controller, "_car_plan_facts", lambda: CarFacts(plan_target=90.0, plan_full_at=90.0))
-    stops = len(world.stops)
-
-    await world.switch("on")
-    assert len(world.stops) == stops + 1, "the stop under the person's Stop went out"
-    assert reads == [], f"the stop read the car's state of charge {len(reads)} time(s)"
-    await world.shutdown()
-
-
-@pytest.mark.parametrize("what", ["claim", "hold", "stray", "person_hold"])
-async def test_rev_g_off_a_recheck_today_declines_reads_no_state_of_charge(
-    hass: HomeAssistant, timers: FakeScheduler, monkeypatch: pytest.MonkeyPatch, what: str
-) -> None:
-    """Option off. A background task's re-check whose rule today short-circuits (Auto holds it back) reads nothing
-    of the car: the shadow's facts take the car-ended rule's answer from today's own read, never one of their own."""
-    from homeassistant.util import dt as dt_util
-
-    from .pause_world import two_windows
-
-    monkeypatch.setattr(ownership_shadow, "CORE_OWNERSHIP_DEFAULT", False, raising=False)
-    world = await pause_world(hass, timers, plan=two_windows())
-    controller = world.controller
-    reads: list[Any] = []
-    controller._soc_reader = lambda vehicle: reads.append(vehicle)  # noqa: SLF001
-    controller._car_ended_at = dt_util.utcnow() - timedelta(minutes=5)  # noqa: SLF001
-    controller._car_ended_soc = 90  # noqa: SLF001
-    # Known full for the plan (read at 90 % against a target of 90 %): the rule would read whether its need grew.
-    monkeypatch.setattr(controller, "_car_plan_facts", lambda: CarFacts(plan_target=90.0, plan_full_at=90.0))
-    sent: list[str] = []
-
-    async def act() -> bool:
-        sent.append(what)
-        return True
-
-    async with controller._lock:  # noqa: SLF001
-        assert not await controller._recheck(what, lambda: False, act)  # noqa: SLF001
-    assert (sent, reads) == ([], []), f"the re-check sent {sent} and read the car's state of charge {len(reads)} time(s)"
-    await world.shutdown()
-
-
 # ---------------------------------------------------------------------------------------------- (c) leaks
 
 
-@pytest.mark.parametrize("on", [False, True], ids=["off", "on"])
+@pytest.mark.parametrize("on", [True])
 async def test_rev_g_shadow_diagnostics_name_no_entity(
     hass: HomeAssistant, timers: FakeScheduler, monkeypatch: pytest.MonkeyPatch, on: bool
 ) -> None:
@@ -167,7 +94,6 @@ async def test_rev_g_shadow_diagnostics_name_no_entity(
 
     from .pause_world import two_windows
 
-    monkeypatch.setattr(ownership_shadow, "CORE_OWNERSHIP_DEFAULT", on)
     world = await pause_world(hass, timers, plan=two_windows())
     await world.executor.async_manual_start()
     await world.executor.async_manual_stop()
@@ -176,7 +102,7 @@ async def test_rev_g_shadow_diagnostics_name_no_entity(
     await world.plug.set(True)
     await world.controller.async_start(cause="solar")
     await world.controller.async_stop()
-    text = json.dumps(world.controller.ownership_shadow.diagnostics(), default=str)
+    text = json.dumps(world.controller.session_runner.diagnostics(), default=str)
     entityish = sorted(set(re.findall(r"\b[a-z_]+\.[a-z0-9_]+\b", text)))
     assert "switch.a" not in text and ENTRY not in text and not entityish, entityish
     await world.shutdown()
@@ -185,34 +111,38 @@ async def test_rev_g_shadow_diagnostics_name_no_entity(
 # ---------------------------------------------------------------------------------------------- (b) give-up counting
 
 
+#: Per gap: the stops sent so far and whether SpotNav gave up, after each report. Within the stops' gap a charge that
+#: begins again is not stopped at once; three stops a gap apart give up; far apart, each is a charge of its own.
+EXPECTED_GIVE_UP = {
+    5: [(1, False)] * 6 + [(2, False)] * 4,
+    31: [(1, False), (2, False), (3, False)] + [(3, True)] * 7,
+    200: [(n, False) for n in range(1, 11)],
+}
+
+
 @pytest.mark.parametrize("gap_s", [5, 31, 200])
-async def test_rev_g_give_up_counts_the_same_in_both_modes(
+async def test_rev_g_give_up_counts(
     hass: HomeAssistant, timers: FakeScheduler, monkeypatch: pytest.MonkeyPatch, freezer: Any, gap_s: int
 ) -> None:
-    """Could not break: a charger that begins again by itself under a person's Stop, ten times, `gap_s` apart, is
-    sent the same stops and reaches the give-up at the same report whether the core drives or not."""
-    seen: dict[bool, list[tuple[int, bool]]] = {}
-    for on in (False, True):
-        monkeypatch.setattr(ownership_shadow, "CORE_OWNERSHIP_DEFAULT", on)
-        world = await pause_world(hass, timers)
-        await world.executor.async_manual_stop()
-        stops = len(world.stops)
-        seen[on] = []
-        for _ in range(10):
-            freezer.tick(timedelta(seconds=gap_s))
-            await world.switch("off")
-            await world.switch("on")
-            seen[on].append((len(world.stops) - stops, world.controller.ignores_person_stop))
-        await world.shutdown()
-        hass.services.async_remove("switch", "turn_on")
-        hass.services.async_remove("switch", "turn_off")
-    assert seen[True] == seen[False], seen
+    """A charger that begins again by itself under a person's Stop, ten times, `gap_s` apart: the stops it is sent
+    and the report at which SpotNav gives up."""
+    world = await pause_world(hass, timers)
+    await world.executor.async_manual_stop()
+    stops = len(world.stops)
+    seen: list[tuple[int, bool]] = []
+    for _ in range(10):
+        freezer.tick(timedelta(seconds=gap_s))
+        await world.switch("off")
+        await world.switch("on")
+        seen.append((len(world.stops) - stops, world.controller.ignores_person_stop))
+    await world.shutdown()
+    assert seen == EXPECTED_GIVE_UP[gap_s], seen
 
 
 # ---------------------------------------------------------------------------------------------- pre-existing, copied
 
 
-@pytest.mark.parametrize("on", [False, True], ids=["off", "on"])
+@pytest.mark.parametrize("on", [True])
 async def test_rev_g_preexisting_a_replan_outside_the_windows_leaves_a_charge_now_running(
     hass: HomeAssistant, timers: FakeScheduler, monkeypatch: pytest.MonkeyPatch, on: bool
 ) -> None:
@@ -221,7 +151,6 @@ async def test_rev_g_preexisting_a_replan_outside_the_windows_leaves_a_charge_no
     started between windows (a webhook start, a button with no Auto) is stopped by the next plan installed."""
     from .helpers import install_schedule
 
-    monkeypatch.setattr(ownership_shadow, "CORE_OWNERSHIP_DEFAULT", on)
     world = await pause_world(hass, timers, plan={"periods": [later_window()], "amps": 10})
     assert await world.controller.async_start()
     await hass.async_block_till_done()
@@ -232,7 +161,7 @@ async def test_rev_g_preexisting_a_replan_outside_the_windows_leaves_a_charge_no
     await world.shutdown()
 
 
-@pytest.mark.parametrize("on", [False, True], ids=["off", "on"])
+@pytest.mark.parametrize("on", [True])
 async def test_a_replan_outside_the_windows_leaves_a_persons_start_running(
     hass: HomeAssistant, timers: FakeScheduler, monkeypatch: pytest.MonkeyPatch, on: bool
 ) -> None:
@@ -240,7 +169,6 @@ async def test_a_replan_outside_the_windows_leaves_a_persons_start_running(
     between the plan's windows: the next plan installed stops nothing."""
     from .helpers import install_schedule
 
-    monkeypatch.setattr(ownership_shadow, "CORE_OWNERSHIP_DEFAULT", on)
     world = await pause_world(hass, timers, plan={"periods": [later_window()], "amps": 10})
     await world.executor.async_manual_start()
     await hass.async_block_till_done()
@@ -253,13 +181,12 @@ async def test_a_replan_outside_the_windows_leaves_a_persons_start_running(
 
 
 @pytest.mark.usefixtures("both_restarts")
-@pytest.mark.parametrize("on", [False, True], ids=["off", "on"])
+@pytest.mark.parametrize("on", [True])
 async def test_a_restart_outside_the_windows_leaves_a_charge_now_running(
     hass: HomeAssistant, timers: FakeScheduler, monkeypatch: pytest.MonkeyPatch, on: bool
 ) -> None:
     """A Charge-now start with no Auto between the plan's windows, then a restart: the re-arm at the restore stops
     nothing (only the plan's own charge is the plan's to stop)."""
-    monkeypatch.setattr(ownership_shadow, "CORE_OWNERSHIP_DEFAULT", on)
     world = await pause_world(hass, timers, plan={"periods": [later_window()], "amps": 10})
     assert await world.controller.async_start()
     await hass.async_block_till_done()
@@ -274,7 +201,7 @@ async def test_a_restart_outside_the_windows_leaves_a_charge_now_running(
 
 
 @pytest.mark.usefixtures("offline_relay")
-@pytest.mark.parametrize("on", [False, True], ids=["off", "on"])
+@pytest.mark.parametrize("on", [True])
 async def test_rev_g_preexisting_the_departure_does_not_cycle_a_charge_the_next_plan_continues(
     hass: HomeAssistant, transport: Any, monkeypatch: pytest.MonkeyPatch, on: bool
 ) -> None:
@@ -294,7 +221,6 @@ async def test_rev_g_preexisting_the_departure_does_not_cycle_a_charge_the_next_
     from .test_dashboard_api import NOW
     from .test_replug import _car
 
-    monkeypatch.setattr(ownership_shadow, "CORE_OWNERSHIP_DEFAULT", on)
     serve_prices(transport, rising=True)
     calls: list[tuple[str, int]] = []
     with freeze_time(NOW) as frozen:
@@ -320,7 +246,7 @@ async def test_rev_g_preexisting_the_departure_does_not_cycle_a_charge_the_next_
 
 
 @pytest.mark.usefixtures("offline_relay")
-@pytest.mark.parametrize("on", [False, True], ids=["off", "on"])
+@pytest.mark.parametrize("on", [True])
 @pytest.mark.parametrize("first", ["window_end", "next_plan"])
 async def test_the_next_plan_beginning_at_the_departure_takes_the_charge_over_in_either_order(
     hass: HomeAssistant, transport: Any, monkeypatch: pytest.MonkeyPatch, on: bool, first: str
@@ -339,7 +265,6 @@ async def test_the_next_plan_beginning_at_the_departure_takes_the_charge_over_in
     from .test_dashboard_api import NOW
     from .test_replug import _car
 
-    monkeypatch.setattr(ownership_shadow, "CORE_OWNERSHIP_DEFAULT", on)
     serve_prices(transport, rising=True)
     calls: list[tuple[str, int]] = []
     with freeze_time(NOW) as frozen:

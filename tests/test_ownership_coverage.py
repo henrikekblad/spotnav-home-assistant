@@ -19,7 +19,6 @@ from pytest_homeassistant_custom_component.common import async_fire_time_changed
 
 from custom_components.spotnav import core as core_package
 from custom_components.spotnav.core import events as ev
-from custom_components.spotnav.core.session import ChargeSession
 from custom_components.spotnav.diagnostics import async_get_config_entry_diagnostics
 from custom_components.spotnav.execution.ownership_coverage import (
     COVERAGE_FIELDS,
@@ -28,7 +27,7 @@ from custom_components.spotnav.execution.ownership_coverage import (
     STORE_VERSION,
     store_key,
 )
-from custom_components.spotnav.execution.ownership_shadow import CommandOutcome, OwnershipShadow
+from custom_components.spotnav.execution.session_runner import SessionRunner
 
 from .pause_world import pause_world
 from .relay import FakeScheduler
@@ -75,74 +74,28 @@ def test_every_event_kind_of_the_core_is_listed_with_zeros() -> None:
     json.dumps(coverage)
 
 
-def test_the_shadow_counts_each_event_under_its_kind() -> None:
+def test_the_runner_counts_each_event_under_its_kind() -> None:
     clock = Clock()
-    shadow = OwnershipShadow(ChargeSession, now=clock)
+    shadow = SessionRunner(now=clock)
     shadow.feed(ev.CarEnded())
     clock.now = T0 + timedelta(minutes=5)
     shadow.feed(ev.CarEnded())
     shadow.feed(ev.PlugIn(previous=False))
     kinds = shadow.diagnostics()["coverage"]["kinds"]
     assert kinds["car_ended"] == {
-        **dict.fromkeys(COVERAGE_FIELDS, 0), "events": 2, "compared": 2,
+        **dict.fromkeys(COVERAGE_FIELDS, 0), "events": 2,
         "first_seen": T0.isoformat(), "last_seen": (T0 + timedelta(minutes=5)).isoformat(),
     }
     assert kinds["plug_in"]["events"] == 1 and kinds["plug_in"]["first_seen"] == kinds["plug_in"]["last_seen"]
     assert kinds["unplug"]["events"] == 0 and kinds["unplug"]["first_seen"] is None
 
 
-def test_a_feed_inside_another_is_decided_but_compared_by_the_outer_one() -> None:
-    shadow = OwnershipShadow(ChargeSession, now=lambda: T0)
-    outer = shadow.begin()
-    shadow.feed(ev.ChargerReportedOff())
-    shadow.end(outer, ev.CarEnded())
-    kinds = shadow.diagnostics()["coverage"]["kinds"]
-    assert kinds["charger_reported_off"]["events"] == 1 and kinds["charger_reported_off"]["compared"] == 0
-    assert kinds["car_ended"]["events"] == 1 and kinds["car_ended"]["compared"] == 1
-
-
-@pytest.mark.shadow_disagreement_expected
-def test_disagreements_drift_and_errors_are_counted_under_the_event_that_met_them() -> None:
-    state = {"today": ChargeSession(owner="plan")}
-    shadow = OwnershipShadow(lambda: state["today"], now=lambda: T0)
-    shadow.session = state["today"]
-    # Today's code says it stopped, but its owner stays the plan's: the core says nobody's.
-    shadow.end(shadow.begin(), ev.WindowEnd(), legacy=("stop",), outcome=CommandOutcome(True))
-    # Today's owner moved with no event fed: the next feed finds it.
-    state["today"] = ChargeSession(owner="solar")
-    shadow.feed(ev.SolarStart())
-    coverage = shadow.diagnostics()["coverage"]
-    assert coverage["kinds"]["window_end"]["disagreements"] == 1
-    assert coverage["kinds"]["solar_start"]["drift"] == 1
-    assert coverage["kinds"]["window_end"]["drift"] == 0
-
-    def broken() -> ChargeSession:
-        raise RuntimeError("today's state could not be read")
-
-    failing = OwnershipShadow(broken, now=lambda: T0)
-    failing.feed(ev.Unplug())
-    failing.check(("owner",), "unplug_settled")
-    coverage = failing.diagnostics()["coverage"]
-    assert coverage["kinds"]["unplug"]["errors"] >= 1
-    assert coverage["kinds"]["unplug"]["events"] == 1
-    # A comparison with no event of its own (the boundary's later check) belongs to no kind.
-    assert coverage["unattributed"]["errors"] == 1
-
-
-def test_a_comparison_with_no_event_of_its_own_is_unattributed() -> None:
-    shadow = OwnershipShadow(ChargeSession, now=lambda: T0)
-    shadow.check(("owner",), "unplug_settled")
-    coverage = shadow.diagnostics()["coverage"]
-    assert coverage["unattributed"]["compared"] == 1
-    assert all(counts["compared"] == 0 for counts in coverage["kinds"].values())
-
-
-def test_a_failing_tally_never_breaks_the_shadow() -> None:
+def test_a_failing_tally_never_breaks_the_runner() -> None:
     class Broken(OwnershipCoverage):
         def add(self, kind: str | None, field: str) -> None:
             raise RuntimeError("no tally")
 
-    shadow = OwnershipShadow(ChargeSession, now=lambda: T0, coverage=Broken(now=lambda: T0))
+    shadow = SessionRunner(now=lambda: T0, coverage=Broken(now=lambda: T0))
     shadow.feed(ev.CarEnded())
     assert shadow.counts["events"] == 1 and shadow.counts["errors"] == 0
 
@@ -244,47 +197,19 @@ async def test_another_release_begins_a_new_tally_and_keeps_the_one_before(
     assert unknown.as_dict()["version"] == "1.13.0" and unknown.as_dict()["kinds"]["unplug"]["events"] == 1
 
 
-@pytest.mark.shadow_disagreement_expected
-def test_mirror_drift_write_backs_differing_verdicts_and_failures_are_counted_under_their_event() -> None:
-    state = {"today": ChargeSession(plugged=True, held=True)}
-    written = {"changed": False}
-    shadow = OwnershipShadow(
-        lambda: state["today"],
-        now=lambda: T0,
-        owned_fields=("held",),
-        drives=True,
-        writer=lambda _session: written["changed"],
-    )
-    shadow.session = state["today"]
-    # A field the core owns that today's state reads otherwise: under the kind of the event that met it.
-    state["today"] = state["today"].with_changes(held=False)
-    shadow.feed(ev.ConnectionUnknown())
-    state["today"] = state["today"].with_changes(held=True)
-    # Today's owner fields overridden by the core's owner.
-    written["changed"] = True
-    shadow.feed(ev.PlanDropped())
-    written["changed"] = False
-    # Today's rule would have chosen otherwise, inside a feed and outside any.
-    token = shadow.begin()
-    shadow.choose("window_start", True, False)
-    shadow.end(token, ev.WindowStart(trigger=ev.TRIGGER_PLUG_IN, window_open=False))
-    shadow.choose("nowhere", True, False)
-    # A decision that could not be taken.
+@pytest.mark.core_failure_expected
+def test_failures_are_counted_under_their_event() -> None:
+    shadow = SessionRunner(now=lambda: T0)
     shadow.failed("verdict", "rearm", RuntimeError("no"))
     shadow.failed("facts", None, RuntimeError("no"))
     coverage = shadow.diagnostics()["coverage"]
-    kinds = coverage["kinds"]
-    assert kinds["connection_unknown"]["mirror_drift"] == 1
-    assert kinds["plan_dropped"]["written_back"] == 1
-    assert kinds["window_start"]["verdict_differs"] == 1
-    assert kinds["rearm"]["failures"] == 1
-    assert coverage["unattributed"]["verdict_differs"] == 1 and coverage["unattributed"]["failures"] == 1
-    assert sum(counts["mirror_drift"] for counts in kinds.values()) == shadow.counts["mirror_drift"] == 1
+    assert coverage["kinds"]["rearm"]["failures"] == 1
+    assert coverage["unattributed"]["failures"] == 1
+    assert shadow.counts["failures"] == {"verdict/rearm": 1, "facts/-": 1}
 
 
-@pytest.mark.shadow_disagreement_expected  # the core asks for starts no code here sends
 def test_a_window_start_is_counted_by_what_started_it() -> None:
-    shadow = OwnershipShadow(ChargeSession, now=lambda: T0)
+    shadow = SessionRunner(now=lambda: T0)
     for trigger in (ev.TRIGGER_TIMER, ev.TRIGGER_PLUG_IN, ev.TRIGGER_PLUG_IN, ev.TRIGGER_RETRY):
         shadow.feed(ev.WindowStart(trigger=trigger, window_open=False))
     window_start = shadow.diagnostics()["coverage"]["kinds"]["window_start"]
@@ -316,11 +241,11 @@ async def test_a_new_tally_names_the_version_that_started_it(hass: HomeAssistant
 async def test_the_tally_survives_a_restart(hass: HomeAssistant, timers: FakeScheduler) -> None:
     world = await pause_world(hass, timers)
     await world.plug.set(False)
-    before = world.controller.ownership_shadow.diagnostics()["coverage"]
+    before = world.controller.session_runner.diagnostics()["coverage"]
     assert before["kinds"]["restart"]["events"] == 1 and before["kinds"]["unplug"]["events"] >= 1
     assert before["version"]
     restarted = await world.restart()
-    after = restarted.controller.ownership_shadow.diagnostics()["coverage"]
+    after = restarted.controller.session_runner.diagnostics()["coverage"]
     assert after["since"] == before["since"] and after["version"] == before["version"]
     assert after["kinds"]["restart"]["events"] == 2
     assert after["kinds"]["restart"]["first_seen"] == before["kinds"]["restart"]["first_seen"]
@@ -332,13 +257,13 @@ async def test_the_tally_survives_a_restart(hass: HomeAssistant, timers: FakeSch
 async def test_the_tally_survives_home_assistants_own_stop(hass: HomeAssistant, timers: FakeScheduler) -> None:
     world = await pause_world(hass, timers)
     restarted = await world.ha_restart()
-    assert restarted.controller.ownership_shadow.diagnostics()["coverage"]["kinds"]["restart"]["events"] == 2
+    assert restarted.controller.session_runner.diagnostics()["coverage"]["kinds"]["restart"]["events"] == 2
     await restarted.shutdown()
 
 
 async def test_removing_the_entry_removes_the_tally(hass: HomeAssistant, hass_storage: dict[str, Any]) -> None:
     entry = await setup_charger(hass, entry_id="cover_a")
-    assert controller_of(hass, entry.entry_id).ownership_shadow.coverage.as_dict()["kinds"]["restart"]["events"] == 1
+    assert controller_of(hass, entry.entry_id).session_runner.coverage.as_dict()["kinds"]["restart"]["events"] == 1
     assert await hass.config_entries.async_unload(entry.entry_id)
     await hass.async_block_till_done()
     assert hass_storage[store_key(entry.entry_id)]["data"]["kinds"]["restart"]["events"] == 1
@@ -350,11 +275,11 @@ async def test_removing_the_entry_removes_the_tally(hass: HomeAssistant, hass_st
 # ---------------------------------------------------------------------------------------------- read out
 
 
-async def test_diagnostics_carry_the_tally_beside_the_shadow(hass: HomeAssistant) -> None:
+async def test_diagnostics_carry_the_tally_beside_the_runner(hass: HomeAssistant) -> None:
     entry = await setup_charger(hass, entry_id="cover_b")
     diagnostics = await async_get_config_entry_diagnostics(hass, entry)
-    shadow = diagnostics["controller"]["ownership_shadow"]
-    assert {"counts", "session", "disagreements", "drift", "events"} <= set(shadow)
+    shadow = diagnostics["controller"]["ownership"]
+    assert {"counts", "session", "events"} <= set(shadow)
     coverage = shadow["coverage"]
     assert set(coverage) == {"since", "version", "kinds", "unattributed", "previous"}
     assert set(coverage["kinds"]) == set(ev.EVENT_TYPES)

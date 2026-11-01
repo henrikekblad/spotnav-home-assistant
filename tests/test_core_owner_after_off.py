@@ -11,7 +11,6 @@ import pytest
 from homeassistant.core import HomeAssistant
 from homeassistant.util import dt as dt_util
 
-from custom_components.spotnav.execution import ownership_shadow
 from custom_components.spotnav.execution.controller import ChargingPlan
 
 from .pause_world import pause_world, SWITCH, two_windows
@@ -21,17 +20,16 @@ from .world import controller_of, set_site_power_w, tick_site
 
 
 def _owner(controller: Any) -> tuple[Any, Any, str]:
-    return controller.charge_origin, controller._is_plan_charge, controller.ownership_shadow.session.owner  # noqa: SLF001
+    return controller.charge_origin, controller._is_plan_charge, controller.session_runner.session.owner  # noqa: SLF001
 
 
-@pytest.mark.parametrize("drives", [False, True])
+@pytest.mark.parametrize("drives", [True])
 async def test_a_plan_charge_that_pauses_and_resumes_in_its_window_is_the_plans_again_and_stops_at_its_end(
     hass: HomeAssistant, timers: FakeScheduler, monkeypatch: pytest.MonkeyPatch, drives: bool
 ) -> None:
     """Scenario A: the window's charge stops (the car pauses, or the charger's own app), then the charger begins
     again by itself inside the window. Seen off, the charge is nobody's; begun again, the window claims it as the
     plan's (no command, only who owns it), and the window's end stops it as before."""
-    monkeypatch.setattr(ownership_shadow, "CORE_OWNERSHIP_DEFAULT", drives)
     world = await pause_world(hass, timers, plan=two_windows())
     controller = world.controller
     assert controller.charging and _owner(controller) == ("plan_window", True, "plan")
@@ -47,16 +45,14 @@ async def test_a_plan_charge_that_pauses_and_resumes_in_its_window_is_the_plans_
     await world.fire("_async_end_callback")
     assert len(world.stops) == stops + 1 and not controller.charging, "the window's end stops it as ever"
     assert _owner(controller)[2] == "none"
-    assert controller.ownership_shadow.counts["disagreements"] == 0
     await world.shutdown()
 
 
-@pytest.mark.parametrize("drives", [False, True])
+@pytest.mark.parametrize("drives", [True])
 async def test_a_start_on_its_way_keeps_its_owner_through_an_off_report(
     hass: HomeAssistant, timers: FakeScheduler, monkeypatch: pytest.MonkeyPatch, drives: bool
 ) -> None:
     """An off report while a start of ours awaits the charger's answer does not end that start's ownership."""
-    monkeypatch.setattr(ownership_shadow, "CORE_OWNERSHIP_DEFAULT", drives)
     world = await pause_world(hass, timers)
     hass.services.async_remove("switch", "turn_on")
 
@@ -69,18 +65,17 @@ async def test_a_start_on_its_way_keeps_its_owner_through_an_off_report(
     hass.states.async_set(SWITCH, "off", {"report": "still off"})
     await hass.async_block_till_done()
     assert world.controller.charge_origin == "manual"
-    assert world.controller.ownership_shadow.session.owner == "person"
+    assert world.controller.session_runner.session.owner == "person"
     await world.shutdown()
 
 
-@pytest.mark.parametrize("drives", [False, True])
+@pytest.mark.parametrize("drives", [True])
 async def test_hybrid_a_charge_resumed_inside_a_window_is_not_taken_over_by_the_sun(
     hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, drives: bool
 ) -> None:
     """Scenario F: Hybrid, a plan window open, nothing for the sun (the home battery feeds the house). The window's
     charge stops and the charger begins again by itself: it is the plan's again, and the sun's rules, which a charge
     nobody owns would face (I4: stopped at the first reading with no surplus), leave it alone through the window."""
-    monkeypatch.setattr(ownership_shadow, "CORE_OWNERSHIP_DEFAULT", drives)
     charger, site_entry, controller, coordinator, clock, _turn_on_calls, turn_off_calls = await _setup(hass)
     site = controller_of(hass, site_entry.entry_id)
     now = dt_util.utcnow()
@@ -105,7 +100,7 @@ async def test_hybrid_a_charge_resumed_inside_a_window_is_not_taken_over_by_the_
 
     hass.states.async_set(f"switch.{charger.entry_id}", "off")
     await hass.async_block_till_done()
-    assert (controller.charge_origin, controller.ownership_shadow.session.owner) == (None, "none")
+    assert (controller.charge_origin, controller.session_runner.session.owner) == (None, "none")
 
     _self_start(hass, charger.entry_id, FULL_A)
     await hass.async_block_till_done()
@@ -117,4 +112,3 @@ async def test_hybrid_a_charge_resumed_inside_a_window_is_not_taken_over_by_the_
     assert controller.charging
     assert coordinator.state is not None and coordinator.state.held_by_plan is True
     assert _owner(controller) == ("plan_window", True, "plan"), "claimed by the window, not left as nobody's"
-    assert controller.ownership_shadow.counts["disagreements"] == 0

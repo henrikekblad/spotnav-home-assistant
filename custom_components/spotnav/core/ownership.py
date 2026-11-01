@@ -128,10 +128,13 @@ GATE_STOP: Final = "stop"
 GATE_BALANCING_RESUME: Final = "balancing_resume"
 GATE_PERSON_RESUME: Final = "person_resume"
 
-#: Today's constants (`execution/controller.py`; a test keeps the two equal).
+#: The stops under a person's Stop (C7): the controller's own constants (`execution/controller.py`, which logs and times
+#: them; a test keeps the two equal).
 PERSON_HOLD_STOP_GAP_S: Final = 30.0
 PERSON_HOLD_MAX_STOPS: Final = 3
 PERSON_HOLD_WINDOW_S: Final = 600.0
+#: A person's charge load balancing stopped for safety (not its below-floor pause) is resumed by the regulator no
+#: sooner than this many seconds after the last such stop, so a fuse that keeps needing the stop never cycles it.
 SAFETY_RESUME_GAP_S: Final = 300.0
 #: How far the car's level must have dropped since it ended a charge for its need to have grown: the hysteresis the
 #: sun's rules use (`execution/solar_execution.SOC_DROP_PCT`, which is this one).
@@ -172,10 +175,15 @@ _START_OWNER: Final = {
     REASON_MIN_SOC: OWNER_MIN_SOC,
 }
 
-#: Who owns a charge a plan window's end leaves running (`controller.WINDOW_END_SPARED_ORIGINS`): a person, a
-#: Charge-now start, the sun and the car's minimum charge level. Never the plan, its top-off, or a charge the charger
+#: Who owns a charge a plan window's end leaves running: a person, a Charge-now start, the sun and the car's minimum
+#: charge level. Never the plan, its top-off, or a charge the charger
 #: began by itself.
 WINDOW_END_SPARED: Final = frozenset({OWNER_PERSON, OWNER_CHARGE_NOW, OWNER_SOLAR, OWNER_MIN_SOC})
+#: A charge started by hand (a person's Start, a Charge-now start) that a plan window's start never takes over as the
+#: plan's: it keeps its owner and nothing is sent. Normally a person's intent holds the window back already; this
+#: covers a restart that read the owner but not the intent (a crash between the Start's own save and the settings
+#: store's pause, step 8), where taking it over would make the window's end stop it.
+WINDOW_START_SPARED: Final = frozenset({OWNER_PERSON, OWNER_CHARGE_NOW})
 
 #: Today's `charge_origin` values, as owners (`None`: nobody's).
 ORIGIN_OWNER: Final = {
@@ -360,6 +368,26 @@ def spotnav_owned(session: ChargeSession) -> bool:
     )
 
 
+SENT_START: Final = "start"
+SENT_STOP: Final = "stop"
+
+
+def owner_as_sent(session: ChargeSession, sent: str | None) -> str:
+    """The owner while a start (`SENT_START`) or a stop (`SENT_STOP`) of ours has gone out and its result is not decided
+    yet, as today's code writes `charge_origin` as the command goes out: a start's the owner the start awaiting its
+    result is for (the session's own when none awaits one, or it names no owner), a stop's nobody. With nothing sent,
+    the session's owner. A save in that gap writes this owner, in the record and in today's keys alike, so a restart
+    before the result is decided reads the charge as the command made it (the core end state plan, step 8)."""
+    if sent == SENT_STOP:
+        return OWNER_NONE
+    if sent == SENT_START:
+        return next(
+            (item.owner_after for item in reversed(session.pending) if item.command == "start" and item.owner_after),
+            session.owner,
+        )
+    return session.owner
+
+
 def self_started(session: ChargeSession, *, charging: bool, start_pending: bool, stop_recent: bool) -> bool:
     """A charge the charger began by itself: charging, nobody here started it, no start or stop of ours on its
     way, and not a person's override of the hold. A start the core asked for that has not come back is on its way
@@ -376,9 +404,9 @@ def self_started(session: ChargeSession, *, charging: bool, start_pending: bool,
 
 
 def window_end_spared(session: ChargeSession) -> bool:
-    """Whether a plan window's end leaves the charge running (`controller._window_end_spared_owner`): it is a
-    person's, a Charge-now start's or the sun's, or nobody runs one and load balancing holds such a charge back
-    (its regulator still gives it back)."""
+    """Whether a plan window's end leaves the charge running: it is a person's, a Charge-now start's or the sun's, or
+    nobody runs one and load balancing holds such a charge back (its regulator still gives it back). The controller
+    reads it to choose between the last window's stop and a top-off."""
     owner = session.owner
     if owner in (OWNER_NONE, OWNER_CHARGER_SELF) and session.balancing_paused:
         owner = session.paused_origin
@@ -502,6 +530,9 @@ def _window_start(session: ChargeSession, event: WindowStart, now: datetime) -> 
             # No car at the charger: nothing to start (a charger takes a start without one and waits). The plug-in
             # inside the window starts it.
             return s, ()
+        if s.owner in WINDOW_START_SPARED:
+            # A charge started by hand is not the plan's to take over (its end would stop it).
+            return s, ()
         return _start(s, REASON_PLAN_WINDOW, OWNER_PLAN)
     s = session
     if not event.window_open or event.target_stopping:
@@ -519,6 +550,8 @@ def _window_start(session: ChargeSession, event: WindowStart, now: datetime) -> 
             return _claim(s)
         return s, ()
     if event.connected is False or event.start_pending or s.balancing_paused or event.target_reached:
+        return s, ()
+    if s.owner in WINDOW_START_SPARED:
         return s, ()
     return _start(s, REASON_PLAN_WINDOW, OWNER_PLAN)
 

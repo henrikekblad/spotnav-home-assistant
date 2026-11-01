@@ -115,8 +115,8 @@ The card source is in `frontend/`; the compiled bundle in
 `npm run build` regenerates both (`npm run check-dist` fails while either is stale). The bundle
 carries English only and fetches the reader's language from `/spotnav/i18n/<lang>.<hash>.json`.
 
-How charger control is structured as one explicit model, which decides by default while the previous logic is still
-computed beside it and compared, is described in [docs/architecture-state.md](docs/architecture-state.md).
+How charger control is structured as one explicit model, one record per charger changed only by one pure decision, is
+described in [docs/architecture-state.md](docs/architecture-state.md).
 
 ## Licence
 
