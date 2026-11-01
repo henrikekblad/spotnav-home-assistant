@@ -568,28 +568,17 @@ class OwnershipShadow:
         decides with no state of its own changing (a hand-off at a window's end)."""
         self.end(self.begin(), event, legacy=legacy, outcome=outcome, fields=fields)
 
-    def restart(
-        self,
-        event: Event,
-        stored: ChargeSession | None = None,
-        *,
-        keys_newer: bool = False,
-        keys_owner: str | None = None,
-    ) -> None:
+    def restart(self, event: Event, stored: ChargeSession | None = None, *, keys_owner: str | None = None) -> None:
         """The record was read back after a restart, and the restart is fed. The core's session is today's as read;
-        when the core drives and its own stored record was read (`stored`), that record, decided from as it is and
-        then compared with today's. Whether the charger charges by itself is seen now, not stored: an owner of
-        nobody or of the charger itself is today's. Today's keys written after the record's last change
-        (`keys_newer`) are the newer: what the session reads from them is today's, and only the person intent
-        (kept by the execution boundary, not in those keys) is the record's. If reading today's state fails while the
-        core drives, the owner is not lost: the record's session where it is the truth, else the owner today's keys
-        read back (`keys_owner`, in the core's words)."""
+        when the core drives and its own stored record was read (`stored`), that record alone, decided from as it is
+        and then compared with today's (today's keys are written derived from it, so they cannot be the newer).
+        Whether the charger charges by itself is seen now, not stored: an owner of nobody or of the charger itself is
+        today's. If reading today's state fails while the core drives, the owner is not lost: the record's session,
+        else the owner today's keys read back (`keys_owner`, in the core's words), which a migration reads."""
         from_store = stored is not None and self.drives
         try:
             today = self._legacy()
             if stored is not None and from_store:
-                if keys_newer:
-                    stored = replace(today, manual=stored.manual, span_pause=stored.span_pause)
                 if {stored.owner, today.owner} <= _UNSEEN:
                     stored = replace(stored, owner=today.owner)
                 self.session = stored
@@ -599,7 +588,7 @@ class OwnershipShadow:
         except Exception as err:  # noqa: BLE001 - the shadow never raises into the real path
             self._error("restart", event.kind)
             self.failed("restart", event.kind, err)
-            if from_store and stored is not None and not keys_newer:
+            if from_store and stored is not None:
                 self.session = stored
             elif self.drives and keys_owner is not None:
                 self.session = self.session.with_changes(owner=keys_owner)

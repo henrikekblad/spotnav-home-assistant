@@ -11,6 +11,8 @@ random results for every command, against the invariants the refactor is for.
 * A manual pause of the plug-in session ends at the unplug.
 * A restart (serialise, read back, restart) changes nothing about who owns the charge or what the person wants.
 * Today's two owner fields derived from the session read back as the same owner.
+* A record saved while a start or a stop of ours awaits its result reads back with the owner that command makes, the
+  one its result names once it went out.
 
 The facts an event carries are drawn so that they could come from Home Assistant together: no plan exists under a
 person's pause (it is dropped), so no plan-bound event says one is applied then.
@@ -39,6 +41,7 @@ from custom_components.spotnav.core.ownership import (
     decide,
     GATE_STOP,
     Notify,
+    owner_as_sent,
     Start,
     Stop,
     spotnav_owned,
@@ -652,6 +655,46 @@ class OwnershipMachine(RuleBasedStateMachine):
         if not (legacy and not before.paused):
             assert session.manual == before.manual
         assert session.plugged is None and session.pending == ()
+        self.session = session
+
+    @rule(
+        data=st.data(),
+        event=st.one_of(
+            st.builds(ev.PersonStart, connected=maybe_bool),
+            st.builds(ev.PersonStop, connected=maybe_bool),
+            st.builds(
+                ev.DirectStart, manual=st.booleans(), cause=st.sampled_from([None, "solar", "plan_window", "other"])
+            ),
+            st.builds(ev.DirectStop, clear_schedule=st.booleans()),
+            st.builds(ev.WindowEnd, handed_off=st.booleans()),
+            st.builds(ev.SolarStop, take_over=st.booleans()),
+        ),
+        legacy=st.booleans(),
+    )
+    def restart_while_a_command_awaits_its_result(self, data, event, legacy) -> None:
+        """The record is read back alone (the core end state plan, step 8): saved while the start or the stop an event
+        asked for awaits its result, it keeps the owner that command makes (`owner_as_sent`, as today's keys are
+        written then). The restart reads that owner back, and the command's result, had it come, would have named the
+        same one."""
+        pre = self.session
+        asked, commands = decide(pre, event, self.now)
+        self.check_step(pre, event, asked, commands)
+        acted = [command for command in commands if isinstance(command, (Start, Stop))]
+        if not acted:
+            self.session = asked
+            return
+        command = acted[0]
+        owner = owner_as_sent(asked, command.kind)
+        stored = ChargeSession.from_store(asked.stored().with_changes(owner=owner).to_store())
+        session, kept = decide(stored, ev.Restart(legacy_person_stop=legacy), self.now)
+        assert [each.kind for each in kept] == ["keep"]
+        assert session.owner == owner and session.pending == ()
+        item = next(each for each in reversed(asked.pending) if each.command == command.kind)
+        if command.kind == "stop" or item.owner_after:
+            result, _ = decide(
+                asked, ev.CommandResult(command=command.kind, reason=command.reason, executed=True), self.now
+            )
+            assert result.owner == owner, (event, item, result.owner, owner)
         self.session = session
 
 

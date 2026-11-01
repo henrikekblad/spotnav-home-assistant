@@ -23,10 +23,13 @@ from custom_components.spotnav.core.ownership import (
     KEEP,
     Notify,
     NOTIFY_CHARGER_IGNORES_STOP,
+    owner_as_sent,
     PERSON_HOLD_MAX_STOPS,
     PERSON_HOLD_STOP_GAP_S,
     PERSON_HOLD_WINDOW_S,
     SAFETY_RESUME_GAP_S,
+    SENT_START,
+    SENT_STOP,
     Start,
     Stop,
     window_end_spared,
@@ -1621,3 +1624,90 @@ def test_a_balancing_pause_meeting_a_persons_start_in_either_order(
     session, _ = run(PLUGGED.with_changes(owner="plan"), *events)
     assert session.owner == owner
     assert (session.balancing_paused, session.paused_origin) == ((True, paused[0]) if paused else (False, None))
+
+
+# ---------------------------------------------------------------------------------------------- the stored owner (step 8)
+
+
+@pytest.mark.parametrize(
+    ("pre", "sent", "owner"),
+    [
+        # Nothing on its way: the session's own owner.
+        (PLAN_CHARGE, None, "plan"),
+        (PLUGGED, None, "none"),
+        # A start that went out, its result not decided yet: the owner it is for, as today's `_start_locked` writes
+        # `charge_origin` before the command and saves it once the command went out.
+        (run(PLUGGED, ev.PersonStart())[0], SENT_START, "person"),
+        (run(PLUGGED, ev.DirectStart())[0], SENT_START, "charge_now"),
+        (run(PLUGGED, ev.DirectStart(cause="solar"))[0], SENT_START, "solar"),
+        (run(PLUGGED, ev.WindowStart())[0], SENT_START, "plan"),
+        (run(PLUGGED, on(window_open=True))[0], SENT_START, "plan"),
+        # A person's Start over the plan's charge: the person's from the moment it went out.
+        (run(PLAN_CHARGE, ev.PersonStart())[0], SENT_START, "person"),
+        # A start that names no owner (a balancing resume of nobody's charge), or none awaiting its result: as it was.
+        (run(PLUGGED.with_changes(balancing_paused=True), ev.BalancingResume())[0], SENT_START, "none"),
+        (PLAN_CHARGE, SENT_START, "plan"),
+        # A stop that went out (or one of ours already on its way answered for it): nobody's, as today's stop paths
+        # clear `charge_origin` before the stop's result is fed.
+        (run(PLAN_CHARGE, ev.WindowEnd())[0], SENT_STOP, "none"),
+        (PLUGGED.with_changes(owner="person"), SENT_STOP, "none"),
+    ],
+)
+def test_the_owner_saved_while_a_command_of_ours_is_on_its_way(pre, sent, owner) -> None:
+    """Step 8: the record is read back alone at a restart, so a save between a start or a stop going out and its
+    result being decided (today's code saves there) writes the owner the command makes, in the record and in today's
+    keys alike. A restart then keeps that owner (`Restart` keeps the owner), and the result, once decided, names the
+    same one."""
+    assert owner_as_sent(pre, sent) == owner
+    restarted, _ = run(pre.stored().with_changes(owner=owner_as_sent(pre, sent)), ev.Restart())
+    assert restarted.owner == owner and restarted.pending == ()
+    if sent == SENT_START and pre.start_pending:
+        reason = next(item.reason for item in pre.pending if item.command == "start")
+        decided, _ = run(pre, ok("start", reason))
+        assert decided.owner == owner
+
+
+# ---------------------------------------------------------------------------------------------- a charge started by hand
+
+
+@pytest.mark.parametrize("owner", ["person", "charge_now"])
+@pytest.mark.parametrize(
+    "event",
+    [
+        # A window's start by its timer, by the re-arm, at plug-in or at a start's retry, the charger off or on.
+        ev.WindowStart(trigger=ev.TRIGGER_TIMER, connected=True),
+        ev.WindowStart(trigger=ev.TRIGGER_TIMER, connected=True, control_on=True),
+        ev.WindowStart(trigger=ev.TRIGGER_REARM, connected=True),
+        ev.WindowStart(trigger=ev.TRIGGER_PLUG_IN, connected=True),
+        ev.WindowStart(trigger=ev.TRIGGER_PLUG_IN, connected=True, control_on=True),
+        ev.WindowStart(trigger=ev.TRIGGER_RETRY, connected=True),
+        # A report of the charge in an open window (the claim), and the claim's task deciding again.
+        on(window_open=True),
+        ev.Recheck(what=ev.RECHECK_CLAIM, control_on=True, window_open=True, plan_present=True),
+        # The stray charge's stop, outside every window, and the re-arm's stop, before the last window and past it.
+        ev.Recheck(what=ev.RECHECK_STRAY, control_on=True, plan_present=True),
+        ev.Rearm(control_on=True, charging=True),
+        ev.Rearm(past_last=True, control_on=True, charging=True),
+        # The window's end, also the last one's.
+        ev.WindowEnd(),
+        ev.FinalWindowEnd(top_off_wanted=True),
+    ],
+)
+def test_the_plan_never_takes_over_or_stops_a_charge_started_by_hand(owner, event) -> None:
+    """A person's or a Charge-now charge with no intent of the person's in the session: what a restart reads when
+    Home Assistant died between the Start's own save and the settings store's pause (step 8). Nothing of the plan's
+    takes it over as the plan's (its window's end would then stop it) or stops it: the owner is kept, nothing sent.
+    Normally the person's intent holds these back already; with the option off today's code takes such a charge over
+    at a window's start, so the core's verdict differs from today's there."""
+    pre = PLUGGED.with_changes(owner=owner)
+    session, commands = run(pre, event)
+    assert kinds(commands) == [], (event, kinds(commands))
+    assert session.owner == owner
+
+
+@pytest.mark.parametrize("owner", ["none", "charger_self", "plan"])
+def test_a_window_start_still_starts_what_is_not_a_charge_started_by_hand(owner) -> None:
+    session, commands = run(PLUGGED.with_changes(owner=owner), ev.WindowStart(trigger=ev.TRIGGER_TIMER, connected=True))
+    assert kinds(commands) == ["start"]
+    session, _ = run(session, ok("start", "plan_window"))
+    assert session.owner == "plan"

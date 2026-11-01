@@ -334,9 +334,9 @@ async def test_a_charge_load_balancing_gives_back_to_the_charger_is_not_held(
 async def test_todays_hold_key_is_read_where_the_keys_are_the_truth(
     hass: HomeAssistant, timers: FakeScheduler, monkeypatch: pytest.MonkeyPatch, record: str
 ) -> None:
-    """When the core drives, a restart takes the hold's memory from today's `hold` key where today's keys are the
-    truth: an older build's record with no session of the core's (migrated once), or keys written after the session's
-    last change."""
+    """When the core drives, a restart takes the hold's memory from today's `hold` key only to migrate: an older
+    build's record with no session of the core's, or an earlier build's record whose order marks say its keys were
+    written after it (each migrated once)."""
     monkeypatch.setattr(ownership_shadow, "CORE_OWNERSHIP_DEFAULT", True)
     world = await pause_world(hass, timers, plan=later_window())
     await _overridden(world, True)
