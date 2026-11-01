@@ -663,3 +663,117 @@ async def test_the_estimate_stop_waits_for_the_learned_energy(hass: HomeAssistan
         record = controller.target_stop_record
     assert record is not None and record["basis"] == "estimate"
     assert record["soc_percent"] == pytest.approx(80.0 + ESTIMATE_STOP_MARGIN_PERCENT + 0.5, abs=0.3)
+
+
+# ------------------------------------------------------------------ more of the sampler, the restart, the card
+
+
+async def test_a_register_that_posts_only_when_it_moves_gives_a_sample_while_idle_at_both_ends(
+    hass: HomeAssistant,
+) -> None:
+    """Before and after the charge the register stands still and posts nothing: the value it held is believed
+    while the charger is not charging. While it charges, only steady posts count."""
+    store = _store(hass)
+    charge = Charge(EnergySampler(store))
+    charge.posting = False
+    charge.run(12, charging=False)  # plugged in, waiting for the window; the car read every five minutes
+    start = store.anchor
+    assert start is not None and start.soc_percent == pytest.approx(20.0) and start.kwh == pytest.approx(1000.0)
+    charge.posting = True
+    charge.to(60.0)
+    charge.posting = False
+    charge.run(12, charging=False)
+    charge.unplug()
+    learned = store.learned(CAR, CAPACITY)
+    assert len(learned.samples) == 1
+    assert learned.samples[0].delta_percent == pytest.approx(40.0, abs=0.5)
+    assert learned.kwh_per_percent == pytest.approx(RATIO, rel=0.01)
+
+
+async def test_a_held_register_is_not_believed_while_charging(hass: HomeAssistant) -> None:
+    store = _store(hass)
+    charge = Charge(EnergySampler(store))
+    charge.posting = False  # a register that books in chunks: its last post is long ago
+    charge.run(60)
+    assert store.anchor is None and _seen(store) == ()
+
+
+@pytest.mark.usefixtures("offline_relay")
+async def test_a_restart_of_the_charger_keeps_the_stretch(hass: HomeAssistant, transport: Any) -> None:
+    from homeassistant.util import dt as dt_util  # noqa: PLC0415
+    from pytest_homeassistant_custom_component.common import async_fire_time_changed  # noqa: PLC0415
+
+    from .test_learned_power import _record_switch, ATTRIBUTES  # noqa: PLC0415
+    from .world import controller_of, REGISTER  # noqa: PLC0415
+
+    serve(transport, rising=True)
+    _record_switch(hass)
+    with freeze_time(NOW) as frozen:
+        charger, device_id, soc_entity = await charger_and_car(hass, soc_percent="40", amps=16, phases=3)
+        plugged_in = dt_util.utcnow()
+        controller_of(hass, charger.entry_id)._plugged_in_at = plugged_in  # noqa: SLF001
+        state = {"register": 1000.0, "soc": 40.0}
+
+        async def minutes(count: int) -> None:
+            for step in range(count):
+                frozen.tick(timedelta(minutes=1))
+                if hass.states.get("switch.wallbox").state == "on":
+                    state["register"] += 11.0 / 60.0
+                    state["soc"] += 11.0 / 60.0 / RATIO
+                hass.states.async_set(REGISTER, f"{state['register']:.3f}", ATTRIBUTES)
+                if step % 5 == 0:
+                    hass.states.async_set(
+                        soc_entity, str(int(state["soc"])), {"device_class": "battery", "unit_of_measurement": "%"}
+                    )
+                async_fire_time_changed(hass, dt_util.utcnow())
+                await hass.async_block_till_done()
+
+        await minutes(60)
+        start = preview_for(hass, charger.entry_id)._learned_energy.anchor  # noqa: SLF001
+        assert start is not None and start.vehicle_id == device_id
+        await minutes(1)  # past the store's save delay
+        assert await hass.config_entries.async_reload(charger.entry_id)
+        await hass.async_block_till_done()
+        # The charger keeps its last plug-in across a restart (`ChargingController`'s own store) and finds its
+        # register again; this test's switch charger is given both again, as `charger_and_car` gave them.
+        controller_of(hass, charger.entry_id)._plugged_in_at = plugged_in  # noqa: SLF001
+        controller_of(hass, charger.entry_id).energy_register_entity_id = REGISTER
+        restarted = preview_for(hass, charger.entry_id)._learned_energy  # noqa: SLF001
+        assert restarted.anchor == start, "read back"
+        await minutes(50)
+        pending = restarted.learned(device_id, CAPACITY).pending
+    assert restarted.anchor == start, "the same stretch after the restart"
+    assert pending is not None and pending.delta_percent >= MIN_DELTA_PERCENT
+    assert pending.delta_percent == pytest.approx(int(state["soc"]) - start.soc_percent, abs=1.0)
+
+
+@pytest.mark.usefixtures("offline_relay")
+async def test_a_larger_battery_size_never_gives_the_card_an_efficiency_above_one(
+    hass: HomeAssistant, transport: Any
+) -> None:
+    from custom_components.spotnav.api import dashboard as dashboard_api  # noqa: PLC0415
+    from custom_components.spotnav.runtime import domain_data  # noqa: PLC0415
+    from custom_components.spotnav.vehicles import vehicle_properties  # noqa: PLC0415
+
+    serve(transport, rising=True)
+    with freeze_time(NOW):
+        charger, device_id, _ = await charger_and_car(hass, soc_percent="20", amps=16, phases=3)
+        preview = preview_for(hass, charger.entry_id)
+        _trusted(preview._learned_energy, device_id, 3)  # noqa: SLF001
+        for capacity in (CAPACITY, 92.0, 100.0):
+            # 0.9625 kWh per percent means 0.80 at 77 kWh, 0.96 at 92 kWh and 1.04 at 100 kWh.
+            await vehicle_properties.async_update_vehicle_properties(
+                hass, domain_data(hass).decision_store, device_id, {vehicle_properties.KEY_CAPACITY: capacity}
+            )
+            await preview.async_recalculate()
+            planned = preview.snapshot().proposal.requested_kwh
+            soc = dashboard_api.serialize_dashboard(
+                dashboard_api.capture_dashboard(hass, charger), can_act=True
+            )["soc"]
+            assert 0 < soc["efficiency"] <= 1, capacity
+            assert soc["need_kwh"] == pytest.approx(planned, abs=0.005), capacity
+            if capacity == 100.0:
+                assert soc["efficiency"] == CHARGE_EFFICIENCY, "no sample fits: the fixed efficiency"
+                assert planned == pytest.approx(60.0 * capacity / 100.0 / CHARGE_EFFICIENCY)
+            else:
+                assert soc["efficiency"] == pytest.approx(capacity / RATIO / 100.0)
