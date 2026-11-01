@@ -44,7 +44,7 @@ from homeassistant.util import dt as dt_util
 
 from ..const import DOMAIN
 from ..execution.target_stop import SOC_FRESH_MAX_AGE_S
-from ..vehicles.soc_estimate import CHARGE_EFFICIENCY, register_value_at, REGISTER_TOLERANCE_KWH
+from ..vehicles.soc_estimate import CHARGE_EFFICIENCY, register_value_at, REGISTER_TOLERANCE_KWH, target_need_kwh
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -397,6 +397,36 @@ def with_learned(learned: LearnedEnergy, capacity_kwh: float | None) -> float | 
     kWh per percent once trusted, else `capacity_kwh` as it is."""
     ratio = learned.use_kwh_per_percent
     return capacity_kwh if ratio is None else ratio * 100.0 * CHARGE_EFFICIENCY
+
+
+def target_need(
+    learned: LearnedEnergy,
+    *,
+    soc_percent: float,
+    capacity_kwh: float | None,
+    target_percent: float | None,
+    vehicle_max_percent: float | None = None,
+) -> tuple[str, float | None]:
+    """`(reason, wall kWh)` a target needs: `soc_estimate.target_need_kwh` on the car's learned wall kWh per percent
+    once trusted, else on its battery size and `CHARGE_EFFICIENCY`. The one way a target becomes kWh, for the planner
+    and the dashboard alike, so they never disagree."""
+    return target_need_kwh(
+        soc_percent=soc_percent,
+        capacity_kwh=with_learned(learned, capacity_kwh),
+        target_percent=target_percent,
+        vehicle_max_percent=vehicle_max_percent,
+    )
+
+
+def efficiency_for(learned: LearnedEnergy, capacity_kwh: float | None) -> float:
+    """The efficiency that, with `capacity_kwh`, gives the learned wall kWh per percent once trusted (what the
+    dashboard's `soc.efficiency` states, so the card's `(target - level) x capacity / efficiency` is `target_need`'s
+    figure), else `CHARGE_EFFICIENCY`. Within (0, 1] by the bounds; anything else falls back."""
+    ratio = learned.use_kwh_per_percent
+    if ratio is None or capacity_kwh is None or not _finite_positive(capacity_kwh):
+        return CHARGE_EFFICIENCY
+    efficiency = capacity_kwh / (ratio * 100.0)
+    return efficiency if 0.0 < efficiency <= MAX_EFFICIENCY else CHARGE_EFFICIENCY
 
 
 def _ident(value: Any) -> bool:
