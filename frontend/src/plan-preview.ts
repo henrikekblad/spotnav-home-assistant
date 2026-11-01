@@ -9,9 +9,9 @@
 //   by price as the chart colours it (cheap or dear against its own day's mean), the planned ones marked.
 
 import { localDayKey } from "./chart";
-import { clock, hasZone, hourLabel, type FormatContext } from "./format";
+import { clock, dayCue, hasZone, hourLabel, type FormatContext } from "./format";
 import { translate } from "./i18n";
-import { lineText, momentText, statusText } from "./status";
+import { lineText, statusText } from "./status";
 import { VISUAL_CLASSES as C } from "./visual-styles";
 import type { PlanPreview, PlanPreviewDecode, PlanPreviewStrip, StatusLine } from "./validate";
 
@@ -117,19 +117,34 @@ export class PreviewScheduler<B> {
   }
 }
 
-/** A time, with its day when it is not today. */
-function when(format: FormatContext, instantMs: number, nowMs: number): string {
-  return momentText(format, instantMs, nowMs);
+/**
+ * Times along one line, each with its day only when the line has not named that day yet (today goes without):
+ * "mån 2 00:00–01:48 · … · klar 01:48", "23:15–mån 2 00:30 · … · klar 00:30".
+ */
+class Times {
+  private named: string;
+
+  constructor(
+    private readonly format: FormatContext,
+    nowMs: number,
+  ) {
+    this.named = localDayKey(nowMs, format.timeZone);
+  }
+
+  at(instantMs: number): string {
+    const day = localDayKey(instantMs, this.format.timeZone);
+    if (day === this.named) {
+      return clock(this.format, instantMs);
+    }
+    this.named = day;
+    return `${dayCue(this.format, instantMs)} ${clock(this.format, instantMs)}`;
+  }
 }
 
 /** The planned periods, the first two in full and the rest counted ("03:30–05:15, 13:00–14:00 +2"). */
-function periodsText(preview: PlanPreview, format: FormatContext, nowMs: number): string {
+function periodsText(preview: PlanPreview, times: Times): string {
   const periods = preview.plan?.periods ?? [];
-  const shown = periods.slice(0, 2).map((period, index) => {
-    const start = index === 0 ? when(format, period.startMs, nowMs) : clock(format, period.startMs);
-    const crosses = localDayKey(period.startMs, format.timeZone) !== localDayKey(period.endMs, format.timeZone);
-    return `${start}–${crosses ? when(format, period.endMs, nowMs) : clock(format, period.endMs)}`;
-  });
+  const shown = periods.slice(0, 2).map((period) => `${times.at(period.startMs)}–${times.at(period.endMs)}`);
   const more = periods.length - shown.length;
   return more > 0 ? `${shown.join(", ")} +${more}` : shown.join(", ");
 }
@@ -147,7 +162,8 @@ export function previewLineText(preview: PlanPreview, format: FormatContext, now
   if (!hasZone(format)) {
     return null;
   }
-  const parts: string[] = [periodsText(preview, format, nowMs)];
+  const times = new Times(format, nowMs);
+  const parts: string[] = [periodsText(preview, times)];
   const kwh = plan.planned_kwh ?? plan.requested_kwh;
   if (kwh !== null) {
     parts.push(lineText({ code: "plan_energy", params: { kwh } }, format, nowMs));
@@ -159,7 +175,7 @@ export function previewLineText(preview: PlanPreview, format: FormatContext, now
     };
     parts.push(lineText(cost, format, nowMs));
   }
-  parts.push(translate(format.language, "settings.preview.ready", { time: when(format, plan.finishMs, nowMs) }));
+  parts.push(translate(format.language, "settings.preview.ready", { time: times.at(plan.finishMs) }));
   const notes = statusText(preview.status, format, nowMs);
   return notes === null ? parts.join(" · ") : `${parts.join(" · ")} · ${notes}`;
 }

@@ -314,3 +314,20 @@ describe("in the Plan dialog", () => {
     expect(dialog.querySelector(`.${C.planPreview}`)).toBeNull();
   });
 });
+
+describe("the line's days", () => {
+  it("names a day once, and never today", () => {
+    const ready = preview("ready");
+    const tomorrow = NOW - 86_400_000;
+    expect(previewLineText(ready, SV, tomorrow)).toBe("tis 22 08:00–13:00 · 11,5 kWh · 12,97 kr · klar 13:00");
+    const late = {
+      ...ready,
+      plan: {
+        ...ready.plan!,
+        periods: [{ start: "", startMs: Date.parse("2026-09-22T21:15:00Z"), end: "", endMs: Date.parse("2026-09-22T22:30:00Z") }],
+        finishMs: Date.parse("2026-09-22T22:30:00Z"),
+      },
+    };
+    expect(previewLineText(late, SV, NOW)).toBe("23:15–ons 23 00:30 · 11,5 kWh · 12,97 kr · klar 00:30");
+  });
+});
