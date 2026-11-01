@@ -180,7 +180,7 @@
   "gridFee.window.winterOnly": "Bara november–mars",
   "gridFee.window.help": "Timmarna då ditt nätbolag tar ut sin högre avgift.",
   "gridFee.window.suggestion": "Ett vanligt val. Kontrollera mot ditt nätbolags tariff.",
-  "gridFee.window.first": "Avgiften under höglasttid gäller bara under höglasttiden. Bekräfta tiderna först, sedan avgiften.",
+  "gridFee.window.first": "Avgiften gäller bara under höglasttiden. Bekräfta tiderna först, sedan avgiften.",
   "gridFee.window.next": "Nästa",
   "gridFee.window.order": "Till måste vara efter Från.",
   "gridFee.error.conflict": "Elpriset ändrades någon annanstans och har lästs om. Inget sparades: spara igen för att göra din ändring.",
