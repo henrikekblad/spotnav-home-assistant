@@ -248,8 +248,10 @@ async def solar_setup(
     entry is even set up, for the restart-adoption tests: `ChargingController.charging`
     is a live read of that switch's state, so this is what "HA restarted while the
     charger was already charging" looks like from this integration's own point of view.
-    `charge_origin_at_setup` is who the saved state says started that charge (`solar`, `manual`):
-    without one it is a charge the charger began by itself, which solar decides at once.
+    `charge_origin_at_setup` is who the saved state says started that charge (`solar`, `manual`): written to the
+    charger's store before it is set up, as an earlier run left today's keys, so the restore reads it back (the
+    ownership core takes it from those keys where it drives); without one it is a charge the charger began by itself,
+    which solar decides at once.
 
     `strategy` selects `solar` or `hybrid`: `SolarExecutionCoordinator` runs identically for both,
     and this is the one fixture that builds a real charger, a real derived-mode site and a real,
@@ -263,6 +265,15 @@ async def solar_setup(
     """
     prefix = f"{entry_id}_charger"
     hass.states.async_set(f"switch.{prefix}", "on" if charging_at_setup else "off")
+    if charge_origin_at_setup is not None:
+        from homeassistant.helpers.storage import Store
+
+        from custom_components.spotnav.const import DOMAIN
+        from custom_components.spotnav.execution.controller import STORE_VERSION
+
+        await Store(hass, STORE_VERSION, f"{DOMAIN}.{prefix}").async_save(
+            {"charge_origin": charge_origin_at_setup, "plan_charge": charge_origin_at_setup == "plan_window"}
+        )
 
     extra: dict[str, Any] | None = None if ocpp_target is None else {CONF_MODE: MODE_OCPP}
     if charger_config is not None:
@@ -279,8 +290,6 @@ async def solar_setup(
     )
     assert await hass.config_entries.async_setup(charger.entry_id)
     await hass.async_block_till_done()
-    if charge_origin_at_setup is not None:
-        controller_of(hass, charger.entry_id)._charge_origin = charge_origin_at_setup  # noqa: SLF001 - the saved origin
 
     # *After* the charger entry is set up, not before: this integration forwards the
     # `switch` platform, so setup loads the core `switch` `EntityComponent`, which

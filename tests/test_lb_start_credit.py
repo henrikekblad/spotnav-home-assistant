@@ -317,7 +317,7 @@ async def test_a_balancing_pause_is_resumed_in_the_window_after_the_dwell(hass: 
     await halo.tick()
     assert len(halo.turn_on) == starts + 1
     assert halo.log()[-1]["outcome"] == "resumed"
-    assert halo.cc.charge_origin == "plan_window" and halo.cc._plan_charge, "the plan's charge, not a new one"  # noqa: SLF001
+    assert halo.cc.charge_origin == "plan_window" and halo.cc._is_plan_charge, "the plan's charge, not a new one"  # noqa: SLF001
 
 
 @pytest.mark.parametrize("ending", ["final_window_end", "person_stop"])

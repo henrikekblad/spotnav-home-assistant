@@ -362,12 +362,15 @@ def spotnav_owned(session: ChargeSession) -> bool:
 
 def self_started(session: ChargeSession, *, charging: bool, start_pending: bool, stop_recent: bool) -> bool:
     """A charge the charger began by itself: charging, nobody here started it, no start or stop of ours on its
-    way, and not a person's override of the hold."""
+    way, and not a person's override of the hold. A start the core asked for that has not come back is on its way
+    too (`session.start_pending`): the shell's own `start_pending` turns false once the charger reports charging,
+    while the start's result is still to be fed (a Charge-now start's command still awaited)."""
     return (
         charging
         and not stop_recent
         and session.owner in (OWNER_NONE, OWNER_CHARGER_SELF)
         and not start_pending
+        and not session.start_pending
         and not session.overridden
     )
 
@@ -993,6 +996,12 @@ def _recheck(session: ChargeSession, event: Recheck, now: datetime) -> Decision:
     return s, ()
 
 
+def _started_after(session: ChargeSession, command: PendingCommand) -> bool:
+    """Whether a start other than load balancing's resume was asked for after `command` and awaits its result."""
+    later = session.pending[session.pending.index(command) + 1 :] if command in session.pending else ()
+    return any(item.command == "start" and item.reason != REASON_BALANCING_RESUME for item in later)
+
+
 def _command_result(session: ChargeSession, event: CommandResult, now: datetime) -> Decision:
     pending = next(
         (item for item in session.pending if (item.command, item.reason) == (event.command, event.reason)), None
@@ -1058,7 +1067,12 @@ def _command_result(session: ChargeSession, event: CommandResult, now: datetime)
         return _no_balancing(s), ()
     s = _no_balancing(s).with_changes(owner=OWNER_NONE)
     if pending is not None and event.reason == REASON_BALANCING and not car_gone:
-        if session.balancing_paused:
+        if _started_after(session, pending):
+            # A start asked for after this pause, still on its way (a person's Start that waited for the pause's
+            # stop): it goes out after the stop and ends what load balancing held back, as `_start_locked` clears it
+            # then. Nothing is held back for the regulator to give back.
+            pass
+        elif session.balancing_paused:
             # A repeat pause of a charge balancing already holds back (`_regulated_stop`): still that charge.
             s = s.with_changes(balancing_paused=True, paused_origin=session.paused_origin)
         elif (

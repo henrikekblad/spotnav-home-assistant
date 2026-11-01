@@ -104,13 +104,13 @@ async def test_a_plan_charge_resumed_after_a_balancing_pause_is_still_the_plans(
     with freeze_time(NOW) as frozen:
         car = await _car(hass, frozen, kwh=3.0)
         c = car.controller
-        assert c._plan_charge and c.charge_origin == "plan_window"  # noqa: SLF001
+        assert c._is_plan_charge and c.charge_origin == "plan_window"  # noqa: SLF001
         await c._regulated_stop("pause")  # noqa: SLF001 - load balancing pauses the plan's charge
         await hass.async_block_till_done()
         assert c.paused_by_balancing
         assert await c.async_battery_probe_start(8)  # headroom back: the regulator resumes it
         await hass.async_block_till_done()
-        assert c.charge_origin == "plan_window" and c._plan_charge  # noqa: SLF001
+        assert c.charge_origin == "plan_window" and c._is_plan_charge  # noqa: SLF001
 
         await _delivered(hass, frozen, 1003.1, minutes=15)
 
@@ -175,7 +175,7 @@ async def test_a_start_that_raises_restores_what_the_charge_was(hass: HomeAssist
         await controller.async_start(cause="plan_window")
 
     assert controller.charge_origin is None
-    assert controller._plan_charge is False and controller._start_cause is None  # noqa: SLF001
+    assert controller._is_plan_charge is False and controller._start_cause is None  # noqa: SLF001
     assert controller._hold_state.owned is False  # noqa: SLF001 - the hold's memory, through its accessor
     await controller.async_shutdown()
 

@@ -96,6 +96,12 @@ WINDOW_HOLD: Final = ("held", "overridden", "spotnav_resumed")
 #: `car_ended_*` keys, derived from the session, so an older build reads them as before; `plugged` is never stored (a
 #: restart clears it).
 CAR_ENDED_AND_PLUG: Final = ("car_ended", "plugged")
+#: Step 7: the owner. Stored in the session's record, and still written to today's `charge_origin` and `plan_charge`
+#: keys, derived from the session (`controller._CORE_OWNER_ORIGIN`), so an older build reads them as before. Nobody's
+#: and the charger's own charge are one owner to the line-up: which of them it is is seen, not kept (`_UNSEEN`).
+OWNER: Final = (FIELD_OWNER,)
+#: The owners a restart or a line-up does not tell apart: whether the charger charges by itself is an observation.
+_UNSEEN: Final = frozenset({OWNER_NONE, OWNER_CHARGER_SELF})
 #: How far apart two readings of the clock may be and still be one instant in an owned field: the core takes the
 #: instant it decided, today's code its own a moment earlier or later (`core.replay.CLOCK_TOLERANCE_S`).
 MIRROR_CLOCK_S: Final = CLOCK_TOLERANCE_S
@@ -162,6 +168,13 @@ class ShadowToken:
     #: How many plug-ins had ended (`OwnershipShadow._plug_in_ends`) at `begin`: a command of this feed whose result
     #: comes back after another ended was decided in an earlier plug-in (`CommandResult.earlier_plug_in`).
     plug_ins: int = 0
+    #: When it was decided at `begin`: its command's result, decided as soon as it is known (`result`) and not
+    #: queued behind another task's feed, and when, on the decision clock (its record's `order`).
+    result: CommandResult | None = None
+    resulted: bool = False
+    result_order: int = 0
+    #: When its task's outermost open feed began (`OwnershipShadow._began`), `0` when not known.
+    began: int = 0
 
 
 @dataclass(frozen=True)
@@ -202,6 +215,9 @@ class NullShadow:
         return core
 
     def end(self, token: ShadowToken, event: Event, **_kwargs: Any) -> None:
+        return
+
+    def result(self, token: ShadowToken, outcome: CommandOutcome) -> None:
         return
 
     def cancel(self, token: ShadowToken) -> None:
@@ -274,6 +290,7 @@ class OwnershipShadow:
         name: str = "",
         on_failure: Callable[[], None] | None = None,
         owned_fields: Iterable[str] = (),
+        settled: Callable[[], None] | None = None,
     ) -> None:
         SHADOWS.add(self)
         self._legacy = legacy
@@ -292,12 +309,19 @@ class OwnershipShadow:
         # When the core drives: told the session after each decision, to keep it across a restart (debounced by the
         # caller: a decision that leaves the stored record as it was writes nothing).
         self._persist = persist
+        # When the core drives: told when a task's outermost feed is over (ended, decided or not, or cancelled), before
+        # `persist`: what the feed's commands did is the session's from then on.
+        self._settled = settled
         self._now = now if now is not None else dt_util.utcnow
         # What it has seen per event kind, cumulative (kept across restarts when the controller gives it a store).
         self.coverage = coverage if coverage is not None else OwnershipCoverage(now=self._now)
         self.session = ChargeSession()
         # Open feeds per asyncio task (`None`: a callback outside any task), and the tokens themselves.
         self._open: dict[object, int] = {}
+        # When each task's outermost open feed began, on a count of `begin`s: a feed is decided after another task's
+        # only when that one began first (`_older_open`).
+        self._began: dict[object, int] = {}
+        self._begins = 0
         self._stack: dict[object, list[ShadowToken]] = {}
         # A plug-in or an unplug changed the core's intent; today's boundary writes it later (`check`).
         self._intent_deferred = False
@@ -354,7 +378,19 @@ class OwnershipShadow:
             done = getattr(other, "done", None)
             if done is not None and done():
                 self._open.pop(other, None)
+                self._began.pop(other, None)
         return any(count > 0 for other, count in self._open.items() if other is not key)
+
+    def _older_open(self, token: ShadowToken) -> bool:
+        """Whether a feed of another task is open that began before `token`'s task's outermost one: `token`'s feed
+        landed in it, and is decided after it."""
+        if not self._others_open(token.key):
+            return False
+        return any(
+            count > 0 and (not token.began or self._began.get(other, 0) < token.began)
+            for other, count in self._open.items()
+            if other is not token.key
+        )
 
     def begin(self, early: Event | None = None, *, line_up: bool = True) -> ShadowToken:
         """Before today's code acts. Never raises. When the core drives, an `early` event (one whose facts are all
@@ -365,6 +401,9 @@ class OwnershipShadow:
         depth = self._open.get(key, 0)
         others = self._others_open(key)
         self._open[key] = depth + 1
+        if not depth:
+            self._begins += 1
+            self._began[key] = self._begins
         if depth:
             token = ShadowToken(key, False)
         elif others:
@@ -381,6 +420,7 @@ class OwnershipShadow:
                 return ShadowToken(key, True, ok=False, failed=True, error=err, plug_ins=self._plug_in_ends)
             token = ShadowToken(key, True, drift=drifted, mirror=self._mirrored)
         token.plug_ins = self._plug_in_ends
+        token.began = self._began.get(key, 0)
         self._stack.setdefault(key, []).append(token)
         if early is not None and self.drives:
             self._decide_early(token, early)
@@ -412,6 +452,7 @@ class OwnershipShadow:
             self._open[token.key] = count
         else:
             self._open.pop(token.key, None)
+            self._began.pop(token.key, None)
 
     def _idle(self) -> bool:
         return not self._others_open(None) and not self._open.get(None, 0)
@@ -424,6 +465,9 @@ class OwnershipShadow:
             return
         self._close(token)
         self._cover_token(token, None)
+        if not self._others_open(token.key):
+            # As `end`: a feed of another task still open (a start of ours on its way) is not over with this one.
+            self._settle()
         if self._queue and self._idle():
             try:
                 self._drain()
@@ -453,9 +497,19 @@ class OwnershipShadow:
         self._cover_token(token, event.kind)
         item = _Feed(token, event, tuple(sorted(legacy)), outcome, fields, defer_intent)
         try:
-            if self._open.get(token.key, 0) or self._others_open(token.key):
+            if self._open.get(token.key, 0) or self._older_open(token):
                 # Something that happened while another feed was on its way: decided after that one.
                 self._queue.append(item)
+                return
+            if self._others_open(token.key):
+                # Only feeds of other tasks that began while this one was on its way are open (a person's Start
+                # waiting for the lock this feed's stop held): they landed in it, so it is decided first, as its
+                # command went out first, and they after it. What landed meanwhile is decided now, after it. Today's
+                # state is mid-way through those feeds: nothing is compared (a quiet report held back for a comparison
+                # is dropped, as at every feed's end), and the last of them to end saves.
+                record, _kinds = self._decide(item)
+                record["unchecked"] = True
+                self._drain()
                 return
             record, core_kinds = self._decide(item)
             self._drain()
@@ -470,6 +524,38 @@ class OwnershipShadow:
             self._quiet = None
         self._persisted()
 
+    def result(self, token: ShadowToken, outcome: CommandOutcome) -> None:
+        """The command of a feed decided at `begin` returned with `outcome`: its result is decided now, before
+        whatever the feed still awaits (a person's Start storing its pause), so a happening that lands meanwhile (load
+        balancing's pause) is decided after it, as the commands went out. `end` then only keeps its record. Never
+        raises; a feed not decided at `begin` is decided at its `end` as ever."""
+        try:
+            self._result_now(token, outcome)
+        except Exception as err:  # noqa: BLE001 - the shadow never raises into the real path
+            self._error("result", token.early.kind if token.early is not None else None)
+            self.failed("result", token.early.kind if token.early is not None else None, err, token=token)
+
+    def _result_now(self, token: ShadowToken, outcome: CommandOutcome) -> None:
+        """Decide the result of the command of `token`'s early decision, once (`result`)."""
+        if token.resulted or token.early is None or token.early_pre is None:
+            return
+        acted = next((command for command in token.early_commands if command.kind in ("start", "stop")), None)
+        if acted is None:
+            return
+        result = CommandResult(
+            command=acted.kind,
+            reason=getattr(acted, "reason", ""),
+            executed=outcome.executed,
+            balancing_held=outcome.balancing_held,
+            unobserved=outcome.unobserved,
+            settled=outcome.settled,
+            earlier_plug_in=self._plug_in_ends != token.plug_ins,
+        )
+        self.session, _ = decide(self.session, result, self._now())
+        token.result = result
+        token.resulted = True
+        token.result_order = self._tick()
+
     def feed(
         self,
         event: Event,
@@ -482,20 +568,29 @@ class OwnershipShadow:
         decides with no state of its own changing (a hand-off at a window's end)."""
         self.end(self.begin(), event, legacy=legacy, outcome=outcome, fields=fields)
 
-    def restart(self, event: Event, stored: ChargeSession | None = None, *, keys_newer: bool = False) -> None:
+    def restart(
+        self,
+        event: Event,
+        stored: ChargeSession | None = None,
+        *,
+        keys_newer: bool = False,
+        keys_owner: str | None = None,
+    ) -> None:
         """The record was read back after a restart, and the restart is fed. The core's session is today's as read;
         when the core drives and its own stored record was read (`stored`), that record, decided from as it is and
         then compared with today's. Whether the charger charges by itself is seen now, not stored: an owner of
         nobody or of the charger itself is today's. Today's keys written after the record's last change
         (`keys_newer`) are the newer: what the session reads from them is today's, and only the person intent
-        (kept by the execution boundary, not in those keys) is the record's."""
+        (kept by the execution boundary, not in those keys) is the record's. If reading today's state fails while the
+        core drives, the owner is not lost: the record's session where it is the truth, else the owner today's keys
+        read back (`keys_owner`, in the core's words)."""
         from_store = stored is not None and self.drives
         try:
             today = self._legacy()
             if stored is not None and from_store:
                 if keys_newer:
                     stored = replace(today, manual=stored.manual, span_pause=stored.span_pause)
-                if {stored.owner, today.owner} <= {OWNER_NONE, OWNER_CHARGER_SELF}:
+                if {stored.owner, today.owner} <= _UNSEEN:
                     stored = replace(stored, owner=today.owner)
                 self.session = stored
             else:
@@ -504,6 +599,10 @@ class OwnershipShadow:
         except Exception as err:  # noqa: BLE001 - the shadow never raises into the real path
             self._error("restart", event.kind)
             self.failed("restart", event.kind, err)
+            if from_store and stored is not None and not keys_newer:
+                self.session = stored
+            elif self.drives and keys_owner is not None:
+                self.session = self.session.with_changes(owner=keys_owner)
             return
         self.end(self.begin(line_up=not from_store), event)
 
@@ -528,8 +627,13 @@ class OwnershipShadow:
         if self._intent_deferred:
             # The boundary has not written the plug-in's or the unplug's effect on the intent yet.
             today = replace(today, manual=self.session.manual, span_pause=self.session.span_pause)
-        moved = [name for name in COMPARED if _field(today, name) != _field(self.session, name)]
-        if moved == [FIELD_OWNER] and {today.owner, self.session.owner} == {OWNER_NONE, OWNER_CHARGER_SELF}:
+        # A field the core owns that today's state reads otherwise is mirror drift (`_mirror_drift`), not drift.
+        moved = [
+            name
+            for name in COMPARED
+            if name not in self.owned_fields and _field(today, name) != _field(self.session, name)
+        ]
+        if moved == [FIELD_OWNER] and {today.owner, self.session.owner} == _UNSEEN:
             # The charger's own charge is an observation (it charges, nobody here started it): one that began or
             # ended with no report (a test's state, a stop's answer window running out) is no ownership drift.
             self._count("observed")
@@ -551,8 +655,11 @@ class OwnershipShadow:
         return bool(moved)
 
     def _adopt(self, today: ChargeSession, core: ChargeSession) -> ChargeSession:
-        """Today's state, with the core's pending command and owned fields kept."""
+        """Today's state, with the core's pending command and owned fields kept. An owned owner of nobody or of the
+        charger itself takes today's of the two (seen now: whether the charger charges by itself)."""
         owned = {name: getattr(core, name) for name in self.owned_fields}
+        if FIELD_OWNER in owned and {core.owner, today.owner} <= _UNSEEN:
+            owned[FIELD_OWNER] = today.owner
         return replace(today, pending=core.pending, **owned)
 
     def _mirror_drift(self, today: ChargeSession) -> None:
@@ -560,7 +667,11 @@ class OwnershipShadow:
         The controller reads an owned group from the session (its accessor), so there is none unless something reads
         or keeps that group around the accessor."""
         moved = [
-            name for name in self.owned_fields if not _same(getattr(self.session, name), getattr(today, name))
+            name
+            for name in self.owned_fields
+            if not _same(getattr(self.session, name), getattr(today, name))
+            # The charger's own charge and nobody's: an observation, as in `_line_up` (counted `observed` there).
+            and not (name == FIELD_OWNER and {self.session.owner, today.owner} <= _UNSEEN)
         ]
         if not moved:
             return
@@ -601,7 +712,10 @@ class OwnershipShadow:
             session, commands = self._decide_or_observe(pre, item.event, now)
         acted = next((command for command in commands if command.kind in ("start", "stop")), None)
         result: CommandResult | None = None
-        if item.outcome is not None and acted is not None:
+        if item.token.resulted:
+            # Its result was decided when it was known (`result`).
+            result = item.token.result
+        elif item.outcome is not None and acted is not None:
             result = CommandResult(
                 command=acted.kind,
                 reason=getattr(acted, "reason", ""),
@@ -646,7 +760,8 @@ class OwnershipShadow:
         # The decision clock: when this record's event (or, decided at `begin`, its result) was decided, and when
         # an event decided at `begin` was. A replay decides each in that order (`core/replay.py`), so a feed decided
         # at its `begin` comes before the feeds in it that are kept before its own record.
-        record["order"] = self._tick()
+        # A result decided when it was known (`result`) is in its place on the clock.
+        record["order"] = item.token.result_order if item.token.resulted else self._tick()
         if item.token.early is not None and item.token.early_pre is not None:
             record["early"] = item.token.early_order
         if (
@@ -692,6 +807,10 @@ class OwnershipShadow:
     def _record(self, record: dict[str, Any]) -> None:
         self.events.append(record)
         self._recorded += 1
+        self._tell_record(record)
+
+    def _tell_record(self, record: dict[str, Any]) -> None:
+        """Tell `on_record` a record kept (never raises)."""
         listener = self.on_record
         if listener is not None:
             try:
@@ -710,6 +829,8 @@ class OwnershipShadow:
         items.insert(len(items) - min(self._recorded - quiet[1], len(items)), record)
         self.events = deque(items, maxlen=EVENT_RING)
         self._recorded += 1
+        # Told now, after the records decided after it: the debug bundle keeps it all the same.
+        self._tell_record(record)
 
     def _compare(
         self,
@@ -773,8 +894,19 @@ class OwnershipShadow:
         _LOGGER.debug("SpotNav ownership shadow: disagreement at %s: %s %s", where, differs, disagreement["commands"])
         self._tell("disagreement", disagreement)
 
+    def _settle(self) -> None:
+        """When the core drives and the running task has no feed open any more: tell `settled` (never raises)."""
+        settled = self._settled
+        if not self.drives or settled is None or self.depth:
+            return
+        try:
+            settled()
+        except Exception:  # noqa: BLE001 - the shadow never raises into the real path
+            self._error("settled")
+
     def _persisted(self) -> None:
         """When the core drives: tell the keeper of the stored record the session as it is now (never raises)."""
+        self._settle()
         persist = self._persist
         if not self.drives or persist is None or self.depth:
             return

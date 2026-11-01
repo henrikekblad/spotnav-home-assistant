@@ -21,7 +21,7 @@ from .world import controller_of, set_site_power_w, tick_site
 
 
 def _owner(controller: Any) -> tuple[Any, Any, str]:
-    return controller.charge_origin, controller._plan_charge, controller.ownership_shadow.session.owner  # noqa: SLF001
+    return controller.charge_origin, controller._is_plan_charge, controller.ownership_shadow.session.owner  # noqa: SLF001
 
 
 @pytest.mark.parametrize("drives", [False, True])

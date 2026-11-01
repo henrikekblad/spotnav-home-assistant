@@ -1046,7 +1046,7 @@ class AutoExecutor:
         this boundary's lock held. Returns what remains applied."""
         self._clear_waiting = None
         try:
-            await self._controller.async_clear_plan_keep_charge()
+            await self._controller.async_clear_plan_keep_charge(dropped=True)
         except Exception as err:  # noqa: BLE001 - reported, the next calculation retries
             _LOGGER.warning("Clearing a plan whose settings changed failed: %s", type(err).__name__)
             return self.applied
@@ -1262,7 +1262,7 @@ class AutoExecutor:
         """
         connected = self._shadow_connected(fallback=False, kind=core_events.PersonStart.kind)
         token = self._shadow.begin(early=None if connected is ... else core_events.PersonStart(connected=connected))
-        note: dict[str, Any] = {"legacy": [], "outcome": None}
+        note: dict[str, Any] = {"legacy": [], "outcome": None, "token": token}
         try:
             await self._manual_start_body(amps, note)
         finally:
@@ -1326,6 +1326,9 @@ class AutoExecutor:
             note["outcome"] = CommandOutcome(
                 started is not False, balancing_held=started is False and self._controller.start_held_by_balancing
             )
+            # Its result is the core's now, before the pause is stored: load balancing's pause of the charge, landing
+            # meanwhile, is decided after it, as the commands went out (a person's charge it holds back).
+            self._shadow.result(note["token"], note["outcome"])
             if started is False and not self._controller.start_held_by_balancing:
                 # The charger's control was unavailable and the command never went out: a failed command
                 # like any other, with nothing pending and a retry possible.
@@ -2273,7 +2276,9 @@ class AutoExecutor:
                 "top_off_or_window": controller.top_off_until is not None
                 or (settings.strategy == STRATEGY_HYBRID and controller.plan_window_active_now),
                 "charging": controller.charging,
-                "start_pending": controller._shadow_start_pending(),  # noqa: SLF001 - read without its side effect
+                # A start of ours still on its way counts, also once the charger reports charging before it returns.
+                "start_pending": controller._shadow_start_pending()  # noqa: SLF001 - read without its side effect
+                or controller._start_in_flight,  # noqa: SLF001
                 "stop_recent": controller._shadow_stop_recent(),  # noqa: SLF001
             }
         except Exception as err:  # noqa: BLE001 - the shadow never raises into the real path; today's code decides

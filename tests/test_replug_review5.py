@@ -138,7 +138,7 @@ async def test_a_regulator_resume_whose_start_fails_still_waits_as_the_plans(has
     controller.adapter.async_start = working  # type: ignore[method-assign]
 
     assert await controller.async_battery_probe_start(8)
-    assert controller.charge_origin == "plan_window" and controller._plan_charge  # noqa: SLF001
+    assert controller.charge_origin == "plan_window" and controller._is_plan_charge  # noqa: SLF001
     await controller.async_shutdown()
 
 

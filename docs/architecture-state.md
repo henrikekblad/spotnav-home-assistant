@@ -142,9 +142,11 @@ sends a start or stop because of it, the same happening is fed to the core:
    back, today's owner and intent are read again, and they and the commands are compared. A difference is a
    **disagreement**: logged at debug level and kept with the 20 events before it.
 
-A feed that ends while another is open (inside it, or in another asyncio task: a report callback, a task Home
-Assistant started eagerly) is queued and decided after it; the outermost feed compares the state after all of
-them. A plug-in or an unplug ends a manual pause in the core at once, while today's boundary writes that a moment
+A feed that ends while another is open (inside it, or in another asyncio task that began first: a report callback, a
+task Home Assistant started eagerly) is queued and decided after it; the outermost feed compares the state after all
+of them. Feeds of different tasks are decided in the order they began: one that ends while only feeds that began
+inside it are open (a person's Start waiting for the lock a balancing pause's stop holds) is decided at once, before
+them, with nothing compared. A plug-in or an unplug ends a manual pause in the core at once, while today's boundary writes that a moment
 later: the core's intent is kept until the boundary's own `check`. The shadow never raises into the real path:
 every failure is caught and counted.
 
@@ -182,17 +184,17 @@ and drives after the update. Off, today's code decides exactly as before and the
   back as its `CommandResult`. With the option off the task sends what today's rule says, and the shadow compares.
 * A person's Stop takes the plug-in session the core decides, and a plug-in or an unplug leaves the manual pause the
   core decided for it.
-* After each feed a charge the core says nobody here owns clears today's two owner fields (`charge_origin`,
-  `plan_charge`; `ChargingController._take_core_owner`), so everything that reads them follows it. One-way: an
-  owner is never written back over them. Today's code sets them where it starts or claims a charge and forgets
-  `plan_charge` by itself when it sees the charger off; writing the core's owner back after every feed would undo
-  that at every report.
+* Who owns the charge is the session's (step 7, below): today's two owner fields (`charge_origin`, `plan_charge`)
+  are derived from it, both ways.
 * An event whose facts are all known up front (a plug-in or an unplug, a person's Start or Stop) is decided when it
   begins, and a verdict a decision point asks for is that feed's decision at once: what happens inside it (a task
-  Home Assistant starts eagerly) is decided after it.
+  Home Assistant starts eagerly) is decided after it. A person's Start's result is decided as soon as its command
+  returns (`OwnershipShadow.result`), before the boundary stores their pause, so a balancing pause landing meanwhile
+  holds the person's charge back. A balancing pause's stop whose result comes back while a start asked for after it
+  awaits its own holds nothing back: that start ends it, as today's start does.
 
-The shadow still compares, before the owner is taken back, and counts each decision where today's rule on the same
-state would have chosen otherwise (`verdict_differs`) and each time it cleared today's fields (`written_back`).
+The shadow still compares, and counts each decision where today's rule on the same state would have chosen otherwise
+(`verdict_differs`). `written_back` (today's owner fields cleared one-way, before step 7) stays zero.
 Diagnostics and the debug bundle say which side decides (`ownership_shadow.drives`). The plain test run uses the
 default (the core drives); `SPOTNAV_CORE_OWNERSHIP=0` runs the whole suite with the previous logic, and both must
 pass.
@@ -201,9 +203,10 @@ With the option on the core's session is also kept across restarts, as one versi
 (`charge_session` in the charger's store, `ChargeSession.to_store`) beside today's keys, which are still written as
 before. The record leaves out what a restart clears anyway (`TRANSIENT_FIELDS`: commands awaiting a result, the stops
 under a person's Stop and their give-up, the safety stop's gap). Every save of today's keys writes it as it is then.
-A change of the owner or of the person intent no such save carried is saved at once, alone (today's keys as last
-written beside it), in a task off the decision's path; the charger's own charge and nobody's count as one there (a
-restart sees which again). Any other change is saved by the first decision at least `SESSION_SAVE_DELAY_S` after it
+A change of the owner or of the person intent no such save carried is saved at once, in a task off the decision's
+path, with today's keys as they are then (derived from the session, so they never lag it by a decision: a save inside
+a start's or a stop's feed runs before the feed's end decides the owner); the charger's own charge and nobody's count
+as one there (a restart sees which again). Any other change is saved by the first decision at least `SESSION_SAVE_DELAY_S` after it
 (no timer of its own, so no other timer moves), at Home Assistant's stop (`__init__._async_stop`, which unloads no
 entry, so no controller's own shutdown runs; `ChargingController.async_flush_session`) and at an unload's shutdown,
 which also saves a decision that finished while it waited for the lock. So a report that changes nothing stored
@@ -276,8 +279,33 @@ where its feed begins (so the controller's own reads inside the feed see it), an
 An older build refuses the version 2 record and reads those keys. One difference in the keys: once the record ends,
 its car is no longer kept (`car_ended_vehicle` is `null` with `car_ended_at`); nothing reads it without the instant.
 
-Not yet the core's: the owner (`_charge_origin`, `_plan_charge`), and the session itself after the restart (read from
-today's keys where they are newer).
+The owner (`owner`) is the session's the same way when the core drives (step 7): the line-up leaves it as the core
+decided it (a difference is `mirror_drift`, not drift; nobody's and the charger's own charge are one owner there,
+which of them it is seen now), and `charge_origin`/`plan_charge` are derived from it (`_CORE_OWNER_ORIGIN`: `plan`
+and `top_off` are `plan_window` and the plan's; nobody's and the charger's own are none), read by the controller and
+the execution boundary and never written by today's code. Set only by a start's result that went out (its
+`owner_after`: the plan's window or claim, a person's Start, a start through the charger's own entry by its cause,
+the sun's, the floor's, a balancing resume giving back what it paused), a hand-over with no command (the plan's charge
+to the sun, the floor's to the plan or the sun, the last window's end to the top-off and back) or a report of a charge
+nobody here started (the charger's own). Cleared by a stop that went out (also one a stop of ours still on its way
+answered for, and one that sent nothing to a control that said nothing when it cleared the plan) and by a report of
+the charger off with no start of ours on its way. Kept: a start that did not go out or that load balancing held back
+(I4: today's code took its fields back), a stop that never went out, a dropped plan (today's code cleared only
+`plan_charge`, so driving reads the plan's charge with no plan, which nothing acts on without one), a window end the
+next plan takes over, a restart. Every start is decided where it begins (also one through the charger's own entry,
+`direct_start`, for every cause), so while its command is on its way the core knows a start of its own awaits its
+result: the sun's take-over never takes a Charge-now start the charger answered before its command returned for a
+charge it began by itself (`self_started` refuses while the session awaits a start, and the shell counts
+`_start_in_flight`). Between a start or a stop of ours going out and its feed's end, where the core decides its
+result, the owner reads as that command makes it (`_command_unfed`: the start's owner the core awaits, nobody's after
+a stop), as today's code wrote its fields as the command went out, so what the feed tells its readers meanwhile (the
+site's regulator, the sun) is not the owner before it; an owner decided after the feed's own notification (a
+hand-over in the boundary's feed) is told to every reader at once after it. Today's `charge_origin` and `plan_charge`
+keys are still written, derived from the session, and a restart takes them into the session where today's keys are
+the truth (no record of the core's own, or keys written after it); where the core's record is the truth the owner is
+read from it.
+
+Not yet the core's alone: the session itself after the restart (read from today's keys where they are newer, step 8).
 
 ## Tests
 
@@ -288,7 +316,10 @@ today's keys where they are newer).
 * `tests/test_core_replay.py`: replay of a synthetic bundle and of a real charger's recording, and the shadow's own
   guarantees.
 * `tests/test_core_drives.py`: the option and its default, the comparison running whichever side drives, today's
-  code following the core's verdict, the owner cleared one-way.
+  code following the core's verdict, today's two owner fields derived from the session both ways.
+* `tests/test_core_owner.py`: the owner in both modes: today's keys saved after every owner change, readers told at
+  once, a restart during each owner in both restart kinds and from today's keys alone, a start that fails in the
+  middle of a report, a dropped plan, the sun's take-over during a Charge-now start, and mirror drift.
 * `tests/test_charging_decisions_option.py`: the per-charger choice under **Configure**.
 * `tests/test_core_recheck.py`: a background task's re-check asked of the core, and its command's result.
 * `tests/test_core_session_store.py`: the stored record: round trip, migration from today's keys, an unknown version,
