@@ -363,6 +363,7 @@ and `charger_priority.writable` say whether it may change those (an administrato
 | `spotnav/get_dashboard` | The dashboard document for one charger. |
 | `spotnav/get_settings`, `spotnav/update_settings` | Read and replace the settings record. |
 | `spotnav/manual_action` | `start`, `stop` (with an optional pause `choice`) or `resume`; any signed-in user. |
+| `spotnav/plan_preview` | What a Save would plan, with nothing saved (see [Plan preview](#plan-preview)). |
 | `spotnav/get_market_options` | Price areas from the area list bundled with SpotNav and their suggested fiscal values. |
 | `spotnav/find_region` | A Great Britain postcode to its price region (`GB-A` … `GB-P`): `{"postcode": "SW1A 1AA"}` answers `region` (one), `regions` (the listed ones) and `reason` (`null`, `invalid_postcode`, `not_found`, `unavailable`). Home Assistant asks Octopus Energy's public lookup directly; the postcode never reaches the relay and is neither stored nor logged. |
 | `spotnav/get_entity_config`, `spotnav/update_entity_config` | The entities a charger and its site use. |
@@ -388,6 +389,71 @@ Rules that hold across them:
 - **Absence is not zero.** A missing value is `null`; nothing is coerced.
 - **The answer is a re-read**, captured after the write settles, never assembled from what the
   caller sent.
+
+### Plan preview
+
+`spotnav/plan_preview` answers what the charger's plan would be if a settings body were saved, and saves nothing.
+The card's Plan dialog asks it about 300 ms after each change, so a person sees the plan before pressing Save.
+
+Request: `{"type": "spotnav/plan_preview", "api_version": 1, "charger_id", "settings"}`, where `settings` is the
+same body `spotnav/update_settings` takes (no `expected_revision`). The body is judged by the same code as a
+write: the same decoding, the same fields kept when left out, the same rule for a user who is not an
+administrator (`spotnav_not_admin` unless `users_change_plan` allows the change), the charger's current range and
+the departure date's limits. The plan is the controller's own calculation on the record that write would store:
+the price source's area and fees, the learned power and the count of a manual need, exactly as a Save calculates
+it at the same moment.
+
+Nothing happens. No settings or revision are written, no plan is installed and no proposal saved, no appointment
+is made, the charger and the car are asked nothing, and no notice, event or listener hears of it.
+
+At most 5 requests a second per connection (`spotnav_rate_limited`), and a body of at most 16 KiB as JSON
+(`spotnav_body_too_large`). The charger lookup's codes and `spotnav_unsupported_api_version` as for the other
+commands.
+
+The answer:
+
+```json
+{
+  "api_version": 1,
+  "ok": true,
+  "error": null,
+  "preview": {
+    "state": "proposal_ready",
+    "reason": "ready",
+    "plan": {
+      "periods": [{"start": "2026-09-22T13:00:00+02:00", "end": "2026-09-22T15:15:00+02:00"}],
+      "planned_kwh": 15.5,
+      "requested_kwh": 15.5,
+      "power_kw": 6.9,
+      "cost": {"value": 18.4, "currency": "SEK"},
+      "finish": "2026-09-22T15:15:00+02:00",
+      "unpriced": false,
+      "short_of_deadline": false
+    },
+    "status": {"tone": "normal", "lines": []},
+    "strip": {
+      "start": "2026-09-22T06:00:00+00:00",
+      "end": "2026-09-22T16:00:00+00:00",
+      "quarters": [{"start": "2026-09-22T06:00:00+00:00", "price": 98.2, "planned": false}]
+    }
+  }
+}
+```
+
+- `state` and `reason` are the planning state and reason the dashboard's `planning` block would carry after the
+  Save.
+- `plan` is `null` when no plan would be made; `status` then says why, in the dashboard's [status
+  codes](#the-dashboard-document) (`settings_incomplete`, `waiting_for_publication`, `planning_unavailable`, ...). `periods`
+  are the periods as shown (the last ending where a need is expected to be met), `finish` the last one's end,
+  `cost` in the major unit (`null` for an unpriced plan), `short_of_deadline` a best-effort plan that does not make
+  the departure (its `departure_shortfall` line is in `status`).
+- `status` holds the plan's own lines only (a shortfall, a capped or estimated need, unpriced hours, a wait for
+  prices). What the charger is doing now (charging, a pause, the site) is the dashboard's.
+- `strip` is the hours the plan was chosen from, from the first usable quarter to the departure (or the end of
+  its horizon), each quarter with its price in the minor unit with the fees the plan priced it with, and whether it
+  is planned. `null` without a plan; `quarters` is empty for a plan made without prices.
+- A body a Save would refuse answers `ok: false`, `error` the Save's own code (`invalid_amps`,
+  `invalid_departure`, ...) and `preview: null`.
 
 ## Home Assistant events
 
