@@ -11,6 +11,7 @@ import {
   localeMoney,
   weekdayDate,
   weekdaySingular,
+  type EntityWords,
   type FormatContext,
 } from "./format";
 import { pluralForm, translate, type Language, type TranslationKey } from "./i18n";
@@ -25,6 +26,18 @@ export interface Issue {
   technical: string | null;
   /** A sentence composed from the line's facts, shown instead of `textKey` when present. */
   text?: string;
+  /** The one write that ends it, offered to an administrator as a button (`spotnav/fix_own_mode`). */
+  fix?: IssueFix;
+  /** Said after the text where no button is shown: where to change it instead. */
+  hintKey?: TranslationKey;
+}
+
+/** A charger's own setting set back by one press: the entity, the value the backend named, and the button's words. */
+export interface IssueFix {
+  entity: string;
+  value: string;
+  labelKey: TranslationKey;
+  labelParams: Record<string, string>;
 }
 
 /** What an issue says, in the reader's language. */
@@ -203,6 +216,7 @@ export const STATUS_WORDING: Readonly<Record<StatusCode, TranslationKey>> = {
   load_balancing_unavailable: "issue.loadBalancing",
   held_by_charger: "issue.heldByCharger",
   charger_disabled: "issue.chargerDisabled",
+  charger_own_mode: "issue.ownMode",
   held_until_window: "status.heldUntilWindow",
   hold_overridden: "issue.holdOverridden",
   need_limited_by_room: "status.needLimitedByRoom",
@@ -326,6 +340,37 @@ const MISSING_FIELD_KEYS: Readonly<Record<string, TranslationKey>> = {
   vehicle: "status.missing.vehicle",
   target_percent: "status.missing.target_percent",
 };
+
+/**
+ * The button of a `charger_own_mode` line: a switch is turned off, anything else set to the value named, in Home
+ * Assistant's words for that option where the frontend knows the entity. What is sent is always the raw value.
+ */
+function ownModeFix(entity: string, value: string, words?: EntityWords): IssueFix {
+  return entity.startsWith("switch.") && value === "off"
+    ? { entity, value, labelKey: "issue.ownMode.turnOff", labelParams: {} }
+    : { entity, value, labelKey: "issue.ownMode.set", labelParams: { value: words?.state(entity, value) ?? value } };
+}
+
+/**
+ * The words of a `charger_own_mode` line: the entity's name and state as Home Assistant shows them, else the
+ * profile's label and the raw state. A name starts in lower case inside the sentence ("smart charging"), except in
+ * German, where a noun keeps its capital, and for a name that starts with an abbreviation ("PV surplus").
+ */
+function ownModeParams(language: Language, p: StatusLine["params"], words?: EntityWords): Record<string, string> {
+  const entity = typeof p["entity"] === "string" ? p["entity"] : "";
+  const name = entity === "" ? null : (words?.name(entity) ?? null);
+  const state = entity === "" ? null : (words?.state(entity) ?? null);
+  return {
+    label: name === null ? (typeof p["label"] === "string" ? p["label"] : "") : inSentence(language, name),
+    state: state ?? (typeof p["state"] === "string" ? p["state"] : ""),
+  };
+}
+
+function inSentence(language: Language, name: string): string {
+  const [first, second] = [name.charAt(0), name.charAt(1)];
+  const lowers = language !== "de" && first !== first.toLowerCase() && second !== "" && second === second.toLowerCase();
+  return lowers ? first.toLowerCase() + name.slice(1) : name;
+}
 
 /** A manual need counted without the energy register: its kept remainder's wording, or the sessions'. */
 function needEstimated(language: Language, p: StatusLine["params"]): { key: TranslationKey; params: Record<string, string> } {
@@ -644,6 +689,8 @@ export function lineText(
       return say("status.minSocCharging", { percent: formatNumber(language, num(p["percent"]) ?? 0, 0) });
     case "duplicate_charger":
       return say("issue.duplicateCharger", { other: typeof p["other"] === "string" ? p["other"] : "" });
+    case "charger_own_mode":
+      return say("issue.ownMode", ownModeParams(language, p, format.entityWords));
     case "departure_shortfall": {
       const departure = ms(p["departure"]);
       const wording = shortfallWording(language, p, departure === null || !zoned ? null : clock(format, departure));
@@ -697,7 +744,7 @@ function reasonOf(line: StatusLine): string | null {
  * The Info dialog's list: the block's own non-normal lines, worded. Severity is the line's tone.
  * A normal line is never an item to review, whatever the block's tone says.
  */
-export function issuesOf(status: Status | null, language: Language): Issue[] {
+export function issuesOf(status: Status | null, language: Language, words?: EntityWords): Issue[] {
   if (status === null) {
     return [];
   }
@@ -757,6 +804,33 @@ export function issuesOf(status: Status | null, language: Language): Issue[] {
         textKey: planningUnavailableKey(line.params["reason"]),
         params: {},
         technical: reasonOf(line),
+      });
+      continue;
+    }
+    if (line.code === "charger_own_mode") {
+      const value = typeof line.params["value"] === "string" ? line.params["value"] : null;
+      const entity = typeof line.params["entity"] === "string" ? line.params["entity"] : "";
+      issues.push({
+        code: line.code,
+        severity,
+        textKey: "issue.ownMode",
+        params: ownModeParams(language, line.params, words),
+        technical: null,
+        hintKey: "issue.ownMode.where",
+        ...(value === null || entity === ""
+          ? {}
+          : { fix: ownModeFix(entity, value, words) }),
+      });
+      continue;
+    }
+    if (line.code === "charger_disabled" && typeof line.params["entity"] === "string" && line.params["entity"] !== "") {
+      issues.push({
+        code: line.code,
+        severity,
+        textKey: STATUS_WORDING[line.code],
+        params: {},
+        technical: null,
+        fix: { entity: line.params["entity"], value: "on", labelKey: "issue.chargerDisabled.turnOn", labelParams: {} },
       });
       continue;
     }

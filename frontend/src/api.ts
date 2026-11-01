@@ -437,6 +437,27 @@ export async function chooseVehicleIdentification(
   });
 }
 
+/** `spotnav/fix_own_mode`'s own version. */
+export const OWN_MODE_API_VERSION = 1;
+
+/**
+ * Set one of the charger's own settings back to the value SpotNav works with (administrators only): the entity
+ * and value a status line named, written only while that conflict still holds. Answers `{api_version, ok, error}`.
+ */
+export async function fixOwnMode(
+  hass: HomeAssistantLike,
+  chargerId: string,
+  request: { entity: string; value: string },
+): Promise<unknown> {
+  return await call<unknown>(hass, {
+    type: "spotnav/fix_own_mode",
+    api_version: OWN_MODE_API_VERSION,
+    charger_id: chargerId,
+    entity_id: request.entity,
+    value: request.value,
+  });
+}
+
 /** `spotnav/write_charge_limit`'s own version. */
 export const CHARGE_LIMIT_API_VERSION = 1;
 

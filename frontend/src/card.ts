@@ -47,6 +47,7 @@ import {
   choosePriceSource,
   answerPriceDuplicate,
   dismissSetupItem,
+  fixOwnMode,
   setEntsoeKey,
   updateVehicle,
 } from "./api";
@@ -169,6 +170,7 @@ import {
 } from "./chart-preference";
 import type { ChartAxisMode } from "./chart";
 import type { PriceUnit } from "./format";
+import { entityWordsOf } from "./entity-words";
 import { VISUAL_CLASSES, VISUAL_STYLES } from "./visual-styles";
 
 /** One bounded refresh cycle; the retry action exists because a timer alone is not a promise. */
@@ -1875,6 +1877,27 @@ export class SpotnavCard extends HTMLElement {
   }
 
   /**
+   * An issue's "Set to …" or "Turn on": the charger's own setting is written by the integration, which checks
+   * again that the conflict still holds, then the dashboard is read again. A refusal leaves the row as the read says.
+   */
+  private async fixOwnMode(entity: string, value: string): Promise<void> {
+    const hass = this.hassObject;
+    const config = this.config;
+    if (!this.connected || hass === null || config === null || config.charger === "" || !this.isAdmin) {
+      return;
+    }
+    const generation = this.generation;
+    try {
+      await fixOwnMode(hass, config.charger, { entity, value });
+    } catch {
+      // Not written: the row stays until the next read says otherwise.
+    }
+    if (generation === this.generation && this.connected) {
+      await this.refresh({ purpose: "confirm" });
+    }
+  }
+
+  /**
    * The active load-balancing switch: one admin-only write, never optimistic. The popover adopts the
    * returned site block and says what happened; a failed restore on disable is worded as "the charger may
    * still be limited". The dashboard is re-read afterwards; while the popover is open that render is
@@ -2449,6 +2472,7 @@ export class SpotnavCard extends HTMLElement {
         shownAutomatic: this.shownAutomatic,
         chartAxis: chartAxisNow(),
         priceUnit: priceUnitNow(),
+        entityWords: entityWordsOf(this.hassObject),
       });
       this.rememberControls(model.control);
       this.view = createCardView({
@@ -2550,6 +2574,9 @@ export class SpotnavCard extends HTMLElement {
         onCancelEntities: () => !this.entitySaving,
         onDismissSetup: (item) => {
           void this.dismissSetup(item);
+        },
+        onFixOwnMode: (entity, value) => {
+          void this.fixOwnMode(entity, value);
         },
         onAnswerOnboardPhases: (vehicleId, phases) => {
           void this.answerOnboardPhases(vehicleId, phases);

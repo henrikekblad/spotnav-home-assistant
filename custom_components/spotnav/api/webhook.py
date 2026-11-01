@@ -33,6 +33,7 @@ from ..execution.auto_execution import (
 )
 from ..execution.controller import ChargingExecutionError
 from ..planning.auto_settings import AutoSettingsError, MAX_PERIODS
+from ..planning.status_compose import status_tone
 from ..runtime import ChargerConfigEntry, domain_data
 from ..vehicles.vehicle_charge_limit import async_set_charge_limit, VehicleChargeLimitLimited
 from ..vehicles.vehicle_refresh import async_refresh_vehicle, VehicleRefreshLimited
@@ -115,6 +116,10 @@ APP_UNREAD_PLAN_FACT_CODES: Final = ("plan_saving", "solar_forecast")
 APP_UNREAD_HYBRID_SUN_PARAMS: Final = ("sun_start", "sun_end")
 APP_READS_PLAN_FACTS: Final = "plan_facts"
 APP_READS_SOLAR_ONE_PHASE: Final = "solar_one_phase"
+#: The charger's own mode working against SpotNav: left out for an app that does not read `APP_READS_OWN_MODE_STATUS`
+#: (it would word it as "see Home Assistant"), and the block's tone is then its strongest line left.
+APP_UNREAD_OWN_MODE_CODES: Final = ("charger_own_mode",)
+APP_READS_OWN_MODE_STATUS: Final = "own_mode_status"
 #: Waking the car for a reading: an app that does not read `APP_READS_WAKE_FOR_READING` gets vehicle rows without
 #: `wake_for_reading` (its settings row is never offered).
 APP_READS_WAKE_FOR_READING: Final = "wake_for_reading"
@@ -165,6 +170,8 @@ def _status_for_app(line: Any, opted_in: set[str]) -> Any:
         return {"code": "solar_charging", "params": {"requested_a": params.get("requested_a")}}
     if code in APP_UNREAD_PLAN_FACT_CODES and APP_READS_PLAN_FACTS not in opted_in:
         return None
+    if code in APP_UNREAD_OWN_MODE_CODES and APP_READS_OWN_MODE_STATUS not in opted_in:
+        return None
     if code == "hybrid_grid" and APP_READS_PLAN_FACTS not in opted_in and isinstance(line.get("params"), dict):
         params = {key: value for key, value in line["params"].items() if key not in APP_UNREAD_HYBRID_SUN_PARAMS}
         return {**line, "params": params}
@@ -201,8 +208,8 @@ def _for_app(body: dict[str, Any], payload: dict[str, Any]) -> dict[str, Any]:
     the car's level after the car ended its charge; `wake_for_reading` for the vehicle rows' `wake_for_reading`; `solar_one_phase` for a solar charge the sun
     switched to one phase; `price_source` for the dashboard's `price_source` block; `phase_switching` for its
     `phase_switching` block; `price_provider` for `prices.provider`; `setup` for its `setup` block; `plan_facts` for the status lines
-    `plan_saving` and `solar_forecast` and hybrid's `sun_start`/`sun_end`); anything else in it, or a `reads` that is not
-    a list, is ignored.
+    `plan_saving` and `solar_forecast` and hybrid's `sun_start`/`sun_end`; `own_mode_status` for the status line
+    `charger_own_mode`); anything else in it, or a `reads` that is not a list, is ignored.
     """
     opted_in = _opted_in(payload)
     withheld_blocks = {block for block, read in APP_DASHBOARD_BLOCK_READS.items() if read not in opted_in}
@@ -219,7 +226,11 @@ def _for_app(body: dict[str, Any], payload: dict[str, Any]) -> dict[str, Any]:
         lines = [
             kept for kept in (_status_for_app(line, opted_in) for line in status["lines"]) if kept is not None
         ]
-        body = {**body, "status": {**status, "lines": lines}}
+        shown = {**status, "lines": lines}
+        if any(isinstance(line, dict) and line.get("code") in APP_UNREAD_OWN_MODE_CODES for line in status["lines"]):
+            # A notice left out may have been the only one: the tone is the strongest line the app still gets.
+            shown["tone"] = status_tone(lines)
+        body = {**body, "status": shown}
     settings = body.get("settings")
     if not isinstance(settings, dict):
         return body

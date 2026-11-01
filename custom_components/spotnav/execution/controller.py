@@ -69,7 +69,7 @@ from ..vehicles.ocpp_identity import (
     STATUS_CONNECTOR_KEY,
 )
 from .charger_connection import FINISHED as CONNECTION_FINISHED
-from .charger_entities import charger_is_disabled
+from .charger_entities import charger_conflicts, charger_is_disabled, FixableConflict
 from .power_energy import integrated_energy_unique_id, read_power_w
 from .chargers.adapter import build_adapter, ChargerAdapter
 from .charger_profiles import PATH_BUTTONS_TOGGLE
@@ -1545,9 +1545,16 @@ class ChargingController:
     @property
     def charger_disabled(self) -> bool:
         """Whether the charger's own enable switch is off (Easee's `is_enabled`): it cannot start while
-        it is, and SpotNav never writes that switch.
+        it is, and SpotNav never writes that switch on its own (only a person's "Turn on" does).
         """
         return charger_is_disabled(self.hass, self.charge_control, self.adapter.platform)
+
+    @property
+    def charger_conflicts(self) -> list[FixableConflict]:
+        """The charger's own modes that work against SpotNav now, and its own enable switch when it is off,
+        each with the one write that would end it (`charger_entities.charger_conflicts`). Read, never written.
+        """
+        return charger_conflicts(self.hass, self.charge_control, self.adapter.platform)
 
     @property
     def charge_progress_subject(self) -> str:

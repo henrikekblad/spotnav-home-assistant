@@ -19,6 +19,19 @@ export interface FormatContext {
   priceUnit?: PriceUnit;
   /** The market's countries: an area covering Great Britain reads distance in miles. */
   countries?: readonly string[];
+  /** Home Assistant's own words for an entity the backend names (`entity-words.ts`); raw values without it. */
+  entityWords?: EntityWords;
+}
+
+/**
+ * Home Assistant's own words for an entity, read from the reader's `hass`: its name as Home Assistant shows it
+ * (without the device's name) and a state or option as its integration translates it. `null` where the frontend
+ * does not know the entity, and the caller then says the backend's raw words.
+ */
+export interface EntityWords {
+  name(entityId: string): string | null;
+  /** The entity's current state, or `value` as that entity would show it. */
+  state(entityId: string, value?: string): string | null;
 }
 
 export function hasZone(context: FormatContext): boolean {
