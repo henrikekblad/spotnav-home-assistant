@@ -5135,11 +5135,6 @@ class ChargingController:
                 outcome=outcome,
             )
 
-    def _rearm_meets_balancing(self, trigger: str) -> bool:
-        """A re-arm inside an open window (a restart, a follow, an install) while load balancing holds a charge back:
-        nothing starts and the memory stays, so its regulator resumes the charge with its own margin and dwell."""
-        return trigger == core_events.TRIGGER_REARM and self._balancing.paused
-
     async def _async_enforce_target(self) -> bool:
         """Make the target decision for the plan in force, and act on it. Takes the operation lock
         and delegates; readings arrive from a state-change listener that could otherwise land
