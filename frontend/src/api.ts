@@ -230,6 +230,19 @@ export async function updateSettings(
 }
 
 /**
+ * What a Save of `body` would plan, with nothing saved (`spotnav/plan_preview`): the same body
+ * `updateSettings` sends, without the revision. The answer is decoded by `decodePlanPreview`.
+ */
+export async function previewPlan(hass: HomeAssistantLike, chargerId: string, body: SettingsBody): Promise<unknown> {
+  return await call<unknown>(hass, {
+    type: "spotnav/plan_preview",
+    api_version: SETTINGS_API_VERSION,
+    charger_id: chargerId,
+    settings: body,
+  });
+}
+
+/**
  * The one site-wide write (solar priority and/or hybrid forecast sources, admin only). `expected` is
  * the subset last seen, `changes` only the fields this edit owns. The server resolves charger to
  * site and answers with the re-read `site` block, so a conflict is a value, not an exception.
