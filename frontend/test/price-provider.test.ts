@@ -13,6 +13,8 @@ import {
   OCTOPUS_HACS_PATH,
   OCTOPUS_REPOSITORY_URL,
   priceProviderNodes,
+  ZONNEPLAN_HACS_PATH,
+  ZONNEPLAN_REPOSITORY_URL,
 } from "../src/price-provider";
 import { decodeDashboard, priceProviderOrNull, type PriceProvider } from "../src/validate";
 import { FakeHass, mountCard } from "./helpers";
@@ -151,6 +153,7 @@ describe("the source line", () => {
     ["entsoe", "Prices from ENTSO-E (your key)"],
     ["pvpc", "Prices from PVPC (Home Assistant)"],
     ["octopus", "Prices from Octopus Energy (your Agile tariff)"],
+    ["zonneplan", "Prices from Zonneplan (your tariff, tax and VAT included)"],
   ])("names %s", async (key, text) => {
     const { element } = await open(dashboard(provider({ key, name: "x", url: "https://example.org/" }, null)));
     const line = priceSection(element).querySelector<HTMLElement>("[data-price-provider]");
@@ -204,6 +207,8 @@ describe("the notices", () => {
     ["pvpc_not_loaded", ["Open PVPC"], integrationPath("pvpc_hourly_pricing")],
     ["octopus_not_loaded", ["Open Octopus Energy"], integrationPath("octopus_energy")],
     ["octopus_no_agile", ["Open Octopus Energy"], integrationPath("octopus_energy")],
+    ["zonneplan_not_loaded", ["Open Zonneplan"], integrationPath("zonneplan_one")],
+    ["zonneplan_no_tariff", ["Open Zonneplan"], integrationPath("zonneplan_one")],
   ])("%s opens its page", async (code, buttons, path) => {
     const { element } = await open(dashboard(provider(SOURCE, code)));
     const box = notice(element)!;
@@ -227,6 +232,44 @@ describe("the notices", () => {
     const withHacs = await open(dashboard(provider(NONE, "add_octopus")), { components: ["hacs"] });
     action(notice(withHacs.element)!, "octopus").click();
     expect(pushed).toEqual([OCTOPUS_HACS_PATH]);
+  });
+
+  it("add_zonneplan opens HACS when it is there, else the repository's own page", async () => {
+    const without = await open(dashboard(provider(NONE, "add_zonneplan")));
+    expect(notice(without.element)?.textContent).toContain(
+      "Zonneplan's tariff for Malmö · SE4 comes from the Zonneplan integration, installed through HACS.",
+    );
+    expect(labels(notice(without.element))).toEqual(["Add Zonneplan (HACS)"]);
+    action(notice(without.element)!, "zonneplan").click();
+    expect(opened).toEqual([ZONNEPLAN_REPOSITORY_URL]);
+    expect(pushed).toEqual([]);
+
+    const withHacs = await open(dashboard(provider(NONE, "add_zonneplan")), { components: ["hacs"] });
+    action(notice(withHacs.element)!, "zonneplan").click();
+    expect(pushed).toEqual([ZONNEPLAN_HACS_PATH]);
+  });
+
+  it("the Zonneplan hint on a spot area names the Zonneplan area and opens the area", async () => {
+    const { hass, element } = await open(dashboard(provider(SOURCE, "zonneplan_area")));
+    const box = notice(element)!;
+    expect(box.querySelector(".spotnav-suggestion-text")?.textContent).toBe(
+      "Zonneplan is set up in Home Assistant. To plan on your Zonneplan tariff, with energy tax and VAT included, choose the area Netherlands – Zonneplan.",
+    );
+    expect(labels(box)).toEqual(["Choose the area"]);
+    // The source line stays: the hint is beside the area's own source, not instead of it.
+    expect(priceSection(element).querySelector("[data-price-provider]")).not.toBeNull();
+    const before = hass.messages.length;
+    action(box, "area").click();
+    await settle();
+    expect(hass.messages.length).toBeGreaterThan(before);
+  });
+
+  it("the Zonneplan hint speaks Swedish", async () => {
+    const { element } = await open(dashboard(provider(SOURCE, "zonneplan_area")), { language: "sv" });
+    expect(notice(element)?.querySelector(".spotnav-suggestion-text")?.textContent).toBe(
+      "Zonneplan finns i Home Assistant. Välj området Netherlands – Zonneplan för att planera efter ditt Zonneplan-pris, med energiskatt och moms inräknade.",
+    );
+    expect(labels(notice(element))).toEqual(["Välj område"]);
   });
 
   it("the region mismatch names the meter's region and opens the area", async () => {
@@ -281,7 +324,7 @@ describe("the notices", () => {
 
   it("has its words in every language", () => {
     const keys = Object.keys(TRANSLATIONS.en).filter((key) => key.startsWith("price.notice.") || key.startsWith("price.key.") || key.startsWith("price.provider."));
-    expect(keys.length).toBe(31);
+    expect(keys.length).toBe(38);
     for (const language of LANGUAGES) {
       const words = TRANSLATIONS[language] as Record<string, string>;
       for (const key of keys) {

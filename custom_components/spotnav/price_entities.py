@@ -126,10 +126,13 @@ class PriceNowSensor(SpotNavPriceEntity, SensorEntity):
             "area": device.area_id,
             "currency": None if area is None else area.currency,
             "resolution_minutes": None if point is None else resolution_minutes((point,)),
+            # The file's own price before SpotNav's fees: the spot price, or the all-in tariff for an area that
+            # already includes VAT or tax (GB Agile, Spain's PVPC, NL-ZONNEPLAN).
             "spot_price": None if point is None else rounded(point.spot),
             "next_change": _iso(device.next_price_change()),
             "tomorrow_published": device.tomorrow_published,
-            # Where the prices come from: `nordpool`, `entsoe`, `pvpc`, `octopus`, or `None` with no source.
+            # Where the prices come from: `nordpool`, `entsoe`, `pvpc`, `octopus`, `zonneplan`, or `None` with no
+            # source.
             "source": device.source,
         }
 

@@ -22,6 +22,16 @@ export const OCTOPUS_HACS_PATH =
 /** Where an ENTSO-E key is registered for. */
 export const ENTSOE_URL = "https://transparency.entsoe.eu/";
 export const OCTOPUS_REPOSITORY_URL = "https://github.com/BottlecapDave/HomeAssistant-OctopusEnergy";
+/** The Zonneplan integration's repository (a HACS default): opened in HACS when HACS is there, else on GitHub. */
+export const ZONNEPLAN_HACS_PATH =
+  "/_my_redirect/hacs_repository?owner=fsaris&repository=home-assistant-zonneplan-one&category=integration";
+export const ZONNEPLAN_REPOSITORY_URL = "https://github.com/fsaris/home-assistant-zonneplan-one";
+
+/** The integrations added from HACS, by the notice action that adds them. */
+const HACS_REPOSITORIES: Record<"octopus" | "zonneplan", { hacsPath: string; url: string }> = {
+  octopus: { hacsPath: OCTOPUS_HACS_PATH, url: OCTOPUS_REPOSITORY_URL },
+  zonneplan: { hacsPath: ZONNEPLAN_HACS_PATH, url: ZONNEPLAN_REPOSITORY_URL },
+};
 
 /** The providers the card has a source line for. */
 const SOURCE_LINES: Record<string, TranslationKey> = {
@@ -29,12 +39,14 @@ const SOURCE_LINES: Record<string, TranslationKey> = {
   entsoe: "price.provider.entsoe",
   pvpc: "price.provider.pvpc",
   octopus: "price.provider.octopus",
+  zonneplan: "price.provider.zonneplan",
 };
 
 /** What a notice's button does. */
 type NoticeAction =
   | { kind: "page"; path: string }
   | { kind: "octopus" }
+  | { kind: "zonneplan" }
   | { kind: "area" };
 
 interface NoticeSpec {
@@ -93,6 +105,28 @@ const NOTICES: Record<string, NoticeSpec> = {
     text: "price.notice.octopusRegionMismatch",
     action: { label: "price.notice.chooseArea", does: { kind: "area" } },
   },
+  add_zonneplan: {
+    text: "price.notice.addZonneplan",
+    action: { label: "price.notice.addZonneplan.action", does: { kind: "zonneplan" } },
+  },
+  zonneplan_not_loaded: {
+    text: "price.notice.zonneplanNotLoaded",
+    action: {
+      label: "price.notice.openZonneplan",
+      does: { kind: "page", path: integrationPath("zonneplan_one") },
+    },
+  },
+  zonneplan_no_tariff: {
+    text: "price.notice.zonneplanNoTariff",
+    action: {
+      label: "price.notice.openZonneplan",
+      does: { kind: "page", path: integrationPath("zonneplan_one") },
+    },
+  },
+  zonneplan_area: {
+    text: "price.notice.zonneplanArea",
+    action: { label: "price.notice.chooseArea", does: { kind: "area" } },
+  },
   source_missing: {
     text: "price.notice.sourceMissing",
     action: { label: "price.notice.chooseArea", does: { kind: "area" } },
@@ -108,7 +142,7 @@ export interface PriceProviderInput {
   areaId: string | null;
   isAdmin: boolean;
   idPrefix: string;
-  /** Whether Home Assistant has loaded an integration (HACS, for the Octopus Energy button). */
+  /** Whether Home Assistant has loaded an integration (HACS, for the Octopus Energy and Zonneplan buttons). */
   hasComponent: (domain: string) => boolean;
   /** Open one of Home Assistant's own pages. */
   navigate: (path: string) => void;
@@ -183,11 +217,12 @@ function noticeNode(
     button(spec.action.label, does.kind === "page" ? does.path : does.kind, () => {
       if (does.kind === "page") {
         input.navigate(does.path);
-      } else if (does.kind === "octopus") {
+      } else if (does.kind === "octopus" || does.kind === "zonneplan") {
+        const repository = HACS_REPOSITORIES[does.kind];
         if (input.hasComponent("hacs")) {
-          input.navigate(OCTOPUS_HACS_PATH);
+          input.navigate(repository.hacsPath);
         } else {
-          input.openExternal(OCTOPUS_REPOSITORY_URL);
+          input.openExternal(repository.url);
         }
       } else {
         input.openArea();

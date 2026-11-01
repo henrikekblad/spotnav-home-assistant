@@ -19,6 +19,7 @@ source an area uses follows from what you have set up; there is no setting to ch
 | Sweden, Norway, Denmark, Finland, Estonia, Latvia, Lithuania, Germany/Luxembourg, the Netherlands, Belgium, France, Austria, Poland, Romania, Bulgaria | Nord Pool, through Home Assistant's built-in [Nord Pool](https://www.home-assistant.io/integrations/nordpool/) integration | The Nord Pool integration (**Settings → Devices & services → Add integration → Nord Pool**) |
 | Spain – PVPC (regulated) | Red Eléctrica, through Home Assistant's built-in [PVPC](https://www.home-assistant.io/integrations/pvpc_hourly_pricing/) integration | The PVPC integration |
 | Great Britain – Octopus Agile (14 regions) | Your own Agile rates, through the [Octopus Energy](https://github.com/BottlecapDave/HomeAssistant-OctopusEnergy) integration | The Octopus Energy integration, from HACS, with your Agile meter |
+| Netherlands – Zonneplan | Zonneplan's dynamic tariff, through the [Zonneplan](https://github.com/fsaris/home-assistant-zonneplan-one) integration | The Zonneplan integration, from HACS |
 | Every other area: Switzerland, Czechia, Slovakia, Hungary, Slovenia, Croatia, Greece, Italy (all zones), Spain (day-ahead) and Portugal | The ENTSO-E Transparency Platform | Your own free ENTSO-E key |
 
 - **Nord Pool.** SpotNav asks the integration's `nordpool.get_prices_for_date` for each day of the area it
@@ -36,9 +37,17 @@ source an area uses follows from what you have set up; there is no setting to ch
 - **PVPC** reads the prices the PVPC integration already holds. **Octopus Agile** reads your meter's rates
   from the Octopus Energy integration, so they are your own tariff's prices; see
   [Great Britain](supported.md#great-britain-octopus-agile).
+- **Zonneplan** reads the tariff the Zonneplan integration already holds, for the area
+  *Netherlands – Zonneplan*. That tariff already contains Zonneplan's purchase fee, energy tax and VAT, so
+  VAT and tax show as *Included in the price* and nothing is added. The area *Netherlands* stays the spot
+  price with your own fees: the two areas never share days or a price history, and when the Zonneplan
+  integration is down there is no fallback to the spot price. While the Zonneplan integration is loaded and
+  the area *Netherlands* has prices of its own, it shows a hint to choose *Netherlands – Zonneplan*. See
+  [the Netherlands](supported.md#netherlands-zonneplan).
 
 An area with no source of its own shows a notice in the card (**Settings → Electricity price**) with the
-one step that gives it one ("Add Nord Pool", "Add your ENTSO-E key", "Add PVPC", "Add Octopus Energy"),
+one step that gives it one ("Add Nord Pool", "Add your ENTSO-E key", "Add PVPC", "Add Octopus Energy",
+"Add Zonneplan"),
 and the electricity price device names it as its problem. Prices it already holds keep showing. Once
 there is nothing priced for today, Home Assistant also raises a Repairs issue; it goes away by itself
 when prices arrive. See [Troubleshooting](troubleshooting.md#prices-are-missing).
@@ -47,7 +56,7 @@ The SpotNav relay no longer delivers prices (since SpotNav 2.0); it only wakes t
 notifications.
 
 **What SpotNav contacts for prices.** Only Home Assistant's own integrations that you added (which
-contact Nord Pool, Red Eléctrica or Octopus Energy themselves), the ENTSO-E platform
+contact Nord Pool, Red Eléctrica, Octopus Energy or Zonneplan themselves), the ENTSO-E platform
 (`web-api.tp.entsoe.eu`) when you have entered a key, and the European Central Bank's public reference
 rates (`www.ecb.europa.eu`, once a day) for an area priced in another currency than the euro. Nothing
 about your charging is sent anywhere.
@@ -81,6 +90,7 @@ Prices for tomorrow are published once a day, at a time that depends on the sour
 | Nord Pool through Home Assistant | about 12:45 Brussels time |
 | ENTSO-E day-ahead (your key) | about 13:00 Brussels time |
 | Octopus Agile (Great Britain) | about 16:00 UK time |
+| Zonneplan (Netherlands – Zonneplan) | in the afternoon, after the 13:00 Brussels auction |
 | Red Eléctrica PVPC (Spain, regulated) | about 20:15 Madrid time |
 
 SpotNav knows each source's time, so it knows when to look and how long to wait. Until then only today's prices are known. SpotNav never plans on prices that are not published; see
@@ -225,7 +235,8 @@ those files reads these unchanged.
 
 The real file has 96 prices; it is cut to four here. A Great Britain day looks the same with
 `"market_tz": "Europe/Paris"`, `"res": 30`, `"fx": { "GBP": 0.85033 }`, `"src": "octopus.energy"` and
-`"published": null`.
+`"published": null`. A Netherlands – Zonneplan day has `"src": "zonneplan.nl"` and prices that already
+include energy tax and VAT (`included: ["vat", "tax"]`).
 
 | Field | Meaning |
 | --- | --- |
@@ -238,7 +249,7 @@ The real file has 96 prices; it is cut to four here. A Great Britain day looks t
 | `prices` | One price per interval. Element *n* starts at `start + n × res` minutes. There are no per-element timestamps. Prices can be negative. |
 | `fx` | Exchange rates from EUR: local price = EUR price × rate. Empty for a euro area, and for an old day with no rate from near that day. |
 | `fx_date`, `fx_src` | The date of the rate and where it comes from (`ECB`). Absent when `fx` is empty. |
-| `src` | The source that produced the prices: `nordpool`, `entsoe.eu`, `octopus.energy` or `esios.ree.es`. |
+| `src` | The source that produced the prices: `nordpool`, `entsoe.eu`, `octopus.energy`, `esios.ree.es` or `zonneplan.nl`. |
 | `published` | When the source published the prices, or `null` when the source does not say. |
 | `retrieved` | When they were fetched. |
 

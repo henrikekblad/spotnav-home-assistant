@@ -404,8 +404,8 @@ def _price_data(hass: HomeAssistant) -> dict[str, Any]:
                 "tomorrow_data": day_summary(area.tomorrow_snapshot),
                 # The history profile a dated departure weighs (window, weeks, coverage; no prices).
                 "history_profile": manager.profile_summary(area.area_id),
-                # Where the prices come from (`nordpool`, `entsoe`, `pvpc`, `octopus`, or `null` with no source)
-                # and the notice the person sees; never a key or a request.
+                # Where the prices come from (`nordpool`, `entsoe`, `pvpc`, `octopus`, `zonneplan`, or `null` with no
+                # source) and the notice the person sees; never a key or a request.
                 "price_source": manager.source_status(area.area_id).as_dict(),
                 # Whether the price history's backfill waits for this area (a failure, and when it tries again).
                 "history_backfill": manager.backfill_summary(area.area_id),

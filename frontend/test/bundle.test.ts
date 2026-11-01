@@ -142,6 +142,8 @@ describe("the asset's only absolute URLs", () => {
     expect(Array.from(found).sort()).toEqual([
       // The Octopus Energy integration's page, opened in a new tab by its notice when HACS is not there.
       "https://github.com/BottlecapDave/HomeAssistant-OctopusEnergy",
+      // The Zonneplan integration's page, opened in a new tab by its notice when HACS is not there.
+      "https://github.com/fsaris/home-assistant-zonneplan-one",
       "https://github.com/henrikekblad/spotnav-home-assistant",
       // The SpotNav app on Google Play, opened in a new tab by "Get started" (where to get the app).
       "https://play.google.com/store/apps/details?id=se.sensnology.spotnav",

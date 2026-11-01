@@ -46,7 +46,13 @@ PRICE_DECIMALS: Final = 4
 
 @dataclass(frozen=True, slots=True)
 class PricePoint:
-    """One published interval: when (UTC), which local day it belongs to, and its two prices."""
+    """One published interval: when (UTC), which local day it belongs to, and its two prices.
+
+    `spot` is the price as the area's file holds it, before the fees SpotNav adds: the day-ahead spot price for a
+    market area, but the all-in tariff for an area whose catalogue entry says it already includes VAT, tax or the
+    grid fee (`included`: the GB Agile regions, Spain's PVPC, and `NL-ZONNEPLAN`, Zonneplan's tariff with energy
+    tax and VAT). `price` adds only what is not included.
+    """
 
     start: datetime
     end: datetime

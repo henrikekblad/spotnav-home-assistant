@@ -268,11 +268,15 @@ webhook only when the request asks for it (`"reads": ["price_provider"]`):
              "notice": {"code": "add_nordpool", "params": {}}}
 ```
 
-`key` is `nordpool`, `entsoe`, `pvpc` or `octopus` (`null`, with `name` and `url`, when the area has no
+`key` is `nordpool`, `entsoe`, `pvpc`, `octopus` or `zonneplan` (`null`, with `name` and `url`, when the area has no
 source at all; since 2.0 no area is read from the relay, and a reader should treat an unknown key as no key); `null` for the whole object without an area. `notice` is `null` while the area has a source of its
 own, else the one thing an administrator can do: `add_nordpool`, `nordpool_not_loaded`, `add_entsoe_key`,
 `entsoe_key_rejected`, `add_pvpc`, `pvpc_not_loaded`, `add_octopus`, `octopus_not_loaded`, `octopus_no_agile`,
-`octopus_region_mismatch` (`params.region`, the meter's region, whose rates are used) or `source_missing`. An area
+`octopus_region_mismatch` (`params.region`, the meter's region, whose rates are used), `add_zonneplan`,
+`zonneplan_not_loaded`, `zonneplan_no_tariff`, `zonneplan_area` (a hint on another area of the Netherlands while
+the Zonneplan integration is loaded: choose *Netherlands – Zonneplan*; shown only while that area has a working
+source of its own, beside it, so an area without a source always gets its own notice first) or
+`source_missing`. An area
 with no source keeps showing the days it holds, with its notice. A source that is there but failing is no notice
 (the prices are `stale` or `degraded` as before). `market.source` is the provider's attribution, `null` with no
 source. `prices.index_state` and `prices.index_revision` are always `null` since 2.0 (there is no index); they stay

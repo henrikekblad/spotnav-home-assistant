@@ -51,7 +51,7 @@ def bundled():
 def test_the_shipped_file_is_read_whole(bundled) -> None:
     document = shipped()
     assert bundled.catalogue.version == 2
-    assert len(bundled.catalogue.areas) == len(document["areas"]) == 54
+    assert len(bundled.catalogue.areas) == len(document["areas"]) == 55
     assert set(bundled.routes) == set(bundled.catalogue.area_ids)
     assert list(bundled.catalogue.area_ids) == sorted(bundled.catalogue.area_ids)
 
@@ -66,12 +66,15 @@ GB_REGIONS = tuple(f"GB-{letter}" for letter in "ABCDEFGHJKLMNP")
 
 def test_every_area_has_a_provider(bundled) -> None:
     ids = set(bundled.catalogue.area_ids)
-    assert set(GB_REGIONS) <= ids and "ES-PVPC" in ids and "IE-SEM" not in ids
+    assert set(GB_REGIONS) <= ids and {"ES-PVPC", "NL-ZONNEPLAN"} <= ids and "IE-SEM" not in ids
     for area_id, routes in bundled.routes.items():
+        assert routes.zonneplan == (area_id == "NL-ZONNEPLAN"), area_id
         if area_id in GB_REGIONS:
             assert (routes.octopus, routes.entsoe, routes.nordpool, routes.pvpc) == (area_id[-1], None, None, None)
         elif area_id == "ES-PVPC":
             assert (routes.pvpc, routes.entsoe, routes.nordpool, routes.octopus) == ("2.0TD", None, None, None)
+        elif area_id == "NL-ZONNEPLAN":
+            assert (routes.pvpc, routes.entsoe, routes.nordpool, routes.octopus) == (None, None, None, None)
         else:
             assert routes.entsoe is not None and routes.entsoe.eic == bundled.catalogue.area(area_id).eic
             assert routes.octopus is None and routes.pvpc is None
@@ -93,6 +96,22 @@ def test_agile_and_pvpc_keep_the_relays_calendars_and_inclusions(bundled) -> Non
     )
     assert pvpc.currency == "EUR" and pvpc.included == ("grid_fee",)
     assert (pvpc.publication.local_time.strftime("%H:%M"), pvpc.publication.tz) == ("20:15", "Europe/Madrid")
+
+
+def test_zonneplan_is_its_own_all_in_area_beside_the_spot_area(bundled) -> None:
+    """Zonneplan's tariff holds VAT and energy tax; the spot area NL keeps the fee model and its own days."""
+    zonneplan = bundled.catalogue.area("NL-ZONNEPLAN")
+    assert zonneplan.name == "Netherlands – Zonneplan" and zonneplan.countries == ("NL",)
+    assert (zonneplan.tz, zonneplan.market_tz, bundled.routes["NL-ZONNEPLAN"].cet_market_tz) == (
+        "Europe/Amsterdam",
+        "Europe/Amsterdam",
+        "Europe/Amsterdam",
+    )
+    assert zonneplan.currency == "EUR" and zonneplan.included == ("vat", "tax")
+    assert zonneplan.includes("vat") and zonneplan.includes("tax") and not zonneplan.includes("grid_fee")
+    assert (zonneplan.publication.local_time.strftime("%H:%M"), zonneplan.publication.tz) == ("13:00", "Europe/Brussels")
+    spot = bundled.catalogue.area("NL")
+    assert spot.included == () and bundled.routes["NL"].nordpool == "NL" and not bundled.routes["NL"].zonneplan
 
 
 def test_nord_pool_codes(bundled) -> None:
@@ -149,6 +168,7 @@ def test_the_placeholder_source(bundled) -> None:
         lambda area: area["routes"].__setitem__("octopus", "I"),
         lambda area: area["routes"].__setitem__("octopus", 3),
         lambda area: area["routes"].__setitem__("pvpc", ""),
+        lambda area: area["routes"].__setitem__("zonneplan", "yes"),
     ],
 )
 def test_any_fault_refuses_the_whole_file(damage) -> None:
@@ -216,6 +236,11 @@ def test_the_sync_tool_refuses_to_lose_a_route() -> None:
     gb = copy.deepcopy(old)
     next(area for area in gb["areas"] if area["id"] == "GB-C")["routes"].pop("octopus")
     next(area for area in gb["areas"] if area["id"] == "ES-PVPC")["routes"].pop("pvpc")
-    assert lost_routes(old, gb) == ["ES-PVPC: lost its pvpc route", "GB-C: lost its octopus route"]
+    next(area for area in gb["areas"] if area["id"] == "NL-ZONNEPLAN")["routes"].pop("zonneplan")
+    assert lost_routes(old, gb) == [
+        "ES-PVPC: lost its pvpc route",
+        "GB-C: lost its octopus route",
+        "NL-ZONNEPLAN: lost its zonneplan route",
+    ]
     # A gained area or route is no loss.
     assert lost_routes(new, old) == []

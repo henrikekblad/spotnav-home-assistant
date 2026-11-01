@@ -147,7 +147,9 @@ already holds and never asks a source.
 
 The answer follows Home Assistant's own Nord Pool action: a list of intervals under the area's id, with
 the currency, unit and resolution beside it. `price` is with your fees and VAT, `spot_price` without;
-both in the area's currency per kWh, four decimals.
+both in the area's currency per kWh, four decimals. For an area whose price already includes VAT or tax
+(Great Britain's Agile regions, Spain's PVPC, Netherlands – Zonneplan), `spot_price` is that all-in price, not
+a day-ahead spot price.
 
 ```yaml
 config_entry_id: 01K8...

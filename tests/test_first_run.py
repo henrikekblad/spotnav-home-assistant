@@ -107,6 +107,16 @@ def test_nothing_trustworthy_leaves_the_area_empty(country, lat, lon) -> None:
     assert suggest_area(CATALOGUE, country, lat, lon) is None
 
 
+@pytest.mark.parametrize(
+    ("place", "lat", "lon"),
+    [("Amsterdam", 52.37, 4.90), ("Groningen", 53.22, 6.57), ("Maastricht", 50.85, 5.69), ("Vlissingen", 51.44, 3.57)],
+)
+def test_the_netherlands_suggests_the_spot_area_never_zonneplans(place, lat, lon) -> None:
+    """NL and NL-ZONNEPLAN share the country; only NL has reference points, so the location picks it."""
+    catalogue = _catalogue({"NL": "NL", "NL-ZONNEPLAN": "NL"})
+    assert suggest_area(catalogue, "NL", lat, lon) == "NL", place
+
+
 def test_no_catalogue_leaves_the_area_empty() -> None:
     assert suggest_area(None, "SE", 59.33, 18.07) is None
 

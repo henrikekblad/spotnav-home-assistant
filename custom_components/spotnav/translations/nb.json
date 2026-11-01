@@ -884,7 +884,7 @@
     },
     "price_source_missing": {
       "title": "Ingen strømpriser for {area}",
-      "description": "**{price}** har ingen priser: ingen kilde er satt opp for {area}. Åpne SpotNav-kortets innstillinger, Strømpris: der står det hva som må legges til (Home Assistants Nord Pool-integrasjon, din egen ENTSO-E-nøkkel, PVPC- eller Octopus Energy-integrasjonen). Meldingen forsvinner av seg selv når prisene er tilbake."
+      "description": "**{price}** har ingen priser: ingen kilde er satt opp for {area}. Åpne SpotNav-kortets innstillinger, Strømpris: der står det hva som må legges til (Home Assistants Nord Pool-integrasjon, din egen ENTSO-E-nøkkel, PVPC-, Octopus Energy- eller Zonneplan-integrasjonen). Meldingen forsvinner av seg selv når prisene er tilbake."
     }
   },
   "exceptions": {

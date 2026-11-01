@@ -52,6 +52,9 @@ NP = {"nordpool_route": True, "entsoe_route": True}
 ENTSOE = {"entsoe_route": True}
 PVPC = {"pvpc_route": True}
 GB = {"octopus_route": True}
+ZONNEPLAN = {"zonneplan_route": True}
+#: Area NL while the Zonneplan integration is loaded.
+NL_BESIDE_ZONNEPLAN = {**NP, "zonneplan_entry": "loaded", "zonneplan_elsewhere": True}
 
 
 # ------------------------------------------------------------------ the table
@@ -68,6 +71,17 @@ GB = {"octopus_route": True}
         (SourceFacts(**GB, octopus_entry="not_loaded"), "octopus_not_loaded"),
         (SourceFacts(**GB, octopus_entry="loaded"), "octopus_no_agile"),
         (SourceFacts(**GB), "add_octopus"),
+        (SourceFacts(**ZONNEPLAN, zonneplan_entry="loaded", zonneplan_tariff=True), None),
+        (SourceFacts(**ZONNEPLAN, zonneplan_entry="not_loaded"), "zonneplan_not_loaded"),
+        (SourceFacts(**ZONNEPLAN, zonneplan_entry="loaded"), "zonneplan_no_tariff"),
+        (SourceFacts(**ZONNEPLAN), "add_zonneplan"),
+        # NL while Zonneplan is set up: the hint only beside a working source of NL's own; without one, NL's own
+        # notice (what gives it prices, and what its Repairs issue points to) comes first.
+        (SourceFacts(**NL_BESIDE_ZONNEPLAN, nordpool_entry="loaded"), "zonneplan_area"),
+        (SourceFacts(**NL_BESIDE_ZONNEPLAN, entsoe_key="ok"), "zonneplan_area"),
+        (SourceFacts(**NL_BESIDE_ZONNEPLAN), "add_nordpool"),
+        (SourceFacts(**NL_BESIDE_ZONNEPLAN, nordpool_entry="not_loaded"), "nordpool_not_loaded"),
+        (SourceFacts(**NL_BESIDE_ZONNEPLAN, entsoe_key="rejected"), "entsoe_key_rejected"),
         (SourceFacts(**NP, nordpool_entry="loaded"), None),
         (SourceFacts(**NP, entsoe_key="ok"), None),
         (SourceFacts(**NP, entsoe_key="unchecked"), None),

@@ -10,7 +10,7 @@ integration's own parser, and writes it with areas sorted by id. When nothing bu
 change, the file is left as it is, so a sync without changes makes no diff.
 
 It refuses to write when an area the current file lists is gone, or has lost a route (its Nord Pool code, its
-ENTSO-E route, its Octopus region or its PVPC tariff) or its CET calendar, unless `--allow-removal` is given: a
+ENTSO-E route, its Octopus region, its PVPC tariff or its Zonneplan route) or its CET calendar, unless `--allow-removal` is given: a
 lost route is a provider that stops serving people who chose that area, which must be a decision, not a side
 effect.
 """
@@ -31,7 +31,7 @@ if str(ROOT) not in sys.path:
 from custom_components.spotnav.pricing.area_catalogue import BUNDLED_PATH, parse_bundled  # noqa: E402
 
 DEFAULT_RELAY = ROOT.parent / "spotnav-relay"
-ROUTE_KEYS = ("nordpool", "entsoe", "octopus", "pvpc", "cet_market_tz")
+ROUTE_KEYS = ("nordpool", "entsoe", "octopus", "pvpc", "zonneplan", "cet_market_tz")
 
 
 def generate(relay: Path) -> dict[str, Any]:

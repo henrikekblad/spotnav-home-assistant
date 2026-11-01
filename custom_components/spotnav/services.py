@@ -207,6 +207,7 @@ def _get_prices(hass: HomeAssistant, call: ServiceCall) -> ServiceResponse:
                 "start": point.start.astimezone(zone).isoformat(),
                 "end": point.end.astimezone(zone).isoformat(),
                 "price": rounded(point.price),
+                # Before SpotNav's fees: the all-in tariff for GB Agile, Spain's PVPC and NL-ZONNEPLAN.
                 "spot_price": rounded(point.spot),
             }
             for point in points

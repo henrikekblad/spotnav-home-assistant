@@ -1171,6 +1171,33 @@
       }
     },
     {
+      "id": "NL-ZONNEPLAN",
+      "countries": [
+        "NL"
+      ],
+      "name": "Netherlands – Zonneplan",
+      "tz": "Europe/Amsterdam",
+      "currency": "EUR",
+      "major_unit": "€",
+      "minor_unit": "cent",
+      "included": [
+        "vat",
+        "tax"
+      ],
+      "publication": {
+        "time": "13:00",
+        "tz": "Europe/Brussels"
+      },
+      "source": {
+        "name": "SpotNav",
+        "url": "https://spotnav.sensnology.se"
+      },
+      "routes": {
+        "zonneplan": true,
+        "cet_market_tz": "Europe/Amsterdam"
+      }
+    },
+    {
       "id": "NO1",
       "eic": "10YNO-1--------2",
       "countries": [
