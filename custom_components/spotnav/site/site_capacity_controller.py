@@ -1805,6 +1805,20 @@ class SiteCapacityController:
 
         minimum = self._min_current_a(charger_entry_id)
         if (
+            not lowering_due
+            and previous_setpoint is not None
+            and previous_setpoint < minimum
+            and proposed > previous_setpoint
+            and charger_controller.paused_by_balancing
+        ):
+            # A charge load balancing paused is given back by the resume or the probe above, with their margin and
+            # dwell, never by a raise of the regulator's: the charger is stopped, and a current written to it would
+            # stand for one on it (the damper's), which no resume follows any more. The raise comes from the stopped
+            # charger's last reading (an OCPP charger sends none without a transaction), the car's draw from before
+            # the pause, which the regulator keeps "unchanged" once the overload is gone.
+            self._log_active_control_outcome(charger_entry_id, decision, outcome="held", detail="paused_by_balancing")
+            return True
+        if (
             previous_setpoint is None
             and proposed > minimum
             and not self._car_draws(charger_entry_id, decision)
@@ -2700,7 +2714,7 @@ class SiteCapacityController:
         ):
             self._resume_ready_since.pop(charger_entry_id, None)
             return False
-        delivered = self._read_charger_measured_current(wiring)
+        delivered = self._stopped_charger_reading(charger_entry_id, wiring)
         if delivered is None and switch_only:
             phase_count, chosen = self.reckoned_phases(charger_entry_id)
             delivered = self._switched_measurement(charger_controller, phase_count, chosen, min_current_a)
@@ -2857,7 +2871,7 @@ class SiteCapacityController:
             or charger_controller.car_ended_holds_charge
         ):
             return False
-        delivered = self._read_charger_measured_current(wiring)
+        delivered = self._stopped_charger_reading(charger_entry_id, wiring)
         if delivered is None:
             return False
         delivered_a = [delivered.get(phase).value for phase in phases]
@@ -2934,7 +2948,8 @@ class SiteCapacityController:
             wiring: dict[str, Any] = (self.config.get(CONF_PHASE_WIRING) or {}).get(
                 charger_entry_id
             ) or {}
-            delivered = self._read_charger_measured_current(wiring)
+            # A probe of a stopped charge: a reading the charger has not sent since the probe's start is no sign.
+            delivered = self._stopped_charger_reading(charger_entry_id, wiring)
             observing = fresh.state == "observing"
             site_current_a = (
                 dict(fresh.measured_phase_current_a)
@@ -3940,6 +3955,34 @@ class SiteCapacityController:
             return None
         values = read_phase_measurement(self.hass, source, classify_current)
         return DirectPhaseMeasurement(l1=values["L1"], l2=values["L2"], l3=values["L3"])
+
+    def _stopped_charger_reading(
+        self, charger_entry_id: str, wiring: dict[str, Any]
+    ) -> DirectPhaseMeasurement | None:
+        """A stopped charger's own reading, as the resume and the battery probe judge whether the car draws: a phase
+        read before the last write to the charger (its pause, or the probe's start) shows the current before that
+        write, and one not reported for longer than the site's maximum age says nothing of now. Both read 0 A. An
+        OCPP charger sends no meter values while no transaction runs, so its current reads its last value, the car's
+        draw before the pause, until it charges again: 6.02 A all night on 2026-11-01, which kept the paused charge
+        from ever being resumed or probed (a reading frozen at 0 A, the night of 2026-10-09, did not)."""
+        delivered = self._read_charger_measured_current(wiring)
+        if delivered is None:
+            return None
+        max_age_s = float(self.config.get(CONF_MAX_AGE_S, DEFAULT_MAX_AGE_S))
+        written_at = self._written_at.get(charger_entry_id)
+        now = dt_util.utcnow().timestamp()
+
+        def idle(value: PhaseValue) -> PhaseValue:
+            if value.value is None or value.age_s is None:
+                return value
+            # The charger's last word on it: a value sent again unchanged after the write still holds.
+            reported_age_s = value.age_s if value.report_age_s is None else min(value.age_s, value.report_age_s)
+            before_write = written_at is not None and now - reported_age_s <= written_at
+            if before_write or value.age_s > max_age_s:
+                return replace(value, value=0.0)
+            return value
+
+        return DirectPhaseMeasurement(l1=idle(delivered.l1), l2=idle(delivered.l2), l3=idle(delivered.l3))
 
     # -- chargers that can only be switched on and off (`execution/switched_current.py`)
 
