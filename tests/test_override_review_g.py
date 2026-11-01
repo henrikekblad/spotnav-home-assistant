@@ -53,7 +53,6 @@ def mode(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) -> boo
     return request.param
 
 
-@pytest.mark.core_failure_expected
 async def test_rev_g_suns_charge_survives_a_real_ha_restart(
     hass: HomeAssistant, timers: FakeScheduler, mode: bool
 ) -> None:
@@ -112,27 +111,32 @@ async def test_rev_g_shadow_diagnostics_name_no_entity(
 # ---------------------------------------------------------------------------------------------- (b) give-up counting
 
 
+#: Per gap: the stops sent so far and whether SpotNav gave up, after each report. Within the stops' gap a charge that
+#: begins again is not stopped at once; three stops a gap apart give up; far apart, each is a charge of its own.
+EXPECTED_GIVE_UP = {
+    5: [(1, False)] * 6 + [(2, False)] * 4,
+    31: [(1, False), (2, False), (3, False)] + [(3, True)] * 7,
+    200: [(n, False) for n in range(1, 11)],
+}
+
+
 @pytest.mark.parametrize("gap_s", [5, 31, 200])
-async def test_rev_g_give_up_counts_the_same_in_both_modes(
+async def test_rev_g_give_up_counts(
     hass: HomeAssistant, timers: FakeScheduler, monkeypatch: pytest.MonkeyPatch, freezer: Any, gap_s: int
 ) -> None:
-    """Could not break: a charger that begins again by itself under a person's Stop, ten times, `gap_s` apart, is
-    sent the same stops and reaches the give-up at the same report whether the core drives or not."""
-    seen: dict[bool, list[tuple[int, bool]]] = {}
-    for on in (False, True):
-        world = await pause_world(hass, timers)
-        await world.executor.async_manual_stop()
-        stops = len(world.stops)
-        seen[on] = []
-        for _ in range(10):
-            freezer.tick(timedelta(seconds=gap_s))
-            await world.switch("off")
-            await world.switch("on")
-            seen[on].append((len(world.stops) - stops, world.controller.ignores_person_stop))
-        await world.shutdown()
-        hass.services.async_remove("switch", "turn_on")
-        hass.services.async_remove("switch", "turn_off")
-    assert seen[True] == seen[False], seen
+    """A charger that begins again by itself under a person's Stop, ten times, `gap_s` apart: the stops it is sent
+    and the report at which SpotNav gives up."""
+    world = await pause_world(hass, timers)
+    await world.executor.async_manual_stop()
+    stops = len(world.stops)
+    seen: list[tuple[int, bool]] = []
+    for _ in range(10):
+        freezer.tick(timedelta(seconds=gap_s))
+        await world.switch("off")
+        await world.switch("on")
+        seen.append((len(world.stops) - stops, world.controller.ignores_person_stop))
+    await world.shutdown()
+    assert seen == EXPECTED_GIVE_UP[gap_s], seen
 
 
 # ---------------------------------------------------------------------------------------------- pre-existing, copied

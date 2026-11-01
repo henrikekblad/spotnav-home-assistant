@@ -202,7 +202,6 @@ async def test_the_holds_stop_is_sent_and_its_result_comes_back_to_the_core(
     await world.shutdown()
 
 
-@pytest.mark.core_failure_expected
 @pytest.mark.parametrize(("drives", "stopped"), [(True, False)])
 async def test_the_holds_task_acts_on_the_cores_recheck_when_it_drives(
     hass: HomeAssistant, timers: FakeScheduler, monkeypatch, drives: bool, stopped: bool

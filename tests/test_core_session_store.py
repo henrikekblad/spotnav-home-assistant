@@ -573,7 +573,6 @@ async def test_a_storm_of_reports_that_change_nothing_writes_nothing(
     await world.shutdown()
 
 
-@pytest.mark.core_failure_expected  # the record's owner against today's keys, compared at the restart
 @pytest.mark.usefixtures("drives", "both_restarts")
 @pytest.mark.parametrize("marks", ["none", "record_newer", "keys_newer"])
 async def test_at_a_restart_the_record_alone_is_read_but_for_an_earlier_builds_keys_written_after_it(
