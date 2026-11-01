@@ -1696,7 +1696,7 @@ export const VISUAL_STYLES = `
    */
   .${VISUAL_CLASSES.planPreviewBand} {
     position: relative;
-    height: 5px;
+    height: 0.3rem;
     margin-top: 3px;
   }
   .${VISUAL_CLASSES.planPreviewRun} {

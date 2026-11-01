@@ -1315,7 +1315,7 @@ var Zr="start",zn="stop",Xi="resume",Xr="pause";var Fh="normal",uo="vehicle_not_
    */
   .${o.planPreviewBand} {
     position: relative;
-    height: 5px;
+    height: 0.3rem;
     margin-top: 3px;
   }
   .${o.planPreviewRun} {
