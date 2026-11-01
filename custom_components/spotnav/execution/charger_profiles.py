@@ -197,6 +197,9 @@ class PlatformProfile:
     #: preference) is integrated into one instead (`sensor.py`'s integrated energy), and no other energy sensor on
     #: the device is taken for a register.
     energy_power_keys: tuple[str, ...] = ()
+    #: The power key is a generic word (Ohme's `power`): only the entity whose unique id is the device's own
+    #: identifier and the key (`<serial>_power`) is the charger's power, never another one ending in it.
+    energy_power_exact: bool = False
     #: The sensor that says what the charger is doing, the values meaning "charging" and the values
     #: meaning "a vehicle is connected but asks for no current" (the `SuspendedEV` of OCPP).
     status_keys: tuple[str, ...] = ()
@@ -683,8 +686,9 @@ _PROFILES: Final[tuple[PlatformProfile, ...]] = (
         # No lifetime register: `charge_added` counts the session, the others (and every CT's energy) the day.
         session_energy_keys=("charge_added",),
         excluded_energy_keys=("energy_total", "energy_green"),
-        # The zappi's internal CT (CT1) measures what it charges.
-        energy_power_keys=("power-ct_internal_load", "ct1.power"),
+        # The power of every CT named Internal Load added up (pymyenergi's `ct_groups`): what the zappi charges, all
+        # phases of a three-phase one. CT1 alone would be one phase of those.
+        energy_power_keys=("power-ct_internal_load",),
         note="No current control: switched on and off whole, at the current SpotNav learns it draws.",
     ),
     PlatformProfile(
@@ -697,6 +701,7 @@ _PROFILES: Final[tuple[PlatformProfile, ...]] = (
         # session, and its registry entry can outlive it.
         excluded_energy_keys=("energy",),
         energy_power_keys=("power",),
+        energy_power_exact=True,
         status_keys=("status",),
         charging_values=("charging",),
         vehicle_idle_values=("plugged_in", "finished", "pending_approval"),

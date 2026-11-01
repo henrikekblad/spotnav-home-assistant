@@ -335,14 +335,33 @@ def _detect_energy(hass: HomeAssistant, found: DetectedCharger, matcher: EntityM
         power = charger_power_sensor(hass, matcher)
         if power is not None:
             found.energy_power_entity = power.entity_id
-            if power.disabled_by is not None:
-                found.disabled_useful.append(power.entity_id)
+
+
+def _is_device_key(hass: HomeAssistant, entry: er.RegistryEntry, keys: tuple[str, ...]) -> bool:
+    """Whether the entity's unique id is exactly one of the device's identifiers and one of `keys`."""
+    device = dr.async_get(hass).async_get(entry.device_id) if entry.device_id else None
+    if device is None or not entry.unique_id:
+        return False
+    uid = entry.unique_id.lower()
+    return any(
+        uid == f"{str(identifier[1]).lower()}{separator}{key}"
+        for identifier in device.identifiers
+        if isinstance(identifier, tuple) and len(identifier) > 1
+        for key in keys
+        for separator in ("_", "-")
+    )
 
 
 def charger_power_sensor(hass: HomeAssistant, matcher: EntityMatcher) -> er.RegistryEntry | None:
     """The charger's own power sensor its profile counts energy from (`energy_power_keys`), or `None`: one that
-    measures power (device class `power`, by its state or, before it has one, its registry entry)."""
-    for entry in matcher.find("sensor", matcher.profile.energy_power_keys):
+    is enabled and measures power (device class `power`, by its state or, before it has one, its registry entry).
+    A disabled one never reports, so it would count nothing while the plan said the count ends the charge."""
+    profile = matcher.profile
+    for entry in matcher.find("sensor", profile.energy_power_keys):
+        if entry.disabled_by is not None:
+            continue
+        if profile.energy_power_exact and not _is_device_key(hass, entry, profile.energy_power_keys):
+            continue
         state = hass.states.get(entry.entity_id)
         device_class = (
             (state.attributes.get("device_class") if state is not None else None)

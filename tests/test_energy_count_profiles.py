@@ -19,6 +19,8 @@ from homeassistant.helpers import entity_registry as er
 from pytest_homeassistant_custom_component.common import async_fire_time_changed, MockConfigEntry
 
 from custom_components.spotnav.const import (
+    CONF_CHARGE_CONTROL,
+    CONF_CURRENT_LIMIT,
     CONF_ENERGY_REGISTER_CHOSEN,
     CONF_ENERGY_REGISTER_ENTITY,
     CONF_ENERGY_REGISTER_IS_SESSION,
@@ -57,7 +59,7 @@ FIXED = {
         "sensor.alfen_modbus_real_energy_delivered_sum",
         None,
     ),
-    "myenergi": ("sensor.myenergi_energy_total", None, "sensor.myenergi_ct1_power"),
+    "myenergi": ("sensor.myenergi_energy_total", None, "sensor.myenergi_power_ct_internal_load"),
     "chargepoint": ("sensor.chargepoint_session_energy_kwh", None, "sensor.chargepoint_session_power_kw"),
     "ohme": ("sensor.ohme_energy", None, "sensor.ohme_power"),
     "heidelberg_energy_control": (
@@ -184,7 +186,7 @@ async def test_a_stored_session_register_of_a_charger_without_a_lifetime_one_giv
     assert controller.energy_count() == {
         "source": "charger_power",
         "register": integrated,
-        "power": "sensor.myenergi_ct1_power",
+        "power": "sensor.myenergi_power_ct_internal_load",
     }
     assert "its energy is counted from its power sensor instead" in caplog.text
 
@@ -398,3 +400,58 @@ def test_one_phase_of_three_counts_a_third_and_runs_the_charge_far_past_its_need
     stopped, counted = _count_until(30.5, 10, lambda true_kwh: 500.0 + true_kwh / 3)
 
     assert stopped == pytest.approx(3 * 30.5, abs=0.1)
+
+
+async def test_a_disabled_charger_power_sensor_is_not_the_count(hass: HomeAssistant) -> None:
+    """It never reports: counted from, it would count nothing while the plan said the count ends the charge."""
+    shape = SHAPES["chargepoint"]
+    entities = tuple(replace(entity, disabled=True) if entity.key == "session_power_kw" else entity for entity in shape.entities)
+    ids = register_shape(hass, replace(shape, entities=entities))
+    assert detect_charger(hass, ids["device_id"]).energy_power_entity is None
+    found = detect_charger(hass, ids["device_id"])
+    data = {CONF_ENTRY_TYPE: ENTRY_TYPE_CHARGER, "webhook_id": "hook-cp", **detected_config(found)}
+    entry = MockConfigEntry(domain=DOMAIN, entry_id="det_cp", title="cp", data=data)
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    assert controller_of(hass, entry.entry_id).energy_count() == {"source": "none", "register": None, "power": None}
+
+
+async def test_a_zappi_with_only_one_ct_s_power_is_not_counted(hass: HomeAssistant) -> None:
+    """CT1 alone is one phase of a three-phase zappi: only the internal-load CTs added up are its charging power."""
+    shape = SHAPES["myenergi"]
+    entities = tuple(entity for entity in shape.entities if entity.key != "power_ct_internal_load")
+    ids = register_shape(hass, replace(shape, entities=entities))
+
+    assert detect_charger(hass, ids["device_id"]).energy_power_entity is None
+
+
+async def test_ohmes_power_is_its_own_power_entity_and_no_other_ending_in_power(hass: HomeAssistant) -> None:
+    shape = SHAPES["ohme"]
+    entities = tuple(entity for entity in shape.entities if entity.key != "power")
+    ids = register_shape(hass, replace(shape, entities=entities))
+
+    assert detect_charger(hass, ids["device_id"]).energy_power_entity is None
+
+
+async def test_clearing_a_chosen_register_in_the_options_ends_the_choice(hass: HomeAssistant) -> None:
+    entry = await _detected(
+        hass,
+        "alfen_modbus",
+        **{
+            CONF_ENERGY_REGISTER_ENTITY: "sensor.alfen_modbus_real_energy_delivered_l1",
+            CONF_ENERGY_REGISTER_CHOSEN: True,
+        },
+    )
+
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    await hass.config_entries.options.async_configure(
+        result["flow_id"],
+        {CONF_CHARGE_CONTROL: entry.data[CONF_CHARGE_CONTROL], CONF_CURRENT_LIMIT: entry.data[CONF_CURRENT_LIMIT]},
+    )
+    await hass.async_block_till_done()
+
+    entry = hass.config_entries.async_get_entry(entry.entry_id)
+    assert CONF_ENERGY_REGISTER_CHOSEN not in entry.data
+    assert entry.data[CONF_ENERGY_REGISTER_ENTITY] == ""
