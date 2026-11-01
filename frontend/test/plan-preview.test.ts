@@ -134,36 +134,41 @@ describe("the scheduler", () => {
     expect(painted.filter((state) => state.kind === "shown" && !state.pending)).toHaveLength(1);
   });
 
-  it("dims the old result while it waits, and keeps it on an error", async () => {
+  it("dims the old result while it waits, and keeps it, no longer dimmed, when nothing new comes", async () => {
     const { subject, answers, painted, logged } = scheduler();
-    subject.request("a");
-    await vi.advanceTimersByTimeAsync(PREVIEW_DEBOUNCE_MS);
-    answers[0]!.resolve(answer("ready"));
-    await vi.advanceTimersByTimeAsync(0);
-    subject.request("b");
-    expect(painted.at(-1)).toMatchObject({ kind: "shown", pending: true });
-    await vi.advanceTimersByTimeAsync(PREVIEW_DEBOUNCE_MS);
-    answers[1]!.reject(new Error("socket closed"));
-    await vi.advanceTimersByTimeAsync(0);
-    // Nothing new: the old preview, still dimmed, and the failure in the log.
-    expect(painted).toHaveLength(2);
-    expect((painted[1] as { preview: PlanPreview }).preview).toBe((painted[0] as { preview: PlanPreview }).preview);
-    expect(logged).toEqual(["plan preview failed: socket closed"]);
-    // A refusal (the Save's own code) and a malformed answer are not shown either.
-    subject.request("c");
-    await vi.advanceTimersByTimeAsync(PREVIEW_DEBOUNCE_MS);
-    answers[2]!.resolve({ api_version: 1, ok: false, error: "invalid_amps", preview: null });
-    await vi.advanceTimersByTimeAsync(0);
-    subject.request("d");
-    await vi.advanceTimersByTimeAsync(PREVIEW_DEBOUNCE_MS);
-    answers[3]!.resolve({ ...answer("ready"), surprise: true });
-    await vi.advanceTimersByTimeAsync(0);
-    expect(painted.every((state) => state.kind === "shown" && (state === painted[0] || state.pending))).toBe(true);
-    expect(logged).toEqual([
-      "plan preview failed: socket closed",
-      "plan preview refused: invalid_amps",
-      "plan preview answer refused: malformed",
-    ]);
+    const first = async (): Promise<PlanPreview> => {
+      subject.request("a");
+      await vi.advanceTimersByTimeAsync(PREVIEW_DEBOUNCE_MS);
+      answers[0]!.resolve(answer("ready"));
+      await vi.advanceTimersByTimeAsync(0);
+      return (painted[0] as { preview: PlanPreview }).preview;
+    };
+    const shown = await first();
+    const last = () => painted.at(-1) as { kind: string; preview: PlanPreview; pending: boolean };
+    const outcomes: Array<[string, (index: number) => void, string]> = [
+      ["thrown", (index) => answers[index]!.reject(new Error("socket closed")), "plan preview failed: socket closed"],
+      [
+        "refused",
+        (index) => answers[index]!.resolve({ api_version: 1, ok: false, error: "invalid_amps", preview: null }),
+        "plan preview refused: invalid_amps",
+      ],
+      ["malformed", (index) => answers[index]!.resolve({ ...answer("ready"), surprise: true }), "plan preview answer refused: malformed"],
+    ];
+    for (const [name, settle, message] of outcomes) {
+      subject.request(name);
+      expect(last()).toMatchObject({ kind: "shown", pending: true });
+      await vi.advanceTimersByTimeAsync(PREVIEW_DEBOUNCE_MS);
+      settle(answers.length - 1);
+      await vi.advanceTimersByTimeAsync(0);
+      // Nothing new: the old preview, no longer dimmed, and the outcome in the log.
+      expect(last().preview, name).toBe(shown);
+      expect(last().pending, name).toBe(false);
+      expect(logged.at(-1)).toBe(message);
+    }
+    // A draft the card's own checks refuse asks nothing, and nothing is awaited either.
+    subject.request(null);
+    expect(last()).toMatchObject({ kind: "shown", pending: false });
+    expect(last().preview).toBe(shown);
   });
 
   it("asks nothing for a draft the card refuses, and nothing once disposed", async () => {
@@ -342,6 +347,54 @@ describe("in the Plan dialog", () => {
     expect(slot.hidden).toBe(false);
     expect(slot.querySelector(`.${C.planPreviewLine}`)?.textContent).toContain("klar 13:00");
     // Nothing was saved.
+    expect(hass.messages.filter((message) => message["type"] === "spotnav/update_settings")).toEqual([]);
+  });
+
+  it("hears every control: the mode, the target slider, the departure and its weekdays", async () => {
+    vi.setSystemTime(NOW);
+    const hass = new FakeHass();
+    const element = mountCard(CONFIG, hass);
+    const snapshot = hass.snapshot("snapshot", "sv");
+    snapshot.user = { is_admin: true };
+    element.hass = snapshot;
+    await vi.advanceTimersByTimeAsync(0);
+    hass.resolveNext(JSON.parse(readFileSync(join(FIXTURES, "dashboard", "target_soc_estimated.json"), "utf8")));
+    await vi.advanceTimersByTimeAsync(0);
+    shadow(element).querySelector<HTMLButtonElement>(".spotnav-settings-trigger[data-setting='plan']")!.click();
+    await vi.advanceTimersByTimeAsync(0);
+    hass.resolveNext({
+      api_version: SETTINGS_API_VERSION,
+      ok: true,
+      error: null,
+      settings: { ...RECORD, departure_enabled: true, driver: "target_soc", target: { vehicle_id: "<id>", target_percent: 80 } },
+      pause: { choice: null, admitted_at: null, expires_at: null },
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    const dialog = Array.from(shadow(element).querySelectorAll<HTMLElement>("[role='dialog']")).find(
+      (node) => node.closest("[hidden]") === null,
+    )!;
+    const sent = async (): Promise<Record<string, any>> => {
+      await vi.advanceTimersByTimeAsync(PREVIEW_DEBOUNCE_MS);
+      return hass.previewMessages.at(-1)!["settings"] as Record<string, any>;
+    };
+    expect((await sent())["driver"]).toBe("target_soc");
+
+    const target = dialog.querySelector<HTMLInputElement>("input[type='range'][id$='-target']")!;
+    target.value = "90";
+    target.dispatchEvent(new Event("input", { bubbles: true }));
+    expect((await sent())["target"]["target_percent"]).toBe(90);
+
+    const saturday = dialog.querySelector<HTMLInputElement>("input[data-weekday='6']")!;
+    saturday.click();
+    expect((await sent())["departure_weekdays"]).toEqual([1, 2, 3, 4, 5, 7]);
+
+    const time = dialog.querySelector<HTMLInputElement>("input[type='time']")!;
+    time.value = "06:45";
+    time.dispatchEvent(new Event("change", { bubbles: true }));
+    expect((await sent())["departure_time"]).toBe("06:45");
+
+    dialog.querySelector<HTMLButtonElement>("[data-row='charge_by'] button")!.click();
+    expect((await sent())["driver"]).toBe("manual_kwh");
     expect(hass.messages.filter((message) => message["type"] === "spotnav/update_settings")).toEqual([]);
   });
 
