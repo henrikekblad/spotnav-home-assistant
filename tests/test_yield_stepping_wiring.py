@@ -28,6 +28,7 @@ from custom_components.spotnav.const import (
     MEASUREMENT_MODE_DERIVED,
     yield_ceiling_a,
 )
+from custom_components.spotnav.execution.yield_stepping import YieldStepper
 from custom_components.spotnav.site.regulator_damping import RegulatorDamper
 from custom_components.spotnav.site.regulator import (
     PhaseDecisionBasis,
@@ -354,14 +355,26 @@ async def test_a_hold_results_in_no_call_to_the_assign_path(hass: HomeAssistant)
     assert controller._yield_stepping_last[charger.entry_id]["reason"] == "held_at_floor_raw_pause"
 
 
-async def test_urgent_revert_reaches_the_charger_without_the_dwell(hass: HomeAssistant) -> None:
-    """A step that is not absorbed and takes the site over its limit is reverted urgently, in the very pass it is
-    decided, never waiting out the damper's dwell.
+async def test_urgent_revert_reaches_the_charger_without_the_dwell(hass: HomeAssistant, monkeypatch) -> None:
+    """A step that is not absorbed and takes the site over its limit is reverted in the very pass it is decided, never
+    waiting out the damper's dwell, and the stepper marks the revert urgent.
 
     Fuse 40 A, margin 1 A: the limit is 39 A. The site sits at 37.5 A before the step (room for it under the fuse,
-    the unverified ceiling) and at 39.5 A after it, over the limit and under the fuse. A step the grid carries within
-    the limit is not taken back (`test_a_step_not_absorbed_within_the_limit_is_kept`).
+    the unverified ceiling) and at 39.5 A after it, over the limit and under the fuse. A revert happens only over the
+    limit now (a step the grid carries within it is kept, `test_a_step_not_absorbed_within_the_limit_is_kept`), so
+    the site is always in the damper's protection band when one goes out, and that band alone would write the
+    lowering at once: the instant write here does not show that `urgent` reached the damper. What is the stepper's to
+    say, and is asserted, is that its verdict is urgent.
     """
+    verdicts: list = []
+    observe = YieldStepper.observe
+
+    def recording(self, *args, **kwargs):
+        verdict = observe(self, *args, **kwargs)
+        verdicts.append(verdict)
+        return verdict
+
+    monkeypatch.setattr(YieldStepper, "observe", recording)
     site_entry, charger, configure_calls = await _yield_setup(
         hass, entry_id="revert", main_fuse_a=40.0, safety_margin_a=1.0
     )
@@ -413,15 +426,20 @@ async def test_urgent_revert_reaches_the_charger_without_the_dwell(hass: HomeAss
     assert verdict["action"] == "write"
     assert verdict["reason"] == "revert_not_absorbed"
     assert verdict["state"] == "backoff"
+    assert verdicts[-1].reason == "revert_not_absorbed" and verdicts[-1].urgent is True
     assert len(configure_calls) == 1
     assert configure_calls[0].data["value"] == "1.6,2.10"
 
 
-async def test_a_step_not_absorbed_within_the_limit_is_kept(hass: HomeAssistant) -> None:
+@pytest.mark.parametrize("limit_known", [True, False])
+async def test_a_step_not_absorbed_within_the_limit_is_kept(hass: HomeAssistant, monkeypatch, limit_known: bool) -> None:
     """The same step on a site with room for it (10 A, then 11 A, on a 39 A limit): nothing gave way, but the grid
-    carries the raise, so it is not taken back. Nothing was verified either: no further step for the backoff."""
+    carries the raise, so it is not taken back. Nothing was verified either: no further step for the backoff. With
+    the limit unknown to the stepper nothing says the grid carries it, and it is taken back at once, as before."""
+    if not limit_known:
+        monkeypatch.setattr(YieldStepper, "_limit", staticmethod(lambda observation: None))
     site_entry, charger, configure_calls = await _yield_setup(
-        hass, entry_id="kept", main_fuse_a=40.0, safety_margin_a=1.0
+        hass, entry_id=f"kept{'known' if limit_known else 'unknown'}", main_fuse_a=40.0, safety_margin_a=1.0
     )
     controller = controller_of(hass, site_entry.entry_id)
     controller._yield_steppers.clear()
@@ -433,8 +451,10 @@ async def test_a_step_not_absorbed_within_the_limit_is_kept(hass: HomeAssistant)
     await controller._async_apply_active_control()
     configure_calls.clear()
 
-    set_site_current_a(hass, "kept_site", 10.0)
-    set_charger_delivered_a(hass, "kept_charger", 5.9)
+    name = f"kept{'known' if limit_known else 'unknown'}"
+    site, prefix = f"{name}_site", f"{name}_charger"
+    set_site_current_a(hass, site, 10.0)
+    set_charger_delivered_a(hass, prefix, 5.9)
     probe_decision = _decision(
         proposed_a=0.0, requested_a=16.0, reason="paused_safe_current_below_charger_minimum"
     )
@@ -445,14 +465,18 @@ async def test_a_step_not_absorbed_within_the_limit_is_kept(hass: HomeAssistant)
     assert [call.data["value"] for call in configure_calls] == ["1.8,2.10"]
     configure_calls.clear()
 
-    set_site_current_a(hass, "kept_site", 11.0)
-    set_charger_delivered_a(hass, "kept_charger", 7.6)
+    set_site_current_a(hass, site, 11.0)
+    set_charger_delivered_a(hass, prefix, 7.6)
     await controller._async_apply_active_control()
     assert controller._yield_stepping_last[charger.entry_id]["state"] == "settling"
 
     yield_clock.advance(31.0)
     await controller._async_apply_active_control()
     verdict = controller._yield_stepping_last[charger.entry_id]
+    if not limit_known:
+        assert (verdict["action"], verdict["reason"], verdict["state"]) == ("write", "revert_not_absorbed", "backoff")
+        assert [call.data["value"] for call in configure_calls] == ["1.6,2.10"]
+        return
     assert (verdict["action"], verdict["reason"], verdict["state"]) == (
         "passthrough",
         "kept_not_absorbed_within_limit",
