@@ -143,6 +143,7 @@ from ..vehicles.vehicle_discovery import discover_vehicles, resolve_target_vehic
 from ..vehicles.vehicle_wake import wake_supported
 from .charge_bar import charge_bar, ProgressFacts
 from .entity_fields import phase_switching_offered
+from .grid_tariff import capture_grid_tariff, CapturedGridTariff, serialize_grid_tariff
 from .price_source import capture_price_source, CapturedPriceSource, serialize_price_source
 from .price_days import serialize_source as source_attribution
 from .common import (
@@ -516,6 +517,8 @@ class CapturedDashboard:
     plan_notice: dict[str, Any] | None = None
     #: The charger's electricity price entry (`api/price_source.py`), or `None` while it prices with its own settings.
     price_source: CapturedPriceSource | None = None
+    #: The price entry's grid tariff (`api/grid_tariff.py`), present exactly where `price_source` is.
+    grid_tariff: CapturedGridTariff | None = None
     #: The settings record's `revision` on the wire, `None` for the stored one: the charger's own plus its price
     #: entry's write counter (`pricing/price_source.py:wire_revision`).
     wire_revision: int | None = None
@@ -1181,6 +1184,7 @@ def capture_dashboard(
         session=capture_session(hass, entry_id),
         plan_notice=_plan_notice(hass, entry_id),
         price_source=capture_price_source(hass, entry_id),
+        grid_tariff=capture_grid_tariff(hass, entry_id),
         setup=capture_setup(
             hass,
             entry_id,
@@ -1940,6 +1944,13 @@ def serialize_dashboard(
             {}
             if capture.price_source is None
             else {"price_source": serialize_price_source(capture.price_source, can_act=can_act)}
+        ),
+        # Additive, beside `price_source`: the price entry's grid tariff (`api/grid_tariff.py`). An app reads it
+        # only with `reads: ["grid_tariff"]` (`api/webhook.py`).
+        **(
+            {}
+            if capture.grid_tariff is None
+            else {"grid_tariff": serialize_grid_tariff(capture.grid_tariff, can_act=can_act)}
         ),
         # Additive: what is still left to set up (`setup_checklist.py`); the card shows it to an administrator.
         # An app reads it only with `reads: ["setup"]` (`api/webhook.py`).

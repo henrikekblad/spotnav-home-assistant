@@ -45,6 +45,7 @@ from .entity_config import (
     async_webhook_update_vehicle,
 )
 from .price_days import webhook_price_days
+from .grid_tariff import async_webhook_update_grid_tariff
 from .price_source import async_webhook_answer_price_duplicate, async_webhook_choose_price_source
 from .camera import WEBHOOK_ACTIONS as CAMERA_ACTIONS
 from .identification import webhook_choose_vehicle_identification, webhook_identify_vehicle
@@ -132,12 +133,16 @@ APP_READS_PHASE_SWITCHING: Final = "phase_switching"
 #: What is still left to set up (`setup_checklist.py`): the dashboard's `setup` block is left out for an app that
 #: does not read `APP_READS_SETUP` (its decoder refuses a dashboard with an unknown key).
 APP_READS_SETUP: Final = "setup"
+#: The price entry's grid tariff (`api/grid_tariff.py`): the dashboard's `grid_tariff` block is left out for an app
+#: that does not read `APP_READS_GRID_TARIFF` (its decoder refuses a dashboard with an unknown key).
+APP_READS_GRID_TARIFF: Final = "grid_tariff"
 #: Each optional top-level dashboard block an app released before it does not read, with the `reads` name that opts
 #: into it.
 APP_DASHBOARD_BLOCK_READS: Final = {
     "price_source": APP_READS_PRICE_SOURCE,
     "phase_switching": APP_READS_PHASE_SWITCHING,
     "setup": APP_READS_SETUP,
+    "grid_tariff": APP_READS_GRID_TARIFF,
 }
 #: Where the area's prices come from and what to do when it has no source of its own: the dashboard's
 #: `prices.provider` is left out for an app that does not read `APP_READS_PRICE_PROVIDER`.
@@ -207,7 +212,7 @@ def _for_app(body: dict[str, Any], payload: dict[str, Any]) -> dict[str, Any]:
     null; `balancing_paused` for the plan's charge load balancing paused; `car_ended_waiting` for the plan waiting for
     the car's level after the car ended its charge; `wake_for_reading` for the vehicle rows' `wake_for_reading`; `solar_one_phase` for a solar charge the sun
     switched to one phase; `price_source` for the dashboard's `price_source` block; `phase_switching` for its
-    `phase_switching` block; `price_provider` for `prices.provider`; `setup` for its `setup` block; `plan_facts` for the status lines
+    `phase_switching` block; `grid_tariff` for its `grid_tariff` block; `price_provider` for `prices.provider`; `setup` for its `setup` block; `plan_facts` for the status lines
     `plan_saving` and `solar_forecast` and hybrid's `sun_start`/`sun_end`; `own_mode_status` for the status line
     `charger_own_mode`); anything else in it, or a `reads` that is not a list, is ignored.
     """
@@ -460,6 +465,7 @@ ACTIONS: Final[dict[str, Handler]] = {
     "update_phase_switching": _bounded_write(async_webhook_update_phase_switching, "update_phase_switching"),
     "choose_price_source": _bounded_write(async_webhook_choose_price_source, "choose_price_source"),
     "answer_price_duplicate": _bounded_write(async_webhook_answer_price_duplicate, "answer_price_duplicate"),
+    "update_grid_tariff": _bounded_write(async_webhook_update_grid_tariff, "update_grid_tariff"),
     "push_register": _push_register,
     "identify_vehicle": webhook_identify_vehicle,
     "choose_vehicle_identification": webhook_choose_vehicle_identification,
