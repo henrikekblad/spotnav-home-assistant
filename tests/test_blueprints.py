@@ -93,7 +93,9 @@ def _price_states(hass: HomeAssistant, *, cheap: str = "off", expensive: str = "
 
 
 @pytest.fixture
-async def setpoint(hass: HomeAssistant, tmp_path: Path):
+async def setpoint(hass: HomeAssistant, tmp_path: Path, freezer):
+    # A fixed clock from before the automation is set up, so its interval trigger is due at a known time.
+    freezer.move_to("2026-11-01 10:05:00+00:00")
     _price_states(hass)
     hass.states.async_set("climate.hall", "heat", {"temperature": 19})
     hass.states.async_set("climate.bath", "heat", {"temperature": 19})
