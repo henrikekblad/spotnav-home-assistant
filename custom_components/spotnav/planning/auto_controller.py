@@ -2166,7 +2166,12 @@ class AutoPlannerController:
         reading = self._read_energy_register()
         self._note_register_read(reading)
         if stored is not None:
-            stored = self._follow_register(stored, reading)
+            followed = self._follow_register(stored, reading)
+            if followed != stored:
+                # Saved when the task runs, as the count stands then: a calculation that saved a newer count
+                # meanwhile is never overwritten by this one.
+                self._hass.async_create_task(self._save_live_baseline())
+            stored = followed
         if stored is None or reading is None or stored.register_kwh is None:
             return
         entity_id = self._energy_register_entity_id()
@@ -2310,7 +2315,8 @@ class AutoPlannerController:
         return stored
 
     def _follow_register(self, stored: EnergyBaseline, reading: float | None) -> EnergyBaseline:
-        """`follow_register` to this charger's register now, saved when it moved to another one."""
+        """`follow_register` to this charger's register now. The caller saves a baseline that moved (see
+        `_save_followed`), in order with whatever it saves after it."""
         entity_id = self._energy_register_entity_id()
         followed = follow_register(stored, entity_id, reading, self._now(), charged_s=self._charged_s())
         if followed != stored:
@@ -2321,7 +2327,6 @@ class AutoPlannerController:
                     stored.register_entity, entity_id, followed.carried_kwh,
                 )
             self._live_baseline = followed
-            self._hass.async_create_task(self._save_baseline(followed))
         return followed
 
     def _charged_s(self) -> float:
@@ -2407,7 +2412,11 @@ class AutoPlannerController:
                 delivered_kwh=0.0 if current_reading is not None else None,
             )
 
-        stored = self._follow_register(stored, current_reading)
+        followed = self._follow_register(stored, current_reading)
+        if followed != stored:
+            # Awaited, so a later save in this calculation is never overwritten by it.
+            await self._save_baseline(followed)
+        stored = followed
         if current_reading is None:
             self._note_register_read(None)
             unread = self._unread_remainder(settings, stored, departure_key)
@@ -2488,6 +2497,11 @@ class AutoPlannerController:
             basis="register",
             delivered_kwh=delivered,
         )
+
+    async def _save_live_baseline(self) -> None:
+        """Save the count in force when this runs (`_live_baseline`), not the one there was when it was asked for."""
+        if self._live_baseline is not None and not self._shutdown:
+            await self._save_baseline(self._live_baseline)
 
     async def _save_baseline(self, baseline: EnergyBaseline) -> None:
         self._live_baseline = baseline

@@ -7,6 +7,7 @@ register's first reading.
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import datetime, time, timezone
 from typing import Any
 
@@ -148,3 +149,40 @@ async def test_a_count_stored_before_registers_were_named_is_taken_as_the_entrys
     await store.async_load()
 
     assert store.energy_baseline("det_old").register_entity == SESSION_COUNTER
+
+
+async def test_the_stored_count_after_a_swap_is_the_calculations_own(session: Session) -> None:
+    """The swap's save and the calculation's own save are made in order: the record left is the newer one."""
+    await _counting_on_the_session_counter(session)
+    await session.preview.async_recalculate()
+
+    session.controller.energy_register_entity_id = LIFETIME
+    await session.set_auto(requested_kwh=40.0, amps=16, phases=3, departure=time(20, 0))
+    await session.hass.async_block_till_done()
+
+    stored = session.store.energy_baseline(session.entry_id)
+    assert stored.register_entity == LIFETIME
+    assert stored.delivered_kwh == pytest.approx(5.0)
+    assert stored.remaining_kwh == pytest.approx(35.0)
+
+
+async def test_a_swap_seen_by_the_register_watcher_never_overwrites_a_newer_count(
+    session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The watcher's save is a task: it saves the count as it stands when it runs, so a calculation that saved a
+    newer one first is kept. (Home Assistant starts a task eagerly, which mostly hides the order; here it starts
+    late, as a task that has to wait does.)"""
+    await _counting_on_the_session_counter(session)
+    loop = session.hass.loop
+    monkeypatch.setattr(session.hass, "async_create_task", lambda target, *_args, **_kwargs: loop.create_task(target))
+    await session.preview.async_recalculate()
+    preview = session.preview
+    session.controller.energy_register_entity_id = LIFETIME
+
+    # The watcher sees the swap (and queues its save); a calculation saves a newer count before that save runs.
+    preview._arm_energy_watch(session.store.settings(session.entry_id))
+    newer = replace(preview._live_baseline, remaining_kwh=12.0)
+    await preview._save_baseline(newer)
+    await session.hass.async_block_till_done()
+
+    assert session.store.energy_baseline(session.entry_id).remaining_kwh == 12.0
