@@ -530,28 +530,25 @@ class OwnershipShadow:
         balancing's pause) is decided after it, as the commands went out. `end` then only keeps its record. Never
         raises; a feed not decided at `begin` is decided at its `end` as ever."""
         try:
-            self._result_now(token, outcome, None)
+            self._result_now(token, outcome)
         except Exception as err:  # noqa: BLE001 - the shadow never raises into the real path
             self._error("result", token.early.kind if token.early is not None else None)
             self.failed("result", token.early.kind if token.early is not None else None, err, token=token)
 
-    def _result_now(self, token: ShadowToken, outcome: CommandOutcome | None, kind: str | None) -> None:
-        """Decide the result of the command of `token`'s early decision, once (`result`). `outcome` `None` at the
-        feed's end (`kind`): nothing went out, unless the event's result comes later (a report, a timer)."""
+    def _result_now(self, token: ShadowToken, outcome: CommandOutcome) -> None:
+        """Decide the result of the command of `token`'s early decision, once (`result`)."""
         if token.resulted or token.early is None or token.early_pre is None:
             return
         acted = next((command for command in token.early_commands if command.kind in ("start", "stop")), None)
         if acted is None:
             return
-        if outcome is None and (kind is None or kind in _RESULTS_LATER):
-            return
         result = CommandResult(
             command=acted.kind,
             reason=getattr(acted, "reason", ""),
-            executed=outcome.executed if outcome is not None else False,
-            balancing_held=outcome.balancing_held if outcome is not None else False,
-            unobserved=outcome.unobserved if outcome is not None else False,
-            settled=outcome.settled if outcome is not None else False,
+            executed=outcome.executed,
+            balancing_held=outcome.balancing_held,
+            unobserved=outcome.unobserved,
+            settled=outcome.settled,
             earlier_plug_in=self._plug_in_ends != token.plug_ins,
         )
         self.session, _ = decide(self.session, result, self._now())
