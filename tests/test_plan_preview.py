@@ -10,6 +10,8 @@
 from __future__ import annotations
 
 import json
+import os
+from pathlib import Path
 from datetime import date, datetime
 from typing import Any
 
@@ -309,3 +311,35 @@ async def test_a_body_beyond_the_cap_is_refused_unread(hass: HomeAssistant, hass
     body = body_of(hass, entry.entry_id) | {"padding": "x" * plan_preview.MAX_BODY_BYTES}
     refused = await ws_call(socket, preview_message(entry.entry_id, body))
     assert refused["error"]["code"] == "spotnav_body_too_large"
+
+
+# ------------------------------------------------------------------------------- the card's fixtures
+
+FIXTURES = Path(__file__).resolve().parent / "fixtures" / "plan_preview"
+
+
+@pytest.mark.parametrize(
+    ("name", "changes"),
+    [
+        ("ready", {"requested_kwh": 11.5, "departure_enabled": True, "departure_time": "16:15"}),
+        ("shortfall", {"requested_kwh": 60.0, "departure_enabled": True, "departure_time": "09:00"}),
+        ("no_area", {"area_id": None}),
+    ],
+)
+@freeze_time(NOW)
+async def test_the_cards_fixtures_are_this_answer(
+    hass: HomeAssistant, transport: StubTransport, name: str, changes: dict[str, Any]
+) -> None:
+    """The answers the card's tests decode (`frontend/test/plan-preview.test.ts`), written by this very code.
+
+    Set `SPOTNAV_WRITE_FIXTURES=1` to (re)write them; the default run only compares.
+    """
+    entry = await setup_charger(hass)
+    serve(transport, rising=True)
+    await go_auto(hass, requested_kwh=6.0)
+    answer = await async_plan_preview(hass, entry.entry_id, body_of(hass, entry.entry_id, **changes), plan_only=False)
+    path = FIXTURES / f"{name}.json"
+    if os.environ.get("SPOTNAV_WRITE_FIXTURES") == "1":
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(answer, indent=2) + "\n", encoding="utf-8")
+    assert json.loads(path.read_text(encoding="utf-8")) == json.loads(json.dumps(answer))
