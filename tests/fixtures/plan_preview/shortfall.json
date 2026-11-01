@@ -1,0 +1,67 @@
+{
+  "api_version": 1,
+  "ok": true,
+  "error": null,
+  "preview": {
+    "state": "proposal_ready",
+    "reason": "ready",
+    "plan": {
+      "periods": [
+        {
+          "start": "2026-09-22T06:00:00+00:00",
+          "end": "2026-09-22T07:00:00+00:00"
+        }
+      ],
+      "planned_kwh": 2.3,
+      "requested_kwh": 60.0,
+      "power_kw": 2.3,
+      "cost": {
+        "value": 2.5941187387499998,
+        "currency": "SEK"
+      },
+      "finish": "2026-09-22T07:00:00+00:00",
+      "unpriced": false,
+      "short_of_deadline": true
+    },
+    "status": {
+      "tone": "notice",
+      "lines": [
+        {
+          "code": "departure_shortfall",
+          "params": {
+            "kwh": 2.3,
+            "requested_kwh": 60.0,
+            "soc_percent": null,
+            "departure": "2026-09-22T07:00:00+00:00"
+          }
+        }
+      ]
+    },
+    "strip": {
+      "start": "2026-09-22T06:00:00+00:00",
+      "end": "2026-09-22T07:00:00+00:00",
+      "quarters": [
+        {
+          "start": "2026-09-22T06:00:00+00:00",
+          "price": 112.78607999999998,
+          "planned": true
+        },
+        {
+          "start": "2026-09-22T06:15:00+00:00",
+          "price": 112.7872075,
+          "planned": true
+        },
+        {
+          "start": "2026-09-22T06:30:00+00:00",
+          "price": 112.788335,
+          "planned": true
+        },
+        {
+          "start": "2026-09-22T06:45:00+00:00",
+          "price": 112.7894625,
+          "planned": true
+        }
+      ]
+    }
+  }
+}

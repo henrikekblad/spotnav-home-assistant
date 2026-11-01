@@ -39,6 +39,9 @@ export class FakeHass implements HomeAssistantLike {
   /** The camera commands (`spotnav/camera_snapshot`, `*_reference_picture`, `save_camera_frame`), on their own line too. */
   readonly cameraMessages: Record<string, unknown>[] = [];
   cameraHandler: ((message: Record<string, unknown>) => Promise<unknown>) | null = null;
+  /** `spotnav/plan_preview`, asked while the Plan dialog is edited, on its own line too; the default never answers. */
+  readonly previewMessages: Record<string, unknown>[] = [];
+  previewHandler: ((message: Record<string, unknown>) => Promise<unknown>) | null = null;
 
   callWS<T>(message: Record<string, unknown>): Promise<T> {
     return this.callWSFor(this, message);
@@ -57,6 +60,10 @@ export class FakeHass implements HomeAssistantLike {
     if (message["type"] === "spotnav/get_blueprints") {
       this.blueprintMessages.push(message);
       return (this.blueprintHandler === null ? new Promise<unknown>(() => undefined) : this.blueprintHandler(message)) as Promise<T>;
+    }
+    if (message["type"] === "spotnav/plan_preview") {
+      this.previewMessages.push(message);
+      return (this.previewHandler === null ? new Promise<unknown>(() => undefined) : this.previewHandler(message)) as Promise<T>;
     }
     if (message["type"] === "spotnav/get_card_info") {
       this.cardInfoMessages.push(message);

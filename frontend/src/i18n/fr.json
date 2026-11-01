@@ -630,6 +630,7 @@
   "settings.plan.mode.legend": "Charger selon",
   "settings.plan.mode.energy": "Énergie · kWh",
   "settings.plan.mode.soc": "Niveau cible · %",
+  "settings.preview.ready": "terminé {time}",
   "settings.soc.target": "Objectif de charge",
   "settings.soc.slider": "Objectif de charge, en pourcentage",
   "settings.soc.floorMark": "min. {percent} %",

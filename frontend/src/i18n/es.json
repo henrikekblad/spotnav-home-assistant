@@ -630,6 +630,7 @@
   "settings.plan.mode.legend": "Cargar por",
   "settings.plan.mode.energy": "Energía · kWh",
   "settings.plan.mode.soc": "SoC objetivo · %",
+  "settings.preview.ready": "listo {time}",
   "settings.soc.target": "Objetivo de carga",
   "settings.soc.slider": "Objetivo de carga, porcentaje",
   "settings.soc.floorMark": "mín. {percent} %",

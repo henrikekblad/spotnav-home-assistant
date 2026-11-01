@@ -16,6 +16,7 @@ import {
   ACTION_START,
   ACTION_STOP,
   API_VERSION,
+  SETTINGS_API_VERSION,
   CHARGE_PROGRESS_STATES,
   CONNECTION_STATES,
   type ConnectionState,
@@ -2252,5 +2253,153 @@ function progressOrNull(root: Record<string, unknown>): ChargeProgress | null {
     };
   } catch {
     return null;
+  }
+}
+
+/** `spotnav/plan_preview`'s plan: what a Save of the dialog's draft would plan (`docs/api.md`, Plan preview). */
+export interface PlanPreviewPlan {
+  periods: Period[];
+  planned_kwh: number | null;
+  requested_kwh: number | null;
+  power_kw: number | null;
+  cost: { value: number; currency: string } | null;
+  finish: string;
+  finishMs: number;
+  unpriced: boolean;
+  short_of_deadline: boolean;
+}
+
+/** One quarter of the hours the plan was chosen from: its price (the minor unit, fees included) and whether it is planned. */
+export interface PlanPreviewQuarter {
+  start: string;
+  startMs: number;
+  price: number | null;
+  planned: boolean;
+}
+
+export interface PlanPreviewStrip {
+  start: string;
+  startMs: number;
+  end: string;
+  endMs: number;
+  quarters: PlanPreviewQuarter[];
+}
+
+export interface PlanPreview {
+  state: string;
+  reason: string;
+  plan: PlanPreviewPlan | null;
+  status: Status;
+  strip: PlanPreviewStrip | null;
+}
+
+/** The whole answer: `ok: false` carries the Save's own refusal code and no preview. */
+export interface PlanPreviewAnswer {
+  ok: boolean;
+  error: string | null;
+  preview: PlanPreview | null;
+}
+
+export type PlanPreviewDecode =
+  | { ok: true; value: PlanPreviewAnswer }
+  | { ok: false; failure: "unsupported" | "malformed" };
+
+function decodePreviewPlan(source: Record<string, unknown>): PlanPreviewPlan {
+  exactKeys(source, [
+    "periods",
+    "planned_kwh",
+    "requested_kwh",
+    "power_kw",
+    "cost",
+    "finish",
+    "unpriced",
+    "short_of_deadline",
+  ]);
+  const periods = decodePeriods(source);
+  if (periods.length === 0) {
+    return bad();
+  }
+  const cost = required(source, "cost");
+  let costValue: { value: number; currency: string } | null = null;
+  if (cost !== null) {
+    const costRecord = record(cost);
+    exactKeys(costRecord, ["value", "currency"]);
+    costValue = { value: numberValue(costRecord, "value"), currency: text(costRecord, "currency") };
+  }
+  const finish = instant(source, "finish");
+  return {
+    periods,
+    planned_kwh: numberOrNull(source, "planned_kwh"),
+    requested_kwh: numberOrNull(source, "requested_kwh"),
+    power_kw: numberOrNull(source, "power_kw"),
+    cost: costValue,
+    finish: finish.text,
+    finishMs: finish.ms,
+    unpriced: booleanValue(source, "unpriced"),
+    short_of_deadline: booleanValue(source, "short_of_deadline"),
+  };
+}
+
+function decodePreviewStrip(source: Record<string, unknown>): PlanPreviewStrip {
+  exactKeys(source, ["start", "end", "quarters"]);
+  const start = instant(source, "start");
+  const end = instant(source, "end");
+  if (end.ms <= start.ms) {
+    return bad();
+  }
+  const quarters = arrayValue(source, "quarters").map((raw): PlanPreviewQuarter => {
+    const quarter = record(raw);
+    exactKeys(quarter, ["start", "price", "planned"]);
+    const at = instant(quarter, "start");
+    return {
+      start: at.text,
+      startMs: at.ms,
+      price: numberOrNull(quarter, "price"),
+      planned: booleanValue(quarter, "planned"),
+    };
+  });
+  for (let index = 1; index < quarters.length; index += 1) {
+    if (quarters[index]!.startMs <= quarters[index - 1]!.startMs) {
+      return bad();
+    }
+  }
+  return { start: start.text, startMs: start.ms, end: end.text, endMs: end.ms, quarters };
+}
+
+function decodePreview(source: Record<string, unknown>): PlanPreview {
+  exactKeys(source, ["state", "reason", "plan", "status", "strip"]);
+  return {
+    state: text(source, "state"),
+    reason: text(source, "reason"),
+    plan: sectionOrNull(source, "plan", decodePreviewPlan),
+    status: decodeStatus(record(required(source, "status"))),
+    strip: sectionOrNull(source, "strip", decodePreviewStrip),
+  };
+}
+
+/**
+ * Decode one `spotnav/plan_preview` answer, exact-key throughout: a key this card does not know means the answer is
+ * not this contract. A wrong `api_version` is `unsupported`, anything else that does not fit `malformed`.
+ */
+export function decodePlanPreview(raw: unknown): PlanPreviewDecode {
+  try {
+    const root = record(raw);
+    const version = root["api_version"];
+    if (typeof version !== "number" || !Number.isFinite(version)) {
+      return { ok: false, failure: "malformed" };
+    }
+    if (version !== SETTINGS_API_VERSION) {
+      return { ok: false, failure: "unsupported" };
+    }
+    exactKeys(root, ["api_version", "ok", "error", "preview"]);
+    const ok = booleanValue(root, "ok");
+    const error = textOrNull(root, "error");
+    const preview = sectionOrNull(root, "preview", decodePreview);
+    if (ok !== (error === null) || ok !== (preview !== null)) {
+      return bad();
+    }
+    return { ok: true, value: { ok, error, preview } };
+  } catch {
+    return { ok: false, failure: "malformed" };
   }
 }

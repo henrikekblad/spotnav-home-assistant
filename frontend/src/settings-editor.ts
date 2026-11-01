@@ -72,11 +72,18 @@ export interface SettingsEditorHandlers {
    * saved) in target mode, the planned car in energy mode, `null` when none is known. Called once on build.
    */
   onVehicleName?: (name: string | null) => void;
+  /**
+   * The Plan dialog's draft whenever it may have changed (once on build, then on every input), for the live preview
+   * of what a Save would plan. Only an editable Plan dialog calls it; nothing is written.
+   */
+  onDraft?: (values: SettingsFormValues) => void;
 }
 
 export interface SettingsEditorBody {
   body: HTMLElement;
   values: () => SettingsFormValues;
+  /** Where the Plan dialog's live preview is painted (`plan-preview.ts`); `null` for any other dialog. */
+  preview: HTMLElement | null;
 }
 
 function element(doc: Document, tag: string, className?: string, text?: string): HTMLElement {
@@ -933,6 +940,7 @@ export function settingsEditorBody(
                 socMode = !socMode;
                 paintRow();
                 paintMode();
+                draftChanged();
               },
               changeableText: translate(language, "settings.row.changeable", { label, value: modeText() }),
             }),
@@ -967,6 +975,9 @@ export function settingsEditorBody(
     };
     paintMode();
   };
+
+  // The Plan dialog's draft, told whenever an input may have moved it (set below, once `read` exists).
+  let draftChanged = (): void => {};
 
   if (form.kind === "plan") {
     appendMode();
@@ -1010,6 +1021,18 @@ export function settingsEditorBody(
   // A read-only dialog, or an energy editor whose driver is target-SoC, has no Save.
   const editable =
     !form.readOnly && !(form.kind === "energy" && form.energyReadOnly);
+  // The live preview: only where Save is, so only for whoever may plan.
+  let preview: HTMLElement | null = null;
+  const onDraft = handlers.onDraft;
+  if (editable && form.kind === "plan" && onDraft !== undefined) {
+    preview = element(doc, "div", C.planPreview);
+    preview.hidden = true;
+    preview.setAttribute("aria-live", "polite");
+    body.append(preview);
+    draftChanged = () => onDraft(read());
+    body.addEventListener("input", draftChanged);
+    body.addEventListener("change", draftChanged);
+  }
   if (editable) {
     const actions = element(doc, "div", C.settingsActions);
     if (form.conflict === null) {
@@ -1042,8 +1065,9 @@ export function settingsEditorBody(
     }
     body.append(actions);
   }
+  draftChanged();
 
-  return { body, values: read };
+  return { body, values: read, preview };
 }
 
 /** A weekday's short name, Monday (1) to Sunday (7), in the card's language. */

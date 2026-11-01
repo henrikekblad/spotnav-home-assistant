@@ -173,6 +173,7 @@ async def async_plan_hybrid(
     now: datetime,
     remaining_need_kwh: float,
     delivered_energy_trustworthy: bool = True,
+    remember: bool = True,
 ) -> HybridPlanOutcome:
     """Turn `remaining_need_kwh` into `grid_kwh` for this charger over the *same* price slots and
     departure the cheapest planner would use.
@@ -181,6 +182,8 @@ async def async_plan_hybrid(
     signal, so the need is not reduced for energy already delivered. Crediting forecast sun against it
     could hold back grid energy for a car nearer done than it looks, so the forecast is then not read at
     all (`no_forecast`).
+
+    `remember=False` (a preview) leaves the charger's replan memory as it was.
     """
     site = site_controller_for_charger(hass, charger_entry_id)
     if not delivered_energy_trustworthy:
@@ -232,7 +235,7 @@ async def async_plan_hybrid(
         remaining_need_kwh=remaining_need_kwh, forecast_wh=forecast_read.wh_hours, state=result.state
     )
     replanned = hybrid_needs_replan(previous, current, config)
-    if data is not None:
+    if data is not None and remember:
         data.hybrid_memory = current
 
     return HybridPlanOutcome(
