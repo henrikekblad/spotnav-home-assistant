@@ -76,6 +76,8 @@ class FeedToken:
     key: object = None
     ok: bool = True
     #: A failure this feed met is already told (`failed`): one event is one failure, however many steps it failed at.
+    #: A feed not decided at once that met one (its facts, its event or its verdict could not be had) is not decided at
+    #: its `end` either: nothing was sent for it.
     reported: bool = False
     #: The event decided at once (`begin(early=...)`, `verdict`), the session it was decided from, and the commands it
     #: asked for. `end` then only feeds back the result.
@@ -340,9 +342,10 @@ class SessionRunner:
     # ------------------------------------------------------------------ inside
 
     def _decide(self, token: FeedToken, event: Event, outcome: CommandOutcome | None) -> None:
-        if token.early is None and token.early_pre is not None:
-            # Its decision at once failed (told then): nothing was sent for it, and it is not decided again here, where a
-            # success would leave the session awaiting a command nobody sent.
+        if token.early is None and (token.early_pre is not None or token.reported):
+            # Its decision at once failed, or its facts, its event or its verdict could not be had (told then): nothing
+            # was sent for it, and it is not decided here, where a success would leave the session awaiting a command
+            # nobody sent.
             return
         now = self._now()
         if token.early is not None and token.early_pre is not None:

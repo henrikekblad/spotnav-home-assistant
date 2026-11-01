@@ -7,6 +7,7 @@ fall within a day on one charger, gone after a day without one and at the charge
 from __future__ import annotations
 
 import logging
+import sys
 from datetime import timedelta
 from typing import Any
 
@@ -223,6 +224,33 @@ async def test_facts_that_cannot_be_read_are_a_failure_and_send_nothing(
     await hass.async_block_till_done()
     assert len(world.starts) == 1, "decided again at the next event"
     assert world.controller.charge_origin == "plan_window"
+    await world.shutdown()
+
+
+async def test_a_window_start_whose_car_facts_fail_is_not_decided_at_its_end(
+    hass: HomeAssistant, timers: FakeScheduler, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The car-ended rule's facts fail before the window start's verdict: a failure, nothing sent, and the event is
+    not decided at its feed's end either, which would leave a start nobody sent in the session's record."""
+    world = await _world(hass, timers)
+    runner = world.controller.session_runner
+
+    real = world.controller._car_ended_holds_window  # noqa: SLF001
+
+    def unreadable() -> bool:
+        if sys._getframe(1).f_code.co_name == "_core_window_start_verdict":  # noqa: SLF001 - only the verdict's read
+            raise RuntimeError("the car's facts cannot be read")
+        return real()
+
+    monkeypatch.setattr(world.controller, "_car_ended_holds_window", unreadable)
+    before = len(runner.events)
+    await install_schedule(world.controller, open_window())
+    await hass.async_block_till_done()
+    assert world.starts == []
+    assert runner.counts["failures"] == {"window_start_facts/window_start": 1}
+    kinds = [record["event"]["kind"] for record in list(runner.events)[before:]]
+    assert "window_start" not in kinds, kinds
+    assert runner.session.owner == "none" and runner.session.pending == ()
     await world.shutdown()
 
 
