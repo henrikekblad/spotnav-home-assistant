@@ -266,7 +266,10 @@ class SpotNavChargingOptionsFlow(config_entries.OptionsFlow):
                     if updated_data[CONF_ENERGY_REGISTER_ENTITY] != self._entry.data.get(CONF_ENERGY_REGISTER_ENTITY):
                         # A person's own register is never replaced by detection.
                         updated_data[CONF_ENERGY_REGISTER_CHOSEN] = True
-                elif (
+                else:
+                    # No register of the person's own any more: nothing is kept as chosen.
+                    updated_data.pop(CONF_ENERGY_REGISTER_CHOSEN, None)
+                if not updated_data[CONF_ENERGY_REGISTER_ENTITY] and (
                     self._entry.data.get(CONF_ENERGY_REGISTER_ENTITY)
                     and self._entry.data.get(CONF_MODE) != MODE_OCPP
                 ):
