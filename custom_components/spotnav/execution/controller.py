@@ -1085,6 +1085,9 @@ class ChargingController:
         if unfed == "stop":
             owner = OWNER_NONE
         elif unfed == "start":
+            # The owner the start on its way makes it. With no such start pending, the session's own: the start's
+            # result is decided already (`OwnershipShadow.result`), the start asked for no owner (a balancing
+            # resume, which keeps what was held back), or it was decided as not going out.
             owner = next(
                 (item.owner_after for item in reversed(session.pending) if item.command == "start" and item.owner_after),
                 owner,
