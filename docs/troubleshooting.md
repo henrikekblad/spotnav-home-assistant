@@ -61,8 +61,9 @@ downloaded in the evening still shows the afternoon. Nothing is read from the re
   charger), the minutes and plug-ins it rests on, whether it is trusted and whether the plan counts on it
   (`planned_with`), and
   `learned_energy`, the wall energy one percent of the planned car's battery is learned to take
-  (`kwh_per_percent`, the median), whether it is for an identified car (`for_car`), the samples it rests on
-  (`kwh`, `delta_percent` and when, oldest first), whether it is trusted, whether a target's need uses it
+  (`kwh_per_percent`, the median of the samples that agree), whether it is for an identified car (`for_car`),
+  the samples of ended plug-ins it rests on (`kwh`, `delta_percent` and when, oldest first), the open plug-in's
+  own sample that waits for its end (`pending_sample`), whether it is trusted, whether a target's need uses it
   (`used`), how many samples were discarded as unbelievable (`discarded`), and the start of the stretch
   being measured (`stretch_start`: level, when and the count then).
 - `yield_stepping`, `solar_surplus` and `hybrid` in the site's diagnostics, per charger (version 7):

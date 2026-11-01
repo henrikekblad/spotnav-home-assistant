@@ -496,7 +496,9 @@ buys: `(min(target, floor(vehicle_max_percent)) - value) x capacity_kwh / 100 / 
 until the car's wall energy per percent is learned and trusted (see [strategies](strategies.md)); from then it is
 the efficiency that gives the learned figure with `capacity_kwh` (between 0.70 and 1.0), so a client that works
 the need out itself for a moved target slider gets the plan's figure. With a learned figure but no battery size,
-`need_kwh` is given and `efficiency` stays 0.9; a client then has no formula for another target.
+`need_kwh` is given and `efficiency` stays 0.9; a client then has no formula for another target. The card's kWh
+slider top, which divides by `efficiency`, follows the learned efficiency too; `room_kwh` keeps 0.9, as the
+planner's cap on a manual amount does, so the two stay equal.
 
 **Waiting for the car's new level.** With a target, the planning state `nothing_to_charge` has the reason
 `waiting_for_vehicle_update` when the charge that just ended delivered, by measurement, at least what the

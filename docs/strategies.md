@@ -152,15 +152,17 @@ is off (an aged pack, net against gross capacity, a guess) or a real efficiency 
 one phase, a low current) makes the plan buy too little time or too much. From the energy count and the
 car's level only their ratio can be seen, the wall kWh one percent takes, and that is what SpotNav learns
 per car, at the same once-a-minute look at a planned period. A sample is a stretch of one plug-in of one
-identified car between two fresh readings of its level (not an estimate, at most three minutes old when
-seen), with the level at least 10 points higher at the end; the energy is the count's value when each
-reading was made. A charge over several periods is one sample. A plug-out, another car (or none
-identified), a meter that went back or a level that fell starts again; a restart keeps the start. A
-sample must mean an efficiency between 0.70 and 1.0 for the car's battery size (without one, a battery
-of 10 to 200 kWh at 0.9); one outside is not kept, and a battery size changed later drops the samples
-that no longer fit. After three samples, the last five all within 10 % of their median, the need and
-what a plan short of the departure reaches use the median, so a car that really charges at 0.8 gets
-about 12 % more energy planned. The card shows the same need, and its target slider works one out the
+identified car between two fresh readings of its level from the same source, the charger or the car (not an
+estimate, at most three minutes old when seen), with the level at least 10 points higher at the end; the
+energy is the count's value when each reading was made (a meter that stands still is believed only while
+the charger is not charging). A charge over several periods is one sample, counted once the plug-in ends. An
+unplug, another car (or none identified), another source of the level, a meter that went back or a level
+that fell starts again; a restart keeps the start. A sample must mean an efficiency between 0.70 and 1.0
+for the car's battery size (without one, a battery of 10 to 200 kWh at 0.9); one outside is not kept, and a
+battery size changed later drops the samples that no longer fit. Once at least three of the last five agree
+within 10 % of their median, the need, what a plan short of the departure reaches and the level estimated
+between the car's readings (which a replan and a stop on an estimate use) count on the median of those that
+agree, so a car that really charges at 0.8 gets about 12 % more energy planned and is not stopped early. The card shows the same need, and its target slider works one out the
 same way. A fixed amount of kWh is never changed by it, nor is the room a battery has left. There is no
 setting.
 

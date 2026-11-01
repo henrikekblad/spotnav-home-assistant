@@ -6,23 +6,30 @@ one phase, a low current) makes the plan buy too little time or too much. From t
 level before and after a stretch of charging only one number can be seen: wall kWh per percent
 (`capacity / efficiency / 100`). That is what is learned here, per car; the planner needs nothing else. No setting.
 
-* **A sample.** A stretch of one plug-in (`ChargingController.plugged_in_at`, kept across a restart) of one
-  identified car (`vehicle_properties.resolved_vehicle_id`, and the level read from that same car) between two
-  fresh readings of its level: not an estimate and no older than `target_stop.SOC_FRESH_MAX_AGE_S` when seen,
-  the later one made after the earlier. The energy is the count the need uses (the energy register, or the energy
-  integrated from the charger's power) at the moment each reading was made: interpolated between the register's
-  posts while it posts steadily around it (`soc_estimate.register_value_at`), or, while it stands still, the value
-  it held from a look before the reading to now. The stretch counts once the level rose at least
-  `MIN_DELTA_PERCENT` points; its later end moves on with each fresh reading of the same plug-in, so a charge
-  that spans several windows of a plan is one sample. A plug-out, another car (or none identified), a register
-  that went back or a level that fell starts a stretch again. The stretch's start is stored, so a restart during
-  a plug-in keeps it.
+* **A sample.** A stretch of one plug-in (`ChargingController.plugged_in_at`, kept across a restart, else
+  `plugged_in_for_count`) of one identified car (the one the level is read from) between two fresh readings of its
+  level from one source (`charger` or `vehicle`): not an estimate and no older than
+  `target_stop.SOC_FRESH_MAX_AGE_S` when seen, the later one made after the earlier. The energy is the count the
+  need uses (the energy register, or the energy integrated from the charger's power) at the moment each reading
+  was made: interpolated between the register's posts while it posts steadily around it
+  (`soc_estimate.register_value_at`), or, only while the charger is not charging, the value it held from a look
+  before the reading to now. The stretch counts once the level rose at least `MIN_DELTA_PERCENT` points; its
+  later end moves on with each fresh reading of the same plug-in, so a charge that spans several windows of a plan
+  is one sample. The charger saying the car is unplugged, another plug-in, another car (or none identified),
+  another source of the level, a register that went back or a level that fell starts a stretch again. The
+  stretch's start is stored, so a restart during a plug-in keeps it.
 * **Bounds.** With the car's battery size the sample must mean an efficiency between `MIN_EFFICIENCY` and
   `MAX_EFFICIENCY`; without one, a battery between `MIN_CAPACITY_KWH` and `MAX_CAPACITY_KWH` at
-  `CHARGE_EFFICIENCY`. A sample outside is not kept and is counted (`discarded`). A battery size changed later is
-  checked again on every read: kept samples that no longer fit are dropped (and counted).
-* **Smoothed and trusted.** The median of the last `MAX_SAMPLES` samples, trusted with at least `TRUST_SAMPLES`
-  of them, all within `TRUST_SPREAD` of the median. Until then the need is worked out as before.
+  `CHARGE_EFFICIENCY`. A sample outside is not kept and is counted (`discarded`). Every read counts only the
+  samples that fit today's battery size; the need's read drops those that no longer fit for good (and counts
+  them), the others only look.
+* **Smoothed and trusted.** From the last `MAX_SAMPLES` samples of ended plug-ins (the open plug-in's own, still
+  growing, waits until it ends): trusted when at least `TRUST_SAMPLES` of them lie within `TRUST_SPREAD` of their
+  median, and then the figure is the median of those that agree, so one odd charge neither moves it nor takes the
+  trust away. Until then everything is worked out as before.
+* **Used** for a target's need and the dashboard's (`target_need`, `efficiency_for`), and for the level carried
+  forward between readings (`SocReader`, given the figure from setup), so a replan from an estimate and the stop
+  on one count as the need does.
 * **Fed** once a minute by the look at the plan's windows (`AutoPlannerController._check_plan`, the seam the
   learned power and the behind-plan rule use), so only charges of an Auto plan are learned from.
 * **Stored** per charger (`spotnav.learned_energy.<entry>`), keyed by car, and read as untrusted: anything
