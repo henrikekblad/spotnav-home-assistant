@@ -58,6 +58,9 @@ class _Morning:
         self.car_max_a = car_max_a
         self.heater = False
         self.heater_a = _HEATER_A
+        #: Whether the car follows a write one pass late (a car ramps over a few seconds), and what was written then.
+        self.lag = False
+        self.prev_assigned = 16.0
         #: The phases the heater draws on (the field's is on L1 only), and every how many passes the HALO sends a
         #: meter value.
         self.heater_phases: tuple[str, ...] = ("L1",)
@@ -95,7 +98,10 @@ class _Morning:
                 halo.switch("on")
                 self.on = True
         # The car follows what is written within a pass; the HALO tells it only with its next meter value.
-        self.car_a = min(self.assigned_a(), self.car_max_a) if self.on else 0.0
+        assigned = self.assigned_a()
+        followed = self.prev_assigned if self.lag else assigned
+        self.prev_assigned = assigned
+        self.car_a = min(followed, self.car_max_a) if self.on else 0.0
         if self.on:
             self.lowest_a = self.car_a if self.lowest_a is None else min(self.lowest_a, self.car_a)
         if self.passes % self.meter_passes == 0:
@@ -323,13 +329,15 @@ async def test_the_credit_follows_a_lowering(hass: HomeAssistant, monkeypatch, f
 
 
 @pytest.mark.parametrize("drives", [True, False])
-async def test_a_load_of_the_step_on_every_phase_costs_at_most_one_pass_more(
+async def test_a_load_of_the_step_on_every_phase_costs_at_most_two_passes_more(
     hass: HomeAssistant, monkeypatch, freezer, drives: bool
 ) -> None:
     """The worst case left: the car takes no more than 9 A and is raised to 16 A, and at once a load of the step's
     size (7 A) comes on all three phases, with the heater on L1. The site's rise matches the step, so it is credited;
-    the lowering on it does not bring the site down, and the next site reading ends the credit: the car is decided on
-    its own reading in that pass. The site is over the fuse for two passes at most, one more than without the credit."""
+    the lowering on it does not bring the site down. A car takes a few seconds to come down, so the site reading one
+    pass after the lowering still counts the raise (`RAISE_CREDIT_LOWERING_SETTLE_S`); the one after it ends the
+    credit, and the car is decided on its own reading in that pass. The site is over the fuse for three passes at most,
+    two more than without the credit: what telling a car that ramps from a load of exactly its step costs."""
     _drives(monkeypatch, drives)
     morning = await _the_morning(hass, monkeypatch, freezer, f"nov1step{int(drives)}", car_max_a=9.0)
     morning.heater = False
@@ -346,19 +354,22 @@ async def test_a_load_of_the_step_on_every_phase_costs_at_most_one_pass_more(
             passes_over += 1
     trace = "\n".join(morning.trace[raised_at - 2 :])
     assert any(entry["raise_credit_a"] for entry in morning.halo.log()[-30:]), f"the step was credited:\n{trace}"
-    assert passes_over <= 2, trace
+    assert passes_over <= 3, trace
 
 
 def test_the_credit_s_cap_follows_every_write_after_the_raise() -> None:
-    """What is on the charger as the site read a phase: the last write before the reading, a lowering included; a
-    write of the same moment is not in it yet, and before the raise there is nothing to credit."""
+    """What is on the charger as the site read a phase: a raise from a reading after it on, a lowering or a pause only
+    from a reading more than `RAISE_CREDIT_LOWERING_SETTLE_S` after it (the car comes down over a few seconds); before
+    the raise there is nothing to credit."""
     credit = RaiseCredit(100.0, ((100.0, 16.0), (110.0, 6.0), (130.0, 0.0)), {}, {}, {})
     in_force = SiteCapacityController._raise_credit_in_force  # noqa: SLF001
     assert in_force(credit, 100.0) is None
     assert in_force(credit, 105.0) == 16.0
     assert in_force(credit, 110.0) == 16.0
-    assert in_force(credit, 111.0) == 6.0
-    assert in_force(credit, 131.0) == 0.0
+    assert in_force(credit, 115.0) == 16.0, "the car has a few seconds to come down"
+    assert in_force(credit, 115.5) == 6.0
+    assert in_force(credit, 135.0) == 6.0
+    assert in_force(credit, 136.0) == 0.0
 
 
 #: The two chargers' site: a 40 A fuse, and a load on all three phases that leaves room for the two cars' minimum.
@@ -559,3 +570,27 @@ async def test_a_raise_credit_never_raises_a_car_back_after_its_lowering(
     trace = "\n".join(morning.trace[raised_at - 2 :])
     assert morning.assigned_a() <= lowered, f"raised back on the credit:\n{trace}"
     assert max(morning.peak) <= _FUSE_A, trace
+
+
+@pytest.mark.parametrize("drives", [True, False])
+async def test_the_field_case_with_the_car_one_pass_behind_each_write(
+    hass: HomeAssistant, monkeypatch, freezer, drives: bool
+) -> None:
+    """The field case with a car that follows each write one site reading late: the site shows the raise to 16 A a
+    pass after it, and the lowering a pass after that. The reading taken right after the lowering still shows the car
+    at 16 A; it is still credited so, and the car is never paused."""
+    _drives(monkeypatch, drives)
+    morning = await _the_morning(hass, monkeypatch, freezer, f"nov1ramp{int(drives)}")
+    morning.lag = True
+    morning.prev_assigned = morning.assigned_a()
+    morning.heater = False
+    await morning.until_raised(16.0)
+    raised_at = len(morning.trace)
+
+    morning.heater = True
+    morning.peak = None
+    for _ in range(8):
+        await morning.step()
+    trace = "\n".join(morning.trace[raised_at - 2 :])
+    assert len(morning.halo.turn_off) == 0, f"paused:\n{trace}"
+    assert morning.assigned_a() <= 10.0 and max(morning.site_log[-1]) <= _FUSE_A, trace
