@@ -49,7 +49,7 @@ class ChargerEventsEntity(SpotNavChargingEntity, EventEntity):
     finished charge delivered and what it cost, the plan's times and current, the departure that is at risk).
 
     A finished charge's cost is its session's, priced as the session sensors price it, for the energy delivered
-    since this charge began (a short pause continues the session, so the session as it stood at the start is
+    since this charge began (a short pause, or a pause SpotNav makes itself, continues the session, so the session as it stood at the start is
     kept and subtracted). The session recorder is brought up to the stop first, so the figures are what the
     session holds at that moment; energy the charger reports after the stop is in the session, not the event.
     """
