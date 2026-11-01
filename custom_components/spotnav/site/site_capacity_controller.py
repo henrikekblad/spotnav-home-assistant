@@ -2759,9 +2759,13 @@ class SiteCapacityController:
                 # is not held back by the current it had before the pause. When: a reading the charger sent before
                 # the pause shows the current before it, not a charger above the nothing written
                 # (`charger_above_written`), which paused the stopped charger again on every pass until that reading
-                # was too old to use (the night of 2026-11-01).
+                # was too old to use (the night of 2026-11-01). Only when a stop went out, or at the first pause on
+                # record: a pass that finds the stop still on its way sends nothing, and moving the time would keep
+                # sliding the window in which a reading counts as the charge before the pause
+                # (`_stopped_charger_reading`), so a charger that ignores the stop would never be seen drawing.
+                if write.stop_sent or damper.last_written_a != 0.0:
+                    self._written_at[charger_entry_id] = dt_util.utcnow().timestamp()
                 damper.record_write(0.0)
-                self._written_at[charger_entry_id] = dt_util.utcnow().timestamp()
             elif write.outcome == REGULATED_FLOORED:
                 # The stop did not pause the charge: the charger holds it at the 6 A floor (a Peblar out of
                 # pauses), and that is what is counted until a later pass pauses it.
