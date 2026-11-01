@@ -294,6 +294,11 @@ export interface Dashboard {
    * with its own settings, from an older backend, or unreadable.
    */
   price_source: PriceSourceBlock | null;
+  /**
+   * The electricity price entry's grid tariff (a grid fee as a percentage of spot, a fee in high-load hours and
+   * their window). `null` exactly where `price_source` is, from an older backend, or unreadable.
+   */
+  grid_tariff: GridTariffBlock | null;
   /** What is still left to set up for this charger, the "Get started" rows; `null` from an older backend or unreadable. */
   setup: SetupBlock | null;
 }
@@ -323,6 +328,38 @@ export interface PriceSourceBlock {
    * with `entry_ids`: each entry's fees in the `fiscal` block's shape, or `null` where they cannot be read.
    */
   duplicate: { area_id: string; entry_ids: string[]; titles: string[]; fees: Array<Fiscal | null> } | null;
+}
+
+/** One fee of the grid tariff (`grid_tariff.transfer_percent` or `.transfer_high`). */
+export interface GridTariffFee {
+  /** `included`: the area's published price already holds the grid fee; locked, nothing added. */
+  policy: "off" | "manual" | "included";
+  /** What is stored (kept while off). */
+  explicit_value: number | null;
+  /** What is added: `null` while off or included. */
+  effective_value: number | null;
+  /** `%` for the percentage, the area's minor unit per kWh for the high-load fee; `null` while the area is not listed. */
+  unit: string | null;
+}
+
+/** The hours the high-load fee applies in: whole hours of the area's clock, `to_hour` after `from_hour`. */
+export interface HighLoadWindow {
+  weekdays_only: boolean;
+  from_hour: number;
+  to_hour: number;
+  /** November to March only. */
+  winter_only: boolean;
+}
+
+/** The dashboard's `grid_tariff` block. */
+export interface GridTariffBlock {
+  entry_id: string;
+  /** The electricity price's write counter, which a write names. */
+  write_revision: number;
+  transfer_percent: GridTariffFee;
+  transfer_high: GridTariffFee;
+  high_load_window: HighLoadWindow | null;
+  writable: boolean;
 }
 
 /** A camera or AI Task entity that can be chosen. */
@@ -1688,6 +1725,7 @@ export function decodeDashboard(raw: unknown): DecodeResult {
         progress: chargeBarOrNull(root),
         camera_identification: cameraIdentificationOrNull(root),
         price_source: priceSourceOrNull(root),
+        grid_tariff: gridTariffOrNull(root),
         setup: setupOrNull(root),
       },
     };
@@ -1746,8 +1784,6 @@ const OPTIONAL_DASHBOARD_KEYS = [
   "plan_notice",
   "price_source",
   "setup",
-  // The electricity price entry's grid tariff (percentage of spot, high-load fee and window): accepted and not
-  // read yet; the price section shows it in a later release.
   "grid_tariff",
 ] as const;
 
@@ -1807,6 +1843,76 @@ function priceSourceOrNull(root: Record<string, unknown>): PriceSourceBlock | nu
       writable: value.writable,
       duplicate,
     };
+  } catch {
+    return null;
+  }
+}
+
+const GRID_TARIFF_POLICIES = ["off", "manual", "included"] as const;
+
+function wholeNumber(source: Record<string, unknown>, key: string, min: number, max: number): number {
+  const value = source[key];
+  return typeof value === "number" && Number.isInteger(value) && value >= min && value <= max ? value : bad();
+}
+
+function gridTariffFee(raw: unknown): GridTariffFee {
+  const item = record(raw);
+  exactKeys(item, ["policy", "explicit_value", "effective_value", "unit"]);
+  const policy = GRID_TARIFF_POLICIES.find((known) => known === item.policy) ?? bad();
+  const effective = numberOrNull(item, "effective_value");
+  if ((policy === "manual") !== (effective !== null)) {
+    return bad();
+  }
+  return {
+    policy,
+    explicit_value: numberOrNull(item, "explicit_value"),
+    effective_value: effective,
+    unit: textOrNull(item, "unit"),
+  };
+}
+
+/** A high-load window as the backend states it, or malformed. */
+export function decodeHighLoadWindow(raw: unknown): HighLoadWindow {
+  const item = record(raw);
+  exactKeys(item, ["weekdays_only", "from_hour", "to_hour", "winter_only"]);
+  const from = wholeNumber(item, "from_hour", 0, 23);
+  const to = wholeNumber(item, "to_hour", 1, 24);
+  if (to <= from) {
+    return bad();
+  }
+  return {
+    weekdays_only: booleanValue(item, "weekdays_only"),
+    from_hour: from,
+    to_hour: to,
+    winter_only: booleanValue(item, "winter_only"),
+  };
+}
+
+/** A `grid_tariff` block, strictly: exactly its keys, or malformed. */
+export function decodeGridTariff(raw: unknown): GridTariffBlock {
+  const value = record(raw);
+  exactKeys(value, ["entry_id", "write_revision", "transfer_percent", "transfer_high", "high_load_window", "writable"]);
+  const entryId = text(value, "entry_id");
+  if (entryId === "") {
+    return bad();
+  }
+  return {
+    entry_id: entryId,
+    write_revision: wholeNumber(value, "write_revision", 0, Number.MAX_SAFE_INTEGER),
+    transfer_percent: gridTariffFee(value.transfer_percent),
+    transfer_high: gridTariffFee(value.transfer_high),
+    high_load_window: value.high_load_window === null ? null : decodeHighLoadWindow(value.high_load_window),
+    writable: booleanValue(value, "writable"),
+  };
+}
+
+/** The `grid_tariff` block, or `null` when it is missing or unreadable: the price section shows no tariff rows. */
+function gridTariffOrNull(root: Record<string, unknown>): GridTariffBlock | null {
+  if (root.grid_tariff === undefined || root.grid_tariff === null) {
+    return null;
+  }
+  try {
+    return decodeGridTariff(root.grid_tariff);
   } catch {
     return null;
   }

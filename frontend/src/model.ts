@@ -49,6 +49,7 @@ import type {
   Dashboard,
   Fiscal,
   CameraIdentification,
+  GridTariffBlock,
   Identification,
   Period,
   Site,
@@ -310,6 +311,8 @@ export interface CardModel {
   priceSource: { name: string; url: string } | null;
   /** The electricity price entry the charger uses, where its area and fees live; `null` for its own settings. */
   priceEntry: PriceEntryFacts | null;
+  /** The electricity price entry's grid tariff, as the price section shows and changes it; `null` without one. */
+  gridTariff: GridTariffBlock | null;
   /** The area's price provider and its notice (`prices.provider`); `null` without one. */
   priceProvider: PriceProvider | null;
   /** What is still left to set up for this charger, the "Get started" rows (shown to an administrator only). */
@@ -956,6 +959,7 @@ export function buildModel(input: BuildInput): CardModel {
     contextAreaId: market?.area_id ?? null,
     priceSource: market?.source ?? null,
     priceEntry: priceEntryFor(dashboard),
+    gridTariff: dashboard.grid_tariff,
     priceProvider: dashboard.prices.provider,
     setup: setupRowsOf(dashboard.setup),
     technicalCodes,
