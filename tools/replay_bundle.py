@@ -3,10 +3,11 @@
 
     .venv/bin/python tools/replay_bundle.py bundle.json [--json] [--charger NAME_OR_ID]
 
-For each charger the report has the shadow's counts, its tally per event kind kept across restarts (`coverage`, a
-bundle of version 6 or later), the disagreements and drift it recorded, whether today's core decides the recorded
-events differently from the recording, and whether it differs from the code that ran. Only the pure core is imported
-(no Home Assistant needed, running or installed).
+For each charger the report has the core's counts (`ownership`, or `ownership_shadow` in a bundle before version 9),
+its tally per event kind kept across restarts (`coverage`, a bundle of version 6 or later), in a bundle before version
+9 the disagreements and drift the shadow recorded then, and whether today's core decides the recorded events
+differently from the recording (or, before version 9, from the previous logic that ran). Only the pure core is
+imported (no Home Assistant needed, running or installed).
 """
 
 from __future__ import annotations

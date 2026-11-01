@@ -45,7 +45,7 @@ downloaded in the evening still shows the afternoon. Nothing is read from the re
   `card_bundle_hash_served` (the one browsers are handed). When they differ, the file says so in
   `client.note`, and the card's Support section says it too: the browser or the Companion app runs an
   older card. Reload the page; in the Companion app, force-stop the app and open it again.
-- `ownership` in each charger's controller diagnostics (`ownership_shadow` before bundle version 8): the
+- `ownership` in each charger's controller diagnostics (`ownership_shadow` before bundle version 9): the
   charge-ownership core's counts (`failures` says which decisions it could not take, and when the last was), its
   session, and its last events, each with the session it was decided from.
 - `ownership.coverage` in each charger's controller diagnostics: per event kind of the charge-ownership core (every
@@ -60,8 +60,8 @@ To check a saved bundle's charge-ownership recording offline, run
 `.venv/bin/python tools/replay_bundle.py bundle.json` in the integration's repository (no Home
 Assistant needed; `--charger <name or id>` picks one charger, `--json` gives machine output). For
 each charger it prints the core's counts, its coverage per event kind (version 6 and later), and, in a bundle
-before version 8, the disagreements and drift recorded then, replays the recorded events through today's pure core,
-and says whether the core now decides differently from the recording (or, before version 8, from the previous
+before version 9, the disagreements and drift recorded then, replays the recorded events through today's pure core,
+and says whether the core now decides differently from the recording (or, before version 9, from the previous
 logic that ran beside it). A charger without the `ownership` or `ownership_shadow` block (a bundle from before
 version 5) is reported as having nothing to replay. The exit code is 1 when a replay differs.
 

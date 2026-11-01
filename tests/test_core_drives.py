@@ -1,5 +1,5 @@
-"""The charge-ownership core drives for every charger: it decides, today's code acts on its verdicts and reads its
-owner from the session, and is still computed beside it and compared."""
+"""The charge-ownership core decides for every charger: the controller and the boundary act on its verdicts alone
+and read who owns the charge from its session."""
 
 from __future__ import annotations
 
