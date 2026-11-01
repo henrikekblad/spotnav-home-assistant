@@ -24,10 +24,11 @@ the spot area `NL` keeps its own days, so all-in and spot prices never mix in on
 A day is the Amsterdam calendar day, in the forecast's step (15 minutes, or 60 for an hourly forecast): 92, 96 or
 100 quarter-hours. The forecast's range follows the moment it was fetched, not the day: tomorrow appears in the
 afternoon, and a forecast may start at today's midnight or at the current slot. A today that starts at a slot
-already past (the first fetch after Zonneplan was added) is accepted as a partial day: the slots before the
-forecast's first one, all in the past, carry the median of today's known prices, so the file starts at midnight
-as every day file does and neither the cheapest nor the dearest hours of the day are invented. The integration
-keeps no past day ([HISTORY_REACH]).
+already past (the first fetch after Zonneplan was added, if the forecast starts at "now") is not a day file: a
+file is positional from midnight and holds a number for every slot (`relay_contract.parse_day`, which the store
+and the app read too), and SpotNav never invents a price. So that today is not held (`zonneplan_partial_day`), and
+the area plans from tomorrow on, which the afternoon's forecast holds whole. The integration keeps no past day
+([HISTORY_REACH]).
 
 The answer becomes the relay's `"v": 1` day document (`pricing/day_document.py`), in EUR (no rate), `src`
 `zonneplan.nl`. Nothing about the prices or the connection is logged.
@@ -37,7 +38,6 @@ from __future__ import annotations
 
 import logging
 import math
-import statistics
 from collections.abc import Callable, Iterable
 from datetime import date, datetime, time, timedelta
 from typing import Any, Final
@@ -284,11 +284,11 @@ def _cut(
 ) -> list[float]:
     """The Amsterdam day's prices, in order, from midnight.
 
-    The day's prices must follow each other from their first to the day's end. A day after today with nothing
-    held, or held only in part, is "not published yet". Today may start late when its first held slot has begun
-    already (the forecast starts at the current slot): the slots before it are in the past and carry the median of
-    today's held prices. Today missing its end, today starting in the future and a past day are not there to read;
-    a gap inside the day refuses it.
+    The day's prices must follow each other from midnight to the day's end. A day after today with nothing held,
+    or held only in part, is "not published yet". Today whose forecast starts at a slot already begun (the forecast
+    starts at the current slot) is `zonneplan_partial_day`: its earlier prices are not there, and none is made up.
+    Today missing its end, today starting in the future and a past day are not there to read; a gap inside the day
+    refuses it.
     """
     inside = sorted(instant for instant in pool if start <= instant < end)
     if not inside:
@@ -310,7 +310,6 @@ def _cut(
     if future:
         # Tomorrow without its first slots is not how Zonneplan publishes a day.
         raise _Refusal("provider_refused")
-    if not today or first > now:
-        raise _Refusal("zonneplan_unavailable")
-    head = (first - start) // step
-    return [statistics.median(held)] * head + held
+    if today and first <= now:
+        raise _Refusal("zonneplan_partial_day")
+    raise _Refusal("zonneplan_unavailable")

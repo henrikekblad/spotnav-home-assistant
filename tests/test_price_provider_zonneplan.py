@@ -9,7 +9,6 @@ forecast may start at today's midnight or at the current quarter-hour; both are 
 
 from __future__ import annotations
 
-import statistics
 from collections.abc import Callable
 from datetime import date, datetime, time, timedelta, timezone
 from typing import Any
@@ -220,26 +219,25 @@ async def test_tomorrow_is_not_published_before_zonneplan_and_whole_after(world:
     assert fetch.outcome == "fetched" and fetch.document["prices"] == expected(instants(TOMORROW))
 
 
-async def test_a_forecast_starting_now_gives_a_partial_today(world: World) -> None:
-    """The first fetch after Zonneplan was added may start at the current quarter-hour: the past slots before it
-    carry the median of today's known prices, so neither cheap nor dear hours are invented."""
+async def test_a_forecast_starting_now_holds_no_today_and_invents_no_price(world: World) -> None:
+    """The first fetch after Zonneplan was added may start at the current quarter-hour. A day file needs a price for
+    every slot from midnight, and none is made up: today is not held, tomorrow is, and nothing is stored for today."""
     await world.start()
-    # 12:00 in Amsterdam; the forecast starts at the quarter-hour in progress.
-    world.clock.now = NOW + timedelta(minutes=7)
-    known = [slot for slot in instants(TODAY) if slot >= NOW]
+    # 14:37 in Amsterdam, tomorrow is out; the forecast starts at the quarter-hour in progress.
+    world.clock.now = datetime(2026, 10, 4, 12, 37, tzinfo=UTC)
+    known = [slot for slot in instants(TODAY) if slot >= datetime(2026, 10, 4, 12, 30, tzinfo=UTC)]
     await world.publish(known + instants(TOMORROW))
 
-    fetch = await world.fetch(TODAY)
-
-    assert fetch.outcome == "fetched"
-    prices = fetch.document["prices"]
-    assert fetch.document["start"] == "2026-10-04T00:00:00+02:00" and len(prices) == 96
-    head = 96 - len(known)
-    assert head == 48 and prices[head:] == expected(known)
-    assert set(prices[:head]) == {round(statistics.median(amount(slot) * 1e-7 for slot in known), 5)}
-    assert parse_day(fetch.document, area_id=AREA, day=TODAY).covers_whole_day()
-    # Tomorrow is whole as usual.
+    assert await world.fetch(TODAY) == DayFetch("failed", code="zonneplan_partial_day")
     assert (await world.fetch(TOMORROW)).document["prices"] == expected(instants(TOMORROW))
+
+    await world.manager.async_subscribe(owner_id="charger", area_id=AREA)
+    await world.hass.async_block_till_done()
+    snapshot = world.manager.area_snapshot(AREA)
+    # Today reads as not there (a source that is there but cannot give the day), never as invalid.
+    assert snapshot.today_state == "unavailable" and snapshot.tomorrow_state == "ready"
+    assert not world.repository.holds_file(AREA, TODAY) and world.repository.holds_file(AREA, TOMORROW)
+    assert all(key.split("|")[2] != TODAY.isoformat() for key in world.repository._payload()["days"])
 
 
 async def test_a_forecast_starting_later_than_now_is_not_today(world: World) -> None:
