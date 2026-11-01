@@ -262,6 +262,7 @@ Your Home Assistant fetches the prices itself, from a source you add once ([Pric
 | Switzerland, Czechia, Slovakia, Hungary, Slovenia, Croatia, Greece, Italy (all zones), Spain (day-ahead), Portugal | Your own free ENTSO-E key (the ENTSO-E Transparency Platform) |
 | Spain – PVPC (regulated) | Home Assistant's built-in PVPC integration (Red Eléctrica) |
 | Great Britain – Octopus Agile, 14 regions | The Octopus Energy integration (HACS), your Agile meter |
+| Netherlands – Zonneplan | The Zonneplan integration (HACS), Zonneplan's dynamic tariff |
 
 The card's area picker lists every area and names, in the price settings, where its prices come from or what to add. The SpotNav relay no longer delivers prices (since SpotNav 2.0).
 
@@ -275,3 +276,12 @@ The card's area picker lists every area and names, in the price settings, where 
 - **Not with Intelligent Octopus Go.** Octopus does not allow a third party to control the charging of a car on Intelligent Octopus Go: its customers must opt out of other apps' smart charging. Do not use SpotNav to control charging on that tariff. Source: [Octopus Energy](https://octopus.energy/help-and-faqs/articles/why-can-t-i-have-both-intelligent-octopus-go-and-a-third-party-controlling-my-charging-/).
 
 Prices: Octopus Energy (Agile). SpotNav is not affiliated with Octopus Energy.
+
+### Netherlands (Zonneplan)
+
+- **For Zonneplan customers.** *Netherlands – Zonneplan* (`NL-ZONNEPLAN`) is Zonneplan's dynamic tariff per kWh, in quarter-hours. The area *Netherlands* (`NL`) stays the day-ahead spot price with your own fees; the two never share days or a price history.
+- **All-in.** The tariff already contains Zonneplan's purchase fee, the energy tax and VAT, so VAT and energy tax are locked as *Included in the price* and nothing is added. Grid transfer stays a normal setting, off by default: Dutch network costs are per connection, not per kWh.
+- **Your prices.** They are read from the [Zonneplan](https://github.com/fsaris/home-assistant-zonneplan-one) integration, installed through HACS (its sensor *Current quarter hourly electricity tariff* must be on). SpotNav does not contact Zonneplan itself. While that integration is loaded, the area *Netherlands* shows a hint to choose *Netherlands – Zonneplan*. When it is down there is no fallback to the spot price: the days already held keep planning, and tomorrow waits.
+- **When.** Tomorrow's tariff appears in the afternoon, after the day-ahead auction. Right after Zonneplan is added, today may start at the current quarter-hour; the hours already past then carry the middle of today's known prices.
+
+Prices: Zonneplan. SpotNav is not affiliated with Zonneplan.
