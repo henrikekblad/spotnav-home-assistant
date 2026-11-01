@@ -11,7 +11,10 @@
   `SiteCapacityResult`'s diagnostic fields (never discarded merely for age) and gates them by
   `phase_liveness` (usable only when `fresh` or `confirmed_unchanged`). A direct site (current per
   phase only) instead reads the meter's total grid power from the site controller (unknown unless fresh),
-  splits it over the charger's phases at the nominal voltage and caps it by each phase's fuse headroom. The car's delivered current
+  splits it over the charger's phases at the nominal voltage and caps it by each phase's fuse headroom. A derived
+  site with a fuse is capped by each phase's fuse headroom too, whether load balancing is on or not: the meter
+  nets the sun over the phases, and a single-phase car must not be asked for more than its own phase carries.
+  The car's delivered current
   comes from `SiteCapacityController.charger_measured_current`. The battery comes from
   `battery_aggregate_power`, usable only when live by solar's age limit (`site/meter_cadence.py`: a meter
   that reports seldom or only on change counts for longer than the maximum age), with `battery_configured` set from whether an
@@ -414,6 +417,32 @@ def _fuse_caps(
     return caps
 
 
+def _observation_caps(
+    site: SiteCapacityController,
+    charger_entry_id: str,
+    car_delivered_a: dict[PhaseName, float | None],
+    *,
+    phase_unknown: bool,
+) -> dict[PhaseName, float | None]:
+    """`SolarObservation.phase_cap_a`: the most current the car may draw on each phase it uses (`_fuse_caps`), on a
+    single-phase charger of unknown phase the least of every phase's, on `STAND_IN_PHASE`."""
+    result = site.result
+    cap_delivered = (
+        {phase: car_delivered_a[STAND_IN_PHASE] for phase in PHASES} if phase_unknown else car_delivered_a
+    )
+    caps = _fuse_caps(
+        result,
+        cap_delivered,
+        fuse_limit_a=_fuse_limit_a(site),
+        min_current_a=float(_wiring(site, charger_entry_id).get("min_current_a", DEFAULT_MIN_CURRENT_A)),
+        measurement_unusable=result.state in UNHEALTHY_STATES,
+    )
+    if not phase_unknown:
+        return caps
+    values = list(caps.values())
+    return {STAND_IN_PHASE: None if any(cap is None for cap in values) else min(values)}  # type: ignore[type-var]
+
+
 def _phase_room(
     site: SiteCapacityController,
     charger_entry_id: str,
@@ -488,7 +517,8 @@ def _build_observation(
     """One tick's `SolarObservation` from the site's computed result plus this charger's
     measured current.
 
-    A derived site reads the signed power and voltage of every phase. A direct site reads the
+    A derived site reads the signed power and voltage of every phase and, when the site knows its fuse, caps the
+    car by each phase's fuse headroom as well (`_fuse_caps`), load balancing on or off. A direct site reads the
     meter's total grid power (`SiteCapacityController.grid_total_reading`, unknown unless fresh),
     splits it over the charger's phases at the nominal voltage and caps the result by each phase's
     fuse headroom (`_fuse_caps`, which also covers an incomplete phase measurement). `effective_phases`
@@ -523,23 +553,7 @@ def _build_observation(
             stored_voltage_between_phases_v(site.config), len(car_phases)
         )
         voltage_v: dict[PhaseName, float | None] = {phase: nominal_v for phase in PHASES}
-        cap_delivered = (
-            {phase: car_delivered_a[STAND_IN_PHASE] for phase in PHASES} if phase_unknown else car_delivered_a
-        )
-        caps = _fuse_caps(
-            result,
-            cap_delivered,
-            fuse_limit_a=_fuse_limit_a(site),
-            min_current_a=float(_wiring(site, charger_entry_id).get("min_current_a", DEFAULT_MIN_CURRENT_A)),
-            measurement_unusable=result.state in UNHEALTHY_STATES,
-        )
-        if phase_unknown:
-            values = list(caps.values())
-            phase_cap_a = {
-                STAND_IN_PHASE: None if any(cap is None for cap in values) else min(values)  # type: ignore[type-var]
-            }
-        else:
-            phase_cap_a = caps
+        phase_cap_a = _observation_caps(site, charger_entry_id, car_delivered_a, phase_unknown=phase_unknown)
     else:
         signed_grid_w = {
             phase: _liveness_gated(
@@ -555,6 +569,11 @@ def _build_observation(
             # Which phase the car is on is unknown: the mean of the phases that read.
             known = [value for value in voltage_v.values() if value is not None]
             voltage_v = {**voltage_v, STAND_IN_PHASE: sum(known) / len(known) if known else None}
+        if _fuse_limit_a(site) is not None:
+            # The per-phase power nets the sun on every phase, so a single-phase car on a phase the sun does not
+            # cover could otherwise be asked for more than its phase's fuse carries; with load balancing off
+            # nothing else would lower it.
+            phase_cap_a = _observation_caps(site, charger_entry_id, car_delivered_a, phase_unknown=phase_unknown)
 
     battery_w, battery_configured = _battery_reading(site)
 
