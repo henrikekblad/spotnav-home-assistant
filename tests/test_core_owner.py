@@ -484,6 +484,87 @@ async def test_a_plan_cleared_for_its_settings_while_its_start_is_on_its_way_is_
     await world.shutdown()
 
 
+def _balancing(world: World) -> tuple[str | None, bool, bool, str | None]:
+    controller = world.controller
+    return (
+        controller.charge_origin,
+        controller._is_plan_charge,  # noqa: SLF001
+        controller.paused_by_balancing,
+        controller.paused_charge_origin,
+    )
+
+
+async def test_a_persons_start_waiting_for_a_balancing_pauses_stop_owns_the_charge(
+    hass: HomeAssistant, timers: FakeScheduler, monkeypatch: pytest.MonkeyPatch, drives: bool
+) -> None:
+    """The plan's charge runs; load balancing pauses it and, while that stop is on its way, the person presses Start
+    (their feed begins and waits for the lock the stop holds). The stop goes out first, then the start: the charge
+    that runs is the person's, and balancing holds nothing back, in both modes."""
+    world = await pause_world(hass, timers)
+    controller = world.controller
+    await install_schedule(controller, open_window())
+    await hass.async_block_till_done()
+    assert _owner(world) == ("plan_window", True)
+    real_stop = controller.adapter.async_stop
+    started: list[asyncio.Task] = []
+
+    async def stop_meeting_a_start(*args: Any, **kwargs: Any) -> Any:
+        if not started:
+            started.append(hass.async_create_task(world.executor.async_manual_start()))
+            for _ in range(3):
+                await asyncio.sleep(0)
+        return await real_stop(*args, **kwargs)
+
+    monkeypatch.setattr(controller.adapter, "async_stop", stop_meeting_a_start)
+    await controller.async_apply_regulated_current(0, must_lower=True)
+    await started[0]
+    await hass.async_block_till_done()
+    for index in range(2):
+        hass.states.async_set(SWITCH, hass.states.get(SWITCH).state, {"report": index})
+        await hass.async_block_till_done()
+
+    assert hass.states.get(SWITCH).state == "on"
+    assert _balancing(world) == ("manual", False, False, None)
+    if drives:
+        session = controller.ownership_shadow.session
+        assert (session.owner, session.balancing_paused, session.pending) == ("person", False, ())
+    assert (await _stored(world))["charge_origin"] == "manual"
+    await world.shutdown()
+
+
+async def test_a_balancing_pause_landing_after_a_persons_start_went_out_holds_it_back(
+    hass: HomeAssistant, timers: FakeScheduler, monkeypatch: pytest.MonkeyPatch, drives: bool
+) -> None:
+    """The person's Start went out (the controller's lock is free again) and load balancing pauses the charge while
+    the boundary still stores the person's pause: the pause holds the person's charge back, and the regulator's resume
+    gives it back as theirs, in both modes."""
+    world = await pause_world(hass, timers)
+    controller = world.controller
+    real_update = world.store.async_update
+    paused: list[Any] = []
+
+    async def update_meeting_a_pause(*args: Any, **kwargs: Any) -> Any:
+        if not paused:
+            paused.append(await controller.async_apply_regulated_current(0, must_lower=True))
+        return await real_update(*args, **kwargs)
+
+    monkeypatch.setattr(world.store, "async_update", update_meeting_a_pause)
+    await world.executor.async_manual_start()
+    await hass.async_block_till_done()
+    assert paused and paused[0].outcome == "stopped"
+    assert hass.states.get(SWITCH).state == "off"
+    assert _balancing(world) == (None, False, True, "manual")
+    if drives:
+        session = controller.ownership_shadow.session
+        assert (session.owner, session.balancing_paused, session.paused_origin) == ("none", True, "person")
+
+    assert await controller.async_battery_probe_start(10)
+    await hass.async_block_till_done()
+    assert hass.states.get(SWITCH).state == "on"
+    assert _balancing(world) == ("manual", False, False, None)
+    await world.shutdown()
+
+
 @pytest.mark.shadow_disagreement_expected
 @pytest.mark.parametrize("record", [True, False], ids=["record", "keys"])
 async def test_a_restart_that_cannot_read_todays_state_keeps_the_owner(
@@ -524,6 +605,7 @@ async def test_a_restart_that_cannot_read_todays_state_keeps_the_owner(
     assert _owner(restarted) == ("manual", False)
     await restarted.shutdown()
 
+
 async def test_a_quiet_report_kept_after_all_is_told_to_the_debug_day(hass: HomeAssistant) -> None:
     """A quiet report is held back (`_decide`) and kept only if a disagreement comes of it (`_keep_quiet`): the debug
     bundle hears it then, as it hears every record kept."""
@@ -537,3 +619,59 @@ async def test_a_quiet_report_kept_after_all_is_told_to_the_debug_day(hass: Home
     shadow._keep_quiet(record)  # noqa: SLF001
     assert heard == [record] and list(shadow.events) == [record]
 
+
+@pytest.mark.usefixtures("both_restarts")
+async def test_a_record_newer_than_the_keys_keeps_the_owner_over_two_restarts(
+    hass: HomeAssistant, timers: FakeScheduler, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A person's charge whose keys on disk say nobody's and are older than the core's record: the first restart reads
+    the person from the record and writes the keys again, so the second restart, in either kind, still reads them."""
+    from custom_components.spotnav.execution.controller import SESSION_ORDER_KEY
+
+    monkeypatch.setattr(ownership_shadow, "CORE_OWNERSHIP_DEFAULT", True)
+    world = await pause_world(hass, timers)
+    await world.executor.async_manual_start()
+    await hass.async_block_till_done()
+    real_start_again = World._start_again
+
+    async def keys_behind(self: World) -> World:
+        disk = await self.controller._store.async_load()  # noqa: SLF001
+        await self.controller._store.async_save(  # noqa: SLF001
+            {**disk, "charge_origin": None, "plan_charge": False, SESSION_ORDER_KEY: {"session": 7, "keys": 3}}
+        )
+        return await real_start_again(self)
+
+    monkeypatch.setattr(World, "_start_again", keys_behind)
+    restarted = await world.restart()
+    await hass.async_block_till_done()
+    monkeypatch.setattr(World, "_start_again", real_start_again)
+    assert restarted.controller.ownership_shadow.session.owner == "person"
+    stored = await _stored(restarted)
+    assert (stored["charge_origin"], stored["plan_charge"]) == ("manual", False)
+    again = await restarted.restart()
+    await hass.async_block_till_done()
+    assert again.controller.ownership_shadow.session.owner == "person"
+    assert again.controller.charge_origin == "manual"
+    await again.shutdown()
+
+
+async def test_a_claim_inside_a_window_tells_readers_the_plans(
+    hass: HomeAssistant, timers: FakeScheduler, drives: bool
+) -> None:
+    """The charger begins by itself inside a plan's open window: the charge is claimed as the plan's with no command,
+    and readers are told so, with the keys saved, in both modes."""
+    world = await pause_world(hass, timers)
+    await install_schedule(world.controller, open_window())
+    await hass.async_block_till_done()
+    await world.switch("off")
+    starts = len(world.starts)
+    told: list[tuple[str | None, bool]] = []
+    world.controller.add_listener(lambda: told.append(_owner(world)))
+    hass.states.async_set(SWITCH, "on", {"by": "itself"})
+    await hass.async_block_till_done()
+    assert told and told[-1] == ("plan_window", True), told
+    assert len(world.starts) == starts and world.stops == []
+    assert _owner(world) == ("plan_window", True)
+    stored = await _stored(world)
+    assert (stored["charge_origin"], stored["plan_charge"]) == ("plan_window", True)
+    await world.shutdown()
