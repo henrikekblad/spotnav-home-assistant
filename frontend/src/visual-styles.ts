@@ -132,6 +132,8 @@ export const VISUAL_CLASSES = {
   planPreviewStrip: "spotnav-plan-preview-strip",
   planPreviewCell: "spotnav-plan-preview-cell",
   planPreviewTick: "spotnav-plan-preview-tick",
+  planPreviewBand: "spotnav-plan-preview-band",
+  planPreviewRun: "spotnav-plan-preview-run",
   settingsIcon: "spotnav-settings-icon",
   settingsValue: "spotnav-settings-value",
   settingsValueLong: "spotnav-settings-value-long",
@@ -1682,11 +1684,36 @@ export const VISUAL_STYLES = `
     top: 0;
     transform: translateX(-50%);
   }
+  .${VISUAL_CLASSES.planPreviewTick}[data-edge="start"] {
+    transform: none;
+  }
+  .${VISUAL_CLASSES.planPreviewTick}[data-edge="end"] {
+    transform: translateX(-100%);
+  }
+  /*
+   * The planned quarters as a band in the accent colour right under the price track: what is planned reads by
+   * place and colour alone, in either theme and without telling red from green.
+   */
+  .${VISUAL_CLASSES.planPreviewBand} {
+    position: relative;
+    height: 5px;
+    margin-top: 3px;
+  }
+  .${VISUAL_CLASSES.planPreviewRun} {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    border-radius: 3px;
+    background: var(--primary-color, #03a9f4);
+  }
   @media (forced-colors: active) {
     .${VISUAL_CLASSES.planPreviewCell} {
       background: GrayText;
     }
     .${VISUAL_CLASSES.planPreviewCell}[data-planned="true"] {
+      background: Highlight;
+    }
+    .${VISUAL_CLASSES.planPreviewRun} {
       background: Highlight;
     }
   }

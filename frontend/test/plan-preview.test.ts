@@ -14,7 +14,6 @@ import {
   previewLines,
   previewStripModel,
   renderPlanPreview,
-  tickStepHours,
   type PreviewState,
 } from "../src/plan-preview";
 import { SETTINGS_API_VERSION, type SettingsRecord } from "../src/types";
@@ -238,15 +237,40 @@ describe("the strip", () => {
     expect(slot.dataset["pending"]).toBe("true");
   });
 
-  it("fits a phone: never more than seven hour labels, whatever the span", () => {
+  it("fits a phone: its start and end, and never more than seven labels, whatever the span", () => {
     const strip = preview("ready").strip!;
-    for (const hours of [1, 5, 8, 13, 20, 24, 36, 48, 60]) {
-      const longer = { ...strip, endMs: strip.startMs + hours * 3_600_000 };
+    for (const minutes of [45, 75, 120, 300, 480, 780, 1200, 1440, 2160, 2880, 3600]) {
+      const longer = { ...strip, endMs: strip.startMs + minutes * 60_000 };
       const ticks = previewStripModel(longer, SV).ticks;
-      expect(ticks.length, `${hours} h`).toBeLessThanOrEqual(7);
-      expect(ticks.every((tick) => tick.position > 0 && tick.position < 1)).toBe(true);
+      expect(ticks.length, `${minutes} min`).toBeLessThanOrEqual(7);
+      expect(ticks[0]).toMatchObject({ position: 0, edge: "start", label: "08:00" });
+      expect(ticks.at(-1)).toMatchObject({ position: 1, edge: "end" });
+      const positions = ticks.map((tick) => tick.position);
+      expect(positions).toEqual([...positions].sort((a, b) => a - b));
+      for (let index = 1; index < positions.length; index += 1) {
+        expect(positions[index]! - positions[index - 1]!, `${minutes} min`).toBeGreaterThanOrEqual(0.12);
+      }
     }
-    expect(tickStepHours(24 * 3_600_000)).toBe(4);
+    // A short horizon (23:30 to 00:45) still names its ends and the midnight between them.
+    const short = { ...strip, startMs: Date.parse("2026-09-22T21:30:00Z"), endMs: Date.parse("2026-09-22T22:45:00Z") };
+    expect(previewStripModel(short, SV).ticks.map((tick) => tick.label)).toEqual(["23:30", "00", "00:45"]);
+    // A whole day: evenly spaced hours between the ends.
+    const day = { ...strip, endMs: strip.startMs + 24 * 3_600_000 };
+    const labels = previewStripModel(day, SV).ticks.map((tick) => tick.label);
+    expect(labels).toEqual(["08:00", "12", "16", "20", "00", "04", "08:00"]);
+  });
+
+  it("draws the planned runs as one band each, apart from the price colours", () => {
+    const ready = preview("ready");
+    const model = previewStripModel(ready.strip!, SV);
+    expect(model.runs).toHaveLength(1);
+    const planned = model.cells.filter((cell) => cell.planned);
+    expect(model.runs[0]!.left).toBeCloseTo(planned[0]!.left);
+    expect(model.runs[0]!.width).toBeCloseTo(planned.reduce((sum, cell) => sum + cell.width, 0));
+    const slot = document.createElement("div");
+    renderPlanPreview(document, slot, { kind: "shown", preview: ready, pending: false }, SV, NOW);
+    expect(slot.querySelectorAll(`.${C.planPreviewBand} .${C.planPreviewRun}`)).toHaveLength(1);
+    expect(slot.querySelector(`.${C.planPreviewTick}[data-edge='start']`)?.textContent).toBe("08:00");
   });
 });
 

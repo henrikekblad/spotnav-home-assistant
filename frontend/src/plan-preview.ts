@@ -19,7 +19,6 @@ import { STATUS_CODE_TABLE, type PlanPreview, type PlanPreviewDecode, type PlanP
 export const PREVIEW_DEBOUNCE_MS = 300;
 
 const QUARTER_MS = 15 * 60_000;
-const HOUR_MS = 3_600_000;
 
 /** What the dialog shows: nothing yet, or the latest preview (dimmed while a newer draft's is awaited). */
 export type PreviewState = { kind: "none" } | { kind: "shown"; preview: PlanPreview; pending: boolean };
@@ -221,29 +220,63 @@ export interface PreviewCell {
 export interface PreviewTick {
   position: number;
   label: string;
+  /** The strip's own start or end: its label stands inside the strip rather than centred on it. */
+  edge?: "start" | "end";
+}
+
+/** One unbroken run of planned quarters, in shares of the strip. */
+export interface PreviewRun {
+  left: number;
+  width: number;
 }
 
 export interface PreviewStripModel {
   cells: PreviewCell[];
+  /** The planned runs, drawn as a band in the accent colour under the price colours: the plan reads without them. */
+  runs: PreviewRun[];
   ticks: PreviewTick[];
 }
 
-/** The hours between ticks for a strip of `spanMs`: few enough to fit a phone's width. */
-export function tickStepHours(spanMs: number): number {
-  const hours = spanMs / HOUR_MS;
-  if (hours <= 6) {
-    return 1;
+/** The most labels a strip carries, its two ends included: what fits a phone's width. */
+export const MAX_TICKS = 7;
+/** The least room between two labels, as a share of the strip, so they never run into each other. */
+const MIN_TICK_GAP = 0.12;
+const TICK_STEPS_HOURS = [1, 2, 3, 4, 6, 8, 12, 24] as const;
+
+/**
+ * The strip's labels: its start and its end as times ("23:30", "00:45"), and between them whole local hours ("00")
+ * at the smallest even step that keeps the count at `MAX_TICKS` and every label clear of its neighbours.
+ */
+export function stripTickMarks(strip: PlanPreviewStrip, format: FormatContext): PreviewTick[] {
+  const span = strip.endMs - strip.startMs;
+  const edges: PreviewTick[] = [
+    { position: 0, label: clock(format, strip.startMs), edge: "start" },
+    { position: 1, label: clock(format, strip.endMs), edge: "end" },
+  ];
+  // Every whole quarter inside: a local hour starts on one, also across a change of the clocks.
+  const hours: Array<{ position: number; hour: number; label: string }> = [];
+  let lastLabel = "";
+  for (let at = Math.ceil(strip.startMs / QUARTER_MS) * QUARTER_MS; at < strip.endMs; at += QUARTER_MS) {
+    const label = hourLabel(format, at);
+    if (label === "" || clock(format, at).slice(-2) !== "00" || label === lastLabel) {
+      continue;
+    }
+    lastLabel = label;
+    const position = (at - strip.startMs) / span;
+    if (position >= MIN_TICK_GAP && position <= 1 - MIN_TICK_GAP) {
+      hours.push({ position, hour: Number(label), label });
+    }
   }
-  if (hours <= 12) {
-    return 2;
+  for (const step of TICK_STEPS_HOURS) {
+    const between = hours.filter((entry) => entry.hour % step === 0);
+    const spaced = between.every(
+      (entry, index) => index === 0 || entry.position - between[index - 1]!.position >= MIN_TICK_GAP,
+    );
+    if (between.length <= MAX_TICKS - 2 && spaced) {
+      return [edges[0]!, ...between.map(({ position, label }) => ({ position, label })), edges[1]!];
+    }
   }
-  if (hours <= 24) {
-    return 4;
-  }
-  if (hours <= 48) {
-    return 8;
-  }
-  return 12;
+  return edges;
 }
 
 /** The strip's geometry: one cell per quarter, and an hour label at every `tickStepHours` local hour inside it. */
@@ -274,27 +307,19 @@ export function previewStripModel(strip: PlanPreviewStrip, format: FormatContext
         cheap: quarter.price === null || mean === undefined ? null : quarter.price <= mean,
       };
     });
-  const ticks: PreviewTick[] = [];
-  if (hasZone(format)) {
-    const step = tickStepHours(span);
-    // Every whole quarter inside: a local hour starts on one, also across a change of the clocks.
-    const first = Math.ceil(strip.startMs / QUARTER_MS) * QUARTER_MS;
-    let lastLabel = "";
-    for (let at = first; at < strip.endMs; at += QUARTER_MS) {
-      const label = hourLabel(format, at);
-      const minutes = clock(format, at).slice(-2);
-      if (minutes !== "00" || label === "" || Number(label) % step !== 0 || label === lastLabel) {
-        continue;
-      }
-      const position = (at - strip.startMs) / span;
-      // A label at an edge would be clipped: only those with room on both sides.
-      if (position > 0.04 && position < 0.96) {
-        ticks.push({ position, label: `${label}` });
-      }
-      lastLabel = label;
+  const runs: PreviewRun[] = [];
+  for (const cell of cells) {
+    const last = runs.at(-1);
+    if (!cell.planned) {
+      continue;
+    }
+    if (last !== undefined && Math.abs(last.left + last.width - cell.left) < 1e-9) {
+      last.width += cell.width;
+    } else {
+      runs.push({ left: cell.left, width: cell.width });
     }
   }
-  return { cells, ticks };
+  return { cells, runs, ticks: hasZone(format) ? stripTickMarks(strip, format) : [] };
 }
 
 function percent(share: number): string {
@@ -318,16 +343,28 @@ function stripNode(doc: Document, strip: PlanPreviewStrip, format: FormatContext
     node.style.width = percent(cell.width);
     track.append(node);
   }
+  const band = doc.createElement("div");
+  band.className = C.planPreviewBand;
+  for (const run of model.runs) {
+    const node = doc.createElement("span");
+    node.className = C.planPreviewRun;
+    node.style.left = percent(run.left);
+    node.style.width = percent(run.width);
+    band.append(node);
+  }
   const labels = doc.createElement("div");
   labels.className = C.stripLabels;
   for (const tick of model.ticks) {
     const label = doc.createElement("span");
     label.className = C.planPreviewTick;
+    if (tick.edge !== undefined) {
+      label.dataset["edge"] = tick.edge;
+    }
     label.style.left = percent(tick.position);
     label.textContent = tick.label;
     labels.append(label);
   }
-  area.append(track, labels);
+  area.append(track, band, labels);
   return area;
 }
 
