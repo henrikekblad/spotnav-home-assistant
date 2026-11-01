@@ -123,8 +123,38 @@ percentage.
   Spain's PVPC includes the network charges (grid fee), so VAT is still added. Great Britain's Agile
   price includes VAT, tax and network charges, so nothing is added.
 
-Your choices are kept per area, so switching areas and back keeps what you entered. Check the values
-against your contract. The cost of past charges in the charge history is recalculated with your
+### A grid fee that is a percentage of spot, or higher in high-load hours
+
+Some network operators charge part of the grid fee as a percentage of the spot price, and some charge more in
+the hours the grid is busiest. The electricity price device has two more additions for these, both off until you
+set them:
+
+- **Grid fee, % of spot.** A percentage of each interval's spot price, added before VAT. It follows the spot
+  price's sign: when the spot price is negative, this part is negative too.
+- **Grid fee in high-load hours.** The grid fee inside the high-load window, in place of the ordinary grid fee
+  there. The window is whole hours of the area's own clock (weekdays 07-19, November to March unless you change
+  it): on weekdays only or every day, all year or November to March only. Public holidays count as the weekdays
+  they fall on.
+
+With both, the price of each interval is:
+
+```text
+(spot × (1 + % / 100) + electricity tax + grid fee of that hour) × (1 + VAT)
+```
+
+For example, a fixed grid fee of 20 öre/kWh including VAT (16 öre without it) plus 5 % of spot, with 36 öre of
+tax and 25 % VAT, makes a spot price of 80 öre cost (1.05 × 80 + 36 + 16) × 1.25 = 170 öre, and a spot price of
+-10 öre cost (1.05 × -10 + 36 + 16) × 1.25 = 51.9 öre. The percentage keeps the cheapest hours the cheapest; the
+high-load fee can move a plan out of the window. Neither has a suggestion, and both are locked where the area's
+published price already includes the grid fee. The day documents, the history profile and the price files stay
+spot prices; the additions are applied wherever a price with fees is shown or planned, at each interval's start.
+
+A few operators take the percentage of the month's average spot price rather than each hour's. SpotNav uses each
+interval's own spot price: the price shown differs by a few öre, and the order of the hours does not change.
+
+Your choices are kept per area, so switching areas and back keeps what you entered. Moving the electricity price
+to another area switches the high-load fee off (its figure is in the old area's unit); the percentage and the
+window stay. Check the values against your contract. The cost of past charges in the charge history is recalculated with your
 current values every time it is shown (see [Charge history](card.md#charge-history)).
 
 ## How the integration uses the prices
