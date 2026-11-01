@@ -406,8 +406,21 @@ it at the same moment.
 Nothing happens. No settings or revision are written, no plan is installed and no proposal saved, no appointment
 is made, the charger and the car are asked nothing, and no notice, event or listener hears of it.
 
-At most 5 requests a second per connection (`spotnav_rate_limited`), and a body of at most 16 KiB as JSON
-(`spotnav_body_too_large`). The charger lookup's codes and `spotnav_unsupported_api_version` as for the other
+While an electricity price entry is the charger's price source, the preview plans with that entry's area and fees as
+they stand, as a Save of a body that echoes them does; a body that changes them (an administrator's) is previewed with
+the entry's current ones.
+
+A few small differences from the calculation a Save starts, all about state the preview may not touch:
+
+- A Save first lets the charger end a target stop's record that no longer describes the planned car
+  (`_lapse_target_stop`); the preview does not, so right after such a change its status may differ from the Save's.
+- A Save first reads the energy register once and counts a reading nobody saw yet (`_arm_energy_watch`); the
+  preview counts a manual need from what the register was last seen to say.
+- The phases a charge uses come from the stored planned car, so a preview that picks another car with fewer
+  onboard phases plans on the stored car's.
+
+At most 5 requests a second per connection and 4 previews being calculated at once across all connections
+(`spotnav_rate_limited`), and a body of at most 16 KiB as JSON (`spotnav_body_too_large`). The charger lookup's codes and `spotnav_unsupported_api_version` as for the other
 commands.
 
 The answer:
