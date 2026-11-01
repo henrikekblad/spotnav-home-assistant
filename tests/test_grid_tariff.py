@@ -196,7 +196,8 @@ async def test_an_area_change_switches_the_high_fee_off_and_keeps_the_rest(hass:
     )
     async_write_price_entry(hass, price, AreaAutoSettings(area_id="DK1"))
     await hass.async_block_till_done()
-    assert price.data["transfer_high"] == OFF
+    # Off, the figure kept: switching it on again is one step.
+    assert price.data["transfer_high"] == {"enabled": False, "value": 60.0}
     assert price.data["transfer_percent"] == OWNER_PERCENT
     assert price.data["high_load_window"] == WINDOW
 
@@ -279,7 +280,18 @@ async def test_the_percentage_number_prices_the_owners_tariff_now(hass: HomeAssi
     assert float(hass.states.get(now).state) == pytest.approx(expected, abs=1e-3)
 
 
-async def test_the_high_fee_number_starts_the_usual_window_and_the_window_entities_change_it(
+async def test_the_high_fee_number_never_makes_up_a_window(hass: HomeAssistant, freezer) -> None:
+    freezer.move_to(NOW)
+    price = await add_price(hass)
+    high = entity_id(hass, price.entry_id, "grid_fee_high", "number")
+
+    with pytest.raises(ServiceValidationError) as refused:
+        await call(hass, "number", "set_value", {"entity_id": high, "value": 60})
+    assert refused.value.translation_key == "high_load_window_required"
+    assert price_write_revision(price) == 0 and "transfer_high" not in price.data
+
+
+async def test_a_window_entity_chooses_the_window_and_then_the_high_fee_can_be_set(
     hass: HomeAssistant, freezer
 ) -> None:
     freezer.move_to(NOW)
@@ -288,9 +300,11 @@ async def test_the_high_fee_number_starts_the_usual_window_and_the_window_entiti
     weekdays = entity_id(hass, price.entry_id, "high_load_weekdays_only", "switch")
     assert hass.states.get(weekdays).state == "unknown"
 
+    # Touching a window entity is choosing a window: it starts from the usual one.
+    await call(hass, "number", "set_value", {"entity_id": entity_id(hass, price.entry_id, "high_load_from_hour", "number"), "value": 7})
+    assert price.data["high_load_window"] == WINDOW
     await call(hass, "number", "set_value", {"entity_id": entity_id(hass, price.entry_id, "grid_fee_high", "number"), "value": 60})
     assert price.data["transfer_high"] == {"enabled": True, "value": 60.0}
-    assert price.data["high_load_window"] == WINDOW
     assert hass.states.get(weekdays).state == "on"
     assert hass.states.get(entity_id(hass, price.entry_id, "grid_fee_high_policy", "select")).state == "manual"
 
@@ -338,3 +352,20 @@ async def test_the_price_devices_diagnostics_name_a_stored_tariff_only(hass: Hom
     assert "grid_tariff" not in price_data(hass, plain.entry_id).device.diagnostics()
     owner = await add_price(hass, entry_id="price_b", transfer_percent=OWNER_PERCENT)
     assert price_data(hass, owner.entry_id).device.diagnostics()["grid_tariff"]["transfer_percent"] == OWNER_PERCENT
+
+
+async def test_the_options_flows_area_change_keeps_the_high_fees_figure_off(hass: HomeAssistant, freezer) -> None:
+    freezer.move_to(NOW)
+    price = await add_price(
+        hass, transfer_percent=OWNER_PERCENT, transfer_high={"enabled": True, "value": 60.0}, high_load_window=WINDOW
+    )
+    result = await hass.config_entries.options.async_init(price.entry_id)
+    result = await hass.config_entries.options.async_configure(result["flow_id"], {"area_id": "DK1"})
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"], {"vat_mode": "suggested", "tax_mode": "suggested", "transfer_mode": "off"}
+    )
+    await hass.async_block_till_done()
+
+    assert price.data["area_id"] == "DK1"
+    assert price.data["transfer_high"] == {"enabled": False, "value": 60.0}
+    assert price.data["transfer_percent"] == OWNER_PERCENT and price.data["high_load_window"] == WINDOW

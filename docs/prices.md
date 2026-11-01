@@ -132,9 +132,10 @@ set them:
 - **Grid fee, % of spot.** A percentage of each interval's spot price, added before VAT. It follows the spot
   price's sign: when the spot price is negative, this part is negative too.
 - **Grid fee in high-load hours.** The grid fee inside the high-load window, in place of the ordinary grid fee
-  there. The window is whole hours of the area's own clock (weekdays 07-19, November to March unless you change
-  it): on weekdays only or every day, all year or November to March only. Public holidays count as the weekdays
-  they fall on.
+  there. You set the window first (it is never made up): whole hours of the area's own clock, on weekdays only or
+  every day, all year or November to March only; in Home Assistant its entities start from weekdays 07-19,
+  November to March. Public holidays count as the weekdays they fall on. Winter is always November to March: a
+  tariff with another winter is not covered yet.
 
 With both, the price of each interval is:
 
@@ -152,9 +153,10 @@ spot prices; the additions are applied wherever a price with fees is shown or pl
 A few operators take the percentage of the month's average spot price rather than each hour's. SpotNav uses each
 interval's own spot price: the price shown differs by a few öre, and the order of the hours does not change.
 
-Your choices are kept per area, so switching areas and back keeps what you entered. Moving the electricity price
-to another area switches the high-load fee off (its figure is in the old area's unit); the percentage and the
-window stay. Check the values against your contract. The cost of past charges in the charge history is recalculated with your
+A charger's own VAT, tax and grid fee are kept per area, so switching areas and back keeps what you entered. The
+percentage, the high-load fee and the window belong to the electricity price, not to an area: moving it to another
+area switches the high-load fee off (its figure is in the old area's unit) but keeps the figure, so switching it on
+again is one step; the percentage and the window stay as they are. Check the values against your contract. The cost of past charges in the charge history is recalculated with your
 current values every time it is shown (see [Charge history](card.md#charge-history)).
 
 ## How the integration uses the prices

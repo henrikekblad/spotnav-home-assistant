@@ -358,9 +358,10 @@ def async_write_price_entry(
     `overrides` names the area and its fees. The write merges: every other key of the entry stays as stored, so a
     writer that knows only the three fees (an older card or app's settings write) leaves the grid tariff alone.
     The grid tariff is written only when `overrides.grid_tariff` carries one that differs from the stored one; an
-    area change without one switches the high-load fee off (its figure is in the old area's unit). `expected_write_revision` is a compare-and-set against the entry's
-    write counter: a write built on an older one is refused (`revision_conflict`) and nothing changes. The entry's
-    update listener moves its live device and tells every consumer (`async_price_sources_changed`).
+    area change without one switches the high-load fee off and keeps its figure (it is in the old area's unit).
+    `expected_write_revision` is a compare-and-set against the entry's write counter: a write built on an older one
+    is refused (`revision_conflict`) and nothing changes. The entry's update listener moves its live device and
+    tells every consumer (`async_price_sources_changed`).
     """
     current = price_write_revision(entry)
     if expected_write_revision is not None and current != expected_write_revision:
@@ -388,7 +389,9 @@ def async_write_price_entry(
     if tariff is not None:
         data.update(tariff.as_dict())
     elif previous_area and previous_area != overrides.area_id and HIGH_FEE in data:
-        # The high-load fee is a figure in the old area's unit: another area starts with it off. The percentage
-        # and the window carry no unit and stay.
-        data[HIGH_FEE] = FiscalOverride().as_dict()
+        # The high-load fee is a figure in the old area's unit: another area starts with it off, the figure kept so
+        # switching it on again is one step. The percentage and the window carry no unit and stay.
+        stored = fees_from_data(str(previous_area), entry.data).grid_tariff
+        kept = None if stored is None else stored.transfer_high.value
+        data[HIGH_FEE] = FiscalOverride(enabled=False, value=kept).as_dict()
     hass.config_entries.async_update_entry(entry, data=data, title=title)
