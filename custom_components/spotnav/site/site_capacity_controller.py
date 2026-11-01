@@ -107,7 +107,7 @@ from .battery_probe import (
     within_held_band,
 )
 from .regulator_damping import DampingDecision, RegulatorDamper
-from .step_guard import charger_above_written, StepGuard
+from .step_guard import CATCH_UP_S, charger_above_written, StepGuard
 from .regulator import (
     allocate_regulator_decisions,
     applyability_failure,
@@ -200,6 +200,21 @@ class StartCredit:
     baseline_a: Mapping[PhaseName, float | None]
     others_a: Mapping[str, Mapping[PhaseName, float]]
     seq: int
+
+
+@dataclass(frozen=True, slots=True)
+class RaiseCredit:
+    """A raise the regulator wrote to a charger already drawing: when (epoch seconds, as `_written_at`), the current
+    written, the site's current and the charger's own reading per phase just before, and what every other charger
+    drew per phase then, so only what the site rose by since, and not on their account, may be the car's
+    (`_raise_credited_measurements`)."""
+
+    at: float
+    amps: float
+    baseline_a: Mapping[PhaseName, float | None]
+    delivered_a: Mapping[PhaseName, float]
+    others_a: Mapping[str, Mapping[PhaseName, float]]
+
 
 #: How many resumes of a charge balancing paused (`_async_maybe_resume_paused_charge`) may go out in any
 #: `RESUME_WINDOW_S`, and how long (seconds) no resume goes out once one more would be due within it. A load that
@@ -405,6 +420,11 @@ class SiteCapacityController:
         self._start_credits: dict[str, StartCredit] = {}
         self._credited_a: dict[str, dict[PhaseName, float]] = {}
         self._start_credit_seq = 0
+        # The regulator's last raise of a charger already drawing, credited the same way until the charger's own
+        # reading has had the time to show it (`_raise_credited_measurements`), and what it credited per phase on the
+        # last decision.
+        self._raise_credits: dict[str, RaiseCredit] = {}
+        self._raise_credited_a: dict[str, dict[PhaseName, float]] = {}
         self._seen_charging: dict[str, bool] = {}
         # A switch-only charger with no reading of its own (`_learn_switched_currents`): whether it was seen charging,
         # and the site's phase currents net of the other chargers' own readings on the last recompute.
@@ -978,6 +998,8 @@ class SiteCapacityController:
             ),
             # What a charger just started was credited with while its own reading lagged (`START_CREDIT_S`).
             "start_credit_a": dict(self._credited_a.get(charger_entry_id) or {}) or None,
+            # What a charger was credited with after a raise its own reading did not show yet.
+            "raise_credit_a": dict(self._raise_credited_a.get(charger_entry_id) or {}) or None,
         }
         self._decision_log.append(entry)
         # The charger's plug-in keeps it too, across restarts (`debug_day.ChargerDay`).
@@ -1064,15 +1086,23 @@ class SiteCapacityController:
     def _drawn_a(
         self, requests: list[ChargerRequest], *, credited: bool = True
     ) -> dict[str, dict[PhaseName, float]]:
-        """What each charger draws per phase: its own reading, or (with `credited`) what its start was credited
-        with on the last decision where that is more."""
+        """What each charger draws per phase: its own reading, or (with `credited`) what its start or its last raise
+        was credited with on the last decision where that is more."""
         drawn: dict[str, dict[PhaseName, float]] = {}
         for request in requests:
             measured = request.measured_current_a
-            credit = (self._credited_a.get(request.charger_entry_id) or {}) if credited else {}
-            drawn[request.charger_entry_id] = {
+            charger_entry_id = request.charger_entry_id
+            credits = (
+                [self._credited_a.get(charger_entry_id) or {}, self._raise_credited_a.get(charger_entry_id) or {}]
+                if credited
+                else []
+            )
+            drawn[charger_entry_id] = {
                 phase: max(
-                    0.0 if measured is None else (measured.get(phase).value or 0.0), credit.get(phase, 0.0)
+                    [
+                        0.0 if measured is None else (measured.get(phase).value or 0.0),
+                        *(credit.get(phase, 0.0) for credit in credits),
+                    ]
                 )
                 for phase in (request.phases_used() or ())
             }
@@ -1174,6 +1204,145 @@ class SiteCapacityController:
                     replaced[phase] = replace(value, value=amps)
                     drawn.setdefault(charger_entry_id, {})[phase] = amps
             self._credited_a[charger_entry_id] = credited
+            if replaced:
+                result[charger_entry_id] = DirectPhaseMeasurement(
+                    l1=replaced.get("L1", measured.l1),
+                    l2=replaced.get("L2", measured.l2),
+                    l3=replaced.get("L3", measured.l3),
+                )
+        return result
+
+    def _begin_raise_credit(self, charger_entry_id: str, at: float, amps: float) -> None:
+        """The regulator raised this charger to `amps` at `at` (epoch seconds): what the site rises by from the
+        readings just before may be the car's, until its own reading has had the time to show it
+        (`_raise_credited_measurements`). A raise on one still open is measured from the readings before that one;
+        a charger not drawing on every phase it uses is credited nothing (a start has its own credit)."""
+        earlier = self._raise_credits.get(charger_entry_id)
+        if earlier is not None:
+            self._raise_credits[charger_entry_id] = replace(earlier, amps=amps)
+            return
+        requests = self._build_requests(credit=False)
+        request = next((r for r in requests if r.charger_entry_id == charger_entry_id), None)
+        measured = None if request is None else request.measured_current_a
+        phases = None if request is None else request.phases_used()
+        if measured is None or not phases:
+            return
+        delivered: dict[PhaseName, float] = {}
+        for phase in phases:
+            value = measured.get(phase)
+            if value.value is None or value.problem is not None or value.value < PROBE_IDLE_BELOW_A:
+                return
+            delivered[phase] = value.value
+        self._raise_credits[charger_entry_id] = RaiseCredit(
+            at,
+            amps,
+            dict(self._calculate().measured_phase_current_a),
+            delivered,
+            {other: draw for other, draw in self._drawn_a(requests).items() if other != charger_entry_id},
+        )
+
+    def _end_raise_credit(self, charger_entry_id: str) -> None:
+        self._raise_credits.pop(charger_entry_id, None)
+        self._raise_credited_a.pop(charger_entry_id, None)
+
+    def _raise_credited_measurements(
+        self,
+        requests: list[ChargerRequest],
+        site_a: Mapping[PhaseName, float | None],
+        start_credited: Mapping[str, DirectPhaseMeasurement],
+    ) -> dict[str, DirectPhaseMeasurement]:
+        """Each charger the regulator raised while it drew, credited with the part of that raise the site shows it
+        took, until its own reading has had the time to show it; the chargers not credited are left out.
+        `start_credited` is what `_credited_measurements` credited the same decision with.
+
+        An OCPP charger's meter values come half a minute apart: right after a raise its reading still shows the
+        current before it, while the site meter already shows the car at the new one. Reckoned at its old reading,
+        the car's raise reads as house load, and a house load that comes on then pauses the car where lowering it
+        would do (the morning of 2026-11-01: 8 to 16 A, a washing machine's heater on L1 six seconds later, the car
+        paused for an overload a lowering to 12 A would have ended).
+
+        The step is measured from the readings before it was written, the site's and the charger's: on each phase the
+        charger's reading then, plus what the site rose by since on the phase that rose least of those the charger
+        uses, less what the other chargers began to draw since (a car's raise shows on every phase it draws on, a
+        house load on one phase). Never more than the current written, and never less than the charger's own reading
+        now, so a reading that already shows part of the step is not counted twice and a raise the car does not take
+        credits nothing (it is reckoned on its reading, as before). Only a raise is credited: a lowering keeps the
+        reading, the higher of the two. A lowering or a pause written after the raise leaves the credit to the site's
+        next readings: a car takes seconds to come down, and until the site shows it, the rise is still the car's;
+        once it does, the rise is gone and so is the credit.
+
+        The credit ends once the charger's own reading was taken `CATCH_UP_S` after the raise (it has had the time to
+        show it, `charger_above_written`), once that reading is missing, unusable or shows the car idle, after
+        `START_CREDIT_S`, or when a start of the charger is credited instead (`_credited_measurements`). The site's
+        current itself is never changed, only how much of it is the car's, and a decision on the credit never raises
+        the charger (`START_CREDIT_RAISE_TOLERANCE_A`)."""
+        if not self._raise_credits:
+            return {}
+        by_id = {request.charger_entry_id: request for request in requests}
+        drawn = self._drawn_a(
+            [
+                replace(request, measured_current_a=start_credited[request.charger_entry_id])
+                if request.charger_entry_id in start_credited
+                else request
+                for request in requests
+            ],
+            credited=False,
+        )
+        now = dt_util.utcnow().timestamp()
+        result: dict[str, DirectPhaseMeasurement] = {}
+        for charger_entry_id, credit in list(self._raise_credits.items()):
+            request = by_id.get(charger_entry_id)
+            measured = None if request is None else request.measured_current_a
+            phases = None if request is None else request.phases_used()
+            if (
+                measured is None
+                or not phases
+                or charger_entry_id in self._start_credits
+                or now - credit.at > START_CREDIT_S
+            ):
+                self._end_raise_credit(charger_entry_id)
+                continue
+            values = {phase: measured.get(phase) for phase in phases}
+            if any(
+                value.value is None
+                or value.problem is not None
+                or value.value < PROBE_IDLE_BELOW_A
+                or value.age_s is None
+                or credit.delivered_a.get(phase) is None
+                or now - min(value.age_s, value.age_s if value.report_age_s is None else value.report_age_s)
+                >= credit.at + CATCH_UP_S
+                for phase, value in values.items()
+            ):
+                # The charger's own reading has had the time to show the raise (or shows nothing to go by): it counts
+                # alone from now on.
+                self._end_raise_credit(charger_entry_id)
+                continue
+            rises: list[float] = []
+            for phase in phases:
+                now_a = site_a.get(phase)
+                before_a = credit.baseline_a.get(phase)
+                if now_a is None or before_a is None:
+                    # A site phase without a reading credits nothing.
+                    rises.append(0.0)
+                    continue
+                # What the other chargers began to draw since this raise is theirs, not this charger's.
+                theirs = sum(
+                    max(0.0, draw.get(phase, 0.0) - credit.others_a.get(other, {}).get(phase, 0.0))
+                    for other, draw in drawn.items()
+                    if other != charger_entry_id
+                )
+                rises.append(now_a - before_a - theirs)
+            rise = min(rises)
+            credited: dict[PhaseName, float] = {}
+            replaced: dict[PhaseName, PhaseValue] = {}
+            # A rise below what counts as drawing is the house's flicker, not a car.
+            if rise >= PROBE_IDLE_BELOW_A:
+                for phase, value in values.items():
+                    amps = min(credit.amps, credit.delivered_a[phase] + rise)
+                    if value.value is not None and amps > value.value:
+                        credited[phase] = round(amps, 2)
+                        replaced[phase] = replace(value, value=amps)
+            self._raise_credited_a[charger_entry_id] = credited
             if replaced:
                 result[charger_entry_id] = DirectPhaseMeasurement(
                     l1=replaced.get("L1", measured.l1),
@@ -2442,6 +2611,8 @@ class SiteCapacityController:
         written_at = dt_util.utcnow()
         self._written_at[charger_entry_id] = written_at.timestamp()
         writes.append((written_at, float(setpoint), previous_setpoint))
+        if previous_setpoint is not None and setpoint > previous_setpoint:
+            self._begin_raise_credit(charger_entry_id, written_at.timestamp(), float(setpoint))
         self._step_guard_for(charger_entry_id).note_write(
             now=written_at.timestamp(),
             previous_a=previous_setpoint,
@@ -3164,6 +3335,8 @@ class SiteCapacityController:
         self._resume_backoff_until.clear()
         self._start_credits.clear()
         self._credited_a.clear()
+        self._raise_credits.clear()
+        self._raise_credited_a.clear()
         self._cancel_probe_timer()
         self._yield_stepping_last.clear()
         self._logged_yield_stepping.clear()
@@ -3700,11 +3873,14 @@ class SiteCapacityController:
             requests = resolve_worst_case_phases(requests, latest.measured_margin_a)
         if not credit:
             return requests
-        return self._with_start_credit(requests)
+        return self._with_credits(requests)
 
-    def _with_start_credit(self, requests: list[ChargerRequest]) -> list[ChargerRequest]:
-        """`requests` (built without the credit) with a charger just started credited (`_build_requests`)."""
-        credited = self._credited_measurements(requests, self.result.measured_phase_current_a)
+    def _with_credits(self, requests: list[ChargerRequest]) -> list[ChargerRequest]:
+        """`requests` (built without the credit) with a charger just started, or just raised, credited
+        (`_build_requests`)."""
+        site_a = self.result.measured_phase_current_a
+        credited = self._credited_measurements(requests, site_a)
+        credited = {**credited, **self._raise_credited_measurements(requests, site_a, credited)}
         return [
             replace(request, measured_current_a=credited[request.charger_entry_id])
             if request.charger_entry_id in credited
@@ -3884,11 +4060,11 @@ class SiteCapacityController:
         }
         # Built once: the credited requests are the same requests with a start's credit applied.
         uncredited = self._build_requests(credit=False)
-        requests = [request for request in self._with_start_credit(uncredited) if request.charger_entry_id not in not_ours]
+        requests = [request for request in self._with_credits(uncredited) if request.charger_entry_id not in not_ours]
         decisions = allocate_regulator_decisions(
             site_result=self.result,
             requests=requests,
-            # A credited start is judged on its own reading too: the credit never stands for a raise.
+            # A credited start or raise is judged on its own reading too: the credit never stands for a raise.
             own_measured_current_a={request.charger_entry_id: request.measured_current_a for request in uncredited},
             credit_raise_tolerance_a=START_CREDIT_RAISE_TOLERANCE_A,
             voltage_by_phase=voltage_by_phase,
