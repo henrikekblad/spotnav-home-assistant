@@ -730,7 +730,7 @@ def _settings_version(msg: dict[str, Any]) -> int | None:
     return settings_version_of(msg.get("api_version"))
 
 
-def _refuse_amps_above_charger_range(hass: HomeAssistant, entry_id: str, decoded: AutoSettings) -> None:
+def refuse_amps_above_charger_range(hass: HomeAssistant, entry_id: str, decoded: AutoSettings) -> None:
     """Refuse `amps` above what this charger can be asked for, with the existing code.
 
     Enforced for every transport, not only the card's `current_range`; the contract's 80 A bound is
@@ -844,6 +844,41 @@ def plan_only_mutator(mutate: Callable[[AutoSettings], AutoSettings]) -> Callabl
     return guarded
 
 
+def body_mutator(
+    hass: HomeAssistant,
+    entry_id: str,
+    replacement: Any,
+    decoded: AutoSettings,
+    *,
+    from_app: bool = False,
+    reads_auto_periods: bool = True,
+) -> Callable[[AutoSettings], AutoSettings]:
+    """The store mutation one decoded replacement body asks for: what it leaves out kept, the camera choice judged
+    for the paired app, the target following the car. One definition for a write (`async_update_settings`) and a
+    plan preview (`api/plan_preview.py`), so the preview plans exactly what a Save would store."""
+    store = domain_data(hass).auto_store
+    if from_app and store is not None and isinstance(replacement, Mapping) and "identify_camera" in replacement:
+        _refuse_camera_choice(store.settings(entry_id).identify_camera, decoded.identify_camera)
+
+    def left_out(key: str) -> bool:
+        return isinstance(replacement, Mapping) and key not in replacement
+
+    return replacement_mutator(
+        decoded,
+        keep_departure_date=left_out("departure_date"),
+        keep_departure_weekdays=left_out("departure_weekdays"),
+        keep_notifications=left_out("notifications"),
+        keep_fill_to_limit=left_out("fill_to_limit"),
+        keep_vehicle_ids=left_out("vehicle_ids"),
+        keep_identify_mode=left_out("identify_mode"),
+        keep_identify_camera=left_out("identify_camera"),
+        keep_camera_choice=from_app,
+        keep_auto_periods=not reads_auto_periods,
+        keep_users_change_plan=left_out("users_change_plan"),
+        vehicle_target=lambda vehicle_id: vehicle_properties.stored_properties(hass, vehicle_id).target_percent,
+    )
+
+
 async def async_get_settings(hass: HomeAssistant, entry_id: Any) -> AutoSettings:
     """One charger's canonical settings, or a stable-code refusal.
 
@@ -906,21 +941,8 @@ async def async_update_settings(
     # The wire revision carries the entry's counter, and the offset kept since the source last moved, on top of the
     # charger's own.
     revision -= wire_offset(hass, entry_id, store.settings(entry_id).revision)
-    if from_app and isinstance(replacement, Mapping) and "identify_camera" in replacement:
-        _refuse_camera_choice(store.settings(entry_id).identify_camera, decoded.identify_camera)
-    mutate = replacement_mutator(
-        decoded,
-        keep_departure_date=isinstance(replacement, Mapping) and "departure_date" not in replacement,
-        keep_departure_weekdays=isinstance(replacement, Mapping) and "departure_weekdays" not in replacement,
-        keep_notifications=isinstance(replacement, Mapping) and "notifications" not in replacement,
-        keep_fill_to_limit=isinstance(replacement, Mapping) and "fill_to_limit" not in replacement,
-        keep_vehicle_ids=isinstance(replacement, Mapping) and "vehicle_ids" not in replacement,
-        keep_identify_mode=isinstance(replacement, Mapping) and "identify_mode" not in replacement,
-        keep_identify_camera=isinstance(replacement, Mapping) and "identify_camera" not in replacement,
-        keep_camera_choice=from_app,
-        keep_auto_periods=not reads_auto_periods,
-        keep_users_change_plan=isinstance(replacement, Mapping) and "users_change_plan" not in replacement,
-        vehicle_target=lambda vehicle_id: vehicle_properties.stored_properties(hass, vehicle_id).target_percent,
+    mutate = body_mutator(
+        hass, entry_id, replacement, decoded, from_app=from_app, reads_auto_periods=reads_auto_periods
     )
     if route is not None:
         mutate = route.mutator(hass, mutate)
@@ -928,7 +950,7 @@ async def async_update_settings(
         mutate = plan_only_mutator(mutate)
         # Judged once now, so a refused body touches nothing (not even the executor's attempt).
         mutate(store.settings(entry_id))
-    _refuse_amps_above_charger_range(hass, entry_id, decoded)
+    refuse_amps_above_charger_range(hass, entry_id, decoded)
     controller = preview_for(hass, entry_id)
     if controller is None:
         # Loaded but no Auto controller: readable, not writable.

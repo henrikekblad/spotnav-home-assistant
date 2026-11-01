@@ -1,0 +1,25 @@
+{
+  "api_version": 1,
+  "ok": true,
+  "error": null,
+  "preview": {
+    "state": "incomplete_settings",
+    "reason": "settings_missing",
+    "plan": null,
+    "status": {
+      "tone": "notice",
+      "lines": [
+        {
+          "code": "settings_incomplete",
+          "params": {
+            "reason": "settings_missing",
+            "missing": [
+              "area"
+            ]
+          }
+        }
+      ]
+    },
+    "strip": null
+  }
+}

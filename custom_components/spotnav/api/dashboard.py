@@ -2307,6 +2307,26 @@ def _measurement_facts(
     )
 
 
+def planning_facts(snapshot: AutoSnapshot) -> PlanningFacts:
+    """One Auto snapshot's planning, as the status composer reads it (the dashboard's and a plan preview's)."""
+    return PlanningFacts(
+        state=snapshot.state,
+        reason=snapshot.reason,
+        missing=tuple(snapshot.missing),
+        publication_at=_utc(snapshot.publication_at),
+        must_buy_now_kwh=finite_number(snapshot.must_buy_kwh),
+        history_weekday=None if snapshot.history is None else snapshot.history.weekday,
+        history_percent=None if snapshot.history is None else snapshot.history.percent,
+        history_weeks=None if snapshot.history is None else snapshot.history.weeks,
+        energy_basis=snapshot.energy_basis,
+        remaining_kwh=finite_number(snapshot.remaining_kwh),
+        room_kwh=finite_number(snapshot.room_kwh) if snapshot.room_limited else None,
+        fill=snapshot.fill,
+        departure_at=_utc(snapshot.departure_at),
+        expected_soc_percent=finite_number(snapshot.expected_soc_percent),
+    )
+
+
 def status_facts(capture: CapturedDashboard) -> StatusFacts:
     """The captured moment as the typed facts `status_compose.compose_status` reads; nothing live, and
     every decision is the composer's.
@@ -2314,24 +2334,7 @@ def status_facts(capture: CapturedDashboard) -> StatusFacts:
     settings = capture.settings
     snapshot = capture.snapshot
     names = dict(capture.entity_names)
-    planning = None
-    if snapshot is not None:
-        planning = PlanningFacts(
-            state=snapshot.state,
-            reason=snapshot.reason,
-            missing=tuple(snapshot.missing),
-            publication_at=_utc(snapshot.publication_at),
-            must_buy_now_kwh=finite_number(snapshot.must_buy_kwh),
-            history_weekday=None if snapshot.history is None else snapshot.history.weekday,
-            history_percent=None if snapshot.history is None else snapshot.history.percent,
-            history_weeks=None if snapshot.history is None else snapshot.history.weeks,
-            energy_basis=snapshot.energy_basis,
-            remaining_kwh=finite_number(snapshot.remaining_kwh),
-            room_kwh=finite_number(snapshot.room_kwh) if snapshot.room_limited else None,
-            fill=snapshot.fill,
-            departure_at=_utc(snapshot.departure_at),
-            expected_soc_percent=finite_number(snapshot.expected_soc_percent),
-        )
+    planning = None if snapshot is None else planning_facts(snapshot)
     proposal = None
     section = _proposal_section(capture)
     if section is not None and snapshot is not None:

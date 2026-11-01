@@ -126,6 +126,14 @@ export const VISUAL_CLASSES = {
   stripLabels: "spotnav-strip-labels",
   stripLabel: "spotnav-strip-label",
   stripDivider: "spotnav-strip-divider",
+  planPreview: "spotnav-plan-preview",
+  planPreviewLine: "spotnav-plan-preview-line",
+  planPreviewNote: "spotnav-plan-preview-note",
+  planPreviewStrip: "spotnav-plan-preview-strip",
+  planPreviewCell: "spotnav-plan-preview-cell",
+  planPreviewTick: "spotnav-plan-preview-tick",
+  planPreviewBand: "spotnav-plan-preview-band",
+  planPreviewRun: "spotnav-plan-preview-run",
   settingsIcon: "spotnav-settings-icon",
   settingsValue: "spotnav-settings-value",
   settingsValueLong: "spotnav-settings-value-long",
@@ -1624,6 +1632,89 @@ export const VISUAL_STYLES = `
     }
     .${VISUAL_CLASSES.stripBar}[data-tomorrow="true"][data-kind] {
       background: repeating-linear-gradient(${STRIP_HATCH_GRADIENT_ANGLE}deg, Highlight 0 2px, transparent 2px 5px);
+    }
+  }
+  /*
+   * The Plan dialog's preview: the plan a Save would make, a line and a strip of the hours to the departure under
+   * it. Each quarter is coloured by price as the chart colours it; the planned ones are solid, the rest faint.
+   * Dimmed while a newer draft's preview is awaited.
+   */
+  .${VISUAL_CLASSES.planPreview} {
+    margin: 12px 0 0;
+    transition: opacity 120ms ease-in-out;
+  }
+  .${VISUAL_CLASSES.planPreview}[hidden] {
+    display: none;
+  }
+  .${VISUAL_CLASSES.planPreview}[data-pending="true"] {
+    opacity: 0.5;
+  }
+  .${VISUAL_CLASSES.planPreviewLine} {
+    margin: 0;
+    font-variant-numeric: tabular-nums;
+  }
+  .${VISUAL_CLASSES.planPreviewNote} {
+    margin: 4px 0 0;
+  }
+  .${VISUAL_CLASSES.planPreviewNote}[data-tone="warning"] {
+    color: var(--warning-color, #b26a00);
+    font-weight: 500;
+  }
+  .${VISUAL_CLASSES.planPreviewStrip} {
+    margin-top: 6px;
+  }
+  .${VISUAL_CLASSES.planPreviewCell} {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    background: var(--secondary-text-color, #727272);
+    opacity: 0.22;
+  }
+  .${VISUAL_CLASSES.planPreviewCell}[data-price="cheap"] {
+    background: var(--spotnav-cheap, #2e7d32);
+  }
+  .${VISUAL_CLASSES.planPreviewCell}[data-price="dear"] {
+    background: var(--spotnav-expensive, #c62828);
+  }
+  .${VISUAL_CLASSES.planPreviewCell}[data-planned="true"] {
+    opacity: 1;
+  }
+  .${VISUAL_CLASSES.planPreviewTick} {
+    position: absolute;
+    top: 0;
+    transform: translateX(-50%);
+  }
+  .${VISUAL_CLASSES.planPreviewTick}[data-edge="start"] {
+    transform: none;
+  }
+  .${VISUAL_CLASSES.planPreviewTick}[data-edge="end"] {
+    transform: translateX(-100%);
+  }
+  /*
+   * The planned quarters as a band in the accent colour right under the price track: what is planned reads by
+   * place and colour alone, in either theme and without telling red from green.
+   */
+  .${VISUAL_CLASSES.planPreviewBand} {
+    position: relative;
+    height: 0.3rem;
+    margin-top: 3px;
+  }
+  .${VISUAL_CLASSES.planPreviewRun} {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    border-radius: 3px;
+    background: var(--primary-color, #03a9f4);
+  }
+  @media (forced-colors: active) {
+    .${VISUAL_CLASSES.planPreviewCell} {
+      background: GrayText;
+    }
+    .${VISUAL_CLASSES.planPreviewCell}[data-planned="true"] {
+      background: Highlight;
+    }
+    .${VISUAL_CLASSES.planPreviewRun} {
+      background: Highlight;
     }
   }
   /* The Settings popover's sections: one bordered block per topic. */

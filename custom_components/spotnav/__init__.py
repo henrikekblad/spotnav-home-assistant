@@ -30,6 +30,7 @@ from .api.charge_limit import async_setup_charge_limit_api
 from .api.identification import async_setup_identification_api
 from .api.manual_action import async_setup_manual_action_api
 from .api.own_mode import async_setup_own_mode_api
+from .api.plan_preview import async_setup_plan_preview_api
 from .api.market import async_setup_market_api
 from .api.region import async_setup_region_api
 from .api.setup import async_setup_setup_api
@@ -173,6 +174,7 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     async_setup_market_api(hass)
     async_setup_region_api(hass)
     async_setup_settings_api(hass)
+    async_setup_plan_preview_api(hass)
     async_setup_manual_action_api(hass)
     async_setup_site_settings_api(hass)
     async_setup_price_source_api(hass)

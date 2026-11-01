@@ -157,8 +157,8 @@ async def test_a_count_begun_without_a_reading_counts_from_now_without_the_notic
         resolved: list[Any] = []
         counted = car.preview._manual_kwh_remaining  # noqa: SLF001
 
-        async def spy(*args: Any) -> Any:
-            resolved.append(await counted(*args))
+        async def spy(*args: Any, **kwargs: Any) -> Any:
+            resolved.append(await counted(*args, **kwargs))
             return resolved[-1]
 
         car.preview._manual_kwh_remaining = spy  # noqa: SLF001

@@ -83,6 +83,7 @@ import {
   type MarketEditorForm,
 } from "./market-editor";
 import { settingsEditorBody, settingsTrigger, type SettingsEditorForm } from "./settings-editor";
+import { renderPlanPreview, type PreviewState } from "./plan-preview";
 import { type Fiscal, type ReferencePicture, type Vehicle } from "./validate";
 import { floorEditor, limitEditor, targetEditor } from "./percent-editors";
 import { defaultTargetPercent } from "./percent-slider";
@@ -206,6 +207,8 @@ export interface CardViewInput {
   onSaveSettings: (kind: SettingsEditorKind, values: SettingsFormValues) => void;
   onReloadSettings: (kind: SettingsEditorKind) => void;
   onReapplySettings: (kind: SettingsEditorKind, values: SettingsFormValues) => void;
+  /** The editable Plan dialog's draft whenever it may have changed: the card asks what a Save would plan. */
+  onPreviewSettings?: (kind: SettingsEditorKind, values: SettingsFormValues) => void;
   /**
    * The market editor trigger: the card reads the record and market context and answers with the
    * form.
@@ -343,6 +346,8 @@ export interface CardView {
   setSettingsEditorNotice(failure: FailureSentence | null): void;
   showSettingsEditorConflict(revision: number, phases: number | null): void;
   setSettingsEditorPending(pending: boolean): void;
+  /** Paint the Plan dialog's live preview (`plan-preview.ts`); nothing while no editable Plan dialog is shown. */
+  setSettingsPreview(state: PreviewState): void;
   settingsEditorOpen(): SettingsEditorKind | null;
   closeSettingsEditor(): void;
   openMarketEditor(): void;
@@ -4191,6 +4196,8 @@ export function createCardView(input: CardViewInput): CardView {
   let settingsReapplyButton: HTMLButtonElement | null = null;
   let settingsPending = false;
   let settingsBodyReader: (() => SettingsFormValues) | null = null;
+  /** Where the Plan dialog's live preview is painted, while an editable Plan dialog is shown. */
+  let settingsPreviewSlot: HTMLElement | null = null;
   /** The car the Plan popover is about, as its body last said ("Charging plan for EV6"); `null` for none. */
   let settingsVehicleName: string | null = null;
 
@@ -4258,6 +4265,9 @@ export function createCardView(input: CardViewInput): CardView {
         onCancel: () => closeSettingsEditor(),
         onReload: () => input.onReloadSettings(form.kind),
         onReapply: (values) => input.onReapplySettings(form.kind, values),
+        ...(input.onPreviewSettings === undefined
+          ? {}
+          : { onDraft: (values: SettingsFormValues) => input.onPreviewSettings?.(form.kind, values) }),
         // The title follows the Vehicle select and the mode at once, before anything is saved.
         onVehicleName: (name) => {
           settingsVehicleName = name;
@@ -4271,6 +4281,7 @@ export function createCardView(input: CardViewInput): CardView {
     building = false;
     settingsBody = built.body;
     settingsBodyReader = built.values;
+    settingsPreviewSlot = built.preview;
     settingsSaveButton = built.body.querySelector<HTMLButtonElement>(`.${C.settingsSave}`);
     settingsReapplyButton = built.body.querySelector<HTMLButtonElement>(`.${C.settingsReapply}`);
     settingsDialog.show({
@@ -4289,6 +4300,7 @@ export function createCardView(input: CardViewInput): CardView {
     settingsForm = null;
     settingsBody = null;
     settingsBodyReader = null;
+    settingsPreviewSlot = null;
     settingsNotice = null;
     settingsNoticeNode = null;
     settingsSaveButton = null;
@@ -4352,12 +4364,21 @@ export function createCardView(input: CardViewInput): CardView {
     applySettingsPending();
   }
 
+  function setSettingsPreview(state: PreviewState): void {
+    const slot = settingsPreviewSlot;
+    if (destroyed || slot === null || !slot.isConnected || settingsKind !== "plan") {
+      return;
+    }
+    renderPlanPreview(doc, slot, state, model.format, now());
+  }
+
   function closeSettingsEditor(): void {
     settingsDialog.hide();
     settingsKind = null;
     settingsForm = null;
     settingsBody = null;
     settingsBodyReader = null;
+    settingsPreviewSlot = null;
     settingsNotice = null;
     settingsNoticeNode = null;
     settingsSaveButton = null;
@@ -4703,6 +4724,7 @@ export function createCardView(input: CardViewInput): CardView {
     setSettingsEditorNotice,
     showSettingsEditorConflict,
     setSettingsEditorPending,
+    setSettingsPreview,
     settingsEditorOpen,
     closeSettingsEditor,
     setSettingsError,
