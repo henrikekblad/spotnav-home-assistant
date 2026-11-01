@@ -5,7 +5,12 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
+import pytest
+
 from custom_components.spotnav.planning.plan_watch import (
+    DECISION_NOT_CHARGING,
+    DECISION_STALE,
+    END_WAIT_S,
     BEHIND_KWH,
     DECISION_BEHIND,
     DECISION_CAR_ENDED,
@@ -143,14 +148,123 @@ def test_a_register_that_reports_every_five_minutes_is_not_a_car_behind() -> Non
         assert watch.check(now, _facts(reported, reported_at)) is None, minute
 
 
-def test_a_register_that_stopped_moving_is_judged_against_now() -> None:
+def _register_run(
+    watch: PlanWatch, *, kw: float, period_min: int, phase_min: int, window: tuple[datetime, datetime],
+    minutes: int, writes_same: bool = False,
+) -> list[str | None]:
+    """A car drawing `kw` inside `window` (nothing outside it), and a register posting every `period_min` minutes from
+    `phase_min`; checked once a minute (plus once two seconds after the window's end) for `minutes` minutes."""
+    start, end = window
+    results = []
+    posted_at, posted = start - timedelta(minutes=30), 100.0
+    instants = sorted({start + minute * MINUTE for minute in range(minutes)} | {end + timedelta(seconds=2)})
+    for now in instants:
+        if (now - start) // MINUTE % period_min == phase_min % period_min and now.second == 0:
+            charged = max(0.0, (min(now, end) - start).total_seconds() / 3600) * kw
+            if 100.0 + charged != posted or writes_same:
+                posted_at, posted = now, 100.0 + charged
+        results.append(watch.check(now, _facts(posted, posted_at, window=window if start <= now < end else None)))
+    return results
+
+
+@pytest.mark.parametrize("phase", range(5))
+def test_a_car_on_plan_with_a_five_minute_register_is_never_planned_again(phase: int) -> None:
+    """One-slot windows, a register that posts every five minutes, at each phase of its posts."""
+    watch = PlanWatch()
+    window = (START, START + timedelta(minutes=15))
+    results = _register_run(watch, kw=KW, period_min=5, phase_min=phase, window=window, minutes=40)
+    assert DECISION_END_REPLAN not in results and DECISION_REPLAN not in results
+    assert watch.last_check.decision == DECISION_END_OK
+
+
+@pytest.mark.parametrize("phase", range(5))
+def test_a_car_at_half_power_with_a_five_minute_register_is_planned_again_at_the_window_end(phase: int) -> None:
+    watch = PlanWatch()
+    window = (START, START + timedelta(minutes=15))
+    results = _register_run(watch, kw=KW / 2, period_min=5, phase_min=phase, window=window, minutes=40)
+    assert DECISION_END_REPLAN in results
+
+
+def test_a_fifteen_minute_register_at_full_power_is_never_planned_again() -> None:
+    watch = PlanWatch()
+    for phase in range(0, 15, 3):
+        results = _register_run(watch, kw=KW, period_min=15, phase_min=phase, window=WINDOW, minutes=150)
+        assert DECISION_REPLAN not in results and DECISION_END_REPLAN not in results, phase
+
+
+def test_a_fifteen_minute_register_still_finds_a_car_at_half_power() -> None:
+    watch = PlanWatch()
+    results = _register_run(watch, kw=KW / 2, period_min=15, phase_min=7, window=WINDOW, minutes=150)
+    assert DECISION_REPLAN in results
+
+
+def test_a_register_that_stopped_posting_says_nothing() -> None:
     watch = PlanWatch()
     stuck_at = START + 5 * MINUTE
     results = []
     for minute in range(0, 40):
         now = START + minute * MINUTE
         results.append(watch.check(now, _facts(100.0 + KW * min(minute, 5) / 60, min(now, stuck_at))))
+    assert DECISION_REPLAN not in results
+    assert watch.last_check.decision == DECISION_STALE
+
+
+def test_a_register_writing_the_same_value_finds_a_car_that_draws_nothing() -> None:
+    watch = PlanWatch()
+    results = _register_run(watch, kw=0.0, period_min=5, phase_min=0, window=WINDOW, minutes=30, writes_same=True)
     assert DECISION_REPLAN in results
+
+
+def test_the_window_end_waits_for_the_register_to_post() -> None:
+    watch = PlanWatch()
+    _run(watch, KW / 2, range(0, 120), held="balancing")
+    after = END + timedelta(seconds=2)
+    lagging = START + 118 * MINUTE
+    assert watch.check(after, _facts(100.0 + KW / 2 * 118 / 60, lagging, window=None)) is None
+    assert watch.watching, "judged once the register posts"
+    posted = END + 3 * MINUTE
+    assert watch.check(posted, _facts(100.0 + KW, posted, window=None)) == DECISION_END_REPLAN
+
+
+def test_the_window_end_is_judged_at_the_latest_after_the_wait() -> None:
+    watch = PlanWatch()
+    _run(watch, KW, range(0, 120))
+    last = START + 119 * MINUTE
+    for minute in range(0, 21):
+        now = END + timedelta(seconds=2) + minute * MINUTE
+        result = watch.check(now, _facts(100.0 + KW * 119 / 60, last, window=None))
+        if (now - END).total_seconds() < END_WAIT_S:
+            assert result is None and watch.watching
+    assert not watch.watching
+    assert watch.last_check.decision == DECISION_END_OK
+
+
+def test_a_charger_that_is_not_charging_is_not_judged() -> None:
+    watch = PlanWatch()
+    for minute in range(0, 60):
+        now = START + minute * MINUTE
+        assert watch.check(now, _facts(100.0, now, charging=False)) is None
+    assert watch.last_check.decision == DECISION_NOT_CHARGING
+
+
+def test_replans_that_change_nothing_back_off() -> None:
+    watch = PlanWatch()
+    replans = []
+    for minute in range(0, 120):
+        now = START + minute * MINUTE
+        if watch.check(now, _facts(100.0, now)) == DECISION_REPLAN:
+            replans.append(minute)
+            watch.note_replan_result(changed=False)
+    gaps = [later - earlier for earlier, later in zip(replans, replans[1:])]
+    assert gaps == sorted(gaps) and gaps[-1] >= 4 * gaps[0]
+    assert len(replans) <= 6
+
+
+def test_the_log_tells_once_per_window() -> None:
+    watch = PlanWatch()
+    assert watch.tell(WINDOW)
+    assert not watch.tell(WINDOW)
+    assert watch.tell((END, END + timedelta(hours=1)))
 
 
 def test_a_replan_judges_the_window_against_the_new_plan_from_then_on() -> None:
