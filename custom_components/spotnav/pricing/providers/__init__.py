@@ -88,8 +88,9 @@ FetchOutcome = Literal["fetched", "not_published", "failed"]
 #: * `octopus_unavailable`: no Agile meter's rates for the area, or they do not reach back to the day's start;
 #: * `zonneplan_unavailable`: no Zonneplan tariff sensor, no forecast on it yet, or a today it does not hold to the
 #:   day's end;
-#: * `zonneplan_partial_day`: today's forecast starts after midnight (at the current slot), so today is not a whole
-#:   day file and is not held; tomorrow is;
+#: * `zonneplan_partial_day`: carried by a `not_published` outcome, never recorded as a failure: today's forecast
+#:   starts after midnight (at the current slot), so there is no whole day file for today to hold. Like "not out
+#:   yet" it drives no backoff; today is simply asked again on the ordinary cadence;
 #: * `fx_missing`: no ECB rate to convert a day priced in another currency (Octopus, in GBP) to EUR;
 #: * `source_missing`: no way to ask this provider for the area (no key, no route);
 #: * `not_published`: carried by a `not_published` outcome, never recorded as a failure;
@@ -136,7 +137,6 @@ TRANSPORT_CODES: frozenset[str] = frozenset(
         "pvpc_unavailable",
         "octopus_unavailable",
         "zonneplan_unavailable",
-        "zonneplan_partial_day",
         "fx_missing",
         "source_missing",
     }

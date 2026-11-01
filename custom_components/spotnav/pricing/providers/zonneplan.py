@@ -26,9 +26,12 @@ A day is the Amsterdam calendar day, in the forecast's step (15 minutes, or 60 f
 afternoon, and a forecast may start at today's midnight or at the current slot. A today that starts at a slot
 already past (the first fetch after Zonneplan was added, if the forecast starts at "now") is not a day file: a
 file is positional from midnight and holds a number for every slot (`relay_contract.parse_day`, which the store
-and the app read too), and SpotNav never invents a price. So that today is not held (`zonneplan_partial_day`), and
-the area plans from tomorrow on, which the afternoon's forecast holds whole. The integration keeps no past day
-([HISTORY_REACH]).
+and the app read too), and SpotNav never invents a price. So that today is not held: the answer is `not_published`
+with the code `zonneplan_partial_day`, which, like a day not out yet, is no failure and drives no backoff (the
+installation-wide poll and the other areas keep their cadence). Tomorrow is held once the afternoon's forecast
+holds it whole, but a charger on the area has no plan until the Amsterdam day turns and that file becomes today's:
+the planner needs today's prices before it plans at all (`auto_controller._price_data_gate`), and says it waits for
+prices meanwhile. The integration keeps no past day ([HISTORY_REACH]).
 
 The answer becomes the relay's `"v": 1` day document (`pricing/day_document.py`), in EUR (no rate), `src`
 `zonneplan.nl`. Nothing about the prices or the connection is logged.
@@ -188,8 +191,9 @@ class ZonneplanProvider:
             prices = _cut(pool, step, start, end, now=now, today=market_day == today, future=market_day > today)
         except _Refusal as err:
             _LOGGER.debug("Zonneplan %s %s: %s", area_id, market_day, err.code)
-            if err.code == "not_published":
-                return DayFetch("not_published", code="not_published")
+            if err.code in ("not_published", "zonneplan_partial_day"):
+                # Not a failure: nothing to hold yet, asked again on the ordinary cadence.
+                return DayFetch("not_published", code=err.code)
             return DayFetch("failed", code=err.code)
         document = build_day_document(
             area_id=area_id,

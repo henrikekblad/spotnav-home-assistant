@@ -22,7 +22,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.spotnav import time_zones
 from custom_components.spotnav.pricing.area_catalogue import async_load_bundled
-from custom_components.spotnav.pricing.price_refresh import PriceRefreshManager
+from custom_components.spotnav.pricing.price_refresh import PriceRefreshManager, PUBLICATION_POLL_SECONDS
 from custom_components.spotnav.pricing.price_repository import PriceRepository
 from custom_components.spotnav.pricing.providers import choose_provider, DayFetch, ProviderRouter
 from custom_components.spotnav.pricing.providers.nordpool import NordPoolProvider
@@ -228,16 +228,44 @@ async def test_a_forecast_starting_now_holds_no_today_and_invents_no_price(world
     known = [slot for slot in instants(TODAY) if slot >= datetime(2026, 10, 4, 12, 30, tzinfo=UTC)]
     await world.publish(known + instants(TOMORROW))
 
-    assert await world.fetch(TODAY) == DayFetch("failed", code="zonneplan_partial_day")
+    # Not a failure: like a day not out yet.
+    assert await world.fetch(TODAY) == DayFetch("not_published", code="zonneplan_partial_day")
     assert (await world.fetch(TOMORROW)).document["prices"] == expected(instants(TOMORROW))
 
     await world.manager.async_subscribe(owner_id="charger", area_id=AREA)
     await world.hass.async_block_till_done()
     snapshot = world.manager.area_snapshot(AREA)
-    # Today reads as not there (a source that is there but cannot give the day), never as invalid.
+    # Today reads as not there, never as invalid, and with no failure recorded.
     assert snapshot.today_state == "unavailable" and snapshot.tomorrow_state == "ready"
+    assert snapshot.today_snapshot.attempt_error is None
     assert not world.repository.holds_file(AREA, TODAY) and world.repository.holds_file(AREA, TOMORROW)
     assert all(key.split("|")[2] != TODAY.isoformat() for key in world.repository._payload()["days"])
+
+
+async def test_a_partial_today_drives_no_backoff(world: World) -> None:
+    """The installation-wide poll keeps its cadence: a partial today is asked again like a day not out yet, so it
+    neither delays tomorrow's fetch nor any other area's."""
+    await world.start()
+    world.clock.now = datetime(2026, 10, 4, 12, 37, tzinfo=UTC)
+    known = [slot for slot in instants(TODAY) if slot >= datetime(2026, 10, 4, 12, 30, tzinfo=UTC)]
+    await world.publish(known)
+
+    await world.manager.async_subscribe(owner_id="charger", area_id=AREA)
+    await world.hass.async_block_till_done()
+    for _ in range(3):
+        world.scheduler.fire_all()
+        await world.hass.async_block_till_done()
+        assert world.manager._backoff_step == 0
+    snapshot = world.manager.area_snapshot(AREA)
+    assert snapshot.today_snapshot.attempt_error is None and snapshot.next_attempt is not None
+    # The publication window's quick poll, not a backoff step.
+    assert snapshot.next_attempt - world.clock.now <= timedelta(seconds=PUBLICATION_POLL_SECONDS * 1.5)
+
+    # Tomorrow arrives and is fetched on that cadence.
+    await world.publish(known + instants(TOMORROW))
+    world.scheduler.fire_all()
+    await world.hass.async_block_till_done()
+    assert world.manager.area_snapshot(AREA).tomorrow_state == "ready"
 
 
 async def test_a_forecast_starting_later_than_now_is_not_today(world: World) -> None:
