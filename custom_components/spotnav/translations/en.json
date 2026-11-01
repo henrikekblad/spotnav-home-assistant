@@ -769,6 +769,20 @@
           "7": "7 periods",
           "8": "8 periods"
         }
+      },
+      "grid_fee_percent_policy": {
+        "name": "Grid fee % of spot policy",
+        "state": {
+          "off": "Off",
+          "manual": "Use a manual value"
+        }
+      },
+      "grid_fee_high_policy": {
+        "name": "Grid fee in high-load hours policy",
+        "state": {
+          "off": "Off",
+          "manual": "Use a manual value"
+        }
       }
     },
     "number": {
@@ -792,6 +806,18 @@
       },
       "expensive_hours": {
         "name": "Expensive hours per day"
+      },
+      "grid_fee_percent": {
+        "name": "Grid fee, % of spot"
+      },
+      "grid_fee_high": {
+        "name": "Grid fee in high-load hours"
+      },
+      "high_load_from_hour": {
+        "name": "High-load hours start"
+      },
+      "high_load_to_hour": {
+        "name": "High-load hours end"
       }
     },
     "date": {
@@ -802,6 +828,12 @@
     "switch": {
       "departure_enabled": {
         "name": "Departure deadline"
+      },
+      "high_load_weekdays_only": {
+        "name": "High-load hours on weekdays only"
+      },
+      "high_load_winter_only": {
+        "name": "High-load hours November to March only"
       }
     },
     "time": {

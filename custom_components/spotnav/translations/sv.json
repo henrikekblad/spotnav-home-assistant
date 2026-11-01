@@ -769,6 +769,20 @@
           "7": "7 perioder",
           "8": "8 perioder"
         }
+      },
+      "grid_fee_percent_policy": {
+        "name": "Regel för nätavgift i % av spotpriset",
+        "state": {
+          "off": "Av",
+          "manual": "Använd ett eget värde"
+        }
+      },
+      "grid_fee_high_policy": {
+        "name": "Regel för nätavgift under höglasttid",
+        "state": {
+          "off": "Av",
+          "manual": "Använd ett eget värde"
+        }
       }
     },
     "number": {
@@ -792,6 +806,18 @@
       },
       "expensive_hours": {
         "name": "Dyra timmar per dygn"
+      },
+      "grid_fee_percent": {
+        "name": "Nätavgift, % av spotpriset"
+      },
+      "grid_fee_high": {
+        "name": "Nätavgift under höglasttid"
+      },
+      "high_load_from_hour": {
+        "name": "Höglasttid börjar"
+      },
+      "high_load_to_hour": {
+        "name": "Höglasttid slutar"
       }
     },
     "date": {
@@ -802,6 +828,12 @@
     "switch": {
       "departure_enabled": {
         "name": "Avresetid gäller"
+      },
+      "high_load_weekdays_only": {
+        "name": "Höglasttid bara vardagar"
+      },
+      "high_load_winter_only": {
+        "name": "Höglasttid bara november–mars"
       }
     },
     "time": {

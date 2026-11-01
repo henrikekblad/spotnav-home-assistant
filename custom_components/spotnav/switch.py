@@ -1,4 +1,5 @@
-"""Switches for the Auto price path: the departure deadline."""
+"""Switches for the Auto price path: the departure deadline; and an electricity price device's high-load window
+(`price_entities.py`)."""
 
 from __future__ import annotations
 
@@ -15,12 +16,17 @@ from .const import CONF_ENTRY_TYPE, ENTRY_TYPE_SITE
 from .entity import AutoSurface, SpotNavAutoEntity
 from .execution.controller import ChargingController
 from .planning.auto_settings import AutoSettings
-from .runtime import ChargerConfigEntry
+from .price_entities import price_switches
+from .runtime import ChargerConfigEntry, price_data
 
 
 async def async_setup_entry(
     hass: HomeAssistant, entry: ChargerConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
+    if (price := price_data(hass, entry.entry_id)) is not None:
+        # An electricity price entry's device: its high-load window's two switches (`price_entities.py`).
+        async_add_entities(price_switches(entry, price.device))
+        return
     if entry.data.get(CONF_ENTRY_TYPE) == ENTRY_TYPE_SITE:
         return
     controller = entry.runtime_data.controller

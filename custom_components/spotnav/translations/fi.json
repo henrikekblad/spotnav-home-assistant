@@ -769,6 +769,20 @@
           "7": "7 jaksoa",
           "8": "8 jaksoa"
         }
+      },
+      "grid_fee_percent_policy": {
+        "name": "Siirtomaksun %-osuuden käytäntö",
+        "state": {
+          "off": "Pois",
+          "manual": "Käytä omaa arvoa"
+        }
+      },
+      "grid_fee_high_policy": {
+        "name": "Huippukuormitustuntien siirtomaksun käytäntö",
+        "state": {
+          "off": "Pois",
+          "manual": "Käytä omaa arvoa"
+        }
       }
     },
     "number": {
@@ -792,6 +806,18 @@
       },
       "expensive_hours": {
         "name": "Kalliita tunteja vuorokaudessa"
+      },
+      "grid_fee_percent": {
+        "name": "Siirtomaksu, % spot-hinnasta"
+      },
+      "grid_fee_high": {
+        "name": "Siirtomaksu huippukuormitustunteina"
+      },
+      "high_load_from_hour": {
+        "name": "Huippukuormitustunnit alkavat"
+      },
+      "high_load_to_hour": {
+        "name": "Huippukuormitustunnit päättyvät"
       }
     },
     "date": {
@@ -802,6 +828,12 @@
     "switch": {
       "departure_enabled": {
         "name": "Lähdön määräaika"
+      },
+      "high_load_weekdays_only": {
+        "name": "Huippukuormitustunnit vain arkisin"
+      },
+      "high_load_winter_only": {
+        "name": "Huippukuormitustunnit vain marras–maaliskuussa"
       }
     },
     "time": {

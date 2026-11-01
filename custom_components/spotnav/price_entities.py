@@ -9,6 +9,12 @@ The area select, the three fee policy selects and the three fee numbers write th
 (`pricing/price_source.py:async_write_price_entry`): every charger that prices with the entry follows. They were a
 charger's own until the price device took the area and fees over; a charger's set is removed from the entity
 registry at its setup (`remove_charger_price_entities`).
+
+The grid tariff (`planning/auto_settings.py:GridTariff`) is written the same way: two numbers, "Grid fee, % of
+spot" and "Grid fee in high-load hours" (setting one switches that fee on with the figure), and, hidden by default
+(the card and the app are where it is set), a policy select per fee (off or manual) and the high-load window as two
+numbers and two switches. A part of the window set while none is stored starts from the usual window (weekdays
+07-19, November to March), as does the high-load fee switched on while no window is stored.
 """
 
 from __future__ import annotations
@@ -21,6 +27,7 @@ from homeassistant.components.binary_sensor import BinarySensorEntity
 from homeassistant.components.number import NumberEntity, NumberMode, RestoreNumber
 from homeassistant.components.select import SelectEntity
 from homeassistant.components.sensor import SensorEntity, SensorStateClass
+from homeassistant.components.switch import SwitchEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EntityCategory, PERCENTAGE, UnitOfTime
 from homeassistant.core import HomeAssistant
@@ -33,13 +40,15 @@ from .const import DOMAIN
 from .entity import (
     FISCAL_COMPONENTS,
     FISCAL_MANUAL,
+    FISCAL_OFF,
     FISCAL_OPTIONS,
     fiscal_policy,
     FISCAL_SUGGESTED,
     fiscal_view,
     with_fiscal_policy,
 )
-from .planning.auto_settings import AreaAutoSettings, AutoSettingsError
+from .planning.auto_settings import AreaAutoSettings, AutoSettingsError, FiscalOverride, GridTariff
+from .planning.planner import HighLoadWindow
 from .price_device import PriceDevice
 from .pricing.price_points import (
     CHEAP,
@@ -380,6 +389,156 @@ class PriceFeeValueNumber(SpotNavPriceSetting, NumberEntity):
         self.write(replace(overrides, **{self._component: updated}))
 
 
+#: The grid tariff's fee numbers' and policy selects' keys, per fee.
+GRID_FEE_NUMBER_KEYS = {"transfer_percent": "grid_fee_percent", "transfer_high": "grid_fee_high"}
+GRID_FEE_POLICY_KEYS = {"transfer_percent": "grid_fee_percent_policy", "transfer_high": "grid_fee_high_policy"}
+#: A grid tariff fee is off or the person's own figure: no area suggests one.
+GRID_FEE_OPTIONS = [FISCAL_OFF, FISCAL_MANUAL]
+#: The window a part set while none is stored starts from: weekdays 07-19, November to March.
+DEFAULT_WINDOW = HighLoadWindow()
+
+
+class SpotNavGridTariffSetting(SpotNavPriceSetting):
+    """An entity that writes one part of the entry's grid tariff, the rest as stored."""
+
+    @property
+    def tariff(self) -> GridTariff:
+        return self.device.overrides.grid_tariff or GridTariff()
+
+    @property
+    def available(self) -> bool:
+        """Unavailable without an area, and while the area's published price already includes the grid fee."""
+        return bool(self.device.area_id) and not included(self.device.area, "transfer")
+
+    def write_tariff(self, tariff: GridTariff) -> None:
+        try:
+            tariff = tariff.validated()
+        except AutoSettingsError as err:
+            raise ServiceValidationError(str(err), translation_domain=DOMAIN, translation_key=err.code) from err
+        self.write(replace(self.device.overrides, grid_tariff=tariff))
+
+
+def _with_fee(tariff: GridTariff, fee: str, value: FiscalOverride) -> GridTariff:
+    """`tariff` with one fee replaced; the high-load fee switched on without a window gets the usual one."""
+    updated = replace(tariff, **{fee: value})
+    if fee == "transfer_high" and value.enabled and updated.high_load_window is None:
+        updated = replace(updated, high_load_window=DEFAULT_WINDOW)
+    return updated
+
+
+class GridFeeNumber(SpotNavGridTariffSetting, NumberEntity):
+    """One grid tariff fee's figure: `%` of the spot price, or the area's minor unit per kWh in high-load hours.
+
+    Setting it switches the fee on with that figure. Shown by default: these two are what a tariff names.
+    """
+
+    _attr_mode = NumberMode.BOX
+    _attr_native_min_value = 0
+    _attr_native_step = 0.1
+
+    def __init__(self, entry: ConfigEntry, device: PriceDevice, fee: str) -> None:
+        super().__init__(entry, device, GRID_FEE_NUMBER_KEYS[fee])
+        self._fee = fee
+
+    @property
+    def native_unit_of_measurement(self) -> str | None:
+        if self._fee == "transfer_percent":
+            return PERCENTAGE
+        area = self.device.area
+        return None if area is None or not area.minor_unit else f"{area.minor_unit}/kWh"
+
+    @property
+    def native_max_value(self) -> float:
+        return 100.0 if self._fee == "transfer_percent" else MAX_FEE_MINOR_UNITS
+
+    @property
+    def native_value(self) -> float | None:
+        """The stored figure; an off fee still shows a kept one (its `policy` says it is off)."""
+        return getattr(self.tariff, self._fee).value
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        fee = getattr(self.tariff, self._fee)
+        return {"policy": FISCAL_MANUAL if fee.enabled else FISCAL_OFF, "effective": fee.enabled and fee.value is not None}
+
+    async def async_set_native_value(self, value: float) -> None:
+        self.write_tariff(_with_fee(self.tariff, self._fee, FiscalOverride(enabled=True, value=float(value))))
+
+
+class GridFeePolicySelect(SpotNavGridTariffSetting, SelectEntity):
+    """One grid tariff fee: off, or the person's own figure. Hidden by default."""
+
+    _attr_options = GRID_FEE_OPTIONS
+    _attr_entity_registry_enabled_default = False
+
+    def __init__(self, entry: ConfigEntry, device: PriceDevice, fee: str) -> None:
+        super().__init__(entry, device, GRID_FEE_POLICY_KEYS[fee])
+        self._fee = fee
+
+    @property
+    def current_option(self) -> str | None:
+        return FISCAL_MANUAL if getattr(self.tariff, self._fee).enabled else FISCAL_OFF
+
+    async def async_select_option(self, option: str) -> None:
+        stored = getattr(self.tariff, self._fee)
+        # "manual" needs a figure: one kept from before, or the fee's number sets one (which also switches it on).
+        self.write_tariff(_with_fee(self.tariff, self._fee, replace(stored, enabled=option == FISCAL_MANUAL)))
+
+
+class HighLoadHourNumber(SpotNavGridTariffSetting, NumberEntity):
+    """The high-load window's first hour (0-23) or the hour it ends at (1-24), on the area's clock. Hidden by
+    default."""
+
+    _attr_mode = NumberMode.BOX
+    _attr_native_step = 1
+    _attr_native_unit_of_measurement = UnitOfTime.HOURS
+    _attr_entity_registry_enabled_default = False
+
+    def __init__(self, entry: ConfigEntry, device: PriceDevice, field: str) -> None:
+        super().__init__(entry, device, f"high_load_{field}")
+        self._field = field
+        self._attr_native_min_value = 0 if field == "from_hour" else 1
+        self._attr_native_max_value = 23 if field == "from_hour" else 24
+
+    @property
+    def native_value(self) -> int | None:
+        window = self.tariff.high_load_window
+        return None if window is None else getattr(window, self._field)
+
+    async def async_set_native_value(self, value: float) -> None:
+        if not float(value).is_integer():
+            raise ServiceValidationError(
+                "the window's hours are whole hours", translation_domain=DOMAIN, translation_key="invalid_fiscal"
+            )
+        window = replace(self.tariff.high_load_window or DEFAULT_WINDOW, **{self._field: int(value)})
+        self.write_tariff(replace(self.tariff, high_load_window=window))
+
+
+class HighLoadSwitch(SpotNavGridTariffSetting, SwitchEntity):
+    """Whether the high-load window is on weekdays only, or November to March only. Hidden by default."""
+
+    _attr_entity_registry_enabled_default = False
+
+    def __init__(self, entry: ConfigEntry, device: PriceDevice, field: str) -> None:
+        super().__init__(entry, device, f"high_load_{field}")
+        self._field = field
+
+    @property
+    def is_on(self) -> bool | None:
+        window = self.tariff.high_load_window
+        return None if window is None else getattr(window, self._field)
+
+    async def _set(self, value: bool) -> None:
+        window = replace(self.tariff.high_load_window or DEFAULT_WINDOW, **{self._field: value})
+        self.write_tariff(replace(self.tariff, high_load_window=window))
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        await self._set(True)
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        await self._set(False)
+
+
 def price_sensors(entry: ConfigEntry, device: PriceDevice) -> list[Any]:
     return [PriceNowSensor(entry, device)]
 
@@ -393,6 +552,8 @@ def price_numbers(entry: ConfigEntry, device: PriceDevice) -> list[Any]:
         PriceHoursNumber(entry, device, CHEAP),
         PriceHoursNumber(entry, device, EXPENSIVE),
         *(PriceFeeValueNumber(entry, device, component) for component in FISCAL_COMPONENTS),
+        *(GridFeeNumber(entry, device, fee) for fee in GRID_FEE_NUMBER_KEYS),
+        *(HighLoadHourNumber(entry, device, field) for field in ("from_hour", "to_hour")),
     ]
 
 
@@ -400,4 +561,9 @@ def price_selects(entry: ConfigEntry, device: PriceDevice) -> list[Any]:
     return [
         PriceAreaSelect(entry, device),
         *(PriceFeePolicySelect(entry, device, component) for component in FISCAL_COMPONENTS),
+        *(GridFeePolicySelect(entry, device, fee) for fee in GRID_FEE_POLICY_KEYS),
     ]
+
+
+def price_switches(entry: ConfigEntry, device: PriceDevice) -> list[Any]:
+    return [HighLoadSwitch(entry, device, field) for field in ("weekdays_only", "winter_only")]

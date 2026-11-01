@@ -769,6 +769,20 @@
           "7": "7 périodes",
           "8": "8 périodes"
         }
+      },
+      "grid_fee_percent_policy": {
+        "name": "Règle des frais de réseau en % du prix spot",
+        "state": {
+          "off": "Désactivé",
+          "manual": "Utiliser une valeur manuelle"
+        }
+      },
+      "grid_fee_high_policy": {
+        "name": "Règle des frais de réseau en heures de forte charge",
+        "state": {
+          "off": "Désactivé",
+          "manual": "Utiliser une valeur manuelle"
+        }
       }
     },
     "number": {
@@ -792,6 +806,18 @@
       },
       "expensive_hours": {
         "name": "Heures chères par jour"
+      },
+      "grid_fee_percent": {
+        "name": "Frais de réseau, % du prix spot"
+      },
+      "grid_fee_high": {
+        "name": "Frais de réseau en heures de forte charge"
+      },
+      "high_load_from_hour": {
+        "name": "Début des heures de forte charge"
+      },
+      "high_load_to_hour": {
+        "name": "Fin des heures de forte charge"
       }
     },
     "date": {
@@ -802,6 +828,12 @@
     "switch": {
       "departure_enabled": {
         "name": "Échéance de départ"
+      },
+      "high_load_weekdays_only": {
+        "name": "Heures de forte charge en semaine seulement"
+      },
+      "high_load_winter_only": {
+        "name": "Heures de forte charge de novembre à mars seulement"
       }
     },
     "time": {

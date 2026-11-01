@@ -769,6 +769,20 @@
           "7": "7 perioden",
           "8": "8 perioden"
         }
+      },
+      "grid_fee_percent_policy": {
+        "name": "Beleid nettarief in % van de spotprijs",
+        "state": {
+          "off": "Uit",
+          "manual": "Een handmatige waarde gebruiken"
+        }
+      },
+      "grid_fee_high_policy": {
+        "name": "Beleid nettarief in piekuren",
+        "state": {
+          "off": "Uit",
+          "manual": "Een handmatige waarde gebruiken"
+        }
       }
     },
     "number": {
@@ -792,6 +806,18 @@
       },
       "expensive_hours": {
         "name": "Dure uren per dag"
+      },
+      "grid_fee_percent": {
+        "name": "Nettarief, % van de spotprijs"
+      },
+      "grid_fee_high": {
+        "name": "Nettarief in piekuren"
+      },
+      "high_load_from_hour": {
+        "name": "Piekuren beginnen"
+      },
+      "high_load_to_hour": {
+        "name": "Piekuren eindigen"
       }
     },
     "date": {
@@ -802,6 +828,12 @@
     "switch": {
       "departure_enabled": {
         "name": "Vertrekdeadline"
+      },
+      "high_load_weekdays_only": {
+        "name": "Piekuren alleen op werkdagen"
+      },
+      "high_load_winter_only": {
+        "name": "Piekuren alleen november tot maart"
       }
     },
     "time": {

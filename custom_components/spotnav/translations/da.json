@@ -769,6 +769,20 @@
           "7": "7 perioder",
           "8": "8 perioder"
         }
+      },
+      "grid_fee_percent_policy": {
+        "name": "Nettarifvalg for % af spotpris",
+        "state": {
+          "off": "Fra",
+          "manual": "Brug en manuel værdi"
+        }
+      },
+      "grid_fee_high_policy": {
+        "name": "Nettarifvalg for spidslasttimer",
+        "state": {
+          "off": "Fra",
+          "manual": "Brug en manuel værdi"
+        }
       }
     },
     "number": {
@@ -792,6 +806,18 @@
       },
       "expensive_hours": {
         "name": "Dyre timer pr. døgn"
+      },
+      "grid_fee_percent": {
+        "name": "Nettarif, % af spotpris"
+      },
+      "grid_fee_high": {
+        "name": "Nettarif i spidslasttimer"
+      },
+      "high_load_from_hour": {
+        "name": "Spidslasttimer starter"
+      },
+      "high_load_to_hour": {
+        "name": "Spidslasttimer slutter"
       }
     },
     "date": {
@@ -802,6 +828,12 @@
     "switch": {
       "departure_enabled": {
         "name": "Frist for afgang"
+      },
+      "high_load_weekdays_only": {
+        "name": "Spidslasttimer kun på hverdage"
+      },
+      "high_load_winter_only": {
+        "name": "Spidslasttimer kun november–marts"
       }
     },
     "time": {

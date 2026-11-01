@@ -107,6 +107,12 @@
       },
       "charge_periods": {
         "default": "mdi:counter"
+      },
+      "grid_fee_percent_policy": {
+        "default": "mdi:percent-outline"
+      },
+      "grid_fee_high_policy": {
+        "default": "mdi:transmission-tower"
       }
     },
     "number": {
@@ -130,11 +136,29 @@
       },
       "expensive_hours": {
         "default": "mdi:timer-sand"
+      },
+      "grid_fee_percent": {
+        "default": "mdi:percent-outline"
+      },
+      "grid_fee_high": {
+        "default": "mdi:transmission-tower"
+      },
+      "high_load_from_hour": {
+        "default": "mdi:clock-start"
+      },
+      "high_load_to_hour": {
+        "default": "mdi:clock-end"
       }
     },
     "switch": {
       "departure_enabled": {
         "default": "mdi:clock-alert-outline"
+      },
+      "high_load_weekdays_only": {
+        "default": "mdi:calendar-week"
+      },
+      "high_load_winter_only": {
+        "default": "mdi:snowflake"
       }
     },
     "time": {

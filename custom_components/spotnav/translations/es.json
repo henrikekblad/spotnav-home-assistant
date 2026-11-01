@@ -769,6 +769,20 @@
           "7": "7 periodos",
           "8": "8 periodos"
         }
+      },
+      "grid_fee_percent_policy": {
+        "name": "Política del peaje de acceso en % del precio spot",
+        "state": {
+          "off": "Desactivado",
+          "manual": "Usar un valor manual"
+        }
+      },
+      "grid_fee_high_policy": {
+        "name": "Política del peaje de acceso en horas de alta carga",
+        "state": {
+          "off": "Desactivado",
+          "manual": "Usar un valor manual"
+        }
       }
     },
     "number": {
@@ -792,6 +806,18 @@
       },
       "expensive_hours": {
         "name": "Horas caras al día"
+      },
+      "grid_fee_percent": {
+        "name": "Peaje de acceso, % del precio spot"
+      },
+      "grid_fee_high": {
+        "name": "Peaje de acceso en horas de alta carga"
+      },
+      "high_load_from_hour": {
+        "name": "Inicio de las horas de alta carga"
+      },
+      "high_load_to_hour": {
+        "name": "Fin de las horas de alta carga"
       }
     },
     "date": {
@@ -802,6 +828,12 @@
     "switch": {
       "departure_enabled": {
         "name": "Hora límite de salida"
+      },
+      "high_load_weekdays_only": {
+        "name": "Horas de alta carga solo entre semana"
+      },
+      "high_load_winter_only": {
+        "name": "Horas de alta carga solo de noviembre a marzo"
       }
     },
     "time": {

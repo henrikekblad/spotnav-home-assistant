@@ -769,6 +769,20 @@
           "7": "7 perioder",
           "8": "8 perioder"
         }
+      },
+      "grid_fee_percent_policy": {
+        "name": "Nettleieregel for % av spotpris",
+        "state": {
+          "off": "Av",
+          "manual": "Bruk en manuell verdi"
+        }
+      },
+      "grid_fee_high_policy": {
+        "name": "Nettleieregel for høylasttimer",
+        "state": {
+          "off": "Av",
+          "manual": "Bruk en manuell verdi"
+        }
       }
     },
     "number": {
@@ -792,6 +806,18 @@
       },
       "expensive_hours": {
         "name": "Dyre timer per døgn"
+      },
+      "grid_fee_percent": {
+        "name": "Nettleie, % av spotpris"
+      },
+      "grid_fee_high": {
+        "name": "Nettleie i høylasttimer"
+      },
+      "high_load_from_hour": {
+        "name": "Høylasttimer starter"
+      },
+      "high_load_to_hour": {
+        "name": "Høylasttimer slutter"
       }
     },
     "date": {
@@ -802,6 +828,12 @@
     "switch": {
       "departure_enabled": {
         "name": "Avreisefrist"
+      },
+      "high_load_weekdays_only": {
+        "name": "Høylasttimer bare på hverdager"
+      },
+      "high_load_winter_only": {
+        "name": "Høylasttimer bare november–mars"
       }
     },
     "time": {
