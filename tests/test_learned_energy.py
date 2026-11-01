@@ -441,3 +441,42 @@ async def test_a_plan_charge_is_learned_from_at_the_plan_watch(hass: HomeAssista
     assert seen >= 60, "the plan charged"
     assert len(learned.samples) == 1 and learned.samples[0].delta_percent >= MIN_DELTA_PERCENT
     assert learned.kwh_per_percent == pytest.approx(RATIO, rel=0.12)
+
+
+# ------------------------------------------------------------------ the dashboard
+
+
+@pytest.mark.usefixtures("offline_relay")
+@pytest.mark.parametrize("samples", [0, 2, 3])
+async def test_the_dashboards_need_is_the_planners(hass: HomeAssistant, transport: Any, samples: int) -> None:
+    """The `soc` block's `need_kwh`, and the card's own `(target - value) x capacity / efficiency` from the same
+    block, equal the planner's need, with a trusted learned figure and without one."""
+    from custom_components.spotnav.api import dashboard as dashboard_api  # noqa: PLC0415
+
+    serve(transport, rising=True)
+    with freeze_time(NOW):
+        charger, device_id, _ = await charger_and_car(hass, soc_percent="20", amps=16, phases=3)
+        preview = preview_for(hass, charger.entry_id)
+        _trusted(preview._learned_energy, device_id, samples)  # noqa: SLF001
+        await preview.async_recalculate()
+        planned = preview.snapshot().proposal.requested_kwh
+        payload = dashboard_api.serialize_dashboard(dashboard_api.capture_dashboard(hass, charger), can_act=True)
+    soc = payload["soc"]
+    expected = 60.0 * RATIO if samples >= 3 else 60.0 * CAPACITY / 100.0 / CHARGE_EFFICIENCY
+    assert planned == pytest.approx(expected)
+    assert soc["need_kwh"] == pytest.approx(planned, abs=0.005)
+    card = (soc["target_percent"] - soc["value"]) / 100.0 * soc["capacity_kwh"] / soc["efficiency"]
+    assert card == pytest.approx(planned)
+    assert 0 < soc["efficiency"] <= 1
+    assert soc["efficiency"] == pytest.approx(REAL_EFFICIENCY if samples >= 3 else CHARGE_EFFICIENCY)
+
+
+def test_the_efficiency_the_card_is_given() -> None:
+    from custom_components.spotnav.planning.learned_energy import efficiency_for, target_need  # noqa: PLC0415
+
+    trusted = learned_from(CAR, [EnergySample(f"s{i}", RATIO * 50.0, 50.0, START) for i in range(3)])
+    assert efficiency_for(trusted, CAPACITY) == pytest.approx(REAL_EFFICIENCY)
+    assert efficiency_for(trusted, None) == CHARGE_EFFICIENCY, "without a battery size the card cannot use it"
+    assert target_need(trusted, soc_percent=20.0, capacity_kwh=None, target_percent=80)[1] == pytest.approx(60 * RATIO)
+    untrusted = learned_from(CAR, [])
+    assert efficiency_for(untrusted, CAPACITY) == CHARGE_EFFICIENCY
