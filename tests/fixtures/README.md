@@ -8,3 +8,8 @@ webhook answers the same documents without the fields in `APP_UNREAD_SETTINGS`
 `ecb/*` are the ECB's euro reference-rate files as published: `ecb_daily.xml` is the relay's capture of the daily
 file (`spotnav-relay/testdata/upstream/ecb_daily.xml`, table of 2026-09-18) and `ecb_hist_90d_2026-10-30.xml` the
 90-day history as served on 2026-10-30 (65 tables, 2026-08-03 to 2026-10-30). Both are keyless public files.
+
+`zonneplan/forecast_2026-11-01.json` is the `forecast` attribute of the Zonneplan integration's tariff sensor
+(`current_quarter_hourly_electricity_tariff`) as one installation showed it on 2026-11-01: 232 quarter-hours from
+2026-10-31 14:00 to 2026-11-03 00:00 Amsterdam time, turned from the developer tools' YAML into JSON. It holds
+Zonneplan's public tariff only, nothing about the connection.
