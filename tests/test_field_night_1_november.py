@@ -376,6 +376,61 @@ async def test_0515_a_charge_paused_as_the_battery_stops_is_resumed(
     )
 
 
+async def test_0515_a_start_the_battery_makes_room_for_as_it_stops_is_not_paused(
+    hass: HomeAssistant, monkeypatch
+) -> None:
+    """05:15: the next window's start went out with the battery charging at 8 kW. It stopped as the car came on, so
+    the site rose by the car's 14.6 A less the battery's 11.5 A: 2.9 A. The start's credit took that rise for all the
+    car drew, reckoned the rest (16.45 A on L3) as house load and paused the car five seconds after its start, for an
+    overload that was not there (L3 at 19.28 A, the house 4.8 A of it). What the battery stopped drawing since the
+    start is the car's too: no pause."""
+    entry_id = "nov1start"
+    battery_a = 7955.0 / (3 * _V)
+    hass.states.async_set(_battery_entity(entry_id), "7955", {"unit_of_measurement": "W"})
+    house = _HOUSE_0515
+    halo = await _halo(
+        hass,
+        monkeypatch,
+        entry_id,
+        l1=house[0] + battery_a,
+        l2=house[1] + battery_a,
+        l3=house[2] + battery_a,
+        battery_entity=_battery_entity(entry_id),
+    )
+    # The HALO's current reads the last value of the charge before, unreported; the start goes out on it.
+    halo.reads(6.0)
+    now = dt_util.utcnow()
+    window = {"start": (now - timedelta(minutes=1)).isoformat(), "end": (now + timedelta(hours=2)).isoformat()}
+    await install_schedule(halo.cc, {"periods": [window], "amps": 16})
+    await hass.async_block_till_done()
+    if not halo.turn_on:
+        await halo.start()
+    assert halo.turn_on and not halo.turn_off
+    halo.reads(0.0)
+    await hass.async_block_till_done()
+    # 05:15:05 the battery still at 8 kW, the car not on the site yet.
+    await halo.tick()
+    halo.advance(3.0)
+    # 05:15:08 the charger has answered the start, the battery has stopped, the car is not on the site yet.
+    halo.switch("on")
+    _battery_w(halo, 19.0)
+    _site_a(hass, halo.site, 2.26, 0.67, 4.89)
+    await halo.tick()
+    halo.advance(5.0)
+    # 05:15:13 the car on the site at 14.6 A, the battery at 3 W, the HALO's own current still 0.
+    since = len(halo.log())
+    _battery_w(halo, 3.0)
+    _site_a(hass, halo.site, 16.42, 15.48, 19.28)
+    await halo.tick()
+    halo.advance(5.0)
+    await halo.tick()
+    assert halo.turn_off == [], "\n".join(str(entry) for entry in halo.log())
+    assert "paused_safe_current_below_charger_minimum" not in [entry["reason"] for entry in halo.log()[since:]]
+    assert halo.controller.start_credit_snapshot()[halo.charger.entry_id]["credited_a"]["L3"] > 14.0, (
+        "the car credited with what it draws: the site's rise and the battery's fall"
+    )
+
+
 # -- the core's claim
 
 

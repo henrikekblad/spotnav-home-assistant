@@ -193,13 +193,16 @@ class StartCredit:
     """A charger just started: the amps it was given, when (`_yield_now` seconds), the site's current per phase
     just before, so only what the site rose by since is credited, and what every other charger drew per phase
     then (its own reading or its credit), so a rise that is theirs is not credited to this one too. `seq` orders
-    starts of the same moment."""
+    starts of the same moment. `battery_w` is the home battery's power (W, positive while it charges) with that
+    baseline, on a fresh reading, else `None`: what the battery stopped drawing since hides as much of the car's
+    draw from the site's rise."""
 
     amps: float
     since: float
     baseline_a: Mapping[PhaseName, float | None]
     others_a: Mapping[str, Mapping[PhaseName, float]]
     seq: int
+    battery_w: float | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -434,6 +437,8 @@ class SiteCapacityController:
         self._start_credits: dict[str, StartCredit] = {}
         self._credited_a: dict[str, dict[PhaseName, float]] = {}
         self._start_credit_seq = 0
+        # The home battery's power (W) on a fresh reading at the last recompute, the baseline of a start seen then.
+        self._recompute_battery_w: float | None = None
         # The regulator's last raise of a charger already drawing, credited the same way until the charger's own
         # reading has had the time to show it (`_raise_credited_measurements`), and what it credited per phase on the
         # last decision.
@@ -851,7 +856,9 @@ class SiteCapacityController:
         self._observe_reports()
         self.result = self._calculate()
         self._sample_battery()
-        self._observe_charger_starts(previous)
+        previous_battery_w = self._recompute_battery_w
+        self._recompute_battery_w = self._fresh_battery_w()
+        self._observe_charger_starts(previous, previous_battery_w)
         try:
             self._learn_switched_currents()
         except Exception:  # noqa: BLE001 - learning is optional: it never holds back a decision or a lowering
@@ -1080,7 +1087,11 @@ class SiteCapacityController:
         }
 
     def _begin_start_credit(
-        self, charger_entry_id: str, amps: float, baseline: Mapping[PhaseName, float | None]
+        self,
+        charger_entry_id: str,
+        amps: float,
+        baseline: Mapping[PhaseName, float | None],
+        battery_w: float | None,
     ) -> None:
         self._start_credits.pop(charger_entry_id, None)
         self._credited_a.pop(charger_entry_id, None)
@@ -1095,6 +1106,7 @@ class SiteCapacityController:
                 if other != charger_entry_id
             },
             self._start_credit_seq,
+            battery_w,
         )
 
     def _drawn_a(
@@ -1126,9 +1138,10 @@ class SiteCapacityController:
         self._start_credits.pop(charger_entry_id, None)
         self._credited_a.pop(charger_entry_id, None)
 
-    def _observe_charger_starts(self, previous: SiteCapacityResult) -> None:
+    def _observe_charger_starts(self, previous: SiteCapacityResult, previous_battery_w: float | None) -> None:
         """A charger seen charging that was not (it began by itself, or a start of ours without a reservation):
-        its start is credited as one of ours is, against the site's current before this recompute."""
+        its start is credited as one of ours is, against the site's current and the battery's power before this
+        recompute."""
         for charger_entry_id in list(self.config.get(CONF_CHARGER_ENTRY_IDS) or []):
             charger_controller = controller_for(self.hass, charger_entry_id)
             charging = charger_controller is not None and bool(charger_controller.charging)
@@ -1141,7 +1154,9 @@ class SiteCapacityController:
             if was is False and charger_entry_id not in self._start_credits:
                 amps = charger_controller.resolve_current().amps
                 if amps is not None and amps > 0:
-                    self._begin_start_credit(charger_entry_id, amps, previous.measured_phase_current_a)
+                    self._begin_start_credit(
+                        charger_entry_id, amps, previous.measured_phase_current_a, previous_battery_w
+                    )
 
     def _credited_measurements(
         self, requests: list[ChargerRequest], site_a: Mapping[PhaseName, float | None]
@@ -1154,7 +1169,10 @@ class SiteCapacityController:
         never more than the charger was given: the amps of the start, the current on record, and what the
         regulator last wrote, whichever is least. Exactly as a measured draw would be. One rise is credited once:
         the credits are taken in the order the starts went out, and each gets only what the site rose by that the
-        other chargers' draws (their readings, or the credits before it) do not already account for. A reading
+        other chargers' draws (their readings, or the credits before it) do not already account for, plus what the
+        home battery stopped drawing since (less what it began to draw), split equally over the phases, on fresh
+        readings of it then and now: a battery that stops charging as the car starts (05:15 on 2026-11-01, 8 kW off
+        as the car's 14.6 A came on) leaves a rise far smaller than the car's draw. A reading
         that is missing, unusable or stale credits nothing (it stays what it is). Once the charger's own reading
         shows it drawing, the measurement counts and the credit ends. The credit never hides an overload: the
         site's current itself is never changed, only how much of it is the car's, so a phase over the fuse with
@@ -1167,6 +1185,7 @@ class SiteCapacityController:
         # Every charger by its own reading; a credit taken below then counts for the credits after it.
         drawn = self._drawn_a(requests, credited=False)
         now = self._yield_now()
+        battery_now_w = self._fresh_battery_w()
         result: dict[str, DirectPhaseMeasurement] = {}
         for charger_entry_id, credit in sorted(
             self._start_credits.items(), key=lambda item: (item[1].since, item[1].seq)
@@ -1194,6 +1213,12 @@ class SiteCapacityController:
             written = None if damper is None else damper.last_written_a
             credited: dict[PhaseName, float] = {}
             replaced: dict[PhaseName, PhaseValue] = {}
+            # What the battery stopped drawing since the start, per phase (negative where it began to draw more).
+            battery_fall_a = (
+                0.0
+                if credit.battery_w is None or battery_now_w is None
+                else (credit.battery_w - battery_now_w) / (len(PHASES) * DIRECTION_NOMINAL_PHASE_VOLTAGE_V)
+            )
             for phase, value in values.items():
                 if value.value is None or value.problem is not None:
                     continue
@@ -1211,7 +1236,7 @@ class SiteCapacityController:
                     for other, draw in drawn.items()
                     if other != charger_entry_id
                 )
-                amps = min(cap, max(0.0, now_a - before_a - theirs))
+                amps = min(cap, max(0.0, now_a - before_a - theirs + battery_fall_a))
                 # A rise below what counts as drawing is the house's flicker, not a car.
                 if amps >= PROBE_IDLE_BELOW_A and amps > value.value:
                     credited[phase] = round(amps, 2)
@@ -1515,7 +1540,9 @@ class SiteCapacityController:
         if not phases:
             return
         # The site's current just before the start goes out: what it rises by from here may be the car's.
-        self._begin_start_credit(charger_entry_id, amps, self._calculate().measured_phase_current_a)
+        self._begin_start_credit(
+            charger_entry_id, amps, self._calculate().measured_phase_current_a, self._fresh_battery_w()
+        )
         self._start_reservations[charger_entry_id] = (
             float(amps),
             tuple(phases),
