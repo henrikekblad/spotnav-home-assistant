@@ -295,7 +295,7 @@ class SessionRunner:
         token.resulted = True
         token.result_order = self._tick()
 
-        def feed(self, event: Event, *, outcome: CommandOutcome | None = None) -> None:
+    def feed(self, event: Event, *, outcome: CommandOutcome | None = None) -> None:
         """`begin` and `end` at once."""
         self.end(self.begin(), event, outcome=outcome)
 
