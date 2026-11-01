@@ -40,6 +40,7 @@ import {
   identifyVehicle,
   listChargers,
   performAction,
+  previewPlan,
   setVehicleSoc,
   updateEntityConfig,
   updateSettings,
@@ -149,9 +150,11 @@ import {
   SETTINGS_REVISION_CONFLICT,
   type HomeAssistantLike,
   type MarketOptionsV1,
+  type SettingsBody,
   type SettingsRecord,
 } from "./types";
-import { decodeDashboard, referencePictures, type Dashboard, type Soc, type Vehicle } from "./validate";
+import { decodeDashboard, decodePlanPreview, referencePictures, type Dashboard, type Soc, type Vehicle } from "./validate";
+import { PreviewScheduler } from "./plan-preview";
 import { OUTCOME_POLL_MS, outcomeSettled, outcomeWatchFor, type OutcomeWatch } from "./charge-bar";
 import { parseCardConfig, type CardConfig } from "./view";
 import {
@@ -275,6 +278,16 @@ const STATE_KEYS = {
   failed: "state.requestFailed",
 } as const;
 
+/** The open settings editor: the accepted record it was built from, a conflict's newer one, and its operation. */
+interface SettingsEditorState {
+  kind: SettingsEditorKind;
+  record: SettingsRecord;
+  conflict: SettingsRecord | null;
+  generation: number;
+  operation: number;
+  saving: boolean;
+}
+
 export class SpotnavCard extends HTMLElement {
   private root: ShadowRoot;
   private hassObject: HomeAssistantLike | null = null;
@@ -301,14 +314,9 @@ export class SpotnavCard extends HTMLElement {
   private wantedLanguage: Language | null = null;
   private view: CardView | null = null;
   private actionInFlight: { generation: number; attempt: number; action: ActionId } | null = null;
-  private editor: {
-    kind: SettingsEditorKind;
-    record: SettingsRecord;
-    conflict: SettingsRecord | null;
-    generation: number;
-    operation: number;
-    saving: boolean;
-  } | null = null;
+  private editor: SettingsEditorState | null = null;
+  /** The Plan dialog's live preview, bound to the editor it was asked for (`plan-preview.ts`). */
+  private planPreview: { editor: SettingsEditorState; scheduler: PreviewScheduler<SettingsBody> } | null = null;
   /**
    * The open area/fiscal editor: the accepted record and catalogue context (always adopted together, as
    * they arrive in one operation), the per-area drafts, and its own operation. `values` is the draft for
@@ -477,6 +485,8 @@ export class SpotnavCard extends HTMLElement {
     this.shownAutomatic = null;
     this.deferredRefresh = false;
     this.editor = null;
+    this.planPreview?.scheduler.dispose();
+    this.planPreview = null;
     this.marketEditor = null;
     this.entityOperation += 1;
     this.historyOperation += 1;
@@ -1167,6 +1177,40 @@ export class SpotnavCard extends HTMLElement {
 
   private vehicleFacts(): readonly Vehicle[] {
     return this.cardState.kind === "ready" ? vehiclesFor(this.cardState.dashboard) : [];
+  }
+
+  /**
+   * The Plan dialog's draft changed: ask what a Save of it would plan (`spotnav/plan_preview`, nothing saved),
+   * debounced, and only the latest draft's answer is painted. Built exactly as Save builds its body; a draft the
+   * card's own checks refuse asks nothing. Only for whoever may plan, since only they have Save.
+   */
+  private previewSettings(kind: SettingsEditorKind, values: SettingsFormValues): void {
+    const hass = this.hassObject;
+    const config = this.config;
+    const editor = this.editor;
+    if (!this.connected || hass === null || config === null || config.charger === "" || !this.mayPlan) {
+      return;
+    }
+    if (kind !== "plan" || editor === null || editor.kind !== kind) {
+      return;
+    }
+    if (this.planPreview?.editor !== editor) {
+      this.planPreview?.scheduler.dispose();
+      const charger = config.charger;
+      const scheduler = new PreviewScheduler<SettingsBody>({
+        ask: (body) => previewPlan(hass, charger, body),
+        decode: decodePlanPreview,
+        paint: (state) => {
+          if (this.editor === editor && this.view?.settingsEditorOpen() === "plan") {
+            this.view.setSettingsPreview(state);
+          }
+        },
+        log: (message) => console.debug(`SpotNav: ${message}`),
+      });
+      this.planPreview = { editor, scheduler };
+    }
+    const check = replacementFor(kind, editor.record, values, this.currentRange(), null, this.departureDays());
+    this.planPreview.scheduler.request(check.ok ? check.body : null);
   }
 
   private async saveSettings(
@@ -2327,6 +2371,8 @@ export class SpotnavCard extends HTMLElement {
   private closeEditor(): void {
     this.editorOperation += 1;
     this.editor = null;
+    this.planPreview?.scheduler.dispose();
+    this.planPreview = null;
     this.marketEditor = null;
     this.view?.closeSettingsEditor();
     this.view?.closeMarketEditor();
@@ -2507,6 +2553,9 @@ export class SpotnavCard extends HTMLElement {
         },
         onReapplySettings: (kind, values) => {
           void this.saveSettings(kind, values, true);
+        },
+        onPreviewSettings: (kind, values) => {
+          this.previewSettings(kind, values);
         },
         onOpenMarket: () => {
           void this.openMarket();
