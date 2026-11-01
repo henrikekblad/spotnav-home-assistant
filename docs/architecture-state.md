@@ -140,9 +140,11 @@ sends a start or stop because of it, the same happening is fed to the core:
    back, today's owner and intent are read again, and they and the commands are compared. A difference is a
    **disagreement**: logged at debug level and kept with the 20 events before it.
 
-A feed that ends while another is open (inside it, or in another asyncio task: a report callback, a task Home
-Assistant started eagerly) is queued and decided after it; the outermost feed compares the state after all of
-them. A plug-in or an unplug ends a manual pause in the core at once, while today's boundary writes that a moment
+A feed that ends while another is open (inside it, or in another asyncio task that began first: a report callback, a
+task Home Assistant started eagerly) is queued and decided after it; the outermost feed compares the state after all
+of them. Feeds of different tasks are decided in the order they began: one that ends while only feeds that began
+inside it are open (a person's Start waiting for the lock a balancing pause's stop holds) is decided at once, before
+them, with nothing compared. A plug-in or an unplug ends a manual pause in the core at once, while today's boundary writes that a moment
 later: the core's intent is kept until the boundary's own `check`. The shadow never raises into the real path:
 every failure is caught and counted.
 
@@ -184,7 +186,10 @@ and drives after the update. Off, today's code decides exactly as before and the
   are derived from it, both ways.
 * An event whose facts are all known up front (a plug-in or an unplug, a person's Start or Stop) is decided when it
   begins, and a verdict a decision point asks for is that feed's decision at once: what happens inside it (a task
-  Home Assistant starts eagerly) is decided after it.
+  Home Assistant starts eagerly) is decided after it. A person's Start's result is decided as soon as its command
+  returns (`OwnershipShadow.result`), before the boundary stores their pause, so a balancing pause landing meanwhile
+  holds the person's charge back. A balancing pause's stop whose result comes back while a start asked for after it
+  awaits its own holds nothing back: that start ends it, as today's start does.
 
 The shadow still compares, and counts each decision where today's rule on the same state would have chosen otherwise
 (`verdict_differs`). `written_back` (today's owner fields cleared one-way, before step 7) stays zero.
