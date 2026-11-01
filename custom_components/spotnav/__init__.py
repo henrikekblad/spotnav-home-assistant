@@ -74,6 +74,7 @@ from .planning.auto_controller import (
 )
 from .planning.auto_settings import async_setup_auto_settings, DRIVER_TARGET_SOC
 from .planning.first_run import async_seed_first_run
+from .planning.learned_energy import LearnedEnergyStore
 from .planning.learned_power import LearnedPowerStore
 from .planning.phases import async_migrate_settings_phases
 from .pricing.market_observation import MarketObservation
@@ -303,6 +304,12 @@ async def _async_setup_charger_entry(hass: HomeAssistant, entry: ChargerConfigEn
     async_store_detected_register(hass, entry)
     # With no register at all, a detected charger whose integration has none counts the energy from its own power.
     charger_power = charger_power_counted(hass, dict(entry.data))
+    def _learned_kwh_per_percent(vehicle_id: str | None, capacity: float | None) -> float | None:
+        # The planner's learned figure for the car it plans for, once trusted (`planning/learned_energy.py`); the
+        # preview is made after the reader, so nothing is learned before it exists.
+        preview = data.preview
+        return None if preview is None else preview.learned_energy(vehicle_id, capacity).use_kwh_per_percent
+
     # The one state-of-charge source both the planner and the stop decision read.
     soc_reader = SocReader(
         hass,
@@ -312,6 +319,7 @@ async def _async_setup_charger_entry(hass: HomeAssistant, entry: ChargerConfigEn
         charge_control=lambda: controller.charge_control,
         remembered_capacity=lambda vehicle_id: stored_capacity_kwh(hass, vehicle_id),
         plugged_in_since=lambda: controller.plugged_in_since,
+        learned_kwh_per_percent=lambda vehicle_id, capacity: _learned_kwh_per_percent(vehicle_id, capacity),
     )
     await soc_reader.async_load()
     entry.async_on_unload(soc_reader.async_shutdown)
@@ -612,6 +620,9 @@ async def _async_setup_auto_preview(
     # The power the car really draws, learned from the plan's own charges (`planning/learned_power.py`).
     learned = LearnedPowerStore(hass, entry_id)
     await learned.async_load()
+    # The wall energy one percent of the car's battery takes, learned the same way (`planning/learned_energy.py`).
+    learned_energy = LearnedEnergyStore(hass, entry_id)
+    await learned_energy.async_load()
     preview = data.preview = AutoPlannerController(
         hass,
         entry_id,
@@ -623,6 +634,7 @@ async def _async_setup_auto_preview(
         observation=observation,
         vehicle_update=_vehicle_update,
         learned=learned,
+        learned_energy=learned_energy,
     )
     entry.async_on_unload(preview.async_shutdown)
     await preview.async_start()
@@ -836,6 +848,7 @@ async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
     await OwnershipCoverage.async_remove_stored(hass, entry.entry_id)
     await ChargerDay.async_remove_stored(hass, entry.entry_id)
     await LearnedPowerStore.async_remove_stored(hass, entry.entry_id)
+    await LearnedEnergyStore.async_remove_stored(hass, entry.entry_id)
     session_store = domain_data(hass).session_store
     if session_store is not None:
         await session_store.async_remove_charger(entry.entry_id)

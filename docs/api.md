@@ -480,7 +480,7 @@ the charger's state again: Stop is offered again while it still charges; an unan
 reported as `action_failed`. A Stop that failed is never pending (`pause_stop_failed`, Stop again).
 
 **Battery room.** The `soc` block's additive `room_kwh` is the wall energy the battery still has room for,
-to the car's own charge limit (else 100 %): `capacity_kwh x (ceiling - value) / 100 / efficiency`, `null`
+to the car's own charge limit (else 100 %): `capacity_kwh x (ceiling - value) / 100 / 0.9`, `null`
 without a level or a battery size. A manual amount is planned at most that much; when it is capped the
 status carries `need_limited_by_room` (`kwh`), and while a Start is in effect for a plan the car ends
 itself (a capped amount, or a target at or above the car's own limit) it carries
@@ -490,6 +490,15 @@ slider up to `room_kwh` when it is present; an older backend has neither field n
 `need_limited_by_room`, and, while no room is known, the notice `fill_room_unknown` (`kwh`, the stored amount
 planned instead). The card's slider goes past the room to `min(capacity to the car's limit, max(30 kWh,
 2 x room))`, rounded up to its half-kWh step, with a "full" mark at the room; its last step is "Fill".
+
+**A target's need.** The `soc` block's `need_kwh` is the wall energy the target needs, the same figure the plan
+buys: `(min(target, floor(vehicle_max_percent)) - value) x capacity_kwh / 100 / efficiency`. `efficiency` is 0.9
+until the car's wall energy per percent is learned and trusted (see [strategies](strategies.md)); from then it is
+the efficiency that gives the learned figure with `capacity_kwh` (between 0.70 and 1.0), so a client that works
+the need out itself for a moved target slider gets the plan's figure. With a learned figure but no battery size,
+`need_kwh` is given and `efficiency` stays 0.9; a client then has no formula for another target. The card's kWh
+slider top, which divides by `efficiency`, follows the learned efficiency too; `room_kwh` keeps 0.9, as the
+planner's cap on a manual amount does, so the two stay equal.
 
 **Waiting for the car's new level.** With a target, the planning state `nothing_to_charge` has the reason
 `waiting_for_vehicle_update` when the charge that just ended delivered, by measurement, at least what the

@@ -59,7 +59,13 @@ downloaded in the evening still shows the afternoon. Nothing is read from the re
   `window_end_ok` or `window_end_replan`), and
   `learned_power`, the power the car is learned to draw (`kw`), what it is for (`subject`: a car or the
   charger), the minutes and plug-ins it rests on, whether it is trusted and whether the plan counts on it
-  (`planned_with`).
+  (`planned_with`), and
+  `learned_energy`, the wall energy one percent of the planned car's battery is learned to take
+  (`kwh_per_percent`, the median of the samples that agree), whether it is for an identified car (`for_car`),
+  the samples of ended plug-ins it rests on (`kwh`, `delta_percent` and when, oldest first), the open plug-in's
+  own sample that waits for its end (`pending_sample`), whether it is trusted, whether a target's need uses it
+  (`used`), how many samples were discarded as unbelievable (`discarded`), and the start of the stretch
+  being measured (`stretch_start`: level, when and the count then).
 - `yield_stepping`, `solar_surplus` and `hybrid` in the site's diagnostics, per charger (version 7):
   the last yield-stepping verdict, the solar surplus state and the hybrid state, which the *Capacity
   state* sensor carried as attributes up to 1.14.3.
