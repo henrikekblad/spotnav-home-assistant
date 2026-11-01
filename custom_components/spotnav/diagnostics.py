@@ -501,6 +501,9 @@ def _auto_price_section(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, An
             proposal=_proposal_summary(
                 snapshot.proposal, historical=False, applied=snapshot.applied
             ),
+            # The last look at an open window (expected and delivered kWh, and what was decided) and the power
+            # the car is learned to draw (`planning/plan_watch.py`, `planning/learned_power.py`).
+            plan_watch=controller.plan_watch_facts(),
         )
     if store is not None:
         stored = store.proposal(entry.entry_id)
