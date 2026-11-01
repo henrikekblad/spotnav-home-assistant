@@ -70,6 +70,7 @@ from .auto_settings import (
     AutoSettingsStore,
     DEFAULT_CONSUMPTION_KWH_PER_10KM,
     DRIVER_TARGET_SOC,
+    GridTariff,
     EnergyBaseline,
     PAUSE_UNTIL_RESUMED,
     PauseChoice,
@@ -2056,6 +2057,9 @@ class AutoPlannerController:
         transfer = resolve(overrides.transfer, entry.suggested_grid_fee, locked["transfer"])
         if sentinel in (vat, tax, transfer):
             return None
+        grid = AutoPlannerController._grid_tariff_for(overrides.grid_tariff, entry, locked["transfer"])
+        if grid is None:
+            return None
         return FiscalChoice(
             tax_enabled=overrides.tax.enabled and not locked["tax"],
             tax_minor_per_kwh=tax,
@@ -2063,7 +2067,35 @@ class AutoPlannerController:
             transfer_minor_per_kwh=transfer,
             vat_enabled=overrides.vat.enabled and not locked["vat"],
             vat_percent=vat,
+            **grid,
         ).validated()
+
+    @staticmethod
+    def _grid_tariff_for(tariff: GridTariff | None, entry: AreaEntry, included: bool) -> dict[str, Any] | None:
+        """The price entry's grid tariff as `FiscalChoice` fields, or `None` when it cannot be resolved.
+
+        Nothing without a tariff, and nothing while the area's published price already includes the grid fee
+        (locked like the transfer fee). A fee that is on needs its own figure (no area suggests one); the
+        high-load fee also needs its window, which takes the area's zone. A window kept while its fee is off
+        prices nothing and is left out.
+        """
+        if tariff is None or included:
+            return {}
+        fields: dict[str, Any] = {}
+        if tariff.transfer_percent.enabled:
+            if tariff.transfer_percent.value is None:
+                return None
+            fields.update(transfer_percent_enabled=True, transfer_percent=tariff.transfer_percent.value)
+        if tariff.transfer_high.enabled:
+            window = tariff.high_load_window
+            if tariff.transfer_high.value is None or window is None or time_zones.zone(entry.tz) is None:
+                return None
+            fields.update(
+                transfer_high_enabled=True,
+                transfer_high_minor_per_kwh=tariff.transfer_high.value,
+                high_load_window=replace(window, tz=entry.tz),
+            )
+        return fields
 
     def _consumption_for(self, settings: AutoSettings) -> float:
         """kWh per 10 km for the distance estimate: the planned vehicle's, else the default."""

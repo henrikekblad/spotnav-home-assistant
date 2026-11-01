@@ -776,7 +776,8 @@ class PriceRoute:
         self.write_revision = source.write_revision
         row = decoded.override_for(decoded.area_id)
         self.overrides: AreaAutoSettings | None = (
-            None if decoded.area_id == source.area_id and row == source.overrides else row
+            # The body's row never carries the entry's grid tariff, which only `update_grid_tariff` writes.
+            None if decoded.area_id == source.area_id and row == source.overrides.fees_only() else row
         )
         self.areas = frozenset({source.area_id, decoded.area_id})
 

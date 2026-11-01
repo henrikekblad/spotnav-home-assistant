@@ -55,7 +55,14 @@ from ..const import (
     ENTRY_TYPE_PRICE,
     ENTRY_TYPE_SITE,
 )
-from ..planning.auto_settings import AreaAutoSettings, AutoSettings, AutoSettingsError, FiscalOverride
+from ..planning.auto_settings import (
+    AreaAutoSettings,
+    AutoSettings,
+    AutoSettingsError,
+    FiscalOverride,
+    GRID_TARIFF_FEES,
+    GridTariff,
+)
 from ..runtime import domain_data
 from .relay_contract import AreaEntry
 
@@ -76,6 +83,9 @@ SIGNAL_PRICE_SOURCES: Final = f"{DOMAIN}_price_sources"
 
 #: A price entry's own fees, as a price entry stores them.
 FEE_COMPONENTS: Final = ("vat", "tax", "transfer")
+
+#: The grid tariff's high-load fee, a figure in the area's minor unit (`planning/auto_settings.py:GridTariff`).
+HIGH_FEE: Final = GRID_TARIFF_FEES[1]
 
 #: States in which an entry's data is not to be trusted as a price source.
 _FAILED_STATES: Final = (
@@ -151,20 +161,34 @@ class PriceSource:
 
 
 def source_revision(overrides: AreaAutoSettings) -> str:
-    """A digest of an area and its fees: equal for equal fees, different when the area or a fee moves."""
-    canonical = json.dumps(overrides.as_dict(), sort_keys=True, separators=(",", ":"))
+    """A digest of an area and its fees: equal for equal fees, different when the area or a fee moves.
+
+    The grid tariff joins the digest only while one is stored, so an entry without one keeps the revision it had.
+    """
+    body = overrides.as_dict()
+    if overrides.grid_tariff is not None:
+        body = {**body, "grid_tariff": overrides.grid_tariff.as_dict()}
+    canonical = json.dumps(body, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:16]
 
 
 def fees_from_data(area_id: str, data: Any) -> AreaAutoSettings:
-    """A price entry's stored fees as one area's override row. A missing or unreadable fee is off."""
+    """A price entry's stored fees as one area's override row. A missing or unreadable fee is off.
+
+    The row carries the entry's grid tariff (`GridTariff`) while one is stored, `None` otherwise: an entry without
+    one reads exactly as it did before there was a grid tariff.
+    """
     fees: dict[str, FiscalOverride] = {}
     for component in FEE_COMPONENTS:
         try:
             fees[component] = FiscalOverride.from_stored(data.get(component), component)
         except Exception:  # noqa: BLE001 - a stored fee that cannot be read adds nothing
             fees[component] = FiscalOverride()
-    return AreaAutoSettings(area_id=area_id, **fees)
+    try:
+        tariff: GridTariff | None = GridTariff.from_data(data)
+    except Exception:  # noqa: BLE001 - a stored tariff that cannot be read adds nothing
+        tariff = None
+    return AreaAutoSettings(area_id=area_id, **fees, grid_tariff=None if tariff is None or tariff.empty else tariff)
 
 
 def _usable(entry: ConfigEntry | None) -> bool:
@@ -331,7 +355,10 @@ def async_write_price_entry(
 ) -> None:
     """Store a price entry's area and fees in place (no reload) and count the write.
 
-    `overrides` names the area and its fees. `expected_write_revision` is a compare-and-set against the entry's
+    `overrides` names the area and its fees. The write merges: every other key of the entry stays as stored, so a
+    writer that knows only the three fees (an older card or app's settings write) leaves the grid tariff alone.
+    The grid tariff is written only when `overrides.grid_tariff` carries one that differs from the stored one; an
+    area change without one switches the high-load fee off (its figure is in the old area's unit). `expected_write_revision` is a compare-and-set against the entry's
     write counter: a write built on an older one is refused (`revision_conflict`) and nothing changes. The entry's
     update listener moves its live device and tells every consumer (`async_price_sources_changed`).
     """
@@ -342,6 +369,11 @@ def async_write_price_entry(
             f"the electricity price is at write {current}, not {expected_write_revision}",
         )
     overrides = overrides.validated()
+    # A row read from the entry carries its stored tariff back unchanged: only a tariff that moves is written.
+    tariff = overrides.grid_tariff
+    if tariff is not None and tariff == fees_from_data(overrides.area_id, entry.data).grid_tariff:
+        tariff = None
+    tariff = None if tariff is None else tariff.validated()
     previous_area = entry.data.get(CONF_PRICE_AREA)
     title = entry.title
     if previous_area and title == default_price_title(str(previous_area)):
@@ -353,4 +385,10 @@ def async_write_price_entry(
         **{component: getattr(overrides, component).as_dict() for component in FEE_COMPONENTS},
         CONF_PRICE_WRITE_REVISION: current + 1,
     }
+    if tariff is not None:
+        data.update(tariff.as_dict())
+    elif previous_area and previous_area != overrides.area_id and HIGH_FEE in data:
+        # The high-load fee is a figure in the old area's unit: another area starts with it off. The percentage
+        # and the window carry no unit and stay.
+        data[HIGH_FEE] = FiscalOverride().as_dict()
     hass.config_entries.async_update_entry(entry, data=data, title=title)
