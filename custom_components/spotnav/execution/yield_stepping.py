@@ -57,9 +57,12 @@ YieldReason = Literal[
     # Step 3 expiry, step absorbed (`y >= confirm_y`). A hold: the stepped assignment is
     # not touched again this tick; a further step waits for a later observation.
     "confirmed_after_settling",
-    # Step 3 expiry, step not absorbed (`y < confirm_y`): urgent revert to the pre-step
-    # value, and `backoff` begins.
+    # Step 3 expiry, step not absorbed (`y < confirm_y`) and the site over its limit: urgent revert
+    # to the pre-step value, and `backoff` begins.
     "revert_not_absorbed",
+    # Step 3 expiry, step not absorbed with every phase within its limit: the grid carries the
+    # raise, so it stays; nothing was verified, and `backoff` begins.
+    "kept_not_absorbed_within_limit",
     # Step 4: real headroom exists on the raw decision's own evidence.
     "passthrough_raw_increase",
     # Step 5, confirmed and flat: the site sits where the yielding load holds it.
@@ -527,15 +530,20 @@ class YieldStepper:
                     # A hold: a further step waits for a later observation.
                     return self._verdict(now, "hold", None, "confirmed_after_settling", False)
                 else:
-                    revert_to = self._baseline_assigned
                     self._enter_backoff(now)
+                    if limit_a is not None and all(site_a[phase] <= limit_a[phase] for phase in phases):
+                        # Nothing gave way, but the grid carries the raise within its limit: an ordinary
+                        # raise, not one to take back. A revert is for a step that took the site over.
+                        return self._verdict(
+                            now, "passthrough", None, "kept_not_absorbed_within_limit", False
+                        )
                     return self._verdict(
-                        now, "write", revert_to, "revert_not_absorbed", True
+                        now, "write", self._baseline_assigned, "revert_not_absorbed", True
                     )
 
         # 3b. A lowering awaiting its measurement.
         verified = self._verify_down_step(
-            now, site_a, delivered_a, limit_a, requested_a, battery_charging
+            now, assigned_a, site_a, delivered_a, limit_a, requested_a
         )
         if verified is not None:
             return verified
@@ -876,15 +884,18 @@ class YieldStepper:
     def _verify_down_step(
         self,
         now: float,
+        assigned_a: float,
         site_a: dict[PhaseName, float],
         delivered_a: dict[PhaseName, float],
         limit_a: dict[PhaseName, float] | None,
         requested_a: float,
-        battery_charging: bool,
     ) -> YieldVerdict | None:
         """Measure a pending down step once the settle time has passed: if the site current did not
         fall by `down_absorb_fraction` of the car's decrease on the limiting phase, the battery
-        took the freed current. Then the previous current is restored (a write)."""
+        took the freed current. Then the previous current is restored (a write), as far as the
+        ceiling in force leaves room for the whole step on every phase: taking the freed current is
+        no proof the battery gives it back, so until its yield is verified the fuse bounds the
+        step back up as it bounds any other raise."""
         cfg = self._config
         down = self._down
         if down is None or now - down.t < cfg.settle_s:
@@ -905,7 +916,12 @@ class YieldStepper:
         self._battery_absorbs = True
         if self._real_excess(site_a, limit_a):
             return None
-        target = min(requested_a, down.from_a)
+        room_a = min(self._ceiling_a() - site_a[phase] for phase in phases)
+        target = min(requested_a, down.from_a, assigned_a + float(math.floor(max(0.0, room_a))))
+        if target <= assigned_a:
+            # No room under the ceiling for even one amp: the car is held where it is (step 5's
+            # `held_at_limit_battery_absorbs`), not stepped back up.
+            return None
         return self._verdict(now, "write", target, "down_step_absorbed_by_battery", False)
 
     def _battery_gave_way(
