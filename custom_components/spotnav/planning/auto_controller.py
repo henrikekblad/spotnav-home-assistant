@@ -39,6 +39,11 @@ from ..execution.auto_execution import (
     EXECUTION_NOT_APPLIED,
     EXECUTION_RECONCILE_FAILED,
 )
+from ..execution.charge_progress import (
+    REASON_POWER_BELOW_THRESHOLD_PENDING,
+    REASON_SUSPENDED_EV_ZERO_CURRENT_PENDING,
+    STATE_VEHICLE_NOT_REQUESTING_CURRENT,
+)
 from ..execution.solar_execution import site_controller_for_charger, site_supports_solar
 from ..pricing.market_observation import MarketObservation
 from ..pricing.price_refresh import PriceRefreshManager
@@ -83,7 +88,7 @@ from .learned_power import (
     TAPER_PERCENT,
     Wiring,
 )
-from .plan_watch import DECISION_END_REPLAN, next_check_at, PlanWatch, WindowFacts
+from .plan_watch import DECISION_END_REPLAN, next_check_at, PlanWatch, START_GRACE_S, WindowFacts
 from .phases import effective_phases
 from .planner import (
     calculate_plan,
@@ -150,6 +155,9 @@ _UNREAD_BASES: Final = ("kept", "kept_recent", "sessions", "requested")
 
 #: The current a rise is judged against at the least: 63 A on three phases (about 43 kW).
 CEILING_A: Final = 63
+
+#: A charge whose car is about to be judged as no longer drawing (`charge_progress`): not a car falling behind.
+_ENDING_REASONS: Final = (REASON_SUSPENDED_EV_ZERO_CURRENT_PENDING, REASON_POWER_BELOW_THRESHOLD_PENDING)
 
 
 @dataclass(frozen=True, slots=True)
@@ -1602,12 +1610,18 @@ class AutoPlannerController:
     def _learned_power(self, settings: AutoSettings) -> LearnedPower:
         """What is learned of the power of the car this charger plans for (else of the charger), on today's wiring:
         bounded to [the power at the least current, the planned power], and `cap_kw` only once trusted."""
-        subject = subject_for(resolved_vehicle_id(self._hass, self._entry_id))
+        vehicle_id = resolved_vehicle_id(self._hass, self._entry_id)
+        subject = subject_for(vehicle_id)
         wiring = self._wiring(settings)
         if self._learned is None or wiring is None:
             return LearnedPower(subject=subject, kw=None, minutes=0.0, sessions=0, trusted=False)
         high_kw, low_w = hybrid_execution.charge_power_limits(self._hass, self._entry_id, settings)
-        return self._learned.power(subject, wiring, low_w / 1000.0, high_kw)
+        low_kw = low_w / 1000.0
+        if wiring.phases == 3 and (vehicle_id is None or stored_properties(self._hass, vehicle_id).onboard_phases is None):
+            # The car's onboard phases are not known (planning takes three until told): a one-phase car on three-phase
+            # wiring draws the least current on one phase, so the floor is that.
+            low_kw /= 3
+        return self._learned.power(subject, wiring, low_kw, high_kw)
 
     def plan_watch_facts(self) -> dict[str, Any]:
         """The diagnostics' view: the last behind-plan check and the learned power the plan counts on."""
@@ -1658,15 +1672,28 @@ class AutoPlannerController:
             _LOGGER.debug("Checking the plan's progress failed", exc_info=True)
         if decision is not None:
             check = self._watch.last_check
-            _LOGGER.info(
+            # Said once per window; a car that keeps falling behind is not news each time.
+            tell = check is None or self._watch.tell((check.window_start, check.window_end))
+            (_LOGGER.info if tell else _LOGGER.debug)(
                 "SpotNav charger %s: the charge is behind its plan (%s kWh of %s expected): planning again%s",
                 self._entry_id,
                 None if check is None or check.delivered_kwh is None else round(check.delivered_kwh, 2),
                 None if check is None else round(check.expected_kwh, 2),
                 " after the window" if decision == DECISION_END_REPLAN else "",
             )
-            self._hass.async_create_task(self.async_recalculate())
+            self._hass.async_create_task(self._async_replan_behind())
         self._arm_watch()
+
+    async def _async_replan_behind(self) -> None:
+        """Plan the rest again for a charge behind its plan, and tell the watch whether that moved the windows (one
+        that moved nothing waits longer before the next)."""
+        before = self._proposal_periods()
+        await self.async_recalculate()
+        self._watch.note_replan_result(self._proposal_periods() != before)
+
+    def _proposal_periods(self) -> tuple[tuple[datetime, datetime], ...] | None:
+        proposal = None if self._snapshot is None else self._snapshot.proposal
+        return None if proposal is None or not proposal.has_plan else tuple(proposal.periods)
 
     def _check_plan(self) -> str | None:
         """One look at the installed plan: the behind-plan rule (`PlanWatch`) and one sample for the learned power."""
@@ -1686,7 +1713,8 @@ class AutoPlannerController:
         reading = self._read_energy_register()
         entity_id = self._energy_register_entity_id()
         state = None if entity_id is None else self._hass.states.get(entity_id)
-        reading_at = None if state is None or reading is None else state.last_changed
+        # When the register last posted: a changed value, or the same one written again.
+        reading_at = None if state is None or reading is None else max(state.last_changed, state.last_reported)
         amps = plan.amps if plan is not None else settings.amps or 0
         held = self._held_by_spotnav(controller, amps)
         car_ended_at = controller.car_ended_at
@@ -1710,6 +1738,7 @@ class AutoPlannerController:
                 reading_at=reading_at,
                 held=held,
                 car_ended=car_ended,
+                charging=controller.charging and not self._car_ending(controller),
             ),
         )
         if self._sampler is not None:
@@ -1722,6 +1751,8 @@ class AutoPlannerController:
                 and amps == settings.amps
                 and controller.plan_expects_charge
                 and controller.charging
+                and not self._car_ending(controller)
+                and (now - window[0]).total_seconds() >= START_GRACE_S
                 and self._at_planned_current(controller, amps)
                 and not self._tapering(settings)
             )
@@ -1734,10 +1765,16 @@ class AutoPlannerController:
         return decision
 
     @staticmethod
+    def _car_ending(controller: Any) -> bool:
+        """The car is not taking the current, or is about to be judged as ending the charge (`charge_progress`)."""
+        progress = controller.charge_progress
+        return progress.state == STATE_VEHICLE_NOT_REQUESTING_CURRENT or progress.reason in _ENDING_REASONS
+
+    @staticmethod
     def _learning_session(controller: Any, plan: Any, window: tuple[datetime, datetime] | None) -> str:
-        """Which plug-in a clean minute belongs to: the plug-in the charger saw, else the departure the plan is for,
-        else the day the window opened (a charger that cannot report a plug-in)."""
-        since = controller.plugged_in_for_count or controller.plugged_in_at
+        """Which plug-in a clean minute belongs to: the last plug-in the charger saw (kept across a restart), else the
+        departure the plan is for, else the day the window opened (a charger that cannot report a plug-in)."""
+        since = controller.plugged_in_at or controller.plugged_in_for_count
         if since is not None:
             return f"plug_in:{since.isoformat()}"
         if plan is not None and plan.departure:

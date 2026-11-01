@@ -92,10 +92,11 @@ def _plan_end(preview: Any) -> datetime | None:
     return proposal.periods[-1][1]
 
 
-async def _charge(hass: HomeAssistant, frozen: Any, steps: int, register: float, kw: float, preview: Any) -> tuple[
-    float, list[tuple[datetime, datetime | None]]
-]:
-    """`steps` five-minute steps, the car drawing `kw` while the switch is on; the plan's end after each."""
+async def _charge(
+    hass: HomeAssistant, frozen: Any, steps: int, register: float, kw: float, preview: Any, told: dict | None = None
+) -> tuple[float, list[tuple[datetime, datetime | None]]]:
+    """`steps` five-minute steps, the car drawing `kw` while the switch is on; the plan's end after each, and in
+    `told` the plans told by then."""
     ends: list[tuple[datetime, datetime | None]] = []
     for _step in range(steps):
         frozen.tick(STEP)
@@ -105,6 +106,8 @@ async def _charge(hass: HomeAssistant, frozen: Any, steps: int, register: float,
         async_fire_time_changed(hass, dt_util.utcnow())
         await hass.async_block_till_done()
         ends.append((dt_util.utcnow(), _plan_end(preview)))
+        if told is not None:
+            told[dt_util.utcnow()] = charger_data(hass, preview.entry_id).notifier.plan_notice["seq"]
     return register, ends
 
 
@@ -126,8 +129,7 @@ async def test_a_car_drawing_half_the_planned_power_gets_more_quarter_hours_boug
         controller = controller_of(hass, charger.entry_id)
         preview = preview_for(hass, charger.entry_id)
         checks = _record_checks(preview)
-        notifier = charger_data(hass, charger.entry_id).notifier
-        told = notifier.plan_notice["seq"]
+        told: dict[datetime, int] = {}
         plan = controller.plan
         assert plan is not None and plan.auto_owned
         first_end = plan.windows[-1][1]
@@ -135,7 +137,7 @@ async def test_a_car_drawing_half_the_planned_power_gets_more_quarter_hours_boug
         assert need_kwh <= planned < need_kwh + PLANNED_KW / 4, "the plan bought just enough at the planned power"
         reading = hass.states.get(soc_entity)
 
-        register, ends = await _charge(hass, frozen, 48, 1000.0, DRAWN_KW, preview)
+        register, ends = await _charge(hass, frozen, 48, 1000.0, DRAWN_KW, preview, told)
 
         assert hass.states.get(soc_entity) == reading, "the car never reported its level"
         starts = [at for service, at in calls if service == "turn_on"]
@@ -151,7 +153,9 @@ async def test_a_car_drawing_half_the_planned_power_gets_more_quarter_hours_boug
         assert controller.plan is None and calls[-1][0] == "turn_off", "and the charge ended"
         snapshot = preview_for(hass, charger.entry_id).snapshot()
         assert snapshot.state == "nothing_to_charge"
-        assert notifier.plan_notice["seq"] <= told + 1, "no notice for each replan"
+        # A plan made again while a window runs is told to nobody (a plan installed after one ran out may be, as
+        # before, on a charger that cannot report a plug-in).
+        assert all(told[at - STEP] == told[at] == told[at + STEP] for at in replans if at - STEP in told), told
 
 
 async def test_a_car_on_plan_is_not_planned_again(hass: HomeAssistant, transport: Any) -> None:
