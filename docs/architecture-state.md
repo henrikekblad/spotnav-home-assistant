@@ -64,7 +64,9 @@ stop, the re-arm, the window ends, the top-off, the target and need-met stops, a
 take-over. Where the research found today's rules questionable, the core copies them; deciding them is step 2's.
 Decided since (in today's code and the core together): a readable off report with no start of ours on its way
 leaves the charge nobody's, whoever owned it, so a charge the charger later begins by itself does not inherit the
-ended one's owner (inside a window the plan claims it again). A window's end stops only the plan's own charge (I3):
+ended one's owner (inside a window the plan claims it again). A claim sends nothing and keeps a balancing pause,
+as today's `_claim_locked` always did: a charger that reports its charge once more before it answers a pause is
+still the charge load balancing holds back (the night of 2026-11-01). A window's end stops only the plan's own charge (I3):
 a person's Start, a Charge-now start and the sun's charge go on, and so does one load balancing holds back for
 them; the last window's end then ends the plan with no stop and no top-off. The re-arm outside the windows (a new
 plan installed between windows, a restore, a follow) spares the same charges: only the plan's own charge is the

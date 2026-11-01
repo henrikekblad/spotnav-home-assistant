@@ -273,7 +273,8 @@ It is best effort and is not a protective device. Turning it off gives back any 
     reads no more than 0.5 A above the limit (the fuse less the safety margin), the grid sitting at
     the limit is the battery's own regulation, and a pause or a lowering that is not an import
     overload is not carried out for it (`held_battery_at_limit` in the decision log). An import
-    overload is lowered in the band too, unless the battery's yield is verified; a reading above that
+    overload in the band is held the same way while the battery charges at least what the cut would free (below);
+    a reading above that
     band, a stale measurement or a sustained excess is handled exactly as before. When load balancing has paused
     the car for want of headroom and the battery is charging from the grid, SpotNav starts the car
     at its minimum current as a probe and watches the grid for up to 30 seconds (the damper's dwell
@@ -303,20 +304,19 @@ It is best effort and is not a protective device. Turning it off gives back any 
     the home battery charged from the grid.) The outcome is in the site's diagnostics under
     `battery_probe` (with `car_refusals`, the refusals in a row) and in the decision log (`probe_started`,
     `probe_extended`, `probe_succeeded`, `probe_failed`, `probe_car_ended`).
-    A running car that such a battery would have lowered or paused (an import overload within the band, the
-    battery charging at least as hard as the cut would free, all of the car's minimum for a pause) keeps its
-    current instead: it is held there as the probe itself (`probe_started` with `held_at_current`), under the same
-    conditions and judged the same way. A battery that gives way is verified, and yield stepping then keeps
-    the car where it is while the battery absorbs; one that does not ends the probe at once and the car is
-    lowered (or paused) as before, with the probe backed off. An overload above the band is lowered first,
-    and the car is held from where that leaves it. A verified yield lasts while the car draws: a failed step,
-    the car's draw ending (a pause, the window's end, an unplug) or a restart forgets it, and the next
-    overload in the band is probed again. For the resume and the probe a stopped charger's own current read before
+    A running car that such a battery would have lowered or paused for an import overload within the band (or a
+    grid read at exactly the fuse) keeps its current, as long as the battery charges, on a fresh reading, at least as
+    hard as the cut would free (all of the car's minimum for a pause): `held_battery_at_limit` in the decision log.
+    This verifies nothing: the fuse stays the ceiling of every step until a step or a probe of a paused charge has
+    seen the battery give way, so the car is not stepped back up into the battery's share meanwhile. An overload
+    above the band is lowered at once, as before, and the car is held from where that leaves it; a request lowered
+    below the car's current is always followed. For the resume and the probe a stopped charger's own current read before
     its pause, or not reported for longer than the site's maximum age, counts as nothing drawn: an OCPP
     charger sends no meter values while stopped and keeps showing the car's last draw. (On 1 November a
     Sigenergy battery held a 20 A fuse at 20.0-20.1 A from 03:15 and grew to 12.5 kW as the car was lowered
     to its minimum and paused; the HALO kept showing 6 A, and the paused charge was not resumed when the
-    battery stopped at 04:07.)
+    battery stopped at 04:07. Now the car is lowered once, from 16 to 14 A for the 21.6 A at the battery's
+    start, keeps 14 A until the battery is done, and is back at 16 A within three minutes of that.)
   - **A running car below its plan while the battery fills the fuse.** Only with *car first* and yield
     stepping on. While the car draws what it was given and the battery charges from the grid by at
     least a 2 A step's worth over the car's phases (2 A x 230 V x 3 = 1380 W on three phases, on a
@@ -333,7 +333,7 @@ It is best effort and is not a protective device. Turning it off gives back any 
     allowance is still cut at once. The card keeps saying that the battery shares the fuse, with the
     current the car has now. (On 17 October a car sat at 7 A all night against a plan of 16 A while
     the battery charged at 7.3 kW from a 20 A fuse held at 20.0-20.5 A. With the grid above the fuse
-    and the battery not yet verified, the car now goes to its minimum instead; it climbs once a battery
+    and the battery not yet verified, the car now keeps its 7 A within the band; it climbs once a battery
     probe or a confirmed step has verified the battery.)
   - **A short overload is not a reset.** While yield stepping is verified, one sample above the
     ceiling (and at most 4 A above it) steps the car back once instead of to the minimum. A second
