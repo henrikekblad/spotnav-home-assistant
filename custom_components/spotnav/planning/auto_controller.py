@@ -79,6 +79,14 @@ from .auto_settings import (
     STRATEGY_SOLAR,
 )
 from .grid_voltage import voltage_between_phases_v
+from .learned_energy import (
+    EnergySampler,
+    LearnedEnergy,
+    LearnedEnergyStore,
+    NOTHING_LEARNED,
+    SocSeen,
+    with_learned,
+)
 from .learned_power import (
     LearnedPower,
     LearnedPowerStore,
@@ -282,8 +290,13 @@ def expected_soc_percent(resolution: _EnergyResolution, planned_kwh: float) -> f
     """The state of charge a target plan reaches with `planned_kwh` from the wall, or `None` for a need
     with no live reading and battery size behind it (a manual need)."""
     soc = resolution.soc_percent
+    if soc is None:
+        return None
+    if resolution.kwh_per_percent is not None and resolution.kwh_per_percent > 0:
+        # The car's learned wall kWh per percent (`learned_energy.py`).
+        return min(100.0, soc + planned_kwh / resolution.kwh_per_percent)
     capacity = resolution.capacity_kwh
-    if soc is None or capacity is None or capacity <= 0:
+    if capacity is None or capacity <= 0:
         return None
     return min(100.0, soc + planned_kwh * CHARGE_EFFICIENCY / capacity * 100.0)
 
@@ -471,6 +484,9 @@ class _EnergyResolution:
     #: plan that cannot reach the target by the departure can say what it reaches instead.
     soc_percent: float | None = None
     capacity_kwh: float | None = None
+    #: A target only: the car's learned wall kWh per percent the need was worked out with (`learned_energy.py`),
+    #: `None` while nothing trusted is learned (the battery size and `CHARGE_EFFICIENCY` then).
+    kwh_per_percent: float | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -649,6 +665,7 @@ class AutoPlannerController:
         now: Callable[[], datetime] | None = None,
         vehicle_update: Callable[[str, bool], None] | None = None,
         learned: LearnedPowerStore | None = None,
+        learned_energy: LearnedEnergyStore | None = None,
     ) -> None:
         self._hass = hass
         self._entry_id = entry_id
@@ -723,6 +740,10 @@ class AutoPlannerController:
         self._learned = learned
         self._sampler = None if learned is None else PowerSampler(learned)
         self._watch = PlanWatch()
+        # The wall energy one percent of the car's battery takes, learned at the same look
+        # (`planning/learned_energy.py`).
+        self._learned_energy = learned_energy
+        self._energy_sampler = None if learned_energy is None else EnergySampler(learned_energy)
         self._watch_cancel: Callable[[], None] | None = None
         self._watch_due: datetime | None = None
 
@@ -1628,10 +1649,31 @@ class AutoPlannerController:
         settings = self._effective(self._store.settings(self._entry_id))
         check = self._watch.last_check
         learned = self._learned_power(settings)
+        facts = None if self._vehicle_reader is None else self._vehicle_reader(settings.target.vehicle_id or "")
+        energy = self._learned_energy_for(facts)
+        anchor = None if self._learned_energy is None else self._learned_energy.anchor
         return {
             "behind_check": None if check is None else check.as_dict(),
             "learned_power": {**learned.as_dict(), "planned_with": learned.cap_kw is not None},
+            "learned_energy": {
+                **energy.as_dict(),
+                # The need counts on it: trusted, for a target (a fixed amount is never changed by it).
+                "used": energy.trusted and settings.driver == DRIVER_TARGET_SOC,
+                "stretch_start": None if anchor is None else {
+                    "soc_percent": anchor.soc_percent, "at": anchor.at.isoformat(), "kwh": round(anchor.kwh, 3),
+                },
+            },
         }
+
+    def _learned_energy_for(self, facts: LiveVehicleFacts | None) -> LearnedEnergy:
+        """What is learned of the wall kWh per percent of the car the level is read from, when that is the car this
+        charger plans for (`learned_energy.py`); nothing otherwise."""
+        if self._learned_energy is None or facts is None:
+            return NOTHING_LEARNED
+        vehicle_id = resolved_vehicle_id(self._hass, self._entry_id)
+        if not vehicle_id or facts.vehicle_id != vehicle_id:
+            return NOTHING_LEARNED
+        return self._learned_energy.learned(vehicle_id, facts.reported_capacity_kwh)
 
     def _arm_watch(self) -> None:
         """Keep the one appointment to look at the plan's windows (`plan_watch.next_check_at`): an earlier one is
@@ -1762,7 +1804,42 @@ class AutoPlannerController:
                 session = self._learning_session(controller, plan, window)
                 sample = PowerSample(at=now, kwh=reading, session=session, subject=learned.subject, wiring=wiring)
             self._sampler.sample(sample, planned_kw)
+        if self._energy_sampler is not None:
+            try:
+                self._sample_energy(controller, settings, now, reading, reading_at)
+            except Exception:  # noqa: BLE001 - learning is a convenience, never worth the behind-plan decision
+                _LOGGER.debug("Learning the energy per percent failed", exc_info=True)
         return decision
+
+    def _sample_energy(
+        self,
+        controller: Any,
+        settings: AutoSettings,
+        now: datetime,
+        reading: float | None,
+        reading_at: datetime | None,
+    ) -> None:
+        """One look for the learned wall kWh per percent (`learned_energy.py`): the car this charger plans for and
+        its level, the plug-in, and the count."""
+        assert self._energy_sampler is not None
+        facts = None if self._vehicle_reader is None else self._vehicle_reader(settings.target.vehicle_id or "")
+        vehicle_id = resolved_vehicle_id(self._hass, self._entry_id)
+        if facts is None or not vehicle_id or facts.vehicle_id != vehicle_id:
+            vehicle_id = None
+        plugged_in = controller.plugged_in_at or controller.plugged_in_for_count
+        self._energy_sampler.observe(
+            now,
+            vehicle_id=vehicle_id,
+            session=None if plugged_in is None else f"plug_in:{plugged_in.isoformat()}",
+            soc=SocSeen(
+                soc_percent=None if facts is None else facts.soc_percent,
+                age_s=None if facts is None else facts.soc_age_s,
+                estimated=facts is not None and facts.soc_estimated,
+            ),
+            register_kwh=reading,
+            register_posted_at=reading_at,
+            capacity_kwh=None if facts is None else facts.reported_capacity_kwh,
+        )
 
     @staticmethod
     def _car_ending(controller: Any) -> bool:
@@ -2000,10 +2077,12 @@ class AutoPlannerController:
             capacity = facts.reported_capacity_kwh
         planned_from = self._planned_from_floor(settings, facts, live_soc, calculated_at)
         # Energy the wall must deliver: battery need divided by charging efficiency
-        # (`soc_estimate.CHARGE_EFFICIENCY`).
+        # (`soc_estimate.CHARGE_EFFICIENCY`), or, once trusted, the car's learned wall kWh per percent
+        # (`learned_energy.py`), given as the battery size that takes it at that efficiency.
+        learned = self._learned_energy_for(facts)
         reason, wall_kwh = target_need_kwh(
             soc_percent=planned_from,
-            capacity_kwh=capacity,
+            capacity_kwh=with_learned(learned, capacity),
             target_percent=settings.target.target_percent,
             vehicle_max_percent=None if facts is None else facts.max_percent,
         )
@@ -2028,7 +2107,8 @@ class AutoPlannerController:
         kwh = wall_kwh if wall_kwh is not None else settings.requested_kwh
         # Always trustworthy: live state of charge already reflects everything delivered.
         return _EnergyResolution(
-            kwh=kwh, delivered_energy_trustworthy=True, soc_percent=live_soc, capacity_kwh=capacity
+            kwh=kwh, delivered_energy_trustworthy=True, soc_percent=live_soc, capacity_kwh=capacity,
+            kwh_per_percent=learned.use_kwh_per_percent,
         )
 
     def _planned_from_floor(
