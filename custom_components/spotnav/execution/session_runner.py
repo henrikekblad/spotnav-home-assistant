@@ -98,9 +98,10 @@ class FeedToken:
 
 class NullRunner:
     """A runner that decides nothing, for a boundary built around something that is not a `ChargingController`:
-    every verdict is a failure's (`None`), so nothing automatic is sent through it."""
+    every verdict is a failure's (`None`), so nothing automatic is sent through it. It decides nothing (`drives`).
+    """
 
-    drives = True
+    drives = False
     session = ChargeSession()
 
     def begin(self, early: Event | None = None) -> FeedToken:
