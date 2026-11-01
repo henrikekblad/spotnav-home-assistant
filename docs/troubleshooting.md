@@ -52,6 +52,14 @@ downloaded in the evening still shows the afternoon. Nothing is read from the re
   kind, zero until seen), how many events it decided and failed on, and when it first and last saw one. Unlike the
   rest of `ownership` it is kept across restarts, from `since` (under the integration's `version` then) until the
   charger is removed.
+- `auto_price.plan_watch` in each charger's diagnostics: `behind_check`, the last look at a running
+  period (when, the period, the energy the plan expected by then and the energy delivered, the decision:
+  `on_plan`, `behind_unconfirmed`, `replan`, `replanned_recently`, `held_by_spotnav` with what held it,
+  `start_settling`, `not_charging`, `car_ended`, `no_count`, `no_recent_reading`, `awaiting_reading`,
+  `window_end_ok` or `window_end_replan`), and
+  `learned_power`, the power the car is learned to draw (`kw`), what it is for (`subject`: a car or the
+  charger), the minutes and plug-ins it rests on, whether it is trusted and whether the plan counts on it
+  (`planned_with`).
 - `yield_stepping`, `solar_surplus` and `hybrid` in the site's diagnostics, per charger (version 7):
   the last yield-stepping verdict, the solar surplus state and the hybrid state, which the *Capacity
   state* sensor carried as attributes up to 1.14.3.

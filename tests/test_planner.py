@@ -607,6 +607,8 @@ def test_target_soc_resolution_covers_every_case_the_spec_names() -> None:
         ({"max_periods": 9}, "invalid_periods"),
         ({"timezone": "Mars/Olympus"}, "timezone_mismatch"),
         ({"departure": "20:00+00:00"}, "invalid_departure"),
+        ({"power_cap_kw": 0.0}, "invalid_number"),
+        ({"power_cap_kw": float("nan")}, "invalid_number"),
     ],
 )
 def test_bad_input_is_refused_rather_than_repaired(changes: dict[str, Any], code: str) -> None:
@@ -617,6 +619,18 @@ def test_bad_input_is_refused_rather_than_repaired(changes: dict[str, Any], code
     with pytest.raises(PlannerInputError) as caught:
         replace_request(request, **changes).validated()
     assert caught.value.code == code
+
+
+def test_a_learned_power_below_the_planned_power_buys_more_slots_and_one_above_changes_nothing() -> None:
+    scenario = next(s for s in fixture_payload()["scenarios"] if s["name"] == "power_single_phase_whole_slot_overdelivery")
+    request = build_request(scenario["request"], parse_documents(scenario["documents"]))
+    plain = calculate_plan(request)
+    planned = power_kw(request.amps, request.phases, request.voltage_between_phases_v)
+    assert calculate_plan(replace_request(request, power_cap_kw=planned * 2)) == plain
+    halved = calculate_plan(replace_request(request, power_cap_kw=planned / 2))
+    assert halved.power_kw == pytest.approx(planned / 2)
+    assert halved.slots_needed == slots_needed(request.requested_kwh, request.amps, request.phases, cap_kw=planned / 2)
+    assert halved.slots_needed > plain.slots_needed
 
 
 def test_a_naive_calculation_instant_and_a_cross_area_document_are_refused() -> None:

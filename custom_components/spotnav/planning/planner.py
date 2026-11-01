@@ -217,11 +217,26 @@ def power_kw(amps: int, phases: int, voltage_between_phases_v: float = DEFAULT_V
     return math.sqrt(3.0) * voltage_between_phases_v * amps / 1000.0
 
 
-def energy_per_slot_kwh(
-    amps: int, phases: int, voltage_between_phases_v: float = DEFAULT_VOLTAGE_BETWEEN_PHASES_V
+def capped_power_kw(
+    amps: int,
+    phases: int,
+    voltage_between_phases_v: float = DEFAULT_VOLTAGE_BETWEEN_PHASES_V,
+    cap_kw: float | None = None,
 ) -> float:
-    """What one whole 15-minute slot delivers at that power."""
-    return power_kw(amps, phases, voltage_between_phases_v) * SLOT_HOURS
+    """[power_kw], or the power the car is known to really draw at that current when that is lower
+    (`planning/learned_power.py`): what a plan counts on. A cap above the connector's power changes nothing."""
+    planned = power_kw(amps, phases, voltage_between_phases_v)
+    return planned if cap_kw is None else min(planned, cap_kw)
+
+
+def energy_per_slot_kwh(
+    amps: int,
+    phases: int,
+    voltage_between_phases_v: float = DEFAULT_VOLTAGE_BETWEEN_PHASES_V,
+    cap_kw: float | None = None,
+) -> float:
+    """What one whole 15-minute slot delivers at that power (no more than `cap_kw`, when given)."""
+    return capped_power_kw(amps, phases, voltage_between_phases_v, cap_kw) * SLOT_HOURS
 
 
 #: Decimals the slot count is rounded to before its ceiling (a nanoslot is far below any meter's resolution).
@@ -233,6 +248,7 @@ def slots_needed(
     amps: int,
     phases: int,
     voltage_between_phases_v: float = DEFAULT_VOLTAGE_BETWEEN_PHASES_V,
+    cap_kw: float | None = None,
 ) -> int:
     """How many whole slots the request needs, and never fewer than one.
 
@@ -240,7 +256,9 @@ def slots_needed(
     deliver less than asked for.
     """
     # Rounded before the ceiling: a need of exactly N slots must not become N + 1 through float noise in the division.
-    quotient = round(requested_kwh / energy_per_slot_kwh(amps, phases, voltage_between_phases_v), _SLOT_DIGITS)
+    quotient = round(
+        requested_kwh / energy_per_slot_kwh(amps, phases, voltage_between_phases_v, cap_kw), _SLOT_DIGITS
+    )
     return max(1, math.ceil(quotient))
 
 
@@ -366,6 +384,14 @@ class PlanRequest:
     window_end: datetime | None = None
     #: The voltage between two phases (400 V TN, 230 V IT): what three-phase power is figured from.
     voltage_between_phases_v: float = DEFAULT_VOLTAGE_BETWEEN_PHASES_V
+    #: The power this car is known to really draw at this current (`planning/learned_power.py`), or `None`:
+    #: the plan counts on the lower of it and the current's power (`planned_kw`).
+    power_cap_kw: float | None = None
+
+    @property
+    def planned_kw(self) -> float:
+        """The power the plan counts on: the current's, or the learned power when that is lower."""
+        return capped_power_kw(self.amps, self.phases, self.voltage_between_phases_v, self.power_cap_kw)
 
     def validated(self) -> PlanRequest:
         """The same request, once every field is known to be plannable."""
@@ -382,6 +408,8 @@ class PlanRequest:
         _aware(self.now, "now")
         if self.window_end is not None:
             _aware(self.window_end, "window_end")
+        if self.power_cap_kw is not None:
+            _positive(self.power_cap_kw, "invalid_number", "power_cap_kw")
         if self.departure is not None:
             if not isinstance(self.departure, time):
                 _refuse("invalid_departure", "departure must be a wall time")
@@ -427,6 +455,7 @@ class PlanRequest:
             departure_date=self.departure_date,
             window_end=self.window_end,
             voltage_between_phases_v=float(self.voltage_between_phases_v),
+            power_cap_kw=None if self.power_cap_kw is None else float(self.power_cap_kw),
         )
 
 
@@ -700,9 +729,11 @@ def _window(request: PlanRequest) -> _Window | PlannerReason:
     first_start = floored if floored >= now else floored + timedelta(minutes=STEP_MINUTES)
     horizon = first_start + timedelta(hours=HORIZON_HOURS)
 
-    per_slot = energy_per_slot_kwh(request.amps, request.phases, request.voltage_between_phases_v)
+    per_slot = energy_per_slot_kwh(
+        request.amps, request.phases, request.voltage_between_phases_v, request.power_cap_kw
+    )
     needed = slots_needed(
-        request.requested_kwh, request.amps, request.phases, request.voltage_between_phases_v
+        request.requested_kwh, request.amps, request.phases, request.voltage_between_phases_v, request.power_cap_kw
     )
     duration = timedelta(minutes=STEP_MINUTES * needed)
 
@@ -839,7 +870,7 @@ def plan_unpriced(request: PlanRequest) -> PlanResult:
         minor_unit=request.minor_unit,
         now=request.now,
         reason=None,
-        power_kw=power_kw(request.amps, request.phases, request.voltage_between_phases_v),
+        power_kw=request.planned_kw,
         requested_kwh=request.requested_kwh,
         delivered_kwh=delivered,
         distance_mil=delivered / request.consumption_kwh_per_10km,
@@ -924,7 +955,7 @@ def calculate_plan(request: PlanRequest) -> PlanResult:
         minor_unit=request.minor_unit,
         now=request.now,
         reason=None,
-        power_kw=power_kw(request.amps, request.phases, request.voltage_between_phases_v),
+        power_kw=request.planned_kw,
         requested_kwh=request.requested_kwh,
         delivered_kwh=delivered,
         distance_mil=delivered / request.consumption_kwh_per_10km,
@@ -996,7 +1027,7 @@ def _no_plan(request: PlanRequest, reason: PlannerReason) -> PlanResult:
         minor_unit=request.minor_unit,
         now=request.now,
         reason=reason,
-        power_kw=power_kw(request.amps, request.phases, request.voltage_between_phases_v),
+        power_kw=request.planned_kw,
         requested_kwh=request.requested_kwh,
         delivered_kwh=0.0,
         distance_mil=0.0,

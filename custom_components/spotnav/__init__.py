@@ -74,6 +74,7 @@ from .planning.auto_controller import (
 )
 from .planning.auto_settings import async_setup_auto_settings, DRIVER_TARGET_SOC
 from .planning.first_run import async_seed_first_run
+from .planning.learned_power import LearnedPowerStore
 from .planning.phases import async_migrate_settings_phases
 from .pricing.market_observation import MarketObservation
 from .pricing.price_refresh import async_setup_price_refresh
@@ -608,6 +609,9 @@ async def _async_setup_auto_preview(
     # per-area stream and released on this entry's unload.
     observation = data.observation = MarketObservation(hass, entry_id, settings_store, price_manager)
     entry.async_on_unload(observation.async_close)
+    # The power the car really draws, learned from the plan's own charges (`planning/learned_power.py`).
+    learned = LearnedPowerStore(hass, entry_id)
+    await learned.async_load()
     preview = data.preview = AutoPlannerController(
         hass,
         entry_id,
@@ -618,6 +622,7 @@ async def _async_setup_auto_preview(
         consumption_reader=_consumption,
         observation=observation,
         vehicle_update=_vehicle_update,
+        learned=learned,
     )
     entry.async_on_unload(preview.async_shutdown)
     await preview.async_start()
@@ -830,6 +835,7 @@ async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
     await ChargerNotifier.async_remove_stored(hass, entry.entry_id)
     await OwnershipCoverage.async_remove_stored(hass, entry.entry_id)
     await ChargerDay.async_remove_stored(hass, entry.entry_id)
+    await LearnedPowerStore.async_remove_stored(hass, entry.entry_id)
     session_store = domain_data(hass).session_store
     if session_store is not None:
         await session_store.async_remove_charger(entry.entry_id)
