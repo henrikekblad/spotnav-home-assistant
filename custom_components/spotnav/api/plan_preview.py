@@ -92,6 +92,10 @@ def async_preview_judged(
     if route is not None and plan_only and route.overrides is not None:
         raise SettingsRefusal(ERROR_NOT_ADMIN)
     mutate: Callable[[AutoSettings], AutoSettings] = body_mutator(hass, entry_id, replacement, decoded)
+    if route is not None:
+        # As a write: the price entry's area and its row stay the charger's own as stored, so a body that echoes
+        # them as read moves nothing of the charger's (and a user who may plan is not refused for them).
+        mutate = route.mutator(hass, mutate)
     if plan_only:
         mutate = plan_only_mutator(mutate)
     refuse_amps_above_charger_range(hass, entry_id, decoded)

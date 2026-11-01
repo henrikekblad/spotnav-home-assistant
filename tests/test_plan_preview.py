@@ -343,3 +343,35 @@ async def test_the_cards_fixtures_are_this_answer(
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(answer, indent=2) + "\n", encoding="utf-8")
     assert json.loads(path.read_text(encoding="utf-8")) == json.loads(json.dumps(answer))
+
+
+# ------------------------------------------------------------------------------- a price entry and a user
+
+
+async def test_a_user_who_may_plan_previews_what_their_save_makes_on_a_price_entry(
+    hass: HomeAssistant, hass_ws_client, hass_read_only_access_token: str, freezer
+) -> None:
+    """With an electricity price entry the record carries its area and fees; a user under `users_change_plan` echoes
+    them as read, as their Save does, and the preview is the plan that Save then makes."""
+    from .test_price_writes import body_of as wire_body, on_one_price, read, two_chargers, write
+    from .world import non_admin
+
+    await two_chargers(hass)
+    owner = await admin(hass, hass_ws_client)
+    user = await non_admin(hass, hass_ws_client, hass_read_only_access_token)
+    await on_one_price(hass, freezer)
+    record = await read(owner)
+    record = (await write(owner, record["revision"], wire_body(record, users_change_plan=True)))["result"]["settings"]
+
+    body = wire_body(record, amps=16, requested_kwh=9.5)
+    answer = await ws_call(user, preview_message("entry_a", body))
+    assert answer["success"] is True, answer
+    assert answer["result"]["ok"] is True, answer["result"]
+    saved = await write(user, record["revision"], body)
+    assert saved["success"] is True and saved["result"]["ok"] is True, saved
+    await hass.async_block_till_done()
+    controller = preview_for(hass, "entry_a")
+    assert controller is not None
+    assert answer["result"]["preview"] == json.loads(
+        json.dumps(encode_preview(controller.snapshot(), settings_of(hass, "entry_a")))
+    )
