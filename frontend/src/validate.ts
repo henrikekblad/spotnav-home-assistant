@@ -1745,6 +1745,9 @@ const OPTIONAL_DASHBOARD_KEYS = [
   "plan_notice",
   "price_source",
   "setup",
+  // The electricity price entry's grid tariff (percentage of spot, high-load fee and window): accepted and not
+  // read yet; the price section shows it in a later release.
+  "grid_tariff",
 ] as const;
 
 /** The `setup` block, or `null` when it is missing or unreadable: the card then lists nothing to set up. */
