@@ -420,6 +420,15 @@ def _start(session: ChargeSession, reason: str, owner_after: str, **pending: obj
     return _no_balancing(session).with_changes(pending=_awaiting(session, command)), (Start(reason),)
 
 
+def _claim(session: ChargeSession) -> Decision:
+    """Claim a charge running in an open window as the plan's (`controller._claim_locked`). Nothing goes to the
+    charger, so what load balancing holds back stays held back, as today's claim leaves it: a charger that reports
+    its charge once more before it answers a balancing pause is that pause on its way, and once it is seen off the
+    regulator gives the charge back (the night of 2026-11-01)."""
+    command = PendingCommand("start", REASON_CLAIM, owner_before=session.owner, owner_after=OWNER_PLAN)
+    return session.with_changes(pending=_awaiting(session, command)), (Start(REASON_CLAIM),)
+
+
 def _stop(session: ChargeSession, reason: str, *, clear_schedule: bool = False, **pending: object) -> Decision:
     command = PendingCommand(
         "stop", reason, owner_before=session.owner, clear_schedule=clear_schedule, **pending  # type: ignore[arg-type]
@@ -504,7 +513,7 @@ def _window_start(session: ChargeSession, event: WindowStart, now: datetime) -> 
     if event.control_on:
         # The charger began by itself at plug-in: the charge is the plan's (its stops apply).
         if s.owner in (OWNER_NONE, OWNER_CHARGER_SELF):
-            return _start(s, REASON_CLAIM, OWNER_PLAN)
+            return _claim(s)
         return s, ()
     if event.connected is False or event.start_pending or s.balancing_paused or event.target_reached:
         return s, ()
@@ -754,7 +763,7 @@ def _reported_on(session: ChargeSession, event: ChargerReportedOn, now: datetime
             commands.extend(stop)
     elif unclaimed:
         if automatic_allowed(s, GATE_START):
-            s, start = _start(s, REASON_CLAIM, OWNER_PLAN)
+            s, start = _claim(s)
             commands.extend(start)
     elif strays:
         if automatic_allowed(s, GATE_STOP):
@@ -956,7 +965,7 @@ def _recheck(session: ChargeSession, event: Recheck, now: datetime) -> Decision:
             and not blocked
             and not ended_holds
         ):
-            return _start(s, REASON_CLAIM, OWNER_PLAN)
+            return _claim(s)
         return s, ()
     if what == RECHECK_PERSON_HOLD:
         # A person's Start replaced their Stop meanwhile (it never lands between this and the stop), or a start of
