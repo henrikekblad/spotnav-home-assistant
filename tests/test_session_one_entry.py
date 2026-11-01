@@ -1,7 +1,7 @@
 """One history entry per charge, read from a real controller and execution boundary: a stop SpotNav made while the car
 stays plugged in (load balancing's pause, the gap between two windows of one plan) does not end the entry; a person's
 Stop, and the unplug, do. The facts are the ones the recorder reads in the running integration (`inputs.pause_facts`).
-Every test runs in both modes: with the charge-ownership core deciding and with the previous logic."""
+The charge-ownership core decides."""
 
 from __future__ import annotations
 
@@ -12,7 +12,6 @@ import pytest
 from homeassistant.core import HomeAssistant
 from homeassistant.util import dt as dt_util
 
-from custom_components.spotnav.execution import ownership_shadow
 from custom_components.spotnav.planning.planner import FiscalChoice
 from custom_components.spotnav.sessions.inputs import pause_facts
 from custom_components.spotnav.sessions.model import STARTED_MANUAL, STARTED_PLAN_WINDOW
@@ -21,12 +20,6 @@ from custom_components.spotnav.sessions.store import SessionStore
 
 from .pause_world import ENTRY, pause_world, two_windows, World
 from .relay import FakeScheduler
-
-
-@pytest.fixture(params=[True, False], ids=["core", "previous"])
-def drives(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) -> bool:
-    monkeypatch.setattr(ownership_shadow, "CORE_OWNERSHIP_DEFAULT", request.param)
-    return request.param
 
 
 class Recording:
@@ -68,7 +61,7 @@ async def sessions(hass: HomeAssistant) -> SessionStore:
 
 
 async def test_a_persons_charge_paused_twice_by_load_balancing_is_one_entry(
-    hass: HomeAssistant, timers: FakeScheduler, freezer: Any, sessions: SessionStore, drives: bool
+    hass: HomeAssistant, timers: FakeScheduler, freezer: Any, sessions: SessionStore
 ) -> None:
     world = await pause_world(hass, timers)
     recording = Recording(hass, world, sessions)
@@ -101,7 +94,7 @@ async def test_a_persons_charge_paused_twice_by_load_balancing_is_one_entry(
 
 
 async def test_a_persons_stop_and_new_start_are_two_entries(
-    hass: HomeAssistant, timers: FakeScheduler, freezer: Any, sessions: SessionStore, drives: bool
+    hass: HomeAssistant, timers: FakeScheduler, freezer: Any, sessions: SessionStore
 ) -> None:
     world = await pause_world(hass, timers)
     recording = Recording(hass, world, sessions)
@@ -126,7 +119,7 @@ async def test_a_persons_stop_and_new_start_are_two_entries(
 
 
 async def test_two_windows_of_one_plan_are_one_entry_and_the_unplug_ends_it(
-    hass: HomeAssistant, timers: FakeScheduler, freezer: Any, sessions: SessionStore, drives: bool
+    hass: HomeAssistant, timers: FakeScheduler, freezer: Any, sessions: SessionStore
 ) -> None:
     """The first window is open (ten minutes in, fifty to go), the second starts two hours later. A load balancing
     pause in the second window, then the unplug, ends the entry at that pause's stop."""

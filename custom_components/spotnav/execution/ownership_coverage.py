@@ -1,6 +1,6 @@
-"""How much of the charge-ownership core the shadow has seen live, per event kind, kept across restarts.
+"""How much of the charge-ownership core the runner has seen live, per event kind, kept across restarts.
 
-The shadow (`ownership_shadow.py`) counts from its start and keeps only its last events, so what it saw before a
+The runner (`session_runner.py`) counts from its start and keeps only its last events, so what it saw before a
 restart is gone. This tally is cumulative, per charger: for every event kind of the core (`core/events.py`, listed
 with zeros until seen) how many events it decided, compared, disagreed on, found drift at or failed on, and when it
 first and last saw one; `since` and `version` say when and under which release of the integration the tally began.
@@ -18,7 +18,11 @@ under, a new tally begins, and the one before is kept under `previous` (one peri
 Kept in a small store of its own (`store_key`), written debounced: at most one write waits at a time, written
 `SAVE_DELAY_S` after the first change since the last one, at the controller's shutdown, or at Home Assistant's
 final write. Nothing is written before the stored tally is read (`async_load`), which what was counted meanwhile
-is added to. Only removing the entry removes it (`async_remove_stored`). Never raises into the shadow.
+is added to. Only removing the entry removes it (`async_remove_stored`). Never raises into the runner.
+
+Since the previous logic is gone (the core end state plan's deletion step), only `events`, `errors`, `failures` and
+`triggers` still move: the comparison's counts (`compared`, `disagreements`, `drift`, `mirror_drift`, `written_back`,
+`verdict_differs`) stay in the shape so the stored tally and the release before's under `previous` read as ever.
 """
 
 from __future__ import annotations
@@ -88,7 +92,7 @@ def _latest(a: str | None, b: str | None) -> str | None:
 
 
 class OwnershipCoverage:
-    """The tally of one charger. Without a `store` it is kept in memory only (a shadow built outside a controller)."""
+    """The tally of one charger. Without a `store` it is kept in memory only (a runner built outside a controller)."""
 
     def __init__(
         self,
@@ -128,7 +132,7 @@ class OwnershipCoverage:
                 counts["last_seen"] = seen
             self._dirty = True
             self._schedule()
-        except Exception:  # noqa: BLE001 - the tally never breaks the shadow
+        except Exception:  # noqa: BLE001 - the tally never breaks the runner
             _LOGGER.debug("SpotNav ownership coverage could not count %s %s", kind, field, exc_info=True)
 
     def add_trigger(self, kind: str, trigger: str) -> None:
@@ -140,7 +144,7 @@ class OwnershipCoverage:
             triggers[trigger] = triggers.get(trigger, 0) + 1
             self._dirty = True
             self._schedule()
-        except Exception:  # noqa: BLE001 - the tally never breaks the shadow
+        except Exception:  # noqa: BLE001 - the tally never breaks the runner
             _LOGGER.debug("SpotNav ownership coverage could not count %s %s", kind, trigger, exc_info=True)
 
     def _schedule(self) -> None:

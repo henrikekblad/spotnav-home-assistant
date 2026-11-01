@@ -320,7 +320,7 @@ def test_a_start_on_its_way_is_never_stopped_under_a_person_stop() -> None:
 
 def test_person_start_under_their_stop_is_not_stopped_by_c7_while_the_report_beats_the_result() -> None:
     """A person's Start under their Stop: the charger reports charging before the start's result comes back. The
-    controller's `_shadow_start_pending` reads False once the charger charges, so the event says start_pending=False;
+    controller's `_core_start_pending` reads False once the charger charges, so the event says start_pending=False;
     the core's own pending Start keeps C7 from stopping the person's own Start."""
     s = ChargeSession(plugged=True, manual=ManualPause("stop", "plug_in"))
     s, cmds = decide(s, ev.PersonStart(connected=True), T0)
@@ -1449,7 +1449,6 @@ def test_the_cores_constants_are_todays() -> None:
     assert PERSON_HOLD_STOP_GAP_S == controller.PERSON_HOLD_STOP_GAP_S
     assert PERSON_HOLD_MAX_STOPS == controller.PERSON_HOLD_MAX_STOPS
     assert PERSON_HOLD_WINDOW_S == controller.PERSON_HOLD_WINDOW_S
-    assert SAFETY_RESUME_GAP_S == controller.SAFETY_RESUME_GAP_S
     assert {item.name for item in dataclass_fields(ChargeSession)} >= {"owner", "manual", "span_pause"}
 
 
@@ -1580,7 +1579,7 @@ def test_a_top_off_is_the_plans_charge_past_the_last_window() -> None:
     for owner in ("person", "solar", "charge_now", "min_soc", "charger_self", "none"):
         session, commands = run(PLUGGED.with_changes(owner=owner), ev.FinalWindowEnd(top_off_wanted=True))
         assert session.owner != "top_off", owner
-    from custom_components.spotnav.execution.ownership_shadow import legacy_owner
+    from custom_components.spotnav.core.migration import legacy_owner
 
     unseen = {"charging": False, "start_pending": False, "stop_recent": False}
     assert legacy_owner(origin="plan_window", top_off=True, **unseen) == "top_off"

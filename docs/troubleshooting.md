@@ -14,7 +14,7 @@ public GitHub issue: open the issue with the **bug report** form, then email the
 **support@sensnology.se** with the issue's number in the subject.
 
 The site entry's file (and the card's **Download debug info** in Settings, Support, for
-administrators) also carries the whole installation as one debug bundle (`bundle_version` 8). It keeps
+administrators) also carries the whole installation as one debug bundle (`bundle_version` 9). It keeps
 the last day, also across restarts and updates: what it holds below is stored by SpotNav (written at
 most every five minutes and when Home Assistant stops) and read back after a restart, so a bundle
 downloaded in the evening still shows the afternoon. Nothing is read from the recorder.
@@ -45,14 +45,13 @@ downloaded in the evening still shows the afternoon. Nothing is read from the re
   `card_bundle_hash_served` (the one browsers are handed). When they differ, the file says so in
   `client.note`, and the card's Support section says it too: the browser or the Companion app runs an
   older card. Reload the page; in the Companion app, force-stop the app and open it again.
-- `ownership_shadow.drives` in each charger's controller diagnostics: `true` when the charge-ownership core decides
-  (the default), `false` for a charger set to the previous logic. Either way the other side is computed beside it,
-  and `counts` and the rings say where they disagreed.
-- `ownership_shadow.coverage` in each charger's controller diagnostics: per event kind of the
-  charge-ownership core (every kind, zero until seen), how many events it decided, compared,
-  disagreed on, found drift at and failed on, and when it first and last saw one. Unlike the rest of
-  `ownership_shadow` it is kept across restarts, from `since` (under the integration's `version`
-  then) until the charger is removed.
+- `ownership` in each charger's controller diagnostics (`ownership_shadow` before bundle version 9): the
+  charge-ownership core's counts (`failures` says which decisions it could not take, and when the last was), its
+  session, and its last events, each with the session it was decided from.
+- `ownership.coverage` in each charger's controller diagnostics: per event kind of the charge-ownership core (every
+  kind, zero until seen), how many events it decided and failed on, and when it first and last saw one. Unlike the
+  rest of `ownership` it is kept across restarts, from `since` (under the integration's `version` then) until the
+  charger is removed.
 - `yield_stepping`, `solar_surplus` and `hybrid` in the site's diagnostics, per charger (version 7):
   the last yield-stepping verdict, the solar surplus state and the hybrid state, which the *Capacity
   state* sensor carried as attributes up to 1.14.3.
@@ -60,11 +59,11 @@ downloaded in the evening still shows the afternoon. Nothing is read from the re
 To check a saved bundle's charge-ownership recording offline, run
 `.venv/bin/python tools/replay_bundle.py bundle.json` in the integration's repository (no Home
 Assistant needed; `--charger <name or id>` picks one charger, `--json` gives machine output). For
-each charger it prints the shadow's counts, its coverage per event kind (version 6 and later), and
-the recorded disagreements and drift, replays the
-recorded events through today's pure core, and says whether the core now decides differently from
-the recording or from the code that ran. A charger without the `ownership_shadow` block (a bundle
-from before version 5) is reported as having nothing to replay. The exit code is 1 when a replay differs.
+each charger it prints the core's counts, its coverage per event kind (version 6 and later), and, in a bundle
+before version 9, the disagreements and drift recorded then, replays the recorded events through today's pure core,
+and says whether the core now decides differently from the recording (or, before version 9, from the previous
+logic that ran beside it). A charger without the `ownership` or `ownership_shadow` block (a bundle from before
+version 5) is reported as having nothing to replay. The exit code is 1 when a replay differs.
 
 Useful entities on each charger: *Auto plan state*, *Auto execution state*, *Next planned
 charging start*, *Planned cost* and *Auto settings revision*. On a site: *Capacity state*, *Solar
@@ -145,11 +144,10 @@ changes.
   installed; check *Auto execution state* and whether automatic charging is paused.
 - **Prices are stale.** If the area's source cannot be reached, the last successful fetch is used and the card says
   the prices are stale. They update by themselves once the source answers again.
-- **A charger starts or stops when it should not, since the charge-ownership logic took over.** The charge-ownership
-  core decides who owns a charge on every charger by default, with the previous logic still computed beside it and
-  compared (`ownership_shadow.drives` is `true` in the charger's diagnostics). An administrator can take one charger
-  back under its **Configure**: **Charging decisions**, **Previous logic** (saving reloads that charger). Download
-  the debug info (card Settings, Support) first and send it with an issue: it records where the two disagreed.
+- **A charger starts or stops when it should not.** The charge-ownership core decides who owns a charge on every
+  charger. Download the debug info (card Settings, Support) and send it with an issue: it records the core's last
+  events and the session each was decided from. When the core could not decide (a Repairs issue says so when it
+  repeats), nothing automatic was sent at that moment; what you start or stop yourself still works.
 
 ## Prices
 

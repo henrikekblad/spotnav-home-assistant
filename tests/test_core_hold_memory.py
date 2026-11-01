@@ -13,7 +13,6 @@ import pytest
 from homeassistant.core import HomeAssistant
 
 from custom_components.spotnav.core.session import ChargeSession
-from custom_components.spotnav.execution import ownership_shadow
 from custom_components.spotnav.execution.controller import SESSION_ORDER_KEY, SESSION_STORE_KEY
 
 from .helpers import install_schedule
@@ -25,9 +24,8 @@ OVERRIDDEN = {"held": True, "overridden": True}
 NONE = {"held": False, "overridden": False}
 
 
-@pytest.fixture(params=[True, False], ids=["core", "previous"])
+@pytest.fixture(params=[True], ids=["core"])
 def drives(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) -> bool:
-    monkeypatch.setattr(ownership_shadow, "CORE_OWNERSHIP_DEFAULT", request.param)
     return request.param
 
 
@@ -37,7 +35,7 @@ async def _stored(world: World) -> dict[str, Any]:
 
 
 def _session(world: World) -> ChargeSession:
-    return world.controller.ownership_shadow.session
+    return world.controller.session_runner.session
 
 
 def _hold(world: World) -> dict[str, bool]:
@@ -266,7 +264,7 @@ async def test_a_report_with_no_car_and_a_control_that_cannot_be_read_ends_the_h
     assert (await _stored(world))["hold"] == NONE
     if drives:
         assert (await _stored(world))[SESSION_STORE_KEY]["held"] is False
-    kinds = [record["event"]["kind"] for record in world.controller.ownership_shadow.diagnostics()["events"]]
+    kinds = [record["event"]["kind"] for record in world.controller.session_runner.diagnostics()["events"]]
     assert kinds[-1] == "charger_reported_unreadable"
     # Every change of the hold was fed: the recording replays from its first session alone with no difference.
     import json
@@ -275,7 +273,7 @@ async def test_a_report_with_no_car_and_a_control_that_cannot_be_read_ends_the_h
 
     from .test_core_replay import _bundle
 
-    events = world.controller.ownership_shadow.diagnostics()["events"]
+    events = world.controller.session_runner.diagnostics()["events"]
     alone = replay_bundle(json.loads(json.dumps(_bundle(events), default=str)), line_up=False)["charger_a"]
     assert alone.skipped == 0 and alone.real == (), alone.real
     await world.shutdown()
@@ -337,7 +335,6 @@ async def test_todays_hold_key_is_read_where_the_keys_are_the_truth(
     """When the core drives, a restart takes the hold's memory from today's `hold` key only to migrate: an older
     build's record with no session of the core's, or an earlier build's record whose order marks say its keys were
     written after it (each migrated once)."""
-    monkeypatch.setattr(ownership_shadow, "CORE_OWNERSHIP_DEFAULT", True)
     world = await pause_world(hass, timers, plan=later_window())
     await _overridden(world, True)
     world.controller._cancel_session_save()  # noqa: SLF001 - the record is changed by hand below
@@ -352,40 +349,13 @@ async def test_todays_hold_key_is_read_where_the_keys_are_the_truth(
     world.controller._session_saved = ChargeSession.from_store(  # noqa: SLF001 - the old controller saves no more
         saved.get(SESSION_STORE_KEY) or ChargeSession().to_store()
     )
-    world.controller.ownership_shadow.session = world.controller._session_saved  # noqa: SLF001
+    world.controller.session_runner.session = world.controller._session_saved  # noqa: SLF001
 
     restarted = await world.restart()
     await hass.async_block_till_done()
     assert (_session(restarted).held, _session(restarted).overridden) == (True, True)
     assert restarted.controller.hold_overridden and len(restarted.stops) == 1
     await restarted.shutdown()
-
-
-@pytest.mark.shadow_disagreement_expected
-async def test_the_holds_memory_is_kept_as_the_core_decided_it_and_a_difference_is_mirror_drift(
-    hass: HomeAssistant,
-) -> None:
-    """Owned by the core (`WINDOW_HOLD`): the line-up never takes it from today's state; a difference is counted and
-    told as `mirror_drift`, and the core's value stays."""
-    from custom_components.spotnav.core import events as ev
-
-    today = {"session": ChargeSession(plugged=True)}
-    heard: list[str] = []
-    ownership_shadow.LISTENERS.append(lambda kind, record: heard.append(kind))
-    try:
-        shadow = ownership_shadow.OwnershipShadow(lambda: today["session"], owned_fields=ownership_shadow.WINDOW_HOLD)
-        shadow.session = today["session"].with_changes(held=True, overridden=True)
-        today["session"] = today["session"].with_changes(held=True, overridden=True)
-        shadow.feed(ev.ConnectionUnknown())
-        assert heard == [] and shadow.counts["mirror_drift"] == 0
-        today["session"] = today["session"].with_changes(held=False, overridden=False)
-        shadow.feed(ev.ConnectionUnknown())
-    finally:
-        ownership_shadow.LISTENERS.pop()
-    assert heard == ["mirror_drift"] and shadow.counts["mirror_drift"] == 1
-    assert (shadow.session.held, shadow.session.overridden) == (True, True), "never taken"
-    (record,) = [item for item in shadow.diagnostics()["drift"] if item.get("mirror")]
-    assert set(record["fields"]) == {"held", "overridden"}
 
 
 async def test_a_held_plug_in_sessions_recording_replays_with_no_line_up(
@@ -404,7 +374,7 @@ async def test_a_held_plug_in_sessions_recording_replays_with_no_line_up(
     await world.controller.async_follow_schedule()
     await world.plug.set(False, control="off")
     await hass.async_block_till_done()
-    diagnostics = world.controller.ownership_shadow.diagnostics()
+    diagnostics = world.controller.session_runner.diagnostics()
     bundle = json.loads(json.dumps(_bundle(diagnostics["events"]), default=str))
     alone = replay_bundle(bundle, line_up=False)["charger_a"]
     assert alone.events == len(diagnostics["events"]) and alone.skipped == 0

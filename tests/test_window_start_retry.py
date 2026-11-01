@@ -6,7 +6,7 @@ charge control unavailable for longer than the owed wait left the window uncharg
 the charger idled was recorded five minutes later as "the car ended the charge", which kept the window (and later
 ones) from starting. Now the start is decided again at `START_RETRY_AFTER_S` after it, as a plug-in inside the window
 decides it, while nothing says not to; an owed start waits for the charger as long as the window is open; and the car
-can end only a charge it drew in. Each case runs with the core deciding and with the previous logic.
+can end only a charge it drew in.
 """
 
 from __future__ import annotations
@@ -20,7 +20,7 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.util import dt as dt_util
 from pytest_homeassistant_custom_component.common import async_fire_time_changed
 
-from custom_components.spotnav.const import CONF_CHARGE_CONTROL, CONF_CHARGING_STATE, CONF_CORE_OWNERSHIP
+from custom_components.spotnav.const import CONF_CHARGE_CONTROL, CONF_CHARGING_STATE
 from custom_components.spotnav.execution.controller import (
     ChargingController,
     OWED_GIVE_UP_S,
@@ -50,11 +50,6 @@ async def _shut_down_controllers():
         await _CONTROLLERS.pop().async_shutdown()
 
 
-@pytest.fixture(params=[True, False], ids=["core", "legacy"])
-def core(request: pytest.FixtureRequest) -> bool:
-    return request.param
-
-
 async def _after(hass: HomeAssistant, freezer: Any, seconds: float) -> None:
     freezer.tick(timedelta(seconds=seconds))
     async_fire_time_changed(hass)
@@ -74,7 +69,7 @@ def _window(start_in: float = 30.0, hours: float = 2.0) -> dict[str, Any]:
 
 
 async def _switch_charger(
-    hass: HomeAssistant, core: bool, *, mode: str = "ignored", status: str = "SuspendedEVSE"
+    hass: HomeAssistant, *, mode: str = "ignored", status: str = "SuspendedEVSE"
 ) -> tuple[ChargingController, list[Any]]:
     """A charger with a plain switch and a status sensor: `mode` says what a start does (`ignored`: the switch stays
     off, `follows`: it turns on while the status still says the charger idles, `raise`: the call fails)."""
@@ -100,7 +95,6 @@ async def _switch_charger(
         {
             CONF_CHARGE_CONTROL: CONTROL,
             CONF_CHARGING_STATE: {"entity_id": STATUS, "charging_values": ["Charging"]},
-            CONF_CORE_OWNERSHIP: core,
         },
     )
     _CONTROLLERS.append(controller)
@@ -108,10 +102,10 @@ async def _switch_charger(
     return controller, starts
 
 
-async def _shaped_charger(hass: HomeAssistant, platform: str, core: bool) -> ChargingController:
+async def _shaped_charger(hass: HomeAssistant, platform: str) -> ChargingController:
     ids = register_shape(hass, SHAPES[platform])
     found = detect_charger(hass, ids["device_id"])
-    controller = ChargingController(hass, f"entry_{platform}", {**detected_config(found), CONF_CORE_OWNERSHIP: core})
+    controller = ChargingController(hass, f"entry_{platform}", detected_config(found))
     _CONTROLLERS.append(controller)
     await controller.async_initialize()
     return controller
@@ -131,9 +125,9 @@ def _easee_commands(hass: HomeAssistant) -> list[str]:
 
 
 async def test_a_start_the_charger_ignores_is_sent_again_three_times_and_no_more(
-    hass: HomeAssistant, freezer: Any, core: bool
+    hass: HomeAssistant, freezer: Any
 ) -> None:
-    controller, starts = await _switch_charger(hass, core)
+    controller, starts = await _switch_charger(hass)
     await install_schedule(controller, _window())
     await _after(hass, freezer, 31)
     assert len(starts) == 1, "the window's own start"
@@ -147,9 +141,9 @@ async def test_a_start_the_charger_ignores_is_sent_again_three_times_and_no_more
 
 
 async def test_a_start_that_raises_is_logged_and_sent_again(
-    hass: HomeAssistant, freezer: Any, core: bool, caplog: pytest.LogCaptureFixture
+    hass: HomeAssistant, freezer: Any, caplog: pytest.LogCaptureFixture
 ) -> None:
-    controller, starts = await _switch_charger(hass, core, mode="raise")
+    controller, starts = await _switch_charger(hass, mode="raise")
     await install_schedule(controller, _window())
     await _after(hass, freezer, 31)
     assert len(starts) == 1
@@ -162,9 +156,9 @@ async def test_a_start_that_raises_is_logged_and_sent_again(
 
 
 async def test_an_easee_left_awaiting_start_is_resumed_again_until_it_charges(
-    hass: HomeAssistant, freezer: Any, core: bool
+    hass: HomeAssistant, freezer: Any
 ) -> None:
-    controller = await _shaped_charger(hass, "easee", core)
+    controller = await _shaped_charger(hass, "easee")
     hass.states.async_set(EASEE_STATUS, "awaiting_start", {"config_authorizationRequired": False})
     commands = _easee_commands(hass)
     await install_schedule(controller, _window())
@@ -183,10 +177,10 @@ async def test_an_easee_left_awaiting_start_is_resumed_again_until_it_charges(
 
 
 async def test_a_toggling_button_charger_is_sent_its_start_again_once(
-    hass: HomeAssistant, freezer: Any, core: bool
+    hass: HomeAssistant, freezer: Any
 ) -> None:
     """Webasto's start presses its stop first: a retry is a stop and a start, so there is at most one."""
-    controller = await _shaped_charger(hass, "webasto_next_modbus", core)
+    controller = await _shaped_charger(hass, "webasto_next_modbus")
     presses: list[str] = []
 
     async def press(call: ServiceCall) -> None:
@@ -206,9 +200,9 @@ async def test_a_toggling_button_charger_is_sent_its_start_again_once(
 
 
 async def test_an_easee_whose_own_scheduler_holds_the_start_is_not_sent_it_again(
-    hass: HomeAssistant, freezer: Any, core: bool
+    hass: HomeAssistant, freezer: Any
 ) -> None:
-    controller = await _shaped_charger(hass, "easee", core)
+    controller = await _shaped_charger(hass, "easee")
     hass.states.async_set(EASEE_STATUS, "awaiting_start", {"config_authorizationRequired": False})
     commands = _easee_commands(hass)
     await install_schedule(controller, _window())
@@ -221,8 +215,8 @@ async def test_an_easee_whose_own_scheduler_holds_the_start_is_not_sent_it_again
     assert controller.window_start_retry["last"]["result"] == "held_by_charger"
 
 
-async def test_a_car_that_finished_is_not_sent_the_start_again(hass: HomeAssistant, freezer: Any, core: bool) -> None:
-    controller = await _shaped_charger(hass, "easee", core)
+async def test_a_car_that_finished_is_not_sent_the_start_again(hass: HomeAssistant, freezer: Any) -> None:
+    controller = await _shaped_charger(hass, "easee")
     hass.states.async_set(EASEE_STATUS, "awaiting_start", {"config_authorizationRequired": False})
     commands = _easee_commands(hass)
     await install_schedule(controller, _window())
@@ -235,8 +229,8 @@ async def test_a_car_that_finished_is_not_sent_the_start_again(hass: HomeAssista
     assert controller.window_start_retry["last"]["result"] == "finished"
 
 
-async def test_an_unplugged_car_ends_the_retries(hass: HomeAssistant, freezer: Any, core: bool) -> None:
-    controller = await _shaped_charger(hass, "easee", core)
+async def test_an_unplugged_car_ends_the_retries(hass: HomeAssistant, freezer: Any) -> None:
+    controller = await _shaped_charger(hass, "easee")
     hass.states.async_set(EASEE_STATUS, "awaiting_start", {"config_authorizationRequired": False})
     commands = _easee_commands(hass)
     await install_schedule(controller, _window())
@@ -249,8 +243,8 @@ async def test_an_unplugged_car_ends_the_retries(hass: HomeAssistant, freezer: A
     assert len(commands) == sent
 
 
-async def test_no_retry_after_the_window_ended(hass: HomeAssistant, freezer: Any, core: bool) -> None:
-    controller, starts = await _switch_charger(hass, core)
+async def test_no_retry_after_the_window_ended(hass: HomeAssistant, freezer: Any) -> None:
+    controller, starts = await _switch_charger(hass)
     await install_schedule(controller, _window(hours=1 / 60))
     await _after(hass, freezer, 31)
     assert len(starts) == 1
@@ -262,9 +256,9 @@ async def test_no_retry_after_the_window_ended(hass: HomeAssistant, freezer: Any
 
 @pytest.mark.parametrize("owner", ["balancing", "solar"])
 async def test_no_retry_while_load_balancing_or_the_sun_holds_the_charger(
-    hass: HomeAssistant, freezer: Any, core: bool, owner: str
+    hass: HomeAssistant, freezer: Any, owner: str
 ) -> None:
-    controller, starts = await _switch_charger(hass, core)
+    controller, starts = await _switch_charger(hass)
     await install_schedule(controller, _window())
     await _after(hass, freezer, 31)
     assert len(starts) == 1
@@ -310,9 +304,9 @@ async def test_no_retry_under_a_persons_stop(hass: HomeAssistant, freezer: Any, 
 
 
 async def test_an_owed_start_is_sent_once_the_charger_is_back_after_the_owed_wait(
-    hass: HomeAssistant, freezer: Any, core: bool
+    hass: HomeAssistant, freezer: Any
 ) -> None:
-    controller, starts = await _switch_charger(hass, core, mode="follows", status="Charging")
+    controller, starts = await _switch_charger(hass, mode="follows", status="Charging")
     hass.states.async_set(STATUS, "SuspendedEVSE")
     await install_schedule(controller, _window())
     hass.states.async_set(CONTROL, "unavailable")
@@ -326,8 +320,8 @@ async def test_an_owed_start_is_sent_once_the_charger_is_back_after_the_owed_wai
     assert len(starts) == 1
 
 
-async def test_an_owed_start_is_not_sent_once_its_window_is_over(hass: HomeAssistant, freezer: Any, core: bool) -> None:
-    controller, starts = await _switch_charger(hass, core)
+async def test_an_owed_start_is_not_sent_once_its_window_is_over(hass: HomeAssistant, freezer: Any) -> None:
+    controller, starts = await _switch_charger(hass)
     await install_schedule(controller, _window(hours=0.25))
     hass.states.async_set(CONTROL, "unavailable")
     await _after(hass, freezer, 40)
@@ -345,9 +339,9 @@ async def test_an_owed_start_is_not_sent_once_its_window_is_over(hass: HomeAssis
 
 @pytest.mark.parametrize("status", ["SuspendedEVSE", "Ready", "awaiting_start"])
 async def test_a_switch_on_while_the_charger_idles_is_not_the_car_ending_the_charge(
-    hass: HomeAssistant, freezer: Any, core: bool, status: str
+    hass: HomeAssistant, freezer: Any, status: str
 ) -> None:
-    controller, starts = await _switch_charger(hass, core, mode="follows", status=status)
+    controller, starts = await _switch_charger(hass, mode="follows", status=status)
     await install_schedule(controller, _window())
     await _after(hass, freezer, 31)
     for tick in range(12):
@@ -360,11 +354,11 @@ async def test_a_switch_on_while_the_charger_idles_is_not_the_car_ending_the_cha
 
 
 async def test_a_full_car_refusing_at_once_is_the_car_ending_the_charge(
-    hass: HomeAssistant, freezer: Any, core: bool
+    hass: HomeAssistant, freezer: Any
 ) -> None:
     """The charger took the start (its switch is on) and the car says `SuspendedEV` from the first moment: a full car,
     recognised after `PLAN_CAR_IDLE_S`, and the start is not sent again."""
-    controller, starts = await _switch_charger(hass, core, mode="follows", status="SuspendedEV")
+    controller, starts = await _switch_charger(hass, mode="follows", status="SuspendedEV")
     await install_schedule(controller, _window())
     await _after(hass, freezer, 31)
     assert len(starts) == 1
@@ -376,8 +370,8 @@ async def test_a_full_car_refusing_at_once_is_the_car_ending_the_charge(
     assert len(starts) == 1
 
 
-async def test_a_start_the_car_refuses_is_not_sent_again(hass: HomeAssistant, freezer: Any, core: bool) -> None:
-    controller, starts = await _switch_charger(hass, core, status="SuspendedEV")
+async def test_a_start_the_car_refuses_is_not_sent_again(hass: HomeAssistant, freezer: Any) -> None:
+    controller, starts = await _switch_charger(hass, status="SuspendedEV")
     await install_schedule(controller, _window())
     await _after(hass, freezer, 31)
     assert len(starts) == 1

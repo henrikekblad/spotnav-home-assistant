@@ -1,8 +1,7 @@
 """A plan window that opens while a charge started by hand runs (a person's Start, Charge now) leaves that charge alone:
 it stays the person's, nothing is sent at the window's start, and the window's end does not stop it (owner decision
 2026-11-01, as docs/strategies.md and docs/card.md promise). Also across a restart before the window opens, in both
-restart kinds, where the restart reads the owner from the core's own record alone. The core's rule: with the option off
-(`SPOTNAV_CORE_OWNERSHIP=0`) today's code still takes such a charge over at the window's start, until step 9 deletes it."""
+restart kinds, where the restart reads the owner from the core's own record alone."""
 
 from __future__ import annotations
 
@@ -13,18 +12,10 @@ import pytest
 from homeassistant.core import HomeAssistant
 from homeassistant.util import dt as dt_util
 
-from custom_components.spotnav.execution import ownership_shadow
-
 from .pause_world import later_window, pause_world, SWITCH, World
 from .relay import FakeScheduler
 
-pytestmark = pytest.mark.usefixtures("offline_relay", "core_drives")
-
-
-@pytest.fixture
-def core_drives() -> None:
-    if not ownership_shadow.CORE_OWNERSHIP_DEFAULT:
-        pytest.skip("the core's rule; with the option off today's code is kept until step 9")
+pytestmark = pytest.mark.usefixtures("offline_relay")
 
 ORIGINS = {"person": "manual", "charge_now": "other"}
 
@@ -62,7 +53,7 @@ async def test_a_window_opening_during_a_charge_started_by_hand_leaves_it_the_pe
     await _started_by_hand(world, owner)
     await _window_passes(world, plan)
     assert world.controller.charge_origin == ORIGINS[owner]
-    assert world.controller.ownership_shadow.session.owner == owner
+    assert world.controller.session_runner.session.owner == owner
     await world.shutdown()
 
 
@@ -77,5 +68,5 @@ async def test_a_restart_before_the_window_keeps_a_charge_started_by_hand_the_pe
     restarted = await world.restart()
     assert restarted.controller.charge_origin == ORIGINS[owner]
     await _window_passes(restarted, plan)
-    assert restarted.controller.ownership_shadow.session.owner == owner
+    assert restarted.controller.session_runner.session.owner == owner
     await restarted.shutdown()

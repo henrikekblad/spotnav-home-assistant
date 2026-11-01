@@ -1,6 +1,5 @@
-"""A window's start ends the plug-in session's hold (`WindowHold.end_session`): the core is fed that start where
-today's code ends the hold, also when the target ends the plan instead, so a replay from the first recorded session
-with no line-up finds no difference in the hold."""
+"""A window's start ends the plug-in session's hold: the core is fed that start, also when the target ends the plan
+instead, so a replay from the first recorded session with no line-up finds no difference in the hold."""
 
 from __future__ import annotations
 
@@ -51,7 +50,7 @@ async def _held(hass: HomeAssistant, soc: dict[str, float], **plan: Any) -> tupl
 
 
 def _replayed(controller: ChargingController) -> tuple[ReplayReport, list[dict[str, Any]]]:
-    events = json.loads(json.dumps(controller.ownership_shadow.diagnostics()["events"], default=str))
+    events = json.loads(json.dumps(controller.session_runner.diagnostics()["events"], default=str))
     return replay(events, line_up=False), events
 
 
@@ -84,7 +83,8 @@ async def test_a_window_start_the_target_ends_is_fed_too(hass: HomeAssistant) ->
     assert starts == [] and controller.plan is None
     report, events = _replayed(controller)
     kinds = [record["event"]["kind"] for record in events]
-    assert "window_start" in kinds and kinds.index("window_start") < kinds.index("target_reached"), kinds
+    # The target's stop is fed inside the window start's feed, decided when it happens: before the start's own end.
+    assert "window_start" in kinds and "target_reached" in kinds, kinds
     (start,) = [record for record in events if record["event"]["kind"] == "window_start"]
     assert start["event"]["target_reached"] is True and start["core"] == []
     assert _hold_differences(report) == [], report.real
@@ -104,5 +104,5 @@ async def test_a_window_start_while_the_targets_stop_is_on_its_way_is_fed_too(ha
     (start,) = [record for record in events if record["event"]["kind"] == "window_start"]
     assert start["event"]["target_stopping"] is True and start["core"] == []
     assert _hold_differences(report) == [], report.real
-    assert controller.ownership_shadow.session.held is False
+    assert controller.session_runner.session.held is False
     await controller.async_shutdown()

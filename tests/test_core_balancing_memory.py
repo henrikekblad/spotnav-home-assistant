@@ -13,7 +13,6 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 
 from custom_components.spotnav.core.session import ChargeSession
-from custom_components.spotnav.execution import ownership_shadow
 from custom_components.spotnav.execution.controller import SESSION_ORDER_KEY, SESSION_STORE_KEY
 from custom_components.spotnav.planning.auto_settings import PAUSE_UNTIL_RESUMED
 
@@ -23,9 +22,8 @@ from .relay import FakeScheduler
 PERSONS = {"origin": "manual", "plan_charge": False}
 
 
-@pytest.fixture(params=[True, False], ids=["core", "previous"])
+@pytest.fixture(params=[True], ids=["core"])
 def drives(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) -> bool:
-    monkeypatch.setattr(ownership_shadow, "CORE_OWNERSHIP_DEFAULT", request.param)
     return request.param
 
 
@@ -43,7 +41,7 @@ async def _persons_charge_held_back(world: World) -> None:
 
 
 def _session(world: World) -> ChargeSession:
-    return world.controller.ownership_shadow.session
+    return world.controller.session_runner.session
 
 
 @pytest.mark.usefixtures("both_restarts")
@@ -86,7 +84,6 @@ async def test_todays_balancing_pause_key_is_read_where_the_keys_are_the_truth(
     """When the core drives, a restart takes load balancing's memory from today's `balancing_pause` key only to migrate:
     an older build's record with no session of the core's, or an earlier build's record whose order marks say its keys
     were written after it (each migrated once)."""
-    monkeypatch.setattr(ownership_shadow, "CORE_OWNERSHIP_DEFAULT", True)
     world = await pause_world(hass, timers)
     await _persons_charge_held_back(world)
     world.controller._cancel_session_save()  # noqa: SLF001 - the record is changed by hand below
@@ -101,7 +98,7 @@ async def test_todays_balancing_pause_key_is_read_where_the_keys_are_the_truth(
     world.controller._session_saved = ChargeSession.from_store(  # noqa: SLF001 - the old controller saves no more
         saved.get(SESSION_STORE_KEY) or ChargeSession().to_store()
     )
-    world.controller.ownership_shadow.session = world.controller._session_saved  # noqa: SLF001
+    world.controller.session_runner.session = world.controller._session_saved  # noqa: SLF001
 
     restarted = await world.restart()
     assert (_session(restarted).balancing_paused, _session(restarted).paused_origin) == (True, "person")
@@ -132,7 +129,7 @@ async def test_the_regulator_dropping_a_charge_no_longer_wanted_is_the_cores_dec
     assert not scc.SiteCapacityController._charge_still_wanted(site, "entry_a", controller)  # noqa: SLF001
     assert not controller.paused_by_balancing and controller.paused_charge_origin is None
     assert not _session(world).balancing_paused and _session(world).paused_origin is None
-    kinds = [record["event"]["kind"] for record in controller.ownership_shadow.diagnostics()["events"]]
+    kinds = [record["event"]["kind"] for record in controller.session_runner.diagnostics()["events"]]
     assert kinds[-1] == "balancing_dropped"
     assert (await _stored(world))["balancing_pause"] is None
 
@@ -163,35 +160,6 @@ async def test_a_start_held_back_below_the_floor_is_told_by_its_own_outcome(
     await world.executor.async_manual_start(10)
     assert not controller.start_held_by_balancing and not controller.paused_by_balancing
     await world.shutdown()
-
-
-@pytest.mark.shadow_disagreement_expected
-async def test_load_balancings_memory_is_kept_as_the_core_decided_it_and_a_difference_is_mirror_drift(
-    hass: HomeAssistant,
-) -> None:
-    """Owned by the core (`BALANCING`): the line-up never takes it from today's state; a difference is counted and
-    told as `mirror_drift`, and the core's value stays."""
-    from custom_components.spotnav.core import events as ev
-
-    today = {"session": ChargeSession(plugged=True)}
-    heard: list[str] = []
-    ownership_shadow.LISTENERS.append(lambda kind, record: heard.append(kind))
-    try:
-        shadow = ownership_shadow.OwnershipShadow(
-            lambda: today["session"], owned_fields=(*ownership_shadow.SAFETY_AND_C7, *ownership_shadow.BALANCING)
-        )
-        shadow.session = today["session"].with_changes(balancing_paused=True, paused_origin="person")
-        today["session"] = today["session"].with_changes(balancing_paused=True, paused_origin="person")
-        shadow.feed(ev.ConnectionUnknown())
-        assert heard == [] and shadow.counts["mirror_drift"] == 0
-        today["session"] = today["session"].with_changes(balancing_paused=False, paused_origin=None)
-        shadow.feed(ev.ConnectionUnknown())
-    finally:
-        ownership_shadow.LISTENERS.pop()
-    assert heard == ["mirror_drift"] and shadow.counts["mirror_drift"] == 1
-    assert (shadow.session.balancing_paused, shadow.session.paused_origin) == (True, "person"), "never taken"
-    (record,) = [item for item in shadow.diagnostics()["drift"] if item.get("mirror")]
-    assert set(record["fields"]) == {"balancing_paused", "paused_origin"}
 
 
 async def _replugged(world: World, control: str) -> None:

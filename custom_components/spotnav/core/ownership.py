@@ -128,10 +128,13 @@ GATE_STOP: Final = "stop"
 GATE_BALANCING_RESUME: Final = "balancing_resume"
 GATE_PERSON_RESUME: Final = "person_resume"
 
-#: Today's constants (`execution/controller.py`; a test keeps the two equal).
+#: The stops under a person's Stop (C7): the controller's own constants (`execution/controller.py`, which logs and times
+#: them; a test keeps the two equal).
 PERSON_HOLD_STOP_GAP_S: Final = 30.0
 PERSON_HOLD_MAX_STOPS: Final = 3
 PERSON_HOLD_WINDOW_S: Final = 600.0
+#: A person's charge load balancing stopped for safety (not its below-floor pause) is resumed by the regulator no
+#: sooner than this many seconds after the last such stop, so a fuse that keeps needing the stop never cycles it.
 SAFETY_RESUME_GAP_S: Final = 300.0
 #: How far the car's level must have dropped since it ended a charge for its need to have grown: the hysteresis the
 #: sun's rules use (`execution/solar_execution.SOC_DROP_PCT`, which is this one).
@@ -172,8 +175,8 @@ _START_OWNER: Final = {
     REASON_MIN_SOC: OWNER_MIN_SOC,
 }
 
-#: Who owns a charge a plan window's end leaves running (`controller.WINDOW_END_SPARED_ORIGINS`): a person, a
-#: Charge-now start, the sun and the car's minimum charge level. Never the plan, its top-off, or a charge the charger
+#: Who owns a charge a plan window's end leaves running: a person, a Charge-now start, the sun and the car's minimum
+#: charge level. Never the plan, its top-off, or a charge the charger
 #: began by itself.
 WINDOW_END_SPARED: Final = frozenset({OWNER_PERSON, OWNER_CHARGE_NOW, OWNER_SOLAR, OWNER_MIN_SOC})
 #: A charge started by hand (a person's Start, a Charge-now start) that a plan window's start never takes over as the
@@ -401,9 +404,9 @@ def self_started(session: ChargeSession, *, charging: bool, start_pending: bool,
 
 
 def window_end_spared(session: ChargeSession) -> bool:
-    """Whether a plan window's end leaves the charge running (`controller._window_end_spared_owner`): it is a
-    person's, a Charge-now start's or the sun's, or nobody runs one and load balancing holds such a charge back
-    (its regulator still gives it back)."""
+    """Whether a plan window's end leaves the charge running: it is a person's, a Charge-now start's or the sun's, or
+    nobody runs one and load balancing holds such a charge back (its regulator still gives it back). The controller
+    reads it to choose between the last window's stop and a top-off."""
     owner = session.owner
     if owner in (OWNER_NONE, OWNER_CHARGER_SELF) and session.balancing_paused:
         owner = session.paused_origin

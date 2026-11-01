@@ -334,12 +334,10 @@
           "current_control": "Ställ in laddarens ström",
           "energy_register_entity": "Energimätare (total, valfritt)",
           "power_entity": "Effektsensor, smart plugg (valfri)",
-          "idle_power_w": "Drar ingen ström under (W)",
-          "charging_decisions": "Laddbeslut"
+          "idle_power_w": "Drar ingen ström under (W)"
         },
         "data_description": {
-          "idle_power_w": "Under den här effekten i fem minuter under en planerad laddning säger SpotNav att bilen inte drar ström. Standard 100 W.",
-          "charging_decisions": "Vilken logik som bestämmer när den här laddaren startar och stoppar. Välj Tidigare logik bara om den nuvarande inte fungerar för den här laddaren; laddaren startas om i SpotNav när du sparar."
+          "idle_power_w": "Under den här effekten i fem minuter under en planerad laddning säger SpotNav att bilen inte drar ström. Standard 100 W."
         }
       },
       "site_init": {
@@ -560,12 +558,6 @@
         "off": "Inget",
         "suggested": "Elområdets förslag",
         "manual": "Egen siffra"
-      }
-    },
-    "charging_decisions": {
-      "options": {
-        "current": "Nuvarande (standard)",
-        "previous": "Tidigare logik"
       }
     }
   },
@@ -880,7 +872,7 @@
     },
     "core_decision_failed": {
       "title": "En laddares laddbeslut misslyckades",
-      "description": "SpotNavs nuvarande logik kunde inte fatta beslut för **{charger}** flera gånger det senaste dygnet, så den tidigare logiken beslutade i stället. Laddningen fortsätter. För att hjälpa till att rätta felet: ladda ner felsökningsinfon (kugghjulet på SpotNav-kortet → Ladda ner felsökningsinfo) och bifoga den i ett ärende på GitHub. Om laddaren beter sig konstigt kan du byta till Tidigare logik: laddarens Konfigurera → Laddbeslut. Meddelandet försvinner efter ett dygn utan fel."
+      "description": "SpotNav kunde inte fatta sitt laddbeslut för **{charger}** flera gånger det senaste dygnet, så vid de tillfällena startade eller stoppade den inget automatiskt och beslutade igen vid nästa. Det du själv startar eller stoppar fungerar fortfarande, och lastbalanseringen skyddar fortfarande säkringen. För att hjälpa till att rätta felet: ladda ner felsökningsinfon (kugghjulet på SpotNav-kortet → Ladda ner felsökningsinfo) och bifoga den i ett ärende på GitHub. Meddelandet försvinner efter ett dygn utan fel."
     },
     "price_source_missing": {
       "title": "Inga elpriser för {area}",

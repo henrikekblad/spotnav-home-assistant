@@ -1,7 +1,5 @@
-"""The charge-ownership core drives (`CONF_CORE_OWNERSHIP`, on unless a charger's entry data says false): it decides,
-today's code acts on its verdicts and reads its owner from the session, and is still computed beside it and compared. A charger
-set to the previous logic decides with today's code as ever, the core only in shadow. (`SPOTNAV_CORE_OWNERSHIP=0`
-runs the whole suite with the previous logic.)"""
+"""The charge-ownership core decides for every charger: the controller and the boundary act on its verdicts alone
+and read who owns the charge from its session."""
 
 from __future__ import annotations
 
@@ -10,8 +8,7 @@ from homeassistant.core import HomeAssistant
 
 from custom_components.spotnav.const import CONF_CHARGE_CONTROL, CONF_CORE_OWNERSHIP
 from custom_components.spotnav.core.ownership import Start
-from custom_components.spotnav.core.session import ChargeSession
-from custom_components.spotnav.execution import ownership_shadow
+from custom_components.spotnav.execution import session_runner
 from custom_components.spotnav.execution.auto_execution import AutoExecutor
 from custom_components.spotnav.execution.controller import ChargingController
 from custom_components.spotnav.planning.auto_settings import async_setup_auto_settings
@@ -41,61 +38,25 @@ async def _charger(hass: HomeAssistant, *, drives: bool | None) -> tuple[Chargin
     return controller, executor, starts
 
 
-@pytest.mark.parametrize(("default", "configured", "drives"), [
-    (True, None, True),
-    (True, False, False),
-    (True, True, True),
-    (False, None, False),
-    (False, True, True),
-])
-async def test_the_core_drives_unless_a_charger_says_otherwise(
-    hass: HomeAssistant, timers: FakeScheduler, monkeypatch, default: bool, configured: bool | None, drives: bool
+@pytest.mark.parametrize("configured", [None, False, True])
+async def test_the_core_drives_whatever_an_earlier_release_stored(
+    hass: HomeAssistant, timers: FakeScheduler, configured: bool | None
 ) -> None:
-    monkeypatch.setattr(ownership_shadow, "CORE_OWNERSHIP_DEFAULT", default)
+    """The choice of the logic before the core is gone: a charger whose data still says `core_ownership` (a controller
+    built from it before setup drops the key) is driven by the core all the same."""
     controller, executor, _starts = await _charger(hass, drives=configured)
-    assert controller.ownership_shadow.drives is drives
-    assert controller.ownership_shadow.diagnostics()["drives"] is drives
+    assert controller.session_runner.drives is True
+    assert controller.session_runner.diagnostics()["drives"] is True
     await executor.async_shutdown()
     await controller.async_shutdown()
 
 
-def test_the_default_is_that_the_core_drives() -> None:
-    import os
-
-    if os.environ.get("SPOTNAV_CORE_OWNERSHIP") == "0":
-        pytest.skip("this run sets the previous logic as the default")
-    assert ownership_shadow.CORE_OWNERSHIP_DEFAULT is True
-
-
-@pytest.mark.parametrize("drives", [True, False])
-async def test_the_previous_logic_is_still_computed_and_compared_while_the_core_drives(
-    hass: HomeAssistant, timers: FakeScheduler, drives: bool
-) -> None:
-    """Either way the other side runs beside the one that decides: a plan window's start is compared, and the
-    diagnostics say which one drives."""
-    controller, executor, starts = await _charger(hass, drives=drives)
-    before = len(starts)
-    compared = controller.ownership_shadow.counts["compared"]
-    await install_schedule(controller, open_window())
-    await hass.async_block_till_done()
-    assert len(starts) > before and controller.charging
-    shadow = controller.ownership_shadow.diagnostics()
-    assert shadow["drives"] is drives
-    assert shadow["counts"]["compared"] > compared
-    assert shadow["counts"]["disagreements"] == 0
-    assert shadow["events"], "the events the comparison saw are kept for the diagnostics"
-    await executor.async_shutdown()
-    await controller.async_shutdown()
-
-
-@pytest.mark.shadow_disagreement_expected
-@pytest.mark.parametrize(("drives", "started"), [(True, False), (False, True)])
+@pytest.mark.parametrize(("drives", "started"), [(True, False)])
 async def test_todays_code_acts_on_the_cores_verdict_when_it_drives(
     hass: HomeAssistant, timers: FakeScheduler, monkeypatch, drives: bool, started: bool
 ) -> None:
-    """A core that would not start a window: driving, no start goes out; shadowing, today's code starts it (and the
-    shadow reports the disagreement)."""
-    real = ownership_shadow.decide
+    """A core that would not start a window: no start goes out."""
+    real = session_runner.decide
 
     def no_window_starts(session, event, now):
         session, commands = real(session, event, now)
@@ -103,14 +64,13 @@ async def test_todays_code_acts_on_the_cores_verdict_when_it_drives(
             commands = tuple(command for command in commands if not isinstance(command, Start))
         return session, commands
 
-    monkeypatch.setattr(ownership_shadow, "decide", no_window_starts)
+    monkeypatch.setattr(session_runner, "decide", no_window_starts)
     controller, executor, starts = await _charger(hass, drives=drives)
     before = len(starts)
     await install_schedule(controller, open_window())
     await hass.async_block_till_done()
     assert (len(starts) > before) is started
     assert controller.charging is started
-    assert (controller.ownership_shadow.counts["disagreements"] > 0) is (not drives)
     await executor.async_shutdown()
     await controller.async_shutdown()
 
@@ -131,17 +91,15 @@ async def test_todays_code_acts_on_the_cores_verdict_when_it_drives(
 async def test_the_cores_owner_is_todays_two_fields_both_ways(
     hass: HomeAssistant, timers: FakeScheduler, owner: str, fields: tuple
 ) -> None:
-    """Driving, today's `charge_origin` and `plan_charge` are the session's owner, both ways (the core end state plan,
-    step 7): every owner the core names is read as them, nobody's and the charger's own as none, and today's writes
-    change nothing (the core decided it already)."""
+    """`charge_origin` and `plan_charge` are the session's owner: every owner the core names is read as them, nobody's
+    and the charger's own as none, and nothing else can write them."""
     controller, executor, _starts = await _charger(hass, drives=True)
-    shadow = controller.ownership_shadow
+    shadow = controller.session_runner
     shadow.session = shadow.session.with_changes(owner=owner)
     assert (controller.charge_origin, controller._is_plan_charge) == fields  # noqa: SLF001
-    controller._owner_origin, controller._is_plan_charge = "manual", True  # noqa: SLF001 - today's own write
+    with pytest.raises(AttributeError):
+        controller._owner_origin = "manual"  # noqa: SLF001 - a view of the session
     assert (controller.charge_origin, controller._is_plan_charge) == fields  # noqa: SLF001
-    assert (controller._charge_origin, controller._plan_charge) == (None, False), "today's fields are not written"  # noqa: SLF001
-    assert shadow.counts["written_back"] == 0
     await executor.async_shutdown()
     await controller.async_shutdown()
 
@@ -153,77 +111,43 @@ async def test_a_persons_stop_and_start_follow_the_core_when_it_drives(
     await executor.async_manual_stop()
     pause = executor.pause_intent
     assert (pause.choice, pause.action, pause.scope) == ("manual", "stop", "plug_in")
-    assert controller.ownership_shadow.session.manual is not None
+    assert controller.session_runner.session.manual is not None
     await executor.async_manual_start()
     pause = executor.pause_intent
     assert (pause.action, pause.scope) == ("start", "plug_in")
     assert controller.charge_origin == "manual"
-    assert controller.ownership_shadow.counts["disagreements"] == 0
     await executor.async_shutdown()
     await controller.async_shutdown()
 
 
-async def test_shadow_token_equality_confuses_nested_tokens() -> None:
-    """Closing the inner of nested feeds of one task takes that very token off the stack, not an outer one that
-    looks the same, so `verdict` then reads the feed still open."""
-    from datetime import datetime, timezone
-
-    import asyncio
-
-    from custom_components.spotnav.core import events as ev
-    from custom_components.spotnav.execution.ownership_shadow import OwnershipShadow
-
-    at = datetime(2026, 10, 4, 22, 0, tzinfo=timezone.utc)
-    shadow = OwnershipShadow(lambda: ChargeSession(), now=lambda: at, drives=True)
-    outer = shadow.begin()
-    mid = shadow.begin()
-    inner = shadow.begin()
-    shadow.end(inner, ev.ConnectionUnknown())
-    stack = shadow._stack[asyncio.current_task()]  # noqa: SLF001
-    assert stack[-1] is mid, stack
-    assert stack == [outer, mid] and stack[0] is outer
-    shadow.end(mid, ev.ConnectionUnknown())
-    shadow.end(outer, ev.ConnectionUnknown())
-    assert not shadow._stack  # noqa: SLF001
-
-
-@pytest.mark.parametrize("drives", [False, True])
+@pytest.mark.parametrize("drives", [True])
 async def test_a_charge_seen_off_is_not_handed_back_to_the_plan_at_every_report(hass, timers, drives):
-    """Step 2: a pause whose stop failed, then the charge stops some other way. Today's code forgets the plan charge
-    (`_async_forget_plan_charge`, plan_charge False, origin kept). Driving, the owner is the core's (step 7): the
-    report of the charger off made it nobody's, and later reports neither hand the charge back to the plan nor save
-    again."""
+    """A pause whose stop failed, then the charge stops some other way: the report of the charger off made it
+    nobody's, and later reports neither hand the charge back to the plan nor save again."""
     from homeassistant.exceptions import HomeAssistantError
-    from custom_components.spotnav.execution import ownership_shadow
     from custom_components.spotnav.planning.auto_settings import PAUSE_UNTIL_RESUMED
     from .pause_world import pause_world, two_windows, SWITCH
 
-    default = ownership_shadow.CORE_OWNERSHIP_DEFAULT
-    ownership_shadow.CORE_OWNERSHIP_DEFAULT = drives
-    try:
-        world = await pause_world(hass, timers, plan=two_windows())
+    world = await pause_world(hass, timers, plan=two_windows())
 
-        async def failing() -> bool:
-            raise HomeAssistantError("the charge control is unavailable")
+    async def failing() -> bool:
+        raise HomeAssistantError("the charge control is unavailable")
 
-        world.controller.adapter.async_stop = failing
-        await world.executor.async_pause(PAUSE_UNTIL_RESUMED)
-        await world.switch("off")
-        saves = []
-        real = world.controller._async_save
+    world.controller.adapter.async_stop = failing
+    await world.executor.async_pause(PAUSE_UNTIL_RESUMED)
+    await world.switch("off")
+    saves = []
+    real = world.controller._async_save
 
-        async def counting(*a, **k):
-            saves.append(1)
-            return await real(*a, **k)
+    async def counting(*a, **k):
+        saves.append(1)
+        return await real(*a, **k)
 
-        world.controller._async_save = counting
-        flips = []
-        for index in range(6):
-            hass.states.async_set(SWITCH, "off", {"report": index})
-            await hass.async_block_till_done()
-            flips.append(world.controller._is_plan_charge)
-        written = world.controller.ownership_shadow.counts["written_back"]
-        await world.shutdown()
-        assert written <= 1 and len(saves) <= 1, (drives, written, len(saves), flips)
-    finally:
-        ownership_shadow.CORE_OWNERSHIP_DEFAULT = default
+    world.controller._async_save = counting
+    flips = []
+    for index in range(6):
+        hass.states.async_set(SWITCH, "off", {"report": index})
+        await hass.async_block_till_done()
+        flips.append(world.controller._is_plan_charge)
+    await world.shutdown()
+    assert not any(flips) and len(saves) <= 1, (len(saves), flips)

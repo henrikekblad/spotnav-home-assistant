@@ -22,7 +22,6 @@ from custom_components.spotnav.core.session import (
     STORED_VERSION,
     TRANSIENT_FIELDS,
 )
-from custom_components.spotnav.execution import ownership_shadow
 from custom_components.spotnav.execution.controller import SESSION_ORDER_KEY, SESSION_SAVE_DELAY_S, SESSION_STORE_KEY
 from custom_components.spotnav.planning.auto_settings import (
     MANUAL_SCOPE_NEXT_PLUG_IN,
@@ -94,13 +93,8 @@ def test_a_stored_record_of_another_version_or_shape_is_refused(change: dict[str
 
 
 @pytest.fixture
-def drives(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(ownership_shadow, "CORE_OWNERSHIP_DEFAULT", True)
-
-
-@pytest.fixture
-def shadows(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(ownership_shadow, "CORE_OWNERSHIP_DEFAULT", False)
+def drives() -> None:
+    """The core drives (for every charger now)."""
 
 
 @pytest.fixture
@@ -152,7 +146,7 @@ def _but_the_plug(session: ChargeSession) -> ChargeSession:
 
 
 def _intent(world: World) -> tuple[Any, Any]:
-    manual = world.controller.ownership_shadow.session.manual
+    manual = world.controller.session_runner.session.manual
     return (None, None) if manual is None else (manual.action, manual.scope)
 
 
@@ -185,7 +179,7 @@ async def test_todays_keys_are_migrated_once_into_the_cores_record(
     assert (stored["manual"], stored["owner"]) == ({"action": "stop", "scope": "plug_in"}, "none")
     for key in ("plan", "charge_origin", "plan_charge", "hold"):
         assert key in await _stored(restarted), "today's keys are still written"
-    assert _but_the_plug(restarted.controller.ownership_shadow.session) == _but_the_plug(
+    assert _but_the_plug(restarted.controller.session_runner.session) == _but_the_plug(
         ChargeSession.from_store(stored)
     )
 
@@ -195,10 +189,10 @@ async def test_todays_keys_are_migrated_once_into_the_cores_record(
     assert len(reads) == read + 1 and _but_the_plug(reads[-1]) == _but_the_plug(ChargeSession.from_store(stored))
     assert not [record for record in saves[before:] if record.get(SESSION_STORE_KEY, {}).get("plugged") is None]
     assert _intent(again) == (MANUAL_STOP, MANUAL_SCOPE_PLUG_IN)
-    assert again.controller.ownership_shadow.counts["disagreements"] == 0
     await again.shutdown()
 
 
+@pytest.mark.core_failure_expected  # a record it cannot read is a failure, told
 @pytest.mark.usefixtures("drives")
 @pytest.mark.parametrize("record", [{"version": 99, "owner": "plan"}, "garbled", {"version": 1}])
 @pytest.mark.usefixtures("both_restarts")
@@ -216,32 +210,8 @@ async def test_a_record_of_an_unknown_version_falls_back_to_todays_keys(
 
     stored = (await _stored(restarted))[SESSION_STORE_KEY]
     assert stored["version"] == STORED_VERSION, "written again in the version the core knows"
-    assert _but_the_plug(ChargeSession.from_store(stored)) == _but_the_plug(restarted.controller.ownership_shadow.session)
+    assert _but_the_plug(ChargeSession.from_store(stored)) == _but_the_plug(restarted.controller.session_runner.session)
     assert _intent(restarted) == (MANUAL_STOP, MANUAL_SCOPE_PLUG_IN), "from today's keys and the stored pause"
-    assert restarted.controller.ownership_shadow.counts["disagreements"] == 0
-    await restarted.shutdown()
-
-
-@pytest.mark.usefixtures("shadows")
-@pytest.mark.usefixtures("both_restarts")
-async def test_with_the_option_off_the_record_is_neither_written_nor_read(
-    hass: HomeAssistant, timers: FakeScheduler, saves: list, reads: list, freezer: Any
-) -> None:
-    world = await pause_world(hass, timers, plan=two_windows())
-    await world.executor.async_manual_stop()
-    await world.switch("on")
-    await _settle(hass, freezer)
-    assert saves and all(SESSION_STORE_KEY not in record for record in saves)
-
-    # A record a release with the option on left behind is not read: today's restore, exactly.
-    def leave(stored: dict[str, Any]) -> None:
-        stored[SESSION_STORE_KEY] = ChargeSession(owner="person", manual=ManualPause("start", "plug_in")).to_store()
-
-    await _rewrite(world, leave)
-    restarted = await world.restart()
-    assert reads == []
-    assert _intent(restarted) == (MANUAL_STOP, MANUAL_SCOPE_PLUG_IN)
-    assert restarted.controller.ownership_shadow.session.owner == "none"
     await restarted.shutdown()
 
 
@@ -264,21 +234,15 @@ async def test_reports_do_not_write_the_record_each_time(
     toggle: bool,
 ) -> None:
     """Two hundred reports of a charge running unchanged, or of a charger turning itself on and off with no plan
-    (the core's owner moving between nobody and the charger itself at every report): the option on writes no more
-    than the option off, but for at most one debounced save of its record."""
-    written: dict[bool, tuple[int, int]] = {}
-    for drives in (False, True):
-        monkeypatch.setattr(ownership_shadow, "CORE_OWNERSHIP_DEFAULT", drives)
-        world = await pause_world(hass, timers, charging=not toggle)
-        during = await _reports(hass, world, saves, count=200, toggle=toggle)
-        before = len(saves)
-        await _settle(hass, freezer)
-        written[drives] = (during, len(saves) - before)
-        await world.shutdown()
-        hass.services.async_remove("switch", "turn_on")
-        hass.services.async_remove("switch", "turn_off")
-    assert written[True][0] == written[False][0], written
-    assert written[True][1] <= 1 and written[False][1] == 0, written
+    (the core's owner moving between nobody and the charger itself at every report): nothing is written during them,
+    and at most one debounced save of the record after them."""
+    world = await pause_world(hass, timers, charging=not toggle)
+    during = await _reports(hass, world, saves, count=200, toggle=toggle)
+    before = len(saves)
+    await _settle(hass, freezer)
+    after = len(saves) - before
+    await world.shutdown()
+    assert during == 0 and after <= 1, (during, after)
 
 
 @pytest.mark.usefixtures("drives")
@@ -299,7 +263,6 @@ async def test_a_restart_with_a_persons_stop_for_the_plug_in_reads_it_from_the_r
 
     await restarted.plug.set(False)
     assert _intent(restarted) == (None, None) and restarted.pause.choice != "manual"
-    assert restarted.controller.ownership_shadow.counts["disagreements"] == 0
     await restarted.shutdown()
 
 
@@ -321,7 +284,6 @@ async def test_a_restart_with_a_persons_stop_for_the_next_plug_in_reads_it_from_
     assert restarted.pause.scope == MANUAL_SCOPE_PLUG_IN
     await restarted.plug.set(False)
     assert _intent(restarted) == (None, None)
-    assert restarted.controller.ownership_shadow.counts["disagreements"] == 0
     await restarted.shutdown()
 
 
@@ -339,14 +301,13 @@ async def test_a_restart_with_a_persons_start_reads_it_from_the_record(
     assert reads and reads[-1].manual == ManualPause(MANUAL_START, MANUAL_SCOPE_PLUG_IN)
     assert reads[-1].owner == "person"
     assert _intent(restarted) == (MANUAL_START, MANUAL_SCOPE_PLUG_IN)
-    assert restarted.controller.ownership_shadow.session.owner == "person"
+    assert restarted.controller.session_runner.session.owner == "person"
     hass.states.async_set(SWITCH, "on", {"report": "after the restart"})
     await hass.async_block_till_done()
     assert len(world.stops) == stops and restarted.controller.charging, "nothing automatic stops the person's Start"
 
     await restarted.plug.set(False)
     assert _intent(restarted) == (None, None)
-    assert restarted.controller.ownership_shadow.counts["disagreements"] == 0
     await restarted.shutdown()
 
 
@@ -394,7 +355,7 @@ async def test_home_assistants_stop_saves_a_change_waiting_for_its_debounced_sav
     import custom_components.spotnav as integration
 
     world = await pause_world(hass, timers)
-    shadow = world.controller.ownership_shadow
+    shadow = world.controller.session_runner
     shadow.session = shadow.session.with_changes(held=True)
     world.controller._persist_session(shadow.session)  # noqa: SLF001 - a decision changed only bookkeeping
     assert world.controller._session_dirty_since is not None  # noqa: SLF001 - waiting for its debounced save
@@ -426,7 +387,7 @@ async def test_a_decision_made_while_the_shutdown_waits_for_the_lock_is_saved(
 
     world = await pause_world(hass, timers)
     controller = world.controller
-    shadow = controller.ownership_shadow
+    shadow = controller.session_runner
     async with controller._lock:  # noqa: SLF001 - a decision in flight
         down = hass.async_create_task(controller.async_shutdown())
         await asyncio.sleep(0)
@@ -532,7 +493,7 @@ async def test_a_restart_right_after_a_starts_save_and_before_its_result_reads_t
     monkeypatch.setattr(controller._store, "async_save", nothing)  # noqa: SLF001
     await controller.async_shutdown()
     restarted = await world._start_again()  # noqa: SLF001
-    assert restarted.controller.ownership_shadow.session.owner == expected
+    assert restarted.controller.session_runner.session.owner == expected
     assert restarted.controller.charge_origin == (cause or "other")
     assert hass.states.get(SWITCH).state == "on", "the charge goes on"
     await restarted.shutdown()
@@ -581,7 +542,7 @@ async def test_a_crash_between_a_persons_starts_save_and_its_pause_leaves_the_ch
     monkeypatch.setattr(controller._store, "async_save", nothing)  # noqa: SLF001
     await controller.async_shutdown()
     restarted = await world._start_again()  # noqa: SLF001
-    shadow = restarted.controller.ownership_shadow
+    shadow = restarted.controller.session_runner
     assert (shadow.session.owner, shadow.session.manual) == ("person", None)
     assert restarted.controller.plan is not None and restarted.controller.charge_origin == "manual"
     assert hass.states.get(SWITCH).state == "on"
@@ -591,16 +552,14 @@ async def test_a_crash_between_a_persons_starts_save_and_its_pause_leaves_the_ch
     await hass.async_block_till_done()
     assert hass.states.get(SWITCH).state == "on", "the window's end does not stop the person's charge"
     assert shadow.session.owner == "person" and restarted.controller.charge_origin == "manual"
-    assert shadow.counts["verdict_differs"] == 1, "today's code would take it over at the window's start"
     await restarted.shutdown()
 
 
-@pytest.mark.parametrize("drives", [True, False], ids=["core", "previous"])
+@pytest.mark.parametrize("drives", [True])
 async def test_a_storm_of_reports_that_change_nothing_writes_nothing(
     hass: HomeAssistant, timers: FakeScheduler, saves: list, freezer: Any, monkeypatch: pytest.MonkeyPatch, drives: bool
 ) -> None:
     """A hundred reports of a plan charge running unchanged, a debounce delay apart: no save at all, in either mode."""
-    monkeypatch.setattr(ownership_shadow, "CORE_OWNERSHIP_DEFAULT", drives)
     world = await pause_world(hass, timers, plan=two_windows())
     assert world.controller.charging
     await _settle(hass, freezer)
@@ -614,7 +573,6 @@ async def test_a_storm_of_reports_that_change_nothing_writes_nothing(
     await world.shutdown()
 
 
-@pytest.mark.shadow_disagreement_expected  # the record's owner against today's keys, compared at the restart
 @pytest.mark.usefixtures("drives", "both_restarts")
 @pytest.mark.parametrize("marks", ["none", "record_newer", "keys_newer"])
 async def test_at_a_restart_the_record_alone_is_read_but_for_an_earlier_builds_keys_written_after_it(
@@ -639,7 +597,7 @@ async def test_at_a_restart_the_record_alone_is_read_but_for_an_earlier_builds_k
     world.controller._session_saved = ChargeSession.from_store(  # noqa: SLF001 - the old controller saves nothing more
         (await _stored(world))[SESSION_STORE_KEY]
     )
-    world.controller.ownership_shadow.session = world.controller._session_saved  # noqa: SLF001
+    world.controller.session_runner.session = world.controller._session_saved  # noqa: SLF001
     restarted = await world.restart()
     expected = "solar" if marks == "keys_newer" else None
     assert restarted.controller.charge_origin == expected
@@ -652,6 +610,12 @@ async def test_at_a_restart_the_record_alone_is_read_but_for_an_earlier_builds_k
 # ---------------------------------------------------------------------------------------------- an update mid-session
 
 
+def _as_the_previous_logic_left_it(record: dict[str, Any]) -> None:
+    """A charger an earlier release ran with the previous logic: today's keys alone, no record of the core's."""
+    record.pop(SESSION_STORE_KEY, None)
+    record.pop(SESSION_ORDER_KEY, None)
+
+
 @pytest.mark.usefixtures("both_restarts")
 async def test_an_update_during_a_running_plan_charge_hands_it_to_the_core(
     hass: HomeAssistant, timers: FakeScheduler, reads: list, monkeypatch: pytest.MonkeyPatch
@@ -659,16 +623,14 @@ async def test_an_update_during_a_running_plan_charge_hands_it_to_the_core(
     """The release before ran the previous logic (no record of the core's on disk); the update makes the core drive
     while a plan window's charge runs. The core's session is read from today's keys, its record written at once, the
     charge goes on untouched, and the window's end stops it as ever."""
-    monkeypatch.setattr(ownership_shadow, "CORE_OWNERSHIP_DEFAULT", False)
     world = await pause_world(hass, timers, plan=two_windows())
     assert world.controller.charging and world.controller.charge_origin == "plan_window"
-    assert SESSION_STORE_KEY not in await _stored(world), "the previous logic writes no record of the core's"
+    await _rewrite(world, _as_the_previous_logic_left_it)
     stops = len(world.stops)
 
-    monkeypatch.setattr(ownership_shadow, "CORE_OWNERSHIP_DEFAULT", True)
     restarted = await world.restart()
     controller = restarted.controller
-    shadow = controller.ownership_shadow
+    shadow = controller.session_runner
     assert shadow.drives and reads == [], "nothing of the core's to read: today's keys are"
     assert shadow.session.owner == "plan"
     assert controller.charging and controller.charge_origin == "plan_window"
@@ -683,7 +645,6 @@ async def test_an_update_during_a_running_plan_charge_hands_it_to_the_core(
     await restarted.fire("_async_end_callback")
     assert len(world.stops) == stops + 1 and not controller.charging, "the window's end stops it"
     assert shadow.session.owner == "none"
-    assert shadow.counts["disagreements"] == 0
     await restarted.shutdown()
 
 
@@ -693,60 +654,24 @@ async def test_an_update_during_a_solar_charge_hands_it_to_the_core(
 ) -> None:
     """The same during the sun's charge with a plan window ahead: the core takes it as the sun's, nothing stops it,
     and the next restart reads the core's own record."""
-    monkeypatch.setattr(ownership_shadow, "CORE_OWNERSHIP_DEFAULT", False)
     world = await pause_world(hass, timers, plan={"periods": [later_window()], "amps": 10})
     assert await world.controller.async_start(cause="solar")
     await hass.async_block_till_done()
     assert world.controller.charging and world.controller.charge_origin == "solar"
-    assert SESSION_STORE_KEY not in await _stored(world)
+    await _rewrite(world, _as_the_previous_logic_left_it)
     stops = len(world.stops)
 
-    monkeypatch.setattr(ownership_shadow, "CORE_OWNERSHIP_DEFAULT", True)
     restarted = await world.restart()
     controller = restarted.controller
-    assert controller.ownership_shadow.drives and reads == []
-    assert controller.ownership_shadow.session.owner == "solar"
+    assert controller.session_runner.drives and reads == []
+    assert controller.session_runner.session.owner == "solar"
     assert controller.charging and controller.charge_origin == "solar"
     assert (await _stored(restarted))[SESSION_STORE_KEY]["owner"] == "solar"
     hass.states.async_set(SWITCH, "on", {"report": "after the update"})
     await hass.async_block_till_done()
     assert len(world.stops) == stops and controller.charge_origin == "solar", "the sun's charge is spared"
-    assert controller.ownership_shadow.counts["disagreements"] == 0
 
     again = await restarted.restart()
     assert reads and reads[-1].owner == "solar", "read from the core's own record now"
     assert again.controller.charge_origin == "solar" and len(world.stops) == stops
-    assert again.controller.ownership_shadow.counts["disagreements"] == 0
     await again.shutdown()
-
-
-@pytest.mark.usefixtures("both_restarts")
-async def test_back_to_the_previous_logic_and_again_leaves_no_stale_owner(
-    hass: HomeAssistant, timers: FakeScheduler, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """A charger taken back to the previous logic while the core's record says the plan owns the charge: a person's
-    Stop under the previous logic ends the charge (its save drops the core's record), and set to the current logic
-    again the core reads today's keys and the person's Stop, not the plan's charge it last saw."""
-    monkeypatch.setattr(ownership_shadow, "CORE_OWNERSHIP_DEFAULT", True)
-    world = await pause_world(hass, timers, plan=two_windows())
-    assert (await _stored(world))[SESSION_STORE_KEY]["owner"] == "plan"
-
-    monkeypatch.setattr(ownership_shadow, "CORE_OWNERSHIP_DEFAULT", False)
-    previous = await world.restart()
-    assert not previous.controller.ownership_shadow.drives and previous.controller.charging
-    await previous.executor.async_manual_stop()
-    await hass.async_block_till_done()
-    assert not previous.controller.charging
-    assert SESSION_STORE_KEY not in await _stored(previous), "the previous logic's save leaves no record behind"
-    stops = len(world.stops)
-
-    monkeypatch.setattr(ownership_shadow, "CORE_OWNERSHIP_DEFAULT", True)
-    current = await previous.restart()
-    shadow = current.controller.ownership_shadow
-    assert shadow.drives and shadow.session.owner == "none"
-    assert _intent(current) == (MANUAL_STOP, MANUAL_SCOPE_PLUG_IN)
-    assert not current.controller.charging and current.controller.charge_origin is None
-    await current.switch("on")  # the charger begins by itself: stopped under the person's Stop
-    assert hass.states.get(SWITCH).state == "off" and len(world.stops) > stops
-    assert shadow.counts["disagreements"] == 0
-    await current.shutdown()

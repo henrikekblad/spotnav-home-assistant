@@ -25,7 +25,7 @@ only changes and actions). The card adds a `client` block to the file it saves (
 bundle hash the browser runs, and a short user agent); the backend never sees it.
 
 Version 5 adds, inside each charger's `diagnostics.controller`, `ownership_shadow`: the charge-ownership core run
-in shadow mode beside today's code (`execution/ownership_shadow.py`), with its counts, its session, and the last
+in shadow mode beside the logic before it (`execution/ownership_shadow.py`, now `session_runner.py`), with its counts, its session, and the last
 disagreements, drifts and events it saw (facts only: no entity ids, no secrets), which `core/replay.py` feeds to
 the core again.
 
@@ -39,9 +39,8 @@ so a reader of the earlier shape reads it as before.
 Version 7 adds, inside the site's `diagnostics`, `yield_stepping`, `solar_surplus` and `hybrid` (per member charger),
 which the site state sensor carried as attributes until it stopped carrying what moves with each reading.
 
-Inside `ownership_shadow.counts`, `failures` (per `where/kind`, the charging decisions the core could not take, which
-the previous logic took instead) and `last_failure` (when) came later with no version change: a reader that does not
-know them passes them by.
+Inside `ownership_shadow.counts`, `failures` (per `where/kind`, the charging decisions the core could not take) and
+`last_failure` (when) came later with no version change: a reader that does not know them passes them by.
 
 Inside each charger's `diagnostics.controller.adapter`, `phase_switch` (`supported`, `entity`, `phases_now`: whether
 the charger's integration can switch it between one and three phases, through which entity, and to what it is set)
@@ -65,6 +64,12 @@ site's). The log gains `warnings_24h`: WARNING and above of the last 24 hours, a
 diagnostics still do): the chargers' `sessions` hold the same entries, also from before a restart. In a plug-in, a
 solar entry leaves out `strategy` and `from` (the plug-in's strategy and the entry before's `to`), and a load-balancing
 entry its `charger_id`, with each current per phase as `L1/L2/L3`.
+
+Version 9 renames `ownership_shadow` to `ownership`: the previous logic is gone, so the core no longer runs beside
+it. The same events (`core/replay.py` reads both), now with no `today` or `today_after` (nothing to compare with),
+the session before each event (`pre`) on every record, its counts (`events`, `quiet`, `errors`, `failures`,
+`last_failure`) and its tally per event kind (`coverage`, whose comparison counts stay zero); no disagreements or
+drift any more.
 """
 
 from __future__ import annotations
@@ -110,7 +115,7 @@ from .site.measurement_source import grid_power_source_from_dict, source_from_di
 
 _LOGGER = logging.getLogger(__name__)
 
-BUNDLE_VERSION: Final = 8
+BUNDLE_VERSION: Final = 9
 REDACTED: Final = "**REDACTED**"
 
 #: Keys whose value is never shown, wherever they sit in the bundle.

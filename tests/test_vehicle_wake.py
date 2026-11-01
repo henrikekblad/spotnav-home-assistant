@@ -85,7 +85,7 @@ async def _car_ended(hass: HomeAssistant, charger: Any, car: str, ended_at: date
     # The car ended the plan's charge on an estimate short of the target (a plan charge this world does not run): the
     # record as the core keeps it when it drives, else today's fields, each through its own keeper.
     wait = {"level": 86.0, "estimated": True, "target": 91.0}
-    shadow = controller.ownership_shadow
+    shadow = controller.session_runner
     if shadow.drives:
         shadow.session = shadow.session.with_changes(
             car_ended=CarEnded(at=ended_at, vehicle=car, wait=CarEndedWait(**wait))

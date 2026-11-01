@@ -49,7 +49,7 @@ from custom_components.spotnav.core.ownership import (
 )
 from custom_components.spotnav.core.session import CarEnded, CarEndedWait, ChargeSession, OWNERS, SCOPE_PLUG_IN
 from custom_components.spotnav.execution.controller import _CORE_OWNER_ORIGIN
-from custom_components.spotnav.execution.ownership_shadow import legacy_owner
+from custom_components.spotnav.core.migration import legacy_owner
 
 T0 = datetime(2026, 10, 4, 22, 0, tzinfo=timezone.utc)
 
@@ -248,7 +248,7 @@ class OwnershipMachine(RuleBasedStateMachine):
     @invariant()
     def the_derived_owner_maps_back(self) -> None:
         """Today's two owner fields derived from the session when the core drives (`controller._CORE_OWNER_ORIGIN`)
-        read back as the same owner (`ownership_shadow.legacy_owner`, a top-off by its deadline): nobody's and the
+        read back as the same owner (`session_runner.legacy_owner`, a top-off by its deadline): nobody's and the
         charger's own are no origin, and which of them it is is seen, not kept."""
         owner = self.session.owner
         origin, plan_charge = _CORE_OWNER_ORIGIN.get(owner, (None, False))

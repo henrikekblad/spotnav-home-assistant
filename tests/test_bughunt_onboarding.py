@@ -129,15 +129,18 @@ async def test_the_area_is_suggested_once_the_relay_answers_after_a_first_run_wi
 
 
 def test_an_unreadable_control_is_no_observation_and_the_first_readable_state_is_the_baseline() -> None:
-    from custom_components.spotnav.execution.window_hold import HOLD, NOTHING, WindowHold
+    from custom_components.spotnav.execution.window_hold import WindowHold
 
     hold = WindowHold()
-    hold.baseline(None)
-    assert hold.observe(control_on=None, connected=None, gap=True) == NOTHING
-    assert hold.observe(control_on=True, connected=None, gap=True) == NOTHING  # baseline, not a start
-    assert hold.observe(control_on=False, connected=None, gap=True) == NOTHING
-    assert hold.observe(control_on=None, connected=None, gap=True) == NOTHING
-    assert hold.observe(control_on=True, connected=None, gap=True) == HOLD  # a real start
+    hold.observe(None)
+    assert hold.was_on is None, "nothing read yet: a charge running now is never seen beginning"
+    hold.observe(True)
+    assert hold.was_on is True, "the baseline, not a start"
+    hold.observe(False)
+    hold.observe(None)
+    assert hold.was_on is False, "an unreadable control keeps what was read before"
+    hold.observe(True)
+    assert hold.was_on is True
 
 
 async def test_an_area_a_person_cleared_is_not_suggested_again(hass: HomeAssistant) -> None:

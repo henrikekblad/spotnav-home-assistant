@@ -15,8 +15,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.util import dt as dt_util
 
 from custom_components.spotnav.core import session as session_module
-from custom_components.spotnav.core.session import CarEnded, CarEndedWait, ChargeSession, STORED_VERSION
-from custom_components.spotnav.execution import ownership_shadow
+from custom_components.spotnav.core.session import CarEnded, ChargeSession, STORED_VERSION
 from custom_components.spotnav.execution.controller import SESSION_STORE_KEY
 
 from .helpers import install_schedule
@@ -28,9 +27,8 @@ KEYS = ("car_ended_at", "car_ended_soc", "car_ended_vehicle", "car_ended_wait")
 WAIT = {"target": TARGET, "level": 86.2, "estimated": True}
 
 
-@pytest.fixture(params=[True, False], ids=["core", "previous"])
+@pytest.fixture(params=[True], ids=["core"])
 def drives(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) -> bool:
-    monkeypatch.setattr(ownership_shadow, "CORE_OWNERSHIP_DEFAULT", request.param)
     return request.param
 
 
@@ -53,14 +51,13 @@ def _record(world: World) -> dict[str, Any]:
 def _agrees(world: World, drives: bool) -> dict[str, Any]:
     """The record the controller reads is the core's when it drives; the shadow saw no difference in it."""
     record = _record(world)
-    shadow = world.controller.ownership_shadow
+    shadow = world.controller.session_runner
     if drives:
         ended = shadow.session.car_ended
         assert (None if ended is None else ended.at.isoformat()) == record["car_ended_at"]
         if ended is not None:
             assert (ended.soc, ended.vehicle) == (record["car_ended_soc"], record["car_ended_vehicle"])
             assert (None if ended.wait is None else ended.wait.to_dict()) == record["car_ended_wait"]
-    assert shadow.counts["mirror_drift"] == 0
     return record
 
 
@@ -127,7 +124,7 @@ async def test_a_level_read_below_the_target_ends_the_wait_and_keeps_the_end(
     stored = await _stored(world)
     assert stored["car_ended_wait"] is None and stored["car_ended_at"] == ended_at
     if drives:
-        kinds = [item["event"]["kind"] for item in world.controller.ownership_shadow.events]
+        kinds = [item["event"]["kind"] for item in world.controller.session_runner.events]
         assert "car_level_read" in kinds
 
     starts = len(world.starts)
@@ -215,7 +212,7 @@ async def test_the_connection_is_the_sessions_while_the_core_drives(
 ) -> None:
     world = await pause_world(hass, timers, connected=False)
     controller = world.controller
-    shadow = controller.ownership_shadow
+    shadow = controller.session_runner
     assert controller.known_connected is False and shadow.session.plugged is False
     for connected in (True, False, True):
         await world.plug.set(connected)
@@ -225,23 +222,22 @@ async def test_the_connection_is_the_sessions_while_the_core_drives(
     # A status that says nothing keeps the last connection stated.
     await world.plug.set(None)
     assert controller.known_connected is True and shadow.session.plugged is True
-    assert shadow.counts["mirror_drift"] == 0
 
     restarted = await world.restart()
-    assert restarted.controller.ownership_shadow.session.plugged is None, "a restart clears it"
+    assert restarted.controller.session_runner.session.plugged is None, "a restart clears it"
     assert restarted.controller.known_connected is None
     await restarted.plug.set(False)
     assert restarted.controller.known_connected is False
     await restarted.shutdown()
 
 
+@pytest.mark.core_failure_expected  # the record it cannot read is a failure, told
 @pytest.mark.usefixtures("both_restarts")
 async def test_an_older_build_reads_the_keys_when_it_cannot_read_the_record(
     hass: HomeAssistant, timers: FakeScheduler, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """A build that knows only version 1 of the session's record refuses version 2 and reads today's keys, which are
     written beside it, derived from the session: the record comes back whole, and is written again."""
-    monkeypatch.setattr(ownership_shadow, "CORE_OWNERSHIP_DEFAULT", True)
     world = await _plan_ended(hass, timers, _estimate())
     record = _agrees(world, True)
     assert (await _stored(world))[SESSION_STORE_KEY]["version"] == 2
@@ -249,7 +245,6 @@ async def test_an_older_build_reads_the_keys_when_it_cannot_read_the_record(
     monkeypatch.setattr(session_module, "READ_VERSIONS", (1,))
     restarted = await world.restart()
     assert _agrees(restarted, True) == record
-    assert restarted.controller.ownership_shadow.counts["disagreements"] == 0
     await restarted.shutdown()
 
 
@@ -259,11 +254,10 @@ async def test_a_version_1_record_is_read_with_the_instant_and_the_keys_fill_not
 ) -> None:
     """A record an earlier build wrote (version 1) keeps only when the car ended: read as a record of that instant
     alone (its level, car and wait not known), and written again as version 2."""
-    monkeypatch.setattr(ownership_shadow, "CORE_OWNERSHIP_DEFAULT", True)
     world = await pause_world(hass, timers, plan=two_windows())
     controller = world.controller
     ended = dt_util.utcnow() - timedelta(minutes=5)
-    current = controller.ownership_shadow.session.to_store()
+    current = controller.session_runner.session.to_store()
     v1 = {key: value for key, value in current.items() if key != "car_ended"}
     v1.update(version=1, car_ended_at=ended.isoformat())
     controller._cancel_session_save()  # noqa: SLF001
@@ -272,10 +266,10 @@ async def test_a_version_1_record_is_read_with_the_instant_and_the_keys_fill_not
     disk.pop("charge_session_order", None)
     await controller._store.async_save(disk)  # noqa: SLF001
     controller._session_saved = ChargeSession.from_store(v1)  # noqa: SLF001 - the old controller saves nothing more
-    controller.ownership_shadow.session = controller._session_saved  # noqa: SLF001
+    controller.session_runner.session = controller._session_saved  # noqa: SLF001
 
     restarted = await world.restart()
-    session = restarted.controller.ownership_shadow.session
+    session = restarted.controller.session_runner.session
     assert session.car_ended == CarEnded(at=ended)
     assert restarted.controller.car_ended_at == ended
     await restarted.controller.async_save_record()
@@ -286,52 +280,6 @@ async def test_a_version_1_record_is_read_with_the_instant_and_the_keys_fill_not
     }
     assert stored["car_ended_at"] == ended.isoformat()
     await restarted.shutdown()
-
-
-def test_the_record_is_compared_as_one_with_one_instant_off_two_clocks() -> None:
-    """A difference in the record (`CAR_ENDED_AND_PLUG`) is mirror drift but for its instant read off two clocks."""
-    from custom_components.spotnav.core import events as ev
-
-    now = dt_util.utcnow()
-    record = CarEnded(at=now, soc=90.0, vehicle="car", wait=CarEndedWait(target=91.0))
-    today = {"session": ChargeSession(plugged=True, car_ended=record)}
-    shadow = ownership_shadow.OwnershipShadow(
-        lambda: today["session"], owned_fields=ownership_shadow.CAR_ENDED_AND_PLUG
-    )
-    shadow.session = today["session"]
-    later = CarEnded(at=now + timedelta(seconds=1), soc=90.0, vehicle="car", wait=CarEndedWait(target=91.0))
-    today["session"] = today["session"].with_changes(car_ended=later)
-    shadow.feed(ev.ConnectionUnknown())
-    assert shadow.counts["mirror_drift"] == 0, "the same record, its instant a second apart"
-    assert ownership_shadow._same(record, record) and not ownership_shadow._same(record, None)  # noqa: SLF001
-
-
-@pytest.mark.shadow_disagreement_expected
-async def test_the_record_and_the_connection_are_kept_as_the_core_decided_them_and_a_difference_is_mirror_drift(
-    hass: HomeAssistant,
-) -> None:
-    from custom_components.spotnav.core import events as ev
-
-    ended = CarEnded(at=dt_util.utcnow(), soc=90.0, vehicle="car")
-    today = {"session": ChargeSession(plugged=True, car_ended=ended)}
-    heard: list[str] = []
-    ownership_shadow.LISTENERS.append(lambda kind, record: heard.append(kind))
-    try:
-        shadow = ownership_shadow.OwnershipShadow(
-            lambda: today["session"], owned_fields=ownership_shadow.CAR_ENDED_AND_PLUG
-        )
-        shadow.session = today["session"]
-        shadow.feed(ev.ConnectionUnknown())
-        assert heard == [] and shadow.counts["mirror_drift"] == 0
-        today["session"] = today["session"].with_changes(car_ended=None, plugged=False)
-        shadow.feed(ev.ConnectionUnknown())
-    finally:
-        ownership_shadow.LISTENERS.pop()
-    assert heard == ["mirror_drift"] and shadow.counts["mirror_drift"] == 1
-    assert (shadow.session.car_ended, shadow.session.plugged) == (ended, True), "never taken"
-    (record,) = [item for item in shadow.diagnostics()["drift"] if item.get("mirror")]
-    assert set(record["fields"]) == {"car_ended", "plugged"}
-    assert record["fields"]["car_ended"]["core"] == ended.to_dict()
 
 
 async def test_a_car_ended_plug_in_sessions_recording_replays_with_no_line_up(
@@ -357,7 +305,7 @@ async def test_a_car_ended_plug_in_sessions_recording_replays_with_no_line_up(
     await world.plug.set(False, control="off")
     await world.plug.set(True)
     await hass.async_block_till_done()
-    diagnostics = world.controller.ownership_shadow.diagnostics()
+    diagnostics = world.controller.session_runner.diagnostics()
     kinds = {item["event"]["kind"] for item in diagnostics["events"]}
     assert {"car_ended", "car_level_read", "unplug", "plug_in"} <= kinds
     bundle = json.loads(json.dumps(_bundle(diagnostics["events"]), default=str))
@@ -378,12 +326,11 @@ async def test_the_first_restart_after_a_version_1_record_takes_the_rest_of_the_
     another end (their instant apart from the record's) are not read for it: the record keeps its instant alone."""
     from custom_components.spotnav.execution.controller import SESSION_ORDER_KEY
 
-    monkeypatch.setattr(ownership_shadow, "CORE_OWNERSHIP_DEFAULT", True)
     car = _estimate()
     world = await _plan_ended(hass, timers, car)
     controller = world.controller
     record = _agrees(world, True)
-    ended = controller.ownership_shadow.session.car_ended
+    ended = controller.session_runner.session.car_ended
     controller._cancel_session_save()  # noqa: SLF001
     disk = dict(await _stored(world))
     v1 = {key: value for key, value in disk[SESSION_STORE_KEY].items() if key != "car_ended"}
@@ -402,7 +349,7 @@ async def test_the_first_restart_after_a_version_1_record_takes_the_rest_of_the_
 
     restarted = await world.restart()
     restarted.controller._soc_reader = car  # noqa: SLF001
-    session = restarted.controller.ownership_shadow.session
+    session = restarted.controller.session_runner.session
     if same_end:
         assert session.car_ended == ended
         assert _agrees(restarted, True) == record

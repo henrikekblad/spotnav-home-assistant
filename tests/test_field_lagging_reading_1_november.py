@@ -27,7 +27,6 @@ from typing import Any
 from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse
 from homeassistant.util import dt as dt_util
 
-from custom_components.spotnav.execution import ownership_shadow
 from custom_components.spotnav.site.site_capacity_controller import RaiseCredit, SiteCapacityController
 
 from .helpers import install_schedule
@@ -176,19 +175,13 @@ async def _the_morning(
     return morning
 
 
-def _drives(monkeypatch, drives: bool) -> None:
-    monkeypatch.setattr(ownership_shadow, "CORE_OWNERSHIP_DEFAULT", drives)
-
-
-@pytest.mark.parametrize("drives", [True, False])
 async def test_1019_a_load_after_a_raise_lowers_the_car_and_does_not_pause_it(
-    hass: HomeAssistant, monkeypatch, freezer, drives: bool
+    hass: HomeAssistant, monkeypatch, freezer
 ) -> None:
     """The heater off, the car raised to 16 A; the heater on again in the next pass, before the HALO's next meter value:
     the car is lowered to what fits beside the heater in that pass, not paused, and the site is back within the fuse
     from the pass after."""
-    _drives(monkeypatch, drives)
-    morning = await _the_morning(hass, monkeypatch, freezer, f"nov1lag{int(drives)}")
+    morning = await _the_morning(hass, monkeypatch, freezer, "nov1lag")
     morning.heater = False
     await morning.until_raised(16.0)
     raised_at = len(morning.trace)
@@ -217,16 +210,14 @@ async def test_1019_a_load_after_a_raise_lowers_the_car_and_does_not_pause_it(
     assert len(morning.halo.turn_off) == 0, "\n".join(morning.trace[raised_at:])
 
 
-@pytest.mark.parametrize("drives", [True, False])
 async def test_a_car_that_draws_less_than_written_is_not_credited_with_the_raise(
-    hass: HomeAssistant, monkeypatch, freezer, drives: bool
+    hass: HomeAssistant, monkeypatch, freezer
 ) -> None:
     """The car takes no more than 10 A, whatever is written. Raised to 14 A or more with the heater off, it goes to
     10 A: the site rises by 2 A where 6 were written, which is not the step, so nothing is credited. A larger load on
     L1 then comes on before the HALO's next meter value: the car is decided on its own reading, and the site is within
     the fuse from the next pass."""
-    _drives(monkeypatch, drives)
-    morning = await _the_morning(hass, monkeypatch, freezer, f"nov1less{int(drives)}", car_max_a=10.0)
+    morning = await _the_morning(hass, monkeypatch, freezer, "nov1less", car_max_a=10.0)
     morning.heater = False
     await morning.until_raised(12.0)
     raised_at = len(morning.trace)
@@ -241,15 +232,13 @@ async def test_a_car_that_draws_less_than_written_is_not_credited_with_the_raise
     assert max(morning.peak) <= _FUSE_A, f"within the fuse from the next pass:\n{trace}"
 
 
-@pytest.mark.parametrize("drives", [True, False])
 async def test_a_load_on_every_phase_with_a_raise_the_car_does_not_take_is_never_the_car(
-    hass: HomeAssistant, monkeypatch, freezer, drives: bool
+    hass: HomeAssistant, monkeypatch, freezer
 ) -> None:
     """The car takes no more than 10 A. Raised with the heater off, it goes to 10 A; an 11.6 A load on all three phases
     comes on before the HALO's next meter value. The site rose by far more than the step on every phase, so it is not
     the car's: nothing is credited, and the site is over the fuse for no more than the pass that saw the load."""
-    _drives(monkeypatch, drives)
-    morning = await _the_morning(hass, monkeypatch, freezer, f"nov1three{int(drives)}", car_max_a=10.0)
+    morning = await _the_morning(hass, monkeypatch, freezer, "nov1three", car_max_a=10.0)
     morning.heater = False
     await morning.until_raised(12.0)
     raised_at = len(morning.trace)
@@ -266,15 +255,13 @@ async def test_a_load_on_every_phase_with_a_raise_the_car_does_not_take_is_never
     assert passes_over <= 1, "\n".join(morning.trace[raised_at - 2 :])
 
 
-@pytest.mark.parametrize("drives", [True, False])
 async def test_a_lowering_after_a_raise_is_never_raised_back_on_the_credit(
-    hass: HomeAssistant, monkeypatch, freezer, drives: bool
+    hass: HomeAssistant, monkeypatch, freezer
 ) -> None:
     """The car takes the raise to 16 A; an 11.6 A load on all three phases comes on right after it, and the HALO's
     meter values come a minute apart. The car is lowered (or paused), never raised again on what the raise was
     credited with while the load is on, and the site stays within the fuse once lowered."""
-    _drives(monkeypatch, drives)
-    morning = await _the_morning(hass, monkeypatch, freezer, f"nov1low{int(drives)}")
+    morning = await _the_morning(hass, monkeypatch, freezer, "nov1low")
     morning.meter_passes = 12
     morning.heater = False
     await morning.until_raised(16.0)
@@ -303,12 +290,10 @@ async def test_a_lowering_after_a_raise_is_never_raised_back_on_the_credit(
     assert max(morning.peak) <= _FUSE_A + 0.3, trace
 
 
-@pytest.mark.parametrize("drives", [True, False])
-async def test_the_credit_follows_a_lowering(hass: HomeAssistant, monkeypatch, freezer, drives: bool) -> None:
+async def test_the_credit_follows_a_lowering(hass: HomeAssistant, monkeypatch, freezer) -> None:
     """The field case with the HALO's meter values a minute apart: after the lowering to what fits beside the heater,
     the car is never credited with more than it was lowered to, and it is not raised again while the heater is on."""
-    _drives(monkeypatch, drives)
-    morning = await _the_morning(hass, monkeypatch, freezer, f"nov1follow{int(drives)}")
+    morning = await _the_morning(hass, monkeypatch, freezer, "nov1follow")
     morning.meter_passes = 12
     morning.heater = False
     await morning.until_raised(16.0)
@@ -328,9 +313,8 @@ async def test_the_credit_follows_a_lowering(hass: HomeAssistant, monkeypatch, f
     assert max(morning.site_log[-1]) <= _FUSE_A, trace
 
 
-@pytest.mark.parametrize("drives", [True, False])
 async def test_a_load_of_the_step_on_every_phase_costs_at_most_two_passes_more(
-    hass: HomeAssistant, monkeypatch, freezer, drives: bool
+    hass: HomeAssistant, monkeypatch, freezer
 ) -> None:
     """The worst case left: the car takes no more than 9 A and is raised to 16 A, and at once a load of the step's
     size (7 A) comes on all three phases, with the heater on L1. The site's rise matches the step, so it is credited;
@@ -338,8 +322,7 @@ async def test_a_load_of_the_step_on_every_phase_costs_at_most_two_passes_more(
     pass after the lowering still counts the raise (`RAISE_CREDIT_LOWERING_SETTLE_S`); the one after it ends the
     credit, and the car is decided on its own reading in that pass. The site is over the fuse for three passes at most,
     two more than without the credit: what telling a car that ramps from a load of exactly its step costs."""
-    _drives(monkeypatch, drives)
-    morning = await _the_morning(hass, monkeypatch, freezer, f"nov1step{int(drives)}", car_max_a=9.0)
+    morning = await _the_morning(hass, monkeypatch, freezer, "nov1step", car_max_a=9.0)
     morning.heater = False
     await morning.until_raised(16.0)
     raised_at = len(morning.trace)
@@ -530,7 +513,6 @@ async def test_two_chargers_raised_in_one_pass_are_not_credited(
     is credited while both raises are open (B credited with A's 10 A would be "lowered" to the 6 A it draws, and A
     kept at 16 over the fuse). The site is back within the fuse after the pass that saw the load, as without the
     credit (`credit=False`)."""
-    monkeypatch.setattr(ownership_shadow, "CORE_OWNERSHIP_DEFAULT", True)
     cars, over = await _two_cars(hass, monkeypatch, freezer, credit=credit)
     trace = "\n".join(cars.trace)
     for line in cars.trace:
@@ -539,17 +521,15 @@ async def test_two_chargers_raised_in_one_pass_are_not_credited(
     assert over <= 1, trace
 
 
-@pytest.mark.parametrize("drives", [True, False])
 async def test_a_raise_credit_never_raises_a_car_back_after_its_lowering(
-    hass: HomeAssistant, monkeypatch, freezer, drives: bool
+    hass: HomeAssistant, monkeypatch, freezer
 ) -> None:
     """The field case, then the HALO tells nothing for minutes. Raised 9 to 16 A, the heater on: lowered on the credit
     to what fits. The heater goes off and a load of the step's size (7 A) comes on all three phases: the site's rise
     since the raise matches the step again, but what is on the charger is the lowered current, and so is the most the
     car is credited with. Reckoned at the 16 A of the raise, the house would read 7 A lighter on every phase and the
     car would be raised back to 16 A, L1 over the fuse."""
-    _drives(monkeypatch, drives)
-    morning = await _the_morning(hass, monkeypatch, freezer, f"nov1cap{int(drives)}")
+    morning = await _the_morning(hass, monkeypatch, freezer, "nov1cap")
     morning.heater = False
     await morning.until_raised(16.0)
     morning.meter_passes = 1000
@@ -572,15 +552,13 @@ async def test_a_raise_credit_never_raises_a_car_back_after_its_lowering(
     assert max(morning.peak) <= _FUSE_A, trace
 
 
-@pytest.mark.parametrize("drives", [True, False])
 async def test_the_field_case_with_the_car_one_pass_behind_each_write(
-    hass: HomeAssistant, monkeypatch, freezer, drives: bool
+    hass: HomeAssistant, monkeypatch, freezer
 ) -> None:
     """The field case with a car that follows each write one site reading late: the site shows the raise to 16 A a
     pass after it, and the lowering a pass after that. The reading taken right after the lowering still shows the car
     at 16 A; it is still credited so, and the car is never paused."""
-    _drives(monkeypatch, drives)
-    morning = await _the_morning(hass, monkeypatch, freezer, f"nov1ramp{int(drives)}")
+    morning = await _the_morning(hass, monkeypatch, freezer, "nov1ramp")
     morning.lag = True
     morning.prev_assigned = morning.assigned_a()
     morning.heater = False
