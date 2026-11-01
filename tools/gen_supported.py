@@ -805,8 +805,8 @@ def prices_section() -> list[str]:
         "to the spot price: the days already held keep planning, and tomorrow waits.",
         "- **When.** Tomorrow's tariff appears in the afternoon, after the day-ahead auction. If the "
         "integration's forecast right after Zonneplan is added starts at the current quarter-hour rather than "
-        "at midnight, that first day is not used (SpotNav never fills in prices it does not have): planning "
-        "starts with tomorrow's tariff.",
+        "at midnight, that first day is not used (SpotNav never fills in prices it does not have): tomorrow's "
+        "tariff is fetched in the afternoon, and charging is planned from midnight, when it becomes today's.",
         "",
         "Prices: Zonneplan. SpotNav is not affiliated with Zonneplan.",
         "",
