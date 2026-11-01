@@ -1362,13 +1362,16 @@ class AutoPlannerController:
         """Whether this plan's charge stops once its need is delivered (`_on_energy_reading`): a manual kWh need
         counted with an energy register (the charger's own, or the energy integrated from a power sensor), planned
         whole by the cheapest strategy. Not a target (the level stops it), not hybrid (part of the need is
-        the sun's), not a need the car ends itself when full (`room_limited`), and not a purchase of only the
-        part that cannot wait for prices (`must_buy_kwh`), which the count does not end."""
+        the sun's), not a need the car ends itself when full (`room_limited`), not one counted from a power sensor
+        that reports nothing, and not a purchase of only the part that cannot wait for prices (`must_buy_kwh`),
+        which the count does not end."""
         return (
             settings.driver != DRIVER_TARGET_SOC
             and settings.strategy != STRATEGY_HYBRID
             and not resolved.room_limited
             and self._energy_register_entity_id() is not None
+            and self._executor is not None
+            and self._executor.controller.energy_count_reports()
             and abs(result.requested_kwh - need_kwh) <= price_wait.EPSILON_KWH
         )
 

@@ -253,3 +253,16 @@ def test_a_need_of_exactly_whole_quarters_buys_no_extra_quarter() -> None:
     assert slots_needed(12 * PER_SLOT_KWH, 16, 3) == 12
     assert slots_needed(12 * PER_SLOT_KWH + 0.001, 16, 3) == 13
     assert _plan(12 * PER_SLOT_KWH).slots_needed == 12
+
+
+async def test_a_count_from_a_power_sensor_that_reports_nothing_keeps_whole_quarters(session: Session) -> None:
+    serve(session.transport, flat=True)
+    _register(session, 0.0)
+    session.controller.energy_from_power = True
+    session.controller.energy_power_entity_id = "sensor.charger_power"
+
+    await session.set_auto(requested_kwh=30.5, amps=16, phases=3, departure=time(20, 0))
+    assert session.preview.snapshot().proposal.ends_at_need is False
+
+    session.hass.states.async_set("sensor.charger_power", "0", {"device_class": "power", "unit_of_measurement": "W"})
+    assert (await session.preview.async_recalculate()).proposal.ends_at_need is True

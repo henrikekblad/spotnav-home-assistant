@@ -1434,6 +1434,11 @@ class ChargingController:
             "power": self.energy_power_entity_id if self.energy_from_power else None,
         }
 
+    def energy_count_reports(self) -> bool:
+        """Whether the delivered energy count can move: a register, or a power sensor that reports a power now (one
+        that never reports integrates nothing, so it ends no charge)."""
+        return not self.energy_from_power or read_power_w(self.hass, self.energy_power_entity_id) is not None
+
     @callback
     def set_integrated_energy_entity(self, entity_id: str) -> None:
         """The integrated-energy sensor was added: it is this charger's energy register, unless the
