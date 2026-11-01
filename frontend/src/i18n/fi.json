@@ -630,6 +630,7 @@
   "settings.plan.mode.legend": "Lataa perusteella",
   "settings.plan.mode.energy": "Energia · kWh",
   "settings.plan.mode.soc": "Tavoite-SoC · %",
+  "settings.preview.ready": "valmis {time}",
   "settings.soc.target": "Lataustavoite",
   "settings.soc.slider": "Lataustavoite, prosenttia",
   "settings.soc.floorMark": "väh. {percent} %",

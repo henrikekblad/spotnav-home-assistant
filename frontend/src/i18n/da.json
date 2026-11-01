@@ -630,6 +630,7 @@
   "settings.plan.mode.legend": "Oplad efter",
   "settings.plan.mode.energy": "Energi · kWh",
   "settings.plan.mode.soc": "Mål-SoC · %",
+  "settings.preview.ready": "færdig {time}",
   "settings.soc.target": "Lademål",
   "settings.soc.slider": "Lademål, procent",
   "settings.soc.floorMark": "min. {percent} %",
