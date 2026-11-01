@@ -139,7 +139,7 @@ from .auto_execution import AutoExecutor, pause_blocks_execution
 from .charge_progress import SUSPENDED_EV
 from .charger_connection import CHARGING, DISCONNECTED, FINISHED
 from .chargers.base import IN_EFFECT_OUTCOMES
-from .controller import ChargingController
+from .controller import ABSOLUTE_MAX_AMPS, ChargingController
 
 
 _LOGGER = logging.getLogger(__name__)
@@ -1027,8 +1027,9 @@ class SolarExecutionCoordinator:
         if self._solar is None:
             self._solar = self._build_controller(site)
         else:
-            if self._controller.is_switch_only and self._solar.config != (limits := self._solar_config(site)):
-                # Its learned current moved: the thresholds follow it, the state is kept.
+            if self._solar.config != (limits := self._solar_config(site)):
+                # A switch-only charger's learned current moved, or the charger's ceiling did (an entity's stated
+                # maximum, the amps the person set): the limits follow it, the state is kept.
                 self._solar.update_limits(limits)
             if not (held_by_plan or held_by_floor) and self._state is not None and self._state.held_by_plan:
                 # A plan window held the charge until now (its end handed it over, or the strategy left the plan):
@@ -1457,12 +1458,21 @@ class SolarExecutionCoordinator:
         start_a = max(min_current_a, self._controller.adapter.min_start_current_a)
         if start_a > min_current_a:
             config_kwargs["start_a"] = start_a
-        # No per-charger "max current for solar" setting exists; `wiring.get("max_current_a")`
-        # is a hook for one, and otherwise `SolarConfig`'s default (16.0 A) applies.
-        max_current_a = wiring.get("max_current_a")
-        if max_current_a is not None:
-            config_kwargs["max_current_a"] = float(max_current_a)
+        config_kwargs["max_current_a"] = max(self._solar_ceiling_a(), start_a)
         return SolarConfig(**config_kwargs)
+
+    def _solar_ceiling_a(self) -> float:
+        """The most current the sun asks this charger for: the charger's own ceiling
+        (`ChargingController.current_range`: the lowest maximum its current entities state, else the everyday
+        default, never above `ABSOLUTE_MAX_AMPS`), and no more than the amps the person set for it, the same
+        charging current a plan window and Hybrid's plan charge at. Load balancing bounds it further, by the fuse,
+        where the sun's request is reckoned (`_phase_room`, the site's regulator). Read on every tick, so a range
+        that changes (an entity's `max`, a session limit coming or going) is followed."""
+        ceiling = float(min(self._controller.current_range()["max_a"], ABSOLUTE_MAX_AMPS))
+        amps = self._store.settings(self._charger_entry_id).amps
+        if amps is not None and amps > 0:
+            ceiling = min(ceiling, float(amps))
+        return ceiling
 
     async def _take_over(self, site: SiteCapacityController) -> bool:
         """Decide a charge the charger began by itself (at plug-in, say) while solar is not running one,

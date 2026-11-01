@@ -194,7 +194,8 @@ async def _two_charger_site(
     store = domain_data(hass).auto_store
     assert store is not None
     for name, entry in entries.items():
-        await store.async_update(entry.entry_id, mutate=lambda s: replace(s, strategy=STRATEGY_SOLAR))
+        # 16 A set for each: the sun asks no charger for more than that.
+        await store.async_update(entry.entry_id, mutate=lambda s: replace(s, strategy=STRATEGY_SOLAR, amps=16))
         clock = SecondsClock(0.0)
         coordinator = hass.config_entries.async_get_entry(entry.entry_id).runtime_data.solar
         assert isinstance(coordinator, SolarExecutionCoordinator)
