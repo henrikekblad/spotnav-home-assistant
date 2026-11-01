@@ -724,6 +724,9 @@ async def test_no_probe_without_every_condition(hass: HomeAssistant, monkeypatch
     if case == "grid_over_the_band":
         set_site_current_a(hass, site, 21.0)
     if case == "car_drawing":
+        # A minute after the pause: a value the charger sends with its stop, a few seconds after it, is the charge
+        # before the pause (`_stopped_charger_reading`); one this late is the car drawing now.
+        controller._written_at[charger.entry_id] -= 60.0
         set_charger_delivered_a(hass, prefix, 3.0)
     if case == "headroom_for_the_minimum":
         set_site_current_a(hass, site, 12.0)
