@@ -160,19 +160,18 @@ async def test_the_preview_holds_across_the_autumn_change(hass: HomeAssistant, t
 # ------------------------------------------------------------------------------- nothing happens
 
 
-@freeze_time(NOW)
-async def test_a_burst_of_previews_changes_nothing(
-    hass: HomeAssistant, transport: StubTransport, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    entry = await setup_charger(hass)
-    serve(transport, rising=True)
-    await go_auto(hass, requested_kwh=6.0, departure_enabled=True, departure=datetime(2026, 1, 1, 18, 0).time())
-    await hass.async_block_till_done()
-    entry_id = entry.entry_id
+async def assert_previews_change_nothing(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, entry_id: str, bodies: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    """Run a preview of each body and prove nothing moved: the store's record (the very same object), count,
+    revision and suggestions, the controller (its appointments, its count in memory, the register's unread note and
+    whom it asked), the executor, the session runner and the charger, the plan notice, the hybrid state and memory;
+    no store write, no charger command, no event, no listener told. Returns the previews."""
     store = domain_data(hass).auto_store
     data = charger_data(hass, entry_id)
     controller = preview_for(hass, entry_id)
     assert store is not None and data is not None and controller is not None and data.executor is not None
+    await hass.async_block_till_done()
 
     commits: list[str] = []
     real_commit = store._async_commit  # noqa: SLF001
@@ -205,18 +204,15 @@ async def test_a_burst_of_previews_changes_nothing(
         }
 
     before = state()
-    for kwh in (2.0, 5.5, 9.0, 14.0, 30.0, 60.0):
-        for departure in ("07:00", "09:00", "16:15", "23:45"):
-            for strategy in ("cheapest", "hybrid"):
-                body = body_of(
-                    hass, entry_id, requested_kwh=kwh, departure_time=departure, strategy=strategy,
-                    departure_date="2026-09-23" if departure == "07:00" else None,
-                )
-                answer = await async_plan_preview(hass, entry_id, body, plan_only=False)
-                assert answer["ok"] is True
+    previews = []
+    for body in bodies:
+        answer = await async_plan_preview(hass, entry_id, body, plan_only=False)
+        assert answer["ok"] is True, answer
+        previews.append(answer["preview"])
     await hass.async_block_till_done()
     remove_listener()
     remove_events()
+    monkeypatch.setattr(store, "_async_commit", real_commit)
 
     after = state()
     for key, value in before.items():
@@ -226,6 +222,126 @@ async def test_a_burst_of_previews_changes_nothing(
     assert charger_calls == [], "nothing reached the charger"
     assert events == [], "no event was fired"
     assert heard == [], "no listener heard of a preview"
+    return previews
+
+
+@freeze_time(NOW)
+async def test_a_burst_of_previews_changes_nothing(
+    hass: HomeAssistant, transport: StubTransport, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    entry = await setup_charger(hass)
+    serve(transport, rising=True)
+    await go_auto(hass, requested_kwh=6.0, departure_enabled=True, departure=datetime(2026, 1, 1, 18, 0).time())
+    bodies = [
+        body_of(
+            hass, entry.entry_id, requested_kwh=kwh, departure_time=departure, strategy=strategy,
+            departure_date="2026-09-23" if departure == "07:00" else None,
+        )
+        for kwh in (2.0, 5.5, 9.0, 14.0, 30.0, 60.0)
+        for departure in ("07:00", "09:00", "16:15", "23:45")
+        for strategy in ("cheapest", "hybrid")
+    ]
+    await assert_previews_change_nothing(hass, monkeypatch, entry.entry_id, bodies)
+
+
+async def test_previews_leave_an_energy_registers_count_alone(
+    hass: HomeAssistant, transport: StubTransport, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A manual need counted on the charger's register, unread since a restart: the count, the register's unread
+    note and the appointment that says so at the end of its grace stay as the real calculation left them."""
+    from .test_register_unread_notice import _charged_and_restarted
+
+    with freeze_time(NOW) as frozen:
+        car = await _charged_and_restarted(hass, transport, frozen)
+        controller = car.preview
+        assert controller._register_unread_since is not None  # noqa: SLF001
+        assert controller._unread_notice_cancel is not None, "the grace's appointment is armed"  # noqa: SLF001
+        assert car.baseline() is not None
+        entry_id = car.charger.entry_id
+        bodies = [
+            body_of(hass, entry_id, requested_kwh=kwh, departure_time=departure)
+            for kwh in (4.0, 8.0, 12.0)
+            # The stored departure (the same count) and another one (a count of its own).
+            for departure in ("20:00", "06:30")
+        ]
+        previews = await assert_previews_change_nothing(hass, monkeypatch, entry_id, bodies)
+        assert all(preview["plan"] is not None for preview in previews)
+
+
+async def test_previews_of_a_target_waiting_for_the_cars_level_do_not_ask_the_car(
+    hass: HomeAssistant, transport: StubTransport, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A target whose need a charge already delivered on a stale reading waits for the car's new level. Previews say
+    so and ask the car nothing; the real calculation after them asks it, once per charge."""
+    from pytest_homeassistant_custom_component.common import async_mock_service
+
+    from .test_vehicle_update_wait import _charged
+
+    refreshes = async_mock_service(hass, "homeassistant", "update_entity")
+    with freeze_time(NOW) as frozen:
+        world = await _charged(hass, transport, frozen)
+        await hass.async_block_till_done()
+        # The charge's end already planned again and asked the car once; forget that, as for a charge not yet asked
+        # about, so a preview that asked would show.
+        assert world["preview"].snapshot().reason == "waiting_for_vehicle_update"
+        world["preview"]._update_asked_for = None  # noqa: SLF001
+        asked = len(refreshes)
+        entry_id = world["charger"].entry_id
+        bodies = [body_of(hass, entry_id), body_of(hass, entry_id, amps=10), body_of(hass, entry_id, amps=12)]
+        previews = await assert_previews_change_nothing(hass, monkeypatch, entry_id, bodies)
+        assert [preview["reason"] for preview in previews] == ["waiting_for_vehicle_update"] * 3
+        assert len(refreshes) == asked, "no preview asked the car"
+
+        # The real calculation still asks, once per charge (`_wait_for_vehicle_update`).
+        waiting = await world["preview"].async_recalculate()
+        await hass.async_block_till_done()
+        assert waiting.reason == "waiting_for_vehicle_update"
+        assert world["preview"]._update_asked_for is not None, "the calculation asked the car"  # noqa: SLF001
+        after = len(refreshes)
+        await world["preview"].async_recalculate()
+        await hass.async_block_till_done()
+        assert len(refreshes) == after, "once per charge"
+
+
+@freeze_time(NOW)
+async def test_previews_past_the_published_prices_arm_no_wake(
+    hass: HomeAssistant, transport: StubTransport, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Only today is published, and the departures run into tomorrow: the price wait decides, and its wake-up
+    appointment stays as the real calculation left it."""
+    from .relay import TODAY
+
+    entry = await setup_charger(hass)
+    serve(transport, days=(TODAY,), rising=True)
+    await go_auto(hass, requested_kwh=6.0, departure_enabled=True, departure=datetime(2026, 1, 1, 7, 0).time())
+    controller = preview_for(hass, entry.entry_id)
+    assert controller is not None
+    bodies = [
+        body_of(hass, entry.entry_id, requested_kwh=kwh, departure_time=departure)
+        for kwh in (3.0, 20.0, 45.0)
+        for departure in ("06:00", "07:00", "18:00")
+    ]
+    previews = await assert_previews_change_nothing(hass, monkeypatch, entry.entry_id, bodies)
+    assert {preview["state"] for preview in previews} - {"proposal_ready", "proposal_unpriced"}, (
+        "some previews wait for the publication"
+    )
+
+
+@freeze_time(NOW)
+async def test_a_real_hybrid_calculation_still_keeps_its_memory_and_a_preview_does_not(
+    hass: HomeAssistant, transport: StubTransport
+) -> None:
+    entry = await setup_charger(hass)
+    serve(transport, rising=True)
+    await go_auto(hass, requested_kwh=6.0, strategy="hybrid")
+    data = charger_data(hass, entry.entry_id)
+    assert data is not None and data.hybrid_memory is not None
+    assert data.hybrid_memory.remaining_need_kwh == pytest.approx(6.0)
+    kept = data.hybrid_memory
+    await async_plan_preview(hass, entry.entry_id, body_of(hass, entry.entry_id, requested_kwh=9.0), plan_only=False)
+    assert data.hybrid_memory is kept
+    await saved_preview(hass, entry.entry_id, body_of(hass, entry.entry_id, requested_kwh=9.0))
+    assert data.hybrid_memory is not kept and data.hybrid_memory.remaining_need_kwh == pytest.approx(9.0)
 
 
 # ------------------------------------------------------------------------------- refusals
