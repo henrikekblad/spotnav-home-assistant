@@ -1596,3 +1596,28 @@ def test_the_suns_take_over_never_stops_a_start_still_awaiting_its_result(cause)
     assert kinds(commands) == []
     session, _ = run(session, ok("start", "direct"))
     assert session.owner == run(PLUGGED, ev.DirectStart(cause=cause), ok("start", "direct"))[0].owner
+
+
+@pytest.mark.parametrize(
+    ("events", "owner", "paused"),
+    [
+        # Load balancing pauses the plan's charge, and its stop comes back before anything else is asked for.
+        ((ev.BalancingPause(), ok("stop", "balancing")), "none", ("plan",)),
+        # A person's Start asked for while the pause's stop is on its way: the stop comes back first, then the start.
+        # The start ends what balancing held back, as `_start_locked` clears it when it goes out.
+        ((ev.BalancingPause(), ev.PersonStart(), ok("stop", "balancing"), ok("start", "person")), "person", ()),
+        # The same start that did not go out: nothing held back either (it was asked for after the pause).
+        ((ev.BalancingPause(), ev.PersonStart(), ok("stop", "balancing"), failed("start", "person")), "none", ()),
+        # A person's Start that went out before the pause: the pause holds the person's charge back.
+        ((ev.PersonStart(), ok("start", "person"), ev.BalancingPause(), ok("stop", "balancing")), "none", ("person",)),
+    ],
+    ids=["pause", "start_after_the_pause", "start_after_the_pause_failed", "pause_after_the_start"],
+)
+def test_a_balancing_pause_meeting_a_persons_start_in_either_order(
+    events: tuple[ev.Event, ...], owner: str, paused: tuple[str, ...]
+) -> None:
+    """The commands come back in the order they went out: a balancing pause holds back the charge that ran when it
+    was asked for, unless a start asked for after it, still on its way, follows it."""
+    session, _ = run(PLUGGED.with_changes(owner="plan"), *events)
+    assert session.owner == owner
+    assert (session.balancing_paused, session.paused_origin) == ((True, paused[0]) if paused else (False, None))

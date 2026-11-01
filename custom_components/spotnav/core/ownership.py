@@ -987,6 +987,12 @@ def _recheck(session: ChargeSession, event: Recheck, now: datetime) -> Decision:
     return s, ()
 
 
+def _started_after(session: ChargeSession, command: PendingCommand) -> bool:
+    """Whether a start other than load balancing's resume was asked for after `command` and awaits its result."""
+    later = session.pending[session.pending.index(command) + 1 :] if command in session.pending else ()
+    return any(item.command == "start" and item.reason != REASON_BALANCING_RESUME for item in later)
+
+
 def _command_result(session: ChargeSession, event: CommandResult, now: datetime) -> Decision:
     pending = next(
         (item for item in session.pending if (item.command, item.reason) == (event.command, event.reason)), None
@@ -1052,7 +1058,12 @@ def _command_result(session: ChargeSession, event: CommandResult, now: datetime)
         return _no_balancing(s), ()
     s = _no_balancing(s).with_changes(owner=OWNER_NONE)
     if pending is not None and event.reason == REASON_BALANCING and not car_gone:
-        if session.balancing_paused:
+        if _started_after(session, pending):
+            # A start asked for after this pause, still on its way (a person's Start that waited for the pause's
+            # stop): it goes out after the stop and ends what load balancing held back, as `_start_locked` clears it
+            # then. Nothing is held back for the regulator to give back.
+            pass
+        elif session.balancing_paused:
             # A repeat pause of a charge balancing already holds back (`_regulated_stop`): still that charge.
             s = s.with_changes(balancing_paused=True, paused_origin=session.paused_origin)
         elif (
