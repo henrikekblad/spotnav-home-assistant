@@ -61,9 +61,12 @@ class _Night:
         self.halo = halo
         self.freezer = freezer
         self.house = house
-        #: `idle`, `holds` (charges whatever the fuse leaves) or `fixed` (`fixed_w`, whatever the grid).
+        #: `idle`, `holds` (charges whatever the fuse leaves), `fixed` (`fixed_w`, whatever the grid) or `takes` (fills
+        #: the grid up to `takes_a` per phase, and never gives back what it took).
         self.battery = "idle"
         self.fixed_w = 0.0
+        self.takes_a = 19.85
+        self.taken: tuple[float, ...] = (0.0, 0.0, 0.0)
         self.car_a = 0.0
         self.on = False
         self.offs = 0
@@ -91,6 +94,12 @@ class _Night:
             return (0.0, 0.0, 0.0)
         if self.battery == "fixed":
             return (self.fixed_w / (3 * _V),) * 3
+        if self.battery == "takes":
+            holds = self.takes_a + _WOBBLE[self.wobble] / 2
+            self.taken = tuple(
+                round(max(taken, holds - house - car_a), 3) for taken, house in zip(self.taken, self.house, strict=True)
+            )
+            return self.taken
         holds = _BATTERY_HOLDS_A + _WOBBLE[self.wobble]
         room = [max(0.0, holds - house - car_a) for house in self.house]
         scale = min(1.0, _BATTERY_MAX_W / (sum(room) * _V)) if sum(room) else 1.0
@@ -269,6 +278,31 @@ async def test_0315_a_held_car_is_not_stepped_above_the_fuse(hass: HomeAssistant
     await night.run(5 * 60.0)
     low, high = night.site_range
     assert max(high) <= _FUSE_A + 0.5, "\n".join(night.trace[-60:])
+
+
+async def test_a_battery_that_takes_the_freed_current_is_not_stepped_into_above_the_fuse(
+    hass: HomeAssistant, monkeypatch, freezer
+) -> None:
+    """A battery that takes every amp the car frees and gives none back, holding the grid just under the fuse: a
+    lowering it absorbed is no proof that it gives way to a raise, so the car is not stepped back up past the fuse.
+    Before, the step back up went out on a battery never seen to give way, and the site read the fuse plus the step
+    for a pass."""
+    night = await _the_night(hass, monkeypatch, freezer, "nov1takes")
+    # A load far over the fuse cuts the car; the battery then fills what it freed and keeps it.
+    night.battery = "fixed"
+    night.fixed_w = 7.1 * 3 * _V
+    for _ in range(3):
+        await night.step()
+        if night.assigned_a() < 16.0:
+            break
+    assert night.assigned_a() < 16.0
+    night.taken = (7.1, 7.1, 7.1)
+    night.battery = "takes"
+    night.site_range = None
+    await night.run(15 * 60.0)
+    low, high = night.site_range
+    assert max(high) <= _FUSE_A + 0.5, "\n".join(line for line in night.trace if "down_step" in line)
+    assert not [line for line in night.trace if "down_step_absorbed_by_battery" in line]
 
 
 # -- 03:18 to 04:07: a charge paused anyway, the battery holding the fuse, and the battery done

@@ -535,7 +535,7 @@ class YieldStepper:
 
         # 3b. A lowering awaiting its measurement.
         verified = self._verify_down_step(
-            now, site_a, delivered_a, limit_a, requested_a, battery_charging
+            now, assigned_a, site_a, delivered_a, limit_a, requested_a
         )
         if verified is not None:
             return verified
@@ -876,15 +876,18 @@ class YieldStepper:
     def _verify_down_step(
         self,
         now: float,
+        assigned_a: float,
         site_a: dict[PhaseName, float],
         delivered_a: dict[PhaseName, float],
         limit_a: dict[PhaseName, float] | None,
         requested_a: float,
-        battery_charging: bool,
     ) -> YieldVerdict | None:
         """Measure a pending down step once the settle time has passed: if the site current did not
         fall by `down_absorb_fraction` of the car's decrease on the limiting phase, the battery
-        took the freed current. Then the previous current is restored (a write)."""
+        took the freed current. Then the previous current is restored (a write), as far as the
+        ceiling in force leaves room for the whole step on every phase: taking the freed current is
+        no proof the battery gives it back, so until its yield is verified the fuse bounds the
+        step back up as it bounds any other raise."""
         cfg = self._config
         down = self._down
         if down is None or now - down.t < cfg.settle_s:
@@ -905,7 +908,12 @@ class YieldStepper:
         self._battery_absorbs = True
         if self._real_excess(site_a, limit_a):
             return None
-        target = min(requested_a, down.from_a)
+        room_a = min(self._ceiling_a() - site_a[phase] for phase in phases)
+        target = min(requested_a, down.from_a, assigned_a + float(math.floor(max(0.0, room_a))))
+        if target <= assigned_a:
+            # No room under the ceiling for even one amp: the car is held where it is (step 5's
+            # `held_at_limit_battery_absorbs`), not stepped back up.
+            return None
         return self._verdict(now, "write", target, "down_step_absorbed_by_battery", False)
 
     def _battery_gave_way(
