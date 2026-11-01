@@ -161,11 +161,11 @@ def evaluate(
         return HistoryDecision("no_profile", weeks=profile.weeks, unknown_slots=len(candidates))
 
     fiscal: FiscalChoice = request.fiscal
-    expected = [effective_minor_per_kwh(slot.local_major_per_kwh, fiscal) for slot in best]
+    expected = [effective_minor_per_kwh(slot.local_major_per_kwh, fiscal, slot.start) for slot in best]
     # The spread through the same conversion: the effective price one standard deviation above the median,
     # less the median's, so tax and fee (added) drop out and VAT (a factor) scales it.
     spreads = [
-        effective_minor_per_kwh(slot.local_major_per_kwh + spread[slot.start], fiscal) - price
+        effective_minor_per_kwh(slot.local_major_per_kwh + spread[slot.start], fiscal, slot.start) - price
         for slot, price in zip(best, expected)
     ]
     known_mean = sum(slot.effective_minor_per_kwh for slot in known.slots) / len(known.slots)

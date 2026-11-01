@@ -216,6 +216,6 @@ def price_slices(slices: Sequence[Slice], fiscal: FiscalChoice | None) -> Costin
         if item.kwh <= 0:
             continue
         priced += item.kwh
-        cost += item.kwh * effective_minor_per_kwh(item.eur_per_kwh * item.fx, fiscal)
-        reference += item.kwh * effective_minor_per_kwh(item.day_avg_eur * item.fx, fiscal)
+        cost += item.kwh * effective_minor_per_kwh(item.eur_per_kwh * item.fx, fiscal, item.start)
+        reference += item.kwh * effective_minor_per_kwh(item.day_avg_eur * item.fx, fiscal, item.start)
     return Costing(priced, cost, reference)

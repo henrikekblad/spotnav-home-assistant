@@ -205,7 +205,7 @@ async def async_plan_hybrid(
             PriceSlot(
                 start=slot.start,
                 duration_s=STEP_MINUTES * 60.0,
-                price=effective_minor_per_kwh(slot.local_major_per_kwh, fiscal),
+                price=effective_minor_per_kwh(slot.local_major_per_kwh, fiscal, slot.start),
             )
             for slot in slots
         )
