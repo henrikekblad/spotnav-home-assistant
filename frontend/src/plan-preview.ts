@@ -3,7 +3,7 @@
 //
 // * `PreviewScheduler`: one request ~300 ms after the last change; an answer to an older draft is dropped (a
 //   sequence id), so only the latest draft's plan is ever shown. While a newer one is awaited the old result stays,
-//   dimmed; a failed request shows nothing new and is logged.
+//   dimmed; a failed or refused request shows nothing new, is logged, and the old result is no longer dimmed.
 // * `previewLineText`: the result line, in the card's own number, money and status wording.
 // * `previewStripModel` and `renderPlanPreview`: a thin strip of the hours to the departure, each quarter coloured
 //   by price as the chart colours it (cheap or dear against its own day's mean), the planned ones marked.
@@ -56,11 +56,13 @@ export class PreviewScheduler<B> {
     // A newer draft: whatever an older one is waiting for is no longer this dialog's.
     const sequence = ++this.sequence;
     this.cancelTimer();
+    if (body === null) {
+      // Nothing will come for this draft: the last result stands, not dimmed as if awaited.
+      this.settle();
+      return;
+    }
     if (this.shown !== null) {
       this.options.paint({ kind: "shown", preview: this.shown, pending: true });
-    }
-    if (body === null) {
-      return;
     }
     const set = this.options.setTimer ?? ((callback: () => void, ms: number) => setTimeout(callback, ms));
     this.timer = set(() => {
@@ -91,6 +93,7 @@ export class PreviewScheduler<B> {
     } catch (error) {
       if (this.current(sequence)) {
         this.options.log?.(`plan preview failed: ${error instanceof Error ? error.message : "unknown"}`);
+        this.settle();
       }
       return;
     }
@@ -100,15 +103,24 @@ export class PreviewScheduler<B> {
     const decoded = this.options.decode(raw);
     if (!decoded.ok) {
       this.options.log?.(`plan preview answer refused: ${decoded.failure}`);
+      this.settle();
       return;
     }
     const answer = decoded.value;
     if (!answer.ok || answer.preview === null) {
       this.options.log?.(`plan preview refused: ${answer.error ?? "unknown"}`);
+      this.settle();
       return;
     }
     this.shown = answer.preview;
     this.options.paint({ kind: "shown", preview: answer.preview, pending: false });
+  }
+
+  /** The latest draft ended without a new result: the last one stays, no longer marked as awaited. */
+  private settle(): void {
+    if (this.shown !== null) {
+      this.options.paint({ kind: "shown", preview: this.shown, pending: false });
+    }
   }
 
   private current(sequence: number): boolean {
