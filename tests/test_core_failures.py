@@ -226,6 +226,48 @@ async def test_facts_that_cannot_be_read_are_a_failure_and_send_nothing(
     await world.shutdown()
 
 
+# ---------------------------------------------------------------------------------------------- a person's own action
+
+
+async def test_a_persons_stop_the_core_cannot_decide_is_stored_and_held(
+    hass: HomeAssistant, timers: FakeScheduler, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A person's Stop whose own decision fails once: the charger is stopped, their pause is stored all the same (Auto
+    holds, so the next window starts nothing) and the session takes it, with one failure told."""
+    world = await _world(hass, timers, charging=True)
+    _break(monkeypatch, "person_stop")
+    await world.executor.async_manual_stop()
+    await hass.async_block_till_done()
+    runner = world.controller.session_runner
+    assert hass.states.get(SWITCH).state == "off"
+    assert world.pause.manual and world.pause.action == "stop", "the person's Stop is stored"
+    assert runner.session.manual is not None and runner.session.manual.action == "stop"
+    assert runner.counts["failures"] == {"decide_early/person_stop": 1}
+    monkeypatch.undo()
+    starts = len(world.starts)
+    await install_schedule(world.controller, open_window())
+    await hass.async_block_till_done()
+    assert len(world.starts) == starts, "Auto is paused: the window starts nothing"
+    await world.shutdown()
+
+
+async def test_a_persons_start_the_core_cannot_decide_is_stored_in_the_session(
+    hass: HomeAssistant, timers: FakeScheduler, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A person's Start whose own decision fails once: the start goes out, their pause is stored and the session
+    takes it, so automation leaves their charge alone; one failure told."""
+    world = await _world(hass, timers)
+    _break(monkeypatch, "person_start")
+    await world.executor.async_manual_start()
+    await hass.async_block_till_done()
+    runner = world.controller.session_runner
+    assert hass.states.get(SWITCH).state == "on"
+    assert world.pause.manual and world.pause.action == "start"
+    assert runner.session.manual is not None and runner.session.manual.action == "start"
+    assert runner.counts["failures"] == {"decide_early/person_start": 1}
+    await world.shutdown()
+
+
 # ---------------------------------------------------------------------------------------------- the stored session
 
 

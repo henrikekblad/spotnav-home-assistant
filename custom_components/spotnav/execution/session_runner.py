@@ -119,7 +119,7 @@ class NullRunner:
     def feed(self, event: Event, **_kwargs: Any) -> None:
         return
 
-    def check_intent(self, where: str) -> None:
+    def check_intent(self, where: str, *, told: bool = False) -> None:
         return
 
     def failed(self, where: str, kind: str | None, error: BaseException | None = None, **_kwargs: Any) -> None:
@@ -195,7 +195,7 @@ class SessionRunner:
         # decided in (`FeedToken.plug_ins`). Transient: no feed outlives a restart.
         self._plug_in_ends = 0
         # A check of the person intent asked for while a feed was open (`check_intent`), run once none is (`_settle`).
-        self._intent_pending: str | None = None
+        self._intent_pending: tuple[str, bool] | None = None
 
     # ------------------------------------------------------------------ feeding
 
@@ -305,16 +305,19 @@ class SessionRunner:
         self.session = session
         self.end(self.begin(), event)
 
-    def check_intent(self, where: str) -> None:
+    def check_intent(self, where: str, *, told: bool = False) -> None:
         """The execution boundary wrote its person intent (`PauseIntent`) from a decision of the core's: the two must
         say the same. A difference is a failure (a bug: something wrote one without the other), and the session takes
-        the boundary's, which the card shows and the gate reads. While a feed is open (its decision may not be
-        written yet) the check waits, and runs once no feed is open any more (`_settle`)."""
+        the boundary's, which the card shows and the gate reads. `told`: the core could not decide the person's own
+        action that wrote it (a failure told already), so the session takes the boundary's with no second failure.
+        While a feed is open (its decision may not be written yet) the check waits, and runs once no feed is open any
+        more (`_settle`)."""
         reader = self._intent
         if reader is None:
             return
         if self._any_open():
-            self._intent_pending = where
+            pending = self._intent_pending
+            self._intent_pending = (where, told and (pending is None or pending[1]))
             return
         self._intent_pending = None
         try:
@@ -327,7 +330,8 @@ class SessionRunner:
                 "boundary": {"manual": _manual_dict(manual), "span_pause": span},
             }
             self.session = self.session.with_changes(manual=manual, span_pause=span)
-            self.failed("intent", None, None)
+            if not told:
+                self.failed("intent", None, None)
             _LOGGER.debug("SpotNav charger %s: person intent differed %s", self._name, record)
             self._persisted()
         except Exception:  # noqa: BLE001 - the runner never raises into the controller
@@ -448,7 +452,7 @@ class SessionRunner:
         pending = self._intent_pending
         if pending is not None:
             # A boundary write checked while another feed was open: checked now.
-            self.check_intent(pending)
+            self.check_intent(pending[0], told=pending[1])
 
     def _persisted(self) -> None:
         """Once no feed is open: tell the keeper of the stored record the session as it is now (never raises)."""

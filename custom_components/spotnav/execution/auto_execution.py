@@ -1275,13 +1275,16 @@ class AutoExecutor:
                 self._runner.check_intent("person_start")
             else:
                 self._runner.end(token, core_events.PersonStart(connected=connected), outcome=note["outcome"])
+                if token.early is None:
+                    # The core could not decide the Start (a failure, told): the session takes the pause it stored.
+                    self._runner.check_intent("person_start", told=True)
 
-    def _core_stop_scope(self, connected: Any, scope: str | None) -> str | None:
+    def _core_stop_scope(self, connected: Any, scope: str | None, *, decided: bool = True) -> str | None:
         """The plug-in session a person's Stop pauses Auto for, as the core decided it (`None`: a pause they chose for
-        a span is kept). When the core could not be told the Stop (what the charger says of a car could not be read: a
-        failure, told), `scope` as the boundary reads it: a person's Stop is stored all the same, and the session takes
-        it from the stored pause (`check_intent`)."""
-        if connected is ...:
+        a span is kept). When the core could not be told the Stop (what the charger says of a car could not be read) or
+        could not decide it (`decided` false), both failures, told: `scope` as the boundary reads it, so a person's
+        Stop is stored all the same, and the session takes it from the stored pause (`check_intent`)."""
+        if connected is ... or not decided:
             return scope
         try:
             session = self._runner.session
@@ -1839,6 +1842,9 @@ class AutoExecutor:
                 self._runner.end(
                     token, core_events.PersonStop(connected=connected), outcome=note["outcome"]
                 )
+                if token.early is None:
+                    # The core could not decide the Stop (a failure, told): the session takes the pause it stored.
+                    self._runner.check_intent("person_stop", told=True)
 
     async def _immediate_stop_body(self, note: dict[str, Any]) -> None:
         connected = note.get("connected")
@@ -1855,7 +1861,7 @@ class AutoExecutor:
                 connected = self._controller.known_connected
             waiting = before.manual and before.scope == MANUAL_SCOPE_NEXT_PLUG_IN and connected is not True
             scope = MANUAL_SCOPE_NEXT_PLUG_IN if connected is False or waiting else MANUAL_SCOPE_PLUG_IN
-        scope = self._core_stop_scope(note.get("connected"), scope)
+        scope = self._core_stop_scope(note.get("connected"), scope, decided=note.get("early", True))
         stop_error: Exception | None = None
         save_error: Exception | None = None
         self._manual_write_in_flight = True
