@@ -617,12 +617,14 @@ class RegulatedWrite:
 
     `outcome` is `wrote`, `held`, `stopped` or `held_at_floor`; `code` is the adapter's stable outcome code (or
     `safety_stop`/`pause`); `written` says whether the current went out, so the caller can keep its
-    damping state honest about what is really on the charger.
+    damping state honest about what is really on the charger. `stop_sent` (for `stopped`) says whether a stop
+    command went out in this call: one already on its way, or a charger already off, sends none.
     """
 
     outcome: str
     code: str
     written: bool
+    stop_sent: bool = True
 
 
 @dataclass(frozen=True, slots=True)
@@ -3788,6 +3790,7 @@ class ChargingController:
                 )
                 token = self._runner.begin(early=pause)
                 outcome = CommandOutcome(False)
+                stop_sent_before = self._stop_sent_at
                 try:
                     # A balancing stop: a top-off running past the last window goes on, paused like any charge.
                     # A safety stop is never taken for a pause on its way (`_stop_settling`): the fuse needs it now.
@@ -3797,6 +3800,7 @@ class ChargingController:
                     self._runner.end(token, pause, outcome=outcome)
                 # Saved soon once decided: the core's session, and today's `balancing_pause` key derived from it.
                 self._save_memory_soon()
+                stop_sent = self._stop_sent_at is not None and self._stop_sent_at != stop_sent_before
         except ChargingExecutionError as err:
             if err.code == EXECUTION_STOP_HELD_AT_FLOOR:
                 # Not paused: the charge runs on at the floor, which is what load balancing must count.
@@ -3806,7 +3810,7 @@ class ChargingController:
         except Exception:  # noqa: BLE001 - reported, and the next pass tries again
             _LOGGER.exception("SpotNav charger %s: the safety stop failed", self.entry_id)
             return RegulatedWrite(REGULATED_HELD, "stop_failed", False)
-        return RegulatedWrite(REGULATED_STOPPED, code, False)
+        return RegulatedWrite(REGULATED_STOPPED, code, False, stop_sent=stop_sent)
 
     async def async_restore_current(self, *, lowered_by_balancing: bool) -> CurrentRestore:
         """Put this charger back on its authoritative current, and say truthfully how it went.
@@ -4114,7 +4118,13 @@ class ChargingController:
             self._seen_charging = self.charging
             self._command_unfed = SENT_STOP
             if start_on_its_way:
+                # Nor is a current owed to it once it lands (a session-bound number): a late answer of the start
+                # would otherwise write the plan's current into the paused charge.
                 self._start_sent_at = None
+                self._start_write_pending = False
+                # The start's late answer (the control on, then off once the stop lands) is not the charge starting
+                # again: the stop stays the one on its way, and is not sent again before it has had its time.
+                self._seen_charging = None
         elif self._control_observation is not None:
             self._command_unfed = SENT_STOP
         # Whatever start was on its way is over: its share of the site's margin is free for another.
