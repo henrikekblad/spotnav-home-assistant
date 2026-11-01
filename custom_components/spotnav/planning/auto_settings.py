@@ -1020,6 +1020,9 @@ class EnergyBaseline:
                     "rejected_mark_s",
                     "charge_mark_s",
                     "met_requested_kwh",
+                    # Written by a later release (the register the count reads); read and ignored here, so going
+                    # back to this release keeps the count instead of dropping it.
+                    "register_entity",
                 }
             ),
         )
