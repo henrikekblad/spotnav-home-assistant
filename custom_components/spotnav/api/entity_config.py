@@ -67,6 +67,7 @@ from ..const import (
     CONF_CURRENT_CONTROL,
     CONF_CURRENT_LIMIT,
     CONF_CURRENT_LIMIT_NONE,
+    CONF_ENERGY_REGISTER_CHOSEN,
     CONF_ENERGY_REGISTER_NONE,
     CONF_DERIVED_ENTITIES,
     CONF_DIRECT_ENTITIES,
@@ -253,9 +254,16 @@ def _write_charger(hass: HomeAssistant, entry: ConfigEntry, changes: dict[str, A
             # "None": no register, and none looked up or detected again (`energy_register.py`).
             updated[CONF_ENERGY_REGISTER_ENTITY] = ""
             updated[CONF_ENERGY_REGISTER_NONE] = True
+            updated.pop(CONF_ENERGY_REGISTER_CHOSEN, None)
         else:
             # An entity, or "" for the one SpotNav finds itself.
-            updated[CONF_ENERGY_REGISTER_ENTITY] = changes[FIELD_ENERGY_REGISTER] or ""
+            chosen = changes[FIELD_ENERGY_REGISTER] or ""
+            if not chosen:
+                updated.pop(CONF_ENERGY_REGISTER_CHOSEN, None)
+            elif chosen != entry.data.get(CONF_ENERGY_REGISTER_ENTITY):
+                # A person's own register is never replaced by detection.
+                updated[CONF_ENERGY_REGISTER_CHOSEN] = True
+            updated[CONF_ENERGY_REGISTER_ENTITY] = chosen
             updated.pop(CONF_ENERGY_REGISTER_NONE, None)
     if FIELD_POWER_ENTITY in changes:
         # Stored only while set, so a charger without one keeps exactly its old data.

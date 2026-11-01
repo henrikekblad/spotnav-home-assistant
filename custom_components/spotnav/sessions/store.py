@@ -24,6 +24,7 @@ from homeassistant.util import dt as dt_util
 
 from ..const import DOMAIN
 from ..planning.planner import FiscalChoice
+from ..execution.power_energy import configured_register_entity
 from .model import ChargeSession
 
 _LOGGER = logging.getLogger(__name__)
@@ -72,6 +73,10 @@ class SessionStore:
                 if session is None or session.end is not None or session.charger_id != charger_id:
                     dropped += 1
                     continue
+                if session.register_entity is None and session.last_register_kwh is not None:
+                    # Read before any charger is set up (and may have its register replaced): the register its
+                    # last reading came from.
+                    session.register_entity = configured_register_entity(self._hass, charger_id)
                 self._open[charger_id] = session
         imports = raw.get("imports")
         if isinstance(imports, dict):

@@ -39,6 +39,7 @@ from ..const import (
     CONF_GRID_POWER_SOURCE,
     CONF_ENERGY_REGISTER_ENTITY,
     CONF_POWER_ENTITY,
+    CONF_ENERGY_REGISTER_CHOSEN,
     CONF_ENERGY_REGISTER_IS_SESSION,
     CONF_ENERGY_REGISTER_NONE,
     CONF_ENTRY_TYPE,
@@ -881,6 +882,9 @@ class SpotNavChargingConfigFlow(
         }
         if chose_none:
             data[CONF_ENERGY_REGISTER_NONE] = True
+        elif energy and not is_session and energy != detected.energy_register:
+            # Another register than detection suggested is the person's own: never replaced by detection.
+            data[CONF_ENERGY_REGISTER_CHOSEN] = True
         if user_input.get("enable_disabled_entities"):
             registry = er.async_get(self.hass)
             for entity_id in detected.disabled_useful:

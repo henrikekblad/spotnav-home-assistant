@@ -89,6 +89,7 @@ def session_facts(hass: HomeAssistant, controller: ChargingController) -> Sessio
         connected=adapter.vehicle_connected(),
         register_kwh=adapter.energy_register_kwh(),
         register_integrated=controller.energy_from_power,
+        register_entity=adapter.energy_entity_id,
         estimate_kw=estimate_kw,
         strategy=strategy,
         vehicle_id=vehicle_id,

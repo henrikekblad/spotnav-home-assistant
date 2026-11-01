@@ -7,7 +7,9 @@ from datetime import date, datetime, timedelta
 
 import pytest
 from homeassistant.core import HomeAssistant
+from pytest_homeassistant_custom_component.common import MockConfigEntry
 
+from custom_components.spotnav.const import CONF_ENERGY_REGISTER_ENTITY, DOMAIN
 from custom_components.spotnav.planning.planner import FiscalChoice
 from custom_components.spotnav.sessions.model import (
     ChargeSession,
@@ -496,3 +498,37 @@ async def test_a_session_keeps_the_level_it_began_at_while_open_only(
     closed = store.closed_raw("entry_x")
     assert closed and closed[-1].start_soc_percent is None
     assert "start_soc_percent" not in closed[-1].as_dict()
+
+
+async def test_a_register_replaced_mid_session_is_measured_from_its_own_first_reading(
+    hass: HomeAssistant, store: SessionStore
+) -> None:
+    """The upgrade replaces a session counter by the lifetime register, or the energy integrated from a power sensor
+    comes or goes: the new register's value is never measured against the old one's."""
+    world = World(hass, store)
+    world.set(register_entity="sensor.session_counter", register_kwh=0.0)
+    world.at(at(8), charging=True)
+    world.at(at(9), register_kwh=5.0)
+    world.at(at(9, 1), register_entity="sensor.lifetime", register_kwh=6989.3)
+    world.at(at(9, 30), register_kwh=6991.3)
+    world.at(at(10), charging=False, register_kwh=6991.3)
+    world.at(at(10) + timedelta(seconds=END_DEBOUNCE_S))
+
+    (done,) = store.closed(CHARGER)
+    assert done.energy_kwh == pytest.approx(7.0)
+
+
+async def test_an_open_session_stored_before_registers_were_named_is_taken_as_the_entrys_register(
+    hass: HomeAssistant, hass_storage
+) -> None:
+    MockConfigEntry(domain=DOMAIN, entry_id=CHARGER, data={CONF_ENERGY_REGISTER_ENTITY: "sensor.old"}).add_to_hass(hass)
+    opened = replace(session(at(8), charger_id=CHARGER), end=None)
+    opened.last_register_kwh = 5.0
+    opened.last_sample_at = at(9)
+    record = opened.as_dict()
+    record.pop("register_entity", None)
+    hass_storage["spotnav_sessions"] = {"version": 1, "data": {"open": {CHARGER: record}}}
+    sessions = SessionStore(hass)
+    await sessions.async_load()
+
+    assert sessions.open_raw(CHARGER).register_entity == "sensor.old"

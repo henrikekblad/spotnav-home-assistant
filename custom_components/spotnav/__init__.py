@@ -51,7 +51,7 @@ from .const import (
     PRICE_PLATFORMS,
     SITE_PLATFORMS,
 )
-from .energy_register import async_store_detected_register, async_watch_for_register
+from .energy_register import async_store_detected_register, async_watch_for_register, charger_power_counted
 from .entity_renames import async_setup_entity_renames
 from .debug_day import ChargerDay
 from .log_buffer import attach_log_buffer
@@ -280,6 +280,8 @@ async def _async_setup_charger_entry(hass: HomeAssistant, entry: ChargerConfigEn
     # A detected charger stored without its lifetime register gets the one detection finds now, before
     # the controller reads its config (`energy_register.py`).
     async_store_detected_register(hass, entry)
+    # With no register at all, a detected charger whose integration has none counts the energy from its own power.
+    charger_power = charger_power_counted(hass, dict(entry.data))
     # The one state-of-charge source both the planner and the stop decision read.
     soc_reader = SocReader(
         hass,
@@ -298,6 +300,7 @@ async def _async_setup_charger_entry(hass: HomeAssistant, entry: ChargerConfigEn
         dict(entry.data),
         soc_reader=soc_reader.read,
         vehicle_limit_reader=soc_reader.vehicle_max_percent,
+        charger_power_entity_id=charger_power,
     )
     data = entry.runtime_data = ChargerData(controller=controller, soc_reader=soc_reader)
     entry.async_on_unload(controller.async_shutdown)

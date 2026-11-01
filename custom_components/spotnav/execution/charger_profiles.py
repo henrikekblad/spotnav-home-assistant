@@ -190,6 +190,16 @@ class PlatformProfile:
     #: be `total` (DEFA's meter reading), which is still a lifetime counter. Every reading of the register
     #: takes the same classes (`lifetime_register_state_classes`), so what detection offers is read.
     energy_state_classes: tuple[str, ...] = ("total_increasing",)
+    #: Energy sensors of the integration that are neither its lifetime register nor a per-session one (a daily
+    #: counter, one phase of three, an estimate): never taken for a register and never offered.
+    excluded_energy_keys: tuple[str, ...] = ()
+    #: The integration has no lifetime register: the charger's own power sensor (W or kW; these keys, in order of
+    #: preference) is integrated into one instead (`sensor.py`'s integrated energy), and no other energy sensor on
+    #: the device is taken for a register.
+    energy_power_keys: tuple[str, ...] = ()
+    #: The power key is a generic word (Ohme's `power`): only the entity whose unique id is the device's own
+    #: identifier and the key (`<serial>_power`) is the charger's power, never another one ending in it.
+    energy_power_exact: bool = False
     #: The sensor that says what the charger is doing, the values meaning "charging" and the values
     #: meaning "a vehicle is connected but asks for no current" (the `SuspendedEV` of OCPP).
     status_keys: tuple[str, ...] = ()
@@ -379,6 +389,8 @@ _PROFILES: Final[tuple[PlatformProfile, ...]] = (
         platform="goecharger",
         name="go-e Charger (legacy)",
         start_stop=_switch("allow_charging", "alw"),
+        energy_keys=("energy_total", "energy_total_corrected"),
+        session_energy_keys=("current_session_charged_energy", "current_session_charged_energy_corrected"),
         status_keys=("car_status",),
         charging_values=("charging",),
         vehicle_idle_values=("waiting for vehicle",),
@@ -391,6 +403,10 @@ _PROFILES: Final[tuple[PlatformProfile, ...]] = (
         start_stop=_buttons(("frc2",), ("frc1",)),
         current_keys=("amp", "amp_22kw"),
         policy=_LOCAL,
+        # `eto` is the lifetime register (state class `total`); `wh` counts since the car was connected.
+        energy_keys=("eto",),
+        session_energy_keys=("wh",),
+        energy_state_classes=("total", "total_increasing"),
         status_keys=("car", "car_state"),
         charging_values=("charging",),
         vehicle_idle_values=("wait car",),
@@ -448,6 +464,9 @@ _PROFILES: Final[tuple[PlatformProfile, ...]] = (
         start_stop=_switch("charging"),
         current_keys=("max_current",),
         policy=_CLOUD,
+        # No lifetime register: both energy sensors count the session (unique ids end in their names).
+        session_energy_keys=("session_energy_total_increasing", "session_energy"),
+        energy_power_keys=("session_power", "ev_power"),
         own_modes=(
             _rule("select", ("activation_mode",), ("plug and charge",), "activation mode"),
             _rule(
@@ -524,6 +543,25 @@ _PROFILES: Final[tuple[PlatformProfile, ...]] = (
         start_stop=_switch("charger_enabled", "charger_enabled_socket"),
         current_keys=("max_current_limit", "max_current_limit_socket"),
         policy=WritePolicy(min_interval_s=10.0, zero_pauses=True, ignored_while_paused=True),
+        energy_keys=("real_energy_delivered_sum", "real_energy_delivered_sum_socket"),
+        session_energy_keys=("current_session_wh", "current_session_wh_socket"),
+        # One phase each, and the energy fed back: never the charger's count.
+        excluded_energy_keys=(
+            "real_energy_delivered_l1",
+            "real_energy_delivered_l2",
+            "real_energy_delivered_l3",
+            "real_energy_delivered_l1_socket",
+            "real_energy_delivered_l2_socket",
+            "real_energy_delivered_l3_socket",
+            "real_energy_consumed_l1",
+            "real_energy_consumed_l2",
+            "real_energy_consumed_l3",
+            "real_energy_consumed_sum",
+            "real_energy_consumed_l1_socket",
+            "real_energy_consumed_l2_socket",
+            "real_energy_consumed_l3_socket",
+            "real_energy_consumed_sum_socket",
+        ),
         status_keys=("mode_3_state", "mode_3_state_socket"),
         charging_values=("c2", "d2"),
         vehicle_idle_values=("b1", "b2", "c1", "d1"),
@@ -536,6 +574,10 @@ _PROFILES: Final[tuple[PlatformProfile, ...]] = (
         start_stop=_switch("virtual_enable"),
         current_keys=("virtual_current",),
         policy=_LOCAL_ZERO_PAUSES,
+        energy_keys=("total_energy", "mid_energy_forward"),
+        session_energy_keys=("session_energy",),
+        # Counts since the charger was powered on, and the MID meter's energy fed back.
+        excluded_energy_keys=("energy_since_power_on", "mid_energy_reverse"),
         status_keys=("charging_state",),
         charging_values=("c",),
         vehicle_idle_values=("b",),
@@ -627,6 +669,9 @@ _PROFILES: Final[tuple[PlatformProfile, ...]] = (
         # Current changes under about 15 s apart can freeze or reset the charger; the integration's
         # maintainer advises about 30 s.
         policy=WritePolicy(min_interval_s=30.0, ignored_while_paused=True),
+        # `energy_delivered` is the session's (register 401E, reset at every session): no lifetime register.
+        session_energy_keys=("energy_delivered",),
+        energy_power_keys=("active_power",),
         status_keys=("charging_state",),
         charging_values=("state c2 - charging",),
         vehicle_idle_values=("state c1 - ev ready for charge", "state b2 - ev plug in, charging complete"),
@@ -638,6 +683,12 @@ _PROFILES: Final[tuple[PlatformProfile, ...]] = (
         platform="myenergi",
         name="myenergi zappi",
         start_stop=_select(("charge_mode",), ("fast",), ("stopped",)),
+        # No lifetime register: `charge_added` counts the session, the others (and every CT's energy) the day.
+        session_energy_keys=("charge_added",),
+        excluded_energy_keys=("energy_total", "energy_green"),
+        # The power of every CT named Internal Load added up (pymyenergi's `ct_groups`): what the zappi charges, all
+        # phases of a three-phase one. CT1 alone would be one phase of those.
+        energy_power_keys=("power-ct_internal_load",),
         note="No current control: switched on and off whole, at the current SpotNav learns it draws.",
     ),
     PlatformProfile(
@@ -646,6 +697,11 @@ _PROFILES: Final[tuple[PlatformProfile, ...]] = (
         start_stop=StartStop(
             PATH_SELECT_APPROVE, keys=("charge_mode",), start_options=("max_charge",), stop_options=("paused",)
         ),
+        # No lifetime register: the `energy` sensor the integration had until Home Assistant 2026.8 counted the
+        # session, and its registry entry can outlive it.
+        excluded_energy_keys=("energy",),
+        energy_power_keys=("power",),
+        energy_power_exact=True,
         status_keys=("status",),
         charging_values=("charging",),
         vehicle_idle_values=("plugged_in", "finished", "pending_approval"),
@@ -678,6 +734,9 @@ _PROFILES: Final[tuple[PlatformProfile, ...]] = (
         platform="chargepoint",
         name="ChargePoint",
         start_stop=_buttons(("start_charging_session",), ("stop_charging_session",)),
+        # No lifetime register: `session_energy_kwh` counts the session.
+        session_energy_keys=("session_energy_kwh",),
+        energy_power_keys=("session_power_kw",),
         note="Its current limit is a select: switched on and off whole, at the current SpotNav learns it draws. Stop ends the session and Start may stay "
         "refused until the cable is replugged.",
     ),
@@ -744,14 +803,18 @@ def policy_for(platform: str | None) -> WritePolicy:
 
 
 def register_owner(profile: PlatformProfile, *, translation_key: str | None, unique_id: str | None) -> str | None:
-    """Which list an energy sensor belongs to, `"lifetime"` or `"session"`, by the longest of the
+    """Which list an energy sensor belongs to, `"lifetime"`, `"session"` or `"excluded"`, by the longest of the
     profile's keys it matches. A key can be the tail of another (Lektrico's `energy` ends
     `lifetime_energy`; DEFA's `meter_value` ends `transaction_meter_value`), and the longer one is
     what the entity is.
     """
     best_length = 0
     owner: str | None = None
-    for name, keys in (("lifetime", profile.energy_keys), ("session", profile.session_energy_keys)):
+    for name, keys in (
+        ("lifetime", profile.energy_keys),
+        ("session", profile.session_energy_keys),
+        ("excluded", profile.excluded_energy_keys),
+    ):
         for key in keys:
             if len(key) > best_length and entity_matches_keys(
                 translation_key=translation_key,

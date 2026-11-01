@@ -25,6 +25,7 @@ from ..const import (
     CONF_CURRENT_LIMIT,
     CONF_DERIVED_ENTITIES,
     CONF_DIRECT_ENTITIES,
+    CONF_ENERGY_REGISTER_CHOSEN,
     CONF_ENERGY_REGISTER_ENTITY,
     CONF_ENERGY_REGISTER_NONE,
     CONF_IDLE_POWER_W,
@@ -262,7 +263,13 @@ class SpotNavChargingOptionsFlow(config_entries.OptionsFlow):
                     updated_data.pop(CONF_CURRENT_LIMIT_NONE, None)
                 if updated_data[CONF_ENERGY_REGISTER_ENTITY]:
                     updated_data.pop(CONF_ENERGY_REGISTER_NONE, None)
-                elif (
+                    if updated_data[CONF_ENERGY_REGISTER_ENTITY] != self._entry.data.get(CONF_ENERGY_REGISTER_ENTITY):
+                        # A person's own register is never replaced by detection.
+                        updated_data[CONF_ENERGY_REGISTER_CHOSEN] = True
+                else:
+                    # No register of the person's own any more: nothing is kept as chosen.
+                    updated_data.pop(CONF_ENERGY_REGISTER_CHOSEN, None)
+                if not updated_data[CONF_ENERGY_REGISTER_ENTITY] and (
                     self._entry.data.get(CONF_ENERGY_REGISTER_ENTITY)
                     and self._entry.data.get(CONF_MODE) != MODE_OCPP
                 ):

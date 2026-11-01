@@ -22,6 +22,8 @@ ENERGY_WH = {"device_class": "energy", "state_class": "total_increasing", "unit_
 AMPS = {"device_class": "current", "unit_of_measurement": "A"}
 MILLIAMPS = {"device_class": "current", "unit_of_measurement": "mA"}
 NUMBER_A = {"unit_of_measurement": "A", "min": 6, "max": 16, "step": 1}
+POWER_W = {"device_class": "power", "state_class": "measurement", "unit_of_measurement": "W"}
+POWER_KW = {"device_class": "power", "state_class": "measurement", "unit_of_measurement": "kW"}
 
 
 @dataclass(frozen=True)
@@ -170,6 +172,11 @@ SHAPES: dict[str, Shape] = {
         (
             _e("switch", "HV1_charging", "charging", "on"),
             _e("number", "HV1_max_current", "max_current", "32", {**NUMBER_A, "max": 32}),
+            _e("sensor", "HV1_Session_Energy", "session_energy", "4100", {**ENERGY_WH, "state_class": "total"}),
+            _e("sensor", "HV1_Session_Energy_Total_Increasing", "session_energy_total_increasing", "4100", ENERGY_WH),
+            _e("sensor", "HV1_CT_Power", "ct_power", "900", POWER_W),
+            _e("sensor", "HV1_Session_Power", "session_power", "7200", POWER_W),
+            _e("sensor", "HV1_EV_Power", "ev_power", "7190", POWER_W),
             _e(
                 "select",
                 "HV1_schedule_session_1_charge_mode",
@@ -198,7 +205,8 @@ SHAPES: dict[str, Shape] = {
             "current_limit": "number.hypervolt_charger_max_current",
             "current_control": "number",
             "energy_register": None,
-            "session_energy_register": None,
+            "session_energy_register": "sensor.hypervolt_charger_session_energy_total_increasing",
+            "energy_power_entity": "sensor.hypervolt_charger_session_power",
             "charging_state": None,
             "current_entities": [],
             "conflicts": [
@@ -328,14 +336,25 @@ SHAPES: dict[str, Shape] = {
     "myenergi": Shape(
         "myenergi",
         "ZAPPI1",
-        (_e("select", "ENTRY-ZAPPI1-charge_mode", "charge_mode", "Stopped", {"options": ["Fast", "Eco", "Eco+", "Stopped"]}),),
+        (
+            _e("select", "ENTRY-ZAPPI1-charge_mode", "charge_mode", "Stopped", {"options": ["Fast", "Eco", "Eco+", "Stopped"]}),
+            _e("sensor", "ENTRY-ZAPPI1-ct1.power", "ct1_power", "7300", POWER_W),
+            _e("sensor", "ENTRY-ZAPPI1-power-ct_internal_load", "power_ct_internal_load", "7300", POWER_W),
+            _e("sensor", "ENTRY-ZAPPI1-ct2.power", "ct2_power", "-1200", POWER_W),
+            _e("sensor", "ENTRY-ZAPPI1-power-ct_grid", "power_ct_grid", "-1200", POWER_W),
+            _e("sensor", "ENTRY-ZAPPI1-energy_total", "energy_total", "9.4", ENERGY_KWH),
+            _e("sensor", "ENTRY-ZAPPI1-energy_green", "energy_green", "2.1", ENERGY_KWH),
+            _e("sensor", "ENTRY-ZAPPI1-ct_grid", "ct_grid", "15.2", ENERGY_KWH),
+            _e("sensor", "ENTRY-ZAPPI1-charge_added", "charge_added", "6.3", ENERGY_KWH),
+        ),
         {
             "charge_control": "select.myenergi_charge_mode",
             "path": {"kind": "select", "start_option": "Fast", "stop_option": "Stopped"},
             "current_limit": None,
             "current_control": "",
             "energy_register": None,
-            "session_energy_register": None,
+            "session_energy_register": "sensor.myenergi_charge_added",
+            "energy_power_entity": "sensor.myenergi_power_ct_internal_load",
             "charging_state": None,
             "current_entities": [],
         },
@@ -439,13 +458,24 @@ SHAPES: dict[str, Shape] = {
         (
             _e("switch", "garage_allow_charging", "allow_charging", "on"),
             _e("sensor", "garage_car_status", "car_status", "Charger ready, no vehicle"),
+            _e("sensor", "garage_current_session_charged_energy", "current_session_charged_energy", "3.2", ENERGY_KWH),
+            _e(
+                "sensor",
+                "garage_current_session_charged_energy_corrected",
+                "current_session_charged_energy_corrected",
+                "3.2",
+                ENERGY_KWH,
+            ),
+            _e("sensor", "garage_energy_total", "energy_total", "4211.0", ENERGY_KWH),
+            _e("sensor", "garage_energy_total_corrected", "energy_total_corrected", "4211.0", ENERGY_KWH),
+            _e("sensor", "garage_p_all", "p_all", "7.2", {"unit_of_measurement": "kW"}),
         ),
         {
             "charge_control": "switch.goecharger_allow_charging",
             "path": {"kind": "switch", "inverted": False},
             "current_limit": None,
             "current_control": "",
-            "energy_register": None,
+            "energy_register": "sensor.goecharger_energy_total",
             "session_energy_register": None,
             "charging_state": "sensor.goecharger_car_status",
             "current_entities": [],
@@ -460,6 +490,9 @@ SHAPES: dict[str, Shape] = {
             _e("button", "WP1-frc0", "frc0"),
             _e("number", "WP1-amp", "amp", "16", NUMBER_A),
             _e("sensor", "WP1-car", "car", "Wait Car"),
+            _e("sensor", "WP1-wh", "wh", "5100", ENERGY_WH),
+            _e("sensor", "WP1-eto", "eto", "3210000", {**ENERGY_WH, "state_class": "total"}),
+            _e("sensor", "WP1-nrg", "nrg", "11000", POWER_W),
             _e("select", "WP1-lmo", "lmo", "Default", {"options": ["Default", "Eco", "Next Trip"]}),
         ),
         {
@@ -471,7 +504,7 @@ SHAPES: dict[str, Shape] = {
             },
             "current_limit": "number.wattpilot_amp",
             "current_control": "number",
-            "energy_register": None,
+            "energy_register": "sensor.wattpilot_eto",
             "session_energy_register": None,
             "charging_state": "sensor.wattpilot_car",
             "current_entities": [],
@@ -484,13 +517,20 @@ SHAPES: dict[str, Shape] = {
             _e("switch", "AM1_socket_1_chargerEnabled", "charger_enabled", "on", translation_key=True),
             _e("number", "AM1_maxCurrent_socket_1", "max_current_limit", "16", {**NUMBER_A, "min": 0, "step": 0.1}, translation_key=True),
             _e("sensor", "AM1_socket_1_mode3state", "mode_3_state", "C2", translation_key=True),
+            _e("sensor", "AM1_socket_1_realEnergyDeliveredL1", "real_energy_delivered_l1", "300000", ENERGY_WH, translation_key=True),
+            _e("sensor", "AM1_socket_1_realEnergyDeliveredL2", "real_energy_delivered_l2", "300000", ENERGY_WH, translation_key=True),
+            _e("sensor", "AM1_socket_1_realEnergyDeliveredL3", "real_energy_delivered_l3", "300000", ENERGY_WH, translation_key=True),
+            _e("sensor", "AM1_socket_1_realEnergyDeliveredSum", "real_energy_delivered_sum", "900000", ENERGY_WH, translation_key=True),
+            _e("sensor", "AM1_socket_1_realEnergyConsumedSum", "real_energy_consumed_sum", "0", ENERGY_WH, translation_key=True),
+            _e("sensor", "AM1_socket_1_currentSession", "current_session_wh", "4000", ENERGY_WH, translation_key=True),
+            _e("sensor", "AM1_socket_1_realPowerSum", "real_power_sum", "11000", POWER_W, translation_key=True),
         ),
         {
             "charge_control": "switch.alfen_modbus_charger_enabled",
             "path": {"kind": "switch", "inverted": False},
             "current_limit": "number.alfen_modbus_max_current_limit",
             "current_control": "number",
-            "energy_register": None,
+            "energy_register": "sensor.alfen_modbus_real_energy_delivered_sum",
             "session_energy_register": None,
             "charging_state": "sensor.alfen_modbus_mode_3_state",
             "current_entities": [],
@@ -503,6 +543,8 @@ SHAPES: dict[str, Shape] = {
             _e("switch", "HD1_virtual_enable", "virtual_enable", "on", translation_key=True),
             _e("number", "HD1_virtual_current", "virtual_current", "16", {**NUMBER_A, "step": 0.1}, translation_key=True),
             _e("sensor", "HD1_charging_state", "charging_state", "C", translation_key=True),
+            _e("sensor", "HD1_session_energy", "session_energy", "3.1", ENERGY_KWH, translation_key=True),
+            _e("sensor", "HD1_energy_since_power_on", "energy_since_power_on", "40.2", ENERGY_KWH, translation_key=True),
             _e("sensor", "HD1_total_energy", "total_energy", "812.4", ENERGY_KWH, translation_key=True),
         ),
         {
@@ -651,6 +693,7 @@ SHAPES: dict[str, Shape] = {
             _e("number", "ABB1_current_limit", "current_limit", "16", {**NUMBER_A, "min": 0, "max": 32}, translation_key=True),
             _e("sensor", "ABB1_charging_state", "charging_state", "State C2 - Charging", translation_key=True),
             _e("sensor", "ABB1_energy_delivered", "energy_delivered", "12.5", {**ENERGY_KWH, "state_class": "total"}, translation_key=True),
+            _e("sensor", "ABB1_active_power", "active_power", "11000", POWER_W, translation_key=True),
         ),
         {
             "charge_control": "button.abb_terra_ac_start_charging",
@@ -663,6 +706,7 @@ SHAPES: dict[str, Shape] = {
             "current_control": "number",
             "energy_register": None,
             "session_energy_register": None,
+            "energy_power_entity": "sensor.abb_terra_ac_active_power",
             "charging_state": "sensor.abb_terra_ac_charging_state",
             "current_entities": [],
         },
@@ -674,6 +718,10 @@ SHAPES: dict[str, Shape] = {
             _e("select", "OH1_charge_mode", "charge_mode", "smart_charge", {"options": ["smart_charge", "max_charge", "paused"]}, translation_key=True),
             _e("button", "OH1_approve", "approve", translation_key=True),
             _e("sensor", "OH1_status", "status", "plugged_in", translation_key=True),
+            _e("sensor", "OH1_energy", "energy", "1.0", ENERGY_KWH),
+            _e("sensor", "OH1_current", "current", "16", AMPS),
+            _e("sensor", "OH1_ev_power", "ev_power", "1.0", POWER_KW),
+            _e("sensor", "OH1_power", "power", "3.7", POWER_KW),
             _e("switch", "OH1_price_cap", "price_cap", "on", translation_key=True),
             _e("switch", "OH1_solar_boost", "solar_boost", "off", translation_key=True),
         ),
@@ -684,6 +732,7 @@ SHAPES: dict[str, Shape] = {
             "current_control": "",
             "energy_register": None,
             "session_energy_register": None,
+            "energy_power_entity": "sensor.ohme_power",
             "charging_state": "sensor.ohme_status",
             "current_entities": [],
             "conflicts": ["switch.ohme_price_cap"],
@@ -697,6 +746,8 @@ SHAPES: dict[str, Shape] = {
             _e("button", "13983833_stop_charging_session", "stop_charging_session"),
             _e("button", "13983833_restart_charger", "restart_charger"),
             _e("select", "13983833_charging_amperage_limit", "charging_amperage_limit", "32", {"options": ["8", "16", "32"]}),
+            _e("sensor", "13983833_session_energy_kwh", "session_energy_kwh", "5.4", ENERGY_KWH),
+            _e("sensor", "13983833_session_power_kw", "session_power_kw", "7.2", POWER_KW),
         ),
         {
             "charge_control": "button.chargepoint_start_charging_session",
@@ -708,7 +759,8 @@ SHAPES: dict[str, Shape] = {
             "current_limit": None,
             "current_control": "",
             "energy_register": None,
-            "session_energy_register": None,
+            "session_energy_register": "sensor.chargepoint_session_energy_kwh",
+            "energy_power_entity": "sensor.chargepoint_session_power_kw",
             "charging_state": None,
             "current_entities": [],
         },

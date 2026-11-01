@@ -176,6 +176,14 @@ confirmed it; an OCPP connector uses its own automatically, as before. If you cl
 stored register, or chose **None** under **Energy** in the card, SpotNav keeps that and looks for
 nothing; the card then lists the register it finds under **To check**, so you can choose it.
 
+Where the charger's integration has no lifetime register at all (myenergi zappi, ABB Terra AC, Ohme,
+ChargePoint, Hypervolt), SpotNav counts the energy from the charger's own power sensor instead, as it
+does for a charger behind a smart plug. A stored register that SpotNav now knows is not the charger's
+lifetime one (a per-session or daily counter, or one phase of three) is replaced at the next start by
+the lifetime register, or by the charger's power where there is none; with neither, it is kept. A
+register of another integration is always kept, and so is one you choose in the card from 2.2.0 on (an
+older choice of such a counter is replaced once: choose it again to keep it).
+
 A charge control or current number can belong to only one SpotNav charger. Choosing one that
 another SpotNav charger already uses is refused.
 

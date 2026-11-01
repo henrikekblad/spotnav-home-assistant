@@ -682,6 +682,7 @@ class ChargingController:
         soc_reader: Callable[[str | None], SocReading | None] | None = None,
         end_window_guard: Callable[[], bool] | None = None,
         vehicle_limit_reader: Callable[[str | None], float | None] | None = None,
+        charger_power_entity_id: str | None = None,
     ) -> None:
         self.hass = hass
         self.entry_id = entry_id
@@ -887,9 +888,13 @@ class ChargingController:
         # integrated-energy sensor (`sensor.py`) stands in for one once it exists.
         self.power_entity_id: str | None = config.get(CONF_POWER_ENTITY) or None
         self.idle_power_w: float = float(config.get(CONF_IDLE_POWER_W) or DEFAULT_IDLE_POWER_W)
-        self.energy_from_power: bool = (
-            self.energy_register_entity_id is None and self.power_entity_id is not None
+        # The power sensor the integrated energy is counted from: the smart plug's, else, for a detected charger
+        # whose integration has no lifetime register, the charger's own (`energy_register.charger_power_counted`).
+        # The charger's own is read for nothing else: it is no smart plug.
+        self.energy_power_entity_id: str | None = (
+            None if self.energy_register_entity_id is not None else self.power_entity_id or charger_power_entity_id
         )
+        self.energy_from_power: bool = self.energy_power_entity_id is not None
         if self.energy_from_power:
             self.energy_register_entity_id = er.async_get(hass).async_get_entity_id(
                 "sensor", DOMAIN, integrated_energy_unique_id(entry_id)
@@ -1406,11 +1411,33 @@ class ChargingController:
         """
         if self.energy_register_entity_id == entity_id:
             return
+        # A register of the charger's own replaces the energy counted from its power.
+        self.energy_from_power = False
+        self.energy_power_entity_id = None
         self.energy_register_entity_id = entity_id
         self.adapter.energy_entity_id = entity_id
         if self.plan is not None and self.plan.target_soc_percent is not None:
             # The stopping estimate moves with the register: watch it beside the reading.
             self._async_arm_target_listener()
+
+    def energy_count(self) -> dict[str, Any]:
+        """What the delivered energy is counted with: `source` is `register` (an energy register, the charger's own
+        or one chosen), `smart_plug_power` or `charger_power` (energy integrated from that power sensor), or `none`;
+        with the register read and the power sensor integrated, as entity ids."""
+        if self.energy_from_power:
+            source = "smart_plug_power" if self.power_entity_id is not None else "charger_power"
+        else:
+            source = "register" if self.energy_register_entity_id is not None else "none"
+        return {
+            "source": source,
+            "register": self.energy_register_entity_id,
+            "power": self.energy_power_entity_id if self.energy_from_power else None,
+        }
+
+    def energy_count_reports(self) -> bool:
+        """Whether the delivered energy count can move: a register, or a power sensor that reports a power now (one
+        that never reports integrates nothing, so it ends no charge)."""
+        return not self.energy_from_power or read_power_w(self.hass, self.energy_power_entity_id) is not None
 
     @callback
     def set_integrated_energy_entity(self, entity_id: str) -> None:

@@ -1,10 +1,19 @@
-"""A charger behind a smart plug: its power sensor, read and integrated to energy.
+"""A charger behind a smart plug, or one whose integration has no lifetime register: its power sensor,
+read and integrated to energy.
 
-A plug reports power, not an energy register. SpotNav integrates the power itself (trapezoid) into a
-cumulative kWh counter, which then stands in for the energy register everything else reads
-(`sensor.py`'s integrated-energy sensor, restored across restarts). Two rules keep it honest: an
+A plug reports power, not an energy register, and so do some chargers' integrations (zappi, ABB Terra AC,
+Ohme, ChargePoint, Hypervolt: `PlatformProfile.energy_power_keys`). SpotNav integrates the power itself
+(trapezoid) into a cumulative kWh counter, which then stands in for the energy register everything else
+reads (`sensor.py`'s integrated-energy sensor, restored across restarts). Two rules keep it honest: an
 interval is integrated only when both of its samples are fresh and at most `max_age_s` apart, and a
 restart begins with no previous sample, so nothing is integrated over time SpotNav did not see.
+
+A sample is fresh while its sensor last reported (`last_reported`, which a polled integration refreshes at
+every poll, changed or not) within `max_age_s`. A cloud charger is polled every one to ten minutes
+(ChargePoint offers up to ten, myenergi and Ohme one), so its own power sensor is given
+`CHARGER_POWER_MAX_AGE_S`: its reading stands until the next poll, as the integration means it to. An
+integration whose poll fails makes its entities unavailable, which is a gap at once; only one that goes
+silent while still available is integrated on, for at most that long.
 """
 
 from __future__ import annotations
@@ -15,9 +24,16 @@ from typing import Final
 
 from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN
 from homeassistant.core import HomeAssistant, State
+from homeassistant.helpers import entity_registry as er
+
+from ..const import CONF_ENERGY_REGISTER_ENTITY, CONF_POWER_ENTITY, DOMAIN
 
 #: The unique id suffix of the integrated-energy sensor, `{entry_id}_{suffix}`.
 INTEGRATED_ENERGY_KEY: Final = "integrated_energy"
+
+#: How long a charger's own power sensor's reading stands: one poll of the slowest cloud integration (ten
+#: minutes) and a minute to spare.
+CHARGER_POWER_MAX_AGE_S: Final = 660.0
 
 #: The power units a plug's sensor may report, in watts per unit.
 _WATTS_PER_UNIT: Final = {"W": 1.0, "kW": 1000.0}
@@ -25,6 +41,30 @@ _WATTS_PER_UNIT: Final = {"W": 1.0, "kW": 1000.0}
 
 def integrated_energy_unique_id(entry_id: str) -> str:
     return f"{entry_id}_{INTEGRATED_ENERGY_KEY}"
+
+
+def configured_register_entity(hass: HomeAssistant, entry_id: str) -> str | None:
+    """The energy register a charger entry's stored settings name now: its stored register, else the energy
+    integrated from its smart plug, else `None` (an OCPP connector's automatic register, or none).
+
+    For a stored count from before counts recorded their register: the stores read it when they load, before any
+    charger is set up (and so before setup may replace a register, `energy_register.py`), so it names the register
+    that count's readings came from."""
+    entry = hass.config_entries.async_get_entry(entry_id)
+    if entry is None:
+        return None
+    stored = entry.data.get(CONF_ENERGY_REGISTER_ENTITY)
+    if stored:
+        return str(stored)
+    if entry.data.get(CONF_POWER_ENTITY):
+        return er.async_get(hass).async_get_entity_id("sensor", DOMAIN, integrated_energy_unique_id(entry_id))
+    return None
+
+
+def power_max_age_s(measurement_max_age_s: float, *, smart_plug: bool) -> float:
+    """How old a power sample may be and still be integrated: a smart plug's, the measurement age; a charger's
+    own sensor, at least `CHARGER_POWER_MAX_AGE_S` (polled by its cloud)."""
+    return measurement_max_age_s if smart_plug else max(measurement_max_age_s, CHARGER_POWER_MAX_AGE_S)
 
 
 def power_w_of(state: State | None) -> float | None:

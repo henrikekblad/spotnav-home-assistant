@@ -46,6 +46,7 @@ async def test_each_integrations_controls_are_found_from_its_device(
     assert found.current_control == expect["current_control"]
     assert found.energy_register == expect["energy_register"]
     assert found.session_energy_register == expect["session_energy_register"]
+    assert found.energy_power_entity == expect.get("energy_power_entity")
     assert (found.charging_state or {}).get("entity_id") == expect["charging_state"]
     assert found.current_entities == expect["current_entities"]
     assert sorted(found.disabled_useful) == sorted(expect.get("disabled_useful", []))

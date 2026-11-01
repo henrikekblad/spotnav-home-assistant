@@ -278,6 +278,8 @@ def energy_text(profile: cp.PlatformProfile) -> str:
     parts = []
     if profile.energy_keys:
         parts.append("Lifetime energy")
+    elif profile.energy_power_keys:
+        parts.append("Energy counted from its power")
     elif profile.session_energy_keys:
         parts.append("Per-session energy")
     if profile.status_keys:

@@ -77,6 +77,7 @@ from .grid_voltage import voltage_between_phases_v
 from .phases import effective_phases
 from .planner import (
     calculate_plan,
+    ending_at_need,
     FiscalChoice,
     local_instant,
     MAX_DEPARTURE_DAYS_AHEAD,
@@ -267,6 +268,40 @@ def expected_soc_percent(resolution: _EnergyResolution, planned_kwh: float) -> f
     if soc is None or capacity is None or capacity <= 0:
         return None
     return min(100.0, soc + planned_kwh * CHARGE_EFFICIENCY / capacity * 100.0)
+
+
+def follow_register(
+    baseline: EnergyBaseline, entity_id: str | None, reading: float | None, now: datetime, *, charged_s: float
+) -> EnergyBaseline:
+    """A baseline whose readings come from `entity_id` from now on.
+
+    Two registers count from different origins (a session counter at 5 kWh, a lifetime one at 6989 kWh, the energy
+    integrated from a power sensor at its own total), so a count never runs across them: on another entity what was
+    counted is carried, and the count starts again from the new register's first reading (`reading`, or, while it
+    cannot be read, the first one it gives: `register_kwh` is `None` then, which `_manual_kwh_remaining` rebases).
+    Whatever was pending or rejected was the old register's. A baseline that names no register (no register when
+    it began) takes this one as it is.
+    """
+    if baseline.register_entity == entity_id:
+        return baseline
+    if baseline.register_entity is None:
+        return replace(baseline, register_entity=entity_id)
+    return replace(
+        baseline,
+        register_entity=entity_id,
+        register_kwh=reading,
+        carried_kwh=round(counted_kwh(baseline), 6),
+        last_register_kwh=reading,
+        last_register_at=None if reading is None else now,
+        previous_register_kwh=None,
+        pending_drop_kwh=None,
+        pending_drop_at=None,
+        pending_drop_count=0,
+        rejected_kwh=None,
+        rejected_at=None,
+        rejected_mark_s=None,
+        charge_mark_s=charged_s,
+    )
 
 
 def counted_kwh(baseline: EnergyBaseline) -> float:
@@ -1296,6 +1331,9 @@ class AutoPlannerController:
                 settings, "planning_unavailable", self._map_planner_code(result.reason or ""), calculated_at,
                 entry=entry, price_snapshot=area_snapshot, proposal=result,
             )
+        if self._stops_at_need(settings, resolved, result, energy_kwh):
+            # The count ends the charge at the need: the plan says the need and its share of the last slot.
+            result = ending_at_need(result)
         state: AutoState = "proposal_unpriced" if result.unpriced else "proposal_ready"
         reason: AutoReason = "unpriced" if result.unpriced else "ready"
         if wait_facts.get("price_wait_action") == "buy_now":
@@ -1317,6 +1355,25 @@ class AutoPlannerController:
             self._publish(failed, force=True)
             return failed
         return snapshot
+
+    def _stops_at_need(
+        self, settings: AutoSettings, resolved: _EnergyResolution, result: PlanResult, need_kwh: float
+    ) -> bool:
+        """Whether this plan's charge stops once its need is delivered (`_on_energy_reading`): a manual kWh need
+        counted with an energy register (the charger's own, or the energy integrated from a power sensor), planned
+        whole by the cheapest strategy. Not a target (the level stops it), not hybrid (part of the need is
+        the sun's), not a need the car ends itself when full (`room_limited`), not one counted from a power sensor
+        that reports nothing, and not a purchase of only the part that cannot wait for prices (`must_buy_kwh`),
+        which the count does not end."""
+        return (
+            settings.driver != DRIVER_TARGET_SOC
+            and settings.strategy != STRATEGY_HYBRID
+            and not resolved.room_limited
+            and self._energy_register_entity_id() is not None
+            and self._executor is not None
+            and self._executor.controller.energy_count_reports()
+            and abs(result.requested_kwh - need_kwh) <= price_wait.EPSILON_KWH
+        )
 
     def _plan_while_prices_are_missing(
         self,
@@ -2108,6 +2165,13 @@ class AutoPlannerController:
         stored = self._baseline()
         reading = self._read_energy_register()
         self._note_register_read(reading)
+        if stored is not None:
+            followed = self._follow_register(stored, reading)
+            if followed != stored:
+                # Saved when the task runs, as the count stands then: a calculation that saved a newer count
+                # meanwhile is never overwritten by this one.
+                self._hass.async_create_task(self._save_live_baseline())
+            stored = followed
         if stored is None or reading is None or stored.register_kwh is None:
             return
         entity_id = self._energy_register_entity_id()
@@ -2250,6 +2314,21 @@ class AutoPlannerController:
             return live
         return stored
 
+    def _follow_register(self, stored: EnergyBaseline, reading: float | None) -> EnergyBaseline:
+        """`follow_register` to this charger's register now. The caller saves a baseline that moved (see
+        `_save_followed`), in order with whatever it saves after it."""
+        entity_id = self._energy_register_entity_id()
+        followed = follow_register(stored, entity_id, reading, self._now(), charged_s=self._charged_s())
+        if followed != stored:
+            if stored.register_entity is not None:
+                _LOGGER.info(
+                    "The energy register changed from %s to %s while a need was counted: %.3f kWh counted are "
+                    "kept and the count goes on from the new register",
+                    stored.register_entity, entity_id, followed.carried_kwh,
+                )
+            self._live_baseline = followed
+        return followed
+
     def _charged_s(self) -> float:
         """The charger's charge clock now (`ChargingController.charging_seconds`), 0 without one."""
         return 0.0 if self._executor is None else self._executor.controller.charging_seconds()
@@ -2316,6 +2395,7 @@ class AutoPlannerController:
             await self._save_baseline(
                 EnergyBaseline(
                     register_kwh=current_reading,
+                    register_entity=self._energy_register_entity_id(),
                     departure_key=departure_key,
                     started_at=self._epoch_start(departure_key, calculated_at),
                     last_register_kwh=current_reading,
@@ -2332,6 +2412,11 @@ class AutoPlannerController:
                 delivered_kwh=0.0 if current_reading is not None else None,
             )
 
+        followed = self._follow_register(stored, current_reading)
+        if followed != stored:
+            # Awaited, so a later save in this calculation is never overwritten by it.
+            await self._save_baseline(followed)
+        stored = followed
         if current_reading is None:
             self._note_register_read(None)
             unread = self._unread_remainder(settings, stored, departure_key)
@@ -2412,6 +2497,11 @@ class AutoPlannerController:
             basis="register",
             delivered_kwh=delivered,
         )
+
+    async def _save_live_baseline(self) -> None:
+        """Save the count in force when this runs (`_live_baseline`), not the one there was when it was asked for."""
+        if self._live_baseline is not None and not self._shutdown:
+            await self._save_baseline(self._live_baseline)
 
     async def _save_baseline(self, baseline: EnergyBaseline) -> None:
         self._live_baseline = baseline

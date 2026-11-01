@@ -358,6 +358,8 @@ class ProposalFacts:
     short_of_deadline: bool = False
     #: The same energy charged from now at full power, in the major unit (`PlanResult.now_cost`).
     now_cost: float | None = None
+    #: When a plan that stops at its need is expected to have delivered it (`PlanResult.need_met_at`), else `None`.
+    need_met_at: datetime | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -797,6 +799,16 @@ def _price_wait_lines(facts: StatusFacts) -> list[dict[str, Any]]:
     return [] if wait is None else [wait]
 
 
+def _charging_until(facts: StatusFacts, active: tuple[datetime, datetime]) -> datetime:
+    """When the running window's charge ends: the window's end, or, inside the installed plan's last window, where
+    its need is expected to be met (`ProposalFacts.need_met_at`), while that is still ahead."""
+    proposal = facts.proposal
+    met = None if proposal is None or facts.relation_applied is not True else proposal.need_met_at
+    if met is not None and active[0] < met < active[1] and met > facts.now:
+        return met
+    return active[1]
+
+
 def _plan_headline(facts: StatusFacts) -> list[dict[str, Any]]:
     """The card's `statusSentence` chain, with the compound facts as their own lines."""
     now = facts.now
@@ -826,7 +838,7 @@ def _plan_headline(facts: StatusFacts) -> list[dict[str, Any]]:
         ]
     if facts.charging and active is not None:
         return [
-            _line("charging_now", until=aware_iso(active[1])),
+            _line("charging_now", until=aware_iso(_charging_until(facts, active))),
             *_plan_facts(proposal, energy=True, cost=True, distance=False),
         ]
     if facts.charging:
