@@ -1749,6 +1749,8 @@ class SiteCapacityController:
             damper.forget_write(None)
             previous_setpoint = None
 
+        # What was written, before an overload takes a reading above it for what is on the charger.
+        written_a = previous_setpoint
         if (
             is_import_overload(decision)
             and previous_setpoint is not None
@@ -1804,6 +1806,20 @@ class SiteCapacityController:
             return True
 
         minimum = self._min_current_a(charger_entry_id)
+        if (
+            not lowering_due
+            and previous_setpoint is not None
+            and previous_setpoint < minimum
+            and proposed > previous_setpoint
+            and charger_controller.paused_by_balancing
+        ):
+            # A charge load balancing paused is given back by the resume or the probe above, with their margin and
+            # dwell, never by a raise of the regulator's: the charger is stopped, and a current written to it would
+            # stand for one on it (the damper's), which no resume follows any more. The raise comes from the stopped
+            # charger's last reading (an OCPP charger sends none without a transaction), the car's draw from before
+            # the pause, which the regulator keeps "unchanged" once the overload is gone.
+            self._log_active_control_outcome(charger_entry_id, decision, outcome="held", detail="paused_by_balancing")
+            return True
         if (
             previous_setpoint is None
             and proposed > minimum
@@ -1877,12 +1893,31 @@ class SiteCapacityController:
                 and yield_verdict.current_a < previous_setpoint
                 else None
             )
+            target_a = proposed if stepped is None else stepped
+            if self._lowering_held_by_battery(
+                charger_entry_id, charger_controller, decision, fresh, previous_setpoint, target_a
+            ):
+                # Within the band, the battery's own regulation: the car keeps its current (the fuse still holds as
+                # the ceiling of every step until the battery is seen to give way). Nothing is lowered, so what is
+                # on the charger is what was written: a reading above it that the overload took for the charger's
+                # (an OCPP meter value half a minute behind a cut) must not stand for it, or the next raise to the
+                # plan's current would be lost in the deadband.
+                if written_a is not None and damper.last_written_a != written_a:
+                    damper.forget_write(written_a)
+                self._log_active_control_outcome(
+                    charger_entry_id,
+                    decision,
+                    outcome="held",
+                    detail=DETAIL_HELD_BATTERY_AT_LIMIT,
+                    yield_verdict=yield_verdict,
+                )
+                return True
             return await self._async_apply_must_lower(
                 charger_entry_id,
                 charger_controller,
                 decision,
                 damper,
-                proposed if stepped is None else stepped,
+                target_a,
                 previous_setpoint,
                 margin_by_charger.get(charger_entry_id),
                 yield_verdict,
@@ -1904,9 +1939,18 @@ class SiteCapacityController:
             not overload
             and yield_verdict is not None
             and yield_verdict.action == "passthrough"
-            and yield_verdict.reason != "passthrough_ceiling"
-            and self._battery_holds_grid_at_limit(
-                decision, fresh, charger_controller, charger_entry_id, previous_setpoint
+            and (
+                (
+                    yield_verdict.reason != "passthrough_ceiling"
+                    and self._battery_holds_grid_at_limit(
+                        decision, fresh, charger_controller, charger_entry_id, previous_setpoint
+                    )
+                )
+                # A grid read at exactly the limit is the unverified ceiling's hit, not an overload: held the same
+                # way as an overload within the band.
+                or self._lowering_held_by_battery(
+                    charger_entry_id, charger_controller, decision, fresh, previous_setpoint, proposed
+                )
             )
         ):
             # The battery regulating the grid to the limit, not an overload: the car is not
@@ -2364,8 +2408,12 @@ class SiteCapacityController:
             if write.outcome == REGULATED_STOPPED:
                 # Paused (or stopped for safety): the charger is at nothing now. Remembered so the next pass
                 # does not pause the stopped charger again, and the resume (`_async_maybe_resume_paused_charge`)
-                # is not held back by the current it had before the pause.
+                # is not held back by the current it had before the pause. When: a reading the charger sent before
+                # the pause shows the current before it, not a charger above the nothing written
+                # (`charger_above_written`), which paused the stopped charger again on every pass until that reading
+                # was too old to use (the night of 2026-11-01).
                 damper.record_write(0.0)
+                self._written_at[charger_entry_id] = dt_util.utcnow().timestamp()
             elif write.outcome == REGULATED_FLOORED:
                 # The stop did not pause the charge: the charger holds it at the 6 A floor (a Peblar out of
                 # pauses), and that is what is counted until a later pass pauses it.
@@ -2538,6 +2586,48 @@ class SiteCapacityController:
             return False
         return self._battery_covers_car(fresh, phases, min_current_a)
 
+    def _lowering_held_by_battery(
+        self,
+        charger_entry_id: str,
+        charger_controller: Any,
+        decision: RegulatorDecision,
+        fresh: SiteCapacityResult,
+        previous_setpoint: float | None,
+        target_a: float,
+    ) -> bool:
+        """Whether a lowering (an import overload's included) is only a grid-charging battery holding the grid at the
+        limit, so the running car keeps its current: the band (`_battery_holds_grid_at_limit`) for an overload and for
+        a grid read at the unverified ceiling. `car_first` with yield stepping,
+        the car charging at its minimum or above, every phase within `HELD_BAND_A` above the limit, and the battery
+        charging, on a fresh reading, at least as hard as the cut would free (all of the car's minimum for a pause):
+        it can take back what the car would give up, so lowering the car only fills the battery (the night of
+        2026-11-01: 16 A to a pause in three and a half minutes, the battery growing to 12.5 kW). Nothing is verified
+        by it: the ceiling of every step stays the fuse until a step or a probe of a paused charge sees the battery
+        give way, and anything above the band is lowered at once, as ever."""
+        if not self._battery_rules_apply():
+            return False
+        min_current_a = self._min_current_a(charger_entry_id)
+        phases = tuple(decision.basis.keys())
+        requested = next((basis.requested_current_a for basis in decision.basis.values()), None)
+        if (
+            not phases
+            or previous_setpoint is None
+            or previous_setpoint < min_current_a - 1e-9
+            or target_a >= previous_setpoint
+            # A request lowered below what the car has (a person's, the plan's) is followed, never held.
+            or requested is None
+            or requested < previous_setpoint - 1e-9
+            or fresh.state != "observing"
+            or charger_controller.charging is not True
+            or not within_held_band(fresh.measured_margin_a, phases)
+        ):
+            return False
+        # What the battery must be able to give up, on a fresh reading: the cut, all of the car's minimum for a pause.
+        cut_a = previous_setpoint - (target_a if target_a >= min_current_a else 0.0)
+        battery_w = self._fresh_battery_w()
+        needed_w = car_minimum_power_w(cut_a, [fresh.phase_voltage_v.get(phase) for phase in phases])
+        return battery_w is not None and needed_w is not None and battery_w >= needed_w
+
     def _probe_for(self, charger_entry_id: str) -> BatteryProbe:
         probe = self._battery_probes.get(charger_entry_id)
         if probe is None:
@@ -2696,7 +2786,7 @@ class SiteCapacityController:
         ):
             self._resume_ready_since.pop(charger_entry_id, None)
             return False
-        delivered = self._read_charger_measured_current(wiring)
+        delivered = self._stopped_charger_reading(charger_entry_id, wiring)
         if delivered is None and switch_only:
             phase_count, chosen = self.reckoned_phases(charger_entry_id)
             delivered = self._switched_measurement(charger_controller, phase_count, chosen, min_current_a)
@@ -2853,7 +2943,7 @@ class SiteCapacityController:
             or charger_controller.car_ended_holds_charge
         ):
             return False
-        delivered = self._read_charger_measured_current(wiring)
+        delivered = self._stopped_charger_reading(charger_entry_id, wiring)
         if delivered is None:
             return False
         delivered_a = [delivered.get(phase).value for phase in phases]
@@ -2930,7 +3020,8 @@ class SiteCapacityController:
             wiring: dict[str, Any] = (self.config.get(CONF_PHASE_WIRING) or {}).get(
                 charger_entry_id
             ) or {}
-            delivered = self._read_charger_measured_current(wiring)
+            # A probe of a stopped charge: a reading the charger has not sent since the probe's start is no sign.
+            delivered = self._stopped_charger_reading(charger_entry_id, wiring)
             observing = fresh.state == "observing"
             site_current_a = (
                 dict(fresh.measured_phase_current_a)
@@ -3936,6 +4027,35 @@ class SiteCapacityController:
             return None
         values = read_phase_measurement(self.hass, source, classify_current)
         return DirectPhaseMeasurement(l1=values["L1"], l2=values["L2"], l3=values["L3"])
+
+    def _stopped_charger_reading(
+        self, charger_entry_id: str, wiring: dict[str, Any]
+    ) -> DirectPhaseMeasurement | None:
+        """A stopped charger's own reading, as the resume and the battery probe judge whether the car draws: a phase
+        read before the last write to the charger (its pause, or the probe's start) shows the current before that
+        write, and one not reported for longer than the site's maximum age says nothing of now. Both read 0 A. An
+        OCPP charger sends no meter values while no transaction runs, so its current reads its last value, the car's
+        draw before the pause, until it charges again: 6.02 A all night on 2026-11-01, which kept the paused charge
+        from ever being resumed or probed (a reading frozen at 0 A, the night of 2026-10-09, did not)."""
+        delivered = self._read_charger_measured_current(wiring)
+        if delivered is None:
+            return None
+        max_age_s = float(self.config.get(CONF_MAX_AGE_S, DEFAULT_MAX_AGE_S))
+        written_at = self._written_at.get(charger_entry_id)
+        now = dt_util.utcnow().timestamp()
+
+        def idle(value: PhaseValue) -> PhaseValue:
+            if value.value is None or value.age_s is None:
+                return value
+            # The charger's last word on it: a value sent again unchanged after the write still holds.
+            reported_age_s = value.age_s if value.report_age_s is None else min(value.age_s, value.report_age_s)
+            before_write = written_at is not None and now - reported_age_s <= written_at
+            # Stale as the charger's own reports say: a flat reading it keeps sending is alive.
+            if before_write or reported_age_s > max_age_s:
+                return replace(value, value=0.0)
+            return value
+
+        return DirectPhaseMeasurement(l1=idle(delivered.l1), l2=idle(delivered.l2), l3=idle(delivered.l3))
 
     # -- chargers that can only be switched on and off (`execution/switched_current.py`)
 
