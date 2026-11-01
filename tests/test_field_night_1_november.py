@@ -37,7 +37,6 @@ from custom_components.spotnav.core.events import BalancingPause, CommandResult,
 from custom_components.spotnav.core.ownership import decide
 from custom_components.spotnav.core.session import ChargeSession
 from custom_components.spotnav.execution import ownership_shadow
-from custom_components.spotnav.site.battery_probe import PROBE_BACKOFF_INITIAL_S
 
 from .helpers import install_schedule
 from .test_balancing_retry import _battery_entity, _battery_w
@@ -52,6 +51,7 @@ _BATTERY_HOLDS_A = 20.06
 _BATTERY_MAX_W = 12500.0
 _FUSE_A = 20.0
 _STEP_S = 5.0
+_READING_LAG_PASSES = 6
 _WOBBLE = (0.03, 0.07, -0.09, 0.04, 0.02, 0.08, -0.03, 0.05)
 
 
@@ -71,6 +71,9 @@ class _Night:
         self.ons = 0
         self.wobble = 0
         self.battery_w = 0.0
+        #: The car's draw over the last passes: the HALO's meter values show it about 30 s late (written 14 to 16 A at
+        #: 03:09:35, read 13.9 A until 03:10:04), while the site meter shows it at once.
+        self.drawn: list[float] = []
         self.lowest_a: float | None = None
         self.highest_site_a = 0.0
         #: Per phase, the lowest and the highest site current since it was last set to `None`.
@@ -118,7 +121,8 @@ class _Night:
         # The car follows what is written within a pass; the battery reacts to the car a pass later.
         self.car_a = min(self.assigned_a(), 16.0) if self.on else 0.0
         if self.on:
-            halo.reads(round(self.car_a * 0.98 + _WOBBLE[self.wobble] / 4, 2))
+            self.drawn = [*self.drawn[-(_READING_LAG_PASSES - 1) :], self.car_a]
+            halo.reads(round(self.drawn[0] * 0.98 + _WOBBLE[self.wobble] / 4, 2))
             self.lowest_a = self.car_a if self.lowest_a is None else min(self.lowest_a, self.car_a)
         battery = self.battery_a(car_before)
         self.battery_w = sum(battery) * _V
@@ -145,10 +149,12 @@ class _Night:
             )
         await hass.async_block_till_done()
         await halo.tick()
-        log = halo.log()[-1] if halo.log() else {}
+        decision = halo.controller.regulator_decisions.get(halo.charger.entry_id)
+        stepper = halo.controller._yield_stepping_last.get(halo.charger.entry_id) or {}  # noqa: SLF001
         self.trace.append(
-            f"car {self.car_a:g} battery {self.battery_w:.0f} W site {site} | {log.get('outcome')} {log.get('detail')}"
-            f" {log.get('reason')}"
+            f"car {self.car_a:g} battery {self.battery_w:.0f} W site {site} | {getattr(decision, 'reason', None)}"
+            f" {getattr(decision, 'proposed_current_a', None)} {stepper.get('reason')} {stepper.get('state')}"
+            f" damper {halo.controller._dampers[halo.charger.entry_id].last_written_a}"  # noqa: SLF001
         )
         self.freezer.tick(timedelta(seconds=_STEP_S))
         halo.advance(_STEP_S)
@@ -170,21 +176,6 @@ class _Night:
         self.fixed_w = (21.6 - self.house[0] - 16.0) * 3 * _V
         await self.step()
         self.battery = "holds"
-
-    async def battery_stops_giving_way(self) -> None:
-        """The car held at its current as the probe; then the battery keeps its charge whatever the car takes and a
-        load comes on L1, past what the car explains."""
-        await self.battery_starts()
-        for _ in range(60):
-            await self.step()
-            if self.outcomes() == ["probe_started:held_at_current"]:
-                break
-        assert self.outcomes() == ["probe_started:held_at_current"]
-        self.battery = "fixed"
-        self.fixed_w = self.battery_w
-        self.house = (self.house[0] + 1.6, self.house[1], self.house[2])
-        await self.step()
-        await self.step()
 
 
 async def _the_night(
@@ -214,49 +205,75 @@ def _drives(monkeypatch, drives: bool) -> None:
 # -- 03:15: the battery takes the fuse while the car charges
 
 
-async def test_0315_the_car_keeps_its_current_while_the_battery_gives_way(
+async def test_0315_the_car_keeps_its_current_while_the_battery_holds_the_grid(
     hass: HomeAssistant, monkeypatch, freezer
 ) -> None:
+    """Lowered once, for the overload above the band at the battery's start, then held there for as long as the battery
+    holds the grid within the band; back to the plan's current once the battery is done. Nothing verifies the battery
+    meanwhile, so no step goes into its share above the fuse."""
     night = await _the_night(hass, monkeypatch, freezer, "nov1hold")
     night.lowest_a = None
     await night.battery_starts()
     night.site_range = None
-    await night.run(5 * 60.0)
+    await night.run(52 * 60.0)
 
     assert len(night.halo.turn_off) == 0, "never paused"
-    assert night.lowest_a == 14.0, "lowered once for the overload above the band, then held there as the probe"
-    assert night.outcomes() == ["probe_started:held_at_current", "probe_succeeded:battery_yielded"]
-    assert night.car_a == 16.0, "back at the plan's current, the battery giving way"
+    assert night.lowest_a == 14.0 and night.car_a == 14.0, "lowered once, for the overload above the band"
+    assert night.outcomes() == [], "no probe: the car held in the band verifies nothing"
+    yield_last = night.halo.controller._yield_stepping_last[night.halo.charger.entry_id]  # noqa: SLF001
+    assert yield_last["battery_verified"] is False
     low, high = night.site_range
-    # Within the band, but for the pass the one step back into the battery's share takes before the battery gives way
-    # (its allowance: 2.5 A over the limit).
-    assert max(high) <= _FUSE_A + 2.5, "\n".join(night.trace)
+    assert max(high) <= _FUSE_A + 0.5 and min(low) >= _FUSE_A - 2.5, "\n".join(night.trace[60:120])
 
-    # Until 04:07 the car keeps 16 A, the battery holding the grid within the band.
-    night.site_range = None
-    await night.run(47 * 60.0)
-    assert len(night.halo.turn_off) == 0 and night.lowest_a == 14.0 and night.car_a == 16.0
-    low, high = night.site_range
-    assert max(high) <= _FUSE_A + 0.5 and min(low) >= _FUSE_A - 0.5
+    # 04:07 the battery is done: the car goes back to the plan's 16 A within three minutes (the regulator's dwell, and
+    # the HALO's meter values half a minute behind), and stays there.
+    night.battery = "idle"
+    await night.run(3 * 60.0)
+    assert night.car_a == 16.0, "\n".join(night.trace[-36:])
+    await night.run(17 * 60.0)
+    assert night.car_a == 16.0 and night.lowest_a == 14.0 and len(night.halo.turn_off) == 0
 
 
-async def test_0315_a_battery_that_does_not_give_way_still_has_the_car_lowered(
-    hass: HomeAssistant, monkeypatch, freezer
+async def _a_battery_that_never_gives_way(night: _Night, battery_w: float) -> None:
+    """A battery charging at a fixed power whatever the car does, with the grid within the band: the car is held."""
+    night.battery = "fixed"
+    night.fixed_w = battery_w
+    await night.run(60.0)
+
+
+@pytest.mark.parametrize("battery_w_after", [1500.0, 400.0])
+async def test_0315_a_battery_held_in_the_band_never_keeps_the_car_above_it(
+    hass: HomeAssistant, monkeypatch, freezer, battery_w_after: float
 ) -> None:
-    """The fuse first: a car held at its current as the probe is lowered at once when the grid rises past what the car
-    explains, and the probe backs off."""
-    night = await _the_night(hass, monkeypatch, freezer, "nov1noyield")
-    await night.battery_stops_giving_way()
-    assert night.outcomes() == ["probe_started:held_at_current", "probe_failed:excess_beyond_car"]
-    assert night.car_a < 14.0 and night.on, "lowered as the regulator decides, in the same pass"
-    probe = night.halo.controller._battery_probes[night.halo.charger.entry_id]  # noqa: SLF001
-    now = night.halo.clock()
-    assert not probe.may_start(now) and probe.may_start(now + PROBE_BACKOFF_INITIAL_S)
-    # The probe backs off: the car stays where the regulator put it, and is not held as the probe again meanwhile.
-    held = night.car_a
+    """A battery at a fixed 1.5 kW puts L1 at about 20.3 A, within the band, and the car keeps its 16 A; nothing is
+    verified. A house load on L1 then takes the site to the limit plus 1.8 A (the battery at 1.5 kW, or at a mere
+    400 W): the car is lowered at once, as on any battery not seen to give way."""
+    house = (2.1, 1.0, 1.0)
+    night = await _the_night(hass, monkeypatch, freezer, f"nov1band{int(battery_w_after)}", house=house)
+    await _a_battery_that_never_gives_way(night, 1500.0)
+    assert night.car_a == 16.0 and len(night.halo.turn_off) == 0, "\n".join(night.trace[-38:])
+    assert night.outcomes() == []
+
+    night.fixed_w = battery_w_after
+    night.house = (house[0] + 1.5 + (1500.0 - battery_w_after) / (3 * _V), house[1], house[2])
+    night.site_range = None
+    await night.run(10 * 60.0)
+    low, high = night.site_range
+    assert high[0] > _FUSE_A + 1.5, "the site did go well above the band"
+    assert night.car_a < 16.0, "lowered for an overload above the band"
+    assert night.outcomes() == [], "no probe was started by a hold"
+    assert high[0] < _FUSE_A + 2.0, "lowered in the first pass that saw it"
+
+
+async def test_0315_a_held_car_is_not_stepped_above_the_fuse(hass: HomeAssistant, monkeypatch, freezer) -> None:
+    """On a battery that holds the grid at the fuse but was never seen to give way, nothing steps the car back into
+    its share: the site stays within the band (the review's peak case)."""
+    night = await _the_night(hass, monkeypatch, freezer, "nov1peak")
+    await night.battery_starts()
+    night.site_range = None
     await night.run(5 * 60.0)
-    assert night.car_a <= held and night.on
-    assert night.outcomes() == ["probe_started:held_at_current", "probe_failed:excess_beyond_car"]
+    low, high = night.site_range
+    assert max(high) <= _FUSE_A + 0.5, "\n".join(night.trace[-60:])
 
 
 # -- 03:18 to 04:07: a charge paused anyway, the battery holding the fuse, and the battery done
