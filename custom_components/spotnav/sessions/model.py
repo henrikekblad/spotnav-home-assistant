@@ -66,6 +66,9 @@ _FIELDS: Final = frozenset(
 )
 #: Written only when set: an imported session's `source`, the market's `area_id`, how the vehicle was decided
 #: at a charger more than one can charge at, and (only for a record without intervals) the cost it was stored with.
+#: Fields a later release writes on an open session (the register it measures); read and ignored here, so going back
+#: to this release keeps the open session instead of dropping it.
+_LATER_FIELDS: Final = frozenset({"register_entity"})
 _OPTIONAL_FIELDS: Final = frozenset(
     {
         "source", "area_id", "intervals", "legacy_priced_kwh", "legacy_cost_minor", "legacy_reference_cost_minor",
@@ -247,7 +250,7 @@ class ChargeSession:
         """A stored record, or `None` when it is not exactly this shape."""
         if not isinstance(raw, dict) or not _FIELDS <= set(raw):
             return None
-        extra = set(raw) - _FIELDS - _OPTIONAL_FIELDS - _PRE_INTERVAL_FIELDS
+        extra = set(raw) - _FIELDS - _OPTIONAL_FIELDS - _PRE_INTERVAL_FIELDS - _LATER_FIELDS
         if extra:
             return None
         source = raw.get("source")
