@@ -233,3 +233,46 @@ async def test_a_malformed_store_on_disk_plans_as_before(
         charger, _, _ = await charger_and_car(hass, soc_percent="70", amps=16, phases=3)
         proposal = preview_for(hass, charger.entry_id).snapshot().proposal
     assert proposal.power_kw == pytest.approx(PLANNED_KW)
+
+
+@pytest.mark.parametrize("version", [99, "corrupt"])
+async def test_a_store_that_cannot_be_read_starts_empty_and_never_stops_setup(
+    hass: HomeAssistant, hass_storage: dict[str, Any], version: Any, caplog: pytest.LogCaptureFixture
+) -> None:
+    key = "spotnav.learned_power.entry"
+    if version == "corrupt":
+        hass_storage[key] = "not a store at all"
+    else:
+        hass_storage[key] = {
+            "version": version, "minor_version": 1, "key": key,
+            "data": {"subjects": {"charger": {"wiring": WIRING.as_dict(), "sessions": []}}},
+        }
+    store = LearnedPowerStore(hass, "entry")
+    await store.async_load()
+    assert store.power(SUBJECT_CHARGER, WIRING, LOW_KW, PLANNED_KW).kw is None
+    assert "learned car power could not be read" in caplog.text
+    store.add(SUBJECT_CHARGER, WIRING, "a", 3.5, 30)
+    assert store.power(SUBJECT_CHARGER, WIRING, LOW_KW, PLANNED_KW).kw == pytest.approx(7.0)
+
+
+@pytest.mark.usefixtures("offline_relay")
+async def test_the_floor_is_one_phase_until_the_car_is_known_to_charge_on_three(
+    hass: HomeAssistant, transport: Any
+) -> None:
+    """A one-phase car on three-phase wiring draws about 3.7 kW at 16 A, below the three-phase least current."""
+    from custom_components.spotnav.runtime import domain_data  # noqa: PLC0415
+    from custom_components.spotnav.vehicles import vehicle_properties  # noqa: PLC0415
+
+    serve(transport, rising=True)
+    one_phase_kw = power_kw(16, 1)
+    assert one_phase_kw < LOW_KW
+    with freeze_time(NOW):
+        charger, device_id, _ = await charger_and_car(hass, soc_percent="70", amps=16, phases=3)
+        preview = preview_for(hass, charger.entry_id)
+        for session in ("one", "two"):
+            preview._learned.add(subject_for(device_id), WIRING, session, one_phase_kw / 2, 30)  # noqa: SLF001
+        assert preview.plan_watch_facts()["learned_power"]["kw"] == pytest.approx(one_phase_kw, abs=1e-3)
+        await vehicle_properties.async_update_vehicle_properties(
+            hass, domain_data(hass).decision_store, device_id, {vehicle_properties.KEY_ONBOARD_PHASES: 3}
+        )
+        assert preview.plan_watch_facts()["learned_power"]["kw"] == pytest.approx(LOW_KW, abs=1e-3)

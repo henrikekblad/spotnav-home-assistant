@@ -8,15 +8,19 @@ two (`PlanRequest.power_cap_kw`). No setting.
 * **What is learned from.** Minutes of a plan's own charge where nothing SpotNav did held the current back
   (`clean_minute`): a window of the installed Auto plan open and the plan expecting the charge
   (`ChargingController.plan_expects_charge`: no balancing pause, no hold, the car has not ended it), the charger
-  charging, the setpoint and the current SpotNav asked for both the plan's current, load balancing not limiting
+  charging and the car not ending the charge, past the window's first two minutes (a car waking up), the setpoint and
+  the current SpotNav asked for both the plan's current, load balancing not limiting
   it, no phase switch settling or forced, the strategy not solar, and the car below `TAPER_PERCENT` where its level
   is known (above it a car tapers by itself). The energy is the count the need uses (the energy register, or the
   energy integrated from the charger's power), read once a minute (`PlanWatch`); a minute counts when it and the
   minute before were both clean.
 * **Per what.** Per vehicle when the charger knows which one it plans for (`vehicle_properties.resolved_vehicle_id`),
-  else per charger. Each keeps the last `MAX_SESSIONS` plug-ins as (minutes, kWh).
+  else per charger. Each keeps the last `MAX_SESSIONS` plug-ins as (minutes, kWh); a plug-in is the last one the
+  charger saw (`ChargingController.plugged_in_at`, kept across a restart), so a restart does not start another.
 * **Smoothed and bounded.** The median of the plug-ins' own powers (each with at least `MIN_SESSION_MINUTES`),
-  bounded to [the power at the charger's least current, the planned power].
+  bounded to [the power at the charger's least current, the planned power]. The least current is taken on one phase
+  while the car's onboard phases are not known (a one-phase car on three-phase wiring draws below the three-phase
+  floor).
 * **Trusted.** Only with `TRUST_MINUTES` minutes over at least `TRUST_SESSIONS` plug-ins; until then the plan
   counts on the planned power, as before.
 * **Reset.** What is learned is for one wiring: the phases the charge uses, the voltage between phases and the
@@ -30,6 +34,7 @@ Learned charging efficiency (pairs of real levels around register energy) is not
 
 from __future__ import annotations
 
+import logging
 import math
 import statistics
 from dataclasses import dataclass
@@ -40,6 +45,8 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.storage import Store
 
 from ..const import DOMAIN
+
+_LOGGER = logging.getLogger(__name__)
 
 _STORE_VERSION: Final = 1
 _STORE_PREFIX: Final = f"{DOMAIN}.learned_power"
@@ -158,8 +165,13 @@ class LearnedPowerStore:
         self._subjects: dict[str, tuple[Wiring, list[Session]]] = {}
 
     async def async_load(self) -> None:
-        """Read what was stored; anything that is not exactly what this writes is dropped."""
-        raw = await self._store.async_load()
+        """Read what was stored; anything that is not exactly what this writes is dropped. A file that cannot be read
+        at all (corrupt, or written by a later version) never stops the charger: it starts with nothing learned."""
+        try:
+            raw = await self._store.async_load()
+        except Exception as err:  # noqa: BLE001 - a learned figure is never worth a charger that does not start
+            _LOGGER.warning("SpotNav: the learned car power could not be read (%s); learning again", type(err).__name__)
+            raw = None
         self._subjects = parse_stored(raw)
 
     @staticmethod
