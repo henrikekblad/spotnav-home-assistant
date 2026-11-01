@@ -22,7 +22,9 @@ from __future__ import annotations
 from datetime import timedelta
 
 import pytest
-from homeassistant.core import HomeAssistant
+from typing import Any
+
+from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse
 from homeassistant.util import dt as dt_util
 
 from custom_components.spotnav.execution import ownership_shadow
@@ -30,7 +32,9 @@ from custom_components.spotnav.site.site_capacity_controller import RaiseCredit,
 
 from .helpers import install_schedule
 from .test_balancing_retry import _battery_entity
+from .test_lb_review_h import _tick, _two, _writes
 from .test_lb_start_credit import _halo, _Halo, _site_a
+from .world import set_charger_delivered_a
 
 _V = 230.0
 _FUSE_A = 20.0
@@ -100,9 +104,7 @@ class _Morning:
         heater = tuple(
             self.heater_a if self.heater and phase in self.heater_phases else 0.0 for phase in ("L1", "L2", "L3")
         )
-        site = [
-            round(house + extra + flicker + self.car_a, 2) for house, extra in zip(self.house, heater, strict=True)
-        ]
+        site = [round(house + extra + flicker + self.car_a, 2) for house, extra in zip(self.house, heater, strict=True)]
         self.site_log.append(site)
         self.peak = list(site) if self.peak is None else [max(a, b) for a, b in zip(self.peak, site, strict=True)]
         _site_a(hass, halo.site, *site)
@@ -287,7 +289,9 @@ async def test_a_lowering_after_a_raise_is_never_raised_back_on_the_credit(
         )
     trace = "\n".join(morning.trace[raised_at - 2 :])
     raises = [
-        written for written in morning.halo.written()[writes_before:] if float(written.split(",")[0].split(".")[1]) > lowered
+        written
+        for written in morning.halo.written()[writes_before:]
+        if float(written.split(",")[0].split(".")[1]) > lowered
     ]
     assert not raises, f"raised again to {raises}:\n{trace}"
     assert max(morning.peak) <= _FUSE_A + 0.3, trace
@@ -355,3 +359,203 @@ def test_the_credit_s_cap_follows_every_write_after_the_raise() -> None:
     assert in_force(credit, 110.0) == 16.0
     assert in_force(credit, 111.0) == 6.0
     assert in_force(credit, 131.0) == 0.0
+
+
+#: The two chargers' site: a 40 A fuse, and a load on all three phases that leaves room for the two cars' minimum.
+_TWO_FUSE_A = 40.0
+_TWO_LOAD_A = 26.5
+
+
+class _TwoCars:
+    """Two HALO-like chargers on one site (`tests/test_lb_review_h.py`'s `_two`), their meter values half a minute
+    apart, each car taking no more than its own maximum, a load on all three phases that comes and goes."""
+
+    def __init__(self, two, freezer, car_max_a: dict[str, float]) -> None:
+        self.t = two
+        self.freezer = freezer
+        self.car_max_a = car_max_a
+        self.load_a = 0.0
+        #: The phases the load draws on.
+        self.load_phases: tuple[str, ...] = ("L1", "L2", "L3")
+        self.car_a = {name: 0.0 for name in car_max_a}
+        self.passes = 0
+        self.seen = {"off": len(two.turn_off), "on": len(two.turn_on)}
+        self.site_log: list[list[float]] = []
+        self.trace: list[str] = []
+
+    def written(self, name: str) -> float:
+        values = _writes(self.t, name)
+        return values[-1] if values else 16.0
+
+    async def step(self) -> None:
+        t = self.t
+        hass = t.hass
+        self.passes += 1
+        for name, prefix in t.prefix.items():
+            on = hass.states.get(f"switch.{prefix}").state == "on"
+            self.car_a[name] = min(self.written(name), self.car_max_a[name]) if on else 0.0
+            if self.passes % _METER_VALUE_PASSES == 0:
+                set_charger_delivered_a(hass, prefix, round(self.car_a[name] * 0.995 + self.passes % 7 / 1000, 3))
+        flicker = _WOBBLE[self.passes % len(_WOBBLE)] / 3
+        site = [
+            round(1.0 + (self.load_a if phase in self.load_phases else 0.0) + flicker + sum(self.car_a.values()), 2)
+            for phase in ("L1", "L2", "L3")
+        ]
+        self.site_log.append(site)
+        _site_a(hass, t.site, *site)
+        for phase in ("l1", "l2", "l3"):
+            hass.states.async_set(
+                f"sensor.{t.site}_reactive_{phase}", str(self.passes % 2), {"unit_of_measurement": "var"}
+            )
+            hass.states.async_set(
+                f"sensor.{t.site}_voltage_{phase}", str(_V + self.passes % 2 / 100), {"unit_of_measurement": "V"}
+            )
+        await hass.async_block_till_done()
+        await _tick(t)
+        # The chargers answer what was sent to their switches since the last pass.
+        for calls, state in ((t.turn_off, "off"), (t.turn_on, "on")):
+            for call in calls[self.seen[state] :]:
+                hass.states.async_set(str(call.data.get("entity_id")), state)
+            self.seen[state] = len(calls)
+        await hass.async_block_till_done()
+        credits = {
+            name: t.controller._raise_credited_a.get(t.cc[name].entry_id)  # noqa: SLF001
+            for name in t.prefix
+        }
+        self.trace.append(
+            f"p{self.passes} load {self.load_a} cars {self.car_a} site {site[0]} written"
+            f" {[self.written(name) for name in t.prefix]} open {len(t.controller._raise_credits)}"  # noqa: SLF001
+            f" credited {credits}"
+            f" {[(d.reason, d.proposed_current_a) for d in (t.controller.regulator_decisions.get(t.cc[name].entry_id) for name in t.prefix) if d]}"
+            f" {[e['detail'] for e in t.controller.regulator_decision_log[-2:]]}"
+        )
+        self.freezer.tick(timedelta(seconds=_STEP_S))
+        t.clock.advance(_STEP_S)
+        t.damper_clock.advance(_STEP_S)
+
+    async def run(self, seconds: float) -> None:
+        for _ in range(int(seconds / _STEP_S)):
+            await self.step()
+
+
+def _ocpp_per_charger(hass: HomeAssistant) -> list[ServiceCall]:
+    """The OCPP integration's `get_configuration` and `configure` for charge points that accept every
+    `AssignedCurrent` written, each its own: what is configured is what is read back. Returns the `configure` calls."""
+    slots: dict[str, str] = {}
+    calls: list[ServiceCall] = []
+
+    async def get_configuration(call: ServiceCall) -> dict[str, Any]:
+        return {"value": slots.get(str(call.data.get("devid")), "1.16,2.10")}
+
+    async def configure(call: ServiceCall) -> None:
+        calls.append(call)
+        slots[str(call.data.get("devid"))] = call.data["value"]
+
+    hass.services.async_register(
+        "ocpp", "get_configuration", get_configuration, supports_response=SupportsResponse.ONLY
+    )
+    hass.services.async_register("ocpp", "configure", configure)
+    return calls
+
+
+async def _two_cars(hass: HomeAssistant, monkeypatch, freezer, *, credit: bool) -> tuple[_TwoCars, int]:
+    """Both chargers started at their minimum under a load on every phase that leaves no room for more, the load off until both are raised in one pass, then
+    on again before either charger's next meter value. Returns the cars and the passes the site was over the fuse."""
+    if not credit:
+        monkeypatch.setattr(SiteCapacityController, "_begin_raise_credit", lambda self, *args: None)
+    two = await _two(hass, monkeypatch, fuse=_TWO_FUSE_A, base=1.0)
+    two.configure = _ocpp_per_charger(hass)
+    # A is set to First: an overload is cut from B first.
+    first = two.cc["a"].entry_id
+    monkeypatch.setattr(
+        SiteCapacityController, "charger_priority", lambda self, entry_id: "first" if entry_id == first else "normal"
+    )
+    now = dt_util.utcnow()
+    window = {"start": (now - timedelta(hours=1)).isoformat(), "end": (now + timedelta(hours=4)).isoformat()}
+    for name in ("a", "b"):
+        await install_schedule(two.cc[name], {"periods": [window], "amps": 16})
+        await hass.async_block_till_done()
+        hass.states.async_set(f"switch.{two.prefix[name]}", "on")
+    await hass.async_block_till_done()
+    cars = _TwoCars(two, freezer, {"a": 16.0, "b": 16.0})
+    await cars.run(60.0)
+    assert all(amps == 16.0 for amps in cars.car_a.values()), "\n".join(cars.trace)
+    # Both set to their minimum by another path (the sun's own write, say), and a load that leaves no more room.
+    for name in ("a", "b"):
+        await two.cc[name].async_apply_regulated_current(6, must_lower=True)
+        two.controller.note_charger_write(two.cc[name].entry_id, 6.0, "other_path")
+    cars.load_a = _TWO_LOAD_A
+    await cars.run(120.0)
+    assert all(amps == 6.0 for amps in cars.car_a.values()), "\n".join(cars.trace[-30:])
+    before = {name: cars.written(name) for name in two.prefix}
+    # B's car takes no more than it draws now.
+    cars.car_max_a["b"] = cars.car_a["b"]
+    cars.load_a = 0.0
+    for _ in range(36):
+        await cars.step()
+        if all(cars.written(name) > before[name] for name in two.prefix):
+            break
+    else:
+        raise AssertionError("never both raised:\n" + "\n".join(cars.trace[-40:]))
+    raised_at = len(cars.trace)
+    # A load on L1 alone: the rise on L2 and L3 is A's step, which matches B's step as well.
+    cars.load_a = _TWO_LOAD_A
+    cars.load_phases = ("L1",)
+    over = 0
+    for _ in range(12):
+        await cars.step()
+        if max(cars.site_log[-1]) > _TWO_FUSE_A + 0.3:
+            over += 1
+    cars.trace = cars.trace[raised_at - 2 :]
+    return cars, over
+
+
+@pytest.mark.parametrize("credit", [True, False])
+async def test_two_chargers_raised_in_one_pass_are_not_credited(
+    hass: HomeAssistant, monkeypatch, freezer, credit: bool
+) -> None:
+    """Two chargers raised from 6 to 16 A in the same pass, A's car taking the raise and B's not; then a load on L1
+    alone. On L2 and L3 the site rose by A's step, which is B's step too: whose rise it is cannot be told, so neither
+    is credited while both raises are open (B credited with A's 10 A would be "lowered" to the 6 A it draws, and A
+    kept at 16 over the fuse). The site is back within the fuse after the pass that saw the load, as without the
+    credit (`credit=False`)."""
+    monkeypatch.setattr(ownership_shadow, "CORE_OWNERSHIP_DEFAULT", True)
+    cars, over = await _two_cars(hass, monkeypatch, freezer, credit=credit)
+    trace = "\n".join(cars.trace)
+    for line in cars.trace:
+        if "open 2" in line:
+            assert "credited {'a': {}, 'b': {}}" in line or "credited {'a': None, 'b': None}" in line, trace
+    assert over <= 1, trace
+
+
+@pytest.mark.parametrize("drives", [True, False])
+async def test_a_raise_credit_never_raises_a_car_back_after_its_lowering(
+    hass: HomeAssistant, monkeypatch, freezer, drives: bool
+) -> None:
+    """The field case, then the HALO tells nothing for minutes. Raised 9 to 16 A, the heater on: lowered on the credit
+    to what fits. The heater goes off and a load of the step's size (7 A) comes on all three phases: the site's rise
+    since the raise matches the step again, but what is on the charger is the lowered current, and so is the most the
+    car is credited with. Reckoned at the 16 A of the raise, the house would read 7 A lighter on every phase and the
+    car would be raised back to 16 A, L1 over the fuse."""
+    _drives(monkeypatch, drives)
+    morning = await _the_morning(hass, monkeypatch, freezer, f"nov1cap{int(drives)}")
+    morning.heater = False
+    await morning.until_raised(16.0)
+    morning.meter_passes = 1000
+    raised_at = len(morning.trace)
+
+    morning.heater = True
+    await morning.step()
+    lowered = morning.assigned_a()
+    trace = "\n".join(morning.trace[raised_at - 2 :])
+    assert len(morning.halo.turn_off) == 0 and lowered <= 10.0, trace
+
+    morning.heater = False
+    step_a = 16.0 - lowered
+    morning.house = tuple(amps + step_a for amps in _HOUSE)
+    morning.peak = None
+    for _ in range(16):
+        await morning.step()
+    trace = "\n".join(morning.trace[raised_at - 2 :])
+    assert morning.assigned_a() <= lowered, f"raised back on the credit:\n{trace}"
+    assert max(morning.peak) <= _FUSE_A, trace
