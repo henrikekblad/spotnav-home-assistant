@@ -4328,12 +4328,22 @@ class SiteCapacityController:
         write, and one not reported for longer than the site's maximum age says nothing of now. Both read 0 A. An
         OCPP charger sends no meter values while no transaction runs, so its current reads its last value, the car's
         draw before the pause, until it charges again: 6.02 A all night on 2026-11-01, which kept the paused charge
-        from ever being resumed or probed (a reading frozen at 0 A, the night of 2026-10-09, did not)."""
+        from ever being resumed or probed (a reading frozen at 0 A, the night of 2026-10-09, did not).
+
+        After a pause the charger is given `CATCH_UP_S` to stop, as after any write (`charger_above_written`): a phase
+        reported within that of the pause is the charge before it. An OCPP charger sends one last meter value with the
+        stop, a few seconds after it and still showing the car's current (8.07 A at 10:19:05 on 2026-11-01, the pause
+        at 10:19:02), and then nothing: taken as the car drawing, it held the resume back until it was too old to use,
+        two minutes."""
         delivered = self._read_charger_measured_current(wiring)
         if delivered is None:
             return None
         max_age_s = float(self.config.get(CONF_MAX_AGE_S, DEFAULT_MAX_AGE_S))
         written_at = self._written_at.get(charger_entry_id)
+        if written_at is not None:
+            damper = self._dampers.get(charger_entry_id)
+            if damper is not None and damper.last_written_a == 0.0:
+                written_at += CATCH_UP_S
         now = dt_util.utcnow().timestamp()
 
         def idle(value: PhaseValue) -> PhaseValue:
