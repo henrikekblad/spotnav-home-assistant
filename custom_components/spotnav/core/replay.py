@@ -2,7 +2,7 @@
 
 Pure: no Home Assistant imports. The runner (`execution/session_runner.py`) keeps, per charger, the last events it
 fed the core: the event, the instant, the session it decided from (`pre`, its non-default fields), the result of the
-command it asked for and what the core asked for. A bundle before version 8, from when the core still ran beside the
+command it asked for and what the core asked for. A bundle before version 9, from when the core still ran beside the
 logic before it ("today's code" below), also recorded what that logic did (`today`) and its owner and intent after the
 event (`today_after`); those are compared where a record has them. `replay` decides each again, from the recorded `pre` where there is one and
 from its own result otherwise, and says where the core now decides differently from the recording (a change of the
@@ -45,7 +45,7 @@ class ReplayMismatch:
 
 #: Owners between which a change is an observation, not ownership: whether the charger charges by itself (nobody
 #: here started it) is seen in its reports, and the line-up counts the same change as `observed`, not as drift
-#: (the line-up of the runner before version 8). A charge that begins or ends with no report fed (a stop's answer window
+#: (the line-up of the runner before version 9). A charge that begins or ends with no report fed (a stop's answer window
 #: running out, a restart reading the charger as it is) moves today's owner between these two with no event.
 OBSERVED: frozenset[str] = frozenset({"none", "charger_self"})
 #: How far apart two readings of the clock may be and still be one instant: the core takes the instant it decided
@@ -236,7 +236,7 @@ def replay(
             # Today's code decided it mid-way through another feed: only the state after both is comparable.
             continue
         if "today" in record:
-            # What the previous logic did, recorded until it was deleted (bundles before version 8).
+            # What the previous logic did, recorded until it was deleted (bundles before version 9).
             today = sorted(record["today"])
             if replayed != today:
                 mismatches.append(ReplayMismatch(index, event.kind, "today", today, replayed))
@@ -252,7 +252,7 @@ def bundle_events(bundle: Mapping[str, Any]) -> dict[str, list[dict[str, Any]]]:
     found: dict[str, list[dict[str, Any]]] = {}
     for charger in bundle.get("chargers") or ():
         controller = ((charger or {}).get("diagnostics") or {}).get("controller") or {}
-        # `ownership` from version 8, `ownership_shadow` before it.
+        # `ownership` from version 9, `ownership_shadow` before it.
         shadow = controller.get("ownership") or controller.get("ownership_shadow") or {}
         found[str(charger.get("entry_id"))] = list(shadow.get("events") or ())
     return found
