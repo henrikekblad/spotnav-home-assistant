@@ -128,8 +128,8 @@ It is best effort and is not a protective device. Turning it off gives back any 
   time or holds, not the step guard below, not the band of a battery that holds the grid at the fuse,
   not a resume or a battery probe about to start, not a meter that reports too seldom and not a charger
   that more than one site claims (less current is safe whoever owns it). What still decides: the fresh
-  readings must still show the overload and its direction (never a lowering on export or an unknown
-  direction), a battery probe already running judges and stops the car itself, and a charger that is
+  readings must still show the overload and its direction (never a lowering on export; where the direction
+  cannot be known, an overload by the measured current, see below), a battery probe already running judges and stops the car itself, and a charger that is
   already at or below the lower current is not written again. The one exception is a home battery whose
   yield is verified on this site (see yield stepping below): up to the yield ceiling, yield stepping
   judges that overload as before.
@@ -239,8 +239,19 @@ It is best effort and is not a protective device. Turning it off gives back any 
   often point different ways in the daytime, that can take until a reading where they agree, such as
   the evening). A charger on one chosen phase, or an *Automatic* one followed to its phase, needs that
   phase; a three-phase charger, or an Automatic one not yet followed, needs all three. Elsewhere the
-  regulator decides nothing for the charger (`phase_direction_unknown` in the diagnostics) and the sun,
-  if it runs the charge, writes its current itself. Who writes is settled when a charge starts and kept
+  regulator never raises the charger (`phase_direction_unknown` in the diagnostics) and the sun,
+  if it runs the charge, writes its current itself. **An overload is still lowered there**, whoever
+  started the charge (a plan, a person, the sun): a phase the charger draws on that goes over the limit
+  by its measured current lowers it at once to the room that leaves (a pause below its minimum; a
+  charger that can only be switched is paused), and a charge paused so is started again as any
+  balancing pause is, at no more than the room there is. Every start and every current SpotNav writes
+  is held to that room as on any site. The one case this does worse is a phase over the limit by
+  export, which the car's draw was reducing: such a site cannot tell it from import. A direct site
+  without both *The grid current is signed* and the total grid power never knows the direction: the
+  load-balancing row in the card's settings then says that it can only lower the charge and what to
+  set (the reason `site_direction_unknown` in the site's state and diagnostics). If the site editor
+  lists your meter under *Found in Home Assistant*, **Use** sets both; nothing changes until you press
+  it. The line goes by itself once both are set. Who writes is settled when a charge starts and kept
   until it ends (the charger stops or the car is unplugged): a charge that started before its phases were
   confirmed stays the sun's (`phase_direction_unknown_at_charge_start`), and one that started with active
   load balancing keeps it if the confirmation is withdrawn meanwhile: the current is never raised then, and
