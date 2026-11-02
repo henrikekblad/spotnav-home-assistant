@@ -2,6 +2,7 @@
   "active_control_reasons": [
     "duplicate_membership",
     "no_commandable_charger",
+    "site_direction_unknown",
     "site_measurement_configured_missing",
     "site_measurement_inconsistent",
     "site_measurement_invalid",

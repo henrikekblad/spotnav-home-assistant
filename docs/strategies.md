@@ -177,7 +177,7 @@ Charges only from surplus solar power, modulating the charger's current with the
 Requires a [site](site-and-load-balancing.md) whose measurements let SpotNav compute the
 surplus: derived phase measurement from power and voltage, or a direct (current per phase) site
 that also has the meter's **total grid power** (see
-[Total grid power](site-and-load-balancing.md#total-grid-power-for-solar)), and optionally the
+[Total grid power](site-and-load-balancing.md#total-grid-power)), and optionally the
 charger's own measured current and a house battery power sensor. The card says when a site
 cannot, and for a direct site without the total it says the meter's total grid power is needed.
 

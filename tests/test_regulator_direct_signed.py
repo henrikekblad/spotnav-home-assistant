@@ -286,11 +286,15 @@ def test_a_lost_direction_lowers_only_on_an_overload_by_magnitude() -> None:
         site_result=_direct_site((-4.9, -6.1, -17.5), **unconfirmed), request=request, max_age_s=MAX_AGE
     )
     assert export.proposed_current_a == 11.0
-    # Too little room for the minimum: a pause.
+    # Too little room for the minimum: a pause, under the lowering's own reason (only its own apply path writes it;
+    # the generic one needs signed power and would hold it).
     deep = magnitude_overload_lowering(
         site_result=_direct_site((-4.9, -6.1, 25.0), **unconfirmed), request=request, max_age_s=MAX_AGE
     )
-    assert (deep.proposed_current_a, deep.reason) == (0.0, "paused_safe_current_below_charger_minimum")
+    assert (deep.proposed_current_a, deep.reason) == (
+        0.0,
+        "lowering_overload_on_current_magnitude_direction_unknown",
+    )
 
 
 def test_room_another_writer_holds_is_not_given_to_an_increase() -> None:

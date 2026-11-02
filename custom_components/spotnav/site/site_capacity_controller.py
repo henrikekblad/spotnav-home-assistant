@@ -269,6 +269,16 @@ BATTERY_RISE_WINDOW_S = 60.0
 #: unchanged and unreported, for as long as it is stopped.
 REASON_CHARGER_MEASUREMENT_UNUSABLE = "charger_measurement_unusable"
 REASON_MAGNITUDE_LOWERING = "lowering_overload_on_current_magnitude_direction_unknown"
+# The regulator's reasons for deciding nothing on a charger because a phase's direction is not known: an overload by
+# |I| still lowers it (`magnitude_overload_lowering`), and a charge that lowering paused is still resumed.
+DIRECTION_UNKNOWN_REASONS = frozenset({"phase_direction_unknown", "phase_direction_unknown_at_charge_start"})
+
+def _must_lower(decision: RegulatorDecision) -> bool:
+    """Whether `decision` lowers a charger for an overload: an import overload (`is_import_overload`), or one by |I|
+    where the direction is not known (`REASON_MAGNITUDE_LOWERING`). Neither is held by anything that is not about
+    safety; both are re-checked on the fresh reading before they are written."""
+    return is_import_overload(decision) or decision.reason == REASON_MAGNITUDE_LOWERING
+
 
 #: The regulator writes kept per charger, newest last, to tell which of them a site reading may already show
 #: (`_written_at_reading`).
@@ -699,8 +709,8 @@ class SiteCapacityController:
             self._recompute()
 
     def _import_overload_now(self) -> bool:
-        """Whether the last recompute found an import overload: a decision that must lower (`MUST_LOWER_REASONS`)."""
-        return any(is_import_overload(decision) for decision in self.regulator_decisions.values())
+        """Whether the last recompute found an import overload: a decision that must lower (`_must_lower`)."""
+        return any(_must_lower(decision) for decision in self.regulator_decisions.values())
 
     @callback
     def _async_state_reported(self, event: Event[EventStateReportedData]) -> None:
@@ -1487,12 +1497,21 @@ class SiteCapacityController:
             return None
         delivered = request.measured_current_a
         reserved = self._reserved_by_others_a(charger_entry_id)
+        # Where the direction is not known, the lowering by |I| is the only thing that brings the car down, and a
+        # charger read far less often than the site (a cloud) still reports what it drew before that lowering: what
+        # it is credited with is never more than was last written to it, so the sun's write, a resend or a changed
+        # setting do not give the lowered current straight back.
+        written = (
+            None if self._direction_known_for(charger_entry_id) else self._damper_for(charger_entry_id).last_written_a
+        )
         allowances: list[float] = []
         for phase in phases:
             margin = fresh.measured_margin_a.get(phase)
             if margin is None:
                 return None
             own = 0.0 if delivered is None else (delivered.get(phase).value or 0.0)
+            if written is not None:
+                own = min(own, written)
             allowances.append(margin + own - reserved.get(phase, 0.0))
         allowance = max(0.0, min(allowances))
         minimum = self._min_current_a(charger_entry_id)
@@ -1751,14 +1770,14 @@ class SiteCapacityController:
             held_detail = DETAIL_HELD_METER_TOO_SLOW
         if held_detail is not None:
             for charger_entry_id, decision in decisions.items():
-                if decision.proposed_current_a is not None and not is_import_overload(decision):
+                if decision.proposed_current_a is not None and not _must_lower(decision):
                     self._log_active_control_outcome(
                         charger_entry_id, decision, outcome="held", detail=held_detail
                     )
             decisions = {
                 charger_entry_id: decision
                 for charger_entry_id, decision in decisions.items()
-                if is_import_overload(decision)
+                if _must_lower(decision)
             }
             if not decisions:
                 return
@@ -1947,6 +1966,14 @@ class SiteCapacityController:
             return True
         proposed = decision.proposed_current_a
         if proposed is None:
+            if decision.reason in DIRECTION_UNKNOWN_REASONS and charger_controller.paused_by_balancing:
+                # A charge an overload by |I| paused on a phase whose direction is not known: resumed as any balancing
+                # pause is, within the room |I| leaves (a start needs no direction), never probed.
+                damper = self._damper_for(charger_entry_id)
+                await self._async_maybe_resume_paused_charge(
+                    charger_entry_id, charger_controller, decision, fresh, damper, damper.last_written_a
+                )
+                return True
             if decision.reason == REASON_CHARGER_MEASUREMENT_UNUSABLE and charger_controller.paused_by_balancing:
                 # A charger load balancing stopped is off by its own control, and an OCPP charger sends no meter
                 # values then: its reading grows too old to decide a current on, but a stopped charger draws
@@ -3025,6 +3052,12 @@ class SiteCapacityController:
         ) or {}
         min_current_a = float(wiring.get("min_current_a", DEFAULT_MIN_CURRENT_A))
         phases = tuple(decision.basis.keys())
+        if not phases and decision.reason in DIRECTION_UNKNOWN_REASONS:
+            # Nothing was decided on a phase whose direction is not known: the phases the charger draws on.
+            request = next(
+                (r for r in self._build_requests(credit=False) if r.charger_entry_id == charger_entry_id), None
+            )
+            phases = tuple((None if request is None else request.phases_used()) or ())
         requested: float | None = charger_controller.requested_current_a
         switch_only = self._is_switch_only_charger(charger_controller)
         if switch_only:
@@ -4149,7 +4182,8 @@ class SiteCapacityController:
         }
         # Built once: the credited requests are the same requests with a start's credit applied.
         uncredited = self._build_requests(credit=False)
-        requests = [request for request in self._with_credits(uncredited) if request.charger_entry_id not in not_ours]
+        credited = self._with_credits(uncredited)
+        requests = [request for request in credited if request.charger_entry_id not in not_ours]
         decisions = allocate_regulator_decisions(
             site_result=self.result,
             requests=requests,
@@ -4165,21 +4199,24 @@ class SiteCapacityController:
         )
         for charger_entry_id in not_ours:
             decisions[charger_entry_id] = RegulatorDecision(None, "phase_direction_unknown_at_charge_start", None, {})
-        # A charge active control started on whose direction was lost meanwhile: still lowered on an overload by
-        # |I| (as the sun's capped write did before), never raised.
-        for request in requests:
+        # A charge on a phase whose direction is not known (never confirmed, lost meanwhile, or a charge that started
+        # before it was), whoever started it: still lowered on an overload by |I|, never raised. The one case this
+        # makes worse is a phase over the limit by export, which the car's draw was reducing; a direct site cannot
+        # tell that from import, and the limit read on |I| is the fuse's own measure (`magnitude_overload_lowering`).
+        for request in credited:
             charger_entry_id = request.charger_entry_id
             decision = decisions.get(charger_entry_id)
             if (
                 decision is not None
-                and decision.reason == "phase_direction_unknown"
-                and self._direction_at_charge_start.get(charger_entry_id)
+                and decision.reason in DIRECTION_UNKNOWN_REASONS
                 and self._in_charge(charger_entry_id)
             ):
                 lowering = magnitude_overload_lowering(
                     site_result=self.result, request=request, max_age_s=config.max_age_s
                 )
-                if request.switch_only and lowering.proposed_current_a is not None:
+                if lowering.proposed_current_a is None:
+                    continue  # no overload by |I|: the decision stays what it was
+                if request.switch_only:
                     # It cannot be lowered: any lowering the overload by |I| calls for is a pause.
                     lowering = replace(lowering, proposed_current_a=0.0, reason=REASON_MAGNITUDE_LOWERING)
                 decisions[charger_entry_id] = lowering
@@ -4494,6 +4531,19 @@ class SiteCapacityController:
             solar=solar_capability(
                 self.config.get(CONF_MEASUREMENT_MODE), self.config.get(CONF_GRID_POWER_SOURCE)
             ),
+            direction_never_known=self.direction_never_known,
+        )
+
+    @property
+    def direction_never_known(self) -> bool:
+        """Whether this site can never know a phase's direction: a direct site without both a signed current and the
+        total grid power that confirms its sign (`site/current_sign.py`). Load balancing then only lowers an
+        overload by |I| and never raises."""
+        if self.config.get(CONF_MEASUREMENT_MODE) != MEASUREMENT_MODE_DIRECT:
+            return False
+        return not (
+            self.config.get(CONF_SITE_CURRENT_SIGNED)
+            and grid_power_source_from_dict(self.config.get(CONF_GRID_POWER_SOURCE)) is not None
         )
 
     def _charger_requested_current(self, charger_entry_id: str) -> float | None:
