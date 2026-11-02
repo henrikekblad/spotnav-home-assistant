@@ -2200,7 +2200,7 @@ var hi="start",or="stop",yo="resume",mi="pause";var bf="normal",Oa="vehicle_not_
     border-radius: 3px 3px 0 0;
   }
   .${a.powerHouse} {
-    background: color-mix(in srgb, var(--primary-color, #03a9f4) 38%, var(--ha-card-background, var(--card-background-color, #ffffff)));
+    background: color-mix(in srgb, var(--primary-color, #03a9f4) 50%, var(--ha-card-background, var(--card-background-color, #ffffff)));
   }
   .${a.powerUnsplit} {
     background: color-mix(in srgb, var(--secondary-text-color, #727272) 55%, var(--ha-card-background, var(--card-background-color, #ffffff)));

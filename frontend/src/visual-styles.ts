@@ -2601,7 +2601,7 @@ export const VISUAL_STYLES = `
     border-radius: 3px 3px 0 0;
   }
   .${VISUAL_CLASSES.powerHouse} {
-    background: color-mix(in srgb, var(--primary-color, #03a9f4) 38%, var(--ha-card-background, var(--card-background-color, #ffffff)));
+    background: color-mix(in srgb, var(--primary-color, #03a9f4) 50%, var(--ha-card-background, var(--card-background-color, #ffffff)));
   }
   .${VISUAL_CLASSES.powerUnsplit} {
     background: color-mix(in srgb, var(--secondary-text-color, #727272) 55%, var(--ha-card-background, var(--card-background-color, #ffffff)));
