@@ -27,6 +27,7 @@ from custom_components.spotnav.const import (
     CURRENT_CONTROL_NUMBER,
 )
 from custom_components.spotnav.execution.auto_execution import AutoExecutor
+from custom_components.spotnav.execution.charger_profiles import WritePolicy
 from custom_components.spotnav.execution.controller import ChargingController
 from custom_components.spotnav.planning.auto_settings import async_setup_auto_settings, AutoSettingsStore
 
@@ -117,6 +118,23 @@ def _later_window(amps: int = 16) -> dict[str, Any]:
     return {"start": start.isoformat(), "end": (start + timedelta(hours=1)).isoformat(), "amps": amps}
 
 
+async def test_a_lowered_setting_is_written_once_to_the_plans_running_charge(
+    hass: HomeAssistant, timers: FakeScheduler
+) -> None:
+    world = await _world(hass, timers)
+    await install_schedule(world.controller, _open_window(16))
+    await hass.async_block_till_done()
+    assert world.controller.charging
+    assert world.writes == [16]
+    world.clock.advance(120)
+
+    await world.set_amps(11)
+
+    assert world.writes == [16, 11], "the new current goes to the charge that runs, once"
+    assert world.controller.requested_current_a == 11
+    await world.shutdown()
+
+
 async def test_a_persons_start_after_a_lowered_setting_starts_at_it(hass: HomeAssistant, timers: FakeScheduler) -> None:
     """The report's Start: the plan (made at 16 A) is stale, the setting says 11 A."""
     world = await _world(hass, timers)
@@ -134,6 +152,61 @@ async def test_a_persons_start_after_a_lowered_setting_starts_at_it(hass: HomeAs
     await world.shutdown()
 
 
+async def test_a_persons_start_after_a_stop_starts_at_the_lowered_setting(
+    hass: HomeAssistant, timers: FakeScheduler
+) -> None:
+    """Stop, lower, Start: the last current asked for (16 A) is not the setting any more."""
+    world = await _world(hass, timers)
+    await install_schedule(world.controller, _open_window(16))
+    await hass.async_block_till_done()
+    await world.executor.async_manual_stop()
+    await hass.async_block_till_done()
+    assert not world.controller.charging
+    await world.set_amps(11)
+    world.clock.advance(120)
+
+    await world.executor.async_manual_start()
+    await hass.async_block_till_done()
+
+    assert world.writes == [16, 11]
+    await world.shutdown()
+
+
+async def test_a_change_inside_the_policys_interval_waits_for_it_and_writes_the_last(
+    hass: HomeAssistant, timers: FakeScheduler
+) -> None:
+    world = await _world(hass, timers)
+    await install_schedule(world.controller, _open_window(16))
+    await hass.async_block_till_done()
+    assert world.writes == [16]
+    world.clock.advance(10)
+
+    await world.set_amps(12)
+    await world.set_amps(11)
+    assert world.writes == [16], "the charger's least interval between writes holds"
+
+    world.clock.advance(85)
+    await world.fire("_setting_current_retry")
+
+    assert world.writes == [16, 11], "once allowed, the setting as it stands now, once"
+    assert world.controller.requested_current_a == 11
+    await world.shutdown()
+
+
+async def test_the_suns_charge_is_left_alone(hass: HomeAssistant, timers: FakeScheduler) -> None:
+    world = await _world(hass, timers)
+    await world.controller.async_start(8, cause="solar")
+    await hass.async_block_till_done()
+    assert world.writes == [8]
+    world.clock.advance(120)
+
+    await world.set_amps(11)
+
+    assert world.writes == [8], "the sun writes its own current (the setting is its ceiling)"
+    assert world.controller.requested_current_a == 8
+    await world.shutdown()
+
+
 async def test_a_plan_window_that_opens_after_the_change_starts_at_the_setting(
     hass: HomeAssistant, timers: FakeScheduler
 ) -> None:
@@ -148,3 +221,43 @@ async def test_a_plan_window_that_opens_after_the_change_starts_at_the_setting(
     assert world.writes == [11], "the plan was made at 16 A; the setting says 11 A"
     await world.shutdown()
 
+
+async def test_the_write_is_capped_by_load_balancing(hass: HomeAssistant, timers: FakeScheduler) -> None:
+    world = await _world(hass, timers)
+    await install_schedule(world.controller, _open_window(16))
+    await hass.async_block_till_done()
+    world.clock.advance(120)
+    world.controller.set_start_cap(lambda: 9.0)
+
+    await world.set_amps(12)
+
+    assert world.writes == [16, 9], "never more than the site allows now"
+    assert world.controller.requested_current_a == 12, "the request stands, for the regulator to give when it can"
+    await world.shutdown()
+
+
+async def test_a_flash_stored_current_is_not_rewritten_during_the_charge(
+    hass: HomeAssistant, timers: FakeScheduler
+) -> None:
+    world = await _world(hass, timers)
+    world.controller.adapter.current.policy = WritePolicy(min_interval_s=60.0, flash_stored=True)
+    await install_schedule(world.controller, _open_window(16))
+    await hass.async_block_till_done()
+    world.clock.advance(120)
+
+    await world.set_amps(11)
+
+    assert world.writes == [16], "a flash-stored setting is written at a start only"
+    assert world.controller.requested_current_a == 11
+    retries = [t for t in world.timers.pending if getattr(t.action, "__name__", "") == "_setting_current_retry"]
+    assert retries == [], "nothing to retry: the policy will not allow it"
+    await world.shutdown()
+
+
+async def test_nothing_is_written_while_no_charge_of_ours_runs(hass: HomeAssistant, timers: FakeScheduler) -> None:
+    world = await _world(hass, timers)
+
+    await world.set_amps(11)
+
+    assert world.writes == []
+    await world.shutdown()
