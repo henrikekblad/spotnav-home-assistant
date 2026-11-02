@@ -132,10 +132,15 @@ set them:
 - **Grid fee, % of spot.** A percentage of each interval's spot price, added before VAT. It follows the spot
   price's sign: when the spot price is negative, this part is negative too.
 - **Grid fee in high-load hours.** The grid fee inside the high-load window, in place of the ordinary grid fee
-  there. You set the window first (it is never made up): whole hours of the area's own clock, on weekdays only or
-  every day, all year or November to March only; in Home Assistant its entities start from weekdays 07-19,
-  November to March. Public holidays count as the weekdays they fall on. Winter is always November to March: a
-  tariff with another winter is not covered yet.
+  there. You set the window first (it is never made up): whole hours of the area's own clock, on every day, on
+  weekdays (Monday to Friday) or Monday to Saturday, in a run of months. The months are both included and may
+  run over the new year: November to March, October to March, or January to December for all year. The hours may
+  run over midnight, such as 22-06; those night hours belong to the day the window starts on, so weekdays 22-06
+  holds Friday night until Saturday 06:00 but not Sunday night, and 31 March 22-06 in a November-to-March window
+  holds the morning of 1 April too. In Home Assistant its entities start from weekdays 07-19, November to March.
+  Public holidays count as the weekdays they fall on. There is one window and one high-load fee: where the
+  peak fee differs by season, set the window and fee of the season that matters (for example October to March),
+  and the other months pay the ordinary grid fee.
 
 With both, the price of each interval is:
 

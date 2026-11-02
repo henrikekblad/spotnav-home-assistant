@@ -271,7 +271,7 @@ prices with an electricity price) and reaches the webhook only when the request 
   "write_revision": 3,
   "transfer_percent": {"policy": "manual", "explicit_value": 5.0, "effective_value": 5.0, "unit": "%"},
   "transfer_high": {"policy": "off", "explicit_value": null, "effective_value": null, "unit": "öre/kWh"},
-  "high_load_window": {"weekdays_only": true, "from_hour": 7, "to_hour": 19, "winter_only": true},
+  "high_load_window": {"days": "weekdays", "from_month": 11, "to_month": 3, "from_hour": 7, "to_hour": 19},
   "writable": true
 }
 ```
@@ -280,10 +280,15 @@ prices with an electricity price) and reaches the webhook only when the request 
 the high-load window, which replaces the `transfer` fee there. `policy` is `off`, `manual` or `included` (the area's
 published price already holds the grid fee: locked like `transfer`, nothing is added, whatever is stored);
 `explicit_value` is what is stored (kept while off), `effective_value` what is added (`null` while off or
-included). There is no `suggested` policy: no area suggests either figure. `high_load_window` is `null` or whole
-hours of the area's own clock, `from_hour` 0-23 and `to_hour` 1-24 after it, on weekdays only or every day
-(public holidays count as weekdays), November to March only or all year; winter is fixed to November to March. `write_revision` is the electricity
-price's write counter, which a write names. See [Prices](prices.md#what-you-pay) for the arithmetic.
+included). There is no `suggested` policy: no area suggests either figure. `high_load_window` is `null` or
+`{"days", "from_month", "to_month", "from_hour", "to_hour"}`, all on the area's own clock: `days` is `all`,
+`weekdays` (Monday to Friday; public holidays count as the weekdays they fall on) or `mon_sat`; `from_month` and
+`to_month` are 1-12, both included, wrapping over the new year (11 and 3 is November to March, equal is one month,
+1 and 12 is all year); `from_hour` 0-23 and `to_hour` 1-24 are whole hours, and a `from_hour` after `to_hour`
+wraps over midnight (22 and 6 is 22:00-06:00); equal hours are refused. The hours after midnight of such a window
+belong to the day it started on, for its days and its months alike: weekdays 22-06 holds Friday night until
+Saturday 06:00 but not Sunday night. `write_revision` is the electricity price's write counter, which a write
+names. See [Prices](prices.md#what-you-pay) for the arithmetic.
 
 `update_grid_tariff {"expected_write_revision", "grid_tariff"}` replaces the three parts in full; `grid_tariff` is
 `{"transfer_percent": {"enabled", "value"}, "transfer_high": {"enabled", "value"}, "high_load_window"}`, every key
