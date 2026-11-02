@@ -334,6 +334,7 @@
   "site.activeControl.reason.duplicateMembership": "Niet beschikbaar: deze laadpaal hoort bij meer dan één locatie.",
   "site.activeControl.reason.noCommandableCharger": "Niet beschikbaar: geen enkele laadpaal op deze locatie accepteert een stroomcommando.",
   "site.activeControl.reason.measurement": "Niet beschikbaar: de eigen vermogensmeting van deze locatie is niet in orde.",
+  "site.activeControl.reason.directionUnknown": "Kan het laden hier alleen verlagen, nooit verhogen: de locatie weet niet of de stroom van het net komt of wordt teruggeleverd. Zet „Netstroom heeft een teken” aan en stel Totaal netvermogen in onder Locatie-entiteiten, of druk op Gebruiken bij je meter onder Gevonden in Home Assistant.",
   "site.activeControl.note": "Naar beste vermogen, geen beveiligingsapparaat. Uitzetten geeft de stroom die werd verlaagd weer terug.",
   "site.activeControl.pending": "Opslaan…",
   "site.activeControl.error.unavailable": "Load balancing kan nu niet worden aangezet: de locatie kan op dit moment niet actief worden geregeld. Er is niets gewijzigd.",

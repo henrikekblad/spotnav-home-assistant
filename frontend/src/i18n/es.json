@@ -334,6 +334,7 @@
   "site.activeControl.reason.duplicateMembership": "No disponible: más de una instalación reclama este cargador.",
   "site.activeControl.reason.noCommandableCharger": "No disponible: ningún cargador de esta instalación acepta una orden de corriente.",
   "site.activeControl.reason.measurement": "No disponible: la medición de potencia propia de esta instalación no está en buen estado.",
+  "site.activeControl.reason.directionUnknown": "Aquí solo puede bajar la carga, nunca subirla: la instalación no sabe si la corriente se toma de la red o se vierte a ella. Activa «La corriente de red tiene signo» y define Potencia total de red en Entidades de la instalación, o pulsa Usar en tu contador en Encontrado en Home Assistant.",
   "site.activeControl.note": "Funciona lo mejor posible, pero no es un dispositivo de protección. Al desactivarlo se devuelve la corriente que hubiera reducido.",
   "site.activeControl.pending": "Guardando…",
   "site.activeControl.error.unavailable": "Ahora mismo no se puede activar el equilibrado de carga: en este momento la instalación no se puede controlar activamente. No se ha cambiado nada.",

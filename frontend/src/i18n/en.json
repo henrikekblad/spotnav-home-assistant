@@ -334,6 +334,7 @@
   "site.activeControl.reason.duplicateMembership": "Not available: this charger is claimed by more than one site.",
   "site.activeControl.reason.noCommandableCharger": "Not available: no charger on this site accepts a current command.",
   "site.activeControl.reason.measurement": "Not available: this site's own power measurement is not healthy.",
+  "site.activeControl.reason.directionUnknown": "Can only lower the charge here, never raise it: the site cannot tell whether the current is drawn from the grid or exported. Turn on “Grid current is signed” and set Total grid power under Site entities, or press Use on your meter under Found in Home Assistant.",
   "site.activeControl.note": "Best effort, not a protective device. Turning it off gives any current it had lowered back.",
   "site.activeControl.pending": "Saving…",
   "site.activeControl.error.unavailable": "Load balancing cannot be turned on right now: the site cannot be actively controlled at the moment. Nothing was changed.",

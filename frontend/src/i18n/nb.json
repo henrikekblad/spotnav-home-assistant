@@ -334,6 +334,7 @@
   "site.activeControl.reason.duplicateMembership": "Ikke tilgjengelig: denne laderen tilhører mer enn ett anlegg.",
   "site.activeControl.reason.noCommandableCharger": "Ikke tilgjengelig: ingen lader på anlegget tar imot en strømkommando.",
   "site.activeControl.reason.measurement": "Ikke tilgjengelig: anleggets egen effektmåling er ikke i orden.",
+  "site.activeControl.reason.directionUnknown": "Kan bare senke ladingen her, aldri øke den: anlegget vet ikke om strømmen tas fra nettet eller går ut på det. Slå på «Nettstrømmen har fortegn» og angi Nettets samlede effekt under Anleggets entiteter, eller trykk Bruk ved måleren din under Funnet i Home Assistant.",
   "site.activeControl.note": "Best effort, ingen verneinnretning. Når den slås av, får laderen tilbake strømmen som var senket.",
   "site.activeControl.pending": "Lagrer…",
   "site.activeControl.error.unavailable": "Lastbalanseringen kan ikke slås på akkurat nå: anlegget kan ikke styres aktivt for øyeblikket. Ingenting ble endret.",

@@ -1197,7 +1197,8 @@ function decodeStrategyRow(source: Record<string, unknown>): StrategyRow {
     return bad();
   }
   // A row is either on with nothing to explain, or a placeholder that is off and says why.
-  if (available && reason !== null) {
+  // A reason goes with "not available", except the one that says load balancing only lowers on this site.
+  if (available && reason !== null && reason !== "site_direction_unknown") {
     return bad();
   }
   if (
@@ -1412,7 +1413,8 @@ export function decodeSite(source: Record<string, unknown>): Site {
   exactKeys(activeControl, ["available", "enabled", "reason", "writable"]);
   const available = booleanValue(activeControl, "available");
   const reason = textOrNull(activeControl, "reason");
-  if (available && reason !== null) {
+  // A reason goes with "not available", except the one that says load balancing only lowers on this site.
+  if (available && reason !== null && reason !== "site_direction_unknown") {
     return bad();
   }
   return {

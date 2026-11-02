@@ -334,6 +334,7 @@
   "site.activeControl.reason.duplicateMembership": "Ei käytettävissä: tämä laturi kuuluu useampaan kuin yhteen kohteeseen.",
   "site.activeControl.reason.noCommandableCharger": "Ei käytettävissä: yksikään kohteen laturi ei ota vastaan virtakomentoa.",
   "site.activeControl.reason.measurement": "Ei käytettävissä: kohteen oma tehomittaus ei ole kunnossa.",
+  "site.activeControl.reason.directionUnknown": "Voi vain laskea latausta, ei koskaan nostaa sitä: kohde ei tiedä, otetaanko virta verkosta vai syötetäänkö se verkkoon. Ota käyttöön ”Verkkovirralla on etumerkki” ja aseta Verkon kokonaisteho kohdassa Laitoksen entiteetit, tai paina Käytä mittarisi kohdalla kohdassa Löytyi Home Assistantista.",
   "site.activeControl.note": "Toimii parhaan kyvyn mukaan, ei ole suojalaite. Kun kytket pois, laturi saa takaisin sen virran, jota oli laskettu.",
   "site.activeControl.pending": "Tallennetaan…",
   "site.activeControl.error.unavailable": "Kuormanhallintaa ei voi ottaa käyttöön juuri nyt: kohdetta ei voi ohjata aktiivisesti tällä hetkellä. Mitään ei muutettu.",

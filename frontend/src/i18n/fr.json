@@ -334,6 +334,7 @@
   "site.activeControl.reason.duplicateMembership": "Indisponible : cette borne est revendiquée par plusieurs sites.",
   "site.activeControl.reason.noCommandableCharger": "Indisponible : aucune borne de ce site n'accepte de consigne de courant.",
   "site.activeControl.reason.measurement": "Indisponible : la mesure de puissance propre à ce site n'est pas fiable.",
+  "site.activeControl.reason.directionUnknown": "Ne peut que réduire la charge ici, jamais l'augmenter : le site ne sait pas si le courant est soutiré du réseau ou injecté. Activez « Le courant réseau est signé » et définissez Puissance réseau totale dans Entités du site, ou appuyez sur Utiliser pour votre compteur sous Trouvé dans Home Assistant.",
   "site.activeControl.note": "Au mieux, ce n'est pas un dispositif de protection. Le désactiver rend tout courant qu'il avait réduit.",
   "site.activeControl.pending": "Enregistrement…",
   "site.activeControl.error.unavailable": "L'équilibrage de charge ne peut pas être activé maintenant : le site ne peut pas être contrôlé activement pour le moment. Rien n'a été modifié.",

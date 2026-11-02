@@ -334,6 +334,7 @@
   "site.activeControl.reason.duplicateMembership": "Nicht verfügbar: Diese Ladestation wird von mehr als einem Standort beansprucht.",
   "site.activeControl.reason.noCommandableCharger": "Nicht verfügbar: Keine Ladestation an diesem Standort nimmt einen Strombefehl an.",
   "site.activeControl.reason.measurement": "Nicht verfügbar: Die eigene Leistungsmessung dieses Standorts ist nicht in Ordnung.",
+  "site.activeControl.reason.directionUnknown": "Kann das Laden hier nur senken, nie erhöhen: Der Standort weiß nicht, ob der Strom aus dem Netz bezogen oder eingespeist wird. Schalte „Netzstrom hat ein Vorzeichen“ ein und lege Gesamte Netzleistung unter Entitäten des Standorts fest, oder drücke Übernehmen bei deinem Zähler unter In Home Assistant gefunden.",
   "site.activeControl.note": "Nach bestem Bemühen, keine Schutzeinrichtung. Beim Ausschalten wird jeder abgesenkte Strom zurückgegeben.",
   "site.activeControl.pending": "Wird gespeichert…",
   "site.activeControl.error.unavailable": "Lastmanagement lässt sich gerade nicht einschalten: Der Standort kann im Moment nicht aktiv geregelt werden. Nichts wurde geändert.",
