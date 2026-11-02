@@ -66,18 +66,43 @@ def _fix(entry_id: str, entity_id: object, value: object) -> dict[str, Any]:
     return {"type": "spotnav/fix_own_mode", "api_version": 1, "charger_id": entry_id, "entity_id": entity_id, "value": value}
 
 
+#: Peblar's own translations of its select, as Home Assistant has them loaded in its configured language.
+PEBLAR_WORDS = {
+    "component.peblar.entity.select.smart_charging.state.default": "Default",
+    "component.peblar.entity.select.smart_charging.state.pure_solar": "Pure solar",
+}
+
+
+def _translations(loaded: dict[str, str]) -> Any:
+    def cached(_hass: HomeAssistant, language: str, category: str, integration: str | None = None) -> dict[str, str]:
+        assert language == "en"
+        return {key: value for key, value in loaded.items() if key.startswith(f"component.{integration}.")}
+
+    return cached
+
+
 @freeze_time(LATE)
 async def test_peblars_own_smart_charging_is_a_notice_until_it_is_default_again(
-    hass: HomeAssistant, transport: StubTransport
+    hass: HomeAssistant, transport: StubTransport, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     entry = await _charger(hass, "peblar", transport=transport)
     assert _lines(hass, entry, "charger_own_mode") == []
+    monkeypatch.setattr(dashboard_api, "async_get_cached_translations", _translations(PEBLAR_WORDS))
 
-    hass.states.async_set(SMART, "pure_solar", OPTIONS)
+    hass.states.async_set(SMART, "pure_solar", OPTIONS | {"friendly_name": "Peblar Smart charging"})
     assert _lines(hass, entry, "charger_own_mode") == [
         {
             "code": "charger_own_mode",
-            "params": {"entity": SMART, "label": "smart charging", "state": "pure_solar", "value": "default"},
+            "params": {
+                "entity": SMART,
+                "label": "smart charging",
+                "state": "pure_solar",
+                "value": "default",
+                # Home Assistant's words, for an app without its frontend.
+                "entity_name": "Peblar Smart charging",
+                "state_name": "Pure solar",
+                "value_name": "Default",
+            },
         }
     ]
 
@@ -162,15 +187,26 @@ async def test_another_version_of_the_command_is_refused(hass: HomeAssistant, ha
 
 
 @freeze_time(LATE)
-async def test_easees_own_switches_are_notices_with_their_fix(hass: HomeAssistant, transport: StubTransport) -> None:
+async def test_easees_own_switches_are_notices_with_their_fix(
+    hass: HomeAssistant, transport: StubTransport, monkeypatch: pytest.MonkeyPatch
+) -> None:
     entry = await _charger(hass, "easee", EASEE, transport)
-    hass.states.async_set("switch.easee_is_enabled", "off")
+    # A switch's states are named by the switch domain, not the charger's integration.
+    monkeypatch.setattr(
+        dashboard_api,
+        "async_get_cached_translations",
+        _translations({"component.switch.entity_component._.state.on": "On", "component.switch.entity_component._.state.off": "Off"}),
+    )
+    hass.states.async_set("switch.easee_is_enabled", "off", {"friendly_name": "Easee Enabled"})
     hass.states.async_set("switch.easee_smart_charging", "on")
 
     assert _lines(hass, entry, "charger_disabled") == [
-        {"code": "charger_disabled", "params": {"entity": "switch.easee_is_enabled"}}
+        {"code": "charger_disabled", "params": {"entity": "switch.easee_is_enabled", "entity_name": "Easee Enabled"}}
     ]
-    assert [line["params"]["value"] for line in _lines(hass, entry, "charger_own_mode")] == ["off"]
+    [own] = _lines(hass, entry, "charger_own_mode")
+    assert own["params"]["value"] == "off"
+    assert (own["params"]["state_name"], own["params"]["value_name"]) == ("On", "Off")
+    assert own["params"]["entity_name"]
 
 
 async def test_easees_enable_switch_is_turned_on_and_its_smart_charging_off(hass: HomeAssistant, hass_ws_client) -> None:

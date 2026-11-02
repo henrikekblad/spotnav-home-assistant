@@ -21,14 +21,20 @@ const PEBLAR = statusLine("charger_own_mode", {
   label: "smart charging",
   state: "pure_solar",
   value: "default",
+  entity_name: "Peblar Smart charging",
+  state_name: "Pure solar",
+  value_name: "Default",
 });
 const NO_VALUE = statusLine("charger_own_mode", {
   entity: "select.garo_mode",
   label: "schedule",
   state: "schema",
   value: null,
+  entity_name: "select.garo_mode",
+  state_name: "schema",
+  value_name: null,
 });
-const DISABLED = statusLine("charger_disabled", { entity: "switch.easee_is_enabled" });
+const DISABLED = statusLine("charger_disabled", { entity: "switch.easee_is_enabled", entity_name: "Easee Enabled" });
 
 /** Home Assistant's frontend as the card sees it: the Peblar select, named and translated by its integration. */
 function hassWith(language: "en" | "sv"): HomeAssistantLike {
@@ -149,7 +155,15 @@ describe("a charger's own mode that works against SpotNav", () => {
   });
 
   it("turns a switch mode off rather than setting it to off", () => {
-    const fup = statusLine("charger_own_mode", { entity: "switch.goe_fup", label: "PV surplus", state: "on", value: "off" });
+    const fup = statusLine("charger_own_mode", {
+      entity: "switch.goe_fup",
+      label: "PV surplus",
+      state: "on",
+      value: "off",
+      entity_name: "go-e PV surplus",
+      state_name: "on",
+      value_name: "off",
+    });
     const { card, rows, fixes } = dialog([fup]);
     const button = rows("charger_own_mode")[0]?.querySelector<HTMLButtonElement>("button");
     expect(button?.textContent).toBe("Turn off");

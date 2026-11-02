@@ -740,7 +740,10 @@ CASES: list[tuple[str, StatusFacts, str, list[dict[str, Any]]]] = [
         "notice",
         [
             {"code": "waiting_for_tomorrow", "params": {}},
-            {"code": "charger_disabled", "params": {"entity": "switch.easee_is_enabled"}},
+            {
+                "code": "charger_disabled",
+                "params": {"entity": "switch.easee_is_enabled", "entity_name": "switch.easee_is_enabled"},
+            },
         ],
     ),
     (
@@ -748,7 +751,15 @@ CASES: list[tuple[str, StatusFacts, str, list[dict[str, Any]]]] = [
         base(
             charging=True,
             own_modes=(
-                OwnModeFacts("select.peblar_smart_charging", "smart charging", "pure_solar", "default"),
+                OwnModeFacts(
+                    "select.peblar_smart_charging",
+                    "smart charging",
+                    "pure_solar",
+                    "default",
+                    entity_name="Peblar Smart charging",
+                    state_name="Pure solar",
+                    value_name="Default",
+                ),
                 OwnModeFacts("select.garo_mode", "schedule", "schema", None),
             ),
         ),
@@ -762,11 +773,23 @@ CASES: list[tuple[str, StatusFacts, str, list[dict[str, Any]]]] = [
                     "label": "smart charging",
                     "state": "pure_solar",
                     "value": "default",
+                    "entity_name": "Peblar Smart charging",
+                    "state_name": "Pure solar",
+                    "value_name": "Default",
                 },
             },
             {
                 "code": "charger_own_mode",
-                "params": {"entity": "select.garo_mode", "label": "schedule", "state": "schema", "value": None},
+                # Without Home Assistant's words: the id, the raw state, and no value to name.
+                "params": {
+                    "entity": "select.garo_mode",
+                    "label": "schedule",
+                    "state": "schema",
+                    "value": None,
+                    "entity_name": "select.garo_mode",
+                    "state_name": "schema",
+                    "value_name": None,
+                },
             },
         ],
     ),
