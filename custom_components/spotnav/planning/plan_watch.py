@@ -23,7 +23,9 @@ charger's power); without a count nothing is judged, as the plan itself is then 
 * **SpotNav's own holds.** A shortfall SpotNav made itself (load balancing pausing or limiting the current, a phase
   switch, a current written below the plan's, which covers the battery band and the sun) is not planned again
   mid-window: the plan cannot know better while it lasts, which may be the next minute. Once any check in a window
-  saw such a hold, that window is judged at its end only, where more time is bought for what is left.
+  saw such a hold, that window is judged at its end only, where more time is bought for what is left. A window the
+  site's import target held (`held` `import_target`) is planned again at its end once it is `BEHIND_KWH` behind, not
+  only below `WINDOW_SHARE`: the target holds every window alike, so a share it keeps back each time would add up.
 * **Not judged.** The first `START_GRACE_S` of a window (a car waking up); a check while the charger is not charging
   or the car is ending the charge (the plan's own path for a charge that does not run, or a car that is full); a
   window in which the car ended the charge itself (its own path plans again); a check whose last post is older than
@@ -74,6 +76,8 @@ DECISION_NOT_CHARGING: Final = "not_charging"
 DECISION_CAR_ENDED: Final = "car_ended"
 DECISION_END_OK: Final = "window_end_ok"
 DECISION_END_REPLAN: Final = "window_end_replan"
+#: `WindowFacts.held` while the site's import target holds the charge back.
+HELD_IMPORT_TARGET: Final = "import_target"
 
 
 @dataclass(frozen=True, slots=True)
@@ -133,6 +137,8 @@ class _Watched:
     held: str | None = None
     car_ended: bool = False
     behind_since: datetime | None = None
+    #: The site's import target held the charge back at some check in this window.
+    target_held: bool = False
 
     def expected_kwh(self, until: datetime) -> float:
         """The plan's energy from the base post (the window's start at the earliest) to `until`."""
@@ -163,6 +169,15 @@ class PlanWatch:
         if self._watched is not None:
             return self._watched.end
         return None if self._ending is None else self._ending.end
+
+    def shortfall_kwh(self) -> float:
+        """How far the window watched now is behind its plan at the last check (kWh, `0.0` when it is not)."""
+        watched, check = self._watched, self.last_check
+        if watched is None or check is None or check.delivered_kwh is None:
+            return 0.0
+        if (check.window_start, check.window_end) != (watched.start, watched.end):
+            return 0.0
+        return max(0.0, check.expected_kwh - check.delivered_kwh)
 
     def tell(self, window: tuple[datetime, datetime]) -> bool:
         """Whether a replan for this window is the first one said in the log (one line per window)."""
@@ -219,7 +234,7 @@ class PlanWatch:
             if reason is not None:
                 self._note(now, watched, expected, delivered, reason)
             return None
-        if delivered < WINDOW_SHARE * expected:
+        if delivered < WINDOW_SHARE * expected or (watched.target_held and expected - delivered >= BEHIND_KWH):
             self._note(now, watched, expected, delivered, DECISION_END_REPLAN)
             self._replanned_at = now
             return DECISION_END_REPLAN
@@ -229,6 +244,7 @@ class PlanWatch:
     def _judge_mid(self, now: datetime, watched: _Watched, facts: WindowFacts) -> str | None:
         if facts.held is not None and watched.held is None:
             watched.held = facts.held
+        watched.target_held = watched.target_held or facts.held == HELD_IMPORT_TARGET
         watched.car_ended = watched.car_ended or facts.car_ended
         reading = facts.reading_kwh
         posted = facts.reading_at or now

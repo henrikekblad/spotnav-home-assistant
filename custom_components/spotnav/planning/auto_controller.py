@@ -96,7 +96,7 @@ from .learned_power import (
     TAPER_PERCENT,
     Wiring,
 )
-from .plan_watch import DECISION_END_REPLAN, next_check_at, PlanWatch, START_GRACE_S, WindowFacts
+from .plan_watch import DECISION_END_REPLAN, HELD_IMPORT_TARGET, next_check_at, PlanWatch, START_GRACE_S, WindowFacts
 from .phases import effective_phases
 from .planner import (
     calculate_plan,
@@ -1690,6 +1690,11 @@ class AutoPlannerController:
             low_kw /= 3
         return self._learned.power(subject, wiring, low_kw, high_kw)
 
+    def import_target_shortfall_kwh(self) -> float:
+        """How far the running window is behind its plan (`PlanWatch.shortfall_kwh`): what a hold made the car miss of
+        it so far, which the site's import target counts beside what the plan still expects."""
+        return self._watch.shortfall_kwh()
+
     def _plan_power_cap_kw(self, settings: AutoSettings) -> float | None:
         """The most power a plan counts on: what is learned of the car (`_learned_power`), and no more than the site's
         import target leaves it (`SiteCapacityController.import_target_plan_kw`), so a held hour is planned as held and
@@ -1934,11 +1939,14 @@ class AutoPlannerController:
         return f"day:{window[0].date().isoformat() if window is not None else ''}"
 
     def _held_by_spotnav(self, controller: Any, amps: int) -> str | None:
-        """Why SpotNav itself holds this charge's current back now, or `None`: load balancing pausing it or limiting
-        its current (a battery's band included), a phase switch, or a current written below the plan's (the sun)."""
+        """Why SpotNav itself holds this charge's current back now, or `None`: the site's import target holding or
+        pausing it (`import_target`), load balancing pausing it or limiting its current (a battery's band included), a
+        phase switch, or a current written below the plan's (the sun)."""
+        site = site_controller_for_charger(self._hass, self._entry_id)
+        if site is not None and site.import_target_holds(self._entry_id):
+            return HELD_IMPORT_TARGET
         if controller.paused_by_balancing or controller.start_held_by_balancing:
             return "balancing"
-        site = site_controller_for_charger(self._hass, self._entry_id)
         if site is not None and site.load_balancing_limit(self._entry_id)[0] is not None:
             return "balancing_limit"
         if controller.phase_switch_settling or controller.switched_phases is not None:

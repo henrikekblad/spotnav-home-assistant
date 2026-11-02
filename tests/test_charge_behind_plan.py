@@ -180,6 +180,9 @@ class _HoldingSite:
     def import_target_plan_kw(self, _charger_entry_id: str) -> float | None:
         return None  # no import target: the plan counts on the car's own power
 
+    def import_target_holds(self, _charger_entry_id: str) -> bool:
+        return False
+
 
 async def test_a_shortfall_from_load_balancing_is_planned_again_at_the_window_end_only(
     hass: HomeAssistant, transport: Any, monkeypatch: pytest.MonkeyPatch
