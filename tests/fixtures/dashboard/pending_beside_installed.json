@@ -20,7 +20,8 @@
       "dismiss_setup_item": true,
       "fix_own_mode": true,
       "release_import_target": true,
-      "get_power_month": true
+      "get_power_month": true,
+      "site_import_target": true
     }
   },
   "settings": {

@@ -1218,8 +1218,12 @@ async def test_a_fresh_unconfigured_charger_serializes_the_contract_shape(
         "fix_own_mode",
         "release_import_target",
         "get_power_month",
+        "site_import_target",
     ]
-    for action in ("price_days", "plan_preview", "dismiss_setup_item", "fix_own_mode", "release_import_target", "get_power_month"):
+    for action in (
+        "price_days", "plan_preview", "dismiss_setup_item", "fix_own_mode", "release_import_target", "get_power_month",
+        "site_import_target",
+    ):
         assert charger["capabilities"][action] is True
 
 
