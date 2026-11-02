@@ -1,5 +1,7 @@
 # Apps and API
 
+For developers of apps and Home Assistant clients, and anyone who wants to see what SpotNav exposes. Everyday users do not need this page.
+
 Everything the card and the SpotNav app do goes through two transports that share one set of
 contracts: authenticated **WebSocket commands** (for the card and other Home Assistant clients)
 and a per-charger **webhook** (for clients that cannot open a WebSocket, such as the app). All

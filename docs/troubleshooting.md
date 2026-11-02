@@ -1,5 +1,7 @@
 # Diagnostics and troubleshooting
 
+For when something does not work as expected: how to get diagnostics and the debug info for a bug report, and fixes for the common problems.
+
 ## Diagnostics
 
 Download diagnostics from **Settings, Devices & services, SpotNav**, the entry's menu, then

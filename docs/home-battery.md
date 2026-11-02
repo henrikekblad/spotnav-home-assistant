@@ -1,5 +1,7 @@
 # Home batteries
 
+For anyone with a home battery and a planner such as Predbat or EMHASS: how SpotNav signals a grid charge, and why it never controls the battery.
+
 SpotNav tells your home battery planner when the car is charging from the grid. It does not control
 the battery itself.
 

@@ -1,5 +1,7 @@
 # Site and load balancing
 
+For anyone with more than one charger, or a charger that must stay within the main fuse: how to add a site, what it measures and how load balancing acts.
+
 A **site** is an optional second kind of SpotNav entry. It represents one electrical connection,
 typically your main fuse, shared by one or more SpotNav chargers. It is what makes load
 balancing, [solar charging and hybrid](strategies.md) possible. A charger can belong to only
