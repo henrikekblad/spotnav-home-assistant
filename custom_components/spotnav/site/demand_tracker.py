@@ -11,6 +11,8 @@ import target; this module only measures and never decides anything a charger is
   instant (`hour_start`), so the repeated autumn hour is two hours, as on the meter. Each reading is held until the
   next observation, at most `HOLD_MAX_S`; time without a usable reading is a gap. The house's share is integrated
   beside it as `max(0, grid_w - car_w)` (what the house would have imported without the cars), for a later floor.
+  A home battery's discharge (`discharge_w`, W, positive while it discharges) is integrated beside it over its own
+  measured time, for an import target under `battery_first` (`site/import_target.py`); it never enters a peak.
 * **An hour's mean** is its energy over the time it was measured. An hour with more than `GAP_MAX_S` of gaps is
   `incomplete`: kept and shown, but it never raises a peak. An hour never measured at all is not kept.
 * **Restart mid-hour**: the running hour is kept (`RUNNING_SAVE_DELAY_S`, at most once a minute); after a restart
@@ -74,10 +76,14 @@ class RunningHour:
     covered_s: float = 0.0
     house_wh: float = 0.0
     house_covered_s: float = 0.0
+    #: A home battery's discharge over the time it was read with the grid (`battery_first`'s import target only).
+    discharge_wh: float = 0.0
+    discharge_covered_s: float = 0.0
     #: When the last observation was made, and what it read (`None`: no usable reading, or a restart since).
     last_at: datetime | None = None
     last_grid_w: float | None = None
     last_car_w: float | None = None
+    last_discharge_w: float | None = None
 
     @property
     def gap_s(self) -> float:
@@ -97,6 +103,8 @@ class RunningHour:
             "covered_s": round(self.covered_s, 3),
             "house_wh": round(self.house_wh, 3),
             "house_covered_s": round(self.house_covered_s, 3),
+            "discharge_wh": round(self.discharge_wh, 3),
+            "discharge_covered_s": round(self.discharge_covered_s, 3),
             "last_at": None if self.last_at is None else self.last_at.isoformat(),
         }
 
@@ -112,12 +120,18 @@ class RunningHour:
             return None
         if any(value > HOUR_S for value in (numbers[1], numbers[3])):
             return None
+        # Kept since the import target holds: a record without them (or with a bad one) counts no discharge.
+        discharge = [raw.get(key, 0.0) for key in ("discharge_wh", "discharge_covered_s")]
+        if not all(_number(value) and value >= 0 for value in discharge) or discharge[1] > HOUR_S:
+            discharge = [0.0, 0.0]
         return cls(
             start=start,
             import_wh=float(numbers[0]),
             covered_s=float(numbers[1]),
             house_wh=float(numbers[2]),
             house_covered_s=float(numbers[3]),
+            discharge_wh=float(discharge[0]),
+            discharge_covered_s=float(discharge[1]),
             last_at=last_at,
         )
 
@@ -186,10 +200,12 @@ class HourTracker:
     previous: list[HourMean] = field(default_factory=list)
     running: RunningHour | None = None
 
-    def observe(self, now: datetime, grid_w: float | None, car_w: float | None) -> bool:
+    def observe(
+        self, now: datetime, grid_w: float | None, car_w: float | None, discharge_w: float | None = None
+    ) -> bool:
         """Take a reading at `now`: the time since the last one is integrated at the last reading (held at most
-        `HOLD_MAX_S`), completed hours are kept, and from now on `grid_w`/`car_w` are held. Returns whether the
-        month's hours changed (an hour completed, or the month rolled)."""
+        `HOLD_MAX_S`), completed hours are kept, and from now on `grid_w`/`car_w`/`discharge_w` are held. Returns
+        whether the month's hours changed (an hour completed, or the month rolled)."""
         now = now.astimezone(timezone.utc)
         changed = False
         running = self.running
@@ -215,10 +231,12 @@ class HourTracker:
                     last_at=end_of_hour,
                     last_grid_w=running.last_grid_w,
                     last_car_w=running.last_car_w,
+                    last_discharge_w=running.last_discharge_w,
                 )
         running.last_at = now
         running.last_grid_w = None if grid_w is None or not _number(grid_w) else float(grid_w)
         running.last_car_w = None if car_w is None or not _number(car_w) else float(car_w)
+        running.last_discharge_w = None if discharge_w is None or not _number(discharge_w) else float(discharge_w)
         self.running = running
         changed |= self._roll_to(month_of(running.start, self.tz))
         return changed
@@ -236,6 +254,9 @@ class HourTracker:
         if running.last_car_w is not None:
             running.house_wh += max(0.0, running.last_grid_w - running.last_car_w) * seconds / HOUR_S
             running.house_covered_s += seconds
+        if running.last_discharge_w is not None:
+            running.discharge_wh += max(0.0, running.last_discharge_w) * seconds / HOUR_S
+            running.discharge_covered_s += seconds
 
     def _complete(self, running: RunningHour) -> bool:
         """File a completed hour under its month; an hour never measured is not kept."""
@@ -384,7 +405,9 @@ class SiteDemand:
         elapsed = (self._now() - self._last_observed).total_seconds()
         return not 0 <= elapsed < OBSERVE_MIN_S
 
-    def observe(self, grid_w: float | None, car_w: float | None, tz: str | None = None) -> None:
+    def observe(
+        self, grid_w: float | None, car_w: float | None, tz: str | None = None, discharge_w: float | None = None
+    ) -> None:
         """One reading of the site (at most every `OBSERVE_MIN_S`). Never raises."""
         if not self.due():
             return
@@ -394,7 +417,7 @@ class SiteDemand:
             self.readings += 1
             if tz is not None and tz != self.tracker.tz:
                 self.tracker.tz = tz
-            changed = self.tracker.observe(now, grid_w, car_w)
+            changed = self.tracker.observe(now, grid_w, car_w, discharge_w)
             if changed and self._month_store is not None:
                 self._month_store.changed()
             running = self.tracker.running
