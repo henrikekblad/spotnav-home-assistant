@@ -250,3 +250,27 @@ async def test_a_charge_started_unconfirmed_is_not_lowered_on_a_phase_confirmed_
     decision = site_controller.regulator_decisions[charger.entry_id]
     assert (decision.proposed_current_a, decision.reason) == (None, "phase_direction_unknown_at_charge_start")
     assert configure_calls == []
+
+
+async def test_a_charge_started_unconfirmed_is_lowered_on_a_phase_confirmed_to_import(hass: HomeAssistant) -> None:
+    """A charge that started before the sign was confirmed stays the sun's, so the regulator's own rules never reach
+    it; a phase later confirmed to import over the limit is still lowered on, by |I|."""
+    charger, configure_calls = await _ocpp_charger(hass, "imp_charger")
+    _charger_reads(hass, "imp_charger", 0.0)
+    _report(hass, "imp_site", (12.0, 13.0, 14.0), 0.0)
+    site_entry = _site(hass, "imp_site", [charger], ["imp_charger"])
+    assert await hass.config_entries.async_setup(site_entry.entry_id)
+    await hass.async_block_till_done()
+    site_controller = controller_of(hass, site_entry.entry_id)
+    await _start(hass, charger, "imp_charger", 10)
+    _charger_reads(hass, "imp_charger", 10.0)
+    configure_calls.clear()
+
+    # L3 confirmed importing at 31 A against a 24 A limit, the car at 10 A: lowered to 3 A, below its minimum, a pause.
+    await _confirm(hass, "imp_site", currents=(12.0, 13.0, 31.0))
+    assert site_controller.result.phase_direction_source.get("L3") == "signed_current"
+    decision = site_controller.regulator_decisions[charger.entry_id]
+    assert (decision.proposed_current_a, decision.reason) == (
+        0.0,
+        "lowering_overload_on_current_magnitude_direction_unknown",
+    )

@@ -679,7 +679,7 @@ def magnitude_overload_lowering(
     *, site_result: SiteCapacityResult, request: ChargerRequest, max_age_s: float
 ) -> RegulatorDecision:
     """For a charger in a charge on a phase whose direction is not known: lowered only where a phase it draws on,
-    whose direction is not known now, is over the limit by |I| (`measured_margin_a` < 0), to its own current plus
+    not one known now to export, is over the limit by |I| (`measured_margin_a` < 0), to its own current plus
     that margin on the tightest such phase (what the sun's capped write allowed before), a pause (0, same reason)
     where that is below its minimum, never raised; otherwise held (`phase_direction_unknown`, `None`). The sign of
     the overload is not known, so this guards the fuse as a magnitude-only site always did; it is no better than
@@ -687,9 +687,10 @@ def magnitude_overload_lowering(
     held = RegulatorDecision(None, "phase_direction_unknown", None, {})
     if site_result.measurement_mode == "derived_phase_current":
         return held  # a derived site knows the direction on every phase
-    # Only a phase whose direction is not known now: where it is, the regulator's own rules hold (a phase over the
-    # limit by export is never lowered on).
+    # Every phase but one known now to export: a phase over the limit by export is never lowered on (the car's draw
+    # reduces it), while one known to import is lowered as an import overload is.
     known = site_result.phase_direction_source
+    signed_power = site_result.phase_signed_active_power_w
     phases = request.phases_used()
     measured_source = request.measured_current_a
     if phases is None or measured_source is None:
@@ -716,7 +717,8 @@ def magnitude_overload_lowering(
             direction=None,
             confirmed_direction=None,
         )
-        if margin < 0.0 and not known.get(phase):
+        exporting = bool(known.get(phase)) and (signed_power.get(phase) or 0.0) < 0.0
+        if margin < 0.0 and not exporting:
             ceilings[phase] = max(0.0, measured.value + margin)
     if not ceilings:
         return held
