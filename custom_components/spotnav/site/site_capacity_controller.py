@@ -301,6 +301,7 @@ TARGET_NOT_APPLIED_BATTERY_UNKNOWN = "battery_unknown"
 #: Why a person's set-aside was refused (`async_release_import_target`).
 ERROR_NO_IMPORT_TARGET = "spotnav_no_import_target"
 ERROR_NO_DEPARTURE = "spotnav_no_departure"
+ERROR_STALE_DEPARTURE = "spotnav_stale_departure"
 #: The target's own code failed (`_compute_regulator_decisions`): the fuse's decisions went as they were.
 TARGET_NOT_APPLIED_ERROR = "error"
 #: Why the target could not hold a charger it would hold (`import_target_snapshot`'s `inert`): a phase it draws on has
@@ -2532,14 +2533,18 @@ class SiteCapacityController:
                 ),
                 # The last step to the request may be smaller than the deadband; it still waits
                 # for the dwell.
-                reaches_request=yield_verdict.reaches_request,
+                reaches_request=yield_verdict.reaches_request
+                or self._restores_target_lowering(charger_entry_id, yield_verdict.current_a, previous_setpoint),
             )
         else:
-            # Passthrough: the raw proposal, urgent only if the stepper says so.
+            # Passthrough: the raw proposal, urgent only if the stepper says so. A raise that gives back the target's
+            # own lowering this hour is not swallowed by the deadband (it still waits for the dwell), or a 1 A lowering
+            # written at once would never come back within the hour.
             damping = damper.consider(
                 proposed_current_a=proposed,
                 margin_a=margin_by_charger.get(charger_entry_id),
                 urgent=(yield_verdict.urgent if yield_verdict is not None else False) or overload or target_lowering,
+                reaches_request=self._restores_target_lowering(charger_entry_id, proposed, previous_setpoint),
             )
         if not damping.write or damping.current_a is None:
             self._log_active_control_outcome(
@@ -2976,6 +2981,10 @@ class SiteCapacityController:
             ),
         )
         if not write.written:
+            if write.outcome == REGULATED_STOPPED and decision.reason == REASON_IMPORT_TARGET_PAUSED:
+                # The import target's pause went out: it holds to the hour's end from here, whatever the charger's
+                # status says a moment later (`_latch_target_pauses` for one taken without this write's word).
+                self._latch_target_pause(charger_entry_id)
             if write.outcome == REGULATED_STOPPED:
                 # Paused (or stopped for safety): the charger is at nothing now. Remembered so the next pass
                 # does not pause the stopped charger again, and the resume (`_async_maybe_resume_paused_charge`)
@@ -4000,6 +4009,22 @@ class SiteCapacityController:
         )
         return stepper.observe(decision.proposed_current_a, requested_a, assigned_a, observation)
 
+    def _restores_target_lowering(
+        self, charger_entry_id: str, proposed: float | None, previous_setpoint: float | None
+    ) -> bool:
+        """Whether a raise only gives back what the target itself lowered this charger by this hour: no higher than the
+        most it held it to this hour (`_target_last_cap`)."""
+        budget = self._target_budget
+        held = self._target_last_cap.get(charger_entry_id)
+        return (
+            budget is not None
+            and held is not None
+            and held[0] == budget.hour_start
+            and proposed is not None
+            and previous_setpoint is not None
+            and previous_setpoint < proposed <= held[1]
+        )
+
     @staticmethod
     def _target_lowering(decision: RegulatorDecision, previous_setpoint: float | None) -> bool:
         """Whether `decision` is the import target lowering the charger below what was last written to it: a decision
@@ -4852,9 +4877,11 @@ class SiteCapacityController:
         # it is said (`_target_risk`, decided again on every recompute, with a margin either way), and a person may set
         # the target aside for it (`async_release_import_target`).
         risks: dict[str, TargetRisk] = {}
-        automatic: dict[str, str] = {}
+        # A charge the plan's own choice set aside stays so until its departure (or an unplug, or a new departure),
+        # as a person's does: no hold again mid-hour that would then pause it for the rest of the hour.
+        automatic: dict[str, str] = dict(self._target_auto_released)
         for member in members:
-            if not member.holdable:
+            if not member.holdable or member.charger_entry_id in automatic:
                 continue
             found = self._target_shortfall(member, budget, now)
             if found is None:
@@ -4879,6 +4906,7 @@ class SiteCapacityController:
         for charger_entry_id, departure in automatic.items():
             if charger_entry_id not in self._target_auto_released:
                 self._note_target(charger_entry_id, "released", budget, departure=departure)
+            risks.pop(charger_entry_id, None)
         self._target_risk = risks
         self._target_auto_released = automatic
         self._tell_target_risk()
@@ -4943,7 +4971,11 @@ class SiteCapacityController:
             if lowered < proposed:
                 held[charger_entry_id] = replace(decision, proposed_current_a=lowered, reason=REASON_IMPORT_TARGET_HELD)
                 self._target_lowered.add(charger_entry_id)
-                self._target_last_cap[charger_entry_id] = (budget.hour_start, lowered)
+                # The highest the target held it to this hour: the lock at the hour's end keeps no less, and a raise
+                # back to it is the target giving back its own lowering (`_restores_target_lowering`).
+                was_held = self._target_last_cap.get(charger_entry_id)
+                highest = lowered if was_held is None or was_held[0] != budget.hour_start else max(was_held[1], lowered)
+                self._target_last_cap[charger_entry_id] = (budget.hour_start, highest)
                 self._note_target(charger_entry_id, "held", budget, cap_a=lowered)
             if lowered > max(cap_a, request.min_current_a):
                 self._target_inert[charger_entry_id] = TARGET_INERT_EXPORTING
@@ -4990,31 +5022,50 @@ class SiteCapacityController:
         """The site is gone for good: forget what was set aside."""
         await Store(hass, 1, f"{DOMAIN}.import_target_release.{entry_id}").async_remove()
 
+    def _release_over(self, charger_entry_id: str, departure: str, now: datetime) -> bool:
+        """Whether a set-aside until `departure` has ended: the departure passed, the car was unplugged, or the plan
+        is now for another departure (earlier or later), which the set-aside was not given for."""
+        moment = dt_util.parse_datetime(departure)
+        charger_controller = controller_for(self.hass, charger_entry_id)
+        plan = None if charger_controller is None else getattr(charger_controller, "plan", None)
+        unplugged = charger_controller is not None and charger_controller.adapter.vehicle_connected() is False
+        return moment is None or moment <= now or unplugged or plan is None or plan.departure != departure
+
     def _prune_released(self, now: datetime) -> None:
-        """A set-aside ends with its departure, or when the car is unplugged."""
+        """A person's set-aside, and one the plan's choice made, end as `_release_over` says."""
         changed = False
         for charger_entry_id, departure in list(self._target_released.items()):
-            moment = dt_util.parse_datetime(departure)
-            charger_controller = controller_for(self.hass, charger_entry_id)
-            unplugged = (
-                charger_controller is not None and charger_controller.adapter.vehicle_connected() is False
-            )
-            if moment is None or moment <= now or unplugged:
+            if self._release_over(charger_entry_id, departure, now):
                 del self._target_released[charger_entry_id]
                 changed = True
         if changed:
             self._save_released()
+        self._target_auto_released = {
+            charger_entry_id: departure
+            for charger_entry_id, departure in self._target_auto_released.items()
+            if not self._release_over(charger_entry_id, departure, now)
+        }
 
-    def async_release_import_target(self, charger_entry_id: str) -> str | None:
+    def async_release_import_target(self, charger_entry_id: str, *, for_departure: int | None = None) -> str | None:
         """Set the import target aside for this charger's charge until its plan's departure (a person's choice, from
         the notification, the card or the app). The error's code, else `None`: `spotnav_no_import_target` (the site
-        has none set), `spotnav_no_departure` (no plan with a departure ahead)."""
+        has none set), `spotnav_no_departure` (no plan with a departure ahead), `spotnav_stale_departure` (a phone's
+        button told for a departure, `for_departure` in epoch seconds, that is not the plan's any more)."""
         if self._import_target_kw() is None:
             return ERROR_NO_IMPORT_TARGET
         plan = getattr(controller_for(self.hass, charger_entry_id), "plan", None)
         departure = None if plan is None or not plan.departure else dt_util.parse_datetime(plan.departure)
         if plan is None or departure is None or departure <= dt_util.utcnow():
             return ERROR_NO_DEPARTURE
+        if for_departure is not None and for_departure != int(departure.timestamp()):
+            _LOGGER.info(
+                "SpotNav site %s: a Release tonight for charger %s was for another departure than its plan's %s; "
+                "nothing is set aside",
+                self.entry_id,
+                charger_entry_id,
+                plan.departure,
+            )
+            return ERROR_STALE_DEPARTURE
         _LOGGER.info(
             "SpotNav site %s: the import target is set aside for charger %s until %s, as a person asked",
             self.entry_id,
@@ -5030,6 +5081,15 @@ class SiteCapacityController:
             self._note_target(charger_entry_id, "released", self._target_budget, departure=plan.departure)
         self._recompute()
         return None
+
+    def _latch_target_pause(self, charger_entry_id: str) -> None:
+        """The target's pause of this charger was sent: it stays paused to the end of this hour."""
+        budget = self._target_budget
+        if budget is None or self._target_paused_hour.get(charger_entry_id) == budget.hour_start:
+            return
+        self._target_paused_hour[charger_entry_id] = budget.hour_start
+        self._target_pause_pending.pop(charger_entry_id, None)
+        self._note_target(charger_entry_id, "paused", budget)
 
     def _latch_target_pauses(self, budget: HourBudget) -> None:
         """A pause the target decided this hour that the charger has taken (paused by load balancing) holds to the
