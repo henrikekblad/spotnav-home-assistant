@@ -29,6 +29,11 @@ def _hour(day: int, hour_utc: int, kw: float, *, incomplete: bool = False) -> Ho
     return HourMean(start=datetime(2026, 11, day, hour_utc, tzinfo=timezone.utc), kw=kw, incomplete=incomplete)
 
 
+def _lifted(free: float) -> float:
+    """The month's free level less its margin (`FREE_LEVEL_MARGIN_KW`, `FREE_LEVEL_MARGIN_SHARE`)."""
+    return free - max(0.1, 0.02 * free)
+
+
 def _levels(components, hours, now=NOW):
     return [component_month(component, hours, TZ, now).free_kw for component in components]
 
@@ -39,7 +44,8 @@ def _levels(components, hours, now=NOW):
 def test_a_highest_hour_part_lifts_the_target_to_the_months_peak() -> None:
     sauna = [_hour(3, 17, 6.6), _hour(4, 17, 4.0)]
     found = effective_target(6.0, _levels([DemandComponent(top_n=1)], sauna))
-    assert (found.kw, found.free_kw, found.lifted) == (6.6, 6.6, True)
+    assert found.free_kw == 6.6 and found.lifted
+    assert found.kw == pytest.approx(_lifted(6.6))
     # Below the target nothing changes; an incomplete hour never sets a peak.
     assert effective_target(6.0, _levels([DemandComponent(top_n=1)], [_hour(3, 17, 5.0)])).kw == 6.0
     assert effective_target(6.0, _levels([DemandComponent(top_n=1)], [_hour(3, 17, 9.0, incomplete=True)])).kw == 6.0
@@ -54,20 +60,20 @@ def test_a_top_three_part_with_fewer_than_three_days_does_not_lift_it() -> None:
 def test_a_top_three_part_with_today_counted_lifts_it_to_todays_own_peak() -> None:
     # Three days counted and today (the 10th) among them: today's own peak is free.
     hours = [_hour(3, 17, 9.0), _hour(4, 17, 8.0), _hour(10, 10, 7.0), _hour(5, 17, 5.0)]
-    assert effective_target(6.0, _levels([DemandComponent(top_n=3)], hours)).kw == 7.0
+    assert effective_target(6.0, _levels([DemandComponent(top_n=3)], hours)).kw == pytest.approx(_lifted(7.0))
     # Today not among them: the third highest day.
     hours = [_hour(3, 17, 9.0), _hour(4, 17, 8.0), _hour(5, 17, 6.8), _hour(10, 10, 5.0)]
-    assert effective_target(6.0, _levels([DemandComponent(top_n=3)], hours)).kw == 6.8
+    assert effective_target(6.0, _levels([DemandComponent(top_n=3)], hours)).kw == pytest.approx(_lifted(6.8))
 
 
 def test_two_parts_counting_the_same_hour_lift_it_to_the_lower() -> None:
     hours = [_hour(3, 17, 9.0), _hour(4, 17, 6.6)]
     parts = [DemandComponent(top_n=1), DemandComponent(top_n=1, window=DAY)]
     hours_day_only = [*hours, _hour(5, 3, 3.0)]
-    assert effective_target(6.0, _levels(parts, hours_day_only)).kw == 9.0
+    assert effective_target(6.0, _levels(parts, hours_day_only)).kw == pytest.approx(_lifted(9.0))
     # A day part whose own peak is lower holds the hour to it.
     parts = [DemandComponent(top_n=1), DemandComponent(top_n=2, window=DAY)]
-    assert effective_target(6.0, _levels(parts, hours)).kw == 6.6
+    assert effective_target(6.0, _levels(parts, hours)).kw == pytest.approx(_lifted(6.6))
 
 
 def test_an_hour_no_part_counts_keeps_the_target() -> None:
@@ -76,6 +82,19 @@ def test_an_hour_no_part_counts_keeps_the_target() -> None:
     assert levels == [None]
     found = effective_target(6.0, levels)
     assert (found.kw, found.free_kw, found.lifted) == (6.0, None, False)
+
+
+def test_the_margin_never_takes_the_level_below_the_target() -> None:
+    # A peak a hair above the target lifts nothing: less its margin it is below the target.
+    found = effective_target(6.0, _levels([DemandComponent(top_n=1)], [_hour(3, 17, 6.05)]))
+    assert found.free_kw == 6.05 and found.kw == 6.0 and not found.lifted
+
+
+def test_an_hour_with_a_gap_frees_no_more_than_its_import_over_the_whole_hour() -> None:
+    # 9.0 kW over the 52 minutes measured, 8 missing: the floor counts them as no import, 7.8 kW.
+    tracker_hour = HourMean(start=datetime(2026, 11, 3, 17, tzinfo=timezone.utc), kw=9.0, floor_kw=7.8)
+    floor_hour = HourMean(start=tracker_hour.start, kw=min(tracker_hour.kw, tracker_hour.floor_kw))
+    assert effective_target(6.0, _levels([DemandComponent(top_n=1)], [floor_hour])).free_kw == 7.8
 
 
 def test_a_new_month_starts_from_the_target() -> None:
@@ -106,23 +125,23 @@ async def test_the_hold_lets_the_hour_reach_the_months_peak_and_says_so(hass: Ho
     with freeze_time(_HOUR + timedelta(seconds=5)) as frozen:
         world = await _world(hass, monkeypatch, frozen, "peak")
         await world.step()
-        _peak(world, 6.6)
+        _peak(world, 7.0)
         await _charging(world)
         await world.run(20)
-        # 6.6 kW less the house's 1 kW: 8 A, not the 7 A the 6.0 kW target alone gives.
+        # 7.0 kW less its margin (6.86 kW), less the house's 1 kW: 8 A, not the 7 A the 6.0 kW target alone gives.
         assert world.car_a == 8.0
         controller = world.halo.controller
         charger = world.halo.charger.entry_id
         status = controller.import_target_status(charger)
-        assert status is not None and status.target_kw == pytest.approx(6.6) and status.set_kw == 6.0
+        assert status is not None and status.target_kw == pytest.approx(_lifted(7.0)) and status.set_kw == 6.0
         assert controller.load_balancing_limit(charger) == (8.0, LIMIT_CAUSE_IMPORT_TARGET)
         assert controller.import_target_snapshot()["effective"] == {
-            "kw": pytest.approx(6.6), "free_kw": pytest.approx(6.6), "every_part_counts": True,
+            "kw": pytest.approx(_lifted(7.0)), "free_kw": pytest.approx(7.0),
         }
-        # The plan counts on the month's peak too, as every part counts the hours it may use.
-        assert controller.import_target_plan_kw(charger) == pytest.approx(5.6, abs=0.05)
+        # The plan counts on the target as set: the lift is the running hour's hold only.
+        assert controller.import_target_plan_kw(charger) == pytest.approx(5.0, abs=0.05)
         for hour in world.complete_hours():
-            assert world.hour_kw(hour) <= 6.6
+            assert world.hour_kw(hour) <= 7.0
 
 
 async def test_without_a_peak_above_it_the_target_holds_as_set(hass: HomeAssistant, monkeypatch) -> None:
@@ -155,11 +174,74 @@ async def test_a_departure_at_risk_is_told_at_the_months_peak(hass: HomeAssistan
     _parts(monkeypatch, DemandComponent(top_n=1))
     with freeze_time(_HOUR + timedelta(seconds=5)) as frozen:
         world = await _tight_night(hass, monkeypatch, frozen, "peakrisk")
-        _peak(world, 6.6)
+        _peak(world, 7.0)
         await world.run(10)
         told = _told(world)
-        assert told and "6.6 kW" in told[-1]["message"], told
+        # The month's peak and the import target as set, both named.
+        assert told and "the month's peak of 6.9 kW (import target 6.0 kW)" in told[-1]["message"], told
         status = world.halo.controller.import_target_status(world.halo.charger.entry_id)
-        assert status is not None and status.at_risk is not None and status.at_risk.target_kw == pytest.approx(6.6)
+        assert status is not None and status.at_risk is not None
+        assert status.at_risk.target_kw == pytest.approx(_lifted(7.0)) and status.at_risk.set_kw == 6.0
         assert dt_util.utcnow() < _HOUR + timedelta(hours=1)
         assert _plan is not None
+
+
+
+# -- the lift is the running hour's alone (review)
+
+DAY_ONLY = HighLoadWindow(days="all", from_month=1, to_month=12, from_hour=6, to_hour=23)
+
+
+def _hour_at(world, start_utc: datetime, kw: float) -> None:
+    world.halo.controller.demand.tracker.hours.append(HourMean(start=start_utc, kw=kw))
+
+
+async def test_a_plan_at_night_never_counts_on_a_day_parts_peak(hass: HomeAssistant, monkeypatch) -> None:
+    """22:00 on the site's clock (Home Assistant's zone in tests, Pacific), a day-only part (06-23) with a 9.0 kW peak
+    at 10:00: the evening hour is lifted, the plan (whose night hours no part lifts) is not."""
+    _parts(monkeypatch, DemandComponent(top_n=1, window=DAY_ONLY))
+    at = datetime(2026, 11, 3, 6, 0, tzinfo=timezone.utc)  # 22:00 Pacific
+    with freeze_time(at + timedelta(seconds=5)) as frozen:
+        world = await _world(hass, monkeypatch, frozen, "daylift")
+        await world.step()
+        _hour_at(world, datetime(2026, 11, 2, 18, 0, tzinfo=timezone.utc), 9.0)  # 10:00 Pacific
+        await _charging(world)
+        await world.run(5)
+        controller = world.halo.controller
+        charger = world.halo.charger.entry_id
+        assert controller.import_target_snapshot()["effective"]["kw"] > 8.0
+        assert controller.import_target_plan_kw(charger) == pytest.approx(5.0, abs=0.1)
+
+
+async def test_a_top_three_parts_own_peak_today_is_not_planned_on(hass: HomeAssistant, monkeypatch) -> None:
+    _parts(monkeypatch, DemandComponent(top_n=3))
+    with freeze_time(_HOUR + timedelta(seconds=5)) as frozen:
+        world = await _world(hass, monkeypatch, frozen, "top3lift")
+        await world.step()
+        _peak(world, 8.0)  # today's own peak: free this hour, gone at midnight
+        await _charging(world)
+        await world.run(5)
+        controller = world.halo.controller
+        assert controller.import_target_snapshot()["effective"]["kw"] > 7.0
+        assert controller.import_target_plan_kw(world.halo.charger.entry_id) == pytest.approx(5.0, abs=0.1)
+
+
+async def test_the_departures_later_hours_are_judged_at_the_target_as_set(hass: HomeAssistant, monkeypatch) -> None:
+    """22 kWh by a departure three hours on, with a 9.0 kW day peak lifting only this hour: at the lifted level it
+    would make it, at the 5 kW the target leaves the later hours it is short. Said now, not an hour late."""
+    _parts(monkeypatch, DemandComponent(top_n=1, window=DAY_ONLY))
+    at = datetime(2026, 11, 3, 6, 0, tzinfo=timezone.utc)  # 22:00 Pacific
+    with freeze_time(at + timedelta(seconds=5)) as frozen:
+        world = await _tight_night(hass, monkeypatch, frozen, "dayrisk")
+        _hour_at(world, datetime(2026, 11, 2, 18, 0, tzinfo=timezone.utc), 9.0)
+        now = dt_util.utcnow()
+        departure = now + timedelta(hours=3)
+        plan = _plan(now, departure, [(now, departure)])
+        plan.energy_kwh = 22.0
+        world.halo.cc.plan = plan
+        world.departure = departure
+        await world.run(10)
+        status = world.halo.controller.import_target_status(world.halo.charger.entry_id)
+        assert dt_util.utcnow() < at + timedelta(hours=1)
+        assert status is not None and status.at_risk is not None
+        assert _told(world)
