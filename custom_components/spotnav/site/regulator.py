@@ -96,6 +96,13 @@ RegulatorReason = Literal[
     # A charger that can only be switched on and off draws on a phase over the limit on a net import: paused whole,
     # as nothing slower can lower it (`decide_switched_load`).
     "switched_load_paused_for_import_overload",
+    # The site's import target (`site/import_target.py`) lowers a charger the fuse would give more: to what the hour's
+    # budget leaves it, never below its minimum, and never further than keeps each phase it draws on an import (only
+    # `SiteCapacityController._hold_to_import_target`, never `decide_charging_current`). A lowering, not an overload.
+    "import_target_held",
+    # The same, once the hour can no longer end at or under the target with the charger at its minimum: paused (0.0)
+    # until the next clock hour.
+    "import_target_paused",
 ]
 
 # Decisions in which the fuse is in danger *now*: a write the charger cannot take in time must then

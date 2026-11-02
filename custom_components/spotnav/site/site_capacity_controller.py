@@ -64,10 +64,26 @@ from ..const import (
     MEASUREMENT_MODE_DERIVED,
     MEASUREMENT_MODE_DIRECT,
     SITE_RECOMPUTE_INTERVAL_S,
+    SOLAR_PRIORITY_BATTERY_FIRST,
     SOLAR_PRIORITY_CAR_FIRST,
 )
 from .site_history import SAMPLE_INTERVAL_S as HISTORY_SAMPLE_INTERVAL_S, SiteHistory
 from .demand_tracker import SiteDemand
+from .import_target import (
+    ACTION_HELD,
+    ACTION_PAUSED,
+    ACTION_UNHELD,
+    departure_needs_release,
+    HOLD_VOLTAGE_V,
+    hour_budget,
+    HourBudget,
+    lowering_floor_a,
+    member_w,
+    plan_remaining_kwh,
+    share_budget,
+    TargetMember,
+    TargetShare,
+)
 from ..execution.charger_connection import (
     CHARGING as CONNECTION_CHARGING,
     UNKNOWN as CONNECTION_UNKNOWN,
@@ -131,6 +147,7 @@ from .current_sign import CurrentSignCheck
 from .auto_phase import AutoPhaseTracker, drawn_phase
 from .site_capacity import (
     ACTIVE_CONTROL_READY,
+    allocation_order,
     BatteryYieldEstimate,
     calculate_site_capacity,
     ChargerRequest,
@@ -259,6 +276,18 @@ LIMIT_CAUSE_BATTERY_SHARES_FUSE = "battery_shares_fuse"
 LIMIT_CAUSE_HOUSE_CONSUMPTION = "house_consumption"
 #: The site's measurement is lost and the car is held at its minimum until it is back (`_async_step_to_minimum`).
 LIMIT_CAUSE_MEASUREMENT_LOST = "measurement_lost"
+#: The site's import target holds the car below what the fuse allows (`_hold_to_import_target`), or paused it until
+#: the next clock hour (`balancing_pause`).
+LIMIT_CAUSE_IMPORT_TARGET = "import_target"
+#: The import target's two decisions (`site/regulator.py`): a lowering, never an overload's.
+REASON_IMPORT_TARGET_HELD = "import_target_held"
+REASON_IMPORT_TARGET_PAUSED = "import_target_paused"
+IMPORT_TARGET_REASONS = frozenset({REASON_IMPORT_TARGET_HELD, REASON_IMPORT_TARGET_PAUSED})
+#: Why the import target is not applied besides the hour itself (`site/import_target.py` names the rest).
+TARGET_NOT_APPLIED_LOAD_BALANCING_OFF = "load_balancing_off"
+TARGET_NOT_APPLIED_BATTERY_UNKNOWN = "battery_unknown"
+#: How many of the import target's changes per charger the diagnostics keep (`import_target_snapshot`).
+TARGET_LOG_LENGTH = 48
 
 #: How far (amps) above its minimum a charger's own fresh reading must be for a charger whose current the site does
 #: not know to count as drawing above it, once the site's measurement is lost: a car at its minimum reads a little
@@ -302,6 +331,21 @@ class BalancingPauseState:
 
     retry_at: datetime | None
     cause: str
+
+
+@dataclass(frozen=True, slots=True)
+class ImportTargetStatus:
+    """What the site's import target does to one charger now (`SiteCapacityController.import_target_status`): the
+    target and the hour's mean so far (kW); the amps it holds the charger to (`None`: not held); the end of the hour
+    it is paused to (`None`: not paused by it); the departure it is set aside for (`None`: not); and whether the
+    house alone ends the hour above the target."""
+
+    target_kw: float
+    hour_kw: float
+    held_a: float | None
+    paused_until: datetime | None
+    released_for: str | None
+    house_over: bool
 
 #: Decision-log details of the battery-on-the-fuse handling (`site/battery_probe.py`).
 DETAIL_HELD_BATTERY_AT_LIMIT = "held_battery_at_limit"
@@ -481,11 +525,22 @@ class SiteCapacityController:
         # The last 24 hours, one row a minute (`site/site_history.py`), for the debug bundle only.
         self._history = SiteHistory(hass, entry_id)
         self._history_cancel: Callable[[], None] | None = None
-        # Each clock hour's mean import, for a demand charge and the import target (`site/demand_tracker.py`); only
-        # measured and shown, never read by a decision. Its clock is the electricity price's area's
-        # (`_demand_zone`), resolved again at most every `_DEMAND_ZONE_TTL_S`.
+        # Each clock hour's mean import, for a demand charge and the import target (`site/demand_tracker.py`). Its
+        # clock is the electricity price's area's (`_demand_zone`), resolved again at most every
+        # `_DEMAND_ZONE_TTL_S`. Only the import target reads it for a decision (`_hold_to_import_target`).
         self.demand = SiteDemand(hass, entry_id, _home_zone(hass))
         self._demand_zone: tuple[float, str] | None = None
+        # The import target (`_hold_to_import_target`), as of the last recompute: the hour's budget (`None` while not
+        # applied, and why), what it does to each charger, and which chargers' decisions it lowered. Per charger the
+        # hour the target paused it in (it stays paused until the next) and the departure it set the target aside
+        # for. Not persisted: after a restart the hour's budget decides again from the hour the tracker kept.
+        self._target_budget: HourBudget | None = None
+        self._target_not_applied: str | None = None
+        self._target_shares: dict[str, TargetShare] = {}
+        self._target_lowered: set[str] = set()
+        self._target_paused_hour: dict[str, datetime] = {}
+        self._target_released: dict[str, str] = {}
+        self._target_log: deque[dict[str, Any]] = deque(maxlen=TARGET_LOG_LENGTH)
         # Logging-only memory of the last conflict list; `membership_conflicts` itself is always
         # live.
         self._last_logged_conflicts: list[SiteMembershipConflict] = self.membership_conflicts
@@ -904,7 +959,8 @@ class SiteCapacityController:
 
     def _observe_demand(self) -> None:
         """Give the hour tracker this recompute's net grid power and the chargers' draw (at most every few seconds).
-        A measurement only: it never raises into the recompute and nothing here decides anything."""
+        A measurement only: it never raises into the recompute and nothing here decides anything (the import target
+        reads the hour it keeps, `_hold_to_import_target`)."""
         if not self.demand.due():
             return
         try:
@@ -912,7 +968,9 @@ class SiteCapacityController:
 
             grid_w = site_net_grid_w(self)
             car_w = None if grid_w is None else site_car_w(self.hass, self)
-            self.demand.observe(grid_w, car_w, self.demand_zone())
+            # A battery's discharge is kept beside the hour for an import target under `battery_first` only.
+            discharge_w = self._battery_first_discharge()[1]
+            self.demand.observe(grid_w, car_w, self.demand_zone(), discharge_w)
         except Exception:  # noqa: BLE001 - a measurement must never disturb the site
             _LOGGER.debug("SpotNav site %s: the hour's import could not be measured", self.entry_id, exc_info=True)
 
@@ -1092,8 +1150,8 @@ class SiteCapacityController:
     def load_balancing_limit(self, charger_entry_id: str) -> tuple[float | None, str | None]:
         """`(limit_a, cause)` while active control holds this charger below what it asked for, else
         `(None, None)`. `limit_a` is the current it was last given; `cause` is the battery sharing
-        the fuse, house consumption, the site's measurement lost (`limit_a` is then the charger's minimum), or
-        `None` when it is not known.
+        the fuse, house consumption, the site's measurement lost (`limit_a` is then the charger's minimum), the
+        site's import target (`_hold_to_import_target`), or `None` when it is not known.
         """
         decision = self.regulator_decisions.get(charger_entry_id)
         damper = self._dampers.get(charger_entry_id)
@@ -1106,6 +1164,17 @@ class SiteCapacityController:
             # Held at its minimum until the measurement is back, whatever it asked for.
             return self._minimum_setpoint(charger_entry_id), LIMIT_CAUSE_MEASUREMENT_LOST
         assigned = damper.last_written_a
+        share = self._target_shares.get(charger_entry_id)
+        if (
+            charger_entry_id in self._target_lowered
+            and share is not None
+            and share.action == ACTION_HELD
+            and share.cap_a is not None
+            and assigned is not None
+            and DEFAULT_MIN_CURRENT_A <= assigned <= share.cap_a + 0.5
+        ):
+            # The import target, not the fuse, holds it: the hour's budget leaves it no more.
+            return assigned, LIMIT_CAUSE_IMPORT_TARGET
         requested = next((basis.requested_current_a for basis in decision.basis.values()), None)
         if assigned is None or requested is None or assigned >= requested - 0.5:
             return None, None
@@ -2289,6 +2358,7 @@ class SiteCapacityController:
             )
             self._record_yield_stepping_verdict(charger_entry_id, yield_verdict)
             self._log_yield_stepping_transition(charger_entry_id, yield_verdict, fresh)
+            yield_verdict = self._yield_verdict_under_target(charger_entry_id, decision, yield_verdict)
 
         if overload and not (
             yield_verdict is not None
@@ -2352,6 +2422,7 @@ class SiteCapacityController:
 
         if (
             not overload
+            and decision.reason not in IMPORT_TARGET_REASONS
             and yield_verdict is not None
             and yield_verdict.action == "passthrough"
             and (
@@ -2479,6 +2550,24 @@ class SiteCapacityController:
             await self._async_pause_switch_only(charger_entry_id, charger_controller, decision, damper)
             return
         if is_import_overload(decision) and decision.proposed_current_a is not None:
+            failure = applyability_failure(
+                decision=decision,
+                signed_active_power_w=fresh.phase_signed_active_power_w,
+                signed_active_power_age_s=fresh.phase_signed_active_power_age_s,
+                signed_active_power_reason=fresh.phase_signed_active_power_reason,
+                max_age_s=max_age_s,
+                zero_margin_w=DEFAULT_ZERO_MARGIN_W,
+            )
+            if failure is not None:
+                self._log_active_control_outcome(
+                    charger_entry_id, decision, outcome="held", detail=failure.kind, detail_phase=failure.phase
+                )
+                return
+            await self._async_pause_switch_only(charger_entry_id, charger_controller, decision, damper)
+            return
+        if decision.reason == REASON_IMPORT_TARGET_PAUSED and decision.proposed_current_a == 0.0:
+            # The import target: its whole switched power no longer fits the hour. Paused on the fresh readings
+            # (`_hold_to_import_target` judged that the pause keeps every phase it draws on an import).
             failure = applyability_failure(
                 decision=decision,
                 signed_active_power_w=fresh.phase_signed_active_power_w,
@@ -3213,6 +3302,12 @@ class SiteCapacityController:
         ):
             self._resume_ready_since.pop(charger_entry_id, None)
             return False
+        target_cap = self._target_start_cap(charger_entry_id)
+        if target_cap is not None and target_cap < min_current_a:
+            # The import target holds it back until the next clock hour, or the hour's budget has no room for even
+            # its minimum.
+            self._resume_ready_since.pop(charger_entry_id, None)
+            return False
         delivered = self._stopped_charger_reading(charger_entry_id, wiring)
         if delivered is None and switch_only:
             phase_count, chosen = self.reckoned_phases(charger_entry_id)
@@ -3232,7 +3327,7 @@ class SiteCapacityController:
             return False
         if self._resume_backed_off(charger_entry_id, decision, now, previous_setpoint):
             return False
-        amps = int(min(float(requested), min(margins)))
+        amps = int(min(float(requested), min(margins), math.inf if target_cap is None else target_cap))
         started = await charger_controller.async_battery_probe_start(amps, capped=True)
         if not started:
             return False
@@ -3301,10 +3396,15 @@ class SiteCapacityController:
         none back. `retry_at` is when it is tried again: the battery probe's or the resume's back-off end, the
         probe's first; `None` when nothing holds it back but room (the probe tries at once on a battery that fills
         the fuse, the resume after its dwell). `cause` is the battery filling the fuse (a fresh reading charging at
-        least `LIMIT_BATTERY_CHARGING_W`), else the house's own consumption."""
+        least `LIMIT_BATTERY_CHARGING_W`), else the house's own consumption; the import target where it paused the
+        charge this hour (`retry_at` is then the next hour's start, when it is tried again)."""
         charger_controller = controller_for(self.hass, charger_entry_id)
         if charger_controller is None or not charger_controller.paused_by_balancing:
             return None
+        budget = self._target_budget
+        if budget is not None and self._target_paused_hour.get(charger_entry_id) == budget.hour_start:
+            # The import target paused it: it is tried again when the next clock hour begins.
+            return BalancingPauseState(retry_at=budget.hour_end, cause=LIMIT_CAUSE_IMPORT_TARGET)
         now = self._yield_now()
         remaining: float | None = None
         probe = self._battery_probes.get(charger_entry_id)
@@ -3370,6 +3470,9 @@ class SiteCapacityController:
             or charger_controller.car_ended_holds_charge
         ):
             return False
+        target_cap = self._target_start_cap(charger_entry_id)
+        if target_cap is not None and target_cap < min_current_a:
+            return False  # the import target holds it back: a probe at the minimum would break the hour
         delivered = self._stopped_charger_reading(charger_entry_id, wiring)
         if delivered is None:
             return False
@@ -3456,12 +3559,17 @@ class SiteCapacityController:
                 else {phase: None for phase in PHASES}
             )
             limit_a: dict[PhaseName, float | None] = {}
+            # No more than the import target leaves the car, as for a yield step (`_consult_yield_stepper`).
+            target_a = self._target_ceiling_a(charger_entry_id)
             for phase in PHASES:
                 measured = fresh.measured_phase_current_a.get(phase)
                 margin = fresh.measured_margin_a.get(phase)
                 limit_a[phase] = (
                     None if not observing or measured is None or margin is None else measured + margin
                 )
+                car_a = None if delivered is None else delivered.get(phase).value
+                if target_a is not None and limit_a[phase] is not None and measured is not None and car_a is not None:
+                    limit_a[phase] = min(cast(float, limit_a[phase]), measured - car_a + target_a)
             main_fuse_a = self.config.get(CONF_MAIN_FUSE_A)
             verdict = probe.evaluate(
                 now,
@@ -3796,12 +3904,19 @@ class SiteCapacityController:
         battery_power_w = (
             battery.value if battery is not None and battery.problem is None else None
         )
-        # The limit per phase: what is measured plus the uncredited margin (fuse less safety margin).
+        # The limit per phase: what is measured plus the uncredited margin (fuse less safety margin), and no more than
+        # the import target leaves the car (`_target_ceiling_a`): the site as it is, with the car at that ceiling.
+        target_a = self._target_ceiling_a(charger_entry_id)
+        if target_a is not None:
+            requested_a = min(requested_a, max(target_a, float(decision.proposed_current_a or 0.0)))
         limit_a: dict[PhaseName, float | None] = {}
         for phase in phases:
             measured = fresh.measured_phase_current_a.get(phase)
             margin = fresh.measured_margin_a.get(phase)
             limit_a[phase] = None if measured is None or margin is None else measured + margin
+            car_a = delivered_current_a.get(phase)
+            if target_a is not None and limit_a[phase] is not None and measured is not None and car_a is not None:
+                limit_a[phase] = min(cast(float, limit_a[phase]), measured - car_a + target_a)
         observation = YieldObservation(
             now=self._yield_now(),
             site_current_a=site_current_a,
@@ -3817,6 +3932,32 @@ class SiteCapacityController:
             ),
         )
         return stepper.observe(decision.proposed_current_a, requested_a, assigned_a, observation)
+
+    def _yield_verdict_under_target(
+        self, charger_entry_id: str, decision: RegulatorDecision, verdict: YieldVerdict
+    ) -> YieldVerdict | None:
+        """Yield stepping's verdict as the import target allows it (`None`: the raw proposal goes as it is).
+
+        A lowering the target made is the target's: no hold of the stepper's keeps it back, and only a write of the
+        stepper's that is lower still is taken. Otherwise a step never goes above what the target leaves the charger
+        (`_target_ceiling_a`): a write above it is taken at it, or, where that is below the charger's minimum, not at
+        all. The fuse is untouched either way: each only gives the charger less than the stepper would."""
+        proposed = decision.proposed_current_a
+        if decision.reason in IMPORT_TARGET_REASONS:
+            if (
+                verdict.action == "write"
+                and verdict.current_a is not None
+                and proposed is not None
+                and verdict.current_a < proposed
+            ):
+                return verdict
+            return None
+        ceiling = self._target_ceiling_a(charger_entry_id)
+        if ceiling is None or verdict.action != "write" or verdict.current_a is None or verdict.current_a <= ceiling:
+            return verdict
+        if ceiling < self._min_current_a(charger_entry_id):
+            return None
+        return replace(verdict, current_a=float(math.floor(ceiling)), reaches_request=False)
 
     @staticmethod
     def _battery_charge_a(
@@ -4356,7 +4497,341 @@ class SiteCapacityController:
                     # It cannot be lowered: any lowering the overload by |I| calls for is a pause.
                     lowering = replace(lowering, proposed_current_a=0.0, reason=REASON_MAGNITUDE_LOWERING)
                 decisions[charger_entry_id] = lowering
-        return decisions
+        return self._hold_to_import_target(decisions, credited, voltage_by_phase, config.max_age_s)
+
+    # -- the import target (`site/import_target.py`)
+
+    def _import_target_kw(self) -> float | None:
+        """The site's import target as stored, read from its entry: it is written without a reload."""
+        from ..api.entity_fields import stored_import_target_kw  # noqa: PLC0415 - the API imports this module
+
+        entry = self.hass.config_entries.async_get_entry(self.entry_id)
+        return stored_import_target_kw(self.config if entry is None else entry.data)
+
+    def _battery_first_discharge(self) -> tuple[bool, float | None]:
+        """Whether a home battery's discharge counts as import for the target (`battery_first` with a battery set),
+        and its discharge now (W, positive while it discharges), `None` when it cannot be read live."""
+        if self.config.get(CONF_SOLAR_PRIORITY, DEFAULT_SOLAR_PRIORITY) != SOLAR_PRIORITY_BATTERY_FIRST:
+            return False, None
+        battery = self.battery_aggregate_power()
+        if battery is None:
+            return False, None
+        if battery.value is None or not self.solar_accepts(battery, self.battery_entity_ids()):
+            return True, None
+        return True, max(0.0, -float(battery.value))
+
+    def _import_target_budget(self, target_kw: float, now: datetime) -> tuple[HourBudget | None, str | None]:
+        """The running hour's budget (`hour_budget`) on this recompute's readings, or why it is not applied."""
+        from ..execution.solar_execution import site_car_w, site_net_grid_w  # noqa: PLC0415 - it imports us
+
+        if not self._active_control_allowed():
+            return None, TARGET_NOT_APPLIED_LOAD_BALANCING_OFF
+        battery_counts, discharge_w = self._battery_first_discharge()
+        if battery_counts and discharge_w is None:
+            return None, TARGET_NOT_APPLIED_BATTERY_UNKNOWN
+        grid_w = site_net_grid_w(self)
+        car_w = None if grid_w is None else site_car_w(self.hass, self)
+        house_w = None if grid_w is None or car_w is None else grid_w + (discharge_w or 0.0) - car_w
+        running = self.demand.tracker.running_hour(now)
+        main_fuse_a = self.config.get(CONF_MAIN_FUSE_A)
+        ceiling_w = float("inf") if main_fuse_a is None else float(main_fuse_a) * len(PHASES) * HOLD_VOLTAGE_V
+        return hour_budget(
+            target_kw=target_kw,
+            running=running,
+            now=now,
+            house_w=house_w,
+            ceiling_w=ceiling_w,
+            extra_wh=0.0 if running is None else running.discharge_wh,
+            extra_covered_s=(None if running is None else running.discharge_covered_s) if battery_counts else None,
+        )
+
+    def _target_member(
+        self, request: ChargerRequest, decision: RegulatorDecision | None, budget: HourBudget
+    ) -> TargetMember:
+        """One charger as the target's budget is shared: what it would draw, and whether the target may hold it."""
+        charger_entry_id = request.charger_entry_id
+        charger_controller = controller_for(self.hass, charger_entry_id)
+        phases = len(request.phases_used() or ()) or request.phases
+        drawn = 0.0
+        if request.measured_current_a is not None:
+            values = [request.measured_current_a.get(phase).value for phase in (request.phases_used() or ())]
+            drawn = max((value for value in values if value is not None), default=0.0)
+        origin = None
+        if charger_controller is not None:
+            origin = getattr(charger_controller, "charge_origin", None) or getattr(
+                charger_controller, "paused_charge_origin", None
+            )
+        paused = bool(getattr(charger_controller, "paused_by_balancing", False))
+        proposed = None if decision is None else decision.proposed_current_a
+        holdable = (
+            charger_controller is not None
+            # A person's Start is theirs: counted, never held (as the sun leaves it alone).
+            and origin != "manual"
+            # The departure needs this charge at full power (`_target_release_due`).
+            and charger_entry_id not in self._target_released
+            # Neither an overload's lowering nor a decision with nothing to write is the target's to change.
+            and (paused or (proposed is not None and decision is not None and not _must_lower(decision)))
+        )
+        if paused:
+            # What the paused charge would resume at: a resume or a probe gives it no more (`_target_start_cap`).
+            requested = getattr(charger_controller, "requested_current_a", None)
+            wants = request.min_current_a if request.switch_only else float(requested or 0.0)
+        elif holdable:
+            wants = float(proposed or 0.0)
+        else:
+            wants = drawn if proposed is None else max(0.0, proposed)
+        return TargetMember(
+            charger_entry_id=charger_entry_id,
+            phases=phases,
+            min_a=request.min_current_a,
+            wants_a=wants,
+            holdable=holdable,
+            switch_only=request.switch_only,
+            paused_this_hour=self._target_paused_hour.get(charger_entry_id) == budget.hour_start,
+        )
+
+    def _target_release_due(self, member: TargetMember, share: TargetShare, budget: HourBudget, now: datetime) -> str | None:
+        """The departure (ISO) a plan's charge needs unheld (`departure_needs_release`), else `None`."""
+        charger_controller = controller_for(self.hass, member.charger_entry_id)
+        if charger_controller is None:
+            return None
+        origin = getattr(charger_controller, "charge_origin", None) or getattr(
+            charger_controller, "paused_charge_origin", None
+        )
+        plan = getattr(charger_controller, "plan", None)
+        if origin != "plan_window" or plan is None or not plan.departure:
+            return None
+        departure = dt_util.parse_datetime(plan.departure)
+        if departure is None or departure.tzinfo is None:
+            return None
+        power_kw = plan.power_kw if plan.power_kw else member_w(plan.phases, plan.amps) / 1000.0
+        need_kwh = plan_remaining_kwh(plan.windows, power_kw, now, departure)
+        held_kw = member_w(member.phases, share.cap_a or 0.0) / 1000.0
+        later_kw = min(power_kw, max(0.0, budget.target_kw - max(0.0, budget.house_w) / 1000.0))
+        if departure_needs_release(
+            need_kwh=need_kwh, now=now, departure=departure, hour_end=budget.hour_end, held_kw=held_kw, later_kw=later_kw
+        ):
+            return plan.departure
+        return None
+
+    def _target_floor_a(
+        self, request: ChargerRequest, voltage_by_phase: Mapping[PhaseName, float | None], max_age_s: float
+    ) -> float | None:
+        """How far the target may lower this charger without raising what the fuse carries (`lowering_floor_a`), on
+        this recompute's own readings; `None` when a phase cannot be judged."""
+        phases = request.phases_used() or ()
+        result = self.result
+        if not phases or request.measured_current_a is None:
+            return None
+        for phase in phases:
+            age = result.phase_signed_active_power_age_s.get(phase)
+            if result.phase_signed_active_power_reason.get(phase) is not None or age is None or age > max_age_s:
+                return None
+        signed_current = any(result.phase_direction_source.get(phase) == "signed_current" for phase in phases)
+        return lowering_floor_a(
+            phases=phases,
+            measured_a={phase: request.measured_current_a.get(phase).value for phase in phases},
+            signed_power_w={phase: result.phase_signed_active_power_w.get(phase) for phase in phases},
+            voltage_v={phase: voltage_by_phase.get(phase) for phase in phases},
+            margin_a={phase: result.measured_margin_a.get(phase) for phase in phases} if signed_current else None,
+        )
+
+    def _hold_to_import_target(
+        self,
+        decisions: dict[str, RegulatorDecision],
+        requests: Sequence[ChargerRequest],
+        voltage_by_phase: Mapping[PhaseName, float | None],
+        max_age_s: float,
+    ) -> dict[str, RegulatorDecision]:
+        """The fuse's decisions with the import target min-ed in (`site/import_target.py`).
+
+        Only ever lowers: a decision is replaced only by a smaller proposal, so the smaller of the fuse's ceiling and
+        the target's always wins. An overload's lowering (`_must_lower`) and a decision with nothing to write are
+        never touched, and a lowering never goes below what keeps every phase the charger draws on an import
+        (`_target_floor_a`), so the target can never raise the current the fuse carries. Not applied (nothing held)
+        while load balancing is off, the hour cannot be measured well enough, or the site's target is not set."""
+        self._target_shares = {}
+        self._target_lowered = set()
+        self._target_budget = None
+        target_kw = self._import_target_kw()
+        if target_kw is None:
+            self._target_not_applied = None
+            self._target_paused_hour.clear()
+            self._target_released.clear()
+            return decisions
+        now = dt_util.utcnow()
+        budget, reason = self._import_target_budget(target_kw, now)
+        self._target_not_applied = reason
+        if budget is None:
+            return decisions
+        self._target_budget = budget
+        # A pause holds to the end of its hour only; a departure set aside only while the plan is for it.
+        self._target_paused_hour = {
+            charger_entry_id: hour
+            for charger_entry_id, hour in self._target_paused_hour.items()
+            if hour == budget.hour_start
+        }
+        for charger_entry_id, departure in list(self._target_released.items()):
+            plan = getattr(controller_for(self.hass, charger_entry_id), "plan", None)
+            if plan is None or plan.departure != departure:
+                del self._target_released[charger_entry_id]
+        ordered = allocation_order(requests)
+        members = [self._target_member(request, decisions.get(request.charger_entry_id), budget) for request in ordered]
+        shares = share_budget(budget.allowed_w, members)
+        released = False
+        for member in members:
+            share = shares[member.charger_entry_id]
+            if member.holdable and share.action in (ACTION_HELD, ACTION_PAUSED):
+                departure = self._target_release_due(member, share, budget, now)
+                if departure is not None:
+                    self._target_released[member.charger_entry_id] = departure
+                    self._target_paused_hour.pop(member.charger_entry_id, None)
+                    self._note_target(member.charger_entry_id, "released", budget, departure=departure)
+                    released = True
+        if released:
+            members = [self._target_member(request, decisions.get(request.charger_entry_id), budget) for request in ordered]
+            shares = share_budget(budget.allowed_w, members)
+        self._target_shares = shares
+        held = dict(decisions)
+        for request in ordered:
+            charger_entry_id = request.charger_entry_id
+            share = shares.get(charger_entry_id)
+            decision = decisions.get(charger_entry_id)
+            member = next(m for m in members if m.charger_entry_id == charger_entry_id)
+            if (
+                share is None
+                or share.cap_a is None
+                or decision is None
+                or decision.proposed_current_a is None
+                or not member.holdable
+                or not request.requested_current_a
+            ):
+                # Nothing held, or a charge that is not running (a paused one is held back by `_target_start_cap`).
+                continue
+            proposed = decision.proposed_current_a
+            if proposed <= share.cap_a:
+                continue
+            floor = self._target_floor_a(request, voltage_by_phase, max_age_s)
+            if floor is None:
+                continue
+            if share.action == ACTION_PAUSED and floor <= 0.0:
+                held[charger_entry_id] = replace(decision, proposed_current_a=0.0, reason=REASON_IMPORT_TARGET_PAUSED)
+                if self._target_paused_hour.get(charger_entry_id) != budget.hour_start:
+                    self._target_paused_hour[charger_entry_id] = budget.hour_start
+                    self._note_target(charger_entry_id, "paused", budget)
+                self._target_lowered.add(charger_entry_id)
+                continue
+            if request.switch_only:
+                continue  # it runs whole or not at all, and the pause would raise what a phase carries
+            lowered = max(share.cap_a, request.min_current_a, float(math.ceil(floor - 1e-9)))
+            if lowered < proposed:
+                held[charger_entry_id] = replace(decision, proposed_current_a=lowered, reason=REASON_IMPORT_TARGET_HELD)
+                self._target_lowered.add(charger_entry_id)
+                self._note_target(charger_entry_id, "held", budget, cap_a=lowered)
+        return held
+
+    def _note_target(
+        self,
+        charger_entry_id: str,
+        action: str,
+        budget: HourBudget,
+        *,
+        cap_a: float | None = None,
+        departure: str | None = None,
+    ) -> None:
+        """Keep a change of what the target does to a charger, for the diagnostics (one entry per change)."""
+        last = next((entry for entry in reversed(self._target_log) if entry["charger"] == charger_entry_id), None)
+        hour = budget.hour_start.isoformat()
+        if last is not None and (last["hour"], last["action"], last["cap_a"]) == (hour, action, cap_a):
+            return
+        self._target_log.append(
+            {
+                "at": dt_util.utcnow().isoformat(),
+                "hour": hour,
+                "charger": charger_entry_id,
+                "action": action,
+                "cap_a": cap_a,
+                "departure": departure,
+                "hour_kw": round(budget.hour_kw, 3),
+                "allowed_w": round(budget.allowed_w),
+                "house_w": round(budget.house_w),
+            }
+        )
+
+    def _target_ceiling_a(self, charger_entry_id: str) -> float | None:
+        """The most the import target leaves this charger now (`TargetShare.room_a`; `0.0` while it pauses it), `None`
+        when it holds nothing back: no yield step and no probe goes above it."""
+        share = self._target_shares.get(charger_entry_id)
+        if share is None or share.action == ACTION_UNHELD:
+            return None
+        return 0.0 if share.action == ACTION_PAUSED else share.room_a
+
+    def _target_start_cap(self, charger_entry_id: str) -> float | None:
+        """The most a resume or a probe may give this charger for the import target: `0.0` while the target pauses
+        it, the held amps while it holds it, `None` when the target holds nothing back."""
+        share = self._target_shares.get(charger_entry_id)
+        if share is None:
+            return None
+        if share.action == ACTION_PAUSED:
+            return 0.0
+        return share.cap_a if share.action == ACTION_HELD else None
+
+    def import_target_status(self, charger_entry_id: str) -> ImportTargetStatus | None:
+        """What the import target does to this charger now, as the status says it, or `None` while it does nothing
+        (not set, or not applied this hour)."""
+        budget = self._target_budget
+        if budget is None:
+            return None
+        charger_controller = controller_for(self.hass, charger_entry_id)
+        paused = (
+            self._target_paused_hour.get(charger_entry_id) == budget.hour_start
+            and charger_controller is not None
+            and bool(getattr(charger_controller, "paused_by_balancing", False))
+        )
+        held_a: float | None = None
+        if charger_entry_id in self._target_lowered and not paused:
+            limit_a, cause = self.load_balancing_limit(charger_entry_id)
+            if cause == LIMIT_CAUSE_IMPORT_TARGET:
+                held_a = limit_a
+        return ImportTargetStatus(
+            target_kw=budget.target_kw,
+            hour_kw=round(budget.hour_kw, 2),
+            held_a=held_a,
+            paused_until=budget.hour_end if paused else None,
+            released_for=self._target_released.get(charger_entry_id),
+            house_over=budget.house_over,
+        )
+
+    def import_target_snapshot(self) -> dict[str, Any]:
+        """The import target as the diagnostics show it: the hour's budget, or why it is not applied; what it does to
+        each charger; the hour each was paused in, the departure it was set aside for, and its recent changes."""
+        budget = self._target_budget
+        return {
+            "target_kw": self._import_target_kw(),
+            "not_applied": self._target_not_applied,
+            "budget": None
+            if budget is None
+            else {
+                "hour_start": budget.hour_start.isoformat(),
+                "hour_kw": round(budget.hour_kw, 3),
+                "so_far_kwh": round(budget.so_far_kwh, 3),
+                "remaining_s": round(budget.remaining_s, 1),
+                "house_w": round(budget.house_w),
+                "allowed_w": round(budget.allowed_w),
+                "house_over": budget.house_over,
+            },
+            "chargers": {
+                charger_entry_id: {
+                    "action": share.action,
+                    "cap_a": share.cap_a,
+                    "lowered": charger_entry_id in self._target_lowered,
+                }
+                for charger_entry_id, share in self._target_shares.items()
+            },
+            "paused_hour": {key: value.isoformat() for key, value in self._target_paused_hour.items()},
+            "released": dict(self._target_released),
+            "log": list(self._target_log),
+        }
 
     def charger_measured_current(self, charger_entry_id: str) -> DirectPhaseMeasurement | None:
         """One associated charger's raw measured current, for entities and diagnostics."""
