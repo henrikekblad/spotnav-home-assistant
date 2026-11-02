@@ -427,7 +427,7 @@ are cut in the order they joined the site. A charger set to First keeps its curr
 others can give way.
 
 Solar surplus follows the same order. Of the chargers on solar (or on hybrid outside a plan window
-and short of their target), the first in the order is offered the whole surplus; the next is
+and short of their target, or past it and below the car's own known limit), the first in the order is offered the whole surplus; the next is
 offered only what the first cannot use: surplus too small for the first one to start on, or more
 than it takes (its maximum current, or less when the car draws less). A charger that is paused, on
 another strategy, or known to be unplugged takes no part, and its draw counts as house load.
