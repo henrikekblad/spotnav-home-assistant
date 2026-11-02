@@ -202,3 +202,29 @@ async def test_the_sun_and_active_control_do_not_give_the_same_room_away_twice(h
     after = site_controller.start_allowance_a(sun.entry_id)
     assert before == 16.0  # 10 A of room plus the 6 A it draws
     assert after == 13.0  # less the 3 A ours was given and has not drawn
+
+
+async def test_a_lost_confirmation_pauses_where_the_room_left_is_below_the_minimum(hass: HomeAssistant) -> None:
+    charger, _ = await _ocpp_charger(hass, "lostmin_charger")
+    turn_off = async_mock_service(hass, "switch", "turn_off")
+    _charger_reads(hass, "lostmin_charger", 0.0)
+    _report(hass, "lostmin_site", (12.0, 13.0, 14.0), 39.0 * 230.0)
+    site_entry = _site(hass, "lostmin_site", [charger], ["lostmin_charger"])
+    assert await hass.config_entries.async_setup(site_entry.entry_id)
+    await hass.async_block_till_done()
+    site_controller = controller_of(hass, site_entry.entry_id)
+    await _confirm(hass, "lostmin_site")
+    await _start(hass, charger, "lostmin_charger", 10)
+    _charger_reads(hass, "lostmin_charger", 10.0)
+    await _confirm(hass, "lostmin_site", currents=(12.0, 13.0, 14.0), times=4)
+    assert site_controller.active_control_writes(charger.entry_id)
+
+    # The direction is withdrawn, and L3 is 7 A over the 24 A limit with the car at 10 A: 3 A left, a pause.
+    _report(hass, "lostmin_site", (12.0, 13.0, 31.0), -56.0 * 230.0)
+    await _tick(hass)
+    decision = site_controller.regulator_decisions[charger.entry_id]
+    assert (decision.proposed_current_a, decision.reason) == (
+        0.0,
+        "lowering_overload_on_current_magnitude_direction_unknown",
+    )
+    assert [call.data.get("entity_id") for call in turn_off] == ["switch.lostmin_charger"]

@@ -680,7 +680,8 @@ def magnitude_overload_lowering(
 ) -> RegulatorDecision:
     """For a charger in a charge on a phase whose direction is not known: lowered only where a phase it draws on is
     over the limit by |I| (`measured_margin_a` < 0), to its own current plus that margin on the tightest such
-    phase (what the sun's capped write allowed before), never raised; otherwise held
+    phase (what the sun's capped write allowed before), a pause (0, same reason) where that is below its minimum,
+    never raised; otherwise held
     (`phase_direction_unknown`, `None`). The sign of the overload is not known, so this guards the fuse as a
     magnitude-only site always did; it is no better than that."""
     held = RegulatorDecision(None, "phase_direction_unknown", None, {})
@@ -716,10 +717,12 @@ def magnitude_overload_lowering(
         return held
     limiting_phase = min(ceilings, key=lambda phase: ceilings[phase])
     proposed = round_down_to_step(ceilings[limiting_phase])
-    proposed, reason = _legalize_or_pause(
-        proposed, request.min_current_a, "lowering_overload_on_current_magnitude_direction_unknown"
+    if 0.0 < proposed < request.min_current_a:
+        # A pause, but kept under this reason: only its own apply path writes it (it needs no signed power).
+        proposed = 0.0
+    return RegulatorDecision(
+        proposed, "lowering_overload_on_current_magnitude_direction_unknown", limiting_phase, basis
     )
-    return RegulatorDecision(proposed, reason, limiting_phase, basis)
 
 
 def direction_phases(request: ChargerRequest) -> tuple[PhaseName, ...]:

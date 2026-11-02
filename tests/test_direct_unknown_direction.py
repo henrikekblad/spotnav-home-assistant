@@ -253,3 +253,22 @@ async def test_a_raised_charging_current_setting_is_capped_by_the_room_the_curre
     await _tick(hass)
     assert site.regulator_decisions[charger.entry_id].proposed_current_a is None
     assert configure_calls == []
+
+
+async def test_a_ceiling_between_nothing_and_the_minimum_pauses_the_charge(hass: HomeAssistant) -> None:
+    """L3 at 31 A against a 24 A limit with the car at 10 A: 3 A is left, below its 6 A minimum. The charge is
+    paused at once, through the lowering's own path (it needs no signed power), not held for want of one."""
+    charger, configure_calls, site = await _setup(hass, "between")
+    cc = controller_of(hass, charger.entry_id)
+    assert await cc.async_start(amps=10, manual=True)
+    hass.states.async_set("switch.between_charger", "on")
+    _charger_reads(hass, "between_charger", 10.0)
+    _report(hass, "between_site", (20.0, 20.0, 18.0), 0.0)
+    await _tick(hass)
+    turn_off = async_mock_service(hass, "switch", "turn_off")
+
+    _report(hass, "between_site", (20.0, 20.0, 31.0), 0.0)
+    await _tick(hass)
+    decision = site.regulator_decisions[charger.entry_id]
+    assert (decision.proposed_current_a, decision.reason) == (0.0, MAGNITUDE)
+    assert [call.data.get("entity_id") for call in turn_off] == ["switch.between_charger"]
