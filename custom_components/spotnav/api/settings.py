@@ -23,6 +23,8 @@ public face, so nothing here serializes `as_dict()` or accepts `from_stored()` p
   `vehicles/camera_settings.py`): left out, the stored value is kept; a bad value is `invalid_camera`.
 * And `users_change_plan` (whether Home Assistant users who are not administrators may change this charger's strategy
   and plan): left out, the stored value is kept. Only an administrator changes it.
+* And `if_not_ready` (`ask`, `release` or `hold`: what the site's import target does when the plan cannot be ready by
+  its departure under it): left out, the stored value is kept. A plan field, as the departure is.
 * One read-only fact, `fiscal_included`: the fiscal components (`vat`, `tax`, `transfer`) the selected area's
   published price already contains (contract v2's `included`). They are locked as "included in the price" and
   nothing is added for them, whatever the overrides say. A body may echo it; it is never stored.
@@ -67,6 +69,8 @@ from ..planning.auto_settings import (
     FiscalOverride,
     IDENTIFY_AUTOMATIC,
     IDENTIFY_MODES,
+    IF_NOT_READY_ASK,
+    IF_NOT_READY_CHOICES,
     MAX_PERIODS,
     PauseIntent,
     SettingsCode,
@@ -118,6 +122,7 @@ SETTINGS_KEYS: Final = frozenset(
         "identify_mode",
         "identify_camera",
         "users_change_plan",
+        "if_not_ready",
     }
 )
 
@@ -126,7 +131,7 @@ SETTINGS_KEYS: Final = frozenset(
 OPTIONAL_SETTINGS_KEYS: Final = frozenset(
     {
         "departure_date", "departure_weekdays", "phases", "notifications", "fill_to_limit", "vehicle_ids",
-        "identify_mode", "identify_camera", "users_change_plan",
+        "identify_mode", "identify_camera", "users_change_plan", "if_not_ready",
     }
 )
 
@@ -147,6 +152,7 @@ NON_ADMIN_FIELDS: Final = frozenset(
         "departure_date",
         "departure_weekdays",
         "amps",
+        "if_not_ready",
     }
 )
 
@@ -407,6 +413,7 @@ def encode_settings(
         "identify_mode": settings.identify_mode,
         "identify_camera": None if settings.identify_camera is None else settings.identify_camera.as_dict(),
         "users_change_plan": settings.users_change_plan,
+        "if_not_ready": settings.if_not_ready,
     }
 
 
@@ -494,6 +501,11 @@ def decode_settings(raw: Any) -> AutoSettings:
             if "users_change_plan" in stored
             else False
         ),
+        if_not_ready=(
+            _enum(stored["if_not_ready"], IF_NOT_READY_CHOICES, "invalid_departure")
+            if "if_not_ready" in stored
+            else IF_NOT_READY_ASK
+        ),
     ).validated()
 
 
@@ -511,6 +523,7 @@ def replacement_mutator(
     keep_camera_choice: bool = False,
     keep_auto_periods: bool = False,
     keep_users_change_plan: bool = False,
+    keep_if_not_ready: bool = False,
     vehicle_target: Callable[[str | None], float | None] | None = None,
 ) -> Callable[[AutoSettings], AutoSettings]:
     """A full replacement expressed as the store's own mutation hook.
@@ -558,6 +571,8 @@ def replacement_mutator(
             )
         if keep_users_change_plan:
             kept["users_change_plan"] = current.users_change_plan
+        if keep_if_not_ready:
+            kept["if_not_ready"] = current.if_not_ready
         if keep_auto_periods and current.max_periods is None and replacement.max_periods == MAX_PERIODS:
             kept["max_periods"] = None
         updated = replace(replacement, pause=current.pause, **kept)
@@ -876,6 +891,7 @@ def body_mutator(
         keep_camera_choice=from_app,
         keep_auto_periods=not reads_auto_periods,
         keep_users_change_plan=left_out("users_change_plan"),
+        keep_if_not_ready=left_out("if_not_ready"),
         vehicle_target=lambda vehicle_id: vehicle_properties.stored_properties(hass, vehicle_id).target_percent,
     )
 

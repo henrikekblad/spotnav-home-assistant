@@ -94,6 +94,13 @@ IDENTIFY_AUTOMATIC: Final = "automatic"
 IDENTIFY_ASK: Final = "ask"
 IDENTIFY_OFF: Final = "off"
 IDENTIFY_MODES: Final = (IDENTIFY_AUTOMATIC, IDENTIFY_ASK, IDENTIFY_OFF)
+#: What the site's import target does when this plan cannot be ready by its departure under it
+#: (`site/site_capacity_controller.py`): `ask` (hold, and offer "Release tonight" once), `release` (the departure wins
+#: by itself) or `hold` (the target holds, and the status says what is missing).
+IF_NOT_READY_ASK: Final = "ask"
+IF_NOT_READY_RELEASE: Final = "release"
+IF_NOT_READY_HOLD: Final = "hold"
+IF_NOT_READY_CHOICES: Final = (IF_NOT_READY_ASK, IF_NOT_READY_RELEASE, IF_NOT_READY_HOLD)
 
 SettingsCode = Literal[
     "invalid_driver",
@@ -706,6 +713,8 @@ class AutoSettings:
     #: Whether Home Assistant users who are not administrators may change this charger's strategy and plan
     #: (`api/settings.py`'s `NON_ADMIN_FIELDS`); an administrator's choice, off by default. Not a planning input.
     users_change_plan: bool = False
+    #: If the car cannot be ready by the departure under the site's import target (`IF_NOT_READY_CHOICES`).
+    if_not_ready: str = IF_NOT_READY_ASK
 
     @property
     def execution_paused(self) -> bool:
@@ -775,6 +784,8 @@ class AutoSettings:
             _refuse("invalid_energy", "fill_to_limit must be a boolean")
         if not isinstance(self.users_change_plan, bool):
             _refuse("invalid_permission", "users_change_plan must be a boolean")
+        if self.if_not_ready not in IF_NOT_READY_CHOICES:
+            _refuse("invalid_departure", "if_not_ready must be ask, release or hold")
         if not isinstance(self.departure, time) or self.departure.tzinfo is not None:
             _refuse("invalid_departure", "departure must be a local wall time")
         if not isinstance(self.departure_enabled, bool):
@@ -887,6 +898,9 @@ class AutoSettings:
         if self.users_change_plan:
             # Additive too: written only when an administrator turned it on.
             stored["users_change_plan"] = True
+        if self.if_not_ready != IF_NOT_READY_ASK:
+            # Additive: written only once chosen.
+            stored["if_not_ready"] = self.if_not_ready
         return stored
 
     @classmethod
@@ -904,7 +918,7 @@ class AutoSettings:
             optional=frozenset(
                 {
                     "departure_date", "departure_weekdays", "notifications", "fill_to_limit", "vehicle_ids",
-                    "identify_mode", "identify_camera", "periods", "max_periods", "users_change_plan",
+                    "identify_mode", "identify_camera", "periods", "max_periods", "users_change_plan", "if_not_ready",
                 }
             ),
         )
@@ -974,6 +988,7 @@ class AutoSettings:
             identify_mode=stored.get("identify_mode", IDENTIFY_AUTOMATIC),
             identify_camera=identify_camera,
             users_change_plan=stored.get("users_change_plan", False),
+            if_not_ready=stored.get("if_not_ready", IF_NOT_READY_ASK),
         ).validated()
 
 
