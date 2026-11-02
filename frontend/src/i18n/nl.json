@@ -419,6 +419,7 @@
   "strategy.status.hybrid.noForecast": "Hybride · geen prognosebron — plant als Goedkoopst",
   "strategy.status.hybrid.noPriceData": "Hybride · wacht op prijsgegevens",
   "strategy.status.hybrid.satisfied": "Hybride · laadbehoefte al gedekt",
+  "strategy.status.sunPastTarget": "Doel bereikt – de zon laadt bij tot de limiet van de auto, {percent} %",
   "strategy.status.hybrid.unknown": "Hybride · plant",
   "settings.consumption.label": "Verbruik",
   "settings.value.unset": "Niet ingesteld",

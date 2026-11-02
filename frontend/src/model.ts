@@ -622,12 +622,16 @@ function carNeedsNoCharge(soc: Dashboard["soc"]): boolean {
 
 /**
  * Whether the backend's own status says the charging need is already met (e.g. a manual kWh plan with a full
- * car), or that the car ends this charge itself at its own limit: a car that stops taking current then is full.
+ * car, or a reached target the sun fills on), or that the car ends this charge itself at its own limit: a car that
+ * stops taking current then is full.
  */
 function needAlreadyMet(status: Dashboard["status"]): boolean {
   return status.lines.some(
     (line) =>
-      line.code === "hybrid_satisfied" || line.code === "charging_to_vehicle_limit" || line.code === "topping_off",
+      line.code === "hybrid_satisfied" ||
+      line.code === "sun_past_target" ||
+      line.code === "charging_to_vehicle_limit" ||
+      line.code === "topping_off",
   );
 }
 

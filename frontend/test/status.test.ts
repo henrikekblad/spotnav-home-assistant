@@ -147,6 +147,17 @@ describe("the status line renders the block and nothing else", () => {
     expect(issuesOf(toLimit, "en")).toEqual([]);
   });
 
+  it("says the target is reached and the sun fills on to the car's limit", () => {
+    const fill = block(statusLine("sun_past_target", { percent: 90 }));
+    expect(statusText(fill, format("sv"), NOW)).toBe("Målet nått – solen fyller på till bilens gräns 90 %");
+    expect(statusText(fill, format("en"), NOW)).toBe("Target reached – the sun tops up to the car's limit of 90 %");
+    for (const language of ["da", "fi", "nb"] as const) {
+      expect(statusText(fill, format(language), NOW)).toContain("90");
+      expect(statusText(fill, format(language), NOW)).not.toContain("{percent}");
+    }
+    expect(issuesOf(fill, "en")).toEqual([]);
+  });
+
   it("says a car finishing past the plan's last window charges until it is full, at most until a time", () => {
     const topOff = block(
       statusLine("topping_off", { until: "2026-09-22T21:40:00+00:00" }),

@@ -1557,6 +1557,7 @@ export const STATUS_CODE_TABLE = {
   hybrid_no_forecast: ["normal", {}],
   hybrid_no_price_data: ["normal", {}],
   hybrid_satisfied: ["normal", {}],
+  sun_past_target: ["normal", { percent: "number" }],
   hybrid_unknown: ["normal", {}],
   settings_suggested: ["normal", { fields: "codes" }],
   target_reached: [

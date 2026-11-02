@@ -419,6 +419,7 @@
   "strategy.status.hybrid.noForecast": "Hybrid · no forecast source — planning like Cheapest",
   "strategy.status.hybrid.noPriceData": "Hybrid · waiting for price data",
   "strategy.status.hybrid.satisfied": "Hybrid · charging need already met",
+  "strategy.status.sunPastTarget": "Target reached – the sun tops up to the car's limit of {percent} %",
   "strategy.status.hybrid.unknown": "Hybrid · planning",
   "settings.consumption.label": "Consumption",
   "settings.value.unset": "Not set",
