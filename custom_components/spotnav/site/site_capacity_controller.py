@@ -270,7 +270,7 @@ BATTERY_RISE_WINDOW_S = 60.0
 REASON_CHARGER_MEASUREMENT_UNUSABLE = "charger_measurement_unusable"
 REASON_MAGNITUDE_LOWERING = "lowering_overload_on_current_magnitude_direction_unknown"
 # The regulator's reasons for deciding nothing on a charger because a phase's direction is not known: an overload by
-# |I| still lowers it (`magnitude_overload_lowering`).
+# |I| still lowers it (`magnitude_overload_lowering`), and a charge that lowering paused is still resumed.
 DIRECTION_UNKNOWN_REASONS = frozenset({"phase_direction_unknown", "phase_direction_unknown_at_charge_start"})
 
 #: The regulator writes kept per charger, newest last, to tell which of them a site reading may already show
@@ -1950,6 +1950,14 @@ class SiteCapacityController:
             return True
         proposed = decision.proposed_current_a
         if proposed is None:
+            if decision.reason in DIRECTION_UNKNOWN_REASONS and charger_controller.paused_by_balancing:
+                # A charge an overload by |I| paused on a phase whose direction is not known: resumed as any balancing
+                # pause is, within the room |I| leaves (a start needs no direction), never probed.
+                damper = self._damper_for(charger_entry_id)
+                await self._async_maybe_resume_paused_charge(
+                    charger_entry_id, charger_controller, decision, fresh, damper, damper.last_written_a
+                )
+                return True
             if decision.reason == REASON_CHARGER_MEASUREMENT_UNUSABLE and charger_controller.paused_by_balancing:
                 # A charger load balancing stopped is off by its own control, and an OCPP charger sends no meter
                 # values then: its reading grows too old to decide a current on, but a stopped charger draws
@@ -3028,6 +3036,12 @@ class SiteCapacityController:
         ) or {}
         min_current_a = float(wiring.get("min_current_a", DEFAULT_MIN_CURRENT_A))
         phases = tuple(decision.basis.keys())
+        if not phases and decision.reason in DIRECTION_UNKNOWN_REASONS:
+            # Nothing was decided on a phase whose direction is not known: the phases the charger draws on.
+            request = next(
+                (r for r in self._build_requests(credit=False) if r.charger_entry_id == charger_entry_id), None
+            )
+            phases = tuple((None if request is None else request.phases_used()) or ())
         requested: float | None = charger_controller.requested_current_a
         switch_only = self._is_switch_only_charger(charger_controller)
         if switch_only:

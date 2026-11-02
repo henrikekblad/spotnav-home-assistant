@@ -1,6 +1,6 @@
 """A direct site that can never know a phase's direction (its currents carry no sign, or no total grid power to
 confirm one): load balancing still lowers an overload by |I|, whoever started the charge, never raises on it, caps a
-start by the room |I| leaves (`SiteCapacityController`). The reported case: a Tibber
+start by the room |I| leaves, and resumes a charge it paused (`SiteCapacityController`). The reported case: a Tibber
 Pulse's currents picked by hand without *The grid current is signed* and without the total, 25 A fuse, 1 A margin,
 a car started at 16 A, L3 read 32.8 A."""
 
@@ -9,13 +9,21 @@ from __future__ import annotations
 from homeassistant.core import HomeAssistant
 from pytest_homeassistant_custom_component.common import async_mock_service
 
-from custom_components.spotnav.const import CONF_GRID_POWER_SOURCE, CONF_SITE_CURRENT_SIGNED
+from custom_components.spotnav.const import CONF_GRID_POWER_SOURCE, CONF_SITE_CURRENT_SIGNED, REGULATOR_DWELL_S
 
 from .helpers import make_entry, make_site_entry
 from .test_direct_signed_active_control import _assigned, _charger_reads, _ocpp_charger, _report, _tick, _wiring
 from .world import controller_of
 
 MAGNITUDE = "lowering_overload_on_current_magnitude_direction_unknown"
+
+
+class _Clock:
+    def __init__(self) -> None:
+        self.now = 1_000.0
+
+    def __call__(self) -> float:
+        return self.now
 
 
 def _unsigned_site(hass: HomeAssistant, site: str, chargers: list, prefixes: list[str], extra: dict | None = None):
@@ -91,6 +99,42 @@ async def test_a_person_start_and_a_plan_start_are_capped_by_the_room_the_curren
     await _tick(hass)
     configure_calls.clear()
     assert await cc.async_start(amps=16, cause="plan_window")
+    assert _assigned(configure_calls)[-1:] == [9]
+
+
+async def test_a_charge_paused_on_an_unknown_direction_is_resumed_within_the_room(
+    hass: HomeAssistant, monkeypatch
+) -> None:
+    from custom_components.spotnav.execution.chargers.adapter import ChargerAdapter
+
+    monkeypatch.setattr(ChargerAdapter, "vehicle_connected", lambda self: True)
+    charger, configure_calls, site = await _setup(hass, "resume")
+    clock = _Clock()
+    site._yield_now = clock
+    cc = controller_of(hass, charger.entry_id)
+    assert await cc.async_start(amps=10, manual=True)
+    hass.states.async_set("switch.resume_charger", "on")
+    _charger_reads(hass, "resume_charger", 10.0)
+    _report(hass, "resume_site", (20.0, 20.0, 18.0), 0.0)
+    await _tick(hass)
+
+    # 10 A over on L3 with the car at 10 A: no room for its 6 A minimum, so it is paused.
+    turn_off = async_mock_service(hass, "switch", "turn_off")
+    _report(hass, "resume_site", (20.0, 20.0, 34.0), 0.0)
+    await _tick(hass)
+    decision = site.regulator_decisions[charger.entry_id]
+    assert (decision.proposed_current_a, decision.reason) == (0.0, MAGNITUDE)
+    assert [call.data.get("entity_id") for call in turn_off] == ["switch.resume_charger"]
+    hass.states.async_set("switch.resume_charger", "off")
+    _charger_reads(hass, "resume_charger", 0.0)
+    _report(hass, "resume_site", (10.0, 10.0, 15.0), 0.0)
+    await _tick(hass)
+    assert cc.paused_by_balancing
+
+    # 9 A of room on L3 for the dwell: started again at 9 A, the room |I| leaves.
+    configure_calls.clear()
+    clock.now += REGULATOR_DWELL_S + 1
+    await _tick(hass)
     assert _assigned(configure_calls)[-1:] == [9]
 
 
