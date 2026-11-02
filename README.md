@@ -19,8 +19,11 @@ meter and your cars.
   asks you only when that is not enough.
 - **Prices from your own Home Assistant.** Nord Pool, PVPC (Spain), Octopus Agile (Great Britain),
   Zonneplan (Netherlands) or your own free ENTSO-E key, plus your grid fee, also as a percentage of the
-  spot price or higher in high-load hours. The same price drives your heating and appliances
-  through [blueprints](docs/automations.md).
+  spot price or higher in high-load hours.
+- **Cheap and sunny hours for the rest of the house.** Two ready-made [blueprints](docs/automations.md)
+  raise or lower a thermostat or heat pump setpoint by the price, and run a pool pump or water heater on
+  solar surplus. Price sensors, "cheap now" and "expensive now" and the `spotnav.get_prices` action serve
+  your own automations ([The electricity price](docs/price-device.md)).
 - **Card, app and nine languages.** A Lovelace card is included and the SpotNav Android app
   ([Google Play](https://play.google.com/store/apps/details?id=se.sensnology.spotnav),
   [GitHub](https://github.com/henrikekblad/spotnav)) pairs with it. English, Swedish, Danish, Norwegian,
