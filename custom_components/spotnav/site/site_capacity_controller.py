@@ -4515,6 +4515,19 @@ class SiteCapacityController:
             solar=solar_capability(
                 self.config.get(CONF_MEASUREMENT_MODE), self.config.get(CONF_GRID_POWER_SOURCE)
             ),
+            direction_never_known=self.direction_never_known,
+        )
+
+    @property
+    def direction_never_known(self) -> bool:
+        """Whether this site can never know a phase's direction: a direct site without both a signed current and the
+        total grid power that confirms its sign (`site/current_sign.py`). Load balancing then only lowers an
+        overload by |I| and never raises."""
+        if self.config.get(CONF_MEASUREMENT_MODE) != MEASUREMENT_MODE_DIRECT:
+            return False
+        return not (
+            self.config.get(CONF_SITE_CURRENT_SIGNED)
+            and grid_power_source_from_dict(self.config.get(CONF_GRID_POWER_SOURCE)) is not None
         )
 
     def _charger_requested_current(self, charger_entry_id: str) -> float | None:

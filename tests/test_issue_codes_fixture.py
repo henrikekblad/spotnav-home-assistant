@@ -18,7 +18,7 @@ from typing import Any, get_args
 from custom_components.spotnav.execution import auto_execution
 from custom_components.spotnav.api import dashboard as dashboard_api
 from custom_components.spotnav.planning.auto_controller import AutoReason, AutoState
-from custom_components.spotnav.vehicles.capability import HealthState
+from custom_components.spotnav.vehicles.capability import HealthState, REASON_SITE_DIRECTION_UNKNOWN
 from custom_components.spotnav.planning.hybrid_plan import HybridReason
 from custom_components.spotnav.pricing.price_refresh import RefreshReason, RefreshState
 from custom_components.spotnav.site.solar_capability import REASON_NEEDS_TOTAL_GRID_POWER
@@ -65,7 +65,7 @@ def produced_codes() -> dict[str, Any]:
         ),
         "active_control_reasons": _sorted(
             [f"site_measurement_{state}" for state in get_args(HealthState) if state != "healthy"]
-            + ["duplicate_membership", "no_commandable_charger"]
+            + ["duplicate_membership", "no_commandable_charger", REASON_SITE_DIRECTION_UNKNOWN]
         ),
         "solar_reasons": _sorted(get_args(SolarReason)),
         "hybrid_reasons": _sorted(get_args(HybridReason)),
