@@ -2597,6 +2597,7 @@ def _import_target_facts(status: Any) -> ImportTargetFacts | None:
     risk_departure = None if risk is None else dt_util.parse_datetime(risk.departure)
     return ImportTargetFacts(
         target_kw=status.target_kw,
+        set_kw=status.set_kw,
         hour_kw=status.hour_kw,
         paused_until=None if status.paused_until is None else _utc(status.paused_until),
         released_for=None if released is None else _utc(released),

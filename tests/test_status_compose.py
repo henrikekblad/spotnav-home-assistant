@@ -745,7 +745,21 @@ CASES: list[tuple[str, StatusFacts, str, list[dict[str, Any]]]] = [
         "normal",
         [
             {"code": "charging_now", "params": {"until": None}},
-            {"code": "import_target_held", "params": {"limit_a": 7.0, "target_kw": 6.0, "hour_kw": 5.1}},
+            {"code": "import_target_held", "params": {"limit_a": 7.0, "target_kw": 6.0, "hour_kw": 5.1, "set_kw": 6.0}},
+        ],
+    ),
+    (
+        "the month's peak lifts the import target: the line names both",
+        base(
+            charging=True,
+            load_balancing=LoadBalancingFacts("observing", True, 9.0, None, "import_target"),
+            load_balancing_capable=True,
+            import_target=ImportTargetFacts(target_kw=6.6, hour_kw=5.9, set_kw=6.0),
+        ),
+        "normal",
+        [
+            {"code": "charging_now", "params": {"until": None}},
+            {"code": "import_target_held", "params": {"limit_a": 9.0, "target_kw": 6.6, "hour_kw": 5.9, "set_kw": 6.0}},
         ],
     ),
     (
@@ -758,7 +772,10 @@ CASES: list[tuple[str, StatusFacts, str, list[dict[str, Any]]]] = [
             import_target=ImportTargetFacts(target_kw=6.0, hour_kw=6.2, paused_until=at(0.5), house_over=True),
         ),
         "normal",
-        [{"code": "import_target_paused", "params": {"until": iso(0.5), "target_kw": 6.0, "house_over": True}}],
+        [{
+                "code": "import_target_paused",
+                "params": {"until": iso(0.5), "target_kw": 6.0, "house_over": True, "set_kw": 6.0},
+            }],
     ),
     (
         "the house alone over the target while the car charges",
@@ -792,7 +809,7 @@ CASES: list[tuple[str, StatusFacts, str, list[dict[str, Any]]]] = [
             {"code": "charging_now", "params": {"until": None}},
             {
                 "code": "import_target_at_risk",
-                "params": {"departure": iso(9), "missing_kwh": 4.0, "target_kw": 6.0, "releasable": True},
+                "params": {"departure": iso(9), "missing_kwh": 4.0, "target_kw": 6.0, "releasable": True, "set_kw": 6.0},
             },
         ],
     ),
@@ -809,7 +826,7 @@ CASES: list[tuple[str, StatusFacts, str, list[dict[str, Any]]]] = [
             {"code": "charging_now", "params": {"until": None}},
             {
                 "code": "import_target_at_risk",
-                "params": {"departure": iso(9), "missing_kwh": 4.0, "target_kw": 6.0, "releasable": False},
+                "params": {"departure": iso(9), "missing_kwh": 4.0, "target_kw": 6.0, "releasable": False, "set_kw": 6.0},
             },
         ],
     ),

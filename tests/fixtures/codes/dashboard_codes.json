@@ -285,6 +285,7 @@
         "departure",
         "missing_kwh",
         "releasable",
+        "set_kw",
         "target_kw"
       ],
       "tone": "notice"
@@ -293,6 +294,7 @@
       "params": [
         "hour_kw",
         "limit_a",
+        "set_kw",
         "target_kw"
       ],
       "tone": "normal"
@@ -306,6 +308,7 @@
     "import_target_paused": {
       "params": [
         "house_over",
+        "set_kw",
         "target_kw",
         "until"
       ],

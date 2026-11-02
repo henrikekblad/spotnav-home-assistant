@@ -196,7 +196,7 @@ STATUS_CODES: Final[dict[str, tuple[str, tuple[str, ...]]]] = {
     # no longer end under `target_kw` (kW, an hourly mean) with the car at its minimum, so it waits for the next clock
     # hour, `until`. `house_over`: the house alone ends the hour above the target (said in place of "so the hour stays
     # under it", which it does not).
-    "import_target_paused": (TONE_NORMAL, ("until", "target_kw", "house_over")),
+    "import_target_paused": (TONE_NORMAL, ("until", "target_kw", "house_over", "set_kw")),
     # The plan's last window ended with the car still drawing on a charge to its own limit: it goes on
     # until the car stops by itself, at most until `until` (an hour past the window, never past the
     # departure).
@@ -287,7 +287,9 @@ STATUS_CODES: Final[dict[str, tuple[str, tuple[str, ...]]]] = {
     "load_balancing_limited": (TONE_NOTICE, ("limit_a", "phase", "cause")),
     # In its place where the site's import target, not the fuse, holds the car: to `limit_a` so the hour stays under
     # `target_kw`; `hour_kw` is the hour's mean import so far (kW).
-    "import_target_held": (TONE_NORMAL, ("limit_a", "target_kw", "hour_kw")),
+    # `set_kw`, here and on the paused and at-risk lines: the import target as set; below `target_kw` where the
+    # month's free level (a demand charge's peak already paid for) lifts it this hour.
+    "import_target_held": (TONE_NORMAL, ("limit_a", "target_kw", "hour_kw", "set_kw")),
     # The house alone, with no charger, ends this hour above the import target (`target_kw`), while the car charges
     # (a charge the target paused says it in its own line): SpotNav holds back nothing more than its chargers, and does
     # not claim the hour stays under it.
@@ -298,7 +300,7 @@ STATUS_CODES: Final[dict[str, tuple[str, tuple[str, ...]]]] = {
     # Under the import target (`target_kw`) the plan misses its departure (`departure`, an instant) by `missing_kwh`.
     # `releasable` (the plan's `if_not_ready` `ask`): a person may set the target aside for this charge until then
     # (`spotnav/release_import_target`); else (`hold`) it is only said.
-    "import_target_at_risk": (TONE_NOTICE, ("departure", "missing_kwh", "target_kw", "releasable")),
+    "import_target_at_risk": (TONE_NOTICE, ("departure", "missing_kwh", "target_kw", "releasable", "set_kw")),
     "load_balancing_unavailable": (TONE_NOTICE, ()),
     # The charger's own scheduler, smart start or load balancer holds the charge (Easee): nothing is
     # wrong, and nothing SpotNav sends releases it.
@@ -502,6 +504,8 @@ class ImportTargetFacts:
 
     target_kw: float
     hour_kw: float
+    #: The import target as set (below `target_kw` where the month's free level lifts it), `None`: the same.
+    set_kw: float | None = None
     #: The next hour's start while the target paused the charge, else `None`.
     paused_until: datetime | None = None
     #: The departure a person set the target aside until, else `None`.
@@ -955,6 +959,7 @@ def _plan_headline(facts: StatusFacts) -> list[dict[str, Any]]:
                 until=aware_iso(target.paused_until),
                 target_kw=round(target.target_kw, 2),
                 house_over=target.house_over,
+                set_kw=round(target.target_kw if target.set_kw is None else target.set_kw, 2),
             ),
             *_plan_facts(proposal, energy=True, cost=True, distance=False),
         ]
@@ -1104,6 +1109,7 @@ def _notices(facts: StatusFacts) -> list[dict[str, Any]]:
                         limit_a=site.proposed_current_a,
                         target_kw=round(target.target_kw, 2),
                         hour_kw=round(target.hour_kw, 2),
+                        set_kw=round(target.target_kw if target.set_kw is None else target.set_kw, 2),
                     )
                 )
             else:
@@ -1126,6 +1132,7 @@ def _notices(facts: StatusFacts) -> list[dict[str, Any]]:
                 missing_kwh=round(target.missing_kwh, 1),
                 target_kw=round(target.target_kw, 2),
                 releasable=target.releasable,
+                set_kw=round(target.target_kw if target.set_kw is None else target.set_kw, 2),
             )
         )
     if target is not None and target.released_for is not None and facts.charging:
