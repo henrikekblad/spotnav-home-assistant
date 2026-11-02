@@ -272,3 +272,25 @@ async def test_a_ceiling_between_nothing_and_the_minimum_pauses_the_charge(hass:
     decision = site.regulator_decisions[charger.entry_id]
     assert (decision.proposed_current_a, decision.reason) == (0.0, MAGNITUDE)
     assert [call.data.get("entity_id") for call in turn_off] == ["switch.between_charger"]
+
+
+async def test_a_slow_meter_does_not_hold_the_lowering(hass: HomeAssistant, monkeypatch) -> None:
+    """Load balancing is held while a meter it reads reports too seldom, but an overload's lowering is not: the
+    lowering by |I| goes out as an import overload's does, and a raise is still held."""
+    from custom_components.spotnav.site.site_capacity_controller import SiteCapacityController
+
+    charger, configure_calls, site = await _setup(hass, "slow")
+    cc = controller_of(hass, charger.entry_id)
+    assert await cc.async_start(amps=16, manual=True)
+    hass.states.async_set("switch.slow_charger", "on")
+    _charger_reads(hass, "slow_charger", 16.0)
+    _report(hass, "slow_site", (24.0, 24.0, 24.0), 0.0)
+    await _tick(hass)
+    monkeypatch.setattr(
+        SiteCapacityController, "load_balancing_slow_meters", property(lambda self: {"sensor.slow_site_l3": 120.0})
+    )
+    configure_calls.clear()
+    _report(hass, "slow_site", (24.0, 24.0, 32.8), 0.0)
+    await _tick(hass)
+    assert site.regulator_decisions[charger.entry_id].reason == MAGNITUDE
+    assert _assigned(configure_calls)[-1:] == [7]

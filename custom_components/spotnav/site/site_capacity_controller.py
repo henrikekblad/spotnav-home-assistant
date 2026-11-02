@@ -273,6 +273,13 @@ REASON_MAGNITUDE_LOWERING = "lowering_overload_on_current_magnitude_direction_un
 # |I| still lowers it (`magnitude_overload_lowering`), and a charge that lowering paused is still resumed.
 DIRECTION_UNKNOWN_REASONS = frozenset({"phase_direction_unknown", "phase_direction_unknown_at_charge_start"})
 
+def _must_lower(decision: RegulatorDecision) -> bool:
+    """Whether `decision` lowers a charger for an overload: an import overload (`is_import_overload`), or one by |I|
+    where the direction is not known (`REASON_MAGNITUDE_LOWERING`). Neither is held by anything that is not about
+    safety; both are re-checked on the fresh reading before they are written."""
+    return is_import_overload(decision) or decision.reason == REASON_MAGNITUDE_LOWERING
+
+
 #: The regulator writes kept per charger, newest last, to tell which of them a site reading may already show
 #: (`_written_at_reading`).
 _WRITES_KEPT = 4
@@ -702,8 +709,8 @@ class SiteCapacityController:
             self._recompute()
 
     def _import_overload_now(self) -> bool:
-        """Whether the last recompute found an import overload: a decision that must lower (`MUST_LOWER_REASONS`)."""
-        return any(is_import_overload(decision) for decision in self.regulator_decisions.values())
+        """Whether the last recompute found an import overload: a decision that must lower (`_must_lower`)."""
+        return any(_must_lower(decision) for decision in self.regulator_decisions.values())
 
     @callback
     def _async_state_reported(self, event: Event[EventStateReportedData]) -> None:
@@ -1754,14 +1761,14 @@ class SiteCapacityController:
             held_detail = DETAIL_HELD_METER_TOO_SLOW
         if held_detail is not None:
             for charger_entry_id, decision in decisions.items():
-                if decision.proposed_current_a is not None and not is_import_overload(decision):
+                if decision.proposed_current_a is not None and not _must_lower(decision):
                     self._log_active_control_outcome(
                         charger_entry_id, decision, outcome="held", detail=held_detail
                     )
             decisions = {
                 charger_entry_id: decision
                 for charger_entry_id, decision in decisions.items()
-                if is_import_overload(decision)
+                if _must_lower(decision)
             }
             if not decisions:
                 return
