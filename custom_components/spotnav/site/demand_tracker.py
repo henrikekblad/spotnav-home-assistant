@@ -373,21 +373,30 @@ class SiteDemand:
         await DayStore.async_remove(hass, month_store_key(entry_id))
         await DayStore.async_remove(hass, running_store_key(entry_id))
 
+    def due(self) -> bool:
+        """Whether a reading is wanted now: loaded, and `OBSERVE_MIN_S` since the last one."""
+        if not self._loaded:
+            return False
+        if self._last_observed is None:
+            return True
+        elapsed = (self._now() - self._last_observed).total_seconds()
+        return not 0 <= elapsed < OBSERVE_MIN_S
+
     def observe(self, grid_w: float | None, car_w: float | None, tz: str | None = None) -> None:
         """One reading of the site (at most every `OBSERVE_MIN_S`). Never raises."""
-        if not self._loaded:
+        if not self.due():
             return
         try:
             now = self._now()
-            if self._last_observed is not None and 0 <= (now - self._last_observed).total_seconds() < OBSERVE_MIN_S:
-                return
             self._last_observed = now
             if tz is not None and tz != self.tracker.tz:
                 self.tracker.tz = tz
             changed = self.tracker.observe(now, grid_w, car_w)
             if changed and self._month_store is not None:
                 self._month_store.changed()
-            if self._running_store is not None:
+            running = self.tracker.running
+            if self._running_store is not None and running is not None and (grid_w is not None or running.covered_s):
+                # A site that measures nothing writes nothing.
                 self._running_store.changed()
         except Exception:  # noqa: BLE001 - a measurement must never disturb the site
             _LOGGER.debug("SpotNav site demand: a reading could not be taken", exc_info=True)

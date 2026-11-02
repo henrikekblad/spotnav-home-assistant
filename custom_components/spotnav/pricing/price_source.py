@@ -271,6 +271,23 @@ def entry_source_for(hass: HomeAssistant, charger_id: str) -> PriceSource | None
     return None
 
 
+def site_price_source(hass: HomeAssistant, site_entry_id: str) -> PriceSource | None:
+    """The electricity price entry a site's demand charge is read from: the site's own pointer, else the only
+    entry, else the first member charger's, or `None` when none applies (the site then has no demand charge)."""
+    site = hass.config_entries.async_get_entry(site_entry_id)
+    pointed = _pointed(hass, site)
+    if pointed is not None:
+        return _from_entry(hass, pointed, VIA_SITE)
+    entries = price_entries(hass)
+    if len(entries) == 1:
+        return _from_entry(hass, entries[0], VIA_ONLY)
+    for charger_id in [] if site is None else site.data.get(CONF_CHARGER_ENTRY_IDS) or []:
+        source = entry_source_for(hass, charger_id)
+        if source is not None:
+            return source
+    return None
+
+
 def price_source_for(
     hass: HomeAssistant, charger_id: str, settings: AutoSettings | None = None
 ) -> PriceSource | None:

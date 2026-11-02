@@ -120,6 +120,7 @@ from .site.site_join import (
 )
 from .site.site_capacity_controller import async_release_held_charges, SiteCapacityController
 from .site.site_history import charger_alone_values, SiteHistory
+from .site.demand_tracker import SiteDemand
 from .texts import async_load as async_load_texts
 from .vehicles.discovery_decisions import async_setup_decisions
 from .vehicles.soc_estimate import SocReader
@@ -841,6 +842,7 @@ async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
         # Its load balancing is gone with it: a charge it held back is given back or forgotten.
         await async_release_held_charges(hass, entry.data.get(CONF_CHARGER_ENTRY_IDS) or [])
         await SiteHistory.async_remove_stored(hass, entry.entry_id)
+        await SiteDemand.async_remove_stored(hass, entry.entry_id)
         return
     # The charger is left as someone without SpotNav expects it: allowed to charge, at its full current.
     # Read before the stores below go (an Easee pause of ours is remembered in the controller's).

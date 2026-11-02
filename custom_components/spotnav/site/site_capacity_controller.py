@@ -67,6 +67,7 @@ from ..const import (
     SOLAR_PRIORITY_CAR_FIRST,
 )
 from .site_history import SAMPLE_INTERVAL_S as HISTORY_SAMPLE_INTERVAL_S, SiteHistory
+from .demand_tracker import SiteDemand
 from ..execution.charger_connection import (
     CHARGING as CONNECTION_CHARGING,
     UNKNOWN as CONNECTION_UNKNOWN,
@@ -480,6 +481,11 @@ class SiteCapacityController:
         # The last 24 hours, one row a minute (`site/site_history.py`), for the debug bundle only.
         self._history = SiteHistory(hass, entry_id)
         self._history_cancel: Callable[[], None] | None = None
+        # Each clock hour's mean import, for a demand charge and the import target (`site/demand_tracker.py`); only
+        # measured and shown, never read by a decision. Its clock is the electricity price's area's
+        # (`_demand_zone`), resolved again at most every `_DEMAND_ZONE_TTL_S`.
+        self.demand = SiteDemand(hass, entry_id, _home_zone(hass))
+        self._demand_zone: tuple[float, str] | None = None
         # Logging-only memory of the last conflict list; `membership_conflicts` itself is always
         # live.
         self._last_logged_conflicts: list[SiteMembershipConflict] = self.membership_conflicts
@@ -566,6 +572,7 @@ class SiteCapacityController:
                 self.hass, cadence_entity_ids, self._async_state_reported
             )
         self._register_controller_listeners()
+        await self.demand.async_load()
         await self._history.async_load()
         self._history_cancel = async_track_time_interval(
             self.hass, self._async_sample_history, timedelta(seconds=HISTORY_SAMPLE_INTERVAL_S)
@@ -588,6 +595,7 @@ class SiteCapacityController:
             self._history_cancel()
             self._history_cancel = None
         await self._history.async_close()
+        await self.demand.async_close()
         if self._timer_cancel is not None:
             self._timer_cancel()
             self._timer_cancel = None
@@ -868,6 +876,7 @@ class SiteCapacityController:
         current_conflicts = self.membership_conflicts
         self._observe_reports()
         self.result = self._calculate()
+        self._observe_demand()
         self._sample_battery()
         previous_battery = self._recompute_battery
         self._recompute_battery = self._battery_reading()
@@ -892,6 +901,37 @@ class SiteCapacityController:
         if schedule_apply and self._active_control_allowed():
             self._schedule_apply_active_control()
         self._notify()
+
+    def _observe_demand(self) -> None:
+        """Give the hour tracker this recompute's net grid power and the chargers' draw (at most every few seconds).
+        A measurement only: it never raises into the recompute and nothing here decides anything."""
+        if not self.demand.due():
+            return
+        try:
+            from ..execution.solar_execution import site_car_w, site_net_grid_w  # noqa: PLC0415 - it imports us
+
+            grid_w = site_net_grid_w(self)
+            car_w = None if grid_w is None else site_car_w(self.hass, self)
+            self.demand.observe(grid_w, car_w, self.demand_zone())
+        except Exception:  # noqa: BLE001 - a measurement must never disturb the site
+            _LOGGER.debug("SpotNav site %s: the hour's import could not be measured", self.entry_id, exc_info=True)
+
+    def demand_zone(self) -> str:
+        """The clock the site's hours and months are on: its electricity price's area's, else Home Assistant's."""
+        now = time.monotonic()
+        if self._demand_zone is not None and now - self._demand_zone[0] < _DEMAND_ZONE_TTL_S:
+            return self._demand_zone[1]
+        zone = _home_zone(self.hass)
+        try:
+            from ..pricing.price_source import site_price_source  # noqa: PLC0415 - it imports the planner
+
+            source = site_price_source(self.hass, self.entry_id)
+            if source is not None and source.area is not None and source.area.tz:
+                zone = source.area.tz
+        except Exception:  # noqa: BLE001 - Home Assistant's own zone is the fallback
+            _LOGGER.debug("SpotNav site %s: no price area for the hour's clock", self.entry_id, exc_info=True)
+        self._demand_zone = (now, zone)
+        return zone
 
     @staticmethod
     def _is_commandable_charger(charger_controller: object) -> bool:
@@ -4857,6 +4897,16 @@ class SiteCapacityController:
         if last_reported is None:
             return None
         return (dt_util.utcnow() - last_reported).total_seconds()
+
+
+#: How long the hour tracker's clock (`SiteCapacityController.demand_zone`) is kept before it is resolved again.
+_DEMAND_ZONE_TTL_S = 300.0
+
+
+def _home_zone(hass: Any) -> str:
+    """Home Assistant's own time zone, `UTC` when it names none."""
+    zone = getattr(getattr(hass, "config", None), "time_zone", None)
+    return zone if isinstance(zone, str) and zone else "UTC"
 
 
 def charge_still_wanted(hass: HomeAssistant, charger_entry_id: str, charger_controller: Any) -> bool:
