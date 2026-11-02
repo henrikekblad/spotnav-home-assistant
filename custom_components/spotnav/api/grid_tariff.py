@@ -7,7 +7,7 @@ fee there (`transfer_high`), and that window. Every charger pricing with the ent
 The dashboard's optional `grid_tariff` block (`serialize_grid_tariff`), present exactly where `price_source` is
 (the charger prices with an electricity price entry):
 
-    {entry_id, write_revision, transfer_percent, transfer_high, high_load_window, writable}
+    {entry_id, write_revision, transfer_percent, transfer_high, high_load_window, demand, writable}
 
 * `transfer_percent`/`transfer_high`: `{policy, explicit_value, effective_value, unit}`. `policy` is `off`,
   `manual` or `included` (the area's published price already holds the grid fee: locked like `transfer`, nothing
@@ -18,21 +18,41 @@ The dashboard's optional `grid_tariff` block (`serialize_grid_tariff`), present 
   March, 1 to 12 all year); whole hours of the area's own clock, `from_hour` 0-23 and `to_hour` 1-24, wrapping over
   midnight when `from_hour` is after `to_hour` (equal is refused). A night's hours belong to the day they start on
   (`planning/planner.py:HighLoadWindow`).
+* `demand`: the demand charge and the import target, measured on the charger's site (`serialize_demand`):
+
+      {components, available, reason, price_unit, per_component, hour, import_target_kw}
+
+  `components` is the price entry's demand-charge components as a write states them
+  (`[{window, top_n, price_per_kw: {winter, summer}}]`, at most three, empty for none; `window` `null` counts all
+  hours, else it is a window of the high-load window's shape). `available` is whether the site can measure them:
+  `reason` is `no_site` (the charger is in no site) or `needs_total_grid_power` (a direct site without the meter's
+  total grid power), `null` while available. `price_unit` is the area's major unit per kW (`kr/kW`), `null` while
+  the area is not listed. `per_component` is aligned with `components` while the site measures (else empty): each
+  `{bar_kw, free_kw, price_per_kw, days_counted, peaks: [{date, start, kw}]}` for the month so far on the area's
+  clock (`planning/demand_charge.py`; `price_per_kw` is this month's season's). `hour` is the clock hour running
+  now, `{start, kw_so_far, kwh_so_far}`, or `null` before it has a reading: `kw_so_far` the mean import over the
+  time measured so far, `kwh_so_far` the energy. `import_target_kw` is the site's import target (`null` for none),
+  set in the site's settings (`import_target_kw` in `spotnav/update_entity_config`): only shown against the running
+  hour; nothing holds a charger for it yet.
 * `write_revision`: the price entry's write counter, which a write names as `expected_write_revision`.
 * `writable`: whether this caller may change it (an administrator; the paired app).
 
-One write, a full replacement of the three parts, compare-and-set against the entry's write counter:
+One write, a full replacement of the three parts (and of the demand-charge components when the body names them),
+compare-and-set against the entry's write counter:
 
 * WebSocket `spotnav/update_grid_tariff {charger_id, expected_write_revision, grid_tariff}`, administrators only,
   answering `{ok: true, grid_tariff: <block>}` or a stable error code;
 * the webhook action `update_grid_tariff {expected_write_revision, grid_tariff}` for its own charger, answering
   `{ok, error, field_errors, grid_tariff}` with the block re-read now.
 
-`grid_tariff` is `{transfer_percent: {enabled, value}, transfer_high: {enabled, value}, high_load_window}`. A fee
-that is on needs its figure (no area suggests one); the high-load fee needs a window. A tariff equal to the stored
-one (all off equals none stored) writes nothing and leaves the write counter. Refusals: `invalid_fiscal`
-(the body), `revision_conflict` (the entry was written since), `spotnav_no_price_entry` (the charger prices with
-its own settings; the block is absent then), and the charger lookup's codes.
+`grid_tariff` is `{transfer_percent: {enabled, value}, transfer_high: {enabled, value}, high_load_window}` and,
+optionally, `demand_components` (the list as `demand.components` states it; absent keeps the stored components, so
+a writer that does not know them leaves them alone). A fee that is on needs its figure (no area suggests one); the
+high-load fee needs a window. A component needs `top_n` 1, 3 or 5, a window of whole hours (or `null`) and prices
+that are `null` or not negative. A tariff equal to the stored one (all off equals none stored) writes nothing and
+leaves the write counter. Refusals: `invalid_fiscal` (the body, with the field that is wrong), `revision_conflict`
+(the entry was written since), `spotnav_no_price_entry` (the charger prices with its own settings; the block is
+absent then), and the charger lookup's codes.
 """
 
 from __future__ import annotations
@@ -47,14 +67,22 @@ from homeassistant.core import callback, HomeAssistant
 
 from ..planning.auto_settings import (
     AutoSettingsError,
+    DEMAND_COMPONENTS,
+    demand_components_from,
+    DemandComponent,
     FiscalOverride,
     GridTariff,
     high_load_window_dict,
     high_load_window_from,
 )
+from ..planning.first_run import site_for_charger
 from ..pricing.price_source import async_write_price_entry, entry_source_for, PriceSource
+from ..runtime import site_controller_for
+from ..site.demand_tracker import DemandSnapshot
+from ..site.solar_capability import REASON_NEEDS_TOTAL_GRID_POWER, solar_capability
+from ..const import CONF_GRID_POWER_SOURCE, CONF_MEASUREMENT_MODE
 from .common import ERROR_NOT_ADMIN, is_admin, lookup_charger
-from .entity_fields import ERR_INVALID_VALUE
+from .entity_fields import ERR_INVALID_VALUE, stored_import_target_kw
 
 #: The charger prices with its own settings: there is no electricity price entry to hold a grid tariff.
 ERROR_NO_PRICE_ENTRY: Final = "spotnav_no_price_entry"
@@ -66,6 +94,22 @@ FEE_KEYS: Final = frozenset({"enabled", "value"})
 POLICY_OFF: Final = "off"
 POLICY_MANUAL: Final = "manual"
 POLICY_INCLUDED: Final = "included"
+
+#: Why a site cannot measure the demand charge or the import target (`demand.reason`).
+DEMAND_NO_SITE: Final = "no_site"
+DEMAND_NEEDS_TOTAL_GRID_POWER: Final = REASON_NEEDS_TOTAL_GRID_POWER
+DEMAND_REASONS: Final = (DEMAND_NO_SITE, DEMAND_NEEDS_TOTAL_GRID_POWER)
+
+
+@dataclass(frozen=True, slots=True)
+class CapturedDemand:
+    """The charger's site's measurement of its demand charge and import target, read once."""
+
+    available: bool
+    reason: str | None
+    #: What the site's hours bill per component and the running hour; `None` while nothing is measured.
+    snapshot: DemandSnapshot | None
+    import_target_kw: float | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -79,6 +123,9 @@ class CapturedGridTariff:
     included: bool
     #: The area's minor unit, `None` while the area is not listed.
     minor_unit: str | None
+    #: The area's major unit (a demand charge's price per kW), `None` while the area is not listed.
+    major_unit: str | None = None
+    demand: CapturedDemand = CapturedDemand(available=False, reason=DEMAND_NO_SITE, snapshot=None, import_target_kw=None)
 
 
 def capture_grid_tariff(hass: HomeAssistant, charger_id: str) -> CapturedGridTariff | None:
@@ -86,7 +133,24 @@ def capture_grid_tariff(hass: HomeAssistant, charger_id: str) -> CapturedGridTar
     source = entry_source_for(hass, charger_id)
     if source is None or source.entry_id is None:
         return None
-    return _captured(source)
+    captured = _captured(source)
+    return replace(captured, demand=capture_demand(hass, charger_id, captured.tariff.demand))
+
+
+def capture_demand(hass: HomeAssistant, charger_id: str, components: tuple[DemandComponent, ...]) -> CapturedDemand:
+    """What the charger's site measures for `components` and its import target (see the module)."""
+    site = site_for_charger(hass, charger_id)
+    if site is None:
+        return CapturedDemand(available=False, reason=DEMAND_NO_SITE, snapshot=None, import_target_kw=None)
+    capability = solar_capability(site.data.get(CONF_MEASUREMENT_MODE), site.data.get(CONF_GRID_POWER_SOURCE))
+    target = stored_import_target_kw(site.data)
+    if not capability.capable:
+        return CapturedDemand(
+            available=False, reason=DEMAND_NEEDS_TOTAL_GRID_POWER, snapshot=None, import_target_kw=target
+        )
+    controller = site_controller_for(hass, site.entry_id)
+    snapshot = None if controller is None else controller.demand.snapshot(components, import_target_kw=target)
+    return CapturedDemand(available=True, reason=None, snapshot=snapshot, import_target_kw=target)
 
 
 def _captured(source: PriceSource) -> CapturedGridTariff:
@@ -98,6 +162,7 @@ def _captured(source: PriceSource) -> CapturedGridTariff:
         tariff=source.overrides.grid_tariff or GridTariff(),
         included=area is not None and area.includes("grid_fee"),
         minor_unit=None if area is None or not area.minor_unit else area.minor_unit,
+        major_unit=None if area is None or not area.major_unit else area.major_unit,
     )
 
 
@@ -111,6 +176,50 @@ def _fee(fee: FiscalOverride, unit: str | None, included: bool) -> dict[str, Any
         "explicit_value": fee.value,
         "effective_value": fee.value if policy == POLICY_MANUAL else None,
         "unit": unit,
+    }
+
+
+def _kw(value: float | None) -> float | None:
+    return None if value is None else round(value, 3)
+
+
+def serialize_demand(captured: CapturedGridTariff) -> dict[str, Any]:
+    """The block's `demand` (see the module)."""
+    tariff = captured.tariff
+    demand = captured.demand
+    snapshot = demand.snapshot
+    per_component: list[dict[str, Any]] = []
+    hour: dict[str, Any] | None = None
+    if snapshot is not None:
+        for month in snapshot.components:
+            per_component.append(
+                {
+                    "bar_kw": _kw(month.bar_kw),
+                    "free_kw": _kw(month.free_kw),
+                    "price_per_kw": month.price_per_kw,
+                    "days_counted": month.days_counted,
+                    "peaks": [
+                        {"date": peak.day.isoformat(), "start": peak.start.isoformat(), "kw": _kw(peak.kw)}
+                        for peak in month.peaks
+                    ],
+                }
+            )
+        running = snapshot.running
+        mean = None if running is None else running.mean_kw()
+        if running is not None and mean is not None:
+            hour = {
+                "start": running.start.isoformat(),
+                "kw_so_far": _kw(mean),
+                "kwh_so_far": _kw(running.import_wh / 1000),
+            }
+    return {
+        "components": [component.as_dict() for component in tariff.demand],
+        "available": demand.available,
+        "reason": demand.reason,
+        "price_unit": None if captured.major_unit is None else f"{captured.major_unit}/kW",
+        "per_component": per_component,
+        "hour": hour,
+        "import_target_kw": demand.import_target_kw,
     }
 
 
@@ -131,6 +240,7 @@ def serialize_grid_tariff(grid_tariff: CapturedGridTariff | None, *, can_act: bo
             captured.included,
         ),
         "high_load_window": None if window is None else high_load_window_dict(window),
+        "demand": serialize_demand(captured),
         "writable": bool(can_act),
     }
 
@@ -164,23 +274,33 @@ def _decode_fee(raw: Any, name: str) -> FiscalOverride:
         raise _invalid(str(err), name) from err
 
 
-def decode_grid_tariff(raw: Any) -> GridTariff:
-    """A write's `grid_tariff`: exactly its three parts, validated, or `invalid_fiscal`."""
-    if not isinstance(raw, Mapping) or set(raw) != GRID_TARIFF_KEYS:
-        raise _invalid(f"grid_tariff must be exactly {sorted(GRID_TARIFF_KEYS)}")
+def decode_grid_tariff(raw: Any) -> tuple[GridTariff, bool]:
+    """A write's `grid_tariff`: exactly its three parts and optionally `demand_components`, validated, or
+    `invalid_fiscal`. Also whether the body named the components (absent keeps the stored ones)."""
+    keys = set(raw) if isinstance(raw, Mapping) else set()
+    if not isinstance(raw, Mapping) or keys - {DEMAND_COMPONENTS} != GRID_TARIFF_KEYS:
+        raise _invalid(f"grid_tariff must be exactly {sorted(GRID_TARIFF_KEYS)} (and optionally {DEMAND_COMPONENTS})")
     window = None
     if raw["high_load_window"] is not None:
         try:
             window = high_load_window_from(raw["high_load_window"])
         except AutoSettingsError as err:
             raise _invalid(str(err), "high_load_window") from err
+    demand: tuple[DemandComponent, ...] = ()
+    named = DEMAND_COMPONENTS in keys
+    if named:
+        try:
+            demand = demand_components_from(raw[DEMAND_COMPONENTS])
+        except AutoSettingsError as err:
+            raise _invalid(str(err), DEMAND_COMPONENTS) from err
     tariff = GridTariff(
         transfer_percent=_decode_fee(raw["transfer_percent"], "transfer_percent"),
         transfer_high=_decode_fee(raw["transfer_high"], "transfer_high"),
         high_load_window=window,
+        demand=demand,
     )
     try:
-        return tariff.validated()
+        return tariff.validated(), named
     except AutoSettingsError as err:
         raise _invalid(str(err)) from err
 
@@ -200,7 +320,7 @@ def update_grid_tariff(hass: HomeAssistant, charger_id: str, expected_write_revi
     equals none stored) passes the compare-and-set and writes nothing: the write counter stays.
     """
     expected = _expected(expected_write_revision)
-    tariff = decode_grid_tariff(body)
+    tariff, demand_named = decode_grid_tariff(body)
     source = entry_source_for(hass, charger_id)
     if source is None or source.entry_id is None:
         raise GridTariffRefusal(ERROR_NO_PRICE_ENTRY, "This charger has no electricity price entry")
@@ -211,7 +331,11 @@ def update_grid_tariff(hass: HomeAssistant, charger_id: str, expected_write_revi
         raise GridTariffRefusal(
             "revision_conflict", f"the electricity price is at write {source.write_revision}, not {expected}"
         )
-    if tariff == (source.overrides.grid_tariff or GridTariff()):
+    stored = source.overrides.grid_tariff or GridTariff()
+    if not demand_named:
+        # A writer that does not know the demand charge leaves it as stored.
+        tariff = replace(tariff, demand=stored.demand)
+    if tariff == stored:
         # The tariff as stored (nothing stored reads as all off): nothing to write, and no replan.
         return
     try:
