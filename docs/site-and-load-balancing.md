@@ -246,10 +246,14 @@ It is best effort and is not a protective device. Turning it off gives back any 
   charger that can only be switched is paused), and a charge paused so is started again as any
   balancing pause is, at no more than the room there is. Every start and every current SpotNav writes
   is held to that room as on any site. The one case this does worse is a phase over the limit by
-  export, which the car's draw was reducing: such a site cannot tell it from import. A direct site
+  export, which the car's draw was reducing: such a site cannot tell it from import. A phase whose
+  direction is known (a signed site once confirmed) keeps the rules above, and a charger read seldom
+  (a cloud) is reckoned at no more than was last written to it until its reading catches up, so a
+  lowered car is not given its old current back. Slow meters and doubtful membership never hold this
+  lowering, as for an import overload. A direct site
   without both *The grid current is signed* and the total grid power never knows the direction: the
-  load-balancing row in the card's settings then says that it can only lower the charge and what to
-  set (the reason `site_direction_unknown` in the site's state and diagnostics). If the site editor
+  load-balancing row in the card's settings then says that it only protects the fuse and does not use
+  all the room there is, and what to set (the reason `site_direction_unknown` in the site's state and diagnostics). If the site editor
   lists your meter under *Found in Home Assistant*, **Use** sets both; nothing changes until you press
   it. The line goes by itself once both are set. Who writes is settled when a charge starts and kept
   until it ends (the charger stops or the car is unplugged): a charge that started before its phases were
@@ -436,7 +440,7 @@ The site's **Solar surplus** sensor shows, in watts, the power a car could take 
 site now, from these settings and the site's grid readings, also on a site without chargers; see
 [Solar](strategies.md#solar).
 
-## Total grid power (for solar)
+## Total grid power
 
 Solar and hybrid need the grid's signed power. A derived site has it per phase. A direct site
 (a current per phase, no direction, such as a Tibber Pulse) has it only when you give it the

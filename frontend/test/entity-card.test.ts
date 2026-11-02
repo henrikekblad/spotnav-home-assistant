@@ -1284,14 +1284,14 @@ describe("the site's estimate, warnings, sign options and detected meters", () =
     });
   });
 
-  it("labels the total grid power for solar, says what it is for, and saves it as a changed field", async () => {
+  it("labels the total grid power, says what it is for, and saves it as a changed field", async () => {
     const { hass, element } = await mounted({ update: "success_site" });
     openSettings(element);
     await settle();
     edit(element, "site");
     const power = openDialog(element)?.querySelector<HTMLElement>("[data-field-block='grid_power_source_power']");
-    expect(power?.textContent).toContain("Needed for solar and hybrid charging when the phases only report current.");
-    expect(translate("en", "entity.field.gridPowerSource")).toBe("Total grid power (for solar)");
+    expect(power?.textContent).toContain("Needed for solar and hybrid charging, and for full load balancing, when the phases only report current.");
+    expect(translate("en", "entity.field.gridPowerSource")).toBe("Total grid power");
     // A picker when Home Assistant's selector is defined (an earlier test may have defined it), else text.
     const control = field(element, "grid_power_source_power");
     if (control.tagName.toLowerCase() === "ha-selector") {
