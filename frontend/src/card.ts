@@ -53,6 +53,7 @@ import {
   answerPriceDuplicate,
   dismissSetupItem,
   fixOwnMode,
+  releaseImportTarget,
   setEntsoeKey,
   updateVehicle,
 } from "./api";
@@ -880,6 +881,7 @@ export class SpotnavCard extends HTMLElement {
         vehicles: this.vehicleFacts(),
         plannedVehicleName: this.plannedCarName(),
         days: this.departureDays(),
+        importTarget: this.siteHasImportTarget(),
       });
     } catch (error) {
       if (!this.editorIsCurrent(generation, operation)) {
@@ -1185,6 +1187,11 @@ export class SpotnavCard extends HTMLElement {
   }
 
   /** What the departure date picker offers now, in the market's own zone; `null` while that is unknown. */
+  /** Whether the charger's site has an import target (the price section's `demand` block says it). */
+  private siteHasImportTarget(): boolean {
+    return this.cardState.kind === "ready" && (this.cardState.dashboard.grid_tariff?.demand?.import_target_kw ?? null) !== null;
+  }
+
   private departureDays(): DepartureDays | null {
     return this.cardState.kind === "ready"
       ? departureDays(this.cardState.dashboard.market?.timezone ?? "", Date.now())
@@ -1411,6 +1418,7 @@ export class SpotnavCard extends HTMLElement {
         vehicles: this.vehicleFacts(),
         plannedVehicleName: this.plannedCarName(),
         days: this.departureDays(),
+        importTarget: this.siteHasImportTarget(),
       });
     } catch (error) {
       if (!this.editorIsCurrent(generation, operation)) {
@@ -1969,6 +1977,23 @@ export class SpotnavCard extends HTMLElement {
    * An issue's "Set to …" or "Turn on": the charger's own setting is written by the integration, which checks
    * again that the conflict still holds, then the dashboard is read again. A refusal leaves the row as the read says.
    */
+  private async releaseImportTarget(): Promise<void> {
+    const hass = this.hassObject;
+    const config = this.config;
+    if (!this.connected || hass === null || config === null || config.charger === "") {
+      return;
+    }
+    const generation = this.generation;
+    try {
+      await releaseImportTarget(hass, config.charger);
+    } catch {
+      // Not set aside: the line stays until the next read says otherwise.
+    }
+    if (generation === this.generation && this.connected) {
+      await this.refresh({ purpose: "confirm" });
+    }
+  }
+
   private async fixOwnMode(entity: string, value: string): Promise<void> {
     const hass = this.hassObject;
     const config = this.config;
@@ -2877,6 +2902,9 @@ export class SpotnavCard extends HTMLElement {
         },
         onFixOwnMode: (entity, value) => {
           void this.fixOwnMode(entity, value);
+        },
+        onReleaseImportTarget: () => {
+          void this.releaseImportTarget();
         },
         onAnswerOnboardPhases: (vehicleId, phases) => {
           void this.answerOnboardPhases(vehicleId, phases);

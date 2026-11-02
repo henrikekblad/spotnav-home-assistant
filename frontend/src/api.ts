@@ -491,6 +491,21 @@ export async function fixOwnMode(
   });
 }
 
+/** `spotnav/release_import_target`'s own version. */
+export const RELEASE_IMPORT_TARGET_API_VERSION = 1;
+
+/**
+ * Set the site's import target aside for this charger's charge until its departure (any user), the press beside
+ * the status line `import_target_at_risk`. Answers `{api_version, ok, error}`.
+ */
+export async function releaseImportTarget(hass: HomeAssistantLike, chargerId: string): Promise<unknown> {
+  return await call<unknown>(hass, {
+    type: "spotnav/release_import_target",
+    api_version: RELEASE_IMPORT_TARGET_API_VERSION,
+    charger_id: chargerId,
+  });
+}
+
 /** `spotnav/write_charge_limit`'s own version. */
 export const CHARGE_LIMIT_API_VERSION = 1;
 

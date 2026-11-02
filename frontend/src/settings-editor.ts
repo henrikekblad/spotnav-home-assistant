@@ -60,6 +60,8 @@ export interface SettingsEditorForm {
    * `null` while the zone is unknown: then a date can be seen and cleared but not chosen.
    */
   days?: DepartureDays | null;
+  /** The charger's site has an import target: the Plan dialog asks what it does when the car cannot be ready. */
+  importTarget?: boolean;
 }
 
 export interface SettingsEditorHandlers {
@@ -979,9 +981,36 @@ export function settingsEditorBody(
   // The Plan dialog's draft, told whenever an input may have moved it (set below, once `read` exists).
   let draftChanged = (): void => {};
 
+  /** "If the car cannot be ready in time": ask, release the target, or hold it (`if_not_ready`). */
+  const ifNotReadyRadios: HTMLInputElement[] = [];
+  const appendIfNotReady = (): void => {
+    const shown = form.values.ifNotReady ?? "";
+    if (form.importTarget !== true || shown === "") {
+      return;
+    }
+    const group = element(doc, "fieldset", C.siteFieldset);
+    group.dataset["part"] = "if-not-ready";
+    group.append(element(doc, "legend", C.siteLegend, translate(language, "settings.ifNotReady")));
+    for (const choice of ["ask", "release", "hold"] as const) {
+      const radio = doc.createElement("input") as HTMLInputElement;
+      radio.type = "radio";
+      radio.name = `${idPrefix}-if-not-ready`;
+      radio.value = choice;
+      radio.checked = shown === choice;
+      radio.disabled = form.readOnly;
+      radio.addEventListener("change", () => draftChanged());
+      ifNotReadyRadios.push(radio);
+      group.append(
+        checkboxField(doc, `${idPrefix}-if-not-ready-${choice}`, translate(language, `settings.ifNotReady.${choice}` as TranslationKey), radio),
+      );
+    }
+    body.querySelector<HTMLElement>("[data-part='departure']")?.append(group) ?? body.append(group);
+  };
+
   if (form.kind === "plan") {
     appendMode();
     appendDeadline();
+    appendIfNotReady();
     appendCurrent();
   } else if (form.kind === "energy") {
     appendEnergy();
@@ -1003,6 +1032,10 @@ export function settingsEditorBody(
         .join("");
     }
     values.current = currentValue;
+    const chosenIfNotReady = ifNotReadyRadios.find((radio) => radio.checked);
+    if (chosenIfNotReady !== undefined) {
+      values.ifNotReady = chosenIfNotReady.value;
+    }
     if (form.kind === "plan") {
       values.driver = socMode ? "target_soc" : "manual_kwh";
       values.targetPercent = targetValue;

@@ -883,7 +883,7 @@ export function buildModel(input: BuildInput): CardModel {
   const chart = chartSeries(rows, format.timeZone, input.nowMs, chartAxis);
   const bands = plannedBands(rows, chart.days, format.timeZone, pendingProposalOf(dashboard, input.nowMs), chart.time);
   const status = dashboard.status;
-  const issues = issuesOf(status, language, input.entityWords);
+  const issues = issuesOf(status, language, input.entityWords, format, input.nowMs);
   const zone = hasZone(format);
   // A fact nobody has is omitted from the plot, never shown as "unknown": this returns `null` rather than
   // `missing`'s text, and `card-view.ts` hides the whole line.

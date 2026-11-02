@@ -283,6 +283,8 @@ export interface CardViewInput {
   onDismissSetup?: (id: SetupRowId) => void;
   /** An issue's "Set to …" or "Turn on" (administrators only): the card writes that fix, then reads again. */
   onFixOwnMode?: (entity: string, value: string) => void;
+  /** An issue's "Release tonight" (any user): the card sets the import target aside for this charge, then reads again. */
+  onReleaseImportTarget?: () => void;
   /** Where Settings was left for a child dialog: the page returns there (owned by the card, kept across renders). */
   overviewPlace?: OverviewPlaceHolder;
   /** A picture for the camera's editors: the camera's picture now, or a car's reference thumbnail. */
@@ -877,13 +879,14 @@ export function issueListBody(
   model: CardModel,
   setup: HTMLElement | null = null,
   fix: ((fix: IssueFix) => void) | null = null,
+  admin = true,
 ): HTMLElement {
   const body = element(doc, "div");
   if (model.issues.length > 0 || setup === null) {
     body.append(element(doc, "p", `${C.muted} ${C.dialogIntro}`, translate(model.language, "dialog.issuesIntro")));
   }
   for (const issue of model.issues) {
-    body.append(issueRow(doc, model, issue, fix));
+    body.append(issueRow(doc, model, issue, fix, admin));
   }
   if (setup !== null) {
     body.append(setup);
@@ -891,11 +894,19 @@ export function issueListBody(
   return body;
 }
 
-function issueRow(doc: Document, model: CardModel, issue: Issue, fix: ((fix: IssueFix) => void) | null): HTMLElement {
+function issueRow(
+  doc: Document,
+  model: CardModel,
+  issue: Issue,
+  fix: ((fix: IssueFix) => void) | null,
+  admin = true,
+): HTMLElement {
   const row = element(doc, "div", C.issueItem);
   row.dataset["code"] = issue.code;
   row.dataset["severity"] = issue.severity;
-  const offered = fix !== null && issue.fix !== undefined ? issue.fix : null;
+  // A charger's own setting is set back by an administrator only; the import target is set aside by anyone.
+  const offered =
+    fix !== null && issue.fix !== undefined && (admin || issue.fix.action !== undefined) ? issue.fix : null;
   const text = issueText(model.language, issue);
   const hint = offered === null && issue.hintKey !== undefined ? ` ${translate(model.language, issue.hintKey)}` : "";
   row.append(element(doc, "span", C.issueText, `${text}${hint}`));
@@ -2082,7 +2093,7 @@ export function createCardView(input: CardViewInput): CardView {
     issuesDialog.show({
       // Only setup rows to show: the dialog is "Get started" itself.
       title: translate(model.language, model.issues.length === 0 && setup !== null ? "setup.heading" : "dialog.issues"),
-      body: issueListBody(doc, model, setup, input.isAdmin && input.onFixOwnMode !== undefined ? fixOwnMode : null),
+      body: issueListBody(doc, model, setup, issueFix, input.isAdmin),
       opener,
     });
   }
@@ -2115,8 +2126,12 @@ export function createCardView(input: CardViewInput): CardView {
   }
 
   /** An issue's button was pressed: the dialog closes and the card writes the fix, then reads the dashboard again. */
-  function fixOwnMode(fix: IssueFix): void {
+  function issueFix(fix: IssueFix): void {
     issuesDialog.hide({ restoreFocus: false });
+    if (fix.action === "release_import_target") {
+      input.onReleaseImportTarget?.();
+      return;
+    }
     input.onFixOwnMode?.(fix.entity, fix.value);
   }
 
