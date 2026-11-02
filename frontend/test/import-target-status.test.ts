@@ -165,3 +165,25 @@ describe("the import target lifted to the month's peak", () => {
     );
   });
 });
+
+describe("the house alone above the month's peak", () => {
+  it("names the month's peak and the import target as set, not the lifted level as the target", () => {
+    const over = line("import_target_house_over", { target_kw: 6.6, set_kw: 6 });
+    expect(lineText(over, SV, NOW)).toBe("Huset ensamt ligger över månadens topp på 6,6 kW (effektmål 6,0 kW) den här timmen.");
+    expect(lineText(over, EN, NOW)).toBe(
+      "The house alone is above the month's peak of 6.6 kW (import target 6.0 kW) this hour.",
+    );
+    const paused = line("import_target_paused", {
+      until: "2026-11-02T14:00:00+00:00",
+      target_kw: 6.6,
+      house_over: true,
+      set_kw: 6,
+    });
+    expect(lineText(paused, SV, NOW)).toBe(
+      "Pausad till kl. 15:00 – huset ensamt ligger över månadens topp på 6,6 kW (effektmål 6,0 kW) den här timmen.",
+    );
+    expect(lineText(line("import_target_house_over", { target_kw: 6, set_kw: 6 }), EN, NOW)).toBe(
+      "The house alone is above the 6.0 kW import target this hour.",
+    );
+  });
+});

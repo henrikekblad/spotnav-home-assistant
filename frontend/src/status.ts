@@ -296,6 +296,9 @@ export const STATUS_VARIANT_KEYS: readonly TranslationKey[] = [
   "status.importTargetPausedPeakNextHour",
   "status.importTargetAtRiskPeak",
   "status.importTargetAtRiskPeakNoTime",
+  "status.importTargetPausedHousePeak",
+  "status.importTargetPausedHousePeakNextHour",
+  "status.importTargetHouseOverPeak",
   "status.importTargetReleasedAuto",
   "status.importTargetReleasedAutoNoTime",
   "strategy.status.solar.chargingUnknown",
@@ -690,17 +693,32 @@ export function lineText(
       const until = ms(p["until"]);
       // The house alone over the target: said in place of "so the hour stays under it", which it does not.
       const house = p["house_over"] === true;
-      const peak = !house && monthPeak(p);
+      const peak = monthPeak(p);
       const set = formatFixed(language, num(p["set_kw"]) ?? 0, 1);
       if (until === null || !zoned) {
-        const key = house ? "status.importTargetPausedHouseNextHour" : peak ? "status.importTargetPausedPeakNextHour" : "status.importTargetPausedNextHour";
+        const key = house
+          ? peak
+            ? "status.importTargetPausedHousePeakNextHour"
+            : "status.importTargetPausedHouseNextHour"
+          : peak
+            ? "status.importTargetPausedPeakNextHour"
+            : "status.importTargetPausedNextHour";
         return say(key, { target, set });
       }
-      const key = house ? "status.importTargetPausedHouse" : peak ? "status.importTargetPausedPeak" : "status.importTargetPaused";
+      const key = house
+        ? peak
+          ? "status.importTargetPausedHousePeak"
+          : "status.importTargetPausedHouse"
+        : peak
+          ? "status.importTargetPausedPeak"
+          : "status.importTargetPaused";
       return say(key, { target, set, time: clock(format, until) });
     }
     case "import_target_house_over":
-      return say("status.importTargetHouseOver", { target: formatFixed(language, num(p["target_kw"]) ?? 0, 1) });
+      return say(monthPeak(p) ? "status.importTargetHouseOverPeak" : "status.importTargetHouseOver", {
+        target: formatFixed(language, num(p["target_kw"]) ?? 0, 1),
+        set: formatFixed(language, num(p["set_kw"]) ?? 0, 1),
+      });
     case "import_target_at_risk": {
       // Under the target the plan misses its departure: by how much, and when.
       const departure = ms(p["departure"]);

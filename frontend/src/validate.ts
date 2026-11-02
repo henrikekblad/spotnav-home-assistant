@@ -1630,7 +1630,7 @@ export const STATUS_CODE_TABLE = {
     "normal",
     { limit_a: "numberOrNull", target_kw: "number", hour_kw: "number", set_kw: "number" },
   ],
-  import_target_house_over: ["normal", { target_kw: "number" }],
+  import_target_house_over: ["normal", { target_kw: "number", set_kw: "number" }],
   import_target_released: ["normal", { target_kw: "number", departure: "instant", automatic: "boolean" }],
   import_target_at_risk: [
     "notice",
