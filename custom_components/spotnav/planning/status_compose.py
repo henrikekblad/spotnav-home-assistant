@@ -36,7 +36,9 @@ Precedence (first match wins the headline; "add" rows append a fact line)
    at `time`) in place of solar_waiting_for_sun, and so is an empty charger: solar_no_car_surplus while the surplus
    would start a car (`start_a`), else solar_no_car. A solar charge the sun switched to one phase
    (`ChargingController.switched_phases`) is solar_charging_one_phase{requested_a} in place of solar_charging, so
-   the phase count and the power on one phase are told. When planning
+   the phase count and the power on one phase are told. With the car's target reached and the sun free to fill
+   on up to the car's own known limit (`target_stop.sun_fill_limit_percent`), sun_past_target{percent} follows
+   the solar headline, and under hybrid takes hybrid_satisfied's place. When planning
    is waiting on prices (waiting_for_history, waiting_for_publication, buying_before_publication)
    that plan line follows the strategy headline (normal tone, params as in 4), so the wait is
    never hidden by the strategy.
@@ -258,6 +260,8 @@ STATUS_CODES: Final[dict[str, tuple[str, tuple[str, ...]]]] = {
     "hybrid_no_forecast": (TONE_NORMAL, ()),
     "hybrid_no_price_data": (TONE_NORMAL, ()),
     "hybrid_satisfied": (TONE_NORMAL, ()),
+    # The target is reached and the sun fills on up to the car's own limit (`percent`), never from the grid.
+    "sun_past_target": (TONE_NORMAL, ("percent",)),
     "hybrid_unknown": (TONE_NORMAL, ()),
     "settings_suggested": (TONE_NORMAL, ("fields",)),
     "target_reached": (TONE_NORMAL, ("soc_percent", "basis", "reading_age_s", "stopped_at")),
@@ -538,6 +542,8 @@ class StatusFacts:
     identification: str | None = None
     #: The car's minimum charge level while its own charge runs (`min_soc_floor.py`), else `None`.
     min_soc_percent: float | None = None
+    #: The car's own limit while its target is reached and the sun fills on up to it (Solar, Hybrid), else `None`.
+    sun_fill_limit_percent: float | None = None
     #: The car ended the plan's charge short of the target and the plan waits for its level
     #: (`ChargingController.car_ended_wait`): the level it ended at (`None`: not known) and whether that was an
     #: estimate. `car_ended_waiting` says whether it waits at all.
@@ -1147,9 +1153,14 @@ def compose_status(facts: StatusFacts) -> dict[str, Any]:
         lines.append(_line("min_soc_charging", percent=round(facts.min_soc_percent)))
     elif facts.solar is not None:
         lines.extend(_solar_lines(facts.solar, charging=facts.charging))
+        if facts.sun_fill_limit_percent is not None and facts.solar.reason != "vehicle_full":
+            lines.append(_line("sun_past_target", percent=round(facts.sun_fill_limit_percent)))
         lines.extend(_price_wait_lines(facts))
     elif facts.hybrid is not None:
-        lines.append(_hybrid_line(facts.hybrid, facts.proposal))
+        if facts.hybrid.reason == "satisfied_need_met" and facts.sun_fill_limit_percent is not None:
+            lines.append(_line("sun_past_target", percent=round(facts.sun_fill_limit_percent)))
+        else:
+            lines.append(_hybrid_line(facts.hybrid, facts.proposal))
         lines.extend(_price_wait_lines(facts))
     else:
         lines.extend(_plan_headline(facts))

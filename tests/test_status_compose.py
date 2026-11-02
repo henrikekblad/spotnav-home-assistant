@@ -562,6 +562,27 @@ CASES: list[tuple[str, StatusFacts, str, list[dict[str, Any]]]] = [
     ("hybrid waiting for price data", base(strategy="hybrid", hybrid=HybridFacts("no_price_data")), "normal", [{"code": "hybrid_no_price_data", "params": {}}]),
     ("hybrid need met", base(strategy="hybrid", hybrid=HybridFacts("satisfied_need_met", 0.0)), "normal", [{"code": "hybrid_satisfied", "params": {}}]),
     (
+        "hybrid need met, the sun fills on to the car's limit",
+        base(strategy="hybrid", hybrid=HybridFacts("satisfied_need_met", 0.0), sun_fill_limit_percent=90.0),
+        "normal",
+        [{"code": "sun_past_target", "params": {"percent": 90}}],
+    ),
+    (
+        "solar past a reached target: the headline, then the fill to the car's limit",
+        base(strategy="solar", solar=SolarFacts("on", "on", requested_a=8.0), sun_fill_limit_percent=90.0),
+        "normal",
+        [
+            {"code": "solar_charging", "params": {"requested_a": 8.0}},
+            {"code": "sun_past_target", "params": {"percent": 90}},
+        ],
+    ),
+    (
+        "a car at its own limit under solar is full, not filled on",
+        base(strategy="solar", solar=SolarFacts("off", "vehicle_full"), sun_fill_limit_percent=90.0),
+        "normal",
+        [{"code": "solar_vehicle_full", "params": {}}],
+    ),
+    (
         "a person's Stop pauses Auto, the sun's too: the pause takes the hybrid headline",
         base(strategy="hybrid", hybrid=HybridFacts("satisfied_need_met", 0.0), paused=True,
              pause_choice="manual", pause_action="stop", pause_scope="plug_in"),

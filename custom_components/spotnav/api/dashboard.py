@@ -2451,6 +2451,7 @@ def status_facts(capture: CapturedDashboard) -> StatusFacts:
         ),
         top_off_until=None if capture.live.top_off_until is None else _utc(capture.live.top_off_until),
         min_soc_percent=capture.live.min_soc_percent,
+        sun_fill_limit_percent=finite_number(((None if site is None else site.solar_state) or {}).get("sun_fill_limit_percent")),
         **_car_ended_facts(capture.live.car_ended_wait, settings),
         balancing_paused=site is not None and site.balancing_paused,
         balancing_retry_at=None if site is None else _utc(site.balancing_retry_at),
