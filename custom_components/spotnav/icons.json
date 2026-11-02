@@ -113,6 +113,15 @@
       },
       "grid_fee_high_policy": {
         "default": "mdi:transmission-tower"
+      },
+      "high_load_days": {
+        "default": "mdi:calendar-week"
+      },
+      "high_load_from_month": {
+        "default": "mdi:calendar-start"
+      },
+      "high_load_to_month": {
+        "default": "mdi:calendar-end"
       }
     },
     "number": {
@@ -153,12 +162,6 @@
     "switch": {
       "departure_enabled": {
         "default": "mdi:clock-alert-outline"
-      },
-      "high_load_weekdays_only": {
-        "default": "mdi:calendar-week"
-      },
-      "high_load_winter_only": {
-        "default": "mdi:snowflake"
       }
     },
     "time": {

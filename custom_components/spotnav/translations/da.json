@@ -783,6 +783,48 @@
           "off": "Fra",
           "manual": "Brug en manuel værdi"
         }
+      },
+      "high_load_days": {
+        "name": "Spidslastdage",
+        "state": {
+          "all": "Alle dage",
+          "weekdays": "Hverdage (man–fre)",
+          "mon_sat": "Mandag til lørdag"
+        }
+      },
+      "high_load_from_month": {
+        "name": "Spidslasttimer første måned",
+        "state": {
+          "1": "januar",
+          "2": "februar",
+          "3": "marts",
+          "4": "april",
+          "5": "maj",
+          "6": "juni",
+          "7": "juli",
+          "8": "august",
+          "9": "september",
+          "10": "oktober",
+          "11": "november",
+          "12": "december"
+        }
+      },
+      "high_load_to_month": {
+        "name": "Spidslasttimer sidste måned",
+        "state": {
+          "1": "januar",
+          "2": "februar",
+          "3": "marts",
+          "4": "april",
+          "5": "maj",
+          "6": "juni",
+          "7": "juli",
+          "8": "august",
+          "9": "september",
+          "10": "oktober",
+          "11": "november",
+          "12": "december"
+        }
       }
     },
     "number": {
@@ -828,12 +870,6 @@
     "switch": {
       "departure_enabled": {
         "name": "Frist for afgang"
-      },
-      "high_load_weekdays_only": {
-        "name": "Spidslasttimer kun på hverdage"
-      },
-      "high_load_winter_only": {
-        "name": "Spidslasttimer kun november–marts"
       }
     },
     "time": {

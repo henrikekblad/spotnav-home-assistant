@@ -783,6 +783,48 @@
           "off": "Desactivado",
           "manual": "Usar un valor manual"
         }
+      },
+      "high_load_days": {
+        "name": "Días de alta carga",
+        "state": {
+          "all": "Todos los días",
+          "weekdays": "Entre semana (lun–vie)",
+          "mon_sat": "De lunes a sábado"
+        }
+      },
+      "high_load_from_month": {
+        "name": "Primer mes de las horas de alta carga",
+        "state": {
+          "1": "enero",
+          "2": "febrero",
+          "3": "marzo",
+          "4": "abril",
+          "5": "mayo",
+          "6": "junio",
+          "7": "julio",
+          "8": "agosto",
+          "9": "septiembre",
+          "10": "octubre",
+          "11": "noviembre",
+          "12": "diciembre"
+        }
+      },
+      "high_load_to_month": {
+        "name": "Último mes de las horas de alta carga",
+        "state": {
+          "1": "enero",
+          "2": "febrero",
+          "3": "marzo",
+          "4": "abril",
+          "5": "mayo",
+          "6": "junio",
+          "7": "julio",
+          "8": "agosto",
+          "9": "septiembre",
+          "10": "octubre",
+          "11": "noviembre",
+          "12": "diciembre"
+        }
       }
     },
     "number": {
@@ -828,12 +870,6 @@
     "switch": {
       "departure_enabled": {
         "name": "Hora límite de salida"
-      },
-      "high_load_weekdays_only": {
-        "name": "Horas de alta carga solo entre semana"
-      },
-      "high_load_winter_only": {
-        "name": "Horas de alta carga solo de noviembre a marzo"
       }
     },
     "time": {

@@ -783,6 +783,48 @@
           "off": "Av",
           "manual": "Använd ett eget värde"
         }
+      },
+      "high_load_days": {
+        "name": "Höglastdagar",
+        "state": {
+          "all": "Alla dagar",
+          "weekdays": "Vardagar (mån–fre)",
+          "mon_sat": "Måndag till lördag"
+        }
+      },
+      "high_load_from_month": {
+        "name": "Höglasttid första månad",
+        "state": {
+          "1": "januari",
+          "2": "februari",
+          "3": "mars",
+          "4": "april",
+          "5": "maj",
+          "6": "juni",
+          "7": "juli",
+          "8": "augusti",
+          "9": "september",
+          "10": "oktober",
+          "11": "november",
+          "12": "december"
+        }
+      },
+      "high_load_to_month": {
+        "name": "Höglasttid sista månad",
+        "state": {
+          "1": "januari",
+          "2": "februari",
+          "3": "mars",
+          "4": "april",
+          "5": "maj",
+          "6": "juni",
+          "7": "juli",
+          "8": "augusti",
+          "9": "september",
+          "10": "oktober",
+          "11": "november",
+          "12": "december"
+        }
       }
     },
     "number": {
@@ -828,12 +870,6 @@
     "switch": {
       "departure_enabled": {
         "name": "Avresetid gäller"
-      },
-      "high_load_weekdays_only": {
-        "name": "Höglasttid bara vardagar"
-      },
-      "high_load_winter_only": {
-        "name": "Höglasttid bara november–mars"
       }
     },
     "time": {

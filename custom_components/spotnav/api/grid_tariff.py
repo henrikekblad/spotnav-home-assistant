@@ -13,8 +13,11 @@ The dashboard's optional `grid_tariff` block (`serialize_grid_tariff`), present 
   `manual` or `included` (the area's published price already holds the grid fee: locked like `transfer`, nothing
   added, whatever is stored). `explicit_value` is what is stored, `effective_value` what is added (`null` while
   off or included). `unit` is `%` for the percentage and the area's minor unit per kWh for the high-load fee.
-* `high_load_window`: `{weekdays_only, from_hour, to_hour, winter_only}` or `null`. Whole hours of the area's own
-  clock, `from_hour` 0-23 and `to_hour` 1-24 after it; `winter_only` is November to March.
+* `high_load_window`: `{days, from_month, to_month, from_hour, to_hour}` or `null`. `days` is `all`, `weekdays`
+  (Monday to Friday) or `mon_sat`; months 1-12, both included, wrapping over the new year (11 to 3 is November to
+  March, 1 to 12 all year); whole hours of the area's own clock, `from_hour` 0-23 and `to_hour` 1-24, wrapping over
+  midnight when `from_hour` is after `to_hour` (equal is refused). A night's hours belong to the day they start on
+  (`planning/planner.py:HighLoadWindow`).
 * `write_revision`: the price entry's write counter, which a write names as `expected_write_revision`.
 * `writable`: whether this caller may change it (an administrator; the paired app).
 

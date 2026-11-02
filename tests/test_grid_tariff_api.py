@@ -22,7 +22,7 @@ from .world import admin, go_auto, non_admin, setup_charger, ws_call
 pytestmark = pytest.mark.usefixtures("offline_relay")
 
 OFF = {"enabled": False, "value": None}
-WINDOW = {"weekdays_only": True, "from_hour": 7, "to_hour": 19, "winter_only": True}
+WINDOW = {"days": "weekdays", "from_month": 11, "to_month": 3, "from_hour": 7, "to_hour": 19}
 OWNER = {
     "transfer_percent": {"enabled": True, "value": 5.0},
     "transfer_high": {"enabled": True, "value": 60.0},
@@ -100,6 +100,15 @@ async def test_an_administrator_writes_the_owners_tariff_and_every_price_follows
     for row in after["settings"]["overrides"]:
         assert set(row) == {"area_id", "vat", "tax", "transfer"}
 
+    # A window over midnight, every day, all year, reads back as written.
+    night = {"days": "all", "from_month": 1, "to_month": 12, "from_hour": 22, "to_hour": 6}
+    frame = await ws_call(client, update("entry_a", 1, {**OWNER, "high_load_window": night}))
+    assert frame["success"] is True, frame
+    assert frame["result"]["grid_tariff"]["high_load_window"] == night
+    assert price.data["high_load_window"] == night
+    frame = await ws_call(client, update("entry_a", 2, OWNER))
+    assert frame["success"] is True, frame
+
     # The same write again names an old counter: a conflict, and nothing moves.
     stale = await ws_call(client, update("entry_a", 0, {**OWNER, "transfer_percent": OFF}))
     assert stale["success"] is False and stale["error"]["code"] == "revision_conflict"
@@ -114,6 +123,13 @@ async def test_an_administrator_writes_the_owners_tariff_and_every_price_follows
         ({**OWNER, "transfer_percent": {"enabled": "true", "value": 5}}, "invalid_fiscal"),
         ({**OWNER, "high_load_window": {**WINDOW, "to_hour": 7}}, "invalid_fiscal"),
         ({**OWNER, "high_load_window": {**WINDOW, "from_hour": 7.5}}, "invalid_fiscal"),
+        ({**OWNER, "high_load_window": {**WINDOW, "days": "weekends"}}, "invalid_fiscal"),
+        ({**OWNER, "high_load_window": {**WINDOW, "to_month": 13}}, "invalid_fiscal"),
+        # The shape before the window took months and days: refused, never read as a window.
+        (
+            {**OWNER, "high_load_window": {"weekdays_only": True, "from_hour": 7, "to_hour": 19, "winter_only": True}},
+            "invalid_fiscal",
+        ),
         ({**OWNER, "demand": None}, "invalid_fiscal"),
         ({"transfer_percent": OFF}, "invalid_fiscal"),
         (None, "invalid_fiscal"),

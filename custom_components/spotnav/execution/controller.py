@@ -76,6 +76,7 @@ from .chargers.base import (
     ASSIGN_ASSIGNED,
     ASSIGN_BELOW_MINIMUM,
     ASSIGN_NO_TARGET,
+    ASSIGN_RATE_LIMITED,
     ASSIGN_READ_FAILED,
     ASSIGN_TARGET_UNAVAILABLE,
     ASSIGN_UNCHANGED,
@@ -88,6 +89,7 @@ from .chargers.base import (
     WRITE_RESEND,
     WRITE_RESTORE,
     WRITE_SESSION_START,
+    WRITE_SETTING,
     WRITE_SOLAR,
 )
 from .chargers.ocpp import (
@@ -752,6 +754,10 @@ class ChargingController:
         self._owed_current = False
         self._owed_settling = False
         self._owed_cancel: Callable[[], None] | None = None
+        # A changed charging current the charger's write policy held back (`_apply_setting_current_locked`): owed, and
+        # the appointment that writes it once the policy allows. In memory only: a restart's next start writes it.
+        self._setting_write_owed = False
+        self._setting_retry_cancel: Callable[[], None] | None = None
         # A window's start that has not taken is decided again (`START_RETRY_AFTER_S`): when the start was, the end of
         # the window it opened, how many retries went out, the appointment of the next, and a generation that a new
         # start or a cancel moves on (a retry decided under an older one sends nothing more). In memory only.
@@ -3435,8 +3441,8 @@ class ChargingController:
         * `manual` marks a person deciding to charge. It clears any recorded target stop and is not vetoed
           by a reading at or above the target: with no plan there is nothing to enforce. The veto lives in
           `_async_start_window`, which only the scheduled path uses.
-        * `requested_current_a` is set only from an explicit request (the `amps` argument, or the active
-          plan's amps). Otherwise it is preserved across a stop and never backfilled from the entity's live
+        * `requested_current_a` is set only from an explicit request: the `amps` argument, else the current the
+          person set (`_setting_amps`: a plan made at an older one is stale), else the active plan's amps. Otherwise it is preserved across a stop and never backfilled from the entity's live
           setpoint; with nothing known it stays `None`, never 0.
         * The request is recorded, not applied, unless this charger opted in to `ChangeConfiguration`
           (`CONF_CURRENT_CONTROL`). By default the current-limit entity is never written, since that would
@@ -3455,7 +3461,9 @@ class ChargingController:
         if manual and self._target_stop is not None:
             self._target_stop = None
             await self._async_save()
-        explicit_amps = amps if amps is not None else (self.plan.amps if self.plan is not None else None)
+        explicit_amps = amps if amps is not None else self._setting_amps()
+        if explicit_amps is None and self.plan is not None:
+            explicit_amps = self.plan.amps
         if explicit_amps is None and manual:
             # A person's Start with no current named and no plan (a paused Auto keeps none): the last current
             # asked for, so the start is still capped by load balancing as every start is.
@@ -3593,6 +3601,90 @@ class ChargingController:
             await self._async_save_quietly()
         self._notify()
         return executed
+
+    def _setting_amps(self) -> int | None:
+        """The charging current the person set for this charger ("Laddström", the settings' `amps`), or `None` when
+        none is set or the settings cannot be read. Every start that names no current starts at it."""
+        from ..runtime import domain_data  # imported here: `runtime` reaches this module
+
+        try:
+            store = domain_data(self.hass).auto_store
+            amps = None if store is None else store.settings(self.entry_id).amps
+        except Exception:  # noqa: BLE001 - a start must not fail on reading a setting; the plan's current stands
+            _LOGGER.debug("SpotNav charger %s: the charging current could not be read", self.entry_id, exc_info=True)
+            return None
+        return amps if isinstance(amps, int) and amps > 0 else None
+
+    async def async_apply_setting_current(self) -> None:
+        """The person changed the charging current: the charge SpotNav runs takes it now, not at the next plan
+        (`_apply_setting_current_locked`). Under the operation lock, so it never lands inside a Start, a Stop or a
+        plan replacement."""
+        async with self._lock:
+            await self._apply_setting_current_locked()
+
+    async def _apply_setting_current_locked(self) -> None:
+        """Record the current the person set as the charge's request and write it to the charger, when a charge of
+        SpotNav's that is not the sun's runs (a plan's, a top-off's, a person's, a Charge-now one, the car's minimum
+        level). The sun writes its own current, under the setting as its ceiling: its charges are left alone, as is a
+        charge nobody of ours began.
+
+        * The write is capped by what load balancing allows now (`_site_capped_amps`) and goes through the charger's
+          policy for repeated writes (`WRITE_SETTING` is one of `MODULATION_WRITES`): its least interval and rate
+          limit, a flash-stored setting never rewritten (it takes the new current at the next start), a paused charge
+          not lifted. A write the rate limit holds back is owed and goes out once the policy allows, as the setting
+          stands then (`_setting_current_retry`).
+        * A charge load balancing holds paused, or a charger whose current SpotNav does not set, only records it:
+          the regulator's resume and the site's reckoning read the request.
+        * The plan's energy estimate may be off after a change; the check of a charge behind its plan plans again.
+        """
+        self._setting_write_owed = False
+        self._cancel_setting_retry()
+        if self._shut_down:
+            return
+        amps = self._setting_amps()
+        origin = self._owner_origin
+        if amps is None or origin is None or origin == "solar":
+            return
+        try:
+            self._validate_amps(amps)
+        except ValueError:
+            _LOGGER.debug("SpotNav charger %s: the charging current %s A is out of range", self.entry_id, amps)
+            return
+        if amps != self._requested_current_a:
+            self._requested_current_a = amps
+            await self._async_save()
+        if (
+            self.is_commandable
+            and not self.is_switch_only
+            and self._control_on
+            and not self._balancing.paused
+            and not self._stop_in_flight
+        ):
+            outcome = await self._async_assign_current_outcome(amps, reason=WRITE_SETTING, capped=True)
+            if outcome == ASSIGN_RATE_LIMITED:
+                self._arm_setting_retry()
+        self._notify()
+
+    def _arm_setting_retry(self) -> None:
+        """Owe the held-back write, and take it up once the charger's policy allows one."""
+        self._setting_write_owed = True
+        wait_s = max(1.0, self.adapter.current.wait_s() + 1.0)
+        self._setting_retry_cancel = async_track_point_in_utc_time(
+            self.hass, self._setting_current_retry, dt_util.utcnow() + timedelta(seconds=wait_s)
+        )
+
+    @callback
+    def _setting_current_retry(self, _now: datetime | None = None) -> None:
+        self._setting_retry_cancel = None
+        if not self._setting_write_owed or self._shut_down:
+            return
+        self._async_spawn(self.async_apply_setting_current(), "the changed charging current's write")
+
+    def _cancel_setting_retry(self) -> None:
+        cancel = self._setting_retry_cancel
+        self._setting_retry_cancel = None
+        if cancel is not None:
+            cancel()
 
     async def async_set_requested_current(self, amps: int) -> None:
         """Record a new requested current. Writes nothing to the charger, ever.
@@ -4511,6 +4603,7 @@ class ChargingController:
         await self._runner.coverage.async_flush()
         self._cancel_stop_retry()
         self._cancel_owed()
+        self._cancel_setting_retry()
         self._cancel_person_hold_retry()
         self._cancel_phase_confirm()
         # A top-off's deadline stays stored: the next start resumes it or ends it.

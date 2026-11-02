@@ -783,6 +783,48 @@
           "off": "Désactivé",
           "manual": "Utiliser une valeur manuelle"
         }
+      },
+      "high_load_days": {
+        "name": "Jours de forte charge",
+        "state": {
+          "all": "Tous les jours",
+          "weekdays": "En semaine (lun–ven)",
+          "mon_sat": "Du lundi au samedi"
+        }
+      },
+      "high_load_from_month": {
+        "name": "Premier mois des heures de forte charge",
+        "state": {
+          "1": "janvier",
+          "2": "février",
+          "3": "mars",
+          "4": "avril",
+          "5": "mai",
+          "6": "juin",
+          "7": "juillet",
+          "8": "août",
+          "9": "septembre",
+          "10": "octobre",
+          "11": "novembre",
+          "12": "décembre"
+        }
+      },
+      "high_load_to_month": {
+        "name": "Dernier mois des heures de forte charge",
+        "state": {
+          "1": "janvier",
+          "2": "février",
+          "3": "mars",
+          "4": "avril",
+          "5": "mai",
+          "6": "juin",
+          "7": "juillet",
+          "8": "août",
+          "9": "septembre",
+          "10": "octobre",
+          "11": "novembre",
+          "12": "décembre"
+        }
       }
     },
     "number": {
@@ -828,12 +870,6 @@
     "switch": {
       "departure_enabled": {
         "name": "Échéance de départ"
-      },
-      "high_load_weekdays_only": {
-        "name": "Heures de forte charge en semaine seulement"
-      },
-      "high_load_winter_only": {
-        "name": "Heures de forte charge de novembre à mars seulement"
       }
     },
     "time": {

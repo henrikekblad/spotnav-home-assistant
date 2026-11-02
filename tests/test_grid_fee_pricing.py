@@ -1,7 +1,8 @@
 """The grid fee as a percentage of the spot price (A) and the time-of-use grid fee (B), in the planner's arithmetic.
 
 Pure: `effective_minor_per_kwh` with the interval's start, the high-load window on the area's clock (window
-edges, weekends, the winter months, both DST days, quarter-hour prices) and a plan that steps around the window.
+edges, the days of the week, the months and their wrap over the new year, windows over midnight, both DST
+days, quarter-hour prices) and a plan that steps around the window.
 """
 
 from __future__ import annotations
@@ -28,7 +29,7 @@ STOCKHOLM = ZoneInfo("Europe/Stockholm")
 TZ = "Europe/Stockholm"
 
 #: Weekdays 07-19, November to March: the common Swedish time-of-use window.
-WINDOW = HighLoadWindow(weekdays_only=True, from_hour=7, to_hour=19, winter_only=True, tz=TZ)
+WINDOW = HighLoadWindow(days="weekdays", from_month=11, to_month=3, from_hour=7, to_hour=19, tz=TZ)
 
 
 def _local(*args: int) -> datetime:
@@ -114,7 +115,7 @@ def test_the_high_load_fee_applies_inside_the_window_on_the_areas_clock(moment: 
 
 
 def test_every_day_all_year_window() -> None:
-    window = HighLoadWindow(weekdays_only=False, from_hour=6, to_hour=22, winter_only=False, tz=TZ)
+    window = HighLoadWindow(days="all", from_month=1, to_month=12, from_hour=6, to_hour=22, tz=TZ)
     fiscal = FiscalChoice(transfer_high_enabled=True, transfer_high_minor_per_kwh=40, high_load_window=window).validated()
     # A Sunday in July: inside.
     assert effective_minor_per_kwh(1.0, fiscal, _local(2026, 7, 12, 12)) == pytest.approx(140)
@@ -152,10 +153,15 @@ def test_a_window_without_the_intervals_start_is_a_refusal_not_the_low_fee() -> 
             transfer_high_enabled=True, transfer_high_minor_per_kwh=50,
             high_load_window=HighLoadWindow(tz=None),
         ),
-        # A window that ends before it starts.
+        # A window that ends where it starts.
         FiscalChoice(
             transfer_high_enabled=True, transfer_high_minor_per_kwh=50,
-            high_load_window=HighLoadWindow(from_hour=19, to_hour=7, tz=TZ),
+            high_load_window=HighLoadWindow(from_hour=7, to_hour=7, tz=TZ),
+        ),
+        # Days that are not one of the three.
+        FiscalChoice(
+            transfer_high_enabled=True, transfer_high_minor_per_kwh=50,
+            high_load_window=HighLoadWindow(days="weekends", tz=TZ),
         ),
         # On with no figure.
         FiscalChoice(transfer_percent_enabled=True),
@@ -171,15 +177,92 @@ def test_validation_refuses_what_cannot_be_priced(fiscal: FiscalChoice) -> None:
     assert refused.value.code == "invalid_fiscal"
 
 
-def test_window_fields_are_whole_hours_in_range() -> None:
-    assert high_load_window_problem(True, 7, 19, True) is None
-    assert high_load_window_problem(False, 0, 24, False) is None
-    assert high_load_window_problem(True, 7, 7, True) is not None
-    assert high_load_window_problem(True, -1, 19, True) is not None
-    assert high_load_window_problem(True, 7, 25, True) is not None
-    assert high_load_window_problem(True, 7.5, 19, True) is not None
-    assert high_load_window_problem(True, True, 19, True) is not None
-    assert high_load_window_problem("yes", 7, 19, True) is not None
+def test_window_fields_are_whole_numbers_in_range() -> None:
+    assert high_load_window_problem("weekdays", 11, 3, 7, 19) is None
+    assert high_load_window_problem("all", 1, 12, 0, 24) is None
+    assert high_load_window_problem("mon_sat", 4, 4, 22, 6) is None  # one month, over midnight
+    assert high_load_window_problem("weekdays", 11, 3, 7, 7) is not None  # equal hours
+    assert high_load_window_problem("weekdays", 11, 3, -1, 19) is not None
+    assert high_load_window_problem("weekdays", 11, 3, 7, 25) is not None
+    assert high_load_window_problem("weekdays", 11, 3, 24, 6) is not None
+    assert high_load_window_problem("weekdays", 11, 3, 7, 0) is not None
+    assert high_load_window_problem("weekdays", 11, 3, 7.5, 19) is not None
+    assert high_load_window_problem("weekdays", 11, 3, True, 19) is not None
+    assert high_load_window_problem("weekdays", 0, 3, 7, 19) is not None
+    assert high_load_window_problem("weekdays", 11, 13, 7, 19) is not None
+    assert high_load_window_problem("weekdays", 11.0, 3, 7, 19) is not None
+    assert high_load_window_problem("sat_sun", 11, 3, 7, 19) is not None
+    assert high_load_window_problem(True, 11, 3, 7, 19) is not None
+
+
+@pytest.mark.parametrize(
+    ("days", "moment", "inside"),
+    [
+        # Mon-Sat 07-22, November to March (a Finnish seasonal tariff).
+        ("mon_sat", _local(2026, 11, 7, 12), True),  # Saturday
+        ("mon_sat", _local(2026, 11, 8, 12), False),  # Sunday
+        ("mon_sat", _local(2026, 11, 9, 21, 45), True),  # Monday, the last quarter
+        ("mon_sat", _local(2026, 11, 9, 22), False),
+        ("weekdays", _local(2026, 11, 7, 12), False),  # Saturday
+        ("all", _local(2026, 11, 8, 12), True),  # Sunday
+    ],
+)
+def test_the_days_of_the_week(days: str, moment: datetime, inside: bool) -> None:
+    window = HighLoadWindow(days=days, from_month=11, to_month=3, from_hour=7, to_hour=22, tz=TZ)
+    assert window.contains(moment) is inside
+
+
+@pytest.mark.parametrize(
+    ("from_month", "to_month", "inside_months"),
+    [
+        (11, 3, {11, 12, 1, 2, 3}),  # over the new year
+        (10, 3, {10, 11, 12, 1, 2, 3}),  # Denmark's winter peak
+        (4, 9, {4, 5, 6, 7, 8, 9}),
+        (6, 6, {6}),  # one month
+        (1, 12, set(range(1, 13))),  # all year
+        (12, 11, set(range(1, 13))),  # every month too, the other way round
+        (12, 1, {12, 1}),
+    ],
+)
+def test_the_months_both_included_and_wrapping_over_the_new_year(
+    from_month: int, to_month: int, inside_months: set[int]
+) -> None:
+    window = HighLoadWindow(days="all", from_month=from_month, to_month=to_month, from_hour=0, to_hour=24, tz=TZ)
+    for month in range(1, 13):
+        # The first and the last day of each month.
+        first = _local(2027, month, 1, 0)
+        last = (_local(2027, month % 12 + 1, 1, 12) if month < 12 else _local(2028, 1, 1, 12)) - timedelta(days=1)
+        assert window.contains(first) is (month in inside_months), (month, "first")
+        assert window.contains(last) is (month in inside_months), (month, "last")
+
+
+@pytest.mark.parametrize(
+    ("moment", "inside"),
+    [
+        (_local(2026, 11, 2, 21, 45), False),  # Monday evening, before
+        (_local(2026, 11, 2, 22), True),  # Monday 22:00
+        (_local(2026, 11, 3, 0), True),  # Tuesday 00:00: Monday's night
+        (_local(2026, 11, 3, 5, 45), True),  # its last quarter
+        (_local(2026, 11, 3, 6), False),
+        (_local(2026, 11, 3, 12), False),  # midday is outside
+        (_local(2026, 11, 6, 23), True),  # Friday night
+        (_local(2026, 11, 7, 3), True),  # Saturday 03:00 is still Friday's night
+        (_local(2026, 11, 7, 22), False),  # Saturday night is not a weekday's
+        (_local(2026, 11, 8, 23), False),  # nor Sunday's
+        (_local(2026, 11, 9, 3), False),  # so Monday 03:00 is outside
+        (_local(2026, 11, 9, 22), True),  # Monday night again
+        # The months follow the night's first day too.
+        (_local(2026, 10, 30, 23), False),  # Friday 30 October: not yet
+        (_local(2026, 11, 2, 3), False),  # Monday 2 November 03:00: Sunday's night
+        (_local(2027, 3, 31, 23), True),  # Wednesday 31 March, the last night
+        (_local(2027, 4, 1, 3), True),  # its morning, in April
+        (_local(2027, 4, 1, 23), False),
+    ],
+)
+def test_a_window_over_midnight_belongs_to_the_day_it_starts_on(moment: datetime, inside: bool) -> None:
+    window = HighLoadWindow(days="weekdays", from_month=11, to_month=3, from_hour=22, to_hour=6, tz=TZ)
+    assert window.contains(moment) is inside
+    assert window.contains(moment.astimezone(timezone.utc)) is inside
 
 
 def _day(day: str, *, count: int, start: str, prices: list[float], res: int = 15) -> dict[str, object]:
@@ -199,7 +282,7 @@ def _day(day: str, *, count: int, start: str, prices: list[float], res: int = 15
     ],
 )
 def test_the_window_on_both_dst_days_by_the_local_hour(day: str, start: str, count: int) -> None:
-    window = HighLoadWindow(weekdays_only=False, from_hour=2, to_hour=4, winter_only=False, tz=TZ)
+    window = HighLoadWindow(days="all", from_month=1, to_month=12, from_hour=2, to_hour=4, tz=TZ)
     fiscal = FiscalChoice(transfer_high_enabled=True, transfer_high_minor_per_kwh=50, high_load_window=window).validated()
     documents = parse_documents([_day(day, count=count, start=start, prices=[1.0] * count)])
     rows = chart_intervals(documents, currency="EUR", fiscal=fiscal)
@@ -210,6 +293,27 @@ def test_the_window_on_both_dst_days_by_the_local_hour(day: str, start: str, cou
         assert (row in high) == (2 <= local_hour < 4)
     # 02:00-04:00 local: one hour on the short day (02-03 is skipped), three on the long one (02-03 twice).
     assert len(high) == (4 if count == 92 else 12)
+
+
+@pytest.mark.parametrize(
+    ("day", "start", "count", "expected"),
+    [
+        # Spring forward: 00-02 and 03-06 of the night before's window, 22-24 of tonight's: 7 hours.
+        ("2027-03-28", "2027-03-28T00:00:00+01:00", 92, 28),
+        # Fall back: 00-06 with 02-03 twice, 22-24: 9 hours.
+        ("2026-10-25", "2026-10-25T00:00:00+02:00", 100, 36),
+    ],
+)
+def test_a_window_over_midnight_on_both_dst_days(day: str, start: str, count: int, expected: int) -> None:
+    window = HighLoadWindow(days="all", from_month=1, to_month=12, from_hour=22, to_hour=6, tz=TZ)
+    fiscal = FiscalChoice(transfer_high_enabled=True, transfer_high_minor_per_kwh=50, high_load_window=window).validated()
+    documents = parse_documents([_day(day, count=count, start=start, prices=[1.0] * count)])
+    rows = chart_intervals(documents, currency="EUR", fiscal=fiscal)
+    high = [row for row in rows if row.effective_minor_per_kwh == pytest.approx(150)]
+    for row in rows:
+        local_hour = row.utc_start.astimezone(STOCKHOLM).hour
+        assert (row in high) == (local_hour >= 22 or local_hour < 6)
+    assert len(high) == expected
 
 
 def test_hourly_prices_take_the_fee_of_each_quarter_and_each_hour() -> None:
