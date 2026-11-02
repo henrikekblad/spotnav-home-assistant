@@ -77,6 +77,8 @@ from .import_target import (
     ACTION_UNHELD,
     departure_at_risk,
     departure_shortfall_kwh,
+    effective_target,
+    EffectiveTarget,
     HOLD_VOLTAGE_V,
     hour_budget,
     HourBudget,
@@ -366,6 +368,8 @@ class ImportTargetStatus:
     house alone ends the hour above the target."""
 
     target_kw: float
+    #: The import target as set; below `target_kw` where the month's free level lifts it this hour.
+    set_kw: float
     hour_kw: float
     held_a: float | None
     paused_until: datetime | None
@@ -576,6 +580,12 @@ class SiteCapacityController:
         # hour the target paused it in (it stays paused until the next) and the departure it set the target aside
         # for. Not persisted: after a restart the hour's budget decides again from the hour the tracker kept.
         self._target_budget: HourBudget | None = None
+        # The level the hold keeps the running hour under (`_effective_import_target`), as of the last recompute, and
+        # whether every demand-charge part counts the running hour (the plan may count on the level then); with the
+        # key it was worked out for (the month's peaks change only when an hour completes).
+        self._target_effective: EffectiveTarget | None = None
+        self._target_effective_whole = False
+        self._target_effective_key: tuple[Any, ...] | None = None
         self._target_not_applied: str | None = None
         self._target_shares: dict[str, TargetShare] = {}
         self._target_lowered: set[str] = set()
@@ -4652,6 +4662,28 @@ class SiteCapacityController:
         entry = self.hass.config_entries.async_get_entry(self.entry_id)
         return stored_import_target_kw(self.config if entry is None else entry.data)
 
+    def _effective_import_target(self, set_kw: float, now: datetime) -> EffectiveTarget:
+        """The import target lifted to the month's free level for the running hour (`effective_target`), from the
+        hours the site's tracker kept this month and the electricity price's demand-charge parts. Worked out again
+        when an hour completes, the hour turns or the parts or the target change."""
+        from ..planning.demand_charge import hour_start  # noqa: PLC0415 - kept beside its only use
+        from ..pricing.price_source import site_demand_components  # noqa: PLC0415 - it imports the planner
+
+        components = site_demand_components(self.hass, self.entry_id)
+        tracker = self.demand.tracker
+        key = (set_kw, components, tracker.month, len(tracker.hours), hour_start(now, tracker.tz), tracker.tz)
+        if key == self._target_effective_key and self._target_effective is not None:
+            return self._target_effective
+        if not components:
+            found, whole = effective_target(set_kw, ()), False
+        else:
+            snapshot = self.demand.snapshot(components, import_target_kw=set_kw, now=now)
+            levels = [month.free_kw for month in snapshot.components]
+            found, whole = effective_target(set_kw, levels), all(level is not None for level in levels)
+        self._target_effective_key = key
+        self._target_effective_whole = whole
+        return found
+
     def _battery_first_discharge(self) -> tuple[bool, float | None]:
         """Whether a home battery's discharge counts as import for the target (`battery_first` with a battery set),
         and its discharge now (W, positive while it discharges), `None` when it cannot be read live."""
@@ -4859,6 +4891,7 @@ class SiteCapacityController:
         target_kw = self._import_target_kw()
         if target_kw is None:
             self._target_not_applied = None
+            self._target_effective = None
             self._target_paused_hour.clear()
             self._target_risk = {}
             self._target_auto_released = {}
@@ -4869,7 +4902,10 @@ class SiteCapacityController:
             self._target_last_cap.clear()
             return decisions
         now = dt_util.utcnow()
-        budget, reason = self._import_target_budget(target_kw, now)
+        # The target lifted to the month's free level where a demand-charge part counts the running hour: only ever
+        # higher than the target, to a level already paid for, and only the budget's; the fuse is untouched.
+        self._target_effective = self._effective_import_target(target_kw, now)
+        budget, reason = self._import_target_budget(self._target_effective.kw, now)
         self._target_not_applied = reason
         if budget is None:
             return decisions
@@ -5198,6 +5234,11 @@ class SiteCapacityController:
         house_kw = self._typical_house_kw()
         if house_kw is None:
             return None
+        # The month's free level where it is known for every hour the plan may use (every demand-charge part counts
+        # the running hour); else the target as set. A raise a later hour may bring is never counted on.
+        effective = self._target_effective
+        if effective is not None and effective.set_kw == target_kw and self._target_effective_whole:
+            target_kw = effective.kw
         phases, _phase = self.reckoned_phases(charger_entry_id)
         minimum_kw = member_w(phases, float(wiring.get("min_current_a", DEFAULT_MIN_CURRENT_A))) / 1000.0
         return max(minimum_kw, target_kw - house_kw)
@@ -5229,8 +5270,10 @@ class SiteCapacityController:
             limit_a, cause = self.load_balancing_limit(charger_entry_id)
             if cause == LIMIT_CAUSE_IMPORT_TARGET:
                 held_a = limit_a
+        effective = self._target_effective
         return ImportTargetStatus(
             target_kw=budget.target_kw,
+            set_kw=budget.target_kw if effective is None else effective.set_kw,
             hour_kw=round(budget.hour_kw, 2),
             held_a=held_a,
             paused_until=budget.hour_end if paused else None,
@@ -5248,6 +5291,14 @@ class SiteCapacityController:
         budget = self._target_budget
         return {
             "target_kw": self._import_target_kw(),
+            # The level held to this hour: the target lifted to the month's free level (`free_kw`) where a part counts it.
+            "effective": None
+            if self._target_effective is None
+            else {
+                "kw": self._target_effective.kw,
+                "free_kw": self._target_effective.free_kw,
+                "every_part_counts": self._target_effective_whole,
+            },
             "not_applied": self._target_not_applied,
             "budget": None
             if budget is None
