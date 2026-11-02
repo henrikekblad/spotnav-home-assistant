@@ -209,3 +209,35 @@ async def test_cheapest_never_fills_past_the_target(hass: HomeAssistant, monkeyp
     store = coordinator._store  # noqa: SLF001
     await store.async_update("solar_charger", mutate=lambda s: replace(s, strategy=STRATEGY_CHEAPEST))
     assert coordinator._sun_fill_limit() is None  # noqa: SLF001
+
+
+# ------------------------------------------------------------------ an app released before the line
+
+
+def _body(*lines: dict) -> dict:
+    return {"ok": True, "status": {"tone": "normal", "lines": list(lines)}}
+
+
+FILL = {"code": "sun_past_target", "params": {"percent": 90}}
+
+
+def test_an_older_app_gets_hybrids_need_met_line_in_its_place() -> None:
+    from custom_components.spotnav.api.webhook import _for_app
+
+    older = _for_app(_body(FILL), {"action": "dashboard"})
+    assert older["status"]["lines"] == [{"code": "hybrid_satisfied", "params": {}}]
+
+
+def test_an_older_app_gets_only_the_solar_headline() -> None:
+    from custom_components.spotnav.api.webhook import _for_app
+
+    headline = {"code": "solar_charging", "params": {"requested_a": 8.0}}
+    older = _for_app(_body(headline, FILL), {"action": "dashboard"})
+    assert older["status"]["lines"] == [headline]
+
+
+def test_an_app_that_reads_the_line_gets_it() -> None:
+    from custom_components.spotnav.api.webhook import _for_app
+
+    body = _body(FILL)
+    assert _for_app(body, {"action": "dashboard", "reads": ["sun_past_target"]}) == body
