@@ -194,6 +194,27 @@ under Hybrid, unless the request asks for it (`"reads": ["sun_past_target"]`).
 enough for load balancing to hold the car at its minimum current, `load_balancing_limited` carries `cause`
 `measurement_lost` and `limit_a` that minimum. An app that does not know the value words it as a plain limit.
 
+**The site's import target.** Since 2.4, while the site's import target holds a charge (see
+[Holding the chargers under the import target](site-and-load-balancing.md#holding-the-chargers-under-the-import-target)),
+the status carries four lines, all tone `normal`:
+
+- `import_target_held` `{limit_a, target_kw, hour_kw}` in place of `load_balancing_limited` while the target, not the
+  fuse, holds the charging car: held to `limit_a` (amps, `null` when not known) so the hour stays under `target_kw`
+  (kW, an hourly mean); `hour_kw` is the hour's mean import so far.
+- `import_target_paused` `{until, target_kw}` in place of `balancing_paused` while the target paused the plan's
+  charge: it waits for the next clock hour, `until`.
+- `import_target_released` `{target_kw, departure}` after the issues while the charge runs with the target set aside,
+  because holding it would make the car miss `departure`.
+- `import_target_house_over` `{target_kw}` after the issues while the house alone ends the hour above the target and
+  the car charges or the target paused it.
+
+A load-balancing limit or pause the target makes carries `cause` `import_target` (in `load_balancing_limited`, and in
+`balancing_paused` with `retry_at` the next hour's start). The webhook gives an app that does not ask for them
+(`"reads": ["import_target_status"]`) the lines it already words in their place: `load_balancing_limited`
+(`limit_a` the same, `phase` `null`, `cause` `import_target`) for `import_target_held`; for `import_target_paused`
+`balancing_paused` (`retry_at` its `until`) where it reads that, else `load_balancing_limited` with `limit_a` `0`;
+and nothing for the other two. An app that does not know the cause words it as a plain limit.
+
 **A car's charge limit range.** A vehicle row carries the additive `charge_limit_range`: `{"min", "max", "step"}`,
 the percents `set_charge_limit` (and `spotnav/write_charge_limit`) can write to the car's own limit, or `null` when
 there is no limit to write or its range is unknown. For a `number` limit these are the entity's own `min`, `max` and
@@ -334,8 +355,8 @@ night belonging to the day it starts on). An hour with more than ten minutes wit
 `hour` is the clock hour running now, `{"start", "kw_so_far", "kwh_so_far"}` (the mean import over the time
 measured so far, and the energy), or `null` before it has a reading. `import_target_kw` is the site's import target
 (`null` for none), which is set with the site's `import_target_kw` field in `spotnav/update_entity_config` (a number
-of at least 0.1, `null` or `""` to clear; written without reloading the site). Nothing holds a charger for either in
-this version. A full example is `tests/fixtures/grid_tariff/pilot_demand.json`.
+of at least 0.1, `null` or `""` to clear; written without reloading the site). Since 2.4 the import target holds
+the site's chargers through load balancing (the status lines below); a demand charge is measured only. A full example is `tests/fixtures/grid_tariff/pilot_demand.json`.
 
 `update_grid_tariff {"expected_write_revision", "grid_tariff"}` replaces the three parts in full; `grid_tariff` is
 `{"transfer_percent": {"enabled", "value"}, "transfer_high": {"enabled", "value"}, "high_load_window"}`, every key

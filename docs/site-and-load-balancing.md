@@ -474,8 +474,9 @@ state; `solar_reason` is `needs_total_grid_power` when a direct site lacks it.
 ## Demand charge and import target
 
 A site measures each clock hour's mean import, for a [demand charge](prices.md#a-demand-charge) on its
-electricity price and for its own **import target**. In this version both are measured and shown only: nothing
-holds a charger for them.
+electricity price and for its own **import target**. A demand charge is measured and shown only. The import target
+holds the site's chargers, through load balancing, so the hour stays under it (see
+[Holding the chargers under the import target](#holding-the-chargers-under-the-import-target)).
 
 - **What is measured.** The net import from the grid, from the same signed grid power solar reads: a derived
   site's per-phase power, or a direct site's [total grid power](#total-grid-power). Export within an hour lowers
@@ -492,13 +493,62 @@ holds a charger for them.
 - **Import target.** An optional hourly mean of import, in kW, set in the card's Settings beside the main fuse
   (*Import target*, off until set). It is written without restarting load balancing. While it is set, a line under
   it shows the hour running now against it, *This hour: 4.2 of 6.0 kW* (the mean over the minutes measured so far).
-  A later version holds the chargers so the hour stays under it; this one does not.
 - **The Demand-charge peak sensor.** While the site's electricity price has a demand-charge part, the site has a
   *Demand-charge peak* sensor (kW): the first part's figure this month. Its attributes are every part with its
   figure, its peaks and how many days counted, and the running hour. It goes away with the last part.
 - **Diagnostics.** The site's diagnostics (and the debug bundle) carry a `demand` block: every hour of the month
   (`[start, kW, house kW, incomplete]`), each part's figure and peaks, the running hour with its gaps, and the
   import target.
+
+### Holding the chargers under the import target
+
+While a site has an import target and load balancing (active control) is on, each recompute works out what the
+site's chargers may still draw this clock hour, and load balancing gives each charger the smaller of that and what
+the main fuse allows. The fuse's rules come first and are never loosened: the target only ever lowers a charger, an
+overload's lowering is never changed by it, and a lowering for the target never goes so far that a phase the
+charger draws on would turn from import to export (so the current the fuse carries can only fall).
+
+- **The hour's budget.** The target times one hour, less what was imported so far this hour, is what the rest of
+  the hour may import. Spread over the time left, less what the house draws now (the site's net import less what
+  its chargers draw; a solar surplus counts as less, so it leaves the chargers more), it is what the chargers may
+  draw. In the hour's last minute the time left counts as a minute, and the fuse's own ceiling bounds the result.
+  A few minutes without a reading count at the hour's own mean.
+- **Several chargers** share it in the site's order (priority First, Normal, Last, then the order they joined). Each
+  is held to the whole amps that still fit. A switch-only charger runs only while its whole switched power fits.
+- **At the minimum.** A charger is never held below its minimum current. Once the hour can no longer end at or under
+  the target with it at its minimum for the rest of the hour, it is paused until the next clock hour and given back
+  then, as any load-balancing pause is (with the resume's margin and dwell). It is paused at most once per hour: it
+  stays paused to the hour's end even when the house uses less again.
+- **Raises** come at the next hour, or when the budget allows them, through the same deadband and dwell as every
+  write. In the hour's last ten minutes nothing is raised; lowerings and pauses still act.
+- **The house alone over the target.** When the house by itself ends the hour above the target, SpotNav pauses its
+  chargers and holds back nothing else; the status says that the house alone is above the target, never that the
+  hour stays under it.
+- **The departure wins.** A plan's charge with a departure is not held when holding would make it miss the
+  departure: when what the plan still expects to deliver before the departure is more than the held power delivers
+  by then (this hour at the held power, every later hour at the target less the house's load now). The charge then
+  runs at the fuse's limit until that departure, and the status says the target is set aside for it.
+- **Plans count on the target.** A plan for a charger on the site counts on the power the target leaves it (the
+  target less the house's mean over its last 24 measured hours, never below the charger's minimum), so it buys the
+  quarter-hours the held charge needs instead of finding out at each period's end (see
+  [Planning strategies](strategies.md)).
+- **A person's Start is left alone**, as the sun leaves it: such a charge counts toward the hour but is never held. A
+  person's Stop is untouched.
+- **Solar and Hybrid.** The target counts import from the grid only, so a charge the sun covers is free. Under
+  *battery first* a home battery's discharge counts as import too (the car is not to be paid for by the battery);
+  under *car first* only the grid counts.
+- **Yield stepping and the battery probe** never step a charger above what the target leaves it, and no probe or
+  resume starts a charge the target holds back.
+- **Not applied** (nothing held for the target, and the fuse rules as always) while load balancing is off, the
+  site cannot measure the hour (a direct site without its total grid power), the meter has no live reading, the
+  hour has more than ten minutes without one, or under *battery first* the battery cannot be read. After a restart
+  the hour kept by the tracker decides again; the minutes the restart took count as missing.
+- **Shown.** The charger's status says *Held to 7 A to keep this hour under 6.0 kW (now 5.1 kW)*, *Paused until
+  15:00 to keep this hour under 6.0 kW*, *The house alone is above the 6.0 kW target this hour* or *The import target
+  is set aside: the car needs the power to be ready by 07:00*. The site's load-balancing limit names the cause
+  `import_target`. The site's diagnostics carry an `import_target` block: the hour's budget or why it is not
+  applied, what it does to each charger, the hour each was paused in, the departure it was set aside for, and its
+  recent holds, pauses and releases.
 
 ## Meter detection, signs and estimated current
 
