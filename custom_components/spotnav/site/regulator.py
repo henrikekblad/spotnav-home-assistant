@@ -66,9 +66,9 @@ RegulatorReason = Literal[
     # A direct site's charge that started while the direction was unknown: its current stays the sun's
     # (or nobody's) to write until it ends, even once confirmed (`SiteCapacityController`).
     "phase_direction_unknown_at_charge_start",
-    # A direct site's charge active control started on lost its confirmation: a phase it draws on is over
-    # the limit by |I|, so it is lowered to the room |I| leaves (as the sun's own capped write did before
-    # signed currents were used), never raised (`magnitude_overload_lowering`).
+    # A direct site's charge on a phase whose direction is not known (never confirmed, or lost meanwhile),
+    # whoever started it: a phase it draws on is over the limit by |I|, so it is lowered to the room |I|
+    # leaves, never raised (`magnitude_overload_lowering`).
     "lowering_overload_on_current_magnitude_direction_unknown",
     # No longer given (`phase_direction_unknown` replaced it); kept so older diagnostics still read.
     "derived_mode_required",
@@ -678,12 +678,19 @@ def decide_switched_load(
 def magnitude_overload_lowering(
     *, site_result: SiteCapacityResult, request: ChargerRequest, max_age_s: float
 ) -> RegulatorDecision:
-    """For a charger whose direction is no longer known mid-charge: lowered only where a phase it draws on is
-    over the limit by |I| (`measured_margin_a` < 0), to its own current plus that margin on the tightest such
-    phase (what the sun's capped write allowed before), never raised; otherwise held
-    (`phase_direction_unknown`, `None`). The sign of the overload is not known, so this guards the fuse as a
-    magnitude-only site always did; it is no better than that."""
+    """For a charger in a charge on a phase whose direction is not known: lowered only where a phase it draws on,
+    not one known now to export, is over the limit by |I| (`measured_margin_a` < 0), to its own current plus
+    that margin on the tightest such phase (what the sun's capped write allowed before), a pause (0, same reason)
+    where that is below its minimum, never raised; otherwise held (`phase_direction_unknown`, `None`). The sign of
+    the overload is not known, so this guards the fuse as a magnitude-only site always did; it is no better than
+    that."""
     held = RegulatorDecision(None, "phase_direction_unknown", None, {})
+    if site_result.measurement_mode == "derived_phase_current":
+        return held  # a derived site knows the direction on every phase
+    # Every phase but one known now to export: a phase over the limit by export is never lowered on (the car's draw
+    # reduces it), while one known to import is lowered as an import overload is.
+    known = site_result.phase_direction_source
+    signed_power = site_result.phase_signed_active_power_w
     phases = request.phases_used()
     measured_source = request.measured_current_a
     if phases is None or measured_source is None:
@@ -710,16 +717,19 @@ def magnitude_overload_lowering(
             direction=None,
             confirmed_direction=None,
         )
-        if margin < 0.0:
+        exporting = bool(known.get(phase)) and (signed_power.get(phase) or 0.0) < 0.0
+        if margin < 0.0 and not exporting:
             ceilings[phase] = max(0.0, measured.value + margin)
     if not ceilings:
         return held
     limiting_phase = min(ceilings, key=lambda phase: ceilings[phase])
     proposed = round_down_to_step(ceilings[limiting_phase])
-    proposed, reason = _legalize_or_pause(
-        proposed, request.min_current_a, "lowering_overload_on_current_magnitude_direction_unknown"
+    if 0.0 < proposed < request.min_current_a:
+        # A pause, but kept under this reason: only its own apply path writes it (it needs no signed power).
+        proposed = 0.0
+    return RegulatorDecision(
+        proposed, "lowering_overload_on_current_magnitude_direction_unknown", limiting_phase, basis
     )
-    return RegulatorDecision(proposed, reason, limiting_phase, basis)
 
 
 def direction_phases(request: ChargerRequest) -> tuple[PhaseName, ...]:

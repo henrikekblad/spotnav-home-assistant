@@ -302,7 +302,7 @@
     "active_control": {
       "available": true,
       "enabled": false,
-      "reason": null,
+      "reason": "site_direction_unknown",
       "writable": true
     },
     "charger_count": 1,

@@ -134,6 +134,7 @@ from ..site.site_capacity_controller import SiteCapacityController
 from ..site.solar_capability import REASON_NEEDS_TOTAL_GRID_POWER
 from ..util import aware_iso, finite_number
 from ..vehicles import vehicle_properties
+from ..vehicles.capability import REASON_SITE_DIRECTION_UNKNOWN
 from ..vehicles.charger_inventory import charger_entries
 from ..vehicles.duplicate_chargers import duplicates_of
 from ..vehicles.soc_estimate import battery_room_kwh, CHARGE_EFFICIENCY
@@ -921,9 +922,14 @@ def _active_control_reason(controller: SiteCapacityController) -> str | None:
     """
     load_balancing = controller.capability_snapshot.load_balancing
     if load_balancing.active_available:
+        # Available, but only to lower an overload: said so, with what to set (`REASON_SITE_DIRECTION_UNKNOWN`).
+        if REASON_SITE_DIRECTION_UNKNOWN in load_balancing.blocking_reasons:
+            return REASON_SITE_DIRECTION_UNKNOWN
         return None
-    if load_balancing.blocking_reasons:
-        return str(load_balancing.blocking_reasons[0])
+    # Unavailable for another cause: that one, never the "only lowers" reason, which needs it available.
+    other = [reason for reason in load_balancing.blocking_reasons if reason != REASON_SITE_DIRECTION_UNKNOWN]
+    if other:
+        return str(other[0])
     return "no_commandable_charger"
 
 

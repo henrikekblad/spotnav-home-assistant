@@ -576,6 +576,8 @@ class AutoExecutor:
         self._confirmed: tuple[str, int] | None = None
         self._last_error: str | None = None
         self._cancel_listener: Callable[[], None] | None = None
+        # The settings store's word of a committed change (`_on_settings_written`), for the changed charging current.
+        self._cancel_settings_listener: Callable[[], None] | None = None
         # The one appointment at which a bounded pause ends; cancelled by `async_shutdown` and
         # re-armed from the stored intent on restore (`async_restore_pause`).
         self._cancel_pause: Callable[[], None] | None = None
@@ -850,9 +852,26 @@ class AutoExecutor:
                 # One registration per executor lifetime: this listener is the only clock, and two
                 # would apply the same change twice.
                 self._cancel_listener = self._controller.add_listener(self._on_controller_changed)
+            if self._cancel_settings_listener is None:
+                self._cancel_settings_listener = self._store.add_write_listener(self._on_settings_written)
         # The pause appointment a restored intent asks for, armed outside the lock because
         # settling an expired pause writes the store and reconciles.
         await self.async_restore_pause()
+
+    @callback
+    def _on_settings_written(self, entry_id: str, before: AutoSettings, after: AutoSettings) -> None:
+        """A committed settings change. A changed charging current goes to the charge that runs now, whoever wrote
+        it (the card, the app, the number entity, a vehicle's properties), not at the next plan: a plan may wait for
+        tomorrow's prices (`ChargingController.async_apply_setting_current`)."""
+        if entry_id != self._entry_id or self._shutdown or before.amps == after.amps:
+            return
+        self._hass.async_create_task(self._apply_setting_current())
+
+    async def _apply_setting_current(self) -> None:
+        try:
+            await self._controller.async_apply_setting_current()
+        except Exception as err:  # noqa: BLE001 - the setting is stored; the next start takes it
+            _LOGGER.warning("Writing the changed charging current failed: %s", type(err).__name__)
 
     async def async_shutdown(self) -> None:
         """Terminal: invalidate every pending attempt and stop listening."""
@@ -883,6 +902,10 @@ class AutoExecutor:
                 cancel = self._cancel_listener
                 self._cancel_listener = None
                 cancel()
+            if self._cancel_settings_listener is not None:
+                cancel_settings = self._cancel_settings_listener
+                self._cancel_settings_listener = None
+                cancel_settings()
 
     async def async_reconcile(
         self, settings: AutoSettings, snapshot: Any, *, attempt: int
