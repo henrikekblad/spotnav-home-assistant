@@ -471,6 +471,35 @@ sensor) or missing total is an unknown surplus, never zero export. The site sens
 `solar_capable` and `solar_reason` attributes and the diagnostics' `grid_power` block show the
 state; `solar_reason` is `needs_total_grid_power` when a direct site lacks it.
 
+## Demand charge and import target
+
+A site measures each clock hour's mean import, for a [demand charge](prices.md#a-demand-charge) on its
+electricity price and for its own **import target**. In this version both are measured and shown only: nothing
+holds a charger for them.
+
+- **What is measured.** The net import from the grid, from the same signed grid power solar reads: a derived
+  site's per-phase power, or a direct site's [total grid power](#total-grid-power). Export within an hour lowers
+  that hour's import, as on the meter; a negative reading counts as no import. A direct site without the total
+  cannot measure: the price section says so under the demand charge, and "Get started" asks for the site's total
+  grid power while a demand charge or an import target is set.
+- **Hours.** Each reading is held until the next one, for at most two minutes. An hour is its import energy over
+  the time it was measured, on the clock of the electricity price's area (Home Assistant's own where the site has
+  no electricity price); the repeated hour in October is two hours, as on the meter. An hour with more than ten
+  minutes without a usable reading is kept but never sets a peak. The running hour is kept at most once a minute
+  and the month's hours when an hour ends, so a restart keeps them; the minutes the restart took count as missing.
+  At the first hour of a new month the month starts again; the month before is kept beside it. What the house
+  imports without the chargers' measured power is kept beside each hour too.
+- **Import target.** An optional hourly mean of import, in kW, set in the card's Settings beside the main fuse
+  (*Import target*, off until set). It is written without restarting load balancing. While it is set, a line under
+  it shows the hour running now against it, *This hour: 4.2 of 6.0 kW* (the mean over the minutes measured so far).
+  A later version holds the chargers so the hour stays under it; this one does not.
+- **The Demand-charge peak sensor.** While the site's electricity price has a demand-charge part, the site has a
+  *Demand-charge peak* sensor (kW): the first part's figure this month. Its attributes are every part with its
+  figure, its peaks and how many days counted, and the running hour. It goes away with the last part.
+- **Diagnostics.** The site's diagnostics (and the debug bundle) carry a `demand` block: every hour of the month
+  (`[start, kW, house kW, incomplete]`), each part's figure and peaks, the running hour with its gaps, and the
+  import target.
+
 ## Meter detection, signs and estimated current
 
 SpotNav scans the entity registry (including entities an integration ships disabled) for grid meters and home batteries and offers them in the site editor and the create flow (the recognised integrations are listed under [supported hardware](supported.md)); nothing is applied until confirmed, and applying enables only entities the integration disabled, never ones a person disabled. Each integration carries its sign conventions:

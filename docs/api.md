@@ -283,6 +283,21 @@ prices with an electricity price) and reaches the webhook only when the request 
   "transfer_percent": {"policy": "manual", "explicit_value": 5.0, "effective_value": 5.0, "unit": "%"},
   "transfer_high": {"policy": "off", "explicit_value": null, "effective_value": null, "unit": "öre/kWh"},
   "high_load_window": {"days": "weekdays", "from_month": 11, "to_month": 3, "from_hour": 7, "to_hour": 19},
+  "demand": {
+    "components": [
+      {"window": {"days": "all", "from_month": 1, "to_month": 12, "from_hour": 6, "to_hour": 23},
+       "top_n": 1, "price_per_kw": {"winter": 45.0, "summer": 23.0}}
+    ],
+    "available": true,
+    "reason": null,
+    "price_unit": "kr/kW",
+    "per_component": [
+      {"bar_kw": 6.975, "free_kw": 6.975, "price_per_kw": 23.0, "days_counted": 1,
+       "peaks": [{"date": "2026-09-22", "start": "2026-09-22T07:00:00+00:00", "kw": 6.975}]}
+    ],
+    "hour": {"start": "2026-09-22T08:00:00+00:00", "kw_so_far": 3.1, "kwh_so_far": 1.033},
+    "import_target_kw": 6.0
+  },
   "writable": true
 }
 ```
@@ -301,14 +316,37 @@ belong to the day it started on, for its days and its months alike: weekdays 22-
 Saturday 06:00 but not Sunday night. `write_revision` is the electricity price's write counter, which a write
 names. See [Prices](prices.md#what-you-pay) for the arithmetic.
 
+`demand` (since 2.4; a reader of 2.3 never meets it because it is inside this opt-in block) is the demand charge
+and the import target, measured on the charger's site. `components` is the electricity price's demand-charge parts
+as a write states them, at most three, `[]` for none: each `{"window", "top_n", "price_per_kw": {"winter",
+"summer"}}`, where `window` is `null` (all hours count) or a window of `high_load_window`'s shape, `top_n` is 1, 3
+or 5 (the mean of that many of the month's highest hourly means, each on a different day) and the prices are per
+kW in the area's major unit, winter November to March, each `null` while unknown. `available` says whether the
+site can measure them; `reason` is then `null`, else `no_site` (the charger is in no site) or
+`needs_total_grid_power` (a direct site without the meter's total grid power); the codes are in
+`tests/fixtures/codes/dashboard_codes.json` (`demand_reasons`). `price_unit` is the area's major unit per kW,
+`null` while the area is not listed. `per_component` is aligned with `components` while the site measures, else
+`[]`: for the month so far on the area's clock, `bar_kw` (the mean of the `top_n` highest day peaks, of fewer while
+fewer days have one; `null` before any), `free_kw` (the hourly mean the running hour may reach without raising
+`bar_kw`; `null` while the running hour does not count for the part), `price_per_kw` (this month's season's),
+`days_counted` and `peaks` (`[{"date", "start", "kw"}]`, highest first; `date` is the day the hour counts under, a
+night belonging to the day it starts on). An hour with more than ten minutes without a reading never sets a peak.
+`hour` is the clock hour running now, `{"start", "kw_so_far", "kwh_so_far"}` (the mean import over the time
+measured so far, and the energy), or `null` before it has a reading. `import_target_kw` is the site's import target
+(`null` for none), which is set with the site's `import_target_kw` field in `spotnav/update_entity_config` (a number
+of at least 0.1, `null` or `""` to clear; written without reloading the site). Nothing holds a charger for either in
+this version. A full example is `tests/fixtures/grid_tariff/pilot_demand.json`.
+
 `update_grid_tariff {"expected_write_revision", "grid_tariff"}` replaces the three parts in full; `grid_tariff` is
 `{"transfer_percent": {"enabled", "value"}, "transfer_high": {"enabled", "value"}, "high_load_window"}`, every key
-required. A fee that is on needs its figure, and the high-load fee needs a window (a window may stay while its fee
+required, and optionally `"demand_components"` (the list as `demand.components` states it, `[]` removes every
+part; absent keeps the stored parts, so a writer that does not know them leaves them alone). A part needs `top_n`
+1, 3 or 5, a window of whole hours or `null`, and prices that are `null` or not negative; at most three parts. A fee that is on needs its figure, and the high-load fee needs a window (a window may stay while its fee
 is off). It is the card's `spotnav/update_grid_tariff` for the webhook's own charger, through the same core, and
 answers `{"ok", "error", "field_errors", "grid_tariff", "action"}` with the block re-read after the write. HTTP 200
 on success; 409 `revision_conflict` (the electricity price was written since `write_revision`); 400
 `invalid_fiscal` (with `field_errors` `[{"field": "transfer_percent" | "transfer_high" | "high_load_window" |
-"grid_tariff", "code": "invalid_value"}]`), `invalid_number` (`expected_write_revision` is not a whole number) or
+"demand_components" | "grid_tariff", "code": "invalid_value"}]`), `invalid_number` (`expected_write_revision` is not a whole number) or
 `spotnav_no_price_entry` (the charger prices with its own settings). Nothing is written on a refusal. The write
 counts as a write of the electricity price: every charger using it replans, and their settings records' `revision`
 moves with it. A write of the tariff as stored (all off where nothing is stored) passes the compare-and-set and
@@ -347,6 +385,8 @@ for this charger, sent to the webhook only when the request asks for it (`"reads
 `id` is `vehicle` (no vehicle is set up for the charger), `car_level` (the plan charges to a target level, a
 vehicle is set up and no source reports its level; never dismissible, and never beside `vehicle`), `site` (the
 charger has no site), `solar_forecast` (the site can measure solar surplus and has no forecast source),
+`demand_grid_power` (since 2.4: a demand-charge part or the site's import target is set and the site is a direct
+one without the meter's total grid power; never dismissible),
 `phase_switching` (offered for the charger and off), `phone` (no phone is chosen for notifications and the paired
 app has no push registration) or `app` (no charger's webhook has been used yet); a reader should skip an id it does not know. `spotnav/dismiss_setup_item {"item"}` (administrators
 only) keeps a dismissible row away for the whole installation and answers `{"ok": true}`, else
@@ -827,6 +867,11 @@ A charger's `energy_register_entity` field in `get_entity_config` carries the ad
 `automatic` being the lifetime register detection finds now, also while "None" is chosen.
 `update_entity_config` takes `"none"` for it (no register, and none looked up or detected again) and `""`
 for the one SpotNav finds itself; while "None" is chosen the field reads back as `"none"`.
+
+Since 2.4 a site's fields in `get_entity_config` carry `import_target_kw` after `safety_margin_a`: a number field
+(`required: false`, `minimum: 0.1`, `value` in kW or `null` for none), the site's import target. `update_entity_config`
+takes a number up to 1000, or `null` or `""` to clear it, and writes it without reloading the site; any other value
+is `invalid_value` on that field.
 
 A site's `warnings` in `get_entity_config` carry the additive `limits_a` (`null`, or for
 `battery_import_limit_differs` `{"battery": A, "spotnav": A}` per phase). That warning says a home battery

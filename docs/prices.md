@@ -166,6 +166,32 @@ area switches the high-load fee off (its figure is in the old area's unit) but k
 again is one step; the percentage and the window stay as they are. Check the values against your contract. The cost of past charges in the charge history is recalculated with your
 current values every time it is shown (see [Charge history](card.md#charge-history)).
 
+### A demand charge
+
+Some network operators charge per kW of the month's highest hourly mean of import (a demand charge, *effektavgift*)
+on top of the energy fees. SpotNav does not price it into a plan; it measures it on the site's meter and shows it,
+so you can compare it with your operator's figures. In the card's Settings the price section has one row,
+*Demand charge: None*, until you add a part. A demand charge has up to three parts, each with:
+
+- **Hours that count**: all hours, or only certain hours, set like the high-load hours (the days, the first and
+  last month, from and to hour; an end before the start runs over midnight and the night counts as the day it
+  starts on). Public holidays count as the weekdays they fall on.
+- **Peaks per month**: the highest hour, or the mean of the 3 or 5 highest hours, each on a different day.
+- **Price per kW** in November to March and in April to October, in the area's currency. Either may stay empty;
+  nothing is priced with it yet, it is shown beside the part.
+
+Linköping's alternative tariff (Tekniska verken) is two parts with one peak each: every day 06-23 all year at
+45 / 23 kr/kW, and every day 23-06 all year at 12 / 8 kr/kW. Göteborg Energi's standard tariff is one part: all
+hours, the mean of the 3 highest days. A tariff that stacks a winter weekday part on an all-hours part (Karlstad,
+Borås) is two parts.
+
+Under each part the card shows this month's figure and its peaks, for example *This month: 7.0 kW – Tue 22 Sep
+09:00 · 7.0 kW*. An hour is the meter's net import over a clock hour of the area (export in the same hour counts
+against it, as on the bill); see [Demand charge and import target](site-and-load-balancing.md#demand-charge-and-import-target)
+for how it is measured. The parts belong to the electricity price, so every site and charger using it shows the
+same parts; they are kept when the area changes. The month on the bill and in SpotNav may differ by the hours the
+site was not measuring: an hour with more than ten minutes without a reading is shown but never sets a peak.
+
 ## How the integration uses the prices
 
 The same prices, with the same fees, are there for automations that have nothing to do with a car:
