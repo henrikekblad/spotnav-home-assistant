@@ -832,7 +832,12 @@ class ChargerNotifier:
         language = language_of(self._hass.config.language)
         departure = dt_util.parse_datetime(risk.departure)
         title, message = import_target_text(
-            self._name(), language, time=_local_time(departure), target_kw=risk.target_kw, kwh=risk.missing_kwh
+            self._name(),
+            language,
+            time=_local_time(departure),
+            target_kw=risk.target_kw,
+            kwh=risk.missing_kwh,
+            set_kw=risk.set_kw,
         )
         url = notifications.url or DEFAULT_URL
         payload = {

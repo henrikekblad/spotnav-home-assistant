@@ -293,7 +293,7 @@ STATUS_CODES: Final[dict[str, tuple[str, tuple[str, ...]]]] = {
     # The house alone, with no charger, ends this hour above the import target (`target_kw`), while the car charges
     # (a charge the target paused says it in its own line): SpotNav holds back nothing more than its chargers, and does
     # not claim the hour stays under it.
-    "import_target_house_over": (TONE_NORMAL, ("target_kw",)),
+    "import_target_house_over": (TONE_NORMAL, ("target_kw", "set_kw")),
     # The import target (`target_kw`) is set aside for this charge until its departure (`departure`, an instant): by a
     # person, or by the plan's own choice (`automatic`, `if_not_ready` `release`) while holding would miss it.
     "import_target_released": (TONE_NORMAL, ("target_kw", "departure", "automatic")),
@@ -1145,7 +1145,13 @@ def _notices(facts: StatusFacts) -> list[dict[str, Any]]:
             )
         )
     if target is not None and target.house_over and facts.charging:
-        lines.append(_line("import_target_house_over", target_kw=round(target.target_kw, 2)))
+        lines.append(
+            _line(
+                "import_target_house_over",
+                target_kw=round(target.target_kw, 2),
+                set_kw=round(target.target_kw if target.set_kw is None else target.set_kw, 2),
+            )
+        )
     return lines
 
 

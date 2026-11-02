@@ -33,7 +33,9 @@
     "cost": "ongeveer {cost}",
     "import_target.at_risk.time": "De auto is om {time} niet klaar onder het afnamedoel van {target} kW – er ontbreekt {kwh} kWh.",
     "import_target.at_risk": "De auto is niet klaar voor vertrek onder het afnamedoel van {target} kW – er ontbreekt {kwh} kWh.",
-    "import_target.release": "Afnamedoel vannacht loslaten"
+    "import_target.release": "Afnamedoel vannacht loslaten",
+    "import_target.at_risk.peak.time": "De auto is om {time} niet klaar onder de piek van de maand van {target} kW (afnamedoel {set} kW) – er ontbreekt {kwh} kWh.",
+    "import_target.at_risk.peak": "De auto is niet klaar voor vertrek onder de piek van de maand van {target} kW (afnamedoel {set} kW) – er ontbreekt {kwh} kWh."
   },
   "add_charger": {
     "hint": "Voeg een laadpaal toe: Instellingen → Apparaten & diensten → SpotNav → Item toevoegen → Laadpaal; je krijgt dan de vraag of hij aan deze locatie moet worden toegevoegd."

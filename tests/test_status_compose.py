@@ -783,7 +783,7 @@ CASES: list[tuple[str, StatusFacts, str, list[dict[str, Any]]]] = [
         "normal",
         [
             {"code": "charging_now", "params": {"until": None}},
-            {"code": "import_target_house_over", "params": {"target_kw": 6.0}},
+            {"code": "import_target_house_over", "params": {"target_kw": 6.0, "set_kw": 6.0}},
         ],
     ),
     (

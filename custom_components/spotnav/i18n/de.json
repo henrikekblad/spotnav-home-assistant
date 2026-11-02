@@ -33,7 +33,9 @@
     "cost": "etwa {cost}",
     "import_target.at_risk.time": "Das Auto wird unter dem Bezugsziel von {target} kW bis {time} nicht fertig – es fehlen {kwh} kWh.",
     "import_target.at_risk": "Das Auto wird unter dem Bezugsziel von {target} kW bis zur Abfahrt nicht fertig – es fehlen {kwh} kWh.",
-    "import_target.release": "Bezugsziel heute Nacht aussetzen"
+    "import_target.release": "Bezugsziel heute Nacht aussetzen",
+    "import_target.at_risk.peak.time": "Das Auto wird unter der Spitze des Monats von {target} kW (Bezugsziel {set} kW) bis {time} nicht fertig – es fehlen {kwh} kWh.",
+    "import_target.at_risk.peak": "Das Auto wird unter der Spitze des Monats von {target} kW (Bezugsziel {set} kW) bis zur Abfahrt nicht fertig – es fehlen {kwh} kWh."
   },
   "add_charger": {
     "hint": "Ladestation hinzufügen: Einstellungen → Geräte & Dienste → SpotNav → Eintrag hinzufügen → Ladestation; sie bietet dann an, diesem Standort beizutreten."

@@ -770,7 +770,7 @@ def test_an_app_that_does_not_read_the_targets_lines_gets_the_load_balancing_lin
         "code": "import_target_paused",
         "params": {"until": "2026-11-02T13:00:00+00:00", "target_kw": 6.0, "house_over": False},
     }
-    house = {"code": "import_target_house_over", "params": {"target_kw": 6.0}}
+    house = {"code": "import_target_house_over", "params": {"target_kw": 6.0, "set_kw": 6.0}}
     released = {"code": "import_target_released", "params": {"target_kw": 6.0, "departure": "2026-11-02T16:00:00+00:00"}}
     assert _status_for_app(held, set()) == {
         "code": "load_balancing_limited",

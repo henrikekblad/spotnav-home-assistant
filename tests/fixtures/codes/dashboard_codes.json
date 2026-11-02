@@ -301,6 +301,7 @@
     },
     "import_target_house_over": {
       "params": [
+        "set_kw",
         "target_kw"
       ],
       "tone": "normal"
