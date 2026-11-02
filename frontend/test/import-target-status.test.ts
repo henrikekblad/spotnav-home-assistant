@@ -114,3 +114,19 @@ describe("the plan's choice when the car cannot be ready under the import target
     expect(kept.ok && kept.body.if_not_ready).toBe("ask");
   });
 });
+
+
+describe("the press beside the import target's shortfall", () => {
+  it("keeps the issue banner, so any user reaches Release tonight", async () => {
+    const { bannerRepeatsStatus } = await import("../src/card-view");
+    const risk = line("import_target_at_risk", {
+      departure: "2026-11-03T06:00:00+00:00",
+      missing_kwh: 4,
+      target_kw: 6,
+      releasable: true,
+    });
+    const issues = issuesOf({ tone: "notice", lines: [risk] }, "sv", undefined, SV, NOW);
+    const model = { status: lineText(risk, SV, NOW), issues, language: "sv" } as never;
+    expect(bannerRepeatsStatus(model, "notice")).toBe(false);
+  });
+});

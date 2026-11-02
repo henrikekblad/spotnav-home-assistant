@@ -519,7 +519,8 @@ export function bannerRepeatsStatus(model: CardModel, severity: "blocking" | "no
   if (severity !== "notice" || model.status === null || model.issues.length === 0) {
     return false;
   }
-  if (model.issues.some((issue) => ACT_ON_CODES.has(issue.code))) {
+  if (model.issues.some((issue) => ACT_ON_CODES.has(issue.code) || issue.fix?.action !== undefined)) {
+    // A press to act on (a charger setting, or the import target set aside): the banner opens it.
     return false;
   }
   const strip = (text: string): string => text.trim().replace(/[.。]$/u, "");
