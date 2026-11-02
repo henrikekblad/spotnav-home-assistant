@@ -5,6 +5,8 @@ site's hour tracker (`site/demand_tracker.py`) measures the running clock hour; 
 site's chargers may still draw, and the site controller (`SiteCapacityController._hold_to_import_target`) takes the
 smaller of that and what the fuse allows.
 
+* **The level.** The import target as set, lifted to the month's free level where a demand-charge part counts the
+  running hour (`effective_target`): an hour may reach a peak the month has already paid for.
 * **Budget.** `target x 1 h - import so far this hour` is what the rest of the hour may still import. Spread over the
   time left it is a power; less the house's own load now (`house_w`, the site's net import less what its chargers
   draw, signed: a solar surplus makes it negative and leaves the chargers more) it is what the chargers may draw:
@@ -67,6 +69,34 @@ ACTION_FREE: Final = "free"
 ACTION_HELD: Final = "held"
 ACTION_PAUSED: Final = "paused"
 ACTION_UNHELD: Final = "unheld"
+
+
+@dataclass(frozen=True, slots=True)
+class EffectiveTarget:
+    """The level the hold keeps the running hour under (`effective_target`): the import target as set (`set_kw`), the
+    month's free level for the running hour (`free_kw`, `None` where no demand-charge part counts it), and the higher
+    of the two (`kw`)."""
+
+    set_kw: float
+    free_kw: float | None
+    kw: float
+
+    @property
+    def lifted(self) -> bool:
+        """Whether the month's free level lifts the target this hour."""
+        return self.kw > self.set_kw
+
+
+def effective_target(set_kw: float, free_levels: Iterable[float | None]) -> EffectiveTarget:
+    """The import target lifted to the month's free level: a demand charge bills the month's peaks, so an hour may
+    reach what is already paid for without costing more. The free level is the lowest `free_kw`
+    (`planning/demand_charge.component_month`) of the parts that count the running hour (`None` for one that does not):
+    a highest-hour part's month peak; a top-N part's N-th highest day, or today's own peak while today is among them,
+    and with fewer than N days today's own peak or nothing (0). An hour no part counts keeps the target. Only ever
+    raises the target, to a level an hour has already reached this month (an incomplete hour never sets a peak)."""
+    counted = [level for level in free_levels if level is not None]
+    free = min(counted) if counted else None
+    return EffectiveTarget(set_kw=set_kw, free_kw=free, kw=set_kw if free is None else max(set_kw, free))
 
 
 @dataclass(frozen=True, slots=True)
