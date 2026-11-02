@@ -812,6 +812,9 @@ class AutoSettings:
                 {
                     "departure_date", "departure_weekdays", "notifications", "fill_to_limit", "vehicle_ids",
                     "identify_mode", "identify_camera", "periods", "max_periods", "users_change_plan",
+                    # Written by 2.4 (what an import target does when the car cannot be ready). This release has no
+                    # import target, so it is read past rather than refused, and a downgrade keeps the plan.
+                    "if_not_ready",
                 }
             ),
         )
