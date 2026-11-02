@@ -155,7 +155,7 @@ measured hours (its load now until an hour is measured), never below the power a
 plan then buys the quarter-hours the held charge needs. A period the hold keeps short anyway (the house drew more
 than usual) is planned again at its end once it is half a kWh behind (not only below the usual 80 %), so what the
 target keeps back each period does not add up. When the held power can no longer deliver what the plan needs before
-the departure, the plan's *If the car cannot be ready in time* decides: ask (a notification with *Release tonight*),
+the departure, the plan's *If the car cannot be ready in time* decides: ask (a notification with *Release the import target tonight*),
 release the target by itself (the plan then counts on the car's own power), or hold it and say what will be missing.
 The car's minimum level is charged at once whatever the target.
 

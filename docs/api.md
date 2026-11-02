@@ -219,7 +219,7 @@ the status carries these lines, tone `normal` but for `import_target_at_risk` (`
   place of "so the hour stays under it".
 - `import_target_at_risk` `{departure, missing_kwh, target_kw, releasable}` after the issues while the plan cannot be
   ready by `departure` under the target: `missing_kwh` short. `releasable` (the plan's `if_not_ready` `ask`): offer
-  "Release tonight", `release_import_target`; `false` (`hold`): only say it.
+  "Release the import target tonight", `release_import_target`; `false` (`hold`): only say it.
 - `import_target_released` `{target_kw, departure, automatic}` after the issues while the charge runs with the target
   set aside until `departure`: by a person (`automatic` `false`), or by the plan's own `if_not_ready` `release`.
 - `import_target_house_over` `{target_kw}` after the issues while the house alone ends the hour above the target and

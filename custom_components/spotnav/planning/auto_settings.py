@@ -95,7 +95,7 @@ IDENTIFY_ASK: Final = "ask"
 IDENTIFY_OFF: Final = "off"
 IDENTIFY_MODES: Final = (IDENTIFY_AUTOMATIC, IDENTIFY_ASK, IDENTIFY_OFF)
 #: What the site's import target does when this plan cannot be ready by its departure under it
-#: (`site/site_capacity_controller.py`): `ask` (hold, and offer "Release tonight" once), `release` (the departure wins
+#: (`site/site_capacity_controller.py`): `ask` (hold, and offer "Release the import target tonight" once), `release` (the departure wins
 #: by itself) or `hold` (the target holds, and the status says what is missing).
 IF_NOT_READY_ASK: Final = "ask"
 IF_NOT_READY_RELEASE: Final = "release"

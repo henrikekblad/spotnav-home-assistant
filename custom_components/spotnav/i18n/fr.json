@@ -33,7 +33,7 @@
     "cost": "environ {cost}",
     "import_target.at_risk.time": "La voiture ne sera pas prête à {time} avec l'objectif de soutirage de {target} kW – il manque {kwh} kWh.",
     "import_target.at_risk": "La voiture ne sera pas prête au départ avec l'objectif de soutirage de {target} kW – il manque {kwh} kWh.",
-    "import_target.release": "Lever l'objectif cette nuit"
+    "import_target.release": "Lever l'objectif de soutirage cette nuit"
   },
   "add_charger": {
     "hint": "Ajoutez une borne : Paramètres → Appareils et services → SpotNav → Ajouter une entrée → Borne ; elle proposera de rejoindre ce site."

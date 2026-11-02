@@ -33,7 +33,7 @@
     "cost": "noin {cost}",
     "import_target.at_risk.time": "Auto ei ole valmis klo {time} mennessä {target} kW:n tehotavoitteella – {kwh} kWh puuttuu.",
     "import_target.at_risk": "Auto ei ole valmis lähtöön {target} kW:n tehotavoitteella – {kwh} kWh puuttuu.",
-    "import_target.release": "Ohita tavoite tänä yönä"
+    "import_target.release": "Ohita tehotavoite tänä yönä"
   },
   "add_charger": {
     "hint": "Lisää latauslaite: Asetukset → Laitteet ja palvelut → SpotNav → Lisää merkintä → Latauslaite; se tarjoutuu liittymään tähän kohteeseen."

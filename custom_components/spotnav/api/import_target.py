@@ -1,4 +1,4 @@
-"""`spotnav/release_import_target`: "Release tonight" beside the import target's shortfall (the status line
+"""`spotnav/release_import_target`: "Release the import target tonight" beside the import target's shortfall (the status line
 `import_target_at_risk`, and the notification's button).
 
 `{api_version: 1, charger_id}` sets the site's import target aside for that charger's charge until its plan's

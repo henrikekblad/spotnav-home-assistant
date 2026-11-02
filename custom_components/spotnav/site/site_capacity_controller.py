@@ -389,7 +389,7 @@ class TargetRisk:
     departure: str
     missing_kwh: float
     target_kw: float
-    #: The plan's `if_not_ready`: `ask` is told and offered "Release tonight", `hold` only said, `release` set aside.
+    #: The plan's `if_not_ready`: `ask` is told and offered "Release the import target tonight", `hold` only said, `release` set aside.
     choice: str = IF_NOT_READY_ASK
 
 #: Decision-log details of the battery-on-the-fuse handling (`site/battery_probe.py`).
@@ -5115,7 +5115,7 @@ class SiteCapacityController:
             return ERROR_NO_DEPARTURE
         if for_departure is not None and for_departure != int(departure.timestamp()):
             _LOGGER.info(
-                "SpotNav site %s: a Release tonight for charger %s was for another departure than its plan's %s; "
+                "SpotNav site %s: a Release the import target tonight for charger %s was for another departure than its plan's %s; "
                 "nothing is set aside",
                 self.entry_id,
                 charger_entry_id,

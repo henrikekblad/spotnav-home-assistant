@@ -559,13 +559,13 @@ charger draws on would turn from import to export (so the current the fuse carri
   cannot be ready in time* in the card's Plan dialog (shown while the site has a target):
   - **Ask** (the default): the target holds, and the phones chosen for *the charge will not be ready in time* are
     told once, in its place: *The car will not be ready by 07:00 under the 6.0 kW import target – 4 kWh short*, with
-    one button, *Release tonight*. Told again only when the shortfall grows clearly (by a kWh and by half), and taken
+    one button, *Release the import target tonight*. Told again only when the shortfall grows clearly (by a kWh and by half), and taken
     off the phones once it can be met again. No answer: the target holds. The card's status says the same, with the
     same press.
-  - **Release the target**: the departure wins by itself; once holding would miss it the target is set aside for that
-    charge until its departure, as *Release tonight* does, and the plan counts on the car's own power.
-  - **Hold the target**: the target holds, nothing is sent, and the status says how much will be missing.
-- **Release tonight** (from the notification, the card or the app) sets the target aside for that charge until its
+  - **Release the import target**: the departure wins by itself; once holding would miss it the target is set aside for that
+    charge until its departure, as *Release the import target tonight* does, and the plan counts on the car's own power.
+  - **Keep the import target**: the target holds, nothing is sent, and the status says how much will be missing.
+- **Release the import target tonight** (from the notification, the card or the app) sets the target aside for that charge until its
   departure, or until the car is unplugged or the plan is made for another departure; a restart keeps it. A phone's
   button carries the departure it was told for: pressed once the plan is for another departure (after a restart or a
   new plan), it sets nothing aside. While the target's notice stands, the plan's own *will not be ready* notice is
@@ -575,7 +575,7 @@ charger draws on would turn from import to export (so the current the fuse carri
 - **Plans count on the target.** A plan for a charger on the site counts on the power the target leaves it (the
   target less the house's typical load as above, never below the charger's minimum), so it buys the quarter-hours
   the held charge needs and says honestly what it can deliver by the departure (see
-  [Planning strategies](strategies.md)). Not for a plan set to *Release the target*, nor for a charger the hold
+  [Planning strategies](strategies.md)). Not for a plan set to *Release the import target*, nor for a charger the hold
   cannot act on (no current of its own to judge a lowering on, or a phase that cannot be judged).
 - **A person's Start is left alone**, as the sun leaves it: such a charge counts toward the hour but is never held. A
   person's Stop is untouched. A charge of a person's that the fuse paused counts as nothing while it waits.
@@ -591,8 +591,8 @@ charger draws on would turn from import to export (so the current the fuse carri
   code fail, the fuse's decisions go out as they are and nothing is held for it.
 - **Shown.** The charger's status says *Held to 7 A to keep this hour under 6.0 kW (now 5.1 kW)*, *Paused until
   15:00 to keep this hour under 6.0 kW* (or, where the house alone is above the target, *Paused until 15:00 – the
-  house alone is above the 6.0 kW target this hour*), *The car will not be ready by 07:00 under the 6.0 kW import
-  target – 4 kWh short* with *Release tonight*, or that the target is set aside until 07:00. The site's
+  house alone is above the 6.0 kW import target this hour*), *The car will not be ready by 07:00 under the 6.0 kW import
+  target – 4 kWh short* with *Release the import target tonight*, or that the target is set aside until 07:00. The site's
   load-balancing limit names the cause `import_target` only where the target's budget holds the charger. The site's
   diagnostics carry an `import_target` block: the hour's budget or why it is not applied, the level held to (`effective`: the lifted level, the month's free level and whether every part counts the hour), what it does to each
   charger (held, paused, kept at the hour's end, or why it could not hold it), the hour each was paused in, the

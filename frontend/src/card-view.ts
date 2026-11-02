@@ -289,7 +289,7 @@ export interface CardViewInput {
   onDismissSetup?: (id: SetupRowId) => void;
   /** An issue's "Set to …" or "Turn on" (administrators only): the card writes that fix, then reads again. */
   onFixOwnMode?: (entity: string, value: string) => void;
-  /** An issue's "Release tonight" (any user): the card sets the import target aside for this charge, then reads again. */
+  /** An issue's "Release the import target tonight" (any user): the card sets the import target aside for this charge, then reads again. */
   onReleaseImportTarget?: () => void;
   /** Where Settings was left for a child dialog: the page returns there (owned by the card, kept across renders). */
   overviewPlace?: OverviewPlaceHolder;

@@ -35,13 +35,13 @@ describe("the import target's status lines", () => {
     expect(lineText(paused, SV, NOW)).toBe(
       "Pausad till kl. 21:00 – huset ensamt ligger över effektmålet på 6,0 kW den här timmen.",
     );
-    expect(lineText(paused, EN, NOW)).toBe("Paused until 21:00 – the house alone is above the 6.0 kW target this hour.");
+    expect(lineText(paused, EN, NOW)).toBe("Paused until 21:00 – the house alone is above the 6.0 kW import target this hour.");
     expect(lineText(paused, EN, NOW)).not.toContain("stays under");
   });
 
   it("says when the house alone is over the target, and when the departure sets it aside", () => {
     expect(lineText(line("import_target_house_over", { target_kw: 6 }), EN, NOW)).toBe(
-      "The house alone is above the 6.0 kW target this hour.",
+      "The house alone is above the 6.0 kW import target this hour.",
     );
     const released = line("import_target_released", { target_kw: 6, departure: "2026-11-02T16:00:00+00:00" });
     expect(lineText(released, EN, NOW)).toBe("The import target is set aside by you until 17:00.");
@@ -62,7 +62,7 @@ describe("the import target's status lines", () => {
     expect(lineText(risk, SV, NOW)).toBe("Bilen blir inte klar till 07:00 under effektmålet 6,0 kW – 4 kWh saknas.");
     const [issue] = issuesOf({ tone: "notice", lines: [risk] }, "sv", undefined, SV, NOW);
     expect(issue?.fix?.action).toBe("release_import_target");
-    expect(translate("sv", issue!.fix!.labelKey)).toBe("Släpp målet i natt");
+    expect(translate("sv", issue!.fix!.labelKey)).toBe("Släpp effektmålet i natt");
     const held = line("import_target_at_risk", {
       departure: "2026-11-03T06:00:00+00:00",
       missing_kwh: 4,
@@ -106,7 +106,7 @@ describe("the plan's choice when the car cannot be ready under the import target
     const shown = settingsEditorBody(document, "sv", { ...base, importTarget: true } as never, handlers as never, "t2");
     const group = shown.body.querySelector("[data-part='if-not-ready']");
     expect(group?.textContent).toContain("Om bilen inte hinner bli klar");
-    expect(group?.textContent).toContain("Släpp målet");
+    expect(group?.textContent).toContain("Släpp effektmålet");
     // The same rows as the departure's "Every day / On a date" choice: a plain label, not a bold checkbox field.
     expect(group?.querySelectorAll(":scope > label.spotnav-site-choice > input[type='radio']")).toHaveLength(3);
     const values = { ...formFromRecord(record), ifNotReady: "hold" };
@@ -119,7 +119,7 @@ describe("the plan's choice when the car cannot be ready under the import target
 
 
 describe("the press beside the import target's shortfall", () => {
-  it("keeps the issue banner, so any user reaches Release tonight", async () => {
+  it("keeps the issue banner, so any user reaches Release the import target tonight", async () => {
     const { bannerRepeatsStatus } = await import("../src/card-view");
     const risk = line("import_target_at_risk", {
       departure: "2026-11-03T06:00:00+00:00",
@@ -137,7 +137,7 @@ describe("the import target lifted to the month's peak", () => {
   it("names the month's peak and the target as set, and keeps today's lines when they are the same", () => {
     const lifted = line("import_target_held", { limit_a: 9, target_kw: 6.6, hour_kw: 5.9, set_kw: 6 });
     expect(lineText(lifted, EN, NOW)).toBe(
-      "Held to 9 A to keep this hour under 6.6 kW, the month's peak (target 6.0 kW; now 5.9 kW).",
+      "Held to 9 A to keep this hour under 6.6 kW, the month's peak (import target 6.0 kW; now 5.9 kW).",
     );
     expect(lineText(lifted, SV, NOW)).toBe(
       "Hålls på 9 A så att timmen stannar under 6,6 kW, månadens topp (effektmål 6,0 kW; nu 5,9 kW).",
