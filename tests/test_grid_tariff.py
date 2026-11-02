@@ -46,7 +46,7 @@ OFF = {"enabled": False, "value": None}
 SUGGESTED = {"enabled": True, "value": None}
 #: The owner's tariff: 16 öre ex VAT fixed plus 5 % of spot.
 OWNER_PERCENT = {"enabled": True, "value": 5.0}
-WINDOW = {"weekdays_only": True, "from_hour": 7, "to_hour": 19, "winter_only": True}
+WINDOW = {"days": "weekdays", "from_month": 11, "to_month": 3, "from_hour": 7, "to_hour": 19}
 
 CATALOGUE = parse_catalogue(
     json.loads((Path(__file__).parent / "fixtures" / "relay_v2" / "areas-v2.json").read_text("utf-8")), version=2
@@ -85,7 +85,7 @@ def test_a_stored_tariff_is_read_and_moves_the_revision() -> None:
     }
     row = fees_from_data(SE4, data)
     assert row.grid_tariff == GridTariff(
-        transfer_percent=FiscalOverride(True, 5.0), high_load_window=HighLoadWindow(True, 7, 19, True)
+        transfer_percent=FiscalOverride(True, 5.0), high_load_window=HighLoadWindow("weekdays", 11, 3, 7, 19)
     )
     assert source_revision(row) != source_revision(row.fees_only())
     # The settings record's row is untouched: no new key in `as_dict`.
@@ -95,7 +95,7 @@ def test_a_stored_tariff_is_read_and_moves_the_revision() -> None:
 def test_an_unreadable_stored_part_is_off_never_a_guess() -> None:
     data = {
         "area_id": SE4, "transfer_percent": {"enabled": "yes", "value": 5}, "transfer_high": {"enabled": True},
-        "high_load_window": {"weekdays_only": True, "from_hour": 19, "to_hour": 7, "winter_only": True},
+        "high_load_window": {"days": "weekdays", "from_month": 11, "to_month": 3, "from_hour": 7, "to_hour": 7},
     }
     assert fees_from_data(SE4, data).grid_tariff is None
 
@@ -133,7 +133,7 @@ def test_the_owners_tariff_resolves_and_prices_both_signs() -> None:
 
 def test_the_window_takes_the_areas_zone_and_only_while_the_high_fee_is_on() -> None:
     se4 = CATALOGUE.area(SE4)
-    window = HighLoadWindow(True, 7, 19, True)
+    window = HighLoadWindow("weekdays", 11, 3, 7, 19)
     on = fiscal_choice_for(
         AutoSettings(
             area_id=SE4,
@@ -157,7 +157,7 @@ def test_an_area_whose_price_includes_the_grid_fee_locks_both_parts() -> None:
         grid_tariff=GridTariff(
             transfer_percent=FiscalOverride(True, 5.0),
             transfer_high=FiscalOverride(True, 9.0),
-            high_load_window=HighLoadWindow(False, 16, 19, False),
+            high_load_window=HighLoadWindow("all", 1, 12, 16, 19),
         ),
     )
     fiscal = fiscal_choice_for(AutoSettings(area_id="GB-C", overrides=(row,)), london)
@@ -216,7 +216,7 @@ async def test_a_tariff_change_replans_with_the_new_price(hass: HomeAssistant, f
     tariff = GridTariff(
         transfer_percent=FiscalOverride(True, 5.0),
         transfer_high=FiscalOverride(True, 200.0),
-        high_load_window=HighLoadWindow(False, 0, 24, False),
+        high_load_window=HighLoadWindow("all", 1, 12, 0, 24),
     )
     async_write_price_entry(hass, price, replace(source.overrides, grid_tariff=tariff), expected_write_revision=0)
     await hass.async_block_till_done()
@@ -238,8 +238,9 @@ HIDDEN = (
     ("select", "grid_fee_high_policy"),
     ("number", "high_load_from_hour"),
     ("number", "high_load_to_hour"),
-    ("switch", "high_load_weekdays_only"),
-    ("switch", "high_load_winter_only"),
+    ("select", "high_load_days"),
+    ("select", "high_load_from_month"),
+    ("select", "high_load_to_month"),
 )
 
 
@@ -297,27 +298,37 @@ async def test_a_window_entity_chooses_the_window_and_then_the_high_fee_can_be_s
     freezer.move_to(NOW)
     price = await add_price(hass)
     await _enable_hidden(hass, price)
-    weekdays = entity_id(hass, price.entry_id, "high_load_weekdays_only", "switch")
-    assert hass.states.get(weekdays).state == "unknown"
+    days = entity_id(hass, price.entry_id, "high_load_days", "select")
+    first_month = entity_id(hass, price.entry_id, "high_load_from_month", "select")
+    last_month = entity_id(hass, price.entry_id, "high_load_to_month", "select")
+    from_hour = entity_id(hass, price.entry_id, "high_load_from_hour", "number")
+    to_hour = entity_id(hass, price.entry_id, "high_load_to_hour", "number")
+    assert hass.states.get(days).state == "unknown"
 
     # Touching a window entity is choosing a window: it starts from the usual one.
-    await call(hass, "number", "set_value", {"entity_id": entity_id(hass, price.entry_id, "high_load_from_hour", "number"), "value": 7})
+    await call(hass, "number", "set_value", {"entity_id": from_hour, "value": 7})
     assert price.data["high_load_window"] == WINDOW
     await call(hass, "number", "set_value", {"entity_id": entity_id(hass, price.entry_id, "grid_fee_high", "number"), "value": 60})
     assert price.data["transfer_high"] == {"enabled": True, "value": 60.0}
-    assert hass.states.get(weekdays).state == "on"
+    assert hass.states.get(days).state == "weekdays"
+    assert (hass.states.get(first_month).state, hass.states.get(last_month).state) == ("11", "3")
     assert hass.states.get(entity_id(hass, price.entry_id, "grid_fee_high_policy", "select")).state == "manual"
 
-    await call(hass, "switch", "turn_off", {"entity_id": weekdays})
-    await call(hass, "switch", "turn_off", {"entity_id": entity_id(hass, price.entry_id, "high_load_winter_only", "switch")})
-    await call(hass, "number", "set_value", {"entity_id": entity_id(hass, price.entry_id, "high_load_from_hour", "number"), "value": 6})
-    await call(hass, "number", "set_value", {"entity_id": entity_id(hass, price.entry_id, "high_load_to_hour", "number"), "value": 22})
-    assert price.data["high_load_window"] == {"weekdays_only": False, "from_hour": 6, "to_hour": 22, "winter_only": False}
+    await call(hass, "select", "select_option", {"entity_id": days, "option": "mon_sat"})
+    await call(hass, "select", "select_option", {"entity_id": first_month, "option": "1"})
+    await call(hass, "select", "select_option", {"entity_id": last_month, "option": "12"})
+    await call(hass, "number", "set_value", {"entity_id": to_hour, "value": 22})
+    assert price.data["high_load_window"] == {
+        "days": "mon_sat", "from_month": 1, "to_month": 12, "from_hour": 7, "to_hour": 22,
+    }
+    # An end before the start wraps over midnight.
+    await call(hass, "number", "set_value", {"entity_id": to_hour, "value": 6})
+    assert price.data["high_load_window"]["to_hour"] == 6
 
-    # A window that ends before it starts is refused, and nothing moves.
+    # A window that ends where it starts is refused, and nothing moves.
     revision = price_write_revision(price)
     with pytest.raises(ServiceValidationError):
-        await call(hass, "number", "set_value", {"entity_id": entity_id(hass, price.entry_id, "high_load_to_hour", "number"), "value": 5})
+        await call(hass, "number", "set_value", {"entity_id": to_hour, "value": 7})
     assert price_write_revision(price) == revision
 
     # Off keeps the figure and the window, so on again needs nothing else.

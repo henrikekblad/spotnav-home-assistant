@@ -268,35 +268,23 @@ class FiscalOverride:
 #: An electricity price entry's grid tariff keys beside its three fees (`pricing/price_source.py`).
 GRID_TARIFF_FEES: Final = ("transfer_percent", "transfer_high")
 HIGH_LOAD_WINDOW: Final = "high_load_window"
-HIGH_LOAD_WINDOW_KEYS: Final = frozenset({"weekdays_only", "from_hour", "to_hour", "winter_only"})
+HIGH_LOAD_WINDOW_KEYS: Final = ("days", "from_month", "to_month", "from_hour", "to_hour")
 
 
 def high_load_window_from(raw: Any, what: str = "high_load_window") -> HighLoadWindow:
-    """A stored or sent high-load window (exactly its four fields), or `invalid_fiscal`. Never coerced."""
+    """A stored or sent high-load window (exactly its five fields), or `invalid_fiscal`. Never coerced."""
     if not isinstance(raw, dict):
         _refuse("invalid_fiscal", f"{what} must be an object")
-    missing = HIGH_LOAD_WINDOW_KEYS - set(raw)
-    unknown = set(raw) - HIGH_LOAD_WINDOW_KEYS
-    if missing or unknown:
+    if set(raw) != set(HIGH_LOAD_WINDOW_KEYS):
         _refuse("invalid_fiscal", f"{what} must carry exactly {sorted(HIGH_LOAD_WINDOW_KEYS)}")
-    problem = high_load_window_problem(raw["weekdays_only"], raw["from_hour"], raw["to_hour"], raw["winter_only"])
+    problem = high_load_window_problem(*(raw[key] for key in HIGH_LOAD_WINDOW_KEYS))
     if problem is not None:
         _refuse("invalid_fiscal", f"{what}: {problem}")
-    return HighLoadWindow(
-        weekdays_only=raw["weekdays_only"],
-        from_hour=raw["from_hour"],
-        to_hour=raw["to_hour"],
-        winter_only=raw["winter_only"],
-    )
+    return HighLoadWindow(**{key: raw[key] for key in HIGH_LOAD_WINDOW_KEYS})
 
 
 def high_load_window_dict(window: HighLoadWindow) -> dict[str, Any]:
-    return {
-        "weekdays_only": window.weekdays_only,
-        "from_hour": window.from_hour,
-        "to_hour": window.to_hour,
-        "winter_only": window.winter_only,
-    }
+    return {key: getattr(window, key) for key in HIGH_LOAD_WINDOW_KEYS}
 
 
 @dataclass(frozen=True, slots=True)

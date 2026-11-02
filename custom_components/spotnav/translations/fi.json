@@ -783,6 +783,48 @@
           "off": "Pois",
           "manual": "Käytä omaa arvoa"
         }
+      },
+      "high_load_days": {
+        "name": "Huippukuormituspäivät",
+        "state": {
+          "all": "Joka päivä",
+          "weekdays": "Arkipäivät (ma–pe)",
+          "mon_sat": "Maanantaista lauantaihin"
+        }
+      },
+      "high_load_from_month": {
+        "name": "Huippukuormitustuntien ensimmäinen kuukausi",
+        "state": {
+          "1": "tammikuu",
+          "2": "helmikuu",
+          "3": "maaliskuu",
+          "4": "huhtikuu",
+          "5": "toukokuu",
+          "6": "kesäkuu",
+          "7": "heinäkuu",
+          "8": "elokuu",
+          "9": "syyskuu",
+          "10": "lokakuu",
+          "11": "marraskuu",
+          "12": "joulukuu"
+        }
+      },
+      "high_load_to_month": {
+        "name": "Huippukuormitustuntien viimeinen kuukausi",
+        "state": {
+          "1": "tammikuu",
+          "2": "helmikuu",
+          "3": "maaliskuu",
+          "4": "huhtikuu",
+          "5": "toukokuu",
+          "6": "kesäkuu",
+          "7": "heinäkuu",
+          "8": "elokuu",
+          "9": "syyskuu",
+          "10": "lokakuu",
+          "11": "marraskuu",
+          "12": "joulukuu"
+        }
       }
     },
     "number": {
@@ -828,12 +870,6 @@
     "switch": {
       "departure_enabled": {
         "name": "Lähdön määräaika"
-      },
-      "high_load_weekdays_only": {
-        "name": "Huippukuormitustunnit vain arkisin"
-      },
-      "high_load_winter_only": {
-        "name": "Huippukuormitustunnit vain marras–maaliskuussa"
       }
     },
     "time": {

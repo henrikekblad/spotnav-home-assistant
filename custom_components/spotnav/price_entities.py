@@ -13,8 +13,8 @@ registry at its setup (`remove_charger_price_entities`).
 The grid tariff (`planning/auto_settings.py:GridTariff`) is written the same way: two numbers, "Grid fee, % of
 spot" and "Grid fee in high-load hours" (setting one switches that fee on with the figure), and, hidden by default
 (the card and the app are where it is set), a policy select per fee (off or manual) and the high-load window as two
-numbers and two switches. A part of the window set while none is stored starts from the usual window (weekdays
-07-19, November to March): touching a window entity is choosing a window. The high-load fee never makes one up:
+hour numbers and three selects (its days, first month and last month). A part of the window set while none is
+stored starts from the usual window (weekdays 07-19, November to March): touching a window entity is choosing a window. The high-load fee never makes one up:
 switching it on while no window is stored is refused (`high_load_window_required`), saying to set the high-load
 hours first.
 """
@@ -29,7 +29,6 @@ from homeassistant.components.binary_sensor import BinarySensorEntity
 from homeassistant.components.number import NumberEntity, NumberMode, RestoreNumber
 from homeassistant.components.select import SelectEntity
 from homeassistant.components.sensor import SensorEntity, SensorStateClass
-from homeassistant.components.switch import SwitchEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EntityCategory, PERCENTAGE, UnitOfTime
 from homeassistant.core import HomeAssistant
@@ -50,7 +49,7 @@ from .entity import (
     with_fiscal_policy,
 )
 from .planning.auto_settings import AreaAutoSettings, AutoSettingsError, FiscalOverride, GridTariff
-from .planning.planner import HighLoadWindow
+from .planning.planner import HIGH_LOAD_DAYS, HighLoadWindow
 from .price_device import PriceDevice
 from .pricing.price_points import (
     CHEAP,
@@ -490,8 +489,8 @@ class GridFeePolicySelect(SpotNavGridTariffSetting, SelectEntity):
 
 
 class HighLoadHourNumber(SpotNavGridTariffSetting, NumberEntity):
-    """The high-load window's first hour (0-23) or the hour it ends at (1-24), on the area's clock. Hidden by
-    default."""
+    """The high-load window's first hour (0-23) or the hour it ends at (1-24), on the area's clock; a first hour
+    after the end wraps over midnight. Hidden by default."""
 
     _attr_mode = NumberMode.BOX
     _attr_native_step = 1
@@ -518,29 +517,26 @@ class HighLoadHourNumber(SpotNavGridTariffSetting, NumberEntity):
         self.write_tariff(replace(self.tariff, high_load_window=window))
 
 
-class HighLoadSwitch(SpotNavGridTariffSetting, SwitchEntity):
-    """Whether the high-load window is on weekdays only, or November to March only. Hidden by default."""
+class HighLoadSelect(SpotNavGridTariffSetting, SelectEntity):
+    """The high-load window's days (`all`, `weekdays`, `mon_sat`), or its first or last month (`1` to `12`, both
+    included). Hidden by default."""
 
     _attr_entity_registry_enabled_default = False
 
     def __init__(self, entry: ConfigEntry, device: PriceDevice, field: str) -> None:
         super().__init__(entry, device, f"high_load_{field}")
         self._field = field
+        self._attr_options = list(HIGH_LOAD_DAYS) if field == "days" else [str(month) for month in range(1, 13)]
 
     @property
-    def is_on(self) -> bool | None:
+    def current_option(self) -> str | None:
         window = self.tariff.high_load_window
-        return None if window is None else getattr(window, self._field)
+        return None if window is None else str(getattr(window, self._field))
 
-    async def _set(self, value: bool) -> None:
+    async def async_select_option(self, option: str) -> None:
+        value: str | int = option if self._field == "days" else int(option)
         window = replace(self.tariff.high_load_window or DEFAULT_WINDOW, **{self._field: value})
         self.write_tariff(replace(self.tariff, high_load_window=window))
-
-    async def async_turn_on(self, **kwargs: Any) -> None:
-        await self._set(True)
-
-    async def async_turn_off(self, **kwargs: Any) -> None:
-        await self._set(False)
 
 
 def price_sensors(entry: ConfigEntry, device: PriceDevice) -> list[Any]:
@@ -566,8 +562,6 @@ def price_selects(entry: ConfigEntry, device: PriceDevice) -> list[Any]:
         PriceAreaSelect(entry, device),
         *(PriceFeePolicySelect(entry, device, component) for component in FISCAL_COMPONENTS),
         *(GridFeePolicySelect(entry, device, fee) for fee in GRID_FEE_POLICY_KEYS),
+        *(HighLoadSelect(entry, device, field) for field in ("days", "from_month", "to_month")),
     ]
 
-
-def price_switches(entry: ConfigEntry, device: PriceDevice) -> list[Any]:
-    return [HighLoadSwitch(entry, device, field) for field in ("weekdays_only", "winter_only")]

@@ -783,6 +783,48 @@
           "off": "Off",
           "manual": "Use a manual value"
         }
+      },
+      "high_load_days": {
+        "name": "High-load days",
+        "state": {
+          "all": "Every day",
+          "weekdays": "Weekdays (Mon–Fri)",
+          "mon_sat": "Monday to Saturday"
+        }
+      },
+      "high_load_from_month": {
+        "name": "High-load hours first month",
+        "state": {
+          "1": "January",
+          "2": "February",
+          "3": "March",
+          "4": "April",
+          "5": "May",
+          "6": "June",
+          "7": "July",
+          "8": "August",
+          "9": "September",
+          "10": "October",
+          "11": "November",
+          "12": "December"
+        }
+      },
+      "high_load_to_month": {
+        "name": "High-load hours last month",
+        "state": {
+          "1": "January",
+          "2": "February",
+          "3": "March",
+          "4": "April",
+          "5": "May",
+          "6": "June",
+          "7": "July",
+          "8": "August",
+          "9": "September",
+          "10": "October",
+          "11": "November",
+          "12": "December"
+        }
       }
     },
     "number": {
@@ -828,12 +870,6 @@
     "switch": {
       "departure_enabled": {
         "name": "Departure deadline"
-      },
-      "high_load_weekdays_only": {
-        "name": "High-load hours on weekdays only"
-      },
-      "high_load_winter_only": {
-        "name": "High-load hours November to March only"
       }
     },
     "time": {

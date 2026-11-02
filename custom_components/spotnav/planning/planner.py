@@ -131,26 +131,32 @@ def _aware(moment: Any, what: str) -> datetime:
     return moment
 
 
-#: The months a winter-only high-load window applies in: November to March.
-WINTER_MONTHS: Final = frozenset({11, 12, 1, 2, 3})
+#: The days a high-load window applies on, and the last ISO weekday (Monday 1) each takes in.
+HIGH_LOAD_DAYS: Final = {"all": 7, "weekdays": 5, "mon_sat": 6}
 
 
-def high_load_window_problem(weekdays_only: Any, from_hour: Any, to_hour: Any, winter_only: Any) -> str | None:
-    """Why these four fields are not a high-load window, or `None` when they are one.
+def high_load_window_problem(days: Any, from_month: Any, to_month: Any, from_hour: Any, to_hour: Any) -> str | None:
+    """Why these five fields are not a high-load window, or `None` when they are one.
 
-    Whole hours of the area's own clock: `from_hour` 0 to 23, `to_hour` 1 to 24 and after it. One rule for the
-    planner and the stored settings, so the two cannot disagree.
+    `days` is `all`, `weekdays` (Monday to Friday) or `mon_sat`. Months 1 to 12, both included, wrapping over the
+    new year (11 to 3 is November to March; equal is one month; 1 to 12 is all year). Whole hours of the area's
+    own clock: `from_hour` 0 to 23, `to_hour` 1 to 24; a `from_hour` after `to_hour` wraps over midnight (22 to 6),
+    and an equal pair is no window. One rule for the planner and the stored settings, so the two cannot disagree.
     """
-    for name, value in (("weekdays_only", weekdays_only), ("winter_only", winter_only)):
-        if not isinstance(value, bool):
-            return f"{name} must be a boolean"
-    for name, value, low, high in (("from_hour", from_hour, 0, 23), ("to_hour", to_hour, 1, 24)):
+    if not isinstance(days, str) or days not in HIGH_LOAD_DAYS:
+        return f"days must be one of {sorted(HIGH_LOAD_DAYS)}"
+    for name, value, low, high in (
+        ("from_month", from_month, 1, 12),
+        ("to_month", to_month, 1, 12),
+        ("from_hour", from_hour, 0, 23),
+        ("to_hour", to_hour, 1, 24),
+    ):
         if isinstance(value, bool) or not isinstance(value, int):
-            return f"{name} must be a whole hour"
+            return f"{name} must be a whole number"
         if not low <= value <= high:
             return f"{name} must be between {low} and {high}"
-    if from_hour >= to_hour:
-        return "from_hour must be before to_hour"
+    if from_hour == to_hour:
+        return "from_hour and to_hour must differ"
     return None
 
 
@@ -158,20 +164,23 @@ def high_load_window_problem(weekdays_only: Any, from_hour: Any, to_hour: Any, w
 class HighLoadWindow:
     """The hours a time-of-use grid fee charges its high rate in (and, later, a demand charge counts).
 
-    Whole hours of the area's own clock (`tz`), on weekdays only or every day, all year or November to March
-    only. Public holidays count as the weekdays they fall on. `tz` is the area's zone, set when the fees are
-    resolved for an area; a stored window has none.
+    Whole hours of the area's own clock (`tz`) on some days of the week (`days`) in some months, as
+    `high_load_window_problem` states. The hours of a window that wraps over midnight belong to the day they
+    start on: 22-06 on weekdays holds Friday night until Saturday 06:00 and not Sunday night, and its morning
+    hours take the month of the evening before. Public holidays count as the weekdays they fall on. `tz` is the
+    area's zone, set when the fees are resolved for an area; a stored window has none.
     """
 
-    weekdays_only: bool = True
+    days: str = "weekdays"
+    from_month: int = 11
+    to_month: int = 3
     from_hour: int = 7
     to_hour: int = 19
-    winter_only: bool = True
     tz: str | None = None
 
     def validated(self) -> HighLoadWindow:
         """The same window, once it names its zone and its fields are a window."""
-        problem = high_load_window_problem(self.weekdays_only, self.from_hour, self.to_hour, self.winter_only)
+        problem = high_load_window_problem(self.days, self.from_month, self.to_month, self.from_hour, self.to_hour)
         if problem is not None:
             _refuse("invalid_fiscal", f"high_load_window: {problem}")
         if not isinstance(self.tz, str) or time_zones.zone(self.tz) is None:
@@ -182,16 +191,26 @@ class HighLoadWindow:
         """Whether the interval starting at this instant lies in the window, on the area's clock.
 
         Judged at the start: window edges are whole hours and every interval starts on a quarter-hour, so an
-        interval is wholly inside or wholly outside. A 23- or 25-hour day needs no case of its own.
+        interval is wholly inside or wholly outside. A 23- or 25-hour day needs no case of its own: the hour on
+        the clock decides, and a wrapped window's morning hours are tested as the day before's.
         """
         if self.tz is None:
             _refuse("invalid_fiscal", "a high-load window needs the area's time zone")
         local = _aware(start, "start").astimezone(time_zones.require_zone(self.tz))
-        if self.weekdays_only and local.isoweekday() > 5:
+        hour = local.hour
+        day = local.date()
+        if self.from_hour < self.to_hour:
+            if not self.from_hour <= hour < self.to_hour:
+                return False
+        elif hour < self.to_hour:
+            day -= timedelta(days=1)
+        elif hour < self.from_hour:
             return False
-        if self.winter_only and local.month not in WINTER_MONTHS:
+        if day.isoweekday() > HIGH_LOAD_DAYS[self.days]:
             return False
-        return self.from_hour <= local.hour < self.to_hour
+        if self.from_month <= self.to_month:
+            return self.from_month <= day.month <= self.to_month
+        return day.month >= self.from_month or day.month <= self.to_month
 
 
 @dataclass(frozen=True, slots=True)

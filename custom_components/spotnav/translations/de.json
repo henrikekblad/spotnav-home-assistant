@@ -783,6 +783,48 @@
           "off": "Aus",
           "manual": "Eigenen Wert verwenden"
         }
+      },
+      "high_load_days": {
+        "name": "Hochlasttage",
+        "state": {
+          "all": "Jeden Tag",
+          "weekdays": "Werktags (Mo–Fr)",
+          "mon_sat": "Montag bis Samstag"
+        }
+      },
+      "high_load_from_month": {
+        "name": "Hochlastzeit erster Monat",
+        "state": {
+          "1": "Januar",
+          "2": "Februar",
+          "3": "März",
+          "4": "April",
+          "5": "Mai",
+          "6": "Juni",
+          "7": "Juli",
+          "8": "August",
+          "9": "September",
+          "10": "Oktober",
+          "11": "November",
+          "12": "Dezember"
+        }
+      },
+      "high_load_to_month": {
+        "name": "Hochlastzeit letzter Monat",
+        "state": {
+          "1": "Januar",
+          "2": "Februar",
+          "3": "März",
+          "4": "April",
+          "5": "Mai",
+          "6": "Juni",
+          "7": "Juli",
+          "8": "August",
+          "9": "September",
+          "10": "Oktober",
+          "11": "November",
+          "12": "Dezember"
+        }
       }
     },
     "number": {
@@ -828,12 +870,6 @@
     "switch": {
       "departure_enabled": {
         "name": "Abfahrtszeit einhalten"
-      },
-      "high_load_weekdays_only": {
-        "name": "Hochlastzeit nur werktags"
-      },
-      "high_load_winter_only": {
-        "name": "Hochlastzeit nur November bis März"
       }
     },
     "time": {
