@@ -225,3 +225,31 @@ async def test_the_site_says_load_balancing_only_lowers_until_the_sign_and_the_t
     site.config[CONF_GRID_POWER_SOURCE] = {"power": "sensor.hint_site_grid_power"}
     assert site.capability_snapshot.load_balancing.blocking_reasons == ()
     assert _active_control_reason(site) is None
+
+
+async def test_a_raised_charging_current_setting_is_capped_by_the_room_the_current_leaves(
+    hass: HomeAssistant, monkeypatch
+) -> None:
+    """The person raises the charging current during a charge (`async_apply_setting_current`): the write goes out at
+    no more than the room |I| leaves, as a start does, and the regulator raises nothing from there."""
+    charger, configure_calls, site = await _setup(hass, "setting")
+    cc = controller_of(hass, charger.entry_id)
+    assert await cc.async_start(amps=10, manual=True)
+    hass.states.async_set("switch.setting_charger", "on")
+    _charger_reads(hass, "setting_charger", 10.0)
+    _report(hass, "setting_site", (18.0, 18.0, 22.0), 0.0)
+    await _tick(hass)
+    assert _assigned(configure_calls)[-1:] == [10]
+
+    # 24 A limit, 22 A on L3 with the car at 10 A: 12 A is all a write may give it, whatever is set.
+    configure_calls.clear()
+    monkeypatch.setattr(cc, "_setting_amps", lambda: 16)
+    await cc.async_apply_setting_current()
+    await hass.async_block_till_done()
+    assert _assigned(configure_calls) == [12]
+    assert cc.requested_current_a == 16
+
+    configure_calls.clear()
+    await _tick(hass)
+    assert site.regulator_decisions[charger.entry_id].proposed_current_a is None
+    assert configure_calls == []
