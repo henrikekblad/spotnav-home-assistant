@@ -1497,12 +1497,21 @@ class SiteCapacityController:
             return None
         delivered = request.measured_current_a
         reserved = self._reserved_by_others_a(charger_entry_id)
+        # Where the direction is not known, the lowering by |I| is the only thing that brings the car down, and a
+        # charger read far less often than the site (a cloud) still reports what it drew before that lowering: what
+        # it is credited with is never more than was last written to it, so the sun's write, a resend or a changed
+        # setting do not give the lowered current straight back.
+        written = (
+            None if self._direction_known_for(charger_entry_id) else self._damper_for(charger_entry_id).last_written_a
+        )
         allowances: list[float] = []
         for phase in phases:
             margin = fresh.measured_margin_a.get(phase)
             if margin is None:
                 return None
             own = 0.0 if delivered is None else (delivered.get(phase).value or 0.0)
+            if written is not None:
+                own = min(own, written)
             allowances.append(margin + own - reserved.get(phase, 0.0))
         allowance = max(0.0, min(allowances))
         minimum = self._min_current_a(charger_entry_id)

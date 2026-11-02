@@ -6,6 +6,7 @@ a car started at 16 A, L3 read 32.8 A."""
 
 from __future__ import annotations
 
+import pytest
 from homeassistant.core import HomeAssistant
 from pytest_homeassistant_custom_component.common import async_mock_service
 
@@ -308,3 +309,30 @@ async def test_an_unavailable_site_gives_its_own_reason_not_the_direction(hass: 
     assert not load_balancing.active_available
     assert load_balancing.blocking_reasons == ("site_direction_unknown",)
     assert _active_control_reason(site) == "no_commandable_charger"
+
+
+async def test_a_lowered_charger_still_reading_its_old_current_is_not_given_it_back(
+    hass: HomeAssistant, monkeypatch
+) -> None:
+    """After a lowering to 7 A, a charger read far less often still reports 16 A for a while. What a write may give
+    it is then reckoned from the 7 A written, not from the 16 A read: a changed setting does not raise it again."""
+    charger, configure_calls, site = await _setup(hass, "lag")
+    cc = controller_of(hass, charger.entry_id)
+    assert await cc.async_start(amps=16, manual=True)
+    hass.states.async_set("switch.lag_charger", "on")
+    _charger_reads(hass, "lag_charger", 16.0)
+    _report(hass, "lag_site", (24.0, 24.0, 24.0), 0.0)
+    await _tick(hass)
+    _report(hass, "lag_site", (24.0, 24.0, 32.8), 0.0)
+    await _tick(hass)
+    assert _assigned(configure_calls)[-1:] == [7]
+
+    # The site already shows the car at 7 A (L3 at 23.8 A); the charger's own reading still says 16 A.
+    _report(hass, "lag_site", (15.0, 15.0, 23.8), 0.0)
+    await _tick(hass)
+    assert site.start_allowance_a(charger.entry_id) == pytest.approx(7.2)
+    configure_calls.clear()
+    monkeypatch.setattr(cc, "_setting_amps", lambda: 16)
+    await cc.async_apply_setting_current()
+    await hass.async_block_till_done()
+    assert _assigned(configure_calls) in ([], [7])
