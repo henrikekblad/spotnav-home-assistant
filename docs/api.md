@@ -181,6 +181,12 @@ is room; `cause` is `battery_shares_fuse` (a home battery charging from the grid
 `load_balancing_limited` (`limit_a` `0`, `phase` `null`, the same `cause`) in its place unless the request asks for
 it (`"reads": ["balancing_paused"]`).
 
+**The sun filling past a reached target.** Under Solar or Hybrid with a target, once the car is at the target and
+below its own known charge limit, the sun may keep charging it to that limit. The status then says
+`sun_past_target` (`percent`, the car's limit; tone `normal`): after the solar headline, and under Hybrid in place
+of `hybrid_satisfied`. The webhook leaves it out after a solar headline and says `hybrid_satisfied` in its place
+under Hybrid, unless the request asks for it (`"reads": ["sun_past_target"]`).
+
 **A car held at its minimum on a lost measurement.** While the site's measurement has been stale or missing long
 enough for load balancing to hold the car at its minimum current, `load_balancing_limited` carries `cause`
 `measurement_lost` and `limit_a` that minimum. An app that does not know the value words it as a plain limit.

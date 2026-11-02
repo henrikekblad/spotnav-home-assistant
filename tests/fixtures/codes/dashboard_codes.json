@@ -528,6 +528,12 @@
       "params": [],
       "tone": "normal"
     },
+    "sun_past_target": {
+      "params": [
+        "percent"
+      ],
+      "tone": "normal"
+    },
     "target_reached": {
       "params": [
         "basis",

@@ -222,6 +222,32 @@ def charges_to_vehicle_limit(target_soc_percent: float | None, vehicle_max_perce
     return target_soc_percent >= charge_ceiling_percent(vehicle_max_percent)
 
 
+def sun_fill_limit_percent(
+    *,
+    target_soc_percent: float | None,
+    reading: SocReading | None,
+    vehicle_max_percent: float | None,
+) -> float | None:
+    """The car's own charge limit while the sun may fill past a reached target up to it, else `None`. Pure.
+
+    Under Solar and Hybrid a target is what must be in the car by the departure; once it is reached, surplus
+    may keep charging up to the limit the car states, never grid energy (the solar rules carry it). It needs a
+    target below that limit, a known limit (an unknown one never extends a charge) and a level at or above the
+    target that is still below the limit. A level only estimated never ends the fill: the car ends it at its
+    own limit, as any charge to that limit.
+    """
+    if target_soc_percent is None or vehicle_max_percent is None or not math.isfinite(vehicle_max_percent):
+        return None
+    if reading is None or reading.soc_percent is None or not math.isfinite(reading.soc_percent):
+        return None
+    ceiling = charge_ceiling_percent(vehicle_max_percent)
+    if target_soc_percent >= ceiling or reading.soc_percent < target_soc_percent:
+        return None
+    if reading.soc_percent >= ceiling and not reading.estimated:
+        return None
+    return ceiling
+
+
 def car_ended_full_percent(
     soc_percent: float | None,
     *,

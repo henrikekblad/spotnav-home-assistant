@@ -96,6 +96,7 @@ from homeassistant.core import callback, HomeAssistant
 from homeassistant.util import dt as dt_util
 
 from .min_soc_floor import ORIGIN_MIN_SOC
+from .target_stop import sun_fill_limit_percent
 
 from ..const import (
     CONF_ACTIVE_CONTROL_ENABLED,
@@ -117,7 +118,7 @@ from ..const import (
 from ..core.ownership import SOC_DROP_PCT as CORE_SOC_DROP_PCT
 from ..planning.phases import effective_phases
 from ..planning.grid_voltage import stored_voltage_between_phases_v
-from ..planning.auto_settings import AutoSettingsStore, STRATEGY_HYBRID, STRATEGY_SOLAR
+from ..planning.auto_settings import AutoSettingsStore, DRIVER_TARGET_SOC, STRATEGY_HYBRID, STRATEGY_SOLAR
 from ..runtime import charger_data, controller_for, preview_for, site_controller_for
 from ..site.measurement_problem import UNHEALTHY_STATES
 from ..site.measurement_source import grid_power_source_from_dict, source_from_dict
@@ -277,6 +278,9 @@ class SolarExecutionState:
     solar_current_writer: str | None = None
     #: The start minimum a charge starts at (`SolarConfig.start_a`), `None` without a controller.
     start_a: float | None = None
+    #: The car's own limit while its target is reached and the sun may fill on up to it
+    #: (`target_stop.sun_fill_limit_percent`), else `None`.
+    sun_fill_limit_percent: float | None = None
 
 
 def solar_execution_state(hass: HomeAssistant, charger_entry_id: str) -> SolarExecutionState | None:
@@ -1002,11 +1006,10 @@ class SolarExecutionCoordinator:
             self._state = None
             site.notify_solar_surplus_changed()
             return
-        hybrid_satisfied = settings.strategy == STRATEGY_HYBRID and self._hybrid_satisfied()
-        if hybrid_satisfied:
-            # Hybrid must stop at target: the need is met (`plan_hybrid`'s `satisfied`), and
-            # running on surplus would take `car_first` sun from the house battery or spend evening
-            # grid energy nobody asked for.
+        if self._hybrid_stands_down(settings.strategy):
+            # Hybrid stops at the target: the need is met (`plan_hybrid`'s `satisfied`), and running on
+            # surplus would take `car_first` sun from the house battery or spend evening grid energy nobody
+            # asked for. Only a car below its own known limit is filled on by the sun (`_sun_fill_limit`).
             if (
                 self._state is not None
                 and self._state.state in ("on", "disarming")
@@ -1385,7 +1388,7 @@ class SolarExecutionCoordinator:
         if settings.strategy not in (STRATEGY_SOLAR, STRATEGY_HYBRID) or pause_blocks_execution(settings):
             return None
         if settings.strategy == STRATEGY_HYBRID and (
-            self._controller.plan_window_active_now or self._hybrid_satisfied()
+            self._controller.plan_window_active_now or self._hybrid_stands_down(settings.strategy)
         ):
             return None
         if self._car_unplugged():
@@ -1850,6 +1853,7 @@ class SolarExecutionCoordinator:
             retry_at=self._retry_at(),
             solar_current_writer=self.current_writer(site),
             start_a=None if self._solar is None else self._solar.config.start_a,
+            sun_fill_limit_percent=self._sun_fill_limit(),
         )
 
     def _retry_at(self) -> datetime | None:
@@ -1880,6 +1884,31 @@ class SolarExecutionCoordinator:
         data = charger_data(self._hass, self._charger_entry_id)
         state = None if data is None else data.hybrid_state
         return state is not None and state.state == "satisfied"
+
+    def _hybrid_stands_down(self, strategy: str) -> bool:
+        """Whether hybrid's sun stands down: its need is met and the sun may not fill the car on past the target
+        (`_sun_fill_limit`)."""
+        return strategy == STRATEGY_HYBRID and self._hybrid_satisfied() and self._sun_fill_limit() is None
+
+    def _sun_fill_limit(self) -> float | None:
+        """The car's own limit while its target is reached and the sun may fill on up to it, else `None`.
+
+        Solar and Hybrid with a target only (not an amount of energy), and under Hybrid only once its need is met
+        (`satisfied`): the grid part of a plan stays capped by the target. The rule itself is
+        `target_stop.sun_fill_limit_percent`.
+        """
+        settings = self._store.settings(self._charger_entry_id)
+        if settings.strategy not in (STRATEGY_SOLAR, STRATEGY_HYBRID) or settings.driver != DRIVER_TARGET_SOC:
+            return None
+        if settings.strategy == STRATEGY_HYBRID and not self._hybrid_satisfied():
+            return None
+        vehicle_id = settings.target.vehicle_id
+        data = charger_data(self._hass, self._charger_entry_id)
+        return sun_fill_limit_percent(
+            target_soc_percent=settings.target.target_percent,
+            reading=None if data is None else data.soc_reader.peek(vehicle_id),
+            vehicle_max_percent=self._controller.vehicle_limit_percent(vehicle_id),
+        )
 
     def _log_hybrid_satisfied(self, satisfied: bool) -> None:
         """INFO, once per real transition, like `_log_hybrid_handoff`."""

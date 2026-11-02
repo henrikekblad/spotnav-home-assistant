@@ -508,6 +508,7 @@
   "strategy.status.hybrid.noForecast": "Hybrid · ingen prognoskälla — planerar som Billigast",
   "strategy.status.hybrid.noPriceData": "Hybrid · väntar på prisuppgifter",
   "strategy.status.hybrid.satisfied": "Hybrid · laddbehovet är redan uppfyllt",
+  "strategy.status.sunPastTarget": "Målet nått – solen fyller på till bilens gräns {percent} %",
   "strategy.status.hybrid.unknown": "Hybrid · planerar",
   "advisory.vehicleNotRequestingCurrent": "Laddningen startades, men fordonet begär ingen ström. Kontrollera fordonets laddningsinställningar eller anslut kabeln igen.",
   "advisory.powerBelowThreshold": "Laddningen startades, men laddaren drar nästan ingen effekt. Bilen kan vara klar eller inte ladda: kontrollera fordonets laddningsinställningar eller anslut kabeln igen.",

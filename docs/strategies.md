@@ -305,6 +305,9 @@ cannot, and for a direct site without the total it says the meter's total grid p
     *Solar · 1 phase · 2.9 kW*, and the site reckons the charger as a single-phase one.
 
   Some cars charge badly or stop after a phase change: turn the setting off if yours does.
+- **A target does not stop the sun.** Solar charges on surplus until the car ends the charge at its own
+  limit. With a target set, once the car is at it and below a limit its integration states, the status
+  says so: *Target reached – the sun tops up to the car's limit of 90 %*.
 - **Solar priority** (a site setting): *car first* uses surplus before the house battery;
   *battery first* leaves the surplus to the battery and charges the car from what it does not
   take. A house battery power sensor can be set on the site.
@@ -340,3 +343,11 @@ cheapest.
 - Outside a planned period the sun's rules above own the charger, also when there is no plan at all
   because the sun covers the need: a charge the charger began by itself is kept or stopped at once,
   and a Start or Stop pauses Auto for the plug-in, as under Solar.
+- **The target is what must be in the car; the sun may fill past it.** The grid part of the plan stops
+  at the target. Once the target is reached, surplus keeps charging the car up to its own charge limit
+  (the limit its integration states), by the sun's rules above only: the start and stop delays, phase
+  switching, load balancing and the charger priority all apply, and nothing is bought from the grid
+  for it. The status says *Target reached – the sun tops up to the car's limit of 90 %*. When the car
+  is at its limit, the sun stands down again. Without a known limit or a reading of the car's level,
+  or with an amount of energy instead of a target, hybrid stops at the need as before. The energy
+  counts as solar in the charge history.

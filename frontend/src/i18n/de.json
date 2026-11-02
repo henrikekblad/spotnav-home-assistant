@@ -419,6 +419,7 @@
   "strategy.status.hybrid.noForecast": "Hybrid · keine Prognosequelle — plant wie Günstigste",
   "strategy.status.hybrid.noPriceData": "Hybrid · wartet auf Preisdaten",
   "strategy.status.hybrid.satisfied": "Hybrid · Ladebedarf bereits gedeckt",
+  "strategy.status.sunPastTarget": "Ziel erreicht – die Sonne lädt bis zur Grenze des Autos von {percent} % nach",
   "strategy.status.hybrid.unknown": "Hybrid · plant",
   "settings.consumption.label": "Verbrauch",
   "settings.value.unset": "Nicht festgelegt",

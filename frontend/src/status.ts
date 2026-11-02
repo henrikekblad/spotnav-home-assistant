@@ -204,6 +204,7 @@ export const STATUS_WORDING: Readonly<Record<StatusCode, TranslationKey>> = {
   hybrid_no_forecast: "strategy.status.hybrid.noForecast",
   hybrid_no_price_data: "strategy.status.hybrid.noPriceData",
   hybrid_satisfied: "strategy.status.hybrid.satisfied",
+  sun_past_target: "strategy.status.sunPastTarget",
   hybrid_unknown: "strategy.status.hybrid.unknown",
   settings_suggested: "status.settingsSuggested",
   target_reached: "status.targetStopped",
@@ -685,6 +686,8 @@ export function lineText(
       return say("status.fillRoomUnknown", { kwh: formatNumber(language, num(p["kwh"]) ?? 0, 1) });
     case "charging_to_vehicle_limit":
       return say("status.chargingToVehicleLimit", { percent: formatNumber(language, num(p["percent"]) ?? 100, 0) });
+    case "sun_past_target":
+      return say("strategy.status.sunPastTarget", { percent: formatNumber(language, num(p["percent"]) ?? 100, 0) });
     case "min_soc_charging":
       return say("status.minSocCharging", { percent: formatNumber(language, num(p["percent"]) ?? 0, 0) });
     case "duplicate_charger":

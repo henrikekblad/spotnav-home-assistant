@@ -508,6 +508,7 @@
   "strategy.status.hybrid.noForecast": "Hybridi · ei ennustelähdettä — suunnittelee kuin Halvin",
   "strategy.status.hybrid.noPriceData": "Hybridi · odottaa hintatietoja",
   "strategy.status.hybrid.satisfied": "Hybridi · lataustarve on jo täytetty",
+  "strategy.status.sunPastTarget": "Tavoite saavutettu – aurinko lataa lisää auton omaan rajaan {percent} % asti",
   "strategy.status.hybrid.unknown": "Hybridi · suunnittelee",
   "advisory.vehicleNotRequestingCurrent": "Lataus aloitettiin, mutta ajoneuvo ei pyydä virtaa. Tarkista ajoneuvon latausasetukset tai kytke kaapeli uudelleen.",
   "advisory.powerBelowThreshold": "Lataus käynnistettiin, mutta latauslaite ei ota juuri lainkaan tehoa. Auto voi olla valmis tai ei lataa: tarkista ajoneuvon latausasetukset tai kytke kaapeli uudelleen.",

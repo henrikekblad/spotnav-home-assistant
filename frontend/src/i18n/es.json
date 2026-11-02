@@ -419,6 +419,7 @@
   "strategy.status.hybrid.noForecast": "Híbrida · sin fuente de previsión — planifica como Más barata",
   "strategy.status.hybrid.noPriceData": "Híbrida · esperando datos de precios",
   "strategy.status.hybrid.satisfied": "Híbrida · la necesidad de carga ya está cubierta",
+  "strategy.status.sunPastTarget": "Objetivo alcanzado – el sol sigue cargando hasta el límite del coche, {percent} %",
   "strategy.status.hybrid.unknown": "Híbrida · planificando",
   "settings.consumption.label": "Consumo",
   "settings.value.unset": "Sin definir",

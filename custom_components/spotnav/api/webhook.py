@@ -117,6 +117,10 @@ APP_UNREAD_PLAN_FACT_CODES: Final = ("plan_saving", "solar_forecast")
 APP_UNREAD_HYBRID_SUN_PARAMS: Final = ("sun_start", "sun_end")
 APP_READS_PLAN_FACTS: Final = "plan_facts"
 APP_READS_SOLAR_ONE_PHASE: Final = "solar_one_phase"
+#: The target reached and the sun filling on to the car's limit: an app that does not read `APP_READS_SUN_PAST_TARGET`
+#: gets hybrid's need-met line in its place, and under a solar headline nothing (the headline says the rest).
+APP_UNREAD_SUN_PAST_TARGET_CODES: Final = ("sun_past_target",)
+APP_READS_SUN_PAST_TARGET: Final = "sun_past_target"
 #: The charger's own mode working against SpotNav: left out for an app that does not read `APP_READS_OWN_MODE_STATUS`
 #: (it would word it as "see Home Assistant"), and the block's tone is then its strongest line left.
 APP_UNREAD_OWN_MODE_CODES: Final = ("charger_own_mode",)
@@ -154,11 +158,14 @@ APP_DASHBOARD_NESTED_READS: Final = {("prices", "provider"): APP_READS_PRICE_PRO
 APP_VEHICLE_FIELD_READS: Final = {"min_percent": APP_READS_MIN_SOC, "wake_for_reading": APP_READS_WAKE_FOR_READING}
 
 
-def _status_for_app(line: Any, opted_in: set[str]) -> Any:
-    """One status line as the app reads it: unchanged, replaced by the line an older app knows, or `None` (left out)."""
+def _status_for_app(line: Any, opted_in: set[str], *, under_solar: bool = False) -> Any:
+    """One status line as the app reads it: unchanged, replaced by the line an older app knows, or `None` (left out).
+    `under_solar`: the block has a solar headline."""
     if not isinstance(line, dict):
         return line
     code = line.get("code")
+    if code in APP_UNREAD_SUN_PAST_TARGET_CODES and APP_READS_SUN_PAST_TARGET not in opted_in:
+        return None if under_solar else {"code": "hybrid_satisfied", "params": {}}
     if code in APP_UNREAD_STATUS_CODES and APP_READS_IDENTIFICATION_STATUS not in opted_in:
         return None
     if code in APP_UNREAD_SOLAR_NO_CAR_CODES and APP_READS_SOLAR_NO_CAR_STATUS not in opted_in:
@@ -214,7 +221,7 @@ def _for_app(body: dict[str, Any], payload: dict[str, Any]) -> dict[str, Any]:
     switched to one phase; `price_source` for the dashboard's `price_source` block; `phase_switching` for its
     `phase_switching` block; `grid_tariff` for its `grid_tariff` block; `price_provider` for `prices.provider`; `setup` for its `setup` block; `plan_facts` for the status lines
     `plan_saving` and `solar_forecast` and hybrid's `sun_start`/`sun_end`; `own_mode_status` for the status line
-    `charger_own_mode`); anything else in it, or a `reads` that is not a list, is ignored.
+    `charger_own_mode`; `sun_past_target` for the status line `sun_past_target`); anything else in it, or a `reads` that is not a list, is ignored.
     """
     opted_in = _opted_in(payload)
     withheld_blocks = {block for block, read in APP_DASHBOARD_BLOCK_READS.items() if read not in opted_in}
@@ -228,8 +235,13 @@ def _for_app(body: dict[str, Any], payload: dict[str, Any]) -> dict[str, Any]:
         body = {**body, "vehicles": [_vehicle_for_app(row, opted_in) for row in body["vehicles"]]}
     status = body.get("status")
     if isinstance(status, dict) and isinstance(status.get("lines"), list):
+        under_solar = any(
+            isinstance(line, dict) and str(line.get("code") or "").startswith("solar_") for line in status["lines"]
+        )
         lines = [
-            kept for kept in (_status_for_app(line, opted_in) for line in status["lines"]) if kept is not None
+            kept
+            for kept in (_status_for_app(line, opted_in, under_solar=under_solar) for line in status["lines"])
+            if kept is not None
         ]
         shown = {**status, "lines": lines}
         if any(isinstance(line, dict) and line.get("code") in APP_UNREAD_OWN_MODE_CODES for line in status["lines"]):
