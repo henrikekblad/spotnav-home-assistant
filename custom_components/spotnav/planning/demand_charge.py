@@ -1,0 +1,130 @@
+"""A demand charge's components measured against the month's hours: pure, no Home Assistant.
+
+A grid operator's demand charge (effektavgift) bills the hourly mean of net import: per component, the mean of the
+month's `top_n` highest hourly means, each on a different day, among the hours the component counts (all hours, or
+its own window, `planning/auto_settings.py:DemandComponent`). The site's hour tracker (`site/demand_tracker.py`)
+keeps every hour's mean of the month; this module turns them into what each component bills so far.
+
+* An hour's day is the window's day (`HighLoadWindow.window_day`: a night belongs to the day it starts on) for a
+  component with a window, else its own date on the area's clock. The month is the hour's own month on that clock,
+  as the meter's month is: a night that starts on the last of a month and ends on the first of the next counts its
+  morning hours in the next month (under the day it started on).
+* An hour with a gap (`HourMean.incomplete`) never raises a peak: its mean is not known well enough to bill on.
+* `bar_kw` is the mean of the `top_n` highest day peaks (of fewer while fewer days have one, as the operators bill
+  the month so far); `None` while no hour counted.
+* `free_kw` is the hourly mean the running hour may reach without raising the bar: today's own peak while today is
+  among the `top_n` days, else the `top_n`-th highest day peak; with fewer than `top_n` days every new day enters
+  the mean, so only today's own peak (or nothing, 0) is free. `None` while the running hour does not count for the
+  component (nothing it draws then is billed by it).
+"""
+
+from __future__ import annotations
+
+from collections.abc import Iterable, Sequence
+from dataclasses import dataclass, replace
+from datetime import date, datetime, timezone
+from typing import Final
+
+from .. import time_zones
+from .auto_settings import DemandComponent
+
+#: The months a component's winter price applies in (November to March).
+WINTER_MONTHS: Final = frozenset({11, 12, 1, 2, 3})
+
+
+@dataclass(frozen=True, slots=True)
+class HourMean:
+    """One completed clock hour of the site: its start (UTC, the local hour's start), the mean net import over the
+    time it was measured (kW), the house's share without the chargers' measured power (`None` when the chargers
+    could not be read for most of it) and whether it had gaps (`incomplete`)."""
+
+    start: datetime
+    kw: float
+    house_kw: float | None = None
+    incomplete: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class DayPeak:
+    """A day's highest counted hour for one component."""
+
+    day: date
+    start: datetime
+    kw: float
+
+
+@dataclass(frozen=True, slots=True)
+class ComponentMonth:
+    """What one component bills so far this month (see the module)."""
+
+    bar_kw: float | None
+    free_kw: float | None
+    #: The `top_n` highest day peaks, highest first.
+    peaks: tuple[DayPeak, ...]
+    #: Days with a counted, complete hour.
+    days_counted: int
+    #: The price per kW that applies in this month's season, `None` while the person has not given it.
+    price_per_kw: float | None
+
+
+def hour_start(moment: datetime, tz: str) -> datetime:
+    """The start of the clock hour `moment` falls in, on `tz`'s clock, as a UTC instant. The repeated autumn hour
+    is two hours, as on the meter."""
+    zone = time_zones.require_zone(tz)
+    local = moment.astimezone(zone)
+    return local.replace(minute=0, second=0, microsecond=0).astimezone(timezone.utc)
+
+
+def month_of(start: datetime, tz: str) -> tuple[int, int]:
+    """The (year, month) on `tz`'s clock an hour starting at `start` is billed in."""
+    local = start.astimezone(time_zones.require_zone(tz))
+    return local.year, local.month
+
+
+def is_winter(month: int) -> bool:
+    return month in WINTER_MONTHS
+
+
+def counted_day(component: DemandComponent, start: datetime, tz: str) -> date | None:
+    """The day an hour starting at `start` is counted under for `component`, or `None` when it does not count."""
+    if component.window is None:
+        return start.astimezone(time_zones.require_zone(tz)).date()
+    return replace(component.window, tz=tz).window_day(start)
+
+
+def day_peaks(component: DemandComponent, hours: Iterable[HourMean], tz: str) -> dict[date, DayPeak]:
+    """Each day's highest counted, complete hour for `component`."""
+    peaks: dict[date, DayPeak] = {}
+    for hour in hours:
+        if hour.incomplete:
+            continue
+        day = counted_day(component, hour.start, tz)
+        if day is None:
+            continue
+        best = peaks.get(day)
+        if best is None or hour.kw > best.kw:
+            peaks[day] = DayPeak(day=day, start=hour.start, kw=hour.kw)
+    return peaks
+
+
+def component_month(
+    component: DemandComponent, hours: Sequence[HourMean], tz: str, now: datetime
+) -> ComponentMonth:
+    """What `component` bills so far over `hours` (this month's), and what the hour running at `now` may reach."""
+    peaks = day_peaks(component, hours, tz)
+    ranked = sorted(peaks.values(), key=lambda peak: (-peak.kw, peak.start))
+    top = tuple(ranked[: component.top_n])
+    bar = None if not top else sum(peak.kw for peak in top) / len(top)
+    today = counted_day(component, hour_start(now, tz), tz)
+    free: float | None = None
+    if today is not None:
+        own = peaks.get(today)
+        if own is not None and own in top:
+            free = own.kw
+        elif len(ranked) >= component.top_n:
+            free = top[-1].kw
+        else:
+            free = 0.0 if own is None else own.kw
+    _year, month = month_of(hour_start(now, tz), tz)
+    price = component.price_winter if is_winter(month) else component.price_summer
+    return ComponentMonth(bar_kw=bar, free_kw=free, peaks=top, days_counted=len(peaks), price_per_kw=price)

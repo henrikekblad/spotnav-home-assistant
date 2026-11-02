@@ -194,6 +194,13 @@ class HighLoadWindow:
         interval is wholly inside or wholly outside. A 23- or 25-hour day needs no case of its own: the hour on
         the clock decides, and a wrapped window's morning hours are tested as the day before's.
         """
+        return self.window_day(start) is not None
+
+    def window_day(self, start: datetime) -> date | None:
+        """The day (on the area's clock) whose window the interval starting at this instant lies in, or `None`
+        when it lies outside the window. A wrapped window's morning hours belong to the day before; every other
+        hour to its own date. A demand charge's "different days" are these days (`planning/demand_charge.py`).
+        """
         if self.tz is None:
             _refuse("invalid_fiscal", "a high-load window needs the area's time zone")
         local = _aware(start, "start").astimezone(time_zones.require_zone(self.tz))
@@ -201,16 +208,18 @@ class HighLoadWindow:
         day = local.date()
         if self.from_hour < self.to_hour:
             if not self.from_hour <= hour < self.to_hour:
-                return False
+                return None
         elif hour < self.to_hour:
             day -= timedelta(days=1)
         elif hour < self.from_hour:
-            return False
+            return None
         if day.isoweekday() > HIGH_LOAD_DAYS[self.days]:
-            return False
+            return None
         if self.from_month <= self.to_month:
-            return self.from_month <= day.month <= self.to_month
-        return day.month >= self.from_month or day.month <= self.to_month
+            in_months = self.from_month <= day.month <= self.to_month
+        else:
+            in_months = day.month >= self.from_month or day.month <= self.to_month
+        return day if in_months else None
 
 
 @dataclass(frozen=True, slots=True)

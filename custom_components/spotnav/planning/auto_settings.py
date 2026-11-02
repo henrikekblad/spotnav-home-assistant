@@ -287,6 +287,83 @@ def high_load_window_dict(window: HighLoadWindow) -> dict[str, Any]:
     return {key: getattr(window, key) for key in HIGH_LOAD_WINDOW_KEYS}
 
 
+#: An electricity price entry's demand-charge components (`DemandComponent`), a list beside the grid tariff.
+DEMAND_COMPONENTS: Final = "demand_components"
+#: How many components a demand charge may have: a day and a night peak, or an all-hours one stacked on a window.
+MAX_DEMAND_COMPONENTS: Final = 3
+#: The month's peaks a component's charge is the mean of, each on a different day.
+DEMAND_TOP_N: Final = (1, 3, 5)
+DEMAND_COMPONENT_KEYS: Final = frozenset({"window", "top_n", "price_per_kw"})
+DEMAND_PRICE_KEYS: Final = frozenset({"winter", "summer"})
+
+
+@dataclass(frozen=True, slots=True)
+class DemandComponent:
+    """One part of a demand charge (effektavgift): the mean of the month's `top_n` highest hourly means of net
+    import, each on a different day, counted in all hours (`window` is `None`) or only inside its own window (the
+    shape of the high-load window, wrapping over midnight with the night belonging to the day it starts on).
+
+    `price_winter`/`price_summer` are what the grid operator charges per kW of that mean, in the area's major unit
+    (winter is November to March). Either may be unknown (`None`): nothing prices with them yet, they are shown.
+    """
+
+    top_n: int = 1
+    window: HighLoadWindow | None = None
+    price_winter: float | None = None
+    price_summer: float | None = None
+
+    def validated(self, what: str = "demand component") -> DemandComponent:
+        if isinstance(self.top_n, bool) or self.top_n not in DEMAND_TOP_N:
+            _refuse("invalid_fiscal", f"{what}.top_n must be one of {list(DEMAND_TOP_N)}")
+        window = self.window
+        if window is not None:
+            window = high_load_window_from(high_load_window_dict(window), f"{what}.window")
+        prices: list[float | None] = []
+        for season, value in (("winter", self.price_winter), ("summer", self.price_summer)):
+            if value is None:
+                prices.append(None)
+                continue
+            number = _finite(value, "invalid_fiscal", f"{what}.price_per_kw.{season}")
+            if number < 0:
+                _refuse("invalid_fiscal", f"{what}.price_per_kw.{season} must not be negative")
+            prices.append(number)
+        return DemandComponent(top_n=self.top_n, window=window, price_winter=prices[0], price_summer=prices[1])
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "window": None if self.window is None else high_load_window_dict(self.window),
+            "top_n": self.top_n,
+            "price_per_kw": {"winter": self.price_winter, "summer": self.price_summer},
+        }
+
+    @classmethod
+    def from_dict(cls, raw: Any, what: str = "demand component") -> DemandComponent:
+        """A stored or sent component, exactly its keys, or `invalid_fiscal`. Never coerced."""
+        if not isinstance(raw, dict) or set(raw) != DEMAND_COMPONENT_KEYS:
+            _refuse("invalid_fiscal", f"{what} must carry exactly {sorted(DEMAND_COMPONENT_KEYS)}")
+        prices = raw["price_per_kw"]
+        if not isinstance(prices, dict) or set(prices) != DEMAND_PRICE_KEYS:
+            _refuse("invalid_fiscal", f"{what}.price_per_kw must carry exactly {sorted(DEMAND_PRICE_KEYS)}")
+        window = None if raw["window"] is None else high_load_window_from(raw["window"], f"{what}.window")
+        return cls(
+            top_n=raw["top_n"],
+            window=window,
+            price_winter=prices["winter"],
+            price_summer=prices["summer"],
+        ).validated(what)
+
+
+def demand_components_from(raw: Any) -> tuple[DemandComponent, ...]:
+    """A stored or sent list of components (at most `MAX_DEMAND_COMPONENTS`), or `invalid_fiscal`."""
+    if not isinstance(raw, list):
+        _refuse("invalid_fiscal", f"{DEMAND_COMPONENTS} must be a list")
+    if len(raw) > MAX_DEMAND_COMPONENTS:
+        _refuse("invalid_fiscal", f"{DEMAND_COMPONENTS} holds at most {MAX_DEMAND_COMPONENTS} components")
+    return tuple(
+        DemandComponent.from_dict(item, f"{DEMAND_COMPONENTS}[{index}]") for index, item in enumerate(raw)
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class GridTariff:
     """An electricity price entry's grid fee beyond the fixed transfer fee: a percentage of the spot price
@@ -295,11 +372,15 @@ class GridTariff:
 
     Each fee is off or on with the person's own figure: no area suggests one, so "on with none" is refused.
     The high-load fee needs a window; the window may stay without it (switched off, kept for next time).
+
+    `demand` is the demand charge's components (`DemandComponent`, at most `MAX_DEMAND_COMPONENTS`), empty for none.
+    They price nothing: the site measures the hours they count (`site/demand_tracker.py`) and shows the peaks.
     """
 
     transfer_percent: FiscalOverride = FiscalOverride()
     transfer_high: FiscalOverride = FiscalOverride()
     high_load_window: HighLoadWindow | None = None
+    demand: tuple[DemandComponent, ...] = ()
 
     @property
     def empty(self) -> bool:
@@ -317,13 +398,19 @@ class GridTariff:
             window = high_load_window_from(high_load_window_dict(window))
         if high.enabled and window is None:
             _refuse("invalid_fiscal", "transfer_high is on but there is no high_load_window")
-        return GridTariff(transfer_percent=percent, transfer_high=high, high_load_window=window)
+        if len(self.demand) > MAX_DEMAND_COMPONENTS:
+            _refuse("invalid_fiscal", f"{DEMAND_COMPONENTS} holds at most {MAX_DEMAND_COMPONENTS} components")
+        demand = tuple(
+            component.validated(f"{DEMAND_COMPONENTS}[{index}]") for index, component in enumerate(self.demand)
+        )
+        return GridTariff(transfer_percent=percent, transfer_high=high, high_load_window=window, demand=demand)
 
     def as_dict(self) -> dict[str, Any]:
         return {
             "transfer_percent": self.transfer_percent.as_dict(),
             "transfer_high": self.transfer_high.as_dict(),
             HIGH_LOAD_WINDOW: None if self.high_load_window is None else high_load_window_dict(self.high_load_window),
+            DEMAND_COMPONENTS: [component.as_dict() for component in self.demand],
         }
 
     @classmethod
@@ -342,7 +429,13 @@ class GridTariff:
                 window = high_load_window_from(data.get(HIGH_LOAD_WINDOW))
             except AutoSettingsError:
                 window = None
-        return cls(fees["transfer_percent"], fees["transfer_high"], window)
+        demand: tuple[DemandComponent, ...] = ()
+        if data.get(DEMAND_COMPONENTS) is not None:
+            try:
+                demand = demand_components_from(data.get(DEMAND_COMPONENTS))
+            except AutoSettingsError:
+                demand = ()
+        return cls(fees["transfer_percent"], fees["transfer_high"], window, demand)
 
 
 @dataclass(frozen=True, slots=True)
