@@ -6,6 +6,7 @@ import { localDayKey } from "./chart";
 import {
   clock,
   distanceText,
+  formatFixed,
   formatNumber,
   hasZone,
   localeMoney,
@@ -220,6 +221,10 @@ export const STATUS_WORDING: Readonly<Record<StatusCode, TranslationKey>> = {
   price_data_degraded: "issue.priceDegraded",
   unpriced: "issue.unpriced",
   balancing_paused: "status.balancingPausedHouse",
+  import_target_paused: "status.importTargetPaused",
+  import_target_held: "status.importTargetHeld",
+  import_target_house_over: "status.importTargetHouseOver",
+  import_target_released: "status.importTargetReleased",
   load_balancing_limited: "status.loadBalancingLimitedTo",
   load_balancing_unavailable: "issue.loadBalancing",
   held_by_charger: "issue.heldByCharger",
@@ -273,6 +278,9 @@ export const STATUS_VARIANT_KEYS: readonly TranslationKey[] = [
   "status.balancingPausedBattery",
   "status.balancingPausedHouseRoom",
   "status.balancingPausedBatteryRoom",
+  "status.importTargetHeldNoLimit",
+  "status.importTargetPausedNextHour",
+  "status.importTargetReleasedNoTime",
   "strategy.status.solar.chargingUnknown",
   "strategy.status.solar.chargingOnePhaseUnknown",
   "strategy.status.hybrid.creditSuffix",
@@ -634,6 +642,34 @@ export function lineText(
         return say(battery ? "status.balancingPausedBatteryRoom" : "status.balancingPausedHouseRoom");
       }
       return say(battery ? "status.balancingPausedBattery" : "status.balancingPausedHouse", { time: clock(format, at) });
+    }
+    case "import_target_held": {
+      // The site's import target, not the fuse, holds the car: to what, the target, and the hour's mean so far.
+      const limit = num(p["limit_a"]);
+      const kw = {
+        target: formatFixed(language, num(p["target_kw"]) ?? 0, 1),
+        hour: formatFixed(language, num(p["hour_kw"]) ?? 0, 1),
+      };
+      return limit === null
+        ? say("status.importTargetHeldNoLimit", kw)
+        : say("status.importTargetHeld", { ...kw, limit: formatNumber(language, limit, 0) });
+    }
+    case "import_target_paused": {
+      // Paused to the next clock hour so the running one stays under the target.
+      const target = formatFixed(language, num(p["target_kw"]) ?? 0, 1);
+      const until = ms(p["until"]);
+      return until === null || !zoned
+        ? say("status.importTargetPausedNextHour", { target })
+        : say("status.importTargetPaused", { target, time: clock(format, until) });
+    }
+    case "import_target_house_over":
+      return say("status.importTargetHouseOver", { target: formatFixed(language, num(p["target_kw"]) ?? 0, 1) });
+    case "import_target_released": {
+      // The departure needs the power: the target is set aside for this charge.
+      const departure = ms(p["departure"]);
+      return departure === null || !zoned
+        ? say("status.importTargetReleasedNoTime")
+        : say("status.importTargetReleased", { time: momentText(format, departure, nowMs) });
     }
     case "load_balancing_limited": {
       const limit = num(p["limit_a"]);
