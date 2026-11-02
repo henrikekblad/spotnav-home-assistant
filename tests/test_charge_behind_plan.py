@@ -177,6 +177,9 @@ class _HoldingSite:
     def load_balancing_limit(self, _charger_entry_id: str) -> tuple[float | None, str | None]:
         return 6.0, None
 
+    def import_target_plan_kw(self, _charger_entry_id: str) -> float | None:
+        return None  # no import target: the plan counts on the car's own power
+
 
 async def test_a_shortfall_from_load_balancing_is_planned_again_at_the_window_end_only(
     hass: HomeAssistant, transport: Any, monkeypatch: pytest.MonkeyPatch
