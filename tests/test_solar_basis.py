@@ -194,7 +194,7 @@ async def test_the_field_case_starts_blind_at_the_minimum_and_names_what_is_miss
         "solar_charger_current_missing",
         "solar_site_incomplete",
     ]
-    assert lines[1]["params"] == {"entity": None, "entity_name": None} and lines[2]["params"] == {"phases": ["L1"]}
+    assert lines[1]["params"] == {"entity": None, "entity_name": None, "integration": None, "sensors": None} and lines[2]["params"] == {"phases": ["L1"]}
 
     _set_total(hass, TOTAL, -1500.0)
     clock.value = 300.0

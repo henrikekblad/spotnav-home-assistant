@@ -244,8 +244,10 @@ STATUS_CODES: Final[dict[str, tuple[str, tuple[str, ...]]]] = {
     # runs blind, starting only at the minimum current. A fact beside the solar headline. The unreadable
     # case is shown only while the charge is on or a start is pending: a charger that is not charging
     # (an OCPP connector Available/Preparing/Finishing/Suspended) reports no current by nature.
-    # `entity_name` is the entity's friendly name (the id when it has none), `null` with `entity`.
-    "solar_charger_current_missing": (TONE_NOTICE, ("entity", "entity_name")),
+    # `entity_name` is the entity's friendly name (the id when it has none), `null` with `entity`. Not set, and
+    # the charger's own integration has the sensors for it: `integration` and `sensors` name them ("Peblar",
+    # "Current phase 1–3"), else both `null`.
+    "solar_charger_current_missing": (TONE_NOTICE, ("entity", "entity_name", "integration", "sensors")),
     # The site's measurement is unusable on `phases` (L1/L2/L3), and solar runs on the total grid power
     # only. A fact beside the solar headline.
     "solar_site_incomplete": (TONE_NORMAL, ("phases",)),
@@ -384,6 +386,8 @@ class SolarFacts:
     #: Friendly names of `basis_entity` and `charger_current_entity` (`None`: unnamed, the id shows).
     basis_entity_name: str | None = None
     charger_current_entity_name: str | None = None
+    #: The charger's own current sensors `(integration, sensors)` while its current is not set, when known.
+    own_sensors: tuple[str, str] | None = None
     #: The phases of an unusable site measurement solar runs without.
     site_incomplete_phases: tuple[str, ...] = ()
     #: When a car that stopped charging by itself (`car_stopped`) is tried again.
@@ -724,11 +728,14 @@ def _solar_lines(solar: SolarFacts, *, charging: bool) -> list[dict[str, Any]]:
         solar.charger_current == "unreadable" and (charging or solar.state == "arming")
     ):
         entity = solar.charger_current_entity if solar.charger_current == "unreadable" else None
+        own = solar.own_sensors if entity is None else None
         lines.append(
             _line(
                 "solar_charger_current_missing",
                 entity=entity,
                 entity_name=_named(entity, solar.charger_current_entity_name),
+                integration=None if own is None else own[0],
+                sensors=None if own is None else own[1],
             )
         )
     if solar.site_incomplete_phases:
