@@ -16,7 +16,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import math
-from collections.abc import AsyncIterator, Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
 from contextlib import asynccontextmanager
 from dataclasses import asdict, dataclass, replace
 from datetime import datetime, timedelta
@@ -289,7 +289,26 @@ class ChargingExecutionError(HomeAssistantError, RuntimeError):
 # is given an `OcppConnectorTarget` and none re-derives one from a current-slider entity id.
 
 
-def _stored_ocpp_target(config: dict[str, Any]) -> OcppConnectorTarget | None:
+def ocpp_target_of(hass: HomeAssistant, config: Mapping[str, Any]) -> tuple[OcppConnectorTarget | None, str]:
+    """The OCPP connector a charger's stored configuration commands, and where it came from (`stored`,
+    the resolution's source, `unresolved`, or `""` for a charger that is not OCPP).
+
+    Only OCPP entries (mode OCPP or the OCPP-only control strategy) need an identity; a generic charger
+    keeps its `current_limit` model.
+    """
+    control = "" if config.get(CONF_CURRENT_LIMIT_NONE) else config.get(CONF_CURRENT_CONTROL) or ""
+    if config.get(CONF_MODE) != MODE_OCPP and control != CURRENT_CONTROL_CHANGE_CONFIGURATION:
+        return None, ""
+    stored = _stored_ocpp_target(config)
+    if stored is not None:
+        return stored, "stored"
+    if config.get(CONF_OCPP_TARGET_UNRESOLVED):
+        return None, "unresolved"
+    resolution = resolve_target(hass, charge_control=config[CONF_CHARGE_CONTROL])
+    return resolution.target, resolution.source or "unresolved"
+
+
+def _stored_ocpp_target(config: Mapping[str, Any]) -> OcppConnectorTarget | None:
     """The connector target the config entry stores, or `None` when none is usable.
 
     Trusted only in the exact shape this integration writes (non-empty charge point id, positive
@@ -507,6 +526,32 @@ CURRENT_RANGE_SOURCE_DEFAULT = "default"
 def current_range_dict(max_a: int, source: str) -> dict[str, Any]:
     """The dashboard's `current_range` block: `{min_a, max_a, source}`."""
     return {"min_a": CURRENT_RANGE_MIN_A, "max_a": max_a, "source": source}
+
+
+def charger_current_range(
+    hass: HomeAssistant,
+    current_limit: str | None,
+    controls: OcppCurrentControls | None,
+    *,
+    current_limit_none: bool = False,
+) -> dict[str, Any]:
+    """`ChargingController.current_range` from its parts: the lowest `max` stated by the current-limit
+    number, the OCPP connector's session limit and the OCPP station maximum, else the everyday 32 A."""
+    candidates: list[tuple[str | None, str]] = [(current_limit or None, CURRENT_RANGE_SOURCE_CURRENT_LIMIT)]
+    if controls is not None:
+        if not current_limit_none:
+            candidates.append((controls.session_limit_entity, CURRENT_RANGE_SOURCE_SESSION_LIMIT))
+        candidates.append((controls.station_maximum_entity, CURRENT_RANGE_SOURCE_STATION_MAXIMUM))
+    lowest: tuple[int, str] | None = None
+    for entity_id, source in candidates:
+        if not entity_id:
+            continue
+        maximum = _charger_maximum_from_state(hass.states.get(entity_id))
+        if maximum is not None and (lowest is None or maximum < lowest[0]):
+            lowest = (maximum, source)
+    if lowest is not None:
+        return current_range_dict(*lowest)
+    return current_range_dict(CURRENT_RANGE_DEFAULT_MAX_A, CURRENT_RANGE_SOURCE_DEFAULT)
 
 
 def _charger_maximum_from_state(state: State | None) -> int | None:
@@ -826,22 +871,8 @@ class ChargingController:
         # applying it; the explicit opt-in is the only value that changes behaviour (see const.py).
         self.current_control: str = "" if self.current_limit_none else config.get(CONF_CURRENT_CONTROL) or ""
         # OCPP control identity: which connector of which charge point every OCPP write is about.
-        self.ocpp_target: OcppConnectorTarget | None = None
-        self.ocpp_target_source = ""
-        # Only OCPP entries (mode OCPP or the OCPP-only control strategy) need an identity; a
-        # generic charger keeps its `current_limit` model.
-        if config.get(CONF_MODE) == MODE_OCPP or self.current_control == (
-            CURRENT_CONTROL_CHANGE_CONFIGURATION
-        ):
-            stored = _stored_ocpp_target(config)
-            if stored is not None:
-                self.ocpp_target, self.ocpp_target_source = stored, "stored"
-            elif config.get(CONF_OCPP_TARGET_UNRESOLVED):
-                self.ocpp_target_source = "unresolved"
-            else:
-                resolution = resolve_target(hass, charge_control=self.charge_control)
-                self.ocpp_target = resolution.target
-                self.ocpp_target_source = resolution.source or "unresolved"
+        self.ocpp_target: OcppConnectorTarget | None
+        self.ocpp_target, self.ocpp_target_source = ocpp_target_of(hass, config)
         # `manual_kwh` delivered-energy accounting: the stored override if any, otherwise the same
         # connector's cumulative `Energy.Active.Import.Register` sensor, found through the
         # registries and the entity's key (`ocpp_identity.energy_register_entity_for`), never by
@@ -4027,24 +4058,9 @@ class ChargingController:
         session limit and the OCPP station maximum: each is a ceiling, so the smallest binds. `source` names
         the entity that supplied it. If none states one, the everyday 32 A; never above `ABSOLUTE_MAX_AMPS`.
         """
-        candidates: list[tuple[str | None, str]] = [
-            (self.current_limit or None, CURRENT_RANGE_SOURCE_CURRENT_LIMIT)
-        ]
-        controls = self.ocpp_controls
-        if controls is not None:
-            if not self.current_limit_none:
-                candidates.append((controls.session_limit_entity, CURRENT_RANGE_SOURCE_SESSION_LIMIT))
-            candidates.append((controls.station_maximum_entity, CURRENT_RANGE_SOURCE_STATION_MAXIMUM))
-        lowest: tuple[int, str] | None = None
-        for entity_id, source in candidates:
-            if not entity_id:
-                continue
-            maximum = _charger_maximum_from_state(self.hass.states.get(entity_id))
-            if maximum is not None and (lowest is None or maximum < lowest[0]):
-                lowest = (maximum, source)
-        if lowest is not None:
-            return current_range_dict(*lowest)
-        return current_range_dict(CURRENT_RANGE_DEFAULT_MAX_A, CURRENT_RANGE_SOURCE_DEFAULT)
+        return charger_current_range(
+            self.hass, self.current_limit, self.ocpp_controls, current_limit_none=self.current_limit_none
+        )
 
     @property
     def ocpp_controls(self) -> OcppCurrentControls | None:

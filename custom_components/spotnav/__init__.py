@@ -59,6 +59,7 @@ from .energy_register import async_store_detected_register, async_watch_for_regi
 from .entity_renames import async_setup_entity_renames
 from .debug_day import ChargerDay
 from .log_buffer import attach_log_buffer
+from .execution.charger_handback import async_hand_back_charger
 from .execution.auto_execution import AutoExecutor, pause_blocks_execution
 from .execution.controller import ChargingController
 from .execution.min_soc_floor import FloorInputs, MinSocFloor
@@ -823,7 +824,8 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 
 async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
-    """An entry was deleted for good: take a charger out of its site and remove its own Auto state.
+    """An entry was deleted for good: hand its charger back, take it out of its site and remove its own Auto
+    state.
 
     Unload does not come here (a reload must find its settings). Charger entries only; a site entry
     never writes settings, and an electricity price keeps nothing but its entry (its numbers' last values
@@ -840,6 +842,9 @@ async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
         await async_release_held_charges(hass, entry.data.get(CONF_CHARGER_ENTRY_IDS) or [])
         await SiteHistory.async_remove_stored(hass, entry.entry_id)
         return
+    # The charger is left as someone without SpotNav expects it: allowed to charge, at its full current.
+    # Read before the stores below go (an Easee pause of ours is remembered in the controller's).
+    await async_hand_back_charger(hass, entry)
     async_leave_sites(hass, entry.entry_id)
     if (price_store := domain_data(hass).price_store) is not None:
         price_store.forget(entry.entry_id)

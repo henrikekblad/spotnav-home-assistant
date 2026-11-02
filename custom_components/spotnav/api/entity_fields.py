@@ -23,7 +23,8 @@ into a wire refusal and a pass into a write.
   solar and hybrid read on a direct site), the sign options (`site_current_signed`, `grid_power_inverted`,
   `battery_power_inverted`), the battery aggregate power sensor with its optional discharge half, and
   the maximum measurement age. `apply_detection` (write only) applies a detected meter or battery
-  (`site/site_detection.py`) chosen by id; the server recomputes the detection and never takes a mapping
+  (`site/site_detection.py`), or a member charger's own current sensors for its wiring
+  (`site/charger_current_offer.py`), chosen by id; the server recomputes the detection and never takes a mapping
   from the caller. The generic current source (`CONF_SITE_CURRENT_SOURCE`, set by a detection or the
   wizard) is not a field: `measurement.current_source` reports it read-only, and naming the three
   `direct_L{n}` entities replaces it. Not included: membership, active control's
@@ -95,6 +96,12 @@ from ..site.site_detection import (
     find_own_load_balancing_from_hass,
     freshness_warnings,
     MeterCandidate,
+)
+from ..site.charger_current_offer import (
+    charger_own_current_sensors,
+    ChargerCurrentOffer,
+    charger_current_offers,
+    OFFER_PREFIX as CHARGER_CURRENT_OFFER_PREFIX,
 )
 from ..site.measurement_source import PhaseMeasurementSource, grid_power_source_from_dict, source_from_dict
 from ..site.solar_capability import solar_capability
@@ -849,6 +856,9 @@ def charger_field_descriptors(hass: HomeAssistant, entry: ConfigEntry) -> list[d
                     "writable": False,
                     "value": _measured_source_text(hass, entry.entry_id),
                     "choices": [],
+                    # The charger's own sensors its integration offers for it, so the card can name them
+                    # while the wiring has none (`site/charger_current_offer.py`); `None` otherwise.
+                    "own_sensors": _own_sensors_row(hass, entry.entry_id),
                 }
             ]
             if site_for_charger(hass, entry.entry_id) is not None
@@ -870,6 +880,15 @@ def charger_field_descriptors(hass: HomeAssistant, entry: ConfigEntry) -> list[d
         ),
         vehicle_soc_descriptor(hass),
     ]
+
+
+def _own_sensors_row(hass: HomeAssistant, charger_entry_id: str) -> dict[str, str] | None:
+    """`{integration, sensors}`: the charger's own current sensors, named for a sentence, while its site's
+    wiring reads none; `None` when it reads one or the charger's profile names none."""
+    if _measured_source_text(hass, charger_entry_id) is not None:
+        return None
+    sensors = charger_own_current_sensors(hass, charger_entry_id)
+    return None if sensors is None else {"integration": sensors.integration, "sensors": sensors.sensors_text}
 
 
 def _measured_source_text(hass: HomeAssistant, charger_entry_id: str) -> str | None:
@@ -1323,10 +1342,14 @@ def site_detection(hass: HomeAssistant, entry: ConfigEntry) -> Detection:
 
 def resolve_detection_candidate(
     hass: HomeAssistant, entry: ConfigEntry, candidate_id: Any
-) -> MeterCandidate | BatteryCandidate | None:
+) -> MeterCandidate | BatteryCandidate | ChargerCurrentOffer | None:
     """The candidate `candidate_id` names in a fresh detection, or `None` (never a caller-made one)."""
     if not isinstance(candidate_id, str):
         return None
+    if candidate_id.startswith(CHARGER_CURRENT_OFFER_PREFIX):
+        return next(
+            (offer for offer in charger_current_offers(hass, entry) if offer.candidate_id == candidate_id), None
+        )
     detection = site_detection(hass, entry)
     for candidate in (*detection.meters, *detection.batteries):
         if candidate.candidate_id == candidate_id:
@@ -1532,6 +1555,7 @@ def site_measurement_info(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, 
         "detection": {
             "meters": [_meter_row(hass, entry, candidate) for candidate in detection.meters],
             "batteries": [_battery_row(hass, candidate) for candidate in detection.batteries],
+            "chargers": [_charger_current_row(offer) for offer in charger_current_offers(hass, entry)],
         },
     }
 
@@ -1593,6 +1617,18 @@ def _meter_row(hass: HomeAssistant, entry: ConfigEntry, candidate: MeterCandidat
         ],
         "warnings": list(candidate.warnings),
         "applied": active,
+    }
+
+
+def _charger_current_row(offer: ChargerCurrentOffer) -> dict[str, Any]:
+    """A member charger's own current sensors, offered for its wiring (`site/charger_current_offer.py`)."""
+    return {
+        "id": offer.candidate_id,
+        "charger_name": offer.charger_name,
+        "integration": offer.sensors.integration,
+        "sensors": offer.sensors.sensors_text,
+        "entity_ids": list(offer.sensors.entity_ids),
+        "disabled_entities": list(offer.disabled_entity_ids),
     }
 
 

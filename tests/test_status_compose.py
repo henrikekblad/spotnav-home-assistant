@@ -1368,8 +1368,36 @@ CASES: list[tuple[str, StatusFacts, str, list[dict[str, Any]]]] = [
         "notice",
         [
             {"code": "solar_waiting_for_sun", "params": {}},
-            {"code": "solar_charger_current_missing", "params": {"entity": None, "entity_name": None}},
+            {
+                "code": "solar_charger_current_missing",
+                "params": {"entity": None, "entity_name": None, "integration": None, "sensors": None},
+            },
             {"code": "solar_site_incomplete", "params": {"phases": ["L1"]}},
+        ],
+    ),
+    (
+        "a charger current not set names the charger's own sensors when its integration has them",
+        base(
+            strategy="solar",
+            solar=SolarFacts(
+                "off",
+                "charger_measurement_missing",
+                charger_current="not_set",
+                own_sensors=("Peblar", "Current phase 1–3"),
+            ),
+        ),
+        "notice",
+        [
+            {"code": "solar_waiting_for_sun", "params": {}},
+            {
+                "code": "solar_charger_current_missing",
+                "params": {
+                    "entity": None,
+                    "entity_name": None,
+                    "integration": "Peblar",
+                    "sensors": "Current phase 1–3",
+                },
+            },
         ],
     ),
     (
@@ -1390,7 +1418,12 @@ CASES: list[tuple[str, StatusFacts, str, list[dict[str, Any]]]] = [
             {"code": "solar_charging", "params": {"requested_a": 6.0}},
             {
                 "code": "solar_charger_current_missing",
-                "params": {"entity": "sensor.easee_current", "entity_name": "sensor.easee_current"},
+                "params": {
+                    "entity": "sensor.easee_current",
+                    "entity_name": "sensor.easee_current",
+                    "integration": None,
+                    "sensors": None,
+                },
             },
         ],
     ),
@@ -1422,7 +1455,12 @@ CASES: list[tuple[str, StatusFacts, str, list[dict[str, Any]]]] = [
             {"code": "solar_arming", "params": {}},
             {
                 "code": "solar_charger_current_missing",
-                "params": {"entity": "sensor.halo_current", "entity_name": "HALO current"},
+                "params": {
+                    "entity": "sensor.halo_current",
+                    "entity_name": "HALO current",
+                    "integration": None,
+                    "sensors": None,
+                },
             },
         ],
     ),

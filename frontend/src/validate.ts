@@ -1539,7 +1539,10 @@ export const STATUS_CODE_TABLE = {
   solar_car_stopped: ["normal", { time: "instantOrNull" }],
   solar_no_grid_power: ["notice", { entity: "textOrNull", entity_name: "textOrNull" }],
   solar_battery_unreadable: ["notice", { entity: "textOrNull", entity_name: "textOrNull" }],
-  solar_charger_current_missing: ["notice", { entity: "textOrNull", entity_name: "textOrNull" }],
+  solar_charger_current_missing: [
+    "notice",
+    { entity: "textOrNull", entity_name: "textOrNull", integration: "textOrNull", sensors: "textOrNull" },
+  ],
   solar_site_incomplete: ["normal", { phases: "codes" }],
   solar_unknown: ["normal", {}],
   solar_forecast: ["normal", { kwh: "number", start: "instant", end: "instant" }],

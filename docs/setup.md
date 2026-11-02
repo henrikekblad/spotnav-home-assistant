@@ -385,5 +385,10 @@ each with its own private webhook secret. Treat webhook ids as secrets. See
   wiring. SpotNav opens the measurement and wiring step anyway when the measurement mode changed,
   when chargers were added or removed, or when the measurement is incomplete.
 - **The site's entities**, from the card: **Site, Change site entities**.
+- **Removing a charger.** Deleting a charger's entry under **Settings, Devices & services, SpotNav**
+  leaves the charger as it would be without SpotNav: turned back on if SpotNav had stopped it, and,
+  if SpotNav set its current, at the top of its range (the current entity's own maximum, else 32 A,
+  which the charger's own limit still caps). It is written once, so a charger that stores the current
+  in flash takes it too. A restart, a reload or disabling the entry changes nothing on the charger.
 
 See [Diagnostics and troubleshooting](troubleshooting.md) if something does not behave as expected.

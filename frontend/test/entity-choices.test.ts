@@ -859,9 +859,27 @@ describe("the phases the charger is wired for: 1 or 3, chosen like a type, for a
     };
     expect(render("sensor.easee_driveway_current")).toContain("measured current from sensor.easee_driveway_current");
     expect(render(null)).toContain("reads no measured current");
+    expect(render(null)).toContain("set it in the site wiring");
+    // The charger's own sensors are named when its integration has them.
+    const own = { integration: "Peblar", sensors: "Current phase 1–3" };
+    const named = { ...cfg, fields: cfg.fields.map((entry) => (entry.field === "measured_current_source" ? { ...entry, value: null, ownSensors: own } : entry)) } as typeof cfg;
+    const built = entityEditorBody(
+      document,
+      "en",
+      { scope: "charger", config: named, hass: () => undefined, appliesText: null },
+      { onSave: () => undefined, onCancel: () => undefined },
+      "t",
+    );
+    document.body.replaceChildren(built.body);
+    expect(document.querySelector("[data-measured-source]")?.textContent).toBe(
+      "The site reads no measured current for this charger. Solar and the regulator need it: choose Peblar's Current phase 1–3 in the site wiring, or press Use there.",
+    );
     for (const language of LANGUAGES) {
       expect(translate(language, "entity.measuredSource.from", { source: "x" }), language).toContain("x");
       expect(translate(language, "entity.measuredSource.none"), language).not.toBe("entity.measuredSource.none");
+      const text = translate(language, "entity.measuredSource.noneOwn", own);
+      expect(text, language).toContain("Current phase 1–3");
+      expect(text, language).toContain("Peblar");
     }
   });
 

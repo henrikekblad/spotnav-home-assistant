@@ -147,6 +147,7 @@
         "choices": [],
         "field": "measured_current_source",
         "kind": "enum",
+        "own_sensors": null,
         "required": false,
         "scope": "charger",
         "value": null,
@@ -415,6 +416,7 @@
             "title": "solaredge_modbus_multi"
           }
         ],
+        "chargers": [],
         "meters": [
           {
             "applied": false,

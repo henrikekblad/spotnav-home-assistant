@@ -147,6 +147,7 @@
         "choices": [],
         "field": "measured_current_source",
         "kind": "enum",
+        "own_sensors": null,
         "required": false,
         "scope": "charger",
         "value": null,
@@ -577,6 +578,7 @@
       "charger_count": 1,
       "detection": {
         "batteries": [],
+        "chargers": [],
         "meters": [
           {
             "applied": false,

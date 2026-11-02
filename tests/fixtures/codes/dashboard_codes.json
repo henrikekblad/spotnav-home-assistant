@@ -453,7 +453,9 @@
     "solar_charger_current_missing": {
       "params": [
         "entity",
-        "entity_name"
+        "entity_name",
+        "integration",
+        "sensors"
       ],
       "tone": "notice"
     },

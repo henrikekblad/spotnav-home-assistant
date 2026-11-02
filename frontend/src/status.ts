@@ -134,10 +134,17 @@ function basisWording(line: StatusLine): { key: TranslationKey; params: Record<s
         : { key: "strategy.status.solar.noGridPowerEntity", params: { entity } };
     case "solar_battery_unreadable":
       return { key: "strategy.status.solar.batteryUnreadable", params: { entity: entity ?? "" } };
-    case "solar_charger_current_missing":
-      return entity === null
-        ? { key: "strategy.status.solar.chargerCurrentNotSet", params: {} }
-        : { key: "strategy.status.solar.chargerCurrentUnreadable", params: { entity } };
+    case "solar_charger_current_missing": {
+      if (entity !== null) {
+        return { key: "strategy.status.solar.chargerCurrentUnreadable", params: { entity } };
+      }
+      // Not set: the charger's own sensors are named when its integration has them.
+      const integration = p["integration"];
+      const sensors = p["sensors"];
+      return typeof integration === "string" && integration !== "" && typeof sensors === "string" && sensors !== ""
+        ? { key: "strategy.status.solar.chargerCurrentNotSetOwn", params: { integration, sensors } }
+        : { key: "strategy.status.solar.chargerCurrentNotSet", params: {} };
+    }
     case "solar_site_incomplete":
       return { key: "strategy.status.solar.siteIncomplete", params: { phases: strings(p["phases"]).join(", ") } };
     case "site_meter_unavailable":

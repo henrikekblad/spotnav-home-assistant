@@ -125,6 +125,7 @@ from ..runtime import (
     preview_for,
     site_controller_for,
 )
+from ..site.charger_current_offer import charger_own_current_sensors
 from ..site.phase_detection import (
     async_detect_phases,
     PhaseDetectionResult,
@@ -505,6 +506,9 @@ class CapturedDashboard:
     notify_available: tuple[tuple[str, str], ...] = ()
     #: Friendly names of the entities a status line names (`entity_id -> name`), where they have one.
     entity_names: tuple[tuple[str, str], ...] = ()
+    #: The charger's own current sensors `(integration, sensors)` while solar says its current is not set and
+    #: its integration has them (`site/charger_current_offer.py`), for the status line to name; else `None`.
+    own_current_sensors: tuple[str, str] | None = None
     #: Which car is plugged in, while a plug-in is being identified (`vehicles/identification.py`), else `None`.
     identification: dict[str, Any] | None = None
     #: Every detected car, `(id, name)`, whether or not it is one of this charger's (`vehicle_ids`): what the
@@ -1233,6 +1237,7 @@ def capture_dashboard(
         charger_priority=capture_charger_priority(hass, entry),
         notify_available=notify_available,
         entity_names=_status_entity_names(hass, site),
+        own_current_sensors=_own_current_sensors(hass, entry_id, site),
         identification=_identification(hass, entry_id),
         camera_identification=_camera_identification(hass, entry_id, settings),
         vehicle_choices=tuple((choice.id, choice.name) for choice in resolve_target_vehicle(hass, None)[1]),
@@ -1354,6 +1359,14 @@ def _status_entity_names(hass: HomeAssistant, site: CapturedSite | None) -> tupl
         if name:
             names[entity_id] = name
     return tuple(names.items())
+
+
+def _own_current_sensors(hass: HomeAssistant, entry_id: str, site: CapturedSite | None) -> tuple[str, str] | None:
+    """The charger's own current sensors, named, while solar says its current is not set."""
+    if site is None or (site.solar_state or {}).get("charger_current") != "not_set":
+        return None
+    sensors = charger_own_current_sensors(hass, entry_id)
+    return None if sensors is None else (sensors.integration, sensors.sensors_text)
 
 
 def capture_charger_priority(hass: HomeAssistant, entry: ConfigEntry) -> str | None:
@@ -2446,6 +2459,7 @@ def status_facts(capture: CapturedDashboard) -> StatusFacts:
             charger_current_entity=_text(basis.get("charger_current_entity")),
             basis_entity_name=names.get(_text(basis.get("basis_entity")) or ""),
             charger_current_entity_name=names.get(_text(basis.get("charger_current_entity")) or ""),
+            own_sensors=capture.own_current_sensors,
             site_incomplete_phases=tuple(str(phase) for phase in basis.get("site_incomplete_phases") or ()),
             retry_at=_instant(basis.get("retry_at")),
             available_a=finite_number(basis.get("available_a")),

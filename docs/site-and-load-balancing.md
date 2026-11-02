@@ -51,6 +51,14 @@ shown in [Set up SpotNav](setup.md#2-add-a-site-optional). You provide:
     A one-phase charger on a chosen phase is read from T3 only (TN); an Automatic one from T3, T4
     and T5, which show the phase it charges on. The charger's dialog shows the source the site
     reads, read-only.
+  - **A charger whose integration has its own current sensors** (Peblar's *Current phase 1–3*, and
+    likewise Zaptec, go-e, NRGkick, Charge Amps, Lektrico, Tesla Wall Connector, NexBlue and
+    Easee's *Current*) is offered them in the card's site editor (**Site, Change site entities**,
+    under *Found in Home Assistant*) while its wiring reads no measured current, also when the
+    integration ships them disabled, as Peblar does. **Use** enables the ones the integration
+    disabled and sets them in the charger's wiring; nothing changes before. A sensor you disabled
+    yourself is never enabled, and the charger is then offered nothing. While the wiring reads no
+    current, the status line and the charger's dialog name these sensors.
   - Without any measured current for a charger, the regulator holds (`charger_measurement_unusable`)
     and solar runs that charger blind, at the minimum current only. It starts (reason
     `unmeasured_start`, after `unmeasured_arming`) when the spare power without the car (export, plus

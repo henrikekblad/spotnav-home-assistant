@@ -758,7 +758,9 @@ export function entityEditorBody(
   function detectionSection(full: EntityConfig, site: EntitySite): HTMLElement | null {
     const batteryInUse = new Map(site.batteries.map((battery) => [battery.id, batteryApplied(full, battery)]));
     const differs =
-      site.meters.some((meter) => !meter.applied) || site.batteries.some((battery) => batteryInUse.get(battery.id) !== true);
+      site.meters.some((meter) => !meter.applied) ||
+      site.batteries.some((battery) => batteryInUse.get(battery.id) !== true) ||
+      site.chargers.length > 0;
     if (!differs) {
       return null;
     }
@@ -799,6 +801,27 @@ export function entityEditorBody(
     }
     for (const battery of site.batteries) {
       section.append(batteryCard(battery, batteryInUse.get(battery.id) === true, apply, line, enableLine));
+    }
+    // A charger whose wiring reads no measured current, and whose own integration has the sensors for it.
+    if (site.chargers.length > 0) {
+      section.append(element(doc, "strong", undefined, translate(language, "entity.detect.chargers")));
+    }
+    for (const offer of site.chargers) {
+      const card = element(doc, "div", C.entityRow);
+      card.dataset["detectedChargerCurrent"] = offer.id;
+      card.append(element(doc, "span", C.entityRowLabel, offer.chargerName));
+      card.append(
+        line(
+          translate(language, "entity.detect.chargerCurrent", { integration: offer.integration, sensors: offer.sensors }),
+          "chargerCurrent",
+        ),
+      );
+      const enable = enableLine(offer.disabledEntities.length);
+      if (enable !== null) {
+        card.append(enable);
+      }
+      card.append(apply(offer.id, offer.chargerName));
+      section.append(card);
     }
     return section;
   }
@@ -1615,10 +1638,15 @@ export function entityEditorBody(
   if (sourceField !== undefined && sourceField.kind === "enum") {
     const sourceLine = element(doc, "p", C.siteApplies);
     sourceLine.dataset["measuredSource"] = sourceField.value ?? "";
+    // Shown with the charger's current, the Settings row it belongs to (a part's dialog hides the rest).
+    sourceLine.dataset["focusWith"] = "current-limit";
+    const own = sourceField.ownSensors;
     sourceLine.append(
-      sourceField.value === null || sourceField.value === ""
-        ? translate(language, "entity.measuredSource.none")
-        : translate(language, "entity.measuredSource.from", { source: sourceField.value }),
+      sourceField.value !== null && sourceField.value !== ""
+        ? translate(language, "entity.measuredSource.from", { source: sourceField.value })
+        : own !== null
+          ? translate(language, "entity.measuredSource.noneOwn", { integration: own.integration, sensors: own.sensors })
+          : translate(language, "entity.measuredSource.none"),
     );
     body.append(sourceLine);
   }

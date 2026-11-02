@@ -119,10 +119,21 @@ export interface EntityFieldNumber extends FieldBase {
   value: number | null;
 }
 
+/** A charger's own current sensors, named for a sentence ("Peblar", "Current phase 1–3"). */
+export interface OwnCurrentSensors {
+  integration: string;
+  sensors: string;
+}
+
 export interface EntityFieldEnum extends FieldBase {
   kind: "enum";
   choices: string[];
   value: string | null;
+  /**
+   * `measured_current_source` alone: the charger's own sensors its integration offers while the site's
+   * wiring reads none; `null` otherwise, and on every other field.
+   */
+  ownSensors: OwnCurrentSensors | null;
 }
 
 export interface EntityFieldFlag extends FieldBase {
@@ -212,6 +223,16 @@ export interface DetectedBattery {
   disabledEntities: string[];
 }
 
+/** A member charger's own current sensors, offered for its site wiring (applied with `apply_detection`). */
+export interface DetectedChargerCurrent {
+  id: string;
+  chargerName: string;
+  integration: string;
+  sensors: string;
+  entityIds: string[];
+  disabledEntities: string[];
+}
+
 export interface EntitySite {
   name: string;
   chargerCount: number;
@@ -219,6 +240,7 @@ export interface EntitySite {
   warnings: SiteWarning[];
   meters: DetectedMeter[];
   batteries: DetectedBattery[];
+  chargers: DetectedChargerCurrent[];
 }
 
 /**
@@ -335,6 +357,8 @@ const ENTITY_KEYS = [
 const ENTITY_OPTIONAL_KEYS = ["none"] as const;
 const NUMBER_KEYS = ["field", "kind", "minimum", "required", "scope", "value", "writable"] as const;
 const ENUM_KEYS = ["choices", "field", "kind", "required", "scope", "value", "writable"] as const;
+/** Present on `measured_current_source` alone, so an older backend (and every other field) still decodes. */
+const ENUM_OPTIONAL_KEYS = ["own_sensors"] as const;
 const FLAG_KEYS = ["field", "kind", "required", "scope", "value", "writable"] as const;
 
 function decodeField(raw: unknown): EntityField {
@@ -415,8 +439,15 @@ function decodeField(raw: unknown): EntityField {
     return { ...base, kind, minimum, value: numberOrNull(source, "value") };
   }
   if (kind === "enum") {
-    exactKeys(source, ENUM_KEYS);
-    return { ...base, kind, choices: textList(source, "choices"), value: textOrNull(source, "value") };
+    const rawOwn = source["own_sensors"];
+    exactKeys(source, rawOwn === undefined ? ENUM_KEYS : [...ENUM_KEYS, ...ENUM_OPTIONAL_KEYS]);
+    let ownSensors: OwnCurrentSensors | null = null;
+    if (rawOwn !== undefined && rawOwn !== null) {
+      const own = record(rawOwn);
+      exactKeys(own, ["integration", "sensors"]);
+      ownSensors = { integration: text(own, "integration"), sensors: text(own, "sensors") };
+    }
+    return { ...base, kind, choices: textList(source, "choices"), value: textOrNull(source, "value"), ownSensors };
   }
   if (kind === "flag") {
     exactKeys(source, FLAG_KEYS);
@@ -627,6 +658,19 @@ function decodeBattery(raw: unknown): DetectedBattery {
   };
 }
 
+function decodeChargerCurrent(raw: unknown): DetectedChargerCurrent {
+  const source = record(raw);
+  exactKeys(source, ["id", "charger_name", "integration", "sensors", "entity_ids", "disabled_entities"]);
+  return {
+    id: text(source, "id"),
+    chargerName: text(source, "charger_name"),
+    integration: text(source, "integration"),
+    sensors: text(source, "sensors"),
+    entityIds: textList(source, "entity_ids"),
+    disabledEntities: textList(source, "disabled_entities"),
+  };
+}
+
 function decodeRef(raw: unknown): EntityRef {
   const ref = record(raw);
   exactKeys(ref, ["entity_id", "friendly_name"]);
@@ -786,7 +830,9 @@ function decodeConfig(raw: unknown): EntityConfig {
       return bad();
     }
     const detection = record(siteSource["detection"]);
-    exactKeys(detection, ["meters", "batteries"]);
+    // `chargers` came later: an older backend sends only the meters and batteries.
+    const rawChargers = detection["chargers"];
+    exactKeys(detection, rawChargers === undefined ? ["meters", "batteries"] : ["meters", "batteries", "chargers"]);
     site = {
       name: text(siteSource, "name"),
       chargerCount: count,
@@ -794,6 +840,7 @@ function decodeConfig(raw: unknown): EntityConfig {
       warnings: list(siteSource, "warnings").map(decodeWarning),
       meters: list(detection, "meters").map(decodeMeter),
       batteries: list(detection, "batteries").map(decodeBattery),
+      chargers: rawChargers === undefined ? [] : list(detection, "chargers").map(decodeChargerCurrent),
     };
   }
   return {
