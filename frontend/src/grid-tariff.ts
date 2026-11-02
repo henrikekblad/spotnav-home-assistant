@@ -8,8 +8,8 @@
 // with a common window the person confirms (`SUGGESTED_WINDOW`).
 
 import { formatNumber } from "./format";
-import { translate, type Language } from "./i18n";
-import type { GridTariffBlock, GridTariffFee, HighLoadWindow } from "./validate";
+import { translate, type Language, type TranslationKey } from "./i18n";
+import { HIGH_LOAD_DAYS, type GridTariffBlock, type GridTariffFee, type HighLoadDays, type HighLoadWindow } from "./validate";
 import { shell, type EditorHandlers, type SaveValue } from "./value-editors";
 import { VISUAL_CLASSES as C } from "./visual-styles";
 
@@ -30,7 +30,18 @@ export interface GridTariffBody {
 export const GRID_TARIFF_CONFLICT = "revision_conflict";
 
 /** The window the editor offers when none is stored: weekdays 07-19, November to March. Never written unconfirmed. */
-export const SUGGESTED_WINDOW: HighLoadWindow = { weekdays_only: true, from_hour: 7, to_hour: 19, winter_only: true };
+export const SUGGESTED_WINDOW: HighLoadWindow = { days: "weekdays", from_month: 11, to_month: 3, from_hour: 7, to_hour: 19 };
+
+/** Whether two windows are the same hours. */
+export function sameWindow(a: HighLoadWindow, b: HighLoadWindow): boolean {
+  return (
+    a.days === b.days &&
+    a.from_month === b.from_month &&
+    a.to_month === b.to_month &&
+    a.from_hour === b.from_hour &&
+    a.to_hour === b.to_hour
+  );
+}
 
 /** Whether the area's published price already holds the grid fee: the tariff's rows are then locked. */
 export function gridTariffIncluded(block: GridTariffBlock): boolean {
@@ -77,12 +88,7 @@ export function withWindow(block: GridTariffBlock, window: HighLoadWindow): Grid
 export function sameBody(left: GridTariffBody, right: GridTariffBody): boolean {
   const fee = (a: GridTariffFeeBody, b: GridTariffFeeBody): boolean => a.enabled === b.enabled && a.value === b.value;
   const window = (a: HighLoadWindow | null, b: HighLoadWindow | null): boolean =>
-    a === null || b === null
-      ? a === b
-      : a.weekdays_only === b.weekdays_only &&
-        a.from_hour === b.from_hour &&
-        a.to_hour === b.to_hour &&
-        a.winter_only === b.winter_only;
+    a === null || b === null ? a === b : sameWindow(a, b);
   return (
     fee(left.transfer_percent, right.transfer_percent) &&
     fee(left.transfer_high, right.transfer_high) &&
@@ -94,12 +100,33 @@ function hour(value: number): string {
   return String(value).padStart(2, "0");
 }
 
-/** The hours on one line: "Vardagar 07–19, nov–mar", "Alla dagar 06–22, hela året". */
+const DAY_WORDS = {
+  all: "gridFee.window.everyDay",
+  weekdays: "gridFee.window.weekdays",
+  mon_sat: "gridFee.window.monSat",
+} as const satisfies Record<HighLoadDays, TranslationKey>;
+
+function monthWord(language: Language, month: number): string {
+  return translate(language, `gridFee.window.month.${month}` as TranslationKey);
+}
+
+/** The months: "nov–mar", one month on its own, or "hela året" when they take in all twelve. */
+function monthsText(language: Language, window: HighLoadWindow): string {
+  if ((window.to_month % 12) + 1 === window.from_month) {
+    return translate(language, "gridFee.window.allYear");
+  }
+  if (window.from_month === window.to_month) {
+    return monthWord(language, window.from_month);
+  }
+  return `${monthWord(language, window.from_month)}–${monthWord(language, window.to_month)}`;
+}
+
+/** The hours on one line: "Vardagar 07–19, nov–mar", "Mån–lör 07–22, nov–mar", "Vardagar 22–06, hela året". */
 export function windowText(language: Language, window: HighLoadWindow): string {
   return translate(language, "gridFee.window.line", {
-    days: translate(language, window.weekdays_only ? "gridFee.window.weekdays" : "gridFee.window.everyDay"),
+    days: translate(language, DAY_WORDS[window.days]),
     hours: `${hour(window.from_hour)}–${hour(window.to_hour)}`,
-    season: translate(language, window.winter_only ? "gridFee.window.winter" : "gridFee.window.allYear"),
+    months: monthsText(language, window),
   });
 }
 
@@ -194,21 +221,45 @@ function labelled(doc: Document, text: string, control: HTMLElement): HTMLElemen
   return wrapper;
 }
 
-function checkbox(doc: Document, text: string, checked: boolean, key: string): { label: HTMLElement; box: HTMLInputElement } {
-  const label = doc.createElement("label");
-  label.className = C.siteChoice;
-  const box = doc.createElement("input");
-  box.type = "checkbox";
-  box.checked = checked;
-  box.dataset["window"] = key;
-  label.append(box, doc.createTextNode(text));
-  return { label, box };
+function choiceSelect(
+  doc: Document,
+  id: string,
+  choices: ReadonlyArray<{ value: string; text: string }>,
+  selected: string,
+): HTMLSelectElement {
+  const select = doc.createElement("select");
+  select.className = C.settingsInput;
+  select.id = id;
+  for (const choice of choices) {
+    const option = doc.createElement("option");
+    option.value = choice.value;
+    option.textContent = choice.text;
+    select.append(option);
+  }
+  select.value = selected;
+  return select;
+}
+
+/** The months by name in the reader's language, for the month selects. */
+function monthChoices(language: Language): Array<{ value: string; text: string }> {
+  const format = new Intl.DateTimeFormat(language, { month: "long", timeZone: "UTC" });
+  return Array.from({ length: 12 }, (_, index) => {
+    const name = format.format(new Date(Date.UTC(2026, index, 15)));
+    return { value: String(index + 1), text: name.charAt(0).toLocaleUpperCase(language) + name.slice(1) };
+  });
+}
+
+function row(doc: Document, ...fields: HTMLElement[]): HTMLElement {
+  const line = doc.createElement("div");
+  line.className = C.settingsRow;
+  line.append(...fields);
+  return line;
 }
 
 /**
- * The high-load hours: from hour, to hour, weekdays only and November–March only. With none stored it is
- * prefilled with `SUGGESTED_WINDOW` and says so; nothing is written until Save. Saving the stored hours unchanged
- * writes nothing.
+ * The high-load hours: the days, the first and last month, and from and to hour (an end before the start runs over
+ * midnight). With none stored it is prefilled with `SUGGESTED_WINDOW` and says so; nothing is written until Save.
+ * Saving the stored hours unchanged writes nothing.
  */
 export function windowEditor(
   doc: Document,
@@ -234,38 +285,47 @@ export function windowEditor(
   if (input.current === null) {
     help(translate(language, "gridFee.window.suggestion"), "suggestion");
   }
+  const days = choiceSelect(
+    doc,
+    `${input.idPrefix}-window-days`,
+    HIGH_LOAD_DAYS.map((value) => ({ value, text: translate(language, DAY_WORDS[value]) })),
+    shown.days,
+  );
+  days.dataset["window"] = "days";
+  const months = monthChoices(language);
+  const fromMonth = choiceSelect(doc, `${input.idPrefix}-window-from-month`, months, String(shown.from_month));
+  fromMonth.dataset["window"] = "fromMonth";
+  const toMonth = choiceSelect(doc, `${input.idPrefix}-window-to-month`, months, String(shown.to_month));
+  toMonth.dataset["window"] = "toMonth";
   const from = hourSelect(doc, `${input.idPrefix}-window-from`, 0, 23, shown.from_hour);
   from.dataset["window"] = "from";
   const to = hourSelect(doc, `${input.idPrefix}-window-to`, 1, 24, shown.to_hour);
   to.dataset["window"] = "to";
-  const hours = doc.createElement("div");
-  hours.className = C.settingsRow;
-  hours.append(
-    labelled(doc, translate(language, "gridFee.window.from"), from),
-    labelled(doc, translate(language, "gridFee.window.to"), to),
+  body.append(
+    labelled(doc, translate(language, "gridFee.window.days"), days),
+    row(
+      doc,
+      labelled(doc, translate(language, "gridFee.window.fromMonth"), fromMonth),
+      labelled(doc, translate(language, "gridFee.window.toMonth"), toMonth),
+    ),
+    row(
+      doc,
+      labelled(doc, translate(language, "gridFee.window.from"), from),
+      labelled(doc, translate(language, "gridFee.window.to"), to),
+    ),
   );
-  body.append(hours);
-  const weekdays = checkbox(doc, translate(language, "gridFee.window.weekdaysOnly"), shown.weekdays_only, "weekdays");
-  const winter = checkbox(doc, translate(language, "gridFee.window.winterOnly"), shown.winter_only, "winter");
-  body.append(weekdays.label, winter.label);
   editor.submit(async () => {
     const chosen: HighLoadWindow = {
-      weekdays_only: weekdays.box.checked,
+      days: HIGH_LOAD_DAYS.find((value) => value === days.value) ?? shown.days,
+      from_month: Number(fromMonth.value),
+      to_month: Number(toMonth.value),
       from_hour: Number(from.value),
       to_hour: Number(to.value),
-      winter_only: winter.box.checked,
     };
-    if (chosen.to_hour <= chosen.from_hour) {
-      return translate(language, "gridFee.window.order");
+    if (chosen.to_hour === chosen.from_hour) {
+      return translate(language, "gridFee.window.sameHours");
     }
-    const current = input.current;
-    if (
-      current !== null &&
-      current.weekdays_only === chosen.weekdays_only &&
-      current.from_hour === chosen.from_hour &&
-      current.to_hour === chosen.to_hour &&
-      current.winter_only === chosen.winter_only
-    ) {
+    if (input.current !== null && sameWindow(input.current, chosen)) {
       return null;
     }
     return await save(chosen);

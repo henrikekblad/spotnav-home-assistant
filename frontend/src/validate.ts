@@ -342,13 +342,22 @@ export interface GridTariffFee {
   unit: string | null;
 }
 
-/** The hours the high-load fee applies in: whole hours of the area's clock, `to_hour` after `from_hour`. */
+/** The days of the week a high-load window applies on. */
+export const HIGH_LOAD_DAYS = ["all", "weekdays", "mon_sat"] as const;
+export type HighLoadDays = (typeof HIGH_LOAD_DAYS)[number];
+
+/**
+ * The hours the high-load fee applies in, on the area's clock: on `days` (`weekdays` is Monday to Friday), from
+ * `from_month` to `to_month` (1-12, both included, wrapping over the new year), whole hours `from_hour` 0-23 to
+ * `to_hour` 1-24, wrapping over midnight when `from_hour` is after `to_hour` (never equal). A night's hours belong
+ * to the day they start on.
+ */
 export interface HighLoadWindow {
-  weekdays_only: boolean;
+  days: HighLoadDays;
+  from_month: number;
+  to_month: number;
   from_hour: number;
   to_hour: number;
-  /** November to March only. */
-  winter_only: boolean;
 }
 
 /** The dashboard's `grid_tariff` block. */
@@ -1876,17 +1885,22 @@ function gridTariffFee(raw: unknown): GridTariffFee {
 /** A high-load window as the backend states it, or malformed. */
 export function decodeHighLoadWindow(raw: unknown): HighLoadWindow {
   const item = record(raw);
-  exactKeys(item, ["weekdays_only", "from_hour", "to_hour", "winter_only"]);
+  exactKeys(item, ["days", "from_month", "to_month", "from_hour", "to_hour"]);
+  const days = item.days;
+  if (!HIGH_LOAD_DAYS.some((known) => known === days)) {
+    return bad();
+  }
   const from = wholeNumber(item, "from_hour", 0, 23);
   const to = wholeNumber(item, "to_hour", 1, 24);
-  if (to <= from) {
+  if (to === from) {
     return bad();
   }
   return {
-    weekdays_only: booleanValue(item, "weekdays_only"),
+    days: days as HighLoadDays,
+    from_month: wholeNumber(item, "from_month", 1, 12),
+    to_month: wholeNumber(item, "to_month", 1, 12),
     from_hour: from,
     to_hour: to,
-    winter_only: booleanValue(item, "winter_only"),
   };
 }
 

@@ -19,7 +19,7 @@ const shadow = (element: Element): ShadowRoot => element.shadowRoot as ShadowRoo
 const read = (...parts: string[]): Record<string, any> =>
   JSON.parse(readFileSync(join(ROOT, ...parts), "utf8")) as Record<string, any>;
 
-const WINDOW = { weekdays_only: true, from_hour: 7, to_hour: 19, winter_only: true };
+const WINDOW = { days: "weekdays", from_month: 11, to_month: 3, from_hour: 7, to_hour: 19 } as const;
 
 /** The block as `api/grid_tariff.py:serialize_grid_tariff` writes it for the owner's tariff. */
 const BLOCK = {
@@ -67,6 +67,8 @@ describe("the grid_tariff block", () => {
       expect(withBlock.ok && { ...withBlock.value, grid_tariff: null }, fixture).toEqual(plain.ok && plain.value);
     }
     expect(decodeGridTariff(NOTHING)).toEqual(NOTHING);
+    const night = { ...BLOCK, high_load_window: { days: "mon_sat", from_month: 1, to_month: 12, from_hour: 22, to_hour: 6 } };
+    expect(decodeGridTariff(night)).toEqual(night);
     expect(decodeGridTariff(INCLUDED)).toEqual(INCLUDED);
     expect(decodeGridTariff({ ...BLOCK, transfer_high: { ...BLOCK.transfer_high, unit: null } }).transfer_high.unit).toBeNull();
   });
@@ -84,6 +86,11 @@ describe("the grid_tariff block", () => {
       { ...BLOCK, transfer_percent: { ...BLOCK.transfer_percent, effective_value: null } },
       { ...BLOCK, transfer_high: { ...BLOCK.transfer_high, effective_value: 12 } },
       { ...BLOCK, high_load_window: { ...WINDOW, to_hour: 7 } },
+      { ...BLOCK, high_load_window: { ...WINDOW, days: "weekends" } },
+      { ...BLOCK, high_load_window: { ...WINDOW, from_month: 0 } },
+      { ...BLOCK, high_load_window: { ...WINDOW, to_month: 13 } },
+      { ...BLOCK, high_load_window: { ...WINDOW, to_month: 3.5 } },
+      { ...BLOCK, high_load_window: { weekdays_only: true, from_hour: 7, to_hour: 19, winter_only: true } },
       { ...BLOCK, high_load_window: { ...WINDOW, from_hour: 24 } },
       { ...BLOCK, high_load_window: { ...WINDOW, to_hour: 25 } },
       { ...BLOCK, high_load_window: { ...WINDOW, months: [11] } },
@@ -108,8 +115,18 @@ describe("the rows and the write's body", () => {
     ]);
     expect(gridTariffRows("sv", decodeGridTariff(NOTHING)).map((row) => row.key)).toEqual(["transfer_percent", "transfer_high"]);
     expect(gridTariffRows("en", null)).toEqual([]);
-    expect(windowText("sv", { weekdays_only: false, from_hour: 6, to_hour: 24, winter_only: false })).toBe(
-      "Alla dagar 06–24, hela året",
+    for (const [window, line] of [
+      [{ days: "weekdays", from_month: 11, to_month: 3, from_hour: 7, to_hour: 19 }, "Vardagar 07–19, nov–mar"],
+      [{ days: "all", from_month: 10, to_month: 3, from_hour: 17, to_hour: 21 }, "Alla dagar 17–21, okt–mar"],
+      [{ days: "mon_sat", from_month: 11, to_month: 3, from_hour: 7, to_hour: 22 }, "Mån–lör 07–22, nov–mar"],
+      [{ days: "weekdays", from_month: 1, to_month: 12, from_hour: 22, to_hour: 6 }, "Vardagar 22–06, hela året"],
+      [{ days: "all", from_month: 12, to_month: 11, from_hour: 6, to_hour: 24 }, "Alla dagar 06–24, hela året"],
+      [{ days: "all", from_month: 6, to_month: 6, from_hour: 6, to_hour: 22 }, "Alla dagar 06–22, jun"],
+    ] as const) {
+      expect(windowText("sv", window)).toBe(line);
+    }
+    expect(windowText("en", { days: "mon_sat", from_month: 11, to_month: 3, from_hour: 7, to_hour: 22 })).toBe(
+      "Mon–Sat 07–22, Nov–Mar",
     );
   });
 
@@ -290,27 +307,33 @@ describe("writing the tariff", () => {
     // Stored hours: no suggestion line.
     expect(dialog.querySelector("[data-window-help='suggestion']")).toBeNull();
     expect(dialog.querySelector<HTMLSelectElement>("[data-window='from']")!.value).toBe("7");
-    dialog.querySelector<HTMLSelectElement>("[data-window='from']")!.value = "16";
-    dialog.querySelector<HTMLSelectElement>("[data-window='to']")!.value = "20";
-    dialog.querySelector<HTMLInputElement>("[data-window='winter']")!.checked = false;
+    expect(dialog.querySelector<HTMLSelectElement>("[data-window='days']")!.value).toBe("weekdays");
+    expect(dialog.querySelector<HTMLSelectElement>("[data-window='fromMonth']")!.value).toBe("11");
+    expect(dialog.querySelector<HTMLSelectElement>("[data-window='toMonth']")!.value).toBe("3");
+    dialog.querySelector<HTMLSelectElement>("[data-window='days']")!.value = "all";
+    dialog.querySelector<HTMLSelectElement>("[data-window='fromMonth']")!.value = "1";
+    dialog.querySelector<HTMLSelectElement>("[data-window='toMonth']")!.value = "12";
+    // An end before the start runs over midnight.
+    dialog.querySelector<HTMLSelectElement>("[data-window='from']")!.value = "22";
+    dialog.querySelector<HTMLSelectElement>("[data-window='to']")!.value = "6";
     await save(element);
     expect(sent(hass, "spotnav/update_grid_tariff").map((m) => m["grid_tariff"])).toEqual([
       {
         transfer_percent: { enabled: true, value: 5 },
         transfer_high: { enabled: true, value: 12 },
-        high_load_window: { weekdays_only: true, from_hour: 16, to_hour: 20, winter_only: false },
+        high_load_window: { days: "all", from_month: 1, to_month: 12, from_hour: 22, to_hour: 6 },
       },
     ]);
   });
 
-  it("refuses hours that end before they start, and writes nothing", async () => {
+  it("refuses hours that end where they start, and writes nothing", async () => {
     const { hass, element } = await open(dashboard(BLOCK));
     await tap(element, "high_load_window");
     const dialog = openDialog(element);
-    dialog.querySelector<HTMLSelectElement>("[data-window='from']")!.value = "19";
+    dialog.querySelector<HTMLSelectElement>("[data-window='from']")!.value = "7";
     dialog.querySelector<HTMLSelectElement>("[data-window='to']")!.value = "7";
     await save(element);
-    expect(openDialog(element).textContent).toContain(translate("en", "gridFee.window.order"));
+    expect(openDialog(element).textContent).toContain(translate("en", "gridFee.window.sameHours"));
     expect(sent(hass, "spotnav/update_grid_tariff")).toEqual([]);
   });
 
@@ -326,9 +349,13 @@ describe("writing the tariff", () => {
     expect(dialog.querySelector(".spotnav-settings-save")!.textContent).toBe("Nästa");
     expect(dialog.querySelector<HTMLSelectElement>("[data-window='from']")!.value).toBe("7");
     expect(dialog.querySelector<HTMLSelectElement>("[data-window='to']")!.value).toBe("19");
-    expect(dialog.querySelector<HTMLInputElement>("[data-window='weekdays']")!.checked).toBe(true);
-    expect(dialog.querySelector<HTMLInputElement>("[data-window='winter']")!.checked).toBe(true);
-    dialog.querySelector<HTMLSelectElement>("[data-window='to']")!.value = "20";
+    expect(dialog.querySelector<HTMLSelectElement>("[data-window='days']")!.value).toBe("weekdays");
+    expect(dialog.querySelector<HTMLSelectElement>("[data-window='fromMonth']")!.value).toBe("11");
+    expect(dialog.querySelector<HTMLSelectElement>("[data-window='toMonth']")!.value).toBe("3");
+    // The months by name in the reader's language.
+    expect(dialog.querySelector<HTMLSelectElement>("[data-window='fromMonth']")!.selectedOptions[0]!.textContent).toBe("November");
+    dialog.querySelector<HTMLSelectElement>("[data-window='days']")!.value = "mon_sat";
+    dialog.querySelector<HTMLSelectElement>("[data-window='to']")!.value = "22";
     await save(element);
     expect(sent(hass, "spotnav/update_grid_tariff")).toEqual([]);
     // Then the fee's figure, with no "off" to choose.
@@ -341,7 +368,7 @@ describe("writing the tariff", () => {
       {
         transfer_percent: { enabled: false, value: null },
         transfer_high: { enabled: true, value: 12.5 },
-        high_load_window: { weekdays_only: true, from_hour: 7, to_hour: 20, winter_only: true },
+        high_load_window: { days: "mon_sat", from_month: 11, to_month: 3, from_hour: 7, to_hour: 22 },
       },
     ]);
   });
