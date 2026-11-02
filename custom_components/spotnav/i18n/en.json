@@ -30,7 +30,10 @@
     "identify.kept": "{vehicle} kept.",
     "charged": "{kwh} charged",
     "planned": "{kwh} planned",
-    "cost": "about {cost}"
+    "cost": "about {cost}",
+    "import_target.at_risk.time": "The car will not be ready by {time} under the {target} kW import target – {kwh} kWh short.",
+    "import_target.at_risk": "The car will not be ready by the departure under the {target} kW import target – {kwh} kWh short.",
+    "import_target.release": "Release tonight"
   },
   "add_charger": {
     "hint": "Add a charger: Settings → Devices & services → SpotNav → Add entry → Charger; it will offer to join this site."

@@ -145,3 +145,18 @@ def identify_text(language: str, key: str, vehicle: str | None = None) -> str:
     """One of the identification question's own texts (`ask`, `open`, `chosen`, `recognised`, `kept`)."""
     text = table(language, NAMESPACE)
     return text[f"identify.{key}"].format(vehicle=vehicle or "")
+
+
+
+def import_target_text(name: str, language: str, *, time: str | None, target_kw: float, kwh: float) -> tuple[str, str]:
+    """The title and message of the import target's shortfall (`ChargerNotifier.import_target_risk`): "The car will
+    not be ready by 07:00 under the 6.0 kW import target – 4 kWh short."."""
+    text = table(language, NAMESPACE)
+    key = "import_target.at_risk.time" if time else "import_target.at_risk"
+    message = text[key].format(time=time or "", target=_number(language, target_kw, 1), kwh=_number(language, kwh, 0))
+    return text["title"].format(name=name), message
+
+
+def import_target_release_text(language: str) -> str:
+    """The import target's button: set it aside for this charge until its departure."""
+    return table(language, NAMESPACE)["import_target.release"]

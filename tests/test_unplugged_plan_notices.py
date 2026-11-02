@@ -112,7 +112,7 @@ async def _world(
     await charger_data(hass, entry.entry_id).push.async_register(PushRegistration(push_ref=REF, events=DEFAULT_EVENTS))
     # The night's plans are given by hand: Auto's own snapshots (settings incomplete here) are not heard.
     notifier = charger_data(hass, entry.entry_id).notifier
-    assert len(notifier._unsubscribe) == 3
+    assert len(notifier._unsubscribe) == 4  # the controller, its charge state, the phones' buttons and the preview
     notifier._unsubscribe.pop()()
     car = None
     if connected is not None:

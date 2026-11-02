@@ -62,6 +62,14 @@ The question of which car is plugged in (`vehicle_identify`) is asked by the cha
 gives, counted against `HOURLY_LIMIT` but not `REPEAT_S` (there is at most one per plug-in). Once answered it is
 replaced on every phone that got it (`retire_vehicle_question`) or cleared (`clear_vehicle_question`).
 
+The site's import target making a plan miss its departure (`import_target_risk`, from the site on each recompute) is
+told as `plan_at_risk` is, under its choice and in its place: the same tag, so it replaces one told before, and no
+`plan_at_risk` while it stands. It says how much is missing and carries one button, "Release tonight", which sets the
+target aside for that charge until its departure (`SiteCapacityController.async_release_import_target`). It is told
+once per departure, again only when the shortfall grows clearly (`TARGET_RISK_GROWTH_KWH`, and by half), and taken
+off the phones once the departure can be met again (or the target is set aside). Not kept across a restart: a restart
+may tell it once more.
+
 The paired app's instant notifications (`push.py`) hear about the same events, with their own choice
 of events and their own limits, whether or not any phone is chosen here.
 """
@@ -95,7 +103,7 @@ from ..planning.auto_settings import AutoSettingsStore
 from ..sessions.store import SessionStore
 from ..const import DOMAIN
 from ..texts import language_of
-from .messages import compose, EVENT_TEST, identify_text, Money
+from .messages import compose, EVENT_TEST, identify_text, import_target_release_text, import_target_text, Money
 from .push import ChargerPush
 from .settings import EVENT_CHARGE_COMPLETE, EVENT_PLAN_STOPPED, EVENT_VEHICLE_IDENTIFY, NOTIFY_DOMAIN
 from .unexpected_stop import ExpectationFacts, REASON_NOT_STARTED, UnexpectedStopDetector
@@ -110,6 +118,12 @@ _STORE_KEY_PREFIX: Final = f"{DOMAIN}.notified_plan"
 
 #: The same event for the same charger is not sent again within this long.
 REPEAT_S: Final = 15 * 60.0
+#: How much more (kWh, and at least half as much again) a told import-target shortfall must grow to be told again.
+TARGET_RISK_GROWTH_KWH: Final = 1.0
+#: The action id prefix of the import target's "Release tonight" button.
+TARGET_RELEASE_ACTION: Final = "SPOTNAV_IMPORT_TARGET_RELEASE_"
+#: The event Home Assistant's companion app fires when a notification's button is pressed.
+NOTIFICATION_ACTION_EVENT: Final = "mobile_app_notification_action"
 #: At most this many notifications per charger in an hour, whatever they are.
 HOURLY_LIMIT: Final = 12
 #: What a tap opens when no dashboard path is set: Home Assistant's default dashboard.
@@ -316,6 +330,9 @@ class ChargerNotifier:
         self._at_risk_told: dict[str, Any] | None = None
         # The open window's `plan_stopped` judgement as last stored (`UnexpectedStopDetector.window_state`).
         self._stop_state: dict[str, Any] | None = None
+        # The import target's shortfall told (`import_target_risk`): its departure and kWh, and the phones it went to.
+        self._target_told: tuple[str, float] | None = None
+        self._target_phones: tuple[str, ...] = ()
 
     async def async_load(self) -> None:
         """Read the last told plan's fingerprint, before `async_start`."""
@@ -400,6 +417,7 @@ class ChargerNotifier:
         self._observe()
         self._unsubscribe.append(self._controller.add_listener(self._observe))
         self._unsubscribe.append(self._controller.add_charge_state_listener(self._observe))
+        self._unsubscribe.append(self._hass.bus.async_listen(NOTIFICATION_ACTION_EVENT, self._on_action))
         if preview is not None:
             self._unsubscribe.append(preview.add_listener(self._on_snapshot))
         # A plan judgement under way at a restart.
@@ -434,6 +452,10 @@ class ChargerNotifier:
         at_risk_told = self._at_risk_told
         for kind, attributes in self._tracker.observe(facts):
             if kind == EVENT_PLAN_AT_RISK:
+                if self._target_told is not None:
+                    # The import target's own shortfall is told in its place (`import_target_risk`).
+                    _LOGGER.debug("SpotNav charger %s: plan_at_risk told as the import target's", self._entry_id)
+                    continue
                 if self._at_risk_told_for(attributes, now):
                     # Told before a restart for this departure: the first snapshot after the start is no news.
                     _LOGGER.debug("SpotNav charger %s: plan_at_risk told already for this departure", self._entry_id)
@@ -755,6 +777,76 @@ class ChargerNotifier:
                 "channel": "SpotNav",
             },
         }
+
+    # ------------------------------------------------------------------ the import target's shortfall
+
+    def import_target_risk(self, risk: Any | None) -> None:
+        """The site's word on this charger (`SiteCapacityController._hold_to_import_target`): the departure the
+        import target makes the plan miss and by how much (`TargetRisk`), or `None` (see the module)."""
+        now = dt_util.utcnow()
+        told = self._target_told
+        if risk is None:
+            if told is not None:
+                self._target_told = None
+                self.clear_vehicle_question(self._at_risk_tag(), self._target_phones)
+                self._target_phones = ()
+            return
+        if told is not None and told[0] == risk.departure:
+            grown = risk.missing_kwh - told[1]
+            if grown < max(TARGET_RISK_GROWTH_KWH, told[1] / 2):
+                return
+        if self._connected is False:
+            return  # nothing is charged with no car there
+        if self._push is not None:
+            self._push.async_event(EVENT_PLAN_AT_RISK, now)
+        notifications = self._store.settings(self._entry_id).notifications
+        self._target_told = (risk.departure, risk.missing_kwh)
+        if not notifications.wants(EVENT_PLAN_AT_RISK) or not self._within_hourly_limit(now):
+            return
+        targets = tuple(
+            target for target in notifications.targets if self._hass.services.has_service(NOTIFY_DOMAIN, target)
+        )
+        if not targets:
+            return
+        self._sent_times.append(now)
+        self._last_sent[EVENT_PLAN_AT_RISK] = now
+        language = language_of(self._hass.config.language)
+        departure = dt_util.parse_datetime(risk.departure)
+        title, message = import_target_text(
+            self._name(), language, time=_local_time(departure), target_kw=risk.target_kw, kwh=risk.missing_kwh
+        )
+        url = notifications.url or DEFAULT_URL
+        payload = {
+            "title": title,
+            "message": message,
+            "data": {
+                "url": url,
+                "clickAction": url,
+                "tag": self._at_risk_tag(),
+                "group": "spotnav",
+                "channel": "SpotNav",
+                "actions": [
+                    {"action": f"{TARGET_RELEASE_ACTION}{self._entry_id}", "title": import_target_release_text(language)}
+                ],
+            },
+        }
+        self._target_phones = targets
+        for target in targets:
+            self._hass.async_create_task(self._async_send(target, payload), eager_start=True)
+
+    def _at_risk_tag(self) -> str:
+        return f"spotnav_{self._entry_id}_{EVENT_PLAN_AT_RISK}"
+
+    @callback
+    def _on_action(self, event: Any) -> None:
+        """A phone's "Release tonight": the target is set aside for this charger's charge until its departure."""
+        if event.data.get("action") != f"{TARGET_RELEASE_ACTION}{self._entry_id}":
+            return
+        from ..execution.solar_execution import site_controller_for_charger  # noqa: PLC0415 - it imports the site
+
+        site = site_controller_for_charger(self._hass, self._entry_id)
+        if site is not None:
+            site.async_release_import_target(self._entry_id)
 
     # ------------------------------------------------------------------ which car is plugged in?
 
