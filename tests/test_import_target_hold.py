@@ -357,7 +357,8 @@ async def test_ask_holds_the_target_and_tells_once_with_a_button(hass: HomeAssis
         assert len(told) == 1, "told once, not on every recompute"
         assert "6.0 kW" in told[0]["message"] and "kWh short" in told[0]["message"]
         actions = told[0]["data"]["actions"]
-        assert actions == [{"action": f"SPOTNAV_IMPORT_TARGET_RELEASE_{charger}", "title": "Release tonight"}]
+        stamp = int(world.departure.timestamp())
+        assert actions == [{"action": f"SPOTNAV_IMPORT_TARGET_RELEASE_{charger}_{stamp}", "title": "Release tonight"}]
         assert told[0]["data"]["tag"] == f"spotnav_{charger}_plan_at_risk"
         # The phone's button sets the target aside until the departure.
         hass.bus.async_fire("mobile_app_notification_action", {"action": actions[0]["action"]})
@@ -994,3 +995,153 @@ async def test_a_plan_at_risk_is_not_told_beside_the_targets_own_shortfall(hass:
         notifier._observe()  # noqa: SLF001
         await hass.async_block_till_done()
         assert len(_told(world)) == 1
+
+
+
+# -- second review
+
+
+class _SlowOff(_World):
+    """A charger whose stop lands late: the switch stays on for a while after the stop went out."""
+
+    hold_off: bool = False
+
+    def follow_commands(self) -> None:
+        if len(self.halo.turn_off) > self.turn_offs and not self.hold_off:
+            self.turn_offs = len(self.halo.turn_off)
+            self.halo.switch("off")
+        if len(self.halo.turn_on) > self.turn_ons:
+            self.turn_ons = len(self.halo.turn_on)
+            self.halo.switch("on")
+
+
+async def test_a_pause_sent_holds_to_the_hours_end_though_the_charger_reports_off_late(
+    hass: HomeAssistant, monkeypatch
+) -> None:
+    with freeze_time(_HOUR + timedelta(seconds=5)) as frozen:
+        world = await _world(hass, monkeypatch, frozen, "race")
+        world.__class__ = _SlowOff
+        await world.step()
+        await _charging(world)
+        await world.run(40)
+        assert world.car_a == 7.0
+        world.house_a = 5000.0 / (3 * _V)
+        world.hold_off = True
+        for _ in range(8):
+            if world.halo.turn_off:
+                break
+            await world.step()
+        assert world.halo.turn_off, "the pause went out"
+        # The surge ends before the charger reports off; then the stop lands.
+        world.house_a = 1000.0 / (3 * _V)
+        await world.step()
+        world.hold_off = False
+        world.follow_commands()
+        world.show()
+        await hass.async_block_till_done()
+        await world.run(6)
+        assert dt_util.utcnow() < _HOUR + timedelta(hours=1)
+        snapshot = world.halo.controller.import_target_snapshot()
+        assert snapshot["paused_hour"] == {world.halo.charger.entry_id: _HOUR.isoformat()}
+        assert world.turn_ons == 1, "not resumed within the same hour"
+
+
+async def test_a_wobbling_house_does_not_ratchet_the_held_current_down(hass: HomeAssistant, monkeypatch) -> None:
+    with freeze_time(_HOUR + timedelta(seconds=5)) as frozen:
+        world = await _world(hass, monkeypatch, frozen, "noise")
+        await world.step()
+        await _charging(world)
+        await world.run(10)
+        assert world.car_a == 7.0
+        # The house wobbles 1.0 / 1.7 kW every half minute for half an hour, then is quiet at 1 kW.
+        lowered = False
+        for i in range(60):
+            world.house_a = (1700.0 if i % 2 else 1000.0) / (3 * _V)
+            await world.step()
+            lowered = lowered or world.car_a < 7.0
+        assert lowered, "the wobble does lower the car for a moment"
+        world.house_a = 1000.0 / (3 * _V)
+        await world.run(4)
+        assert dt_util.utcnow() < _HOUR + timedelta(minutes=50)
+        assert world.car_a >= 7.0, "the target's own 1 A lowering is given back within the hour"
+
+
+async def test_release_keeps_the_target_aside_until_the_departure(hass: HomeAssistant, monkeypatch) -> None:
+    with freeze_time(_HOUR + timedelta(seconds=5)) as frozen:
+        world = await _tight_night(hass, monkeypatch, frozen, "toggle", choice="release")
+        now = dt_util.utcnow()
+        # 16.5 kWh of windows with a departure 3 h 10 away: held, 5 kW leaves it just short.
+        departure = now + timedelta(hours=3, minutes=10)
+        world.halo.cc.plan = _plan(now, departure, [(now, now + timedelta(minutes=90))])
+        world.departure = departure
+        trace = []
+        for _ in range(2 * 90):
+            await world.step()
+            trace.append(world.car_a)
+        changes = [amps for i, amps in enumerate(trace) if i == 0 or amps != trace[i - 1]]
+        assert len(changes) <= 2, changes
+        snapshot = world.halo.controller.import_target_snapshot()
+        assert snapshot["released_by_plan"] == {world.halo.charger.entry_id: departure.isoformat()}
+
+
+async def test_a_release_ends_with_a_new_departure_and_a_stale_button_is_refused(
+    hass: HomeAssistant, monkeypatch
+) -> None:
+    from custom_components.spotnav.site.site_capacity_controller import ERROR_STALE_DEPARTURE
+
+    with freeze_time(_HOUR + timedelta(seconds=5)) as frozen:
+        world = await _tight_night(hass, monkeypatch, frozen, "newdeparture")
+        await world.run(2)
+        charger = world.halo.charger.entry_id
+        controller = world.halo.controller
+        told = int(world.departure.timestamp())
+        assert controller.async_release_import_target(charger, for_departure=told) is None
+        await world.run(2)
+        assert world.car_a == 16.0
+        # The plan is made again for another departure: the set-aside was not given for it.
+        now = dt_util.utcnow()
+        later = now + timedelta(hours=6)
+        world.halo.cc.plan = _plan(now, later, [(now, now + timedelta(hours=1))])
+        await world.run(2)
+        assert controller.import_target_snapshot()["released"] == {}
+        assert world.car_a < 16.0, "held again"
+        # A phone's button for the old departure, pressed now, sets nothing aside.
+        assert controller.async_release_import_target(charger, for_departure=told) == ERROR_STALE_DEPARTURE
+        hass.bus.async_fire("mobile_app_notification_action", {"action": f"SPOTNAV_IMPORT_TARGET_RELEASE_{charger}_{told}"})
+        await hass.async_block_till_done()
+        assert controller.import_target_snapshot()["released"] == {}
+
+
+async def test_a_plan_at_risk_held_back_behind_the_targets_notice_is_told_once_that_clears(
+    hass: HomeAssistant, monkeypatch
+) -> None:
+    from custom_components.spotnav.runtime import charger_data
+
+    with freeze_time(_HOUR + timedelta(seconds=5)) as frozen:
+        world = await _tight_night(hass, monkeypatch, frozen, "behind")
+        await world.run(2)
+        notifier = charger_data(hass, world.halo.charger.entry_id).notifier
+        assert len(_told(world)) == 1
+        monkeypatch.setattr(notifier._tracker, "observe", lambda facts: [("plan_at_risk", {"time": "07:00"})])  # noqa: SLF001
+        notifier._observe()  # noqa: SLF001
+        monkeypatch.setattr(notifier._tracker, "observe", lambda facts: [])  # noqa: SLF001
+        notifier._at_risk_now = True  # noqa: SLF001
+        notifier._last_sent.clear()  # noqa: SLF001
+        notifier.import_target_risk(None)
+        await hass.async_block_till_done()
+        messages = [call.data.get("message") for call in world.calls]
+        # The target's notice comes down, and the plan's own is told in its place.
+        assert messages[-2:] == ["clear_notification", "The charge will not be ready by the departure."], messages
+
+
+async def test_a_shortfall_never_told_to_a_phone_does_not_hold_the_plans_notice_back(
+    hass: HomeAssistant, monkeypatch
+) -> None:
+    from custom_components.spotnav.runtime import charger_data
+    from custom_components.spotnav.site.site_capacity_controller import TargetRisk
+
+    with freeze_time(_HOUR + timedelta(seconds=5)) as frozen:
+        world = await _world(hass, monkeypatch, frozen, "untold")
+        notifier = charger_data(hass, world.halo.charger.entry_id).notifier
+        notifier.import_target_risk(TargetRisk(departure=(_HOUR + timedelta(hours=8)).isoformat(), missing_kwh=4.0, target_kw=6.0))
+        assert notifier._target_told is None  # noqa: SLF001 - no phone chosen: nothing told
