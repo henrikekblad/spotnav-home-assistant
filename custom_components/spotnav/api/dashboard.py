@@ -185,8 +185,9 @@ STRATEGY_HYBRID_REASON: Final = "needs_solar_and_price_control"
 MAX_RESPONSE_BYTES: Final = 256 * 1024
 
 #: Capability facts every charger advertises, all of them, in this order. The first six are about
-#: this charger's configuration and adapter (`execution/chargers/`); the last four are the
-#: server's abilities and always `true` (`price_days`: the webhook answers the `price_days` read).
+#: this charger's configuration and adapter (`execution/chargers/`); the last seven are the
+#: server's abilities and always `true` (`price_days`, `plan_preview`, `dismiss_setup_item`, `fix_own_mode`: the
+#: webhook answers that action, so an app can tell an older Home Assistant that does not).
 #: `current_limit`: the charger has a dynamic current limit (a configured number, or a service path); `set_current`: SpotNav may write a current to it (the
 #: person opted in and its adapter can); `regulated_current`: load balancing may write it during a
 #: session (false for a flash-stored setting, which is written at a session start only).
@@ -201,6 +202,9 @@ CAPABILITY_KEYS: Final = (
     "set_charge_limit",
     "target_stop",
     "price_days",
+    "plan_preview",
+    "dismiss_setup_item",
+    "fix_own_mode",
 )
 
 
@@ -657,7 +661,7 @@ def capabilities_for(
     `auto_price`: the Auto preview exists; `current_limit`: a current-limit entity is configured, or
     the adapter sets a current some other way; `set_current` and `regulated_current`: what the
     charger's adapter supports now (see `CAPABILITY_KEYS`); `target_soc`: `target_soc_capable`;
-    `load_balancing`: a loaded site lists it; the last four are the server's abilities.
+    `load_balancing`: a loaded site lists it; the last seven are the server's abilities.
     """
     adapter_capabilities = None if controller is None else controller.adapter.capabilities
     set_current = bool(adapter_capabilities is not None and adapter_capabilities.set_current)
@@ -675,6 +679,9 @@ def capabilities_for(
         ("set_charge_limit", True),
         ("target_stop", True),
         ("price_days", True),
+        ("plan_preview", True),
+        ("dismiss_setup_item", True),
+        ("fix_own_mode", True),
     )
 
 
