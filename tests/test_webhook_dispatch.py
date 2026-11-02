@@ -37,6 +37,7 @@ async def test_every_documented_action_has_a_handler() -> None:
         "identify_vehicle",
         "choose_vehicle_identification",
         "fix_own_mode",
+        "dismiss_setup_item",
         "camera_snapshot",
         "save_camera_frame",
         "take_reference_picture",
