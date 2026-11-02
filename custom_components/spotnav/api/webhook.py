@@ -44,6 +44,7 @@ from .entity_config import (
     async_webhook_update_phase_switching,
     async_webhook_update_vehicle,
 )
+from .own_mode import webhook_fix_own_mode
 from .price_days import webhook_price_days
 from .grid_tariff import async_webhook_update_grid_tariff
 from .price_source import async_webhook_answer_price_duplicate, async_webhook_choose_price_source
@@ -469,6 +470,7 @@ ACTIONS: Final[dict[str, Handler]] = {
     "push_register": _push_register,
     "identify_vehicle": webhook_identify_vehicle,
     "choose_vehicle_identification": webhook_choose_vehicle_identification,
+    "fix_own_mode": webhook_fix_own_mode,
     **CAMERA_ACTIONS,
 }
 
