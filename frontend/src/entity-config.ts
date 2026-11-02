@@ -1099,6 +1099,9 @@ function parseNumber(value: string): number | null {
   return Number.isFinite(parsed) ? parsed : Number.NaN;
 }
 
+/** Numbers that may be none (`null`): left empty, a Save clears them. Every other number must hold one. */
+const CLEARABLE_NUMBERS: ReadonlySet<string> = new Set(["import_target_kw"]);
+
 /**
  * What one group's Save would send, judged against the config it was drawn from. Only changed
  * fields go out, with `expected` holding the value last read, so a moved record is a conflict.
@@ -1130,6 +1133,15 @@ export function entityChange(config: EntityConfig, scope: EntityScope, draft: En
     const value = draft[field.field] ?? read;
     if (field.kind === "number") {
       const parsed = parseNumber(value);
+      const stored = listed !== undefined && listed.kind === "number" ? listed.value : null;
+      if (parsed === null && CLEARABLE_NUMBERS.has(field.field)) {
+        // A number that may be none, left empty: cleared when one is stored, else nothing to send.
+        if (stored !== null) {
+          changes[field.field] = "";
+          expected[field.field] = stored;
+        }
+        continue;
+      }
       if (parsed === null) {
         errors.push({ field: field.field, code: "required" });
         continue;
@@ -1138,7 +1150,6 @@ export function entityChange(config: EntityConfig, scope: EntityScope, draft: En
         errors.push({ field: field.field, code: "invalid_value" });
         continue;
       }
-      const stored = listed !== undefined && listed.kind === "number" ? listed.value : null;
       if (parsed !== stored) {
         changes[field.field] = parsed;
         if (stored !== null) {
@@ -1191,6 +1202,7 @@ const FIELD_LABELS: Record<string, TranslationKey> = {
   power_entity: "entity.field.powerEntity",
   vehicle_soc: "entity.field.vehicleSoc",
   main_fuse_a: "entity.field.mainFuse",
+  import_target_kw: "entity.field.importTarget",
   safety_margin_a: "entity.field.safetyMargin",
   measurement_mode: "entity.field.measurementMode",
   voltage_between_phases_v: "entity.field.voltageBetweenPhases",
@@ -1298,6 +1310,7 @@ const FIELD_HELP: Record<string, TranslationKey> = {
   power_entity: "entity.help.powerEntity",
   vehicle_soc: "entity.help.vehicleSoc",
   main_fuse_a: "entity.help.mainFuse",
+  import_target_kw: "entity.help.importTarget",
   safety_margin_a: "entity.help.safetyMargin",
   measurement_mode: "entity.help.measurementMode",
   voltage_between_phases_v: "entity.help.voltageBetweenPhases",

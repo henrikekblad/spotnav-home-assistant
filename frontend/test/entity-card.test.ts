@@ -183,8 +183,11 @@ describe("the Settings page's charger and site cards", () => {
     await settle();
     const site = openDialog(element)?.querySelector<HTMLElement>("[data-section='site']");
     expect(site?.textContent).not.toContain(translate("en", "site.applies.one"));
-    expect(sectionRows(element, "site")).toEqual(["main_fuse_a", "measurement_mode", "battery", "active-control"]);
+    expect(sectionRows(element, "site")).toEqual(["main_fuse_a", "import_target_kw", "measurement_mode", "battery", "active-control"]);
     expect(rowText(element, "main_fuse_a")).toContain("25 A");
+    // The import target beside the fuse: off until set, and no hour line without one.
+    expect(rowText(element, "import_target_kw")).toContain(translate("en", "settings.value.off"));
+    expect(site?.querySelector("[data-help='import_target_hour']")).toBeNull();
     expect(rowText(element, "measurement_mode")).toContain(translate("en", "entity.mode.direct"));
     expect(rowText(element, "battery")).toContain(translate("en", "settings.value.none"));
     // The raw entity fields of the editor are not listed, and nothing says "not set".

@@ -85,7 +85,8 @@ import {
 import { settingsEditorBody, settingsTrigger, type SettingsEditorForm } from "./settings-editor";
 import { renderPlanPreview, type PreviewState } from "./plan-preview";
 import { type Fiscal, type GridTariffBlock, type HighLoadWindow, type ReferencePicture, type Vehicle } from "./validate";
-import { gridTariffRows, windowEditor, withHigh, withPercent, withWindow, type GridTariffRowKey } from "./grid-tariff";
+import { gridTariffRows, windowEditor, withComponent, withHigh, withPercent, withWindow, type GridTariffRowKey } from "./grid-tariff";
+import { componentEditor, demandRows, hourLine, kwText } from "./demand-charge";
 import { floorEditor, limitEditor, targetEditor } from "./percent-editors";
 import { defaultTargetPercent } from "./percent-slider";
 import { vehicleSummary, type VehicleEdits, type VehicleReference } from "./vehicle-settings";
@@ -2785,7 +2786,42 @@ export function createCardView(input: CardViewInput): CardView {
         section.append(...gridTariffNodes());
       }
     }
+    section.append(...demandNodes());
     return section;
+  }
+
+  /**
+   * The demand charge's rows below the fees: "None" until a component is added, then each component with its
+   * prices and this month's mean and peaks beneath, and a row adding another (at most three).
+   */
+  function demandNodes(): HTMLElement[] {
+    const block = model.gridTariff;
+    if (block === null || block.demand === null) {
+      return [];
+    }
+    const nodes: HTMLElement[] = [];
+    for (const row of demandRows(model.format, block.demand)) {
+      const key = row.key === "add" ? "demand_add" : `demand_${row.key}`;
+      const index = row.key;
+      nodes.push(overviewRow(key, row.label, row.value, block.writable ? () => editDemandComponent(block, index) : undefined));
+      row.lines.forEach((line, at) => nodes.push(rowHelp(`${key}_${at}`, line)));
+    }
+    return nodes;
+  }
+
+  /** One demand-charge component's editor (`add` adds one); Save writes the tariff with it, Remove without it. */
+  function editDemandComponent(block: GridTariffBlock, key: number | "add"): void {
+    const components = block.demand?.components ?? [];
+    const index = key === "add" ? components.length : key;
+    openValueEditor(translate(model.language, "demand.title"), (handlers) =>
+      componentEditor(
+        doc,
+        model.language,
+        { current: key === "add" ? null : (components[key] ?? null), idPrefix, unit: block.demand?.price_unit ?? null },
+        (component) => writeValue({ kind: "gridTariff", change: (current) => withComponent(current, index, component) }),
+        handlers,
+      ),
+    );
   }
 
   /**
@@ -3783,6 +3819,36 @@ export function createCardView(input: CardViewInput): CardView {
               )
           : undefined),
       );
+    }
+    // Beside the fuse: the import target, and the hour running now against it.
+    const target = fieldsOf(config, "site").find((entry) => entry.field === "import_target_kw");
+    if (target !== undefined && target.kind === "number") {
+      const label = translate(model.language, "site.importTarget");
+      const current = target.value;
+      const shown = current === null ? translate(model.language, "settings.value.off") : kwText(model.language, current);
+      nodes.push(
+        overviewRow("import_target_kw", label, shown, target.writable
+          ? () =>
+              editNumber(
+                label,
+                {
+                  help: translate(model.language, "site.importTarget.help"),
+                  unit: "kW",
+                  current,
+                  min: target.minimum,
+                  max: 1000,
+                  decimals: 1,
+                  noneLabel: translate(model.language, "settings.value.off"),
+                },
+                (value) =>
+                  writeValue({ kind: "entity", scope: "site", draft: { import_target_kw: value === null ? "" : String(value) } }),
+              )
+          : undefined),
+      );
+      const hour = hourLine(model.language, model.gridTariff?.demand ?? null);
+      if (hour !== null) {
+        nodes.push(rowHelp("import_target_hour", hour));
+      }
     }
     const mode = storedMode(config);
     if (mode !== null) {
