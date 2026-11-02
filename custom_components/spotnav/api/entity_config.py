@@ -42,6 +42,8 @@ per-phase meters, battery power sensor and maximum measurement age), validated b
   (`async_webhook_update_charger_priority`), answering the dashboard's `charger_priority` block, and
   `update_phase_switching` (`async_webhook_update_phase_switching`), answering the webhook dashboard's
   `phase_switching` block.
+* A site's import target (`import_target_kw`, kW, `null` or `""` clears it) is written without a reload too: it is
+  read from the entry each time it is shown, and nothing in load balancing reads it.
 """
 
 from __future__ import annotations
@@ -75,6 +77,7 @@ from ..const import (
     CONF_ENERGY_REGISTER_ENTITY,
     CONF_POWER_ENTITY,
     CONF_GRID_POWER_SOURCE,
+    CONF_IMPORT_TARGET_KW,
     CONF_MAIN_FUSE_A,
     CONF_MAX_AGE_S,
     CONF_MEASUREMENT_MODE,
@@ -140,6 +143,7 @@ from .entity_fields import (
     FIELD_MAIN_FUSE_A,
     FIELD_MAX_AGE_S,
     FIELD_MEASUREMENT_MODE,
+    FIELD_IMPORT_TARGET_KW,
     FIELD_SAFETY_MARGIN_A,
     FIELD_VEHICLE_SOC,
     FIELD_CHARGER_PHASES,
@@ -178,6 +182,9 @@ ERROR_INVALID_VALUE: Final = "spotnav_invalid_value"
 _SCOPES: Final = ("charger", "site")
 #: Charger fields read from the entry when they are used, so a write of only these needs no reload.
 _NO_RELOAD_CHARGER_FIELDS: Final = frozenset({FIELD_CHARGER_PRIORITY, FIELD_PHASE_SWITCHING})
+#: Site fields read from the entry when they are used (the import target is only measured against), so a write of
+#: only these needs no reload: load balancing keeps running untouched.
+_NO_RELOAD_SITE_FIELDS: Final = frozenset({FIELD_IMPORT_TARGET_KW})
 
 
 class EntityConfigRefusal(Exception):
@@ -228,7 +235,9 @@ def read_entity_config(hass: HomeAssistant, charger: ConfigEntry) -> dict[str, A
 
 
 def _same(field: str, current: Any, expected: Any) -> bool:
-    if field in (FIELD_MAIN_FUSE_A, FIELD_SAFETY_MARGIN_A, FIELD_MAX_AGE_S):
+    if field == FIELD_IMPORT_TARGET_KW and (current is None or expected is None or expected == ""):
+        return current is None and (expected is None or expected == "")
+    if field in (FIELD_MAIN_FUSE_A, FIELD_SAFETY_MARGIN_A, FIELD_MAX_AGE_S, FIELD_IMPORT_TARGET_KW):
         try:
             return float(current) == float(expected)
         except (TypeError, ValueError):
@@ -332,6 +341,12 @@ def _write_site(hass: HomeAssistant, entry: ConfigEntry, changes: dict[str, Any]
         updated[CONF_SAFETY_MARGIN_A] = float(changes[FIELD_SAFETY_MARGIN_A])
     if FIELD_MAX_AGE_S in changes:
         updated[CONF_MAX_AGE_S] = float(changes[FIELD_MAX_AGE_S])
+    if FIELD_IMPORT_TARGET_KW in changes:
+        target = changes[FIELD_IMPORT_TARGET_KW]
+        if target is None or target == "":
+            updated.pop(CONF_IMPORT_TARGET_KW, None)
+        else:
+            updated[CONF_IMPORT_TARGET_KW] = float(target)
     if FIELD_MEASUREMENT_MODE in changes:
         updated[CONF_MEASUREMENT_MODE] = changes[FIELD_MEASUREMENT_MODE]
     if FIELD_VOLTAGE_BETWEEN_PHASES in changes:
@@ -431,7 +446,8 @@ async def async_update_entity_config(
         raise _refuse(ERROR_INVALID_VALUE, errors)
 
     written = _write_site(hass, target, changes) if scope == "site" else _write_charger(hass, target, changes)
-    if written and not (scope == "charger" and set(changes) <= _NO_RELOAD_CHARGER_FIELDS):
+    no_reload = _NO_RELOAD_CHARGER_FIELDS if scope == "charger" else _NO_RELOAD_SITE_FIELDS
+    if written and not set(changes) <= no_reload:
         # Same reload the options flows perform: neither entry kind has an update listener.
         await hass.config_entries.async_reload(target.entry_id)
     return read_entity_config(hass, charger)
