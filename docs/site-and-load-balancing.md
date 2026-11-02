@@ -515,6 +515,18 @@ the main fuse allows. The fuse's rules come first and are never loosened: the ta
 overload's lowering is never changed by it, and a lowering for the target never goes so far that a phase the
 charger draws on would turn from import to export (so the current the fuse carries can only fall).
 
+- **The month's peak lifts the target.** Where the electricity price has a [demand charge](prices.md#a-demand-charge),
+  an hour may reach a level the month has already paid for: the target is lifted to the month's free level, the
+  lowest of what each part that counts the running hour leaves free (a highest-hour part's peak this month; a top-3
+  or top-5 part's third or fifth highest day, or today's own peak while today is among them; with fewer days than
+  that, today's own peak or nothing). An hour no part counts keeps the target, a new month starts from it, and an
+  incomplete hour never sets a peak. Example: a 6.0 kW target, and a sauna evening made the day part's peak 6.6 kW:
+  for the rest of the month day hours may reach 6.6 kW. It only ever lifts the target, to a level already paid for;
+  the fuse is untouched. The status names both (*Held to 9 A to keep this hour under 6.6 kW, the month's peak (target
+  6.0 kW)*), the notice and the risk check use the lifted level, and a plan counts on it only while every part counts
+  the hours the plan may use (else on the target). No setting. **A power-level subscriber** (Göteborg's tidsindelad
+  level, which must never be exceeded) should leave the demand charge's parts out, or set them so they never free
+  more than the level, or the month's peak lifts the hold above it.
 - **The hour's budget.** The target times one hour, less what was imported so far this hour, is what the rest of
   the hour may import. Spread over the time left, less what the house draws now (the site's net import less what
   its chargers draw; a solar surplus counts as less, so it leaves the chargers more), it is what the chargers may
@@ -582,7 +594,7 @@ charger draws on would turn from import to export (so the current the fuse carri
   house alone is above the 6.0 kW target this hour*), *The car will not be ready by 07:00 under the 6.0 kW import
   target – 4 kWh short* with *Release tonight*, or that the target is set aside until 07:00. The site's
   load-balancing limit names the cause `import_target` only where the target's budget holds the charger. The site's
-  diagnostics carry an `import_target` block: the hour's budget or why it is not applied, what it does to each
+  diagnostics carry an `import_target` block: the hour's budget or why it is not applied, the level held to (`effective`: the lifted level, the month's free level and whether every part counts the hour), what it does to each
   charger (held, paused, kept at the hour's end, or why it could not hold it), the hour each was paused in, the
   departures at risk and those set aside, and its recent holds, pauses and releases.
 

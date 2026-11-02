@@ -207,6 +207,9 @@ enough for load balancing to hold the car at its minimum current, `load_balancin
 [Holding the chargers under the import target](site-and-load-balancing.md#holding-the-chargers-under-the-import-target)),
 the status carries these lines, tone `normal` but for `import_target_at_risk` (`notice`):
 
+- Since the month's free level (`set_kw` on `import_target_held`, `import_target_paused` and `import_target_at_risk`):
+  `target_kw` is the level held to this hour, the import target lifted to the demand charge's month peak already
+  paid for where a part counts the hour; `set_kw` is the target as set. Equal where nothing lifts it.
 - `import_target_held` `{limit_a, target_kw, hour_kw}` in place of `load_balancing_limited` while the target, not the
   fuse, holds the charging car: held to `limit_a` (amps, `null` when not known) so the hour stays under `target_kw`
   (kW, an hourly mean); `hour_kw` is the hour's mean import so far.
