@@ -443,3 +443,112 @@ async def test_a_restart_mid_hour_keeps_the_hour_and_the_hold(hass: HomeAssistan
         for hour in world.complete_hours():
             assert world.hour_kw(hour) <= 6.0
         assert world.car_a == 7.0
+
+
+# -- a switch-only charger
+
+
+async def _switch_only_hour(hass: HomeAssistant, monkeypatch, frozen, name: str, target_kw: float) -> Any:
+    """A site of one switch-only charger drawing 10 A on three phases (6.9 kW) beside a 0.5 kW house, for ten minutes
+    of readings every 30 seconds."""
+    from .test_switch_only_balancing import _charging as _switch_charging, _world as _switch_world
+
+    world = await _switch_world(hass, monkeypatch, name, commandable=False)
+    entry = hass.config_entries.async_get_entry(world.site.entry_id)
+    hass.config_entries.async_update_entry(entry, data={**entry.data, CONF_IMPORT_TARGET_KW: target_kw})
+    house_a = 500.0 / (3 * _V)
+    await _switch_charging(world, "b", 10.0)
+    for _ in range(20):
+        on = hass.states.get(f"switch.{name}_b").state == "on"
+        amps = house_a + (10.0 if on else 0.0)
+        for phase in ("l1", "l2", "l3"):
+            for kind, value, unit in (("power", amps * _V, "W"), ("reactive", 0, "var"), ("voltage", _V, "V")):
+                hass.states.async_set(
+                    f"sensor.{name}_site_{kind}_{phase}", str(value), {"unit_of_measurement": unit}, force_update=True
+                )
+            hass.states.async_set(
+                f"sensor.{name}_b_{phase}", str(10.0 if on else 0.0), {"unit_of_measurement": "A"}, force_update=True
+            )
+        frozen.tick(timedelta(seconds=30))
+        world.advance(30.0)
+        await world.tick()
+        if world.stops("b"):
+            world.switch("b", "off")
+    return world
+
+
+async def test_a_switch_only_charger_runs_only_while_its_whole_power_fits_the_hour(
+    hass: HomeAssistant, monkeypatch
+) -> None:
+    with freeze_time(_HOUR + timedelta(seconds=5)) as frozen:
+        fits = await _switch_only_hour(hass, monkeypatch, frozen, "plugfits", 8.0)
+        assert fits.stops("b") == 0
+    with freeze_time(_HOUR + timedelta(hours=2, seconds=5)) as frozen:
+        over = await _switch_only_hour(hass, monkeypatch, frozen, "plugover", 6.0)
+        assert over.stops("b") == 1
+        assert any(entry["reason"] == REASON_IMPORT_TARGET_PAUSED for entry in over.site.regulator_decision_log)
+        pause = over.site.balancing_pause(over.entry_id("b"))
+        assert pause is not None and pause.cause == LIMIT_CAUSE_IMPORT_TARGET
+
+
+# -- yield stepping never steps above the target, and never holds its lowering back
+
+
+def _verdict(action: str, current_a: float | None, reason: str = "confirmed_step"):
+    from custom_components.spotnav.execution.yield_stepping import YieldVerdict
+
+    return YieldVerdict(
+        action=action, current_a=current_a, reason=reason, urgent=False, state="confirmed", y=None, y_age_s=None,
+        reference_a={},
+    )
+
+
+async def test_a_yield_step_is_taken_at_the_targets_ceiling_and_a_hold_never_keeps_its_lowering(
+    hass: HomeAssistant, monkeypatch
+) -> None:
+    from custom_components.spotnav.site.import_target import TargetShare
+    from custom_components.spotnav.site.regulator import RegulatorDecision
+
+    with freeze_time(_HOUR + timedelta(seconds=5)) as frozen:
+        world = await _world(hass, monkeypatch, frozen, "stepper")
+        controller = world.halo.controller
+        charger = world.halo.charger.entry_id
+        fuse = RegulatorDecision(10.0, "increase_within_safe_uncredited_margin", "L1")
+        # Free under the target, with room for 9 A: a step to 12 A is taken at 9 A; one to 8 A as it is.
+        controller._target_shares = {charger: TargetShare("free", None, 9.0)}  # noqa: SLF001
+        assert controller._yield_verdict_under_target(charger, fuse, _verdict("write", 12.0)).current_a == 9.0  # noqa: SLF001
+        assert controller._yield_verdict_under_target(charger, fuse, _verdict("write", 8.0)).current_a == 8.0  # noqa: SLF001
+        # Room below the minimum: no step is written at all (the raw proposal goes as it is).
+        controller._target_shares = {charger: TargetShare("free", None, 5.0)}  # noqa: SLF001
+        assert controller._yield_verdict_under_target(charger, fuse, _verdict("write", 12.0)) is None  # noqa: SLF001
+        # The target's own lowering: a hold of the stepper's is set aside, a lower write of its own is kept.
+        held = RegulatorDecision(7.0, REASON_IMPORT_TARGET_HELD, "L1")
+        controller._target_shares = {charger: TargetShare("held", 7.0, 7.0)}  # noqa: SLF001
+        hold = _verdict("hold", None, "held_at_yield_setpoint")
+        assert controller._yield_verdict_under_target(charger, held, hold) is None  # noqa: SLF001
+        assert controller._yield_verdict_under_target(charger, held, _verdict("write", 9.0)) is None  # noqa: SLF001
+        assert controller._yield_verdict_under_target(charger, held, _verdict("write", 6.0)).current_a == 6.0  # noqa: SLF001
+        # Without a target nothing changes.
+        controller._target_shares = {}  # noqa: SLF001
+        assert controller._yield_verdict_under_target(charger, fuse, _verdict("write", 16.0)).current_a == 16.0  # noqa: SLF001
+
+
+async def test_no_battery_probe_starts_a_car_the_target_holds_back(hass: HomeAssistant, monkeypatch) -> None:
+    from .test_balancing_retry import _night, _outcomes, _paused_by_the_battery
+
+    with freeze_time(_HOUR + timedelta(seconds=5)) as frozen:
+        halo = await _night(hass, monkeypatch, "nightheld")
+        entry = hass.config_entries.async_get_entry(halo.controller.entry_id)
+        hass.config_entries.async_update_entry(entry, data={**entry.data, CONF_IMPORT_TARGET_KW: 3.0})
+        await _paused_by_the_battery(halo)
+        # The battery fills the fuse at 20 A a phase: the hour is far over 3 kW, and the car stays paused.
+        for _ in range(6):
+            frozen.tick(timedelta(seconds=10))
+            halo.advance(10.0)
+            for phase, amps in (("l1", 20.2), ("l2", 20.1), ("l3", 20.0)):
+                hass.states.async_set(
+                    f"sensor.{halo.site}_power_{phase}", str(amps * _V), {"unit_of_measurement": "W"}, force_update=True
+                )
+            await halo.tick()
+        assert halo.controller.import_target_snapshot()["chargers"][halo.charger.entry_id]["action"] == "paused"
+        assert "probe_started" not in _outcomes(halo)
