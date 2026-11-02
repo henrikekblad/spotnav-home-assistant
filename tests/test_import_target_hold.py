@@ -19,6 +19,7 @@ import pytest
 from freezegun import freeze_time
 from homeassistant.core import HomeAssistant
 from homeassistant.util import dt as dt_util
+from pytest_homeassistant_custom_component.common import async_fire_time_changed
 
 from custom_components.spotnav.const import CONF_IMPORT_TARGET_KW
 from custom_components.spotnav.execution.controller import ChargingPlan
@@ -52,6 +53,11 @@ class _World:
     silent: bool = False
     turn_offs: int = 0
     turn_ons: int = 0
+    #: The charger's energy register (kWh), kept with what the car drew, where the test reads one.
+    register: str | None = None
+    delivered_kwh: float = 0.0
+    #: Fire Home Assistant's timers on every step (the plan's windows and its watch run on them).
+    timers: bool = False
 
     @property
     def car_a(self) -> float:
@@ -115,8 +121,20 @@ class _World:
             self.energy[hour][0] += watts * span
             self.energy[hour][1] += span
             moment = until
+        self.delivered_kwh += 3 * _V * self.car_a * seconds / 3600.0 / 1000.0
         self.frozen.tick(timedelta(seconds=seconds))
         self.halo.advance(seconds)
+        if self.register is not None:
+            self.halo.hass.states.async_set(
+                self.register,
+                str(round(self.delivered_kwh, 4)),
+                {"unit_of_measurement": "kWh", "device_class": "energy", "state_class": "total_increasing"},
+                force_update=True,
+            )
+        if self.timers:
+            async_fire_time_changed(self.halo.hass, dt_util.utcnow())
+            await self.halo.hass.async_block_till_done()
+            self.follow_commands()
         self.show()
         await self.halo.hass.async_block_till_done()
         await self.halo.tick()
@@ -585,3 +603,23 @@ def test_an_app_that_does_not_read_the_targets_lines_gets_the_load_balancing_lin
     assert _status_for_app(released, set()) is None
     for line in (held, paused, house, released):
         assert _status_for_app(line, {"import_target_status"}) == line
+
+
+# -- what a plan counts on under the target
+
+
+async def test_a_plan_counts_on_the_target_less_the_house_never_below_the_minimum(hass: HomeAssistant, monkeypatch) -> None:
+    with freeze_time(_HOUR + timedelta(seconds=5)) as frozen:
+        world = await _world(hass, monkeypatch, frozen, "plankw")
+        charger = world.halo.charger.entry_id
+        await world.step()
+        await world.step()
+        assert world.halo.controller.import_target_plan_kw(charger) == pytest.approx(5.0)
+        # A house of 4 kW leaves 2 kW: below the car's 6 A on three phases, which is all a held charge ever runs at.
+        world.house_a = 4000.0 / (3 * _V)
+        await world.step()
+        assert world.halo.controller.import_target_plan_kw(charger) == pytest.approx(6 * 3 * _V / 1000.0)
+    with freeze_time(_HOUR + timedelta(hours=3, seconds=5)) as frozen:
+        free = await _world(hass, monkeypatch, frozen, "plannone", target_kw=None)
+        await free.step()
+        assert free.halo.controller.import_target_plan_kw(free.halo.charger.entry_id) is None

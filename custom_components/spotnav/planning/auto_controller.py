@@ -1370,7 +1370,7 @@ class AutoPlannerController:
             departure=settings.departure if settings.departure_enabled else None,
             departure_date=self._effective_departure_date(settings, entry, calculated_at),
             voltage_between_phases_v=voltage_between_phases_v(self._hass, self._entry_id),
-            power_cap_kw=self._learned_power(settings).cap_kw,
+            power_cap_kw=self._plan_power_cap_kw(settings),
         )
         wait_facts: dict[str, Any] = {}
         try:
@@ -1689,6 +1689,17 @@ class AutoPlannerController:
             # wiring draws the least current on one phase, so the floor is that.
             low_kw /= 3
         return self._learned.power(subject, wiring, low_kw, high_kw)
+
+    def _plan_power_cap_kw(self, settings: AutoSettings) -> float | None:
+        """The most power a plan counts on: what is learned of the car (`_learned_power`), and no more than the site's
+        import target leaves it (`SiteCapacityController.import_target_plan_kw`), so a held hour is planned as held and
+        the plan buys the hours it needs for that instead of finding out at each window's end."""
+        learned = self._learned_power(settings).cap_kw
+        site = site_controller_for_charger(self._hass, self._entry_id)
+        target = None if site is None else site.import_target_plan_kw(self._entry_id)
+        if target is None:
+            return learned
+        return target if learned is None else min(learned, target)
 
     def plan_watch_facts(self) -> dict[str, Any]:
         """The diagnostics' view: the last behind-plan check and the learned power the plan counts on."""
@@ -2277,7 +2288,7 @@ class AutoPlannerController:
                 effective_phases(self._hass, self._entry_id),
                 voltage_between_phases_v(self._hass, self._entry_id),
             )
-            cap = self._learned_power(settings).cap_kw
+            cap = self._plan_power_cap_kw(settings)
             power = power if cap is None else min(power, cap)
         vehicle_id = facts.vehicle_id or None
         decision = vehicle_update_wait.decide_vehicle_update_wait(

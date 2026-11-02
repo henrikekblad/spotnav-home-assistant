@@ -78,6 +78,7 @@ from .import_target import (
     hour_budget,
     HourBudget,
     lowering_floor_a,
+    RAISE_LOCK_S,
     member_w,
     plan_remaining_kwh,
     share_budget,
@@ -286,6 +287,9 @@ IMPORT_TARGET_REASONS = frozenset({REASON_IMPORT_TARGET_HELD, REASON_IMPORT_TARG
 #: Why the import target is not applied besides the hour itself (`site/import_target.py` names the rest).
 TARGET_NOT_APPLIED_LOAD_BALANCING_OFF = "load_balancing_off"
 TARGET_NOT_APPLIED_BATTERY_UNKNOWN = "battery_unknown"
+#: How many of the house's last measured hours a plan under the import target takes its typical load from
+#: (`import_target_plan_kw`).
+TARGET_HOUSE_HOURS = 24
 #: How many of the import target's changes per charger the diagnostics keep (`import_target_snapshot`).
 TARGET_LOG_LENGTH = 48
 
@@ -538,6 +542,7 @@ class SiteCapacityController:
         self._target_not_applied: str | None = None
         self._target_shares: dict[str, TargetShare] = {}
         self._target_lowered: set[str] = set()
+        self._target_raise_lock: dict[str, float] = {}
         self._target_paused_hour: dict[str, datetime] = {}
         self._target_released: dict[str, str] = {}
         self._target_log: deque[dict[str, Any]] = deque(maxlen=TARGET_LOG_LENGTH)
@@ -4604,8 +4609,15 @@ class SiteCapacityController:
         departure = dt_util.parse_datetime(plan.departure)
         if departure is None or departure.tzinfo is None:
             return None
-        power_kw = plan.power_kw if plan.power_kw else member_w(plan.phases, plan.amps) / 1000.0
-        need_kwh = plan_remaining_kwh(plan.windows, power_kw, now, departure)
+        # What the plan still expects to deliver before the departure: its energy spread over its windows (the power
+        # it planned at, which may already be the target's, `import_target_plan_kw`), for the windows' time left.
+        windows = plan.windows
+        window_h = sum(max(0.0, (end - start).total_seconds()) for start, end in windows) / 3600.0
+        if plan.energy_kwh and window_h > 0:
+            power_kw = plan.energy_kwh / window_h
+        else:
+            power_kw = plan.power_kw if plan.power_kw else member_w(plan.phases, plan.amps) / 1000.0
+        need_kwh = plan_remaining_kwh(windows, power_kw, now, departure)
         held_kw = member_w(member.phases, share.cap_a or 0.0) / 1000.0
         later_kw = min(power_kw, max(0.0, budget.target_kw - max(0.0, budget.house_w) / 1000.0))
         if departure_needs_release(
@@ -4652,6 +4664,7 @@ class SiteCapacityController:
         while load balancing is off, the hour cannot be measured well enough, or the site's target is not set."""
         self._target_shares = {}
         self._target_lowered = set()
+        self._target_raise_lock = {}
         self._target_budget = None
         target_kw = self._import_target_kw()
         if target_kw is None:
@@ -4692,6 +4705,15 @@ class SiteCapacityController:
             members = [self._target_member(request, decisions.get(request.charger_entry_id), budget) for request in ordered]
             shares = share_budget(budget.allowed_w, members)
         self._target_shares = shares
+        # The hour's last minutes raise nothing: what is left of the budget is spread over too little time to be worth
+        # a raise the next hour takes back (and the lowering then waits for the dwell, past the hour's start).
+        self._target_raise_lock = {}
+        if budget.remaining_s < RAISE_LOCK_S:
+            for request in ordered:
+                damper = self._dampers.get(request.charger_entry_id)
+                written = None if damper is None else damper.last_written_a
+                if written is not None and written >= request.min_current_a:
+                    self._target_raise_lock[request.charger_entry_id] = written
         held = dict(decisions)
         for request in ordered:
             charger_entry_id = request.charger_entry_id
@@ -4700,7 +4722,6 @@ class SiteCapacityController:
             member = next(m for m in members if m.charger_entry_id == charger_entry_id)
             if (
                 share is None
-                or share.cap_a is None
                 or decision is None
                 or decision.proposed_current_a is None
                 or not member.holdable
@@ -4708,8 +4729,12 @@ class SiteCapacityController:
             ):
                 # Nothing held, or a charge that is not running (a paused one is held back by `_target_start_cap`).
                 continue
+            cap_a = share.cap_a
+            locked = self._target_raise_lock.get(charger_entry_id)
+            if locked is not None and share.action != ACTION_PAUSED:
+                cap_a = locked if cap_a is None else min(cap_a, locked)
             proposed = decision.proposed_current_a
-            if proposed <= share.cap_a:
+            if cap_a is None or proposed <= cap_a:
                 continue
             floor = self._target_floor_a(request, voltage_by_phase, max_age_s)
             if floor is None:
@@ -4723,7 +4748,7 @@ class SiteCapacityController:
                 continue
             if request.switch_only:
                 continue  # it runs whole or not at all, and the pause would raise what a phase carries
-            lowered = max(share.cap_a, request.min_current_a, float(math.ceil(floor - 1e-9)))
+            lowered = max(cap_a, request.min_current_a, float(math.ceil(floor - 1e-9)))
             if lowered < proposed:
                 held[charger_entry_id] = replace(decision, proposed_current_a=lowered, reason=REASON_IMPORT_TARGET_HELD)
                 self._target_lowered.add(charger_entry_id)
@@ -4764,7 +4789,35 @@ class SiteCapacityController:
         share = self._target_shares.get(charger_entry_id)
         if share is None or share.action == ACTION_UNHELD:
             return None
-        return 0.0 if share.action == ACTION_PAUSED else share.room_a
+        if share.action == ACTION_PAUSED:
+            return 0.0
+        locked = self._target_raise_lock.get(charger_entry_id)
+        if locked is None or share.room_a is None:
+            return share.room_a
+        return min(share.room_a, locked)
+
+    def import_target_plan_kw(self, charger_entry_id: str) -> float | None:
+        """The power a plan for this charger counts on under the site's import target (kW): the target less what the
+        house typically draws (the mean of its last `TARGET_HOUSE_HOURS` measured hours, else its load now), and never
+        below the charger's minimum, which is all the hold ever gives a charge it runs. `None` while the target holds
+        nothing (not set, load balancing off) or the house's load is not known: the plan then counts on the car's
+        own power, and a window the hold keeps short is planned again at its end (`planning/plan_watch.py`)."""
+        if self._import_target_kw() is None or not self._active_control_allowed():
+            return None
+        target_kw = cast(float, self._import_target_kw())
+        tracker = self.demand.tracker
+        hours = [hour.house_kw for hour in (*tracker.previous, *tracker.hours) if hour.house_kw is not None]
+        recent = hours[-TARGET_HOUSE_HOURS:]
+        if recent:
+            house_kw = sum(recent) / len(recent)
+        elif self._target_budget is not None:
+            house_kw = max(0.0, self._target_budget.house_w) / 1000.0
+        else:
+            return None
+        wiring = (self.config.get(CONF_PHASE_WIRING) or {}).get(charger_entry_id) or {}
+        phases, _phase = self.reckoned_phases(charger_entry_id)
+        minimum_kw = member_w(phases, float(wiring.get("min_current_a", DEFAULT_MIN_CURRENT_A))) / 1000.0
+        return max(minimum_kw, target_kw - house_kw)
 
     def _target_start_cap(self, charger_entry_id: str) -> float | None:
         """The most a resume or a probe may give this charger for the import target: `0.0` while the target pauses
