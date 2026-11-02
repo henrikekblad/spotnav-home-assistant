@@ -18,6 +18,7 @@
       "price_days": true,
       "refresh_vehicle": true,
       "regulated_current": false,
+      "release_import_target": true,
       "set_charge_limit": true,
       "set_current": false,
       "target_soc": false,

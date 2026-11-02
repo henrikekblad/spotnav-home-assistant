@@ -44,6 +44,7 @@ from .entity_config import (
     async_webhook_update_phase_switching,
     async_webhook_update_vehicle,
 )
+from .import_target import webhook_release_import_target
 from .own_mode import webhook_fix_own_mode
 from .plan_preview import async_webhook_plan_preview
 from .setup import webhook_dismiss_setup_item
@@ -83,7 +84,7 @@ _last_rejected_warning: float | None = None
 #: replacement without one keeps the stored value (`fiscal_included` is read-only and never stored).
 APP_UNREAD_SETTINGS: Final = (
     "departure_date", "departure_weekdays", "fiscal_included", "notifications", "fill_to_limit", "vehicle_ids",
-    "identify_mode", "identify_camera", "users_change_plan",
+    "identify_mode", "identify_camera", "users_change_plan", "if_not_ready",
 )
 
 
@@ -130,8 +131,12 @@ APP_UNREAD_OWN_MODE_CODES: Final = ("charger_own_mode",)
 APP_READS_OWN_MODE_STATUS: Final = "own_mode_status"
 #: The site's import target: an app that does not read `APP_READS_IMPORT_TARGET_STATUS` gets the load-balancing line it
 #: already words in place of `import_target_held` (the same amps, cause `import_target`) and of `import_target_paused`
-#: (`balancing_paused` where it reads that, else a limit of nothing), and nothing for the two facts beside them.
-APP_UNREAD_IMPORT_TARGET_FACT_CODES: Final = ("import_target_house_over", "import_target_released")
+#: (`balancing_paused` where it reads that, else a limit of nothing), and nothing for the facts beside them.
+APP_UNREAD_IMPORT_TARGET_FACT_CODES: Final = (
+    "import_target_house_over",
+    "import_target_released",
+    "import_target_at_risk",
+)
 APP_READS_IMPORT_TARGET_STATUS: Final = "import_target_status"
 #: Waking the car for a reading: an app that does not read `APP_READS_WAKE_FOR_READING` gets vehicle rows without
 #: `wake_for_reading` (its settings row is never offered).
@@ -260,7 +265,7 @@ def _for_app(body: dict[str, Any], payload: dict[str, Any]) -> dict[str, Any]:
     `phase_switching` block; `grid_tariff` for its `grid_tariff` block; `price_provider` for `prices.provider`; `setup` for its `setup` block; `plan_facts` for the status lines
     `plan_saving` and `solar_forecast` and hybrid's `sun_start`/`sun_end`; `own_mode_status` for the status line
     `charger_own_mode`; `sun_past_target` for the status line `sun_past_target`; `import_target_status` for the import
-    target's four status lines); anything else in it, or a `reads` that is not a list, is ignored.
+    target's five status lines); anything else in it, or a `reads` that is not a list, is ignored.
     """
     opted_in = _opted_in(payload)
     withheld_blocks = {block for block, read in APP_DASHBOARD_BLOCK_READS.items() if read not in opted_in}
@@ -525,6 +530,7 @@ ACTIONS: Final[dict[str, Handler]] = {
     "identify_vehicle": webhook_identify_vehicle,
     "choose_vehicle_identification": webhook_choose_vehicle_identification,
     "fix_own_mode": webhook_fix_own_mode,
+    "release_import_target": webhook_release_import_target,
     "dismiss_setup_item": webhook_dismiss_setup_item,
     **CAMERA_ACTIONS,
 }

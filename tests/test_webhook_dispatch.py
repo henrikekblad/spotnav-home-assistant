@@ -37,6 +37,7 @@ async def test_every_documented_action_has_a_handler() -> None:
         "identify_vehicle",
         "choose_vehicle_identification",
         "fix_own_mode",
+        "release_import_target",
         "dismiss_setup_item",
         "plan_preview",
         "camera_snapshot",
@@ -115,6 +116,6 @@ async def test_the_dashboard_names_each_action_an_app_must_tell_an_older_home_as
         "/api/webhook/webhook-a", json={"version": 1, "action": "dashboard", "api_version": 1}
     )
     capabilities = (await response.json())["charger"]["capabilities"]
-    for action in ("price_days", "plan_preview", "dismiss_setup_item", "fix_own_mode"):
+    for action in ("price_days", "plan_preview", "dismiss_setup_item", "fix_own_mode", "release_import_target"):
         assert action in CAPABILITY_KEYS and action in webhook_module.ACTIONS
         assert capabilities[action] is True

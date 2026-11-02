@@ -88,6 +88,7 @@ from ..planning.auto_settings import (
     AutoSettings,
     AutoSettingsStore,
     DEFAULT_CONSUMPTION_KWH_PER_10KM,
+    IF_NOT_READY_ASK,
     FiscalOverride,
     PauseIntent,
     STRATEGY_CHEAPEST,
@@ -207,6 +208,7 @@ CAPABILITY_KEYS: Final = (
     "plan_preview",
     "dismiss_setup_item",
     "fix_own_mode",
+    "release_import_target",
 )
 
 
@@ -689,6 +691,7 @@ def capabilities_for(
         ("plan_preview", True),
         ("dismiss_setup_item", True),
         ("fix_own_mode", True),
+        ("release_import_target", True),
     )
 
 
@@ -2587,12 +2590,18 @@ def _import_target_facts(status: Any) -> ImportTargetFacts | None:
     if status is None:
         return None
     released = None if status.released_for is None else dt_util.parse_datetime(status.released_for)
+    risk = status.at_risk
+    risk_departure = None if risk is None else dt_util.parse_datetime(risk.departure)
     return ImportTargetFacts(
         target_kw=status.target_kw,
         hour_kw=status.hour_kw,
         paused_until=None if status.paused_until is None else _utc(status.paused_until),
         released_for=None if released is None else _utc(released),
         house_over=status.house_over,
+        at_risk_departure=None if risk_departure is None else _utc(risk_departure),
+        missing_kwh=None if risk is None else risk.missing_kwh,
+        releasable=risk is None or risk.choice == IF_NOT_READY_ASK,
+        released_automatically=status.released_automatically,
     )
 
 

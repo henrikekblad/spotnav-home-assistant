@@ -758,8 +758,14 @@ CASES: list[tuple[str, StatusFacts, str, list[dict[str, Any]]]] = [
             import_target=ImportTargetFacts(target_kw=6.0, hour_kw=6.2, paused_until=at(0.5), house_over=True),
         ),
         "normal",
+        [{"code": "import_target_paused", "params": {"until": iso(0.5), "target_kw": 6.0, "house_over": True}}],
+    ),
+    (
+        "the house alone over the target while the car charges",
+        base(charging=True, import_target=ImportTargetFacts(target_kw=6.0, hour_kw=7.4, house_over=True)),
+        "normal",
         [
-            {"code": "import_target_paused", "params": {"until": iso(0.5), "target_kw": 6.0}},
+            {"code": "charging_now", "params": {"until": None}},
             {"code": "import_target_house_over", "params": {"target_kw": 6.0}},
         ],
     ),
@@ -772,7 +778,39 @@ CASES: list[tuple[str, StatusFacts, str, list[dict[str, Any]]]] = [
         "normal",
         [
             {"code": "charging_now", "params": {"until": None}},
-            {"code": "import_target_released", "params": {"target_kw": 6.0, "departure": iso(3)}},
+            {"code": "import_target_released", "params": {"target_kw": 6.0, "departure": iso(3), "automatic": False}},
+        ],
+    ),
+    (
+        "under the import target the plan misses its departure: said, with the target to set aside",
+        base(
+            charging=True,
+            import_target=ImportTargetFacts(target_kw=6.0, hour_kw=5.8, at_risk_departure=at(9), missing_kwh=4.0),
+        ),
+        "notice",
+        [
+            {"code": "charging_now", "params": {"until": None}},
+            {
+                "code": "import_target_at_risk",
+                "params": {"departure": iso(9), "missing_kwh": 4.0, "target_kw": 6.0, "releasable": True},
+            },
+        ],
+    ),
+    (
+        "a plan that holds the target only says what will be missing",
+        base(
+            charging=True,
+            import_target=ImportTargetFacts(
+                target_kw=6.0, hour_kw=5.8, at_risk_departure=at(9), missing_kwh=4.0, releasable=False
+            ),
+        ),
+        "notice",
+        [
+            {"code": "charging_now", "params": {"until": None}},
+            {
+                "code": "import_target_at_risk",
+                "params": {"departure": iso(9), "missing_kwh": 4.0, "target_kw": 6.0, "releasable": False},
+            },
         ],
     ),
     (

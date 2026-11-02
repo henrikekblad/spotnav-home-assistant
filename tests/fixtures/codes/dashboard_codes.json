@@ -280,6 +280,15 @@
       "params": [],
       "tone": "normal"
     },
+    "import_target_at_risk": {
+      "params": [
+        "departure",
+        "missing_kwh",
+        "releasable",
+        "target_kw"
+      ],
+      "tone": "notice"
+    },
     "import_target_held": {
       "params": [
         "hour_kw",
@@ -296,6 +305,7 @@
     },
     "import_target_paused": {
       "params": [
+        "house_over",
         "target_kw",
         "until"
       ],
@@ -303,6 +313,7 @@
     },
     "import_target_released": {
       "params": [
+        "automatic",
         "departure",
         "target_kw"
       ],
