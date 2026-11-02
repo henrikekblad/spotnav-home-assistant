@@ -61,6 +61,7 @@ charger executed whose pause could not be saved answers `{"ok": true, "action": 
 | `choose_vehicle_identification` | Choose a car's plug or location source: `{"vehicle_id", "source", "entity_id"}` (see [vehicle identification](#vehicle-identification)). |
 | `dismiss_setup_item` | Answer a "Get started" row with "Not needed": `{"item"}` (see below). |
 | `fix_own_mode` | Set one of the charger's own settings back to the value SpotNav works with: `{"entity_id", "value"}` (see below). |
+| `release_import_target` | Set the site's import target aside for this charge until its departure: `{}` (see below). |
 
 **Charge periods.** `max_periods` is `null` for automatic periods (the default: the planner counts a start
 cost of a quarter of a kWh at the window's average price for each period and keeps each period at least half an
@@ -137,6 +138,13 @@ it. A replacement may leave it out, and then the stored value is kept; a value t
 with `invalid_permission`. It is withheld from the webhook like the fields above (ask with
 `"reads": ["users_change_plan"]`).
 
+Since 2.4 the record carries `if_not_ready` (`ask`, the default, `release` or `hold`): what the site's import target
+does when the plan cannot be ready by its departure under it (see
+[Holding the chargers under the import target](site-and-load-balancing.md#holding-the-chargers-under-the-import-target)).
+A plan field: a user who may change the plan may change it. A replacement may leave it out, and then the stored
+value is kept; any other value is refused with `invalid_departure`. It is withheld from the webhook like the fields
+above (ask with `"reads": ["if_not_ready"]`), so an older app's full write keeps it.
+
 **Who may replace the settings.** An administrator may change any field. A user who is not one is refused with
 `spotnav_not_admin` while the charger's `users_change_plan` is off; while it is on, a replacement from them is
 accepted only when every field it changes is one of the strategy and plan fields: `strategy`, `requested_kwh`,
@@ -196,24 +204,38 @@ enough for load balancing to hold the car at its minimum current, `load_balancin
 
 **The site's import target.** Since 2.4, while the site's import target holds a charge (see
 [Holding the chargers under the import target](site-and-load-balancing.md#holding-the-chargers-under-the-import-target)),
-the status carries four lines, all tone `normal`:
+the status carries these lines, tone `normal` but for `import_target_at_risk` (`notice`):
 
 - `import_target_held` `{limit_a, target_kw, hour_kw}` in place of `load_balancing_limited` while the target, not the
   fuse, holds the charging car: held to `limit_a` (amps, `null` when not known) so the hour stays under `target_kw`
   (kW, an hourly mean); `hour_kw` is the hour's mean import so far.
 - `import_target_paused` `{until, target_kw}` in place of `balancing_paused` while the target paused the plan's
   charge: it waits for the next clock hour, `until`.
-- `import_target_released` `{target_kw, departure}` after the issues while the charge runs with the target set aside,
-  because holding it would make the car miss `departure`.
+- `import_target_paused` carries `house_over` too: `true` where the house alone ends the hour above the target, said in
+  place of "so the hour stays under it".
+- `import_target_at_risk` `{departure, missing_kwh, target_kw, releasable}` after the issues while the plan cannot be
+  ready by `departure` under the target: `missing_kwh` short. `releasable` (the plan's `if_not_ready` `ask`): offer
+  "Release tonight", `release_import_target`; `false` (`hold`): only say it.
+- `import_target_released` `{target_kw, departure, automatic}` after the issues while the charge runs with the target
+  set aside until `departure`: by a person (`automatic` `false`), or by the plan's own `if_not_ready` `release`.
 - `import_target_house_over` `{target_kw}` after the issues while the house alone ends the hour above the target and
-  the car charges or the target paused it.
+  the car charges.
+
+**Setting the import target aside.** `spotnav/release_import_target {"api_version": 1, "charger_id"}` (any user, as a
+Start) and the webhook's `release_import_target` (optional `api_version`, `1`) set the site's import target aside for
+that charger's charge until its plan's departure, or until the car is unplugged; it is kept across a restart. The
+answer is `{"api_version": 1, "ok", "error"}` (the webhook adds `"action": "release_import_target"`, HTTP 200, or 400
+with the refusal): `spotnav_no_site`, `spotnav_no_import_target` (the site has none), `spotnav_no_departure` (no plan
+with a departure ahead), or the charger lookup's codes. The phone's button on the notification does the same (its
+action id is `SPOTNAV_IMPORT_TARGET_RELEASE_<charger id>`). The dashboard's `charger.capabilities` carries
+`release_import_target`, `true` where the webhook answers the action.
 
 A load-balancing limit or pause the target makes carries `cause` `import_target` (in `load_balancing_limited`, and in
 `balancing_paused` with `retry_at` the next hour's start). The webhook gives an app that does not ask for them
 (`"reads": ["import_target_status"]`) the lines it already words in their place: `load_balancing_limited`
 (`limit_a` the same, `phase` `null`, `cause` `import_target`) for `import_target_held`; for `import_target_paused`
 `balancing_paused` (`retry_at` its `until`) where it reads that, else `load_balancing_limited` with `limit_a` `0`;
-and nothing for the other two. An app that does not know the cause words it as a plain limit.
+and nothing for the other three. An app that does not know the cause words it as a plain limit.
 
 **A car's charge limit range.** A vehicle row carries the additive `charge_limit_range`: `{"min", "max", "step"}`,
 the percents `set_charge_limit` (and `spotnav/write_charge_limit`) can write to the car's own limit, or `null` when
