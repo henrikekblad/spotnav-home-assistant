@@ -709,6 +709,9 @@ reading) or `solar_battery_unreadable` (`entity`); while solar runs, the same li
 headline while the charger's own measured current is unknown and solar runs blind at the minimum current
 (the unreadable case only while the charge is on or a start is pending: a charger that is not charging
 reports no current by nature),
+`solar_charger_current_missing` also carries the additive `integration` and `sensors`: when the current is not
+set and the charger's own integration has sensors for it, the integration's name and the sensors named for a
+sentence (`"Peblar"`, `"Current phase 1–3"`), else both `null`;
 and `solar_site_incomplete` (`phases`) while a direct site's phase measurement is unusable and solar runs
 on the total grid power only. Every line naming an entity also carries the additive `entity_name` (its friendly name, the id when it has
 none; `entity_names`, parallel to `entities`, on `site_meter_unavailable`), which clients prefer to the id.
@@ -761,6 +764,15 @@ entity carrying each phase as an attribute (`name` is its friendly name), or
 `{"kind": "separate_entities", "entity_id": null, "name": null, "attributes": null, "entity_ids": {"L1", "L2", "L3"}}`.
 While it is set the `direct_L{n}` fields report no `current`, and a write that leaves them out keeps it.
 A write that names any of them replaces it, so all three are then required (`required` on each missing one).
+
+A site's `detection` in `get_entity_config` carries the additive `chargers`: one row per member charger whose
+wiring reads no measured current and whose own integration has the sensors for it,
+`{"id", "charger_name", "integration", "sensors", "entity_ids", "disabled_entities"}` (`sensors` named for a
+sentence, `disabled_entities` the ones the integration ships disabled). `apply_detection` takes its `id`
+(`charger_current:<charger id>`) as it takes a meter's: the source goes into that charger's wiring and the
+entities the integration disabled are enabled, never one a person disabled. A charger's
+`measured_current_source` field carries the additive `own_sensors`: `{"integration", "sensors"}` while the
+wiring reads none and such sensors exist, else `null`.
 
 A charger's `energy_register_entity` field in `get_entity_config` carries the additive `none`, as
 `current_limit` does: `{"allowed": true, "chosen": bool, "automatic": {"entity_id", "friendly_name"} | null}`,
