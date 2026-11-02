@@ -72,7 +72,7 @@ the session before each event (`pre`) on every record, its counts (`events`, `qu
 drift any more.
 
 Since 2.4 a site's `diagnostics` also carry `demand` (additive, no new version): the month's hourly means of net
-import (`[start, kW, house kW, incomplete]`), what each demand-charge component bills so far with its peaks, the
+import (`[start, kW, house kW, incomplete, held, paused]`), what each demand-charge component bills so far with its peaks, the
 running hour with its gaps, and the import target (`site/demand_tracker.py`).
 """
 

@@ -70,7 +70,7 @@ from ..const import (
     SOLAR_PRIORITY_CAR_FIRST,
 )
 from .site_history import SAMPLE_INTERVAL_S as HISTORY_SAMPLE_INTERVAL_S, SiteHistory
-from .demand_tracker import HOUR_S, SiteDemand
+from .demand_tracker import HOUR_S, SiteDemand, TargetMark
 from .import_target import (
     ACTION_HELD,
     ACTION_PAUSED,
@@ -1024,14 +1024,34 @@ class SiteCapacityController:
             return
         try:
             from ..execution.solar_execution import site_car_w, site_net_grid_w  # noqa: PLC0415 - it imports us
+            from ..pricing.price_source import site_demand_components  # noqa: PLC0415 - it imports the planner
 
             grid_w = site_net_grid_w(self)
             car_w = None if grid_w is None else site_car_w(self.hass, self)
             # A battery's discharge is kept beside the hour for an import target under `battery_first` only.
             discharge_w = self._battery_first_discharge()[1]
-            self.demand.observe(grid_w, car_w, self.demand_zone(), discharge_w)
+            self.demand.observe(
+                grid_w,
+                car_w,
+                self.demand_zone(),
+                discharge_w,
+                target=self._target_mark(),
+                components=lambda: site_demand_components(self.hass, self.entry_id),
+            )
         except Exception:  # noqa: BLE001 - a measurement must never disturb the site
             _LOGGER.debug("SpotNav site %s: the hour's import could not be measured", self.entry_id, exc_info=True)
+
+    def _target_mark(self) -> TargetMark | None:
+        """What the import target did this hour as of its last decision (held a charger's current down, or paused a
+        charger), for the power view's marks; `None` while it holds nothing."""
+        budget = self._target_budget
+        if budget is None:
+            return None
+        held = bool(self._target_lowered or self._target_locked)
+        paused = any(hour == budget.hour_start for hour in self._target_paused_hour.values())
+        if not (held or paused):
+            return None
+        return TargetMark(hour_start=budget.hour_start, held=held, paused=paused)
 
     def demand_zone(self) -> str:
         """The clock the site's hours and months are on: its electricity price's area's, else Home Assistant's."""

@@ -36,12 +36,15 @@ WINTER_MONTHS: Final = frozenset({11, 12, 1, 2, 3})
 class HourMean:
     """One completed clock hour of the site: its start (UTC, the local hour's start), the mean net import over the
     time it was measured (kW), the house's share without the chargers' measured power (`None` when the chargers
-    could not be read for most of it) and whether it had gaps (`incomplete`)."""
+    could not be read for most of it), whether it had gaps (`incomplete`), and whether the site's import target held a
+    charger's current down (`held`) or paused a charger (`paused`) in it. The last two are shown only."""
 
     start: datetime
     kw: float
     house_kw: float | None = None
     incomplete: bool = False
+    held: bool = False
+    paused: bool = False
 
 
 @dataclass(frozen=True, slots=True)

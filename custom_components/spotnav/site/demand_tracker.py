@@ -20,9 +20,14 @@ import target; this module only measures and never decides anything a charger is
 * **Month**: the hours of the running month on the area's clock, and those of the month before (for the floor a
   later release uses). At the first hour of a new month the month's hours become the previous month's.
 
-`HourTracker` is pure (the clock is passed in); `SiteDemand` keeps it in the site's own two stores (the month's
-hours, written when an hour completes; the running hour, at most once a minute). Storage is untrusted: a malformed
-record is dropped, never raised on.
+* **Import target**: each hour carries whether the site's import target held a charger's current down or paused a
+  charger in it (`TargetMark`, from the site's last decision), for the power view only.
+* **Two years of days**: beside the hours, a summary per day of each month is kept for two years
+  (`site/power_history.py`), refiled from the hours when an hour completes.
+
+`HourTracker` is pure (the clock is passed in); `SiteDemand` keeps it in the site's own three stores (the month's
+hours and the day summaries, written when an hour completes; the running hour, at most once a minute). Storage is
+untrusted: a malformed record is dropped, never raised on.
 """
 
 from __future__ import annotations
@@ -41,6 +46,7 @@ from ..const import DOMAIN
 from ..debug_day import DayStore
 from ..planning.auto_settings import DemandComponent
 from ..planning.demand_charge import component_month, hour_start, HourMean, month_of
+from .power_history import power_month, PowerArchive
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -67,6 +73,20 @@ def running_store_key(entry_id: str) -> str:
     return f"{DOMAIN}.demand_hour.{entry_id}"
 
 
+def days_store_key(entry_id: str) -> str:
+    return f"{DOMAIN}.demand_days.{entry_id}"
+
+
+@dataclass(frozen=True, slots=True)
+class TargetMark:
+    """What the site's import target did in the hour starting at `hour_start` (UTC): held a charger's current down,
+    or paused a charger. Recorded beside the hour for the power view; it decides nothing."""
+
+    hour_start: datetime
+    held: bool
+    paused: bool
+
+
 @dataclass(slots=True)
 class RunningHour:
     """The clock hour being measured: its start (UTC), energy and measured time so far, and the last reading."""
@@ -84,6 +104,9 @@ class RunningHour:
     last_grid_w: float | None = None
     last_car_w: float | None = None
     last_discharge_w: float | None = None
+    #: The site's import target held a charger's current down, or paused a charger, at some point in this hour.
+    held: bool = False
+    paused: bool = False
 
     @property
     def gap_s(self) -> float:
@@ -106,6 +129,8 @@ class RunningHour:
             "discharge_wh": round(self.discharge_wh, 3),
             "discharge_covered_s": round(self.discharge_covered_s, 3),
             "last_at": None if self.last_at is None else self.last_at.isoformat(),
+            "held": self.held,
+            "paused": self.paused,
         }
 
     @classmethod
@@ -133,6 +158,8 @@ class RunningHour:
             discharge_wh=float(discharge[0]),
             discharge_covered_s=float(discharge[1]),
             last_at=last_at,
+            held=raw.get("held") is True,
+            paused=raw.get("paused") is True,
         )
 
 
@@ -150,25 +177,40 @@ def _instant(raw: Any) -> datetime | None:
     return None if moment.tzinfo is None else moment.astimezone(timezone.utc)
 
 
-def _hour_row(hour: HourMean) -> list[Any]:
+def hour_row(hour: HourMean) -> list[Any]:
+    """A completed hour as it is kept and shown in the diagnostics: `[start, kW, house kW, incomplete, held,
+    paused]`, the flags as 0 or 1."""
     return [
         hour.start.isoformat(),
         round(hour.kw, 3),
         None if hour.house_kw is None else round(hour.house_kw, 3),
         1 if hour.incomplete else 0,
+        1 if hour.held else 0,
+        1 if hour.paused else 0,
     ]
 
 
 def _hour_from_row(raw: Any) -> HourMean | None:
-    if not isinstance(raw, list) or len(raw) != 4:
+    """A kept hour, or `None`. A row of four (kept before the import target's hours were marked) is unmarked."""
+    if not isinstance(raw, list) or len(raw) not in (4, 6):
         return None
     start = _instant(raw[0])
     kw, house, incomplete = raw[1], raw[2], raw[3]
-    if start is None or not _number(kw) or kw < 0 or incomplete not in (0, 1):
+    held, paused = (raw[4], raw[5]) if len(raw) == 6 else (0, 0)
+    if start is None or not _number(kw) or kw < 0 or any(flag not in (0, 1) for flag in (incomplete, held, paused)):
+        return None
+    if any(isinstance(flag, bool) for flag in (incomplete, held, paused)):
         return None
     if house is not None and (not _number(house) or house < 0):
         return None
-    return HourMean(start=start, kw=float(kw), house_kw=None if house is None else float(house), incomplete=bool(incomplete))
+    return HourMean(
+        start=start,
+        kw=float(kw),
+        house_kw=None if house is None else float(house),
+        incomplete=bool(incomplete),
+        held=bool(held),
+        paused=bool(paused),
+    )
 
 
 def _month_text(month: tuple[int, int] | None) -> str | None:
@@ -201,11 +243,17 @@ class HourTracker:
     running: RunningHour | None = None
 
     def observe(
-        self, now: datetime, grid_w: float | None, car_w: float | None, discharge_w: float | None = None
+        self,
+        now: datetime,
+        grid_w: float | None,
+        car_w: float | None,
+        discharge_w: float | None = None,
+        target: TargetMark | None = None,
     ) -> bool:
         """Take a reading at `now`: the time since the last one is integrated at the last reading (held at most
-        `HOLD_MAX_S`), completed hours are kept, and from now on `grid_w`/`car_w`/`discharge_w` are held. Returns
-        whether the month's hours changed (an hour completed, or the month rolled)."""
+        `HOLD_MAX_S`), completed hours are kept, and from now on `grid_w`/`car_w`/`discharge_w` are held. `target`
+        marks the running hour when it is the hour the import target held or paused a charger in. Returns whether
+        the month's hours changed (an hour completed, or the month rolled)."""
         now = now.astimezone(timezone.utc)
         changed = False
         running = self.running
@@ -237,6 +285,9 @@ class HourTracker:
         running.last_grid_w = None if grid_w is None or not _number(grid_w) else float(grid_w)
         running.last_car_w = None if car_w is None or not _number(car_w) else float(car_w)
         running.last_discharge_w = None if discharge_w is None or not _number(discharge_w) else float(discharge_w)
+        if target is not None and target.hour_start == running.start:
+            running.held |= target.held
+            running.paused |= target.paused
         self.running = running
         changed |= self._roll_to(month_of(running.start, self.tz))
         return changed
@@ -272,6 +323,8 @@ class HourTracker:
             kw=running.import_wh / running.covered_s * 3.6,
             house_kw=house,
             incomplete=HOUR_S - running.covered_s > GAP_MAX_S,
+            held=running.held,
+            paused=running.paused,
         )
         month = month_of(hour.start, self.tz)
         changed = self._roll_to(month)
@@ -309,9 +362,9 @@ class HourTracker:
         return {
             "tz": self.tz,
             "month": _month_text(self.month),
-            "hours": [_hour_row(hour) for hour in self.hours],
+            "hours": [hour_row(hour) for hour in self.hours],
             "previous_month": _month_text(self.previous_month),
-            "previous": [_hour_row(hour) for hour in self.previous],
+            "previous": [hour_row(hour) for hour in self.previous],
         }
 
     def restore(self, month_data: Any, running_data: Any) -> None:
@@ -353,6 +406,7 @@ class SiteDemand:
         now: Callable[[], datetime] = dt_util.utcnow,
     ) -> None:
         self.tracker = HourTracker(tz=tz)
+        self.archive = PowerArchive()
         self._now = now
         self._last_observed: datetime | None = None
         #: How many readings were taken: a reader that builds from the tracker builds again only when it moves.
@@ -360,12 +414,16 @@ class SiteDemand:
         self._loaded = hass is None or entry_id is None
         self._month_store: DayStore | None = None
         self._running_store: DayStore | None = None
+        self._days_store: DayStore | None = None
         if hass is not None and entry_id is not None:
             self._month_store = DayStore(
                 hass, month_store_key(entry_id), self.tracker.month_dict, save_delay_s=MONTH_SAVE_DELAY_S
             )
             self._running_store = DayStore(
                 hass, running_store_key(entry_id), self._running_dict, save_delay_s=RUNNING_SAVE_DELAY_S
+            )
+            self._days_store = DayStore(
+                hass, days_store_key(entry_id), self.archive.as_dict, save_delay_s=MONTH_SAVE_DELAY_S
             )
 
     def _running_dict(self) -> dict[str, Any]:
@@ -379,14 +437,19 @@ class SiteDemand:
             return
         month = await self._month_store.async_load()
         running = await self._running_store.async_load()
+        days = None if self._days_store is None else await self._days_store.async_load()
         try:
             self.tracker.restore(month, running.get("running") if isinstance(running, dict) else None)
         except Exception:  # noqa: BLE001 - what was kept is a measurement: a site never fails to start on it
             _LOGGER.debug("SpotNav site demand: the kept hours could not be read", exc_info=True)
+        try:
+            self.archive.restore(days)
+        except Exception:  # noqa: BLE001 - as above
+            _LOGGER.debug("SpotNav site demand: the kept days could not be read", exc_info=True)
         self._loaded = True
 
     async def async_close(self) -> None:
-        for store in (self._month_store, self._running_store):
+        for store in (self._month_store, self._running_store, self._days_store):
             if store is not None:
                 await store.async_close()
 
@@ -395,6 +458,7 @@ class SiteDemand:
         """The site is gone for good: forget its hours."""
         await DayStore.async_remove(hass, month_store_key(entry_id))
         await DayStore.async_remove(hass, running_store_key(entry_id))
+        await DayStore.async_remove(hass, days_store_key(entry_id))
 
     def due(self) -> bool:
         """Whether a reading is wanted now: loaded, and `OBSERVE_MIN_S` since the last one."""
@@ -406,9 +470,18 @@ class SiteDemand:
         return not 0 <= elapsed < OBSERVE_MIN_S
 
     def observe(
-        self, grid_w: float | None, car_w: float | None, tz: str | None = None, discharge_w: float | None = None
+        self,
+        grid_w: float | None,
+        car_w: float | None,
+        tz: str | None = None,
+        discharge_w: float | None = None,
+        *,
+        target: TargetMark | None = None,
+        components: Callable[[], Sequence[DemandComponent]] | None = None,
     ) -> None:
-        """One reading of the site (at most every `OBSERVE_MIN_S`). Never raises."""
+        """One reading of the site (at most every `OBSERVE_MIN_S`). `target` marks the hour the import target held or
+        paused a charger in; `components` gives the demand charge's components when an hour completes (its month's
+        days are filed against them). Never raises."""
         if not self.due():
             return
         try:
@@ -417,15 +490,56 @@ class SiteDemand:
             self.readings += 1
             if tz is not None and tz != self.tracker.tz:
                 self.tracker.tz = tz
-            changed = self.tracker.observe(now, grid_w, car_w, discharge_w)
-            if changed and self._month_store is not None:
-                self._month_store.changed()
+            changed = self.tracker.observe(now, grid_w, car_w, discharge_w, target)
+            if changed:
+                if self._month_store is not None:
+                    self._month_store.changed()
+                self._file_days(now, () if components is None else components())
             running = self.tracker.running
             if self._running_store is not None and running is not None and (grid_w is not None or running.covered_s):
                 # A site that measures nothing writes nothing.
                 self._running_store.changed()
         except Exception:  # noqa: BLE001 - a measurement must never disturb the site
             _LOGGER.debug("SpotNav site demand: a reading could not be taken", exc_info=True)
+
+    def _file_days(self, now: datetime, components: Sequence[DemandComponent]) -> None:
+        """Refile the kept months' day summaries from their hours (an hour completed, or the month rolled)."""
+        tracker = self.tracker
+        for month, hours in ((tracker.previous_month, tracker.previous), (tracker.month, tracker.hours)):
+            if month is not None:
+                self.archive.file_month(month, hours, components, tracker.tz, now)
+        if tracker.month is not None:
+            self.archive.prune(tracker.month)
+        if self._days_store is not None:
+            self._days_store.changed()
+
+    def tracker_months(self) -> dict[tuple[int, int], Sequence[HourMean]]:
+        """The months whose every hour the tracker keeps, and those hours."""
+        tracker = self.tracker
+        months: dict[tuple[int, int], Sequence[HourMean]] = {}
+        if tracker.previous_month is not None:
+            months[tracker.previous_month] = tracker.previous
+        if tracker.month is not None:
+            months[tracker.month] = tracker.hours
+        return months
+
+    def power_month(
+        self,
+        month: tuple[int, int],
+        components: Sequence[DemandComponent],
+        *,
+        import_target_kw: float | None,
+    ) -> dict[str, Any]:
+        """One month's power view (`site/power_history.py:power_month`)."""
+        return power_month(
+            month,
+            tracker_months=self.tracker_months(),
+            archive=self.archive,
+            components=components,
+            tz=self.tracker.tz,
+            now=self._now(),
+            import_target_kw=import_target_kw,
+        )
 
     def snapshot(
         self,
@@ -452,7 +566,7 @@ class SiteDemand:
 
     def diagnostics(self, components: Sequence[DemandComponent], *, import_target_kw: float | None) -> dict[str, Any]:
         """The site's `demand` diagnostics: the components and what each bills so far, the running hour with its
-        gaps, the import target, and every hour of the month (`[start, kW, house kW, incomplete]`)."""
+        gaps, the import target, every hour of the month (`hour_row`), and how many months keep day summaries."""
         now = self._now()
         snapshot = self.snapshot(components, import_target_kw=import_target_kw, now=now)
         running = snapshot.running
@@ -492,7 +606,8 @@ class SiteDemand:
             },
             "hours_kept": snapshot.hours_kept,
             "incomplete_hours": snapshot.incomplete_hours,
-            "hours": [_hour_row(hour) for hour in self.tracker.month_hours(now)],
+            "hours": [hour_row(hour) for hour in self.tracker.month_hours(now)],
+            "months_with_days": len(self.archive.months),
         }
 
 

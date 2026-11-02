@@ -497,7 +497,7 @@ holds the site's chargers, through load balancing, so the hour stays under it (s
   *Demand-charge peak* sensor (kW): the first part's figure this month. Its attributes are every part with its
   figure, its peaks and how many days counted, and the running hour. It goes away with the last part.
 - **Diagnostics.** The site's diagnostics (and the debug bundle) carry a `demand` block: every hour of the month
-  (`[start, kW, house kW, incomplete]`), each part's figure and peaks, the running hour with its gaps, and the
+  (`[start, kW, house kW, incomplete, held, paused]`), each part's figure and peaks, the running hour with its gaps, and the
   import target.
 
 ### Holding the chargers under the import target
