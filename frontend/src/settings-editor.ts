@@ -1000,9 +1000,11 @@ export function settingsEditorBody(
       radio.disabled = form.readOnly;
       radio.addEventListener("change", () => draftChanged());
       ifNotReadyRadios.push(radio);
-      group.append(
-        checkboxField(doc, `${idPrefix}-if-not-ready-${choice}`, translate(language, `settings.ifNotReady.${choice}` as TranslationKey), radio),
-      );
+      // The same row as the departure's "Every day / On a date" choice above it.
+      radio.id = `${idPrefix}-if-not-ready-${choice}`;
+      const label = element(doc, "label", C.siteChoice);
+      label.append(radio, doc.createTextNode(translate(language, `settings.ifNotReady.${choice}` as TranslationKey)));
+      group.append(label);
     }
     body.querySelector<HTMLElement>("[data-part='departure']")?.append(group) ?? body.append(group);
   };

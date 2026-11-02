@@ -107,6 +107,8 @@ describe("the plan's choice when the car cannot be ready under the import target
     const group = shown.body.querySelector("[data-part='if-not-ready']");
     expect(group?.textContent).toContain("Om bilen inte hinner bli klar");
     expect(group?.textContent).toContain("Släpp målet");
+    // The same rows as the departure's "Every day / On a date" choice: a plain label, not a bold checkbox field.
+    expect(group?.querySelectorAll(":scope > label.spotnav-site-choice > input[type='radio']")).toHaveLength(3);
     const values = { ...formFromRecord(record), ifNotReady: "hold" };
     const moved = replacementFor("plan", record, values);
     expect(moved.ok && moved.body.if_not_ready).toBe("hold");
