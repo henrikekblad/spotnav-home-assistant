@@ -232,8 +232,11 @@ def _site_diagnostics(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, Any]
         # configured, its value and age, and the export derived from it.
         "grid_power": None if controller is None else controller.grid_power_snapshot(),
         # Each clock hour's mean import this month, what each demand-charge component bills so far, the running hour
-        # with its gaps, and the import target (`site/demand_tracker.py`). Measured only: nothing acts on it.
+        # with its gaps, and the import target (`site/demand_tracker.py`).
         "demand": None if controller is None else _demand_diagnostics(hass, entry, controller),
+        # What the import target does this hour (`SiteCapacityController.import_target_snapshot`): the hour's budget or
+        # why it is not applied, per charger held, paused or free, and each hold, pause and release it made.
+        "import_target": None if controller is None else controller.import_target_snapshot(),
         "membership_conflicts": []
         if controller is None
         else [

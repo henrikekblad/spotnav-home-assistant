@@ -103,6 +103,7 @@ from ..sessions.inputs import sessions_block
 from ..planning.status_compose import (
     compose_status,
     HybridFacts,
+    ImportTargetFacts,
     LoadBalancingFacts,
     OwnModeFacts,
     PlanningFacts,
@@ -372,6 +373,8 @@ class CapturedSite:
     #: Whether load balancing can set this charger's current at all; one that can only be switched on and off is
     #: paused whole, never limited to a current.
     current_settable: bool = True
+    #: What the site's import target does to this charger now (`SiteCapacityController.import_target_status`).
+    import_target: Any = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -1056,6 +1059,7 @@ def capture_site(
         balancing_retry_at=None if balancing is None else balancing.retry_at,
         balancing_cause=None if balancing is None else balancing.cause,
         current_settable=bool(getattr(controller_for(hass, charger_entry_id), "is_commandable", True)),
+        import_target=controller.import_target_status(charger_entry_id),
     )
 
 
@@ -2574,6 +2578,21 @@ def status_facts(capture: CapturedDashboard) -> StatusFacts:
             cause=site.limit_cause,
             current_settable=site.current_settable,
         ),
+        import_target=None if site is None else _import_target_facts(site.import_target),
+    )
+
+
+def _import_target_facts(status: Any) -> ImportTargetFacts | None:
+    """The site's import target for the status (`SiteCapacityController.import_target_status`)."""
+    if status is None:
+        return None
+    released = None if status.released_for is None else dt_util.parse_datetime(status.released_for)
+    return ImportTargetFacts(
+        target_kw=status.target_kw,
+        hour_kw=status.hour_kw,
+        paused_until=None if status.paused_until is None else _utc(status.paused_until),
+        released_for=None if released is None else _utc(released),
+        house_over=status.house_over,
     )
 
 

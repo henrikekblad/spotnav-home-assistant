@@ -194,6 +194,14 @@ async def test_a_16_a_car_is_held_so_every_hour_stays_under_the_target(hass: Hom
         assert snapshot["not_applied"] is None
         assert snapshot["chargers"][world.halo.charger.entry_id]["action"] == "held"
         assert any(entry["action"] == "held" for entry in snapshot["log"])
+        # What the dashboard's status is composed from (the composition: `tests/test_status_compose.py`).
+        from custom_components.spotnav.api import dashboard as dashboard_api
+
+        facts = dashboard_api.status_facts(dashboard_api.capture_dashboard(hass, world.halo.charger))
+        assert facts.load_balancing is not None and facts.load_balancing.cause == LIMIT_CAUSE_IMPORT_TARGET
+        assert facts.load_balancing.proposed_current_a == 7.0
+        assert facts.import_target is not None and facts.import_target.target_kw == 6.0
+        assert 4.0 < facts.import_target.hour_kw <= 6.0
 
 
 async def test_without_a_target_nothing_is_held(hass: HomeAssistant, monkeypatch) -> None:
@@ -552,3 +560,28 @@ async def test_no_battery_probe_starts_a_car_the_target_holds_back(hass: HomeAss
             await halo.tick()
         assert halo.controller.import_target_snapshot()["chargers"][halo.charger.entry_id]["action"] == "paused"
         assert "probe_started" not in _outcomes(halo)
+
+
+# -- an app that does not read the import target's lines
+
+
+def test_an_app_that_does_not_read_the_targets_lines_gets_the_load_balancing_lines_it_knows() -> None:
+    from custom_components.spotnav.api.webhook import _status_for_app
+
+    held = {"code": "import_target_held", "params": {"limit_a": 7.0, "target_kw": 6.0, "hour_kw": 5.1}}
+    paused = {"code": "import_target_paused", "params": {"until": "2026-11-02T13:00:00+00:00", "target_kw": 6.0}}
+    house = {"code": "import_target_house_over", "params": {"target_kw": 6.0}}
+    released = {"code": "import_target_released", "params": {"target_kw": 6.0, "departure": "2026-11-02T16:00:00+00:00"}}
+    assert _status_for_app(held, set()) == {
+        "code": "load_balancing_limited",
+        "params": {"limit_a": 7.0, "phase": None, "cause": "import_target"},
+    }
+    assert _status_for_app(paused, set())["params"] == {"limit_a": 0, "phase": None, "cause": "import_target"}
+    assert _status_for_app(paused, {"balancing_paused"}) == {
+        "code": "balancing_paused",
+        "params": {"retry_at": "2026-11-02T13:00:00+00:00", "cause": "import_target"},
+    }
+    assert _status_for_app(house, set()) is None
+    assert _status_for_app(released, set()) is None
+    for line in (held, paused, house, released):
+        assert _status_for_app(line, {"import_target_status"}) == line

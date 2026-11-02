@@ -280,6 +280,34 @@
       "params": [],
       "tone": "normal"
     },
+    "import_target_held": {
+      "params": [
+        "hour_kw",
+        "limit_a",
+        "target_kw"
+      ],
+      "tone": "normal"
+    },
+    "import_target_house_over": {
+      "params": [
+        "target_kw"
+      ],
+      "tone": "normal"
+    },
+    "import_target_paused": {
+      "params": [
+        "target_kw",
+        "until"
+      ],
+      "tone": "normal"
+    },
+    "import_target_released": {
+      "params": [
+        "departure",
+        "target_kw"
+      ],
+      "tone": "normal"
+    },
     "load_balancing_limited": {
       "params": [
         "cause",

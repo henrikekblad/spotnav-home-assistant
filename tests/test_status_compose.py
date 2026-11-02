@@ -21,6 +21,7 @@ from custom_components.spotnav.planning.status_compose import (
     SolarFacts,
     StatusFacts,
     TargetFacts,
+    ImportTargetFacts,
     compose_status,
 )
 
@@ -732,6 +733,53 @@ CASES: list[tuple[str, StatusFacts, str, list[dict[str, Any]]]] = [
                 "params": {"limit_a": 11.0, "phase": "L2", "cause": "house_consumption"},
             },
         ],
+    ),
+    (
+        "the import target, not the fuse, holds the car: said with the target and the hour so far",
+        base(
+            charging=True,
+            load_balancing=LoadBalancingFacts("observing", True, 7.0, None, "import_target"),
+            load_balancing_capable=True,
+            import_target=ImportTargetFacts(target_kw=6.0, hour_kw=5.1),
+        ),
+        "normal",
+        [
+            {"code": "charging_now", "params": {"until": None}},
+            {"code": "import_target_held", "params": {"limit_a": 7.0, "target_kw": 6.0, "hour_kw": 5.1}},
+        ],
+    ),
+    (
+        "the import target paused the plan's charge to the next hour",
+        base(
+            installed_periods=((at(-1), at(1)),),
+            balancing_paused=True,
+            balancing_retry_at=at(0.5),
+            balancing_cause="import_target",
+            import_target=ImportTargetFacts(target_kw=6.0, hour_kw=6.2, paused_until=at(0.5), house_over=True),
+        ),
+        "normal",
+        [
+            {"code": "import_target_paused", "params": {"until": iso(0.5), "target_kw": 6.0}},
+            {"code": "import_target_house_over", "params": {"target_kw": 6.0}},
+        ],
+    ),
+    (
+        "the import target set aside for the departure",
+        base(
+            charging=True,
+            import_target=ImportTargetFacts(target_kw=6.0, hour_kw=7.4, released_for=at(3)),
+        ),
+        "normal",
+        [
+            {"code": "charging_now", "params": {"until": None}},
+            {"code": "import_target_released", "params": {"target_kw": 6.0, "departure": iso(3)}},
+        ],
+    ),
+    (
+        "a house over the target says nothing while no charge is involved",
+        base(import_target=ImportTargetFacts(target_kw=6.0, hour_kw=7.4, house_over=True)),
+        "normal",
+        [{"code": "no_plan", "params": {}}],
     ),
     (
         "load balancing while observing limits nothing",
