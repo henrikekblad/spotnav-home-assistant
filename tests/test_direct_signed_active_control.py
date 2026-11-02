@@ -228,3 +228,25 @@ async def test_a_lost_confirmation_pauses_where_the_room_left_is_below_the_minim
         "lowering_overload_on_current_magnitude_direction_unknown",
     )
     assert [call.data.get("entity_id") for call in turn_off] == ["switch.lostmin_charger"]
+
+
+async def test_a_charge_started_unconfirmed_is_not_lowered_on_a_phase_confirmed_to_export(hass: HomeAssistant) -> None:
+    """A charge that started before the sign was confirmed stays the sun's; once a phase is confirmed to export, an
+    overload by |I| there is export, which the car reduces: it is not lowered on (the lowering by |I| is only for a
+    phase whose direction is not known now)."""
+    charger, configure_calls = await _ocpp_charger(hass, "exp_charger")
+    _charger_reads(hass, "exp_charger", 0.0)
+    _report(hass, "exp_site", (12.0, 13.0, 14.0), 39.0 * 230.0)
+    site_entry = _site(hass, "exp_site", [charger], ["exp_charger"])
+    assert await hass.config_entries.async_setup(site_entry.entry_id)
+    await hass.async_block_till_done()
+    site_controller = controller_of(hass, site_entry.entry_id)
+    await _start(hass, charger, "exp_charger", 10)
+    _charger_reads(hass, "exp_charger", 10.0)
+    configure_calls.clear()
+
+    await _confirm(hass, "exp_site", currents=(-12.0, -13.0, -31.0))
+    assert site_controller.result.phase_direction_source.get("L3") == "signed_current"
+    decision = site_controller.regulator_decisions[charger.entry_id]
+    assert (decision.proposed_current_a, decision.reason) == (None, "phase_direction_unknown_at_charge_start")
+    assert configure_calls == []
