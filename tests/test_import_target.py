@@ -12,7 +12,8 @@ from custom_components.spotnav.site.import_target import (
     ACTION_HELD,
     ACTION_PAUSED,
     ACTION_UNHELD,
-    departure_needs_release,
+    departure_at_risk,
+    departure_shortfall_kwh,
     hour_budget,
     lowering_floor_a,
     MIN_REMAINING_S,
@@ -222,17 +223,17 @@ def test_the_plan_still_expects_its_windows_time_left_before_the_departure() -> 
     assert plan_remaining_kwh(windows, 11.0, now, HOUR + timedelta(hours=4)) == pytest.approx(22.0)
 
 
-def test_the_target_is_set_aside_only_when_the_held_power_cannot_make_the_departure() -> None:
+def test_the_shortfall_is_what_the_held_power_leaves_short_of_the_departure() -> None:
     now = HOUR + timedelta(minutes=30)
     common = {"now": now, "hour_end": HOUR + timedelta(hours=1), "held_kw": 4.8, "later_kw": 5.0}
     # Three and a half hours left: 2.4 kWh this half hour and 15 kWh after.
-    assert not departure_needs_release(need_kwh=17.0, departure=HOUR + timedelta(hours=4), **common)
-    assert departure_needs_release(need_kwh=18.0, departure=HOUR + timedelta(hours=4), **common)
+    assert departure_shortfall_kwh(need_kwh=17.0, departure=HOUR + timedelta(hours=4), **common) == pytest.approx(-0.4)
+    assert departure_shortfall_kwh(need_kwh=18.0, departure=HOUR + timedelta(hours=4), **common) == pytest.approx(0.6)
     # A departure within the hour counts this hour's held power only.
-    assert departure_needs_release(need_kwh=2.0, departure=HOUR + timedelta(minutes=50), **common)
-    # A departure gone, or nothing needed: nothing to protect.
-    assert not departure_needs_release(need_kwh=50.0, departure=now, **common)
-    assert not departure_needs_release(need_kwh=0.0, departure=HOUR + timedelta(hours=4), **common)
+    assert departure_shortfall_kwh(need_kwh=2.0, departure=HOUR + timedelta(minutes=50), **common) == pytest.approx(0.4)
+    # A departure gone, or nothing needed: nothing to say.
+    assert departure_shortfall_kwh(need_kwh=50.0, departure=now, **common) is None
+    assert departure_shortfall_kwh(need_kwh=0.0, departure=HOUR + timedelta(hours=4), **common) is None
 
 
 # -- never raising what the fuse carries
@@ -287,3 +288,75 @@ def test_the_tracker_keeps_a_discharge_beside_the_hour_and_reads_a_record_withou
     older = {key: value for key, value in kept.items() if not key.startswith("discharge")}
     restored = RunningHour.from_dict(older)
     assert restored is not None and restored.discharge_wh == 0.0 and restored.import_wh == pytest.approx(2000.0 / 60, abs=1e-3)
+
+
+def test_a_departure_is_at_risk_past_a_margin_and_safe_again_only_with_room_to_spare() -> None:
+    assert not departure_at_risk(0.4, at_risk=False)
+    assert departure_at_risk(0.6, at_risk=False)
+    # Once at risk it stays so until the held power has half a kWh to spare.
+    assert departure_at_risk(0.0, at_risk=True)
+    assert departure_at_risk(-0.4, at_risk=True)
+    assert not departure_at_risk(-0.6, at_risk=True)
+    assert not departure_at_risk(None, at_risk=True)
+
+
+def test_a_window_the_target_held_is_planned_again_at_its_end_once_it_is_behind() -> None:
+    from custom_components.spotnav.planning.plan_watch import (
+        DECISION_END_REPLAN,
+        HELD_IMPORT_TARGET,
+        PlanWatch,
+        WindowFacts,
+    )
+
+    def night(held: str) -> tuple[str | None, float]:
+        watch = PlanWatch()
+        start, end = HOUR, HOUR + timedelta(hours=1)
+        decision = None
+        shortfall = 0.0
+        # The plan counts on 10 kW; the car delivers 9 (90 %, above the 80 % share).
+        for minute in range(0, 61, 1):
+            at = start + timedelta(minutes=minute)
+            facts = WindowFacts(
+                window=(start, end) if at < end else None,
+                power_kw=10.0,
+                reading_kwh=9.0 * minute / 60.0,
+                reading_at=at,
+                held=held,
+            )
+            decision = watch.check(at, facts) or decision
+            if minute == 50:
+                shortfall = watch.shortfall_kwh()
+        return decision, shortfall
+
+    decision, shortfall = night(HELD_IMPORT_TARGET)
+    assert decision == DECISION_END_REPLAN
+    assert shortfall == pytest.approx(50 / 60, abs=0.05)
+    assert night("balancing_limit")[0] is None, "any other hold of SpotNav's keeps the 80 % share"
+
+
+# -- the plan's choice when the car cannot be ready under the target (`if_not_ready`)
+
+
+def test_the_plans_choice_is_stored_only_once_chosen_and_kept_by_a_write_that_leaves_it_out() -> None:
+    from dataclasses import replace
+
+    from custom_components.spotnav.api.settings import replacement_mutator
+    from custom_components.spotnav.api.webhook import _for_app
+    from custom_components.spotnav.planning.auto_settings import AutoSettings
+
+    default = AutoSettings()
+    assert default.if_not_ready == "ask" and "if_not_ready" not in default.as_dict()
+    held = replace(default, if_not_ready="hold")
+    assert held.as_dict()["if_not_ready"] == "hold"
+    assert AutoSettings.from_stored(held.as_dict()).if_not_ready == "hold"
+    # An older client's full write leaves it out: what was chosen is kept.
+    kept = replacement_mutator(replace(default, amps=10), keep_if_not_ready=True)(held)
+    assert kept.if_not_ready == "hold" and kept.amps == 10
+    assert replacement_mutator(replace(default, if_not_ready="release"))(held).if_not_ready == "release"
+    with pytest.raises(Exception):
+        replace(default, if_not_ready="sometimes").validated()
+    # An app released before it never sees it.
+    body = {"settings": {"amps": 10, "if_not_ready": "hold"}}
+    assert "if_not_ready" not in _for_app(body, {"action": "dashboard"})["settings"]
+    assert _for_app(body, {"action": "dashboard", "reads": ["if_not_ready"]})["settings"]["if_not_ready"] == "hold"
+
