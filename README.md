@@ -14,12 +14,12 @@ meter and your cars.
 - **Solar and hybrid.** Charge from surplus, or hold back grid energy when the forecast promises sun.
   Chargers that can switch between one and three phases do so to follow the sun.
 - **Load balancing under your main fuse.** Several chargers share one fuse, with priority first,
-  normal or last, and a home battery's grid charging is signalled to Predbat and EMHASS.
+  normal or last, also beside a [home battery](docs/home-battery.md) that charges from the grid.
 - **Knows which car is plugged in.** With several cars at one charger it reads what the cars report and
   asks you only when that is not enough.
 - **Prices from your own Home Assistant.** Nord Pool, PVPC (Spain), Octopus Agile (Great Britain),
   Zonneplan (Netherlands) or your own free ENTSO-E key, plus your grid fee, also as a percentage of the
-  spot price or higher in high-load hours (2.3). The same price drives your heating and appliances
+  spot price or higher in high-load hours. The same price drives your heating and appliances
   through [blueprints](docs/automations.md).
 - **Card, app and nine languages.** A Lovelace card is included and the SpotNav Android app
   ([Google Play](https://play.google.com/store/apps/details?id=se.sensnology.spotnav),
@@ -29,8 +29,8 @@ meter and your cars.
 ## Does my hardware work?
 
 You need Home Assistant 2026.9 or newer with [HACS](https://hacs.xyz), and a charger Home Assistant can
-switch on and off. OCPP, Easee, Wallbox, Zaptec, go-e, Peblar, Wattpilot, NRGkick and more are
-supported, and any charger that exposes a switch works through the manual path. A grid meter is
+switch on and off. Confirmed on real hardware: OCPP (Charge Amps HALO) and Easee; almost 30 more
+charger integrations are supported, and any charger that exposes a switch works through the manual path. A grid meter is
 optional, needed for load balancing and solar. The full lists of chargers, meters, batteries and cars
 are in [Supported hardware](docs/supported.md). Rows marked "detected from the integration's source"
 are not yet confirmed on real hardware: SpotNav follows the integration's documented behaviour, and
@@ -44,8 +44,9 @@ reports on how they work are welcome.
 3. Confirm what SpotNav found. If you have a main fuse to share or want solar, also add **A site**:
    it finds your grid meter.
 4. Add the card: on a dashboard choose **Add card** and search for **SpotNav**.
-5. Add a price source. The card has a button for it: **Add Nord Pool** where Nord Pool trades your
-   area, or enter your own free ENTSO-E key under **Settings, Electricity price**.
+5. If the setup did not already ask for it, add a price source: the card has an **Add Nord Pool**
+   button where Nord Pool trades your area, or enter your own free ENTSO-E key under
+   **Settings, Electricity price**.
 6. Set the energy or target and the departure in the card. That is all.
 
 ![The Charger found dialog](docs/images/charger-found.png)
