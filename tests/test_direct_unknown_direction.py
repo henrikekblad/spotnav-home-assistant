@@ -294,3 +294,17 @@ async def test_a_slow_meter_does_not_hold_the_lowering(hass: HomeAssistant, monk
     await _tick(hass)
     assert site.regulator_decisions[charger.entry_id].reason == MAGNITUDE
     assert _assigned(configure_calls)[-1:] == [7]
+
+
+async def test_an_unavailable_site_gives_its_own_reason_not_the_direction(hass: HomeAssistant) -> None:
+    from custom_components.spotnav.api.dashboard import _active_control_reason
+
+    _report(hass, "nocharger_site", (8.0, 8.0, 8.0), 0.0)
+    site_entry = _unsigned_site(hass, "nocharger_site", [], [])
+    assert await hass.config_entries.async_setup(site_entry.entry_id)
+    await hass.async_block_till_done()
+    site = controller_of(hass, site_entry.entry_id)
+    load_balancing = site.capability_snapshot.load_balancing
+    assert not load_balancing.active_available
+    assert load_balancing.blocking_reasons == ("site_direction_unknown",)
+    assert _active_control_reason(site) == "no_commandable_charger"

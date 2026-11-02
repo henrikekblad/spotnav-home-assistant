@@ -917,8 +917,10 @@ def _active_control_reason(controller: SiteCapacityController) -> str | None:
         if REASON_SITE_DIRECTION_UNKNOWN in load_balancing.blocking_reasons:
             return REASON_SITE_DIRECTION_UNKNOWN
         return None
-    if load_balancing.blocking_reasons:
-        return str(load_balancing.blocking_reasons[0])
+    # Unavailable for another cause: that one, never the "only lowers" reason, which needs it available.
+    other = [reason for reason in load_balancing.blocking_reasons if reason != REASON_SITE_DIRECTION_UNKNOWN]
+    if other:
+        return str(other[0])
     return "no_commandable_charger"
 
 
