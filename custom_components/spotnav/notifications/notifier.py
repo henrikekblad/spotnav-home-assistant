@@ -248,6 +248,11 @@ def _departure_after(departure: Any, now: datetime) -> datetime | None:
     return dt_util.as_utc(moment)
 
 
+def _epoch(moment: datetime | None) -> int:
+    """A departure as the button's action id carries it: whole seconds since the epoch (0 when unknown)."""
+    return 0 if moment is None else int(moment.timestamp())
+
+
 def _instant(raw: Any) -> datetime | None:
     return dt_util.parse_datetime(raw) if isinstance(raw, str) else None
 
@@ -333,6 +338,9 @@ class ChargerNotifier:
         # The import target's shortfall told (`import_target_risk`): its departure and kWh, and the phones it went to.
         self._target_told: tuple[str, float] | None = None
         self._target_phones: tuple[str, ...] = ()
+        # The app's wake-up for it (its own limits), once per told shortfall; and a `plan_at_risk` held back behind it.
+        self._target_pushed: tuple[str, float] | None = None
+        self._at_risk_behind_target: dict[str, Any] | None = None
 
     async def async_load(self) -> None:
         """Read the last told plan's fingerprint, before `async_start`."""
@@ -453,8 +461,10 @@ class ChargerNotifier:
         for kind, attributes in self._tracker.observe(facts):
             if kind == EVENT_PLAN_AT_RISK:
                 if self._target_told is not None:
-                    # The import target's own shortfall is told in its place (`import_target_risk`).
+                    # The import target's own shortfall is told in its place (`import_target_risk`); kept, and told
+                    # once that notice is taken down while the plan still cannot be met.
                     _LOGGER.debug("SpotNav charger %s: plan_at_risk told as the import target's", self._entry_id)
+                    self._at_risk_behind_target = attributes
                     continue
                 if self._at_risk_told_for(attributes, now):
                     # Told before a restart for this departure: the first snapshot after the start is no news.
@@ -786,10 +796,17 @@ class ChargerNotifier:
         now = dt_util.utcnow()
         told = self._target_told
         if risk is None:
+            self._target_pushed = None
             if told is not None:
                 self._target_told = None
                 self.clear_vehicle_question(self._at_risk_tag(), self._target_phones)
                 self._target_phones = ()
+                behind = self._at_risk_behind_target
+                if behind is not None and self._at_risk_now:
+                    # The plan still cannot be met for reasons of its own: told now, as it was not before.
+                    self._mark_at_risk_told(behind, now)
+                    self._maybe_send(EVENT_PLAN_AT_RISK, behind, now)
+            self._at_risk_behind_target = None
             return
         if told is not None and told[0] == risk.departure:
             grown = risk.missing_kwh - told[1]
@@ -797,10 +814,10 @@ class ChargerNotifier:
                 return
         if self._connected is False:
             return  # nothing is charged with no car there
-        if self._push is not None:
+        if self._push is not None and self._target_pushed != (risk.departure, risk.missing_kwh):
+            self._target_pushed = (risk.departure, risk.missing_kwh)
             self._push.async_event(EVENT_PLAN_AT_RISK, now)
         notifications = self._store.settings(self._entry_id).notifications
-        self._target_told = (risk.departure, risk.missing_kwh)
         if not notifications.wants(EVENT_PLAN_AT_RISK) or not self._within_hourly_limit(now):
             return
         targets = tuple(
@@ -808,6 +825,8 @@ class ChargerNotifier:
         )
         if not targets:
             return
+        # Told from here on (not before: a notice the phones never got is no reason to keep `plan_at_risk` back).
+        self._target_told = (risk.departure, risk.missing_kwh)
         self._sent_times.append(now)
         self._last_sent[EVENT_PLAN_AT_RISK] = now
         language = language_of(self._hass.config.language)
@@ -825,8 +844,13 @@ class ChargerNotifier:
                 "tag": self._at_risk_tag(),
                 "group": "spotnav",
                 "channel": "SpotNav",
+                # The departure it was told for rides with the press: one for a departure no longer the plan's is
+                # refused (`SiteCapacityController.async_release_import_target`), a restart or a new plan whatever.
                 "actions": [
-                    {"action": f"{TARGET_RELEASE_ACTION}{self._entry_id}", "title": import_target_release_text(language)}
+                    {
+                        "action": f"{TARGET_RELEASE_ACTION}{self._entry_id}_{_epoch(departure)}",
+                        "title": import_target_release_text(language),
+                    }
                 ],
             },
         }
@@ -840,13 +864,18 @@ class ChargerNotifier:
     @callback
     def _on_action(self, event: Any) -> None:
         """A phone's "Release tonight": the target is set aside for this charger's charge until its departure."""
-        if event.data.get("action") != f"{TARGET_RELEASE_ACTION}{self._entry_id}":
+        action = event.data.get("action")
+        prefix = f"{TARGET_RELEASE_ACTION}{self._entry_id}_"
+        if not isinstance(action, str) or not action.startswith(prefix):
+            return
+        stamp = action.removeprefix(prefix)
+        if not stamp.isdigit():
             return
         from ..execution.solar_execution import site_controller_for_charger  # noqa: PLC0415 - it imports the site
 
         site = site_controller_for_charger(self._hass, self._entry_id)
         if site is not None:
-            site.async_release_import_target(self._entry_id)
+            site.async_release_import_target(self._entry_id, for_departure=int(stamp))
 
     # ------------------------------------------------------------------ which car is plugged in?
 
