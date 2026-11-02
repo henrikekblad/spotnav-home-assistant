@@ -46,7 +46,8 @@ reports on how they work are welcome.
    then **Automatic (recommended)**, and pick the charger's device.
 3. Confirm what SpotNav found. If you have a main fuse to share or want solar, also add **A site**:
    it finds your grid meter.
-4. Add the card: on a dashboard choose **Add card** and search for **SpotNav**.
+4. Add the card: on a dashboard choose **Add card** and search for **SpotNav**. The integration serves
+   the card itself, so there is no dashboard resource to add.
 5. If the setup did not already ask for it, add a price source: the card has an **Add Nord Pool**
    button where Nord Pool trades your area, or enter your own free ENTSO-E key under
    **Settings, Electricity price**.
