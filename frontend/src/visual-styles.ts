@@ -2681,7 +2681,7 @@ export const VISUAL_STYLES = `
     align-items: center;
     gap: 6px;
     min-width: 0;
-    overflow-wrap: anywhere;
+    overflow-wrap: break-word;
   }
   .${VISUAL_CLASSES.powerSwatch} {
     flex: none;

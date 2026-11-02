@@ -2280,7 +2280,7 @@ var hi="start",or="stop",yo="resume",mi="pause";var bf="normal",Oa="vehicle_not_
     align-items: center;
     gap: 6px;
     min-width: 0;
-    overflow-wrap: anywhere;
+    overflow-wrap: break-word;
   }
   .${a.powerSwatch} {
     flex: none;
