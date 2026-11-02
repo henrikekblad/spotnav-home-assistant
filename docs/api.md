@@ -50,7 +50,7 @@ charger executed whose pause could not be saved answers `{"ok": true, "action": 
 | `refresh_vehicle` | Re-read the vehicle's Home Assistant entities (`vehicle_id`); never a brand's wake-up (Kia Uvo may still ask the car itself, see [target SoC](target-soc.md)). |
 | `set_charge_limit` | Write the vehicle's charge-limit entity (`vehicle_id`, `percent`). |
 | `update_vehicle` | Change a vehicle's capacity, consumption, onboard charger, target, minimum charge level or wake for a reading, with `expected` values. |
-| `update_site_settings` | Change solar priority or forecast sources of the charger's site. |
+| `update_site_settings` | Change solar priority, forecast sources or the import target of the charger's site (see below). |
 | `update_charger_priority` | Change this charger's priority on its site: `{"priority", "expected"}` (see below). |
 | `update_phase_switching` | Turn phase switching for solar on or off for this charger: `{"enabled", "expected"}` (see below). |
 | `choose_price_source` | The electricity price this charger uses: `{"price_entry_id"}` (see below). |
@@ -523,6 +523,26 @@ integration refused the write). Each write is logged at INFO.
 **Capabilities of the webhook.** The dashboard's `charger.capabilities` has `plan_preview`, `dismiss_setup_item` and
 `fix_own_mode` beside `price_days`, `true` where the webhook answers that action. An older Home Assistant leaves them
 out (and answers the action `Unsupported action`), so an app offers the feature only where its key is `true`.
+`site_import_target` is `true` where `update_site_settings` takes `import_target_kw` (below).
+
+**The site's import target over the webhook.** Since 2.4 `update_site_settings` (and `spotnav/update_site_settings`)
+takes `import_target_kw` in `changes`: a JSON number from 0.1 to 1000 (kW, an hourly mean), or `null` to clear it.
+It is stored as the card's `spotnav/update_entity_config` stores it and written without reloading the site (the
+target is read on every recompute). `expected` may name it, the value last seen (`null` for none): a different
+stored value is `spotnav_conflict` (HTTP 409). A string, a boolean or a number out of bounds is
+`spotnav_invalid_value` (HTTP 400) and nothing is written. It may go with the solar fields in one write. A request
+that names it is answered with `import_target_kw` beside `site` (the value stored now, `null` for none), success or
+refusal:
+
+```json
+{"action": "update_site_settings", "expected": {"import_target_kw": null}, "changes": {"import_target_kw": 6.0}}
+→ {"api_version": 1, "ok": true, "error": null, "site": {…}, "restore": null, "import_target_kw": 6.0,
+   "action": "update_site_settings"}
+```
+
+A request that does not name it is answered as before and leaves the stored target as it is, so an older app's
+write keeps it. The dashboard shows it in `grid_tariff.demand.import_target_kw`. Full example:
+`tests/fixtures/webhook/update_site_settings_import_target.json`.
 
 **Permissions over the webhook.** The webhook id is the credential: whoever holds it acts as an administrator for
 its own charger (the dashboard's `writable` flags are true), so these writes, like `update_site_settings` and
@@ -554,7 +574,7 @@ and `charger_priority.writable` say whether it may change those (an administrato
 | `spotnav/update_vehicle` | A vehicle's battery capacity, consumption, onboard charger, target, minimum charge level and wake for a reading. |
 | `spotnav/write_charge_limit` | Write a car's own charge limit (`vehicle_id`, `percent`), the webhook's `set_charge_limit` over the WebSocket: same entity, range checks and one write a minute per car. Answers `{"api_version": 1, "ok", "error", "retry_after_s"}`; refusals `spotnav_invalid_value` (not a car with a writable limit, or a percent it cannot take), `spotnav_too_soon` (with `retry_after_s`), `spotnav_charge_limit_failed` (the car's integration failed the write). |
 | `spotnav/fix_own_mode` | Set one of the charger's own settings back (administrators only), the card's button on the status lines `charger_own_mode` (`entity`, `label`, `state`, `value`: one of the charger's own modes is on and works against SpotNav; `value` is the one value that ends it, `null` where there is no single safe one; `entity_name`, `state_name`, `value_name`: Home Assistant's name of the entity and the display names of `state` and `value` in its configured language, for a client without its frontend, the id or the raw value where it names none, `value_name` `null` with `value`) and `charger_disabled` (`entity`: its own enable switch, turned on; `entity_name` its name, `null` with `entity`). `{"api_version": 1, "charger_id", "entity_id", "value"}` is written only when, read again, that entity is still a conflict of this charger (an entity of its own device and integration that its profile names) and `value` is that conflict's fix: `select.select_option`, `switch.turn_off` or, for the enable switch, `switch.turn_on`. Answers `{"api_version": 1, "ok", "error"}`; refusals `spotnav_no_conflict` (any other entity or value, or a conflict that has ended) and `spotnav_own_mode_failed` (the charger's integration refused the write). Each write is logged at INFO. The webhook leaves `charger_own_mode` out unless the request asks for it (`"reads": ["own_mode_status"]`), and the block's tone is then its strongest line left. |
-| `spotnav/update_site_settings` | Solar priority, forecast sources, active load balancing. |
+| `spotnav/update_site_settings` | Solar priority, forecast sources, the import target, active load balancing. |
 | `spotnav/update_grid_tariff` | The grid tariff of the charger's electricity price (administrators only): `{"charger_id", "expected_write_revision", "grid_tariff"}` as the webhook's `update_grid_tariff` (see **Grid tariff** under [Charger webhook](#charger-webhook)). Answers `{"ok": true, "grid_tariff": {...}}` with the block re-read, or the error codes `invalid_fiscal`, `invalid_number`, `revision_conflict`, `spotnav_no_price_entry`, `spotnav_not_admin` and the charger lookup's. |
 | `spotnav/get_debug_bundle` | The redacted installation-wide debug bundle (administrators only). |
 | `spotnav/get_blueprints` | How many automations use each of SpotNav's [blueprints](automations.md) (administrators only): `{"api_version": 1, "ok": true, "error": null, "blueprints": [{"file", "path", "automations"}]}`, one row per blueprint, `path` being `spotnav/<file>` as an automation refers to it. A non-administrator gets `spotnav_not_admin` and no rows. Not a dashboard field, so the app is never handed a key it does not know. |
