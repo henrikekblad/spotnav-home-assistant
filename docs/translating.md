@@ -1,5 +1,7 @@
 # Translating SpotNav
 
+For translators and contributors: where SpotNav's texts live and how to add or improve a language.
+
 Every text SpotNav shows lives in a JSON file per language. English is the source: every other
 language has exactly the English keys, with the same `{placeholders}`. Today SpotNav speaks English
 (`en`), Swedish (`sv`), Danish (`da`), Norwegian Bokmål (`nb`), Finnish (`fi`), German (`de`), Dutch
