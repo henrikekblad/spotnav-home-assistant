@@ -1087,6 +1087,16 @@ describe("the site's estimate, warnings, sign options and detected meters", () =
     ]);
   });
 
+  it("shows where the site reads the charger's measured current in the dialog of the charger's current", async () => {
+    const { element } = await mounted({ get: "get_direct" });
+    openSettings(element);
+    await settle();
+    edit(element, "charger", "current");
+    const line = openDialog(element)?.querySelector<HTMLElement>("[data-measured-source]");
+    expect(line?.hidden).toBe(false);
+    expect(line?.textContent).toContain(translate("en", "entity.measuredSource.none"));
+  });
+
   it("offers a charger's own current sensors in the site editor, with Use that applies them by id", async () => {
     const { hass, element } = await mounted({
       get: "get_direct",

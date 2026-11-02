@@ -1638,6 +1638,8 @@ export function entityEditorBody(
   if (sourceField !== undefined && sourceField.kind === "enum") {
     const sourceLine = element(doc, "p", C.siteApplies);
     sourceLine.dataset["measuredSource"] = sourceField.value ?? "";
+    // Shown with the charger's current, the Settings row it belongs to (a part's dialog hides the rest).
+    sourceLine.dataset["focusWith"] = "current-limit";
     const own = sourceField.ownSensors;
     sourceLine.append(
       sourceField.value !== null && sourceField.value !== ""
