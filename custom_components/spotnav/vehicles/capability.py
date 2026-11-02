@@ -26,6 +26,13 @@ from ..site.site_capacity import (
 from ..site.solar_capability import SolarCapability
 
 
+#: A blocking reason that does not take `active_available` away: a direct site whose currents carry no sign, or
+#: without the total grid power to confirm one, can never know a phase's direction, so load balancing only lowers
+#: an overload by |I| there and never raises (`site/regulator.py`). The fix is the person's: *The grid current is
+#: signed* and the total grid power (or the detected meter, which brings both). Gone as soon as both are set.
+REASON_SITE_DIRECTION_UNKNOWN = "site_direction_unknown"
+
+
 HealthState = Literal[
     "not_configured",
     "configured_missing",
@@ -92,6 +99,7 @@ def build_capability_snapshot(
     charger_is_commandable: Mapping[str, bool] | None = None,
     active_control_enabled: bool = False,
     solar: SolarCapability | None = None,
+    direction_never_known: bool = False,
 ) -> SiteCapabilitySnapshot:
     """Build the snapshot. `requests` is what would be passed to `calculate_site_capacity` now.
 
@@ -102,6 +110,10 @@ def build_capability_snapshot(
     write on (`current_control` is `CURRENT_CONTROL_CHANGE_CONFIGURATION`), not
     derived from `charger_has_current_control`: a charger with a current entity
     but no opt-in is never written to. `None` means "no commandable charger".
+
+    `direction_never_known` (a direct site without both a signed current and the total grid power) adds
+    `REASON_SITE_DIRECTION_UNKNOWN` to `blocking_reasons` but leaves `active_available` as it is: turned on,
+    load balancing still lowers an overload there, which is better than nothing.
     """
     probe_result = calculate_site_capacity(config, requests)
 
@@ -119,6 +131,8 @@ def build_capability_snapshot(
         blocking.append(f"site_measurement_{site_measurement.health}")
     if membership_conflict_charger_ids:
         blocking.append("duplicate_membership")
+    if direction_never_known:
+        blocking.append(REASON_SITE_DIRECTION_UNKNOWN)
 
     # Mirrors exactly what `SiteCapacityController._async_apply_active_control`
     # requires before writing: the global ready flag, healthy site measurement,

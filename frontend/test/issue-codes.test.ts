@@ -320,3 +320,14 @@ describe("a normal state is not shown as an error", () => {
     expect(source.toLowerCase()).not.toContain("dismiss(");
   });
 });
+
+describe("the direction a direct site cannot know", () => {
+  it("is worded as what to set, in every language", () => {
+    for (const language of ["sv", "en", "nb", "da", "fi", "de", "fr", "nl", "es"] as const) {
+      const said = activeControlReasonText(language, "site_direction_unknown");
+      expect(said?.code, language).toBeNull();
+      expect(said?.text, language).not.toBe(translate(language, "issue.unknown"));
+    }
+    expect(activeControlReasonText("sv", "site_direction_unknown")?.text).toContain("Nätströmmen är teckenmärkt");
+  });
+});
