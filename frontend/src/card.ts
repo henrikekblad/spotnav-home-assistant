@@ -12,6 +12,9 @@
 //   (`i18n/index.ts`). Until the reader's language is in, the card shows its loading state with no
 //   words, so a Swedish reader never sees English first; a language changed later keeps the card in
 //   the old one until the new one is in. A failed fetch leaves the card in English until a reload.
+// - Self-heal (`self-heal.ts`): an answer the card cannot read, or a language file it cannot fetch, makes it
+//   ask which card the integration serves. A newer one: the page reloads once for it (or offers a button);
+//   the same one: the dashboard read is retried twice before `state.malformed` shows.
 // - Disconnect stops the timer, bumps the generation, forgets the in-flight attempt and destroys the view.
 // - Actions: one request per click, only for an action and choice the rendered snapshot offered and only
 //   when `can_act`. Nothing is rendered optimistically. While an action is in flight, ordinary reads are
@@ -79,6 +82,17 @@ import { decodeBlueprintUse, type BlueprintUse } from "./automations";
 import { decodeDebugAnswer, saveDebugBundle } from "./debug-download";
 import { cardOutdated, clientBlock, decodeCardInfo, ownCardBundleHash, servedHashFromBundle } from "./card-identity";
 import { saveTextFile } from "./download";
+import {
+  CARD_INFO_TIMEOUT_MS,
+  MALFORMED_RETRY_DELAYS_MS,
+  RELOAD_DELAY_MS,
+  claimReload,
+  isMalformed,
+  reloadPage,
+  sessionStore,
+  updateNoticeElement,
+  type UpdateNotice,
+} from "./self-heal";
 import { ensureHaSelector } from "./entity-editor";
 import type { FiscalComponentName, ValueWrite } from "./value-writes";
 import { GRID_TARIFF_CONFLICT, gridTariffIncluded, sameBody, storedBody } from "./grid-tariff";
@@ -259,6 +273,20 @@ const SETTINGS_CONFIRM_NOTICE: ConfirmNotice = {
   target: "settings",
 };
 
+/** Which card the integration serves, against the one running here (`unknown` when it cannot be told). */
+type CardCheck = "newer" | "same" | "unknown";
+
+/** The cards on this page: a reload is made only when none of them holds unsaved input. */
+const liveCards = new Set<SpotnavCard>();
+
+/** True once this page has decided to reload for a newer card (the line says so meanwhile). */
+let pageReloading = false;
+
+/** Tests only: forget that this page decided to reload. */
+export function forgetPageReloadForTest(): void {
+  pageReloading = false;
+}
+
 type CardState =
   | { kind: "unconfigured" }
   | { kind: "loading" }
@@ -360,6 +388,13 @@ export class SpotnavCard extends HTMLElement {
   private priceRemovableNote = false;
   private confirmReadFailed = false;
   private deferredRefresh = false;
+  /** The line saying SpotNav was updated, once this card knows it runs an older card than the one served. */
+  private updateNotice: UpdateNotice | null = null;
+  /** The question to the integration about which card it serves, while it is asked. */
+  private cardCheck: Promise<CardCheck> | null = null;
+  /** Retries made after unreadable dashboards from the same card version, and the one waiting. */
+  private malformedRetries = 0;
+  private malformedRetry: number | null = null;
   private readonly idPrefix: string;
   /**
    * The chart choice made in this card since its config was set: it holds across the view rebuilt on
@@ -410,6 +445,7 @@ export class SpotnavCard extends HTMLElement {
     this.historyOperation += 1;
     this.history = null;
     this.entitySaving = false;
+    this.stopMalformedRetry();
     this.closeEditor();
     this.cardState = this.config.charger === "" ? { kind: "unconfigured" } : { kind: "loading" };
     this.render({ force: true });
@@ -450,7 +486,11 @@ export class SpotnavCard extends HTMLElement {
       this.language = next;
       return;
     }
-    void loadLanguage(next).then(() => {
+    void loadLanguage(next).then((loaded) => {
+      if (!loaded) {
+        // An old card asks for its own language file, which a newer SpotNav no longer serves.
+        void this.checkForNewerCard();
+      }
       if (this.wantedLanguage !== next) {
         return;
       }
@@ -467,6 +507,7 @@ export class SpotnavCard extends HTMLElement {
 
   connectedCallback(): void {
     this.connected = true;
+    liveCards.add(this);
     globalThis.addEventListener?.(CHART_AXIS_EVENT, this.onDisplayChanged);
     globalThis.addEventListener?.(PRICE_UNIT_EVENT, this.onDisplayChanged);
     globalThis.addEventListener?.("storage", this.onDisplayChanged);
@@ -475,6 +516,8 @@ export class SpotnavCard extends HTMLElement {
 
   disconnectedCallback(): void {
     this.connected = false;
+    liveCards.delete(this);
+    this.stopMalformedRetry();
     globalThis.removeEventListener?.(CHART_AXIS_EVENT, this.onDisplayChanged);
     globalThis.removeEventListener?.(PRICE_UNIT_EVENT, this.onDisplayChanged);
     globalThis.removeEventListener?.("storage", this.onDisplayChanged);
@@ -802,7 +845,7 @@ export class SpotnavCard extends HTMLElement {
       if (!this.editorIsCurrent(generation, operation)) {
         return;
       }
-      const decoded = decodeSettingsAnswer(raw);
+      const decoded = this.watched(decodeSettingsAnswer(raw));
       if (!decoded.ok) {
         this.showEditorNotice(
           kind,
@@ -872,7 +915,7 @@ export class SpotnavCard extends HTMLElement {
       const code = settingsOutcome.reason instanceof SpotnavApiError ? settingsOutcome.reason.code : null;
       return { ok: false, sentenceKey: settingsErrorKey(code), code };
     }
-    const decodedSettings = decodeSettingsAnswer(settingsOutcome.value);
+    const decodedSettings = this.watched(decodeSettingsAnswer(settingsOutcome.value));
     if (!decodedSettings.ok) {
       return {
         ok: false,
@@ -892,7 +935,7 @@ export class SpotnavCard extends HTMLElement {
       const code = marketOutcome.reason instanceof SpotnavApiError ? marketOutcome.reason.code : null;
       return { ok: false, sentenceKey: settingsErrorKey(code), code };
     }
-    const decodedMarket = decodeMarketOptions(marketOutcome.value);
+    const decodedMarket = this.watched(decodeMarketOptions(marketOutcome.value));
     if (!decodedMarket.ok) {
       return {
         ok: false,
@@ -1058,7 +1101,7 @@ export class SpotnavCard extends HTMLElement {
       if (!this.editorIsCurrent(generation, operation)) {
         return;
       }
-      const decoded = decodeSettingsAnswer(raw);
+      const decoded = this.watched(decodeSettingsAnswer(raw));
       if (!decoded.ok) {
         this.showMarketNotice(
           decoded.failure === "unsupported" ? "settings.error.version" : "settings.error.generic",
@@ -1201,7 +1244,7 @@ export class SpotnavCard extends HTMLElement {
       const charger = config.charger;
       const scheduler = new PreviewScheduler<SettingsBody>({
         ask: (body) => previewPlan(hass, charger, body),
-        decode: decodePlanPreview,
+        decode: (raw) => this.watched(decodePlanPreview(raw)),
         paint: (state) => {
           if (this.editor === editor && this.view?.settingsEditorOpen() === "plan") {
             this.view.setSettingsPreview(state);
@@ -1263,7 +1306,7 @@ export class SpotnavCard extends HTMLElement {
       if (!this.editorIsCurrent(generation, operation)) {
         return;
       }
-      const decoded = decodeSettingsAnswer(raw);
+      const decoded = this.watched(decodeSettingsAnswer(raw));
       if (!decoded.ok) {
         this.showEditorNotice(
           kind,
@@ -1332,7 +1375,7 @@ export class SpotnavCard extends HTMLElement {
       if (!this.editorIsCurrent(generation, operation)) {
         return;
       }
-      const decoded = decodeSettingsAnswer(raw);
+      const decoded = this.watched(decodeSettingsAnswer(raw));
       if (!decoded.ok) {
         this.showEditorNotice(
           kind,
@@ -1483,7 +1526,7 @@ export class SpotnavCard extends HTMLElement {
       if (stale()) {
         return;
       }
-      const decodedRecord = decodeSettingsAnswer(rawRecord);
+      const decodedRecord = this.watched(decodeSettingsAnswer(rawRecord));
       if (!decodedRecord.ok || decodedRecord.value.settings === null) {
         this.view?.setSettingsError({
           sentenceKey:
@@ -1507,7 +1550,7 @@ export class SpotnavCard extends HTMLElement {
       if (stale()) {
         return;
       }
-      const decoded = decodeSettingsAnswer(raw);
+      const decoded = this.watched(decodeSettingsAnswer(raw));
       if (!decoded.ok) {
         this.view?.setSettingsError({
           sentenceKey: decoded.failure === "unsupported" ? "settings.error.version" : "settings.error.generic",
@@ -1638,7 +1681,7 @@ export class SpotnavCard extends HTMLElement {
     const current = (): boolean =>
       this.connected && generation === this.generation && operation === this.historyOperation && this.view === view;
     try {
-      const decoded = decodeSessions(await getSessions(hass, config.charger, 20, month));
+      const decoded = this.watched(decodeSessions(await getSessions(hass, config.charger, 20, month)));
       if (!current()) {
         return;
       }
@@ -1720,7 +1763,7 @@ export class SpotnavCard extends HTMLElement {
       if (!current()) {
         return;
       }
-      const decoded = decodeEntityAnswer(raw);
+      const decoded = this.watched(decodeEntityAnswer(raw));
       if (!decoded.ok) {
         view.setEntityState({
           kind: "failed",
@@ -1816,7 +1859,7 @@ export class SpotnavCard extends HTMLElement {
       if (generation !== this.generation || !this.connected) {
         return;
       }
-      const decoded = decodeEntityAnswer(raw);
+      const decoded = this.watched(decodeEntityAnswer(raw));
       if (!decoded.ok) {
         if (open()) {
           view.setEntityEditorNotice({
@@ -1978,7 +2021,7 @@ export class SpotnavCard extends HTMLElement {
       if (stale()) {
         return;
       }
-      const decoded = decodeSiteSettingsAnswer(raw);
+      const decoded = this.watched(decodeSiteSettingsAnswer(raw));
       if (!decoded.ok) {
         fallback = {
           sentenceKey: decoded.failure === "unsupported" ? "settings.error.version" : "settings.error.generic",
@@ -2164,9 +2207,9 @@ export class SpotnavCard extends HTMLElement {
     };
     switch (write.kind) {
       case "vehicle": {
-        const decoded = decodeVehicleAnswer(
+        const decoded = this.watched(decodeVehicleAnswer(
           await updateVehicle(hass, charger, { vehicleId: write.vehicleId, changes: write.changes, expected: write.expected }),
-        );
+        ));
         if (!decoded.ok) {
           return decoded.failure === "unsupported" ? "settings.error.version" : "entity.error.generic";
         }
@@ -2181,7 +2224,7 @@ export class SpotnavCard extends HTMLElement {
         return errors.length > 0 && errors[0] !== undefined ? fieldErrorKey(errors[0].code) : entityErrorKey(decoded.value.code);
       }
       case "vehicleSoc": {
-        const decoded = decodeEntityAnswer(await setVehicleSoc(hass, charger, { vehicleId: write.vehicleId, entityId: write.entityId }));
+        const decoded = this.watched(decodeEntityAnswer(await setVehicleSoc(hass, charger, { vehicleId: write.vehicleId, entityId: write.entityId })));
         if (!decoded.ok) {
           return decoded.failure === "unsupported" ? "settings.error.version" : "entity.error.generic";
         }
@@ -2234,7 +2277,7 @@ export class SpotnavCard extends HTMLElement {
         if (!change.changed) {
           return null;
         }
-        const decoded = decodeEntityAnswer(await updateEntityConfig(hass, charger, change.request));
+        const decoded = this.watched(decodeEntityAnswer(await updateEntityConfig(hass, charger, change.request)));
         if (!decoded.ok) {
           return decoded.failure === "unsupported" ? "settings.error.version" : "entity.error.generic";
         }
@@ -2261,7 +2304,7 @@ export class SpotnavCard extends HTMLElement {
         if (request === null) {
           return null;
         }
-        const decoded = decodeSiteSettingsAnswer(await updateSiteSettings(hass, charger, request));
+        const decoded = this.watched(decodeSiteSettingsAnswer(await updateSiteSettings(hass, charger, request)));
         if (!decoded.ok) {
           return decoded.failure === "unsupported" ? "settings.error.version" : "settings.error.generic";
         }
@@ -2312,7 +2355,7 @@ export class SpotnavCard extends HTMLElement {
           getSettings(hass, charger),
           write.kind === "fiscal" ? getMarketOptions(hass, charger) : Promise.resolve(null),
         ]);
-        const read = decodeSettingsAnswer(settingsRaw);
+        const read = this.watched(decodeSettingsAnswer(settingsRaw));
         if (!read.ok || read.value.settings === null) {
           return read.ok && !read.value.ok ? settingsErrorKey(read.value.code) : "settings.error.read";
         }
@@ -2321,7 +2364,7 @@ export class SpotnavCard extends HTMLElement {
         if (write.kind === "settings") {
           check = write.build(record);
         } else {
-          const options = decodeMarketOptions(optionsRaw);
+          const options = this.watched(decodeMarketOptions(optionsRaw));
           if (!options.ok) {
             return options.failure === "unsupported" ? "market.error.version" : "market.error.read";
           }
@@ -2333,7 +2376,7 @@ export class SpotnavCard extends HTMLElement {
         if (!check.changed) {
           return null;
         }
-        const decoded = decodeSettingsAnswer(await updateSettings(hass, charger, record.revision, check.body));
+        const decoded = this.watched(decodeSettingsAnswer(await updateSettings(hass, charger, record.revision, check.body)));
         if (!decoded.ok) {
           return decoded.failure === "unsupported" ? "settings.error.version" : "settings.error.generic";
         }
@@ -2364,8 +2407,8 @@ export class SpotnavCard extends HTMLElement {
       if (generation !== this.generation || !this.connected) {
         return;
       }
-      const read = decodeSettingsAnswer(settingsRaw);
-      const options = decodeMarketOptions(optionsRaw);
+      const read = this.watched(decodeSettingsAnswer(settingsRaw));
+      const options = this.watched(decodeMarketOptions(optionsRaw));
       if (!read.ok || read.value.settings === null || !options.ok) {
         this.view?.setSettingsError({ sentenceKey: "settings.error.read", code: null });
         return;
@@ -2427,6 +2470,26 @@ export class SpotnavCard extends HTMLElement {
     if (!this.accepts(charger, generation, attempt)) {
       return; // A late answer for a charger, a configuration or an attempt that is no longer current.
     }
+    if (next.kind === "malformed" || next.kind === "unsupported") {
+      // Perhaps this is an old card, kept by the browser after SpotNav was updated.
+      const check = await this.checkForNewerCard();
+      if (!this.accepts(charger, generation, attempt)) {
+        return;
+      }
+      if (check === "newer" && purpose === "ordinary") {
+        // The line says SpotNav was updated; a dashboard already shown stays under it.
+        if (this.cardState.kind !== "ready") {
+          this.cardState = next;
+          this.render();
+        }
+        return;
+      }
+      if (check === "same" && next.kind === "malformed" && purpose === "ordinary" && this.retryMalformedLater()) {
+        return; // Taken as transient (Home Assistant restarting): what is shown stays until the retry.
+      }
+    } else if (next.kind === "ready") {
+      this.malformedRetries = 0;
+    }
     if (purpose === "confirm" && next.kind !== "ready") {
       // // The envelope was accepted but the state could not be read back: keep the confirmed dashboard and
       // // graph, make the trigger usable again and show `confirmationFailed`. It is not `reconcileFailed`,
@@ -2439,6 +2502,165 @@ export class SpotnavCard extends HTMLElement {
     this.cardState = next;
     this.render();
     this.followOutcome();
+  }
+
+  /**
+   * After an unreadable dashboard from the card version the integration serves: read again after the next
+   * wait in `MALFORMED_RETRY_DELAYS_MS`. False once they are used up (the card then says it cannot read).
+   */
+  private retryMalformedLater(): boolean {
+    if (this.malformedRetry !== null) {
+      return true;
+    }
+    const delay = MALFORMED_RETRY_DELAYS_MS[this.malformedRetries];
+    if (delay === undefined) {
+      return false;
+    }
+    this.malformedRetries += 1;
+    this.malformedRetry = window.setTimeout(() => {
+      this.malformedRetry = null;
+      void this.refresh({ force: true });
+    }, delay);
+    return true;
+  }
+
+  private stopMalformedRetry(): void {
+    if (this.malformedRetry !== null) {
+      window.clearTimeout(this.malformedRetry);
+      this.malformedRetry = null;
+    }
+    this.malformedRetries = 0;
+  }
+
+  /** Pass a decoder's verdict on; an unreadable answer makes the card ask whether a newer card is served. */
+  private watched<T>(result: T): T {
+    if (isMalformed(result)) {
+      void this.checkForNewerCard();
+    }
+    return result;
+  }
+
+  /**
+   * Ask which card the integration serves. `newer`: another than this one, and the line then shows (the
+   * page reloads once for it when it may); `same`: this card; `unknown`: either hash cannot be had, the
+   * command is missing or does not answer in time. One question at a time per card.
+   */
+  private checkForNewerCard(): Promise<CardCheck> {
+    if (this.updateNotice !== null) {
+      return Promise.resolve("newer");
+    }
+    if (this.cardCheck === null) {
+      this.cardCheck = this.askForServedCard().finally(() => {
+        this.cardCheck = null;
+      });
+    }
+    return this.cardCheck;
+  }
+
+  private async askForServedCard(): Promise<CardCheck> {
+    const hass = this.hassObject;
+    const own = ownCardBundleHash();
+    if (!this.connected || hass === null || own === null) {
+      return "unknown";
+    }
+    let raw: unknown;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      raw = await Promise.race([
+        getCardInfo(hass),
+        new Promise<null>((resolve) => {
+          timer = setTimeout(() => resolve(null), CARD_INFO_TIMEOUT_MS);
+        }),
+      ]);
+    } catch {
+      return "unknown";
+    } finally {
+      clearTimeout(timer);
+    }
+    const served = decodeCardInfo(raw)?.cardBundleHash ?? null;
+    const outdated = cardOutdated(own, served);
+    if (outdated === false) {
+      return "same";
+    }
+    if (outdated !== true || served === null) {
+      return "unknown";
+    }
+    if (this.updateNotice === null) {
+      this.offerNewerCard(served);
+    }
+    return "newer";
+  }
+
+  /**
+   * A newer card is served: reload the page once for it, with the line saying so just before. Where the
+   * reload was already made for this hash (the old card is still here), storage cannot remember it, or a
+   * card on the page holds unsaved input, the line offers the Reload button instead.
+   */
+  private offerNewerCard(served: string): void {
+    if (pageReloading) {
+      this.showUpdateNotice("reloading");
+      return;
+    }
+    if (SpotnavCard.anyUnsavedInput() || !claimReload(sessionStore(), served)) {
+      this.showUpdateNotice("button");
+      return;
+    }
+    pageReloading = true;
+    this.showUpdateNotice("reloading");
+    window.setTimeout(() => {
+      if (SpotnavCard.anyUnsavedInput()) {
+        // Input began meanwhile: nothing reloads by itself now (the one reload for this hash is spent).
+        pageReloading = false;
+        for (const card of liveCards) {
+          if (card.updateNotice === "reloading") {
+            card.showUpdateNotice("button");
+          }
+        }
+        return;
+      }
+      reloadPage();
+    }, RELOAD_DELAY_MS);
+  }
+
+  private static anyUnsavedInput(): boolean {
+    for (const card of liveCards) {
+      if (card.holdsUnsavedInput()) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /** An editor dialog is open (the Plan dialog, a settings, fee, entity or value editor), or a save runs. */
+  private holdsUnsavedInput(): boolean {
+    const view = this.view;
+    return (
+      this.editor !== null ||
+      this.marketEditor !== null ||
+      this.entitySaving ||
+      (view !== null &&
+        (view.settingsEditorOpen() !== null ||
+          view.marketEditorOpen() ||
+          view.entityEditorOpen() !== null ||
+          view.valueEditorOpen()))
+    );
+  }
+
+  /** The words for the line: the reader's language even when its file could not be had. */
+  private get noticeLanguage(): Language {
+    return this.wantedLanguage ?? this.languageOrFallback;
+  }
+
+  private showUpdateNotice(notice: UpdateNotice): void {
+    this.updateNotice = notice;
+    if (!this.connected) {
+      return;
+    }
+    if (this.cardState.kind === "ready" && this.view !== null) {
+      this.view.setUpdateNotice(updateNoticeElement(this.ownerDocument, this.noticeLanguage, notice));
+      return;
+    }
+    this.render();
   }
 
   private accepts(charger: string, generation: number, attempt: number): boolean {
@@ -2522,6 +2744,11 @@ export class SpotnavCard extends HTMLElement {
     const host = doc.createElement("div");
     host.className = VISUAL_CLASSES.shell;
     this.root.replaceChildren(style, host);
+
+    if (this.updateNotice !== null && this.cardState.kind !== "ready" && this.cardState.kind !== "unconfigured") {
+      host.append(updateNoticeElement(doc, this.noticeLanguage, this.updateNotice));
+      return;
+    }
 
     if (this.waitingForLanguage()) {
       // The loading state before the reader's language is known or in: no words in any language yet.
@@ -2673,6 +2900,9 @@ export class SpotnavCard extends HTMLElement {
           }
         },
       });
+      if (this.updateNotice !== null) {
+        this.view.setUpdateNotice(updateNoticeElement(doc, this.noticeLanguage, this.updateNotice));
+      }
       if (this.reopenOverview && this.confirmingReturn === 0) {
         this.reopenOverview = false;
         this.view.openSettingsOverview();

@@ -382,6 +382,8 @@ export interface CardView {
   setDebugPending(pending: boolean): void;
   /** Whether the card running here differs from the one the integration serves: Support then says to reload. */
   setCardOutdated(outdated: boolean): void;
+  /** The line saying SpotNav was updated (`self-heal.ts`), at the top of the card; `null` takes it away. */
+  setUpdateNotice(notice: HTMLElement | null): void;
   /** Close the Settings popover without returning focus (the card is about to redraw it). */
   closeSettingsOverview(): void;
   /** Whether a value editor is open. */
@@ -4950,6 +4952,13 @@ export function createCardView(input: CardViewInput): CardView {
     },
     closeSettingsOverview(): void {
       settingsOverviewDialog.hide({ restoreFocus: false });
+    },
+    setUpdateNotice(notice: HTMLElement | null): void {
+      card.querySelector(":scope > [data-card-updated]")?.remove();
+      if (notice !== null) {
+        card.prepend(notice);
+      }
+      fit();
     },
     setActionError(failure: FailureSentence | null): void {
       if (failure === null) {

@@ -933,6 +933,10 @@ export const VISUAL_STYLES = `
     margin-top: 0;
   }
   /** "Automations": a blueprint's name over its sentence, each blueprint apart from the one above. */
+  /** "SpotNav has been updated" (self-heal.ts): first in the card, apart from what follows. */
+  .spotnav-suggestion[data-card-updated]:first-child {
+    margin: 0 0 8px;
+  }
   .spotnav-suggestion[data-blueprint] {
     margin-top: 14px;
   }
