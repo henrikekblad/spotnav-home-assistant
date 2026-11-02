@@ -253,7 +253,8 @@ export function componentEditor(
           remove.disabled = false;
         });
     });
-    body.append(remove);
+    // Beside Save and Cancel: the form's last part is its actions line.
+    (editor.form.lastElementChild ?? body).append(remove);
   }
   editor.submit(async () => {
     const hours = counted.value === "window" ? window.read() : null;
