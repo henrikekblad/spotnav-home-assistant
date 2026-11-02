@@ -22,7 +22,8 @@ smaller of that and what the fuse allows.
   with it running at its minimum for the rest of the hour (`allowed_w` is exactly that projection), so it is paused
   until the next clock hour (`ACTION_PAUSED`); a charger already paused this hour stays paused. A switch-only charger
   runs only while its whole switched power fits what is left. A charger the target may not hold (a person's Start, a
-  charge the departure needs, a decision the fuse made) is counted at what it draws and never held.
+  charge the departure needs, a decision the fuse made) is counted at what it draws and never held. In the hour's
+  last `RAISE_LOCK_S` nothing is raised above what a charger is given: only lowerings and pauses still act.
 * **The departure wins** (`departure_needs_release`): a plan's charge is not held when what the plan still expects to
   deliver before its departure (`plan_remaining_kwh`) is more than the held power delivers by then (this hour at the
   held power, every later hour at what the target leaves beside the house's load now).
@@ -42,6 +43,10 @@ from .demand_tracker import GAP_MAX_S, HOUR_S, RunningHour
 HOLD_VOLTAGE_V: Final = 230.0
 #: The least time left of the hour the budget is spread over: the division explodes in the last seconds.
 MIN_REMAINING_S: Final = 60.0
+#: In the hour's last ten minutes the target raises no charger above what it is given (`SiteCapacityController.
+#: _hold_to_import_target`): what is left of the budget is spread over too little time to be worth a raise that the
+#: next hour takes back, and the lowering that follows waits for the dwell, past the next hour's start.
+RAISE_LOCK_S: Final = 600.0
 #: How much more (kWh) the plan must still need than the held power delivers by the departure to set the target aside.
 RELEASE_MARGIN_KWH: Final = 0.05
 
@@ -94,14 +99,17 @@ def hour_budget(
     over `extra_covered_s` (`None`: no such energy is counted)."""
     if running is None or not running.start <= now < running.start + timedelta(hours=1):
         return None, NOT_APPLIED_NO_HOUR
-    if running.last_at is None or running.last_grid_w is None or running.covered_s <= 0:
+    if running.last_at is None or running.last_grid_w is None:
+        return None, NOT_APPLIED_NO_READING
+    measured_span_s = max(running.covered_s, (running.last_at - running.start).total_seconds())
+    if running.covered_s <= 0 and measured_span_s > 0:
         return None, NOT_APPLIED_NO_READING
     if running.gap_s > GAP_MAX_S:
         return None, NOT_APPLIED_GAP
     if house_w is None or not math.isfinite(house_w):
         return None, NOT_APPLIED_HOUSE_UNKNOWN
-    measured_span_s = max(running.covered_s, (running.last_at - running.start).total_seconds())
-    so_far_wh = running.import_wh * measured_span_s / running.covered_s
+    # The hour's first reading, taken right at its start (the last hour's reading carried over): nothing so far.
+    so_far_wh = 0.0 if measured_span_s <= 0 else running.import_wh * measured_span_s / running.covered_s
     if extra_covered_s is not None:
         if measured_span_s - extra_covered_s > GAP_MAX_S:
             return None, NOT_APPLIED_BATTERY_GAP
@@ -119,7 +127,7 @@ def hour_budget(
             hour_start=running.start,
             hour_end=hour_end,
             so_far_kwh=so_far_wh / 1000.0,
-            hour_kw=so_far_wh / measured_span_s * 3.6,
+            hour_kw=0.0 if measured_span_s <= 0 else so_far_wh / measured_span_s * 3.6,
             remaining_s=remaining_s,
             house_w=house_w,
             allowed_w=allowed_w,

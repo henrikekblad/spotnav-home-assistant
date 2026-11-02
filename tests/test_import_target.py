@@ -118,6 +118,13 @@ def test_nothing_is_held_when_the_hour_cannot_be_known(running, house_w, reason)
     assert budget is None and why == reason
 
 
+def test_the_first_reading_of_an_hour_at_its_very_start_counts_nothing_so_far() -> None:
+    running = RunningHour(start=HOUR, last_at=HOUR, last_grid_w=2000.0)
+    budget, why = hour_budget(target_kw=6.0, running=running, now=HOUR, house_w=1000.0, ceiling_w=FUSE_W)
+    assert why is None and budget is not None
+    assert budget.so_far_kwh == 0.0 and budget.allowed_w == pytest.approx(5000.0)
+
+
 def test_an_hour_already_over_is_not_the_running_one() -> None:
     budget, why = hour_budget(
         target_kw=6.0, running=_running(30, 2.0), now=HOUR + timedelta(minutes=61), house_w=0.0, ceiling_w=FUSE_W
