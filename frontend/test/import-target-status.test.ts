@@ -132,3 +132,36 @@ describe("the press beside the import target's shortfall", () => {
     expect(bannerRepeatsStatus(model, "notice")).toBe(false);
   });
 });
+
+describe("the import target lifted to the month's peak", () => {
+  it("names the month's peak and the target as set, and keeps today's lines when they are the same", () => {
+    const lifted = line("import_target_held", { limit_a: 9, target_kw: 6.6, hour_kw: 5.9, set_kw: 6 });
+    expect(lineText(lifted, EN, NOW)).toBe(
+      "Held to 9 A to keep this hour under 6.6 kW, the month's peak (target 6.0 kW; now 5.9 kW).",
+    );
+    expect(lineText(lifted, SV, NOW)).toBe(
+      "Hålls på 9 A så att timmen stannar under 6,6 kW, månadens topp (effektmål 6,0 kW; nu 5,9 kW).",
+    );
+    const same = line("import_target_held", { limit_a: 7, target_kw: 6, hour_kw: 5.1, set_kw: 6 });
+    expect(lineText(same, EN, NOW)).toBe("Held to 7 A to keep this hour under 6.0 kW (now 5.1 kW).");
+    const paused = line("import_target_paused", {
+      until: "2026-11-02T14:00:00+00:00",
+      target_kw: 6.6,
+      house_over: false,
+      set_kw: 6,
+    });
+    expect(lineText(paused, SV, NOW)).toBe(
+      "Pausad till kl. 15:00 så att timmen stannar under 6,6 kW, månadens topp (effektmål 6,0 kW).",
+    );
+    const risk = line("import_target_at_risk", {
+      departure: "2026-11-03T06:00:00+00:00",
+      missing_kwh: 4,
+      target_kw: 6.6,
+      releasable: true,
+      set_kw: 6,
+    });
+    expect(lineText(risk, SV, NOW)).toBe(
+      "Bilen blir inte klar till 07:00 under månadens topp på 6,6 kW (effektmål 6,0 kW) – 4 kWh saknas.",
+    );
+  });
+});

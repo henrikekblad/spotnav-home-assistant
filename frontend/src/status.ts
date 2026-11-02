@@ -290,6 +290,12 @@ export const STATUS_VARIANT_KEYS: readonly TranslationKey[] = [
   "status.importTargetPausedHouseNextHour",
   "status.importTargetReleasedNoTime",
   "status.importTargetAtRiskNoTime",
+  "status.importTargetHeldPeak",
+  "status.importTargetHeldPeakNoLimit",
+  "status.importTargetPausedPeak",
+  "status.importTargetPausedPeakNextHour",
+  "status.importTargetAtRiskPeak",
+  "status.importTargetAtRiskPeakNoTime",
   "status.importTargetReleasedAuto",
   "status.importTargetReleasedAutoNoTime",
   "strategy.status.solar.chargingUnknown",
@@ -405,6 +411,13 @@ function needEstimated(language: Language, p: StatusLine["params"]): { key: Tran
     key: p["basis"] === "sessions" ? "issue.needFromSessions" : "issue.needKept",
     params: { kwh: formatNumber(language, num(p["kwh"]) ?? 0, 1) },
   };
+}
+
+/** Whether the line's level is the month's peak (a demand charge's, already paid for) above the target as set. */
+function monthPeak(p: StatusLine["params"]): boolean {
+  const target = num(p["target_kw"]);
+  const set = num(p["set_kw"]);
+  return target !== null && set !== null && target > set + 1e-9;
 }
 
 /** The wording for why a charger is unavailable when its charge control is gone or disabled. */
@@ -657,13 +670,19 @@ export function lineText(
     case "import_target_held": {
       // The site's import target, not the fuse, holds the car: to what, the target, and the hour's mean so far.
       const limit = num(p["limit_a"]);
+      const peak = monthPeak(p);
       const kw = {
         target: formatFixed(language, num(p["target_kw"]) ?? 0, 1),
         hour: formatFixed(language, num(p["hour_kw"]) ?? 0, 1),
+        set: formatFixed(language, num(p["set_kw"]) ?? 0, 1),
       };
-      return limit === null
-        ? say("status.importTargetHeldNoLimit", kw)
-        : say("status.importTargetHeld", { ...kw, limit: formatNumber(language, limit, 0) });
+      if (limit === null) {
+        return say(peak ? "status.importTargetHeldPeakNoLimit" : "status.importTargetHeldNoLimit", kw);
+      }
+      return say(peak ? "status.importTargetHeldPeak" : "status.importTargetHeld", {
+        ...kw,
+        limit: formatNumber(language, limit, 0),
+      });
     }
     case "import_target_paused": {
       // Paused to the next clock hour so the running one stays under the target.
@@ -671,23 +690,29 @@ export function lineText(
       const until = ms(p["until"]);
       // The house alone over the target: said in place of "so the hour stays under it", which it does not.
       const house = p["house_over"] === true;
+      const peak = !house && monthPeak(p);
+      const set = formatFixed(language, num(p["set_kw"]) ?? 0, 1);
       if (until === null || !zoned) {
-        return say(house ? "status.importTargetPausedHouseNextHour" : "status.importTargetPausedNextHour", { target });
+        const key = house ? "status.importTargetPausedHouseNextHour" : peak ? "status.importTargetPausedPeakNextHour" : "status.importTargetPausedNextHour";
+        return say(key, { target, set });
       }
-      return say(house ? "status.importTargetPausedHouse" : "status.importTargetPaused", { target, time: clock(format, until) });
+      const key = house ? "status.importTargetPausedHouse" : peak ? "status.importTargetPausedPeak" : "status.importTargetPaused";
+      return say(key, { target, set, time: clock(format, until) });
     }
     case "import_target_house_over":
       return say("status.importTargetHouseOver", { target: formatFixed(language, num(p["target_kw"]) ?? 0, 1) });
     case "import_target_at_risk": {
       // Under the target the plan misses its departure: by how much, and when.
       const departure = ms(p["departure"]);
+      const peak = monthPeak(p);
       const params = {
         target: formatFixed(language, num(p["target_kw"]) ?? 0, 1),
         kwh: formatNumber(language, num(p["missing_kwh"]) ?? 0, 0),
+        set: formatFixed(language, num(p["set_kw"]) ?? 0, 1),
       };
       return departure === null || !zoned
-        ? say("status.importTargetAtRiskNoTime", params)
-        : say("status.importTargetAtRisk", {
+        ? say(peak ? "status.importTargetAtRiskPeakNoTime" : "status.importTargetAtRiskNoTime", params)
+        : say(peak ? "status.importTargetAtRiskPeak" : "status.importTargetAtRisk", {
             ...params,
             // The coming night's departure by its time, as the notification says it; one further ahead with its day.
             time: departure - nowMs < 24 * 3600 * 1000 ? clock(format, departure) : momentText(format, departure, nowMs),
