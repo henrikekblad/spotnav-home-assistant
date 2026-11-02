@@ -7,8 +7,8 @@
 // still kept; an older month keeps its days only). Hover, focus or a tap shows the figures in the readout under the
 // chart, as the charge history's day chart does. Nothing is recomputed: every figure is the backend's.
 
-import { dateLabel, formatFixed } from "./format";
-import { windowText } from "./grid-tariff";
+import { dateLabel, formatFixed, formatNumber } from "./format";
+import { DAY_WORDS, monthsText } from "./grid-tariff";
 import { translate, type Language, type TranslationKey } from "./i18n";
 import { decodeDemandComponent, type DemandComponent } from "./validate";
 import { VISUAL_CLASSES as C } from "./visual-styles";
@@ -201,17 +201,70 @@ function daysInMonth(month: string): number {
   return new Date(Date.UTC(year, number, 0)).getUTCDate();
 }
 
-/** The top of the scale: the highest bar or the target, with a little headroom, to the next whole kW (at least 1). */
+/** The steps a scale's middle tick may take (kW): the top is two of them, so the axis reads 0, a step, the top. */
+const NICE_STEPS = [0.5, 1, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10, 12, 15, 20, 25, 30, 40, 50, 60, 80, 100];
+
+/** The top of the scale: twice the smallest nice step that leaves the highest bar or the target some headroom. */
 export function scaleTop(values: number[], target: number | null): number {
-  const highest = Math.max(0, ...values, target ?? 0);
-  return Math.max(1, Math.ceil(highest * 1.1));
+  const highest = Math.max(0, ...values, target ?? 0) * 1.08;
+  const step = NICE_STEPS.find((candidate) => candidate * 2 >= highest) ?? Math.ceil(highest / 200) * 100;
+  return step * 2;
 }
 
-/** One bar's figures as words: "huset 2,3 kW, bilen 3,6 kW · räknas för effektavgift 1 · effektmålet höll…". */
+/** A word as it reads inside a sentence: its first letter small, except where the language keeps it (German nouns,
+ * an English weekday). */
+function inline(language: Language, word: string, keep = false): string {
+  return language === "de" || keep ? word : word.charAt(0).toLocaleLowerCase(language) + word.slice(1);
+}
+
+function pad(hour: number): string {
+  return String(hour).padStart(2, "0");
+}
+
+/** How the view names the demand charge's parts: by their hours ("Dag 06–23", "Natt 23–06", "Alla timmar"), with the
+ * days and months only where they are not all; numbered ("Effektavgift 1") where two would read the same. `inline`
+ * is each name as it reads inside a sentence ("räknas för dag 06–23"). */
+export interface PartNames {
+  names: string[];
+  inline: string[];
+}
+
+export function partNames(language: Language, components: DemandComponent[]): PartNames {
+  const names: string[] = [];
+  const inlined: string[] = [];
+  for (const component of components) {
+    const window = component.window;
+    if (window === null) {
+      names.push(translate(language, "power.part.all"));
+      inlined.push(translate(language, "power.part.allInline"));
+      continue;
+    }
+    const hours = `${pad(window.from_hour)}–${pad(window.to_hour)}`;
+    const night = window.from_hour > window.to_hour || window.to_hour <= 7;
+    const extra: string[] = [];
+    if (window.days !== "all") {
+      extra.push(inline(language, translate(language, DAY_WORDS[window.days]), language === "en" && window.days === "mon_sat"));
+    }
+    if ((window.to_month % 12) + 1 !== window.from_month) {
+      extra.push(monthsText(language, window));
+    }
+    const tail = extra.length > 0 ? `, ${extra.join(", ")}` : "";
+    names.push(translate(language, night ? "power.part.night" : "power.part.day", { hours }) + tail);
+    inlined.push(translate(language, night ? "power.part.nightInline" : "power.part.dayInline", { hours }) + tail);
+  }
+  if (new Set(names).size < names.length) {
+    const numbered = components.map((_component, index) => translate(language, "demand.part", { n: String(index + 1) }));
+    return { names: numbered, inline: numbered.map((name) => inline(language, name)) };
+  }
+  return { names, inline: inlined };
+}
+
+/** One bar's figures as words: "huset 2,3 kW, bilen 3,6 kW · räknas för dag 06–23 · effektmålet höll…". `parts` are
+ * the parts' names inside a sentence when there are several (`partNames`), else empty. */
 function notes(
   language: Language,
   item: { kw: number; house_kw: number | null; counted: number[]; held: boolean; paused: boolean; incomplete?: boolean },
-  parts: number,
+  parts: string[],
 ): string[] {
   const words: string[] = [];
   if (item.house_kw !== null) {
@@ -224,8 +277,8 @@ function notes(
   }
   if (item.counted.length > 0) {
     words.push(
-      parts > 1
-        ? translate(language, "power.countedPart", { n: item.counted.map((index) => String(index + 1)).join(", ") })
+      parts.length > 1
+        ? translate(language, "power.countedPart", { part: item.counted.map((index) => parts[index] ?? "").join(", ") })
         : translate(language, "power.counted"),
     );
   }
@@ -240,7 +293,7 @@ function notes(
   return words;
 }
 
-export function dayFigures(language: Language, day: PowerDay, parts: number): string {
+export function dayFigures(language: Language, day: PowerDay, parts: string[] = []): string {
   const head = translate(language, "power.day", {
     date: dateLabel(language, day.date),
     kw: kw(language, day.peak_kw),
@@ -249,7 +302,7 @@ export function dayFigures(language: Language, day: PowerDay, parts: number): st
   return [head, ...notes(language, { ...day, kw: day.peak_kw }, parts)].join(" · ");
 }
 
-export function hourFigures(language: Language, hour: PowerHour, parts: number): string {
+export function hourFigures(language: Language, hour: PowerHour, parts: string[] = []): string {
   const head = translate(language, "power.hour", { time: clockOf(hour.start), kw: kw(language, hour.kw) });
   return [head, ...notes(language, hour, parts)].join(" · ");
 }
@@ -360,9 +413,22 @@ function barChart(
   const axis = element(doc, "div", C.historyAxis);
   axis.setAttribute("aria-hidden", "true");
   columns.forEach((column) => axis.append(element(doc, "span", undefined, column.label)));
-  const scale = element(doc, "span", `${C.muted} ${C.historyScale}`, kw(language, top));
-  scale.setAttribute("aria-hidden", "true");
-  wrap.append(scale, plot, marks, axis, readout);
+  // The y axis: 0, the middle and the top, with a faint line across at the middle and the top.
+  const ticks = element(doc, "div", C.powerTicks);
+  ticks.setAttribute("aria-hidden", "true");
+  for (const value of [0, top / 2, top]) {
+    const tick = element(doc, "span", undefined, value === top ? kw(language, value) : formatNumber(language, value, value % 1 === 0 ? 0 : 1));
+    tick.style.bottom = `${(value / top) * 100}%`;
+    ticks.append(tick);
+    if (value > 0) {
+      const grid = element(doc, "span", C.powerGrid);
+      grid.style.bottom = `${(value / top) * 100}%`;
+      plot.prepend(grid);
+    }
+  }
+  const frame = element(doc, "div", C.powerFrame);
+  frame.append(ticks, plot, element(doc, "span"), marks, element(doc, "span"), axis);
+  wrap.append(frame, readout);
   show(pinned);
   return wrap;
 }
@@ -389,12 +455,9 @@ function legend(doc: Document, language: Language, answer: PowerMonth, columns: 
   if (answer.import_target_kw !== null) {
     list.append(swatch(doc, C.powerTargetSwatch, translate(language, "power.legend.target", { kw: kw(language, answer.import_target_kw) })));
   }
-  answer.components.forEach((component, index) => {
-    const hours = component.window === null ? translate(language, "demand.allHours") : windowText(language, component.window);
-    const label =
-      answer.components.length > 1
-        ? translate(language, "power.legend.countedPart", { n: String(index + 1), part: hours })
-        : translate(language, "power.legend.counted", { part: hours });
+  const names = partNames(language, answer.components);
+  answer.components.forEach((_component, index) => {
+    const label = translate(language, "power.legend.countedPart", { part: names.inline[index] ?? "" });
     const item = swatch(doc, C.powerCountedSwatch, label);
     item.firstElementChild!.textContent = String(index + 1);
     list.append(item);
@@ -405,14 +468,14 @@ function legend(doc: Document, language: Language, answer: PowerMonth, columns: 
   return list;
 }
 
-/** The month's figure per part: "Effektavgift 1: 5,9 kW · Effektavgift 2: 4,6 kW". */
+/** The month's figure per part: "Dag 06–23: 6,6 kW · Natt 23–06: 5,9 kW" (one part: "Effektavgift: 5,9 kW"). */
 function summary(doc: Document, language: Language, answer: PowerMonth): HTMLElement | null {
   if (answer.components.length === 0) {
     return null;
   }
+  const names = partNames(language, answer.components);
   const parts = answer.bars.map((bar, index) => {
-    const name =
-      answer.components.length > 1 ? translate(language, "demand.part", { n: String(index + 1) }) : translate(language, "demand.title");
+    const name = answer.components.length > 1 ? (names.names[index] ?? "") : translate(language, "demand.title");
     return `${name}: ${bar === null ? translate(language, "power.noPeak") : kw(language, bar)}`;
   });
   const tile = element(doc, "section", C.historyTile);
@@ -424,7 +487,7 @@ function summary(doc: Document, language: Language, answer: PowerMonth): HTMLEle
 function monthColumns(language: Language, answer: PowerMonth): Column[] {
   const byDate = new Map(answer.days.map((day) => [day.date, day]));
   const length = daysInMonth(answer.month);
-  const parts = answer.components.length;
+  const parts = answer.components.length > 1 ? partNames(language, answer.components).inline : [];
   return Array.from({ length }, (_unused, index) => {
     const number = index + 1;
     const date = `${answer.month}-${String(number).padStart(2, "0")}`;
@@ -445,7 +508,7 @@ function monthColumns(language: Language, answer: PowerMonth): Column[] {
 }
 
 function hourColumns(language: Language, answer: PowerMonth, date: string): Column[] {
-  const parts = answer.components.length;
+  const parts = answer.components.length > 1 ? partNames(language, answer.components).inline : [];
   return (answer.hours ?? [])
     .filter((hour) => hour.start.slice(0, 10) === date)
     .map((hour, index) => {
@@ -499,7 +562,7 @@ export function powerBody(doc: Document, language: Language, state: PowerState, 
   if (tile !== null) {
     body.append(tile);
   }
-  const parts = answer.components.length;
+  const parts = answer.components.length > 1 ? partNames(language, answer.components).inline : [];
   const day = ui.day !== null && answer.hours !== null ? answer.days.find((entry) => entry.date === ui.day) ?? null : null;
   let columns: Column[];
   if (day !== null) {

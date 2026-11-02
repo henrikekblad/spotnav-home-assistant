@@ -295,6 +295,9 @@ export const VISUAL_CLASSES = {
   powerCountedSwatch: "spotnav-power-counted-swatch",
   powerMarkSwatch: "spotnav-power-mark-swatch",
   powerDayHead: "spotnav-power-day-head",
+  powerFrame: "spotnav-power-frame",
+  powerTicks: "spotnav-power-ticks",
+  powerGrid: "spotnav-power-grid",
   muted: "spotnav-muted",
   unavailable: "spotnav-unavailable",
 } as const;
@@ -2564,10 +2567,48 @@ export const VISUAL_STYLES = `
   .${VISUAL_CLASSES.powerChart} {
     position: relative;
   }
+  /* The y axis beside the bars: the marks row and the day axis keep its column empty, so every row lines up. */
+  .${VISUAL_CLASSES.powerFrame} {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    column-gap: 4px;
+    margin-top: 1rem;
+    min-width: 0;
+  }
+  .${VISUAL_CLASSES.powerTicks} {
+    position: relative;
+    min-width: 2.6rem;
+    font-size: 0.7rem;
+    font-variant-numeric: tabular-nums;
+    color: var(--secondary-text-color, #727272);
+  }
+  .${VISUAL_CLASSES.powerTicks} > span {
+    position: absolute;
+    right: 0;
+    transform: translateY(50%);
+    line-height: 1;
+    white-space: nowrap;
+  }
+  .${VISUAL_CLASSES.powerGrid} {
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 0;
+    border-top: 1px solid var(--divider-color, #e0e0e0);
+    pointer-events: none;
+  }
   .${VISUAL_CLASSES.powerPlot} {
     position: relative;
-    height: 9rem;
-    padding-top: 1rem;
+    height: 8rem;
+  }
+  /* A bar under the pointer or chosen is underlined, not filled behind: no grey cap that reads as data. */
+  .${VISUAL_CLASSES.historyBar}.${VISUAL_CLASSES.powerBar}:hover,
+  .${VISUAL_CLASSES.historyBar}.${VISUAL_CLASSES.powerBar}[aria-pressed="true"] {
+    background: transparent;
+  }
+  .${VISUAL_CLASSES.powerBar}:hover > .${VISUAL_CLASSES.powerStack},
+  .${VISUAL_CLASSES.powerBar}[aria-pressed="true"] > .${VISUAL_CLASSES.powerStack} {
+    box-shadow: 0 4px 0 var(--primary-color, #03a9f4);
   }
   .${VISUAL_CLASSES.powerBar} {
     position: relative;

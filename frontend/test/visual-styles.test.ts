@@ -161,8 +161,9 @@ describe("accessibility and theming", () => {
     );
     // Grids of their own: the market value row, the action bar's two (three columns narrow, six in the
     // wide container query), the entity editor's meter line (one column narrow, auto columns wide) and the
-    // reference editor's day and night slots (shared with the car's day and night tiles).
-    expect(VISUAL_STYLES.match(/grid-template-columns:/g)?.length).toBe(6);
+    // reference editor's day and night slots (shared with the car's day and night tiles), and the power chart's
+    // y axis beside its bars.
+    expect(VISUAL_STYLES.match(/grid-template-columns:/g)?.length).toBe(7);
     const valueBlock =
       VISUAL_STYLES.match(new RegExp(`\\.${VISUAL_CLASSES.marketValue} \\{[^}]*\}`, "s"))?.[0] ?? "";
     expect(valueBlock).toContain("minmax(0, 1fr)");

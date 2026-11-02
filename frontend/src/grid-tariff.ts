@@ -154,7 +154,7 @@ function hour(value: number): string {
   return String(value).padStart(2, "0");
 }
 
-const DAY_WORDS = {
+export const DAY_WORDS = {
   all: "gridFee.window.everyDay",
   weekdays: "gridFee.window.weekdays",
   mon_sat: "gridFee.window.monSat",
@@ -165,7 +165,7 @@ function monthWord(language: Language, month: number): string {
 }
 
 /** The months: "nov–mar", one month on its own, or "hela året" when they take in all twelve. */
-function monthsText(language: Language, window: HighLoadWindow): string {
+export function monthsText(language: Language, window: HighLoadWindow): string {
   if ((window.to_month % 12) + 1 === window.from_month) {
     return translate(language, "gridFee.window.allYear");
   }

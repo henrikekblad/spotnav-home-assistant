@@ -9,7 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { decodeSessions, historyBody, powerPickerMonths, type HistoryUi } from "../src/history";
 import { LANGUAGES, registerTranslation, translate } from "../src/i18n";
 import { TRANSLATIONS } from "../src/i18n/all";
-import { decodePowerMonth, dayFigures, hourFigures, powerBody, scaleTop, type PowerMonth, type PowerUi } from "../src/power-view";
+import { decodePowerMonth, dayFigures, hourFigures, partNames, powerBody, scaleTop, type PowerMonth, type PowerUi } from "../src/power-view";
 import { apiFailure, FakeHass, mountCard } from "./helpers";
 
 const FIXTURES = join(__dirname, "..", "..", "tests", "fixtures");
@@ -87,8 +87,8 @@ describe("the month", () => {
     expect(counted.map((stack) => stack.dataset["counted"]).sort()).toEqual(["0", "1"]);
     expect(counted.map((stack) => stack.querySelector(".spotnav-power-tag")?.textContent).sort()).toEqual(["1", "2"]);
     const legend = body.querySelector("ul")?.textContent ?? "";
-    expect(legend).toContain("Counted peak, part 1 (Every day 06–23, all year)");
-    expect(legend).toContain("Counted peak, part 2 (Every day 23–06, all year)");
+    expect(legend).toContain("Counted peak, day 06–23");
+    expect(legend).toContain("Counted peak, night 23–06");
     expect(legend).toContain("Import target 6.0 kW");
     expect(legend).toContain("House");
     expect(legend).toContain("Car");
@@ -102,14 +102,15 @@ describe("the month", () => {
     expect(marks[14]).toBe("paused");
     expect(marks.filter((mark) => mark === "held").length).toBeGreaterThan(0);
     const paused = answer.days.find((day) => day.date === "2026-09-15");
-    expect(dayFigures("en", paused!, 2)).toContain("the import target paused the charging");
+    expect(dayFigures("en", paused!, ["day 06–23", "night 23–06"])).toContain("the import target paused the charging");
   });
 
   it("says the month's figure per part above the chart", () => {
     const answer = month();
     const tile = render(answer).querySelector("[data-tile='power']");
     const one = new Intl.NumberFormat("en", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
-    expect(tile?.textContent).toBe(`Demand charge 1: ${one.format(answer.bars[0]!)} kW · Demand charge 2: ${one.format(answer.bars[1]!)} kW`);
+    expect(tile?.textContent).toBe(`Day 06–23: ${one.format(answer.bars[0]!)} kW · Night 23–06: ${one.format(answer.bars[1]!)} kW`);
+    expect(render(answer, UI, () => undefined, "sv").querySelector("[data-tile='power']")?.textContent).toMatch(/^Dag 06–23: .* kW · Natt 23–06: .* kW$/);
   });
 
   it("shows a day's figures on hover and focus, and asks for the day's hours on a tap", () => {
@@ -151,6 +152,45 @@ describe("the month", () => {
   });
 });
 
+describe("the scale and the parts' names", () => {
+  it("has a y axis of 0, a nice middle step and the top", () => {
+    expect(scaleTop([6.6], 6)).toBe(8);
+    expect(scaleTop([2.1], null)).toBe(3);
+    expect(scaleTop([0], null)).toBe(1);
+    expect(scaleTop([11], 6)).toBe(12);
+    const body = render(month());
+    const top = scaleTop(month().days.map((day) => day.peak_kw), 6);
+    expect(Array.from(body.querySelectorAll(".spotnav-power-ticks > span")).map((tick) => tick.textContent)).toEqual([
+      "0",
+      String(top / 2),
+      `${top.toFixed(1)} kW`,
+    ]);
+    expect(body.querySelectorAll(".spotnav-power-plot > .spotnav-power-grid")).toHaveLength(2);
+  });
+
+  it("names a part by its hours, its days and months only where not all, and numbers two that read the same", () => {
+    const window = (from_hour: number, to_hour: number, extra: Record<string, unknown> = {}) =>
+      ({ days: "all", from_month: 1, to_month: 12, from_hour, to_hour, ...extra }) as never;
+    const part = (w: unknown) => ({ window: w as never, top_n: 1 as const, price_per_kw: { winter: null, summer: null } });
+    expect(partNames("sv", [part(window(6, 23)), part(window(23, 6))])).toEqual({
+      names: ["Dag 06–23", "Natt 23–06"],
+      inline: ["dag 06–23", "natt 23–06"],
+    });
+    expect(partNames("sv", [part(null), part(window(7, 20, { days: "weekdays", from_month: 11, to_month: 3 }))]).names).toEqual([
+      "Alla timmar",
+      "Dag 07–20, vardagar, nov–mar",
+    ]);
+    expect(partNames("en", [part(window(7, 20, { days: "mon_sat" }))]).inline).toEqual(["day 07–20, Mon–Sat"]);
+    expect(partNames("de", [part(window(6, 23))]).inline).toEqual(["Tag 06–23"]);
+    expect(partNames("sv", [part(window(6, 23)), part(window(6, 23, { from_month: 11, to_month: 3 })), part(window(6, 23))])).toEqual({
+      names: ["Effektavgift 1", "Effektavgift 2", "Effektavgift 3"],
+      inline: ["effektavgift 1", "effektavgift 2", "effektavgift 3"],
+    });
+    const day = month().days.find((entry) => entry.counted.length > 0)!;
+    expect(dayFigures("sv", day, partNames("sv", month().components).inline)).toMatch(/räknas för (dag 06–23|natt 23–06)/);
+  });
+});
+
 describe("a tapped day", () => {
   it("shows its hours the same way, with the way back to the month", () => {
     const answer = month();
@@ -181,7 +221,7 @@ describe("a tapped day", () => {
     const stacks = Array.from(body.querySelectorAll<HTMLElement>(".spotnav-power-stack"));
     expect(stacks.filter((stack) => stack.dataset["incomplete"] === "true")).toHaveLength(1);
     const gap = answer.hours!.find((hour) => hour.incomplete && hour.start.startsWith("2026-09-13"))!;
-    expect(hourFigures("en", gap, 2)).toMatch(/gaps in the reading$/);
+    expect(hourFigures("en", gap)).toMatch(/gaps in the reading$/);
   });
 });
 
