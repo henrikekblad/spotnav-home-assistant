@@ -3901,6 +3901,8 @@ class SiteCapacityController:
                 # Who writes the sun's current to the charger: `active_control`, `solar` (its own write, where
                 # active control does not), or `none` (a charger whose current cannot be set).
                 "solar_current_writer": state.solar_current_writer if state else None,
+                # The car's own limit while its target is reached and the sun fills on up to it.
+                "sun_fill_limit_percent": state.sun_fill_limit_percent if state else None,
             }
         return snapshot
 

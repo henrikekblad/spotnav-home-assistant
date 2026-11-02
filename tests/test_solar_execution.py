@@ -459,6 +459,7 @@ async def test_solar_surplus_diagnostics_present_and_disabled_for_a_cheapest_cha
         "site_incomplete_phases": [],
         "retry_at": None,
         "solar_current_writer": None,
+        "sun_fill_limit_percent": None,
     }
     assert site_controller.solar_surplus_snapshot == snapshot
 
