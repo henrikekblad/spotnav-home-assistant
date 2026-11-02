@@ -391,6 +391,8 @@ class TargetRisk:
     target_kw: float
     #: The plan's `if_not_ready`: `ask` is told and offered "Release the import target tonight", `hold` only said, `release` set aside.
     choice: str = IF_NOT_READY_ASK
+    #: The import target as set, below `target_kw` where the month's peak lifts the running hour (`None`: the same).
+    set_kw: float | None = None
 
 #: Decision-log details of the battery-on-the-fuse handling (`site/battery_probe.py`).
 DETAIL_HELD_BATTERY_AT_LIMIT = "held_battery_at_limit"
@@ -580,11 +582,10 @@ class SiteCapacityController:
         # hour the target paused it in (it stays paused until the next) and the departure it set the target aside
         # for. Not persisted: after a restart the hour's budget decides again from the hour the tracker kept.
         self._target_budget: HourBudget | None = None
-        # The level the hold keeps the running hour under (`_effective_import_target`), as of the last recompute, and
-        # whether every demand-charge part counts the running hour (the plan may count on the level then); with the
-        # key it was worked out for (the month's peaks change only when an hour completes).
+        # The level the hold keeps the running hour under (`_effective_import_target`), as of the last recompute, with
+        # the key it was worked out for (the month's peaks change only when an hour completes). The running hour's
+        # hold only: plans and the later hours of the departure's check count on the target as set.
         self._target_effective: EffectiveTarget | None = None
-        self._target_effective_whole = False
         self._target_effective_key: tuple[Any, ...] | None = None
         self._target_not_applied: str | None = None
         self._target_shares: dict[str, TargetShare] = {}
@@ -4675,13 +4676,21 @@ class SiteCapacityController:
         if key == self._target_effective_key and self._target_effective is not None:
             return self._target_effective
         if not components:
-            found, whole = effective_target(set_kw, ()), False
+            found = effective_target(set_kw, ())
         else:
-            snapshot = self.demand.snapshot(components, import_target_kw=set_kw, now=now)
-            levels = [month.free_kw for month in snapshot.components]
-            found, whole = effective_target(set_kw, levels), all(level is not None for level in levels)
+            from dataclasses import replace as with_kw  # noqa: PLC0415 - kept beside its only use
+
+            from ..planning.demand_charge import component_month  # noqa: PLC0415 - kept beside its only use
+
+            # Each hour at its floor (its import over the whole hour, a gap counted as none): never above what the
+            # operator billed, where the mean over the time measured may be.
+            hours = [
+                hour if hour.floor_kw is None else with_kw(hour, kw=min(hour.kw, hour.floor_kw))
+                for hour in tracker.month_hours(now)
+            ]
+            levels = [component_month(component, hours, tracker.tz, now).free_kw for component in components]
+            found = effective_target(set_kw, levels)
         self._target_effective_key = key
-        self._target_effective_whole = whole
         return found
 
     def _battery_first_discharge(self) -> tuple[bool, float | None]:
@@ -4830,7 +4839,9 @@ class SiteCapacityController:
         car_kw = member_w(member.phases, max(member.min_a, member.wants_a)) / 1000.0
         ceiling_kw = max(power_kw, car_kw)
         held_kw = min(ceiling_kw, max(0.0, budget.rate_w / 1000.0 - max(0.0, house_kw)))
-        later_kw = min(ceiling_kw, max(0.0, budget.target_kw - max(0.0, house_kw)))
+        # Later hours at the target as set: the month's free level lifts the running hour only.
+        set_kw = budget.target_kw if self._target_effective is None else self._target_effective.set_kw
+        later_kw = min(ceiling_kw, max(0.0, set_kw - max(0.0, house_kw)))
         minimum_kw = member_w(member.phases, member.min_a) / 1000.0
         held_kw = 0.0 if held_kw < minimum_kw else held_kw
         later_kw = 0.0 if later_kw < minimum_kw else later_kw
@@ -4952,6 +4963,7 @@ class SiteCapacityController:
                 missing_kwh=round(max(0.0, shortfall), 1),
                 target_kw=budget.target_kw,
                 choice=choice,
+                set_kw=budget.target_kw if self._target_effective is None else self._target_effective.set_kw,
             )
             if choice == IF_NOT_READY_RELEASE:
                 # The plan's own choice: the departure wins by itself, as long as holding would miss it.
@@ -5234,11 +5246,8 @@ class SiteCapacityController:
         house_kw = self._typical_house_kw()
         if house_kw is None:
             return None
-        # The month's free level where it is known for every hour the plan may use (every demand-charge part counts
-        # the running hour); else the target as set. A raise a later hour may bring is never counted on.
-        effective = self._target_effective
-        if effective is not None and effective.set_kw == target_kw and self._target_effective_whole:
-            target_kw = effective.kw
+        # The target as set: the month's free level lifts the running hour's hold only, and a plan's later hours may
+        # be counted by no part, a new day or a new month.
         phases, _phase = self.reckoned_phases(charger_entry_id)
         minimum_kw = member_w(phases, float(wiring.get("min_current_a", DEFAULT_MIN_CURRENT_A))) / 1000.0
         return max(minimum_kw, target_kw - house_kw)
@@ -5297,7 +5306,6 @@ class SiteCapacityController:
             else {
                 "kw": self._target_effective.kw,
                 "free_kw": self._target_effective.free_kw,
-                "every_part_counts": self._target_effective_whole,
             },
             "not_applied": self._target_not_applied,
             "budget": None
