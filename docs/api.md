@@ -226,8 +226,10 @@ Start) and the webhook's `release_import_target` (optional `api_version`, `1`) s
 that charger's charge until its plan's departure, or until the car is unplugged; it is kept across a restart. The
 answer is `{"api_version": 1, "ok", "error"}` (the webhook adds `"action": "release_import_target"`, HTTP 200, or 400
 with the refusal): `spotnav_no_site`, `spotnav_no_import_target` (the site has none), `spotnav_no_departure` (no plan
-with a departure ahead), or the charger lookup's codes. The phone's button on the notification does the same (its
-action id is `SPOTNAV_IMPORT_TARGET_RELEASE_<charger id>`). The dashboard's `charger.capabilities` carries
+with a departure ahead), or the charger lookup's codes. The set-aside also ends when the plan is made for another
+departure. The phone's button on the notification does the same (its action id is
+`SPOTNAV_IMPORT_TARGET_RELEASE_<charger id>_<departure, epoch seconds>`); a press for a departure that is no longer the
+plan's sets nothing aside (`spotnav_stale_departure`, logged). The dashboard's `charger.capabilities` carries
 `release_import_target`, `true` where the webhook answers the action.
 
 A load-balancing limit or pause the target makes carries `cause` `import_target` (in `load_balancing_limited`, and in

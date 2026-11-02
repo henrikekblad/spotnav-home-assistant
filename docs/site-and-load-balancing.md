@@ -518,18 +518,21 @@ charger draws on would turn from import to export (so the current the fuse carri
 - **At the minimum.** A charger is never held below its minimum current. Once the hour can no longer end at or under
   the target with it at its minimum for the rest of the hour, it is paused until the next clock hour and given back
   then, as any load-balancing pause is (with the resume's margin and dwell). It is paused at most once per hour: it
-  stays paused to the hour's end even when the house uses less again. A pause decided for a moment (a kettle) and
-  taken back before the dwell let it out pauses nothing.
+  stays paused to the hour's end even when the house uses less again, from the moment the pause goes out (whenever
+  the charger reports itself off). A pause decided for a moment (a kettle) and taken back before the dwell let it
+  out pauses nothing.
 - **Raises** come at the next hour, or when the budget allows them, through the same deadband and dwell as every
   write. A lowering to a current is written at once (no deadband: an amp kept back would be drawn to the hour's
-  end). In the hour's last ten minutes a charger the target held is raised no further than it held it (the budget
+  end), and a raise that only gives back the target's own lowering within the hour passes the deadband too (it still
+  waits for the dwell), so a wobbling house does not ratchet the car down. In the hour's last ten minutes a charger the target held is raised no further than it held it (the budget
   left is spread over too little time to be worth a raise the next hour takes back); a charger the target did not
   hold is the fuse's and the budget's as at any other time.
 - **The house alone over the target.** When the house by itself ends the hour above the target, SpotNav pauses its
   chargers and holds back nothing else; the status says that the house alone is above the target, never that the
   hour stays under it.
 - **The car's minimum level comes first.** Below the car's [minimum level](target-soc.md) SpotNav charges at once,
-  and that charge is never held by the target.
+  and that charge is never held by the target. A minimum level at or above the plan's target makes the whole charge
+  a minimum-level charge: none of it is held.
 - **Above it the target holds, even past a departure.** When the plan cannot be ready by its departure under the
   target (what it still needs, against what the target leaves the car by then beside the house's typical load: its
   mean over the last 24 measured hours and the hour so far, so a kettle's half minute changes nothing; decided again
@@ -540,11 +543,15 @@ charger draws on would turn from import to export (so the current the fuse carri
     one button, *Release tonight*. Told again only when the shortfall grows clearly (by a kWh and by half), and taken
     off the phones once it can be met again. No answer: the target holds. The card's status says the same, with the
     same press.
-  - **Release the target**: the departure wins by itself; the target is set aside for that charge while holding
-    would miss it, and the plan counts on the car's own power.
+  - **Release the target**: the departure wins by itself; once holding would miss it the target is set aside for that
+    charge until its departure, as *Release tonight* does, and the plan counts on the car's own power.
   - **Hold the target**: the target holds, nothing is sent, and the status says how much will be missing.
 - **Release tonight** (from the notification, the card or the app) sets the target aside for that charge until its
-  departure, or until the car is unplugged; a restart keeps it. The status says *The import target is set aside by
+  departure, or until the car is unplugged or the plan is made for another departure; a restart keeps it. A phone's
+  button carries the departure it was told for: pressed once the plan is for another departure (after a restart or a
+  new plan), it sets nothing aside. While the target's notice stands, the plan's own *will not be ready* notice is
+  held back; once the target's notice comes down and the plan still cannot be met for reasons of its own, that
+  notice is told. The status says *The import target is set aside by
   you until 07:00*.
 - **Plans count on the target.** A plan for a charger on the site counts on the power the target leaves it (the
   target less the house's typical load as above, never below the charger's minimum), so it buys the quarter-hours
