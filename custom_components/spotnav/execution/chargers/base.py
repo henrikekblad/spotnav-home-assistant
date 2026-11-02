@@ -88,6 +88,9 @@ WRITE_RESTORE: Final = "restore"
 WRITE_RESEND: Final = "resend"
 WRITE_SOLAR: Final = "solar"
 WRITE_SETTING: Final = "setting"
+#: The one write that hands a charger back at its full current when its SpotNav entry is deleted for good
+#: (`execution/charger_handback.py`): written once, so a flash-stored setting takes it too.
+WRITE_HANDBACK: Final = "handback"
 #: The writes that modulate a running charge, again and again: each obeys a charger's policy for repeated writes
 #: (no flash-stored setting, the Easee's start floor held, the same value not sent twice) and never lands while a
 #: stop is on its way.
