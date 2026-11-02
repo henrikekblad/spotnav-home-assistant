@@ -217,3 +217,9 @@ async def test_a_date_the_person_chose_wins_over_the_set(harness: Harness) -> No
     )
     plain = await harness.auto("entry-b", departure=time(8, 0), requested_kwh=10.0, departure_date=date(2026, 10, 3))
     assert chosen.snapshot().proposal.periods == plain.snapshot().proposal.periods
+
+
+def test_a_plan_stored_by_2_4_is_read_past_its_if_not_ready_choice() -> None:
+    """2.4 stores what an import target does when the car cannot be ready; this release keeps the plan on a downgrade."""
+    stored = AutoSettings().validated().as_dict() | {"if_not_ready": "hold"}
+    assert AutoSettings.from_stored(stored) == AutoSettings().validated()
