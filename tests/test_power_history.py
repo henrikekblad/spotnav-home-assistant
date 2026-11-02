@@ -58,7 +58,9 @@ def test_the_marks_are_kept_across_a_restart_and_rows_without_them_still_read() 
     assert restored is not None and restored.paused and not restored.held
     moment = run(tracker, moment, 41, 5000.0)
     stored = tracker.month_dict()
-    assert stored["hours"][0][4:] == [0, 1]
+    assert stored["hours"][0][4:6] == [0, 1]
+    # The hour's floor: its import over the whole hour (here measured whole, so the same as its mean).
+    assert stored["hours"][0][6] == pytest.approx(5.0, abs=0.01)
     again = HourTracker(tz=TZ)
     old_row = [cet(2026, 11, 2, 17).isoformat(), 3.0, None, 0]
     again.restore({**stored, "hours": [old_row, *stored["hours"], [*old_row[:4], 1, 2]]}, None)

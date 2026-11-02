@@ -45,6 +45,9 @@ class HourMean:
     incomplete: bool = False
     held: bool = False
     paused: bool = False
+    #: The hour's import over the whole hour, the time without a reading counted as no import (kW): never above what
+    #: the meter billed, where `kw` (the mean over the time measured) may be. `None` for an hour kept before it was.
+    floor_kw: float | None = None
 
 
 @dataclass(frozen=True, slots=True)

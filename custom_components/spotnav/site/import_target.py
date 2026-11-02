@@ -87,16 +87,28 @@ class EffectiveTarget:
         return self.kw > self.set_kw
 
 
+#: How far below the month's free level the target is lifted to: a sensor that reads a little above the operator's
+#: meter must not let an hour set a new peak (`effective_target`).
+FREE_LEVEL_MARGIN_KW: Final = 0.1
+FREE_LEVEL_MARGIN_SHARE: Final = 0.02
+
+
 def effective_target(set_kw: float, free_levels: Iterable[float | None]) -> EffectiveTarget:
     """The import target lifted to the month's free level: a demand charge bills the month's peaks, so an hour may
     reach what is already paid for without costing more. The free level is the lowest `free_kw`
     (`planning/demand_charge.component_month`) of the parts that count the running hour (`None` for one that does not):
     a highest-hour part's month peak; a top-N part's N-th highest day, or today's own peak while today is among them,
     and with fewer than N days today's own peak or nothing (0). An hour no part counts keeps the target. Only ever
-    raises the target, to a level an hour has already reached this month (an incomplete hour never sets a peak)."""
+    raises the target, to a level an hour has already reached this month (an incomplete hour never sets a peak), less
+    a margin (`FREE_LEVEL_MARGIN_KW`, or `FREE_LEVEL_MARGIN_SHARE` of it where more) for a sensor that reads above the
+    operator's meter. The caller gives the levels from each hour's floor (its import over the whole hour), never more
+    than the meter billed."""
     counted = [level for level in free_levels if level is not None]
     free = min(counted) if counted else None
-    return EffectiveTarget(set_kw=set_kw, free_kw=free, kw=set_kw if free is None else max(set_kw, free))
+    if free is None:
+        return EffectiveTarget(set_kw=set_kw, free_kw=None, kw=set_kw)
+    lifted = free - max(FREE_LEVEL_MARGIN_KW, FREE_LEVEL_MARGIN_SHARE * free)
+    return EffectiveTarget(set_kw=set_kw, free_kw=free, kw=max(set_kw, lifted))
 
 
 @dataclass(frozen=True, slots=True)

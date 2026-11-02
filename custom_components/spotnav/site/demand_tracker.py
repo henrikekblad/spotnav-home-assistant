@@ -179,7 +179,8 @@ def _instant(raw: Any) -> datetime | None:
 
 def hour_row(hour: HourMean) -> list[Any]:
     """A completed hour as it is kept and shown in the diagnostics: `[start, kW, house kW, incomplete, held,
-    paused]`, the flags as 0 or 1."""
+    paused, floor kW]`, the flags as 0 or 1; `kW` is the mean over the time measured, `floor kW` the import over
+    the whole hour with any gap counted as none (`null` for an hour kept before it was)."""
     return [
         hour.start.isoformat(),
         round(hour.kw, 3),
@@ -187,16 +188,21 @@ def hour_row(hour: HourMean) -> list[Any]:
         1 if hour.incomplete else 0,
         1 if hour.held else 0,
         1 if hour.paused else 0,
+        None if hour.floor_kw is None else round(hour.floor_kw, 3),
     ]
 
 
 def _hour_from_row(raw: Any) -> HourMean | None:
-    """A kept hour, or `None`. A row of four (kept before the import target's hours were marked) is unmarked."""
-    if not isinstance(raw, list) or len(raw) not in (4, 6):
+    """A kept hour, or `None`. A row of four (kept before the import target's hours were marked) is unmarked; one of
+    six (kept before the hour's floor was) has none."""
+    if not isinstance(raw, list) or len(raw) not in (4, 6, 7):
         return None
     start = _instant(raw[0])
     kw, house, incomplete = raw[1], raw[2], raw[3]
-    held, paused = (raw[4], raw[5]) if len(raw) == 6 else (0, 0)
+    held, paused = (raw[4], raw[5]) if len(raw) >= 6 else (0, 0)
+    floor = raw[6] if len(raw) == 7 else None
+    if floor is not None and (not _number(floor) or floor < 0):
+        return None
     if start is None or not _number(kw) or kw < 0 or any(flag not in (0, 1) for flag in (incomplete, held, paused)):
         return None
     if any(isinstance(flag, bool) for flag in (incomplete, held, paused)):
@@ -210,6 +216,7 @@ def _hour_from_row(raw: Any) -> HourMean | None:
         incomplete=bool(incomplete),
         held=bool(held),
         paused=bool(paused),
+        floor_kw=None if floor is None else float(floor),
     )
 
 
@@ -325,6 +332,7 @@ class HourTracker:
             incomplete=HOUR_S - running.covered_s > GAP_MAX_S,
             held=running.held,
             paused=running.paused,
+            floor_kw=running.import_wh / HOUR_S * 3.6,
         )
         month = month_of(hour.start, self.tz)
         changed = self._roll_to(month)
