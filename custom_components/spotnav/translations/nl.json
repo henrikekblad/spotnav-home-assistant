@@ -769,6 +769,62 @@
           "7": "7 perioden",
           "8": "8 perioden"
         }
+      },
+      "grid_fee_percent_policy": {
+        "name": "Beleid nettarief in % van de spotprijs",
+        "state": {
+          "off": "Uit",
+          "manual": "Een handmatige waarde gebruiken"
+        }
+      },
+      "grid_fee_high_policy": {
+        "name": "Beleid nettarief in piekuren",
+        "state": {
+          "off": "Uit",
+          "manual": "Een handmatige waarde gebruiken"
+        }
+      },
+      "high_load_days": {
+        "name": "Piekdagen",
+        "state": {
+          "all": "Elke dag",
+          "weekdays": "Werkdagen (ma–vr)",
+          "mon_sat": "Maandag tot en met zaterdag"
+        }
+      },
+      "high_load_from_month": {
+        "name": "Piekuren eerste maand",
+        "state": {
+          "1": "januari",
+          "2": "februari",
+          "3": "maart",
+          "4": "april",
+          "5": "mei",
+          "6": "juni",
+          "7": "juli",
+          "8": "augustus",
+          "9": "september",
+          "10": "oktober",
+          "11": "november",
+          "12": "december"
+        }
+      },
+      "high_load_to_month": {
+        "name": "Piekuren laatste maand",
+        "state": {
+          "1": "januari",
+          "2": "februari",
+          "3": "maart",
+          "4": "april",
+          "5": "mei",
+          "6": "juni",
+          "7": "juli",
+          "8": "augustus",
+          "9": "september",
+          "10": "oktober",
+          "11": "november",
+          "12": "december"
+        }
       }
     },
     "number": {
@@ -792,6 +848,18 @@
       },
       "expensive_hours": {
         "name": "Dure uren per dag"
+      },
+      "grid_fee_percent": {
+        "name": "Nettarief, % van de spotprijs"
+      },
+      "grid_fee_high": {
+        "name": "Nettarief in piekuren"
+      },
+      "high_load_from_hour": {
+        "name": "Piekuren beginnen"
+      },
+      "high_load_to_hour": {
+        "name": "Piekuren eindigen"
       }
     },
     "date": {
@@ -966,6 +1034,9 @@
     },
     "price_range_invalid": {
       "message": "Het einde moet na het begin liggen."
+    },
+    "high_load_window_required": {
+      "message": "Stel eerst de piekuren in: op het elektriciteitsprijsapparaat (Piekuren beginnen en eindigen, bij de verborgen entiteiten) of in de kaart."
     }
   },
   "services": {

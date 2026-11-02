@@ -211,6 +211,8 @@ export interface NumberEditorInput {
   decimals: number;
   /** A box above the field choosing "none" (Off, Not specified, Automatic): the value is then `null`. */
   noneLabel?: string;
+  /** The figure in the field while "none" is ticked: a stored figure kept while off, so turning it on is one step. */
+  prefill?: number | null;
   /** A figure to offer ("Förslag: 36 öre/kWh"); tapping it fills the field. */
   suggestion?: number | null;
   rangeMessage: string;
@@ -238,7 +240,8 @@ export function numberEditor(
   field.dataset["valueField"] = "number";
   // As the row shows it ("36", "36,5"): no trailing zeros, no grouping.
   const shown = (value: number): string => formatNumber(language, value, input.decimals).replace(/\s/g, "");
-  field.value = input.current === null ? "" : shown(input.current);
+  const filled = input.current ?? input.prefill ?? null;
+  field.value = filled === null ? "" : shown(filled);
   let none: HTMLInputElement | null = null;
   if (input.noneLabel !== undefined) {
     const label = element(doc, "label", C.siteChoice);

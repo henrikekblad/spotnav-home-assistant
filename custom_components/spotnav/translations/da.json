@@ -769,6 +769,62 @@
           "7": "7 perioder",
           "8": "8 perioder"
         }
+      },
+      "grid_fee_percent_policy": {
+        "name": "Nettarifvalg for % af spotpris",
+        "state": {
+          "off": "Fra",
+          "manual": "Brug en manuel værdi"
+        }
+      },
+      "grid_fee_high_policy": {
+        "name": "Nettarifvalg for spidslasttimer",
+        "state": {
+          "off": "Fra",
+          "manual": "Brug en manuel værdi"
+        }
+      },
+      "high_load_days": {
+        "name": "Spidslastdage",
+        "state": {
+          "all": "Alle dage",
+          "weekdays": "Hverdage (man–fre)",
+          "mon_sat": "Mandag til lørdag"
+        }
+      },
+      "high_load_from_month": {
+        "name": "Spidslasttimer første måned",
+        "state": {
+          "1": "januar",
+          "2": "februar",
+          "3": "marts",
+          "4": "april",
+          "5": "maj",
+          "6": "juni",
+          "7": "juli",
+          "8": "august",
+          "9": "september",
+          "10": "oktober",
+          "11": "november",
+          "12": "december"
+        }
+      },
+      "high_load_to_month": {
+        "name": "Spidslasttimer sidste måned",
+        "state": {
+          "1": "januar",
+          "2": "februar",
+          "3": "marts",
+          "4": "april",
+          "5": "maj",
+          "6": "juni",
+          "7": "juli",
+          "8": "august",
+          "9": "september",
+          "10": "oktober",
+          "11": "november",
+          "12": "december"
+        }
       }
     },
     "number": {
@@ -792,6 +848,18 @@
       },
       "expensive_hours": {
         "name": "Dyre timer pr. døgn"
+      },
+      "grid_fee_percent": {
+        "name": "Nettarif, % af spotpris"
+      },
+      "grid_fee_high": {
+        "name": "Nettarif i spidslasttimer"
+      },
+      "high_load_from_hour": {
+        "name": "Spidslasttimer starter"
+      },
+      "high_load_to_hour": {
+        "name": "Spidslasttimer slutter"
       }
     },
     "date": {
@@ -966,6 +1034,9 @@
     },
     "price_range_invalid": {
       "message": "Slut skal være efter start."
+    },
+    "high_load_window_required": {
+      "message": "Angiv spidslasttimerne først: på elprisenheden (Spidslasttimer starter og slutter, blandt dens skjulte entiteter) eller i kortet."
     }
   },
   "services": {

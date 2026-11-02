@@ -769,6 +769,62 @@
           "7": "7 jaksoa",
           "8": "8 jaksoa"
         }
+      },
+      "grid_fee_percent_policy": {
+        "name": "Siirtomaksun %-osuuden käytäntö",
+        "state": {
+          "off": "Pois",
+          "manual": "Käytä omaa arvoa"
+        }
+      },
+      "grid_fee_high_policy": {
+        "name": "Huippukuormitustuntien siirtomaksun käytäntö",
+        "state": {
+          "off": "Pois",
+          "manual": "Käytä omaa arvoa"
+        }
+      },
+      "high_load_days": {
+        "name": "Huippukuormituspäivät",
+        "state": {
+          "all": "Joka päivä",
+          "weekdays": "Arkipäivät (ma–pe)",
+          "mon_sat": "Maanantaista lauantaihin"
+        }
+      },
+      "high_load_from_month": {
+        "name": "Huippukuormitustuntien ensimmäinen kuukausi",
+        "state": {
+          "1": "tammikuu",
+          "2": "helmikuu",
+          "3": "maaliskuu",
+          "4": "huhtikuu",
+          "5": "toukokuu",
+          "6": "kesäkuu",
+          "7": "heinäkuu",
+          "8": "elokuu",
+          "9": "syyskuu",
+          "10": "lokakuu",
+          "11": "marraskuu",
+          "12": "joulukuu"
+        }
+      },
+      "high_load_to_month": {
+        "name": "Huippukuormitustuntien viimeinen kuukausi",
+        "state": {
+          "1": "tammikuu",
+          "2": "helmikuu",
+          "3": "maaliskuu",
+          "4": "huhtikuu",
+          "5": "toukokuu",
+          "6": "kesäkuu",
+          "7": "heinäkuu",
+          "8": "elokuu",
+          "9": "syyskuu",
+          "10": "lokakuu",
+          "11": "marraskuu",
+          "12": "joulukuu"
+        }
       }
     },
     "number": {
@@ -792,6 +848,18 @@
       },
       "expensive_hours": {
         "name": "Kalliita tunteja vuorokaudessa"
+      },
+      "grid_fee_percent": {
+        "name": "Siirtomaksu, % spot-hinnasta"
+      },
+      "grid_fee_high": {
+        "name": "Siirtomaksu huippukuormitustunteina"
+      },
+      "high_load_from_hour": {
+        "name": "Huippukuormitustunnit alkavat"
+      },
+      "high_load_to_hour": {
+        "name": "Huippukuormitustunnit päättyvät"
       }
     },
     "date": {
@@ -966,6 +1034,9 @@
     },
     "price_range_invalid": {
       "message": "Lopun on oltava alun jälkeen."
+    },
+    "high_load_window_required": {
+      "message": "Aseta huippukuormitustunnit ensin: sähkön hinnan laitteella (Huippukuormitustunnit alkavat ja päättyvät, piilotettujen entiteettien joukossa) tai kortissa."
     }
   },
   "services": {

@@ -769,6 +769,62 @@
           "7": "7 Zeiträume",
           "8": "8 Zeiträume"
         }
+      },
+      "grid_fee_percent_policy": {
+        "name": "Regel für Netzentgelt in % vom Spotpreis",
+        "state": {
+          "off": "Aus",
+          "manual": "Eigenen Wert verwenden"
+        }
+      },
+      "grid_fee_high_policy": {
+        "name": "Regel für Netzentgelt in Hochlastzeiten",
+        "state": {
+          "off": "Aus",
+          "manual": "Eigenen Wert verwenden"
+        }
+      },
+      "high_load_days": {
+        "name": "Hochlasttage",
+        "state": {
+          "all": "Jeden Tag",
+          "weekdays": "Werktags (Mo–Fr)",
+          "mon_sat": "Montag bis Samstag"
+        }
+      },
+      "high_load_from_month": {
+        "name": "Hochlastzeit erster Monat",
+        "state": {
+          "1": "Januar",
+          "2": "Februar",
+          "3": "März",
+          "4": "April",
+          "5": "Mai",
+          "6": "Juni",
+          "7": "Juli",
+          "8": "August",
+          "9": "September",
+          "10": "Oktober",
+          "11": "November",
+          "12": "Dezember"
+        }
+      },
+      "high_load_to_month": {
+        "name": "Hochlastzeit letzter Monat",
+        "state": {
+          "1": "Januar",
+          "2": "Februar",
+          "3": "März",
+          "4": "April",
+          "5": "Mai",
+          "6": "Juni",
+          "7": "Juli",
+          "8": "August",
+          "9": "September",
+          "10": "Oktober",
+          "11": "November",
+          "12": "Dezember"
+        }
       }
     },
     "number": {
@@ -792,6 +848,18 @@
       },
       "expensive_hours": {
         "name": "Teure Stunden pro Tag"
+      },
+      "grid_fee_percent": {
+        "name": "Netzentgelt, % vom Spotpreis"
+      },
+      "grid_fee_high": {
+        "name": "Netzentgelt in Hochlastzeiten"
+      },
+      "high_load_from_hour": {
+        "name": "Hochlastzeit beginnt"
+      },
+      "high_load_to_hour": {
+        "name": "Hochlastzeit endet"
       }
     },
     "date": {
@@ -966,6 +1034,9 @@
     },
     "price_range_invalid": {
       "message": "Das Ende muss nach dem Beginn liegen."
+    },
+    "high_load_window_required": {
+      "message": "Lege zuerst die Hochlastzeit fest: am Strompreis-Gerät (Hochlastzeit beginnt und endet, unter seinen ausgeblendeten Entitäten) oder in der Karte."
     }
   },
   "services": {

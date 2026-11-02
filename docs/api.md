@@ -52,6 +52,7 @@ charger executed whose pause could not be saved answers `{"ok": true, "action": 
 | `update_phase_switching` | Turn phase switching for solar on or off for this charger: `{"enabled", "expected"}` (see below). |
 | `choose_price_source` | The electricity price this charger uses: `{"price_entry_id"}` (see below). |
 | `answer_price_duplicate` | Answer the same-area question: `{"area_id", "keep_entry_id"}` (see below). |
+| `update_grid_tariff` | The electricity price's grid tariff (a percentage of spot, a high-load fee and its window): `{"expected_write_revision", "grid_tariff"}` (see below). |
 | `push_register` | The app's instant notifications: `{"push_ref", "events"}`, or `{"push_ref": null}` to stop (see below). |
 | `identify_vehicle` | Answer "which car is plugged in?": `{"vehicle_id"}` (see [vehicle identification](#vehicle-identification)). |
 | `choose_vehicle_identification` | Choose a car's plug or location source: `{"vehicle_id", "source", "entity_id"}` (see [vehicle identification](#vehicle-identification)). |
@@ -260,6 +261,49 @@ block re-read after the write (`null` while it prices with its own settings). HT
 of the wrong type; nothing is written on a refusal. Examples are in
 `tests/fixtures/webhook/choose_price_source_*.json` and `answer_price_duplicate_*.json`.
 
+**Grid tariff.** The dashboard's additive `grid_tariff` block sits beside `price_source` (only where the charger
+prices with an electricity price) and reaches the webhook only when the request asks for it
+(`"reads": ["grid_tariff"]`):
+
+```json
+{
+  "entry_id": "price_a",
+  "write_revision": 3,
+  "transfer_percent": {"policy": "manual", "explicit_value": 5.0, "effective_value": 5.0, "unit": "%"},
+  "transfer_high": {"policy": "off", "explicit_value": null, "effective_value": null, "unit": "öre/kWh"},
+  "high_load_window": {"days": "weekdays", "from_month": 11, "to_month": 3, "from_hour": 7, "to_hour": 19},
+  "writable": true
+}
+```
+
+`transfer_percent` is a grid fee charged as a percentage of the spot price; `transfer_high` is the grid fee inside
+the high-load window, which replaces the `transfer` fee there. `policy` is `off`, `manual` or `included` (the area's
+published price already holds the grid fee: locked like `transfer`, nothing is added, whatever is stored);
+`explicit_value` is what is stored (kept while off), `effective_value` what is added (`null` while off or
+included). There is no `suggested` policy: no area suggests either figure. `high_load_window` is `null` or
+`{"days", "from_month", "to_month", "from_hour", "to_hour"}`, all on the area's own clock: `days` is `all`,
+`weekdays` (Monday to Friday; public holidays count as the weekdays they fall on) or `mon_sat`; `from_month` and
+`to_month` are 1-12, both included, wrapping over the new year (11 and 3 is November to March, equal is one month,
+1 and 12 is all year); `from_hour` 0-23 and `to_hour` 1-24 are whole hours, and a `from_hour` after `to_hour`
+wraps over midnight (22 and 6 is 22:00-06:00); equal hours are refused. The hours after midnight of such a window
+belong to the day it started on, for its days and its months alike: weekdays 22-06 holds Friday night until
+Saturday 06:00 but not Sunday night. `write_revision` is the electricity price's write counter, which a write
+names. See [Prices](prices.md#what-you-pay) for the arithmetic.
+
+`update_grid_tariff {"expected_write_revision", "grid_tariff"}` replaces the three parts in full; `grid_tariff` is
+`{"transfer_percent": {"enabled", "value"}, "transfer_high": {"enabled", "value"}, "high_load_window"}`, every key
+required. A fee that is on needs its figure, and the high-load fee needs a window (a window may stay while its fee
+is off). It is the card's `spotnav/update_grid_tariff` for the webhook's own charger, through the same core, and
+answers `{"ok", "error", "field_errors", "grid_tariff", "action"}` with the block re-read after the write. HTTP 200
+on success; 409 `revision_conflict` (the electricity price was written since `write_revision`); 400
+`invalid_fiscal` (with `field_errors` `[{"field": "transfer_percent" | "transfer_high" | "high_load_window" |
+"grid_tariff", "code": "invalid_value"}]`), `invalid_number` (`expected_write_revision` is not a whole number) or
+`spotnav_no_price_entry` (the charger prices with its own settings). Nothing is written on a refusal. The write
+counts as a write of the electricity price: every charger using it replans, and their settings records' `revision`
+moves with it. A write of the tariff as stored (all off where nothing is stored) passes the compare-and-set and
+writes nothing: `write_revision` stays and nothing replans. The settings record itself never carries the grid tariff: its `overrides` rows keep exactly their
+four keys, and a full `settings` replacement from a client that does not know the tariff leaves it as stored.
+
 **Where the prices come from.** The dashboard's `prices` block carries an additive `provider` object, sent to the
 webhook only when the request asks for it (`"reads": ["price_provider"]`):
 
@@ -372,6 +416,7 @@ and `charger_priority.writable` say whether it may change those (an administrato
 | `spotnav/write_charge_limit` | Write a car's own charge limit (`vehicle_id`, `percent`), the webhook's `set_charge_limit` over the WebSocket: same entity, range checks and one write a minute per car. Answers `{"api_version": 1, "ok", "error", "retry_after_s"}`; refusals `spotnav_invalid_value` (not a car with a writable limit, or a percent it cannot take), `spotnav_too_soon` (with `retry_after_s`), `spotnav_charge_limit_failed` (the car's integration failed the write). |
 | `spotnav/fix_own_mode` | Set one of the charger's own settings back (administrators only), the card's button on the status lines `charger_own_mode` (`entity`, `label`, `state`, `value`: one of the charger's own modes is on and works against SpotNav; `value` is the one value that ends it, `null` where there is no single safe one) and `charger_disabled` (`entity`: its own enable switch, turned on). `{"api_version": 1, "charger_id", "entity_id", "value"}` is written only when, read again, that entity is still a conflict of this charger (an entity of its own device and integration that its profile names) and `value` is that conflict's fix: `select.select_option`, `switch.turn_off` or, for the enable switch, `switch.turn_on`. Answers `{"api_version": 1, "ok", "error"}`; refusals `spotnav_no_conflict` (any other entity or value, or a conflict that has ended) and `spotnav_own_mode_failed` (the charger's integration refused the write). Each write is logged at INFO. The webhook leaves `charger_own_mode` out unless the request asks for it (`"reads": ["own_mode_status"]`), and the block's tone is then its strongest line left. |
 | `spotnav/update_site_settings` | Solar priority, forecast sources, active load balancing. |
+| `spotnav/update_grid_tariff` | The grid tariff of the charger's electricity price (administrators only): `{"charger_id", "expected_write_revision", "grid_tariff"}` as the webhook's `update_grid_tariff` (see **Grid tariff** under [Charger webhook](#charger-webhook)). Answers `{"ok": true, "grid_tariff": {...}}` with the block re-read, or the error codes `invalid_fiscal`, `invalid_number`, `revision_conflict`, `spotnav_no_price_entry`, `spotnav_not_admin` and the charger lookup's. |
 | `spotnav/get_debug_bundle` | The redacted installation-wide debug bundle (administrators only). |
 | `spotnav/get_blueprints` | How many automations use each of SpotNav's [blueprints](automations.md) (administrators only): `{"api_version": 1, "ok": true, "error": null, "blueprints": [{"file", "path", "automations"}]}`, one row per blueprint, `path` being `spotnav/<file>` as an automation refers to it. A non-administrator gets `spotnav_not_admin` and no rows. Not a dashboard field, so the app is never handed a key it does not know. |
 | `spotnav/get_card_info` | Which card the integration serves, for any signed-in user: `{"api_version": 1, "ok": true, "error": null, "spotnav_version", "card_bundle_hash"}`. The card compares the hash with the one in the URL it was loaded from. Not a dashboard field, so an older card is never handed a key it does not know. |
@@ -529,7 +574,8 @@ reads. Its main blocks: `charger` (identity, availability and `capabilities`), `
 `settings` (the canonical record with `revision`), `fiscal`, `market`, `prices` (the price
 intervals), `plan` and `planning` (proposal, installed plan, and why), `control` (the immediate
 action and the automatic action, with pause choices), `live`, `status` (typed status lines), `strategy`
-and `strategy_state`, `vehicles` and `soc`, `site`, `charging_phases`, `phase_detection`, `charge_progress`, `progress`.
+and `strategy_state`, `vehicles` and `soc`, `site`, `charging_phases`, `phase_detection`, `charge_progress`, `progress`,
+and, where the charger prices with an electricity price, `price_source` and `grid_tariff`.
 Example documents are in `tests/fixtures/dashboard/`.
 
 **Plans told.** The additive root `plan_notice` (`{"seq", "at"}`) counts the new plans Home Assistant told

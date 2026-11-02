@@ -769,6 +769,62 @@
           "7": "7 périodes",
           "8": "8 périodes"
         }
+      },
+      "grid_fee_percent_policy": {
+        "name": "Règle des frais de réseau en % du prix spot",
+        "state": {
+          "off": "Désactivé",
+          "manual": "Utiliser une valeur manuelle"
+        }
+      },
+      "grid_fee_high_policy": {
+        "name": "Règle des frais de réseau en heures de forte charge",
+        "state": {
+          "off": "Désactivé",
+          "manual": "Utiliser une valeur manuelle"
+        }
+      },
+      "high_load_days": {
+        "name": "Jours de forte charge",
+        "state": {
+          "all": "Tous les jours",
+          "weekdays": "En semaine (lun–ven)",
+          "mon_sat": "Du lundi au samedi"
+        }
+      },
+      "high_load_from_month": {
+        "name": "Premier mois des heures de forte charge",
+        "state": {
+          "1": "janvier",
+          "2": "février",
+          "3": "mars",
+          "4": "avril",
+          "5": "mai",
+          "6": "juin",
+          "7": "juillet",
+          "8": "août",
+          "9": "septembre",
+          "10": "octobre",
+          "11": "novembre",
+          "12": "décembre"
+        }
+      },
+      "high_load_to_month": {
+        "name": "Dernier mois des heures de forte charge",
+        "state": {
+          "1": "janvier",
+          "2": "février",
+          "3": "mars",
+          "4": "avril",
+          "5": "mai",
+          "6": "juin",
+          "7": "juillet",
+          "8": "août",
+          "9": "septembre",
+          "10": "octobre",
+          "11": "novembre",
+          "12": "décembre"
+        }
       }
     },
     "number": {
@@ -792,6 +848,18 @@
       },
       "expensive_hours": {
         "name": "Heures chères par jour"
+      },
+      "grid_fee_percent": {
+        "name": "Frais de réseau, % du prix spot"
+      },
+      "grid_fee_high": {
+        "name": "Frais de réseau en heures de forte charge"
+      },
+      "high_load_from_hour": {
+        "name": "Début des heures de forte charge"
+      },
+      "high_load_to_hour": {
+        "name": "Fin des heures de forte charge"
       }
     },
     "date": {
@@ -966,6 +1034,9 @@
     },
     "price_range_invalid": {
       "message": "La fin doit être après le début."
+    },
+    "high_load_window_required": {
+      "message": "Définissez d'abord les heures de forte charge : sur l'appareil du prix de l'électricité (Début et Fin des heures de forte charge, parmi ses entités masquées) ou dans la carte."
     }
   },
   "services": {

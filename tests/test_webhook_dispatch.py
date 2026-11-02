@@ -32,6 +32,7 @@ async def test_every_documented_action_has_a_handler() -> None:
         "update_phase_switching",
         "choose_price_source",
         "answer_price_duplicate",
+        "update_grid_tariff",
         "push_register",
         "identify_vehicle",
         "choose_vehicle_identification",

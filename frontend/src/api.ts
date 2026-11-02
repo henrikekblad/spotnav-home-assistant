@@ -22,6 +22,7 @@ import {
 } from "./types";
 import type { EntityRequest, VehicleSocRequest } from "./entity-config";
 import type { SiteSettingsRequest } from "./site-settings";
+import type { GridTariffBody } from "./grid-tariff";
 
 export const UNSUPPORTED_API_VERSION = "spotnav_unsupported_api_version";
 
@@ -270,6 +271,25 @@ export async function choosePriceSource(hass: HomeAssistantLike, chargerId: stri
     type: "spotnav/choose_price_source",
     entry_id: chargerId,
     price_entry_id: priceEntryId,
+  });
+}
+
+/**
+ * The grid tariff of the charger's electricity price (administrators only): a full replacement of its three parts,
+ * compare-and-set against the price's write counter. Answers `{ok: true, grid_tariff}`; a refusal is an error with
+ * a stable code (`revision_conflict`, `invalid_fiscal`, `spotnav_no_price_entry`, ...).
+ */
+export async function updateGridTariff(
+  hass: HomeAssistantLike,
+  chargerId: string,
+  expectedWriteRevision: number,
+  gridTariff: GridTariffBody,
+): Promise<unknown> {
+  return await call<unknown>(hass, {
+    type: "spotnav/update_grid_tariff",
+    charger_id: chargerId,
+    expected_write_revision: expectedWriteRevision,
+    grid_tariff: gridTariff,
   });
 }
 

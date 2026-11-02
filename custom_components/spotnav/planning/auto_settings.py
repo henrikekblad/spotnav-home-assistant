@@ -29,6 +29,7 @@ from homeassistant.util import dt as dt_util
 from ..const import DOMAIN
 from ..execution.power_energy import configured_register_entity
 from ..notifications.settings import NotificationSettings, NotificationSettingsError
+from .planner import high_load_window_problem, HighLoadWindow
 from ..runtime import domain_data
 from ..vehicles.camera_settings import CameraSettings, CameraSettingsError
 
@@ -264,18 +265,104 @@ class FiscalOverride:
         return cls(enabled=enabled, value=stored["value"]).validated(what)
 
 
+#: An electricity price entry's grid tariff keys beside its three fees (`pricing/price_source.py`).
+GRID_TARIFF_FEES: Final = ("transfer_percent", "transfer_high")
+HIGH_LOAD_WINDOW: Final = "high_load_window"
+HIGH_LOAD_WINDOW_KEYS: Final = ("days", "from_month", "to_month", "from_hour", "to_hour")
+
+
+def high_load_window_from(raw: Any, what: str = "high_load_window") -> HighLoadWindow:
+    """A stored or sent high-load window (exactly its five fields), or `invalid_fiscal`. Never coerced."""
+    if not isinstance(raw, dict):
+        _refuse("invalid_fiscal", f"{what} must be an object")
+    if set(raw) != set(HIGH_LOAD_WINDOW_KEYS):
+        _refuse("invalid_fiscal", f"{what} must carry exactly {sorted(HIGH_LOAD_WINDOW_KEYS)}")
+    problem = high_load_window_problem(*(raw[key] for key in HIGH_LOAD_WINDOW_KEYS))
+    if problem is not None:
+        _refuse("invalid_fiscal", f"{what}: {problem}")
+    return HighLoadWindow(**{key: raw[key] for key in HIGH_LOAD_WINDOW_KEYS})
+
+
+def high_load_window_dict(window: HighLoadWindow) -> dict[str, Any]:
+    return {key: getattr(window, key) for key in HIGH_LOAD_WINDOW_KEYS}
+
+
+@dataclass(frozen=True, slots=True)
+class GridTariff:
+    """An electricity price entry's grid fee beyond the fixed transfer fee: a percentage of the spot price
+    (`transfer_percent`, in %), the fee inside the high-load window (`transfer_high`, the area's minor unit per
+    kWh, replacing `transfer` there) and that window.
+
+    Each fee is off or on with the person's own figure: no area suggests one, so "on with none" is refused.
+    The high-load fee needs a window; the window may stay without it (switched off, kept for next time).
+    """
+
+    transfer_percent: FiscalOverride = FiscalOverride()
+    transfer_high: FiscalOverride = FiscalOverride()
+    high_load_window: HighLoadWindow | None = None
+
+    @property
+    def empty(self) -> bool:
+        """Nothing stored: the tariff of an entry that never had one."""
+        return self == GridTariff()
+
+    def validated(self) -> GridTariff:
+        percent = self.transfer_percent.validated("transfer_percent")
+        high = self.transfer_high.validated("transfer_high")
+        for name, fee in (("transfer_percent", percent), ("transfer_high", high)):
+            if fee.enabled and fee.value is None:
+                _refuse("invalid_fiscal", f"{name} is on but has no figure (no area suggests one)")
+        window = self.high_load_window
+        if window is not None:
+            window = high_load_window_from(high_load_window_dict(window))
+        if high.enabled and window is None:
+            _refuse("invalid_fiscal", "transfer_high is on but there is no high_load_window")
+        return GridTariff(transfer_percent=percent, transfer_high=high, high_load_window=window)
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "transfer_percent": self.transfer_percent.as_dict(),
+            "transfer_high": self.transfer_high.as_dict(),
+            HIGH_LOAD_WINDOW: None if self.high_load_window is None else high_load_window_dict(self.high_load_window),
+        }
+
+    @classmethod
+    def from_data(cls, data: Any) -> GridTariff:
+        """A price entry's stored grid tariff (its entry data). A missing or unreadable part is off, or no window."""
+        fees: dict[str, FiscalOverride] = {}
+        for name in GRID_TARIFF_FEES:
+            raw = data.get(name)
+            try:
+                fees[name] = FiscalOverride() if raw is None else FiscalOverride.from_stored(raw, name)
+            except AutoSettingsError:
+                fees[name] = FiscalOverride()
+        window: HighLoadWindow | None = None
+        if data.get(HIGH_LOAD_WINDOW) is not None:
+            try:
+                window = high_load_window_from(data.get(HIGH_LOAD_WINDOW))
+            except AutoSettingsError:
+                window = None
+        return cls(fees["transfer_percent"], fees["transfer_high"], window)
+
+
 @dataclass(frozen=True, slots=True)
 class AreaAutoSettings:
     """One area's fiscal overrides, inside one charger's record.
 
     Per area because fee figures are in that area's currency; carrying a value across an
     area change would apply öre in Finland.
+
+    `grid_tariff` is the electricity price entry's grid tariff (`GridTariff`) when the row is that entry's: it
+    rides along so every reader that resolves the fees from a row (`auto_controller.fiscal_choice_for`) prices
+    with it, but it is never part of the settings record (`as_dict`, the wire's `overrides[]` rows): a charger's
+    own row has none.
     """
 
     area_id: str
     vat: FiscalOverride = FiscalOverride()
     tax: FiscalOverride = FiscalOverride()
     transfer: FiscalOverride = FiscalOverride()
+    grid_tariff: GridTariff | None = None
 
     def validated(self) -> AreaAutoSettings:
         if not isinstance(self.area_id, str) or not self.area_id:
@@ -285,7 +372,12 @@ class AreaAutoSettings:
             vat=self.vat.validated(f"vat for {self.area_id}"),
             tax=self.tax.validated(f"tax for {self.area_id}"),
             transfer=self.transfer.validated(f"transfer for {self.area_id}"),
+            grid_tariff=self.grid_tariff,
         )
+
+    def fees_only(self) -> AreaAutoSettings:
+        """The row without the price entry's grid tariff: what the settings record carries and compares."""
+        return self if self.grid_tariff is None else replace(self, grid_tariff=None)
 
     def as_dict(self) -> dict[str, Any]:
         return {

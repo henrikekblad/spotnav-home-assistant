@@ -769,6 +769,62 @@
           "7": "7 periods",
           "8": "8 periods"
         }
+      },
+      "grid_fee_percent_policy": {
+        "name": "Grid fee % of spot policy",
+        "state": {
+          "off": "Off",
+          "manual": "Use a manual value"
+        }
+      },
+      "grid_fee_high_policy": {
+        "name": "Grid fee in high-load hours policy",
+        "state": {
+          "off": "Off",
+          "manual": "Use a manual value"
+        }
+      },
+      "high_load_days": {
+        "name": "High-load days",
+        "state": {
+          "all": "Every day",
+          "weekdays": "Weekdays (Mon–Fri)",
+          "mon_sat": "Monday to Saturday"
+        }
+      },
+      "high_load_from_month": {
+        "name": "High-load hours first month",
+        "state": {
+          "1": "January",
+          "2": "February",
+          "3": "March",
+          "4": "April",
+          "5": "May",
+          "6": "June",
+          "7": "July",
+          "8": "August",
+          "9": "September",
+          "10": "October",
+          "11": "November",
+          "12": "December"
+        }
+      },
+      "high_load_to_month": {
+        "name": "High-load hours last month",
+        "state": {
+          "1": "January",
+          "2": "February",
+          "3": "March",
+          "4": "April",
+          "5": "May",
+          "6": "June",
+          "7": "July",
+          "8": "August",
+          "9": "September",
+          "10": "October",
+          "11": "November",
+          "12": "December"
+        }
       }
     },
     "number": {
@@ -792,6 +848,18 @@
       },
       "expensive_hours": {
         "name": "Expensive hours per day"
+      },
+      "grid_fee_percent": {
+        "name": "Grid fee, % of spot"
+      },
+      "grid_fee_high": {
+        "name": "Grid fee in high-load hours"
+      },
+      "high_load_from_hour": {
+        "name": "High-load hours start"
+      },
+      "high_load_to_hour": {
+        "name": "High-load hours end"
       }
     },
     "date": {
@@ -966,6 +1034,9 @@
     },
     "price_range_invalid": {
       "message": "The end must be after the start."
+    },
+    "high_load_window_required": {
+      "message": "Set the high-load hours first: on the electricity price device (High-load hours start and end, shown under its hidden entities) or in the card."
     }
   },
   "services": {

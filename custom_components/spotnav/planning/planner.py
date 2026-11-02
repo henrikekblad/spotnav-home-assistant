@@ -131,6 +131,88 @@ def _aware(moment: Any, what: str) -> datetime:
     return moment
 
 
+#: The days a high-load window applies on, and the last ISO weekday (Monday 1) each takes in.
+HIGH_LOAD_DAYS: Final = {"all": 7, "weekdays": 5, "mon_sat": 6}
+
+
+def high_load_window_problem(days: Any, from_month: Any, to_month: Any, from_hour: Any, to_hour: Any) -> str | None:
+    """Why these five fields are not a high-load window, or `None` when they are one.
+
+    `days` is `all`, `weekdays` (Monday to Friday) or `mon_sat`. Months 1 to 12, both included, wrapping over the
+    new year (11 to 3 is November to March; equal is one month; 1 to 12 is all year). Whole hours of the area's
+    own clock: `from_hour` 0 to 23, `to_hour` 1 to 24; a `from_hour` after `to_hour` wraps over midnight (22 to 6),
+    and an equal pair is no window. One rule for the planner and the stored settings, so the two cannot disagree.
+    """
+    if not isinstance(days, str) or days not in HIGH_LOAD_DAYS:
+        return f"days must be one of {sorted(HIGH_LOAD_DAYS)}"
+    for name, value, low, high in (
+        ("from_month", from_month, 1, 12),
+        ("to_month", to_month, 1, 12),
+        ("from_hour", from_hour, 0, 23),
+        ("to_hour", to_hour, 1, 24),
+    ):
+        if isinstance(value, bool) or not isinstance(value, int):
+            return f"{name} must be a whole number"
+        if not low <= value <= high:
+            return f"{name} must be between {low} and {high}"
+    if from_hour == to_hour:
+        return "from_hour and to_hour must differ"
+    return None
+
+
+@dataclass(frozen=True, slots=True)
+class HighLoadWindow:
+    """The hours a time-of-use grid fee charges its high rate in (and, later, a demand charge counts).
+
+    Whole hours of the area's own clock (`tz`) on some days of the week (`days`) in some months, as
+    `high_load_window_problem` states. The hours of a window that wraps over midnight belong to the day they
+    start on: 22-06 on weekdays holds Friday night until Saturday 06:00 and not Sunday night, and its morning
+    hours take the month of the evening before. Public holidays count as the weekdays they fall on. `tz` is the
+    area's zone, set when the fees are resolved for an area; a stored window has none.
+    """
+
+    days: str = "weekdays"
+    from_month: int = 11
+    to_month: int = 3
+    from_hour: int = 7
+    to_hour: int = 19
+    tz: str | None = None
+
+    def validated(self) -> HighLoadWindow:
+        """The same window, once it names its zone and its fields are a window."""
+        problem = high_load_window_problem(self.days, self.from_month, self.to_month, self.from_hour, self.to_hour)
+        if problem is not None:
+            _refuse("invalid_fiscal", f"high_load_window: {problem}")
+        if not isinstance(self.tz, str) or time_zones.zone(self.tz) is None:
+            _refuse("invalid_fiscal", "a high-load window needs the area's time zone")
+        return self
+
+    def contains(self, start: datetime) -> bool:
+        """Whether the interval starting at this instant lies in the window, on the area's clock.
+
+        Judged at the start: window edges are whole hours and every interval starts on a quarter-hour, so an
+        interval is wholly inside or wholly outside. A 23- or 25-hour day needs no case of its own: the hour on
+        the clock decides, and a wrapped window's morning hours are tested as the day before's.
+        """
+        if self.tz is None:
+            _refuse("invalid_fiscal", "a high-load window needs the area's time zone")
+        local = _aware(start, "start").astimezone(time_zones.require_zone(self.tz))
+        hour = local.hour
+        day = local.date()
+        if self.from_hour < self.to_hour:
+            if not self.from_hour <= hour < self.to_hour:
+                return False
+        elif hour < self.to_hour:
+            day -= timedelta(days=1)
+        elif hour < self.from_hour:
+            return False
+        if day.isoweekday() > HIGH_LOAD_DAYS[self.days]:
+            return False
+        if self.from_month <= self.to_month:
+            return self.from_month <= day.month <= self.to_month
+        return day.month >= self.from_month or day.month <= self.to_month
+
+
 @dataclass(frozen=True, slots=True)
 class FiscalChoice:
     """The fiscal controls, as the caller set them.
@@ -145,11 +227,28 @@ class FiscalChoice:
     transfer_minor_per_kwh: float | None = None
     vat_enabled: bool = False
     vat_percent: float | None = None
+    #: The grid fee's part that is a percentage of the spot price (some operators charge it), before VAT. It
+    #: follows the spot price's sign: a negative spot price makes it negative too.
+    transfer_percent_enabled: bool = False
+    transfer_percent: float | None = None
+    #: The grid fee inside the high-load window (a time-of-use tariff): it replaces the transfer fee there.
+    transfer_high_enabled: bool = False
+    transfer_high_minor_per_kwh: float | None = None
+    #: The high-load window, with the area's zone; present exactly while the high-load fee is on.
+    high_load_window: HighLoadWindow | None = None
 
     def validated(self) -> FiscalChoice:
         """The same choice, once every enabled component has a usable value."""
         tax = _component("tax", self.tax_enabled, self.tax_minor_per_kwh)
         transfer = _component("transfer", self.transfer_enabled, self.transfer_minor_per_kwh)
+        percent = _component("transfer_percent", self.transfer_percent_enabled, self.transfer_percent)
+        high = _component("transfer_high", self.transfer_high_enabled, self.transfer_high_minor_per_kwh)
+        window = None if self.high_load_window is None else self.high_load_window.validated()
+        if high is not None and window is None:
+            _refuse("invalid_fiscal", "the high-load grid fee is on but there is no high-load window")
+        if high is None and window is not None:
+            # The window prices nothing without the fee, and a window with no fee must not make a start required.
+            _refuse("invalid_fiscal", "a high-load window was given without the high-load grid fee")
         # A zero VAT rate is legitimate (NO4); an absent one is not while VAT is on.
         vat: float | None = None
         if self.vat_enabled:
@@ -165,7 +264,17 @@ class FiscalChoice:
             transfer_minor_per_kwh=transfer,
             vat_enabled=self.vat_enabled,
             vat_percent=vat,
+            transfer_percent_enabled=self.transfer_percent_enabled,
+            transfer_percent=percent,
+            transfer_high_enabled=self.transfer_high_enabled,
+            transfer_high_minor_per_kwh=high,
+            high_load_window=window,
         )
+
+    @property
+    def needs_start(self) -> bool:
+        """Whether a price depends on when the interval is: a high-load window is set."""
+        return self.high_load_window is not None
 
 
 def _component(name: str, enabled: bool, value: float | None) -> float | None:
@@ -184,18 +293,32 @@ def _component(name: str, enabled: bool, value: float | None) -> float | None:
     return number if enabled else None
 
 
-def effective_minor_per_kwh(local_major_per_kwh: float, fiscal: FiscalChoice) -> float:
-    """The price a slot is planned against, in the area's minor unit.
+def effective_minor_per_kwh(local_major_per_kwh: float, fiscal: FiscalChoice, start: datetime | None = None) -> float:
+    """The price an interval is planned against, in the area's minor unit.
 
     The order is not commutative, which is why it lives in one function:
-    local major x 100, + energy tax, + transfer fee, x (1 + VAT / 100).
-    VAT is last because it applies to the tax and the fee too.
+    local major x 100, + energy tax, + transfer fee (the high-load one inside the high-load window),
+    + the grid fee's percentage of the spot price (which follows the spot price's sign),
+    x (1 + VAT / 100). VAT is last because it applies to the tax and the fees too.
+
+    `start` is the interval's start. It is required while a high-load window is set: without it the fee in
+    force is unknown, which is a refusal (`invalid_fiscal`), never the low fee.
     """
-    minor = local_major_per_kwh * 100
+    spot_minor = local_major_per_kwh * 100
+    minor = spot_minor
     if fiscal.tax_enabled and fiscal.tax_minor_per_kwh is not None:
         minor += fiscal.tax_minor_per_kwh
-    if fiscal.transfer_enabled and fiscal.transfer_minor_per_kwh is not None:
-        minor += fiscal.transfer_minor_per_kwh
+    transfer = fiscal.transfer_minor_per_kwh if fiscal.transfer_enabled else None
+    window = fiscal.high_load_window
+    if window is not None:
+        if start is None:
+            _refuse("invalid_fiscal", "a high-load window is set but the interval's start was not given")
+        if fiscal.transfer_high_enabled and window.contains(start):
+            transfer = fiscal.transfer_high_minor_per_kwh
+    if transfer is not None:
+        minor += transfer
+    if fiscal.transfer_percent_enabled and fiscal.transfer_percent is not None:
+        minor += spot_minor * fiscal.transfer_percent / 100
     if fiscal.vat_enabled and fiscal.vat_percent is not None:
         minor *= 1 + fiscal.vat_percent / 100
     return minor
@@ -670,7 +793,7 @@ def _horizon(
                 utc_end=utc_end,
                 day=local.date(),
                 published_major_per_kwh=slot.local_major_per_kwh,
-                effective_minor_per_kwh=effective_minor_per_kwh(slot.local_major_per_kwh, fiscal),
+                effective_minor_per_kwh=effective_minor_per_kwh(slot.local_major_per_kwh, fiscal, slot.start),
                 in_proposal=slot.start in chosen,
             )
         )
@@ -938,12 +1061,12 @@ def calculate_plan(request: PlanRequest) -> PlanResult:
     periods = _periods(selected)
     delivered = needed * per_slot
     cost_minor = sum(
-        per_slot * effective_minor_per_kwh(slot.local_major_per_kwh, request.fiscal)
+        per_slot * effective_minor_per_kwh(slot.local_major_per_kwh, request.fiscal, slot.start)
         for slot in selected
     )
     # The same number of slots straight from the first usable one: charging now, at the same power.
     now_minor = sum(
-        per_slot * effective_minor_per_kwh(slot.local_major_per_kwh, request.fiscal)
+        per_slot * effective_minor_per_kwh(slot.local_major_per_kwh, request.fiscal, slot.start)
         for slot in candidates[:needed]
     )
     return PlanResult(
@@ -966,7 +1089,7 @@ def calculate_plan(request: PlanRequest) -> PlanResult:
                 start=slot.start,
                 end=slot.end,
                 local_major_per_kwh=slot.local_major_per_kwh,
-                effective_minor_per_kwh=effective_minor_per_kwh(slot.local_major_per_kwh, request.fiscal),
+                effective_minor_per_kwh=effective_minor_per_kwh(slot.local_major_per_kwh, request.fiscal, slot.start),
                 unpriced=False,
                 source=slot.source,
             )
@@ -1081,7 +1204,7 @@ def start_cost_minor(candidates: list[PlanningSlot], fiscal: FiscalChoice) -> fl
     """
     if not candidates:
         return 0.0
-    level = sum(abs(effective_minor_per_kwh(slot.local_major_per_kwh, fiscal)) for slot in candidates)
+    level = sum(abs(effective_minor_per_kwh(slot.local_major_per_kwh, fiscal, slot.start)) for slot in candidates)
     return START_COST_KWH * level / len(candidates)
 
 
@@ -1121,7 +1244,7 @@ def _choose_auto(
     states: dict[tuple[int, int], _AutoState] = {(0, 0): _AutoState(0, 0, 0, 0.0, ())}
     for index, slot in enumerate(candidates):
         next_states: dict[tuple[int, int], _AutoState] = {}
-        slot_cost = per_slot * effective_minor_per_kwh(slot.local_major_per_kwh, fiscal)
+        slot_cost = per_slot * effective_minor_per_kwh(slot.local_major_per_kwh, fiscal, slot.start)
 
         def keep(state: _AutoState) -> None:
             key = (state.selected, state.length)
@@ -1177,7 +1300,7 @@ def _choose_capped(
 
     for index, slot in enumerate(candidates):
         next_states: dict[tuple[int, int, bool], _State] = {}
-        slot_cost = per_slot * effective_minor_per_kwh(slot.local_major_per_kwh, fiscal)
+        slot_cost = per_slot * effective_minor_per_kwh(slot.local_major_per_kwh, fiscal, slot.start)
 
         def keep(state: _State) -> None:
             key = (state.selected, state.runs, state.active)
@@ -1399,6 +1522,6 @@ def chart_intervals(
                 utc_end=interval.utc_end,
                 day=document.day,
                 raw_minor_per_kwh=local_major * 100,
-                effective_minor_per_kwh=effective_minor_per_kwh(local_major, fiscal),
+                effective_minor_per_kwh=effective_minor_per_kwh(local_major, fiscal, interval.utc_start),
             )
     return tuple(rows[start] for start in sorted(rows))

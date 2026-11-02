@@ -46,6 +46,7 @@ import {
   updateSettings,
   updateSiteSettings,
   choosePriceSource,
+  updateGridTariff,
   answerPriceDuplicate,
   dismissSetupItem,
   fixOwnMode,
@@ -80,6 +81,7 @@ import { cardOutdated, clientBlock, decodeCardInfo, ownCardBundleHash, servedHas
 import { saveTextFile } from "./download";
 import { ensureHaSelector } from "./entity-editor";
 import type { FiscalComponentName, ValueWrite } from "./value-writes";
+import { GRID_TARIFF_CONFLICT, gridTariffIncluded, sameBody, storedBody } from "./grid-tariff";
 import { cameraErrorKey, decodePicture, type CameraPicture, type ReferenceAnswer } from "./camera-editor";
 import { decodeCsv, decodeSessions, type SessionsAnswer } from "./history";
 import {
@@ -2273,6 +2275,28 @@ export class SpotnavCard extends HTMLElement {
         const answer = await setEntsoeKey(hass, write.key, write.areaId);
         // A key the platform could not be asked about is kept, and proved by the first day it is asked for.
         return answer.ok || answer.error === "entsoe_unreachable" ? null : "price.key.rejected";
+      }
+      case "gridTariff": {
+        const block = this.cardState.kind === "ready" ? this.cardState.dashboard.grid_tariff : null;
+        if (block === null || !block.writable || gridTariffIncluded(block)) {
+          return "settings.error.generic";
+        }
+        const body = write.change(block);
+        if (sameBody(body, storedBody(block))) {
+          return null;
+        }
+        try {
+          await updateGridTariff(hass, charger, block.write_revision, body);
+        } catch (error) {
+          if (error instanceof SpotnavApiError && error.code === GRID_TARIFF_CONFLICT) {
+            // Written elsewhere since this read: read again, and the next Save applies the change to what is
+            // stored now.
+            await this.refresh({ force: true });
+            return "gridFee.error.conflict";
+          }
+          throw error;
+        }
+        return null;
       }
       case "priceDuplicate": {
         await answerPriceDuplicate(hass, write.areaId, write.keepEntryId);

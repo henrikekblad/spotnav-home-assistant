@@ -4,9 +4,10 @@
 
 import type { VehicleChanges } from "./api";
 import type { EntityDraft, EntityScope } from "./entity-config";
+import type { GridTariffBody } from "./grid-tariff";
 import type { ReplacementCheck } from "./settings";
 import type { CameraFrame, SettingsRecord } from "./types";
-import type { Vehicle } from "./validate";
+import type { GridTariffBlock, Vehicle } from "./validate";
 
 export type FiscalComponentName = "vat" | "tax" | "transfer";
 
@@ -43,4 +44,9 @@ export type ValueWrite =
   /** The installation's ENTSO-E key (`spotnav/set_entsoe_key`), checked against the area's prices. */
   | { kind: "entsoeKey"; key: string; areaId: string | null }
   /** One fee of the selected area: a figure, or `null` for off. */
-  | { kind: "fiscal"; component: FiscalComponentName; value: number | null };
+  | { kind: "fiscal"; component: FiscalComponentName; value: number | null }
+  /**
+   * The electricity price's grid tariff (`spotnav/update_grid_tariff`): `change` builds the full body over the block
+   * the card holds when it sends, which names its write counter. A conflict re-reads the dashboard and says so.
+   */
+  | { kind: "gridTariff"; change: (block: GridTariffBlock) => GridTariffBody };

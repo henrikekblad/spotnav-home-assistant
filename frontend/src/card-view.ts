@@ -84,7 +84,8 @@ import {
 } from "./market-editor";
 import { settingsEditorBody, settingsTrigger, type SettingsEditorForm } from "./settings-editor";
 import { renderPlanPreview, type PreviewState } from "./plan-preview";
-import { type Fiscal, type ReferencePicture, type Vehicle } from "./validate";
+import { type Fiscal, type GridTariffBlock, type HighLoadWindow, type ReferencePicture, type Vehicle } from "./validate";
+import { gridTariffRows, windowEditor, withHigh, withPercent, withWindow, type GridTariffRowKey } from "./grid-tariff";
 import { floorEditor, limitEditor, targetEditor } from "./percent-editors";
 import { defaultTargetPercent } from "./percent-slider";
 import { vehicleSummary, type VehicleEdits, type VehicleReference } from "./vehicle-settings";
@@ -2648,7 +2649,7 @@ export function createCardView(input: CardViewInput): CardView {
   function openValueEditor(
     title: string,
     build: (handlers: EditorHandlers) => HTMLFormElement | { form: HTMLFormElement; close: () => void },
-    options: { anyone?: boolean } = {},
+    options: { anyone?: boolean; next?: () => void } = {},
   ): void {
     if (destroyed || (!input.isAdmin && options.anyone !== true)) {
       return;
@@ -2656,6 +2657,11 @@ export function createCardView(input: CardViewInput): CardView {
     hideForChildDialog();
     const handlers: EditorHandlers = {
       onDone: () => {
+        if (options.next !== undefined && valueDialog.isOpen()) {
+          // A step of a longer edit: the next step takes the dialog's place, and nothing is written yet.
+          options.next();
+          return;
+        }
         if (valueDialog.isOpen()) {
           valueDialog.hide({ restoreFocus: false });
           openSettingsOverview();
@@ -2773,8 +2779,125 @@ export function createCardView(input: CardViewInput): CardView {
       section.append(
         overviewRow(fiscal.key, fiscal.label, fiscal.value, included ? undefined : () => input.onEditFiscal?.(component)),
       );
+      if (component === "transfer") {
+        section.append(...gridTariffNodes());
+      }
     }
     return section;
+  }
+
+  /**
+   * The grid tariff's rows beside the grid fee: the percentage of spot, the fee in high-load hours and, while that
+   * fee is on or hours are stored, the hours. Locked where the price already includes the grid fee, and read-only
+   * for a reader who may not change the electricity price.
+   */
+  function gridTariffNodes(): HTMLElement[] {
+    const block = model.gridTariff;
+    if (block === null) {
+      return [];
+    }
+    const edit: Record<GridTariffRowKey, () => void> = {
+      transfer_percent: () => editGridPercent(block),
+      transfer_high: () => editGridHigh(block),
+      high_load_window: () => editGridWindow(block.high_load_window, null),
+    };
+    return gridTariffRows(model.language, block).map((row) =>
+      overviewRow(row.key, row.label, row.value, row.included || !block.writable ? undefined : edit[row.key]),
+    );
+  }
+
+  function editGridPercent(block: GridTariffBlock): void {
+    const fee = block.transfer_percent;
+    editNumber(
+      translate(model.language, "gridFee.percent"),
+      {
+        help: translate(model.language, "gridFee.percent.help"),
+        unit: fee.unit ?? "%",
+        current: fee.effective_value,
+        prefill: fee.explicit_value,
+        min: 0,
+        max: 100,
+        decimals: 2,
+        noneLabel: translate(model.language, "settings.value.off"),
+      },
+      (value) => writeValue({ kind: "gridTariff", change: (current) => withPercent(current, value) }),
+    );
+  }
+
+  /**
+   * The high-load fee. With no hours stored, turning it on asks for the hours first (prefilled with a common
+   * window the person confirms), then the fee; one write carries both, and Cancel at either step writes nothing.
+   */
+  function editGridHigh(block: GridTariffBlock): void {
+    const fee = block.transfer_high;
+    if (fee.policy === "off" && block.high_load_window === null) {
+      editGridWindow(null, (window) => editGridHighFigure(block, window));
+      return;
+    }
+    editGridHighFigure(block, null);
+  }
+
+  /** The high-load fee's figure; `window` is hours just confirmed in the step before, else the stored ones are kept. */
+  function editGridHighFigure(block: GridTariffBlock, window: HighLoadWindow | null): void {
+    const fee = block.transfer_high;
+    editNumber(
+      translate(model.language, "gridFee.high"),
+      {
+        help: translate(model.language, "gridFee.high.help"),
+        unit: fee.unit ?? "",
+        current: fee.effective_value,
+        prefill: fee.explicit_value,
+        min: 0,
+        max: 100000,
+        decimals: 2,
+        // Turning it on after confirming the hours: there is nothing to turn off.
+        ...(window === null ? { noneLabel: translate(model.language, "settings.value.off") } : {}),
+      },
+      (value) => writeValue({ kind: "gridTariff", change: (current) => withHigh(current, value, window) }),
+    );
+  }
+
+  /**
+   * The high-load hours. On its own (`then` is `null`) Save writes them; as the first step of turning the fee on,
+   * Save only hands them to `then`.
+   */
+  function editGridWindow(current: HighLoadWindow | null, then: ((window: HighLoadWindow) => void) | null): void {
+    let chosen: HighLoadWindow | null = null;
+    openValueEditor(
+      translate(model.language, "gridFee.window"),
+      (handlers) =>
+        windowEditor(
+          doc,
+          model.language,
+          {
+            current,
+            idPrefix,
+            ...(then === null
+              ? {}
+              : {
+                  intro: translate(model.language, "gridFee.window.first"),
+                  positive: translate(model.language, "gridFee.window.next"),
+                }),
+          },
+          (window) => {
+            if (then !== null) {
+              chosen = window;
+              return Promise.resolve(null);
+            }
+            return writeValue({ kind: "gridTariff", change: (block) => withWindow(block, window) });
+          },
+          handlers,
+        ),
+      then === null
+        ? {}
+        : {
+            next: () => {
+              if (chosen !== null) {
+                then(chosen);
+              }
+            },
+          },
+    );
   }
 
   /**

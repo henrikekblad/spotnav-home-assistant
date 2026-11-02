@@ -769,6 +769,62 @@
           "7": "7 perioder",
           "8": "8 perioder"
         }
+      },
+      "grid_fee_percent_policy": {
+        "name": "Regel för nätavgift i % av spotpriset",
+        "state": {
+          "off": "Av",
+          "manual": "Använd ett eget värde"
+        }
+      },
+      "grid_fee_high_policy": {
+        "name": "Regel för nätavgift under höglasttid",
+        "state": {
+          "off": "Av",
+          "manual": "Använd ett eget värde"
+        }
+      },
+      "high_load_days": {
+        "name": "Höglastdagar",
+        "state": {
+          "all": "Alla dagar",
+          "weekdays": "Vardagar (mån–fre)",
+          "mon_sat": "Måndag till lördag"
+        }
+      },
+      "high_load_from_month": {
+        "name": "Höglasttid första månad",
+        "state": {
+          "1": "januari",
+          "2": "februari",
+          "3": "mars",
+          "4": "april",
+          "5": "maj",
+          "6": "juni",
+          "7": "juli",
+          "8": "augusti",
+          "9": "september",
+          "10": "oktober",
+          "11": "november",
+          "12": "december"
+        }
+      },
+      "high_load_to_month": {
+        "name": "Höglasttid sista månad",
+        "state": {
+          "1": "januari",
+          "2": "februari",
+          "3": "mars",
+          "4": "april",
+          "5": "maj",
+          "6": "juni",
+          "7": "juli",
+          "8": "augusti",
+          "9": "september",
+          "10": "oktober",
+          "11": "november",
+          "12": "december"
+        }
       }
     },
     "number": {
@@ -792,6 +848,18 @@
       },
       "expensive_hours": {
         "name": "Dyra timmar per dygn"
+      },
+      "grid_fee_percent": {
+        "name": "Nätavgift, % av spotpriset"
+      },
+      "grid_fee_high": {
+        "name": "Nätavgift under höglasttid"
+      },
+      "high_load_from_hour": {
+        "name": "Höglasttid börjar"
+      },
+      "high_load_to_hour": {
+        "name": "Höglasttid slutar"
       }
     },
     "date": {
@@ -966,6 +1034,9 @@
     },
     "price_range_invalid": {
       "message": "Slutet måste vara efter starten."
+    },
+    "high_load_window_required": {
+      "message": "Ställ först in höglasttiden: på elprisenheten (Höglasttid börjar och slutar, bland dess dolda entiteter) eller i kortet."
     }
   },
   "services": {

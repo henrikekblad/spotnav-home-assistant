@@ -769,6 +769,62 @@
           "7": "7 periodos",
           "8": "8 periodos"
         }
+      },
+      "grid_fee_percent_policy": {
+        "name": "Política del peaje de acceso en % del precio spot",
+        "state": {
+          "off": "Desactivado",
+          "manual": "Usar un valor manual"
+        }
+      },
+      "grid_fee_high_policy": {
+        "name": "Política del peaje de acceso en horas de alta carga",
+        "state": {
+          "off": "Desactivado",
+          "manual": "Usar un valor manual"
+        }
+      },
+      "high_load_days": {
+        "name": "Días de alta carga",
+        "state": {
+          "all": "Todos los días",
+          "weekdays": "Entre semana (lun–vie)",
+          "mon_sat": "De lunes a sábado"
+        }
+      },
+      "high_load_from_month": {
+        "name": "Primer mes de las horas de alta carga",
+        "state": {
+          "1": "enero",
+          "2": "febrero",
+          "3": "marzo",
+          "4": "abril",
+          "5": "mayo",
+          "6": "junio",
+          "7": "julio",
+          "8": "agosto",
+          "9": "septiembre",
+          "10": "octubre",
+          "11": "noviembre",
+          "12": "diciembre"
+        }
+      },
+      "high_load_to_month": {
+        "name": "Último mes de las horas de alta carga",
+        "state": {
+          "1": "enero",
+          "2": "febrero",
+          "3": "marzo",
+          "4": "abril",
+          "5": "mayo",
+          "6": "junio",
+          "7": "julio",
+          "8": "agosto",
+          "9": "septiembre",
+          "10": "octubre",
+          "11": "noviembre",
+          "12": "diciembre"
+        }
       }
     },
     "number": {
@@ -792,6 +848,18 @@
       },
       "expensive_hours": {
         "name": "Horas caras al día"
+      },
+      "grid_fee_percent": {
+        "name": "Peaje de acceso, % del precio spot"
+      },
+      "grid_fee_high": {
+        "name": "Peaje de acceso en horas de alta carga"
+      },
+      "high_load_from_hour": {
+        "name": "Inicio de las horas de alta carga"
+      },
+      "high_load_to_hour": {
+        "name": "Fin de las horas de alta carga"
       }
     },
     "date": {
@@ -966,6 +1034,9 @@
     },
     "price_range_invalid": {
       "message": "El fin debe ser posterior al inicio."
+    },
+    "high_load_window_required": {
+      "message": "Configure primero las horas de alta carga: en el dispositivo del precio de la electricidad (Inicio y Fin de las horas de alta carga, entre sus entidades ocultas) o en la tarjeta."
     }
   },
   "services": {
