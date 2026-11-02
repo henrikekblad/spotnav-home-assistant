@@ -60,6 +60,7 @@ from ..planning.auto_settings import (
     AutoSettings,
     AutoSettingsError,
     DEMAND_COMPONENTS,
+    DemandComponent,
     FiscalOverride,
     GRID_TARIFF_FEES,
     GridTariff,
@@ -286,6 +287,13 @@ def site_price_source(hass: HomeAssistant, site_entry_id: str) -> PriceSource | 
         if source is not None:
             return source
     return None
+
+
+def site_demand_components(hass: HomeAssistant, site_entry_id: str) -> tuple[DemandComponent, ...]:
+    """The demand-charge components of the electricity price the site measures for (none without one)."""
+    source = site_price_source(hass, site_entry_id)
+    tariff = None if source is None else source.overrides.grid_tariff
+    return () if tariff is None else tariff.demand
 
 
 def price_source_for(

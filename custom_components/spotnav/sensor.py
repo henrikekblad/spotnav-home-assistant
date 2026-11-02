@@ -23,8 +23,7 @@ from homeassistant.util import dt as dt_util
 
 from .price_entities import price_sensors
 from .api.entity_fields import stored_import_target_kw
-from .planning.auto_settings import DemandComponent
-from .pricing.price_source import SIGNAL_PRICE_SOURCES, site_price_source
+from .pricing.price_source import SIGNAL_PRICE_SOURCES, site_demand_components
 from .const import (
     CONF_CHARGER_ENTRY_IDS,
     CONF_ENTRY_TYPE,
@@ -508,13 +507,6 @@ class SiteSolarSurplusEntity(SpotNavSiteEntity, SensorEntity):
         self._shown = new
         self._written_at = now
         self.async_write_ha_state()
-
-
-def site_demand_components(hass: HomeAssistant, site_entry_id: str) -> tuple[DemandComponent, ...]:
-    """The demand-charge components of the electricity price the site measures for (none without one)."""
-    source = site_price_source(hass, site_entry_id)
-    tariff = None if source is None else source.overrides.grid_tariff
-    return () if tariff is None else tariff.demand
 
 
 def _keep_demand_peak_sensor(

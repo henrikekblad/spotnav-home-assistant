@@ -153,6 +153,14 @@ def capture_demand(hass: HomeAssistant, charger_id: str, components: tuple[Deman
     return CapturedDemand(available=True, reason=None, snapshot=snapshot, import_target_kw=target)
 
 
+def demand_needs_grid_power(captured: CapturedGridTariff | None) -> bool:
+    """Whether a demand-charge component or the site's import target is set where the site cannot measure it: the
+    "Get started" row pointing at the site's total grid power (`setup_checklist.py`)."""
+    if captured is None or captured.demand.reason != DEMAND_NEEDS_TOTAL_GRID_POWER:
+        return False
+    return bool(captured.tariff.demand) or captured.demand.import_target_kw is not None
+
+
 def _captured(source: PriceSource) -> CapturedGridTariff:
     assert source.entry_id is not None
     area = source.area

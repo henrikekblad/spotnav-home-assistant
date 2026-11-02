@@ -20,6 +20,7 @@ from pytest_homeassistant_custom_component.common import async_fire_time_changed
 from custom_components.spotnav.api.grid_tariff import capture_grid_tariff, serialize_grid_tariff
 from homeassistant.helpers import entity_registry as er
 
+from custom_components.spotnav.api import dashboard as dashboard_api
 from custom_components.spotnav.api.grid_tariff import update_grid_tariff
 from custom_components.spotnav.const import CONF_GRID_POWER_SOURCE, DOMAIN
 from custom_components.spotnav.runtime import site_controller_for
@@ -99,6 +100,14 @@ async def test_each_component_takes_the_peak_of_its_own_hours_and_the_running_ho
     freezer.tick(timedelta(minutes=2))
     await run(hass, freezer, 38, 3000.0)  # to 11:00
     await run(hass, freezer, 1, 3000.0)
+    # The site's diagnostics carry the month's hours, the components' peaks and the running hour.
+    from custom_components.spotnav.diagnostics import async_get_config_entry_diagnostics
+
+    diagnostics = (await async_get_config_entry_diagnostics(hass, site))["demand"]
+    assert diagnostics["import_target_kw"] == 6.0 and diagnostics["tz"] == "Europe/Stockholm"
+    assert [row[1] for row in diagnostics["hours"]] == pytest.approx([3.967, 6.975, 3.035], abs=0.002)
+    assert diagnostics["components"][0]["bar_kw"] == pytest.approx(6.975, abs=0.01)
+    assert diagnostics["running"]["start"] == "2026-09-22T09:00:00+00:00"
     tracker = site_controller_for(hass, site.entry_id).demand.tracker  # type: ignore[union-attr]
     assert [(round(hour.kw, 1), hour.incomplete) for hour in tracker.hours] == [
         (4.0, False),
@@ -115,6 +124,9 @@ async def test_a_direct_site_without_the_total_cannot_measure_and_says_so(
     await go_auto(hass)
     await add_price(hass, demand_components=PILOT)
 
+    # "Get started" points at the site's total grid power, and cannot be dismissed.
+    body = dashboard_api.serialize_dashboard(dashboard_api.capture_dashboard(hass, charger), can_act=True)
+    assert {"id": "demand_grid_power", "dismissible": False} in body["setup"]["items"]
     demand = demand_of(hass, charger.entry_id)
     assert {key: demand[key] for key in ("available", "reason", "per_component", "hour", "import_target_kw")} == {
         "available": False,
@@ -175,3 +187,12 @@ async def test_a_site_without_a_component_has_no_peak_sensor(hass: HomeAssistant
     await go_auto(hass)
     await add_price(hass)
     assert site is not None and peak_sensor(hass, site.entry_id) is None
+
+
+async def test_a_site_without_the_total_and_nothing_set_asks_for_nothing(hass: HomeAssistant, freezer) -> None:
+    freezer.move_to(NOW)
+    charger, _site = await setup_charger_and_site(hass)
+    await go_auto(hass)
+    await add_price(hass)
+    body = dashboard_api.serialize_dashboard(dashboard_api.capture_dashboard(hass, charger), can_act=True)
+    assert "demand_grid_power" not in [item["id"] for item in body["setup"]["items"]]

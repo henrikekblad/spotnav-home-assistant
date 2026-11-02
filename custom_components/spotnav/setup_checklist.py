@@ -13,6 +13,9 @@ browser and for every charger.
 * `site`: the charger has no site, so there is no grid meter for load balancing or solar. Dismissible.
 * `solar_forecast`: the charger's site can measure solar surplus but no solar forecast source is chosen for it.
   Dismissible.
+* `demand_grid_power`: a demand-charge component or the site's import target is set, but the charger's site is a
+  direct one without the meter's total grid power, so its hours cannot be measured. Not dismissible: the place is
+  the site's Total grid power (or removing what was set).
 * `phase_switching`: the charger can switch phases and its site can do solar (the setting is offered), but phase
   switching for solar is off. Dismissible.
 * `phone`: no phone is chosen for this charger's notifications, and the paired SpotNav app does not take them
@@ -41,6 +44,7 @@ SETUP_VEHICLE: Final = "vehicle"
 SETUP_CAR_LEVEL: Final = "car_level"
 SETUP_SITE: Final = "site"
 SETUP_SOLAR_FORECAST: Final = "solar_forecast"
+SETUP_DEMAND_GRID_POWER: Final = "demand_grid_power"
 SETUP_PHASE_SWITCHING: Final = "phase_switching"
 SETUP_PHONE: Final = "phone"
 SETUP_APP: Final = "app"
@@ -50,6 +54,7 @@ SETUP_ITEMS: Final = (
     SETUP_CAR_LEVEL,
     SETUP_SITE,
     SETUP_SOLAR_FORECAST,
+    SETUP_DEMAND_GRID_POWER,
     SETUP_PHASE_SWITCHING,
     SETUP_PHONE,
     SETUP_APP,
@@ -120,9 +125,11 @@ def capture_setup(
     site_solar_capable: bool,
     has_solar_forecast: bool,
     phase_switching: bool | None,
+    demand_needs_grid_power: bool = False,
 ) -> tuple[SetupItem, ...]:
     """The rows still left for this charger, in `SETUP_ITEMS` order. `phase_switching` is the setting's value,
-    `None` while it is not offered (`api/dashboard.py:capture_phase_switching`)."""
+    `None` while it is not offered (`api/dashboard.py:capture_phase_switching`). `demand_needs_grid_power`: a
+    demand-charge component or an import target is set and the site cannot measure it (`api/grid_tariff.py`)."""
     data = charger_data(hass, entry_id)
     push = None if data is None else data.push
     app_notifies = push is not None and push.registration is not None
@@ -135,6 +142,8 @@ def capture_setup(
         left.append(SETUP_SITE)
     elif site_solar_capable and not has_solar_forecast:
         left.append(SETUP_SOLAR_FORECAST)
+    if has_site and demand_needs_grid_power:
+        left.append(SETUP_DEMAND_GRID_POWER)
     if phase_switching is False:
         left.append(SETUP_PHASE_SWITCHING)
     if settings is not None and not settings.notifications.targets and not app_notifies:

@@ -146,7 +146,7 @@ from ..vehicles.vehicle_discovery import discover_vehicles, resolve_target_vehic
 from ..vehicles.vehicle_wake import wake_supported
 from .charge_bar import charge_bar, ProgressFacts
 from .entity_fields import phase_switching_offered
-from .grid_tariff import capture_grid_tariff, CapturedGridTariff, serialize_grid_tariff
+from .grid_tariff import capture_grid_tariff, CapturedGridTariff, demand_needs_grid_power, serialize_grid_tariff
 from .price_source import capture_price_source, CapturedPriceSource, serialize_price_source
 from .price_days import serialize_source as source_attribution
 from .common import (
@@ -1162,6 +1162,7 @@ def capture_dashboard(
         forecast_pending=_forecast_pending(settings, site, _entry_loaded(hass)),
         charger_pending=bool(controller is not None and controller.states_unreported),
     )
+    grid_tariff = capture_grid_tariff(hass, entry_id)
     return CapturedDashboard(
         generated_at=now,
         charger=capture_charger(hass, entry),
@@ -1247,7 +1248,7 @@ def capture_dashboard(
         session=capture_session(hass, entry_id),
         plan_notice=_plan_notice(hass, entry_id),
         price_source=capture_price_source(hass, entry_id),
-        grid_tariff=capture_grid_tariff(hass, entry_id),
+        grid_tariff=grid_tariff,
         setup=capture_setup(
             hass,
             entry_id,
@@ -1258,6 +1259,7 @@ def capture_dashboard(
             site_solar_capable=site is not None and site.solar_capable,
             has_solar_forecast=site is not None and bool(site.solar_forecast_selected),
             phase_switching=capture_phase_switching(hass, entry),
+            demand_needs_grid_power=demand_needs_grid_power(grid_tariff),
         ),
         solar_forecast=(
             None

@@ -427,6 +427,52 @@ class SiteDemand:
         )
 
 
+    def diagnostics(self, components: Sequence[DemandComponent], *, import_target_kw: float | None) -> dict[str, Any]:
+        """The site's `demand` diagnostics: the components and what each bills so far, the running hour with its
+        gaps, the import target, and every hour of the month (`[start, kW, house kW, incomplete]`)."""
+        now = self._now()
+        snapshot = self.snapshot(components, import_target_kw=import_target_kw, now=now)
+        running = snapshot.running
+        house = (
+            None
+            if running is None or running.house_covered_s <= 0
+            else round(running.house_wh / running.house_covered_s * 3.6, 3)
+        )
+        mean = None if running is None else running.mean_kw()
+        return {
+            "tz": snapshot.tz,
+            "month": _month_text(snapshot.month),
+            "readings": self.readings,
+            "import_target_kw": import_target_kw,
+            "components": [
+                {
+                    **component.as_dict(),
+                    "bar_kw": month.bar_kw,
+                    "free_kw": month.free_kw,
+                    "days_counted": month.days_counted,
+                    "peaks": [
+                        {"date": peak.day.isoformat(), "start": peak.start.isoformat(), "kw": round(peak.kw, 3)}
+                        for peak in month.peaks
+                    ],
+                }
+                for component, month in zip(components, snapshot.components, strict=True)
+            ],
+            "running": None
+            if running is None
+            else {
+                "start": running.start.isoformat(),
+                "kw_so_far": None if mean is None else round(mean, 3),
+                "kwh_so_far": round(running.import_wh / 1000, 3),
+                "covered_s": round(running.covered_s, 1),
+                "gap_s": round(running.gap_s, 1),
+                "house_kw_so_far": house,
+            },
+            "hours_kept": snapshot.hours_kept,
+            "incomplete_hours": snapshot.incomplete_hours,
+            "hours": [_hour_row(hour) for hour in self.tracker.month_hours(now)],
+        }
+
+
 @dataclass(frozen=True, slots=True)
 class DemandSnapshot:
     """`SiteDemand.snapshot`: per component what it bills so far, and the running hour."""
