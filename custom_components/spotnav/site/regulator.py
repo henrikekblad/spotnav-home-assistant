@@ -66,9 +66,9 @@ RegulatorReason = Literal[
     # A direct site's charge that started while the direction was unknown: its current stays the sun's
     # (or nobody's) to write until it ends, even once confirmed (`SiteCapacityController`).
     "phase_direction_unknown_at_charge_start",
-    # A direct site's charge active control started on lost its confirmation: a phase it draws on is over
-    # the limit by |I|, so it is lowered to the room |I| leaves (as the sun's own capped write did before
-    # signed currents were used), never raised (`magnitude_overload_lowering`).
+    # A direct site's charge on a phase whose direction is not known (never confirmed, or lost meanwhile),
+    # whoever started it: a phase it draws on is over the limit by |I|, so it is lowered to the room |I|
+    # leaves, never raised (`magnitude_overload_lowering`).
     "lowering_overload_on_current_magnitude_direction_unknown",
     # No longer given (`phase_direction_unknown` replaced it); kept so older diagnostics still read.
     "derived_mode_required",
@@ -678,7 +678,7 @@ def decide_switched_load(
 def magnitude_overload_lowering(
     *, site_result: SiteCapacityResult, request: ChargerRequest, max_age_s: float
 ) -> RegulatorDecision:
-    """For a charger whose direction is no longer known mid-charge: lowered only where a phase it draws on is
+    """For a charger in a charge on a phase whose direction is not known: lowered only where a phase it draws on is
     over the limit by |I| (`measured_margin_a` < 0), to its own current plus that margin on the tightest such
     phase (what the sun's capped write allowed before), never raised; otherwise held
     (`phase_direction_unknown`, `None`). The sign of the overload is not known, so this guards the fuse as a

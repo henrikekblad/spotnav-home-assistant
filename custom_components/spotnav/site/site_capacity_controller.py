@@ -269,6 +269,9 @@ BATTERY_RISE_WINDOW_S = 60.0
 #: unchanged and unreported, for as long as it is stopped.
 REASON_CHARGER_MEASUREMENT_UNUSABLE = "charger_measurement_unusable"
 REASON_MAGNITUDE_LOWERING = "lowering_overload_on_current_magnitude_direction_unknown"
+# The regulator's reasons for deciding nothing on a charger because a phase's direction is not known: an overload by
+# |I| still lowers it (`magnitude_overload_lowering`).
+DIRECTION_UNKNOWN_REASONS = frozenset({"phase_direction_unknown", "phase_direction_unknown_at_charge_start"})
 
 #: The regulator writes kept per charger, newest last, to tell which of them a site reading may already show
 #: (`_written_at_reading`).
@@ -4149,7 +4152,8 @@ class SiteCapacityController:
         }
         # Built once: the credited requests are the same requests with a start's credit applied.
         uncredited = self._build_requests(credit=False)
-        requests = [request for request in self._with_credits(uncredited) if request.charger_entry_id not in not_ours]
+        credited = self._with_credits(uncredited)
+        requests = [request for request in credited if request.charger_entry_id not in not_ours]
         decisions = allocate_regulator_decisions(
             site_result=self.result,
             requests=requests,
@@ -4165,21 +4169,24 @@ class SiteCapacityController:
         )
         for charger_entry_id in not_ours:
             decisions[charger_entry_id] = RegulatorDecision(None, "phase_direction_unknown_at_charge_start", None, {})
-        # A charge active control started on whose direction was lost meanwhile: still lowered on an overload by
-        # |I| (as the sun's capped write did before), never raised.
-        for request in requests:
+        # A charge on a phase whose direction is not known (never confirmed, lost meanwhile, or a charge that started
+        # before it was), whoever started it: still lowered on an overload by |I|, never raised. The one case this
+        # makes worse is a phase over the limit by export, which the car's draw was reducing; a direct site cannot
+        # tell that from import, and the limit read on |I| is the fuse's own measure (`magnitude_overload_lowering`).
+        for request in credited:
             charger_entry_id = request.charger_entry_id
             decision = decisions.get(charger_entry_id)
             if (
                 decision is not None
-                and decision.reason == "phase_direction_unknown"
-                and self._direction_at_charge_start.get(charger_entry_id)
+                and decision.reason in DIRECTION_UNKNOWN_REASONS
                 and self._in_charge(charger_entry_id)
             ):
                 lowering = magnitude_overload_lowering(
                     site_result=self.result, request=request, max_age_s=config.max_age_s
                 )
-                if request.switch_only and lowering.proposed_current_a is not None:
+                if lowering.proposed_current_a is None:
+                    continue  # no overload by |I|: the decision stays what it was
+                if request.switch_only:
                     # It cannot be lowered: any lowering the overload by |I| calls for is a pause.
                     lowering = replace(lowering, proposed_current_a=0.0, reason=REASON_MAGNITUDE_LOWERING)
                 decisions[charger_entry_id] = lowering
