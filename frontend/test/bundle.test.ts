@@ -35,7 +35,6 @@ const FORBIDDEN = [
   "sensnology",
   "spotnav.sensnology.se",
   "/v1/",
-  "sessionStorage",
   "session_storage",
   "webhook",
   "pairing",
@@ -80,6 +79,13 @@ describe("the committed asset", () => {
     // The one guarded read of `localStorage` in chart-preference.ts; nothing else in the bundle names it.
     expect(SOURCE.split("localStorage").length - 1).toBe(1);
     expect(SOURCE).toContain("spotnav-card.chart.");
+  });
+
+  it("reaches session storage once, for the one reload after an update only", () => {
+    // The guarded `sessionStorage` in self-heal.ts: it remembers the reload made for a served card, so it
+    // cannot loop. Nothing else in the bundle names it.
+    expect(SOURCE.split("sessionStorage").length - 1).toBe(1);
+    expect(SOURCE).toContain("spotnav-card-reloaded:");
   });
 
   it("identifies itself with the integration version it was built from", () => {
