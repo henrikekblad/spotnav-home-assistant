@@ -996,7 +996,7 @@ const SITE_TAIL = [
   "max_age_s",
 ];
 const CHARGER = ["charge_control", "current_limit", "energy_register_entity", "power_entity", "charger_phases", "charger_priority", "measured_current_source", "vehicle_soc"];
-const SITE_FIXED = ["main_fuse_a", "safety_margin_a", "measurement_mode", "voltage_between_phases_v"];
+const SITE_FIXED = ["main_fuse_a", "safety_margin_a", "import_target_kw", "measurement_mode", "voltage_between_phases_v"];
 /** A charger in no site holds the voltage between phases itself, listed before the vehicle sensor. */
 const CHARGER_NO_SITE = ["charge_control", "current_limit", "energy_register_entity", "power_entity", "voltage_between_phases_v", "charger_phases", "vehicle_soc"];
 
@@ -1369,6 +1369,11 @@ describe("the backend's entity_config v1 contract fixtures", () => {
     const margin = byName.get("safety_margin_a");
     expect(margin === undefined ? null : margin.kind === "number" ? margin.value : "wrong kind", name).toBe(
       expected.config.fuse === null ? null : 1,
+    );
+    // The import target beside them: optional, none in every fixture.
+    const target = byName.get("import_target_kw");
+    expect(target === undefined ? "absent" : target.kind === "number" ? [target.value, target.required] : "wrong kind", name).toEqual(
+      expected.config.fuse === null ? "absent" : [null, false],
     );
     const age = byName.get("max_age_s");
     expect(age === undefined ? null : age.kind === "number" ? age.value : "wrong kind", name).toBe(expected.config.maxAge);

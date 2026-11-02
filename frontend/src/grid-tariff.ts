@@ -9,7 +9,14 @@
 
 import { formatNumber } from "./format";
 import { translate, type Language, type TranslationKey } from "./i18n";
-import { HIGH_LOAD_DAYS, type GridTariffBlock, type GridTariffFee, type HighLoadDays, type HighLoadWindow } from "./validate";
+import {
+  HIGH_LOAD_DAYS,
+  type DemandComponent,
+  type GridTariffBlock,
+  type GridTariffFee,
+  type HighLoadDays,
+  type HighLoadWindow,
+} from "./validate";
 import { shell, type EditorHandlers, type SaveValue } from "./value-editors";
 import { VISUAL_CLASSES as C } from "./visual-styles";
 
@@ -19,11 +26,15 @@ export interface GridTariffFeeBody {
   value: number | null;
 }
 
-/** The body of `spotnav/update_grid_tariff`: all three parts, every key present. */
+/**
+ * The body of `spotnav/update_grid_tariff`: all three parts, every key present, and the demand-charge components
+ * whenever the backend states them (an older one refuses the key, and keeps its components without it).
+ */
 export interface GridTariffBody {
   transfer_percent: GridTariffFeeBody;
   transfer_high: GridTariffFeeBody;
   high_load_window: HighLoadWindow | null;
+  demand_components?: DemandComponent[];
 }
 
 /** The write's refusal when the electricity price was written since the block was read. */
@@ -52,13 +63,51 @@ function feeBody(fee: GridTariffFee): GridTariffFeeBody {
   return { enabled: fee.policy === "manual", value: fee.explicit_value };
 }
 
+function copyComponent(component: DemandComponent): DemandComponent {
+  return {
+    window: component.window === null ? null : { ...component.window },
+    top_n: component.top_n,
+    price_per_kw: { ...component.price_per_kw },
+  };
+}
+
 /** The tariff as stored, as a write would state it. */
 export function storedBody(block: GridTariffBlock): GridTariffBody {
-  return {
+  const body: GridTariffBody = {
     transfer_percent: feeBody(block.transfer_percent),
     transfer_high: feeBody(block.transfer_high),
     high_load_window: block.high_load_window === null ? null : { ...block.high_load_window },
   };
+  return block.demand === null ? body : { ...body, demand_components: block.demand.components.map(copyComponent) };
+}
+
+/** The demand-charge components set, the rest as stored. */
+export function withComponents(block: GridTariffBlock, components: readonly DemandComponent[]): GridTariffBody {
+  return { ...storedBody(block), demand_components: components.map(copyComponent) };
+}
+
+/** The component at `index` replaced (`null` removes it; an index past the end adds one), the rest as stored. */
+export function withComponent(block: GridTariffBlock, index: number, component: DemandComponent | null): GridTariffBody {
+  const components = [...(block.demand?.components ?? [])];
+  if (component === null) {
+    components.splice(index, 1);
+  } else if (index >= components.length) {
+    components.push(component);
+  } else {
+    components[index] = component;
+  }
+  return withComponents(block, components);
+}
+
+/** Whether two components are the same part of the charge. */
+export function sameComponent(a: DemandComponent, b: DemandComponent): boolean {
+  const window = a.window === null || b.window === null ? a.window === b.window : sameWindow(a.window, b.window);
+  return (
+    window &&
+    a.top_n === b.top_n &&
+    a.price_per_kw.winter === b.price_per_kw.winter &&
+    a.price_per_kw.summer === b.price_per_kw.summer
+  );
 }
 
 /** A fee turned on with `value`, or off (`null`) keeping its stored figure, so turning it on again is one step. */
@@ -89,10 +138,15 @@ export function sameBody(left: GridTariffBody, right: GridTariffBody): boolean {
   const fee = (a: GridTariffFeeBody, b: GridTariffFeeBody): boolean => a.enabled === b.enabled && a.value === b.value;
   const window = (a: HighLoadWindow | null, b: HighLoadWindow | null): boolean =>
     a === null || b === null ? a === b : sameWindow(a, b);
+  const components = (a: DemandComponent[] | undefined, b: DemandComponent[] | undefined): boolean =>
+    a === undefined || b === undefined
+      ? a === b
+      : a.length === b.length && a.every((component, index) => sameComponent(component, b[index]!));
   return (
     fee(left.transfer_percent, right.transfer_percent) &&
     fee(left.transfer_high, right.transfer_high) &&
-    window(left.high_load_window, right.high_load_window)
+    window(left.high_load_window, right.high_load_window) &&
+    components(left.demand_components, right.demand_components)
   );
 }
 
@@ -210,7 +264,7 @@ function hourSelect(doc: Document, id: string, from: number, to: number, selecte
   return select;
 }
 
-function labelled(doc: Document, text: string, control: HTMLElement): HTMLElement {
+export function labelled(doc: Document, text: string, control: HTMLElement): HTMLElement {
   const wrapper = doc.createElement("div");
   wrapper.className = C.settingsField;
   const label = doc.createElement("label");
@@ -221,7 +275,7 @@ function labelled(doc: Document, text: string, control: HTMLElement): HTMLElemen
   return wrapper;
 }
 
-function choiceSelect(
+export function choiceSelect(
   doc: Document,
   id: string,
   choices: ReadonlyArray<{ value: string; text: string }>,
@@ -256,10 +310,57 @@ function row(doc: Document, ...fields: HTMLElement[]): HTMLElement {
   return line;
 }
 
+/** The window's fields, ready to place in a form, and how to read what they hold. */
+export interface WindowFields {
+  nodes: HTMLElement[];
+  read: () => HighLoadWindow;
+}
+
+/** The days, the first and last month, and from and to hour (an end before the start runs over midnight). */
+export function windowFields(doc: Document, language: Language, idPrefix: string, shown: HighLoadWindow): WindowFields {
+  const days = choiceSelect(
+    doc,
+    `${idPrefix}-window-days`,
+    HIGH_LOAD_DAYS.map((value) => ({ value, text: translate(language, DAY_WORDS[value]) })),
+    shown.days,
+  );
+  days.dataset["window"] = "days";
+  const months = monthChoices(language);
+  const fromMonth = choiceSelect(doc, `${idPrefix}-window-from-month`, months, String(shown.from_month));
+  fromMonth.dataset["window"] = "fromMonth";
+  const toMonth = choiceSelect(doc, `${idPrefix}-window-to-month`, months, String(shown.to_month));
+  toMonth.dataset["window"] = "toMonth";
+  const from = hourSelect(doc, `${idPrefix}-window-from`, 0, 23, shown.from_hour);
+  from.dataset["window"] = "from";
+  const to = hourSelect(doc, `${idPrefix}-window-to`, 1, 24, shown.to_hour);
+  to.dataset["window"] = "to";
+  return {
+    nodes: [
+      labelled(doc, translate(language, "gridFee.window.days"), days),
+      row(
+        doc,
+        labelled(doc, translate(language, "gridFee.window.fromMonth"), fromMonth),
+        labelled(doc, translate(language, "gridFee.window.toMonth"), toMonth),
+      ),
+      row(
+        doc,
+        labelled(doc, translate(language, "gridFee.window.from"), from),
+        labelled(doc, translate(language, "gridFee.window.to"), to),
+      ),
+    ],
+    read: () => ({
+      days: HIGH_LOAD_DAYS.find((value) => value === days.value) ?? shown.days,
+      from_month: Number(fromMonth.value),
+      to_month: Number(toMonth.value),
+      from_hour: Number(from.value),
+      to_hour: Number(to.value),
+    }),
+  };
+}
+
 /**
- * The high-load hours: the days, the first and last month, and from and to hour (an end before the start runs over
- * midnight). With none stored it is prefilled with `SUGGESTED_WINDOW` and says so; nothing is written until Save.
- * Saving the stored hours unchanged writes nothing.
+ * The high-load hours (`windowFields`). With none stored it is prefilled with `SUGGESTED_WINDOW` and says so;
+ * nothing is written until Save. Saving the stored hours unchanged writes nothing.
  */
 export function windowEditor(
   doc: Document,
@@ -285,43 +386,10 @@ export function windowEditor(
   if (input.current === null) {
     help(translate(language, "gridFee.window.suggestion"), "suggestion");
   }
-  const days = choiceSelect(
-    doc,
-    `${input.idPrefix}-window-days`,
-    HIGH_LOAD_DAYS.map((value) => ({ value, text: translate(language, DAY_WORDS[value]) })),
-    shown.days,
-  );
-  days.dataset["window"] = "days";
-  const months = monthChoices(language);
-  const fromMonth = choiceSelect(doc, `${input.idPrefix}-window-from-month`, months, String(shown.from_month));
-  fromMonth.dataset["window"] = "fromMonth";
-  const toMonth = choiceSelect(doc, `${input.idPrefix}-window-to-month`, months, String(shown.to_month));
-  toMonth.dataset["window"] = "toMonth";
-  const from = hourSelect(doc, `${input.idPrefix}-window-from`, 0, 23, shown.from_hour);
-  from.dataset["window"] = "from";
-  const to = hourSelect(doc, `${input.idPrefix}-window-to`, 1, 24, shown.to_hour);
-  to.dataset["window"] = "to";
-  body.append(
-    labelled(doc, translate(language, "gridFee.window.days"), days),
-    row(
-      doc,
-      labelled(doc, translate(language, "gridFee.window.fromMonth"), fromMonth),
-      labelled(doc, translate(language, "gridFee.window.toMonth"), toMonth),
-    ),
-    row(
-      doc,
-      labelled(doc, translate(language, "gridFee.window.from"), from),
-      labelled(doc, translate(language, "gridFee.window.to"), to),
-    ),
-  );
+  const fields = windowFields(doc, language, input.idPrefix, shown);
+  body.append(...fields.nodes);
   editor.submit(async () => {
-    const chosen: HighLoadWindow = {
-      days: HIGH_LOAD_DAYS.find((value) => value === days.value) ?? shown.days,
-      from_month: Number(fromMonth.value),
-      to_month: Number(toMonth.value),
-      from_hour: Number(from.value),
-      to_hour: Number(to.value),
-    };
+    const chosen = fields.read();
     if (chosen.to_hour === chosen.from_hour) {
       return translate(language, "gridFee.window.sameHours");
     }

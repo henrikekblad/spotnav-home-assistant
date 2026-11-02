@@ -360,6 +360,54 @@ export interface HighLoadWindow {
   to_hour: number;
 }
 
+/** How many of the month's highest hourly means a demand-charge component bills the mean of, each on its own day. */
+export const DEMAND_TOP_N = [1, 3, 5] as const;
+export type DemandTopN = (typeof DEMAND_TOP_N)[number];
+/** The most components a demand charge may have. */
+export const MAX_DEMAND_COMPONENTS = 3;
+
+/**
+ * One part of a demand charge, as a write states it: the mean of the month's `top_n` highest hourly means on
+ * different days, counted in all hours (`window` `null`) or only in its own window; the price per kW in winter
+ * (November to March) and summer, each `null` while unknown.
+ */
+export interface DemandComponent {
+  window: HighLoadWindow | null;
+  top_n: DemandTopN;
+  price_per_kw: { winter: number | null; summer: number | null };
+}
+
+/** A day's highest counted hour: the day it counts under, the hour's start and its mean import. */
+export interface DemandPeak {
+  date: string;
+  start: string;
+  kw: number;
+}
+
+/** What one component bills so far this month, on the site's meter. */
+export interface DemandMonth {
+  bar_kw: number | null;
+  free_kw: number | null;
+  price_per_kw: number | null;
+  days_counted: number;
+  peaks: DemandPeak[];
+}
+
+/** The `grid_tariff.demand` block: the components, what the site measured for them, and the import target. */
+export interface DemandBlock {
+  components: DemandComponent[];
+  available: boolean;
+  /** Why the site cannot measure: `no_site`, `needs_total_grid_power`; `null` while it can. */
+  reason: string | null;
+  /** The area's major unit per kW ("kr/kW"); `null` while the area is not listed. */
+  price_unit: string | null;
+  /** Aligned with `components` while the site measures, else empty. */
+  per_component: DemandMonth[];
+  /** The clock hour running now: its start, the mean import over the time measured so far, the energy so far. */
+  hour: { start: string; kw_so_far: number; kwh_so_far: number } | null;
+  import_target_kw: number | null;
+}
+
 /** The dashboard's `grid_tariff` block. */
 export interface GridTariffBlock {
   entry_id: string;
@@ -368,6 +416,8 @@ export interface GridTariffBlock {
   transfer_percent: GridTariffFee;
   transfer_high: GridTariffFee;
   high_load_window: HighLoadWindow | null;
+  /** `null` from a backend before the demand charge: the card then writes the tariff without it. */
+  demand: DemandBlock | null;
   writable: boolean;
 }
 
@@ -1919,10 +1969,78 @@ export function decodeHighLoadWindow(raw: unknown): HighLoadWindow {
   };
 }
 
-/** A `grid_tariff` block, strictly: exactly its keys, or malformed. */
+/** A number that is never negative (a price, a power), or `null`. */
+function nonNegativeOrNull(source: Record<string, unknown>, key: string): number | null {
+  const value = numberOrNull(source, key);
+  return value !== null && value < 0 ? bad() : value;
+}
+
+/** A demand-charge component as the backend states it (and a write sends it), or malformed. */
+export function decodeDemandComponent(raw: unknown): DemandComponent {
+  const item = record(raw);
+  exactKeys(item, ["window", "top_n", "price_per_kw"]);
+  const topN = DEMAND_TOP_N.find((known) => known === item.top_n) ?? bad();
+  const prices = record(item.price_per_kw);
+  exactKeys(prices, ["winter", "summer"]);
+  return {
+    window: item.window === null ? null : decodeHighLoadWindow(item.window),
+    top_n: topN,
+    price_per_kw: { winter: nonNegativeOrNull(prices, "winter"), summer: nonNegativeOrNull(prices, "summer") },
+  };
+}
+
+function demandMonth(raw: unknown): DemandMonth {
+  const item = record(raw);
+  exactKeys(item, ["bar_kw", "free_kw", "price_per_kw", "days_counted", "peaks"]);
+  return {
+    bar_kw: nonNegativeOrNull(item, "bar_kw"),
+    free_kw: nonNegativeOrNull(item, "free_kw"),
+    price_per_kw: nonNegativeOrNull(item, "price_per_kw"),
+    days_counted: wholeNumber(item, "days_counted", 0, 31),
+    peaks: arrayValue(item, "peaks").map((entry) => {
+      const peak = record(entry);
+      exactKeys(peak, ["date", "start", "kw"]);
+      const kw = numberValue(peak, "kw");
+      return kw < 0 ? bad() : { date: text(peak, "date"), start: text(peak, "start"), kw };
+    }),
+  };
+}
+
+/** The `grid_tariff.demand` block, strictly: exactly its keys, or malformed. */
+export function decodeDemand(raw: unknown): DemandBlock {
+  const value = record(raw);
+  exactKeys(value, ["components", "available", "reason", "price_unit", "per_component", "hour", "import_target_kw"]);
+  const components = arrayValue(value, "components").map(decodeDemandComponent);
+  if (components.length > MAX_DEMAND_COMPONENTS) {
+    return bad();
+  }
+  const perComponent = arrayValue(value, "per_component").map(demandMonth);
+  if (perComponent.length !== 0 && perComponent.length !== components.length) {
+    return bad();
+  }
+  let hour: DemandBlock["hour"] = null;
+  if (value.hour !== null) {
+    const item = record(value.hour);
+    exactKeys(item, ["start", "kw_so_far", "kwh_so_far"]);
+    hour = { start: text(item, "start"), kw_so_far: numberValue(item, "kw_so_far"), kwh_so_far: numberValue(item, "kwh_so_far") };
+  }
+  const target = nonNegativeOrNull(value, "import_target_kw");
+  return {
+    components,
+    available: booleanValue(value, "available"),
+    reason: textOrNull(value, "reason"),
+    price_unit: textOrNull(value, "price_unit"),
+    per_component: perComponent,
+    hour,
+    import_target_kw: target,
+  };
+}
+
+/** A `grid_tariff` block, strictly: exactly its keys (`demand` may be absent, from an older backend), or malformed. */
 export function decodeGridTariff(raw: unknown): GridTariffBlock {
   const value = record(raw);
-  exactKeys(value, ["entry_id", "write_revision", "transfer_percent", "transfer_high", "high_load_window", "writable"]);
+  const keys = ["entry_id", "write_revision", "transfer_percent", "transfer_high", "high_load_window", "writable"];
+  exactKeys(value, value.demand === undefined ? keys : [...keys, "demand"]);
   const entryId = text(value, "entry_id");
   if (entryId === "") {
     return bad();
@@ -1933,6 +2051,7 @@ export function decodeGridTariff(raw: unknown): GridTariffBlock {
     transfer_percent: gridTariffFee(value.transfer_percent),
     transfer_high: gridTariffFee(value.transfer_high),
     high_load_window: value.high_load_window === null ? null : decodeHighLoadWindow(value.high_load_window),
+    demand: value.demand === undefined ? null : decodeDemand(value.demand),
     writable: booleanValue(value, "writable"),
   };
 }

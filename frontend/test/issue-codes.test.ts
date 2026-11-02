@@ -9,6 +9,7 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
+import { DEMAND_REASON_KEYS } from "../src/demand-charge";
 import { LANGUAGES, translate, type Language } from "../src/i18n";
 import { TRANSLATIONS } from "../src/i18n/all";
 import {
@@ -79,6 +80,7 @@ describe("every code the backend emits is known to the card", () => {
     expect(Object.keys(CODES).sort()).toEqual([
       "active_control_reasons",
       "control_reasons",
+      "demand_reasons",
       "execution_errors",
       "hybrid_reasons",
       "planning_reasons",
@@ -99,6 +101,10 @@ describe("every code the backend emits is known to the card", () => {
   it.each((CODES["execution_errors"] as string[]))("execution error %s is translated or generic", (code) => {
     // `install_failed`/`plan_unusable` deliberately use the generic execution sentence + technical code.
     expect(EXECUTION_ERROR_KEYS[code] ?? "control.executionError").toBeDefined();
+  });
+
+  it.each((CODES["demand_reasons"] as string[]))("demand reason %s is translated", (reason) => {
+    expect(DEMAND_REASON_KEYS[reason], reason).toBeDefined();
   });
 
   it.each((CODES["strategy_reasons"] as string[]))("strategy reason %s is translated", (reason) => {
