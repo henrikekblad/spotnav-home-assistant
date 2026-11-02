@@ -1,5 +1,7 @@
 # Charging strategies
 
+For everyone who charges with SpotNav: what the cheapest, solar and hybrid strategies do and how to choose between them.
+
 A charger has one strategy at a time, chosen in the card (**Strategy**). A strategy that cannot
 work on this installation is listed as unavailable with the reason.
 
