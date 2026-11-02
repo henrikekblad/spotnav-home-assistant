@@ -7,7 +7,10 @@ the pilot's two components) on the offline relay, with the clock moved by hand f
 
 from __future__ import annotations
 
+import json
+import os
 from datetime import timedelta
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -25,6 +28,8 @@ from .world import go_auto, setup_charger, setup_charger_and_site
 pytestmark = pytest.mark.usefixtures("offline_relay")
 
 GRID = "sensor.site_grid_power"
+#: The whole `grid_tariff` block of the pilot's site at 10:20, which the card's tests read with no copy.
+BLOCK_FIXTURE = Path(__file__).resolve().parent / "fixtures" / "grid_tariff" / "pilot_demand.json"
 STEP = timedelta(seconds=30)
 
 
@@ -64,6 +69,11 @@ async def test_each_component_takes_the_peak_of_its_own_hours_and_the_running_ho
     await run(hass, freezer, 60, 7000.0)  # 09:00-10:00
     await run(hass, freezer, 20, 3000.0)  # 10:00-10:20
 
+    block = serialize_grid_tariff(capture_grid_tariff(hass, "entry_a"), can_act=True)
+    if os.environ.get("SPOTNAV_WRITE_FIXTURES") == "1":
+        BLOCK_FIXTURE.parent.mkdir(parents=True, exist_ok=True)
+        BLOCK_FIXTURE.write_text(json.dumps(block, indent=2, ensure_ascii=False, sort_keys=True) + "\n", encoding="utf-8")
+    assert json.loads(BLOCK_FIXTURE.read_text(encoding="utf-8")) == block
     demand = demand_of(hass)
     assert demand["components"] == PILOT
     assert (demand["available"], demand["reason"], demand["import_target_kw"]) == (True, None, 6.0)

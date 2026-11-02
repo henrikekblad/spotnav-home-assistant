@@ -1,0 +1,81 @@
+{
+  "demand": {
+    "available": true,
+    "components": [
+      {
+        "price_per_kw": {
+          "summer": 23.0,
+          "winter": 45.0
+        },
+        "top_n": 1,
+        "window": {
+          "days": "all",
+          "from_hour": 6,
+          "from_month": 1,
+          "to_hour": 23,
+          "to_month": 12
+        }
+      },
+      {
+        "price_per_kw": {
+          "summer": 8.0,
+          "winter": 12.0
+        },
+        "top_n": 1,
+        "window": {
+          "days": "all",
+          "from_hour": 23,
+          "from_month": 1,
+          "to_hour": 6,
+          "to_month": 12
+        }
+      }
+    ],
+    "hour": {
+      "kw_so_far": 3.1,
+      "kwh_so_far": 1.033,
+      "start": "2026-09-22T08:00:00+00:00"
+    },
+    "import_target_kw": 6.0,
+    "per_component": [
+      {
+        "bar_kw": 6.975,
+        "days_counted": 1,
+        "free_kw": 6.975,
+        "peaks": [
+          {
+            "date": "2026-09-22",
+            "kw": 6.975,
+            "start": "2026-09-22T07:00:00+00:00"
+          }
+        ],
+        "price_per_kw": 23.0
+      },
+      {
+        "bar_kw": null,
+        "days_counted": 0,
+        "free_kw": null,
+        "peaks": [],
+        "price_per_kw": 8.0
+      }
+    ],
+    "price_unit": "kr/kW",
+    "reason": null
+  },
+  "entry_id": "price_a",
+  "high_load_window": null,
+  "transfer_high": {
+    "effective_value": null,
+    "explicit_value": null,
+    "policy": "off",
+    "unit": "öre/kWh"
+  },
+  "transfer_percent": {
+    "effective_value": null,
+    "explicit_value": null,
+    "policy": "off",
+    "unit": "%"
+  },
+  "writable": true,
+  "write_revision": 0
+}
