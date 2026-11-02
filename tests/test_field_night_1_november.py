@@ -61,9 +61,12 @@ class _Night:
         self.halo = halo
         self.freezer = freezer
         self.house = house
-        #: `idle`, `holds` (charges whatever the fuse leaves) or `fixed` (`fixed_w`, whatever the grid).
+        #: `idle`, `holds` (charges whatever the fuse leaves), `fixed` (`fixed_w`, whatever the grid) or `takes` (fills
+        #: the grid up to `takes_a` per phase, and never gives back what it took).
         self.battery = "idle"
         self.fixed_w = 0.0
+        self.takes_a = 19.85
+        self.taken: tuple[float, ...] = (0.0, 0.0, 0.0)
         self.car_a = 0.0
         self.on = False
         self.offs = 0
@@ -91,6 +94,12 @@ class _Night:
             return (0.0, 0.0, 0.0)
         if self.battery == "fixed":
             return (self.fixed_w / (3 * _V),) * 3
+        if self.battery == "takes":
+            holds = self.takes_a + _WOBBLE[self.wobble] / 2
+            self.taken = tuple(
+                round(max(taken, holds - house - car_a), 3) for taken, house in zip(self.taken, self.house, strict=True)
+            )
+            return self.taken
         holds = _BATTERY_HOLDS_A + _WOBBLE[self.wobble]
         room = [max(0.0, holds - house - car_a) for house in self.house]
         scale = min(1.0, _BATTERY_MAX_W / (sum(room) * _V)) if sum(room) else 1.0
@@ -271,6 +280,31 @@ async def test_0315_a_held_car_is_not_stepped_above_the_fuse(hass: HomeAssistant
     assert max(high) <= _FUSE_A + 0.5, "\n".join(night.trace[-60:])
 
 
+async def test_a_battery_that_takes_the_freed_current_is_not_stepped_into_above_the_fuse(
+    hass: HomeAssistant, monkeypatch, freezer
+) -> None:
+    """A battery that takes every amp the car frees and gives none back, holding the grid just under the fuse: a
+    lowering it absorbed is no proof that it gives way to a raise, so the car is not stepped back up past the fuse.
+    Before, the step back up went out on a battery never seen to give way, and the site read the fuse plus the step
+    for a pass."""
+    night = await _the_night(hass, monkeypatch, freezer, "nov1takes")
+    # A load far over the fuse cuts the car; the battery then fills what it freed and keeps it.
+    night.battery = "fixed"
+    night.fixed_w = 7.1 * 3 * _V
+    for _ in range(3):
+        await night.step()
+        if night.assigned_a() < 16.0:
+            break
+    assert night.assigned_a() < 16.0
+    night.taken = (7.1, 7.1, 7.1)
+    night.battery = "takes"
+    night.site_range = None
+    await night.run(15 * 60.0)
+    low, high = night.site_range
+    assert max(high) <= _FUSE_A + 0.5, "\n".join(line for line in night.trace if "down_step" in line)
+    assert not [line for line in night.trace if "down_step_absorbed_by_battery" in line]
+
+
 # -- 03:18 to 04:07: a charge paused anyway, the battery holding the fuse, and the battery done
 
 
@@ -340,6 +374,112 @@ async def test_0515_a_charge_paused_as_the_battery_stops_is_resumed(
     assert not [entry for entry in night.halo.log() if entry["outcome"] == "wrote" and entry["from_a"] == 0], (
         "nothing is written to the stopped charger on its reading from before the pause"
     )
+
+
+async def test_0515_a_start_the_battery_makes_room_for_as_it_stops_is_not_paused(
+    hass: HomeAssistant, monkeypatch
+) -> None:
+    """05:15: the next window's start went out with the battery charging at 8 kW. It stopped as the car came on, so
+    the site rose by the car's 14.6 A less the battery's 11.5 A: 2.9 A. The start's credit took that rise for all the
+    car drew, reckoned the rest (16.45 A on L3) as house load and paused the car five seconds after its start, for an
+    overload that was not there (L3 at 19.28 A, the house 4.8 A of it). What the battery stopped drawing since the
+    start is the car's too: no pause."""
+    entry_id = "nov1start"
+    battery_a = 7955.0 / (3 * _V)
+    hass.states.async_set(_battery_entity(entry_id), "7955", {"unit_of_measurement": "W"})
+    house = _HOUSE_0515
+    halo = await _halo(
+        hass,
+        monkeypatch,
+        entry_id,
+        l1=house[0] + battery_a,
+        l2=house[1] + battery_a,
+        l3=house[2] + battery_a,
+        battery_entity=_battery_entity(entry_id),
+    )
+    # The HALO's current reads the last value of the charge before, unreported; the start goes out on it.
+    halo.reads(6.0)
+    now = dt_util.utcnow()
+    window = {"start": (now - timedelta(minutes=1)).isoformat(), "end": (now + timedelta(hours=2)).isoformat()}
+    await install_schedule(halo.cc, {"periods": [window], "amps": 16})
+    await hass.async_block_till_done()
+    if not halo.turn_on:
+        await halo.start()
+    assert halo.turn_on and not halo.turn_off
+    halo.reads(0.0)
+    await hass.async_block_till_done()
+    halo.advance(3.0)
+    # 05:15:08 the charger has answered the start, the battery has stopped, the car is not on the site yet.
+    halo.switch("on")
+    _battery_w(halo, 19.0)
+    _site_a(hass, halo.site, 2.26, 0.67, 4.89)
+    await halo.tick()
+    halo.advance(5.0)
+    # 05:15:13 the car on the site at 14.6 A, the battery at 3 W, the HALO's own current still 0.
+    since = len(halo.log())
+    _battery_w(halo, 3.0)
+    _site_a(hass, halo.site, 16.42, 15.48, 19.28)
+    await halo.tick()
+    halo.advance(5.0)
+    await halo.tick()
+    assert halo.turn_off == [], "\n".join(str(entry) for entry in halo.log())
+    assert "paused_safe_current_below_charger_minimum" not in [entry["reason"] for entry in halo.log()[since:]]
+    credited = halo.controller.start_credit_snapshot()[halo.charger.entry_id]["credited_a"]
+    assert min(credited.values()) >= 6.0, "the car credited with the site's rise and the battery's fall, up to its start"
+
+
+async def test_0515_a_pause_while_the_start_is_on_its_way_holds_the_charge_back(
+    hass: HomeAssistant, monkeypatch
+) -> None:
+    """05:15:00 the window's start went out; 05:15:05, before the charger had answered it, the battery's 8 kW left no
+    room for the car's minimum and load balancing paused the charge. Nothing went to the charger (its control still
+    read off), and a charge that was not seen running was no charge load balancing held back: the start landed, the
+    car charged against the pause, and once it was paused again nothing knew it was a balancing pause. A pause of a
+    start on its way stops it, and holds the charge back for the resume."""
+    entry_id = "nov1onitsway"
+    hass.states.async_set(_battery_entity(entry_id), "0", {"unit_of_measurement": "W"})
+    house = _HOUSE_0515
+    halo = await _halo(
+        hass, monkeypatch, entry_id, l1=house[0], l2=house[1], l3=house[2], battery_entity=_battery_entity(entry_id)
+    )
+    now = dt_util.utcnow()
+    window = {"start": (now - timedelta(minutes=1)).isoformat(), "end": (now + timedelta(hours=2)).isoformat()}
+    await install_schedule(halo.cc, {"periods": [window], "amps": 16})
+    await hass.async_block_till_done()
+    if not halo.turn_on:
+        await halo.start()
+    cc = halo.cc
+    assert len(halo.turn_on) == 1 and cc.start_pending, "the start is on its way, the charger has not answered"
+
+    # 05:15:05 the battery at 8 kW: no room for the minimum on L3.
+    battery_a = 7955.0 / (3 * _V)
+    _battery_w(halo, 7955.0)
+    _site_a(hass, halo.site, house[0] + battery_a, house[1] + battery_a, house[2] + battery_a)
+    await halo.tick()
+    assert len(halo.turn_off) == 1, "the pause stops the start on its way"
+    assert cc.paused_by_balancing, "and holds the charge back"
+    assert not cc.plan_expects_charge, "a balancing pause is no charge that failed to start"
+
+    # The charger answers the start late, then the stop.
+    halo.switch("on")
+    await hass.async_block_till_done()
+    halo.switch("off")
+    await hass.async_block_till_done()
+    assert cc.paused_by_balancing, "the start's late answer does not undo the pause"
+    halo.advance(5.0)
+    await halo.tick()
+    assert len(halo.turn_off) == 1, "a stopped charger is not paused again"
+
+    # 05:15:17 the battery stops: the charge is resumed, as the plan's.
+    _battery_w(halo, 0.0)
+    _site_a(hass, halo.site, *house)
+    for _ in range(14):
+        halo.advance(5.0)
+        await halo.tick()
+        if len(halo.turn_on) > 1:
+            break
+    assert len(halo.turn_on) == 2, "\n".join(str(entry) for entry in halo.log()[-6:])
+    assert cc.charge_origin == "plan_window"
 
 
 # -- the core's claim

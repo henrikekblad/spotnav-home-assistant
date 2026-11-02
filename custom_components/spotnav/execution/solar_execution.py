@@ -11,7 +11,10 @@
   `SiteCapacityResult`'s diagnostic fields (never discarded merely for age) and gates them by
   `phase_liveness` (usable only when `fresh` or `confirmed_unchanged`). A direct site (current per
   phase only) instead reads the meter's total grid power from the site controller (unknown unless fresh),
-  splits it over the charger's phases at the nominal voltage and caps it by each phase's fuse headroom. The car's delivered current
+  splits it over the charger's phases at the nominal voltage and caps it by each phase's fuse headroom. A derived
+  site with a fuse is capped by each phase's fuse headroom too, whether load balancing is on or not: the meter
+  nets the sun over the phases, and a single-phase car must not be asked for more than its own phase carries.
+  The car's delivered current
   comes from `SiteCapacityController.charger_measured_current`. The battery comes from
   `battery_aggregate_power`, usable only when live by solar's age limit (`site/meter_cadence.py`: a meter
   that reports seldom or only on change counts for longer than the maximum age), with `battery_configured` set from whether an
@@ -139,7 +142,7 @@ from .auto_execution import AutoExecutor, pause_blocks_execution
 from .charge_progress import SUSPENDED_EV
 from .charger_connection import CHARGING, DISCONNECTED, FINISHED
 from .chargers.base import IN_EFFECT_OUTCOMES
-from .controller import ChargingController
+from .controller import ABSOLUTE_MAX_AMPS, ChargingController
 
 
 _LOGGER = logging.getLogger(__name__)
@@ -414,6 +417,32 @@ def _fuse_caps(
     return caps
 
 
+def _observation_caps(
+    site: SiteCapacityController,
+    charger_entry_id: str,
+    car_delivered_a: dict[PhaseName, float | None],
+    *,
+    phase_unknown: bool,
+) -> dict[PhaseName, float | None]:
+    """`SolarObservation.phase_cap_a`: the most current the car may draw on each phase it uses (`_fuse_caps`), on a
+    single-phase charger of unknown phase the least of every phase's, on `STAND_IN_PHASE`."""
+    result = site.result
+    cap_delivered = (
+        {phase: car_delivered_a[STAND_IN_PHASE] for phase in PHASES} if phase_unknown else car_delivered_a
+    )
+    caps = _fuse_caps(
+        result,
+        cap_delivered,
+        fuse_limit_a=_fuse_limit_a(site),
+        min_current_a=float(_wiring(site, charger_entry_id).get("min_current_a", DEFAULT_MIN_CURRENT_A)),
+        measurement_unusable=result.state in UNHEALTHY_STATES,
+    )
+    if not phase_unknown:
+        return caps
+    values = list(caps.values())
+    return {STAND_IN_PHASE: None if any(cap is None for cap in values) else min(values)}  # type: ignore[type-var]
+
+
 def _phase_room(
     site: SiteCapacityController,
     charger_entry_id: str,
@@ -488,7 +517,8 @@ def _build_observation(
     """One tick's `SolarObservation` from the site's computed result plus this charger's
     measured current.
 
-    A derived site reads the signed power and voltage of every phase. A direct site reads the
+    A derived site reads the signed power and voltage of every phase and, when the site knows its fuse, caps the
+    car by each phase's fuse headroom as well (`_fuse_caps`), load balancing on or off. A direct site reads the
     meter's total grid power (`SiteCapacityController.grid_total_reading`, unknown unless fresh),
     splits it over the charger's phases at the nominal voltage and caps the result by each phase's
     fuse headroom (`_fuse_caps`, which also covers an incomplete phase measurement). `effective_phases`
@@ -523,23 +553,7 @@ def _build_observation(
             stored_voltage_between_phases_v(site.config), len(car_phases)
         )
         voltage_v: dict[PhaseName, float | None] = {phase: nominal_v for phase in PHASES}
-        cap_delivered = (
-            {phase: car_delivered_a[STAND_IN_PHASE] for phase in PHASES} if phase_unknown else car_delivered_a
-        )
-        caps = _fuse_caps(
-            result,
-            cap_delivered,
-            fuse_limit_a=_fuse_limit_a(site),
-            min_current_a=float(_wiring(site, charger_entry_id).get("min_current_a", DEFAULT_MIN_CURRENT_A)),
-            measurement_unusable=result.state in UNHEALTHY_STATES,
-        )
-        if phase_unknown:
-            values = list(caps.values())
-            phase_cap_a = {
-                STAND_IN_PHASE: None if any(cap is None for cap in values) else min(values)  # type: ignore[type-var]
-            }
-        else:
-            phase_cap_a = caps
+        phase_cap_a = _observation_caps(site, charger_entry_id, car_delivered_a, phase_unknown=phase_unknown)
     else:
         signed_grid_w = {
             phase: _liveness_gated(
@@ -555,6 +569,11 @@ def _build_observation(
             # Which phase the car is on is unknown: the mean of the phases that read.
             known = [value for value in voltage_v.values() if value is not None]
             voltage_v = {**voltage_v, STAND_IN_PHASE: sum(known) / len(known) if known else None}
+        if _fuse_limit_a(site) is not None:
+            # The per-phase power nets the sun on every phase, so a single-phase car on a phase the sun does not
+            # cover could otherwise be asked for more than its phase's fuse carries; with load balancing off
+            # nothing else would lower it.
+            phase_cap_a = _observation_caps(site, charger_entry_id, car_delivered_a, phase_unknown=phase_unknown)
 
     battery_w, battery_configured = _battery_reading(site)
 
@@ -1027,8 +1046,9 @@ class SolarExecutionCoordinator:
         if self._solar is None:
             self._solar = self._build_controller(site)
         else:
-            if self._controller.is_switch_only and self._solar.config != (limits := self._solar_config(site)):
-                # Its learned current moved: the thresholds follow it, the state is kept.
+            if self._solar.config != (limits := self._solar_config(site)):
+                # A switch-only charger's learned current moved, or the charger's ceiling did (an entity's stated
+                # maximum, the amps the person set): the limits follow it, the state is kept.
                 self._solar.update_limits(limits)
             if not (held_by_plan or held_by_floor) and self._state is not None and self._state.held_by_plan:
                 # A plan window held the charge until now (its end handed it over, or the strategy left the plan):
@@ -1457,12 +1477,21 @@ class SolarExecutionCoordinator:
         start_a = max(min_current_a, self._controller.adapter.min_start_current_a)
         if start_a > min_current_a:
             config_kwargs["start_a"] = start_a
-        # No per-charger "max current for solar" setting exists; `wiring.get("max_current_a")`
-        # is a hook for one, and otherwise `SolarConfig`'s default (16.0 A) applies.
-        max_current_a = wiring.get("max_current_a")
-        if max_current_a is not None:
-            config_kwargs["max_current_a"] = float(max_current_a)
+        config_kwargs["max_current_a"] = max(self._solar_ceiling_a(), start_a)
         return SolarConfig(**config_kwargs)
+
+    def _solar_ceiling_a(self) -> float:
+        """The most current the sun asks this charger for: the charger's own ceiling
+        (`ChargingController.current_range`: the lowest maximum its current entities state, else the everyday
+        default, never above `ABSOLUTE_MAX_AMPS`), and no more than the amps the person set for it, the same
+        charging current a plan window and Hybrid's plan charge at. Load balancing bounds it further, by the fuse,
+        where the sun's request is reckoned (`_phase_room`, the site's regulator). Read on every tick, so a range
+        that changes (an entity's `max`, a session limit coming or going) is followed."""
+        ceiling = float(min(self._controller.current_range()["max_a"], ABSOLUTE_MAX_AMPS))
+        amps = self._store.settings(self._charger_entry_id).amps
+        if amps is not None and amps > 0:
+            ceiling = min(ceiling, float(amps))
+        return ceiling
 
     async def _take_over(self, site: SiteCapacityController) -> bool:
         """Decide a charge the charger began by itself (at plug-in, say) while solar is not running one,

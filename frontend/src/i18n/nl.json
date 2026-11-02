@@ -631,6 +631,7 @@
   "settings.plan.mode.legend": "Laden op",
   "settings.plan.mode.energy": "Energie · kWh",
   "settings.plan.mode.soc": "Laaddoel · %",
+  "settings.preview.ready": "klaar {time}",
   "settings.soc.target": "Laaddoel",
   "settings.soc.slider": "Laaddoel, procent",
   "settings.soc.floorMark": "min. {percent} %",

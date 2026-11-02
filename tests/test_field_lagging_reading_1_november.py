@@ -572,3 +572,33 @@ async def test_the_field_case_with_the_car_one_pass_behind_each_write(
     trace = "\n".join(morning.trace[raised_at - 2 :])
     assert len(morning.halo.turn_off) == 0, f"paused:\n{trace}"
     assert morning.assigned_a() <= 10.0 and max(morning.site_log[-1]) <= _FUSE_A, trace
+
+
+async def test_1019_the_halo_s_last_meter_value_after_the_pause_does_not_hold_back_the_resume(
+    hass: HomeAssistant, monkeypatch, freezer
+) -> None:
+    """Paused for a load the car's minimum does not fit beside, the HALO sends one more meter value a few seconds after
+    the stop, still showing the car's current from before it (8.068/7.85/8.023 A at 10:19:05 on 2026-11-01), and then
+    nothing. That value belongs to the charge before the pause: once the load is gone the charge is resumed after the
+    resume's dwell, not two minutes later when the value is too old to use (10:22:16 that morning)."""
+    morning = await _the_morning(hass, monkeypatch, freezer, "nov1final")
+    morning.heater_a = 16.0
+    for _ in range(4):
+        await morning.step()
+        if morning.halo.turn_off:
+            break
+    assert len(morning.halo.turn_off) == 1, "\n".join(morning.trace[-6:])
+    drew_a = morning.trace and morning.lowest_a
+    # The charger answers the stop, and a few seconds later sends its last meter value of the charge.
+    await morning.step()
+    assert not morning.on
+    set_charger_delivered_a(hass, morning.halo.prefix, round(float(drew_a) * 0.995 + 0.01, 2))
+    await hass.async_block_till_done()
+    morning.heater = False
+    starts = len(morning.halo.turn_on)
+    passes = 0
+    while len(morning.halo.turn_on) == starts and passes < 40:
+        await morning.step()
+        passes += 1
+    assert len(morning.halo.turn_on) == starts + 1, "\n".join(morning.trace[-10:])
+    assert passes * _STEP_S <= 75.0, f"resumed after {passes * _STEP_S:g} s:\n" + "\n".join(morning.trace[-20:])

@@ -49,7 +49,7 @@ from ..pricing.market_observation import MarketObservation
 from ..pricing.price_refresh import PriceRefreshManager
 from ..pricing.price_source import entry_source_for, PriceSource, SIGNAL_PRICE_SOURCES, with_source
 from ..pricing.relay_contract import AreaEntry
-from ..runtime import domain_data
+from ..runtime import charger_data, domain_data
 from ..execution.controller import CONNECTION_PLUGGED_IN
 from ..sessions.model import STARTED_OTHER
 from ..sessions.recorder import RESET_TOLERANCE_KWH
@@ -59,7 +59,6 @@ from ..vehicles.soc_estimate import (
     read_energy_register_kwh,
     REGISTER_TOLERANCE_KWH,
     SocReader,
-    target_need_kwh,
 )
 from ..vehicles.vehicle_discovery import resolve_target_vehicle
 from ..vehicles.vehicle_properties import resolved_vehicle_id, stored_properties
@@ -79,6 +78,14 @@ from .auto_settings import (
     STRATEGY_SOLAR,
 )
 from .grid_voltage import voltage_between_phases_v
+from .learned_energy import (
+    EnergySampler,
+    LearnedEnergy,
+    LearnedEnergyStore,
+    NOTHING_LEARNED,
+    SocSeen,
+    target_need,
+)
 from .learned_power import (
     LearnedPower,
     LearnedPowerStore,
@@ -282,8 +289,13 @@ def expected_soc_percent(resolution: _EnergyResolution, planned_kwh: float) -> f
     """The state of charge a target plan reaches with `planned_kwh` from the wall, or `None` for a need
     with no live reading and battery size behind it (a manual need)."""
     soc = resolution.soc_percent
+    if soc is None:
+        return None
+    if resolution.kwh_per_percent is not None and resolution.kwh_per_percent > 0:
+        # The car's learned wall kWh per percent (`learned_energy.py`).
+        return min(100.0, soc + planned_kwh / resolution.kwh_per_percent)
     capacity = resolution.capacity_kwh
-    if soc is None or capacity is None or capacity <= 0:
+    if capacity is None or capacity <= 0:
         return None
     return min(100.0, soc + planned_kwh * CHARGE_EFFICIENCY / capacity * 100.0)
 
@@ -471,6 +483,9 @@ class _EnergyResolution:
     #: plan that cannot reach the target by the departure can say what it reaches instead.
     soc_percent: float | None = None
     capacity_kwh: float | None = None
+    #: A target only: the car's learned wall kWh per percent the need was worked out with (`learned_energy.py`),
+    #: `None` while nothing trusted is learned (the battery size and `CHARGE_EFFICIENCY` then).
+    kwh_per_percent: float | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -649,6 +664,7 @@ class AutoPlannerController:
         now: Callable[[], datetime] | None = None,
         vehicle_update: Callable[[str, bool], None] | None = None,
         learned: LearnedPowerStore | None = None,
+        learned_energy: LearnedEnergyStore | None = None,
     ) -> None:
         self._hass = hass
         self._entry_id = entry_id
@@ -723,6 +739,10 @@ class AutoPlannerController:
         self._learned = learned
         self._sampler = None if learned is None else PowerSampler(learned)
         self._watch = PlanWatch()
+        # The wall energy one percent of the car's battery takes, learned at the same look
+        # (`planning/learned_energy.py`).
+        self._learned_energy = learned_energy
+        self._energy_sampler = None if learned_energy is None else EnergySampler(learned_energy)
         self._watch_cancel: Callable[[], None] | None = None
         self._watch_due: datetime | None = None
 
@@ -870,6 +890,29 @@ class AutoPlannerController:
             )
             raise SettingsReconcileError(committed) from None
         return self.snapshot()
+
+    def proposed_settings(self, mutate: Callable[[AutoSettings], AutoSettings]) -> AutoSettings:
+        """The record a write of `mutate` would store now, judged as `async_apply_settings` and the store judge it
+        (the departure date's guard, the final validation, the next revision), and stored nowhere. A refusal
+        raises the same `AutoSettingsError` the write would."""
+        current = self._store.settings(self._entry_id)
+        updated = self._with_departure_date_guard(mutate)(current).validated()
+        return replace(updated, revision=current.revision + 1)
+
+    async def async_preview(self, settings: AutoSettings) -> AutoSnapshot:
+        """The snapshot a calculation on `settings` would make now, with nothing kept and nothing told.
+
+        The same calculation as a write's (`_compute_plan`, its price source's area and fees, the learned power,
+        the count of a manual need), run with `preview`: no attempt is claimed, nothing is published, persisted,
+        armed or applied, no listener hears of it and the charger and the car are asked nothing. So a person can
+        see what a Save would plan before saving it (`api/plan_preview.py`).
+        """
+        settings = self._effective(settings)
+        if self._shutdown:
+            return self._fresh_snapshot(settings, "planning_unavailable", "shutdown", self._now())
+        energy: dict[str, Any] = {}
+        snapshot = await self._compute_plan(settings, self._attempt, energy, preview=True)
+        return replace(snapshot, **energy) if energy else snapshot
 
     def _area_zone(self, settings: AutoSettings) -> Any:
         """The zone the departure date is read in: the chosen area's, else the installation's own.
@@ -1170,17 +1213,22 @@ class AutoPlannerController:
         return replace(snapshot, **energy) if energy else snapshot
 
     async def _compute_plan(
-        self, settings: AutoSettings, attempt: int, energy: dict[str, Any]
+        self, settings: AutoSettings, attempt: int, energy: dict[str, Any], *, preview: bool = False
     ) -> AutoSnapshot:
         """Settings and prices in, one snapshot out.
 
         Order follows dependency: authority, inputs Auto cannot guess, prices, plan. Every failure
         becomes a stable state and reason. Nothing here reaches a charger; applying is `_apply`.
+
+        `preview` (`async_preview`) calculates the same snapshot and keeps nothing: no appointment is armed or
+        cancelled, no count or proposal is saved, no hybrid state is recorded and the car is not asked for a
+        reading.
         """
         calculated_at = self._now()
         # Any earlier appointment is void: this calculation re-arms one only if it needs it.
-        self._cancel_wake()
-        if settings.strategy != STRATEGY_HYBRID:
+        if not preview:
+            self._cancel_wake()
+        if settings.strategy != STRATEGY_HYBRID and not preview:
             # Cleared for every non-hybrid strategy on every path below, so a charger not on `hybrid`
             # reads as "nothing observed" (`hybrid_execution.clear_hybrid_state`).
             hybrid_execution.clear_hybrid_state(self._hass, self._entry_id)
@@ -1231,7 +1279,7 @@ class AutoPlannerController:
                 price_snapshot=area_snapshot,
             )
 
-        resolved = await self._energy_for(settings, calculated_at, entry, area_snapshot)
+        resolved = await self._energy_for(settings, calculated_at, entry, area_snapshot, preview=preview)
         if isinstance(resolved, AutoSnapshot):
             return resolved
         energy_kwh = resolved.kwh
@@ -1250,7 +1298,7 @@ class AutoPlannerController:
         if energy_kwh <= price_wait.EPSILON_KWH:
             # A manual need fully delivered: answered like `target_soc`'s `already_at_target`, since
             # `calculate_plan` refuses a non-positive `requested_kwh`. A normal state, not a failure.
-            if settings.strategy == STRATEGY_HYBRID:
+            if settings.strategy == STRATEGY_HYBRID and not preview:
                 hybrid_execution.record_satisfied_state(self._hass, self._entry_id)
             return self._fresh_snapshot(
                 settings, "nothing_to_charge", "already_at_target", calculated_at,
@@ -1286,13 +1334,15 @@ class AutoPlannerController:
                 now=calculated_at,
                 remaining_need_kwh=energy_kwh,
                 delivered_energy_trustworthy=delivered_energy_trustworthy,
+                remember=not preview,
             )
-            plan_window_active = (
-                False if self._executor is None else self._executor.controller.plan_window_active_now
-            )
-            hybrid_execution.record_hybrid_state(
-                self._hass, self._entry_id, hybrid_outcome, plan_window_active=plan_window_active
-            )
+            if not preview:
+                plan_window_active = (
+                    False if self._executor is None else self._executor.controller.plan_window_active_now
+                )
+                hybrid_execution.record_hybrid_state(
+                    self._hass, self._entry_id, hybrid_outcome, plan_window_active=plan_window_active
+                )
             energy_kwh = hybrid_outcome.result.grid_kwh
             if energy_kwh <= price_wait.EPSILON_KWH:
                 # The sun is credited with the whole need: no grid energy to place, and the planner
@@ -1327,10 +1377,12 @@ class AutoPlannerController:
             if result.reason == "insufficient_price_horizon":
                 waited = None
                 if plan_request.departure is not None:
-                    waited = await self._plan_departure_by_history(plan_request, result, entry, calculated_at)
+                    waited = await self._plan_departure_by_history(
+                        plan_request, result, entry, calculated_at, preview=preview
+                    )
                 if waited is None:
                     waited = self._plan_while_prices_are_missing(
-                        plan_request, result, entry, calculated_at
+                        plan_request, result, entry, calculated_at, preview=preview
                     )
                 if waited is not None:
                     result, wait_facts, early = waited
@@ -1347,14 +1399,16 @@ class AutoPlannerController:
             )
         except Exception as err:  # noqa: BLE001 - unexpected, and never fatal to the entry
             failure = (type(err).__name__, str(err), replace(plan_request, now=_FAILURE_CLOCK))
-            log = _LOGGER.debug if failure == self._last_failure else _LOGGER.warning
-            self._last_failure = failure
+            log = _LOGGER.debug if preview or failure == self._last_failure else _LOGGER.warning
+            if not preview:
+                self._last_failure = failure
             log("Auto preview calculation failed: %s: %s", failure[0], failure[1])
             return self._fresh_snapshot(
                 settings, "error", "unexpected_failure", calculated_at,
                 entry=entry, price_snapshot=area_snapshot,
             )
-        self._last_failure = None
+        if not preview:
+            self._last_failure = None
 
         if not result.has_plan:
             return self._fresh_snapshot(
@@ -1378,7 +1432,7 @@ class AutoPlannerController:
             # Best effort: the departure leaves too little time for the need, so every slot up to it is
             # planned and charged. A warning, not a refusal; the status says what the car will reach.
             snapshot = replace(snapshot, expected_soc_percent=expected_soc_percent(resolved, result.delivered_kwh))
-        if not await self._persist_proposal(settings, snapshot):
+        if not preview and not await self._persist_proposal(settings, snapshot):
             # A proposal whose summary could not be saved is shown with a stable code and installed by
             # nobody. The code is the fact; the exception text is not.
             failed = replace(snapshot, last_error_code="proposal_not_saved")
@@ -1411,6 +1465,8 @@ class AutoPlannerController:
         refusal: PlanResult,
         entry: AreaEntry,
         calculated_at: datetime,
+        *,
+        preview: bool = False,
     ) -> tuple[PlanResult, dict[str, Any], tuple[AutoState, AutoReason] | None] | None:
         """The window needs prices nobody has published yet: wait, buy what cannot wait, or charge.
 
@@ -1452,7 +1508,8 @@ class AutoPlannerController:
             publication_at=publication_at,
         )
         # A replan is also owed when the guarantee falls due (the latest safe start less one slot).
-        self._arm_wake(decision.act_by)
+        if not preview:
+            self._arm_wake(decision.act_by)
         facts: dict[str, Any] = {
             "wait_rule": "implicit",
             "price_wait_action": {"wait": "waiting", "buy_now": "buy_now", "guarantee": "guarantee"}[
@@ -1476,7 +1533,13 @@ class AutoPlannerController:
         return (plan_unpriced(request), facts, None)
 
     async def _plan_departure_by_history(
-        self, request: PlanRequest, refusal: PlanResult, entry: AreaEntry, calculated_at: datetime
+        self,
+        request: PlanRequest,
+        refusal: PlanResult,
+        entry: AreaEntry,
+        calculated_at: datetime,
+        *,
+        preview: bool = False,
     ) -> tuple[PlanResult, dict[str, Any], tuple[AutoState, AutoReason] | None] | None:
         """A departure (dated or daily) whose window runs past the last published price.
 
@@ -1505,7 +1568,7 @@ class AutoPlannerController:
         profile = await self._manager.async_profile(request.area_id)
         decision = history_wait.evaluate(request, gap, known, profile)
         if request.departure_date is None:
-            return self._daily_by_history(request, refusal, entry, calculated_at, known, decision)
+            return self._daily_by_history(request, refusal, entry, calculated_at, known, decision, preview=preview)
         facts: dict[str, Any] = {"history": decision, "wait_rule": "history"}
         if decision.outcome != "wait":
             return (known, facts, None)
@@ -1529,7 +1592,8 @@ class AutoPlannerController:
             # Waiting would miss the deadline: the published plan stands, the price given up is only the hope.
             return (known, {"history": history_wait.unsafe(decision), "wait_rule": "history"}, None)
         # A replan is also owed when waiting stops being safe (the latest safe start less one slot).
-        self._arm_wake(waited.act_by)
+        if not preview:
+            self._arm_wake(waited.act_by)
         facts.update(
             price_wait_action="waiting" if waited.action == "wait" else "buy_now",
             publication_at=waited.publication_at,
@@ -1553,6 +1617,8 @@ class AutoPlannerController:
         calculated_at: datetime,
         known: PlanResult,
         decision: history_wait.HistoryDecision,
+        *,
+        preview: bool = False,
     ) -> tuple[PlanResult, dict[str, Any], tuple[AutoState, AutoReason] | None] | None:
         """A daily departure: the implicit rule stands unless history says something definite.
 
@@ -1565,7 +1631,7 @@ class AutoPlannerController:
             return (known, {"history": decision, "wait_rule": "history"}, None)
         if decision.outcome != "wait":
             return None
-        implicit = self._plan_while_prices_are_missing(request, refusal, entry, calculated_at)
+        implicit = self._plan_while_prices_are_missing(request, refusal, entry, calculated_at, preview=preview)
         if implicit is None:
             return None
         result, facts, early = implicit
@@ -1628,10 +1694,45 @@ class AutoPlannerController:
         settings = self._effective(self._store.settings(self._entry_id))
         check = self._watch.last_check
         learned = self._learned_power(settings)
+        # Read without a reading of the car's level (which would move the estimate's anchor): the planned car and
+        # its battery size only.
+        vehicle_id = resolved_vehicle_id(self._hass, self._entry_id)
+        data = charger_data(self._hass, self._entry_id)
+        reader = None if data is None else data.soc_reader
+        capacity = None if reader is None or vehicle_id is None else reader.capacity_kwh(vehicle_id)
+        energy = self.learned_energy(vehicle_id, capacity)
+        anchor = None if self._learned_energy is None else self._learned_energy.anchor
         return {
             "behind_check": None if check is None else check.as_dict(),
             "learned_power": {**learned.as_dict(), "planned_with": learned.cap_kw is not None},
+            "learned_energy": {
+                **energy.as_dict(),
+                # The need counts on it: trusted, for a target (a fixed amount is never changed by it).
+                "used": energy.trusted and settings.driver == DRIVER_TARGET_SOC,
+                "stretch_start": None if anchor is None else {
+                    "soc_percent": anchor.soc_percent, "at": anchor.at.isoformat(), "kwh": round(anchor.kwh, 3),
+                },
+            },
         }
+
+    def _learned_energy_for(self, facts: LiveVehicleFacts | None, *, drop: bool = False) -> LearnedEnergy:
+        """What is learned of the wall kWh per percent of the car the level is read from, when that is the car this
+        charger plans for (`learned_energy.py`); nothing otherwise."""
+        if facts is None:
+            return NOTHING_LEARNED
+        return self.learned_energy(facts.vehicle_id, facts.reported_capacity_kwh, drop=drop)
+
+    def learned_energy(
+        self, vehicle_id: str | None, capacity_kwh: float | None, *, drop: bool = False
+    ) -> LearnedEnergy:
+        """What is learned of `vehicle_id`'s wall kWh per percent at this charger, checked against `capacity_kwh`,
+        when it is the car this charger plans for; nothing otherwise. The dashboard reads the same figure
+        (`learned_energy.target_need`)."""
+        if self._learned_energy is None or not vehicle_id:
+            return NOTHING_LEARNED
+        if vehicle_id != resolved_vehicle_id(self._hass, self._entry_id):
+            return NOTHING_LEARNED
+        return self._learned_energy.learned(vehicle_id, capacity_kwh, drop=drop)
 
     def _arm_watch(self) -> None:
         """Keep the one appointment to look at the plan's windows (`plan_watch.next_check_at`): an earlier one is
@@ -1720,6 +1821,8 @@ class AutoPlannerController:
         car_ended_at = controller.car_ended_at
         car_ended = window is not None and car_ended_at is not None and car_ended_at >= window[0]
         learned = self._learned_power(settings)
+        # The car's facts, read once for this look (the learned power's taper and the learned energy).
+        facts = None if self._vehicle_reader is None else self._vehicle_reader(settings.target.vehicle_id or "")
         wiring = self._wiring(settings)
         planned_kw = power_kw(amps, wiring.phases, wiring.voltage_v) if wiring is not None and amps else 0.0
         power = planned_kw if learned.cap_kw is None else min(planned_kw, learned.cap_kw)
@@ -1754,7 +1857,7 @@ class AutoPlannerController:
                 and not self._car_ending(controller)
                 and (now - window[0]).total_seconds() >= START_GRACE_S
                 and self._at_planned_current(controller, amps)
-                and not self._tapering(settings)
+                and not self._tapering(facts)
             )
             sample = None
             if clean:
@@ -1762,7 +1865,44 @@ class AutoPlannerController:
                 session = self._learning_session(controller, plan, window)
                 sample = PowerSample(at=now, kwh=reading, session=session, subject=learned.subject, wiring=wiring)
             self._sampler.sample(sample, planned_kw)
+        if self._energy_sampler is not None:
+            try:
+                self._sample_energy(controller, facts, now, reading, reading_at)
+            except Exception:  # noqa: BLE001 - learning is a convenience, never worth the behind-plan decision
+                _LOGGER.debug("Learning the energy per percent failed", exc_info=True)
         return decision
+
+    def _sample_energy(
+        self,
+        controller: Any,
+        facts: LiveVehicleFacts | None,
+        now: datetime,
+        reading: float | None,
+        reading_at: datetime | None,
+    ) -> None:
+        """One look for the learned wall kWh per percent (`learned_energy.py`): the car this charger plans for and
+        its level, the plug-in, and the count."""
+        assert self._energy_sampler is not None
+        # The plug-in: the last one the charger saw (kept across a restart, so a restart keeps the stretch), else the
+        # one it counts from; none while the charger says the car is unplugged, which ends the stretch.
+        plugged_in = None if controller.known_connected is False else (
+            controller.plugged_in_at or controller.plugged_in_for_count
+        )
+        self._energy_sampler.observe(
+            now,
+            vehicle_id=None if facts is None else facts.vehicle_id or None,
+            session=None if plugged_in is None else f"plug_in:{plugged_in.isoformat()}",
+            soc=SocSeen(
+                soc_percent=None if facts is None else facts.soc_percent,
+                age_s=None if facts is None else facts.soc_age_s,
+                estimated=facts is not None and facts.soc_estimated,
+                source=None if facts is None else facts.soc_source,
+            ),
+            register_kwh=reading,
+            register_posted_at=reading_at,
+            capacity_kwh=None if facts is None else facts.reported_capacity_kwh,
+            charging=bool(controller.charging),
+        )
 
     @staticmethod
     def _car_ending(controller: Any) -> bool:
@@ -1809,11 +1949,9 @@ class AutoPlannerController:
             return not controller.adapter.capabilities.set_current
         return setpoint == amps
 
-    def _tapering(self, settings: AutoSettings) -> bool:
+    @staticmethod
+    def _tapering(facts: LiveVehicleFacts | None) -> bool:
         """The car's known level is where a car tapers by itself (`TAPER_PERCENT`)."""
-        if self._vehicle_reader is None:
-            return False
-        facts = self._vehicle_reader(settings.target.vehicle_id or "")
         return facts is not None and facts.soc_percent is not None and facts.soc_percent >= TAPER_PERCENT
 
     def _republish_execution(self, snapshot: AutoSnapshot) -> AutoSnapshot:
@@ -1982,12 +2120,20 @@ class AutoPlannerController:
         return DEFAULT_CONSUMPTION_KWH_PER_10KM
 
     async def _energy_for(
-        self, settings: AutoSettings, calculated_at: datetime, entry: AreaEntry, price_snapshot: Any
+        self,
+        settings: AutoSettings,
+        calculated_at: datetime,
+        entry: AreaEntry,
+        price_snapshot: Any,
+        *,
+        preview: bool = False,
     ) -> _EnergyResolution | AutoSnapshot:
         """The energy the plan should deliver: the manual figure (less energy already delivered toward
         the current departure, when trustworthy) or what a target needs from live state of charge."""
         if settings.driver != DRIVER_TARGET_SOC:
-            return self._capped_by_room(settings, await self._manual_kwh_remaining(settings, calculated_at, entry))
+            return self._capped_by_room(
+                settings, await self._manual_kwh_remaining(settings, calculated_at, entry, preview=preview)
+            )
         facts = None if self._vehicle_reader is None else self._vehicle_reader(settings.target.vehicle_id or "")
         live_soc = None if facts is None else facts.soc_percent
         if live_soc is None:
@@ -2000,8 +2146,12 @@ class AutoPlannerController:
             capacity = facts.reported_capacity_kwh
         planned_from = self._planned_from_floor(settings, facts, live_soc, calculated_at)
         # Energy the wall must deliver: battery need divided by charging efficiency
-        # (`soc_estimate.CHARGE_EFFICIENCY`).
-        reason, wall_kwh = target_need_kwh(
+        # (`soc_estimate.CHARGE_EFFICIENCY`), or, once trusted, the car's learned wall kWh per percent
+        # (`learned_energy.py`), given as the battery size that takes it at that efficiency.
+        # The need drops samples a changed battery size no longer fits; every other read only looks.
+        learned = self._learned_energy_for(facts, drop=True)
+        reason, wall_kwh = target_need(
+            learned,
             soc_percent=planned_from,
             capacity_kwh=capacity,
             target_percent=settings.target.target_percent,
@@ -2015,20 +2165,23 @@ class AutoPlannerController:
         if reason == "already_at_target":
             # The car needs nothing, so `async_plan_hybrid` is never reached: record the `satisfied`
             # result it would produce so the solar coordinator sees the need is gone.
-            if settings.strategy == STRATEGY_HYBRID:
+            if settings.strategy == STRATEGY_HYBRID and not preview:
                 hybrid_execution.record_satisfied_state(self._hass, self._entry_id)
             return self._fresh_snapshot(
                 settings, "nothing_to_charge", "already_at_target", calculated_at,
                 entry=entry, price_snapshot=price_snapshot,
             )
         if wall_kwh is not None and facts is not None:
-            waiting = self._vehicle_update_wait(settings, facts, wall_kwh, calculated_at, entry, price_snapshot)
+            waiting = self._vehicle_update_wait(
+                settings, facts, wall_kwh, calculated_at, entry, price_snapshot, preview=preview
+            )
             if waiting is not None:
                 return waiting
         kwh = wall_kwh if wall_kwh is not None else settings.requested_kwh
         # Always trustworthy: live state of charge already reflects everything delivered.
         return _EnergyResolution(
-            kwh=kwh, delivered_energy_trustworthy=True, soc_percent=live_soc, capacity_kwh=capacity
+            kwh=kwh, delivered_energy_trustworthy=True, soc_percent=live_soc, capacity_kwh=capacity,
+            kwh_per_percent=learned.use_kwh_per_percent,
         )
 
     def _planned_from_floor(
@@ -2061,6 +2214,8 @@ class AutoPlannerController:
         calculated_at: datetime,
         entry: AreaEntry,
         price_snapshot: Any,
+        *,
+        preview: bool = False,
     ) -> AutoSnapshot | None:
         """`nothing_to_charge`/`waiting_for_vehicle_update` when the charge just ended delivered, by
         measurement, at least the need worked out from a reading older than it (`vehicle_update_wait`), else
@@ -2121,6 +2276,23 @@ class AutoPlannerController:
             return None
         if decision.delivery is None and decision.reason != "car_ended":
             return None
+        if not preview:
+            self._wait_for_vehicle_update(settings, facts, decision, need_kwh, controller)
+        return self._fresh_snapshot(
+            settings, "nothing_to_charge", "waiting_for_vehicle_update", calculated_at,
+            entry=entry, price_snapshot=price_snapshot,
+        )
+
+    def _wait_for_vehicle_update(
+        self,
+        settings: AutoSettings,
+        facts: LiveVehicleFacts,
+        decision: vehicle_update_wait.WaitDecision,
+        need_kwh: float,
+        controller: Any,
+    ) -> None:
+        """What a wait for the car's new level does: the replan appointment, the car asked once per charge, and
+        hybrid told the need is gone."""
         if decision.replan_at is not None:
             self._arm_wake(decision.replan_at)
         if decision.delivery is not None:
@@ -2151,10 +2323,6 @@ class AutoPlannerController:
         if settings.strategy == STRATEGY_HYBRID:
             # As for a reached target: no grid energy and no sun is wanted for a need already delivered.
             hybrid_execution.record_satisfied_state(self._hass, self._entry_id)
-        return self._fresh_snapshot(
-            settings, "nothing_to_charge", "waiting_for_vehicle_update", calculated_at,
-            entry=entry, price_snapshot=price_snapshot,
-        )
 
     def _capped_by_room(self, settings: AutoSettings, resolution: _EnergyResolution) -> _EnergyResolution:
         """A manual need no larger than the battery has room for.
@@ -2565,12 +2733,15 @@ class AutoPlannerController:
             return live
         return stored
 
-    def _follow_register(self, stored: EnergyBaseline, reading: float | None) -> EnergyBaseline:
+    def _follow_register(
+        self, stored: EnergyBaseline, reading: float | None, *, remember: bool = True
+    ) -> EnergyBaseline:
         """`follow_register` to this charger's register now. The caller saves a baseline that moved (see
-        `_save_followed`), in order with whatever it saves after it."""
+        `_save_followed`), in order with whatever it saves after it. `remember=False` (a preview) only says
+        where the count would go."""
         entity_id = self._energy_register_entity_id()
         followed = follow_register(stored, entity_id, reading, self._now(), charged_s=self._charged_s())
-        if followed != stored:
+        if followed != stored and remember:
             if stored.register_entity is not None:
                 _LOGGER.info(
                     "The energy register changed from %s to %s while a need was counted: %.3f kWh counted are "
@@ -2615,7 +2786,7 @@ class AutoPlannerController:
         return read_energy_register_kwh(self._hass, self._energy_register_entity_id())
 
     async def _manual_kwh_remaining(
-        self, settings: AutoSettings, calculated_at: datetime, entry: AreaEntry
+        self, settings: AutoSettings, calculated_at: datetime, entry: AreaEntry, *, preview: bool = False
     ) -> _EnergyResolution:
         """`manual_kwh`'s remaining need: `requested_kwh` less energy delivered toward the current
         departure occurrence (or, with no departure, the current plug-in) since a baseline was recorded
@@ -2634,7 +2805,10 @@ class AutoPlannerController:
           epoch began are counted (`sessions`); only with neither is the whole request planned. A count
           that began without a reading and reads now counts on from now (`rebased`). None of these is
           trustworthy enough for `hybrid` to credit forecast sun.
+
+        `preview` counts the same and keeps nothing: no count is saved or remembered, and no appointment made.
         """
+        save = self._save_baseline if not preview else _keep_nothing
         requested = settings.requested_kwh
         departure_key = self._departure_key(settings, calculated_at, entry)
         stored = self._baseline()
@@ -2642,8 +2816,9 @@ class AutoPlannerController:
 
         if stored is None or stored.departure_key != departure_key:
             # A fresh epoch: the current reading (or None) is the new starting point.
-            self._energy_met_done = None
-            await self._save_baseline(
+            if not preview:
+                self._energy_met_done = None
+            await save(
                 EnergyBaseline(
                     register_kwh=current_reading,
                     register_entity=self._energy_register_entity_id(),
@@ -2663,15 +2838,17 @@ class AutoPlannerController:
                 delivered_kwh=0.0 if current_reading is not None else None,
             )
 
-        followed = self._follow_register(stored, current_reading)
+        followed = self._follow_register(stored, current_reading, remember=not preview)
         if followed != stored:
             # Awaited, so a later save in this calculation is never overwritten by it.
-            await self._save_baseline(followed)
+            await save(followed)
         stored = followed
         if current_reading is None:
-            self._note_register_read(None)
+            if not preview:
+                self._note_register_read(None)
             unread = self._unread_remainder(settings, stored, departure_key)
-            since = self._register_unread_since
+            # A preview notes nothing: unread since now, as the calculation's own note would have it.
+            since = self._register_unread_since if self._register_unread_since is not None or not preview else calculated_at
             if (
                 unread.basis == "kept"
                 and since is not None
@@ -2682,14 +2859,15 @@ class AutoPlannerController:
                 # until the grace ends; then the notice shows, without waiting for a price event.
                 ends = since + timedelta(seconds=UNREAD_NOTICE_GRACE_S)
                 if calculated_at < ends:
-                    self._arm_unread_notice(ends)
+                    if not preview:
+                        self._arm_unread_notice(ends)
                     return replace(unread, basis="kept_recent")
             return unread
 
         if stored.register_kwh is None:
             # The register had no reading when this epoch began: count from now. What it vouched for
             # before is kept; anything else delivered meanwhile cannot be told.
-            await self._save_baseline(
+            await save(
                 replace(
                     stored,
                     register_kwh=current_reading,
@@ -2724,7 +2902,8 @@ class AutoPlannerController:
             if raised and remaining > 0:
                 # More is asked for than was delivered: the remainder is the need, and the count goes on.
                 met_at = met_requested = None
-                self._energy_met_done = None
+                if not preview:
+                    self._energy_met_done = None
             else:
                 # Met stays met: only the register watcher opens it again, on a count that proved false
                 # and held lower (`_on_energy_reading`), never on a count wavering at the request.
@@ -2739,7 +2918,7 @@ class AutoPlannerController:
             met_requested_kwh=met_requested,
         )
         if updated != stored:
-            await self._save_baseline(updated)
+            await save(updated)
         return _EnergyResolution(
             kwh=remaining,
             # Untrustworthy only while a reading is in doubt: a rise rejected, or a drop pending (both clear
@@ -2969,6 +3148,10 @@ class AutoPlannerController:
 
 #: The settings' fiscal components and the names contract v2's `included` uses for them.
 INCLUDED_NAME: Final = {"vat": "vat", "tax": "tax", "transfer": "grid_fee"}
+
+
+async def _keep_nothing(_baseline: EnergyBaseline) -> None:
+    """A preview's save of the count: nothing is kept."""
 
 
 def expected_publication(entry: AreaEntry, missing_from: datetime) -> datetime:

@@ -94,6 +94,7 @@ from ..planning.auto_settings import (
 from ..execution.hybrid_execution import charge_power_limits
 from ..planning.hybrid_forecast import async_forecast_capable_domains, async_read_forecast_wh
 from ..planning.hybrid_plan import HybridConfig, forecast_credit
+from ..planning.learned_energy import efficiency_for, NOTHING_LEARNED, target_need
 from ..planning.grid_voltage import voltage_between_phases_v
 from ..planning.phases import charging_phases, ChargingPhases, onboard_suggestion
 from ..planning.planner import chart_intervals, ChartInterval
@@ -136,7 +137,7 @@ from ..vehicles import vehicle_properties
 from ..vehicles.capability import REASON_SITE_DIRECTION_UNKNOWN
 from ..vehicles.charger_inventory import charger_entries
 from ..vehicles.duplicate_chargers import duplicates_of
-from ..vehicles.soc_estimate import battery_room_kwh, CHARGE_EFFICIENCY, target_need_kwh
+from ..vehicles.soc_estimate import battery_room_kwh, CHARGE_EFFICIENCY
 from ..vehicles.identification_sources import sources_block
 from ..vehicles.vehicle_charge_limit import charge_limit_range
 from ..vehicles.vehicle_discovery import discover_vehicles, resolve_target_vehicle
@@ -384,6 +385,9 @@ class CapturedSoc:
     vehicle_max_percent: float | None = None
     #: The wall energy the battery has room for, to the car's own limit (else 100 %).
     room_kwh: float | None = None
+    #: The efficiency the card works a target out with: the car's learned one once trusted
+    #: (`learned_energy.efficiency_for`), else `CHARGE_EFFICIENCY`.
+    efficiency: float = CHARGE_EFFICIENCY
 
 
 @dataclass(frozen=True, slots=True)
@@ -713,9 +717,13 @@ def capture_soc(
     capacity = reader.capacity_kwh(vehicle_id)
     target = settings.target.target_percent
     value = None if reading is None else reading.soc_percent
+    # The planner's own learned figure for this car (`learned_energy.target_need`): the need here is the plan's.
+    preview = preview_for(hass, entry_id)
+    learned = NOTHING_LEARNED if preview is None else preview.learned_energy(vehicle_id, capacity)
     need = None
     if value is not None and target is not None:
-        _, need = target_need_kwh(
+        _, need = target_need(
+            learned,
             soc_percent=value,
             capacity_kwh=capacity,
             target_percent=target,
@@ -734,6 +742,7 @@ def capture_soc(
         vehicle_choices=tuple((c.id, c.name) for c in candidates) if len(candidates) > 1 else (),
         vehicle_max_percent=max_percent,
         room_kwh=battery_room_kwh(soc_percent=value, capacity_kwh=capacity, vehicle_max_percent=max_percent),
+        efficiency=efficiency_for(learned, capacity),
     )
 
 
@@ -1978,6 +1987,7 @@ def progress_facts(capture: CapturedDashboard) -> ProgressFacts:
         need_kwh=None if soc is None else finite_number(soc.need_kwh),
         room_kwh=None if soc is None else finite_number(soc.room_kwh),
         capacity_kwh=None if soc is None else finite_number(soc.capacity_kwh),
+        efficiency=CHARGE_EFFICIENCY if soc is None else soc.efficiency,
         plan_delivered_kwh=need["delivered_kwh"],
         plan_remaining_kwh=need["remaining_kwh"],
         requested_kwh=requested,
@@ -2215,7 +2225,9 @@ def serialize_soc(soc: CapturedSoc | None) -> dict[str, Any] | None:
 
     For the card's slider it also states the backend's formula (`soc_estimate.target_need_kwh`):
     `(min(target, floor(vehicle_max_percent)) - value) x capacity_kwh / efficiency`, zero at or below
-    `value`. `efficiency` is `soc_estimate.CHARGE_EFFICIENCY`; `vehicle_max_percent` is the vehicle's
+    `value`. `efficiency` is `soc_estimate.CHARGE_EFFICIENCY`, or, once the car's wall kWh per percent is learned
+    and trusted, the efficiency that gives it with `capacity_kwh` (`learned_energy.efficiency_for`), so the
+    formula is the planner's need; `vehicle_max_percent` is the vehicle's
     own charge limit; `vehicles` lists every candidate `{id, name}` when more than one exists.
     `room_kwh` is the wall energy the battery still has room for, the same formula with the target at
     100 (`soc_estimate.battery_room_kwh`): what a manual amount is capped at, and the kWh slider's top.
@@ -2236,7 +2248,7 @@ def serialize_soc(soc: CapturedSoc | None) -> dict[str, Any] | None:
         "vehicle_id": _text(soc.vehicle_id),
         "vehicle_max_percent": finite_number(soc.vehicle_max_percent),
         "room_kwh": None if finite_number(soc.room_kwh) is None else round(soc.room_kwh, 2),
-        "efficiency": CHARGE_EFFICIENCY,
+        "efficiency": soc.efficiency,
         "vehicles": [{"id": vid, "name": name} for vid, name in soc.vehicle_choices],
         "missing": [
             name
@@ -2301,6 +2313,26 @@ def _measurement_facts(
     )
 
 
+def planning_facts(snapshot: AutoSnapshot) -> PlanningFacts:
+    """One Auto snapshot's planning, as the status composer reads it (the dashboard's and a plan preview's)."""
+    return PlanningFacts(
+        state=snapshot.state,
+        reason=snapshot.reason,
+        missing=tuple(snapshot.missing),
+        publication_at=_utc(snapshot.publication_at),
+        must_buy_now_kwh=finite_number(snapshot.must_buy_kwh),
+        history_weekday=None if snapshot.history is None else snapshot.history.weekday,
+        history_percent=None if snapshot.history is None else snapshot.history.percent,
+        history_weeks=None if snapshot.history is None else snapshot.history.weeks,
+        energy_basis=snapshot.energy_basis,
+        remaining_kwh=finite_number(snapshot.remaining_kwh),
+        room_kwh=finite_number(snapshot.room_kwh) if snapshot.room_limited else None,
+        fill=snapshot.fill,
+        departure_at=_utc(snapshot.departure_at),
+        expected_soc_percent=finite_number(snapshot.expected_soc_percent),
+    )
+
+
 def status_facts(capture: CapturedDashboard) -> StatusFacts:
     """The captured moment as the typed facts `status_compose.compose_status` reads; nothing live, and
     every decision is the composer's.
@@ -2308,24 +2340,7 @@ def status_facts(capture: CapturedDashboard) -> StatusFacts:
     settings = capture.settings
     snapshot = capture.snapshot
     names = dict(capture.entity_names)
-    planning = None
-    if snapshot is not None:
-        planning = PlanningFacts(
-            state=snapshot.state,
-            reason=snapshot.reason,
-            missing=tuple(snapshot.missing),
-            publication_at=_utc(snapshot.publication_at),
-            must_buy_now_kwh=finite_number(snapshot.must_buy_kwh),
-            history_weekday=None if snapshot.history is None else snapshot.history.weekday,
-            history_percent=None if snapshot.history is None else snapshot.history.percent,
-            history_weeks=None if snapshot.history is None else snapshot.history.weeks,
-            energy_basis=snapshot.energy_basis,
-            remaining_kwh=finite_number(snapshot.remaining_kwh),
-            room_kwh=finite_number(snapshot.room_kwh) if snapshot.room_limited else None,
-            fill=snapshot.fill,
-            departure_at=_utc(snapshot.departure_at),
-            expected_soc_percent=finite_number(snapshot.expected_soc_percent),
-        )
+    planning = None if snapshot is None else planning_facts(snapshot)
     proposal = None
     section = _proposal_section(capture)
     if section is not None and snapshot is not None:

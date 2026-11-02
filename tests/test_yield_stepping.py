@@ -182,6 +182,32 @@ def test_step_not_absorbed_is_reverted_urgently() -> None:
     assert v.reason == "revert_not_absorbed"
 
 
+@pytest.mark.parametrize(("limit", "kept"), [(22.0, True), (21.5, False)])
+def test_a_step_not_absorbed_is_reverted_only_over_the_limit(limit: float, kept: bool) -> None:
+    """The same unabsorbed step, the site at 21.9 A after it: within a 22 A limit the grid carries it and it stays
+    (no write, backoff); over a 21.5 A limit it is taken back at once."""
+    cfg = _config()
+    stepper = YieldStepper(cfg)
+
+    def obs(now: float, site: float, delivered: float) -> YieldObservation:
+        return YieldObservation(
+            now=now,
+            site_current_a={"L2": site},
+            delivered_current_a={"L2": delivered},
+            phases=("L2",),
+            limit_a={"L2": limit},
+        )
+
+    stepper.observe(10.0, 16.0, 10.0, obs(0.0, 20.0, 8.9))
+    assert stepper.observe(12.0, 16.0, 12.0, obs(1.0, 21.9, 10.9)).state == "settling"
+    v = stepper.observe(12.0, 16.0, 12.0, obs(1.0 + cfg.settle_s, 21.9, 10.9))
+    assert v.state == "backoff"
+    if kept:
+        assert (v.action, v.current_a, v.reason) == ("passthrough", None, "kept_not_absorbed_within_limit")
+    else:
+        assert (v.action, v.current_a, v.reason, v.urgent) == ("write", 10.0, "revert_not_absorbed", True)
+
+
 def test_backoff_doubles_and_caps_and_a_later_confirm_resets_it() -> None:
     cfg = _config(backoff_initial_s=600.0, backoff_max_s=3600.0, settle_s=10.0)
     stepper = YieldStepper(cfg)

@@ -151,3 +151,49 @@ def test_a_real_overload_still_lowers_or_stops_the_car() -> None:
     verdict = site.tick()
     assert verdict.reason in ("passthrough_ceiling", "transient_step_back")
     assert verdict.urgent
+
+
+def _down_step(limit_a: float, *, verified: bool = False) -> YieldVerdict | None:
+    """A car at 14 A lowered (not by the stepper) to 10 A with the grid at `limit_a` and the battery charging; the
+    battery takes every freed amp, so the grid stays put. The stepper's verdict once the lowering is measured, or
+    `None` if it never wrote. The fuse (the unverified ceiling) is 20 A, the verified ceiling 24 A."""
+    stepper = YieldStepper(YieldConfig(ceiling_a=24.0, unverified_ceiling_a=20.0))
+    if verified:
+        stepper.note_battery_yielded()
+
+    def observe(now: float, assigned: float, delivered: float) -> YieldVerdict:
+        observation = YieldObservation(
+            now=now,
+            site_current_a={phase: limit_a for phase in PHASES},
+            delivered_current_a={phase: delivered for phase in PHASES},
+            phases=PHASES,
+            battery_charge_a=10.0,
+            credit_allowed=True,
+            battery_power_w=6900.0,
+            limit_a={phase: limit_a for phase in PHASES},
+        )
+        return stepper.observe(assigned, 14.0, assigned, observation)
+
+    observe(0.0, 14.0, 13.9)
+    observe(1.0, 10.0, 13.9)
+    for now in range(2, 70):
+        verdict = observe(float(now), 10.0, 9.9)
+        if verdict.reason == "down_step_absorbed_by_battery":
+            return verdict
+    return None
+
+
+def test_a_step_back_up_on_an_unverified_battery_takes_only_the_room_under_the_fuse() -> None:
+    """The grid at 18.5 A: 1.5 A under the fuse, so one whole amp back, not the four the lowering took."""
+    verdict = _down_step(18.5)
+    assert verdict is not None and verdict.action == "write" and verdict.current_a == 11.0
+
+
+def test_no_step_back_up_on_an_unverified_battery_without_an_amp_of_room() -> None:
+    """The grid at 19.8 A: no whole amp under the fuse, so the car is not stepped back up at all."""
+    assert _down_step(19.8) is None
+
+
+def test_a_battery_verified_to_give_way_takes_the_step_back_up_to_the_yield_ceiling() -> None:
+    verdict = _down_step(19.8, verified=True)
+    assert verdict is not None and verdict.current_a == 14.0

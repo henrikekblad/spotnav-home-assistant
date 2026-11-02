@@ -445,7 +445,9 @@ async def test_a_derived_site_keeps_its_per_phase_power_and_ignores_a_total(hass
     site._recompute()
     observation = _build_observation(site, charger.entry_id, now=0.0)
 
-    assert observation.phase_cap_a is None
+    # Capped by each phase's own fuse headroom (25 A less the 1 A margin, less the 6.1 A the export carries), never by
+    # the total.
+    assert observation.phase_cap_a == pytest.approx({phase: 24.0 - 1400.0 / 230.0 for phase in ("L1", "L2", "L3")})
     assert observation.signed_grid_w["L1"] == -1400.0
     assert observation.voltage_v["L1"] == 230.0
     assert site.grid_power_snapshot()["used_for_surplus"] is False

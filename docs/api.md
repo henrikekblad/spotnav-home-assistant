@@ -363,6 +363,7 @@ and `charger_priority.writable` say whether it may change those (an administrato
 | `spotnav/get_dashboard` | The dashboard document for one charger. |
 | `spotnav/get_settings`, `spotnav/update_settings` | Read and replace the settings record. |
 | `spotnav/manual_action` | `start`, `stop` (with an optional pause `choice`) or `resume`; any signed-in user. |
+| `spotnav/plan_preview` | What a Save would plan, with nothing saved (see [Plan preview](#plan-preview)). |
 | `spotnav/get_market_options` | Price areas from the area list bundled with SpotNav and their suggested fiscal values. |
 | `spotnav/find_region` | A Great Britain postcode to its price region (`GB-A` … `GB-P`): `{"postcode": "SW1A 1AA"}` answers `region` (one), `regions` (the listed ones) and `reason` (`null`, `invalid_postcode`, `not_found`, `unavailable`). Home Assistant asks Octopus Energy's public lookup directly; the postcode never reaches the relay and is neither stored nor logged. |
 | `spotnav/get_entity_config`, `spotnav/update_entity_config` | The entities a charger and its site use. |
@@ -388,6 +389,84 @@ Rules that hold across them:
 - **Absence is not zero.** A missing value is `null`; nothing is coerced.
 - **The answer is a re-read**, captured after the write settles, never assembled from what the
   caller sent.
+
+### Plan preview
+
+`spotnav/plan_preview` answers what the charger's plan would be if a settings body were saved, and saves nothing.
+The card's Plan dialog asks it about 300 ms after each change, so a person sees the plan before pressing Save.
+
+Request: `{"type": "spotnav/plan_preview", "api_version": 1, "charger_id", "settings"}`, where `settings` is the
+same body `spotnav/update_settings` takes (no `expected_revision`). The body is judged by the same code as a
+write: the same decoding, the same fields kept when left out, the same rule for a user who is not an
+administrator (`spotnav_not_admin` unless `users_change_plan` allows the change), the charger's current range and
+the departure date's limits. The plan is the controller's own calculation on the record that write would store:
+the price source's area and fees, the learned power and the count of a manual need, exactly as a Save calculates
+it at the same moment.
+
+Nothing happens. No settings or revision are written, no plan is installed and no proposal saved, no appointment
+is made, the charger and the car are asked nothing, and no notice, event or listener hears of it.
+
+While an electricity price entry is the charger's price source, the preview plans with that entry's area and fees as
+they stand, as a Save of a body that echoes them does; a body that changes them (an administrator's) is previewed with
+the entry's current ones.
+
+A few small differences from the calculation a Save starts, all about state the preview may not touch:
+
+- A Save first lets the charger end a target stop's record that no longer describes the planned car
+  (`_lapse_target_stop`); the preview does not, so right after such a change its status may differ from the Save's.
+- A Save first reads the energy register once and counts a reading nobody saw yet (`_arm_energy_watch`); the
+  preview counts a manual need from what the register was last seen to say.
+- The phases a charge uses come from the stored planned car, so a preview that picks another car with fewer
+  onboard phases plans on the stored car's.
+
+At most 5 requests a second per connection and 4 previews being calculated at once across all connections
+(`spotnav_rate_limited`), and a body of at most 16 KiB as JSON (`spotnav_body_too_large`). The charger lookup's codes and `spotnav_unsupported_api_version` as for the other
+commands.
+
+The answer:
+
+```json
+{
+  "api_version": 1,
+  "ok": true,
+  "error": null,
+  "preview": {
+    "state": "proposal_ready",
+    "reason": "ready",
+    "plan": {
+      "periods": [{"start": "2026-09-22T13:00:00+02:00", "end": "2026-09-22T15:15:00+02:00"}],
+      "planned_kwh": 15.5,
+      "requested_kwh": 15.5,
+      "power_kw": 6.9,
+      "cost": {"value": 18.4, "currency": "SEK"},
+      "finish": "2026-09-22T15:15:00+02:00",
+      "unpriced": false,
+      "short_of_deadline": false
+    },
+    "status": {"tone": "normal", "lines": []},
+    "strip": {
+      "start": "2026-09-22T06:00:00+00:00",
+      "end": "2026-09-22T16:00:00+00:00",
+      "quarters": [{"start": "2026-09-22T06:00:00+00:00", "price": 98.2, "planned": false}]
+    }
+  }
+}
+```
+
+- `state` and `reason` are the planning state and reason the dashboard's `planning` block would carry after the
+  Save.
+- `plan` is `null` when no plan would be made; `status` then says why, in the dashboard's [status
+  codes](#the-dashboard-document) (`settings_incomplete`, `waiting_for_publication`, `planning_unavailable`, ...). `periods`
+  are the periods as shown (the last ending where a need is expected to be met), `finish` the last one's end,
+  `cost` in the major unit (`null` for an unpriced plan), `short_of_deadline` a best-effort plan that does not make
+  the departure (its `departure_shortfall` line is in `status`).
+- `status` holds the plan's own lines only (a shortfall, a capped or estimated need, unpriced hours, a wait for
+  prices). What the charger is doing now (charging, a pause, the site) is the dashboard's.
+- `strip` is the hours the plan was chosen from, from the first usable quarter to the departure (or the end of
+  its horizon), each quarter with its price in the minor unit with the fees the plan priced it with, and whether it
+  is planned. `null` without a plan; `quarters` is empty for a plan made without prices.
+- A body a Save would refuse answers `ok: false`, `error` the Save's own code (`invalid_amps`,
+  `invalid_departure`, ...) and `preview: null`.
 
 ## Home Assistant events
 
@@ -480,7 +559,7 @@ the charger's state again: Stop is offered again while it still charges; an unan
 reported as `action_failed`. A Stop that failed is never pending (`pause_stop_failed`, Stop again).
 
 **Battery room.** The `soc` block's additive `room_kwh` is the wall energy the battery still has room for,
-to the car's own charge limit (else 100 %): `capacity_kwh x (ceiling - value) / 100 / efficiency`, `null`
+to the car's own charge limit (else 100 %): `capacity_kwh x (ceiling - value) / 100 / 0.9`, `null`
 without a level or a battery size. A manual amount is planned at most that much; when it is capped the
 status carries `need_limited_by_room` (`kwh`), and while a Start is in effect for a plan the car ends
 itself (a capped amount, or a target at or above the car's own limit) it carries
@@ -490,6 +569,15 @@ slider up to `room_kwh` when it is present; an older backend has neither field n
 `need_limited_by_room`, and, while no room is known, the notice `fill_room_unknown` (`kwh`, the stored amount
 planned instead). The card's slider goes past the room to `min(capacity to the car's limit, max(30 kWh,
 2 x room))`, rounded up to its half-kWh step, with a "full" mark at the room; its last step is "Fill".
+
+**A target's need.** The `soc` block's `need_kwh` is the wall energy the target needs, the same figure the plan
+buys: `(min(target, floor(vehicle_max_percent)) - value) x capacity_kwh / 100 / efficiency`. `efficiency` is 0.9
+until the car's wall energy per percent is learned and trusted (see [strategies](strategies.md)); from then it is
+the efficiency that gives the learned figure with `capacity_kwh` (between 0.70 and 1.0), so a client that works
+the need out itself for a moved target slider gets the plan's figure. With a learned figure but no battery size,
+`need_kwh` is given and `efficiency` stays 0.9; a client then has no formula for another target. The card's kWh
+slider top, which divides by `efficiency`, follows the learned efficiency too; `room_kwh` keeps 0.9, as the
+planner's cap on a manual amount does, so the two stay equal.
 
 **Waiting for the car's new level.** With a target, the planning state `nothing_to_charge` has the reason
 `waiting_for_vehicle_update` when the charge that just ended delivered, by measurement, at least what the

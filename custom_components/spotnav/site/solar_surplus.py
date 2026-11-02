@@ -211,7 +211,9 @@ class SolarConfig:
     """Tunables, charger limits and `priority`.
 
     `start_a`/`stop_a` are `None` only as sentinels: `__post_init__` resolves
-    them to `min_current_a` and `start_a - 1.0`.
+    them to `min_current_a` and `start_a - 1.0`. `max_current_a`'s 16 A is only this module's default for its own
+    tests: the charger's coordinator always passes the charger's ceiling (`execution/solar_execution.py`,
+    `_solar_ceiling_a`).
     """
 
     priority: SolarPriority = "car_first"
@@ -561,8 +563,8 @@ class SolarController:
         return self._config
 
     def update_limits(self, config: SolarConfig) -> None:
-        """The same charge with new current limits (a switch-only charger's learned current moved): the state, its
-        timers and back-offs are kept; only the thresholds read from here on change."""
+        """The same charge with new current limits (a switch-only charger's learned current moved, or the charger's
+        ceiling did): the state, its timers and back-offs are kept; only the thresholds read from here on change."""
         self._config = config
 
     @property

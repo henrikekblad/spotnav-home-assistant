@@ -631,6 +631,7 @@
   "settings.plan.mode.legend": "Charge by",
   "settings.plan.mode.energy": "Energy · kWh",
   "settings.plan.mode.soc": "Target SoC · %",
+  "settings.preview.ready": "ready {time}",
   "settings.soc.target": "Charge target",
   "settings.soc.slider": "Charge target, percent",
   "settings.soc.floorMark": "min {percent} %",

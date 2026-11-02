@@ -146,6 +146,26 @@ the car's onboard phases are not set), and never lowers the current SpotNav send
 plug-in does not count as another plug-in. A change of the phases the charge uses, the voltage between phases or the
 charging current starts the learning again. There is no setting.
 
+**A target counts on the energy one percent of the car's battery really takes.** A target's need is
+the battery size x (target - level) / 100, divided by the charging efficiency (0.9). A battery size that
+is off (an aged pack, net against gross capacity, a guess) or a real efficiency far from 0.9 (a cold pack,
+one phase, a low current) makes the plan buy too little time or too much. From the energy count and the
+car's level only their ratio can be seen, the wall kWh one percent takes, and that is what SpotNav learns
+per car, at the same once-a-minute look at a planned period. A sample is a stretch of one plug-in of one
+identified car between two fresh readings of its level from the same source, the charger or the car (not an
+estimate, at most three minutes old when seen), with the level at least 10 points higher at the end; the
+energy is the count's value when each reading was made (a meter that stands still is believed only while
+the charger is not charging). A charge over several periods is one sample, counted once the plug-in ends. An
+unplug, another car (or none identified), another source of the level, a meter that went back or a level
+that fell starts again; a restart keeps the start. A sample must mean an efficiency between 0.70 and 1.0
+for the car's battery size (without one, a battery of 10 to 200 kWh at 0.9); one outside is not kept, and a
+battery size changed later drops the samples that no longer fit. Once at least three of the last five agree
+within 10 % of their median, the need, what a plan short of the departure reaches and the level estimated
+between the car's readings (which a replan and a stop on an estimate use) count on the median of those that
+agree, so a car that really charges at 0.8 gets about 12 % more energy planned and is not stopped early. The card shows the same need, and its target slider works one out the
+same way. A fixed amount of kWh is never changed by it, nor is the room a battery has left. There is no
+setting.
+
 **No more than the battery has room for.** When the car's level (a reading or an estimate) and its battery
 size are known, a requested amount is capped at the room left: battery size x (the car's own charge
 limit, else 100 %, minus the level) / 100, divided by the charging efficiency. A car at 96 % with 77.4 kWh
@@ -191,6 +211,14 @@ cannot, and for a direct site without the total it says the meter's total grid p
   `active_control`, `solar`, or `none` for a charger whose current cannot be set).
 - The surplus is computed from the site's energy balance (grid, house battery and the car's
   own draw), never from export alone, so that the car's draw does not count as surplus.
+- The sun asks the charger for as much as the surplus carries, up to the charger's own maximum (the
+  lowest maximum its current entities state, the same top as the card's current slider; 32 A when
+  none states one) and never above the charging current set in Auto, as a planned charge. A 32 A
+  single-phase charger thus takes about 7.4 kW of sun, a 32 A three-phase one about 22 kW. On a site
+  that knows its main fuse, the sun never asks for more than each phase the car uses can still carry
+  within the fuse and its safety margin, whether load balancing is on or not; with it on, load
+  balancing also keeps every phase within the fuse. A changed maximum (or a phase switch) is
+  followed at the next reading.
 - A charger whose current cannot be set (start and stop only) is not modulated: it starts only when the
   surplus covers its whole learned current (its *switched current*, see
   [Chargers that can only be switched on and off](site-and-load-balancing.md#chargers-that-can-only-be-switched-on-and-off)),
