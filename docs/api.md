@@ -62,6 +62,7 @@ charger executed whose pause could not be saved answers `{"ok": true, "action": 
 | `dismiss_setup_item` | Answer a "Get started" row with "Not needed": `{"item"}` (see below). |
 | `fix_own_mode` | Set one of the charger's own settings back to the value SpotNav works with: `{"entity_id", "value"}` (see below). |
 | `release_import_target` | Set the site's import target aside for this charge until its departure: `{}` (see below). |
+| `get_power_month` | One month of this charger's site's measured import: `{"month"}` (optional), the answer of `spotnav/get_power_month` with `"ok": true` and the `action` beside it; a refusal is HTTP 400 with `{"ok": false, "error", "action"}` (see [Power by month](#power-by-month)). |
 
 **Charge periods.** `max_periods` is `null` for automatic periods (the default: the planner counts a start
 cost of a quarter of a kWh at the window's average price for each period and keeps each period at least half an
@@ -557,6 +558,7 @@ and `charger_priority.writable` say whether it may change those (an administrato
 | `spotnav/get_card_info` | Which card the integration serves, for any signed-in user: `{"api_version": 1, "ok": true, "error": null, "spotnav_version", "card_bundle_hash"}`. The card compares the hash with the one in the URL it was loaded from. Not a dashboard field, so an older card is never handed a key it does not know. |
 | `spotnav/identify_vehicle`, `spotnav/choose_vehicle_identification` | Answer "which car is plugged in?", and choose a car's plug or location source (see [vehicle identification](#vehicle-identification)). |
 | `spotnav/get_sessions` | A charger's charge sessions: summaries per month and day and the latest sessions, the same for one chosen `month`, or with `format: "csv"` and optional `from` and `to` dates (or a `month`) the sessions of that range as CSV text. |
+| `spotnav/get_power_month` | One month of a site's measured import, by day and hour, against its demand-charge parts and import target (see [Power by month](#power-by-month)). |
 
 Rules that hold across them:
 
@@ -1119,3 +1121,30 @@ Assistant's hourly statistics (its `started_by` is then `"unknown"` and its `sol
 ignores values it does not know. With `format: "csv"` and a `month` the CSV is
 that whole month and the file is named by its first and last day; `month` together with `from` or `to` is
 refused.
+
+### Power by month
+
+`spotnav/get_power_month {"api_version": 1, "charger_id" | "site_id", "month"}` (any signed-in user, as the
+dashboard) answers one month of the site's measured net import, the history dialog's *Power* view. `month` is
+`"YYYY-MM"` on the area's clock, optional (the running month), at most 24 months back and never ahead. The webhook's
+`get_power_month` answers the same for the charger's site (`month` and an optional `api_version`), with `"ok": true`
+and `"action": "get_power_month"` beside it. The dashboard's `charger.capabilities` carries `get_power_month`, `true`
+where the webhook answers the action.
+
+| Field | Meaning |
+| --- | --- |
+| `api_version`, `site_id`, `month` | `1`, the site, the month shown. |
+| `available_months` | The months with measured hours, newest first, within the 24 months `month` accepts. |
+| `unit` | `"kW"`: every power below is an hourly mean of net import. |
+| `import_target_kw` | The site's import target now, `null` for none. |
+| `components` | The demand-charge parts the month was measured against, as `grid_tariff.demand.components`: those set now for the running month and the month before, those set when its last hour completed for an older month. |
+| `days` | One row per day with a measured hour, oldest first: `date`, `peak_kw` (the day's highest hourly mean, among its complete hours where it has one), `peak_start` (that hour's start, local time with its offset), `house_kw` (the house's part of that hour, without what the chargers drew; `null` when they could not be read), `counted` (the indexes into `components` whose counted peaks fall on this day; a night part's peak after midnight counts on the date it falls on), `held` and `paused` (the import target held a charger's current down, or paused a charger, in any hour of the day). |
+| `hours` | For the running month and the month before: every measured hour, oldest first, `{start, kw, house_kw, incomplete, held, paused, counted}` (`incomplete`: more than ten minutes without a reading, never a peak). `null` for an older month, which keeps its days only. The hour running now is not among them. |
+| `bars` | Per part, its figure that month (`null` while nothing counted), the same as `grid_tariff.demand.per_component[].bar_kw` for the running month. |
+
+Refusals: `spotnav_unsupported_api_version`, `spotnav_charger_required` (neither id), the charger lookup's codes,
+`spotnav_unknown_site`, `spotnav_no_site` (the charger is in no site, or the site is not loaded),
+`spotnav_needs_total_grid_power` (the site cannot measure its import: a direct site without its total grid power)
+and `spotnav_invalid_range` (the month). The site keeps each hour of the running month and the month before, and a
+summary of each day for 24 months; a month before the update to 2.4.0 has nothing. Example answers are in
+`tests/fixtures/power_month/` and `tests/fixtures/webhook/get_power_month_*.json`.

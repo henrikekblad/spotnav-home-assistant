@@ -233,6 +233,9 @@ async def test_a_16_a_car_is_held_so_every_hour_stays_under_the_target(hass: Hom
         assert facts.load_balancing.proposed_current_a == 7.0
         assert facts.import_target is not None and facts.import_target.target_kw == 6.0
         assert 4.0 < facts.import_target.hour_kw <= 6.0
+        # Each hour is marked held for the power view, none paused.
+        tracker = world.halo.controller.demand.tracker
+        assert [(hour.held, hour.paused) for hour in tracker.hours] == [(True, False), (True, False)]
 
 
 async def test_without_a_target_nothing_is_held(hass: HomeAssistant, monkeypatch) -> None:
@@ -282,6 +285,10 @@ async def test_below_the_minimum_the_car_is_paused_once_until_the_next_hour_and_
         assert world.turn_offs == 1
         for hour in world.complete_hours():
             assert world.hour_kw(hour) <= 6.0
+        # The power view marks the first hour held and paused; the running one is held again.
+        tracker = world.halo.controller.demand.tracker
+        assert [(hour.start, hour.held, hour.paused) for hour in tracker.hours] == [(_HOUR, True, True)]
+        assert tracker.running is not None and (tracker.running.held, tracker.running.paused) == (True, False)
 
 
 async def test_a_house_alone_over_the_target_pauses_the_car_and_says_so(hass: HomeAssistant, monkeypatch) -> None:

@@ -688,6 +688,8 @@ async def test_no_fixture_is_left_unwritten() -> None:
             "choose_price_source_unknown_entry.json",
             "dashboard.json",
             "dashboard_unsupported_version.json",
+            "get_power_month_no_site.json",
+            "get_power_month_success.json",
             "price_days_no_price_area.json",
             "price_days_no_prices.json",
             "price_days_nordpool_fi.json",

@@ -45,6 +45,7 @@ from .entity_config import (
     async_webhook_update_vehicle,
 )
 from .import_target import webhook_release_import_target
+from .power_month import webhook_get_power_month
 from .own_mode import webhook_fix_own_mode
 from .plan_preview import async_webhook_plan_preview
 from .setup import webhook_dismiss_setup_item
@@ -505,7 +506,7 @@ def _bounded_write(
     return handler
 
 
-#: Every action the webhook answers. `dashboard`, `sessions` and `price_days` are the reads.
+#: Every action the webhook answers. `dashboard`, `sessions`, `price_days` and `get_power_month` are the reads.
 ACTIONS: Final[dict[str, Handler]] = {
     "start": _start,
     "stop": _stop,
@@ -531,6 +532,7 @@ ACTIONS: Final[dict[str, Handler]] = {
     "choose_vehicle_identification": webhook_choose_vehicle_identification,
     "fix_own_mode": webhook_fix_own_mode,
     "release_import_target": webhook_release_import_target,
+    "get_power_month": webhook_get_power_month,
     "dismiss_setup_item": webhook_dismiss_setup_item,
     **CAMERA_ACTIONS,
 }

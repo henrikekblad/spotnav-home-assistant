@@ -273,11 +273,13 @@ def power_month(
     import_target_kw: float | None,
 ) -> dict[str, Any]:
     """One month's power view (the `spotnav/get_power_month` answer without its envelope). `tracker_months` are the
-    months whose hours the tracker keeps: such a month is shown from its hours, measured against `components`; an
-    older one from its kept summaries, with the components it was measured against; `hours` is `None` for it."""
+    months whose hours the tracker keeps: such a month (and the running one) is shown from its hours, measured against
+    `components`; an older one from its kept summaries, with the components it was measured against; `hours` is
+    `None` for it."""
     current = month_of_now(now, tz)
     oldest = months_before(current, ARCHIVE_MONTHS)
-    hours = tracker_months.get(month)
+    # The running month's hours are always kept (none yet before its first hour completes).
+    hours = tracker_months.get(month, [] if month == current else None)
     if hours is not None:
         record = month_record(hours, components, tz, now)
     else:

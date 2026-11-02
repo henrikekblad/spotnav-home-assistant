@@ -426,6 +426,10 @@ class SiteDemand:
                 hass, days_store_key(entry_id), self.archive.as_dict, save_delay_s=MONTH_SAVE_DELAY_S
             )
 
+    def now(self) -> datetime:
+        """The site's clock (passed in for tests)."""
+        return self._now()
+
     def _running_dict(self) -> dict[str, Any]:
         running = self.tracker.running
         return {"running": None if running is None else running.as_dict()}
@@ -529,14 +533,16 @@ class SiteDemand:
         components: Sequence[DemandComponent],
         *,
         import_target_kw: float | None,
+        tz: str | None = None,
     ) -> dict[str, Any]:
-        """One month's power view (`site/power_history.py:power_month`)."""
+        """One month's power view (`site/power_history.py:power_month`), on `tz`'s clock (the site's area's; the
+        tracker's own until it is known)."""
         return power_month(
             month,
             tracker_months=self.tracker_months(),
             archive=self.archive,
             components=components,
-            tz=self.tracker.tz,
+            tz=tz or self.tracker.tz,
             now=self._now(),
             import_target_kw=import_target_kw,
         )
