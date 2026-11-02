@@ -117,7 +117,8 @@ import { issueText, type IssueFix } from "./status";
 import { keyEditor, priceProviderNodes } from "./price-provider";
 import { setupLineText, setupSection, type SetupRowId } from "./setup-checklist";
 import { automationsBody, type BlueprintUse } from "./automations";
-import { historyBody, type HistoryState, type HistoryUi } from "./history";
+import { historyBody, type HistoryPower, type HistoryState, type HistoryUi, type HistoryView } from "./history";
+import type { PowerState, PowerUi } from "./power-view";
 import { connectionLabel, vehicleLineFor } from "./vehicle-line";
 import type { ChargeBarFacts } from "./charge-bar";
 import {
@@ -266,6 +267,11 @@ export interface CardViewInput {
   onHistoryMonth?: (month: string) => void;
   /** Export CSV was pressed: the card fetches the shown month's file and saves it. */
   onExportHistory?: () => void;
+  /**
+   * The History dialog's Power view wants a month (`YYYY-MM`, `null` for the current one): the card reads the site's
+   * power and answers through `setPowerState`.
+   */
+  onPowerMonth?: (month: string | null) => void;
   onOpenEntityEditor?: (scope: EntityScope) => void;
   /** The admin pressed "Download debug info" in the Settings popover. */
   onDownloadDebug?: () => void;
@@ -332,6 +338,8 @@ export interface CardView {
   /** The charge history dialog, showing what `setHistoryState` last said (loading until it says more). */
   openHistory(): void;
   setHistoryState(state: HistoryState): void;
+  /** What the History dialog's Power view shows (loading until it says more). */
+  setPowerState(state: PowerState): void;
   /** One sentence about the last export, or `null`; `exporting` disables the button while it runs. */
   setHistoryExport(notice: TranslationKey | null, exporting: boolean): void;
   dialogOpen(
@@ -4309,7 +4317,55 @@ export function createCardView(input: CardViewInput): CardView {
   // ---- the charge history dialog. The card owns the request; this holds what was last said and
   // what the reader chose in it (the month, the day under the readout), and repaints on any change.
   let historyState: HistoryState = { kind: "loading" };
-  const historyUi: HistoryUi = { month: null, pending: false, day: null, exporting: false, notice: null };
+  const historyUi: HistoryUi = { view: "charges", month: null, pending: false, day: null, exporting: false, notice: null };
+  // The Power view: offered where the site measures its import; read when first chosen, then with the month.
+  let powerState: PowerState | null = null;
+  const powerUi: PowerUi = { day: null, pending: false };
+
+  function historyPower(): HistoryPower {
+    return {
+      offered: model.powerView,
+      state: powerState,
+      ui: powerUi,
+      handlers: {
+        onDay: (day) => {
+          powerUi.day = day;
+          paintHistory();
+          // Into a day: its way back takes the focus; back to the month: the day's bar does.
+          const target =
+            day === null
+              ? null
+              : historyDialog.element.querySelector<HTMLElement>("[data-action='power-month']");
+          target?.focus();
+        },
+      },
+    };
+  }
+
+  function chooseView(view: HistoryView): void {
+    historyUi.view = view;
+    historyUi.notice = null;
+    if (view === "power") {
+      powerUi.day = null;
+      const shown = powerState?.kind === "ready" ? powerState.answer.month : null;
+      if (powerState === null || powerState.kind === "failed" || (historyUi.month !== null && shown !== historyUi.month)) {
+        if (powerState?.kind === "ready") {
+          powerUi.pending = true;
+        } else {
+          powerState = { kind: "loading" };
+        }
+        paintHistory();
+        input.onPowerMonth?.(historyUi.month);
+        return;
+      }
+    } else if (historyState.kind === "ready" && historyUi.month !== null && historyState.answer.month !== historyUi.month) {
+      historyUi.pending = true;
+      paintHistory();
+      input.onHistoryMonth?.(historyUi.month);
+      return;
+    }
+    paintHistory();
+  }
 
   function paintHistory(): void {
     if (destroyed || !historyDialog.isOpen()) {
@@ -4320,7 +4376,9 @@ export function createCardView(input: CardViewInput): CardView {
       | null;
     const refocus =
       focused !== null && historyDialog.element.contains(focused)
-        ? focused.dataset["month"] !== undefined
+        ? focused.dataset["view"] !== undefined
+          ? `button[data-view="${focused.dataset["view"]}"]`
+          : focused.dataset["month"] !== undefined
           ? `button[data-month="${focused.dataset["month"]}"]`
           : focused.dataset["action"] === "export"
             ? "[data-action='export']"
@@ -4336,16 +4394,24 @@ export function createCardView(input: CardViewInput): CardView {
       body: historyBody(doc, model.language, historyState, historyUi, {
         onMonth: (month) => {
           historyUi.month = month;
-          historyUi.pending = true;
           historyUi.day = null;
           historyUi.notice = null;
+          if (historyUi.view === "power") {
+            powerUi.day = null;
+            powerUi.pending = true;
+            paintHistory();
+            input.onPowerMonth?.(month);
+            return;
+          }
+          historyUi.pending = true;
           paintHistory();
           input.onHistoryMonth?.(month);
         },
         onExport: () => {
           input.onExportHistory?.();
         },
-      }, model.priceUnit),
+        onView: chooseView,
+      }, model.priceUnit, historyPower()),
     });
     if (refocus !== null) {
       historyDialog.element.querySelector<HTMLElement>(refocus)?.focus();
@@ -4367,7 +4433,11 @@ export function createCardView(input: CardViewInput): CardView {
     historyUi.month = null;
     historyUi.pending = false;
     historyUi.day = null;
+    historyUi.view = "charges";
     historyState = { kind: "loading" };
+    powerState = null;
+    powerUi.day = null;
+    powerUi.pending = false;
     historyDialog.show({
       title: translate(model.language, "history.title"),
       body: historyBody(doc, model.language, historyState, historyUi, {
@@ -4874,6 +4944,17 @@ export function createCardView(input: CardViewInput): CardView {
       historyUi.pending = false;
       if (state.kind === "ready") {
         historyUi.month = state.answer.month;
+      }
+      paintHistory();
+    },
+    setPowerState(state: PowerState): void {
+      powerUi.pending = false;
+      powerState = state;
+      if (state.kind === "ready") {
+        historyUi.month = state.answer.month;
+        if (powerUi.day !== null && !state.answer.days.some((day) => day.date === powerUi.day)) {
+          powerUi.day = null;
+        }
       }
       paintHistory();
     },

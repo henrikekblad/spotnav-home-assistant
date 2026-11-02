@@ -271,6 +271,9 @@ export const MARKET_API_VERSION = 1;
 /** The charge-session history contract (`spotnav/get_sessions`), independent of the others. */
 export const SESSIONS_API_VERSION = 1;
 
+/** The site's power by month (`spotnav/get_power_month`), independent of the others. */
+export const POWER_MONTH_API_VERSION = 1;
+
 /**
  * The five catalogue states in the backend's vocabulary: `loading` (attempt running, nothing held),
  * `ready`, `stale` (held but the last attempt failed), `unavailable` (no list: the bundled one could not be read),

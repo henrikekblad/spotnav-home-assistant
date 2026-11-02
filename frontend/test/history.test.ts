@@ -35,7 +35,7 @@ function answer(): SessionsAnswer {
   return decoded.value;
 }
 
-const UI: HistoryUi = { month: null, pending: false, day: null, exporting: false, notice: null };
+const UI: HistoryUi = { view: "charges", month: null, pending: false, day: null, exporting: false, notice: null };
 const NOOP = { onMonth: () => undefined, onExport: () => undefined };
 
 function august(): SessionsAnswer {

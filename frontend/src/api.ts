@@ -10,6 +10,7 @@ import {
   DEBUG_API_VERSION,
   ENTITY_CONFIG_API_VERSION,
   MARKET_API_VERSION,
+  POWER_MONTH_API_VERSION,
   SESSIONS_API_VERSION,
   SETTINGS_API_VERSION,
   REGION_API_VERSION,
@@ -572,6 +573,22 @@ export async function getSessions(
     api_version: SESSIONS_API_VERSION,
     charger_id: chargerId,
     limit,
+  };
+  if (month !== null) {
+    message.month = month;
+  }
+  return await call<unknown>(hass, message);
+}
+
+/**
+ * One month (`YYYY-MM`, `null` for the current one) of the charger's site's measured import, `unknown` until
+ * `decodePowerMonth()` decodes it. Any signed-in user may read it.
+ */
+export async function getPowerMonth(hass: HomeAssistantLike, chargerId: string, month: string | null = null): Promise<unknown> {
+  const message: Record<string, unknown> = {
+    type: "spotnav/get_power_month",
+    api_version: POWER_MONTH_API_VERSION,
+    charger_id: chargerId,
   };
   if (month !== null) {
     message.month = month;

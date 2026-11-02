@@ -17,6 +17,7 @@ import {
   type PriceUnit,
 } from "./format";
 import { pluralForm, translate, type Language, type TranslationKey } from "./i18n";
+import { powerBody, type PowerHandlers, type PowerState, type PowerUi } from "./power-view";
 import { VISUAL_CLASSES as C } from "./visual-styles";
 
 export interface SessionRecord {
@@ -281,7 +282,11 @@ export type HistoryState =
   | { kind: "failed"; sentenceKey: TranslationKey; code: string | null; answer?: SessionsAnswer | null }
   | { kind: "ready"; answer: SessionsAnswer };
 
+export type HistoryView = "charges" | "power";
+
 export interface HistoryUi {
+  /** Which view is shown: the charges, or the site's power (offered only where the site measures it). */
+  view: HistoryView;
   /** The month the reader asked for (`YYYY-MM`), or `null` for the current one. */
   month: string | null;
   /** A month is being read: the old figures stay, dimmed. */
@@ -296,6 +301,16 @@ export interface HistoryUi {
 export interface HistoryHandlers {
   onMonth: (month: string) => void;
   onExport: () => void;
+  onView?: (view: HistoryView) => void;
+}
+
+/** The Power view's part of the dialog: offered or not, what was last said, and the day tapped. */
+export interface HistoryPower {
+  offered: boolean;
+  /** `null` until the view is first chosen. */
+  state: PowerState | null;
+  ui: PowerUi;
+  handlers: PowerHandlers;
 }
 
 // ------------------------------------------------------------------------------------------- rendering
@@ -531,15 +546,26 @@ function sessionRow(doc: Document, language: Language, session: SessionRecord, p
   return row;
 }
 
+/**
+ * The months the Power view's picker offers, newest first: those with measured hours, the current month and the
+ * one shown, within the months the backend answers for.
+ */
+export function powerPickerMonths(available: string[], current: string, shown: string): string[] {
+  return Array.from(new Set([...available, current, shown]))
+    .filter((period) => period >= shiftMonth(current, -MONTHS_BACK) && period <= current)
+    .sort()
+    .reverse();
+}
+
 function monthPicker(
   doc: Document,
   language: Language,
-  answer: SessionsAnswer,
+  months: string[],
+  current: string,
   shown: string,
   handlers: HistoryHandlers,
 ): HTMLElement {
   const row = element(doc, "div", C.historyMonthPicker);
-  const current = answer.this_month.period;
   const step = (label: TranslationKey, glyph: string, target: string, allowed: boolean): HTMLButtonElement => {
     const button = element(doc, "button", C.historyToggleButton, glyph);
     button.type = "button";
@@ -553,7 +579,7 @@ function monthPicker(
   const select = element(doc, "select");
   select.dataset["monthSelect"] = "true";
   select.setAttribute("aria-label", translate(language, "history.month.label"));
-  for (const period of pickerMonths(answer, shown)) {
+  for (const period of months) {
     const option = new Option(monthLabel(language, period), period);
     option.selected = period === shown;
     select.append(option);
@@ -582,6 +608,50 @@ function exportRow(doc: Document, language: Language, ui: HistoryUi, handlers: H
   return row;
 }
 
+function viewTabs(doc: Document, language: Language, ui: HistoryUi, handlers: HistoryHandlers): HTMLElement {
+  const row = element(doc, "div", C.historyViews);
+  row.setAttribute("role", "group");
+  row.setAttribute("aria-label", translate(language, "history.view.label"));
+  for (const [view, key] of [
+    ["charges", "history.view.charges"],
+    ["power", "history.view.power"],
+  ] as const) {
+    const button = element(doc, "button", C.historyToggleButton, translate(language, key));
+    button.type = "button";
+    button.dataset["view"] = view;
+    button.setAttribute("aria-pressed", String(ui.view === view));
+    button.addEventListener("click", () => {
+      if (ui.view !== view) {
+        handlers.onView?.(view);
+      }
+    });
+    row.append(button);
+  }
+  return row;
+}
+
+/** The Power view under the tabs: the month picker (as the charges view's) and the power body. */
+function powerSection(
+  doc: Document,
+  language: Language,
+  sessions: SessionsAnswer | null,
+  power: HistoryPower,
+  ui: HistoryUi,
+  handlers: HistoryHandlers,
+): HTMLElement[] {
+  const state = power.state ?? { kind: "loading" as const };
+  const answer = state.kind === "ready" ? state.answer : null;
+  const current = sessions?.this_month.period ?? answer?.available_months[0] ?? answer?.month ?? null;
+  const shown = ui.month ?? answer?.month ?? current;
+  const nodes: HTMLElement[] = [];
+  if (current !== null && shown !== null) {
+    const later = shown > current ? shown : current;
+    nodes.push(monthPicker(doc, language, powerPickerMonths(answer?.available_months ?? [], later, shown), later, shown, handlers));
+  }
+  nodes.push(powerBody(doc, language, state, power.ui, power.handlers));
+  return nodes;
+}
+
 /** The dialog body for one state. Built fresh each time; the caller replaces the dialog's content. */
 export function historyBody(
   doc: Document,
@@ -590,8 +660,17 @@ export function historyBody(
   ui: HistoryUi,
   handlers: HistoryHandlers,
   priceUnit: PriceUnit = DEFAULT_PRICE_UNIT,
+  power: HistoryPower | null = null,
 ): HTMLElement {
   const body = element(doc, "div", C.historyBody);
+  if (power !== null && power.offered) {
+    body.append(viewTabs(doc, language, ui, handlers));
+    if (ui.view === "power") {
+      const sessions = state.kind === "ready" ? state.answer : state.kind === "failed" ? (state.answer ?? null) : null;
+      body.append(...powerSection(doc, language, sessions, power, ui, handlers));
+      return body;
+    }
+  }
   if (state.kind === "loading") {
     const loading = element(doc, "p", C.muted, translate(language, "history.loading"));
     loading.setAttribute("role", "status");
@@ -600,7 +679,10 @@ export function historyBody(
   }
   if (state.kind === "failed") {
     if (state.answer !== undefined && state.answer !== null) {
-      body.append(monthPicker(doc, language, state.answer, ui.month ?? state.answer.month, handlers));
+      const shown = ui.month ?? state.answer.month;
+      body.append(
+        monthPicker(doc, language, pickerMonths(state.answer, shown), state.answer.this_month.period, shown, handlers),
+      );
     }
     const failed = element(doc, "p", C.settingsNotice, translate(language, state.sentenceKey));
     failed.setAttribute("role", "status");
@@ -626,7 +708,7 @@ export function historyBody(
     open.setAttribute("role", "status");
     body.append(open);
   }
-  body.append(monthPicker(doc, language, answer, shown, handlers));
+  body.append(monthPicker(doc, language, pickerMonths(answer, shown), answer.this_month.period, shown, handlers));
   const month = element(doc, "div", C.historyMonth);
   month.dataset["month"] = answer.month;
   if (ui.pending) {

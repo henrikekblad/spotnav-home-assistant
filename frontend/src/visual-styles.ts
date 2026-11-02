@@ -275,6 +275,26 @@ export const VISUAL_CLASSES = {
   historyAxis: "spotnav-history-axis",
   historyScale: "spotnav-history-scale",
   historyReadout: "spotnav-history-readout",
+  historyViews: "spotnav-history-views",
+  powerChart: "spotnav-power-chart",
+  powerPlot: "spotnav-power-plot",
+  powerTarget: "spotnav-power-target",
+  powerTargetLabel: "spotnav-power-target-label",
+  powerMarks: "spotnav-power-marks",
+  powerBar: "spotnav-power-bar",
+  powerStack: "spotnav-power-stack",
+  powerUnsplit: "spotnav-power-unsplit",
+  powerCar: "spotnav-power-car",
+  powerHouse: "spotnav-power-house",
+  powerTag: "spotnav-power-tag",
+  powerEmpty: "spotnav-power-empty",
+  powerLegend: "spotnav-power-legend",
+  powerLegendItem: "spotnav-power-legend-item",
+  powerSwatch: "spotnav-power-swatch",
+  powerTargetSwatch: "spotnav-power-target-swatch",
+  powerCountedSwatch: "spotnav-power-counted-swatch",
+  powerMarkSwatch: "spotnav-power-mark-swatch",
+  powerDayHead: "spotnav-power-day-head",
   muted: "spotnav-muted",
   unavailable: "spotnav-unavailable",
 } as const;
@@ -2530,6 +2550,177 @@ export const VISUAL_STYLES = `
     min-height: 2.6em;
     font-size: 0.85rem;
     overflow-wrap: break-word;
+  }
+  /*
+   * The history dialog's Power view. The car and the house are two shades of the theme's primary colour (the house
+   * the lighter, mixed with the card's background so it holds in light and dark); a counted peak is outlined in the
+   * text colour and tagged with its part's number; the import target is a dashed line in the text colour, as the
+   * price chart's now line; a held or paused day is a small dot under its bar in the warning colour.
+   */
+  .${VISUAL_CLASSES.historyViews} {
+    display: flex;
+    gap: 6px;
+  }
+  .${VISUAL_CLASSES.powerChart} {
+    position: relative;
+  }
+  .${VISUAL_CLASSES.powerPlot} {
+    position: relative;
+    height: 9rem;
+    padding-top: 1rem;
+  }
+  .${VISUAL_CLASSES.powerBar} {
+    position: relative;
+    align-items: stretch;
+    flex-direction: column;
+    justify-content: flex-end;
+  }
+  .${VISUAL_CLASSES.powerStack} {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    min-height: 2px;
+    border-radius: 3px 3px 0 0;
+  }
+  .${VISUAL_CLASSES.powerStack}[data-counted] {
+    outline: 2px solid var(--primary-text-color, #212121);
+    outline-offset: 0;
+  }
+  .${VISUAL_CLASSES.powerStack}[data-incomplete="true"] {
+    opacity: 0.45;
+  }
+  .${VISUAL_CLASSES.powerCar},
+  .${VISUAL_CLASSES.powerHouse},
+  .${VISUAL_CLASSES.powerUnsplit} {
+    display: block;
+    flex-basis: 0;
+    min-height: 0;
+  }
+  .${VISUAL_CLASSES.powerCar} {
+    background: var(--primary-color, #03a9f4);
+    border-radius: 3px 3px 0 0;
+  }
+  .${VISUAL_CLASSES.powerHouse} {
+    background: color-mix(in srgb, var(--primary-color, #03a9f4) 38%, var(--ha-card-background, var(--card-background-color, #ffffff)));
+  }
+  .${VISUAL_CLASSES.powerUnsplit} {
+    background: color-mix(in srgb, var(--secondary-text-color, #727272) 55%, var(--ha-card-background, var(--card-background-color, #ffffff)));
+    border-radius: 3px 3px 0 0;
+  }
+  .${VISUAL_CLASSES.powerTag} {
+    position: absolute;
+    bottom: calc(100% + 3px);
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.65rem;
+    font-weight: 600;
+    line-height: 1;
+    white-space: nowrap;
+    color: var(--primary-text-color, #212121);
+    pointer-events: none;
+  }
+  .${VISUAL_CLASSES.powerEmpty} {
+    height: 0.125rem;
+    background: var(--divider-color, #e0e0e0);
+  }
+  .${VISUAL_CLASSES.powerTarget} {
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 0;
+    border-top: 1.5px dashed var(--primary-text-color, #212121);
+    pointer-events: none;
+    z-index: 1;
+  }
+  .${VISUAL_CLASSES.powerTargetLabel} {
+    position: absolute;
+    right: 0;
+    bottom: 2px;
+    padding: 0 3px;
+    font-size: 0.68rem;
+    font-variant-numeric: tabular-nums;
+    color: var(--primary-text-color, #212121);
+    background: var(--ha-card-background, var(--card-background-color, #ffffff));
+    border-radius: 3px;
+  }
+  .${VISUAL_CLASSES.powerMarks} {
+    display: flex;
+    gap: 2px;
+    height: 0.45rem;
+  }
+  .${VISUAL_CLASSES.powerMarks} > span {
+    flex: 1 1 0;
+    min-width: 0;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+  }
+  .${VISUAL_CLASSES.powerMarks} > span[data-mark]::after {
+    content: "";
+    width: 0.32rem;
+    height: 0.32rem;
+    border-radius: 50%;
+    background: var(--warning-color, #ffa600);
+  }
+  .${VISUAL_CLASSES.powerMarks} > span[data-mark="paused"]::after {
+    background: transparent;
+    box-shadow: inset 0 0 0 1.5px var(--warning-color, #ffa600);
+  }
+  .${VISUAL_CLASSES.powerLegend} {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 14px;
+    font-size: 0.8rem;
+    color: var(--secondary-text-color, #727272);
+  }
+  .${VISUAL_CLASSES.powerLegendItem} {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+  .${VISUAL_CLASSES.powerSwatch} {
+    flex: none;
+    width: 0.75rem;
+    height: 0.75rem;
+    border-radius: 3px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.6rem;
+    font-weight: 600;
+    line-height: 1;
+    color: var(--primary-text-color, #212121);
+  }
+  .${VISUAL_CLASSES.powerSwatch}.${VISUAL_CLASSES.powerTargetSwatch} {
+    height: 0;
+    border-radius: 0;
+    border-top: 1.5px dashed var(--primary-text-color, #212121);
+  }
+  .${VISUAL_CLASSES.powerSwatch}.${VISUAL_CLASSES.powerCountedSwatch} {
+    box-shadow: inset 0 0 0 1.5px var(--primary-text-color, #212121);
+  }
+  .${VISUAL_CLASSES.powerSwatch}.${VISUAL_CLASSES.powerMarkSwatch}::after {
+    content: "";
+    width: 0.32rem;
+    height: 0.32rem;
+    border-radius: 50%;
+    background: var(--warning-color, #ffa600);
+  }
+  .${VISUAL_CLASSES.powerDayHead} {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 10px;
+  }
+  .${VISUAL_CLASSES.powerDayHead} > h4 {
+    margin: 0;
+    flex: 1 1 12rem;
+    min-width: 0;
   }
   .${VISUAL_CLASSES.issueItem} {
     display: flex;

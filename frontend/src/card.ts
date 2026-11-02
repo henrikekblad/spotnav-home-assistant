@@ -35,6 +35,7 @@ import {
   getDebugBundle,
   getBlueprints,
   getEntityConfig,
+  getPowerMonth,
   getSessions,
   getSessionsCsv,
   findRegion,
@@ -99,6 +100,7 @@ import type { FiscalComponentName, ValueWrite } from "./value-writes";
 import { GRID_TARIFF_CONFLICT, gridTariffIncluded, sameBody, storedBody } from "./grid-tariff";
 import { cameraErrorKey, decodePicture, type CameraPicture, type ReferenceAnswer } from "./camera-editor";
 import { decodeCsv, decodeSessions, type SessionsAnswer } from "./history";
+import { decodePowerMonth } from "./power-view";
 import {
   SETTINGS_EDITOR_KINDS,
   decodeSettingsAnswer,
@@ -372,6 +374,7 @@ export class SpotnavCard extends HTMLElement {
   private readonly thumbnails = new Map<string, Promise<{ picture: CameraPicture } | { code: string | null }>>();
   private entityOperation = 0;
   private historyOperation = 0;
+  private powerOperation = 0;
   private history: SessionsAnswer | null = null;
   private entitySaving = false;
   private reopenOverview = false;
@@ -444,6 +447,7 @@ export class SpotnavCard extends HTMLElement {
     this.entityConfig = null;
     this.entityOperation += 1;
     this.historyOperation += 1;
+    this.powerOperation += 1;
     this.history = null;
     this.entitySaving = false;
     this.stopMalformedRetry();
@@ -536,6 +540,7 @@ export class SpotnavCard extends HTMLElement {
     this.marketEditor = null;
     this.entityOperation += 1;
     this.historyOperation += 1;
+    this.powerOperation += 1;
     this.entitySaving = false;
     this.editorOperation += 1;
     this.releaseView();
@@ -1713,6 +1718,44 @@ export class SpotnavCard extends HTMLElement {
     }
   }
 
+  /**
+   * The History dialog's Power view wants a month: read the site's power (any signed-in user may) and answer the open
+   * view. A newer request, a reconfiguration or a disconnect makes an older answer inert.
+   */
+  private async loadPower(month: string | null): Promise<void> {
+    const hass = this.hassObject;
+    const config = this.config;
+    const view = this.view;
+    if (!this.connected || hass === null || config === null || config.charger === "" || view === null) {
+      return;
+    }
+    const generation = this.generation;
+    const operation = ++this.powerOperation;
+    const current = (): boolean =>
+      this.connected && generation === this.generation && operation === this.powerOperation && this.view === view;
+    try {
+      const decoded = this.watched(decodePowerMonth(await getPowerMonth(hass, config.charger, month)));
+      if (!current()) {
+        return;
+      }
+      if (!decoded.ok) {
+        view.setPowerState({
+          kind: "failed",
+          sentenceKey: decoded.failure === "unsupported" ? "settings.error.version" : "power.failed",
+          code: null,
+        });
+        return;
+      }
+      view.setPowerState({ kind: "ready", answer: decoded.value });
+    } catch (error) {
+      if (!current()) {
+        return;
+      }
+      const code = error instanceof SpotnavApiError ? error.code : null;
+      view.setPowerState({ kind: "failed", sentenceKey: "power.failed", code });
+    }
+  }
+
   /** Export CSV: one request for the shown month, then the file is saved; failure is one sentence. */
   private async exportHistory(): Promise<void> {
     const hass = this.hassObject;
@@ -2872,6 +2915,9 @@ export class SpotnavCard extends HTMLElement {
         },
         onExportHistory: () => {
           void this.exportHistory();
+        },
+        onPowerMonth: (month) => {
+          void this.loadPower(month);
         },
         onSettingsOverviewOpened: () => {
           const warning = this.overviewWarning;
