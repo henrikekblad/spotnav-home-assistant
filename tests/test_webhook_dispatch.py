@@ -36,6 +36,9 @@ async def test_every_documented_action_has_a_handler() -> None:
         "push_register",
         "identify_vehicle",
         "choose_vehicle_identification",
+        "fix_own_mode",
+        "dismiss_setup_item",
+        "plan_preview",
         "camera_snapshot",
         "save_camera_frame",
         "take_reference_picture",
@@ -98,3 +101,20 @@ async def test_configuration_and_diagnostic_entities_are_categorised(hass: HomeA
     assert category("auto_settings_revision", "sensor").value == "diagnostic"
     assert category("start", "sensor") is None
     assert category("auto_plan_state", "sensor") is None
+
+
+async def test_the_dashboard_names_each_action_an_app_must_tell_an_older_home_assistant_by(
+    hass: HomeAssistant, hass_client_no_auth
+) -> None:
+    """Every capability that says the webhook answers an action names an action it answers."""
+    from custom_components.spotnav.api.dashboard import CAPABILITY_KEYS
+
+    await setup_charger(hass)
+    client = await hass_client_no_auth()
+    response = await client.post(
+        "/api/webhook/webhook-a", json={"version": 1, "action": "dashboard", "api_version": 1}
+    )
+    capabilities = (await response.json())["charger"]["capabilities"]
+    for action in ("price_days", "plan_preview", "dismiss_setup_item", "fix_own_mode"):
+        assert action in CAPABILITY_KEYS and action in webhook_module.ACTIONS
+        assert capabilities[action] is True

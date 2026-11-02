@@ -28,6 +28,7 @@ from homeassistant.components import websocket_api
 from homeassistant.config_entries import ConfigEntry, ConfigEntryState
 from homeassistant.core import callback, HomeAssistant
 from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers.translation import async_get_cached_translations
 from homeassistant.util import dt as dt_util
 
 from .. import time_zones
@@ -184,8 +185,9 @@ STRATEGY_HYBRID_REASON: Final = "needs_solar_and_price_control"
 MAX_RESPONSE_BYTES: Final = 256 * 1024
 
 #: Capability facts every charger advertises, all of them, in this order. The first six are about
-#: this charger's configuration and adapter (`execution/chargers/`); the last four are the
-#: server's abilities and always `true` (`price_days`: the webhook answers the `price_days` read).
+#: this charger's configuration and adapter (`execution/chargers/`); the last seven are the
+#: server's abilities and always `true` (`price_days`, `plan_preview`, `dismiss_setup_item`, `fix_own_mode`: the
+#: webhook answers that action, so an app can tell an older Home Assistant that does not).
 #: `current_limit`: the charger has a dynamic current limit (a configured number, or a service path); `set_current`: SpotNav may write a current to it (the
 #: person opted in and its adapter can); `regulated_current`: load balancing may write it during a
 #: session (false for a flash-stored setting, which is written at a session start only).
@@ -200,6 +202,9 @@ CAPABILITY_KEYS: Final = (
     "set_charge_limit",
     "target_stop",
     "price_days",
+    "plan_preview",
+    "dismiss_setup_item",
+    "fix_own_mode",
 )
 
 
@@ -267,6 +272,8 @@ class CapturedLive:
     charger_disabled: bool = False
     #: The charger's own modes that are on and its own enable switch when it is off, each with its fix.
     conflicts: tuple[FixableConflict, ...] = ()
+    #: Home Assistant's words for each of `conflicts`, by entity id (`conflict_words`).
+    conflict_words: tuple[tuple[str, ConflictWords], ...] = ()
     #: Under a person's Stop the charger kept charging after the stops SpotNav sent; no more are sent.
     ignores_person_stop: bool = False
     #: The next window's start while a charge is held back for it, and whether a person overrode it.
@@ -654,7 +661,7 @@ def capabilities_for(
     `auto_price`: the Auto preview exists; `current_limit`: a current-limit entity is configured, or
     the adapter sets a current some other way; `set_current` and `regulated_current`: what the
     charger's adapter supports now (see `CAPABILITY_KEYS`); `target_soc`: `target_soc_capable`;
-    `load_balancing`: a loaded site lists it; the last four are the server's abilities.
+    `load_balancing`: a loaded site lists it; the last seven are the server's abilities.
     """
     adapter_capabilities = None if controller is None else controller.adapter.capabilities
     set_current = bool(adapter_capabilities is not None and adapter_capabilities.set_current)
@@ -672,6 +679,9 @@ def capabilities_for(
         ("set_charge_limit", True),
         ("target_stop", True),
         ("price_days", True),
+        ("plan_preview", True),
+        ("dismiss_setup_item", True),
+        ("fix_own_mode", True),
     )
 
 
@@ -817,6 +827,46 @@ def _entity_name(hass: HomeAssistant, entity_id: Any) -> str | None:
     if registered is None:
         return None
     return registered.name or registered.original_name or None
+
+
+@dataclass(frozen=True, slots=True)
+class ConflictWords:
+    """One of the charger's own settings in Home Assistant's words, in its configured language: the entity's name,
+    and the display names of its state and of the value its fix writes (`None` where Home Assistant names none)."""
+
+    entity_name: str | None = None
+    state_name: str | None = None
+    value_name: str | None = None
+
+
+_NO_WORDS: Final = ConflictWords()
+
+
+def _state_word(hass: HomeAssistant, entity_id: str, value: str | None) -> str | None:
+    """How Home Assistant shows `value` as this entity's state: the integration's own translation of it, else the
+    domain's (a switch's `on`), else `None`. Only translations already loaded are read (an entity's platform loads
+    its own and its domain's, in the configured language, when it is set up)."""
+    if value is None:
+        return None
+    domain = entity_id.split(".", 1)[0]
+    language = hass.config.language
+    registered = er.async_get(hass).async_get(entity_id)
+    if registered is not None and registered.translation_key:
+        key = f"component.{registered.platform}.entity.{domain}.{registered.translation_key}.state.{value}"
+        found = async_get_cached_translations(hass, language, "entity", registered.platform).get(key)
+        if found:
+            return found
+    key = f"component.{domain}.entity_component._.state.{value}"
+    return async_get_cached_translations(hass, language, "entity_component", domain).get(key) or None
+
+
+def conflict_words(hass: HomeAssistant, conflict: FixableConflict) -> ConflictWords:
+    """`ConflictWords` for one of the charger's own settings, read now."""
+    return ConflictWords(
+        entity_name=_entity_name(hass, conflict.entity_id),
+        state_name=_state_word(hass, conflict.entity_id, conflict.state),
+        value_name=_state_word(hass, conflict.entity_id, conflict.value),
+    )
 
 
 def capture_summary(
@@ -1071,6 +1121,7 @@ def capture_dashboard(
     executor: AutoExecutor | None = executor_for(hass, entry_id)
     repository = domain_data(hass).price_repository
     controller = controller_for(hass, entry_id)
+    conflicts = () if controller is None else tuple(controller.charger_conflicts)
 
     now = dt_util.utcnow()
     # The area and fees are the price source's (`pricing/price_source.py`): the market, the `fiscal` block and the
@@ -1128,7 +1179,8 @@ def capture_dashboard(
             measured_current_a=measured_current_of(hass, entry_id, controller),
             held_by_charger=bool(controller is not None and controller.held_by_charger),
             charger_disabled=bool(controller is not None and controller.charger_disabled),
-            conflicts=() if controller is None else tuple(controller.charger_conflicts),
+            conflicts=conflicts,
+            conflict_words=tuple((found.entity_id, conflict_words(hass, found)) for found in conflicts),
             ignores_person_stop=bool(controller is not None and controller.ignores_person_stop),
             hold_until=None if controller is None else controller.hold_until,
             hold_overridden=bool(controller is not None and controller.hold_overridden),
@@ -2351,6 +2403,8 @@ def status_facts(capture: CapturedDashboard) -> StatusFacts:
     settings = capture.settings
     snapshot = capture.snapshot
     names = dict(capture.entity_names)
+    words = dict(capture.live.conflict_words)
+    disabled = next((found for found in capture.live.conflicts if found.kind == CONFLICT_DISABLED), None)
     planning = None if snapshot is None else planning_facts(snapshot)
     proposal = None
     section = _proposal_section(capture)
@@ -2434,11 +2488,18 @@ def status_facts(capture: CapturedDashboard) -> StatusFacts:
         charging=capture.live.charging,
         held_by_charger=capture.live.held_by_charger,
         charger_disabled=capture.live.charger_disabled,
-        charger_disabled_entity=next(
-            (found.entity_id for found in capture.live.conflicts if found.kind == CONFLICT_DISABLED), None
-        ),
+        charger_disabled_entity=None if disabled is None else disabled.entity_id,
+        charger_disabled_entity_name=None if disabled is None else words.get(disabled.entity_id, _NO_WORDS).entity_name,
         own_modes=tuple(
-            OwnModeFacts(entity=found.entity_id, label=found.label, state=found.state, value=found.value)
+            OwnModeFacts(
+                entity=found.entity_id,
+                label=found.label,
+                state=found.state,
+                value=found.value,
+                entity_name=words.get(found.entity_id, _NO_WORDS).entity_name,
+                state_name=words.get(found.entity_id, _NO_WORDS).state_name,
+                value_name=words.get(found.entity_id, _NO_WORDS).value_name,
+            )
             for found in capture.live.conflicts
             if found.kind == CONFLICT_OWN_MODE
         ),

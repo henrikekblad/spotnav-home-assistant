@@ -44,6 +44,9 @@ from .entity_config import (
     async_webhook_update_phase_switching,
     async_webhook_update_vehicle,
 )
+from .own_mode import webhook_fix_own_mode
+from .plan_preview import async_webhook_plan_preview
+from .setup import webhook_dismiss_setup_item
 from .price_days import webhook_price_days
 from .grid_tariff import async_webhook_update_grid_tariff
 from .price_source import async_webhook_answer_price_duplicate, async_webhook_choose_price_source
@@ -190,6 +193,23 @@ def _status_for_app(line: Any, opted_in: set[str], *, under_solar: bool = False)
     return line
 
 
+def _status_block_for_app(status: dict[str, Any], opted_in: set[str]) -> dict[str, Any]:
+    """A status block (`{tone, lines}`) with each line as the app reads it (`_status_for_app`)."""
+    under_solar = any(
+        isinstance(line, dict) and str(line.get("code") or "").startswith("solar_") for line in status["lines"]
+    )
+    lines = [
+        kept
+        for kept in (_status_for_app(line, opted_in, under_solar=under_solar) for line in status["lines"])
+        if kept is not None
+    ]
+    shown = {**status, "lines": lines}
+    if any(isinstance(line, dict) and line.get("code") in APP_UNREAD_OWN_MODE_CODES for line in status["lines"]):
+        # A notice left out may have been the only one: the tone is the strongest line the app still gets.
+        shown["tone"] = status_tone(lines)
+    return shown
+
+
 def _opted_in(payload: dict[str, Any]) -> set[str]:
     reads = payload.get("reads")
     return {name for name in reads if isinstance(name, str)} if isinstance(reads, list) else set()
@@ -235,19 +255,7 @@ def _for_app(body: dict[str, Any], payload: dict[str, Any]) -> dict[str, Any]:
         body = {**body, "vehicles": [_vehicle_for_app(row, opted_in) for row in body["vehicles"]]}
     status = body.get("status")
     if isinstance(status, dict) and isinstance(status.get("lines"), list):
-        under_solar = any(
-            isinstance(line, dict) and str(line.get("code") or "").startswith("solar_") for line in status["lines"]
-        )
-        lines = [
-            kept
-            for kept in (_status_for_app(line, opted_in, under_solar=under_solar) for line in status["lines"])
-            if kept is not None
-        ]
-        shown = {**status, "lines": lines}
-        if any(isinstance(line, dict) and line.get("code") in APP_UNREAD_OWN_MODE_CODES for line in status["lines"]):
-            # A notice left out may have been the only one: the tone is the strongest line the app still gets.
-            shown["tone"] = status_tone(lines)
-        body = {**body, "status": shown}
+        body = {**body, "status": _status_block_for_app(status, opted_in)}
     settings = body.get("settings")
     if not isinstance(settings, dict):
         return body
@@ -425,6 +433,21 @@ async def _settings(hass: HomeAssistant, entry: ChargerConfigEntry, payload: dic
     return web.json_response(_for_app({**settings_answer(hass, entry.entry_id, committed), "action": action}, payload))
 
 
+async def _plan_preview(hass: HomeAssistant, entry: ChargerConfigEntry, payload: dict[str, Any]) -> Outcome:
+    """What a `settings` replacement of this body would plan, with nothing saved (`api/plan_preview.py`): the
+    command's envelope with the routing `action`, its status lines as the app reads the dashboard's (`reads`)."""
+    action = "plan_preview"
+    opted_in = _opted_in(payload)
+    status, answer = await async_webhook_plan_preview(
+        hass, entry, payload, reads_auto_periods=APP_READS_AUTO_PERIODS in opted_in
+    )
+    preview = answer.get("preview")
+    if isinstance(preview, dict) and isinstance(preview.get("status"), dict):
+        answer = {**answer, "preview": {**preview, "status": _status_block_for_app(preview["status"], opted_in)}}
+    headers = {"Retry-After": str(answer["retry_after_s"])} if "retry_after_s" in answer else None
+    return web.json_response({**answer, "action": action}, status=status, headers=headers)
+
+
 async def _push_register(hass: HomeAssistant, entry: ChargerConfigEntry, payload: dict[str, Any]) -> Outcome:
     """The paired app's instant notifications: its relay `push_ref` and the events it wants woken for,
     or `null` to stop. Stored per charger (`notifications/push.py`); the ref is never logged."""
@@ -469,6 +492,7 @@ ACTIONS: Final[dict[str, Handler]] = {
     "sessions": _sessions,
     "price_days": webhook_price_days,
     "settings": _settings,
+    "plan_preview": _plan_preview,
     "update_vehicle": _bounded_write(async_webhook_update_vehicle, "update_vehicle", _vehicle_answer_for_app),
     "update_site_settings": _bounded_write(async_webhook_update_site_settings, "update_site_settings"),
     "update_charger_priority": _bounded_write(
@@ -481,6 +505,8 @@ ACTIONS: Final[dict[str, Handler]] = {
     "push_register": _push_register,
     "identify_vehicle": webhook_identify_vehicle,
     "choose_vehicle_identification": webhook_choose_vehicle_identification,
+    "fix_own_mode": webhook_fix_own_mode,
+    "dismiss_setup_item": webhook_dismiss_setup_item,
     **CAMERA_ACTIONS,
 }
 

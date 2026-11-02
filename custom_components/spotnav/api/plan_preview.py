@@ -14,6 +14,10 @@ Who may ask: whoever may Save that body (an administrator, or under `users_chang
 plan's fields). At most `RATE_PER_S` requests a second per connection and `MAX_IN_FLIGHT` being calculated at once
 across all of them (`spotnav_rate_limited`), and a body of at most `MAX_BODY_BYTES` (`spotnav_body_too_large`).
 
+The charger webhook's `plan_preview {"settings"}` (`async_webhook_plan_preview`) is the same for the paired app, which
+counts as an administrator: the same checks, with one rate window per charger webhook in place of a connection's, the
+same calculations-at-once limit shared with the card, and what the app leaves out of a body kept as its Save keeps it.
+
 The answer: `{api_version, ok, error, preview}`. A body a Save would refuse is `ok: false` with the Save's own code
 (`invalid_amps`, `invalid_departure`, ...) and `preview: null`. Otherwise `preview` is
 `{state, reason, plan, status, strip}` (`encode_preview`).
@@ -27,6 +31,7 @@ import time
 from typing import Any, Callable, Final
 
 from homeassistant.components import websocket_api
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import callback, HomeAssistant
 from homeassistant.helpers.json import json_bytes
 from homeassistant.util import dt as dt_util
@@ -37,7 +42,14 @@ from ..planning.status_compose import compose_status, ProposalFacts, StatusFacts
 from ..pricing.price_source import entry_source_for
 from ..runtime import domain_data, preview_for
 from ..util import aware_iso, finite_number
-from .common import ERROR_CHARGER_UNLOADED, ERROR_NOT_ADMIN, is_admin, lookup_charger, send_unsupported_version
+from .common import (
+    ERROR_CHARGER_UNLOADED,
+    ERROR_NOT_ADMIN,
+    ERROR_UNSUPPORTED_VERSION,
+    is_admin,
+    lookup_charger,
+    send_unsupported_version,
+)
 from .dashboard import planning_facts
 from .settings import (
     body_mutator,
@@ -67,6 +79,8 @@ ERROR_BODY_TOO_LARGE: Final = "spotnav_body_too_large"
 #: Where each open connection's recent request times are kept (dropped when it closes).
 _RATE_DATA: Final = "spotnav_plan_preview_rate"
 _RATE_KEY: Final = "spotnav_plan_preview_rate"
+#: Each charger webhook's recent request times.
+_WEBHOOK_RATE_DATA: Final = "spotnav_plan_preview_webhook_rate"
 #: How many previews are being calculated now, installation-wide.
 _IN_FLIGHT_DATA: Final = "spotnav_plan_preview_in_flight"
 
@@ -75,12 +89,19 @@ _PLANNED_STATES: Final = frozenset({"proposal_ready", "proposal_unpriced"})
 
 
 def async_preview_judged(
-    hass: HomeAssistant, entry_id: Any, replacement: Any, *, plan_only: bool
+    hass: HomeAssistant,
+    entry_id: Any,
+    replacement: Any,
+    *,
+    plan_only: bool,
+    from_app: bool = False,
+    reads_auto_periods: bool = True,
 ) -> tuple[AutoPlannerController, AutoSettings]:
     """The controller and the record a write of `replacement` would store now, or the write's own refusal.
 
     `SettingsRefusal` for the charger or the caller (as `async_update_settings` refuses them), `AutoSettingsError`
-    for the body. Nothing is written.
+    for the body. Nothing is written. `from_app` and `reads_auto_periods` are the webhook Save's (`api/webhook.py`),
+    so the app's preview keeps what its Save keeps.
     """
     _entry, failure = lookup_charger(hass, entry_id)
     if failure is not None:
@@ -95,7 +116,9 @@ def async_preview_judged(
     route = None if source is None else PriceRoute(source, decoded)
     if route is not None and plan_only and route.overrides is not None:
         raise SettingsRefusal(ERROR_NOT_ADMIN)
-    mutate: Callable[[AutoSettings], AutoSettings] = body_mutator(hass, entry_id, replacement, decoded)
+    mutate: Callable[[AutoSettings], AutoSettings] = body_mutator(
+        hass, entry_id, replacement, decoded, from_app=from_app, reads_auto_periods=reads_auto_periods
+    )
     if route is not None:
         # As a write: the price entry's area and its row stay the charger's own as stored, so a body that echoes
         # them as read moves nothing of the charger's (and a user who may plan is not refused for them).
@@ -206,14 +229,40 @@ def preview_answer(error: str | None, preview: dict[str, Any] | None = None) -> 
     return {"api_version": SETTINGS_API_VERSION, "ok": error is None, "error": error, "preview": preview}
 
 
-async def async_plan_preview(hass: HomeAssistant, entry_id: Any, replacement: Any, *, plan_only: bool) -> dict[str, Any]:
+async def async_plan_preview(
+    hass: HomeAssistant,
+    entry_id: Any,
+    replacement: Any,
+    *,
+    plan_only: bool,
+    from_app: bool = False,
+    reads_auto_periods: bool = True,
+) -> dict[str, Any]:
     """The whole answer for one body (see the module); `SettingsRefusal` for the charger or the caller."""
     try:
-        controller, settings = async_preview_judged(hass, entry_id, replacement, plan_only=plan_only)
+        controller, settings = async_preview_judged(
+            hass,
+            entry_id,
+            replacement,
+            plan_only=plan_only,
+            from_app=from_app,
+            reads_auto_periods=reads_auto_periods,
+        )
     except AutoSettingsError as refusal:
         return preview_answer(refusal.code)
     snapshot = await controller.async_preview(settings)
     return preview_answer(None, encode_preview(snapshot, settings))
+
+
+def _take(window: deque[float]) -> bool:
+    """Whether one more request fits in this caller's last second (`RATE_PER_S`); counted when it does."""
+    now = time.monotonic()
+    while window and now - window[0] >= 1.0:
+        window.popleft()
+    if len(window) >= RATE_PER_S:
+        return False
+    window.append(now)
+    return True
 
 
 def _allowed(hass: HomeAssistant, connection: websocket_api.ActiveConnection) -> bool:
@@ -224,13 +273,47 @@ def _allowed(hass: HomeAssistant, connection: websocket_api.ActiveConnection) ->
     if window is None:
         window = windows[key] = deque()
         connection.subscriptions[_RATE_KEY] = lambda: windows.pop(key, None)
-    now = time.monotonic()
-    while window and now - window[0] >= 1.0:
-        window.popleft()
-    if len(window) >= RATE_PER_S:
-        return False
-    window.append(now)
-    return True
+    return _take(window)
+
+
+def _webhook_allowed(hass: HomeAssistant, entry_id: str) -> bool:
+    """Whether this charger's webhook may ask once more now: the webhook is the app's one caller, as a connection is
+    the card's (one window per charger, as many as there are chargers)."""
+    windows: dict[str, deque[float]] = hass.data.setdefault(_WEBHOOK_RATE_DATA, {})
+    return _take(windows.setdefault(entry_id, deque()))
+
+
+async def async_webhook_plan_preview(
+    hass: HomeAssistant, entry: ConfigEntry, payload: dict[str, Any], *, reads_auto_periods: bool
+) -> tuple[int, dict[str, Any]]:
+    """`plan_preview {"settings"}` over the charger webhook, for its own charger: the command's checks in its order
+    (version, rate, body cap, the calculations at once) and its core, as an administrator and with the webhook
+    Save's handling of what the app leaves out. `(http_status, body)`: 200 with the command's envelope for a
+    preview, 400 with it (`preview: null`) for a body a Save refuses; a refusal before the body is judged is
+    `{"ok": false, "error"}`, 429 for `spotnav_rate_limited` (with `retry_after_s`), else 400."""
+    if settings_version_of(payload.get("api_version", SETTINGS_API_VERSION)) is None:
+        return 400, {"ok": False, "error": ERROR_UNSUPPORTED_VERSION}
+    if not _webhook_allowed(hass, entry.entry_id):
+        return 429, {"ok": False, "error": ERROR_RATE_LIMITED, "retry_after_s": 1}
+    if len(json_bytes(payload.get("settings"))) > MAX_BODY_BYTES:
+        return 400, {"ok": False, "error": ERROR_BODY_TOO_LARGE}
+    if hass.data.get(_IN_FLIGHT_DATA, 0) >= MAX_IN_FLIGHT:
+        return 429, {"ok": False, "error": ERROR_RATE_LIMITED, "retry_after_s": 1}
+    hass.data[_IN_FLIGHT_DATA] = hass.data.get(_IN_FLIGHT_DATA, 0) + 1
+    try:
+        answer = await async_plan_preview(
+            hass,
+            entry.entry_id,
+            payload.get("settings"),
+            plan_only=False,
+            from_app=True,
+            reads_auto_periods=reads_auto_periods,
+        )
+    except SettingsRefusal as refusal:
+        return 400, {"ok": False, "error": refusal.code}
+    finally:
+        hass.data[_IN_FLIGHT_DATA] -= 1
+    return (200 if answer["ok"] else 400), answer
 
 
 @websocket_api.websocket_command(

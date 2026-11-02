@@ -13,7 +13,7 @@ import json
 import os
 from pathlib import Path
 from datetime import date, datetime
-from typing import Any
+from typing import Any, Awaitable, Callable
 
 import pytest
 from freezegun import freeze_time
@@ -161,12 +161,17 @@ async def test_the_preview_holds_across_the_autumn_change(hass: HomeAssistant, t
 
 
 async def assert_previews_change_nothing(
-    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, entry_id: str, bodies: list[dict[str, Any]]
+    hass: HomeAssistant,
+    monkeypatch: pytest.MonkeyPatch,
+    entry_id: str,
+    bodies: list[dict[str, Any]],
+    ask: Callable[[dict[str, Any]], Awaitable[dict[str, Any]]] | None = None,
 ) -> list[dict[str, Any]]:
     """Run a preview of each body and prove nothing moved: the store's record (the very same object), count,
     revision and suggestions, the controller (its appointments, its count in memory, the register's unread note and
     whom it asked), the executor, the session runner and the charger, the plan notice, the hybrid state and memory;
-    no store write, no charger command, no event, no listener told. Returns the previews."""
+    no store write, no charger command, no event, no listener told. `ask` answers one body (the command's core when
+    not given). Returns the previews."""
     store = domain_data(hass).auto_store
     data = charger_data(hass, entry_id)
     controller = preview_for(hass, entry_id)
@@ -206,7 +211,9 @@ async def assert_previews_change_nothing(
     before = state()
     previews = []
     for body in bodies:
-        answer = await async_plan_preview(hass, entry_id, body, plan_only=False)
+        answer = (
+            await async_plan_preview(hass, entry_id, body, plan_only=False) if ask is None else await ask(body)
+        )
         assert answer["ok"] is True, answer
         previews.append(answer["preview"])
     await hass.async_block_till_done()
@@ -504,3 +511,187 @@ async def test_a_user_who_may_plan_previews_what_their_save_makes_on_a_price_ent
     assert answer["result"]["preview"] == json.loads(
         json.dumps(encode_preview(controller.snapshot(), settings_of(hass, "entry_a")))
     )
+
+
+# ------------------------------------------------------------------------------- over the charger webhook
+
+
+async def webhook_preview(client: Any, body: Any, webhook_id: str = "webhook-a", **extra: Any) -> tuple[int, Any, Any]:
+    response = await client.post(
+        f"/api/webhook/{webhook_id}", json={"version": 1, "action": "plan_preview", "settings": body, **extra}
+    )
+    return response.status, await response.json(), response.headers
+
+
+#: An app that reads every status line and automatic periods, so its answer is the command's.
+READS_ALL = ["plan_facts", "auto_periods", "own_mode_status", "min_soc", "balancing_paused", "car_ended_waiting"]
+
+
+@freeze_time(NOW)
+async def test_the_webhook_preview_is_the_commands_answer(
+    hass: HomeAssistant, transport: StubTransport, hass_client_no_auth
+) -> None:
+    entry = await setup_charger(hass)
+    serve(transport, rising=True)
+    await go_auto(hass, requested_kwh=6.0)
+    client = await hass_client_no_auth()
+    for changes in (
+        {"requested_kwh": 11.5, "departure_enabled": True, "departure_time": "16:15"},
+        {"requested_kwh": 60.0, "departure_enabled": True, "departure_time": "09:00"},
+        {"area_id": None},
+    ):
+        body = body_of(hass, entry.entry_id, **changes)
+        expected = await async_plan_preview(hass, entry.entry_id, body, plan_only=False)
+        status, answer, _ = await webhook_preview(client, body, reads=READS_ALL)
+        assert status == 200, answer
+        assert answer == json.loads(json.dumps(expected)) | {"action": "plan_preview"}
+
+
+@freeze_time(NOW)
+async def test_the_apps_preview_is_the_plan_its_save_then_makes(
+    hass: HomeAssistant, transport: StubTransport, hass_client_no_auth
+) -> None:
+    """The app's body leaves out what it does not read, and says 8 for automatic periods: its preview keeps them as
+    its Save over the webhook keeps them, and is the plan that Save makes."""
+    from .helpers import as_app_sees
+
+    entry = await setup_charger(hass)
+    serve(transport, rising=True)
+    await go_auto(hass, requested_kwh=6.0, departure_enabled=True, departure=datetime(2026, 1, 1, 18, 0).time())
+    client = await hass_client_no_auth()
+    body = as_app_sees(body_of(hass, entry.entry_id, requested_kwh=9.0, departure_time="16:15"))
+
+    status, answer, _ = await webhook_preview(client, body)
+    assert status == 200 and answer["ok"] is True and answer["preview"]["plan"] is not None
+
+    response = await client.post(
+        "/api/webhook/webhook-a",
+        json={
+            "version": 1,
+            "action": "settings",
+            "expected_revision": settings_of(hass, entry.entry_id).revision,
+            "settings": body,
+        },
+    )
+    assert response.status == 200, await response.json()
+    await hass.async_block_till_done()
+    controller = preview_for(hass, entry.entry_id)
+    assert controller is not None
+    assert answer["preview"] == json.loads(
+        json.dumps(encode_preview(controller.snapshot(), settings_of(hass, entry.entry_id)))
+    )
+
+
+@freeze_time(NOW)
+async def test_the_webhook_refuses_as_the_command_does(
+    hass: HomeAssistant, transport: StubTransport, hass_client_no_auth
+) -> None:
+    entry = await setup_charger(hass)
+    serve(transport, rising=True)
+    await go_auto(hass)
+    client = await hass_client_no_auth()
+
+    status, answer, _ = await webhook_preview(client, body_of(hass, entry.entry_id, amps=99))
+    assert (status, answer) == (
+        400,
+        {"api_version": 1, "ok": False, "error": "invalid_amps", "preview": None, "action": "plan_preview"},
+    )
+    status, answer, _ = await webhook_preview(client, {"not": "a body"})
+    assert status == 400 and answer["ok"] is False and answer["preview"] is None and answer["error"]
+    status, answer, _ = await webhook_preview(client, body_of(hass, entry.entry_id), api_version=99)
+    assert (status, answer) == (
+        400,
+        {"ok": False, "error": "spotnav_unsupported_api_version", "action": "plan_preview"},
+    )
+    padded = body_of(hass, entry.entry_id) | {"padding": "x" * plan_preview.MAX_BODY_BYTES}
+    status, answer, _ = await webhook_preview(client, padded)
+    assert (status, answer) == (400, {"ok": False, "error": "spotnav_body_too_large", "action": "plan_preview"})
+
+
+async def test_webhook_previews_are_limited_per_charger(
+    hass: HomeAssistant, hass_client_no_auth, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    entry = await setup_charger(hass)
+    other = await setup_charger(hass, entry_id="entry_b", webhook_id="webhook-b", charge_control="switch.charger_b")
+    await go_auto(hass)
+    clock = [1000.0]
+    monkeypatch.setattr(plan_preview.time, "monotonic", lambda: clock[0])
+    client = await hass_client_no_auth()
+    body = body_of(hass, entry.entry_id)
+    for _ in range(plan_preview.RATE_PER_S):
+        assert (await webhook_preview(client, body))[0] == 200
+    status, answer, headers = await webhook_preview(client, body)
+    assert (status, answer) == (
+        429,
+        {"ok": False, "error": "spotnav_rate_limited", "retry_after_s": 1, "action": "plan_preview"},
+    )
+    assert headers["Retry-After"] == "1"
+    # Another charger's webhook has its own allowance.
+    assert (await webhook_preview(client, body_of(hass, other.entry_id), "webhook-b"))[0] != 429
+    clock[0] += 1.0
+    assert (await webhook_preview(client, body))[0] == 200
+
+
+async def test_webhook_previews_share_the_limit_on_calculations_at_once(
+    hass: HomeAssistant, hass_client_no_auth
+) -> None:
+    entry = await setup_charger(hass)
+    await go_auto(hass)
+    client = await hass_client_no_auth()
+    body = body_of(hass, entry.entry_id)
+    hass.data[plan_preview._IN_FLIGHT_DATA] = plan_preview.MAX_IN_FLIGHT  # noqa: SLF001 - the card's, calculating
+    status, answer, _ = await webhook_preview(client, body)
+    assert (status, answer["error"]) == (429, "spotnav_rate_limited")
+    hass.data[plan_preview._IN_FLIGHT_DATA] = plan_preview.MAX_IN_FLIGHT - 1  # noqa: SLF001
+    assert (await webhook_preview(client, body))[0] == 200
+    assert hass.data[plan_preview._IN_FLIGHT_DATA] == plan_preview.MAX_IN_FLIGHT - 1, "counted down again"  # noqa: SLF001
+
+
+@freeze_time(NOW)
+async def test_webhook_previews_change_nothing(
+    hass: HomeAssistant, transport: StubTransport, monkeypatch: pytest.MonkeyPatch, hass_client_no_auth
+) -> None:
+    entry = await setup_charger(hass)
+    serve(transport, rising=True)
+    await go_auto(hass, requested_kwh=6.0, departure_enabled=True, departure=datetime(2026, 1, 1, 18, 0).time())
+    client = await hass_client_no_auth()
+    # The app's first word marks "Pair the app" done for good: said before, so the burst finds it said.
+    await webhook_preview(client, body_of(hass, entry.entry_id))
+    monkeypatch.setattr(plan_preview, "RATE_PER_S", 1000)
+
+    async def ask(body: dict[str, Any]) -> dict[str, Any]:
+        status, answer, _ = await webhook_preview(client, body, reads=READS_ALL)
+        assert status == 200, answer
+        return answer
+
+    bodies = [
+        body_of(hass, entry.entry_id, requested_kwh=kwh, departure_time=departure, strategy=strategy)
+        for kwh in (2.0, 14.0, 60.0)
+        for departure in ("07:00", "16:15")
+        for strategy in ("cheapest", "hybrid")
+    ]
+    await assert_previews_change_nothing(hass, monkeypatch, entry.entry_id, bodies, ask)
+
+
+async def test_the_webhook_previews_status_lines_are_the_ones_the_app_reads(
+    hass: HomeAssistant, hass_client_no_auth, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """As the dashboard's: a line an app has not opted into is left out (or said as the line it knows)."""
+    from custom_components.spotnav.api import webhook as webhook_module
+
+    await setup_charger(hass)
+    lines = [
+        {"code": "auto_planned", "params": {"start": "2026-09-22T04:00:00+00:00"}},
+        {"code": "plan_saving", "params": {"amount_minor": 120, "currency": "SEK"}},
+    ]
+
+    async def canned(*_args: Any, **_kwargs: Any) -> tuple[int, dict[str, Any]]:
+        preview = {"state": "proposal_ready", "reason": "ready", "plan": None, "strip": None}
+        return 200, {"api_version": 1, "ok": True, "error": None, "preview": preview | {"status": {"tone": "normal", "lines": lines}}}
+
+    monkeypatch.setattr(webhook_module, "async_webhook_plan_preview", canned)
+    client = await hass_client_no_auth()
+    _, answer, _ = await webhook_preview(client, {})
+    assert answer["preview"]["status"]["lines"] == lines[:1]
+    _, answer, _ = await webhook_preview(client, {}, reads=["plan_facts"])
+    assert answer["preview"]["status"]["lines"] == lines

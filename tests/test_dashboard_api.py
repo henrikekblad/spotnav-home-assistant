@@ -1213,8 +1213,12 @@ async def test_a_fresh_unconfigured_charger_serializes_the_contract_shape(
         "set_charge_limit",
         "target_stop",
         "price_days",
+        "plan_preview",
+        "dismiss_setup_item",
+        "fix_own_mode",
     ]
-    assert charger["capabilities"]["price_days"] is True
+    for action in ("price_days", "plan_preview", "dismiss_setup_item", "fix_own_mode"):
+        assert charger["capabilities"][action] is True
 
 
 @freeze_time(NOW)

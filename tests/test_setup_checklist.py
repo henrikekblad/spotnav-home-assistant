@@ -171,3 +171,26 @@ async def test_only_an_administrator_dismisses(
     answer = await ws_call(socket, {"type": "spotnav/dismiss_setup_item", "item": "site"})
     assert answer["success"] is False and answer["error"]["code"] == "spotnav_not_admin"
     assert "site" in ids(hass, entry)
+
+
+async def _dismiss_over_webhook(client: Any, item: Any) -> tuple[int, dict[str, Any]]:
+    response = await client.post(
+        "/api/webhook/webhook-a", json={"version": 1, "action": "dismiss_setup_item", "item": item}
+    )
+    return response.status, await response.json()
+
+
+async def test_the_app_dismisses_over_the_webhook_with_the_commands_answers(
+    hass: HomeAssistant, hass_client_no_auth
+) -> None:
+    first = await setup_charger(hass)
+    second = await setup_charger(hass, entry_id="entry_b", webhook_id="webhook-b", charge_control="switch.charger_b")
+    client = await hass_client_no_auth()
+
+    assert await _dismiss_over_webhook(client, "site") == (200, {"ok": True, "action": "dismiss_setup_item"})
+    assert "site" not in ids(hass, first) + ids(hass, second), "for the whole installation, as from the card"
+
+    refused = (400, {"ok": False, "error": "spotnav_setup_item_not_dismissible", "action": "dismiss_setup_item"})
+    for item in ("prices", "car_level", None, ["site"], {"id": "vehicle"}):
+        assert await _dismiss_over_webhook(client, item) == refused, item
+    assert "vehicle" in ids(hass, first)

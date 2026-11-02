@@ -277,13 +277,20 @@ STATUS_CODES: Final[dict[str, tuple[str, tuple[str, ...]]]] = {
     # wrong, and nothing SpotNav sends releases it.
     "held_by_charger": (TONE_NOTICE, ()),
     # The charger's own enable switch is off (Easee's `is_enabled`): it cannot start, whatever is sent.
-    # `entity` is that switch, which an administrator may turn on from the card (`spotnav/fix_own_mode`).
-    "charger_disabled": (TONE_NOTICE, ("entity",)),
+    # `entity` is that switch, which an administrator may turn on from the card (`spotnav/fix_own_mode`);
+    # `entity_name` its name as Home Assistant shows it (the id when it has none), `null` with `entity`.
+    "charger_disabled": (TONE_NOTICE, ("entity", "entity_name")),
     # One of the charger's own modes is on and works against SpotNav (Peblar's smart charging other than
     # Default): `entity` reads `state`, `label` names the mode in the profile's words. `value` is the one
     # value that ends it (a select's option as the entity offers it, or `off`), which an administrator may
-    # write from the card (`spotnav/fix_own_mode`); `null` where no single safe value can be told.
-    "charger_own_mode": (TONE_NOTICE, ("entity", "label", "state", "value")),
+    # write from the card (`spotnav/fix_own_mode`); `null` where no single safe value can be told. In Home
+    # Assistant's words, in its configured language, for a client without its frontend (the app): `entity_name`
+    # the entity's name (the id when it has none), `state_name` and `value_name` the display names of `state` and
+    # `value` (the raw value where the integration names none; `value_name` is `null` with `value`).
+    "charger_own_mode": (
+        TONE_NOTICE,
+        ("entity", "label", "state", "value", "entity_name", "state_name", "value_name"),
+    ),
     # A charge that started by itself outside every planned window was stopped (or a car waits): it
     # starts at `time`, the next window's start.
     "held_until_window": (TONE_NORMAL, ("time",)),
@@ -424,6 +431,10 @@ class OwnModeFacts:
     label: str
     state: str
     value: str | None = None
+    #: Home Assistant's words for the entity, its state and the value (`charger_own_mode`'s line).
+    entity_name: str | None = None
+    state_name: str | None = None
+    value_name: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -499,6 +510,7 @@ class StatusFacts:
     #: The charger's own enable switch is off, so it cannot start; that switch, where it is known.
     charger_disabled: bool = False
     charger_disabled_entity: str | None = None
+    charger_disabled_entity_name: str | None = None
     #: The charger's own modes that are on and work against SpotNav.
     own_modes: tuple[OwnModeFacts, ...] = ()
     #: Under a person's Stop the charger kept charging after the stops SpotNav sent; no more are sent.
@@ -963,9 +975,26 @@ def _notices(facts: StatusFacts) -> list[dict[str, Any]]:
     if facts.held_by_charger and not facts.charging:
         lines.append(_line("held_by_charger"))
     if facts.charger_disabled and not facts.charging:
-        lines.append(_line("charger_disabled", entity=facts.charger_disabled_entity))
+        lines.append(
+            _line(
+                "charger_disabled",
+                entity=facts.charger_disabled_entity,
+                entity_name=_named(facts.charger_disabled_entity, facts.charger_disabled_entity_name),
+            )
+        )
     for mode in facts.own_modes:
-        lines.append(_line("charger_own_mode", entity=mode.entity, label=mode.label, state=mode.state, value=mode.value))
+        lines.append(
+            _line(
+                "charger_own_mode",
+                entity=mode.entity,
+                label=mode.label,
+                state=mode.state,
+                value=mode.value,
+                entity_name=mode.entity_name or mode.entity,
+                state_name=mode.state_name or mode.state,
+                value_name=None if mode.value is None else (mode.value_name or mode.value),
+            )
+        )
     measurement = facts.site_measurement
     if measurement is not None and measurement.negative_phases:
         lines.append(_line("site_current_negative", phases=list(measurement.negative_phases)))

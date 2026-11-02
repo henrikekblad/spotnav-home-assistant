@@ -33,7 +33,7 @@ they are removed on upgrade, together with their recorded history.) Treat webhoo
 webhook is bound to its own charger. A `charger_id` in the body is ignored. Success is
 `{"ok": true, "action": ...}`; errors are `{"ok": false, "error": ...}` with HTTP 400 (bad
 request), 409 (refused by the automatic-execution boundary, with a stable code), 429 (per-vehicle rate
-limit, with `Retry-After`) or 502 (the charger command failed). A `start` or an immediate `stop` the
+limit, or the plan preview's, with `Retry-After`) or 502 (the charger command failed). A `start` or an immediate `stop` the
 charger executed whose pause could not be saved answers `{"ok": true, "action": ..., "warning":
 "reconcile_failed"}`: the pause holds in memory and the save is retried.
 
@@ -43,6 +43,7 @@ charger executed whose pause could not be saved answers `{"ok": true, "action": 
 | `sessions` | The charge history, the same request and answer as `spotnav/get_sessions` below (`month`, `format`, `limit`, `from`, `to`), with `"ok": true` and the `action` beside it. A refusal is HTTP 400 with `{"ok": false, "error": "spotnav_invalid_range" \| "spotnav_unsupported_api_version", "action": "sessions"}`. Nothing is withheld. |
 | `price_days` | The charger's electricity prices for today and tomorrow and the history profile, as day documents (see below). Takes an optional `api_version` (`1`). |
 | `settings` | Replace the charger's settings: `{"expected_revision": n, "settings": {...}}`. |
+| `plan_preview` | What a `settings` replacement of this body would plan, with nothing saved: `{"settings": {...}}` (see **Plan preview over the webhook** below). |
 | `start` | Start charging now; optional `amps`. Pauses automatic execution for the plug-in session (pause choice `manual`). |
 | `stop` | Stop now, which pauses automatic execution for the plug-in session (pause choice `manual`), or with a `choice` (`next_period`, `until_tomorrow`, `until_resumed`) pause it for that span instead. |
 | `resume` | Clear a pause. |
@@ -58,6 +59,8 @@ charger executed whose pause could not be saved answers `{"ok": true, "action": 
 | `push_register` | The app's instant notifications: `{"push_ref", "events"}`, or `{"push_ref": null}` to stop (see below). |
 | `identify_vehicle` | Answer "which car is plugged in?": `{"vehicle_id"}` (see [vehicle identification](#vehicle-identification)). |
 | `choose_vehicle_identification` | Choose a car's plug or location source: `{"vehicle_id", "source", "entity_id"}` (see [vehicle identification](#vehicle-identification)). |
+| `dismiss_setup_item` | Answer a "Get started" row with "Not needed": `{"item"}` (see below). |
+| `fix_own_mode` | Set one of the charger's own settings back to the value SpotNav works with: `{"entity_id", "value"}` (see below). |
 
 **Charge periods.** `max_periods` is `null` for automatic periods (the default: the planner counts a start
 cost of a quarter of a kWh at the window's average price for each period and keeps each period at least half an
@@ -393,6 +396,45 @@ or tomorrow is held), `spotnav_unsupported_api_version`. The dashboard's `charge
 where the webhook answers it, so a client asks only then. Examples are in
 `tests/fixtures/webhook/price_days_*.json`.
 
+**Plan preview over the webhook.** `plan_preview` is [`spotnav/plan_preview`](#plan-preview) for the paired app:
+`{"version": 1, "action": "plan_preview", "settings": {...}}` with an optional `api_version` (`1`) and `reads`.
+`settings` is the body the `settings` action takes (no `expected_revision`), judged by the same code as that write,
+as an administrator, with what the app leaves out of it kept as its `settings` write keeps it (the withheld fields
+above, and `8` for automatic periods without `"reads": ["auto_periods"]`), so the preview is the plan that write
+then makes. Nothing is saved, installed, sent to the charger or the car, notified or fired, as for the command.
+
+- A preview is HTTP 200 with the command's answer and the routing `action`:
+  `{"api_version": 1, "ok": true, "error": null, "preview": {"state", "reason", "plan", "status", "strip"}, "action": "plan_preview"}`.
+  The `status` lines are the ones the app reads in the dashboard (`reads` as for `dashboard`: `plan_saving` only
+  with `plan_facts`, and so on).
+- A body a Save would refuse is HTTP 400 with the same envelope: `{"api_version": 1, "ok": false, "error":
+  "invalid_amps", "preview": null, "action": "plan_preview"}` (the Save's own code).
+- Refused before the body is judged, `{"ok": false, "error", "action": "plan_preview"}`: HTTP 429
+  `spotnav_rate_limited` with `"retry_after_s": 1` and `Retry-After: 1` (more than 5 requests in a second on this
+  charger's webhook, or 4 previews being calculated at once across the card and the app); HTTP 400
+  `spotnav_body_too_large` (`settings` over 16 KiB as JSON), `spotnav_unsupported_api_version`, and the charger
+  lookup's codes.
+
+**Get started over the webhook.** `dismiss_setup_item {"item"}` is `spotnav/dismiss_setup_item`: the row stays away
+for the whole installation, as from the card. `{"ok": true, "action": "dismiss_setup_item"}`, or HTTP 400
+`{"ok": false, "error": "spotnav_setup_item_not_dismissible", "action": "dismiss_setup_item"}` for a row that cannot
+be dismissed (`car_level`), an unknown one or an `item` that is not a text.
+
+**The charger's own setting over the webhook.** `fix_own_mode {"entity_id", "value"}` (optional `api_version`, `1`)
+is [`spotnav/fix_own_mode`](#websocket-commands) for this webhook's charger, by the same core: the write is made only
+when, read again now, `entity_id` is one of this charger's conflicts (a `charger_own_mode` line's `entity`, or the
+`charger_disabled` line's enable switch) and `value` is that conflict's own fix (the line's `value`, `on` for the
+enable switch). Nothing else is ever written: another entity of the charger, another device's entity, an entity no
+profile names, another value or a conflict that has ended are all refused. The answer is the command's with the
+routing `action`: HTTP 200 `{"api_version": 1, "ok": true, "error": null, "action": "fix_own_mode"}` once Home
+Assistant has written it (the line clears once the entity reads the new value); HTTP 400 with `"ok": false` and
+`spotnav_no_conflict` or `spotnav_unsupported_api_version`; HTTP 502 with `spotnav_own_mode_failed` (the charger's
+integration refused the write). Each write is logged at INFO.
+
+**Capabilities of the webhook.** The dashboard's `charger.capabilities` has `plan_preview`, `dismiss_setup_item` and
+`fix_own_mode` beside `price_days`, `true` where the webhook answers that action. An older Home Assistant leaves them
+out (and answers the action `Unsupported action`), so an app offers the feature only where its key is `true`.
+
 **Permissions over the webhook.** The webhook id is the credential: whoever holds it acts as an administrator for
 its own charger (the dashboard's `writable` flags are true), so these writes, like `update_site_settings` and
 `update_charger_priority`, need nothing more. Only switching active load balancing and choosing the entities SpotNav
@@ -422,7 +464,7 @@ and `charger_priority.writable` say whether it may change those (an administrato
 | `spotnav/choose_vehicle_soc` | Choose (or clear) a vehicle's state-of-charge sensor. |
 | `spotnav/update_vehicle` | A vehicle's battery capacity, consumption, onboard charger, target, minimum charge level and wake for a reading. |
 | `spotnav/write_charge_limit` | Write a car's own charge limit (`vehicle_id`, `percent`), the webhook's `set_charge_limit` over the WebSocket: same entity, range checks and one write a minute per car. Answers `{"api_version": 1, "ok", "error", "retry_after_s"}`; refusals `spotnav_invalid_value` (not a car with a writable limit, or a percent it cannot take), `spotnav_too_soon` (with `retry_after_s`), `spotnav_charge_limit_failed` (the car's integration failed the write). |
-| `spotnav/fix_own_mode` | Set one of the charger's own settings back (administrators only), the card's button on the status lines `charger_own_mode` (`entity`, `label`, `state`, `value`: one of the charger's own modes is on and works against SpotNav; `value` is the one value that ends it, `null` where there is no single safe one) and `charger_disabled` (`entity`: its own enable switch, turned on). `{"api_version": 1, "charger_id", "entity_id", "value"}` is written only when, read again, that entity is still a conflict of this charger (an entity of its own device and integration that its profile names) and `value` is that conflict's fix: `select.select_option`, `switch.turn_off` or, for the enable switch, `switch.turn_on`. Answers `{"api_version": 1, "ok", "error"}`; refusals `spotnav_no_conflict` (any other entity or value, or a conflict that has ended) and `spotnav_own_mode_failed` (the charger's integration refused the write). Each write is logged at INFO. The webhook leaves `charger_own_mode` out unless the request asks for it (`"reads": ["own_mode_status"]`), and the block's tone is then its strongest line left. |
+| `spotnav/fix_own_mode` | Set one of the charger's own settings back (administrators only), the card's button on the status lines `charger_own_mode` (`entity`, `label`, `state`, `value`: one of the charger's own modes is on and works against SpotNav; `value` is the one value that ends it, `null` where there is no single safe one; `entity_name`, `state_name`, `value_name`: Home Assistant's name of the entity and the display names of `state` and `value` in its configured language, for a client without its frontend, the id or the raw value where it names none, `value_name` `null` with `value`) and `charger_disabled` (`entity`: its own enable switch, turned on; `entity_name` its name, `null` with `entity`). `{"api_version": 1, "charger_id", "entity_id", "value"}` is written only when, read again, that entity is still a conflict of this charger (an entity of its own device and integration that its profile names) and `value` is that conflict's fix: `select.select_option`, `switch.turn_off` or, for the enable switch, `switch.turn_on`. Answers `{"api_version": 1, "ok", "error"}`; refusals `spotnav_no_conflict` (any other entity or value, or a conflict that has ended) and `spotnav_own_mode_failed` (the charger's integration refused the write). Each write is logged at INFO. The webhook leaves `charger_own_mode` out unless the request asks for it (`"reads": ["own_mode_status"]`), and the block's tone is then its strongest line left. |
 | `spotnav/update_site_settings` | Solar priority, forecast sources, active load balancing. |
 | `spotnav/update_grid_tariff` | The grid tariff of the charger's electricity price (administrators only): `{"charger_id", "expected_write_revision", "grid_tariff"}` as the webhook's `update_grid_tariff` (see **Grid tariff** under [Charger webhook](#charger-webhook)). Answers `{"ok": true, "grid_tariff": {...}}` with the block re-read, or the error codes `invalid_fiscal`, `invalid_number`, `revision_conflict`, `spotnav_no_price_entry`, `spotnav_not_admin` and the charger lookup's. |
 | `spotnav/get_debug_bundle` | The redacted installation-wide debug bundle (administrators only). |

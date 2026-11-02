@@ -160,7 +160,8 @@
     },
     "charger_disabled": {
       "params": [
-        "entity"
+        "entity",
+        "entity_name"
       ],
       "tone": "notice"
     },
@@ -171,9 +172,12 @@
     "charger_own_mode": {
       "params": [
         "entity",
+        "entity_name",
         "label",
         "state",
-        "value"
+        "state_name",
+        "value",
+        "value_name"
       ],
       "tone": "notice"
     },

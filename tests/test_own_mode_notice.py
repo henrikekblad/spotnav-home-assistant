@@ -66,18 +66,43 @@ def _fix(entry_id: str, entity_id: object, value: object) -> dict[str, Any]:
     return {"type": "spotnav/fix_own_mode", "api_version": 1, "charger_id": entry_id, "entity_id": entity_id, "value": value}
 
 
+#: Peblar's own translations of its select, as Home Assistant has them loaded in its configured language.
+PEBLAR_WORDS = {
+    "component.peblar.entity.select.smart_charging.state.default": "Default",
+    "component.peblar.entity.select.smart_charging.state.pure_solar": "Pure solar",
+}
+
+
+def _translations(loaded: dict[str, str]) -> Any:
+    def cached(_hass: HomeAssistant, language: str, category: str, integration: str | None = None) -> dict[str, str]:
+        assert language == "en"
+        return {key: value for key, value in loaded.items() if key.startswith(f"component.{integration}.")}
+
+    return cached
+
+
 @freeze_time(LATE)
 async def test_peblars_own_smart_charging_is_a_notice_until_it_is_default_again(
-    hass: HomeAssistant, transport: StubTransport
+    hass: HomeAssistant, transport: StubTransport, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     entry = await _charger(hass, "peblar", transport=transport)
     assert _lines(hass, entry, "charger_own_mode") == []
+    monkeypatch.setattr(dashboard_api, "async_get_cached_translations", _translations(PEBLAR_WORDS))
 
-    hass.states.async_set(SMART, "pure_solar", OPTIONS)
+    hass.states.async_set(SMART, "pure_solar", OPTIONS | {"friendly_name": "Peblar Smart charging"})
     assert _lines(hass, entry, "charger_own_mode") == [
         {
             "code": "charger_own_mode",
-            "params": {"entity": SMART, "label": "smart charging", "state": "pure_solar", "value": "default"},
+            "params": {
+                "entity": SMART,
+                "label": "smart charging",
+                "state": "pure_solar",
+                "value": "default",
+                # Home Assistant's words, for an app without its frontend.
+                "entity_name": "Peblar Smart charging",
+                "state_name": "Pure solar",
+                "value_name": "Default",
+            },
         }
     ]
 
@@ -162,15 +187,26 @@ async def test_another_version_of_the_command_is_refused(hass: HomeAssistant, ha
 
 
 @freeze_time(LATE)
-async def test_easees_own_switches_are_notices_with_their_fix(hass: HomeAssistant, transport: StubTransport) -> None:
+async def test_easees_own_switches_are_notices_with_their_fix(
+    hass: HomeAssistant, transport: StubTransport, monkeypatch: pytest.MonkeyPatch
+) -> None:
     entry = await _charger(hass, "easee", EASEE, transport)
-    hass.states.async_set("switch.easee_is_enabled", "off")
+    # A switch's states are named by the switch domain, not the charger's integration.
+    monkeypatch.setattr(
+        dashboard_api,
+        "async_get_cached_translations",
+        _translations({"component.switch.entity_component._.state.on": "On", "component.switch.entity_component._.state.off": "Off"}),
+    )
+    hass.states.async_set("switch.easee_is_enabled", "off", {"friendly_name": "Easee Enabled"})
     hass.states.async_set("switch.easee_smart_charging", "on")
 
     assert _lines(hass, entry, "charger_disabled") == [
-        {"code": "charger_disabled", "params": {"entity": "switch.easee_is_enabled"}}
+        {"code": "charger_disabled", "params": {"entity": "switch.easee_is_enabled", "entity_name": "Easee Enabled"}}
     ]
-    assert [line["params"]["value"] for line in _lines(hass, entry, "charger_own_mode")] == ["off"]
+    [own] = _lines(hass, entry, "charger_own_mode")
+    assert own["params"]["value"] == "off"
+    assert (own["params"]["state_name"], own["params"]["value_name"]) == ("On", "Off")
+    assert own["params"]["entity_name"]
 
 
 async def test_easees_enable_switch_is_turned_on_and_its_smart_charging_off(hass: HomeAssistant, hass_ws_client) -> None:
@@ -221,3 +257,102 @@ def test_an_app_that_does_not_read_the_line_is_not_sent_it_and_its_tone_follows(
 def replace_lines(body: dict[str, Any], lines: list[dict[str, Any]]) -> dict[str, Any]:
     return {**body, "status": {**body["status"], "lines": lines}}
 
+
+
+# ------------------------------------------------------------------------------- over the charger webhook
+
+
+async def _post(client: Any, webhook_id: str, payload: dict[str, Any]) -> tuple[int, dict[str, Any]]:
+    response = await client.post(f"/api/webhook/{webhook_id}", json={"version": 1, **payload})
+    return response.status, await response.json()
+
+
+def _webhook_fix(entity_id: object, value: object, **extra: Any) -> dict[str, Any]:
+    return {"action": "fix_own_mode", "entity_id": entity_id, "value": value, **extra}
+
+
+async def test_the_app_sets_it_back_over_the_webhook_with_the_commands_answer(
+    hass: HomeAssistant, hass_client_no_auth, caplog: pytest.LogCaptureFixture
+) -> None:
+    await _charger(hass, "peblar")
+    hass.states.async_set(SMART, "pure_solar", OPTIONS)
+    calls = async_mock_service(hass, "select", "select_option")
+    caplog.set_level(logging.INFO, logger="custom_components.spotnav.api.own_mode")
+    client = await hass_client_no_auth()
+
+    status, body = await _post(client, "hook-peblar", _webhook_fix(SMART, "default"))
+
+    assert (status, body) == (200, {"api_version": 1, "ok": True, "error": None, "action": "fix_own_mode"})
+    assert [call.data for call in calls] == [{"entity_id": SMART, "option": "default"}]
+    assert any("from the app" in record.getMessage() for record in caplog.records)
+
+
+async def test_the_webhook_writes_nothing_but_the_conflicts_own_fix(hass: HomeAssistant, hass_client_no_auth) -> None:
+    """The app names the entity and the value; anything but a conflict of the webhook's own charger and its fix is
+    refused with the command's code and nothing is written. A `charger_id` in the body is never read."""
+    await _charger(hass, "peblar")
+    other = Shape(
+        "peblar",
+        "PB999",
+        (E("select", "PB999_smart_charging", "smart_charging", "pure_solar", OPTIONS, translation_key=True),),
+        {},
+    )
+    register_shape(hass, other, suffix="_2")
+    elsewhere = next(state.entity_id for state in hass.states.async_all("select") if state.entity_id != SMART)
+    hass.states.async_set(elsewhere, "pure_solar", OPTIONS)
+    hass.states.async_set(SMART, "pure_solar", OPTIONS)
+    selects = async_mock_service(hass, "select", "select_option")
+    switches = async_mock_service(hass, "switch", "turn_off")
+    lights = async_mock_service(hass, "light", "turn_on")
+    client = await hass_client_no_auth()
+
+    for entity_id, value in (
+        ("number.peblar_charge_current_limit", "default"),
+        ("switch.peblar_charge", "off"),
+        ("light.kitchen", "on"),
+        (elsewhere, "default"),
+        (SMART, "pure_solar"),
+        (SMART, None),
+        (None, "default"),
+        (["select.peblar_smart_charging"], "default"),
+    ):
+        status, body = await _post(client, "hook-peblar", _webhook_fix(entity_id, value))
+        assert (status, body) == (
+            400,
+            {"api_version": 1, "ok": False, "error": "spotnav_no_conflict", "action": "fix_own_mode"},
+        ), entity_id
+
+    hass.states.async_set(SMART, "default", OPTIONS)
+    status, body = await _post(client, "hook-peblar", _webhook_fix(SMART, "default"))
+    assert (status, body["error"]) == (400, "spotnav_no_conflict")
+    assert selects == [] and switches == [] and lights == []
+
+
+async def test_the_webhook_turns_easees_enable_switch_on(hass: HomeAssistant, hass_client_no_auth) -> None:
+    await _charger(hass, "easee", EASEE)
+    hass.states.async_set("switch.easee_is_enabled", "off")
+    on = async_mock_service(hass, "switch", "turn_on")
+    client = await hass_client_no_auth()
+
+    status, body = await _post(client, "hook-easee", _webhook_fix("switch.easee_is_enabled", "on"))
+    assert (status, body["ok"]) == (200, True)
+    assert [call.data for call in on] == [{"entity_id": "switch.easee_is_enabled"}]
+
+
+async def test_the_webhook_answers_a_refused_write_and_another_version(hass: HomeAssistant, hass_client_no_auth) -> None:
+    await _charger(hass, "peblar")
+    hass.states.async_set(SMART, "pure_solar", OPTIONS)
+
+    async def refuse(_call: Any) -> None:
+        raise RuntimeError("the charger said no")
+
+    hass.services.async_register("select", "select_option", refuse)
+    client = await hass_client_no_auth()
+
+    status, body = await _post(client, "hook-peblar", _webhook_fix(SMART, "default"))
+    assert (status, body) == (
+        502,
+        {"api_version": 1, "ok": False, "error": "spotnav_own_mode_failed", "action": "fix_own_mode"},
+    )
+    status, body = await _post(client, "hook-peblar", _webhook_fix(SMART, "default", api_version=2))
+    assert (status, body["error"]) == (400, "spotnav_unsupported_api_version")
