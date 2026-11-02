@@ -155,6 +155,7 @@ from .entity_fields import (
     site_measurement_info,
     vehicle_soc_vehicles,
 )
+from ..site.charger_current_offer import apply_charger_current_offer, ChargerCurrentOffer
 from ..site.site_detection import (
     apply_battery_candidate,
     apply_meter_candidate,
@@ -304,12 +305,15 @@ def _write_charger(hass: HomeAssistant, entry: ConfigEntry, changes: dict[str, A
 def _apply_detection(
     hass: HomeAssistant, entry: ConfigEntry, data: dict[str, Any], candidate_id: Any
 ) -> dict[str, Any]:
-    """`data` with the detected meter or battery `candidate_id` applied, enabling the entities the
-    candidate uses that their integration ships disabled (never one a person disabled)."""
+    """`data` with the detected meter or battery, or a charger's own current sensors, `candidate_id` names
+    applied, enabling the entities the candidate uses that their integration ships disabled (never one a
+    person disabled)."""
     candidate = resolve_detection_candidate(hass, entry, candidate_id)
     if candidate is None:  # validated just before; defensive
         return data
     enable_disabled_entities(hass, candidate.disabled_entity_ids)
+    if isinstance(candidate, ChargerCurrentOffer):
+        return apply_charger_current_offer(data, candidate)
     if isinstance(candidate, BatteryCandidate):
         return apply_battery_candidate(data, candidate)
     return apply_meter_candidate(data, candidate)
