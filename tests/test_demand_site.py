@@ -18,7 +18,10 @@ from homeassistant.core import HomeAssistant
 from pytest_homeassistant_custom_component.common import async_fire_time_changed
 
 from custom_components.spotnav.api.grid_tariff import capture_grid_tariff, serialize_grid_tariff
-from custom_components.spotnav.const import CONF_GRID_POWER_SOURCE
+from homeassistant.helpers import entity_registry as er
+
+from custom_components.spotnav.api.grid_tariff import update_grid_tariff
+from custom_components.spotnav.const import CONF_GRID_POWER_SOURCE, DOMAIN
 from custom_components.spotnav.runtime import site_controller_for
 
 from .test_grid_tariff_api import NO_DEMAND, PILOT
@@ -128,3 +131,47 @@ async def test_a_charger_in_no_site_has_nothing_measured(hass: HomeAssistant, fr
     await go_auto(hass)
     await add_price(hass, demand_components=PILOT)
     assert demand_of(hass) == {**NO_DEMAND, "components": PILOT}
+
+
+def peak_sensor(hass: HomeAssistant, site_entry_id: str) -> str | None:
+    return er.async_get(hass).async_get_entity_id("sensor", DOMAIN, f"{site_entry_id}_demand_peak")
+
+
+async def test_the_peak_sensor_exists_only_while_a_component_does(hass: HomeAssistant, freezer) -> None:
+    site = await pilot_site(hass, freezer)
+    await run(hass, freezer, 61, 5000.0)
+
+    entity_id = peak_sensor(hass, site.entry_id)
+    assert entity_id is not None
+    state = hass.states.get(entity_id)
+    # The hour began with half a minute at 0 W.
+    assert state is not None and float(state.state) == pytest.approx(4.958)
+    assert state.attributes["unit_of_measurement"] == "kW"
+    day, night = state.attributes["components"]
+    assert (day["top_n"], day["bar_kw"], day["days_counted"]) == (1, 4.958, 1)
+    assert night["bar_kw"] is None and night["window"]["from_hour"] == 23
+    assert state.attributes["hour_start"] == "2026-09-22T07:00:00+00:00"
+
+    # The last component removed: the sensor goes, from the registry too.
+    stored = {"transfer_percent": {"enabled": False, "value": None}, "transfer_high": {"enabled": False, "value": None}}
+    update_grid_tariff(hass, "entry_a", 0, {**stored, "high_load_window": None, "demand_components": []})
+    await hass.async_block_till_done()
+    assert peak_sensor(hass, site.entry_id) is None
+    assert hass.states.get(entity_id) is None
+
+    # And comes back with one.
+    one = [{"window": None, "top_n": 3, "price_per_kw": {"winter": 49.0, "summer": 49.0}}]
+    update_grid_tariff(hass, "entry_a", 1, {**stored, "high_load_window": None, "demand_components": one})
+    await hass.async_block_till_done()
+    entity_id = peak_sensor(hass, site.entry_id)
+    assert entity_id is not None
+    assert float(hass.states.get(entity_id).state) == pytest.approx(4.958)  # type: ignore[union-attr]
+
+
+async def test_a_site_without_a_component_has_no_peak_sensor(hass: HomeAssistant, freezer) -> None:
+    freezer.move_to(NOW)
+    hass.states.async_set(GRID, "0", {"unit_of_measurement": "W"})
+    _charger, site = await setup_charger_and_site(hass, extra_data={CONF_GRID_POWER_SOURCE: {"power": GRID}})
+    await go_auto(hass)
+    await add_price(hass)
+    assert site is not None and peak_sensor(hass, site.entry_id) is None

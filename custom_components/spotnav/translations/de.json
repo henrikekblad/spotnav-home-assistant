@@ -718,6 +718,9 @@
       },
       "price_now": {
         "name": "Strompreis jetzt"
+      },
+      "demand_peak": {
+        "name": "Leistungsspitze"
       }
     },
     "select": {

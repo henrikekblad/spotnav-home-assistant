@@ -718,6 +718,9 @@
       },
       "price_now": {
         "name": "Prijs nu"
+      },
+      "demand_peak": {
+        "name": "Vermogenspiek"
       }
     },
     "select": {

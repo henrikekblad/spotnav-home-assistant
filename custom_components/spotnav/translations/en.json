@@ -718,6 +718,9 @@
       },
       "price_now": {
         "name": "Price now"
+      },
+      "demand_peak": {
+        "name": "Demand-charge peak"
       }
     },
     "select": {

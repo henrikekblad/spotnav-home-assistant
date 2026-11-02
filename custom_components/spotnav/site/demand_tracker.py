@@ -334,6 +334,8 @@ class SiteDemand:
         self.tracker = HourTracker(tz=tz)
         self._now = now
         self._last_observed: datetime | None = None
+        #: How many readings were taken: a reader that builds from the tracker builds again only when it moves.
+        self.readings = 0
         self._loaded = hass is None or entry_id is None
         self._month_store: DayStore | None = None
         self._running_store: DayStore | None = None
@@ -389,6 +391,7 @@ class SiteDemand:
         try:
             now = self._now()
             self._last_observed = now
+            self.readings += 1
             if tz is not None and tz != self.tracker.tz:
                 self.tracker.tz = tz
             changed = self.tracker.observe(now, grid_w, car_w)

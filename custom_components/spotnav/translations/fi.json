@@ -718,6 +718,9 @@
       },
       "price_now": {
         "name": "Sähkön hinta nyt"
+      },
+      "demand_peak": {
+        "name": "Tehohuippu"
       }
     },
     "select": {

@@ -11,6 +11,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EntityCategory, UnitOfElectricCurrent, UnitOfEnergy, UnitOfPower
 from homeassistant.core import callback, HomeAssistant
 from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import (
     async_call_later,
@@ -21,6 +22,9 @@ from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.util import dt as dt_util
 
 from .price_entities import price_sensors
+from .api.entity_fields import stored_import_target_kw
+from .planning.auto_settings import DemandComponent
+from .pricing.price_source import SIGNAL_PRICE_SOURCES, site_price_source
 from .const import (
     CONF_CHARGER_ENTRY_IDS,
     CONF_ENTRY_TYPE,
@@ -65,6 +69,7 @@ async def async_setup_entry(
                 ChargerProposedCurrentEntity(entry, site_controller, charger_entry_id, charger_title)
             )
         async_add_entities(entities)
+        _keep_demand_peak_sensor(hass, entry, site_controller, async_add_entities)
         return
 
     controller = entry.runtime_data.controller
@@ -503,6 +508,114 @@ class SiteSolarSurplusEntity(SpotNavSiteEntity, SensorEntity):
         self._shown = new
         self._written_at = now
         self.async_write_ha_state()
+
+
+def site_demand_components(hass: HomeAssistant, site_entry_id: str) -> tuple[DemandComponent, ...]:
+    """The demand-charge components of the electricity price the site measures for (none without one)."""
+    source = site_price_source(hass, site_entry_id)
+    tariff = None if source is None else source.overrides.grid_tariff
+    return () if tariff is None else tariff.demand
+
+
+def _keep_demand_peak_sensor(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    controller: SiteCapacityController,
+    async_add_entities: AddEntitiesCallback,
+) -> None:
+    """The site's "Demand-charge peak" sensor exists only while its electricity price has a component: added when
+    one is set, removed (from the registry too) when the last one goes, followed on every price change."""
+    unique_id = SiteDemandPeakEntity.unique_id_for(entry.entry_id)
+    added: list[SiteDemandPeakEntity] = []
+
+    @callback
+    def follow(_entry_id: str | None = None) -> None:
+        wanted = bool(site_demand_components(hass, entry.entry_id))
+        registry = er.async_get(hass)
+        if wanted and not added:
+            sensor = SiteDemandPeakEntity(entry, controller)
+            added.append(sensor)
+            async_add_entities([sensor])
+        elif wanted and added[0].hass is not None:
+            added[0].refresh()
+        elif not wanted:
+            added.clear()
+            entity_id = registry.async_get_entity_id("sensor", DOMAIN, unique_id)
+            if entity_id is not None:
+                registry.async_remove(entity_id)
+
+    follow()
+    entry.async_on_unload(async_dispatcher_connect(hass, SIGNAL_PRICE_SOURCES, follow))
+
+
+class SiteDemandPeakEntity(_BuiltOnChangeSiteSensor):
+    """The site's demand-charge peak (kW): the first component's bar this month, the mean of its highest hourly
+    means on different days (`planning/demand_charge.py`). Attributes per component and the running hour; the
+    hour's mean is shown to 0.1 kW and kept out of the recorder's history, as it moves with every reading."""
+
+    _attr_translation_key = "demand_peak"
+    _attr_device_class = SensorDeviceClass.POWER
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_native_unit_of_measurement = UnitOfPower.KILO_WATT
+    _attr_suggested_display_precision = 2
+    _unrecorded_attributes = frozenset({"hour_start", "hour_kw_so_far", "import_target_kw"})
+
+    def __init__(self, entry: ConfigEntry, controller: SiteCapacityController) -> None:
+        super().__init__(entry, controller)
+        self._attr_unique_id = self.unique_id_for(entry.entry_id)
+        # The hour tracker's reading the state was last built on: the site changes far more often than it reads.
+        self._built_on: int | None = None
+
+    @staticmethod
+    def unique_id_for(entry_id: str) -> str:
+        return f"{entry_id}_demand_peak"
+
+    @callback
+    def _on_site_changed(self) -> None:
+        if self.controller.demand.readings == self._built_on:
+            return
+        self._built_on = self.controller.demand.readings
+        super()._on_site_changed()
+
+    @callback
+    def refresh(self) -> None:
+        """The electricity price's components changed: build again now."""
+        if self._rebuild():
+            self.async_write_ha_state()
+
+    def _snapshot(self) -> Any:
+        components = site_demand_components(self.hass, self._entry.entry_id)
+        return components, self.controller.demand.snapshot(
+            components, import_target_kw=stored_import_target_kw(self._entry.data)
+        )
+
+    def _build_value(self) -> Any:
+        _components, snapshot = self._snapshot()
+        first = snapshot.components[0] if snapshot.components else None
+        return None if first is None or first.bar_kw is None else round(first.bar_kw, 3)
+
+    def _build_attributes(self) -> dict[str, Any] | None:
+        components, snapshot = self._snapshot()
+        running = snapshot.running
+        mean = None if running is None else running.mean_kw()
+        return {
+            "components": [
+                {
+                    **component.as_dict(),
+                    "bar_kw": None if month.bar_kw is None else round(month.bar_kw, 3),
+                    "free_kw": None if month.free_kw is None else round(month.free_kw, 3),
+                    "days_counted": month.days_counted,
+                    "peaks": [
+                        {"date": peak.day.isoformat(), "start": peak.start.isoformat(), "kw": round(peak.kw, 3)}
+                        for peak in month.peaks
+                    ],
+                }
+                for component, month in zip(components, snapshot.components, strict=True)
+            ],
+            "hour_start": None if running is None else running.start.isoformat(),
+            "hour_kw_so_far": None if mean is None else round(mean, 1),
+            "import_target_kw": snapshot.import_target_kw,
+        }
 
 
 class ChargerProposedCurrentEntity(_BuiltOnChangeSiteSensor):
