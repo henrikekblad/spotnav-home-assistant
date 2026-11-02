@@ -1087,6 +1087,37 @@ describe("the site's estimate, warnings, sign options and detected meters", () =
     ]);
   });
 
+  it("offers a charger's own current sensors in the site editor, with Use that applies them by id", async () => {
+    const { hass, element } = await mounted({
+      get: "get_direct",
+      update: "success_site",
+      patch: (answer) => {
+        const detection = (answer["config"] as { site: { detection: Record<string, unknown> } }).site.detection;
+        detection["chargers"] = [
+          {
+            id: "charger_current:entry_a",
+            charger_name: "Garage",
+            integration: "Peblar",
+            sensors: "Current phase 1–3",
+            entity_ids: ["sensor.peblar_current_phase_1", "sensor.peblar_current_phase_2", "sensor.peblar_current_phase_3"],
+            disabled_entities: ["sensor.peblar_current_phase_1", "sensor.peblar_current_phase_2", "sensor.peblar_current_phase_3"],
+          },
+        ];
+        return answer;
+      },
+    });
+    openSettings(element);
+    await settle();
+    edit(element, "site");
+    const card = openDialog(element)?.querySelector<HTMLElement>("[data-detected-charger-current]");
+    expect(card?.textContent).toContain("Garage");
+    expect(card?.textContent).toContain("Reads its measured current from Current phase 1–3 (Peblar).");
+    expect(card?.textContent).toContain(translate("en", "entity.detect.enable", { count: "3" }));
+    card?.querySelector<HTMLButtonElement>("[data-apply]")?.click();
+    await settle();
+    expect(updates(hass)[0]).toMatchObject({ scope: "site", changes: { apply_detection: "charger_current:entry_a" } });
+  });
+
   type DetectionRows = { meters: Array<Record<string, unknown>>; batteries: Array<Record<string, unknown>> };
   const detectionOf = (answer: Record<string, unknown>): DetectionRows =>
     ((answer["config"] as { site: { detection: DetectionRows } }).site.detection);

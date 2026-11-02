@@ -93,14 +93,29 @@ describe("the status line renders the block and nothing else", () => {
       statusLine("site_meter_unavailable", { entities: ["sensor.solax_grid_current_l1"], cause: "inverter_standby" }),
     );
     expect(statusText(field, format("en"), NOW)).toBe(
-      "Solar · waiting for sun · The charger's own current is not set — choose it under Site wiring (e.g. Easee Current); until then solar starts only at the minimum current · The site measurement is incomplete (L1) — solar runs on total grid power only · The meter's sensors are unavailable (the inverter may be in standby): sensor.solax_grid_current_l1.",
+      "Solar · waiting for sun · The charger's own current is not set — choose it under Site wiring; until then solar starts only at the minimum current · The site measurement is incomplete (L1) — solar runs on total grid power only · The meter's sensors are unavailable (the inverter may be in standby): sensor.solax_grid_current_l1.",
     );
     expect(statusText(field, format("sv"), NOW)).toContain(
-      "Laddarens egen ström är inte vald — välj den under Anläggningens koppling (t.ex. Easee Current)",
+      "Laddarens egen ström är inte vald — välj den under Anläggningens koppling;",
     );
     expect(statusText(field, format("sv"), NOW)).toContain(
       "Mätarens sensorer är otillgängliga (växelriktaren kan vara i viloläge): sensor.solax_grid_current_l1.",
     );
+    // The charger's own sensors are named when its integration has them, in every language.
+    const own = block(
+      statusLine("solar_charger_current_missing", { entity: null, integration: "Peblar", sensors: "Current phase 1–3" }),
+    );
+    expect(statusText(own, format("en"), NOW)).toBe(
+      "The charger's own current is not set — choose Peblar's Current phase 1–3 under Site wiring, or press Use there; until then solar starts only at the minimum current.",
+    );
+    expect(statusText(own, format("sv"), NOW)).toContain(
+      "välj Current phase 1–3 från Peblar under Anläggningens koppling, eller tryck på Använd där",
+    );
+    for (const language of ["da", "de", "es", "fi", "fr", "nb", "nl"] as const) {
+      const text = statusText(own, format(language), NOW);
+      expect(text).toContain("Current phase 1–3");
+      expect(text).not.toMatch(/\{\w+\}/u);
+    }
     const grid = block(statusLine("solar_no_grid_power", { entity: null }));
     expect(statusText(grid, format("en"), NOW)).toBe("Solar · no grid power reading — set Total grid power under Site entities");
     const unreadable = block(statusLine("solar_no_grid_power", { entity: "sensor.net" }));
