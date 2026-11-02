@@ -11,7 +11,7 @@ import type { Status } from "../src/validate";
 import { statusLine } from "./dashboard-fixtures";
 
 const NOW = Date.parse("2026-09-22T08:00:00Z");
-const format = (language: "sv" | "en" | "nb" | "da" | "fi", timeZone = "Europe/Stockholm") =>
+const format = (language: "sv" | "en" | "nb" | "da" | "fi" | "de" | "es" | "fr" | "nl", timeZone = "Europe/Stockholm") =>
   ({ language, timeZone, unit: "öre", currency: "SEK", majorUnit: "kr" }) as const;
 const block = (...lines: Array<ReturnType<typeof statusLine>>): Status =>
   ({ tone: "normal", lines }) as unknown as Status;
