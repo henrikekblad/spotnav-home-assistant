@@ -192,6 +192,9 @@ for how it is measured. The parts belong to the electricity price, so every site
 same parts; they are kept when the area changes. The month on the bill and in SpotNav may differ by the hours the
 site was not measuring: an hour with more than ten minutes without a reading is shown but never sets a peak.
 
+The month day by day is in the charge history's [Power view](card.md#power): each day's highest hour, with the
+days that hold each part's counted peak outlined and numbered, and a tapped day's hours.
+
 ## How the integration uses the prices
 
 The same prices, with the same fees, are there for automations that have nothing to do with a car:

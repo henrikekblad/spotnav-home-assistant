@@ -489,7 +489,14 @@ holds the site's chargers, through load balancing, so the hour stays under it (s
   minutes without a usable reading is kept but never sets a peak. The running hour is kept at most once a minute
   and the month's hours when an hour ends, so a restart keeps them; the minutes the restart took count as missing.
   At the first hour of a new month the month starts again; the month before is kept beside it. What the house
-  imports without the chargers' measured power is kept beside each hour too.
+  imports without the chargers' measured power is kept beside each hour too, and whether the import target held a
+  charger's current down or paused a charger in it.
+- **Two years of days.** Beside the hours the site keeps, per day, its highest hour (with the house's part of it and
+  the hour it started), whether the import target held or paused a charger that day, and per month each part's
+  counted peaks and figure, for 24 months. They are written as each hour ends. The months before 2.4.0 have none.
+- **Where to see it.** The charge history's [Power view](card.md#power) shows a month day by day, with the import
+  target as a line and the days it held or paused a charger marked, and a tapped day's hours; it is offered where the
+  site measures its import.
 - **Import target.** An optional hourly mean of import, in kW, set in the card's Settings beside the main fuse
   (*Import target*, off until set). It is written without restarting load balancing. While it is set, a line under
   it shows the hour running now against it, *This hour: 4.2 of 6.0 kW* (the mean over the minutes measured so far).
