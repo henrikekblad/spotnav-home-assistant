@@ -11,7 +11,7 @@ beside the site's own tracker, so the assertions are on what the meter would bil
 from __future__ import annotations
 
 from collections import defaultdict
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -19,7 +19,7 @@ import pytest
 from freezegun import freeze_time
 from homeassistant.core import HomeAssistant
 from homeassistant.util import dt as dt_util
-from pytest_homeassistant_custom_component.common import async_fire_time_changed
+from pytest_homeassistant_custom_component.common import async_fire_time_changed, async_mock_service
 
 from custom_components.spotnav.const import CONF_IMPORT_TARGET_KW
 from custom_components.spotnav.execution.controller import ChargingPlan
@@ -58,6 +58,9 @@ class _World:
     delivered_kwh: float = 0.0
     #: Fire Home Assistant's timers on every step (the plan's windows and its watch run on them).
     timers: bool = False
+    #: The phone's notify calls and the plan's departure, where a test sets them.
+    calls: list = field(default_factory=list)
+    departure: datetime | None = None
 
     @property
     def car_a(self) -> float:
@@ -141,6 +144,15 @@ class _World:
         self.follow_commands()
         self.show()
         await self.halo.hass.async_block_till_done()
+        self.meter_reports()
+
+    def meter_reports(self) -> None:
+        """The meter reports what the commands did at once (a real one reports every few seconds; this world steps by
+        half minutes): the hour tracker reads it now, as the meter's energy here counts it from now."""
+        controller = self.halo.controller
+        controller.result = controller._calculate()  # noqa: SLF001
+        controller.demand._last_observed = None  # noqa: SLF001
+        controller._observe_demand()  # noqa: SLF001
 
     async def run(self, minutes: float, seconds: float = 30.0) -> None:
         for _ in range(int(minutes * 60 / seconds)):
@@ -185,6 +197,7 @@ async def _charging(world: _World, amps: int = 16) -> None:
     world.halo.switch("on")
     world.show()
     await world.halo.hass.async_block_till_done()
+    world.meter_reports()
 
 
 # -- one car, a 6 kW target, a 1 kW house
@@ -296,26 +309,170 @@ def _plan(now: datetime, departure: datetime, windows: list[tuple[datetime, date
         power_kw=11.04,
         periods=[{"start": start.isoformat(), "end": end.isoformat()} for start, end in windows],
         departure=departure.isoformat(),
+        auto_identity="0123456789abcdef0123456789abcdef",
     )
 
 
-async def test_a_departure_the_held_power_cannot_meet_sets_the_target_aside(hass: HomeAssistant, monkeypatch) -> None:
+async def _tight_night(hass: HomeAssistant, monkeypatch, frozen, name: str, choice: str = "ask") -> _World:
+    """The car held at 7 A with 16.5 kWh to deliver in 90 minutes: the target makes it miss its departure."""
+    from dataclasses import replace as replace_settings
+
+    from custom_components.spotnav.runtime import domain_data
+
+    from .test_notifications import _choose
+
+    world = await _world(hass, monkeypatch, frozen, name)
+    charger = world.halo.charger.entry_id
+    await domain_data(hass).auto_store.async_update(
+        charger, mutate=lambda settings: replace_settings(settings, if_not_ready=choice)
+    )
+    world.calls = async_mock_service(hass, "notify", "mobile_app_pixel")
+    await _choose(hass, charger, targets=("mobile_app_pixel",), events=("plan_at_risk",))
+    await world.step()
+    now = dt_util.utcnow()
+    departure = now + timedelta(hours=1, minutes=30)
+    world.halo.cc.plan = _plan(now, departure, [(now, departure)])
+    world.departure = departure
+    await _charging(world)
+    return world
+
+
+def _told(world: _World) -> list[dict]:
+    return [call.data for call in world.calls if call.data.get("message") != "clear_notification"]
+
+
+async def test_ask_holds_the_target_and_tells_once_with_a_button(hass: HomeAssistant, monkeypatch) -> None:
     with freeze_time(_HOUR + timedelta(seconds=5)) as frozen:
-        world = await _world(hass, monkeypatch, frozen, "leave")
-        await world.step()
-        now = dt_util.utcnow()
-        departure = now + timedelta(hours=1, minutes=30)
-        world.halo.cc.plan = _plan(now, departure, [(now, departure)])
-        await _charging(world)
-        await world.run(5)
-        # 16.5 kWh still planned; 4.8 kW for 90 minutes is 7.2: the car runs unheld, and the status says why.
-        assert world.car_a == 16.0
-        assert world.decision.reason != REASON_IMPORT_TARGET_HELD
-        status = world.halo.controller.import_target_status(world.halo.charger.entry_id)
-        assert status is not None and status.released_for == departure.isoformat() and status.held_a is None
+        world = await _tight_night(hass, monkeypatch, frozen, "ask")
+        await world.run(10)
+        charger = world.halo.charger.entry_id
+        # Nothing set aside by itself: the target holds, and the departure is said to be at risk.
+        assert world.car_a == 7.0
         snapshot = world.halo.controller.import_target_snapshot()
-        assert snapshot["released"] == {world.halo.charger.entry_id: departure.isoformat()}
-        assert any(entry["action"] == "released" for entry in snapshot["log"])
+        assert snapshot["released"] == {} and snapshot["released_by_plan"] == {}
+        assert snapshot["at_risk"][charger]["choice"] == "ask"
+        status = world.halo.controller.import_target_status(charger)
+        assert status is not None and status.at_risk is not None and status.at_risk.missing_kwh > 5
+        told = _told(world)
+        assert len(told) == 1, "told once, not on every recompute"
+        assert "6.0 kW" in told[0]["message"] and "kWh short" in told[0]["message"]
+        actions = told[0]["data"]["actions"]
+        assert actions == [{"action": f"SPOTNAV_IMPORT_TARGET_RELEASE_{charger}", "title": "Release tonight"}]
+        assert told[0]["data"]["tag"] == f"spotnav_{charger}_plan_at_risk"
+        # The phone's button sets the target aside until the departure.
+        hass.bus.async_fire("mobile_app_notification_action", {"action": actions[0]["action"]})
+        await hass.async_block_till_done()
+        await world.run(3)
+        assert world.car_a == 16.0
+        status = world.halo.controller.import_target_status(charger)
+        assert status is not None and status.released_for == world.departure.isoformat()
+        assert not status.released_automatically and status.at_risk is None
+        # The notification is taken off the phones.
+        assert any(call.data.get("message") == "clear_notification" for call in world.calls)
+
+
+async def test_the_shortfall_is_told_again_only_when_it_grows_clearly(hass: HomeAssistant, monkeypatch) -> None:
+    from custom_components.spotnav.site.site_capacity_controller import TargetRisk
+
+    with freeze_time(_HOUR + timedelta(seconds=5)) as frozen:
+        world = await _tight_night(hass, monkeypatch, frozen, "grows")
+        await world.run(2)
+        from custom_components.spotnav.runtime import charger_data
+
+        notifier = charger_data(hass, world.halo.charger.entry_id).notifier
+        departure = world.departure.isoformat()
+        assert len(_told(world)) == 1
+        notifier.import_target_risk(TargetRisk(departure=departure, missing_kwh=9.0, target_kw=6.0))
+        notifier.import_target_risk(TargetRisk(departure=departure, missing_kwh=9.4, target_kw=6.0))
+        await hass.async_block_till_done()
+        assert len(_told(world)) == 1, "a few hundred watt-hours more is no news"
+        notifier._last_sent.clear()  # noqa: SLF001
+        notifier.import_target_risk(TargetRisk(departure=departure, missing_kwh=20.0, target_kw=6.0))
+        await hass.async_block_till_done()
+        assert len(_told(world)) == 2, "a shortfall that grew clearly is told again"
+        notifier.import_target_risk(None)
+        await hass.async_block_till_done()
+        assert world.calls[-1].data["message"] == "clear_notification", "taken off once it can be met again"
+
+
+async def test_release_lets_the_departure_win_by_itself(hass: HomeAssistant, monkeypatch) -> None:
+    with freeze_time(_HOUR + timedelta(seconds=5)) as frozen:
+        world = await _tight_night(hass, monkeypatch, frozen, "release", choice="release")
+        await world.run(5)
+        charger = world.halo.charger.entry_id
+        assert world.car_a == 16.0
+        status = world.halo.controller.import_target_status(charger)
+        assert status is not None and status.released_for == world.departure.isoformat()
+        assert status.released_automatically and status.at_risk is None
+        assert _told(world) == [], "nothing to ask"
+        # The plan counts on the car's own power: the departure wins.
+        assert world.halo.controller.import_target_plan_kw(charger) is None
+
+
+async def test_hold_keeps_the_target_and_only_says_what_will_be_missing(hass: HomeAssistant, monkeypatch) -> None:
+    with freeze_time(_HOUR + timedelta(seconds=5)) as frozen:
+        world = await _tight_night(hass, monkeypatch, frozen, "holdit", choice="hold")
+        await world.run(10)
+        charger = world.halo.charger.entry_id
+        assert world.car_a == 7.0
+        status = world.halo.controller.import_target_status(charger)
+        assert status is not None and status.at_risk is not None and status.at_risk.choice == "hold"
+        assert _told(world) == []
+        from custom_components.spotnav.api import dashboard as dashboard_api
+
+        facts = dashboard_api.status_facts(dashboard_api.capture_dashboard(hass, world.halo.charger))
+        assert facts.import_target is not None and facts.import_target.releasable is False
+
+
+async def test_a_release_holds_until_the_departure_and_survives_a_restart(hass: HomeAssistant, monkeypatch) -> None:
+    from custom_components.spotnav.api.import_target import release_import_target
+    from custom_components.spotnav.site.site_capacity_controller import SiteCapacityController
+
+    with freeze_time(_HOUR + timedelta(seconds=5)) as frozen:
+        world = await _tight_night(hass, monkeypatch, frozen, "wsrelease")
+        await world.run(2)
+        charger = world.halo.charger.entry_id
+        # What the card's command and the app's webhook action do.
+        assert release_import_target(hass, world.halo.charger) is None
+        await world.run(2)
+        assert world.car_a == 16.0
+        # Home Assistant restarts: what was set aside is read back.
+        controller = world.halo.controller
+        await controller._target_release_store.async_save({"released": dict(controller._target_released)})  # noqa: SLF001
+        fresh = SiteCapacityController(hass, controller.entry_id, dict(controller.config))
+        await fresh._async_load_released()  # noqa: SLF001
+        assert fresh._target_released == {charger: world.departure.isoformat()}  # noqa: SLF001
+        # The departure passes: the set-aside ends.
+        frozen.tick(timedelta(hours=2))
+        world.halo.advance(7200.0)
+        controller._prune_released(dt_util.utcnow())  # noqa: SLF001
+        assert controller._target_released == {}  # noqa: SLF001
+
+
+async def test_a_release_without_a_departure_is_refused(hass: HomeAssistant, monkeypatch) -> None:
+    from custom_components.spotnav.site.site_capacity_controller import ERROR_NO_DEPARTURE
+
+    with freeze_time(_HOUR + timedelta(seconds=5)) as frozen:
+        world = await _world(hass, monkeypatch, frozen, "nodeparture")
+        await world.step()
+        await _charging(world)
+        assert world.halo.controller.async_release_import_target(world.halo.charger.entry_id) == ERROR_NO_DEPARTURE
+
+
+async def test_the_floor_charge_is_never_held(hass: HomeAssistant, monkeypatch) -> None:
+    with freeze_time(_HOUR + timedelta(seconds=5)) as frozen:
+        world = await _world(hass, monkeypatch, frozen, "floor")
+        await world.step()
+        await _charging(world)
+        await world.run(2)
+        assert world.car_a == 7.0
+        # The car's minimum level's charge (below it SpotNav charges at once): the floor wins over the target.
+        monkeypatch.setattr(type(world.halo.cc), "charge_origin", property(lambda self: "min_soc"))
+        await world.run(3)
+        assert world.car_a == 16.0
+        assert world.halo.controller.import_target_snapshot()["chargers"][world.halo.charger.entry_id]["action"] == (
+            "unheld"
+        )
 
 
 async def test_a_departure_the_held_power_still_meets_keeps_the_hold(hass: HomeAssistant, monkeypatch) -> None:
@@ -330,7 +487,7 @@ async def test_a_departure_the_held_power_still_meets_keeps_the_hold(hass: HomeA
         await world.run(5)
         assert world.car_a == 7.0
         status = world.halo.controller.import_target_status(world.halo.charger.entry_id)
-        assert status is not None and status.released_for is None
+        assert status is not None and status.released_for is None and status.at_risk is None
 
 
 # -- a person's Start, and the fuse
@@ -539,24 +696,38 @@ async def test_a_yield_step_is_taken_at_the_targets_ceiling_and_a_hold_never_kee
         world = await _world(hass, monkeypatch, frozen, "stepper")
         controller = world.halo.controller
         charger = world.halo.charger.entry_id
+        under = controller._yield_verdict_under_target  # noqa: SLF001
         fuse = RegulatorDecision(10.0, "increase_within_safe_uncredited_margin", "L1")
-        # Free under the target, with room for 9 A: a step to 12 A is taken at 9 A; one to 8 A as it is.
-        controller._target_shares = {charger: TargetShare("free", None, 9.0)}  # noqa: SLF001
-        assert controller._yield_verdict_under_target(charger, fuse, _verdict("write", 12.0)).current_a == 9.0  # noqa: SLF001
-        assert controller._yield_verdict_under_target(charger, fuse, _verdict("write", 8.0)).current_a == 8.0  # noqa: SLF001
-        # Room below the minimum: no step is written at all (the raw proposal goes as it is).
+        # Free under the target, with room for 12 A: a step to 14 A is taken at 12 A; one to 11 A as it is.
+        controller._target_shares = {charger: TargetShare("free", None, 12.0)}  # noqa: SLF001
+        assert under(charger, fuse, _verdict("write", 14.0), 10.0).current_a == 12.0
+        assert under(charger, fuse, _verdict("write", 11.0), 10.0).current_a == 11.0
+        # Room below the minimum: no step up is written at all (the raw proposal goes as it is)...
         controller._target_shares = {charger: TargetShare("free", None, 5.0)}  # noqa: SLF001
-        assert controller._yield_verdict_under_target(charger, fuse, _verdict("write", 12.0)) is None  # noqa: SLF001
-        # The target's own lowering: a hold of the stepper's is set aside, a lower write of its own is kept.
+        assert under(charger, fuse, _verdict("write", 12.0), 10.0) is None
+        # ... but a verdict that lowers the charger is always kept, an urgent revert above all.
+        revert = replace(_verdict("write", 6.0, "revert_not_absorbed"), urgent=True)
+        assert under(charger, fuse, revert, 10.0) is revert
+        step_back = _verdict("write", 8.0, "transient_step_back")
+        assert under(charger, fuse, step_back, 10.0) is step_back
+        # The target's own lowering (7 A, below the 10 A written): a hold of the stepper's is set aside, a lower write
+        # of its own is kept.
         held = RegulatorDecision(7.0, REASON_IMPORT_TARGET_HELD, "L1")
         controller._target_shares = {charger: TargetShare("held", 7.0, 7.0)}  # noqa: SLF001
         hold = _verdict("hold", None, "held_at_yield_setpoint")
-        assert controller._yield_verdict_under_target(charger, held, hold) is None  # noqa: SLF001
-        assert controller._yield_verdict_under_target(charger, held, _verdict("write", 9.0)) is None  # noqa: SLF001
-        assert controller._yield_verdict_under_target(charger, held, _verdict("write", 6.0)).current_a == 6.0  # noqa: SLF001
+        assert under(charger, held, hold, 10.0) is None
+        assert under(charger, held, _verdict("write", 9.0), 10.0) is None
+        assert under(charger, held, _verdict("write", 6.0), 10.0).current_a == 6.0
+        # A decision the target held that is a raise of what is on the charger (12 A held, 7 A written) is no lowering:
+        # the stepper's hold stands, as for any raise.
+        raised = RegulatorDecision(12.0, REASON_IMPORT_TARGET_HELD, "L1")
+        controller._target_shares = {charger: TargetShare("held", 12.0, 12.0)}  # noqa: SLF001
+        assert under(charger, raised, hold, 7.0) is hold
+        assert not controller._target_lowering(raised, 7.0)  # noqa: SLF001
+        assert controller._target_lowering(held, 10.0)  # noqa: SLF001
         # Without a target nothing changes.
         controller._target_shares = {}  # noqa: SLF001
-        assert controller._yield_verdict_under_target(charger, fuse, _verdict("write", 16.0)).current_a == 16.0  # noqa: SLF001
+        assert under(charger, fuse, _verdict("write", 16.0), 10.0).current_a == 16.0
 
 
 async def test_no_battery_probe_starts_a_car_the_target_holds_back(hass: HomeAssistant, monkeypatch) -> None:
@@ -587,7 +758,10 @@ def test_an_app_that_does_not_read_the_targets_lines_gets_the_load_balancing_lin
     from custom_components.spotnav.api.webhook import _status_for_app
 
     held = {"code": "import_target_held", "params": {"limit_a": 7.0, "target_kw": 6.0, "hour_kw": 5.1}}
-    paused = {"code": "import_target_paused", "params": {"until": "2026-11-02T13:00:00+00:00", "target_kw": 6.0}}
+    paused = {
+        "code": "import_target_paused",
+        "params": {"until": "2026-11-02T13:00:00+00:00", "target_kw": 6.0, "house_over": False},
+    }
     house = {"code": "import_target_house_over", "params": {"target_kw": 6.0}}
     released = {"code": "import_target_released", "params": {"target_kw": 6.0, "departure": "2026-11-02T16:00:00+00:00"}}
     assert _status_for_app(held, set()) == {
@@ -614,12 +788,209 @@ async def test_a_plan_counts_on_the_target_less_the_house_never_below_the_minimu
         charger = world.halo.charger.entry_id
         await world.step()
         await world.step()
-        assert world.halo.controller.import_target_plan_kw(charger) == pytest.approx(5.0)
-        # A house of 4 kW leaves 2 kW: below the car's 6 A on three phases, which is all a held charge ever runs at.
+        assert world.halo.controller.import_target_plan_kw(charger) == pytest.approx(5.0, abs=0.01)
+        # A kettle's half minute does not move it: the house's typical load does, not its load this instant.
         world.house_a = 4000.0 / (3 * _V)
         await world.step()
+        assert world.halo.controller.import_target_plan_kw(charger) == pytest.approx(5.0, abs=0.1)
+        # A house that stays at 4 kW leaves 2 kW: below the car's 6 A on three phases, all a held charge runs at.
+        await world.run(30)
         assert world.halo.controller.import_target_plan_kw(charger) == pytest.approx(6 * 3 * _V / 1000.0)
     with freeze_time(_HOUR + timedelta(hours=3, seconds=5)) as frozen:
         free = await _world(hass, monkeypatch, frozen, "plannone", target_kw=None)
         await free.step()
         assert free.halo.controller.import_target_plan_kw(free.halo.charger.entry_id) is None
+
+
+# -- review: the departure is decided on the house's typical load, every recompute
+
+
+async def test_a_kettles_half_minute_never_sets_a_tight_plan_aside(hass: HomeAssistant, monkeypatch) -> None:
+    with freeze_time(_HOUR + timedelta(seconds=5)) as frozen:
+        world = await _world(hass, monkeypatch, frozen, "kettle")
+        await world.step()
+        now = dt_util.utcnow()
+        # 30 kWh by a departure six hours on: the target's 5 kW (6 kW less the house's 1 kW) carries it, just.
+        departure = now + timedelta(hours=6, minutes=30)
+        world.halo.cc.plan = _plan(now, departure, [(now, now + timedelta(hours=2, minutes=43))])
+        await _charging(world)
+        await world.run(10)
+        assert world.car_a == 7.0
+        # The kettle: 3 kW more for half a minute.
+        world.house_a = 4000.0 / (3 * _V)
+        await world.step()
+        world.house_a = 1000.0 / (3 * _V)
+        await world.run(10)
+        snapshot = world.halo.controller.import_target_snapshot()
+        assert snapshot["at_risk"] == {}, snapshot["log"]
+        assert not any(entry["action"] == "at_risk" for entry in snapshot["log"]), snapshot["log"]
+        assert world.car_a == 7.0
+
+
+# -- review: the last ten minutes keep what the target held, and claim nothing more
+
+
+async def test_the_hours_end_keeps_a_held_car_where_it_was_without_claiming_the_budget_holds_it(
+    hass: HomeAssistant, monkeypatch
+) -> None:
+    with freeze_time(_HOUR + timedelta(seconds=5)) as frozen:
+        # A 13 kW target and a 6 kW house hold the car to 10 A (the fuse would give it 11).
+        world = await _world(hass, monkeypatch, frozen, "hourend", target_kw=13.0, house_w=6000.0)
+        await world.step()
+        await _charging(world)
+        await world.run(50)
+        assert world.car_a == 10.0
+        # Eight minutes left and the house gone quiet: the budget has room for the car's 16 A, the hour's end not.
+        world.house_a = 0.0
+        await world.run(4)
+        charger = world.halo.charger.entry_id
+        snapshot = world.halo.controller.import_target_snapshot()
+        assert snapshot["chargers"][charger]["action"] == "free"
+        assert world.car_a == 10.0
+        assert snapshot["chargers"][charger]["kept_at_hour_end"] is True
+        assert snapshot["chargers"][charger]["lowered"] is False
+        assert world.halo.controller.load_balancing_limit(charger)[1] != LIMIT_CAUSE_IMPORT_TARGET
+        status = world.halo.controller.import_target_status(charger)
+        assert status is not None and status.held_a is None
+        # The next hour raises it.
+        await world.run(15)
+        assert world.car_a > 10.0
+
+
+async def test_the_hours_end_does_not_keep_a_car_the_fuse_lowered(hass: HomeAssistant, monkeypatch) -> None:
+    with freeze_time(_HOUR + timedelta(minutes=50, seconds=5)) as frozen:
+        # A 20 kW target never holds the car; a house of 12 A a phase on the 20 A fuse does, then goes.
+        world = await _world(hass, monkeypatch, frozen, "fuseend", target_kw=20.0, house_w=12 * 3 * _V)
+        await world.step()
+        await _charging(world)
+        await world.run(2)
+        assert world.car_a <= 8.0
+        world.house_a = 1000.0 / (3 * _V)
+        await world.run(4)
+        assert dt_util.utcnow() < _HOUR + timedelta(hours=1)
+        assert world.car_a > 8.0, "the fuse's lowering is lifted at once, not kept to the hour's end"
+
+
+# -- review: a charge the target does not hold, paused, takes nothing from the budget
+
+
+async def test_a_persons_charge_the_fuse_paused_is_counted_at_nothing(hass: HomeAssistant, monkeypatch) -> None:
+    from types import SimpleNamespace
+
+    from custom_components.spotnav.site import site_capacity_controller as module
+    from custom_components.spotnav.site.import_target import HourBudget
+
+    with freeze_time(_HOUR + timedelta(seconds=5)) as frozen:
+        world = await _world(hass, monkeypatch, frozen, "personpaused")
+        controller = world.halo.controller
+        request = controller._build_requests(credit=False)[0]  # noqa: SLF001
+        paused = SimpleNamespace(
+            charge_origin=None, paused_charge_origin="manual", paused_by_balancing=True, requested_current_a=16
+        )
+        monkeypatch.setattr(module, "controller_for", lambda _hass, _entry_id: paused)
+        budget = HourBudget(
+            target_kw=6.0, hour_start=_HOUR, hour_end=_HOUR + timedelta(hours=1), so_far_kwh=0.0, hour_kw=0.0,
+            remaining_s=3600.0, house_w=1000.0, rate_w=6000.0, allowed_w=5000.0, house_over=False,
+        )
+        member = controller._target_member(request, None, budget)  # noqa: SLF001
+        assert not member.holdable and member.wants_a == 0.0
+        paused.paused_charge_origin = "plan_window"
+        member = controller._target_member(request, None, budget)  # noqa: SLF001
+        assert member.holdable and member.wants_a == 16.0, "a plan's paused charge is counted at what it resumes at"
+
+
+# -- review: a charger the hold cannot act on
+
+
+async def test_a_charger_whose_phase_cannot_be_judged_is_said_and_not_planned_as_held(
+    hass: HomeAssistant, monkeypatch
+) -> None:
+    with freeze_time(_HOUR + timedelta(seconds=5)) as frozen:
+        world = await _world(hass, monkeypatch, frozen, "inert")
+        controller = world.halo.controller
+        charger = world.halo.charger.entry_id
+        await world.step()
+        await _charging(world)
+        await world.run(2)
+        assert controller.import_target_plan_kw(charger) is not None
+        monkeypatch.setattr(type(controller), "_target_floor_a", lambda *_args: None)
+        await world.run(2)
+        snapshot = controller.import_target_snapshot()
+        assert snapshot["chargers"][charger]["inert"] == "phase_cannot_be_judged"
+        assert world.decision.reason not in (REASON_IMPORT_TARGET_HELD, REASON_IMPORT_TARGET_PAUSED)
+        assert controller.import_target_plan_kw(charger) is None
+
+
+async def test_a_charger_without_a_current_of_its_own_is_not_planned_as_held(hass: HomeAssistant, monkeypatch) -> None:
+    with freeze_time(_HOUR + timedelta(seconds=5)) as frozen:
+        world = await _world(hass, monkeypatch, frozen, "nosource")
+        controller = world.halo.controller
+        charger = world.halo.charger.entry_id
+        await world.step()
+        await world.step()
+        assert controller.import_target_plan_kw(charger) is not None
+        controller.config["phase_wiring"][charger].pop("measured_current_source")
+        assert controller.import_target_plan_kw(charger) is None
+
+
+# -- review: a failure of the target's own leaves the fuse's decisions as they are
+
+
+async def test_a_failing_target_never_delays_an_overload_lowering(hass: HomeAssistant, monkeypatch) -> None:
+    from custom_components.spotnav.site import site_capacity_controller as module
+
+    with freeze_time(_HOUR + timedelta(seconds=5)) as frozen:
+        world = await _world(hass, monkeypatch, frozen, "failing", target_kw=20.0)
+        await world.step()
+        await _charging(world)
+        await world.run(2)
+
+        def broken(*_args, **_kwargs):
+            raise RuntimeError("the target's own bug")
+
+        monkeypatch.setattr(module, "share_budget", broken)
+        written = len(world.halo.written())
+        world.house_a = 10.0  # 26 A on a 20 A fuse: lowered to 10 A at once
+        world.show()
+        await hass.async_block_till_done()
+        await world.halo.tick()
+        decision = world.decision
+        assert decision.overload or decision.reason == "reducing_current_due_to_active_import_overload"
+        assert len(world.halo.written()) > written, "the lowering went out in the same pass"
+        assert world.car_a < 16.0
+        assert world.halo.controller.import_target_snapshot()["not_applied"] == "error"
+
+
+# -- the card's command and the app's action
+
+
+async def test_the_card_and_the_app_can_ask_and_are_told_why_not(hass: HomeAssistant, hass_ws_client, hass_client_no_auth) -> None:
+    from .world import setup_charger
+
+    await setup_charger(hass)
+    client = await hass_ws_client(hass)
+    await client.send_json({"id": 1, "type": "spotnav/release_import_target", "api_version": 1, "charger_id": "entry_a"})
+    answer = await client.receive_json()
+    assert answer["result"] == {"api_version": 1, "ok": False, "error": "spotnav_no_site"}
+    web = await hass_client_no_auth()
+    response = await web.post("/api/webhook/webhook-a", json={"version": 1, "action": "release_import_target"})
+    assert response.status == 400
+    assert await response.json() == {
+        "api_version": 1, "ok": False, "error": "spotnav_no_site", "action": "release_import_target",
+    }
+
+
+async def test_a_plan_at_risk_is_not_told_beside_the_targets_own_shortfall(hass: HomeAssistant, monkeypatch) -> None:
+    from custom_components.spotnav.runtime import charger_data
+
+    with freeze_time(_HOUR + timedelta(seconds=5)) as frozen:
+        world = await _tight_night(hass, monkeypatch, frozen, "single")
+        await world.run(2)
+        assert len(_told(world)) == 1
+        notifier = charger_data(hass, world.halo.charger.entry_id).notifier
+        notifier._last_sent.clear()  # noqa: SLF001
+        # The plan itself is found short of its departure meanwhile: one notification for this case, not two.
+        monkeypatch.setattr(notifier._tracker, "observe", lambda _facts: [("plan_at_risk", {"time": "07:00"})])  # noqa: SLF001
+        notifier._observe()  # noqa: SLF001
+        await hass.async_block_till_done()
+        assert len(_told(world)) == 1
