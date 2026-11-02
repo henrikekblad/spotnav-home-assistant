@@ -3433,8 +3433,8 @@ class ChargingController:
         * `manual` marks a person deciding to charge. It clears any recorded target stop and is not vetoed
           by a reading at or above the target: with no plan there is nothing to enforce. The veto lives in
           `_async_start_window`, which only the scheduled path uses.
-        * `requested_current_a` is set only from an explicit request (the `amps` argument, or the active
-          plan's amps). Otherwise it is preserved across a stop and never backfilled from the entity's live
+        * `requested_current_a` is set only from an explicit request: the `amps` argument, else the current the
+          person set (`_setting_amps`: a plan made at an older one is stale), else the active plan's amps. Otherwise it is preserved across a stop and never backfilled from the entity's live
           setpoint; with nothing known it stays `None`, never 0.
         * The request is recorded, not applied, unless this charger opted in to `ChangeConfiguration`
           (`CONF_CURRENT_CONTROL`). By default the current-limit entity is never written, since that would
@@ -3453,7 +3453,9 @@ class ChargingController:
         if manual and self._target_stop is not None:
             self._target_stop = None
             await self._async_save()
-        explicit_amps = amps if amps is not None else (self.plan.amps if self.plan is not None else None)
+        explicit_amps = amps if amps is not None else self._setting_amps()
+        if explicit_amps is None and self.plan is not None:
+            explicit_amps = self.plan.amps
         if explicit_amps is None and manual:
             # A person's Start with no current named and no plan (a paused Auto keeps none): the last current
             # asked for, so the start is still capped by load balancing as every start is.
@@ -3591,6 +3593,19 @@ class ChargingController:
             await self._async_save_quietly()
         self._notify()
         return executed
+
+    def _setting_amps(self) -> int | None:
+        """The charging current the person set for this charger ("Laddström", the settings' `amps`), or `None` when
+        none is set or the settings cannot be read. Every start that names no current starts at it."""
+        from ..runtime import domain_data  # imported here: `runtime` reaches this module
+
+        try:
+            store = domain_data(self.hass).auto_store
+            amps = None if store is None else store.settings(self.entry_id).amps
+        except Exception:  # noqa: BLE001 - a start must not fail on reading a setting; the plan's current stands
+            _LOGGER.debug("SpotNav charger %s: the charging current could not be read", self.entry_id, exc_info=True)
+            return None
+        return amps if isinstance(amps, int) and amps > 0 else None
 
     async def async_set_requested_current(self, amps: int) -> None:
         """Record a new requested current. Writes nothing to the charger, ever.
