@@ -108,6 +108,16 @@ def test_a_house_alone_over_the_target_is_said() -> None:
     assert not _budget(30, 2.0, house_w=3000.0).house_over
 
 
+def test_the_house_alone_is_over_only_above_the_persons_target_not_its_margin() -> None:
+    # 30 minutes in, 2.975 kWh so far and the house alone at 5.95 kW: the hour ends at 5.95 kW, above what the
+    # chargers are held under (5.88) but not above the 6.0 kW target the line names. The chargers get nothing.
+    budget = _budget(30, 2.975, house_w=5950.0)
+    assert not budget.house_over
+    assert budget.allowed_w == 0.0
+    # Above the target itself: said.
+    assert _budget(30, 2.975, house_w=6100.0).house_over
+
+
 @pytest.mark.parametrize(
     ("running", "house_w", "reason"),
     [

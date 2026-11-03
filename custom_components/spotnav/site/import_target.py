@@ -189,7 +189,8 @@ def hour_budget(
     target_wh = hold_kw * 1000.0
     rate_w = (target_wh - so_far_wh) * HOUR_S / remaining_s
     allowed_w = min(max(0.0, rate_w - house_w), max(0.0, ceiling_w))
-    house_over = so_far_wh + max(0.0, house_w) * remaining_s / HOUR_S > target_wh
+    # The house alone against the level a person is shown (the line names it), the chargers held under the margin.
+    house_over = so_far_wh + max(0.0, house_w) * remaining_s / HOUR_S > target_kw * 1000.0
     return (
         HourBudget(
             target_kw=target_kw,
