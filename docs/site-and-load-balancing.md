@@ -115,8 +115,13 @@ derives its current from power, a phase's active power that has not changed for 
 still counts as fresh (a still value, not a lost one) while Home Assistant keeps hearing from it and
 the same phase's voltage, or the reactive or apparent power the site reads for it, changed within the
 maximum age: some meters (a Sigenergy with the grid held at about 0 W by its battery) leave a phase's
-power unchanged for minutes while the meter is live. The last value is kept. A phase whose power is
-unavailable or unknown, or whose other readings sit still too, is stale as before. The diagnostics
+power unchanged for minutes while the meter is live. The last value is kept, and it is trusted for
+holding and lowering a charger only, never for raising one: while a phase the charger draws on sits
+still, load balancing keeps the charger's current rather than raise it (`held_still_no_raise` in the
+diagnostics), and no yield step, probe or resume raises or starts it either; nor does a still value
+widen the room an increase may take. Once the phase's power changes again, raises are judged as ever.
+A phase whose power is unavailable or unknown, whose age Home Assistant cannot tell, or whose other
+readings sit still too, is stale as before. The diagnostics
 show such a phase under `phase_signed_active_power_held_still` (`held_still`, with the companion
 reading and its age; the entity is the one the site's settings name for that phase). And if
 the chargers together claim more current than the site's total (beyond a small tolerance) the
