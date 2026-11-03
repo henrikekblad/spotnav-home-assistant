@@ -651,7 +651,11 @@ charger draws on would turn from import to export (so the current the fuse carri
   alone: it counts toward the hour but is never held. A held charge the fuse paused counts at what it resumes at.
 - **Solar and Hybrid.** The target counts import from the grid only, so a charge the sun covers is free. Under
   *battery first* a home battery's discharge counts as import too (the car is not to be paid for by the battery);
-  under *car first* only the grid counts.
+  under *car first* only the grid counts. A lowering never turns a phase the car draws on from import to export,
+  so with the grid held at about nothing it could not lower the car at all; under *battery first*, with the battery
+  read live and discharging, lowering the car by up to the battery's discharge only lowers that discharge, so the
+  car may come down that much further (spread evenly over its phases). Any drop beyond that still keeps every
+  phase an import, and with the battery not read live nothing changes.
 - **Yield stepping and the battery probe** never step a charger above what the target leaves it, and no probe or
   resume starts a charge the target holds back.
 - **Not applied** (nothing held for the target, and the fuse rules as always) while load balancing is off, the
