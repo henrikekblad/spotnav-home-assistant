@@ -215,6 +215,12 @@ export interface NumberEditorInput {
   prefill?: number | null;
   /** A figure to offer ("Förslag: 36 öre/kWh"); tapping it fills the field. */
   suggestion?: number | null;
+  /**
+   * Advice read after the editor opens (the import target's suggestion from Home Assistant's statistics): `loading`
+   * shows until `answer` settles, then its sentence and, with a figure, `use`, which fills the field (nothing is
+   * saved until Save). An answer of `null`, or a failure, leaves nothing behind.
+   */
+  advice?: { loading: string; use: string; answer: Promise<{ text: string; value: number | null } | null> };
   rangeMessage: string;
   idPrefix: string;
 }
@@ -272,6 +278,39 @@ export function numberEditor(
       field.focus();
     });
     body.append(offer);
+  }
+  if (input.advice !== undefined) {
+    const advice = input.advice;
+    const box = element(doc, "div", C.entityHelp);
+    box.dataset["valueAdvice"] = "loading";
+    box.setAttribute("aria-live", "polite");
+    box.textContent = advice.loading;
+    body.append(box);
+    void advice.answer
+      .catch(() => null)
+      .then((answer) => {
+        if (answer === null) {
+          box.remove();
+          return;
+        }
+        box.dataset["valueAdvice"] = answer.value === null ? "reason" : "suggestion";
+        box.replaceChildren(element(doc, "p", undefined, answer.text));
+        if (answer.value !== null) {
+          const figure = shown(answer.value);
+          const use = element(doc, "button", C.settingRowSuggestion, advice.use) as HTMLButtonElement;
+          use.type = "button";
+          use.dataset["valueAdviceUse"] = "true";
+          use.addEventListener("click", () => {
+            if (none !== null) {
+              none.checked = false;
+            }
+            field.disabled = false;
+            field.value = figure;
+            field.focus();
+          });
+          box.append(use);
+        }
+      });
   }
   const line = element(doc, "div", C.settingsRow);
   line.append(field);

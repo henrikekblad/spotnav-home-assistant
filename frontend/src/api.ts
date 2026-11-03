@@ -24,6 +24,7 @@ import {
 import type { EntityRequest, VehicleSocRequest } from "./entity-config";
 import type { SiteSettingsRequest } from "./site-settings";
 import type { GridTariffBody } from "./grid-tariff";
+import { SUGGEST_IMPORT_TARGET_API_VERSION } from "./target-suggestion";
 
 export const UNSUPPORTED_API_VERSION = "spotnav_unsupported_api_version";
 
@@ -503,6 +504,18 @@ export async function releaseImportTarget(hass: HomeAssistantLike, chargerId: st
   return await call<unknown>(hass, {
     type: "spotnav/release_import_target",
     api_version: RELEASE_IMPORT_TARGET_API_VERSION,
+    charger_id: chargerId,
+  });
+}
+
+/**
+ * A suggested import target for the charger's site from Home Assistant's statistics (administrators only), the
+ * import target's editor's advice; decoded by `target-suggestion.ts`.
+ */
+export async function suggestImportTarget(hass: HomeAssistantLike, chargerId: string): Promise<unknown> {
+  return await call<unknown>(hass, {
+    type: "spotnav/suggest_import_target",
+    api_version: SUGGEST_IMPORT_TARGET_API_VERSION,
     charger_id: chargerId,
   });
 }
