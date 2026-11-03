@@ -196,7 +196,14 @@ STATUS_CODES: Final[dict[str, tuple[str, tuple[str, ...]]]] = {
     # no longer end under `target_kw` (kW, an hourly mean) with the car at its minimum, so it waits for the next clock
     # hour, `until`. `house_over`: the house alone ends the hour above the target (said in place of "so the hour stays
     # under it", which it does not).
-    "import_target_paused": (TONE_NORMAL, ("until", "target_kw", "house_over", "set_kw")),
+    # `releasable`, `release_until` and `release_peak_kw`, here and on the held and at-risk lines: the target may be set
+    # aside for this charge (`spotnav/release_import_target`), until `release_until` (the plan's departure; `null`:
+    # until the car is unplugged), and the hour's import may then reach `release_peak_kw` (kW, an estimate; `null`
+    # when not known), for a client's confirmation.
+    "import_target_paused": (
+        TONE_NORMAL,
+        ("until", "target_kw", "house_over", "set_kw", "releasable", "release_until", "release_peak_kw"),
+    ),
     # The plan's last window ended with the car still drawing on a charge to its own limit: it goes on
     # until the car stops by itself, at most until `until` (an hour past the window, never past the
     # departure).
@@ -289,18 +296,25 @@ STATUS_CODES: Final[dict[str, tuple[str, tuple[str, ...]]]] = {
     # `target_kw`; `hour_kw` is the hour's mean import so far (kW).
     # `set_kw`, here and on the paused and at-risk lines: the import target as set; below `target_kw` where the
     # month's free level (a demand charge's peak already paid for) lifts it this hour.
-    "import_target_held": (TONE_NORMAL, ("limit_a", "target_kw", "hour_kw", "set_kw")),
+    "import_target_held": (
+        TONE_NORMAL,
+        ("limit_a", "target_kw", "hour_kw", "set_kw", "releasable", "release_until", "release_peak_kw"),
+    ),
     # The house alone, with no charger, ends this hour above the import target (`target_kw`), while the car charges
     # (a charge the target paused says it in its own line): SpotNav holds back nothing more than its chargers, and does
     # not claim the hour stays under it.
     "import_target_house_over": (TONE_NORMAL, ("target_kw", "set_kw")),
     # The import target (`target_kw`) is set aside for this charge until its departure (`departure`, an instant): by a
     # person, or by the plan's own choice (`automatic`, `if_not_ready` `release`) while holding would miss it.
+    # `departure` is `null` for a set-aside with no departure ahead (a person's Start): until the car is unplugged.
     "import_target_released": (TONE_NORMAL, ("target_kw", "departure", "automatic")),
     # Under the import target (`target_kw`) the plan misses its departure (`departure`, an instant) by `missing_kwh`.
     # `releasable` (the plan's `if_not_ready` `ask`): a person may set the target aside for this charge until then
     # (`spotnav/release_import_target`); else (`hold`) it is only said.
-    "import_target_at_risk": (TONE_NOTICE, ("departure", "missing_kwh", "target_kw", "releasable", "set_kw")),
+    "import_target_at_risk": (
+        TONE_NOTICE,
+        ("departure", "missing_kwh", "target_kw", "releasable", "set_kw", "release_until", "release_peak_kw"),
+    ),
     "load_balancing_unavailable": (TONE_NOTICE, ()),
     # The charger's own scheduler, smart start or load balancer holds the charge (Easee): nothing is
     # wrong, and nothing SpotNav sends releases it.
@@ -518,6 +532,11 @@ class ImportTargetFacts:
     releasable: bool = True
     #: The plan's own choice set it aside, not a person.
     released_automatically: bool = False
+    #: Set aside with no departure ahead: until the car is unplugged (`released_for` is then `None`).
+    released_until_unplug: bool = False
+    #: What a release would mean (`ImportTargetStatus.release_until`, `release_peak_kw`).
+    release_until: datetime | None = None
+    release_peak_kw: float | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -952,7 +971,8 @@ def _plan_headline(facts: StatusFacts) -> list[dict[str, Any]]:
     if facts.charging:
         return [_line("charging_now", until=None)]
     target = facts.import_target
-    if facts.balancing_paused and active is not None and target is not None and target.paused_until is not None:
+    if facts.balancing_paused and target is not None and target.paused_until is not None:
+        # A plan's charge or a person's Start alike: the target paused it to the next hour.
         return [
             _line(
                 "import_target_paused",
@@ -960,8 +980,9 @@ def _plan_headline(facts: StatusFacts) -> list[dict[str, Any]]:
                 target_kw=round(target.target_kw, 2),
                 house_over=target.house_over,
                 set_kw=round(target.target_kw if target.set_kw is None else target.set_kw, 2),
+                **_release_params(target),
             ),
-            *_plan_facts(proposal, energy=True, cost=True, distance=False),
+            *(_plan_facts(proposal, energy=True, cost=True, distance=False) if active is not None else []),
         ]
     if facts.balancing_paused and active is not None:
         retry_at = facts.balancing_retry_at
@@ -1110,6 +1131,7 @@ def _notices(facts: StatusFacts) -> list[dict[str, Any]]:
                         target_kw=round(target.target_kw, 2),
                         hour_kw=round(target.hour_kw, 2),
                         set_kw=round(target.target_kw if target.set_kw is None else target.set_kw, 2),
+                        **_release_params(target),
                     )
                 )
             else:
@@ -1131,11 +1153,11 @@ def _notices(facts: StatusFacts) -> list[dict[str, Any]]:
                 departure=aware_iso(target.at_risk_departure),
                 missing_kwh=round(target.missing_kwh, 1),
                 target_kw=round(target.target_kw, 2),
-                releasable=target.releasable,
                 set_kw=round(target.target_kw if target.set_kw is None else target.set_kw, 2),
+                **{**_release_params(target), "releasable": target.releasable},
             )
         )
-    if target is not None and target.released_for is not None and facts.charging:
+    if target is not None and (target.released_for is not None or target.released_until_unplug) and facts.charging:
         lines.append(
             _line(
                 "import_target_released",
@@ -1153,6 +1175,15 @@ def _notices(facts: StatusFacts) -> list[dict[str, Any]]:
             )
         )
     return lines
+
+
+def _release_params(target: ImportTargetFacts) -> dict[str, Any]:
+    """The release a held or paused line offers: always, as the one way past the target (see `STATUS_CODES`)."""
+    return {
+        "releasable": True,
+        "release_until": None if target.release_until is None else aware_iso(target.release_until),
+        "release_peak_kw": target.release_peak_kw,
+    }
 
 
 def _shortfall_line(facts: StatusFacts) -> dict[str, Any] | None:

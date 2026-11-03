@@ -285,6 +285,8 @@
         "departure",
         "missing_kwh",
         "releasable",
+        "release_peak_kw",
+        "release_until",
         "set_kw",
         "target_kw"
       ],
@@ -294,6 +296,9 @@
       "params": [
         "hour_kw",
         "limit_a",
+        "releasable",
+        "release_peak_kw",
+        "release_until",
         "set_kw",
         "target_kw"
       ],
@@ -309,6 +314,9 @@
     "import_target_paused": {
       "params": [
         "house_over",
+        "releasable",
+        "release_peak_kw",
+        "release_until",
         "set_kw",
         "target_kw",
         "until"

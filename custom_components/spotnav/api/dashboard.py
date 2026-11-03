@@ -2596,6 +2596,7 @@ def _import_target_facts(status: Any) -> ImportTargetFacts | None:
     if status is None:
         return None
     released = None if status.released_for is None else dt_util.parse_datetime(status.released_for)
+    release_until = None if status.release_until is None else dt_util.parse_datetime(status.release_until)
     risk = status.at_risk
     risk_departure = None if risk is None else dt_util.parse_datetime(risk.departure)
     return ImportTargetFacts(
@@ -2609,6 +2610,10 @@ def _import_target_facts(status: Any) -> ImportTargetFacts | None:
         missing_kwh=None if risk is None else risk.missing_kwh,
         releasable=risk is None or risk.choice == IF_NOT_READY_ASK,
         released_automatically=status.released_automatically,
+        # A set-aside kept "until_unplug" parses as no instant.
+        released_until_unplug=status.released_for is not None and released is None,
+        release_until=None if release_until is None else _utc(release_until),
+        release_peak_kw=status.release_peak_kw,
     )
 
 
