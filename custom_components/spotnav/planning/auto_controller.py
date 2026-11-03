@@ -60,6 +60,8 @@ from ..vehicles.soc_estimate import (
     REGISTER_TOLERANCE_KWH,
     SocReader,
 )
+from ..const import GUEST_VEHICLE_ID
+from ..vehicles.guest import is_guest
 from ..vehicles.vehicle_discovery import resolve_target_vehicle
 from ..vehicles.vehicle_properties import resolved_vehicle_id, stored_properties
 from ..execution.min_soc_floor import effective_floor, known_soc
@@ -119,6 +121,9 @@ _LOGGER = logging.getLogger(__name__)
 #: Stands in for a request's `now` when telling whether a preview failure repeats: the clock moves every call.
 _FAILURE_CLOCK: Final = datetime(2000, 1, 1, tzinfo=timezone.utc)
 
+
+#: A guest car with no departure is charged within this long of the calculation (`vehicles/guest.py`).
+GUEST_WITHIN: Final = timedelta(hours=12)
 
 #: Owner id prefix for the refresh-manager subscription; never stored.
 OWNER_PREFIX: Final = "auto:"
@@ -430,8 +435,11 @@ def live_vehicle_facts(
 ) -> LiveVehicleFacts | None:
     """What the planner knows about the vehicle a target is for, right now.
 
-    Resolved as the dashboard resolves it (`resolve_target_vehicle`), so planning and display agree.
+    Resolved as the dashboard resolves it (`resolve_target_vehicle`), so planning and display agree. Nothing for a
+    guest car: no level is read or awaited for it.
     """
+    if stored_vehicle_id == GUEST_VEHICLE_ID:
+        return None
     vehicle_id, _ = resolve_target_vehicle(hass, stored_vehicle_id or None, allowed)
     soc_source.ensure_watch(vehicle_id)
     reading = soc_source.read(vehicle_id)
@@ -966,8 +974,11 @@ class AutoPlannerController:
         Without a chosen date, a daily departure that leaves some weekdays out takes the date of its next
         occurrence on a weekday that is in the set, when that is not simply the next occurrence: the plan
         then runs to that day, exactly as it does to a date the person chose.
+
+        A guest car leaves at the next occurrence of the time: the household's date and weekdays are not its own
+        (the Plan dialog does not show them for a guest).
         """
-        if not settings.departure_enabled:
+        if not settings.departure_enabled or is_guest(settings):
             return None
         zone = time_zones.zone(entry.tz)
         if zone is None:
@@ -1371,6 +1382,10 @@ class AutoPlannerController:
             departure_date=self._effective_departure_date(settings, entry, calculated_at),
             voltage_between_phases_v=voltage_between_phases_v(self._hass, self._entry_id),
             power_cap_kw=self._plan_power_cap_kw(settings),
+            # A guest car with no departure is charged within `GUEST_WITHIN`, not the whole horizon.
+            window_end=(
+                calculated_at + GUEST_WITHIN if is_guest(settings) and not settings.departure_enabled else None
+            ),
         )
         wait_facts: dict[str, Any] = {}
         try:
@@ -1680,7 +1695,8 @@ class AutoPlannerController:
         vehicle_id = resolved_vehicle_id(self._hass, self._entry_id)
         subject = subject_for(vehicle_id)
         wiring = self._wiring(settings)
-        if self._learned is None or wiring is None:
+        if self._learned is None or wiring is None or is_guest(settings):
+            # Nothing is known of a guest car: not the charger's either, which was learned of the household's.
             return LearnedPower(subject=subject, kw=None, minutes=0.0, sessions=0, trusted=False)
         high_kw, low_w = hybrid_execution.charge_power_limits(self._hass, self._entry_id, settings)
         low_kw = low_w / 1000.0
@@ -1861,9 +1877,11 @@ class AutoPlannerController:
                 charging=controller.charging and not self._car_ending(controller),
             ),
         )
+        guest = is_guest(settings)
         if self._sampler is not None:
             clean = (
-                window is not None
+                not guest
+                and window is not None
                 and held is None
                 and not car_ended
                 and reading is not None
@@ -1882,7 +1900,8 @@ class AutoPlannerController:
                 session = self._learning_session(controller, plan, window)
                 sample = PowerSample(at=now, kwh=reading, session=session, subject=learned.subject, wiring=wiring)
             self._sampler.sample(sample, planned_kw)
-        if self._energy_sampler is not None:
+        if self._energy_sampler is not None and not guest:
+            # Nothing is learned of a guest car (`vehicles/guest.py`).
             try:
                 self._sample_energy(controller, facts, now, reading, reading_at)
             except Exception:  # noqa: BLE001 - learning is a convenience, never worth the behind-plan decision
@@ -2774,6 +2793,13 @@ class AutoPlannerController:
                 await self._executor.async_end_plan_need_met()
             except Exception as err:  # noqa: BLE001 - reported; the next calculation ends it
                 _LOGGER.warning("Ending a plan whose energy is delivered failed: %s", type(err).__name__)
+        if self._executor is not None and is_guest(self._store.settings(self._entry_id)):
+            # A guest car's amount is delivered: the charger is held until it is unplugged (`core/ownership.py`).
+            try:
+                await self._executor.async_guest_met(True)
+            except Exception as err:  # noqa: BLE001 - reported; the next delivered reading tries again
+                self._energy_met_done = None
+                _LOGGER.warning("Holding a guest car's charger after its amount failed: %s", type(err).__name__)
         await self.async_recalculate()
 
     def _baseline(self) -> EnergyBaseline | None:

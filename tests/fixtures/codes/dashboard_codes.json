@@ -235,6 +235,17 @@
       ],
       "tone": "normal"
     },
+    "guest_done": {
+      "params": [],
+      "tone": "normal"
+    },
+    "guest_planned": {
+      "params": [
+        "departure",
+        "kwh"
+      ],
+      "tone": "normal"
+    },
     "held_by_charger": {
       "params": [],
       "tone": "notice"

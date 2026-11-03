@@ -56,6 +56,11 @@ export interface SettingsEditorForm {
    */
   plannedVehicleName?: string | null;
   /**
+   * The charger plans for a guest car: the Plan dialog has no car target, level, fill, minimum level or charge
+   * limit, only the guest's kWh (its car row says "Guest car"). Absent or `false` otherwise.
+   */
+  guest?: boolean;
+  /**
    * What the departure date picker offers (today..+7 in the market's zone, and where a date starts), or
    * `null` while the zone is unknown: then a date can be seen and cleared but not chosen.
    */
@@ -329,8 +334,9 @@ export function settingsEditorBody(
       return;
     }
     // The battery's room, when the dashboard states it: a "full" mark on the track, a top past it (twice the
-    // room, at least 30 kWh, never past the battery to the car's limit) and a last step that is "Fill".
-    const soc = form.soc ?? null;
+    // room, at least 30 kWh, never past the battery to the car's limit) and a last step that is "Fill". A guest
+    // car's is never known.
+    const soc = form.guest === true ? null : (form.soc ?? null);
     const room = soc?.room_kwh ?? null;
     const top = soc === null ? null : energyFillTop(soc);
     const fillable = top !== null && form.fillSupported === true;
@@ -526,7 +532,10 @@ export function settingsEditorBody(
     const departure = element(doc, "div");
     departure.dataset["part"] = "departure";
     departure.append(field(doc, `${idPrefix}-deadline-time`, translate(language, "settings.deadline.time"), timeInput));
-    appendDate(departure);
+    if (form.guest !== true) {
+      // A guest leaves at the next occurrence of the time: the household's date and weekdays are not shown.
+      appendDate(departure);
+    }
     departure.hidden = !enabledInput.checked;
     enabledInput.addEventListener("change", () => {
       departure.hidden = !enabledInput.checked;
@@ -930,6 +939,17 @@ export function settingsEditorBody(
       }
     };
     const label = translate(language, "settings.plan.mode.legend");
+    if (form.guest === true) {
+      // A guest car is planned by kWh only: its car row in place of "Charge by", and nothing of a car below.
+      socMode = false;
+      body.append(socRow("vehicle", translate(language, "settings.soc.vehicle"), translate(language, "identify.guest")));
+      const energyPart = element(doc, "div");
+      energyPart.dataset["part"] = "energy";
+      appendEnergy(energyPart);
+      body.append(energyPart);
+      announceVehicle();
+      return;
+    }
     if (choosable) {
       const [row] = settingRow(doc, {
         key: "charge_by",

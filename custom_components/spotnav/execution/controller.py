@@ -2335,6 +2335,55 @@ class ChargingController:
         finally:
             self._core_end_event(token, facts, lambda: core_events.NeedMet(**facts), outcome=outcome)
 
+    async def async_guest_met(self, met: bool = True) -> bool:
+        """A guest car's amount is delivered (`met`), or its plan ended without an unplug (`met` false): fed to the
+        core (`GuestMet`), which holds the charger until the unplug. A charge the core stops for it is stopped and the
+        plan cleared; with nothing to stop, the plan still ahead is cleared. A person's Start or a Charge-now start
+        goes on. Returns whether a stop went out."""
+        async with self._lock:
+            token = self._runner.begin()
+            facts = self._core_facts(
+                lambda: {
+                    "met": met,
+                    "control_on": self._control_on,
+                    "start_pending": self._core_start_pending(),
+                    "stop_recent": self._core_stop_recent(),
+                },
+                core_events.GuestMet.kind,
+                token=token,
+            )
+            outcome: CommandOutcome | None = None
+            try:
+                verdict = None if facts is None else self._runner.verdict(core_events.GuestMet(**facts), token)
+                if verdict is None or not met:
+                    return False
+                if ("stop", "guest_met") in verdict:
+                    _LOGGER.info(
+                        "SpotNav charger %s: the guest car's amount is delivered, stopping until it is unplugged",
+                        self.entry_id,
+                    )
+                    self._record_completion("energy", target_soc_percent=None)
+                    outcome = CommandOutcome(False)
+                    await self._stop_locked(clear_schedule=True)
+                    outcome = self._core_stop_outcome(True)
+                    return True
+                if self.plan is not None and self.plan.auto_owned:
+                    # Nothing to stop: the windows still ahead start nothing for the guest any more.
+                    self.plan = None
+                    self._cancel_timers()
+                    self._async_disarm_target_listener()
+                    await self._async_save()
+                self._notify()
+                return False
+            finally:
+                self._core_end_event(token, facts, lambda: core_events.GuestMet(**facts), outcome=outcome)
+
+    @property
+    def guest_met(self) -> bool:
+        """Whether a guest car's amount is delivered at this plug-in: the charger is held until the unplug (the core's
+        `guest_met`)."""
+        return self._runner.session.guest_met
+
     def set_automatic_gate(self, gate: AutomaticGate | None) -> None:
         """Set (or clear) the execution boundary every automatic decision of this controller asks first."""
         self._automatic_gate = gate

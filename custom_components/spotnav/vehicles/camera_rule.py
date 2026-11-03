@@ -15,7 +15,10 @@ where the cars differ (the ground, plants, posts and a time stamp stay and cance
 colours are compared. So a dark blue car on paving is far from the empty spot, and the same car parked a little
 further on is near itself.
 * otherwise only **orders the question's buttons**: the car it names first;
-* names no car (`none`, or a car that is no candidate) and counts for nothing.
+* names no car (`none`, or a car that is no candidate) and counts for nothing;
+* says a car stands there that is none of the cars (`other`): it never decides a guest car (a person confirms one),
+  and `identification.py` puts "Guest car" first, at high confidence counting the cars it had a reference picture
+  of as ruled out.
 
 It never switches away from a person's answer: it is only asked, and only applied, while no one has answered
 and nothing has decided.
@@ -44,8 +47,10 @@ CONFIDENCE_HIGH: Final = "high"
 CONFIDENCE_MEDIUM: Final = "medium"
 CONFIDENCE_LOW: Final = "low"
 CONFIDENCES: Final = (CONFIDENCE_HIGH, CONFIDENCE_MEDIUM, CONFIDENCE_LOW)
-#: The model's answer for no car, or none of the reference cars.
+#: The model's answer for no car in the picture.
 ANSWER_NONE: Final = "none"
+#: The model's answer for a car that is none of the reference cars: a guest car, perhaps (`identification.py`).
+ANSWER_OTHER: Final = "other"
 
 #: Two pictures differ in colour when what differs between them is at least this far apart in average colour (red,
 #: green, blue, each 0-1; `colour_distance`): black and white, red and silver do; dark blue and dark grey do not.
@@ -188,6 +193,8 @@ REASON_NIGHT: Final = "night"
 REASON_COLOUR_MISMATCH: Final = "colour_mismatch"
 REASON_MISSING_REFERENCE: Final = "missing_reference"
 REASON_SIMILAR_COLOUR: Final = "similar_colour"
+#: The camera saw a car that is none of the cars (`ANSWER_OTHER`, applied by `identification.py`).
+REASON_NONE_OF_THESE: Final = "none_of_these"
 
 
 def camera_reason(
@@ -272,11 +279,13 @@ def _distances_now(now: bytes, candidates: Sequence[str], references: Mapping[st
     return {car: distance for car, distance in distances.items() if distance is not None}
 
 
-def may_query(*, attempts: int, failed: bool, waiting: bool, remaining: int, elapsed_s: float, window_s: float) -> bool:
-    """Whether to ask the camera now: while waiting (no one answered, nothing decided, no question yet) with two
-    or more candidates left, inside the window before the question, for the first time or once more after an
-    error."""
-    if not waiting or remaining < 2 or elapsed_s >= window_s:
+def may_query(
+    *, attempts: int, failed: bool, waiting: bool, remaining: int, elapsed_s: float, window_s: float, minimum: int = 2
+) -> bool:
+    """Whether to ask the camera now: while waiting (no one answered, nothing decided, no question yet) with
+    `minimum` or more candidates left (two; one at a one-car charger, where the answer can only be its car or none of
+    them), inside the window before the question, for the first time or once more after an error."""
+    if not waiting or remaining < minimum or elapsed_s >= window_s:
         return False
     if attempts == 0:
         return True
@@ -296,9 +305,9 @@ def answer_structure(labels: Sequence[str]) -> dict[str, Any]:
     """The `structure` of `ai_task.generate_data`: one of the labels or `none`, and a confidence."""
     return {
         "vehicle": {
-            "description": "The reference car that is the car in picture 1, or none.",
+            "description": "The reference car that is the car in picture 1, other for a car that is none of them, or none.",
             "required": True,
-            "selector": {"select": {"options": [*labels, ANSWER_NONE]}},
+            "selector": {"select": {"options": [*labels, ANSWER_OTHER, ANSWER_NONE]}},
         },
         "confidence": {
             "description": "How sure the answer is.",
@@ -322,14 +331,15 @@ def instructions_for(pictures: Sequence[tuple[str, str]]) -> str:
         f"Pictures 2 to {len(pictures) + 1} are reference pictures of known cars parked at that spot: {listing}. "
         "Which reference car is the car in picture 1? "
         "Compare the shape, roof line, windows, lights and wheels, not the colour (light and infrared change it). "
-        f"Answer {ANSWER_NONE} if there is no car in picture 1 or none of the reference cars matches. "
+        f"Answer {ANSWER_OTHER} if there is a car in picture 1 but none of the reference cars matches, and "
+        f"{ANSWER_NONE} if there is no car in picture 1. "
         "Say how sure you are: high, medium or low."
     )
 
 
 def parse_answer(data: Any, labels: Mapping[str, str]) -> tuple[str | None, str | None]:
-    """The AI Task's `data` as (the candidate it names or `None`, its confidence or `None`). Anything it cannot
-    read is no answer."""
+    """The AI Task's `data` as (the candidate it names, `ANSWER_OTHER` for a car that is none of them, or `None`, and
+    its confidence or `None`). Anything it cannot read is no answer."""
     if not isinstance(data, Mapping):
         return None, None
     vehicle = data.get("vehicle")
@@ -339,4 +349,6 @@ def parse_answer(data: Any, labels: Mapping[str, str]) -> tuple[str | None, str 
         confidence = None
     if not isinstance(vehicle, str):
         return None, confidence
+    if vehicle.strip().lower() == ANSWER_OTHER:
+        return ANSWER_OTHER, confidence
     return labels.get(vehicle.strip()), confidence

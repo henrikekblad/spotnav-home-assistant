@@ -48,6 +48,9 @@ DECISION_DOMAIN_PHASE_OBSERVATIONS = "phase_observations"
 # A car's last wake for a reading (`{"at", "integration", "occasion", "result"}`), kept so a restart cannot wake it
 # again inside the interval. Written only by `vehicles/vehicle_wake.py`.
 DECISION_DOMAIN_VEHICLE_WAKE = "vehicle_wake"
+# The guest car's amount (`{"amount_kwh": 10.0}` under `"guest"`), the one for the whole installation. Written only by
+# `vehicles/guest.py`.
+DECISION_DOMAIN_GUEST = "guest"
 
 _DISMISSED_KEY = "dismissed"
 _CONFIRMED_KEY = "confirmed"

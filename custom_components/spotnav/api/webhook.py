@@ -21,7 +21,7 @@ from aiohttp import web
 from homeassistant.components import webhook
 from homeassistant.core import HomeAssistant
 
-from ..const import CONF_WEBHOOK_ID, DOMAIN
+from ..const import CONF_WEBHOOK_ID, DOMAIN, GUEST_VEHICLE_ID
 from ..setup_checklist import async_note_app_used
 from ..notifications.push import ERROR_INVALID_PUSH, parse_push_register, PushRegisterError
 from ..execution.auto_execution import (
@@ -54,7 +54,7 @@ from .price_days import webhook_price_days
 from .grid_tariff import async_webhook_update_grid_tariff
 from .price_source import async_webhook_answer_price_duplicate, async_webhook_choose_price_source
 from .camera import WEBHOOK_ACTIONS as CAMERA_ACTIONS
-from .identification import webhook_choose_vehicle_identification, webhook_identify_vehicle
+from .identification import webhook_choose_vehicle_identification, webhook_identify_vehicle, webhook_update_guest
 from .sessions import SESSIONS_API_VERSION, sessions_answer, SessionsRefusal
 from .settings import (
     async_update_settings,
@@ -155,6 +155,11 @@ APP_READS_SETUP: Final = "setup"
 #: The price entry's grid tariff (`api/grid_tariff.py`): the dashboard's `grid_tariff` block is left out for an app
 #: that does not read `APP_READS_GRID_TARIFF` (its decoder refuses a dashboard with an unknown key).
 APP_READS_GRID_TARIFF: Final = "grid_tariff"
+#: The guest car (`vehicles/guest.py`): an app that does not read `APP_READS_GUEST` gets no `guest` block, no guest status
+#: lines (`APP_UNREAD_GUEST_CODES`), no question at a one-car charger, and no vehicle (`null`) where the guest car
+#: stands in the settings' target and the identification block (its decoder knows no such car).
+APP_READS_GUEST: Final = "guest"
+APP_UNREAD_GUEST_CODES: Final = ("guest_planned", "guest_done")
 #: Each optional top-level dashboard block an app released before it does not read, with the `reads` name that opts
 #: into it.
 APP_DASHBOARD_BLOCK_READS: Final = {
@@ -162,6 +167,7 @@ APP_DASHBOARD_BLOCK_READS: Final = {
     "phase_switching": APP_READS_PHASE_SWITCHING,
     "setup": APP_READS_SETUP,
     "grid_tariff": APP_READS_GRID_TARIFF,
+    "guest": APP_READS_GUEST,
 }
 #: Where the area's prices come from and what to do when it has no source of its own: the dashboard's
 #: `prices.provider` is left out for an app that does not read `APP_READS_PRICE_PROVIDER`.
@@ -203,6 +209,8 @@ def _status_for_app(line: Any, opted_in: set[str], *, under_solar: bool = False)
         return None
     if code in APP_UNREAD_OWN_MODE_CODES and APP_READS_OWN_MODE_STATUS not in opted_in:
         return None
+    if code in APP_UNREAD_GUEST_CODES and APP_READS_GUEST not in opted_in:
+        return None
     if APP_READS_IMPORT_TARGET_STATUS not in opted_in:
         params = line.get("params") if isinstance(line.get("params"), dict) else {}
         if code in APP_UNREAD_IMPORT_TARGET_FACT_CODES:
@@ -233,7 +241,10 @@ def _status_block_for_app(status: dict[str, Any], opted_in: set[str]) -> dict[st
         if kept is not None
     ]
     shown = {**status, "lines": lines}
-    if any(isinstance(line, dict) and line.get("code") in APP_UNREAD_OWN_MODE_CODES for line in status["lines"]):
+    if any(
+        isinstance(line, dict) and line.get("code") in (*APP_UNREAD_OWN_MODE_CODES, *APP_UNREAD_GUEST_CODES)
+        for line in status["lines"]
+    ):
         # A notice left out may have been the only one: the tone is the strongest line the app still gets.
         shown["tone"] = status_tone(lines)
     return shown
@@ -242,6 +253,19 @@ def _status_block_for_app(status: dict[str, Any], opted_in: set[str]) -> dict[st
 def _opted_in(payload: dict[str, Any]) -> set[str]:
     reads = payload.get("reads")
     return {name for name in reads if isinstance(name, str)} if isinstance(reads, list) else set()
+
+
+def _identification_for_app(block: Any, opted_in: set[str]) -> Any:
+    """The identification block as an app that does not read the guest car reads it: none for a one-car charger, and
+    no vehicle where the guest car stands."""
+    if APP_READS_GUEST in opted_in or not isinstance(block, dict):
+        return block
+    candidates = block.get("candidates")
+    if isinstance(candidates, list) and len(candidates) < 2:
+        return None
+    if block.get("vehicle_id") == GUEST_VEHICLE_ID:
+        return {**block, "vehicle_id": None}
+    return block
 
 
 def _vehicle_for_app(row: Any, opted_in: set[str]) -> Any:
@@ -288,8 +312,9 @@ def _for_app(body: dict[str, Any], payload: dict[str, Any]) -> dict[str, Any]:
     `phase_switching` block; `grid_tariff` for its `grid_tariff` block; `price_provider` for `prices.provider`; `setup` for its `setup` block; `plan_facts` for the status lines
     `plan_saving` and `solar_forecast` and hybrid's `sun_start`/`sun_end`; `own_mode_status` for the status line
     `charger_own_mode`; `sun_past_target` for the status line `sun_past_target`; `import_target_status` for the import
-    target's five status lines; `effective_target` for `grid_tariff.demand.effective_target_kw`); anything else in
-    it, or a `reads` that is not a list, is ignored.
+    target's five status lines; `effective_target` for `grid_tariff.demand.effective_target_kw`; `guest` for the guest
+    car: the `guest` block, its status lines, a one-car charger's question and the guest standing as the vehicle);
+    anything else in it, or a `reads` that is not a list, is ignored.
     """
     opted_in = _opted_in(payload)
     withheld_blocks = {block for block, read in APP_DASHBOARD_BLOCK_READS.items() if read not in opted_in}
@@ -303,6 +328,8 @@ def _for_app(body: dict[str, Any], payload: dict[str, Any]) -> dict[str, Any]:
             body = {**body, block: {key: value for key, value in inner.items() if key != field}}
     if isinstance(body.get("vehicles"), list):
         body = {**body, "vehicles": [_vehicle_for_app(row, opted_in) for row in body["vehicles"]]}
+    if "identification" in body:
+        body = {**body, "identification": _identification_for_app(body["identification"], opted_in)}
     status = body.get("status")
     if isinstance(status, dict) and isinstance(status.get("lines"), list):
         body = {**body, "status": _status_block_for_app(status, opted_in)}
@@ -311,6 +338,10 @@ def _for_app(body: dict[str, Any], payload: dict[str, Any]) -> dict[str, Any]:
         return body
     withheld = set(APP_UNREAD_SETTINGS) - opted_in
     shown = {key: value for key, value in settings.items() if key not in withheld}
+    target = shown.get("target")
+    if APP_READS_GUEST not in opted_in and isinstance(target, dict) and target.get("vehicle_id") == GUEST_VEHICLE_ID:
+        # The guest stays when the app writes this back (`api/settings.py`).
+        shown["target"] = {**target, "vehicle_id": None}
     if APP_READS_AUTO_PERIODS not in opted_in and "max_periods" in shown and shown["max_periods"] is None:
         shown["max_periods"] = MAX_PERIODS
     return {**body, "settings": shown}
@@ -558,6 +589,7 @@ ACTIONS: Final[dict[str, Handler]] = {
     "push_register": _push_register,
     "identify_vehicle": webhook_identify_vehicle,
     "choose_vehicle_identification": webhook_choose_vehicle_identification,
+    "update_guest": webhook_update_guest,
     "fix_own_mode": webhook_fix_own_mode,
     "release_import_target": webhook_release_import_target,
     "get_power_month": webhook_get_power_month,

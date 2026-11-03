@@ -101,6 +101,7 @@ from ..execution.controller import ChargingController
 from ..planning.auto_controller import AutoSnapshot
 from ..planning.auto_settings import AutoSettingsStore
 from ..sessions.store import SessionStore
+from ..vehicles.guest import is_guest
 from ..const import DOMAIN
 from ..texts import language_of
 from .messages import compose, EVENT_TEST, identify_text, import_target_release_text, import_target_text, Money
@@ -1003,6 +1004,9 @@ class ChargerNotifier:
             facts: dict[str, Any] = {"time": None if plan is None else _local_time(plan.start_time)}
             if plan is not None and plan.energy_kwh is not None:
                 facts["kwh"] = plan.energy_kwh
+            if is_guest(self._store.settings(self._entry_id)):
+                # A guest car's plan says so (`vehicles/guest.py`).
+                facts["guest"] = True
             cost = self._plan_cost()
             if cost is not None:
                 facts["cost"] = cost

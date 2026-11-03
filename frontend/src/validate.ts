@@ -301,7 +301,26 @@ export interface Dashboard {
   grid_tariff: GridTariffBlock | null;
   /** What is still left to set up for this charger, the "Get started" rows; `null` from an older backend or unreadable. */
   setup: SetupBlock | null;
+  /** The guest car (a visitor's car planned by kWh); `null` from an older backend or unreadable. */
+  guest: GuestBlock | null;
 }
+
+/** The dashboard's `guest` block: a guest car planned for now, the amount the next one starts from, and its place
+ * in the open question. */
+export interface GuestBlock {
+  /** This charger plans for a guest car now (a person said so). */
+  active: boolean;
+  /** The guest amount (kWh) the next guest plan starts from: the Guest tab's value. */
+  amount_kwh: number;
+  /** "Guest car" goes first among the question's answers: every car is ruled out, or the camera saw none. */
+  first: boolean;
+}
+
+/** The answer a guest car is chosen by (`spotnav/identify_vehicle`), and the target vehicle of a guest plan. */
+export const GUEST_VEHICLE_ID = "guest";
+/** The guest amount's range (kWh), as the backend takes it (`vehicles/guest.py`). */
+export const GUEST_KWH_MIN = 1;
+export const GUEST_KWH_MAX = 150;
 
 /** One "Get started" row the backend says is still left (`setup`). */
 export interface SetupBlockItem {
@@ -1552,6 +1571,8 @@ export const STATUS_CODE_TABLE = {
   starting_up: ["normal", {}],
   identifying_vehicle: ["normal", {}],
   asking_vehicle: ["normal", {}],
+  guest_planned: ["normal", { kwh: "number", departure: "instantOrNull" }],
+  guest_done: ["normal", {}],
   charger_unavailable: ["blocking", { problem: "textOrNull", entity: "textOrNull" }],
   charger_ignores_stop: ["blocking", {}],
   price_data_invalid: ["blocking", { reason: "textOrNull" }],
@@ -1840,6 +1861,7 @@ export function decodeDashboard(raw: unknown): DecodeResult {
         price_source: priceSourceOrNull(root),
         grid_tariff: gridTariffOrNull(root),
         setup: setupOrNull(root),
+        guest: guestOrNull(root.guest),
       },
     };
   } catch {
@@ -1898,7 +1920,26 @@ const OPTIONAL_DASHBOARD_KEYS = [
   "price_source",
   "setup",
   "grid_tariff",
+  "guest",
 ] as const;
+
+/** A `guest` block (the dashboard's, or `spotnav/update_guest`'s answer), or `null` when it is missing or unreadable:
+ * the card then offers no guest car. */
+export function guestOrNull(value: unknown): GuestBlock | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+  try {
+    exactKeys(value, ["active", "amount_kwh", "first"]);
+    const amount = value.amount_kwh;
+    if (typeof amount !== "number" || !Number.isFinite(amount) || amount <= 0) {
+      return bad();
+    }
+    return { active: booleanValue(value, "active"), amount_kwh: amount, first: booleanValue(value, "first") };
+  } catch {
+    return null;
+  }
+}
 
 /** The `setup` block, or `null` when it is missing or unreadable: the card then lists nothing to set up. */
 function setupOrNull(root: Record<string, unknown>): SetupBlock | null {

@@ -2,7 +2,8 @@
 
 * `spotnav/identify_vehicle` (WebSocket, any signed-in user) and the webhook action `identify_vehicle`:
   `{vehicle_id}` answers the charger's open question, or corrects the car already decided, whenever a car is
-  plugged in (`vehicles/identification.py`): recorded as `answered`, it holds like an answer. The answer is
+  plugged in (`vehicles/identification.py`): recorded as `answered`, it holds like an answer. `"guest"`
+  (`GUEST_VEHICLE_ID`) is a guest car, at any charger: planned by kWh with no vehicle until it is unplugged. The answer is
   `{"api_version": 1, "ok", "error", "identification"}`, `identification` being the dashboard block after the
   answer. Refusals: `spotnav_not_identifying` (no car is plugged in), `spotnav_invalid_value` (not one of this
   charger's cars), `spotnav_unknown_charger`, `spotnav_unsupported_api_version`.
@@ -11,6 +12,10 @@
   `"none"` (the car has no such source) or `null` (back to automatic). The answer carries `identification`, the
   vehicle row's block after the write. Refusals: `spotnav_invalid_value`, `spotnav_not_admin` and the entry-level
   ones above.
+* `spotnav/update_guest` (WebSocket, administrators) and the webhook action of the same name: `{amount_kwh}`, the
+  guest amount a guest plan starts from (`vehicles/guest.py`: 1 to 150 kWh, one for the installation; the last change
+  wins). The answer carries `guest`, the dashboard's `guest` block after the write. Refusals: `spotnav_invalid_value`,
+  `spotnav_not_admin` and the entry-level ones above.
 
 A webhook refusal is HTTP 400 with the same code.
 """
@@ -24,10 +29,12 @@ from aiohttp import web
 from homeassistant.components import websocket_api
 from homeassistant.core import callback, HomeAssistant
 
-from ..runtime import charger_data, ChargerConfigEntry
+from ..runtime import charger_data, ChargerConfigEntry, domain_data
+from ..vehicles.guest import async_set_guest_amount
 from ..vehicles.identification import REFUSED_NOT_PLUGGED_IN
 from ..vehicles.identification_sources import async_choose_source, sources_block
 from .common import ERROR_NOT_ADMIN, is_admin, lookup_charger, send_unsupported_version
+from .dashboard import capture_guest
 
 IDENTIFICATION_API_VERSION: Final = 1
 ERROR_NOT_IDENTIFYING: Final = "spotnav_not_identifying"
@@ -70,6 +77,17 @@ async def async_choose_identification(hass: HomeAssistant, payload: dict[str, An
     return _envelope(identification=sources_block(hass, vehicle_id))
 
 
+async def async_update_guest(hass: HomeAssistant, entry_id: str, amount: Any) -> dict[str, Any]:
+    """Remember the guest amount: the charger's `guest` block after it, or a refusal by code."""
+    try:
+        await async_set_guest_amount(hass, amount)
+    except ValueError:
+        raise IdentificationRefusal(ERROR_INVALID_VALUE) from None
+    store = domain_data(hass).auto_store
+    settings = None if store is None else store.settings(entry_id)
+    return _envelope(guest=capture_guest(hass, entry_id, settings))
+
+
 @websocket_api.websocket_command(
     {
         vol.Required("type"): "spotnav/identify_vehicle",
@@ -108,6 +126,26 @@ async def websocket_choose_vehicle_identification(
 
     async def write(_entry: Any) -> dict[str, Any]:
         return await async_choose_identification(hass, msg)
+
+    await _ws_write_for(hass, connection, msg, write)
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "spotnav/update_guest",
+        vol.Optional("api_version"): object,
+        vol.Optional("charger_id"): object,
+        vol.Optional("amount_kwh"): object,
+    }
+)
+@websocket_api.async_response
+async def websocket_update_guest(
+    hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]
+) -> None:
+    """Set the guest amount (the Guest tab). Administrators only, like the other cars' settings."""
+
+    async def write(entry: Any) -> dict[str, Any]:
+        return await async_update_guest(hass, entry.entry_id, msg.get("amount_kwh"))
 
     await _ws_write_for(hass, connection, msg, write)
 
@@ -163,7 +201,18 @@ async def webhook_choose_vehicle_identification(
     return web.json_response({**answer, "action": action})
 
 
+async def webhook_update_guest(hass: HomeAssistant, entry: ChargerConfigEntry, payload: dict[str, Any]) -> web.Response:
+    """The app's guest amount (its Guest tab)."""
+    action = "update_guest"
+    try:
+        answer = await async_update_guest(hass, entry.entry_id, payload.get("amount_kwh"))
+    except IdentificationRefusal as refusal:
+        return web.json_response({**_failure(refusal.code), "action": action}, status=400)
+    return web.json_response({**answer, "action": action})
+
+
 @callback
 def async_setup_identification_api(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, websocket_identify_vehicle)
     websocket_api.async_register_command(hass, websocket_choose_vehicle_identification)
+    websocket_api.async_register_command(hass, websocket_update_guest)

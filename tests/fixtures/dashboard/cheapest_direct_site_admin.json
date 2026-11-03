@@ -110,6 +110,11 @@
     }
   },
   "generated_at": "2026-09-22T06:00:00+00:00",
+  "guest": {
+    "active": false,
+    "amount_kwh": 10.0,
+    "first": false
+  },
   "identification": null,
   "live": {
     "charging": false,

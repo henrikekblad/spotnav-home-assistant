@@ -227,6 +227,10 @@ DEFAULT_SOLAR_PRIORITY = SOLAR_PRIORITY_CAR_FIRST
 # Absent or empty means no forecast, and hybrid is exactly cheapest.
 CONF_SOLAR_FORECAST_ENTRIES = "solar_forecast_entries"
 
+# A charger's target vehicle while it plans for a guest car (`vehicles/guest.py`): no vehicle at all. Never a device
+# id (those are 32 hex digits).
+GUEST_VEHICLE_ID = "guest"
+
 
 def yield_ceiling_a(main_fuse_a: float) -> float:
     """Yield stepping's hard ceiling for a site with this main fuse (`YIELD_CEILING_FUSE_FACTOR`)."""

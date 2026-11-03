@@ -887,6 +887,7 @@
   "notifications.event.vehicleIdentify": "Quelle voiture est branchée ?",
   "identify.question": "Quelle voiture est branchée ?",
   "identify.keeps": "SpotNav n'a pas pu le déterminer à partir des voitures. Sans réponse, {name} est conservée.",
+  "identify.keepsSingle": "{name} ne semble pas être branchée. Sans réponse, {name} est conservée.",
   "identify.answerFailed": "La réponse n'a pas pu être enregistrée.",
   "identify.mode.label": "Identification",
   "identify.mode.automatic": "Automatique",
@@ -1082,5 +1083,11 @@
   "automations.solarSurplus.name": "Marche sur surplus solaire",
   "automations.solarSurplus.text": "Un chauffage de piscine, un chauffe-eau ou une résistance électrique est allumé quand le soleil donne un surplus.",
   "automations.usedBy.one": "Utilisé par {count} automatisation",
-  "automations.usedBy.other": "Utilisé par {count} automatisations"
+  "automations.usedBy.other": "Utilisé par {count} automatisations",
+  "identify.guest": "Voiture invitée",
+  "status.guestPlanned": "Voiture invitée · {kwh} kWh avant {time}",
+  "status.guestPlannedNoTime": "Voiture invitée · {kwh} kWh",
+  "status.guestDone": "Voiture invitée · terminé, attend d'être débranchée",
+  "settings.guest.amount": "Quantité pour voiture invitée",
+  "settings.guest.amountHelp": "Ce qui est chargé pour une voiture invitée. Une modification dans son plan est gardée pour la prochaine invitée."
 }

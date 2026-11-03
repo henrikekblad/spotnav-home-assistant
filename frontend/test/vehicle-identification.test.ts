@@ -209,7 +209,7 @@ describe("the banner", () => {
     const box = banner(element)!;
     expect(box.textContent).toContain("Which car is plugged in?");
     const buttons = Array.from(box.querySelectorAll<HTMLButtonElement>("button"));
-    expect(buttons.map((button) => button.textContent)).toEqual(["Niro", "EV6"]);
+    expect(buttons.map((button) => button.textContent)).toEqual(["Niro", "EV6", "Guest car"]);
     expect(buttons[0]!.dataset["likely"]).toBe("true");
     buttons[0]!.click();
     await settle();
@@ -230,7 +230,7 @@ describe("the banner", () => {
     document.body.innerHTML = "";
     const { hass, element } = await mounted(dashboard(true), "en", false);
     const buttons = banner(element)!.querySelectorAll<HTMLButtonElement>("button");
-    expect(buttons).toHaveLength(2);
+    expect(buttons).toHaveLength(3);
     buttons[1]!.click();
     await settle();
     expect(hass.messages.find((message) => message.type === "spotnav/identify_vehicle")).toMatchObject({ vehicle_id: EV6 });
@@ -413,7 +413,7 @@ describe("Byt bil", () => {
     await settle();
     const dialog = openDialog(element)!;
     const radios = Array.from(dialog.querySelectorAll<HTMLInputElement>("input[data-identify-choice]"));
-    expect(radios.map((radio) => radio.value)).toEqual([EV6, NIRO]);
+    expect(radios.map((radio) => radio.value)).toEqual([EV6, NIRO, "guest"]);
     radios[1]!.click();
     dialog.querySelector<HTMLFormElement>("form")!.requestSubmit();
     await settle();

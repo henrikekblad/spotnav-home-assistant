@@ -2127,6 +2127,16 @@ class AutoExecutor:
             await self._notify_change()
             return cleared
 
+    async def async_guest_met(self, met: bool = True) -> bool:
+        """A guest car's amount is delivered (`met`), or its plan ended without an unplug: the charger is held until
+        the unplug, or no longer (`ChargingController.async_guest_met`). Returns whether a stop went out."""
+        async with self._lock:
+            if self._shutdown:
+                return False
+            stopped = await self._controller.async_guest_met(met)
+            await self._notify_change()
+            return stopped
+
     async def async_start_on_plug_in(self) -> bool:
         """A vehicle was plugged in and Auto has replanned: start the installed plan's window that is
         open now, through the controller's own checks (a person's Stop, the target, load balancing).

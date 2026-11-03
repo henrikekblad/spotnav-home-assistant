@@ -5,7 +5,7 @@
 import { translate, type Language } from "./i18n";
 import type { IdentificationChoice } from "./settings";
 import type { SettingsRecord } from "./types";
-import type { Identification, IdentificationSource } from "./validate";
+import { GUEST_VEHICLE_ID, type Identification, type IdentificationSource } from "./validate";
 
 /** A car the charger's car list can tick: every detected car (`vehicle_choices`). */
 export type CarChoice = { id: string; name: string | null };
@@ -88,6 +88,8 @@ export interface ChangeCarInput {
   block: Identification | null;
   vehicles: readonly CarChoice[];
   currentId: string | null;
+  /** "Guest car" is offered at the end of the list (a car is plugged in and the backend knows the guest). */
+  guest?: boolean;
   chargerName: string | null;
   idPrefix: string;
   onChoose: (vehicleId: string) => void;
@@ -106,6 +108,9 @@ export function changeCarBody(doc: Document, language: Language, input: ChangeCa
     input.block !== null && input.block.candidates.length > 0
       ? input.block.candidates.map((item) => ({ id: item.vehicle_id, name: item.name }))
       : input.vehicles.map((row) => ({ id: row.id, name: row.name ?? row.id }));
+  if (input.guest === true) {
+    cars.push({ id: GUEST_VEHICLE_ID, name: translate(language, "identify.guest") });
+  }
   let chosen = input.currentId;
   const group = element(doc, "fieldset", C.siteFieldset);
   for (const car of cars) {
@@ -153,10 +158,12 @@ export interface IdentificationBannerInput {
   currentName: string | null;
   /** Whether the buttons are offered (any signed-in user may answer). */
   canAnswer: boolean;
+  /** "Guest car" among the answers: `"first"` (every car is ruled out), `"last"`, or absent for none. */
+  guest?: "first" | "last";
   onAnswer: (vehicleId: string) => void;
 }
 
-/** The open question on the card: one button per car, likeliest first; one tap is the answer. */
+/** The open question on the card: one button per car, likeliest first, and "Guest car"; one tap is the answer. */
 export function identificationBanner(doc: Document, language: Language, input: IdentificationBannerInput): HTMLElement {
   const box = element(doc, "div", C.suggestion);
   box.dataset["banner"] = "identify";
@@ -165,11 +172,18 @@ export function identificationBanner(doc: Document, language: Language, input: I
   question.append(questionIcon(doc), doc.createTextNode(` ${translate(language, "identify.question")}`));
   box.append(question);
   if (input.currentName !== null) {
-    box.append(element(doc, "p", `${C.suggestionText} ${C.muted}`, translate(language, "identify.keeps", { name: input.currentName })));
+    box.append(element(doc, "p", `${C.suggestionText} ${C.muted}`, translate(language, input.block.candidates.length === 1 ? "identify.keepsSingle" : "identify.keeps", { name: input.currentName })));
   }
   if (input.canAnswer) {
     const answers = element(doc, "div", C.suggestionAnswers);
-    for (const candidate of input.block.candidates) {
+    const guest = { vehicle_id: GUEST_VEHICLE_ID, name: translate(language, "identify.guest"), likely: false };
+    const choices =
+      input.guest === "first"
+        ? [guest, ...input.block.candidates]
+        : input.guest === "last"
+          ? [...input.block.candidates, guest]
+          : input.block.candidates;
+    for (const candidate of choices) {
       const answer = element(doc, "button", C.choiceButton, candidate.name) as HTMLButtonElement;
       answer.type = "button";
       answer.dataset["identify"] = candidate.vehicle_id;

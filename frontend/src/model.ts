@@ -50,6 +50,7 @@ import type {
   Fiscal,
   CameraIdentification,
   GridTariffBlock,
+  GuestBlock,
   Identification,
   Period,
   Site,
@@ -300,6 +301,8 @@ export interface CardModel {
   /** The cars that can charge at this charger (`vehicleChoices` within `vehicle_ids`): two or more make the car
    * line Byt bil. */
   chargerCars: Array<{ id: string; name: string | null }>;
+  /** The guest car: planned for now, the remembered amount, its place in the question (`null` on an older backend). */
+  guest: GuestBlock | null;
   planRelation: PlanRelationKind;
   capabilities: CapabilityItem[];
   /** Whether a car's own charge limit may be written (`spotnav/write_charge_limit`). */
@@ -970,6 +973,7 @@ export function buildModel(input: BuildInput): CardModel {
         ? dashboard.vehicle_choices
         : dashboard.vehicles.map((row) => ({ id: row.id, name: row.name })),
     chargerCars: chargerCarsOf(dashboard),
+    guest: dashboard.guest,
     contextArea: market?.area_id ?? market?.area_name ?? null,
     contextCurrency: market?.currency ?? null,
     contextAreaName: market?.area_name ?? null,

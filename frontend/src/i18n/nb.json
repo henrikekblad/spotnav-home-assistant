@@ -887,6 +887,7 @@
   "notifications.event.vehicleIdentify": "Hvilken bil er tilkoblet?",
   "identify.question": "Hvilken bil er tilkoblet?",
   "identify.keeps": "SpotNav kunne ikke avgjøre det ut fra bilene. Svarer ingen, beholdes {name}.",
+  "identify.keepsSingle": "{name} ser ikke ut til å være koblet til. Svarer ingen, beholdes {name}.",
   "identify.answerFailed": "Svaret kunne ikke lagres.",
   "identify.mode.label": "Identifisering",
   "identify.mode.automatic": "Automatisk",
@@ -1082,5 +1083,11 @@
   "automations.solarSurplus.name": "Kjør på soloverskudd",
   "automations.solarSurplus.text": "En bassengvarmer, en varmtvannsbereder eller en elkolbe slås på når solen gir overskudd.",
   "automations.usedBy.one": "Brukes av {count} automasjon",
-  "automations.usedBy.other": "Brukes av {count} automasjoner"
+  "automations.usedBy.other": "Brukes av {count} automasjoner",
+  "identify.guest": "Gjestebil",
+  "status.guestPlanned": "Gjestebil · {kwh} kWh innen kl. {time}",
+  "status.guestPlannedNoTime": "Gjestebil · {kwh} kWh",
+  "status.guestDone": "Gjestebil · ferdig, venter på å bli koblet fra",
+  "settings.guest.amount": "Mengde for gjestebil",
+  "settings.guest.amountHelp": "Det en gjestebil lades med. En endring i en gjestebils plan lagres til neste gjest."
 }

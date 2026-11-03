@@ -115,7 +115,7 @@ async def test_a_later_correction_is_kept_after_the_decision(world: World) -> No
     [entry] = history(world)
     assert entry["vehicle_id"] == world.cars["Tesla"] and entry["method"] == "plug_sensor"
     assert entry["corrections"] == [
-        {"at": entry["corrections"][0]["at"], "vehicle_id": world.cars["Kia"], "method": "answered"}
+        {"at": entry["corrections"][0]["at"], "vehicle_id": world.cars["Kia"], "method": "answered", "answered_by": "choice"}
     ]
 
 

@@ -454,6 +454,19 @@ export async function identifyVehicle(hass: HomeAssistantLike, chargerId: string
 }
 
 /**
+ * The guest amount a guest plan starts from (`spotnav/update_guest`, administrators only): answers
+ * `{api_version, ok, error, guest}`, decoded by the caller.
+ */
+export async function updateGuest(hass: HomeAssistantLike, chargerId: string, amountKwh: number): Promise<unknown> {
+  return await call<unknown>(hass, {
+    type: "spotnav/update_guest",
+    api_version: IDENTIFICATION_API_VERSION,
+    charger_id: chargerId,
+    amount_kwh: amountKwh,
+  });
+}
+
+/**
  * Choose a car's plug or location source (`spotnav/choose_vehicle_identification`): an entity, `"none"`, or
  * `null` for automatic.
  */

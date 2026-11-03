@@ -93,6 +93,7 @@ from ..pricing.price_source import (
 from ..runtime import controller_for, domain_data, preview_for
 from ..vehicles import vehicle_properties
 from ..vehicles.camera_settings import CameraSettings, CameraSettingsError
+from ..vehicles.guest import is_guest
 from .common import ERROR_CHARGER_UNLOADED, ERROR_NOT_ADMIN, is_admin, lookup_charger, send_unsupported_version
 
 
@@ -576,6 +577,12 @@ def replacement_mutator(
         if keep_auto_periods and current.max_periods is None and replacement.max_periods == MAX_PERIODS:
             kept["max_periods"] = None
         updated = replace(replacement, pause=current.pause, **kept)
+        if is_guest(current) and updated.target.vehicle_id is None:
+            # A client that does not know the guest car sees no vehicle, and writes none: the guest stays.
+            updated = replace(updated, target=current.target)
+        elif is_guest(updated) and not is_guest(current):
+            # A guest car is chosen by answering which car is plugged in (`spotnav/identify_vehicle`), never here.
+            raise AutoSettingsError("invalid_target", "a guest car is chosen as the answer to which car is plugged in")
         chosen = updated.target
         remembered = None if vehicle_target is None else vehicle_target(chosen.vehicle_id)
         if (

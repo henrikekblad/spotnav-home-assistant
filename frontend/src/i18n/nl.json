@@ -887,6 +887,7 @@
   "notifications.event.vehicleIdentify": "Welke auto is aangesloten?",
   "identify.question": "Welke auto is aangesloten?",
   "identify.keeps": "SpotNav kon het niet afleiden uit de auto's. Als niemand antwoordt, blijft {name} gekozen.",
+  "identify.keepsSingle": "{name} lijkt niet aangesloten te zijn. Als niemand antwoordt, blijft {name} gekozen.",
   "identify.answerFailed": "Het antwoord kon niet worden opgeslagen.",
   "identify.mode.label": "Herkenning",
   "identify.mode.automatic": "Automatisch",
@@ -1082,5 +1083,11 @@
   "automations.solarSurplus.name": "Aan bij zonne-overschot",
   "automations.solarSurplus.text": "Een zwembadverwarming, boiler of elektrisch verwarmingselement wordt ingeschakeld als de zon een overschot geeft.",
   "automations.usedBy.one": "Gebruikt door {count} automatisering",
-  "automations.usedBy.other": "Gebruikt door {count} automatiseringen"
+  "automations.usedBy.other": "Gebruikt door {count} automatiseringen",
+  "identify.guest": "Gastauto",
+  "status.guestPlanned": "Gastauto · {kwh} kWh vóór {time}",
+  "status.guestPlannedNoTime": "Gastauto · {kwh} kWh",
+  "status.guestDone": "Gastauto · klaar, wacht op loskoppelen",
+  "settings.guest.amount": "Hoeveelheid voor gastauto",
+  "settings.guest.amountHelp": "Zoveel wordt een gastauto geladen. Een wijziging in het plan van een gastauto blijft voor de volgende gast."
 }

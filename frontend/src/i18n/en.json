@@ -887,6 +887,7 @@
   "notifications.event.vehicleIdentify": "Which car is plugged in?",
   "identify.question": "Which car is plugged in?",
   "identify.keeps": "SpotNav could not tell from the cars. If nobody answers, {name} is kept.",
+  "identify.keepsSingle": "{name} does not seem to be plugged in. If nobody answers, {name} is kept.",
   "identify.answerFailed": "The answer could not be saved.",
   "identify.mode.label": "Identification",
   "identify.mode.automatic": "Automatic",
@@ -1082,5 +1083,11 @@
   "automations.solarSurplus.name": "Run on solar surplus",
   "automations.solarSurplus.text": "A pool heater, water heater or immersion heater is switched on when the sun gives a surplus.",
   "automations.usedBy.one": "Used by {count} automation",
-  "automations.usedBy.other": "Used by {count} automations"
+  "automations.usedBy.other": "Used by {count} automations",
+  "identify.guest": "Guest car",
+  "status.guestPlanned": "Guest car · {kwh} kWh by {time}",
+  "status.guestPlannedNoTime": "Guest car · {kwh} kWh",
+  "status.guestDone": "Guest car · done, waiting to be unplugged",
+  "settings.guest.amount": "Guest amount",
+  "settings.guest.amountHelp": "What a guest car is charged with. A change in a guest car's plan is kept for the next guest."
 }

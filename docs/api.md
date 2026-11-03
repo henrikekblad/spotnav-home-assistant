@@ -59,6 +59,7 @@ charger executed whose pause could not be saved answers `{"ok": true, "action": 
 | `push_register` | The app's instant notifications: `{"push_ref", "events"}`, or `{"push_ref": null}` to stop (see below). |
 | `identify_vehicle` | Answer "which car is plugged in?": `{"vehicle_id"}` (see [vehicle identification](#vehicle-identification)). |
 | `choose_vehicle_identification` | Choose a car's plug or location source: `{"vehicle_id", "source", "entity_id"}` (see [vehicle identification](#vehicle-identification)). |
+| `update_guest` | The guest amount a guest car's plan starts from: `{"amount_kwh"}` (see [the guest car](#the-guest-car)). |
 | `dismiss_setup_item` | Answer a "Get started" row with "Not needed": `{"item"}` (see below). |
 | `fix_own_mode` | Set one of the charger's own settings back to the value SpotNav works with: `{"entity_id", "value"}` (see below). |
 | `release_import_target` | Set the site's import target aside for this charge until its departure: `{}` (see below). |
@@ -595,6 +596,7 @@ and `charger_priority.writable` say whether it may change those (an administrato
 | `spotnav/get_blueprints` | How many automations use each of SpotNav's [blueprints](automations.md) (administrators only): `{"api_version": 1, "ok": true, "error": null, "blueprints": [{"file", "path", "automations"}]}`, one row per blueprint, `path` being `spotnav/<file>` as an automation refers to it. A non-administrator gets `spotnav_not_admin` and no rows. Not a dashboard field, so the app is never handed a key it does not know. |
 | `spotnav/get_card_info` | Which card the integration serves, for any signed-in user: `{"api_version": 1, "ok": true, "error": null, "spotnav_version", "card_bundle_hash"}`. The card compares the hash with the one in the URL it was loaded from. Not a dashboard field, so an older card is never handed a key it does not know. |
 | `spotnav/identify_vehicle`, `spotnav/choose_vehicle_identification` | Answer "which car is plugged in?", and choose a car's plug or location source (see [vehicle identification](#vehicle-identification)). |
+| `spotnav/update_guest` | The guest amount, administrators only (see [the guest car](#the-guest-car)). |
 | `spotnav/get_sessions` | A charger's charge sessions: summaries per month and day and the latest sessions, the same for one chosen `month`, or with `format: "csv"` and optional `from` and `to` dates (or a `month`) the sessions of that range as CSV text. |
 | `spotnav/get_power_month` | One month of a site's measured import, by day and hour, against its demand-charge parts and import target (see [Power by month](#power-by-month)). |
 | `spotnav/suggest_import_target` | A suggested import target from Home Assistant's statistics (administrators only; see [A suggested import target](#a-suggested-import-target)). |
@@ -1060,7 +1062,8 @@ additive `identification`: `{"plug": source, "location": source}`, each source `
 choose from, and with `chosen` true it is the person's "none".
 
 `spotnav/identify_vehicle` (any signed-in user: the question goes to the household's phones) and the webhook action
-`identify_vehicle` take `vehicle_id`, one of this charger's cars (`vehicle_ids`, every detected car when `null`), and
+`identify_vehicle` take `vehicle_id`, one of this charger's cars (`vehicle_ids`, every detected car when `null`) or
+`"guest"` (a [guest car](#the-guest-car), at any charger), and
 answer `{"api_version": 1, "ok", "error", "identification"}` with the block after the answer. They are taken whenever
 a car is plugged in: an answer while the question is open, or a correction of a car already decided (also where
 nothing was identified: identification off, one car, a decision from before a restart). Either way it is recorded
@@ -1078,8 +1081,11 @@ after the write; a value that is not one of these is `spotnav_invalid_value`.
 
 The phones' question is the notification event `vehicle_identify`: tag `spotnav_<charger id>_identify`, the
 message "Which car is plugged in?" in Home Assistant's language, and `data.actions` with one
-`{"action": "SPOTNAV_ID_<charger id>_<nonce>_<index>", "title": "<car name>"}` per car (at most three; with more, the two
-likeliest and `{"action": "URI", "title": "Open SpotNav", "uri": <url>}`). The nonce is 128 random bits, new for
+`{"action": "SPOTNAV_ID_<charger id>_<nonce>_<index>", "title": "<car name>"}` per answer: each car and "Guest car" (in
+Home Assistant's language) with one or two cars; with three or more, the likeliest car, "Guest car" and
+`{"action": "URI", "title": "Open SpotNav", "uri": <url>}`. "Guest car" is first when the dashboard's `guest.first`
+says so (every car ruled out, or the camera saw none of them), else last. At a charger with one car the question is
+asked only when that car is ruled out, and its `identification` block is then `asking` with one candidate. The nonce is 128 random bits, new for
 each question; a `mobile_app_notification_action` event with a matching action is the answer, and the first one
 wins. A retired question is replaced on every phone by the same tag without actions, silently (`alert_once: true`,
 `push: {"interruption-level": "passive"}`); unplugging sends `clear_notification`. A button of a question that is gone (answered, unplugged, a restart) takes the question off the phones.
@@ -1087,6 +1093,35 @@ Each session in the history carries the additive `vehicle_decided_by` (`null` wh
 The charger's diagnostics (and the debug bundle) carry `vehicle_identification.history`, the last ten plug-ins with
 their evidence, camera query, question, answer and corrections ([fields](vehicle-identification.md#for-field-reports)).
 It is a support aid, not an API: its fields may change.
+
+#### The guest car
+
+A visitor's car is planned by kWh with no vehicle, once a person answers `identify_vehicle` with `"guest"`
+([how it works](vehicle-identification.md#a-guest-car)). While a guest plan stands, the settings record's
+`target.vehicle_id` is `"guest"`, `driver` `manual_kwh`, `requested_kwh` the guest's amount and `fill_to_limit`
+false; `target_vehicle_id`, the `soc` block's car and the vehicle facts are none. A settings write that names
+`"guest"` while no guest plan stands is refused (`invalid_target`: a guest is chosen by the answer), and one that
+names no vehicle during a guest plan keeps the guest. Changing `requested_kwh` during a guest plan is the guest
+amount the next guest starts from too. The root block `guest` (after `setup`) is:
+
+```json
+{"active": true, "amount_kwh": 10.0, "first": false}
+```
+
+`active`: this charger plans for a guest car now; `amount_kwh`: the guest amount (1 to 150 kWh, `10` until someone
+changes it, one for the whole installation, the last change wins); `first`: "Guest car" goes first in the open
+question. The status lines are `guest_planned` (`kwh`, `departure`: the departure the guest's plan is for, `null`
+without one), ahead of the plan's headline, and, once the amount is delivered, `guest_done` (no params) as the
+headline: the charger is held until the guest is unplugged, and a person's Start still charges.
+
+`spotnav/update_guest` (administrators) and the webhook action `update_guest` take `amount_kwh` and answer
+`{"api_version": 1, "ok", "error", "guest"}` with the block after the write; `spotnav_invalid_value` for an amount
+out of range.
+
+The released SpotNav app knows none of this, so the webhook sends it only to an app that asks for it
+(`"reads": ["guest"]`): without it the `guest` block and the two status lines are left out, an `identification` block
+with fewer than two candidates (a one-car charger's question) is `null`, and `"guest"` reads as `null` in the
+settings' `target.vehicle_id` and the `identification` block's `vehicle_id`.
 
 #### The camera
 

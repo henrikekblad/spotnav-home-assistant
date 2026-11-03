@@ -3,10 +3,10 @@
 //
 // Nothing here invents a figure: no vehicle chosen or no reading means no line at all.
 
-import { percentAmount } from "./format";
+import { formatNumber, percentAmount } from "./format";
 import { translate, type Language } from "./i18n";
 import { SETTINGS_DRIVER_TARGET_SOC, type ConnectionState, type SettingsRecord } from "./types";
-import type { Soc, Vehicle } from "./validate";
+import { GUEST_VEHICLE_ID, type Soc, type Vehicle } from "./validate";
 
 /** A reading older than this (seconds), that is not an estimate, says how old it is on the line. */
 export const STALE_READING_S = 3600;
@@ -85,6 +85,22 @@ export function vehicleLineFor(
     age,
     estimateTitle,
     ariaLabel: translate(language, "vehicleLine.aria", { name: vehicleName(language, soc.vehicle_name), summary: spoken }),
+  };
+}
+
+/** A guest car's line: "Guest car · 10 kWh", the amount its plan charges (it has no level of its own). */
+export function guestLineFor(language: Language, settings: SettingsRecord | null): VehicleLineFacts {
+  const name = translate(language, "identify.guest");
+  const kwh = settings?.requested_kwh ?? null;
+  const charge = kwh === null || !Number.isFinite(kwh) ? "" : `${formatNumber(language, kwh, 1)} kWh`;
+  return {
+    vehicleId: GUEST_VEHICLE_ID,
+    name,
+    charge,
+    estimatePrefix: "",
+    age: null,
+    estimateTitle: null,
+    ariaLabel: charge === "" ? name : translate(language, "vehicleLine.aria", { name, summary: charge }),
   };
 }
 

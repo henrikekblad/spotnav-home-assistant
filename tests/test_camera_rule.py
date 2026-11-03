@@ -255,12 +255,21 @@ def test_the_question_names_no_car_and_lists_the_pictures_in_order() -> None:
     # "none" when an empty-spot reference came right before it, and to name the right car with it first.
     assert "Picture 1 is the parking spot now" in text
     assert "picture 2: car_1 (daylight); picture 3: car_1 (night" in text and "picture 4: car_2 (daylight)" in text
-    assert "Pictures 2 to 4 are reference pictures" in text and "not the colour" in text and "Answer none" in text
+    assert "Pictures 2 to 4 are reference pictures" in text and "not the colour" in text
+    assert "Answer other if there is a car in picture 1 but none of the reference cars matches" in text
+    assert "none if there is no car in picture 1" in text
     assert "last picture" not in text
     structure = answer_structure(list(labels))
-    assert structure["vehicle"]["selector"] == {"select": {"options": ["car_1", "car_2", "none"]}}
+    assert structure["vehicle"]["selector"] == {"select": {"options": ["car_1", "car_2", "other", "none"]}}
     assert structure["confidence"]["selector"] == {"select": {"options": ["high", "medium", "low"]}}
     assert structure["vehicle"]["required"] and structure["confidence"]["required"]
+
+
+def test_none_of_these_cars_never_decides_and_a_one_car_charger_may_ask_the_camera() -> None:
+    references = {"device-a": [None]}
+    assert camera_verdict("other", "high", ["device-a", "device-b"], references, None) == CameraVerdict()
+    assert may_query(attempts=0, failed=False, waiting=True, remaining=1, elapsed_s=10, window_s=180, minimum=1)
+    assert not may_query(attempts=0, failed=False, waiting=True, remaining=1, elapsed_s=10, window_s=180)
 
 
 def test_an_answer_it_cannot_read_is_no_answer() -> None:
@@ -268,6 +277,7 @@ def test_an_answer_it_cannot_read_is_no_answer() -> None:
     assert parse_answer({"vehicle": "car_2", "confidence": "high"}, labels) == ("device-b", "high")
     assert parse_answer({"vehicle": " car_1 ", "confidence": "Medium"}, labels) == ("device-a", "medium")
     assert parse_answer({"vehicle": "none", "confidence": "high"}, labels) == (None, "high")
+    assert parse_answer({"vehicle": " Other", "confidence": "high"}, labels) == ("other", "high"), "none of the cars"
     assert parse_answer({"vehicle": "car_9", "confidence": "sure"}, labels) == (None, None)
     assert parse_answer("car_1", labels) == (None, None)
     assert parse_answer({"vehicle": 1}, labels) == (None, None)

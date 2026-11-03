@@ -84,7 +84,16 @@ import {
 } from "./market-editor";
 import { settingsEditorBody, settingsTrigger, type SettingsEditorForm } from "./settings-editor";
 import { renderPlanPreview, type PreviewState } from "./plan-preview";
-import { type Fiscal, type GridTariffBlock, type HighLoadWindow, type ReferencePicture, type Vehicle } from "./validate";
+import {
+  GUEST_KWH_MAX,
+  GUEST_KWH_MIN,
+  GUEST_VEHICLE_ID,
+  type Fiscal,
+  type GridTariffBlock,
+  type HighLoadWindow,
+  type ReferencePicture,
+  type Vehicle,
+} from "./validate";
 import { gridTariffRows, highLoadEditor, withComponent, withHighLoad, withoutHighLoad, withPercent, type GridTariffRowKey } from "./grid-tariff";
 import { componentEditor, demandRows, hourLine, kwText } from "./demand-charge";
 import { suggestionAdvice } from "./target-suggestion";
@@ -120,7 +129,7 @@ import { setupLineText, setupSection, type SetupRowId } from "./setup-checklist"
 import { automationsBody, type BlueprintUse } from "./automations";
 import { historyBody, type HistoryPower, type HistoryState, type HistoryUi, type HistoryView } from "./history";
 import type { PowerState, PowerUi } from "./power-view";
-import { connectionLabel, vehicleLineFor } from "./vehicle-line";
+import { connectionLabel, guestLineFor, vehicleLineFor } from "./vehicle-line";
 import type { ChargeBarFacts } from "./charge-bar";
 import {
   CAPACITY_MAX_KWH,
@@ -313,6 +322,20 @@ export type EntityViewState =
   | { kind: "ready"; config: EntityConfig };
 
 export type ActionId = "start" | "stop" | "resume";
+
+/** The connection states that say a car is plugged in. */
+const PLUGGED_IN_STATES: ReadonlySet<string> = new Set(["connected", "charging", "paused", "finished"]);
+
+/**
+ * Whether "Guest car" can be chosen now: the backend knows the guest, and the charger says a car is plugged in (a
+ * guest is an answer about that car, never the plan's car for a next plug-in), or a guest is planned for already.
+ */
+export function guestOffered(model: CardModel): boolean {
+  if (model.guest === null) {
+    return false;
+  }
+  return model.guest.active || (model.connection !== null && PLUGGED_IN_STATES.has(model.connection.state));
+}
 
 /**
  * What the action row says when something went wrong: the card's sentence plus the stable code,
@@ -1052,7 +1075,11 @@ export function createCardView(input: CardViewInput): CardView {
   // no selector and no visible product name; the accessible name still names the product.
   const header = element(doc, "div", C.header);
   header.append(brandMark(doc, idPrefix));
-  const vehicleLine = vehicleLineFor(model.language, model.soc, model.dashboardSettings);
+  // A guest car's line is "Guest car · 10 kWh": it has no level of its own.
+  const vehicleLine =
+    model.guest?.active === true
+      ? guestLineFor(model.language, model.dashboardSettings)
+      : vehicleLineFor(model.language, model.soc, model.dashboardSettings);
   let vehicleButton: HTMLElement | null = null;
   // While the charge bar shows, it already says the charge runs: the connection line steps aside.
   const connectionText = model.chargeBar === null ? connectionLabel(model.language, model.connection) : null;
@@ -1067,8 +1094,10 @@ export function createCardView(input: CardViewInput): CardView {
     // The car line is Byt bil wherever the car can be changed (more than one car can charge here): for every
     // user while a car is plugged in, since any user may answer which car it is. With no car plugged in the
     // choice is the plan's car, a plan setting (`mayPlan`), so a reader who may not change the plan gets the plain line.
+    // A guest car can be plugged in anywhere: with one car too, while a car is plugged in, it can be the answer.
     const changeable =
-      model.chargerCars.length >= 2 && (mayPlan || model.connection?.state !== "disconnected");
+      (model.chargerCars.length >= 2 && (mayPlan || model.connection?.state !== "disconnected")) ||
+      guestOffered(model);
     const lineName = vehicleLine.name ?? translate(model.language, "settings.vehicle.unnamed");
     const changeLabel = translate(model.language, "identify.changeCarAria", { name: lineName });
     vehicleButton = element(doc, changeable ? "button" : "div", C.vehicleLine);
@@ -1393,6 +1422,7 @@ export function createCardView(input: CardViewInput): CardView {
         block: identification,
         currentName: current?.name ?? null,
         canAnswer: true,
+        ...(model.guest === null ? {} : { guest: model.guest.first ? ("first" as const) : ("last" as const) }),
         onAnswer: (vehicleId) => input.onAnswerIdentification?.(vehicleId),
       }),
     );
@@ -2302,7 +2332,12 @@ export function createCardView(input: CardViewInput): CardView {
     const body = changeCarBody(doc, model.language, {
       block: model.identification,
       vehicles: model.chargerCars,
-      currentId: model.identification?.vehicle_id ?? model.soc?.vehicle_id ?? model.targetVehicleId,
+      currentId:
+        model.guest?.active === true
+          ? GUEST_VEHICLE_ID
+          : (model.identification?.vehicle_id ?? model.soc?.vehicle_id ?? model.targetVehicleId),
+      // The guest is an answer about the car plugged in: never the plan's car for a next plug-in.
+      guest: guestOffered(model),
       chargerName: model.chargerName,
       idPrefix,
       onChoose: (vehicleId) => {
@@ -3898,8 +3933,12 @@ export function createCardView(input: CardViewInput): CardView {
   /** Where the open car's tab is kept when the card keeps nothing across renders. */
   const localTabs: { vehicle?: string | null } = {};
 
-  /** The cars' tabs: compact text tabs, the open one marked; a tap opens that car's rows. */
-  function vehicleTabs(cars: readonly Vehicle[], openId: string, holder: { vehicle?: string | null }): HTMLElement {
+  /** The cars' tabs (and the guest's): compact text tabs, the open one marked; a tap opens that car's rows. */
+  function vehicleTabs(
+    cars: ReadonlyArray<{ id: string; name: string | null }>,
+    openId: string,
+    holder: { vehicle?: string | null },
+  ): HTMLElement {
     const list = element(doc, "div", C.vehicleTabs);
     list.setAttribute("role", "tablist");
     list.setAttribute("aria-label", translate(model.language, "settings.heading.car"));
@@ -3937,6 +3976,38 @@ export function createCardView(input: CardViewInput): CardView {
       list.append(tab);
     }
     return list;
+  }
+
+  /**
+   * The Guest tab's section: the "Car" heading with the tabs, and one row, the guest amount a guest plan starts from
+   * (`spotnav/update_guest`). No picture, sensor, capacity or target: a guest car has none here.
+   */
+  function guestSummary(amountKwh: number, tabs: HTMLElement): HTMLElement {
+    const card = element(doc, "section", C.settingsSection);
+    card.dataset["section"] = "vehicle";
+    card.dataset["vehicle"] = GUEST_VEHICLE_ID;
+    card.append(sectionHeading(doc, "car", translate(model.language, "settings.heading.car")), tabs);
+    const label = translate(model.language, "settings.guest.amount");
+    const value = `${formatNumber(model.language, amountKwh, 1)} kWh`;
+    card.append(
+      ...settingRow(doc, {
+        key: "guest_amount",
+        label,
+        value,
+        help: translate(model.language, "settings.guest.amountHelp"),
+        onTap: () =>
+          editNumber(
+            label,
+            { unit: "kWh", current: amountKwh, min: GUEST_KWH_MIN, max: GUEST_KWH_MAX, decimals: 1 },
+            (chosen) =>
+              chosen === null
+                ? Promise.resolve(translate(model.language, "settings.error.required"))
+                : writeValue({ kind: "guest", amountKwh: chosen }),
+          ),
+        changeableText: translate(model.language, "settings.row.changeable", { label, value }),
+      }),
+    );
+    return card;
   }
 
   /** The charger's section: its heading, its setup rows and the identification rows. */
@@ -3993,15 +4064,27 @@ export function createCardView(input: CardViewInput): CardView {
                 suggested_onboard_phases: null,
               }))
           : [];
-      // With two or more cars: one "Car" section, a tab per car in its header, the open car's rows below.
+      // With two or more cars: one "Car" section, a tab per car in its header, the open car's rows below. An
+      // administrator also has the Guest tab after the household's cars: the guest amount, nothing else.
       const cars = [...vehicleRows, ...extra];
+      const guest = input.isAdmin && model.guest !== null && cars.length > 0 ? model.guest : null;
+      const tabItems: Array<{ id: string; name: string | null }> = [
+        ...cars,
+        ...(guest === null ? [] : [{ id: GUEST_VEHICLE_ID, name: translate(model.language, "identify.guest") }]),
+      ];
       const holder = input.overviewPlace ?? localTabs;
       const remembered = holder.vehicle ?? null;
-      const open =
-        cars.find((row) => row.id === remembered) ??
-        cars.find((row) => row.id === model.targetVehicleId) ??
-        cars[0];
-      const tabs = cars.length > 1 && open !== undefined ? vehicleTabs(cars, open.id, holder) : undefined;
+      const guestOpen = guest !== null && remembered === GUEST_VEHICLE_ID;
+      const open = guestOpen
+        ? undefined
+        : (cars.find((row) => row.id === remembered) ??
+          cars.find((row) => row.id === model.targetVehicleId) ??
+          cars[0]);
+      const openId = guestOpen ? GUEST_VEHICLE_ID : open?.id;
+      const tabs = tabItems.length > 1 && openId !== undefined ? vehicleTabs(tabItems, openId, holder) : undefined;
+      if (guestOpen && guest !== null && tabs !== undefined) {
+        vehicleListSlot.append(guestSummary(guest.amount_kwh, tabs));
+      }
       for (const row of cars) {
         if (tabs !== undefined && row !== open) {
           continue;

@@ -25,7 +25,14 @@ from custom_components.spotnav.api.settings import (
     replacement_mutator,
 )
 from custom_components.spotnav.api.webhook import APP_UNREAD_SETTINGS
-from custom_components.spotnav.planning.auto_settings import ALL_WEEKDAYS, AutoSettings, AutoSettingsError
+from custom_components.spotnav.const import GUEST_VEHICLE_ID
+from custom_components.spotnav.planning.auto_settings import (
+    ALL_WEEKDAYS,
+    DRIVER_MANUAL_KWH,
+    AutoSettings,
+    AutoSettingsError,
+    TargetSocIntent,
+)
 
 from .harness import Harness
 from .messages import read_settings_message, update_settings_message
@@ -217,6 +224,20 @@ async def test_a_date_the_person_chose_wins_over_the_set(harness: Harness) -> No
     )
     plain = await harness.auto("entry-b", departure=time(8, 0), requested_kwh=10.0, departure_date=date(2026, 10, 3))
     assert chosen.snapshot().proposal.periods == plain.snapshot().proposal.periods
+
+
+async def test_a_guest_leaves_at_the_next_time_whatever_the_households_weekdays_and_date(harness: Harness) -> None:
+    """A guest's Plan dialog shows only the time: the household's weekdays and date are not the guest's."""
+    _publish(harness)
+    guest = TargetSocIntent(vehicle_id=GUEST_VEHICLE_ID, target_percent=None)
+    restricted = await harness.auto(
+        departure=time(8, 0), requested_kwh=10.0, driver=DRIVER_MANUAL_KWH, target=guest,
+        departure_weekdays=(MON,), departure_date=date(2026, 10, 3),
+    )
+    daily = await harness.auto("entry-b", departure=time(8, 0), requested_kwh=10.0, driver=DRIVER_MANUAL_KWH, target=guest)
+    assert daily.snapshot().proposal is not None and daily.snapshot().proposal.has_plan
+    assert restricted.snapshot().proposal.periods == daily.snapshot().proposal.periods
+    assert restricted.snapshot().history is None, "the ordinary daily departure takes no history"
 
 
 def test_a_stored_if_not_ready_choice_is_read_back() -> None:

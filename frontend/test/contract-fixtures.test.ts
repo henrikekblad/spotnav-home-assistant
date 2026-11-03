@@ -556,6 +556,7 @@ describe("the backend's dashboard strategy_state, site and status fixtures", () 
           "detected_phases",
           "fiscal",
           "generated_at",
+          "guest",
           "identification",
           "live",
           "market",
