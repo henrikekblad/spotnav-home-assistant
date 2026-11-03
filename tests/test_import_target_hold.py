@@ -58,6 +58,8 @@ class _World:
     delivered_kwh: float = 0.0
     #: Fire Home Assistant's timers on every step (the plan's windows and its watch run on them).
     timers: bool = False
+    #: When a person released the import target (`_released_by_hand`).
+    released_at: datetime | None = None
     #: The phone's notify calls and the plan's departure, where a test sets them.
     calls: list = field(default_factory=list)
     departure: datetime | None = None
@@ -457,38 +459,100 @@ async def test_a_release_holds_until_the_departure_and_survives_a_restart(hass: 
         assert controller._target_released == {}  # noqa: SLF001
 
 
+async def _released_by_hand(hass: HomeAssistant, monkeypatch, frozen, name: str):
+    """A person's Start held at 7 A, then released without a departure: the world, its site and the charger's id."""
+    world = await _world(hass, monkeypatch, frozen, name)
+    await world.step()
+    await _start_by_hand(world)
+    await world.run(3)
+    assert world.car_a == 7.0, "a person's Start is held like any charge"
+    controller = world.halo.controller
+    charger = world.halo.charger.entry_id
+    # No plan, no departure: released until the car is unplugged (by noon at the latest).
+    world.released_at = dt_util.utcnow()
+    assert controller.async_release_import_target(charger) is None
+    await world.run(3)
+    assert world.car_a == 16.0
+    return world, controller, charger
+
+
 async def test_a_release_without_a_departure_lasts_until_unplug_and_survives_a_restart(
     hass: HomeAssistant, monkeypatch
 ) -> None:
     from custom_components.spotnav.execution.chargers.adapter import ChargerAdapter
-    from custom_components.spotnav.site.site_capacity_controller import RELEASED_UNTIL_UNPLUG, SiteCapacityController
+    from custom_components.spotnav.site.site_capacity_controller import (
+        SiteCapacityController,
+        unplug_release_value,
+    )
 
     with freeze_time(_HOUR + timedelta(seconds=5)) as frozen:
-        world = await _world(hass, monkeypatch, frozen, "nodeparture")
-        await world.step()
-        await _start_by_hand(world)
-        await world.run(3)
-        assert world.car_a == 7.0, "a person's Start is held like any charge"
-        controller = world.halo.controller
-        charger = world.halo.charger.entry_id
-        # No plan, no departure: released until the car is unplugged.
-        assert controller.async_release_import_target(charger) is None
-        await world.run(3)
-        assert world.car_a == 16.0
-        assert controller.import_target_snapshot()["released"] == {charger: RELEASED_UNTIL_UNPLUG}
+        world, controller, charger = await _released_by_hand(hass, monkeypatch, frozen, "nodeparture")
+        # Kept with the moment it was given.
+        kept = unplug_release_value(world.released_at)
+        assert controller.import_target_snapshot()["released"] == {charger: kept}
         status = controller.import_target_status(charger)
-        assert status is not None and status.released_for == RELEASED_UNTIL_UNPLUG
+        assert status is not None and status.released_for == kept
         # A restart reads it back.
         await controller._target_release_store.async_save({"released": dict(controller._target_released)})  # noqa: SLF001
         fresh = SiteCapacityController(hass, controller.entry_id, dict(controller.config))
         await fresh._async_load_released()  # noqa: SLF001
-        assert fresh._target_released == {charger: RELEASED_UNTIL_UNPLUG}  # noqa: SLF001
-        # Hours on it still holds; the unplug ends it.
-        frozen.tick(timedelta(hours=5))
-        world.halo.advance(5 * 3600.0)
+        assert fresh._target_released == {charger: kept}  # noqa: SLF001
+        # An hour on (before noon) it still holds; the unplug ends it.
+        frozen.tick(timedelta(hours=1))
+        world.halo.advance(3600.0)
         controller._prune_released(dt_util.utcnow())  # noqa: SLF001
-        assert controller._target_released == {charger: RELEASED_UNTIL_UNPLUG}  # noqa: SLF001
+        assert controller._target_released == {charger: kept}  # noqa: SLF001
         monkeypatch.setattr(ChargerAdapter, "vehicle_connected", lambda self: False)
+        controller._prune_released(dt_util.utcnow())  # noqa: SLF001
+        assert controller._target_released == {}  # noqa: SLF001
+
+
+async def test_a_release_until_unplug_ends_at_noon_on_a_charger_without_a_plug_signal(
+    hass: HomeAssistant, monkeypatch
+) -> None:
+    from custom_components.spotnav.execution.chargers.adapter import ChargerAdapter
+    from custom_components.spotnav.site.site_capacity_controller import unplug_release_latest
+
+    with freeze_time(_HOUR + timedelta(seconds=5)) as frozen:
+        world, controller, charger = await _released_by_hand(hass, monkeypatch, frozen, "noplug")
+        # The charger never reports the plug: neither plugged in nor out.
+        monkeypatch.setattr(ChargerAdapter, "vehicle_connected", lambda self: None)
+        noon = unplug_release_latest(world.released_at)
+        assert dt_util.as_local(noon).hour == 12 and noon > dt_util.utcnow()
+        assert noon - dt_util.utcnow() <= timedelta(days=1)
+        controller._prune_released(noon - timedelta(minutes=1))  # noqa: SLF001
+        assert charger in controller._target_released  # noqa: SLF001
+        controller._prune_released(noon)  # noqa: SLF001
+        assert controller._target_released == {}  # noqa: SLF001
+
+
+def test_an_until_unplug_release_ends_at_the_first_local_noon_after_it() -> None:
+    from custom_components.spotnav.site.site_capacity_controller import unplug_release_latest
+
+    zone = dt_util.get_default_time_zone()
+    evening = datetime(2026, 11, 2, 22, 0, tzinfo=zone)
+    assert unplug_release_latest(evening) == datetime(2026, 11, 3, 12, 0, tzinfo=zone)
+    morning = datetime(2026, 11, 3, 9, 30, tzinfo=zone)
+    assert unplug_release_latest(morning) == datetime(2026, 11, 3, 12, 0, tzinfo=zone)
+    at_noon = datetime(2026, 11, 3, 12, 0, tzinfo=zone)
+    assert unplug_release_latest(at_noon) == datetime(2026, 11, 4, 12, 0, tzinfo=zone)
+
+
+async def test_a_release_until_unplug_ends_when_the_car_ends_the_charge(hass: HomeAssistant, monkeypatch) -> None:
+    from custom_components.spotnav.execution.controller import ChargingController
+
+    with freeze_time(_HOUR + timedelta(seconds=5)) as frozen:
+        world, controller, charger = await _released_by_hand(hass, monkeypatch, frozen, "carended")
+        # A charge the car ended before the release does not end it.
+        before = _HOUR
+        monkeypatch.setattr(ChargingController, "car_ended_at", property(lambda self: before))
+        controller._prune_released(dt_util.utcnow())  # noqa: SLF001
+        assert charger in controller._target_released  # noqa: SLF001
+        # The car ends this charge by itself (full, or at its limit): the release is over.
+        frozen.tick(timedelta(minutes=40))
+        world.halo.advance(2400.0)
+        ended = dt_util.utcnow()
+        monkeypatch.setattr(ChargingController, "car_ended_at", property(lambda self: ended))
         controller._prune_released(dt_util.utcnow())  # noqa: SLF001
         assert controller._target_released == {}  # noqa: SLF001
 

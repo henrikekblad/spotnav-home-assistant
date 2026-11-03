@@ -302,8 +302,31 @@ TARGET_NOT_APPLIED_LOAD_BALANCING_OFF = "load_balancing_off"
 TARGET_NOT_APPLIED_BATTERY_UNKNOWN = "battery_unknown"
 #: Why a person's set-aside was refused (`async_release_import_target`).
 ERROR_NO_IMPORT_TARGET = "spotnav_no_import_target"
-#: What a set-aside with no departure ahead (a person's Start, a plan without one) is kept as: until the car is unplugged.
+#: What a set-aside with no departure ahead (a person's Start, a plan without one) is kept as, followed by "/" and the
+#: moment it was given (`_unplug_release_since`): until the car is unplugged, the car ends the charge by itself, or the
+#: next local noon, whichever comes first, so "tonight" ends even on a charger that never reports a plug state.
 RELEASED_UNTIL_UNPLUG = "until_unplug"
+#: The local hour an until-unplug set-aside ends at the latest.
+RELEASED_UNTIL_UNPLUG_LATEST_HOUR = 12
+
+
+def _unplug_release_since(value: str) -> datetime | None:
+    """When an until-unplug set-aside (`RELEASED_UNTIL_UNPLUG/<instant>`) was given, else `None`."""
+    head, _, since = value.partition("/")
+    return dt_util.parse_datetime(since) if head == RELEASED_UNTIL_UNPLUG and since else None
+
+
+def unplug_release_value(now: datetime) -> str:
+    """The value an until-unplug set-aside given at `now` is kept as."""
+    return f"{RELEASED_UNTIL_UNPLUG}/{now.isoformat()}"
+
+
+def unplug_release_latest(since: datetime) -> datetime:
+    """The first local noon after `since`: an until-unplug set-aside ends there at the latest."""
+    local = dt_util.as_local(since)
+    noon = local.replace(hour=RELEASED_UNTIL_UNPLUG_LATEST_HOUR, minute=0, second=0, microsecond=0)
+    # Wall-clock arithmetic on the local zone: the next day's noon also across a DST change.
+    return noon if noon > local else noon + timedelta(days=1)
 ERROR_STALE_DEPARTURE = "spotnav_stale_departure"
 #: The target's own code failed (`_compute_regulator_decisions`): the fuse's decisions went as they were.
 TARGET_NOT_APPLIED_ERROR = "error"
@@ -5088,7 +5111,7 @@ class SiteCapacityController:
                 for key, value in released.items()
                 if isinstance(key, str)
                 and isinstance(value, str)
-                and (value == RELEASED_UNTIL_UNPLUG or dt_util.parse_datetime(value) is not None)
+                and (_unplug_release_since(value) is not None or dt_util.parse_datetime(value) is not None)
             }
 
     def _save_released(self) -> None:
@@ -5102,11 +5125,19 @@ class SiteCapacityController:
     def _release_over(self, charger_entry_id: str, departure: str, now: datetime) -> bool:
         """Whether a set-aside until `departure` has ended: the departure passed, the car was unplugged, or the plan
         is now for another departure (earlier or later), which the set-aside was not given for. One with no departure
-        (`RELEASED_UNTIL_UNPLUG`) ends with the unplug alone."""
+        (`RELEASED_UNTIL_UNPLUG`) ends at the unplug, when the car ends the charge by itself after it was given
+        (`car_ended_at`), or at the next local noon (`unplug_release_latest`), whichever comes first: a charger that
+        cannot report the plug, or a car that is full, does not keep it into the next day."""
         charger_controller = controller_for(self.hass, charger_entry_id)
         unplugged = charger_controller is not None and charger_controller.adapter.vehicle_connected() is False
-        if departure == RELEASED_UNTIL_UNPLUG:
-            return unplugged
+        since = _unplug_release_since(departure)
+        if since is not None:
+            ended = None if charger_controller is None else getattr(charger_controller, "car_ended_at", None)
+            return (
+                unplugged
+                or now >= unplug_release_latest(since)
+                or (isinstance(ended, datetime) and ended > since)
+            )
         moment = dt_util.parse_datetime(departure)
         plan = None if charger_controller is None else getattr(charger_controller, "plan", None)
         return moment is None or moment <= now or unplugged or plan is None or plan.departure != departure
@@ -5147,7 +5178,7 @@ class SiteCapacityController:
                     charger_entry_id,
                 )
                 return ERROR_STALE_DEPARTURE
-            return self._release(charger_entry_id, RELEASED_UNTIL_UNPLUG)
+            return self._release(charger_entry_id, unplug_release_value(dt_util.utcnow()))
         assert plan is not None
         if for_departure is not None and for_departure != int(departure.timestamp()):
             _LOGGER.info(
@@ -5167,7 +5198,7 @@ class SiteCapacityController:
         return self._release(charger_entry_id, plan.departure)
 
     def _release(self, charger_entry_id: str, until: str) -> str | None:
-        """Keep the target aside for this charger `until` a departure (ISO) or the unplug (`RELEASED_UNTIL_UNPLUG`)."""
+        """Keep the target aside for this charger `until` a departure (ISO) or the unplug (`unplug_release_value`)."""
         self._target_released[charger_entry_id] = until
         self._target_risk.pop(charger_entry_id, None)
         self._tell_target_risk()

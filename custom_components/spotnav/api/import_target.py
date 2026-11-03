@@ -2,9 +2,9 @@
 `import_target_at_risk`) and the notification's button.
 
 `{api_version: 1, charger_id}` sets the site's import target aside for that charger's charge until its plan's
-departure, or until the car is unplugged where no departure is ahead (a person's Start, or a plan without one)
-(`SiteCapacityController.async_release_import_target`): kept across a restart, ended by the departure or an unplug.
-Any user may ask, as any user may start a charge. The answer is `{"api_version": 1, "ok", "error"}`; refusals:
+departure or an unplug; where no departure is ahead (a person's Start, or a plan without one), until the car is
+unplugged, the car ends the charge or the next local noon (`SiteCapacityController.async_release_import_target`).
+Kept across a restart. Any user may ask, as any user may start a charge. The answer is `{"api_version": 1, "ok", "error"}`; refusals:
 `spotnav_no_site` (the charger has no site), `spotnav_no_import_target` (the site has none set), and the charger
 lookup's codes. Logged at INFO.
 
