@@ -1036,11 +1036,11 @@ class VehicleIdentifier:
     def _evaluate_single(self, session: _Session, evidence: Sequence[Evidence]) -> None:
         """A one-car charger: its car is ruled out by its own strong - evidence (or the camera that saw none of the
         cars at high confidence) or not. Ruled out, it asks "<car> or Guest car?" once the ask deadline is past; else
-        nothing (no question for a car that says nothing), and the camera may be asked. It never switches by itself."""
+        nothing (no question for a car that says nothing), and the camera may be asked. It never switches by itself. The
+        car's button stays first (owner's choice), so "Guest car" is never put first here."""
         if session.state != STATE_WAITING:
             return
         session.ruled_out = any(item.negative is not None for item in evidence) or bool(session.camera_excludes)
-        session.guest_first = session.ruled_out or session.camera_other
         session.likely = frozenset(item.vehicle_id for item in evidence if item.positive == STRONG and not item.negative)
         if session.ruled_out:
             if dt_util.utcnow() >= session.t0 + timedelta(seconds=ASK_AFTER_S):

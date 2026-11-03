@@ -133,7 +133,7 @@ async def test_a_one_car_charger_asks_only_when_its_car_is_ruled_out(world: Worl
     await world.later(ASK_AFTER_S)
     question = world.sent()[0]
     assert question["message"] == "Which car is plugged in?"
-    assert titles(question) == ["Guest car", "Kia"], "<car> or Guest car, the guest first: its car is ruled out"
+    assert titles(question) == ["Kia", "Guest car"], "<car> or Guest car, the car first (owner 2026-11-03)"
     assert world.identifier.dashboard()["state"] == "asking"
     assert world.settings.target.vehicle_id == world.cars["Kia"], "nothing switches to a guest by itself"
 
@@ -147,7 +147,7 @@ async def test_two_cars_ask_with_guest_car_and_all_ruled_out_puts_it_first(world
     await world.later(ASK_AFTER_S + 5)
     assert titles(world.sent()[0]) == ["Guest car", "Kia", "Tesla"]
     block = dashboard_api.capture_guest(world.hass, world.entry.entry_id, world.settings)
-    assert block == {"active": False, "amount_kwh": DEFAULT_GUEST_KWH, "first": True}
+    assert block == {"active": False, "amount_kwh": DEFAULT_GUEST_KWH, "first": False}
     await world.later(LISTEN_FOR_S + 60)
     assert world.settings.target.vehicle_id == world.cars["Kia"], "unanswered: the current car is kept"
     assert not is_guest(world.settings)
@@ -373,7 +373,7 @@ async def test_the_camera_that_sees_none_of_the_cars_makes_a_one_car_charger_ask
     await hass.async_block_till_done()
     await world.later(ASK_AFTER_S + 5)
     question = world.sent()[0]
-    assert titles(question) == ["Guest car", "Kia"]
+    assert titles(question) == ["Kia", "Guest car"]
     assert not is_guest(world.settings), "a person confirms a guest"
     camera = world.identifier.diagnostics()["history"][-1]["camera"]
     assert camera["answer"] == ANSWER_OTHER and camera["camera_reason"] == "none_of_these" and camera["used"]
@@ -410,7 +410,7 @@ async def test_the_webhook_carries_the_guest_only_for_an_app_that_reads_it(world
     world.car_says("Kia", "plug", "off")
     await world.later(ASK_AFTER_S)
     body = dashboard_api.serialize_dashboard(dashboard_api.capture_dashboard(hass, world.entry), can_act=True)
-    assert body["guest"] == {"active": False, "amount_kwh": 10.0, "first": True}
+    assert body["guest"] == {"active": False, "amount_kwh": 10.0, "first": False}
     assert body["identification"]["state"] == "asking" and len(body["identification"]["candidates"]) == 1
     old = _for_app(body, {})
     assert "guest" not in old and old["identification"] is None, "an older app never meets a one-car question"
@@ -462,7 +462,7 @@ async def test_a_guest_evening_end_to_end_and_its_core_events_replay(hass: HomeA
         hass.states.async_set(plug, "off", {"device_class": "plug"})
         await car.settle(ASK_AFTER_S)
         question = phone[-1].data
-        assert titles(question) == ["Guest car", "EV6"]
+        assert titles(question) == ["EV6", "Guest car"]
         hass.bus.async_fire("mobile_app_notification_action", {"action": question["data"]["actions"][0]["action"]})
         await car.settle()
         await car.preview.async_recalculate()
