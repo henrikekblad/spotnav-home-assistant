@@ -1,8 +1,10 @@
-"""Which car was plugged in, at a charger more than one vehicle can charge at.
+"""Which car was plugged in: one of the household's, or a guest car.
 
-Runs only when the charger's vehicle list (`AutoSettings.vehicle_ids`, every detected vehicle by default)
-holds two or more vehicles, the mode (`identify_mode`) is not `off`, and the charger reports a plug-in (a
-charger that cannot say whether a car is connected never starts it).
+Runs when the mode (`identify_mode`) is not `off` and the charger reports a plug-in (a charger that cannot say
+whether a car is connected never starts it). With two or more vehicles in the charger's vehicle list
+(`AutoSettings.vehicle_ids`, every detected vehicle by default) it finds which; with one (**a one-car charger**) it
+only looks whether that car is ruled out by its own strong - evidence (below), and asks "<car> or Guest car?" only
+then (a car that says nothing is no question). Always ask is the automatic mode there.
 
 **Evidence** (`judge`), read only from what Home Assistant already holds: identification never wakes a car,
 and re-reads the cars' plug and tracker entities with `homeassistant.update_entity` at the plug-in and at the
@@ -22,15 +24,18 @@ is a conflict and asks at once; otherwise it asks after `ASK_AFTER_S` and keeps 
 automatic decision per plug-in.
 
 **The camera** (optional, `camera_rule.py`, `camera_identification.py`): while nothing has decided and two or
-more cars are left, the charger's camera is asked once (one retry after an error) before the question. Its
-answer decides alone only at high confidence between cars that differ in colour, each with a reference picture;
-otherwise it puts the car it names first among the question's buttons. A query that takes longer than
+more cars are left (one at a one-car charger), the charger's camera is asked once (one retry after an error) before
+the question. Its answer decides alone only at high confidence between cars that differ in colour, each with a
+reference picture; otherwise it puts the car it names first among the question's buttons. Its answer "none of these
+cars" (`camera_rule.ANSWER_OTHER`) never decides a guest: it puts "Guest car" first, and at high confidence it
+counts as the cars with a reference picture ruled out (so a one-car charger asks). A query that takes longer than
 `camera_rule.QUERY_TIMEOUT_S` is ignored. **Always ask** asks at the plug-in, the buttons ordered by evidence, and
 never switches by itself. **Off** does nothing.
 
-**The question** goes to the charger's notification phones (event `vehicle_identify`) with one button per
-car (at most three: with more, the two likeliest and "Open SpotNav"); the action ids carry an unguessable
-nonce, and the first valid answer wins. A choice in the card or the app is an answer, and so is a person
+**The question** goes to the charger's notification phones (event `vehicle_identify`) with the cars and "Guest car"
+(`buttons`, at most three: with one or two cars each car and "Guest car"; with more, the likeliest car, "Guest car"
+and "Open SpotNav"); "Guest car" goes first when every car is ruled out or the camera saw none of them. The action
+ids carry an unguessable nonce, and the first valid answer wins. A choice in the card or the app is an answer, and so is a person
 changing the vehicle in the settings meanwhile. Once answered or decided the question is replaced on every
 phone; unplugging for longer than `UNPLUG_DEBOUNCE_S` clears it (a shorter unplug is the same plug-in, so what
 was decided or answered holds). Nobody answering, or the question dismissed, keeps the current car.
@@ -45,6 +50,12 @@ answer, the car and how it was decided (`assumed` says why the current car was k
 A switch is a normal settings write (`AutoSettings.with_target_vehicle`: the car's own target),
 so the plan recalculates as after any other write. Nothing here starts, stops or owns a charge.
 `method` is how the car was decided, for the session record (`METHODS`).
+
+**A guest car** (`guest.py`) is only ever a person's answer (`GUEST_VEHICLE_ID`): the switch to it is the settings
+write `guest.with_guest` (the guest amount by kWh, no vehicle), and what the settings were before is kept with the
+plug-in's record, so a restart while it is plugged in keeps the guest. The unplug (after `UNPLUG_DEBOUNCE_S`), a new
+plug-in, or a person choosing a household car brings them back (`guest.restored`). The amount changed during a guest
+plan is remembered for the next guest.
 """
 
 from __future__ import annotations
@@ -54,8 +65,8 @@ import copy
 import hmac
 import logging
 import secrets
-from collections.abc import Iterable, Sequence
-from dataclasses import dataclass, field
+from collections.abc import Callable, Iterable, Sequence
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
 from typing import Any, Final
 
@@ -68,9 +79,21 @@ from homeassistant.helpers.event import (
 )
 from homeassistant.util import dt as dt_util
 
-from ..const import DOMAIN
+from ..const import DOMAIN, GUEST_VEHICLE_ID
+from ..notifications.messages import identify_text
 from ..planning.auto_settings import AutoSettings, AutoSettingsError, AutoSettingsStore, IDENTIFY_ASK, IDENTIFY_OFF
-from .camera_rule import camera_reason, camera_verdict, may_query, QUERY_TIMEOUT_S, Signature
+from ..texts import language_of
+from .camera_rule import (
+    ANSWER_OTHER,
+    camera_reason,
+    camera_verdict,
+    CONFIDENCE_HIGH,
+    may_query,
+    QUERY_TIMEOUT_S,
+    REASON_NONE_OF_THESE,
+    Signature,
+)
+from .guest import async_set_guest_amount, guest_amount_kwh, GuestPrevious, is_guest, restored, valid_amount, with_guest
 from .identification_changes import SourceChanges
 from .identification_sources import identification_sources, location_reading, plug_reading
 from . import vehicle_properties
@@ -153,6 +176,9 @@ ASSUMED_UNANSWERED: Final = "unanswered"
 ASSUMED_UNPLUGGED: Final = "unplugged"
 #: A camera answer that came after a person answered or the cars decided (`camera_reason`).
 CAMERA_LATE: Final = "late"
+#: How a person's answer came (`answered_by` in the history): a phone's button, or a choice in the card or the app.
+ANSWERED_BY_NOTIFICATION: Final = "notification"
+ANSWERED_BY_CHOICE: Final = "choice"
 _STORE_VERSION: Final = 1
 _STORE_KEY_PREFIX: Final = f"{DOMAIN}.identification"
 
@@ -257,11 +283,14 @@ def ordered(evidence: Sequence[Evidence], current: str | None, camera: str | Non
     return [item.vehicle_id for _, item in sorted(enumerate(evidence), key=rank)]
 
 
-def buttons(cars: Sequence[str]) -> tuple[list[str], bool]:
-    """The cars that get a button, and whether an "Open SpotNav" button is added (Android shows three)."""
-    if len(cars) <= MAX_BUTTONS:
-        return list(cars), False
-    return list(cars[: MAX_BUTTONS - 1]), True
+def buttons(cars: Sequence[str], *, guest_first: bool = False) -> tuple[list[str], bool]:
+    """The answers that get a button (the cars, likeliest first, and `GUEST_VEHICLE_ID`), and whether an "Open
+    SpotNav" button is added (Android shows three): with one or two cars every car and "Guest car"; with more, the
+    likeliest car, "Guest car" and "Open SpotNav". `guest_first`: every car is ruled out, or the camera saw none of
+    them."""
+    shown = list(cars) if len(cars) < MAX_BUTTONS else list(cars[: MAX_BUTTONS - 2])
+    answers = [GUEST_VEHICLE_ID, *shown] if guest_first else [*shown, GUEST_VEHICLE_ID]
+    return answers, len(cars) >= MAX_BUTTONS
 
 
 def _evidence_record(candidate: Candidate, evidence: Evidence) -> dict[str, Any]:
@@ -334,6 +363,15 @@ class _Session:
     camera_record: dict[str, Any] | None = None
     #: This plug-in's entry in the history (`VehicleIdentifier._history`).
     entry: dict[str, Any] | None = None
+    #: A one-car charger: it asks only when its car is ruled out (`ruled_out`), and never switches by itself.
+    single: bool = False
+    ruled_out: bool = False
+    #: The camera saw none of the cars (`camera_rule.ANSWER_OTHER`): "Guest car" goes first; at high confidence the
+    #: cars it had a reference picture of are ruled out (`camera_excludes`).
+    camera_other: bool = False
+    camera_excludes: frozenset[str] = frozenset()
+    #: "Guest car" goes first among the buttons.
+    guest_first: bool = False
 
     def all_evidence(self) -> list[dict[str, Any]]:
         return [*self.evidence, *([] if self.camera_record is None else [{"camera": self.camera_record}])]
@@ -387,12 +425,21 @@ class VehicleIdentifier:
         self._history: list[dict[str, Any]] = []
         # The history entry of the plug-in in progress (also one where nothing was identified), `None` between.
         self._entry: dict[str, Any] | None = None
+        # While a guest car is planned for: the settings it found (`guest.GuestPrevious`), kept with the decision so
+        # a restart keeps the guest; `_guest` says one is planned for (its previous settings may be lost).
+        self._guest = False
+        self._guest_previous: GuestPrevious | None = None
+        # The writes that bring the settings back after a guest, one at a time.
+        self._guest_lock = asyncio.Lock()
 
     async def async_load(self) -> None:
         """Read what was decided at the plug-in in progress before a restart, if anything, and the history."""
         raw = await self._memory.async_load()
         self._remembered = raw if isinstance(raw, dict) and raw.get("method") in METHODS else None
         self._kept = None if self._remembered is None else self._remembered["method"]
+        guest = raw.get("guest") if isinstance(raw, dict) else None
+        self._guest = isinstance(guest, dict)
+        self._guest_previous = GuestPrevious.from_stored(guest.get("previous")) if isinstance(guest, dict) else None
         history = raw.get("history") if isinstance(raw, dict) else None
         self._history = [item for item in history if isinstance(item, dict)][-HISTORY_SIZE:] if isinstance(history, list) else []
 
@@ -408,7 +455,10 @@ class VehicleIdentifier:
 
     def _save(self) -> None:
         """Store the decision and the history as they are now; the writes land in the order they were made."""
-        data = {"method": self._kept, "history": copy.deepcopy(self._history)}
+        data: dict[str, Any] = {"method": self._kept, "history": copy.deepcopy(self._history)}
+        if self._guest:
+            # Additive: written only while a guest car is planned for.
+            data["guest"] = {"previous": None if self._guest_previous is None else self._guest_previous.as_dict()}
         self._hass.async_create_task(self._async_save(data), eager_start=True)
 
     async def _async_save(self, data: dict[str, Any]) -> None:
@@ -438,6 +488,7 @@ class VehicleIdentifier:
             "method": None,
             "decided_at": None,
             "assumed": None,
+            "answered_by": None,
             "corrections": [],
         }
         if skipped is not None:
@@ -450,19 +501,32 @@ class VehicleIdentifier:
         self._save()
         return entry
 
-    def _record_decision(self, entry: dict[str, Any] | None, car: str | None, method: str, *, assumed: str | None = None) -> None:
-        """The car a plug-in was decided as, or, once it was, a later correction."""
+    def _record_decision(
+        self,
+        entry: dict[str, Any] | None,
+        car: str | None,
+        method: str,
+        *,
+        assumed: str | None = None,
+        answered_by: str | None = None,
+    ) -> None:
+        """The car a plug-in was decided as (a guest car is `GUEST_VEHICLE_ID`), or, once it was, a later correction;
+        `answered_by` says how a person's answer came."""
         if entry is None:
             return
         now = dt_util.utcnow().isoformat()
         if entry["decided_at"] is not None:
             if assumed is None:
-                entry["corrections"].append({"at": now, "vehicle_id": car, "method": method})
+                correction: dict[str, Any] = {"at": now, "vehicle_id": car, "method": method}
+                if answered_by is not None:
+                    correction["answered_by"] = answered_by
+                entry["corrections"].append(correction)
                 self._save()
             return
         entry.update(vehicle_id=car, method=method, decided_at=now, assumed=assumed)
         if method in (METHOD_ANSWERED, METHOD_MANUAL):
             entry["answered_at"] = now
+            entry["answered_by"] = answered_by
         self._save()
 
     # ------------------------------------------------------------------ lifecycle
@@ -490,13 +554,17 @@ class VehicleIdentifier:
         )
         if self._connected is True:
             if remembered is not None:
-                # Decided before the restart, the same car still plugged in: nothing to identify again.
+                # Decided before the restart, the same car still plugged in: nothing to identify again (a guest car
+                # stays the guest).
                 self._method = remembered["method"]
             else:
                 # Plugged in across a restart with nothing decided: identify it as a plug-in seen late.
                 self._plugged_in(dt_util.utcnow(), trigger=TRIGGER_RESTART)
         elif remembered is not None:
             self._remember(None)
+        if self._connected is False:
+            # The guest left while Home Assistant was down.
+            self._end_guest()
 
     @callback
     def async_shutdown(self) -> None:
@@ -519,12 +587,24 @@ class VehicleIdentifier:
 
     def claims(self, vehicle_id: str) -> bool:
         """Whether this charger has a car plugged in that is known to be `vehicle_id` (a car just decided counts
-        at once, while its switch is still being written)."""
+        at once, while its switch is still being written). Never a guest car's."""
         return (
             self._connected is True
             and self._method in _CONFIRMING
+            and vehicle_id != GUEST_VEHICLE_ID
             and self._planned_vehicle() == vehicle_id
         )
+
+    @property
+    def guest(self) -> bool:
+        """Whether this charger plans for a guest car (a person said so; `guest.py`)."""
+        return self._guest or is_guest(self._settings())
+
+    @property
+    def guest_first(self) -> bool:
+        """Whether "Guest car" goes first in the open question: every car is ruled out, or the camera saw none."""
+        session = self._session
+        return session is not None and session.state == STATE_ASKING and session.guest_first
 
     def dashboard(self) -> dict[str, Any] | None:
         """The dashboard's `identification` block: `None` unless a plugged-in car is being identified."""
@@ -553,7 +633,8 @@ class VehicleIdentifier:
                 "evidence": [],
             }
         return {
-            "state": session.state,
+            # A one-car charger that has not asked identifies nothing anyone needs to see.
+            "state": STATE_DECIDED if session.single and session.state == STATE_WAITING else session.state,
             "method": self._method,
             "vehicle_id": self._planned_vehicle(),
             "since": session.t0.isoformat(),
@@ -602,6 +683,8 @@ class VehicleIdentifier:
 
     def _current_vehicle(self) -> str | None:
         settings = self._settings()
+        if is_guest(settings):
+            return GUEST_VEHICLE_ID
         return resolve_target_vehicle(self._hass, settings.target.vehicle_id, settings.vehicle_ids)[0]
 
     def _planned_vehicle(self) -> str | None:
@@ -619,6 +702,9 @@ class VehicleIdentifier:
             self._plugged_in(dt_util.utcnow())
         elif before is True and connected is False:
             self._unplugged()
+        elif before is None and connected is False and self._session is None:
+            # The first connection known since a restart says no car: a guest left meanwhile.
+            self._end_guest()
 
     @callback
     def _on_snapshot(self, _snapshot: Any) -> None:
@@ -634,10 +720,21 @@ class VehicleIdentifier:
 
     @callback
     def _on_settings_written(self, entry_id: str, before: AutoSettings, after: AutoSettings) -> None:
-        if entry_id == self._entry_id:
-            self._watch()
-        if entry_id == self._entry_id and before.target.vehicle_id != after.target.vehicle_id:
+        if entry_id != self._entry_id:
+            return
+        self._watch()
+        if before.target.vehicle_id != after.target.vehicle_id:
             self._check_person()
+        if is_guest(before) and is_guest(after) and after.requested_kwh != before.requested_kwh:
+            # The guest's amount changed in the plan dialog: remembered for the next guest, and more than was asked
+            # for lets the guest charge again.
+            self._hass.async_create_task(
+                self._async_guest_amount_changed(after.requested_kwh, raised=after.requested_kwh > before.requested_kwh),
+                eager_start=True,
+            )
+        if is_guest(before) and not is_guest(after) and self._guest:
+            # A person chose another car in the settings: the guest plan ends at once, with the car they chose.
+            self._end_guest(keep_target=True)
 
     @callback
     def _check_person(self) -> None:
@@ -658,6 +755,10 @@ class VehicleIdentifier:
         """The cars that can charge here, as (id, name), by name."""
         _, choices = resolve_target_vehicle(self._hass, settings.target.vehicle_id, settings.vehicle_ids)
         return [(c.id, c.name) for c in choices]
+
+    def _names(self, cars: Iterable[tuple[str, str]]) -> dict[str, str]:
+        """Each answer's name on a button: the cars', and "Guest car" in Home Assistant's language."""
+        return {**dict(cars), GUEST_VEHICLE_ID: identify_text(language_of(self._hass.config.language), "guest")}
 
     @callback
     def _plugged_in(self, now: datetime, *, trigger: str = TRIGGER_PLUG_IN) -> None:
@@ -686,6 +787,8 @@ class VehicleIdentifier:
             # A question still open ends with this plug-in.
             self._notifier.vehicle_question_settled()
         self._close()
+        # Another plug-in, or another car after a short unplug: a guest car planned for is gone.
+        self._end_guest()
         self._remember(None)
         settings = self._settings()
         cars = self._candidates(settings)
@@ -696,7 +799,7 @@ class VehicleIdentifier:
         if settings.identify_mode == IDENTIFY_OFF:
             self._method = METHOD_MANUAL
             skipped = SKIPPED_OFF
-        elif len(cars) < 2:
+        elif not cars:
             self._method = METHOD_ONLY_CANDIDATE
             skipped = SKIPPED_ONLY_CANDIDATE
         elif not again and self._manual_at is not None and (now - self._manual_at).total_seconds() <= RECENT_CHOICE_S:
@@ -709,12 +812,14 @@ class VehicleIdentifier:
             return
         self._watch()
         current = self._current_vehicle()
+        single = len(ids) == 1
         session = _Session(
-            t0=now, mode=settings.identify_mode, cars=ids, names=dict(cars),
-            order=ordered([Evidence(car, None, None) for car in ids], current),
+            t0=now, mode=settings.identify_mode, cars=ids, names=self._names(cars),
+            order=ordered([Evidence(car, None, None) for car in ids], current), single=single,
         )
         self._session = session
-        self._method = METHOD_ASSUMED
+        # A one-car charger's car is the only candidate unless it is ruled out and a person says otherwise.
+        self._method = METHOD_ONLY_CANDIDATE if single else METHOD_ASSUMED
         session.entry = self._open_entry(now, trigger, settings.identify_mode, ids)
         watched = [entity for car in ids for entity in self._sources(car) if entity is not None]
         if watched:
@@ -735,7 +840,7 @@ class VehicleIdentifier:
         )
         self._refresh(ids)
         self._evaluate()
-        if session.mode == IDENTIFY_ASK and self._session is session:
+        if session.mode == IDENTIFY_ASK and self._session is session and not single:
             self._ask()
 
     @callback
@@ -743,6 +848,7 @@ class VehicleIdentifier:
         if self._session is None:
             self._entry = None
             self._remember(None)
+            self._end_guest()
             return
         if self._unplug_cancel is not None:
             return
@@ -759,12 +865,17 @@ class VehicleIdentifier:
         if session is not None and session.state == STATE_ASKING and self._notifier is not None:
             self._notifier.clear_vehicle_question(self.tag, session.phones)
             self._notifier.vehicle_question_settled()
-        if session is not None:
+        if session is not None and session.single and session.state == STATE_WAITING:
+            # A one-car charger that asked nothing: its car was the only candidate.
+            self._record_decision(session.entry, self._current_vehicle(), METHOD_ONLY_CANDIDATE)
+        elif session is not None:
             # Unplugged with nothing decided: the current car was kept.
             self._record_decision(session.entry, self._current_vehicle(), METHOD_ASSUMED, assumed=ASSUMED_UNPLUGGED)
         self._entry = None
         self._close()
         self._remember(None)
+        # The guest car left: the charger's own car and settings come back.
+        self._end_guest()
 
     @callback
     def _recheck(self) -> None:
@@ -897,8 +1008,15 @@ class VehicleIdentifier:
         if not session.listening or session.state == STATE_DECIDED:
             return
         evidence = self._evidence(session, dt_util.utcnow())
+        if session.single:
+            self._evaluate_single(session, evidence)
+            return
         if session.state == STATE_WAITING:
             session.order = ordered(evidence, self._current_vehicle(), session.camera_pick)
+            # Every car ruled out (by its own reports, or the camera that saw none of them): "Guest car" goes first.
+            session.guest_first = session.camera_other or all(
+                item.negative is not None or item.vehicle_id in session.camera_excludes for item in evidence
+            )
         session.likely = frozenset(item.vehicle_id for item in evidence if item.positive == STRONG and not item.negative)
         if session.mode == IDENTIFY_ASK:
             return
@@ -909,6 +1027,21 @@ class VehicleIdentifier:
             self._ask()
         else:
             self._maybe_ask_camera(session, evidence)
+
+    def _evaluate_single(self, session: _Session, evidence: Sequence[Evidence]) -> None:
+        """A one-car charger: its car is ruled out by its own strong - evidence (or the camera that saw none of the
+        cars at high confidence) or not. Ruled out, it asks "<car> or Guest car?" once the ask deadline is past; else
+        nothing (no question for a car that says nothing), and the camera may be asked. It never switches by itself."""
+        if session.state != STATE_WAITING:
+            return
+        session.ruled_out = any(item.negative is not None for item in evidence) or bool(session.camera_excludes)
+        session.guest_first = session.ruled_out or session.camera_other
+        session.likely = frozenset(item.vehicle_id for item in evidence if item.positive == STRONG and not item.negative)
+        if session.ruled_out:
+            if dt_util.utcnow() >= session.t0 + timedelta(seconds=ASK_AFTER_S):
+                self._ask()
+            return
+        self._maybe_ask_camera(session, evidence)
 
     # ------------------------------------------------------------------ the camera
 
@@ -942,6 +1075,7 @@ class VehicleIdentifier:
             remaining=len(remaining),
             elapsed_s=(dt_util.utcnow() - session.t0).total_seconds(),
             window_s=ASK_AFTER_S,
+            minimum=1 if session.single else 2,
         ):
             return
         if not camera.ready_for(remaining):
@@ -1017,6 +1151,24 @@ class VehicleIdentifier:
         evidence = self._evidence(session, dt_util.utcnow())
         remaining = [item.vehicle_id for item in evidence if item.negative is None]
         references = self._camera.reference_signatures(remaining)
+        if answer == ANSWER_OTHER:
+            # None of the cars: never a guest by itself (a person confirms one). "Guest car" goes first, and at high
+            # confidence the cars it has a reference picture of are ruled out, so a one-car charger asks.
+            session.camera_other = True
+            if confidence == CONFIDENCE_HIGH:
+                session.camera_excludes = frozenset(car for car in remaining if references.get(car))
+            record["used"] = True
+            if history is not None:
+                history.update(camera_reason=REASON_NONE_OF_THESE, used=True)
+                self._save()
+            self._evaluate()
+            return
+        if session.single:
+            # A one-car charger's car is the only candidate: the camera naming it decides nothing new.
+            if history is not None:
+                history.update(camera_reason=camera_reason(answer, confidence, remaining, references, now)[0])
+                self._save()
+            return
         verdict = camera_verdict(answer, confidence, remaining, references, now)
         if history is not None:
             reason, distance = camera_reason(answer, confidence, remaining, references, now)
@@ -1044,6 +1196,12 @@ class VehicleIdentifier:
         session = self._session
         if session is not None:
             session.listening = False
+            if session.single and session.state == STATE_WAITING and not session.ruled_out:
+                # A one-car charger whose car said nothing against it: it is the car, and nobody is asked.
+                session.state = STATE_DECIDED
+                self._record_decision(session.entry, self._current_vehicle(), METHOD_ONLY_CANDIDATE)
+                self._remember(METHOD_ONLY_CANDIDATE)
+                return
             self._ask()
 
     @callback
@@ -1063,9 +1221,12 @@ class VehicleIdentifier:
         if session is None or session.state != STATE_WAITING or self._connected is False:
             # No question for an empty charger: a replug within the debounce asks, if it still has to.
             return
+        if session.single and not session.ruled_out:
+            # A one-car charger asks only when its car is ruled out.
+            return
         session.state = STATE_ASKING
         session.nonce = secrets.token_hex(16)
-        shown, open_button = buttons(session.order)
+        shown, open_button = buttons(session.order, guest_first=session.guest_first)
         session.shown = tuple(shown)
         if self._notifier is not None:
             session.phones = self._notifier.ask_vehicle(
@@ -1081,8 +1242,11 @@ class VehicleIdentifier:
             self._save()
 
     @callback
-    def _settle(self, car: str, method: str, wording: str) -> asyncio.Task[None] | None:
-        """Decide the plug-in's car: switch to it when it is not the current one, retire the question.
+    def _settle(
+        self, car: str, method: str, wording: str, *, answered_by: str | None = None
+    ) -> asyncio.Task[None] | None:
+        """Decide the plug-in's car (a guest car only by a person's answer): switch to it when it is not the current
+        one, retire the question. A household car decided while a guest car is planned for ends the guest plan.
 
         Answers the switch's task, if there is one.
         """
@@ -1094,21 +1258,39 @@ class VehicleIdentifier:
         session.listening = False
         session.nonce = None
         self._method = method
-        self._record_decision(session.entry, car, method)
+        self._record_decision(session.entry, car, method, answered_by=answered_by)
+        leaving = self._guest and car != GUEST_VEHICLE_ID
+        previous = self._guest_previous if leaving else None
+        if car == GUEST_VEHICLE_ID:
+            # Kept with the decision from now on; the settings it finds are added at the switch.
+            self._guest = True
+        elif leaving:
+            self._guest = False
+            self._guest_previous = None
+            self._guest_ended_while_plugged_in()
         self._remember(method)
         person = method in (METHOD_ANSWERED, METHOD_MANUAL)
         switch = None
         if car != self._planned_vehicle():
             self._wanted = car
             self._switches += 1
-            switch = self._hass.async_create_task(self._async_switch(car, person=person), eager_start=True)
+            switch = self._hass.async_create_task(
+                self._async_switch(car, person=person, previous=previous, leaving=leaving), eager_start=True
+            )
+        elif leaving:
+            # The car is already the one the settings name (a person chose it there): its driver and amount come back.
+            self._hass.async_create_task(self._async_restore(previous, keep_target=True), eager_start=True)
         if was_asking and self._notifier is not None:
             self._notifier.retire_vehicle_question(self.tag, session.phones, wording, session.names.get(car, car))
             self._notifier.vehicle_question_settled()
         return switch
 
-    async def _async_switch(self, car: str, *, person: bool) -> None:
-        """Plan for `car`: a settings write at the revision read now, one switch at a time.
+    async def _async_switch(
+        self, car: str, *, person: bool, previous: GuestPrevious | None = None, leaving: bool = False
+    ) -> None:
+        """Plan for `car`: a settings write at the revision read now, one switch at a time. A guest car is the guest
+        plan (`guest.with_guest`, the settings it finds kept); leaving one (`leaving`) brings back what it found
+        (`previous`) with the car chosen.
 
         A switch a newer decision has replaced is not written. An automatic switch that meets a revision
         conflict yields to the write that came first; a person's answer is the newest intent and is written
@@ -1120,13 +1302,26 @@ class VehicleIdentifier:
                     if self._wanted != car:
                         return
                     settings = self._settings()
-                    if settings.target.vehicle_id == car:
+                    if settings.target.vehicle_id == car and not (leaving and previous is not None):
                         return
                     self._expected_vehicle = car
-                    remembered = vehicle_properties.stored_properties(self._hass, car).target_percent
+                    mutate: Callable[[AutoSettings], AutoSettings]
+                    if car == GUEST_VEHICLE_ID:
+                        amount = guest_amount_kwh(self._hass)
 
-                    def mutate(current: AutoSettings, remembered: float | None = remembered) -> AutoSettings:
-                        return current.with_target_vehicle(car, remembered)
+                        def mutate(current: AutoSettings, amount: float = amount) -> AutoSettings:
+                            if not is_guest(current):
+                                self._guest_previous = GuestPrevious.of(current)
+                            return with_guest(current, amount)
+
+                    else:
+                        remembered = vehicle_properties.stored_properties(self._hass, car).target_percent
+
+                        def mutate(current: AutoSettings, remembered: float | None = remembered) -> AutoSettings:
+                            base = restored(current, previous) if leaving and is_guest(current) else current
+                            if leaving and previous is not None and not is_guest(current):
+                                base = replace(restored(current, previous), target=current.target)
+                            return base.with_target_vehicle(car, remembered)
 
                     try:
                         if self._preview is not None:
@@ -1135,6 +1330,9 @@ class VehicleIdentifier:
                             await self._store.async_update(
                                 self._entry_id, mutate=mutate, expected_revision=settings.revision, confirm=True
                             )
+                        if car == GUEST_VEHICLE_ID:
+                            # The settings the guest found, kept with the decision.
+                            self._save()
                         return
                     except AutoSettingsError as err:
                         if err.code != "revision_conflict":
@@ -1146,6 +1344,78 @@ class VehicleIdentifier:
             self._switches -= 1
             self._expected_vehicle = self._settings().target.vehicle_id
 
+    # ------------------------------------------------------------------ the guest car
+
+    @callback
+    def _end_guest(self, *, keep_target: bool = False) -> None:
+        """The guest car left (unplugged, another plug-in) or a person chose a household car in the settings
+        (`keep_target`: the car they chose stays): the settings it found come back."""
+        if not self._guest and not is_guest(self._settings()):
+            return
+        previous = self._guest_previous
+        self._guest = False
+        self._guest_previous = None
+        self._save()
+        if keep_target:
+            self._guest_ended_while_plugged_in()
+        self._hass.async_create_task(self._async_restore(previous, keep_target=keep_target), eager_start=True)
+
+    async def _async_restore(self, previous: GuestPrevious | None, *, keep_target: bool) -> None:
+        """Write back the settings a guest car found (`guest.restored`), at the revision read now; a revision conflict
+        is written again on the record that now stands. Nothing when nothing of the guest is left to undo."""
+
+        def mutate(current: AutoSettings) -> AutoSettings:
+            if keep_target:
+                if previous is None or is_guest(current):
+                    return current
+                return replace(restored(current, previous), target=current.target)
+            return restored(current, previous) if is_guest(current) else current
+
+        try:
+            async with self._switch_lock:
+                for _attempt in range(ANSWER_RETRIES + 1):
+                    settings = self._settings()
+                    wanted = mutate(settings)
+                    if wanted == settings:
+                        return
+                    self._expected_vehicle = wanted.target.vehicle_id
+                    try:
+                        if self._preview is not None:
+                            await self._preview.async_apply_settings(mutate=mutate, expected_revision=settings.revision)
+                        else:
+                            await self._store.async_update(
+                                self._entry_id, mutate=mutate, expected_revision=settings.revision, confirm=True
+                            )
+                        return
+                    except AutoSettingsError as err:
+                        if err.code != "revision_conflict":
+                            raise
+        except Exception as err:  # noqa: BLE001 - the guest's settings stay until the next write or plug-in
+            _LOGGER.warning(
+                "SpotNav could not bring the charger's settings back after a guest car: %s",
+                getattr(err, "code", type(err).__name__),
+            )
+        finally:
+            self._expected_vehicle = self._settings().target.vehicle_id
+
+    def _guest_ended_while_plugged_in(self) -> None:
+        """The guest plan ended with the car still plugged in: the core no longer holds the charger for it."""
+        if getattr(self._controller, "guest_met", False):
+            self._hass.async_create_task(self._controller.async_guest_met(False), eager_start=True)
+
+    async def _async_guest_amount_changed(self, kwh: float, *, raised: bool) -> None:
+        """The amount changed during a guest plan: the next guest's (the last change wins), and an amount raised
+        above what was delivered lets this guest charge again."""
+        if valid_amount(kwh):
+            try:
+                await async_set_guest_amount(self._hass, kwh)
+            except ValueError:
+                pass
+        baseline = self._store.energy_baseline(self._entry_id)
+        delivered = None if baseline is None else baseline.delivered_kwh
+        if raised and (delivered is None or kwh > delivered) and getattr(self._controller, "guest_met", False):
+            await self._controller.async_guest_met(False)
+
     # ------------------------------------------------------------------ answers
 
     def answer_refusal(self, vehicle_id: Any) -> str | None:
@@ -1153,6 +1423,9 @@ class VehicleIdentifier:
         plugged in, `REFUSED_NOT_HERE` for a car that cannot charge at this charger, else `None`."""
         if self._connected is not True:
             return REFUSED_NOT_PLUGGED_IN
+        if vehicle_id == GUEST_VEHICLE_ID:
+            # A guest car can be plugged in at any charger.
+            return None
         cars = [car for car, _ in self._candidates(self._settings())]
         if not isinstance(vehicle_id, str) or vehicle_id not in cars:
             return REFUSED_NOT_HERE
@@ -1160,13 +1433,14 @@ class VehicleIdentifier:
 
     async def async_answer(self, vehicle_id: Any) -> bool:
         """A person's answer from a phone, the card or the app, or a correction of a car already decided: taken
-        whenever a car is plugged in and it is one of this charger's cars (`answer_refusal`), as `answered`, and it
-        holds for the car's stay like an answer to the question. An open question is replaced silently."""
+        whenever a car is plugged in and it is one of this charger's cars or a guest car (`answer_refusal`), as
+        `answered`, and it holds for the car's stay like an answer to the question. An open question is replaced
+        silently."""
         if self.answer_refusal(vehicle_id) is not None:
             return False
         session = self._session
         retire_on: tuple[str, ...] = ()
-        if session is None or vehicle_id not in session.cars:
+        if session is None or (vehicle_id not in session.cars and vehicle_id != GUEST_VEHICLE_ID):
             # Nothing was being identified (identification off, one car known, decided before a restart), or the
             # car came after the question did: the correction is the plug-in's decision, kept as an answer would
             # be. An open question goes off the phones it was sent to, as for any answer.
@@ -1181,7 +1455,7 @@ class VehicleIdentifier:
             ids = tuple(car for car, _ in cars)
             self._session = _Session(
                 t0=now, mode=settings.identify_mode, cars=ids,
-                names=dict(cars), order=[car for car, _ in cars], state=STATE_DECIDED, listening=False,
+                names=self._names(cars), order=[car for car, _ in cars], state=STATE_DECIDED, listening=False,
                 entry=entry if entry is not None else self._open_entry(now, TRIGGER_CORRECTION, settings.identify_mode, ids),
             )
             if retire_on and self._notifier is not None:
@@ -1189,7 +1463,7 @@ class VehicleIdentifier:
                 self._notifier.retire_vehicle_question(self.tag, retire_on, "chosen", name)
             if asking and self._notifier is not None:
                 self._notifier.vehicle_question_settled()
-        switch = self._settle(vehicle_id, METHOD_ANSWERED, "chosen")
+        switch = self._settle(vehicle_id, METHOD_ANSWERED, "chosen", answered_by=ANSWERED_BY_CHOICE)
         if switch is not None:
             await switch
         return True
@@ -1213,7 +1487,7 @@ class VehicleIdentifier:
         position = int(index)
         if position >= len(session.shown):
             return
-        self._settle(session.shown[position], METHOD_ANSWERED, "chosen")
+        self._settle(session.shown[position], METHOD_ANSWERED, "chosen", answered_by=ANSWERED_BY_NOTIFICATION)
 
     def _clear_everywhere(self) -> None:
         if self._notifier is not None:

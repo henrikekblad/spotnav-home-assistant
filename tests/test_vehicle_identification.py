@@ -144,10 +144,13 @@ def test_the_choices_are_ordered_by_evidence_then_the_current_car() -> None:
     assert ordered(evidence, current="e") == ["d", "c", "e", "b", "a"]
 
 
-def test_android_shows_three_buttons_at_most() -> None:
-    assert buttons(["a", "b"]) == (["a", "b"], False)
-    assert buttons(["a", "b", "c"]) == (["a", "b", "c"], False)
-    assert buttons(["a", "b", "c", "d"]) == (["a", "b"], True), "the two likeliest and Open SpotNav"
+def test_android_shows_three_buttons_at_most_the_cars_and_guest_car() -> None:
+    assert buttons(["a"]) == (["a", "guest"], False), "<car> or Guest car"
+    assert buttons(["a", "b"]) == (["a", "b", "guest"], False)
+    assert buttons(["a", "b", "c"]) == (["a", "guest"], True), "the likeliest, Guest car and Open SpotNav"
+    assert buttons(["a", "b", "c", "d"]) == (["a", "guest"], True)
+    assert buttons(["a", "b"], guest_first=True) == (["guest", "a", "b"], False), "every car ruled out"
+    assert buttons(["a", "b", "c"], guest_first=True) == (["guest", "a"], True)
 
 
 # --------------------------------------------------------------------------------- the runtime
@@ -292,7 +295,7 @@ async def test_with_nothing_to_go_on_it_asks_after_three_minutes_and_the_first_a
     assert question["message"] == "Which car is plugged in?", "no plate, place or person in the text"
     assert question["data"]["tag"] == f"spotnav_{world.entry.entry_id}_identify"
     actions = question["data"]["actions"]
-    assert [action["title"] for action in actions] == ["Kia", "Tesla"], "the current car first"
+    assert [action["title"] for action in actions] == ["Kia", "Tesla", "Guest car"], "the current car first"
     nonce = actions[0]["action"].removeprefix("SPOTNAV_ID_").rsplit("_", 1)[0]
     assert len(nonce) >= 24, "at least 96 bits"
     assert world.identifier.dashboard()["state"] == "asking"
@@ -358,7 +361,7 @@ async def test_always_ask_asks_at_once_orders_by_evidence_and_never_switches(wor
     world.car_says("Tesla", "plug", "on")
     await world.plug_in()
     question = world.sent()[0]
-    assert [action["title"] for action in question["data"]["actions"]] == ["Tesla", "Kia"]
+    assert [action["title"] for action in question["data"]["actions"]] == ["Tesla", "Kia", "Guest car"]
     await world.later(LISTEN_FOR_S)
     assert world.settings.target.vehicle_id == world.cars["Kia"]
     assert world.identifier.dashboard()["candidates"][0] == {
