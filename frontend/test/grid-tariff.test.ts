@@ -7,7 +7,7 @@ import { join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { gridTariffRows, SUGGESTED_WINDOW, windowText, withHigh, withPercent, withWindow } from "../src/grid-tariff";
+import { gridTariffRows, SUGGESTED_WINDOW, windowText, withHighLoad, withoutHighLoad, withPercent, withWindow } from "../src/grid-tariff";
 import { translate } from "../src/i18n";
 import { decodeDashboard, decodeGridTariff } from "../src/validate";
 import { apiFailure, FakeHass, mountCard } from "./helpers";
@@ -147,15 +147,21 @@ describe("the rows and the write's body", () => {
     });
     // Off keeps the figure, so on again is one step.
     expect(withPercent(block, null).transfer_percent).toEqual({ enabled: false, value: 5 });
-    expect(withHigh(block, 12)).toEqual({
+    const evening = { ...WINDOW, from_hour: 16, to_hour: 20 };
+    // The fee and its hours together, as the one dialog writes them.
+    expect(withHighLoad(block, 12, evening)).toEqual({
       transfer_percent: { enabled: true, value: 5 },
       transfer_high: { enabled: true, value: 12 },
-      high_load_window: WINDOW,
+      high_load_window: evening,
     });
-    const evening = { ...WINDOW, from_hour: 16, to_hour: 20 };
     expect(withWindow(block, evening).high_load_window).toEqual(evening);
-    // Never a window it was not handed.
-    expect(withHigh(decodeGridTariff(NOTHING), 12).high_load_window).toBeNull();
+    // Remove: the fee off, its figure kept, and the hours gone.
+    const on = decodeGridTariff({ ...BLOCK, transfer_high: { policy: "manual", explicit_value: 12, effective_value: 12, unit: "öre/kWh" } });
+    expect(withoutHighLoad(on)).toEqual({
+      transfer_percent: { enabled: true, value: 5 },
+      transfer_high: { enabled: false, value: 12 },
+      high_load_window: null,
+    });
     expect(SUGGESTED_WINDOW).toEqual(WINDOW);
   });
 });
@@ -300,17 +306,38 @@ describe("writing the tariff", () => {
     expect(sent(hass, "spotnav/get_dashboard").length).toBe(2);
   });
 
-  it("changes the hours from their row and writes them with the fees as stored", async () => {
+  it("opens one dialog with the fee and the hours from either row, prefilled with what is stored", async () => {
+    const stored = { ...BLOCK, transfer_high: { policy: "manual", explicit_value: 12, effective_value: 12, unit: "öre/kWh" } };
+    for (const row of ["transfer_high", "high_load_window"]) {
+      const { hass, element } = await open(dashboard(stored), { language: "sv" });
+      await tap(element, row);
+      const dialog = openDialog(element);
+      expect(dialog.querySelector("[data-value-editor='highLoad']")).not.toBeNull();
+      expect(dialog.querySelector("h2, [role='heading'], .spotnav-dialog-title")?.textContent ?? dialog.textContent).toContain(
+        "Nätavgift under höglasttid",
+      );
+      expect(dialog.querySelector<HTMLInputElement>("[data-high-load='fee']")!.value).toBe("12");
+      expect(dialog.textContent).toContain("Avgift (öre/kWh)");
+      // Stored hours: no suggestion line.
+      expect(dialog.querySelector("[data-window-help='suggestion']")).toBeNull();
+      expect(dialog.querySelector<HTMLSelectElement>("[data-window='days']")!.value).toBe("weekdays");
+      expect(dialog.querySelector<HTMLSelectElement>("[data-window='fromMonth']")!.value).toBe("11");
+      expect(dialog.querySelector<HTMLSelectElement>("[data-window='toMonth']")!.value).toBe("3");
+      expect(dialog.querySelector<HTMLSelectElement>("[data-window='from']")!.value).toBe("7");
+      expect(dialog.querySelector<HTMLSelectElement>("[data-window='to']")!.value).toBe("19");
+      expect(dialog.querySelector("[data-high-load='remove']")!.textContent).toBe("Ta bort höglastavgift");
+      // Saved unchanged: nothing is written.
+      await save(element);
+      expect(sent(hass, "spotnav/update_grid_tariff")).toEqual([]);
+    }
+  });
+
+  it("changes the fee and the hours in one write", async () => {
     const stored = { ...BLOCK, transfer_high: { policy: "manual", explicit_value: 12, effective_value: 12, unit: "öre/kWh" } };
     const { hass, element } = await open(dashboard(stored));
     await tap(element, "high_load_window");
     const dialog = openDialog(element);
-    // Stored hours: no suggestion line.
-    expect(dialog.querySelector("[data-window-help='suggestion']")).toBeNull();
-    expect(dialog.querySelector<HTMLSelectElement>("[data-window='from']")!.value).toBe("7");
-    expect(dialog.querySelector<HTMLSelectElement>("[data-window='days']")!.value).toBe("weekdays");
-    expect(dialog.querySelector<HTMLSelectElement>("[data-window='fromMonth']")!.value).toBe("11");
-    expect(dialog.querySelector<HTMLSelectElement>("[data-window='toMonth']")!.value).toBe("3");
+    dialog.querySelector<HTMLInputElement>("[data-high-load='fee']")!.value = "14,5";
     dialog.querySelector<HTMLSelectElement>("[data-window='days']")!.value = "all";
     dialog.querySelector<HTMLSelectElement>("[data-window='fromMonth']")!.value = "1";
     dialog.querySelector<HTMLSelectElement>("[data-window='toMonth']")!.value = "12";
@@ -321,49 +348,32 @@ describe("writing the tariff", () => {
     expect(sent(hass, "spotnav/update_grid_tariff").map((m) => m["grid_tariff"])).toEqual([
       {
         transfer_percent: { enabled: true, value: 5 },
-        transfer_high: { enabled: true, value: 12 },
+        transfer_high: { enabled: true, value: 14.5 },
         high_load_window: { days: "all", from_month: 1, to_month: 12, from_hour: 22, to_hour: 6 },
       },
     ]);
   });
 
-  it("refuses hours that end where they start, and writes nothing", async () => {
-    const { hass, element } = await open(dashboard(BLOCK));
-    await tap(element, "high_load_window");
-    const dialog = openDialog(element);
-    dialog.querySelector<HTMLSelectElement>("[data-window='from']")!.value = "7";
-    dialog.querySelector<HTMLSelectElement>("[data-window='to']")!.value = "7";
-    await save(element);
-    expect(openDialog(element).textContent).toContain(translate("en", "gridFee.window.sameHours"));
-    expect(sent(hass, "spotnav/update_grid_tariff")).toEqual([]);
-  });
-
-  it("asks for the hours first when the high-load fee is turned on with none stored, then writes both at once", async () => {
+  it("turns the fee on in one dialog with the suggested hours, said to be a suggestion, and one write", async () => {
     const { hass, element } = await open(dashboard(NOTHING), { language: "sv" });
-    await settle();
     await tap(element, "transfer_high");
-    let dialog = openDialog(element);
-    // The window editor, prefilled with the suggestion and saying it is one; nothing written yet.
-    expect(dialog.querySelector("[data-value-editor='window']")).not.toBeNull();
-    expect(dialog.textContent).toContain(translate("sv", "gridFee.window.first"));
+    const dialog = openDialog(element);
+    expect(dialog.querySelector("[data-value-editor='highLoad']")).not.toBeNull();
     expect(dialog.textContent).toContain(translate("sv", "gridFee.window.suggestion"));
-    expect(dialog.querySelector(".spotnav-settings-save")!.textContent).toBe("Nästa");
-    expect(dialog.querySelector<HTMLSelectElement>("[data-window='from']")!.value).toBe("7");
-    expect(dialog.querySelector<HTMLSelectElement>("[data-window='to']")!.value).toBe("19");
+    expect(dialog.querySelector<HTMLInputElement>("[data-high-load='fee']")!.value).toBe("");
     expect(dialog.querySelector<HTMLSelectElement>("[data-window='days']")!.value).toBe("weekdays");
     expect(dialog.querySelector<HTMLSelectElement>("[data-window='fromMonth']")!.value).toBe("11");
     expect(dialog.querySelector<HTMLSelectElement>("[data-window='toMonth']")!.value).toBe("3");
+    expect(dialog.querySelector<HTMLSelectElement>("[data-window='from']")!.value).toBe("7");
+    expect(dialog.querySelector<HTMLSelectElement>("[data-window='to']")!.value).toBe("19");
     // The months by name in the reader's language.
     expect(dialog.querySelector<HTMLSelectElement>("[data-window='fromMonth']")!.selectedOptions[0]!.textContent).toBe("November");
+    // Nothing to remove yet, and no second dialog: Save is the only step.
+    expect(dialog.querySelector("[data-high-load='remove']")).toBeNull();
+    expect(dialog.querySelector(".spotnav-settings-save")!.textContent).toBe(translate("sv", "settings.save"));
     dialog.querySelector<HTMLSelectElement>("[data-window='days']")!.value = "mon_sat";
     dialog.querySelector<HTMLSelectElement>("[data-window='to']")!.value = "22";
-    await save(element);
-    expect(sent(hass, "spotnav/update_grid_tariff")).toEqual([]);
-    // Then the fee's figure, with no "off" to choose.
-    dialog = openDialog(element);
-    expect(dialog.querySelector("[data-value-editor='number']")).not.toBeNull();
-    expect(dialog.querySelector("[data-value-none]")).toBeNull();
-    typeNumber(element, "12,5");
+    dialog.querySelector<HTMLInputElement>("[data-high-load='fee']")!.value = "12,5";
     await save(element);
     expect(sent(hass, "spotnav/update_grid_tariff").map((m) => m["grid_tariff"])).toEqual([
       {
@@ -374,35 +384,50 @@ describe("writing the tariff", () => {
     ]);
   });
 
-  it("writes nothing when the turn-on is cancelled at either step", async () => {
-    const { hass, element } = await open(dashboard(NOTHING));
+  it("refuses a missing or out-of-range fee and hours that end where they start, writing nothing", async () => {
+    const { hass, element } = await open(dashboard(NOTHING), { language: "sv" });
     await tap(element, "transfer_high");
+    let dialog = openDialog(element);
     await save(element);
-    openDialog(element).querySelector<HTMLButtonElement>(".spotnav-settings-actions button:not(.spotnav-settings-save)")!.click();
+    expect(openDialog(element).textContent).toContain("Ange avgiften under höglasttid.");
+    dialog = openDialog(element);
+    dialog.querySelector<HTMLInputElement>("[data-high-load='fee']")!.value = "-1";
+    await save(element);
+    expect(openDialog(element).querySelector("[role='alert']")!.textContent).not.toBe("");
+    dialog.querySelector<HTMLInputElement>("[data-high-load='fee']")!.value = "12";
+    dialog.querySelector<HTMLSelectElement>("[data-window='from']")!.value = "7";
+    dialog.querySelector<HTMLSelectElement>("[data-window='to']")!.value = "7";
+    await save(element);
+    expect(openDialog(element).textContent).toContain(translate("sv", "gridFee.window.sameHours"));
+    expect(sent(hass, "spotnav/update_grid_tariff")).toEqual([]);
+    // Cancel writes nothing either.
+    openDialog(element).querySelector<HTMLButtonElement>(".spotnav-settings-actions button:not(.spotnav-settings-save):not([data-high-load])")!.click();
     await settle();
     expect(sent(hass, "spotnav/update_grid_tariff")).toEqual([]);
   });
 
-  it("goes straight to the figure when hours are stored, and turning it off keeps the hours and the figure", async () => {
-    const { hass, element } = await open(dashboard(BLOCK));
+  it("removes the fee and its hours in one write", async () => {
+    const on = { ...BLOCK, transfer_high: { policy: "manual", explicit_value: 12, effective_value: 12, unit: "öre/kWh" } };
+    const { hass, element } = await open(dashboard(on));
     await tap(element, "transfer_high");
-    expect(openDialog(element).querySelector("[data-value-editor='number']")).not.toBeNull();
-    typeNumber(element, "12");
-    await save(element);
-    hass.resolveNext({ ok: true, grid_tariff: BLOCK });
+    openDialog(element).querySelector<HTMLButtonElement>("[data-high-load='remove']")!.click();
     await settle();
-    const on = { ...BLOCK, write_revision: 4, transfer_high: { policy: "manual", explicit_value: 12, effective_value: 12, unit: "öre/kWh" } };
-    hass.resolveNext(dashboard(on));
-    await settle();
-    await tap(element, "transfer_high");
-    const none = openDialog(element).querySelector<HTMLInputElement>("[data-value-none]")!;
-    none.checked = true;
-    none.dispatchEvent(new Event("change"));
+    expect(sent(hass, "spotnav/update_grid_tariff").map((m) => [m["expected_write_revision"], m["grid_tariff"]])).toEqual([
+      [3, { transfer_percent: { enabled: true, value: 5 }, transfer_high: { enabled: false, value: 12 }, high_load_window: null }],
+    ]);
+  });
+
+  it("offers Remove for hours stored with the fee off, and prefills a figure kept while off", async () => {
+    const kept = { ...BLOCK, transfer_high: { policy: "off", explicit_value: 9, effective_value: null, unit: "öre/kWh" } };
+    const { hass, element } = await open(dashboard(kept));
+    await tap(element, "high_load_window");
+    const dialog = openDialog(element);
+    expect(dialog.querySelector<HTMLInputElement>("[data-high-load='fee']")!.value).toBe("9");
+    expect(dialog.querySelector("[data-high-load='remove']")).not.toBeNull();
+    // Save with the stored hours turns the fee on with them.
     await save(element);
-    const writes = sent(hass, "spotnav/update_grid_tariff");
-    expect(writes.map((m) => [m["expected_write_revision"], m["grid_tariff"]])).toEqual([
-      [3, { transfer_percent: { enabled: true, value: 5 }, transfer_high: { enabled: true, value: 12 }, high_load_window: WINDOW }],
-      [4, { transfer_percent: { enabled: true, value: 5 }, transfer_high: { enabled: false, value: 12 }, high_load_window: WINDOW }],
+    expect(sent(hass, "spotnav/update_grid_tariff").map((m) => m["grid_tariff"])).toEqual([
+      { transfer_percent: { enabled: true, value: 5 }, transfer_high: { enabled: true, value: 9 }, high_load_window: WINDOW },
     ]);
   });
 

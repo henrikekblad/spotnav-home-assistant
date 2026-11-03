@@ -128,8 +128,11 @@ percentage.
 Some network operators charge part of the grid fee as a percentage of the spot price, and some charge more in
 the hours the grid is busiest. The electricity price device has two more additions for these, both off until you
 set them. The card's Settings shows them under the grid fee, with the high-load hours on one line while that fee is
-on; turning the high-load fee on with no hours set asks for the hours first (the days, the first and last month and the
-hours), filled in with weekdays 07-19, November to March for you to check, and saves nothing until the fee is confirmed too:
+on. Tapping *Grid fee in high-load hours* or *High-load hours* opens one dialog with the fee and its hours (the days,
+the first and last month and the hours); with no hours set they are filled in with weekdays 07-19, November to March
+for you to check, marked as a suggestion. One *Save* stores the fee and the hours together, and nothing is stored
+before it. *Remove the high-load fee* in the same dialog turns the fee off and clears the hours (the figure is kept
+for next time):
 
 - **Grid fee, % of spot.** A percentage of each interval's spot price, added before VAT. It follows the spot
   price's sign: when the spot price is negative, this part is negative too.
