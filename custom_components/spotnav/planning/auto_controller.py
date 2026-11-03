@@ -974,8 +974,11 @@ class AutoPlannerController:
         Without a chosen date, a daily departure that leaves some weekdays out takes the date of its next
         occurrence on a weekday that is in the set, when that is not simply the next occurrence: the plan
         then runs to that day, exactly as it does to a date the person chose.
+
+        A guest car leaves at the next occurrence of the time: the household's date and weekdays are not its own
+        (the Plan dialog does not show them for a guest).
         """
-        if not settings.departure_enabled:
+        if not settings.departure_enabled or is_guest(settings):
             return None
         zone = time_zones.zone(entry.tz)
         if zone is None:
