@@ -364,7 +364,7 @@ describe("the month's peak and the days from Home Assistant's statistics", () =>
   it("reads the additive fields, and an answer without them as before", () => {
     const answer = imported();
     expect(answer.days.filter((day) => day.imported).map((day) => day.date)).toEqual(["2026-09-01", "2026-09-02", "2026-09-03", "2026-09-04"]);
-    expect(answer.hours!.some((hour) => hour.month_peak_kw === 6.664)).toBe(true);
+    expect(answer.hours!.some((hour) => hour.month_peak_kw === 6.8)).toBe(true);
     const older = month();
     expect(older.days.every((day) => !day.imported && day.month_peak_kw === null)).toBe(true);
     const raw = read("power_month/pilot_imported_month.json");
@@ -397,8 +397,8 @@ describe("the month's peak and the days from Home Assistant's statistics", () =>
     const lines = Array.from(body.querySelectorAll<HTMLElement>("button[data-key] .spotnav-power-peak"));
     expect(lines).toHaveLength(lifted.length);
     const top = scaleTop(answer.days.map((day) => day.peak_kw), 6);
-    expect(lines[0]!.style.bottom).toBe(`${(6.664 / top) * 100}%`);
-    expect(body.querySelector("ul")?.textContent).toContain("Månadens topp 6,7 kW");
+    expect(lines[0]!.style.bottom).toBe(`${(6.8 / top) * 100}%`);
+    expect(body.querySelector("ul")?.textContent).toContain("Månadens topp 6,8 kW");
     // The day view: only the hours a part's free level lifted.
     const day = lifted[0]!;
     const hours = render(answer, { day, pending: false }, () => undefined, "sv");

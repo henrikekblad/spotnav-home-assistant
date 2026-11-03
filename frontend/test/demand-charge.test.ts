@@ -80,8 +80,8 @@ describe("the demand block", () => {
 
   it("shows the running hour against the import target, and nothing without a target", () => {
     // At 10:20 the day part's peak (7,0 kW at 09:00) lifts the 6 kW target for the rest of the month's day hours.
-    expect(hourLine("sv", decodeDemand(DEMAND))).toBe("Den här timmen: 3,1 av 6,8 kW – månadens topp (effektmål 6,0 kW)");
-    expect(hourLine("en", decodeDemand(DEMAND))).toBe("This hour: 3.1 of 6.8 kW – the month's peak (import target 6.0 kW)");
+    expect(hourLine("sv", decodeDemand(DEMAND))).toBe("Den här timmen: 3,1 av 7,0 kW – månadens topp (effektmål 6,0 kW)");
+    expect(hourLine("en", decodeDemand(DEMAND))).toBe("This hour: 3.1 of 7.0 kW – the month's peak (import target 6.0 kW)");
     expect(hourLine("sv", decodeDemand({ ...DEMAND, effective_target_kw: 6 }))).toBe("Den här timmen: 3,1 av 6,0 kW");
     // A backend before the level was stated: the target alone.
     const { effective_target_kw: _level, ...older } = DEMAND;
@@ -248,7 +248,7 @@ describe("the import target beside the main fuse", () => {
     expect(rowKeys(element, "site").slice(0, 2)).toEqual(["main_fuse_a", "import_target_kw"]);
     expect(section(element, "site").querySelector("[data-row='import_target_kw']")!.textContent).toBe("Effektmål6,0 kW");
     expect(section(element, "site").querySelector("[data-help='import_target_hour']")!.textContent).toBe(
-      "Den här timmen: 3,1 av 6,8 kW – månadens topp (effektmål 6,0 kW)",
+      "Den här timmen: 3,1 av 7,0 kW – månadens topp (effektmål 6,0 kW)",
     );
   });
 
