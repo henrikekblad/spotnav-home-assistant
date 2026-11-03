@@ -29,6 +29,7 @@ import {
   UNSUPPORTED_API_VERSION,
   cameraCommand,
   chooseVehicleIdentification,
+  updateGuest,
   setChargeLimit,
   getDashboard,
   getCardInfo,
@@ -886,6 +887,7 @@ export class SpotnavCard extends HTMLElement {
         soc: this.socFacts(),
         vehicles: this.vehicleFacts(),
         plannedVehicleName: this.plannedCarName(),
+        guest: this.guestPlanned(),
         days: this.departureDays(),
         importTarget: this.siteHasImportTarget(),
       });
@@ -1230,7 +1232,18 @@ export class SpotnavCard extends HTMLElement {
 
   /** The car the charger plans for, by name, for the Plan popover's title in energy mode. */
   private plannedCarName(): string | null {
-    return this.cardState.kind === "ready" ? plannedCarNameFor(this.cardState.dashboard) : null;
+    if (this.cardState.kind !== "ready") {
+      return null;
+    }
+    // A guest car has no name of its own: it is "Guest car".
+    return this.cardState.dashboard.guest?.active === true
+      ? translate(this.languageOrFallback, "identify.guest")
+      : plannedCarNameFor(this.cardState.dashboard);
+  }
+
+  /** Whether the charger plans for a guest car now: the Plan dialog has no car target then. */
+  private guestPlanned(): boolean {
+    return this.cardState.kind === "ready" && this.cardState.dashboard.guest?.active === true;
   }
 
   private vehicleFacts(): readonly Vehicle[] {
@@ -1423,6 +1436,7 @@ export class SpotnavCard extends HTMLElement {
         soc: this.socFacts(),
         vehicles: this.vehicleFacts(),
         plannedVehicleName: this.plannedCarName(),
+        guest: this.guestPlanned(),
         days: this.departureDays(),
         importTarget: this.siteHasImportTarget(),
       });
@@ -2337,6 +2351,12 @@ export class SpotnavCard extends HTMLElement {
           return null;
         }
         return answer?.error === "spotnav_too_soon" ? "settings.vehicle.limitTooSoon" : "settings.vehicle.limitFailed";
+      }
+      case "guest": {
+        const answer = (await updateGuest(hass, charger, write.amountKwh)) as { ok?: unknown; error?: unknown } | null;
+        return answer !== null && answer.ok === true
+          ? null
+          : entityErrorKey(typeof answer?.error === "string" ? answer.error : null);
       }
       case "vehicleSource": {
         const answer = (await chooseVehicleIdentification(hass, charger, {

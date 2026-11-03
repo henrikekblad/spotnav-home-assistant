@@ -208,14 +208,14 @@ describe("two or more cars", () => {
     expect(sections).toHaveLength(1);
     expect(sections[0]!.querySelector("h4")?.textContent).toBe("Bil");
     const tabs = Array.from(page(element).querySelectorAll<HTMLButtonElement>("[role='tab']"));
-    expect(tabs.map((tab) => tab.textContent)).toEqual(["EV6", "Testbil"]);
+    expect(tabs.map((tab) => tab.textContent)).toEqual(["EV6", "Testbil", "Gästbil"]);
     expect(tabs[0]!.getAttribute("aria-selected")).toBe("true");
     tabs[1]!.click();
     expect(page(element).querySelector("[data-section='vehicle']")?.getAttribute("data-vehicle")).toBe("vehicle_niro");
     page(element).querySelector<HTMLButtonElement>("[data-vehicle-tab='vehicle_niro']")!.dispatchEvent(
       new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }),
     );
-    expect(page(element).querySelector("[data-section='vehicle']")?.getAttribute("data-vehicle")).toBe("vehicle_ev6");
+    expect(page(element).querySelector("[data-section='vehicle']")?.getAttribute("data-vehicle")).toBe("guest");
   });
 
   it("keep the open car's tab after a value's editor", async () => {
@@ -228,12 +228,23 @@ describe("two or more cars", () => {
     expect(page(element).querySelector("[data-section='vehicle']")?.getAttribute("data-vehicle")).toBe("vehicle_niro");
   });
 
-  it("with one car: Bil · EV6, no tabs", async () => {
+  it("with one car: Bil · EV6, no tabs, where the backend knows no guest car", async () => {
+    const payload = twoCars();
+    payload["vehicles"] = payload["vehicles"].slice(0, 1);
+    payload["vehicle_choices"] = payload["vehicle_choices"].slice(0, 1);
+    delete payload["guest"];
+    const { element } = await openSettings(payload);
+    expect(page(element).querySelector("[data-section='vehicle'] h4")?.textContent).toBe("Bil · EV6");
+    expect(page(element).querySelector("[role='tab']")).toBeNull();
+  });
+
+  it("with one car and the guest car: the car's tab and Gästbil", async () => {
     const payload = twoCars();
     payload["vehicles"] = payload["vehicles"].slice(0, 1);
     payload["vehicle_choices"] = payload["vehicle_choices"].slice(0, 1);
     const { element } = await openSettings(payload);
-    expect(page(element).querySelector("[data-section='vehicle'] h4")?.textContent).toBe("Bil · EV6");
-    expect(page(element).querySelector("[role='tab']")).toBeNull();
+    expect(page(element).querySelector("[data-section='vehicle'] h4")?.textContent).toBe("Bil");
+    const tabs = Array.from(page(element).querySelectorAll<HTMLButtonElement>("[role='tab']"));
+    expect(tabs.map((tab) => tab.textContent)).toEqual(["EV6", "Gästbil"]);
   });
 });

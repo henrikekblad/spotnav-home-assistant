@@ -311,7 +311,11 @@ describe("the Settings page's vehicles", () => {
     const ids = Array.from(dlg(element).querySelectorAll<HTMLElement>("[data-section='vehicle']")).map((node) => node.dataset["vehicle"]);
     expect(ids).toEqual(["vehicle_ev6"]);
     const tabs = Array.from(dlg(element).querySelectorAll<HTMLElement>("[role='tab']"));
-    expect(tabs.map((tab) => [tab.textContent, tab.getAttribute("aria-selected")])).toEqual([["EV6", "true"], ["Niro", "false"]]);
+    expect(tabs.map((tab) => [tab.textContent, tab.getAttribute("aria-selected")])).toEqual([
+      ["EV6", "true"],
+      ["Niro", "false"],
+      ["Guest car", "false"],
+    ]);
     expect(block(element, "vehicle_ev6").querySelector("h4")?.textContent).toBe("Car");
     expect(block(element, "vehicle_ev6").querySelector("h4 svg")?.getAttribute("data-icon")).toBe("car");
     expect(block(element, "vehicle_niro").querySelector("h4")?.textContent).toBe("Car");
