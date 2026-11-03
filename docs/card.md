@@ -252,12 +252,19 @@ shows the site's whole import, not only this charger's:
   the pointer or chosen is underlined.
 - **The [import target](site-and-load-balancing.md#demand-charge-and-import-target)** as a dashed line, and a small
   dot under a day the target held a charger's current down, a ring where it paused a charger.
+- **The month's peak** as a thin solid line, where a demand-charge part's peak this month lifted the import target
+  (see [the month's peak lifts the target](site-and-load-balancing.md#holding-the-chargers-under-the-import-target)):
+  over each day from the one it was set, at the level that applied to that day's highest hour, and in a day's hours
+  only over the hours a part counts. The legend names it (*The month's peak 6.7 kW*).
+- **Days from Home Assistant's statistics** are hatched, and the legend and a note under it say so (see
+  [earlier months](site-and-load-balancing.md#earlier-months-from-home-assistants-statistics)).
 - **A tapped day** shows its hours the same way, an hour with gaps in the reading paler; *Whole month* goes back.
   Hover or focus a bar for its figures, for example *Tue 15 Sep: highest 5.9 kW at 19:00 · house 2.3 kW, car
   3.6 kW · counts for day 06–23*.
 
 The site keeps every hour of this month and the month before, and the days of each month for two years: an older
-month shows its days only, and a month before 2.3.0 nothing.
+month shows its days only. The months before SpotNav measured are filled once from Home Assistant's statistics,
+three months back, where they hold the site's grid power.
 
 ## The settings popover
 

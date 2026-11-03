@@ -493,19 +493,65 @@ holds the site's chargers, through load balancing, so the hour stays under it (s
   charger's current down or paused a charger in it.
 - **Two years of days.** Beside the hours the site keeps, per day, its highest hour (with the house's part of it and
   the hour it started), whether the import target held or paused a charger that day, and per month each part's
-  counted peaks and figure, for 24 months. They are written as each hour ends. The months before 2.3.0 have none.
+  counted peaks and figure, for 24 months. They are written as each hour ends. The months before SpotNav measured are filled once from Home Assistant's statistics (below).
 - **Where to see it.** The charge history's [Power view](card.md#power) shows a month day by day, with the import
   target as a line and the days it held or paused a charger marked, and a tapped day's hours; it is offered where the
   site measures its import.
 - **Import target.** An optional hourly mean of import, in kW, set in the card's Settings beside the main fuse
   (*Import target*, off until set). It is written without restarting load balancing. While it is set, a line under
-  it shows the hour running now against it, *This hour: 4.2 of 6.0 kW* (the mean over the minutes measured so far).
+  it shows the hour running now against it, *This hour: 4.2 of 6.0 kW* (the mean over the minutes measured so far);
+  where the month's peak lifts the target this hour, against that level: *This hour: 2.8 of 6.6 kW – the month's
+  peak (import target 6.0 kW)*. Its editor suggests a target (see
+  [A suggested import target](#a-suggested-import-target)).
 - **The Demand-charge peak sensor.** While the site's electricity price has a demand-charge part, the site has a
   *Demand-charge peak* sensor (kW): the first part's figure this month. Its attributes are every part with its
   figure, its peaks and how many days counted, and the running hour. It goes away with the last part.
 - **Diagnostics.** The site's diagnostics (and the debug bundle) carry a `demand` block: every hour of the month
-  (`[start, kW, house kW, incomplete, held, paused, floor kW]`: kW the mean over the time measured, floor kW the import over the whole hour with any gap counted as none), each part's figure and peaks, the running hour with its gaps, and the
-  import target.
+  (`[start, kW, house kW, incomplete, held, paused, floor kW]`: kW the mean over the time measured, floor kW the import over the whole hour with any gap counted as none; an hour from Home Assistant's statistics has an eighth column, `1`), each part's figure and peaks, the running hour with its gaps, the
+  import target, and `backfill` (when the [earlier months](#earlier-months-from-home-assistants-statistics) were
+  read, what came of it and how many hours were filed).
+
+### A suggested import target
+
+When the import target's editor opens (administrators), SpotNav reads Home Assistant's hourly statistics of the
+last three months (fewer where less exists) and suggests a target, for example *The house alone: usually at most
+2.4 kW in an hour each day, at most 3.7 kW (Sat 17 Oct). Suggestion: 6.5 kW – the car then gets about 4.0 kW in
+most hours.* **Use** fills the field; nothing is saved until *Save*.
+
+- **What is read.** The hourly mean of the site's grid power (a direct site's total grid power, or an
+  import/export pair, negated where the meter is export-positive; a derived site's per-phase power less each phase's
+  export entity), and what each charger drew: its energy register's hourly change, else its power sensor's mean,
+  else its measured current's mean per phase times 230 V. Only sensors with long-term statistics count (a
+  `measurement` sensor, or a `total`/`total_increasing` register); W, kW and MW, A and mA, Wh, kWh and MWh are
+  converted. The house alone is the grid's mean less the chargers', never below zero. A charger without statistics
+  is named, and the grid alone stands for the house then (the charging is counted as the house's).
+- **The rule.** The house's **typical** daily peak: the median over the days of each day's highest hourly mean of
+  the house alone (only within the hours a demand-charge part counts when every part has hours of its own, else all
+  hours), plus the car's minimum power on this site (the smallest charger's minimum current times its phases times
+  230 V), rounded up to the next 0.5 kW. Not the highest peak: on the few evenings the house alone goes above the
+  target (a sauna), the car is paused, the bill's peak is the one the house set anyway, and the month's peak then
+  lifts the target for the rest of the month. A target at the highest peak would pay for a level only that evening
+  needed. The house's highest hour is shown beside it, and what the car gets at the suggestion in a typical charging
+  hour: the suggestion less the house's median hourly mean between 18:00 and 06:00, never below its minimum.
+- **Never invented.** With no recorder, no long-term statistics of the grid power, fewer than seven days of them or
+  no charger on the site, there is no suggestion and the editor says why.
+- **Solar.** The statistics are hourly means: an hour that exported in one half and imported in the other nets out,
+  so with solar the house's import is read lower than the meter billed it in such hours. Evening and night hours,
+  which set the peaks, are not affected.
+- The answer is kept for ten minutes per site, so opening the editor again does not read the statistics again.
+
+### Earlier months from Home Assistant's statistics
+
+Once, when a site first measures, the hours before SpotNav measured are filled from the same statistics, three
+months back: the running month's and the month before's as hours, older months as day summaries. An hour's import is
+the grid's mean (never below zero), the house's part as above where the chargers are known. They are marked as from
+Home Assistant's statistics (hatched in the [Power view](card.md#power), and `imported` in the API), with no holds or
+pauses and never as incomplete; an hour the statistics lack is simply missing. An hour SpotNav measured itself is
+never overwritten: nothing at or after its first measured hour is filled. The demand-charge parts' counted peaks and
+figures count them, only approximately what the meter billed. **They never lift the import target**: the month's
+free level is worked out from SpotNav's own measured hours only, and the house's typical load (for the departure's
+check and the plans) too, so an approximation never changes what a charger is told. Where nothing could be read (no
+statistics of the grid power yet) the Power view asks again at most once a day while no earlier month is kept.
 
 ### Holding the chargers under the import target
 
@@ -528,7 +574,8 @@ charger draws on would turn from import to export (so the current the fuse carri
   may reach 6.86 kW. Only the running hour's hold is lifted: a plan, and the later hours of the departure's check,
   count on the target as set (a later hour may be counted by no part, a new day or a new month). The fuse is
   untouched. The status names both (*Held to 8 A to keep this hour under 6.9 kW, the month's peak (import target
-  6.0 kW)*), as do the house-alone lines and the notice. No setting. **A power-level subscriber** (Göteborg's
+  6.0 kW)*), as do the house-alone lines and the notice, the line under the target in Settings, and the Power
+  view's line of the month's peak. An hour read from Home Assistant's statistics never lifts it. No setting. **A power-level subscriber** (Göteborg's
   tidsindelad level, which must never be exceeded) should leave the demand charge's parts out, or set them so they
   never free more than the level, or the month's peak lifts the hold above it.
 - **The hour's budget.** The target times one hour, less what was imported so far this hour, is what the rest of

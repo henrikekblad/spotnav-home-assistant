@@ -63,6 +63,7 @@ charger executed whose pause could not be saved answers `{"ok": true, "action": 
 | `fix_own_mode` | Set one of the charger's own settings back to the value SpotNav works with: `{"entity_id", "value"}` (see below). |
 | `release_import_target` | Set the site's import target aside for this charge until its departure: `{}` (see below). |
 | `get_power_month` | One month of this charger's site's measured import: `{"month"}` (optional), the answer of `spotnav/get_power_month` with `"ok": true` and the `action` beside it; a refusal is HTTP 400 with `{"ok": false, "error", "action"}` (see [Power by month](#power-by-month)). |
+| `suggest_import_target` | A suggested import target for this charger's site from Home Assistant's statistics: `{}`, the answer of `spotnav/suggest_import_target` with `"ok": true` and the `action` beside it; a refusal is HTTP 400 with `{"ok": false, "error", "action"}` (see [A suggested import target](#a-suggested-import-target)). |
 
 **Charge periods.** `max_periods` is `null` for automatic periods (the default: the planner counts a start
 cost of a quarter of a kWh at the window's average price for each period and keeps each period at least half an
@@ -381,7 +382,10 @@ fewer days have one; `null` before any), `free_kw` (the hourly mean the running 
 `days_counted` and `peaks` (`[{"date", "start", "kw"}]`, highest first; `date` is the day the hour counts under, a
 night belonging to the day it starts on). An hour with more than ten minutes without a reading never sets a peak.
 `hour` is the clock hour running now, `{"start", "kw_so_far", "kwh_so_far"}` (the mean import over the time
-measured so far, and the energy), or `null` before it has a reading. `import_target_kw` is the site's import target
+measured so far, and the energy), or `null` before it has a reading. `effective_target_kw` (since 2.3.0's
+suggestion round, additive) is the level the running hour is held under: the import target lifted to the month's
+peak where a part counts the hour and the month already reached more, else the target; `null` without a target or
+where the site cannot measure. `import_target_kw` is the site's import target
 (`null` for none), which is set with the site's `import_target_kw` field in `spotnav/update_entity_config` (a number
 of at least 0.1, `null` or `""` to clear; written without reloading the site). Since 2.3 the import target holds
 the site's chargers through load balancing (the status lines below); a demand charge is measured only. A full example is `tests/fixtures/grid_tariff/pilot_demand.json`.
@@ -582,6 +586,7 @@ and `charger_priority.writable` say whether it may change those (an administrato
 | `spotnav/identify_vehicle`, `spotnav/choose_vehicle_identification` | Answer "which car is plugged in?", and choose a car's plug or location source (see [vehicle identification](#vehicle-identification)). |
 | `spotnav/get_sessions` | A charger's charge sessions: summaries per month and day and the latest sessions, the same for one chosen `month`, or with `format: "csv"` and optional `from` and `to` dates (or a `month`) the sessions of that range as CSV text. |
 | `spotnav/get_power_month` | One month of a site's measured import, by day and hour, against its demand-charge parts and import target (see [Power by month](#power-by-month)). |
+| `spotnav/suggest_import_target` | A suggested import target from Home Assistant's statistics (administrators only; see [A suggested import target](#a-suggested-import-target)). |
 
 Rules that hold across them:
 
@@ -1161,13 +1166,45 @@ where the webhook answers the action.
 | `unit` | `"kW"`: every power below is an hourly mean of net import. |
 | `import_target_kw` | The site's import target now, `null` for none. |
 | `components` | The demand-charge parts the month was measured against, as `grid_tariff.demand.components`: those set now for the running month and the month before, those set when its last hour completed for an older month. |
-| `days` | One row per day with a measured hour, oldest first: `date`, `peak_kw` (the day's highest hourly mean, among its complete hours where it has one), `peak_start` (that hour's start, local time with its offset), `house_kw` (the house's part of that hour, without what the chargers drew; `null` when they could not be read), `counted` (the indexes into `components` whose counted peaks fall on this day; a night part's peak after midnight counts on the date it falls on), `held` and `paused` (the import target held a charger's current down, or paused a charger, in any hour of the day). |
-| `hours` | For the running month and the month before: every measured hour, oldest first, `{start, kw, house_kw, incomplete, held, paused, counted}` (`incomplete`: more than ten minutes without a reading, never a peak). `null` for an older month, which keeps its days only. The hour running now is not among them. |
+| `days` | One row per day with a measured hour, oldest first: `date`, `peak_kw` (the day's highest hourly mean, among its complete hours where it has one), `peak_start` (that hour's start, local time with its offset), `house_kw` (the house's part of that hour, without what the chargers drew; `null` when they could not be read), `counted` (the indexes into `components` whose counted peaks fall on this day; a night part's peak after midnight counts on the date it falls on), `held` and `paused` (the import target held a charger's current down, or paused a charger, in any hour of the day), `imported` (the peak hour was read from Home Assistant's statistics, not measured) and `month_peak_kw` (the level the month's peak lifted the import target to when the peak hour ran, `null` where it did not). |
+| `hours` | For the running month and the month before: every measured hour, oldest first, `{start, kw, house_kw, incomplete, held, paused, counted, imported, month_peak_kw}` (`incomplete`: more than ten minutes without a reading, never a peak; `imported` and `month_peak_kw` as on a day). `null` for an older month, which keeps its days only. The hour running now is not among them. |
 | `bars` | Per part, its figure that month (`null` while nothing counted), the same as `grid_tariff.demand.per_component[].bar_kw` for the running month. |
 
 Refusals: `spotnav_unsupported_api_version`, `spotnav_charger_required` (neither id), the charger lookup's codes,
 `spotnav_unknown_site`, `spotnav_no_site` (the charger is in no site, or the site is not loaded),
 `spotnav_needs_total_grid_power` (the site cannot measure its import: a direct site without its total grid power)
 and `spotnav_invalid_range` (the month). The site keeps each hour of the running month and the month before, and a
-summary of each day for 24 months; a month before the update to 2.3.0 has nothing. Example answers are in
-`tests/fixtures/power_month/` and `tests/fixtures/webhook/get_power_month_*.json`.
+summary of each day for 24 months. The months before SpotNav measured are filled once from Home Assistant's
+statistics, three months back (`imported: true`; they count in the parts' peaks but never in `month_peak_kw`, see
+[earlier months](site-and-load-balancing.md#earlier-months-from-home-assistants-statistics)); while no earlier month
+is kept, a request asks for that once more at most once a day. `imported` and `month_peak_kw` are additive: a reader
+treats them as `false` and `null` where absent. Example answers are in `tests/fixtures/power_month/`
+(`pilot_imported_month.json` has imported days and the month's peak) and
+`tests/fixtures/webhook/get_power_month_*.json`.
+
+### A suggested import target
+
+`spotnav/suggest_import_target {"api_version": 1, "charger_id" | "site_id"}` (administrators only, as the target's
+write; `spotnav_not_admin` otherwise) reads Home Assistant's hourly statistics of the site's grid power and its
+chargers' draw for the last three months and answers a suggested import target. The webhook's
+`suggest_import_target` answers the same for the charger's site (an optional `api_version`), with `"ok": true` and
+`"action": "suggest_import_target"` beside it; the dashboard's `charger.capabilities` carries
+`suggest_import_target`. The answer is kept per site for ten minutes.
+
+| Field | Meaning |
+| --- | --- |
+| `api_version`, `site_id` | `1`, the site. |
+| `available`, `reason` | Whether there is a suggestion; else why: `no_recorder`, `no_grid_statistics` (the grid power has no long-term statistics, or in a unit not known), `too_few_days` (fewer than seven), `no_chargers`. Every figure below is then `null`. |
+| `suggestion_kw` | The house's typical daily peak plus the car's minimum power, rounded up to the next 0.5 kW (see [the rule](site-and-load-balancing.md#a-suggested-import-target)). |
+| `typical_kw` | The median of the days' highest hourly means of the house alone. |
+| `highest` | `{kw, start, date}`: the house's highest hour (local time). |
+| `car_min_kw`, `car_kw` | The car's minimum power on the site, and what it gets at the suggestion in a typical evening or night hour (never below its minimum). |
+| `counted` | `windows` where the daily peaks are taken within the demand-charge parts' own hours, else `all`. |
+| `days`, `hours` | How many days and hours were read. |
+| `period` | `{start, end}` read (local time). |
+| `months` | Per month, oldest first: `{month, peak_kw, peak_start, typical_kw, days}`. |
+| `grid_entities` | The grid power's entities read. |
+| `chargers` | Per charger `{charger_id, source, has_statistics}`; `source` is `energy`, `power`, `current` or `null`. A charger without statistics counts as nothing: the grid alone stands for the house. |
+
+Refusals as `spotnav/get_power_month`'s (without `spotnav_invalid_range`), and `spotnav_not_admin`. Examples:
+`tests/fixtures/target_suggestion/pilot.json`, `tests/fixtures/webhook/suggest_import_target_success.json`.
