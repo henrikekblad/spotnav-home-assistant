@@ -926,7 +926,20 @@ async def test_a_still_phase_counts_as_fresh_while_its_voltage_moves(
             assert result.phase_signed_active_power_reason["L1"] is None
             assert decision.proposed_current_a is not None
             assert world.car_a <= 9.0, "the target holds the Start"
-            assert controller.import_target_snapshot()["chargers"][charger]["action"] == "held"
+            # Held by the target, or kept where it holds it: a still phase never raises it (`held_still_no_raise`).
+            assert controller.import_target_snapshot()["chargers"][charger]["action"] in ("held", "free")
+            assert decision.reason in (REASON_IMPORT_TARGET_HELD, "held_still_no_raise", "no_change_requested")
+            # The target is taken away: the fuse would raise the car, but not on a still phase.
+            entry = hass.config_entries.async_get_entry(controller.entry_id)
+            hass.config_entries.async_update_entry(entry, data={**entry.data, CONF_IMPORT_TARGET_KW: None})
+            kept_at = world.car_a
+            await _battery_holds_the_grid(world, 3)
+            assert world.car_a == kept_at and world.decision.reason == "held_still_no_raise"
+            assert controller.regulator_decisions[charger].reason == "held_still_no_raise"
+            # The phases' power changes again: raised as ever.
+            world.quiet_phases = ()
+            await _battery_holds_the_grid(world, 5)
+            assert world.car_a > kept_at
         else:
             assert held["L1"] is None and result.phase_signed_active_power_reason["L1"] == "stale"
             assert decision.proposed_current_a is None

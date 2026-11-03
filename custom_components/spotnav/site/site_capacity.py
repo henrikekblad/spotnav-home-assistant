@@ -1296,7 +1296,10 @@ def _signed_margin_per_phase(
     `|rest + proposed|` of `sqrt((Ip - c + proposed)^2 + Iq^2)`. Staying under the ceiling `C`
     allows `proposed - c <= sqrt(C^2 - Iq^2) - Ip`, which is this margin. It equals
     `C - I` on net import without reactive load, and is larger when the site exports. `None`
-    where the direction is unknown (direct mode) or the voltage is unusable.
+    where the direction is unknown (direct mode), the voltage is unusable, or the active power has
+    not changed within `max_age_s` (unknown age included): a still or stale `P` is never trusted to
+    widen the room for an increase, a phase counted fresh on its voltage alone among them
+    (`_held_still_companion`). The uncredited |net| margin then applies.
     """
     result: dict[PhaseName, float | None] = {phase: None for phase in PHASES}
     if (
@@ -1309,8 +1312,11 @@ def _signed_margin_per_phase(
     for phase in PHASES:
         derived_input = config.derived.get(phase)
         power = derived_input.active_power_w.value
+        power_age_s = derived_input.active_power_w.age_s
         voltage = derived_input.voltage_v.value
         if power is None or voltage is None or voltage <= 0 or ceiling <= 0:
+            continue
+        if power_age_s is None or power_age_s > config.max_age_s:
             continue
         magnitude = magnitude_a[phase]
         active = max(-magnitude, min(magnitude, power / voltage))
@@ -1473,19 +1479,22 @@ def _held_still_companion(derived_input: DerivedPhaseInput, max_age_s: float) ->
     0 W by a battery) do not change a phase's active power for minutes while the meter is live. It counts as a still
     value, not a lost one, only while
 
-    * the active power itself has a value (not unavailable or unknown: those are lost as ever) and, where Home
-      Assistant can tell, was reported within `max_age_s` (`report_age_s`); and
+    * the active power itself has a value (not unavailable or unknown: those are lost as ever), its age is known, and
+      Home Assistant reported it within `max_age_s` (`report_age_s`, which must be known); and
     * the same phase's voltage, or the reactive or apparent power the site reads for it, changed within `max_age_s`
       (its own `age_s`, the time since its value last changed): proof that the meter's readings for this phase are
       still coming in.
 
-    The value kept is the active power's own last one. `None` otherwise (fresh already, or lost)."""
+    The value kept is the active power's own last one. It is trusted for holding and lowering only, never to raise a
+    charger (`regulator._decide_phase`'s `held_still`) nor to widen the signed room for an increase
+    (`_signed_margin_per_phase`). `None` otherwise (fresh already, or lost)."""
     power = derived_input.active_power_w
     if power.value is None or power.problem is not None:
         return None
-    if power.age_s is not None and power.age_s <= max_age_s:
+    if power.age_s is None or power.report_age_s is None:
+        # Not known how old the value is, or whether Home Assistant still hears from it: not held still.
         return None
-    if power.report_age_s is not None and power.report_age_s > max_age_s:
+    if power.age_s <= max_age_s or power.report_age_s > max_age_s:
         return None
     for role, companion in (
         ("voltage", derived_input.voltage_v),

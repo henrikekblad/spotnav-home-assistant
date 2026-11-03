@@ -357,6 +357,9 @@ TARGET_INERT_EXPORTING = "phase_exporting"
 TARGET_HOUSE_HOURS = 24
 #: What a charger's minute row says the import target does to it (`import_target_charger_row`).
 TARGET_ROW_ACTIONS = {ACTION_UNHELD: "exempt"}
+#: The regulator kept a charger where it was rather than raise it on a phase whose active power sits still
+#: (`regulator._decide_phase`'s `held_still`); no yield step, probe or resume raises it either.
+REASON_HELD_STILL_NO_RAISE = "held_still_no_raise"
 #: Where a release of the import target came from (`async_release_import_target`'s `source`, in the change log).
 RELEASE_SOURCE_PHONE = "phone"
 RELEASE_SOURCE_CARD = "card"
@@ -2549,6 +2552,16 @@ class SiteCapacityController:
             yield_verdict = self._yield_verdict_under_target(
                 charger_entry_id, decision, yield_verdict, previous_setpoint
             )
+            if (
+                decision.reason == REASON_HELD_STILL_NO_RAISE
+                and yield_verdict is not None
+                and yield_verdict.action == "write"
+                and yield_verdict.current_a is not None
+                and (previous_setpoint is None or yield_verdict.current_a > previous_setpoint)
+            ):
+                # A still phase is trusted for holding and lowering, never for raising: not the stepper's step or
+                # probe either (its readings of the phase come from the same still power).
+                yield_verdict = replace(yield_verdict, action="hold", current_a=None, reason=REASON_HELD_STILL_NO_RAISE)
 
         if overload and not (
             yield_verdict is not None
@@ -3504,6 +3517,8 @@ class SiteCapacityController:
             or not _plugged_in_for_resume(charger_controller.adapter)
             or (previous_setpoint is not None and previous_setpoint >= min_current_a)
             or charger_controller.car_ended_holds_charge
+            # A still phase is trusted for holding and lowering, never to start a charge on it.
+            or _held_still_on(fresh, phases)
         ):
             self._resume_ready_since.pop(charger_entry_id, None)
             return False
@@ -3673,6 +3688,7 @@ class SiteCapacityController:
             or charger_controller.held_by_charger
             or charger_controller.adapter.vehicle_connected() is not True
             or charger_controller.car_ended_holds_charge
+            or _held_still_on(fresh, phases)
         ):
             return False
         target_cap = self._target_start_cap(charger_entry_id)
@@ -6248,6 +6264,13 @@ def charge_still_wanted(hass: HomeAssistant, charger_entry_id: str, charger_cont
         return True
     charger_controller.forget_balancing_pause()
     return False
+
+
+def _held_still_on(result: SiteCapacityResult, phases: Sequence[str]) -> bool:
+    """Whether a phase among `phases` counts as fresh only because its voltage or another reading moves while its
+    active power sits still (`phase_signed_active_power_held_still`): never a reason to start or raise a charger."""
+    held = result.phase_signed_active_power_held_still
+    return any(held.get(phase) is not None for phase in phases)  # type: ignore[call-overload]
 
 
 def _plugged_in_for_resume(adapter: Any) -> bool:
