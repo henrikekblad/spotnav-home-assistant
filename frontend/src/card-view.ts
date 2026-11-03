@@ -1164,6 +1164,13 @@ export function createCardView(input: CardViewInput): CardView {
     background: () => card,
     onClose: notifyDialogsChanged,
   });
+  const releaseDialog: DialogHandle = createDialog({
+    owner: input.mount,
+    idPrefix: `${idPrefix}-release`,
+    labels,
+    background: () => card,
+    onClose: notifyDialogsChanged,
+  });
   const capabilityDialog: DialogHandle = createDialog({
     owner: input.mount,
     idPrefix: `${idPrefix}-capabilities`,
@@ -1263,6 +1270,7 @@ export function createCardView(input: CardViewInput): CardView {
   function anyDialogOpenNow(): boolean {
     return (
       issuesDialog.isOpen() ||
+      releaseDialog.isOpen() ||
       capabilityDialog.isOpen() ||
       pauseDialog.isOpen() ||
       strategyDialog.isOpen() ||
@@ -1391,6 +1399,16 @@ export function createCardView(input: CardViewInput): CardView {
   const statusNode = model.status === null ? null : element(doc, "p", C.status, model.status);
   if (statusNode !== null) {
     card.append(statusNode);
+  }
+  if (model.releaseConfirm !== null && input.onReleaseImportTarget !== undefined) {
+    // The one way past the import target, offered whenever it holds or pauses the charge: confirmed first.
+    const answers = element(doc, "div", C.suggestionAnswers);
+    answers.dataset["part"] = "release-import-target";
+    const release = element(doc, "button", C.choiceButton, translate(model.language, "issue.importTargetRelease"));
+    release.setAttribute("type", "button");
+    release.addEventListener("click", () => confirmRelease(release));
+    answers.append(release);
+    card.append(answers);
   }
   if (model.chargeBar !== null) {
     card.append(chargeBarElement(doc, model.chargeBar));
@@ -2135,10 +2153,38 @@ export function createCardView(input: CardViewInput): CardView {
   }
 
   /** An issue's button was pressed: the dialog closes and the card writes the fix, then reads the dashboard again. */
+  /**
+   * "Release the import target tonight": what it would mean, and Cancel or Release; only Release sends it (an
+   * accidental press must not cost the month's peak).
+   */
+  function confirmRelease(opener: HTMLElement | null): void {
+    const text = model.releaseConfirm;
+    if (text === null || destroyed) {
+      return;
+    }
+    const body = element(doc, "div");
+    body.append(element(doc, "p", C.dialogIntro, text));
+    const answers = element(doc, "div", C.suggestionAnswers);
+    const cancel = element(doc, "button", C.choiceButton, translate(model.language, "settings.cancel"));
+    cancel.setAttribute("type", "button");
+    cancel.dataset["action"] = "cancel";
+    cancel.addEventListener("click", () => releaseDialog.hide());
+    const release = element(doc, "button", C.choiceButton, translate(model.language, "release.confirm.release"));
+    release.setAttribute("type", "button");
+    release.dataset["action"] = "release";
+    release.addEventListener("click", () => {
+      releaseDialog.hide({ restoreFocus: false });
+      input.onReleaseImportTarget?.();
+    });
+    answers.append(cancel, release);
+    body.append(answers);
+    releaseDialog.show({ title: translate(model.language, "release.confirm.title"), body, opener });
+  }
+
   function issueFix(fix: IssueFix): void {
     issuesDialog.hide({ restoreFocus: false });
     if (fix.action === "release_import_target") {
-      input.onReleaseImportTarget?.();
+      confirmRelease(null);
       return;
     }
     input.onFixOwnMode?.(fix.entity, fix.value);
@@ -5151,6 +5197,7 @@ export function createCardView(input: CardViewInput): CardView {
       boxObserver?.disconnect();
       interaction?.destroy();
       issuesDialog.destroy();
+      releaseDialog.destroy();
       capabilityDialog.destroy();
       pauseDialog.destroy();
       strategyDialog.destroy();
