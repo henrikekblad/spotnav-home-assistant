@@ -201,7 +201,7 @@ describe("Release the import target tonight, confirmed first", () => {
       release_peak_kw: 11,
     });
     expect(releaseConfirmText({ tone: "normal", lines: [held] } as never, SV, NOW)).toBe(
-      "Bilen laddar då med full effekt tills den kopplas ur. Månadens topp kan bli upp till 11 kW, mot 6,0 kW i dag.",
+      "Bilen laddar då med full effekt tills den kopplas ur eller laddningen är klar, senast kl. 12. Månadens topp kan bli upp till 11 kW, mot 6,0 kW i dag.",
     );
     const planned = line("import_target_paused", {
       until: "2026-11-02T14:00:00+00:00",
@@ -218,7 +218,7 @@ describe("Release the import target tonight, confirmed first", () => {
     expect(releaseConfirmText({ tone: "normal", lines: [line("charging_now", { until: null })] } as never, SV, NOW)).toBeNull();
     // A release with no departure ahead is said so.
     expect(lineText(line("import_target_released", { target_kw: 6, departure: null, automatic: false }), SV, NOW)).toBe(
-      "Effektmålet är släppt av dig tills bilen kopplas ur.",
+      "Effektmålet är släppt av dig tills bilen kopplas ur eller laddningen är klar, senast kl. 12.",
     );
   });
 });
