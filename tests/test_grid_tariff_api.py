@@ -139,6 +139,14 @@ async def test_an_administrator_writes_the_owners_tariff_and_every_price_follows
     assert stale["success"] is False and stale["error"]["code"] == "revision_conflict"
     assert price.data["transfer_percent"] == OWNER["transfer_percent"]
 
+    # The card's "Remove the high-load fee": the fee off (its figure kept) and the window gone, in one write.
+    removed = {**OWNER, "transfer_high": {"enabled": False, "value": 60.0}, "high_load_window": None}
+    frame = await ws_call(client, update("entry_a", 3, removed))
+    assert frame["success"] is True, frame
+    block = frame["result"]["grid_tariff"]
+    assert block["transfer_high"]["policy"] == "off" and block["high_load_window"] is None
+    assert price.data["high_load_window"] is None
+
 
 @pytest.mark.parametrize(
     ("tariff", "code"),
