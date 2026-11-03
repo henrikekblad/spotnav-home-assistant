@@ -233,6 +233,35 @@ def test_an_unplug_ends_what_belonged_to_the_plug_in() -> None:
     assert session == ChargeSession(plugged=False)
 
 
+def test_an_unplug_found_after_a_restart_ends_a_persons_start() -> None:
+    """A person's Start holds until the car is unplugged, also when the unplug is the first connection known after a
+    restart: a charge the charger begins by itself at the next plug-in is decided by the sun, not left as the
+    person's (the field case: a Peblar charging at 11 kW under Solar with no surplus)."""
+    before = ChargeSession(plugged=True, owner="person", manual=START)
+    session, _ = run(before, ev.Restart(), ev.Unplug(previous=None))
+    assert session.owner == "none" and session.manual is None
+    session, commands = run(
+        session,
+        ev.PlugIn(previous=False),
+        on(was_on=False),
+        ev.SolarStop(take_over=True, charging=True),
+    )
+    assert session.owner == "charger_self"
+    assert kinds(commands) == ["stop"]
+
+
+def test_a_plug_in_after_a_known_unplug_does_not_inherit_a_persons_start() -> None:
+    session, _ = run(ChargeSession(plugged=False, owner="person"), ev.PlugIn(previous=False))
+    assert session.owner == "none"
+
+
+def test_a_persons_start_outlives_a_restart_while_the_car_stays_plugged_in() -> None:
+    before = ChargeSession(plugged=True, owner="person", manual=START)
+    session, commands = run(before, ev.Restart(), ev.PlugIn(previous=None), ev.SolarStop(take_over=True, charging=True))
+    assert session.owner == "person" and session.manual == START
+    assert kinds(commands) == []
+
+
 def test_the_first_connection_after_a_restart_keeps_what_the_plug_in_had() -> None:
     before = ChargeSession(car_ended=CarEnded(at=T0, soc=80.0, vehicle="car"), hold_stop_times=(T0,))
     session, _ = run(before, ev.PlugIn(previous=None))
