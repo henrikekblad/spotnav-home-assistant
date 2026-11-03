@@ -33,14 +33,15 @@ def _answer(error: str | None = None) -> dict[str, Any]:
     return {"api_version": RELEASE_API_VERSION, "ok": error is None, "error": error}
 
 
-def release_import_target(hass: HomeAssistant, entry: ConfigEntry) -> str | None:
-    """Set the import target aside for this charger until its departure; the refusal's code, else `None`."""
+def release_import_target(hass: HomeAssistant, entry: ConfigEntry, source: str | None = None) -> str | None:
+    """Set the import target aside for this charger until its departure; the refusal's code, else `None`. `source`
+    (`card` over the websocket, `app` over the webhook) goes to the site's change log only."""
     from ..execution.solar_execution import site_controller_for_charger  # noqa: PLC0415 - it imports the site
 
     site = site_controller_for_charger(hass, entry.entry_id)
     if site is None:
         return ERROR_NO_SITE
-    return site.async_release_import_target(entry.entry_id)
+    return site.async_release_import_target(entry.entry_id, source=source)
 
 
 @websocket_api.websocket_command(
@@ -63,7 +64,7 @@ def websocket_release_import_target(
     if failure is not None or entry is None:
         connection.send_result(msg["id"], _answer(failure))
         return
-    connection.send_result(msg["id"], _answer(release_import_target(hass, entry)))
+    connection.send_result(msg["id"], _answer(release_import_target(hass, entry, "card")))
 
 
 async def webhook_release_import_target(
@@ -75,7 +76,7 @@ async def webhook_release_import_target(
     if isinstance(version, bool) or version != RELEASE_API_VERSION:
         error: str | None = ERROR_UNSUPPORTED_VERSION
     else:
-        error = release_import_target(hass, entry)
+        error = release_import_target(hass, entry, "app")
     return web.json_response({**_answer(error), "action": WEBHOOK_ACTION}, status=200 if error is None else 400)
 
 
