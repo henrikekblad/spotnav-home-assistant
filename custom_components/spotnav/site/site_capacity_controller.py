@@ -3517,8 +3517,6 @@ class SiteCapacityController:
             or not _plugged_in_for_resume(charger_controller.adapter)
             or (previous_setpoint is not None and previous_setpoint >= min_current_a)
             or charger_controller.car_ended_holds_charge
-            # A still phase is trusted for holding and lowering, never to start a charge on it.
-            or _held_still_on(fresh, phases)
         ):
             self._resume_ready_since.pop(charger_entry_id, None)
             return False
@@ -4755,6 +4753,10 @@ class SiteCapacityController:
                     # It cannot be lowered: any lowering the overload by |I| calls for is a pause.
                     lowering = replace(lowering, proposed_current_a=0.0, reason=REASON_MAGNITUDE_LOWERING)
                 decisions[charger_entry_id] = lowering
+        for request in credited:
+            decision = decisions.get(request.charger_entry_id)
+            if decision is not None and decision.reason == REASON_HELD_STILL_NO_RAISE:
+                decisions[request.charger_entry_id] = self._held_still_kept(request, decision)
         try:
             return self._hold_to_import_target(decisions, credited, voltage_by_phase, config.max_age_s)
         except Exception:  # noqa: BLE001 - the import target never stands in the fuse's way: its decisions go as they are
@@ -4768,6 +4770,25 @@ class SiteCapacityController:
             self._target_not_applied = TARGET_NOT_APPLIED_ERROR
             self._note_target_state(TARGET_NOT_APPLIED_ERROR)
             return decisions
+
+    def _held_still_kept(self, request: ChargerRequest, decision: RegulatorDecision) -> RegulatorDecision:
+        """A raise refused on a still phase (`held_still_no_raise`) keeps what the charger was last written, never
+        less: the regulator's "current" is what the car draws, which is 0 A for a charge just started (or below the
+        written current while it ramps), and taking that would lower it, or pause it below its minimum. With no
+        written current at or above the charger's minimum known, no decision (nothing is written, nothing paused), as
+        for a phase that cannot be judged. Lowerings (an overload, the import target) still act on the kept value."""
+        charger_controller = controller_for(self.hass, request.charger_entry_id)
+        written = None if charger_controller is None else getattr(charger_controller.adapter, "last_current_a", None)
+        if (
+            isinstance(written, (int, float))
+            and not isinstance(written, bool)
+            and written >= request.min_current_a
+            and (decision.proposed_current_a is None or written >= decision.proposed_current_a)
+        ):
+            return replace(decision, proposed_current_a=float(written))
+        if decision.proposed_current_a is not None and decision.proposed_current_a >= request.min_current_a:
+            return decision
+        return replace(decision, proposed_current_a=None)
 
     # -- the import target (`site/import_target.py`)
 
