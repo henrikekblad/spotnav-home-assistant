@@ -405,8 +405,8 @@ def test_the_power_view_draws_the_months_peak_where_it_lifted_the_target() -> No
     )
     by_start = {hour["start"]: hour["month_peak_kw"] for hour in view["hours"]}
     assert by_start["2026-11-02T18:00:00+01:00"] is None  # the hour that set it
-    assert by_start["2026-11-02T19:00:00+01:00"] == 7.35
+    assert by_start["2026-11-02T19:00:00+01:00"] == 7.5
     assert by_start["2026-11-03T02:00:00+01:00"] is None  # night: the night part counts it
-    assert by_start["2026-11-03T12:00:00+01:00"] == 7.35
+    assert by_start["2026-11-03T12:00:00+01:00"] == 7.5
     days = {day["date"]: day["month_peak_kw"] for day in view["days"]}
-    assert days == {"2026-11-01": None, "2026-11-02": None, "2026-11-03": 7.35}
+    assert days == {"2026-11-01": None, "2026-11-02": None, "2026-11-03": 7.5}

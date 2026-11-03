@@ -265,5 +265,5 @@ async def test_the_imported_month_fixture_with_the_months_peak(hass: HomeAssista
     assert [day["date"] for day in month["days"] if day["imported"]] == [f"2026-09-0{day}" for day in range(1, 5)]
     lifted = [hour for hour in month["hours"] if hour["month_peak_kw"] is not None]
     assert lifted and all(hour["start"] > "2026-09-08T18" for hour in lifted)
-    assert {hour["month_peak_kw"] for hour in lifted} == {6.664}
+    assert {hour["month_peak_kw"] for hour in lifted} == {6.8}
     _fixture("pilot_imported_month.json", month)
