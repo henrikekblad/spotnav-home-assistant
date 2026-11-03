@@ -362,6 +362,10 @@ under its heading; the car planned for is open first, and tapping another tab sh
   camera, shown as two equal tiles, **Day** and **Night**, each cropped as it is compared (or *No picture*).
   Tapping either opens the reference editor. See [the camera](vehicle-identification.md#the-camera).
 
+For an administrator the last tab is **Guest car**, with one row: the **guest amount** (kWh) a guest car's plan
+starts from, 10 kWh until you change it, the same for every charger. A guest has no picture, sensors, battery size
+or target. See [a guest car](vehicle-identification.md#a-guest-car).
+
 ### Which car is plugged in?
 
 Shown when more than one car is detected, in the charger's section: **Cars at this charger** and
@@ -376,14 +380,17 @@ line says "identifying…".
 ![The card while the car is being identified](images/card-identifying.png)
 
 While SpotNav cannot tell which car was plugged in, the card shows "Which car is plugged in?" with one button
-per car, the likeliest first; one tap is the answer, the same as on the phones.
+per car, the likeliest first, and **Guest car** (first when every car is ruled out); one tap is the answer, the
+same as on the phones. At a charger with one car it asks only when that car says it is not the one plugged in.
 
 ![The question which car is plugged in, with a button per car](images/card-identify-question.png)
 
 The car line says how the car was decided ("identified by the car's charging cable", "selected manually",
-"assumed", ...). With two or more cars at the charger it ends in ⇄ and tapping it opens **Change car**, for
-anyone signed in: with a car plugged in it corrects that car; with none it sets the plan's car for the next
-plug-in (an administrator's settings write). See [Which car is plugged in?](vehicle-identification.md).
+"assumed", ...). With two or more cars at the charger, or with a car plugged in, it ends in ⇄ and tapping it opens
+**Change car**, for anyone signed in: with a car plugged in it corrects that car, and **Guest car** at the end of
+the list plans for a visitor's car by kWh; with none it sets the plan's car for the next plug-in (an administrator's
+settings write). During a guest's plan the car line reads **Guest car · 10 kWh**. See
+[Which car is plugged in?](vehicle-identification.md).
 
 ![The car line: City car, identified by the car's charging cable, with ⇄ to change it](images/card-identified.png)
 
@@ -521,6 +528,11 @@ just **Charging plan**.
   charge level, the slider's track is darker from 0 to it, with **min 30 %** under that part. Ticks on the
   track mark the level now (**now**, **≈ now** when estimated) and the car's charge limit (**limit**, only
   below 100 %); a word that would touch another drops to a second line.
+
+For a guest car the dialog is **Charging plan for Guest car**: the car row reads **Guest car**, the guest's amount in
+kWh takes the target's place, and the charge target, the car's level, fill, the minimum charge level and the charge
+limit are not there; the departure, the current, the strategy and **Charge now** stay. A change of the amount is
+also the next guest's.
 
 If two clients change the settings at the same moment, the card says they changed elsewhere and
 offers **Use the server values** or **Apply my change again**; nothing is overwritten silently.

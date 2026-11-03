@@ -4,8 +4,9 @@ When two or more cars share a charger, SpotNav has to know which one was plugged
 charge level, battery size, onboard charger and target. Chargers do not report the car, so SpotNav reads what
 the cars report about themselves, and asks you when that is not enough.
 
-This runs only for a charger that more than one car can charge at. With one car nothing is identified and
-nothing is asked.
+It also tells a visitor's car from yours: a [guest car](#a-guest-car) is planned by kWh, with no car's level or
+target, once you say it is one. At a charger only one of your cars can charge at, SpotNav asks only when that car
+says it is not the one plugged in.
 
 ## Settings
 
@@ -70,6 +71,10 @@ connected never starts identification, so the choice stays yours.
    With a [camera](#the-camera), SpotNav also asks the camera while the cars' own reports have not decided.
 4. In **Always ask** mode, SpotNav asks at once. The cars are ordered by what they report, and SpotNav
    never switches by itself.
+5. **At a charger with one car**, SpotNav only looks whether that car is ruled out by the same reports: its plug
+   sensor went to "not plugged in" around or after the plug-in, a fresh position away from home, or it is
+   identified at another SpotNav charger. Then it asks "<car> or Guest car?" after the same three minutes. A car
+   that says nothing is no question: it is the car, as before. **Always ask** asks there only in the same case.
 
 While SpotNav identifies the car, the card's and the app's status line leads with **Identifying the car…**, and
 while the question is open with **Waiting for an answer: which car is plugged in?**. The line is gone as soon as
@@ -88,9 +93,11 @@ seconds to ten minutes, but some only every 30 minutes or more. If the report co
 ## The question
 
 The question goes to the phones chosen under **Settings → Notifications**, as the event **Which car is plugged
-in?**. This event is on by default. It is a notification with one button per car. Android shows at most three
-buttons, so with more cars the two likeliest get a button and a third opens SpotNav. The card shows the same
-question as a banner with one button per car, and so does the SpotNav app.
+in?**. This event is on by default. It is a notification with a button per car and one for **Guest car**. Android
+shows at most three buttons: with one or two cars each car and **Guest car**; with three or more, the likeliest car,
+**Guest car**, and a third that opens SpotNav (the rest are in the card and the app). **Guest car** comes first when
+every car is ruled out, or when the camera saw none of them; else last. The card shows the same question as a banner
+with a button per car and **Guest car**, and so does the SpotNav app.
 
 ![The card's question: "Which car is plugged in?" with a button per car](images/card-identify-question.png)
 
@@ -139,6 +146,7 @@ The charge history records how the car of each session was decided:
 | `answered` | a person answered the question, on a phone, in the card or in the app |
 | `manual` | a person chose the car in the settings (also with identification **Off**, or just before the plug-in) |
 | `camera` | the charger's camera recognised the car, sure, among cars of different colours |
+| `answered` with the car **Guest car** | a person answered that a guest car is plugged in (see [A guest car](#a-guest-car)) |
 | `only_candidate` | only one car can charge here |
 | `assumed` | nobody answered and nothing decided it, so the car that was already chosen was kept |
 
@@ -147,6 +155,35 @@ and position entities, the plug's state with when it changed and when it was las
 where), and the verdict. A field report can show from it exactly which entity and state decided. The charge
 port door of a Kia (`ev_charge_port`, and its switch) is never taken for a plug: it says the port's door is
 open, not that a cable is in.
+
+## A guest car
+
+A visitor's car plugged in is not one of yours: its level and target are not your car's, so planning for your car
+would plan nothing (your car at its target) or the wrong amount. **Guest car** plans for it by kWh instead.
+
+- **Only you say it is a guest.** Answer **Guest car** to the question, or choose **Guest car** under **Change
+  car** in the card or the app (also at a charger with one car, while a car is plugged in). Nothing switches to a
+  guest by itself, not even when every car is ruled out or the camera saw none of them: those only put **Guest car**
+  first. Unanswered, swiped or expired, the current car is kept.
+- **The guest's plan** is the amount in kWh, by the charger's own strategy and departure: **Cheapest** buys the
+  cheapest hours for it before the departure (with no departure, within the next twelve hours), **Solar** charges
+  it from the surplus, **Hybrid** from the sun first and the rest from the grid by the departure. The import target
+  and the fuse hold it like any charge. **Charge now** charges it at once.
+- **Nothing of a car is used.** No charge level, no target, no minimum charge level, no charge limit, no plug or
+  position sensor, no wake, and nothing is learned (the energy per percent and the power a car draws stay as they
+  were).
+- **The amount** is 10 kWh until you change it. The **Guest** tab in **Settings → Car** (an administrator) has the
+  one row for it, and changing the amount in the plan dialog during a guest's plan does the same: the last change
+  is the next guest's.
+- **When the amount is delivered** the charge stops, and the charger stays paused until the guest is unplugged: it
+  does not charge on at any price, and a charge the charger begins by itself is stopped. Your **Start** still
+  charges, as any Start. Raising the amount above what was delivered lets it charge again.
+- **Unplugged** (for more than two minutes), your car and its settings come back, and the next plug-in is
+  identified as usual. Choosing one of your cars under **Change car** ends the guest's plan at once. A Home
+  Assistant restart while the guest stays plugged in keeps it.
+- The status says **Guest car · 10 kWh by 07:00**, and once it is delivered **Guest car · done, waiting to be
+  unplugged**. The **New plan** notification says it is the guest car's. In the charge history the session's car is
+  **Guest car**, with its energy and cost as usual.
 
 ## The camera
 
@@ -186,8 +223,9 @@ take, show and delete reference pictures for the camera chosen here, but cannot 
 one picture, crops it with the frame and asks the AI Task which reference car is the one in the picture,
 comparing shape, roof line, windows and lights rather than colour. The picture of the spot now is sent first and
 the reference pictures after it: a model asked about "the last picture" was seen to answer "none" when a reference
-of an empty spot came just before it. The answer is one car or none, and how sure
-the model is.
+of an empty spot came just before it. The answer is one car, **a car that is none of them** (`other`), or no car
+(`none`), and how sure the model is. At a charger with one car the camera is asked too, while that car is not ruled
+out.
 
 - The camera **decides on its own** only when all of this holds:
   - the model is sure ("high");
@@ -214,6 +252,8 @@ the model is.
   without an infrared filter.
 - In every other case the camera **only puts its car first** on the question's buttons, and the question is asked
   as usual, after three minutes.
+- **None of these cars** never makes a guest by itself: it puts **Guest car** first, and when the model is sure it
+  counts as the cars with a reference picture ruled out, so a charger with one car asks.
 - **A car's own report outranks the camera.** If, after the camera decided, a car's plug sensor or position
   settles it within the 30 minutes SpotNav listens, SpotNav switches to that car (recorded as decided by the plug
   sensor or the position). If the camera's car reports that it is not plugged in or away and nothing else
@@ -254,13 +294,16 @@ restarts. For each plug-in:
   `ai_task_error`), and `camera_reason`, why it did or did not decide on its own: `decided`, `similar_colour` (with
   `colour_distance`, how different the nearest other car's reference picture is where the two differ; 0.25 or more
   is clearly different, 0 is pictures the colours cannot tell apart; also when another car is as near the picture
-  now), `night`, `missing_reference`, `confidence_low`, `answer_none` (no car, or none of the cars),
+  now), `night`, `missing_reference`, `confidence_low`, `answer_none` (no car), `none_of_these` (a car that is
+  none of the cars, `other`),
   `colour_mismatch` (another car is nearer the picture now than the named car), or `late` (it answered after a
   person or the cars had decided);
-- `skipped` with a reason when nothing was identified: `off`, `only_candidate`, or `recent_choice` with `chosen_at`
-  (the car was chosen shortly before the plug-in);
-- the question: when it was sent and to how many phones, and when it was answered;
-- the car it ended with and how it was decided (as in the charge history). `assumed` says why the car that was
+- `skipped` with a reason when nothing was identified: `off`, `only_candidate` (no car can charge here), or
+  `recent_choice` with `chosen_at` (the car was chosen shortly before the plug-in). A charger with one car looks at
+  its car's reports at every plug-in, and ends `only_candidate` when nothing ruled it out;
+- the question: when it was sent and to how many phones, and when it was answered, and how (`answered_by`:
+  `notification`, a phone's button, or `choice`, the card's or the app's);
+- the car it ended with (`guest` for a guest car) and how it was decided (as in the charge history). `assumed` says why the car that was
   already chosen was kept: `swiped` (the notification was swiped away), `unanswered` (nobody answered in twelve
   hours) or `unplugged` (unplugged before anything decided);
 - later corrections: a person's change with **Change car**, or a car's own report that overruled the camera.
@@ -269,5 +312,5 @@ No picture and no position is ever in it.
 
 ## For developers
 
-The settings fields, the dashboard's `identification` and `camera_identification` blocks, the vehicle row's
-sources and the identification and camera commands are described in [Apps and API](api.md).
+The settings fields, the dashboard's `identification`, `camera_identification` and `guest` blocks, the vehicle
+row's sources and the identification, guest and camera commands are described in [Apps and API](api.md).

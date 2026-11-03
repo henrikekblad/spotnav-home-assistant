@@ -98,6 +98,7 @@ translated.
 | plugged in / unplugged | angeschlossen / abgesteckt | aangesloten / losgekoppeld | branchée / débranchée | enchufado / desenchufado |
 | Which car is plugged in? | Welches Auto ist angeschlossen? | Welke auto is aangesloten? | Quelle voiture est branchée ? | ¿Qué coche está enchufado? |
 | Change car | Auto wechseln | Andere auto | Changer de voiture | Cambiar coche |
+| Guest car | Gastauto | gastauto | voiture invitée | coche de invitado |
 | the car's position (identification) | Position | positie | position | posición (source: ubicación) |
 | reference picture | Referenzbild | referentiefoto | image de référence | imagen de referencia |
 | parking spot / Crop parking spot | Stellplatz / Stellplatz zuschneiden | parkeerplaats / Parkeerplaats bijsnijden | place de stationnement / Recadrer la place | plaza de aparcamiento / Recortar la plaza |
