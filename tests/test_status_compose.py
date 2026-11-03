@@ -1660,6 +1660,42 @@ CASES: list[tuple[str, StatusFacts, str, list[dict[str, Any]]]] = [
         [{"code": "paused", "params": {"until": None, "choice": None, "action": None, "ends": None}}],
     ),
     (
+        "a guest car's amount and departure go ahead of the plan's headline",
+        base(
+            relation_applied=True, proposal=proposal(), guest_kwh=10.0, departure_enabled=True,
+            planning=planning(departure_at=at(14)),
+        ),
+        "normal",
+        [{"code": "guest_planned", "params": {"kwh": 10.0, "departure": iso(14)}}, *PLANNED],
+    ),
+    (
+        "a guest car with no departure: its amount only",
+        base(relation_applied=True, proposal=proposal(), guest_kwh=12.5, planning=planning(departure_at=at(14))),
+        "normal",
+        [{"code": "guest_planned", "params": {"kwh": 12.5, "departure": None}}, *PLANNED],
+    ),
+    (
+        "a guest car's amount delivered: it waits for the unplug, in place of the plan's and the sun's headline",
+        base(strategy="solar", guest_kwh=10.0, guest_done=True, solar=SolarFacts(state="on", reason="surplus", requested_a=6)),
+        "normal",
+        [{"code": "guest_done", "params": {}}],
+    ),
+    (
+        "a guest car's amount delivered and a Charge-now start charging it",
+        base(guest_kwh=10.0, guest_done=True, charging=True),
+        "normal",
+        [{"code": "guest_done", "params": {}}, {"code": "charging_now", "params": {"until": None}}],
+    ),
+    (
+        "a person's Start wins over the guest's wait",
+        base(guest_kwh=10.0, guest_done=True, charging=True, paused=True, pause_choice="manual", pause_action="start"),
+        "normal",
+        [
+            {"code": "paused", "params": {"until": None, "choice": "manual", "action": "start", "ends": "unplug"}},
+            {"code": "charging_now", "params": {"until": None}},
+        ],
+    ),
+    (
         "a decided car says nothing",
         base(relation_applied=True, proposal=proposal(), identification="decided"),
         "normal",

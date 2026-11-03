@@ -111,6 +111,11 @@ Precedence (first match wins the headline; "add" rows append a fact line)
 0b. While the car's minimum charge level charges it (`min_soc_percent`, its floor), min_soc_charging{percent}
    is the headline in place of the strategy's and the plan's (3 and 4), after the identification line; the plan's
    figures and notices follow. A pause wins: never while one holds.
+0c. While a guest car is planned for (`vehicles/guest.py`): guest_planned{kwh, departure} (the guest's amount, and the
+   departure it is for, null without one) goes ahead of the headline, after the identification line. Once its amount
+   is delivered, guest_done (the charger waits for the guest car to be unplugged) is the headline in place of the
+   strategy's and the plan's (3 and 4), and charging_now follows while the charger draws anyway (a Charge-now start);
+   a pause wins, as everywhere. Tone normal.
 0. While a plug-in's car is being identified (`identification` `waiting` or `asking`, two or more cars at the
    charger), identifying_vehicle or asking_vehicle goes ahead of every other line of a block that is not
    blocking and not starting_up; it is gone once the car is decided. Tone normal, no params.
@@ -172,6 +177,10 @@ STATUS_CODES: Final[dict[str, tuple[str, tuple[str, ...]]]] = {
     # "which car is plugged in?" is open (`asking`). Ahead of the other lines until the car is decided.
     "identifying_vehicle": (TONE_NORMAL, ()),
     "asking_vehicle": (TONE_NORMAL, ()),
+    # A guest car is planned for: its amount (`kwh`) by the departure (`departure`, null without one). Once that is
+    # delivered the charger waits for the guest to be unplugged (`guest_done`).
+    "guest_planned": (TONE_NORMAL, ("kwh", "departure")),
+    "guest_done": (TONE_NORMAL, ()),
     "charger_unavailable": (TONE_BLOCKING, ("problem", "entity")),
     # Under a person's Stop the charger kept charging after the stops SpotNav sent; no more are sent.
     "charger_ignores_stop": (TONE_BLOCKING, ()),
@@ -628,6 +637,10 @@ class StatusFacts:
     identification: str | None = None
     #: The car's minimum charge level while its own charge runs (`min_soc_floor.py`), else `None`.
     min_soc_percent: float | None = None
+    #: A guest car's amount while one is planned for (`vehicles/guest.py`), else `None`; and whether it is delivered
+    #: (the core holds the charger until the unplug).
+    guest_kwh: float | None = None
+    guest_done: bool = False
     #: The car's own limit while its target is reached and the sun fills on up to it (Solar, Hybrid), else `None`.
     sun_fill_limit_percent: float | None = None
     #: The car ended the plan's charge short of the target and the plan waits for its level
@@ -1324,6 +1337,9 @@ def compose_status(facts: StatusFacts) -> dict[str, Any]:
         lines.append(_line("identifying_vehicle"))
     elif facts.identification == "asking":
         lines.append(_line("asking_vehicle"))
+    if facts.guest_kwh is not None and not facts.guest_done:
+        departure = None if facts.planning is None or not facts.departure_enabled else facts.planning.departure_at
+        lines.append(_line("guest_planned", kwh=round(facts.guest_kwh, 1), departure=aware_iso(departure)))
     if facts.paused:
         lines.append(_paused_line(facts))
         if facts.charging:
@@ -1333,6 +1349,10 @@ def compose_status(facts: StatusFacts) -> dict[str, Any]:
             paused_by_target = _import_target_paused_line(facts)
             if paused_by_target is not None:
                 lines.append(paused_by_target)
+    elif facts.guest_kwh is not None and facts.guest_done:
+        lines.append(_line("guest_done"))
+        if facts.charging:
+            lines.append(_line("charging_now", until=None))
     elif facts.min_soc_percent is not None:
         lines.append(_line("min_soc_charging", percent=round(facts.min_soc_percent)))
     elif facts.solar is not None:
