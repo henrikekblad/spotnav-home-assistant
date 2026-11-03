@@ -388,7 +388,14 @@ function barChart(
     const line = element(doc, "span", C.powerTarget);
     line.setAttribute("aria-hidden", "true");
     line.style.bottom = `${(target / top) * 100}%`;
-    line.append(element(doc, "span", C.powerTargetLabel, kw(language, target)));
+    const label = element(doc, "span", C.powerTargetLabel, kw(language, target));
+    // The label sits just above the dashed line; where the month's peak line runs just above it (within a tenth of
+    // the scale), the label goes under the dashed line so the two never overlap.
+    const peaks = columns.map((column) => column.peak).filter((peak): peak is number => peak !== null);
+    if (peaks.some((peak) => peak >= target && peak - target <= top * 0.1)) {
+      label.dataset["placement"] = "below";
+    }
+    line.append(label);
     plot.append(line);
   }
   const marks = element(doc, "div", C.powerMarks);

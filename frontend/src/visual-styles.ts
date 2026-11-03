@@ -2722,6 +2722,10 @@ export const VISUAL_STYLES = `
     background: var(--ha-card-background, var(--card-background-color, #ffffff));
     border-radius: 3px;
   }
+  .${VISUAL_CLASSES.powerTargetLabel}[data-placement="below"] {
+    bottom: auto;
+    top: 2px;
+  }
   .${VISUAL_CLASSES.powerMarks} {
     display: flex;
     gap: 2px;

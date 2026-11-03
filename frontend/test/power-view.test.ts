@@ -407,6 +407,9 @@ describe("the month's peak and the days from Home Assistant's statistics", () =>
     expect(hourLines).toBe(expected);
     expect(expected).toBeGreaterThan(0);
     expect(expected).toBeLessThan(24);
+    // The month's peak runs just above the target here: the target's label goes under its line, never over the peak's.
+    expect(hours.querySelector<HTMLElement>(".spotnav-power-target-label")?.dataset["placement"]).toBe("below");
+    expect(render(month(), UI).querySelector<HTMLElement>(".spotnav-power-target-label")?.dataset["placement"]).toBeUndefined();
     // A month where it never lifted has no such line or legend row.
     expect(render(month()).querySelector(".spotnav-power-peak")).toBeNull();
     expect(render(month()).querySelector("ul")?.textContent).not.toContain("The month's peak");
