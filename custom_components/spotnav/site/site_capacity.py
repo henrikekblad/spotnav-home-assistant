@@ -468,6 +468,12 @@ class SiteCapacityResult:
     phase_signed_active_power_diagnostic_w: Mapping[PhaseName, float | None] = field(
         default_factory=lambda: {phase: None for phase in PHASES}
     )
+    # Derived mode: a phase whose active power sat still past `max_age_s` but was kept as fresh
+    # (`_held_still_companion`): the companion reading that changed meanwhile (`voltage`, `reactive_power`
+    # or `apparent_power`) and its age; `None` for every other phase.
+    phase_signed_active_power_held_still: Mapping[PhaseName, tuple[str, float] | None] = field(
+        default_factory=lambda: {phase: None for phase in PHASES}
+    )
     # Diagnostic only: voltage, `None` in direct mode or when missing/invalid.
     phase_voltage_v: Mapping[PhaseName, float | None] = field(
         default_factory=lambda: {phase: None for phase in PHASES}
@@ -1265,6 +1271,7 @@ def calculate_site_capacity(
         phase_signed_active_power_w=signed_power,
         phase_signed_active_power_age_s=signed_power_age,
         phase_signed_active_power_reason=signed_power_reason,
+        phase_signed_active_power_held_still=_held_still_by_phase(config),
         phase_signed_active_power_diagnostic_w=signed_power_diagnostic,
         phase_voltage_v=voltage_diagnostic,
         phase_current_basis=dict(bases),
@@ -1289,7 +1296,10 @@ def _signed_margin_per_phase(
     `|rest + proposed|` of `sqrt((Ip - c + proposed)^2 + Iq^2)`. Staying under the ceiling `C`
     allows `proposed - c <= sqrt(C^2 - Iq^2) - Ip`, which is this margin. It equals
     `C - I` on net import without reactive load, and is larger when the site exports. `None`
-    where the direction is unknown (direct mode) or the voltage is unusable.
+    where the direction is unknown (direct mode), the voltage is unusable, or the active power has
+    not changed within `max_age_s` (unknown age included): a still or stale `P` is never trusted to
+    widen the room for an increase, a phase counted fresh on its voltage alone among them
+    (`_held_still_companion`). The uncredited |net| margin then applies.
     """
     result: dict[PhaseName, float | None] = {phase: None for phase in PHASES}
     if (
@@ -1302,8 +1312,11 @@ def _signed_margin_per_phase(
     for phase in PHASES:
         derived_input = config.derived.get(phase)
         power = derived_input.active_power_w.value
+        power_age_s = derived_input.active_power_w.age_s
         voltage = derived_input.voltage_v.value
         if power is None or voltage is None or voltage <= 0 or ceiling <= 0:
+            continue
+        if power_age_s is None or power_age_s > config.max_age_s:
             continue
         magnitude = magnitude_a[phase]
         active = max(-magnitude, min(magnitude, power / voltage))
@@ -1381,6 +1394,7 @@ def _short_circuit(
         phase_signed_active_power_w=signed_power,
         phase_signed_active_power_age_s=signed_power_age,
         phase_signed_active_power_reason=signed_power_reason,
+        phase_signed_active_power_held_still=_held_still_by_phase(config),
         phase_signed_active_power_diagnostic_w=signed_power_diagnostic,
         phase_voltage_v=voltage_diagnostic,
         phase_current_basis=dict(bases) if bases is not None else dict(empty),
@@ -1448,11 +1462,61 @@ def _derived_signed_active_power_by_phase(
         derived_input = config.derived.get(phase)
         power = derived_input.active_power_w if derived_input is not None else None
         value, age_s, reason = _phase_signed_active_power(power, config.max_age_s)
+        held_still = None if derived_input is None else _held_still_companion(derived_input, config.max_age_s)
+        if held_still is not None and power is not None:
+            # A still value, not a lost one: the meter's other reading for this phase changed meanwhile.
+            value, age_s, reason = power.value, held_still[1], None
         values[phase] = value
         ages[phase] = age_s
         reasons[phase] = reason
         diagnostic[phase] = _phase_diagnostic_value(power)
     return values, ages, reasons, diagnostic
+
+
+def _held_still_companion(derived_input: DerivedPhaseInput, max_age_s: float) -> tuple[str, float] | None:
+    """Whether a derived phase's active power that has not changed for longer than `max_age_s` still counts as fresh,
+    and on what: (the companion reading's role, its age). Some meters (the owner's Sigenergy, its grid held at about
+    0 W by a battery) do not change a phase's active power for minutes while the meter is live. It counts as a still
+    value, not a lost one, only while
+
+    * the active power itself has a value (not unavailable or unknown: those are lost as ever), its age is known, and
+      Home Assistant reported it within `max_age_s` (`report_age_s`, which must be known); and
+    * the same phase's voltage, or the reactive or apparent power the site reads for it, changed within `max_age_s`
+      (its own `age_s`, the time since its value last changed): proof that the meter's readings for this phase are
+      still coming in.
+
+    The value kept is the active power's own last one. It is trusted for holding and lowering only, never to raise a
+    charger (`regulator._decide_phase`'s `held_still`) nor to widen the signed room for an increase
+    (`_signed_margin_per_phase`). `None` otherwise (fresh already, or lost)."""
+    power = derived_input.active_power_w
+    if power.value is None or power.problem is not None:
+        return None
+    if power.age_s is None or power.report_age_s is None:
+        # Not known how old the value is, or whether Home Assistant still hears from it: not held still.
+        return None
+    if power.age_s <= max_age_s or power.report_age_s > max_age_s:
+        return None
+    for role, companion in (
+        ("voltage", derived_input.voltage_v),
+        ("reactive_power", derived_input.reactive_power_var),
+        ("apparent_power", derived_input.apparent_power_va),
+    ):
+        if (
+            companion is not None
+            and companion.value is not None
+            and companion.problem is None
+            and companion.age_s is not None
+            and companion.age_s <= max_age_s
+        ):
+            return role, companion.age_s
+    return None
+
+
+def _held_still_by_phase(config: SiteCalculationConfig) -> dict[PhaseName, tuple[str, float] | None]:
+    """`phase_signed_active_power_held_still` per phase: derived mode only."""
+    if config.measurement_mode != "derived_phase_current" or config.derived is None:
+        return {phase: None for phase in PHASES}
+    return {phase: _held_still_companion(config.derived.get(phase), config.max_age_s) for phase in PHASES}
 
 
 def _direction_source_by_phase(

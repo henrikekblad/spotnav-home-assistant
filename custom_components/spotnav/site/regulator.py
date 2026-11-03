@@ -78,6 +78,10 @@ RegulatorReason = Literal[
     "phase_measurement_unusable",
     "no_change_requested",
     "increase_within_safe_uncredited_margin",
+    # An increase asked on a derived phase whose active power sits still and counts as fresh only on its voltage,
+    # reactive or apparent power (`phase_signed_active_power_held_still`): a still value is trusted for holding and
+    # lowering, never for raising, so the charger keeps its current until the phase's power changes again.
+    "held_still_no_raise",
     "decrease_confirmed_safe",
     "decrease_would_increase_net_current_kept_unchanged",
     "near_zero_crossing_kept_unchanged",
@@ -218,8 +222,10 @@ def _decide_phase(
     min_current_a: float,
     direction_from_current: bool = False,
     increase_reserved_a: float = 0.0,
+    held_still: bool = False,
 ) -> tuple[float | None, RegulatorReason]:
-    """One phase's decision; see the module docstring for the rules."""
+    """One phase's decision; see the module docstring for the rules. `held_still`: the phase's active power sits
+    still and counts as fresh on another reading of the phase only: no increase on it (`held_still_no_raise`)."""
     if (
         measured_current.value is None
         or measured_current.problem is not None
@@ -260,6 +266,10 @@ def _decide_phase(
 
     if abs(requested_current_a - current) < 1e-9:
         return current, "no_change_requested"
+
+    if requested_current_a > current and held_still:
+        # A still value is trusted for holding and lowering, never for raising: kept until the phase's power changes.
+        return current, "held_still_no_raise"
 
     if requested_current_a > current:
         # Increase, not overloaded: capped by the worst case of the new draw. Where the direction
@@ -545,6 +555,7 @@ def decide_charging_current(
             min_current_a=request.min_current_a,
             direction_from_current=direction_sources.get(phase) == "signed_current",
             increase_reserved_a=(increase_reserved_by_phase or {}).get(phase, 0.0),
+            held_still=site_result.phase_signed_active_power_held_still.get(phase) is not None,
         )
         per_phase[phase] = (value, reason)
         if headroom is not None and headroom < 0.0:

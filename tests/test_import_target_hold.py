@@ -51,6 +51,13 @@ class _World:
     battery_w: float | None = None
     #: The meter stops reporting (a gap in the hour).
     silent: bool = False
+    #: Phases whose active power a meter keeps reporting in whole watts without a change while it sits still (Home
+    #: Assistant hears it, `last_reported`, but its value has not changed, `last_updated`), as the owner's Sigenergy
+    #: does with the grid held at about 0 W; with `quiet_companions` the phase's voltage and reactive power too.
+    quiet_phases: tuple[str, ...] = ()
+    quiet_companions: bool = False
+    #: Extra current (A) on one phase only, beside the house on all three: an unbalanced load.
+    phase_extra_a: dict[str, float] = field(default_factory=dict)
     turn_offs: int = 0
     turn_ons: int = 0
     #: The charger's energy register (kWh), kept with what the car drew, where the test reads one.
@@ -74,7 +81,7 @@ class _World:
         return float(written[-1].split(",")[0].split(".")[1])
 
     def site_w(self) -> float:
-        return 3 * _V * (self.house_a + self.extra_a + self.car_a)
+        return 3 * _V * (self.house_a + self.extra_a + self.car_a) + _V * sum(self.phase_extra_a.values())
 
     def show(self) -> None:
         """The meter and the charger report now, changed or not (a meter that reports every few seconds)."""
@@ -90,15 +97,22 @@ class _World:
         if self.silent:
             return
         for phase in ("l1", "l2", "l3"):
+            quiet = phase in self.quiet_phases
+            watts = (amps + self.phase_extra_a.get(phase, 0.0)) * _V
             hass.states.async_set(
-                f"sensor.{self.halo.site}_power_{phase}", str(round(amps * _V, 3)), {"unit_of_measurement": "W"},
-                force_update=True,
+                f"sensor.{self.halo.site}_power_{phase}",
+                str(round(watts)) if quiet else str(round(watts, 3)),
+                {"unit_of_measurement": "W"},
+                force_update=not quiet,
+            )
+            companions_quiet = quiet and self.quiet_companions
+            hass.states.async_set(
+                f"sensor.{self.halo.site}_reactive_{phase}", "0", {"unit_of_measurement": "var"},
+                force_update=not companions_quiet,
             )
             hass.states.async_set(
-                f"sensor.{self.halo.site}_reactive_{phase}", "0", {"unit_of_measurement": "var"}, force_update=True
-            )
-            hass.states.async_set(
-                f"sensor.{self.halo.site}_voltage_{phase}", str(_V), {"unit_of_measurement": "V"}, force_update=True
+                f"sensor.{self.halo.site}_voltage_{phase}", str(_V), {"unit_of_measurement": "V"},
+                force_update=not companions_quiet,
             )
             hass.states.async_set(
                 f"sensor.{self.halo.prefix}_{phase}", str(self.car_a), {"unit_of_measurement": "A"}, force_update=True
@@ -845,6 +859,90 @@ async def test_a_battery_holding_the_grid_at_nothing_lets_the_target_lower_the_c
             assert world.decision.reason == REASON_IMPORT_TARGET_HELD
         else:
             assert world.car_a == 16.0
+
+
+@pytest.mark.parametrize("by_hand", [True, False])
+async def test_a_start_with_a_battery_covering_the_car_is_held_in_the_next_hour(
+    hass: HomeAssistant, monkeypatch, by_hand: bool
+) -> None:
+    """The owner's morning: a battery in AI mode covers the car under `battery_first`, a 6.5 kW target, the car started
+    by a person (through the executor, the manual pause stored) or by the plan's window. Across the hour's turn the
+    target still holds it (at 9 A or less), as it did before the turn."""
+    with freeze_time(_HOUR - timedelta(minutes=5, seconds=-5)) as frozen:
+        name = "aistart" if by_hand else "aiwindow"
+        world = await _world(
+            hass, monkeypatch, frozen, name, target_kw=6.5, house_w=500.0, battery_entity=f"sensor.{name}_battery_power"
+        )
+        controller = world.halo.controller
+        controller.config["solar_priority"] = "battery_first"
+        charger = world.halo.charger.entry_id
+        await _battery_holds_the_grid(world, 1)
+        if by_hand:
+            await _start_by_hand(world)
+        else:
+            await _charging(world)
+        await _battery_holds_the_grid(world, 12)
+        assert dt_util.utcnow() > _HOUR, "the next hour has started"
+        assert world.car_a <= 9.0, world.car_a
+        assert controller.import_target_snapshot()["chargers"][charger]["action"] == "held"
+
+
+@pytest.mark.parametrize(
+    ("quiet_phases", "companions_quiet", "decided"),
+    [
+        (("l1", "l2", "l3"), False, True),  # every phase still, its voltage moving: fresh
+        (("l1", "l2"), False, True),  # the owner's mix: L1 and L2 still, L3 moving with an unbalanced load
+        (("l1", "l2"), True, False),  # still, and nothing else of the phase moves either: lost, as before
+    ],
+)
+async def test_a_still_phase_counts_as_fresh_while_its_voltage_moves(
+    hass: HomeAssistant, monkeypatch, quiet_phases: tuple[str, ...], companions_quiet: bool, decided: bool
+) -> None:
+    """The owner's Sigenergy: a battery holds the grid at about 0 W, so a phase's active power does not change for
+    minutes while the meter is live. On a derived site it counts as fresh while the same phase's voltage (or reactive
+    power) changes: the fuse's regulator decides, and the import target holds the person's Start. With the phase's
+    other readings still too, it is stale as before: no decision on it."""
+    with freeze_time(_HOUR - timedelta(minutes=5, seconds=-5)) as frozen:
+        name = "still" + "".join(quiet_phases) + ("q" if companions_quiet else "")
+        world = await _world(
+            hass, monkeypatch, frozen, name, target_kw=6.5, house_w=500.0, battery_entity=f"sensor.{name}_battery_power"
+        )
+        controller = world.halo.controller
+        controller.config["solar_priority"] = "battery_first"
+        charger = world.halo.charger.entry_id
+        world.quiet_phases = quiet_phases
+        world.quiet_companions = companions_quiet
+        await _battery_holds_the_grid(world, 1)
+        await _start_by_hand(world)
+        for step in range(30):
+            if "l3" not in quiet_phases:
+                world.phase_extra_a = {"l3": 5.0 + (step % 3)}  # an unbalanced load on L3 alone, moving
+            await _battery_holds_the_grid(world, 0.5)
+        result = controller.result
+        held = result.phase_signed_active_power_held_still
+        decision = world.decision
+        if decided:
+            assert held["L1"] is not None and held["L1"][0] in ("voltage", "reactive_power")
+            assert result.phase_signed_active_power_reason["L1"] is None
+            assert decision.proposed_current_a is not None
+            assert world.car_a <= 9.0, "the target holds the Start"
+            # Held by the target, or kept where it holds it: a still phase never raises it (`held_still_no_raise`).
+            assert controller.import_target_snapshot()["chargers"][charger]["action"] in ("held", "free")
+            assert decision.reason in (REASON_IMPORT_TARGET_HELD, "held_still_no_raise", "no_change_requested")
+            # The target is taken away: the fuse would raise the car, but not on a still phase.
+            entry = hass.config_entries.async_get_entry(controller.entry_id)
+            hass.config_entries.async_update_entry(entry, data={**entry.data, CONF_IMPORT_TARGET_KW: None})
+            kept_at = world.car_a
+            await _battery_holds_the_grid(world, 3)
+            assert world.car_a == kept_at and world.decision.reason == "held_still_no_raise"
+            assert controller.regulator_decisions[charger].reason == "held_still_no_raise"
+            # The phases' power changes again: raised as ever.
+            world.quiet_phases = ()
+            await _battery_holds_the_grid(world, 5)
+            assert world.car_a > kept_at
+        else:
+            assert held["L1"] is None and result.phase_signed_active_power_reason["L1"] == "stale"
+            assert decision.proposed_current_a is None
 
 
 async def test_a_battery_that_cannot_be_read_lowers_no_further_than_the_grids_phases(
