@@ -58,7 +58,7 @@
   "status.importTargetPausedHousePeak": "En pause jusqu'à {time} – la maison seule dépasse le pic du mois de {target} kW (objectif de soutirage {set} kW) cette heure-ci.",
   "status.importTargetPausedHousePeakNextHour": "En pause jusqu'à l'heure suivante – la maison seule dépasse le pic du mois de {target} kW (objectif de soutirage {set} kW) cette heure-ci.",
   "status.importTargetHouseOverPeak": "La maison seule dépasse le pic du mois de {target} kW (objectif de soutirage {set} kW) cette heure-ci.",
-  "issue.importTargetRelease": "Lever l'objectif de soutirage cette nuit",
+  "issue.importTargetRelease": "Lever l'objectif de soutirage pour cette charge",
   "release.confirm.title": "Lever l'objectif de soutirage ?",
   "release.confirm.unplug": "La voiture charge alors à pleine puissance jusqu'à ce qu'elle soit débranchée ou sa charge terminée, au plus tard à 12 h.",
   "release.confirm.departure": "La voiture charge alors à pleine puissance jusqu'à ce qu'elle soit débranchée (ou jusqu'au départ à {time}).",

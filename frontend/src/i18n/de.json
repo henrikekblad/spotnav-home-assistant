@@ -58,7 +58,7 @@
   "status.importTargetPausedHousePeak": "Pausiert bis {time} – das Haus allein liegt in dieser Stunde über der Spitze des Monats von {target} kW (Bezugsziel {set} kW).",
   "status.importTargetPausedHousePeakNextHour": "Pausiert bis zur nächsten vollen Stunde – das Haus allein liegt in dieser Stunde über der Spitze des Monats von {target} kW (Bezugsziel {set} kW).",
   "status.importTargetHouseOverPeak": "Das Haus allein liegt in dieser Stunde über der Spitze des Monats von {target} kW (Bezugsziel {set} kW).",
-  "issue.importTargetRelease": "Bezugsziel heute Nacht aussetzen",
+  "issue.importTargetRelease": "Bezugsziel für diese Ladung aussetzen",
   "release.confirm.title": "Bezugsziel aussetzen?",
   "release.confirm.unplug": "Das Auto lädt dann mit voller Leistung, bis es abgesteckt wird oder fertig geladen hat, spätestens bis 12:00.",
   "release.confirm.departure": "Das Auto lädt dann mit voller Leistung, bis es abgesteckt wird (oder bis zur Abfahrt um {time}).",

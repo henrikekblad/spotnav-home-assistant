@@ -58,7 +58,7 @@
   "status.importTargetPausedHousePeak": "En pausa hasta las {time}: la casa por sí sola supera el pico del mes de {target} kW (objetivo de consumo {set} kW) en esta hora.",
   "status.importTargetPausedHousePeakNextHour": "En pausa hasta la próxima hora: la casa por sí sola supera el pico del mes de {target} kW (objetivo de consumo {set} kW) en esta hora.",
   "status.importTargetHouseOverPeak": "La casa por sí sola supera el pico del mes de {target} kW (objetivo de consumo {set} kW) en esta hora.",
-  "issue.importTargetRelease": "Dejar el objetivo de consumo esta noche",
+  "issue.importTargetRelease": "Dejar el objetivo de consumo para esta carga",
   "release.confirm.title": "¿Dejar el objetivo de consumo?",
   "release.confirm.unplug": "El coche cargará entonces a plena potencia hasta que se desconecte o termine la carga, como muy tarde a las 12:00.",
   "release.confirm.departure": "El coche cargará entonces a plena potencia hasta que se desconecte (o hasta la salida a las {time}).",

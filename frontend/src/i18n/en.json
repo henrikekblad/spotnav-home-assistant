@@ -58,7 +58,7 @@
   "status.importTargetPausedHousePeak": "Paused until {time} – the house alone is above the month's peak of {target} kW (import target {set} kW) this hour.",
   "status.importTargetPausedHousePeakNextHour": "Paused until the next hour – the house alone is above the month's peak of {target} kW (import target {set} kW) this hour.",
   "status.importTargetHouseOverPeak": "The house alone is above the month's peak of {target} kW (import target {set} kW) this hour.",
-  "issue.importTargetRelease": "Release the import target tonight",
+  "issue.importTargetRelease": "Release the import target for this charge",
   "release.confirm.title": "Release the import target?",
   "release.confirm.unplug": "The car then charges at full power until it is unplugged or the charge is done, by noon at the latest.",
   "release.confirm.departure": "The car then charges at full power until it is unplugged, or until the departure at {time}.",

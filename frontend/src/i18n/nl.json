@@ -58,7 +58,7 @@
   "status.importTargetPausedHousePeak": "Gepauzeerd tot {time} – het huis alleen zit dit uur boven de piek van de maand van {target} kW (afnamedoel {set} kW).",
   "status.importTargetPausedHousePeakNextHour": "Gepauzeerd tot het volgende uur – het huis alleen zit dit uur boven de piek van de maand van {target} kW (afnamedoel {set} kW).",
   "status.importTargetHouseOverPeak": "Het huis alleen zit dit uur boven de piek van de maand van {target} kW (afnamedoel {set} kW).",
-  "issue.importTargetRelease": "Afnamedoel vannacht loslaten",
+  "issue.importTargetRelease": "Afnamedoel loslaten voor deze laadbeurt",
   "release.confirm.title": "Afnamedoel loslaten?",
   "release.confirm.unplug": "De auto laadt dan op vol vermogen tot hij wordt losgekoppeld of klaar is met laden, uiterlijk om 12:00.",
   "release.confirm.departure": "De auto laadt dan op vol vermogen tot hij wordt losgekoppeld (of tot vertrek om {time}).",

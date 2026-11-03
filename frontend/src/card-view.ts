@@ -290,7 +290,7 @@ export interface CardViewInput {
   onDismissSetup?: (id: SetupRowId) => void;
   /** An issue's "Set to …" or "Turn on" (administrators only): the card writes that fix, then reads again. */
   onFixOwnMode?: (entity: string, value: string) => void;
-  /** An issue's "Release the import target tonight" (any user): the card sets the import target aside for this charge, then reads again. */
+  /** An issue's "Release the import target for this charge" (any user): the card sets the import target aside for this charge, then reads again. */
   onReleaseImportTarget?: () => void;
   /** The import target's editor opened (administrators): the suggestion from Home Assistant's statistics, `null` for none. */
   onSuggestImportTarget?: () => Promise<unknown>;
@@ -2157,7 +2157,7 @@ export function createCardView(input: CardViewInput): CardView {
 
   /** An issue's button was pressed: the dialog closes and the card writes the fix, then reads the dashboard again. */
   /**
-   * "Release the import target tonight": what it would mean, and Cancel or Release; only Release sends it (an
+   * "Release the import target for this charge": what it would mean, and Cancel or Release; only Release sends it (an
    * accidental press must not cost the month's peak).
    */
   function confirmRelease(opener: HTMLElement | null): void {
