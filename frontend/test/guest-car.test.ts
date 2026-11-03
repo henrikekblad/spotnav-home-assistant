@@ -119,13 +119,19 @@ describe("the question", () => {
     expect(buttons.map((button) => button.textContent)).toEqual(["Guest car", "Niro", "EV6"]);
   });
 
-  it("asks at a one-car charger: <car> or Guest car, in every language", async () => {
+  it("asks at a one-car charger: <car> or Guest car, in every language, saying the car seems not plugged in", async () => {
     for (const language of LANGUAGES) {
       document.body.innerHTML = "";
-      const { element } = await mounted(dashboard({ asking: true, first: true, oneCar: true }), language);
+      const { element } = await mounted(dashboard({ asking: true, oneCar: true }), language);
       const words = Array.from(banner(element)!.querySelectorAll("button")).map((button) => button.textContent);
-      expect(words, language).toEqual([translate(language, "identify.guest"), "EV6"]);
+      expect(words, language).toEqual(["EV6", translate(language, "identify.guest")]);
+      expect(banner(element)!.textContent, language).toContain(translate(language, "identify.keepsSingle", { name: "EV6" }));
     }
+  });
+
+  it("keeps the two-car wording with two cars", async () => {
+    const { element } = await mounted(dashboard({ asking: true }));
+    expect(banner(element)!.textContent).toContain(translate("en", "identify.keeps", { name: "EV6" }));
   });
 
   it("has no Guest car from a backend that does not know it", async () => {
@@ -213,8 +219,10 @@ describe("the Plan dialog of a guest plan", () => {
     expect(dialog.querySelector("[data-part='floor-mark']")).toBeNull();
     expect(dialog.querySelector("[data-part='full-mark']:not([hidden])")).toBeNull();
     expect(dialog.querySelector("[data-part='energy-value']")?.textContent).toContain("12");
-    // The departure and the current stay.
+    // The departure time and the current stay; the household's weekdays and date do not.
     expect(dialog.querySelector("[data-part='departure']")).not.toBeNull();
+    expect(dialog.querySelector("[data-part='departure-weekdays']")).toBeNull();
+    expect(dialog.querySelector("[data-part='departure-date']")).toBeNull();
   });
 
   it("writes the guest's kWh and keeps the guest as the target", async () => {

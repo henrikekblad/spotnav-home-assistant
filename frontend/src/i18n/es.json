@@ -887,6 +887,7 @@
   "notifications.event.vehicleIdentify": "¿Qué coche está enchufado?",
   "identify.question": "¿Qué coche está enchufado?",
   "identify.keeps": "SpotNav no ha podido saberlo por los coches. Si nadie responde, se mantiene {name}.",
+  "identify.keepsSingle": "{name} no parece estar enchufado. Si nadie responde, se mantiene {name}.",
   "identify.answerFailed": "No se ha podido guardar la respuesta.",
   "identify.mode.label": "Identificación",
   "identify.mode.automatic": "Automática",

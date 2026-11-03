@@ -887,6 +887,7 @@
   "notifications.event.vehicleIdentify": "Hvilken bil er tilsluttet?",
   "identify.question": "Hvilken bil er tilsluttet?",
   "identify.keeps": "SpotNav kunne ikke afgøre det ud fra bilerne. Svarer ingen, beholdes {name}.",
+  "identify.keepsSingle": "{name} ser ikke ud til at være tilsluttet. Svarer ingen, beholdes {name}.",
   "identify.answerFailed": "Svaret kunne ikke gemmes.",
   "identify.mode.label": "Identifikation",
   "identify.mode.automatic": "Automatisk",

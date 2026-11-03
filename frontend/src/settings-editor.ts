@@ -532,7 +532,10 @@ export function settingsEditorBody(
     const departure = element(doc, "div");
     departure.dataset["part"] = "departure";
     departure.append(field(doc, `${idPrefix}-deadline-time`, translate(language, "settings.deadline.time"), timeInput));
-    appendDate(departure);
+    if (form.guest !== true) {
+      // A guest leaves at the next occurrence of the time: the household's date and weekdays are not shown.
+      appendDate(departure);
+    }
     departure.hidden = !enabledInput.checked;
     enabledInput.addEventListener("change", () => {
       departure.hidden = !enabledInput.checked;

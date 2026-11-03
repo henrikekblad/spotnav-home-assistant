@@ -887,6 +887,7 @@
   "notifications.event.vehicleIdentify": "Which car is plugged in?",
   "identify.question": "Which car is plugged in?",
   "identify.keeps": "SpotNav could not tell from the cars. If nobody answers, {name} is kept.",
+  "identify.keepsSingle": "{name} does not seem to be plugged in. If nobody answers, {name} is kept.",
   "identify.answerFailed": "The answer could not be saved.",
   "identify.mode.label": "Identification",
   "identify.mode.automatic": "Automatic",

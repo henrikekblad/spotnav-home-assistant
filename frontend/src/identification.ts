@@ -172,7 +172,7 @@ export function identificationBanner(doc: Document, language: Language, input: I
   question.append(questionIcon(doc), doc.createTextNode(` ${translate(language, "identify.question")}`));
   box.append(question);
   if (input.currentName !== null) {
-    box.append(element(doc, "p", `${C.suggestionText} ${C.muted}`, translate(language, "identify.keeps", { name: input.currentName })));
+    box.append(element(doc, "p", `${C.suggestionText} ${C.muted}`, translate(language, input.block.candidates.length === 1 ? "identify.keepsSingle" : "identify.keeps", { name: input.currentName })));
   }
   if (input.canAnswer) {
     const answers = element(doc, "div", C.suggestionAnswers);

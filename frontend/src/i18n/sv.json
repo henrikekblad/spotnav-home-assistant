@@ -887,6 +887,7 @@
   "notifications.event.vehicleIdentify": "Vilken bil är inkopplad?",
   "identify.question": "Vilken bil är inkopplad?",
   "identify.keeps": "SpotNav kunde inte avgöra det från bilarna. Svarar ingen behålls {name}.",
+  "identify.keepsSingle": "{name} verkar inte vara inkopplad. Svarar ingen behålls {name}.",
   "identify.answerFailed": "Svaret kunde inte sparas.",
   "identify.mode.label": "Identifiering",
   "identify.mode.automatic": "Automatisk",

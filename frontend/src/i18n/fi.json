@@ -887,6 +887,7 @@
   "notifications.event.vehicleIdentify": "Mikä auto on kytketty?",
   "identify.question": "Mikä auto on kytketty?",
   "identify.keeps": "SpotNav ei voinut päätellä sitä autoista. Jos kukaan ei vastaa, {name} pidetään.",
+  "identify.keepsSingle": "{name} ei näytä olevan kytkettynä. Jos kukaan ei vastaa, {name} pidetään.",
   "identify.answerFailed": "Vastausta ei voitu tallentaa.",
   "identify.mode.label": "Tunnistus",
   "identify.mode.automatic": "Automaattinen",

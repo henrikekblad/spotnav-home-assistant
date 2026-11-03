@@ -887,6 +887,7 @@
   "notifications.event.vehicleIdentify": "Welke auto is aangesloten?",
   "identify.question": "Welke auto is aangesloten?",
   "identify.keeps": "SpotNav kon het niet afleiden uit de auto's. Als niemand antwoordt, blijft {name} gekozen.",
+  "identify.keepsSingle": "{name} lijkt niet aangesloten te zijn. Als niemand antwoordt, blijft {name} gekozen.",
   "identify.answerFailed": "Het antwoord kon niet worden opgeslagen.",
   "identify.mode.label": "Herkenning",
   "identify.mode.automatic": "Automatisch",

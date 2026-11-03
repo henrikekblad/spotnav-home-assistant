@@ -887,6 +887,7 @@
   "notifications.event.vehicleIdentify": "Welches Auto ist angeschlossen?",
   "identify.question": "Welches Auto ist angeschlossen?",
   "identify.keeps": "SpotNav konnte es an den Autos nicht erkennen. Wenn niemand antwortet, bleibt {name}.",
+  "identify.keepsSingle": "{name} scheint nicht angesteckt zu sein. Wenn niemand antwortet, bleibt {name}.",
   "identify.answerFailed": "Die Antwort konnte nicht gespeichert werden.",
   "identify.mode.label": "Erkennung",
   "identify.mode.automatic": "Automatisch",
