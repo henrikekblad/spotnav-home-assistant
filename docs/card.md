@@ -287,7 +287,9 @@ new charger already has an area (see [first-run defaults](setup.md#first-run-def
 The section shows, under its heading, which electricity price this charger uses and how many chargers
 use it ("Electricity price SE4 · used by all 2 chargers"; with one charger only its name), and, when more
 than one uses it, that a change here applies to every charger using it. Below are the area and the VAT,
-energy tax and grid fee as the plan applies them. Tapping the area or a tax opens the editor.
+energy tax and grid fee as the plan applies them. Tapping the area or a tax opens the editor. *Grid fee in
+high-load hours* and *High-load hours* open the same dialog, with the fee and its hours together, one *Save* and
+*Remove the high-load fee* (see [a grid fee higher in high-load hours](prices.md#a-grid-fee-that-is-a-percentage-of-spot-or-higher-in-high-load-hours)).
 
 ![The electricity price settings](images/card-settings-price.png)
 
