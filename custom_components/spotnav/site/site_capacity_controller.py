@@ -3433,7 +3433,7 @@ class SiteCapacityController:
             or not charger_controller.paused_by_balancing
             or not self._charge_still_wanted(charger_entry_id, charger_controller)
             or charger_controller.held_by_charger
-            or charger_controller.adapter.vehicle_connected() is not True
+            or not _plugged_in_for_resume(charger_controller.adapter)
             or (previous_setpoint is not None and previous_setpoint >= min_current_a)
             or charger_controller.car_ended_holds_charge
         ):
@@ -6042,6 +6042,16 @@ def _source_entity_ids(source: PhaseMeasurementSource) -> set[str]:
 def _log_transitions(
     entry_id: str, previous: SiteCapacityResult, current: SiteCapacityResult
 ) -> None:
+def _plugged_in_for_resume(adapter: Any) -> bool:
+    """Whether a charge load balancing paused (for the fuse or the import target) may be resumed as far as the plug
+    goes: a charger that can say whether a car is plugged in must say one is; one that never can (a plain switch) is
+    resumed while the charge is still wanted, or a pause would hold it off for good."""
+    connected = adapter.vehicle_connected()
+    if connected is not None:
+        return connected is True
+    return not getattr(adapter, "reports_connection", True)
+
+
     """Debug-log state and allocation transitions, only on change and without entity ids or raw
     measurements.
     """
