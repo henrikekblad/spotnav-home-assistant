@@ -4,8 +4,10 @@ The hour tracker (`site/demand_tracker.py`) keeps each completed hour of the run
 Beside them the site keeps, per month, one summary per day for `ARCHIVE_MONTHS` months back:
 
 * **A day** (on the area's clock, the hour's own local date): its highest hourly mean (`peak_kw`, among its complete
-  hours, else among all of them) and that hour's start, the house's part of that hour (`None` when not known), and
-  whether the import target held or paused a charger in any of its hours.
+  hours, else among all of them) and that hour's start, the house's part of that hour (`None` when not known),
+  whether the import target held or paused a charger in any of its hours, whether that peak hour was read from Home
+  Assistant's statistics (`imported`, `site/hour_statistics.py`) rather than measured, and the month's free level
+  when that hour ran (`free_kw`, `planning/demand_charge.free_levels_by_hour`: never from an imported hour).
 * **A month**: the demand-charge components it was measured against, and per component the hours counted as its
   peaks and its figure (`bar_kw`). These are worked out from the month's hours with the components set when its
   last hour completed: a later change of the components does not rewrite an older month.
@@ -28,7 +30,7 @@ from typing import Any, Final
 
 from .. import time_zones
 from ..planning.auto_settings import DemandComponent
-from ..planning.demand_charge import component_month, HourMean
+from ..planning.demand_charge import component_month, free_levels_by_hour, HourMean
 
 #: How many months before the running one keep their day summaries (the history dialog's own reach).
 ARCHIVE_MONTHS: Final = 24
@@ -65,6 +67,10 @@ class DaySummary:
     house_kw: float | None
     held: bool
     paused: bool
+    #: The peak hour was read from Home Assistant's statistics, not measured.
+    imported: bool = False
+    #: The month's free level when the peak hour ran (`None`: no part counted it, or a day kept before it was).
+    free_kw: float | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -82,8 +88,10 @@ def _local_date(moment: datetime, tz: str) -> date:
     return moment.astimezone(time_zones.require_zone(tz)).date()
 
 
-def day_summaries(hours: Sequence[HourMean], tz: str) -> tuple[DaySummary, ...]:
-    """One summary per local date that has hours, oldest first."""
+def day_summaries(
+    hours: Sequence[HourMean], tz: str, free_by_hour: dict[datetime, float | None] | None = None
+) -> tuple[DaySummary, ...]:
+    """One summary per local date that has hours, oldest first; `free_by_hour` gives each hour's free level."""
     by_day: dict[date, list[HourMean]] = {}
     for hour in hours:
         by_day.setdefault(_local_date(hour.start, tz), []).append(hour)
@@ -100,6 +108,8 @@ def day_summaries(hours: Sequence[HourMean], tz: str) -> tuple[DaySummary, ...]:
                 house_kw=peak.house_kw,
                 held=any(hour.held for hour in day_hours),
                 paused=any(hour.paused for hour in day_hours),
+                imported=peak.imported,
+                free_kw=None if free_by_hour is None else free_by_hour.get(peak.start),
             )
         )
     return tuple(summaries)
@@ -111,7 +121,7 @@ def month_record(
     """A month's summaries from its hours, measured against `components`."""
     months = [component_month(component, hours, tz, now) for component in components]
     return MonthRecord(
-        days=day_summaries(hours, tz),
+        days=day_summaries(hours, tz, free_levels_by_hour(components, hours, tz)),
         components=tuple(components),
         counted=tuple(tuple(peak.start for peak in month.peaks) for month in months),
         bars=tuple(month.bar_kw for month in months),
@@ -140,6 +150,8 @@ def _kw(value: float | None) -> float | None:
 
 
 def _day_row(day: DaySummary) -> list[Any]:
+    """`[date, peak kW, peak start, house kW, held, paused, imported, free kW]` (a row kept before 2.3's statistics
+    has the first six)."""
     return [
         day.day.isoformat(),
         _kw(day.peak_kw),
@@ -147,11 +159,18 @@ def _day_row(day: DaySummary) -> list[Any]:
         _kw(day.house_kw),
         1 if day.held else 0,
         1 if day.paused else 0,
+        1 if day.imported else 0,
+        _kw(day.free_kw),
     ]
 
 
 def _day_from_row(raw: Any) -> DaySummary | None:
-    if not isinstance(raw, list) or len(raw) != 6:
+    if not isinstance(raw, list) or len(raw) not in (6, 8):
+        return None
+    imported, free = (raw[6], raw[7]) if len(raw) == 8 else (0, None)
+    if isinstance(imported, bool) or imported not in (0, 1):
+        return None
+    if free is not None and (not _number(free) or free < 0):
         return None
     try:
         day = date.fromisoformat(raw[0]) if isinstance(raw[0], str) else None
@@ -172,6 +191,8 @@ def _day_from_row(raw: Any) -> DaySummary | None:
         house_kw=None if house is None else float(house),
         held=bool(held),
         paused=bool(paused),
+        imported=imported == 1,
+        free_kw=None if free is None else float(free),
     )
 
 
@@ -219,6 +240,9 @@ class PowerArchive:
     """The kept months (see the module)."""
 
     months: dict[Month, MonthRecord] = field(default_factory=dict)
+    #: The back-fill from Home Assistant's statistics (`SiteDemand.async_backfill`): `{at, status, hours}` once it
+    #: ran, `None` before.
+    backfill: dict[str, Any] | None = None
 
     def file_month(
         self,
@@ -241,10 +265,19 @@ class PowerArchive:
         return bool(gone)
 
     def as_dict(self) -> dict[str, Any]:
-        return {"months": {month_text(month): _record_dict(self.months[month]) for month in sorted(self.months)}}
+        stored: dict[str, Any] = {
+            "months": {month_text(month): _record_dict(self.months[month]) for month in sorted(self.months)}
+        }
+        if self.backfill is not None:
+            stored["backfill"] = dict(self.backfill)
+        return stored
 
     def restore(self, raw: Any) -> None:
         """Take what the store kept; a malformed month is dropped."""
+        if isinstance(raw, dict) and isinstance(raw.get("backfill"), dict):
+            marker = raw["backfill"]
+            if isinstance(marker.get("at"), str) and isinstance(marker.get("status"), str):
+                self.backfill = {"at": marker["at"], "status": marker["status"], "hours": marker.get("hours")}
         months = raw.get("months") if isinstance(raw, dict) else None
         if not isinstance(months, dict):
             return
@@ -275,13 +308,24 @@ def power_month(
     """One month's power view (the `spotnav/get_power_month` answer without its envelope). `tracker_months` are the
     months whose hours the tracker keeps: such a month (and the running one) is shown from its hours, measured against
     `components`; an older one from its kept summaries, with the components it was measured against; `hours` is
-    `None` for it."""
+    `None` for it. `month_peak_kw` (on a day, at its peak hour; on an hour) is the level the month's free level lifted
+    `import_target_kw` to when that hour ran (`site/import_target.effective_target`), `null` where it did not."""
+    from .import_target import effective_target  # noqa: PLC0415 - it imports the hour tracker, which imports us
+
+    def lifted(level: float | None) -> float | None:
+        if import_target_kw is None or level is None:
+            return None
+        found = effective_target(import_target_kw, (level,))
+        return _kw(found.kw) if found.lifted else None
+
     current = month_of_now(now, tz)
     oldest = months_before(current, ARCHIVE_MONTHS)
     # The running month's hours are always kept (none yet before its first hour completes).
     hours = tracker_months.get(month, [] if month == current else None)
+    free_by_hour: dict[datetime, float | None] = {}
     if hours is not None:
         record = month_record(hours, components, tz, now)
+        free_by_hour = free_levels_by_hour(components, hours, tz)
     else:
         record = archive.months.get(month) or MonthRecord(days=())
     counted_dates: dict[date, set[int]] = {}
@@ -306,6 +350,8 @@ def power_month(
                 "counted": sorted(counted_dates.get(day.day, ())),
                 "held": day.held,
                 "paused": day.paused,
+                "imported": day.imported,
+                "month_peak_kw": lifted(day.free_kw),
             }
             for day in record.days
         ],
@@ -320,6 +366,8 @@ def power_month(
                 "held": hour.held,
                 "paused": hour.paused,
                 "counted": sorted(counted_starts.get(hour.start, ())),
+                "imported": hour.imported,
+                "month_peak_kw": lifted(free_by_hour.get(hour.start)),
             }
             for hour in sorted(hours, key=lambda hour: hour.start)
         ],
