@@ -457,14 +457,40 @@ async def test_a_release_holds_until_the_departure_and_survives_a_restart(hass: 
         assert controller._target_released == {}  # noqa: SLF001
 
 
-async def test_a_release_without_a_departure_is_refused(hass: HomeAssistant, monkeypatch) -> None:
-    from custom_components.spotnav.site.site_capacity_controller import ERROR_NO_DEPARTURE
+async def test_a_release_without_a_departure_lasts_until_unplug_and_survives_a_restart(
+    hass: HomeAssistant, monkeypatch
+) -> None:
+    from custom_components.spotnav.execution.chargers.adapter import ChargerAdapter
+    from custom_components.spotnav.site.site_capacity_controller import RELEASED_UNTIL_UNPLUG, SiteCapacityController
 
     with freeze_time(_HOUR + timedelta(seconds=5)) as frozen:
         world = await _world(hass, monkeypatch, frozen, "nodeparture")
         await world.step()
-        await _charging(world)
-        assert world.halo.controller.async_release_import_target(world.halo.charger.entry_id) == ERROR_NO_DEPARTURE
+        await _start_by_hand(world)
+        await world.run(3)
+        assert world.car_a == 7.0, "a person's Start is held like any charge"
+        controller = world.halo.controller
+        charger = world.halo.charger.entry_id
+        # No plan, no departure: released until the car is unplugged.
+        assert controller.async_release_import_target(charger) is None
+        await world.run(3)
+        assert world.car_a == 16.0
+        assert controller.import_target_snapshot()["released"] == {charger: RELEASED_UNTIL_UNPLUG}
+        status = controller.import_target_status(charger)
+        assert status is not None and status.released_for == RELEASED_UNTIL_UNPLUG
+        # A restart reads it back.
+        await controller._target_release_store.async_save({"released": dict(controller._target_released)})  # noqa: SLF001
+        fresh = SiteCapacityController(hass, controller.entry_id, dict(controller.config))
+        await fresh._async_load_released()  # noqa: SLF001
+        assert fresh._target_released == {charger: RELEASED_UNTIL_UNPLUG}  # noqa: SLF001
+        # Hours on it still holds; the unplug ends it.
+        frozen.tick(timedelta(hours=5))
+        world.halo.advance(5 * 3600.0)
+        controller._prune_released(dt_util.utcnow())  # noqa: SLF001
+        assert controller._target_released == {charger: RELEASED_UNTIL_UNPLUG}  # noqa: SLF001
+        monkeypatch.setattr(ChargerAdapter, "vehicle_connected", lambda self: False)
+        controller._prune_released(dt_util.utcnow())  # noqa: SLF001
+        assert controller._target_released == {}  # noqa: SLF001
 
 
 async def test_the_floor_charge_is_never_held(hass: HomeAssistant, monkeypatch) -> None:
@@ -501,20 +527,47 @@ async def test_a_departure_the_held_power_still_meets_keeps_the_hold(hass: HomeA
 # -- a person's Start, and the fuse
 
 
-async def test_a_persons_start_is_not_held(hass: HomeAssistant, monkeypatch) -> None:
+async def _start_by_hand(world: _World) -> None:
+    """A person's Start at 16 A."""
+    assert await world.halo.cc.async_start(16, manual=True)
+    world.follow_commands()
+    world.halo.switch("on")
+    world.show()
+    await world.halo.hass.async_block_till_done()
+    world.meter_reports()
+
+
+async def test_a_persons_start_is_held_and_paused_like_a_plans_charge(hass: HomeAssistant, monkeypatch) -> None:
+    from custom_components.spotnav.api import dashboard as dashboard_api
+    from custom_components.spotnav.planning.status_compose import compose_status, PlanningFacts
+
+    # This world's charger has no plan settings: its status is composed as for one that has them.
+    ready = {"has_settings": True, "planning": PlanningFacts(state="proposal_ready", reason="ready")}
+
     with freeze_time(_HOUR + timedelta(seconds=5)) as frozen:
         world = await _world(hass, monkeypatch, frozen, "person")
         await world.step()
-        assert await world.halo.cc.async_start(16, manual=True)
-        world.follow_commands()
-        world.halo.switch("on")
-        world.show()
-        await hass.async_block_till_done()
+        await _start_by_hand(world)
         await world.run(10)
-        assert world.car_a == 16.0
-        assert world.halo.controller.import_target_snapshot()["chargers"][world.halo.charger.entry_id]["action"] == (
-            "unheld"
-        )
+        charger = world.halo.charger.entry_id
+        assert world.halo.cc.charge_origin == "manual"
+        assert world.car_a == 7.0, "Start charges now, within the target"
+        assert world.halo.controller.import_target_snapshot()["chargers"][charger]["action"] == "held"
+        facts = dashboard_api.status_facts(dashboard_api.capture_dashboard(hass, world.halo.charger))
+        lines = compose_status(replace(facts, **ready))["lines"]
+        held = next(line for line in lines if line["code"] == "import_target_held")
+        # The one way past the target, offered with the line: until the unplug (no departure), at an estimated peak.
+        assert held["params"]["releasable"] is True and held["params"]["release_until"] is None
+        assert held["params"]["release_peak_kw"] == 12.0  # the house's 1 kW and 16 A on three phases
+        # The house takes 5 kW: paused until the next hour, and said so though no plan's window runs.
+        world.house_a = 5000.0 / (3 * _V)
+        await world.run(3)
+        assert world.turn_offs == 1
+        facts = dashboard_api.status_facts(dashboard_api.capture_dashboard(hass, world.halo.charger))
+        lines = compose_status(replace(facts, **ready))["lines"]
+        assert lines[0]["code"] == "import_target_paused" and lines[0]["params"]["releasable"] is True
+        # No phone is told for a held Start: nothing about a departure is at risk.
+        assert world.halo.controller.import_target_snapshot()["at_risk"] == {}
 
 
 async def test_the_fuse_still_wins_where_it_is_lower_than_the_target(hass: HomeAssistant, monkeypatch) -> None:
@@ -882,7 +935,7 @@ async def test_the_hours_end_does_not_keep_a_car_the_fuse_lowered(hass: HomeAssi
 # -- review: a charge the target does not hold, paused, takes nothing from the budget
 
 
-async def test_a_persons_charge_the_fuse_paused_is_counted_at_nothing(hass: HomeAssistant, monkeypatch) -> None:
+async def test_a_paused_charge_is_counted_at_what_it_resumes_at_and_the_floors_at_nothing(hass: HomeAssistant, monkeypatch) -> None:
     from types import SimpleNamespace
 
     from custom_components.spotnav.site import site_capacity_controller as module
@@ -901,7 +954,10 @@ async def test_a_persons_charge_the_fuse_paused_is_counted_at_nothing(hass: Home
             remaining_s=3600.0, house_w=1000.0, rate_w=6000.0, allowed_w=5000.0, house_over=False,
         )
         member = controller._target_member(request, None, budget)  # noqa: SLF001
-        assert not member.holdable and member.wants_a == 0.0
+        assert member.holdable and member.wants_a == 16.0, "a person's Start paused is counted at what it resumes at"
+        paused.paused_charge_origin = "min_soc"
+        member = controller._target_member(request, None, budget)  # noqa: SLF001
+        assert not member.holdable and member.wants_a == 0.0, "the floor's charge is not the target's, and draws nothing"
         paused.paused_charge_origin = "plan_window"
         member = controller._target_member(request, None, budget)  # noqa: SLF001
         assert member.holdable and member.wants_a == 16.0, "a plan's paused charge is counted at what it resumes at"
