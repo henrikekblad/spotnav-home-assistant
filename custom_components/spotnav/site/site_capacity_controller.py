@@ -5189,18 +5189,33 @@ class SiteCapacityController:
 
     def _dropped_by_a_start(self, charger_entry_id: str, departure: str, now: datetime) -> bool:
         """Whether a person's set-aside until `departure` (still ahead, the car still plugged in) lost its plan to a
-        person's Start (`charge_origin` `manual`, no plan): kept then, until the unplug."""
+        person's Start (no plan, and the charge a person's, `_persons_start`): kept then, until the unplug."""
         if _unplug_release_since(departure) is not None:
             return False
         charger_controller = controller_for(self.hass, charger_entry_id)
         if charger_controller is None or getattr(charger_controller, "plan", None) is not None:
             return False
-        if getattr(charger_controller, "charge_origin", None) != "manual":
+        if not self._persons_start(charger_entry_id, charger_controller):
             return False
         if charger_controller.adapter.vehicle_connected() is False:
             return False
         moment = _aware_instant(departure)
         return moment is not None and moment > now
+
+    def _persons_start(self, charger_entry_id: str, charger_controller: Any) -> bool:
+        """Whether the charge is a person's Start: charging as one (`charge_origin` `manual`), held back by load
+        balancing as one (for room, or paused by the fuse: `paused_charge_origin`), or stored as one (the manual pause
+        with action `start`, as `charge_still_wanted` reads it)."""
+        if getattr(charger_controller, "charge_origin", None) == "manual":
+            return True
+        if getattr(charger_controller, "paused_charge_origin", None) == "manual":
+            return True
+        store = domain_data(self.hass).auto_store
+        settings = None if store is None else store.settings(charger_entry_id)
+        if settings is None:
+            return False
+        pause = settings.pause
+        return bool(pause.admitted and pause.manual and pause.action == MANUAL_START)
 
     def async_release_import_target(self, charger_entry_id: str, *, for_departure: int | None = None) -> str | None:
         """Set the import target aside for this charger's charge (a person's choice, from the notification, the card or
@@ -6044,8 +6059,9 @@ def charge_still_wanted(hass: HomeAssistant, charger_entry_id: str, charger_cont
 
 def _plugged_in_for_resume(adapter: Any) -> bool:
     """Whether a charge load balancing paused (for the fuse or the import target) may be resumed as far as the plug
-    goes: a charger that can say whether a car is plugged in must say one is; one that never can (a plain switch) is
-    resumed while the charge is still wanted, or a pause would hold it off for good."""
+    goes: a charger that can say whether a car is plugged in must say one is; one that cannot (a plain switch, an
+    OCPP charger whose connector status is not found, a status sensor on a platform with no mapping:
+    `reports_connection` false) is resumed while the charge is still wanted, or a pause would hold it off for good."""
     connected = adapter.vehicle_connected()
     if connected is not None:
         return connected is True

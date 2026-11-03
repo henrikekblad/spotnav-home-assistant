@@ -482,6 +482,30 @@ async def test_a_start_after_the_release_keeps_it_until_the_unplug(hass: HomeAss
         assert status is not None and status.released_for == kept
 
 
+@pytest.mark.parametrize("held", ["for_room", "stored_only"])
+async def test_a_start_held_back_after_the_release_keeps_it(hass: HomeAssistant, monkeypatch, held: str) -> None:
+    """A Start load balancing holds back for room (or that the fuse paused before the next prune) is not charging as
+    a person's: the release is kept all the same, from what balancing holds or from the stored manual Start."""
+    from custom_components.spotnav.execution.controller import ChargingController
+    from custom_components.spotnav.site.site_capacity_controller import _unplug_release_since
+
+    with freeze_time(_HOUR + timedelta(seconds=5)) as frozen:
+        world = await _tight_night(hass, monkeypatch, frozen, f"startheld{held}")
+        await world.run(2)
+        charger = world.halo.charger.entry_id
+        controller = world.halo.controller
+        assert controller.async_release_import_target(charger) is None
+        await _start_by_hand(world)
+        assert world.halo.cc.plan is None
+        # Held back before the next prune: no charge of the person's runs.
+        monkeypatch.setattr(ChargingController, "charge_origin", property(lambda self: None))
+        origin = "manual" if held == "for_room" else None
+        monkeypatch.setattr(ChargingController, "paused_charge_origin", property(lambda self: origin))
+        controller._prune_released(dt_util.utcnow())  # noqa: SLF001
+        kept = controller._target_released.get(charger)  # noqa: SLF001
+        assert kept is not None and _unplug_release_since(kept) is not None, kept
+
+
 async def test_a_hand_edited_release_store_never_breaks_a_recompute(hass: HomeAssistant, monkeypatch) -> None:
     from custom_components.spotnav.site.site_capacity_controller import (
         _unplug_release_since,
