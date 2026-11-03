@@ -489,9 +489,6 @@ def _plug_in(session: ChargeSession, event: PlugIn, now: datetime) -> Decision:
         elif manual.scope == SCOPE_PLUG_IN and previous is False:
             # A plug-in after a known unplug: the session the pause was given in is over (an unplug unseen).
             s = s.with_changes(manual=None)
-    if previous is False and s.owner == OWNER_PERSON:
-        # A person's Start belongs to the plug-in it was given in: a new one does not inherit it.
-        s = s.with_changes(owner=OWNER_NONE)
     return s, ()
 
 

@@ -251,7 +251,7 @@ def test_an_unplug_found_after_a_restart_ends_a_persons_start() -> None:
 
 
 def test_a_plug_in_after_a_known_unplug_does_not_inherit_a_persons_start() -> None:
-    session, _ = run(ChargeSession(plugged=False, owner="person"), ev.PlugIn(previous=False))
+    session, _ = run(ChargeSession(plugged=True, owner="person"), ev.Unplug(previous=True), ev.PlugIn(previous=False))
     assert session.owner == "none"
 
 
