@@ -111,8 +111,8 @@ language files in `www/i18n/` are committed; `npm run build` regenerates both, a
   moves a charger, meter or car from "supported" to "confirmed" and helps the next person decide.
 - **Contribute.** Pull requests are welcome, for code as well as [translations](docs/translating.md); see
   [Development](#development) for the checks.
-- **Star the repository.** Stars help others find SpotNav on GitHub and in HACS.
-- **Sponsor.** If SpotNav saves you money, [GitHub Sponsors](https://github.com/sponsors/henrikekblad) takes a
+- ⭐ **Star the repository.** Stars help others find SpotNav on GitHub and in HACS.
+- 💖 **Sponsor.** If SpotNav saves you money, [GitHub Sponsors](https://github.com/sponsors/henrikekblad) takes a
   one-time or monthly contribution and keeps the project going.
 
 ## Licence
