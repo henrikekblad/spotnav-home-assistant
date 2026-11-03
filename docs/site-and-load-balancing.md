@@ -570,19 +570,27 @@ charger draws on would turn from import to export (so the current the fuse carri
     charge until its departure, as *Release the import target tonight* does, and the plan counts on the car's own power.
   - **Keep the import target**: the target holds, nothing is sent, and the status says how much will be missing.
 - **Release the import target tonight** (from the notification, the card or the app) sets the target aside for that charge until its
-  departure, or until the car is unplugged or the plan is made for another departure; a restart keeps it. A phone's
+  departure, or until the car is unplugged or the plan is made for another departure; a restart keeps it. A charge
+  without a departure ahead (a person's Start, or a plan without one) is set aside until the car is unplugged. The
+  card offers it beside every line where the target holds or pauses a charge, and asks first, since a press can
+  cost the month: *Release the import target? The car then charges at full power until it is unplugged (or until the
+  departure at 07:00). The month's peak may reach up to 11 kW, against 6.0 kW today.* (up to: the house's typical
+  load and the charge's full power, rounded; today: the month's level the target holds to). The phone's button is
+  one press, as it answers a question already asked. A phone's
   button carries the departure it was told for: pressed once the plan is for another departure (after a restart or a
   new plan), it sets nothing aside. While the target's notice stands, the plan's own *will not be ready* notice is
   held back; once the target's notice comes down and the plan still cannot be met for reasons of its own, that
   notice is told. The status says *The import target is set aside by
-  you until 07:00*.
+  you until 07:00*, or *until the car is unplugged*.
 - **Plans count on the target.** A plan for a charger on the site counts on the power the target leaves it (the
   target less the house's typical load as above, never below the charger's minimum), so it buys the quarter-hours
   the held charge needs and says honestly what it can deliver by the departure (see
   [Planning strategies](strategies.md)). Not for a plan set to *Release the import target*, nor for a charger the hold
   cannot act on (no current of its own to judge a lowering on, or a phase that cannot be judged).
-- **A person's Start is left alone**, as the sun leaves it: such a charge counts toward the hour but is never held. A
-  person's Stop is untouched. A charge of a person's that the fuse paused counts as nothing while it waits.
+- **A person's Start obeys the target** as a plan's charge does: held, or paused to the hour's end, and shown so,
+  with *Release the import target tonight* the only way past it. No phone is told just because a Start is held. A
+  person's Stop is untouched. Only the car's minimum level is never held (above), and the sun's charge is left
+  alone: it counts toward the hour but is never held. A held charge the fuse paused counts at what it resumes at.
 - **Solar and Hybrid.** The target counts import from the grid only, so a charge the sun covers is free. Under
   *battery first* a home battery's discharge counts as import too (the car is not to be paid for by the battery);
   under *car first* only the grid counts.
