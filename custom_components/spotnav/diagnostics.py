@@ -355,6 +355,12 @@ def _result_to_dict(result: SiteCapacityResult) -> dict[str, Any]:
         "phase_signed_active_power_w": dict(result.phase_signed_active_power_w),
         "phase_signed_active_power_age_s": dict(result.phase_signed_active_power_age_s),
         "phase_signed_active_power_reason": dict(result.phase_signed_active_power_reason),
+        # A derived phase whose active power sat still but counts as fresh (`held_still`): the companion reading
+        # (`voltage`, `reactive_power`, `apparent_power`) that changed meanwhile, and its age.
+        "phase_signed_active_power_held_still": {
+            phase: None if held is None else {"reason": "held_still", "companion": held[0], "companion_age_s": held[1]}
+            for phase, held in result.phase_signed_active_power_held_still.items()
+        },
         "phase_direction_source": dict(result.phase_direction_source),
         "phase_signed_current_a": dict(result.phase_signed_current_a),
         # How each phase's current was obtained (`measured`, `apparent`, `reactive` or `estimated`);

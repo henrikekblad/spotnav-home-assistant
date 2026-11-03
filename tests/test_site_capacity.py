@@ -1776,3 +1776,29 @@ def test_chargers_of_one_priority_are_served_in_the_sites_charger_order_not_by_i
 
     assert by_id["z_entry"].proposed_current_a == 16.0
     assert by_id["a_entry"].proposed_current_a < 16.0
+
+
+# -- a derived phase's active power that sits still while the meter is live
+
+
+def test_a_still_active_power_counts_as_fresh_only_while_its_voltage_or_reactive_power_moves() -> None:
+    from custom_components.spotnav.site.site_capacity import _held_still_companion, DerivedPhaseInput, PhaseValue
+
+    still = PhaseValue(-23.0, 550.0, report_age_s=1.0)
+    moving = PhaseValue(231.2, 3.0, report_age_s=3.0)
+    flat = PhaseValue(230.0, 400.0, report_age_s=1.0)
+    # The voltage moved 3 s ago: fresh, on it.
+    assert _held_still_companion(DerivedPhaseInput(still, None, moving), 120.0) == ("voltage", 3.0)
+    # Only the reactive power moved: fresh, on that.
+    reactive = PhaseValue(-150.0, 10.0)
+    assert _held_still_companion(DerivedPhaseInput(still, reactive, flat), 120.0) == ("reactive_power", 10.0)
+    # Nothing of the phase moved: stale, as before.
+    assert _held_still_companion(DerivedPhaseInput(still, None, flat), 120.0) is None
+    # Home Assistant has not heard from the active power itself: lost, whatever the voltage does.
+    unheard = PhaseValue(-23.0, 550.0, report_age_s=400.0)
+    assert _held_still_companion(DerivedPhaseInput(unheard, None, moving), 120.0) is None
+    # Unavailable or unknown: lost, as ever.
+    unavailable = PhaseValue(None, 550.0, problem="missing", report_age_s=1.0)
+    assert _held_still_companion(DerivedPhaseInput(unavailable, None, moving), 120.0) is None
+    # Fresh already: nothing to keep.
+    assert _held_still_companion(DerivedPhaseInput(PhaseValue(-23.0, 5.0), None, moving), 120.0) is None
