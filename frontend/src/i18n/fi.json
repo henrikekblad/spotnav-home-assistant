@@ -1082,5 +1082,11 @@
   "automations.solarSurplus.name": "Käy aurinkoylijäämällä",
   "automations.solarSurplus.text": "Altaan lämmitin, lämminvesivaraaja tai sähkövastus kytketään päälle, kun aurinko tuottaa ylijäämää.",
   "automations.usedBy.one": "Käytössä {count} automaatiossa",
-  "automations.usedBy.other": "Käytössä {count} automaatiossa"
+  "automations.usedBy.other": "Käytössä {count} automaatiossa",
+  "identify.guest": "Vierasauto",
+  "status.guestPlanned": "Vierasauto · {kwh} kWh klo {time} mennessä",
+  "status.guestPlannedNoTime": "Vierasauto · {kwh} kWh",
+  "status.guestDone": "Vierasauto · valmis, odottaa irrottamista",
+  "settings.guest.amount": "Vierasauton määrä",
+  "settings.guest.amountHelp": "Määrä, jolla vierasauto ladataan. Vierasauton suunnitelmaan tehty muutos säilyy seuraavalle vieraalle."
 }

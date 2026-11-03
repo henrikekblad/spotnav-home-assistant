@@ -1082,5 +1082,11 @@
   "automations.solarSurplus.name": "Kör vid solöverskott",
   "automations.solarSurplus.text": "En pool, varmvattenberedare eller elpatron slås på när solen ger överskott.",
   "automations.usedBy.one": "Används av {count} automation",
-  "automations.usedBy.other": "Används av {count} automationer"
+  "automations.usedBy.other": "Används av {count} automationer",
+  "identify.guest": "Gästbil",
+  "status.guestPlanned": "Gästbil · {kwh} kWh före {time}",
+  "status.guestPlannedNoTime": "Gästbil · {kwh} kWh",
+  "status.guestDone": "Gästbil · klar, väntar på urkoppling",
+  "settings.guest.amount": "Mängd för gästbil",
+  "settings.guest.amountHelp": "Det en gästbil laddas med. En ändring i en gästbils plan sparas till nästa gäst."
 }

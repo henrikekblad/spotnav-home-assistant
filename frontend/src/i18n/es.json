@@ -1082,5 +1082,11 @@
   "automations.solarSurplus.name": "Funcionar con excedente solar",
   "automations.solarSurplus.text": "Un calentador de piscina, un termo o una resistencia eléctrica se enciende cuando el sol da un excedente.",
   "automations.usedBy.one": "Usado por {count} automatización",
-  "automations.usedBy.other": "Usado por {count} automatizaciones"
+  "automations.usedBy.other": "Usado por {count} automatizaciones",
+  "identify.guest": "Coche de invitado",
+  "status.guestPlanned": "Coche de invitado · {kwh} kWh antes de las {time}",
+  "status.guestPlannedNoTime": "Coche de invitado · {kwh} kWh",
+  "status.guestDone": "Coche de invitado · listo, esperando a que se desenchufe",
+  "settings.guest.amount": "Cantidad para coche de invitado",
+  "settings.guest.amountHelp": "Lo que se carga a un coche de invitado. Un cambio en el plan de un coche de invitado se guarda para el siguiente."
 }

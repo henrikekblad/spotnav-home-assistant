@@ -1082,5 +1082,11 @@
   "automations.solarSurplus.name": "Marche sur surplus solaire",
   "automations.solarSurplus.text": "Un chauffage de piscine, un chauffe-eau ou une résistance électrique est allumé quand le soleil donne un surplus.",
   "automations.usedBy.one": "Utilisé par {count} automatisation",
-  "automations.usedBy.other": "Utilisé par {count} automatisations"
+  "automations.usedBy.other": "Utilisé par {count} automatisations",
+  "identify.guest": "Voiture invitée",
+  "status.guestPlanned": "Voiture invitée · {kwh} kWh avant {time}",
+  "status.guestPlannedNoTime": "Voiture invitée · {kwh} kWh",
+  "status.guestDone": "Voiture invitée · terminé, attend d'être débranchée",
+  "settings.guest.amount": "Quantité pour voiture invitée",
+  "settings.guest.amountHelp": "Ce qui est chargé pour une voiture invitée. Une modification dans son plan est gardée pour la prochaine invitée."
 }

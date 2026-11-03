@@ -167,6 +167,8 @@ export const STATUS_WORDING: Readonly<Record<StatusCode, TranslationKey>> = {
   starting_up: "status.startingUp",
   identifying_vehicle: "status.identifyingVehicle",
   asking_vehicle: "status.askingVehicle",
+  guest_planned: "status.guestPlanned",
+  guest_done: "status.guestDone",
   charger_unavailable: "issue.chargerMissing",
   charger_ignores_stop: "issue.chargerIgnoresStop",
   price_data_invalid: "issue.priceInvalid",
@@ -253,6 +255,7 @@ export const STATUS_WORDING: Readonly<Record<StatusCode, TranslationKey>> = {
 
 export const STATUS_VARIANT_KEYS: readonly TranslationKey[] = [
   "status.finishSetupArea",
+  "status.guestPlannedNoTime",
   "status.finishSetup",
   "status.missing.area",
   "status.missing.phases",
@@ -848,6 +851,14 @@ export function lineText(
       return say("status.chargingToVehicleLimit", { percent: formatNumber(language, num(p["percent"]) ?? 100, 0) });
     case "sun_past_target":
       return say("strategy.status.sunPastTarget", { percent: formatNumber(language, num(p["percent"]) ?? 100, 0) });
+    case "guest_planned": {
+      // A guest car's amount, by the departure when it has one: "Guest car · 10 kWh by 07:00".
+      const kwh = formatNumber(language, num(p["kwh"]) ?? 0, 1);
+      const departure = ms(p["departure"]);
+      return departure === null || !zoned
+        ? say("status.guestPlannedNoTime", { kwh })
+        : say("status.guestPlanned", { kwh, time: clock(format, departure) });
+    }
     case "min_soc_charging":
       return say("status.minSocCharging", { percent: formatNumber(language, num(p["percent"]) ?? 0, 0) });
     case "duplicate_charger":
