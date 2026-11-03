@@ -31,7 +31,7 @@ async def test_bundle_has_every_section(hass: HomeAssistant) -> None:
     charger, site = await setup_charger_and_site(hass)
     bundle = await async_build_debug_bundle(hass)
 
-    assert bundle["bundle_version"] == 9
+    assert bundle["bundle_version"] == 10
     for key in ("versions", "related_integrations", "price_data", "sites", "chargers", "log"):
         assert key in bundle
     # Version 8: a day, kept across restarts.
@@ -334,12 +334,17 @@ async def test_bundle_has_the_last_day_one_row_a_minute(hass: HomeAssistant) -> 
     assert history["interval_s"] == 60
     rows = _table(history)
     assert len(rows) == 3
-    assert set(rows[-1]) == {"time", "grid_w", "grid_source", "L1_a", "L2_a", "L3_a", "battery_w"}  # no PV sensor
+    assert set(rows[-1]) == {  # no PV sensor
+        "time", "grid_w", "grid_source", "L1_a", "L2_a", "L3_a", "battery_w",
+        "target_hold_kw", "target_allowed_w", "target_house_w", "target_not_applied",
+    }
+    # No import target set: its columns are empty.
+    assert [rows[-1][column] for column in ("target_hold_kw", "target_allowed_w", "target_not_applied")] == ["", "", ""]
     item = _table(history["chargers"][charger.entry_id])[-1]
     assert item["time"] == rows[-1]["time"]
     for column in (
         "L1_a", "control", "charging", "connection", "connector", "soc", "strategy", "solar_state", "solar_action",
-        "solar_reason", "phases_read", "phases_switched", "setpoint_a", "requested_a",
+        "solar_reason", "phases_read", "phases_switched", "setpoint_a", "requested_a", "target_action", "target_cap_a",
     ):
         assert column in item
     assert item["control"] == hass.states.get(charger.data["charge_control"]).state

@@ -9,6 +9,17 @@ connection, connector status, the car's state of charge and where it came from, 
 written and the current asked for. No PV power: a site knows no PV sensor, so there is none to state. A charger in
 no site keeps the same row from its controller alone (`debug_day.ChargerDay`, `CHARGER_ALONE_COLUMNS`).
 
+The import target's columns come last (`TARGET_SITE_COLUMNS`, `TARGET_CHARGER_COLUMNS`): on the site's row the level
+the hour is held under (kW, with its margin), what the chargers may draw (W), the house's power the budget used (W)
+and why the target is not applied (empty while it is, or while no target is set); on a charger's row what the
+target does to it (`free`, `held`, `paused`, `released`, `exempt`) and the amps it caps it at. Rows kept from before
+these columns end earlier: a reader takes a missing value as empty.
+
+The import target's change log (`SiteCapacityController._note_target`, `note_target`) is kept in the same store:
+what it did to each charger, when it was not applied and why, the departure notice told, told again and cleared, and
+every release with its source and its end. Entries older than `HISTORY_S` are dropped, and at most
+`TARGET_LOG_KEPT`.
+
 Rows are compact text (`debug_day.format_row`), kept across restarts in the site's own store (`debug_day.DayStore`,
 written at most every five minutes) and dropped after 24 hours. Never raises; a charger that cannot be read is a row
 of its time and `error=<kind>`.
@@ -17,6 +28,7 @@ of its time and `error=<kind>`.
 from __future__ import annotations
 
 from collections import deque
+from datetime import datetime, timedelta
 import logging
 from typing import TYPE_CHECKING, Any, Final
 
@@ -27,6 +39,7 @@ from ..const import CONF_CHARGER_ENTRY_IDS
 from ..debug_day import (
     DayStore,
     format_row,
+    HISTORY_S,
     history_block,
     prune_rows,
     row_time,
@@ -44,8 +57,14 @@ __all__ = ["SAMPLE_COUNT", "SAMPLE_INTERVAL_S", "SiteHistory"]
 
 _LOGGER = logging.getLogger(__name__)
 
+#: The import target's columns on the site's row, after its own, and on a member charger's row.
+TARGET_SITE_COLUMNS: Final = ("target_hold_kw", "target_allowed_w", "target_house_w", "target_not_applied")
+TARGET_CHARGER_COLUMNS: Final = ("target_action", "target_cap_a")
 #: The site's row.
-SITE_COLUMNS: Final = ("time", "grid_w", "grid_source", "L1_a", "L2_a", "L3_a", "battery_w")
+SITE_COLUMNS: Final = ("time", "grid_w", "grid_source", "L1_a", "L2_a", "L3_a", "battery_w", *TARGET_SITE_COLUMNS)
+#: The import target's change log: entries kept, and the keys one may have.
+TARGET_LOG_KEPT: Final = 500
+_TARGET_LOG_MAX_KEYS: Final = 24
 #: What a charger's controller holds, in every charger row after its current.
 CONTROLLER_COLUMNS: Final = (
     "control",
@@ -64,7 +83,7 @@ CONTROLLER_COLUMNS: Final = (
     "requested_a",
 )
 #: A member charger's row in its site's history.
-CHARGER_COLUMNS: Final = ("time", "L1_a", "L2_a", "L3_a", *CONTROLLER_COLUMNS)
+CHARGER_COLUMNS: Final = ("time", "L1_a", "L2_a", "L3_a", *CONTROLLER_COLUMNS, *TARGET_CHARGER_COLUMNS)
 #: A charger in no site: the current its controller measures (its highest phase) instead of the site's per phase.
 CHARGER_ALONE_COLUMNS: Final = ("time", "current_a", *CONTROLLER_COLUMNS)
 
@@ -81,12 +100,17 @@ class SiteHistory:
     def __init__(self, hass: HomeAssistant | None = None, entry_id: str | None = None) -> None:
         self._rows: deque[str] = deque(maxlen=SAMPLE_COUNT)
         self._chargers: dict[str, deque[str]] = {}
+        self._target_log: deque[dict[str, Any]] = deque(maxlen=TARGET_LOG_KEPT)
         self._store = (
             None if hass is None or entry_id is None else DayStore(hass, store_key(entry_id), self._to_store)
         )
 
     def _to_store(self) -> dict[str, Any]:
-        return {"rows": list(self._rows), "chargers": {key: list(rows) for key, rows in self._chargers.items()}}
+        return {
+            "rows": list(self._rows),
+            "chargers": {key: list(rows) for key, rows in self._chargers.items()},
+            "import_target_log": list(self._target_log),
+        }
 
     async def async_load(self) -> None:
         """Read the rows kept before the restart; the ones taken meanwhile go after them."""
@@ -115,6 +139,23 @@ class SiteHistory:
         rows.extend(self._rows)
         self._rows = rows
         self._chargers.update(restored)
+        kept_log = _target_log_from_store(stored.get("import_target_log"), now)
+        kept_log.extend(self._target_log)
+        self._target_log = deque(kept_log, maxlen=TARGET_LOG_KEPT)
+
+    @property
+    def target_log(self) -> list[dict[str, Any]]:
+        """The import target's change log of the last 24 hours, oldest first."""
+        _prune_target_log(self._target_log, dt_util.utcnow())
+        return list(self._target_log)
+
+    def note_target(self, entry: dict[str, Any]) -> None:
+        """Keep one entry of the import target's change log (it carries its `at`, ISO); the oldest beyond the day,
+        or beyond `TARGET_LOG_KEPT`, are dropped."""
+        self._target_log.append(entry)
+        _prune_target_log(self._target_log, dt_util.utcnow())
+        if self._store is not None:
+            self._store.changed()
 
     async def async_close(self) -> None:
         """The site's shutdown: write what waits, then nothing more."""
@@ -159,6 +200,43 @@ class SiteHistory:
             _LOGGER.debug("Could not sample the site's history", exc_info=True)
 
 
+def _entry_moment(entry: Any) -> datetime | None:
+    if not isinstance(entry, dict):
+        return None
+    at = entry.get("at")
+    moment = dt_util.parse_datetime(at) if isinstance(at, str) else None
+    if moment is None or moment.tzinfo is None:
+        return None
+    return moment
+
+
+def _prune_target_log(log: deque[dict[str, Any]], now: datetime) -> None:
+    oldest = now - timedelta(seconds=HISTORY_S)
+    while log:
+        moment = _entry_moment(log[0])
+        if moment is not None and moment >= oldest:
+            return
+        log.popleft()
+
+
+def _target_log_from_store(raw: Any, now: datetime) -> list[dict[str, Any]]:
+    """Stored entries, read as untrusted: flat ones of the last `HISTORY_S` with plain values, oldest first."""
+    oldest = now - timedelta(seconds=HISTORY_S)
+    kept: list[tuple[datetime, dict[str, Any]]] = []
+    for entry in raw if isinstance(raw, list) else ():
+        moment = _entry_moment(entry)
+        if moment is None or not oldest <= moment <= now + timedelta(minutes=1):
+            continue
+        if len(entry) > _TARGET_LOG_MAX_KEYS or not all(
+            isinstance(key, str) and (value is None or isinstance(value, (str, int, float, bool)))
+            for key, value in entry.items()
+        ):
+            continue
+        kept.append((moment, dict(entry)))
+    kept.sort(key=lambda item: item[0])
+    return [entry for _moment, entry in kept[-TARGET_LOG_KEPT:]]
+
+
 def _grid(site: SiteCapacityController) -> tuple[float | None, str | None]:
     """The grid's total power (W, positive = import) and where it came from: the meter's total (`total`),
     else the sum of the three phases' signed active power (`phases`), else unknown."""
@@ -182,13 +260,18 @@ def site_values(site: SiteCapacityController) -> list[Any]:
         grid_source,
         *(_rounded(current.get(phase)) for phase in PHASES),
         None if battery is None else _rounded(battery.value, 1),
+        *site.import_target_row(),
     ]
 
 
 def _member_values(site: SiteCapacityController, charger_entry_id: str) -> list[Any]:
     measured = site.charger_measured_current(charger_entry_id)
     currents = [None, None, None] if measured is None else [_rounded(measured.get(phase).value) for phase in PHASES]
-    return [*currents, *controller_values(site.hass, charger_entry_id)]
+    return [
+        *currents,
+        *controller_values(site.hass, charger_entry_id),
+        *site.import_target_charger_row(charger_entry_id),
+    ]
 
 
 def controller_values(hass: HomeAssistant, charger_entry_id: str) -> list[Any]:

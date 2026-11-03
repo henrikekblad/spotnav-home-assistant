@@ -119,7 +119,7 @@ from .site.measurement_source import grid_power_source_from_dict, source_from_di
 
 _LOGGER = logging.getLogger(__name__)
 
-BUNDLE_VERSION: Final = 9
+BUNDLE_VERSION: Final = 10
 REDACTED: Final = "**REDACTED**"
 
 #: Keys whose value is never shown, wherever they sit in the bundle.
