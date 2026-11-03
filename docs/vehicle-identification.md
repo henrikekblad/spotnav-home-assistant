@@ -95,8 +95,9 @@ seconds to ten minutes, but some only every 30 minutes or more. If the report co
 The question goes to the phones chosen under **Settings → Notifications**, as the event **Which car is plugged
 in?**. This event is on by default. It is a notification with a button per car and one for **Guest car**. Android
 shows at most three buttons: with one or two cars each car and **Guest car**; with three or more, the likeliest car,
-**Guest car**, and a third that opens SpotNav (the rest are in the card and the app). **Guest car** comes first when
-every car is ruled out, or when the camera saw none of them; else last. The card shows the same question as a banner
+**Guest car**, and a third that opens SpotNav (the rest are in the card and the app). With two or more cars **Guest car**
+comes first when every car is ruled out, or when the camera saw none of them; else last. At a charger with one car
+the car's button comes first: "<car> or Guest car?". The card shows the same question as a banner
 with a button per car and **Guest car**, and so does the SpotNav app.
 
 ![The card's question: "Which car is plugged in?" with a button per car](images/card-identify-question.png)
@@ -165,7 +166,8 @@ would plan nothing (your car at its target) or the wrong amount. **Guest car** p
   car** in the card or the app (also at a charger with one car, while a car is plugged in). Nothing switches to a
   guest by itself, not even when every car is ruled out or the camera saw none of them: those only put **Guest car**
   first. Unanswered, swiped or expired, the current car is kept.
-- **The guest's plan** is the amount in kWh, by the charger's own strategy and departure: **Cheapest** buys the
+- **The guest's plan** is the amount in kWh, by the charger's own strategy and departure time (the next time it comes round:
+  the household's weekdays and chosen date are not the guest's): **Cheapest** buys the
   cheapest hours for it before the departure (with no departure, within the next twelve hours), **Solar** charges
   it from the surplus, **Hybrid** from the sun first and the rest from the grid by the departure. The import target
   and the fuse hold it like any charge. **Charge now** charges it at once.
@@ -252,7 +254,7 @@ out.
   without an infrared filter.
 - In every other case the camera **only puts its car first** on the question's buttons, and the question is asked
   as usual, after three minutes.
-- **None of these cars** never makes a guest by itself: it puts **Guest car** first, and when the model is sure it
+- **None of these cars** never makes a guest by itself: with two or more cars it puts **Guest car** first, and when the model is sure it
   counts as the cars with a reference picture ruled out, so a charger with one car asks.
 - **A car's own report outranks the camera.** If, after the camera decided, a car's plug sensor or position
   settles it within the 30 minutes SpotNav listens, SpotNav switches to that car (recorded as decided by the plug

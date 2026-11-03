@@ -380,7 +380,7 @@ line says "identifying…".
 ![The card while the car is being identified](images/card-identifying.png)
 
 While SpotNav cannot tell which car was plugged in, the card shows "Which car is plugged in?" with one button
-per car, the likeliest first, and **Guest car** (first when every car is ruled out); one tap is the answer, the
+per car, the likeliest first, and **Guest car** (first when every car is ruled out, with two or more cars); one tap is the answer, the
 same as on the phones. At a charger with one car it asks only when that car says it is not the one plugged in.
 
 ![The question which car is plugged in, with a button per car](images/card-identify-question.png)
