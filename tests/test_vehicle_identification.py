@@ -203,9 +203,10 @@ class World:
         )
         from custom_components.spotnav.vehicles import vehicle_properties
 
-        await vehicle_properties.async_update_vehicle_properties(
-            hass, domain_data(hass).decision_store, self.cars["Tesla"], {vehicle_properties.KEY_TARGET: 60.0}
-        )
+        if "Tesla" in self.cars:
+            await vehicle_properties.async_update_vehicle_properties(
+                hass, domain_data(hass).decision_store, self.cars["Tesla"], {vehicle_properties.KEY_TARGET: 60.0}
+            )
         await self.observe()
         self.freezer.move_to(self.t0 - timedelta(seconds=1))
         return self
