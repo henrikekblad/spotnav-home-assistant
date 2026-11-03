@@ -733,6 +733,7 @@ async def test_no_fixture_is_left_unwritten() -> None:
             "price_days_held_se4.json",
             "push_register_invalid.json",
             "push_register_success.json",
+            "suggest_import_target_success.json",
             "update_charger_priority_conflict.json",
             "update_charger_priority_invalid_value.json",
             "update_charger_priority_no_site.json",
