@@ -212,6 +212,13 @@ async def test_the_guest_answer_plans_by_kwh_with_no_vehicle_and_the_unplug_brin
     reader = charger_data(hass, world.entry.entry_id).soc_reader
     assert live_vehicle_facts(hass, reader, GUEST_VEHICLE_ID, None) is None
     assert not world.identifier.claims(GUEST_VEHICLE_ID)
+    from custom_components.spotnav.runtime import preview_for
+
+    assert preview_for(hass, world.entry.entry_id)._learned_power(settings).kw is None, "nothing learned is used"
+    await vehicle_properties.async_update_vehicle_properties(
+        hass, domain_data(hass).decision_store, world.cars["Kia"], {vehicle_properties.KEY_MIN: 50}
+    )
+    assert dashboard_api._min_soc_percent(hass, world.entry.entry_id) is None, "no car's minimum level"
     controller = charger_data(hass, world.entry.entry_id).controller
     facts = session_facts(hass, controller)
     assert (facts.vehicle_id, facts.vehicle_name) == (GUEST_VEHICLE_ID, "Guest car"), "the charge history's car"
