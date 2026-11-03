@@ -847,6 +847,32 @@ async def test_a_battery_holding_the_grid_at_nothing_lets_the_target_lower_the_c
             assert world.car_a == 16.0
 
 
+@pytest.mark.parametrize("by_hand", [True, False])
+async def test_a_start_with_a_battery_covering_the_car_is_held_in_the_next_hour(
+    hass: HomeAssistant, monkeypatch, by_hand: bool
+) -> None:
+    """The owner's morning: a battery in AI mode covers the car under `battery_first`, a 6.5 kW target, the car started
+    by a person (through the executor, the manual pause stored) or by the plan's window. Across the hour's turn the
+    target still holds it (at 9 A or less), as it did before the turn."""
+    with freeze_time(_HOUR - timedelta(minutes=5, seconds=-5)) as frozen:
+        name = "aistart" if by_hand else "aiwindow"
+        world = await _world(
+            hass, monkeypatch, frozen, name, target_kw=6.5, house_w=500.0, battery_entity=f"sensor.{name}_battery_power"
+        )
+        controller = world.halo.controller
+        controller.config["solar_priority"] = "battery_first"
+        charger = world.halo.charger.entry_id
+        await _battery_holds_the_grid(world, 1)
+        if by_hand:
+            await _start_by_hand(world)
+        else:
+            await _charging(world)
+        await _battery_holds_the_grid(world, 12)
+        assert dt_util.utcnow() > _HOUR, "the next hour has started"
+        assert world.car_a <= 9.0, world.car_a
+        assert controller.import_target_snapshot()["chargers"][charger]["action"] == "held"
+
+
 async def test_a_battery_that_cannot_be_read_lowers_no_further_than_the_grids_phases(
     hass: HomeAssistant, monkeypatch
 ) -> None:
