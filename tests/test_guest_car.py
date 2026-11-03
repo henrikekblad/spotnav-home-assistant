@@ -147,7 +147,7 @@ async def test_two_cars_ask_with_guest_car_and_all_ruled_out_puts_it_first(world
     await world.later(ASK_AFTER_S + 5)
     assert titles(world.sent()[0]) == ["Guest car", "Kia", "Tesla"]
     block = dashboard_api.capture_guest(world.hass, world.entry.entry_id, world.settings)
-    assert block == {"active": False, "amount_kwh": DEFAULT_GUEST_KWH, "first": False}
+    assert block == {"active": False, "amount_kwh": DEFAULT_GUEST_KWH, "first": True}
     await world.later(LISTEN_FOR_S + 60)
     assert world.settings.target.vehicle_id == world.cars["Kia"], "unanswered: the current car is kept"
     assert not is_guest(world.settings)
@@ -463,7 +463,8 @@ async def test_a_guest_evening_end_to_end_and_its_core_events_replay(hass: HomeA
         await car.settle(ASK_AFTER_S)
         question = phone[-1].data
         assert titles(question) == ["EV6", "Guest car"]
-        hass.bus.async_fire("mobile_app_notification_action", {"action": question["data"]["actions"][0]["action"]})
+        # The second button is Guest car: the charger's car comes first.
+        hass.bus.async_fire("mobile_app_notification_action", {"action": question["data"]["actions"][1]["action"]})
         await car.settle()
         await car.preview.async_recalculate()
         await car.settle()
