@@ -385,7 +385,8 @@ night belonging to the day it starts on). An hour with more than ten minutes wit
 measured so far, and the energy), or `null` before it has a reading. `effective_target_kw` (since 2.3.0's
 suggestion round, additive) is the level the running hour is held under: the import target lifted to the month's
 peak where a part counts the hour and the month already reached more, else the target; `null` without a target or
-where the site cannot measure. `import_target_kw` is the site's import target
+where the site cannot measure. The webhook sends it only to an app that asks for it (`"reads": ["effective_target"]`,
+in the dashboard and in `update_grid_tariff`'s answer). `import_target_kw` is the site's import target
 (`null` for none), which is set with the site's `import_target_kw` field in `spotnav/update_entity_config` (a number
 of at least 0.1, `null` or `""` to clear; written without reloading the site). Since 2.3 the import target holds
 the site's chargers through load balancing (the status lines below); a demand charge is measured only. A full example is `tests/fixtures/grid_tariff/pilot_demand.json`.

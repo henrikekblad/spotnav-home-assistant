@@ -216,7 +216,15 @@ async def test_the_app_reads_the_block_only_when_it_asks_and_writes_it_over_the_
         "/api/webhook/webhook-a",
         json={"version": 1, "action": "dashboard", "api_version": 1, "reads": ["grid_tariff"]},
     )
-    assert (await asked.json())["grid_tariff"]["writable"] is True
+    asked_block = (await asked.json())["grid_tariff"]
+    assert asked_block["writable"] is True
+    # The level the running hour is held under only for an app that reads it (its decoder refuses unknown keys).
+    assert "effective_target_kw" not in asked_block["demand"]
+    level = await client.post(
+        "/api/webhook/webhook-a",
+        json={"version": 1, "action": "dashboard", "api_version": 1, "reads": ["grid_tariff", "effective_target"]},
+    )
+    assert (await level.json())["grid_tariff"]["demand"]["effective_target_kw"] is None
 
     response = await client.post(
         "/api/webhook/webhook-a",
@@ -226,6 +234,7 @@ async def test_the_app_reads_the_block_only_when_it_asks_and_writes_it_over_the_
     assert response.status == 200, body
     assert (body["ok"], body["error"], body["field_errors"], body["action"]) == (True, None, [], "update_grid_tariff")
     assert body["grid_tariff"]["transfer_high"]["effective_value"] == 60.0
+    assert "effective_target_kw" not in body["grid_tariff"]["demand"]
     assert price.data["transfer_high"] == OWNER["transfer_high"]
 
     conflict = await client.post(
