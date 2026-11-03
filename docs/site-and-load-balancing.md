@@ -604,7 +604,9 @@ charger draws on would turn from import to export (so the current the fuse carri
   the hour may import. Spread over the time left, less what the house draws now (the site's net import less what
   its chargers draw; a solar surplus counts as less, so it leaves the chargers more), it is what the chargers may
   draw. In the hour's last minute the time left counts as a minute, and the fuse's own ceiling bounds the result.
-  A few minutes without a reading count at the hour's own mean.
+  A few minutes without a reading count at the hour's own mean. While a charger that was just started (or
+  resumed) still reads below its minimum, its draw the meter or a battery already shows is not counted as the
+  house's: the house counts at most its typical load then, so a start is not held for its own draw.
 - **Several chargers** share it in the site's order (priority First, Normal, Last, then the order they joined). Each
   is held to the whole amps that still fit. A switch-only charger runs only while its whole switched power fits.
 - **At the minimum.** A charger is never held below its minimum current. Once the hour can no longer end at or under
