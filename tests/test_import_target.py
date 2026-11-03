@@ -14,6 +14,8 @@ from custom_components.spotnav.site.import_target import (
     ACTION_UNHELD,
     departure_at_risk,
     departure_shortfall_kwh,
+    effective_target,
+    held_level_kw,
     hour_budget,
     lowering_floor_a,
     MIN_REMAINING_S,
@@ -29,6 +31,8 @@ from custom_components.spotnav.site.import_target import (
 
 HOUR = datetime(2026, 11, 2, 13, 0, tzinfo=timezone.utc)
 FUSE_W = 25 * 3 * 230.0
+#: A 6.0 kW target is held under 5.88 kW: the larger of 0.1 kW and 2 % below it.
+HELD_W = 5880.0
 
 
 def _running(minutes: float, kwh: float, *, gap_s: float = 0.0, grid_w: float | None = 1000.0) -> RunningHour:
@@ -57,15 +61,16 @@ def _budget(minutes: float, kwh: float, *, house_w: float = 1000.0, target_kw: f
 
 def test_at_the_start_of_the_hour_the_chargers_get_the_target_less_the_house() -> None:
     budget = _budget(0.5, 0.0)
-    # 6 kWh over the 59.5 minutes left, less the house's kilowatt.
-    assert budget.allowed_w == pytest.approx(6000.0 * 60 / 59.5 - 1000.0)
+    # 5.88 kWh (6 kWh less its margin) over the 59.5 minutes left, less the house's kilowatt.
+    assert budget.allowed_w == pytest.approx(HELD_W * 60 / 59.5 - 1000.0)
+    assert budget.target_kw == 6.0 and budget.hold_kw == pytest.approx(5.88)
     assert not budget.house_over
 
 
 def test_what_was_imported_so_far_is_taken_off_the_budget() -> None:
-    # Half the hour gone, 4 kWh in: 2 kWh for the 30 minutes left, so 4 kW, less the house.
+    # Half the hour gone, 4 kWh in: 1.88 kWh for the 30 minutes left, so 3.76 kW, less the house.
     budget = _budget(30, 4.0)
-    assert budget.allowed_w == pytest.approx(3000.0)
+    assert budget.allowed_w == pytest.approx(2760.0)
     assert budget.hour_kw == pytest.approx(8.0)
     assert budget.so_far_kwh == pytest.approx(4.0)
 
@@ -92,7 +97,7 @@ def test_the_last_minutes_are_bounded_by_the_least_time_left_and_the_fuse() -> N
 def test_a_surplus_leaves_the_chargers_more() -> None:
     # The sun exports 2 kW beyond the house: the chargers may take it as well as the target.
     budget = _budget(0.5, 0.0, house_w=-2000.0)
-    assert budget.allowed_w == pytest.approx(6000.0 * 60 / 59.5 + 2000.0)
+    assert budget.allowed_w == pytest.approx(HELD_W * 60 / 59.5 + 2000.0)
 
 
 def test_a_house_alone_over_the_target_is_said() -> None:
@@ -123,7 +128,27 @@ def test_the_first_reading_of_an_hour_at_its_very_start_counts_nothing_so_far() 
     running = RunningHour(start=HOUR, last_at=HOUR, last_grid_w=2000.0)
     budget, why = hour_budget(target_kw=6.0, running=running, now=HOUR, house_w=1000.0, ceiling_w=FUSE_W)
     assert why is None and budget is not None
-    assert budget.so_far_kwh == 0.0 and budget.allowed_w == pytest.approx(5000.0)
+    assert budget.so_far_kwh == 0.0 and budget.allowed_w == pytest.approx(HELD_W - 1000.0)
+
+
+def test_the_margin_is_the_larger_of_a_tenth_of_a_kilowatt_and_two_percent_and_never_below_nothing() -> None:
+    assert held_level_kw(6.0) == pytest.approx(5.88)
+    assert held_level_kw(3.0) == pytest.approx(2.9)
+    assert held_level_kw(20.0) == pytest.approx(19.6)
+    # Tiny targets are held at nothing, never below.
+    assert held_level_kw(0.1) == 0.0
+    assert held_level_kw(0.05) == 0.0
+    budget = _budget(0.5, 0.0, target_kw=0.1, house_w=0.0)
+    assert budget.hold_kw == 0.0 and budget.allowed_w == 0.0 and budget.rate_w == 0.0
+
+
+def test_the_margin_is_taken_once_from_a_lifted_level() -> None:
+    # The month's peak of 7.0 kW lifts a 6.0 kW target: shown as 7.0, held under 7.0 less 0.14, never 7.0 less two margins.
+    found = effective_target(6.0, [7.0])
+    assert found.kw == 7.0 and found.hold_kw == pytest.approx(6.86)
+    budget = _budget(0.5, 0.0, target_kw=found.kw, house_w=0.0)
+    assert budget.target_kw == 7.0 and budget.hold_kw == pytest.approx(6.86)
+    assert budget.allowed_w == pytest.approx(6860.0 * 60 / 59.5)
 
 
 def test_an_hour_already_over_is_not_the_running_one() -> None:

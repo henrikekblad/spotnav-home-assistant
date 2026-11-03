@@ -215,8 +215,9 @@ async def test_a_16_a_car_is_held_so_every_hour_stays_under_the_target(hass: Hom
         hours = world.complete_hours()
         assert len(hours) == 2
         for hour in hours:
-            assert world.hour_kw(hour) <= 6.0, f"{hour}: {world.hour_kw(hour):.2f} kW"
-        # Held, never paused: 6 kW less the house's 1 kW leaves 7 A on three phases.
+            # Under the target less its margin (the larger of 0.1 kW and 2 %): 5.88 kW.
+            assert world.hour_kw(hour) <= 5.88, f"{hour}: {world.hour_kw(hour):.2f} kW"
+        # Held, never paused: 5.88 kW less the house's 1 kW leaves 7 A on three phases.
         assert world.turn_offs == 0
         assert world.car_a == 7.0
         assert world.decision.reason == REASON_IMPORT_TARGET_HELD
@@ -563,7 +564,7 @@ async def test_the_floor_charge_is_never_held(hass: HomeAssistant, monkeypatch) 
         await world.step()
         await _charging(world)
         await world.run(2)
-        assert world.car_a == 7.0
+        assert world.car_a <= 7.0, "held under the target less its margin"
         # The car's minimum level's charge (below it SpotNav charges at once): the floor wins over the target.
         monkeypatch.setattr(type(world.halo.cc), "charge_origin", property(lambda self: "min_soc"))
         await world.run(3)
@@ -913,11 +914,12 @@ async def test_a_plan_counts_on_the_target_less_the_house_never_below_the_minimu
         charger = world.halo.charger.entry_id
         await world.step()
         await world.step()
-        assert world.halo.controller.import_target_plan_kw(charger) == pytest.approx(5.0, abs=0.01)
+        # The target less its margin (5.88 kW), less the house's kilowatt.
+        assert world.halo.controller.import_target_plan_kw(charger) == pytest.approx(4.88, abs=0.01)
         # A kettle's half minute does not move it: the house's typical load does, not its load this instant.
         world.house_a = 4000.0 / (3 * _V)
         await world.step()
-        assert world.halo.controller.import_target_plan_kw(charger) == pytest.approx(5.0, abs=0.1)
+        assert world.halo.controller.import_target_plan_kw(charger) == pytest.approx(4.88, abs=0.1)
         # A house that stays at 4 kW leaves 2 kW: below the car's 6 A on three phases, all a held charge runs at.
         await world.run(30)
         assert world.halo.controller.import_target_plan_kw(charger) == pytest.approx(6 * 3 * _V / 1000.0)

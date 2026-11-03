@@ -79,6 +79,7 @@ from .import_target import (
     departure_shortfall_kwh,
     effective_target,
     EffectiveTarget,
+    held_level_kw,
     HOLD_VOLTAGE_V,
     hour_budget,
     HourBudget,
@@ -4869,8 +4870,9 @@ class SiteCapacityController:
         car_kw = member_w(member.phases, max(member.min_a, member.wants_a)) / 1000.0
         ceiling_kw = max(power_kw, car_kw)
         held_kw = min(ceiling_kw, max(0.0, budget.rate_w / 1000.0 - max(0.0, house_kw)))
-        # Later hours at the target as set: the month's free level lifts the running hour only.
-        set_kw = budget.target_kw if self._target_effective is None else self._target_effective.set_kw
+        # Later hours at the target as set, less its margin as the hold keeps it: the month's free level lifts the
+        # running hour only.
+        set_kw = held_level_kw(budget.target_kw if self._target_effective is None else self._target_effective.set_kw)
         later_kw = min(ceiling_kw, max(0.0, set_kw - max(0.0, house_kw)))
         minimum_kw = member_w(member.phases, member.min_a) / 1000.0
         held_kw = 0.0 if held_kw < minimum_kw else held_kw
@@ -5265,6 +5267,7 @@ class SiteCapacityController:
                 "action": action,
                 "cap_a": cap_a,
                 "departure": departure,
+                "hold_kw": round(budget.hold_kw, 3),
                 "hour_kw": round(budget.hour_kw, 3),
                 "allowed_w": round(budget.allowed_w),
                 "house_w": round(budget.house_w),
@@ -5305,11 +5308,11 @@ class SiteCapacityController:
         house_kw = self._typical_house_kw()
         if house_kw is None:
             return None
-        # The target as set: the month's free level lifts the running hour's hold only, and a plan's later hours may
-        # be counted by no part, a new day or a new month.
+        # The target as set, less its margin as the hold keeps it (`held_level_kw`): the month's free level lifts the
+        # running hour's hold only, and a plan's later hours may be counted by no part, a new day or a new month.
         phases, _phase = self.reckoned_phases(charger_entry_id)
         minimum_kw = member_w(phases, float(wiring.get("min_current_a", DEFAULT_MIN_CURRENT_A))) / 1000.0
-        return max(minimum_kw, target_kw - house_kw)
+        return max(minimum_kw, held_level_kw(target_kw) - house_kw)
 
     def _target_start_cap(self, charger_entry_id: str) -> float | None:
         """The most a resume or a probe may give this charger for the import target: `0.0` while the target pauses
@@ -5389,12 +5392,17 @@ class SiteCapacityController:
             else {
                 "kw": self._target_effective.kw,
                 "free_kw": self._target_effective.free_kw,
+                # What the hour is held under: the level less its margin, once.
+                "hold_kw": round(self._target_effective.hold_kw, 3),
             },
             "not_applied": self._target_not_applied,
             "budget": None
             if budget is None
             else {
                 "hour_start": budget.hour_start.isoformat(),
+                # The level shown (the target, or the month's peak) and what the hour is held under.
+                "target_kw": budget.target_kw,
+                "hold_kw": round(budget.hold_kw, 3),
                 "hour_kw": round(budget.hour_kw, 3),
                 "so_far_kwh": round(budget.so_far_kwh, 3),
                 "remaining_s": round(budget.remaining_s, 1),
