@@ -20,7 +20,7 @@ energy to charge (or a [target state of charge](target-soc.md)), the charger's *
   period, top-off, hold, solar or hybrid); load balancing still keeps the fuse safe, and a site's
   [import target](site-and-load-balancing.md#holding-the-chargers-under-the-import-target) holds a
   Start as it holds a plan, until *Release the import target tonight* sets it aside until the car is
-  unplugged. A **Start** also
+  unplugged or the charge is done, by noon at the latest. A **Start** also
   ends when the car ends the charge by itself (full, at its limit, or no longer drawing): Auto then
   resumes and plans again without starting the period that is already running. When the car's state of
   charge read then shows it full for the plan (at its target, or at its own limit when the plan charges

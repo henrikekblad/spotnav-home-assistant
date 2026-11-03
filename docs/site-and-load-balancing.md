@@ -571,17 +571,19 @@ charger draws on would turn from import to export (so the current the fuse carri
   - **Keep the import target**: the target holds, nothing is sent, and the status says how much will be missing.
 - **Release the import target tonight** (from the notification, the card or the app) sets the target aside for that charge until its
   departure, or until the car is unplugged or the plan is made for another departure; a restart keeps it. A charge
-  without a departure ahead (a person's Start, or a plan without one) is set aside until the car is unplugged. The
+  without a departure ahead (a person's Start, or a plan without one) is set aside until the car is unplugged, the
+  car ends the charge by itself (full, or at its limit), or the next noon, whichever comes first: tonight means
+  tonight, also on a charger that cannot tell whether a car is plugged in. The
   card offers it beside every line where the target holds or pauses a charge, and asks first, since a press can
-  cost the month: *Release the import target? The car then charges at full power until it is unplugged (or until the
-  departure at 07:00). The month's peak may reach up to 11 kW, against 6.0 kW today.* (up to: the house's typical
+  cost the month: *Release the import target? The car then charges at full power until it is unplugged, or until the
+  departure at 07:00. The month's peak may reach up to 11 kW, against 6.0 kW today.* (up to: the house's typical
   load and the charge's full power, rounded; today: the month's level the target holds to). The phone's button is
   one press, as it answers a question already asked. A phone's
   button carries the departure it was told for: pressed once the plan is for another departure (after a restart or a
   new plan), it sets nothing aside. While the target's notice stands, the plan's own *will not be ready* notice is
   held back; once the target's notice comes down and the plan still cannot be met for reasons of its own, that
   notice is told. The status says *The import target is set aside by
-  you until 07:00*, or *until the car is unplugged*.
+  you until 07:00*, or *until the car is unplugged or the charge is done, by noon at the latest*.
 - **Plans count on the target.** A plan for a charger on the site counts on the power the target leaves it (the
   target less the house's typical load as above, never below the charger's minimum), so it buys the quarter-hours
   the held charge needs and says honestly what it can deliver by the departure (see

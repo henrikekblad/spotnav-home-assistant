@@ -217,7 +217,7 @@ the status carries these lines, tone `normal` but for `import_target_at_risk` (`
   plan's or a person's Start): it waits for the next clock hour, `until`.
 - `import_target_held` and `import_target_paused` carry `releasable` (`true`: offer "Release the import target
   tonight", `release_import_target`, after a confirmation), `release_until` (the plan's departure ahead, or `null`:
-  until the car is unplugged) and `release_peak_kw` (what the month's peak could reach once set aside: the house's
+  until the car is unplugged, the charge is done or noon) and `release_peak_kw` (what the month's peak could reach once set aside: the house's
   typical load and the charge's full power, kW rounded; `null` when not known), for that confirmation.
 - `import_target_paused` carries `house_over` too: `true` where the house alone ends the hour above the target, said in
   place of "so the hour stays under it".
@@ -226,14 +226,16 @@ the status carries these lines, tone `normal` but for `import_target_at_risk` (`
   "Release the import target tonight", `release_import_target`; `false` (`hold`): only say it.
 - `import_target_released` `{target_kw, departure, automatic}` after the issues while the charge runs with the target
   set aside until `departure`: by a person (`automatic` `false`), or by the plan's own `if_not_ready` `release`.
-  `departure` `null`: set aside by a person until the car is unplugged (a Start, or a plan without a departure).
+  `departure` `null`: set aside by a person until the car is unplugged (a Start, or a plan without a departure), the
+  car ends the charge by itself, or the next local noon, whichever comes first.
 - `import_target_house_over` `{target_kw}` after the issues while the house alone ends the hour above the target and
   the car charges.
 
 **Setting the import target aside.** `spotnav/release_import_target {"api_version": 1, "charger_id"}` (any user, as a
 Start) and the webhook's `release_import_target` (optional `api_version`, `1`) set the site's import target aside for
 that charger's charge until its plan's departure, or until the car is unplugged; without a departure ahead (a
-person's Start, or a plan without one) until the car is unplugged. It is kept across a restart. The
+person's Start, or a plan without one) until the car is unplugged, the car ends the charge by itself, or the next
+local noon, whichever comes first. It is kept across a restart. The
 answer is `{"api_version": 1, "ok", "error"}` (the webhook adds `"action": "release_import_target"`, HTTP 200, or 400
 with the refusal): `spotnav_no_site`, `spotnav_no_import_target` (the site has none), or the charger lookup's codes. The set-aside also ends when the plan is made for another
 departure. The phone's button on the notification does the same (its action id is
