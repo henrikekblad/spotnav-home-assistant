@@ -2322,5 +2322,10 @@
         "dismissible": true
       }
     ]
+  },
+  "guest": {
+    "active": false,
+    "amount_kwh": 10.0,
+    "first": false
   }
 }

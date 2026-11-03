@@ -131,6 +131,7 @@ DASHBOARD_SECTIONS = [
     "vehicle_choices",
     "plan_notice",
     "setup",
+    "guest",
 ]
 
 #: One chart row, exactly.

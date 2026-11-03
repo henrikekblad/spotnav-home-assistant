@@ -36,6 +36,7 @@ async def test_every_documented_action_has_a_handler() -> None:
         "push_register",
         "identify_vehicle",
         "choose_vehicle_identification",
+        "update_guest",
         "fix_own_mode",
         "release_import_target",
         "get_power_month",

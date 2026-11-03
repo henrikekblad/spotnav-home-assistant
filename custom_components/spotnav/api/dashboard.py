@@ -138,6 +138,7 @@ from ..site.site_capacity_controller import SiteCapacityController
 from ..site.solar_capability import REASON_NEEDS_TOTAL_GRID_POWER
 from ..util import aware_iso, finite_number
 from ..vehicles import vehicle_properties
+from ..vehicles.guest import guest_amount_kwh, is_guest
 from ..vehicles.capability import REASON_SITE_DIRECTION_UNKNOWN
 from ..vehicles.charger_inventory import charger_entries
 from ..vehicles.duplicate_chargers import duplicates_of
@@ -551,6 +552,10 @@ class CapturedDashboard:
     #: For the solar strategy with a forecast source: the sun it promises the car and when
     #: (`solar_forecast_window`), else `None`.
     solar_forecast: tuple[float, datetime, datetime] | None = None
+    #: The guest car (`capture_guest`): whether one is planned for, the guest amount, whether "Guest car" goes first in
+    #: the open question; and whether its amount is delivered (for the status only).
+    guest: dict[str, Any] | None = None
+    guest_done: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -1256,6 +1261,8 @@ def capture_dashboard(
         own_current_sensors=_own_current_sensors(hass, entry_id, site),
         identification=_identification(hass, entry_id),
         camera_identification=_camera_identification(hass, entry_id, settings),
+        guest=capture_guest(hass, entry_id, settings),
+        guest_done=bool(controller is not None and is_guest(settings) and controller.guest_met),
         vehicle_choices=tuple((choice.id, choice.name) for choice in resolve_target_vehicle(hass, None)[1]),
         measured_power_kw=_measured_power_kw(controller),
         voltage_between_phases_v=voltage_between_phases_v(hass, entry_id),
@@ -1345,6 +1352,19 @@ def _identification(hass: HomeAssistant, entry_id: str) -> dict[str, Any] | None
     data = charger_data(hass, entry_id)
     identifier = None if data is None else data.identifier
     return None if identifier is None else identifier.dashboard()
+
+
+def capture_guest(hass: HomeAssistant, entry_id: str, settings: AutoSettings | None) -> dict[str, Any]:
+    """The dashboard's `guest` block (`vehicles/guest.py`): `active` (this charger plans for a guest car now),
+    `amount_kwh` (the guest amount the next guest plan starts from, the Guest tab's) and `first` ("Guest car" goes
+    first in the open question: every car is ruled out, or the camera saw none of them)."""
+    data = charger_data(hass, entry_id)
+    identifier = None if data is None else data.identifier
+    return {
+        "active": is_guest(settings),
+        "amount_kwh": guest_amount_kwh(hass),
+        "first": bool(identifier is not None and identifier.guest_first),
+    }
 
 
 def _camera_identification(hass: HomeAssistant, entry_id: str, settings: AutoSettings | None) -> dict[str, Any] | None:
@@ -2043,6 +2063,8 @@ def serialize_dashboard(
         # Additive: what is still left to set up (`setup_checklist.py`); the card shows it to an administrator.
         # An app reads it only with `reads: ["setup"]` (`api/webhook.py`).
         "setup": serialize_setup(capture.setup),
+        # Additive: the guest car (`capture_guest`). An app reads it only with `reads: ["guest"]` (`api/webhook.py`).
+        "guest": capture.guest,
     }
 
 
@@ -2543,6 +2565,10 @@ def status_facts(capture: CapturedDashboard) -> StatusFacts:
         ),
         top_off_until=None if capture.live.top_off_until is None else _utc(capture.live.top_off_until),
         min_soc_percent=capture.live.min_soc_percent,
+        guest_kwh=(
+            settings.requested_kwh if settings is not None and capture.guest is not None and capture.guest["active"] else None
+        ),
+        guest_done=capture.guest_done,
         sun_fill_limit_percent=finite_number(((None if site is None else site.solar_state) or {}).get("sun_fill_limit_percent")),
         **_car_ended_facts(capture.live.car_ended_wait, settings),
         balancing_paused=site is not None and site.balancing_paused,
