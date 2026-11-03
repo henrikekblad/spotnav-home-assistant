@@ -16,7 +16,7 @@ public GitHub issue: open the issue with the **bug report** form, then email the
 **support@sensnology.se** with the issue's number in the subject.
 
 The site entry's file (and the card's **Download debug info** in Settings, Support, for
-administrators) also carries the whole installation as one debug bundle (`bundle_version` 9). It keeps
+administrators) also carries the whole installation as one debug bundle (`bundle_version` 10). It keeps
 the last day, also across restarts and updates: what it holds below is stored by SpotNav (written at
 most every five minutes and when Home Assistant stops) and read back after a restart, so a bundle
 downloaded in the evening still shows the afternoon. Nothing is read from the recorder.
@@ -30,6 +30,23 @@ downloaded in the evening still shows the afternoon. Nothing is read from the re
   reason), the phases the charger reads back, whether SpotNav switched it to one phase, the current
   last written and the current asked for. There is no PV power: a site has no PV sensor to read. A
   charger in no site has the same rows in its own `history_24h` (with the current it measures).
+  Since version 10 the import target's columns come last: on the site's row the level the hour is
+  held under (`target_hold_kw`, the target less its margin), what the chargers may draw
+  (`target_allowed_w`), the house's power the budget used (`target_house_w`) and why the target is
+  not applied (`target_not_applied`: empty while it is, or while no target is set); on a member
+  charger's row what the target does to it (`target_action`: `free`, `held`, `paused`, `released` or
+  `exempt`, such as a charge below the car's minimum level) and the amps it caps it at
+  (`target_cap_a`). A row kept from before ends earlier: its missing values are empty.
+- `import_target.log` in the site's diagnostics: the import target's changes of the last 24 hours
+  (at most 500), also from before a restart. Each entry has `at`, the charger (`null` for the site)
+  and an `action`: what the target did to the charger (`held` with `cap_a`, `paused`, `at_risk`,
+  with the hour's budget beside it); the site's state when it changes (`off`, `applied`,
+  `not_applied` with its `reason`); the departure's notice (`notice_told`, `notice_retold`,
+  `notice_cleared`, with the departure and the kWh missing); and every release (`release`, with its
+  `source`: `phone`, `card`, `app` or `plan`, and `until`), a refused one (`release_refused` with
+  its `error`), one a Start kept until the unplug (`release_kept`), and its end (`release_ended`,
+  with its `reason`: `departure_passed`, `unplugged`, `charge_ended`, `noon`,
+  `departure_changed` or `target_removed`).
 - `sessions` per charger: its last five plug-ins, the current one included, oldest first. Each has
   when the car was plugged in and unplugged, the car and how it was identified, the strategy at the
   start and when it changed, and its own logs: `solar` (what solar and hybrid decided: only changes and
