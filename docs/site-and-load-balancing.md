@@ -110,7 +110,15 @@ where *other load* is the site's measured total minus the chargers' own measured
 that phase. Each charger gets a proposed current from the headroom on its phases, in one pass,
 between the charger's minimum (6 A by default) and its own limits.
 
-Measurements older than the *maximum measurement age* (default 120 s) are not trusted, and if
+Measurements older than the *maximum measurement age* (default 120 s) are not trusted. On a site that
+derives its current from power, a phase's active power that has not changed for longer than that
+still counts as fresh (a still value, not a lost one) while Home Assistant keeps hearing from it and
+the same phase's voltage, or the reactive or apparent power the site reads for it, changed within the
+maximum age: some meters (a Sigenergy with the grid held at about 0 W by its battery) leave a phase's
+power unchanged for minutes while the meter is live. The last value is kept. A phase whose power is
+unavailable or unknown, or whose other readings sit still too, is stale as before. The diagnostics
+show such a phase under `phase_signed_active_power_held_still` (`held_still`, with the companion
+reading and its age; the entity is the one the site's settings name for that phase). And if
 the chargers together claim more current than the site's total (beyond a small tolerance) the
 whole result is reported as invalid rather than corrected silently. Results are exposed as
 sensors and in [diagnostics](troubleshooting.md):
