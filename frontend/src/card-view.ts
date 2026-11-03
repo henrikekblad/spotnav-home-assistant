@@ -87,6 +87,7 @@ import { renderPlanPreview, type PreviewState } from "./plan-preview";
 import { type Fiscal, type GridTariffBlock, type HighLoadWindow, type ReferencePicture, type Vehicle } from "./validate";
 import { gridTariffRows, windowEditor, withComponent, withHigh, withPercent, withWindow, type GridTariffRowKey } from "./grid-tariff";
 import { componentEditor, demandRows, hourLine, kwText } from "./demand-charge";
+import { suggestionAdvice } from "./target-suggestion";
 import { floorEditor, limitEditor, targetEditor } from "./percent-editors";
 import { defaultTargetPercent } from "./percent-slider";
 import { vehicleSummary, type VehicleEdits, type VehicleReference } from "./vehicle-settings";
@@ -291,6 +292,8 @@ export interface CardViewInput {
   onFixOwnMode?: (entity: string, value: string) => void;
   /** An issue's "Release the import target tonight" (any user): the card sets the import target aside for this charge, then reads again. */
   onReleaseImportTarget?: () => void;
+  /** The import target's editor opened (administrators): the suggestion from Home Assistant's statistics, `null` for none. */
+  onSuggestImportTarget?: () => Promise<unknown>;
   /** Where Settings was left for a child dialog: the page returns there (owned by the card, kept across renders). */
   overviewPlace?: OverviewPlaceHolder;
   /** A picture for the camera's editors: the camera's picture now, or a car's reference thumbnail. */
@@ -3909,6 +3912,15 @@ export function createCardView(input: CardViewInput): CardView {
                   max: 1000,
                   decimals: 1,
                   noneLabel: translate(model.language, "settings.value.off"),
+                  ...(input.onSuggestImportTarget === undefined
+                    ? {}
+                    : {
+                        advice: {
+                          loading: translate(model.language, "target.suggest.loading"),
+                          use: translate(model.language, "target.suggest.use"),
+                          answer: input.onSuggestImportTarget().then((raw) => suggestionAdvice(model.language, raw)),
+                        },
+                      }),
                 },
                 (value) =>
                   writeValue({ kind: "entity", scope: "site", draft: { import_target_kw: value === null ? "" : String(value) } }),

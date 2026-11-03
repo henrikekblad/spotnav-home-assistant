@@ -357,3 +357,62 @@ describe("the card", () => {
     expect(failure?.getAttribute("data-code")).toBe("spotnav_needs_total_grid_power");
   });
 });
+
+describe("the month's peak and the days from Home Assistant's statistics", () => {
+  const imported = (): PowerMonth => month("power_month/pilot_imported_month.json");
+
+  it("reads the additive fields, and an answer without them as before", () => {
+    const answer = imported();
+    expect(answer.days.filter((day) => day.imported).map((day) => day.date)).toEqual(["2026-09-01", "2026-09-02", "2026-09-03", "2026-09-04"]);
+    expect(answer.hours!.some((hour) => hour.month_peak_kw === 6.664)).toBe(true);
+    const older = month();
+    expect(older.days.every((day) => !day.imported && day.month_peak_kw === null)).toBe(true);
+    const raw = read("power_month/pilot_imported_month.json");
+    const days = raw["days"] as Array<Record<string, unknown>>;
+    const { imported: _imported, month_peak_kw: _peak, ...bare } = days[0]!;
+    expect(decodePowerMonth({ ...raw, days: [bare] }).ok).toBe(true);
+    expect(decodePowerMonth({ ...raw, days: [{ ...days[0], imported: "yes" }] }).ok).toBe(false);
+    expect(decodePowerMonth({ ...raw, days: [{ ...days[0], month_peak_kw: -1 }] }).ok).toBe(false);
+  });
+
+  it("hatches the imported days, says so in the legend and a note, and in their figures", () => {
+    const answer = imported();
+    const body = render(answer, UI, () => undefined, "sv");
+    expect(body.querySelectorAll(".spotnav-power-stack[data-imported='true']")).toHaveLength(4);
+    const legend = body.querySelector("ul")?.textContent ?? "";
+    expect(legend).toContain("Från Home Assistants statistik");
+    expect(body.querySelector("[data-note='imported']")?.textContent).toBe(
+      "Timmarna från Home Assistants statistik är ungefärliga: de räknas i månadens toppar men lyfter aldrig effektmålet.",
+    );
+    const first = answer.days[0]!;
+    expect(dayFigures("sv", first)).toContain("från Home Assistants statistik");
+  });
+
+  it("draws the month's peak as a thin line over the days and hours it lifted the target, from the day it was set", () => {
+    const answer = imported();
+    const body = render(answer, UI, () => undefined, "sv");
+    const lifted = answer.days.filter((day) => day.month_peak_kw !== null).map((day) => day.date);
+    expect(lifted.length).toBeGreaterThan(0);
+    expect(lifted.every((date) => date > "2026-09-08")).toBe(true);
+    const lines = Array.from(body.querySelectorAll<HTMLElement>("button[data-key] .spotnav-power-peak"));
+    expect(lines).toHaveLength(lifted.length);
+    const top = scaleTop(answer.days.map((day) => day.peak_kw), 6);
+    expect(lines[0]!.style.bottom).toBe(`${(6.664 / top) * 100}%`);
+    expect(body.querySelector("ul")?.textContent).toContain("Månadens topp 6,7 kW");
+    // The day view: only the hours a part's free level lifted.
+    const day = lifted[0]!;
+    const hours = render(answer, { day, pending: false }, () => undefined, "sv");
+    const hourLines = hours.querySelectorAll("button[data-key] .spotnav-power-peak").length;
+    const expected = answer.hours!.filter((hour) => hour.start.startsWith(day) && hour.month_peak_kw !== null).length;
+    expect(hourLines).toBe(expected);
+    expect(expected).toBeGreaterThan(0);
+    expect(expected).toBeLessThan(24);
+    // The month's peak runs just above the target here: the target's label goes under its line, never over the peak's.
+    expect(hours.querySelector<HTMLElement>(".spotnav-power-target-label")?.dataset["placement"]).toBe("below");
+    expect(render(month(), UI).querySelector<HTMLElement>(".spotnav-power-target-label")?.dataset["placement"]).toBeUndefined();
+    // A month where it never lifted has no such line or legend row.
+    expect(render(month()).querySelector(".spotnav-power-peak")).toBeNull();
+    expect(render(month()).querySelector("ul")?.textContent).not.toContain("The month's peak");
+  });
+});
+

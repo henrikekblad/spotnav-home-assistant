@@ -50,6 +50,7 @@ describe("the demand block", () => {
       { ...DEMAND, components: [{ ...DEMAND["components"][0], window: { ...DEMAND["components"][0]["window"], to_hour: 6 } }], per_component: [] },
       { ...DEMAND, hour: { start: "x", kw_so_far: 1 } },
       { ...DEMAND, import_target_kw: -2 },
+      { ...DEMAND, effective_target_kw: "6" },
     ];
     for (const demand of broken) {
       const decoded = decodeDashboard(dashboard({ ...PILOT, demand }));
@@ -78,7 +79,14 @@ describe("the demand block", () => {
   });
 
   it("shows the running hour against the import target, and nothing without a target", () => {
-    expect(hourLine("sv", decodeDemand(DEMAND))).toBe("Den här timmen: 3,1 av 6,0 kW");
+    // At 10:20 the day part's peak (7,0 kW at 09:00) lifts the 6 kW target for the rest of the month's day hours.
+    expect(hourLine("sv", decodeDemand(DEMAND))).toBe("Den här timmen: 3,1 av 6,8 kW – månadens topp (effektmål 6,0 kW)");
+    expect(hourLine("en", decodeDemand(DEMAND))).toBe("This hour: 3.1 of 6.8 kW – the month's peak (import target 6.0 kW)");
+    expect(hourLine("sv", decodeDemand({ ...DEMAND, effective_target_kw: 6 }))).toBe("Den här timmen: 3,1 av 6,0 kW");
+    // A backend before the level was stated: the target alone.
+    const { effective_target_kw: _level, ...older } = DEMAND;
+    expect(decodeDemand(older).effective_target_kw).toBeNull();
+    expect(hourLine("sv", decodeDemand(older))).toBe("Den här timmen: 3,1 av 6,0 kW");
     expect(hourLine("en", decodeDemand({ ...DEMAND, hour: null }))).toBe("This hour: not measured yet");
     expect(hourLine("en", decodeDemand(NONE))).toBeNull();
     expect(hourLine("en", decodeDemand({ ...NONE, import_target_kw: 6, available: false, reason: "no_site" }))).toBe(
@@ -240,7 +248,7 @@ describe("the import target beside the main fuse", () => {
     expect(rowKeys(element, "site").slice(0, 2)).toEqual(["main_fuse_a", "import_target_kw"]);
     expect(section(element, "site").querySelector("[data-row='import_target_kw']")!.textContent).toBe("Effektmål6,0 kW");
     expect(section(element, "site").querySelector("[data-help='import_target_hour']")!.textContent).toBe(
-      "Den här timmen: 3,1 av 6,0 kW",
+      "Den här timmen: 3,1 av 6,8 kW – månadens topp (effektmål 6,0 kW)",
     );
   });
 
@@ -266,5 +274,60 @@ describe("the import target beside the main fuse", () => {
     await save(cleared.element);
     const clears = cleared.hass.entityMessages.filter((m) => m["type"] === "spotnav/update_entity_config");
     expect(clears.map((m) => [m["changes"], m["expected"]])).toEqual([[{ import_target_kw: "" }, { import_target_kw: 6 }]]);
+  });
+});
+
+describe("the suggested import target in its editor", () => {
+  const SUGGESTION = read("target_suggestion", "pilot.json");
+
+  it("reads it when the editor opens, words it, and Use fills the field without saving", async () => {
+    const { hass, element } = await open(PILOT, { language: "sv", target: null });
+    hass.suggestHandler = async () => SUGGESTION;
+    await tap(element, "site", "import_target_kw");
+    expect(hass.suggestMessages).toEqual([{ type: "spotnav/suggest_import_target", api_version: 1, charger_id: "entry_a" }]);
+    await settle();
+    const dialog = openDialog(element);
+    const advice = dialog.querySelector<HTMLElement>("[data-value-advice]")!;
+    expect(advice.dataset["valueAdvice"]).toBe("suggestion");
+    expect(advice.textContent).toContain(
+      "Huset ensamt: oftast högst 2,4 kW en timme per dygn, som mest 7,5 kW (fre 4 sep.). Förslag: 7,0 kW – bilen får då omkring 6,4 kW de flesta timmar.",
+    );
+    expect(advice.textContent).toContain("Laddarens egen effekt finns inte i statistiken");
+    const use = dialog.querySelector<HTMLButtonElement>("[data-value-advice-use]")!;
+    expect(use.textContent).toBe("Använd");
+    use.click();
+    const field = dialog.querySelector<HTMLInputElement>("[data-value-field='number']")!;
+    expect(field.value).toBe("7");
+    expect(dialog.querySelector<HTMLInputElement>("[data-value-none]")!.checked).toBe(false);
+    expect(hass.entityMessages.filter((m) => m["type"] === "spotnav/update_entity_config")).toEqual([]);
+    await save(element);
+    const updates = hass.entityMessages.filter((m) => m["type"] === "spotnav/update_entity_config");
+    expect(updates.map((m) => m["changes"])).toEqual([{ import_target_kw: 7 }]);
+  });
+
+  it("says why there is none, and leaves nothing behind when it cannot be read", async () => {
+    const { hass, element } = await open(PILOT, { language: "en", target: 6 });
+    hass.suggestHandler = async () => ({ ...SUGGESTION, available: false, reason: "too_few_days", days: 3, suggestion_kw: null });
+    await tap(element, "site", "import_target_kw");
+    await settle();
+    const advice = openDialog(element).querySelector<HTMLElement>("[data-value-advice]")!;
+    expect(advice.textContent).toBe("No suggestion yet: Home Assistant's statistics only go back 3 days.");
+    expect(openDialog(element).querySelector("[data-value-advice-use]")).toBeNull();
+
+    const failing = await open(PILOT, { target: 6 });
+    failing.hass.suggestHandler = async () => {
+      throw new Error("unknown command");
+    };
+    await tap(failing.element, "site", "import_target_kw");
+    await settle();
+    expect(openDialog(failing.element).querySelector("[data-value-advice]")).toBeNull();
+  });
+
+  it("shows that it is reading while the statistics are read", async () => {
+    const { element } = await open(PILOT, { target: 6 });
+    await tap(element, "site", "import_target_kw");
+    const advice = openDialog(element).querySelector<HTMLElement>("[data-value-advice]")!;
+    expect(advice.dataset["valueAdvice"]).toBe("loading");
+    expect(advice.textContent).toBe("Reading Home Assistant's statistics …");
   });
 });

@@ -10,13 +10,18 @@ The answer (`site/power_history.py:power_month`):
   ones set now for a month whose hours are kept (the running month and the one before), else those set when its
   last hour completed. `bars[i]` is part `i`'s figure that month (`null` while nothing counted).
 * `days`: one per day with a measured hour, oldest first, `{date, peak_kw, peak_start, house_kw, counted, held,
-  paused}`: the day's highest hourly mean of net import and the hour it started (local time on the area's clock),
+  paused, imported, month_peak_kw}`: the day's highest hourly mean of net import and the hour it started (local time on the area's clock),
   the house's part of that hour (`null` when the chargers could not be read), the parts whose counted peaks fall
   on that day (`counted`, indexes into `components`), and whether the import target held a charger's current down
   or paused a charger in any of its hours.
-* `hours`: every measured hour `{start, kw, house_kw, incomplete, held, paused, counted}` for a month whose hours
+* `hours`: every measured hour `{start, kw, house_kw, incomplete, held, paused, counted, imported, month_peak_kw}` for a month whose hours
   are kept, `null` for an older month (its days only).
 * `import_target_kw`: the site's import target now (`null` for none).
+
+With no month before the running one kept, the view asks the site to read the hours before SpotNav measured from
+Home Assistant's statistics (`SiteDemand.async_backfill`, in the background, at most once a day): such a day or hour
+says `imported: true`. `month_peak_kw` (days and hours) is the level the month's peak lifted the import target to
+when that hour ran (`null` where it did not): the power view's line of the month's peak.
 
 Refusals (WebSocket errors; the webhook answers 400 with `error`): `spotnav_unsupported_api_version`,
 `spotnav_charger_required` (neither id), the charger lookup's codes, `spotnav_unknown_site`, `spotnav_no_site`
@@ -117,6 +122,12 @@ def power_month_answer(hass: HomeAssistant, site: ConfigEntry, month_raw: Any) -
     month = current if month_raw is None else month_from(month_raw)
     if month is None or not months_before(current, ARCHIVE_MONTHS) <= month <= current:
         raise PowerMonthRefusal(ERROR_INVALID_RANGE, f"month must be YYYY-MM, at most {ARCHIVE_MONTHS} months back")
+    # No month before this one: the hours before SpotNav measured may still be read from Home Assistant's
+    # statistics (once, in the background; the next opening shows them).
+    earlier = [key for key, hours in demand.tracker_months().items() if hours and key < current]
+    if not earlier and not any(key < current for key in demand.archive.months):
+        if demand.backfill_wanted_again(demand.now()):
+            controller.async_start_backfill()
     view = demand.power_month(
         month,
         site_demand_components(hass, site.entry_id),

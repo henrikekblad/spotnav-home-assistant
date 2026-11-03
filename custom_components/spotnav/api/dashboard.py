@@ -188,9 +188,9 @@ STRATEGY_HYBRID_REASON: Final = "needs_solar_and_price_control"
 MAX_RESPONSE_BYTES: Final = 256 * 1024
 
 #: Capability facts every charger advertises, all of them, in this order. The first six are about
-#: this charger's configuration and adapter (`execution/chargers/`); the last ten are the
+#: this charger's configuration and adapter (`execution/chargers/`); the last eleven are the
 #: server's abilities and always `true` (`price_days`, `plan_preview`, `dismiss_setup_item`, `fix_own_mode`,
-#: `release_import_target`, `get_power_month`: the
+#: `release_import_target`, `get_power_month`, `suggest_import_target`: the
 #: webhook answers that action, so an app can tell an older Home Assistant that does not; `site_import_target`:
 #: `update_site_settings` takes `import_target_kw`).
 #: `current_limit`: the charger has a dynamic current limit (a configured number, or a service path); `set_current`: SpotNav may write a current to it (the
@@ -213,6 +213,7 @@ CAPABILITY_KEYS: Final = (
     "release_import_target",
     "get_power_month",
     "site_import_target",
+    "suggest_import_target",
 )
 
 
@@ -674,7 +675,7 @@ def capabilities_for(
     `auto_price`: the Auto preview exists; `current_limit`: a current-limit entity is configured, or
     the adapter sets a current some other way; `set_current` and `regulated_current`: what the
     charger's adapter supports now (see `CAPABILITY_KEYS`); `target_soc`: `target_soc_capable`;
-    `load_balancing`: a loaded site lists it; the last ten are the server's abilities.
+    `load_balancing`: a loaded site lists it; the last eleven are the server's abilities.
     """
     adapter_capabilities = None if controller is None else controller.adapter.capabilities
     set_current = bool(adapter_capabilities is not None and adapter_capabilities.set_current)
@@ -698,6 +699,7 @@ def capabilities_for(
         ("release_import_target", True),
         ("get_power_month", True),
         ("site_import_target", True),
+        ("suggest_import_target", True),
     )
 
 

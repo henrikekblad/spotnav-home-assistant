@@ -406,6 +406,11 @@ export interface DemandBlock {
   /** The clock hour running now: its start, the mean import over the time measured so far, the energy so far. */
   hour: { start: string; kw_so_far: number; kwh_so_far: number } | null;
   import_target_kw: number | null;
+  /**
+   * The level the running hour is held under: the target lifted to the month's peak where a demand-charge part counts
+   * the hour, else the target; `null` without a target (and from a backend before it was stated).
+   */
+  effective_target_kw: number | null;
 }
 
 /** The dashboard's `grid_tariff` block. */
@@ -2041,7 +2046,9 @@ function demandMonth(raw: unknown): DemandMonth {
 /** The `grid_tariff.demand` block, strictly: exactly its keys, or malformed. */
 export function decodeDemand(raw: unknown): DemandBlock {
   const value = record(raw);
-  exactKeys(value, ["components", "available", "reason", "price_unit", "per_component", "hour", "import_target_kw"]);
+  const keys = ["components", "available", "reason", "price_unit", "per_component", "hour", "import_target_kw"];
+  // Stated since the import target's lift is shown: absent from an earlier 2.3 backend.
+  exactKeys(value, "effective_target_kw" in value ? [...keys, "effective_target_kw"] : keys);
   const components = arrayValue(value, "components").map(decodeDemandComponent);
   if (components.length > MAX_DEMAND_COMPONENTS) {
     return bad();
@@ -2065,6 +2072,7 @@ export function decodeDemand(raw: unknown): DemandBlock {
     per_component: perComponent,
     hour,
     import_target_kw: target,
+    effective_target_kw: "effective_target_kw" in value ? nonNegativeOrNull(value, "effective_target_kw") : null,
   };
 }
 

@@ -130,8 +130,9 @@ export function reasonText(language: Language, reason: string | null): string {
 }
 
 /**
- * The running hour against the import target: "This hour: 4,2 of 6,0 kW". `null` without a target; without a
- * reading yet, or where the site cannot measure, it says so.
+ * The running hour against the import target: "This hour: 4,2 of 6,0 kW"; where the month's peak lifts the target
+ * this hour, against that level: "This hour: 2,8 of 6,6 kW – the month's peak (import target 6,0 kW)". `null`
+ * without a target; without a reading yet, or where the site cannot measure, it says so.
  */
 export function hourLine(language: Language, demand: DemandBlock | null): string | null {
   if (demand === null || demand.import_target_kw === null) {
@@ -142,6 +143,14 @@ export function hourLine(language: Language, demand: DemandBlock | null): string
   }
   if (demand.hour === null) {
     return translate(language, "site.importTarget.noHour");
+  }
+  const effective = demand.effective_target_kw;
+  if (effective !== null && effective > demand.import_target_kw) {
+    return translate(language, "site.importTarget.hourPeak", {
+      kw: formatFixed(language, demand.hour.kw_so_far, 1),
+      target: kwText(language, effective),
+      set: kwText(language, demand.import_target_kw),
+    });
   }
   return translate(language, "site.importTarget.hour", {
     kw: formatFixed(language, demand.hour.kw_so_far, 1),

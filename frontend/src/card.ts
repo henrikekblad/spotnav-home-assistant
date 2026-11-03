@@ -55,6 +55,7 @@ import {
   dismissSetupItem,
   fixOwnMode,
   releaseImportTarget,
+  suggestImportTarget,
   setEntsoeKey,
   updateVehicle,
 } from "./api";
@@ -2037,6 +2038,21 @@ export class SpotnavCard extends HTMLElement {
     }
   }
 
+  /** The import target's suggestion for the editor (administrators only): the answer, or `null` when it cannot be read. */
+  private async suggestImportTarget(): Promise<unknown> {
+    const hass = this.hassObject;
+    const config = this.config;
+    if (!this.connected || hass === null || config === null || config.charger === "" || !this.isAdmin) {
+      return null;
+    }
+    try {
+      return await suggestImportTarget(hass, config.charger);
+    } catch {
+      // An older backend, or the statistics could not be read: the editor offers nothing.
+      return null;
+    }
+  }
+
   private async fixOwnMode(entity: string, value: string): Promise<void> {
     const hass = this.hassObject;
     const config = this.config;
@@ -2952,6 +2968,7 @@ export class SpotnavCard extends HTMLElement {
         onReleaseImportTarget: () => {
           void this.releaseImportTarget();
         },
+        onSuggestImportTarget: () => this.suggestImportTarget(),
         onAnswerOnboardPhases: (vehicleId, phases) => {
           void this.answerOnboardPhases(vehicleId, phases);
         },

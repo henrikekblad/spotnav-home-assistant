@@ -224,6 +224,8 @@ def test_the_month_view_marks_each_components_counted_peaks_on_their_days_and_ho
         "held": False,
         "paused": True,
         "counted": [1],
+        "imported": False,
+        "month_peak_kw": None,
     }
     assert view["bars"] == [6.5, 4.0]
 

@@ -24,6 +24,11 @@ import target; this module only measures and never decides anything a charger is
   charger in it (`TargetMark`, from the site's last decision), for the power view only.
 * **Two years of days**: beside the hours, a summary per day of each month is kept for two years
   (`site/power_history.py`), refiled from the hours when an hour completes.
+* **Back-fill** (`SiteDemand.async_backfill`): once, when the site first measures (or when the power view finds no
+  earlier month), the hours before SpotNav's first measured one are read from Home Assistant's hourly statistics
+  (`site/hour_statistics.py`, `PERIOD_DAYS` back), marked `imported`: the running month's and the month before's as
+  hours, older months as day summaries where none are kept. An hour SpotNav measured is never overwritten (nothing
+  at or after its first measured hour is filled), and an imported hour never lifts the import target.
 
 `HourTracker` is pure (the clock is passed in); `SiteDemand` keeps it in the site's own three stores (the month's
 hours and the day summaries, written when an hour completes; the running hour, at most once a minute). Storage is
@@ -46,7 +51,7 @@ from ..const import DOMAIN
 from ..debug_day import DayStore
 from ..planning.auto_settings import DemandComponent
 from ..planning.demand_charge import component_month, hour_start, HourMean, month_of
-from .power_history import power_month, PowerArchive
+from .power_history import months_before, power_month, PowerArchive
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -63,6 +68,11 @@ MONTH_SAVE_DELAY_S: Final = 5.0
 #: After this long without an observation nothing is filled in hour by hour: the tracker starts again.
 RESTART_AFTER_S: Final = 40 * 24 * 3600.0
 HOUR_S: Final = 3600.0
+#: A back-fill that filed nothing may be asked for again (by the power view) after this long.
+BACKFILL_RETRY_S: Final = 24 * 3600.0
+BACKFILL_DONE: Final = "done"
+BACKFILL_NO_STATISTICS: Final = "no_statistics"
+BACKFILL_FAILED: Final = "failed"
 
 
 def month_store_key(entry_id: str) -> str:
@@ -180,8 +190,9 @@ def _instant(raw: Any) -> datetime | None:
 def hour_row(hour: HourMean) -> list[Any]:
     """A completed hour as it is kept and shown in the diagnostics: `[start, kW, house kW, incomplete, held,
     paused, floor kW]`, the flags as 0 or 1; `kW` is the mean over the time measured, `floor kW` the import over
-    the whole hour with any gap counted as none (`null` for an hour kept before it was)."""
-    return [
+    the whole hour with any gap counted as none (`null` for an hour kept before it was). An hour read from Home
+    Assistant's statistics (`imported`) has an eighth element, `1`; a measured one has seven."""
+    row = [
         hour.start.isoformat(),
         round(hour.kw, 3),
         None if hour.house_kw is None else round(hour.house_kw, 3),
@@ -190,17 +201,23 @@ def hour_row(hour: HourMean) -> list[Any]:
         1 if hour.paused else 0,
         None if hour.floor_kw is None else round(hour.floor_kw, 3),
     ]
+    if hour.imported:
+        row.append(1)
+    return row
 
 
 def _hour_from_row(raw: Any) -> HourMean | None:
     """A kept hour, or `None`. A row of four (kept before the import target's hours were marked) is unmarked; one of
-    six (kept before the hour's floor was) has none."""
-    if not isinstance(raw, list) or len(raw) not in (4, 6, 7):
+    six (kept before the hour's floor was) has none; one of eight was read from Home Assistant's statistics."""
+    if not isinstance(raw, list) or len(raw) not in (4, 6, 7, 8):
+        return None
+    imported = raw[7] if len(raw) == 8 else 0
+    if isinstance(imported, bool) or imported != 1 and len(raw) == 8:
         return None
     start = _instant(raw[0])
     kw, house, incomplete = raw[1], raw[2], raw[3]
     held, paused = (raw[4], raw[5]) if len(raw) >= 6 else (0, 0)
-    floor = raw[6] if len(raw) == 7 else None
+    floor = raw[6] if len(raw) >= 7 else None
     if floor is not None and (not _number(floor) or floor < 0):
         return None
     if start is None or not _number(kw) or kw < 0 or any(flag not in (0, 1) for flag in (incomplete, held, paused)):
@@ -217,6 +234,7 @@ def _hour_from_row(raw: Any) -> HourMean | None:
         held=bool(held),
         paused=bool(paused),
         floor_kw=None if floor is None else float(floor),
+        imported=imported == 1,
     )
 
 
@@ -423,6 +441,7 @@ class SiteDemand:
         self._month_store: DayStore | None = None
         self._running_store: DayStore | None = None
         self._days_store: DayStore | None = None
+        self._backfill_running = False
         if hass is not None and entry_id is not None:
             self._month_store = DayStore(
                 hass, month_store_key(entry_id), self.tracker.month_dict, save_delay_s=MONTH_SAVE_DELAY_S
@@ -525,6 +544,99 @@ class SiteDemand:
         if self._days_store is not None:
             self._days_store.changed()
 
+    # ---- back-fill from Home Assistant's statistics
+
+    def backfill_due(self) -> bool:
+        """Whether the one back-fill is wanted: loaded, kept in stores, never run, and the site has measured."""
+        if not self._loaded or self._days_store is None or self._backfill_running or self.archive.backfill is not None:
+            return False
+        running = self.tracker.running
+        return self.tracker.month is not None and (bool(self.tracker.hours) or (running is not None and running.covered_s > 0))
+
+    def backfill_wanted_again(self, now: datetime) -> bool:
+        """Whether a back-fill that found nothing (or failed) may run again on the power view's request: at most once
+        a day, never while one runs, never after one that filed hours."""
+        marker = self.archive.backfill
+        if not self._loaded or self._days_store is None or self._backfill_running or self.tracker.month is None:
+            return False
+        if marker is None:
+            return True
+        if marker.get("status") == BACKFILL_DONE and marker.get("hours"):
+            return False
+        at = _instant(marker.get("at"))
+        return at is None or (now - at).total_seconds() >= BACKFILL_RETRY_S
+
+    async def async_backfill(
+        self, reader: Any, series: Any, components: Sequence[DemandComponent]
+    ) -> str:
+        """Read the statistics and file what SpotNav did not measure (see the module); the marker's status. Never
+        raises."""
+        from .hour_statistics import backfill_hours, read_site_hours, statistics_period  # noqa: PLC0415
+
+        self._backfill_running = True
+        now = self._now()
+        status, filed = BACKFILL_FAILED, 0
+        try:
+            start, end = statistics_period(now)
+            read = await read_site_hours(reader, series, start, end)
+            if not read.grid_readable:
+                status = BACKFILL_NO_STATISTICS
+            else:
+                filed = self.apply_backfill(backfill_hours(read.hours), components, now)
+                status = BACKFILL_DONE
+        except Exception:  # noqa: BLE001 - a back-fill must never disturb the site
+            _LOGGER.debug("SpotNav site demand: the statistics could not be read", exc_info=True)
+        finally:
+            self._backfill_running = False
+        self.archive.backfill = {"at": now.isoformat(), "status": status, "hours": filed}
+        if self._days_store is not None:
+            self._days_store.changed()
+        _LOGGER.info("SpotNav site demand: back-fill from Home Assistant's statistics %s, %d hours", status, filed)
+        return status
+
+    def apply_backfill(self, imported: Sequence[HourMean], components: Sequence[DemandComponent], now: datetime) -> int:
+        """File `imported` hours (see the module): only those before the first hour SpotNav measured, the running
+        month's and the month before's as hours, older months' as day summaries where the archive keeps none. How
+        many hours were filed."""
+        tracker = self.tracker
+        current = tracker.month
+        if current is None:
+            return 0
+        measured = [hour.start for hour in (*tracker.previous, *tracker.hours) if not hour.imported]
+        if tracker.running is not None:
+            measured.append(tracker.running.start)
+        if not measured:
+            return 0
+        cutoff = min(measured)
+        kept = {hour.start for hour in (*tracker.previous, *tracker.hours)}
+        oldest = months_before(current, 3)
+        by_month: dict[tuple[int, int], list[HourMean]] = {}
+        for hour in imported:
+            if hour.start >= cutoff or hour.start in kept:
+                continue
+            month = month_of(hour.start, tracker.tz)
+            if oldest <= month <= current:
+                by_month.setdefault(month, []).append(hour)
+        previous = months_before(current, 1)
+        filed = 0
+        for month, hours in by_month.items():
+            if month == current:
+                tracker.hours = sorted([*tracker.hours, *hours], key=lambda hour: hour.start)
+            elif month == previous:
+                if tracker.previous_month != previous:
+                    tracker.previous_month, tracker.previous = previous, []
+                tracker.previous = sorted([*tracker.previous, *hours], key=lambda hour: hour.start)
+            elif month in self.archive.months:
+                continue
+            else:
+                self.archive.file_month(month, hours, components, tracker.tz, now)
+            filed += len(hours)
+        if filed:
+            if self._month_store is not None:
+                self._month_store.changed()
+            self._file_days(now, components)
+        return filed
+
     def tracker_months(self) -> dict[tuple[int, int], Sequence[HourMean]]:
         """The months whose every hour the tracker keeps, and those hours."""
         tracker = self.tracker
@@ -622,6 +734,7 @@ class SiteDemand:
             "incomplete_hours": snapshot.incomplete_hours,
             "hours": [hour_row(hour) for hour in self.tracker.month_hours(now)],
             "months_with_days": len(self.archive.months),
+            "backfill": self.archive.backfill,
         }
 
 

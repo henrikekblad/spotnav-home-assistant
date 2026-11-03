@@ -9,6 +9,12 @@ webhook answers the same documents without the fields in `APP_UNREAD_SETTINGS`
 parts, a 6 kW import target): `pilot_month.json` the running month with its hours, `pilot_older_month.json` an older
 month with its day summaries only (`tests/test_power_month_api.py`). The webhook's `get_power_month` answers the same
 with `ok` and `action` beside it (`webhook/get_power_month_*.json`).
+`pilot_imported_month.json` is the running month again with its first four days read from Home Assistant's statistics
+(`imported`) and an evening on the 8th when the house alone set the month's day peak, after which the hours carry the
+level it lifted the target to (`month_peak_kw`).
+
+`target_suggestion/pilot.json` is `spotnav/suggest_import_target`'s answer for the pilot's site from a month of fake
+statistics (`tests/test_target_suggestion_api.py`); `webhook/suggest_import_target_success.json` the webhook's.
 
 `ecb/*` are the ECB's euro reference-rate files as published: `ecb_daily.xml` is the relay's capture of the daily
 file (`spotnav-relay/testdata/upstream/ecb_daily.xml`, table of 2026-09-18) and `ecb_hist_90d_2026-10-30.xml` the

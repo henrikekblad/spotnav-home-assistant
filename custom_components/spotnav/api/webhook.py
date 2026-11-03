@@ -46,6 +46,7 @@ from .entity_config import (
 )
 from .import_target import webhook_release_import_target
 from .power_month import webhook_get_power_month
+from .target_suggestion import webhook_suggest_import_target
 from .own_mode import webhook_fix_own_mode
 from .plan_preview import async_webhook_plan_preview
 from .setup import webhook_dismiss_setup_item
@@ -168,6 +169,10 @@ APP_READS_PRICE_PROVIDER: Final = "price_provider"
 #: Each optional key inside a dashboard block an app released before it does not read, as `(block, key)`, with the
 #: `reads` name that opts into it.
 APP_DASHBOARD_NESTED_READS: Final = {("prices", "provider"): APP_READS_PRICE_PROVIDER}
+#: The level the running hour is held under (`grid_tariff.demand.effective_target_kw`): left out for an app that does
+#: not read `APP_READS_EFFECTIVE_TARGET` (its decoder refuses a demand block with an unknown key), in the dashboard
+#: and in `update_grid_tariff`'s answer.
+APP_READS_EFFECTIVE_TARGET: Final = "effective_target"
 #: Each vehicle-row field an app released before it does not read, with the `reads` name that opts into it.
 APP_VEHICLE_FIELD_READS: Final = {"min_percent": APP_READS_MIN_SOC, "wake_for_reading": APP_READS_WAKE_FOR_READING}
 
@@ -254,6 +259,23 @@ def _vehicle_answer_for_app(body: dict[str, Any], payload: dict[str, Any]) -> di
     return {**body, "vehicle": _vehicle_for_app(body["vehicle"], _opted_in(payload))}
 
 
+def _grid_tariff_for_app(block: Any, opted_in: set[str]) -> Any:
+    """A `grid_tariff` block as the app reads it: without `demand.effective_target_kw` unless it opted in."""
+    if APP_READS_EFFECTIVE_TARGET in opted_in or not isinstance(block, dict):
+        return block
+    demand = block.get("demand")
+    if not isinstance(demand, dict) or "effective_target_kw" not in demand:
+        return block
+    return {**block, "demand": {key: value for key, value in demand.items() if key != "effective_target_kw"}}
+
+
+def _grid_tariff_answer_for_app(answer: dict[str, Any], payload: dict[str, Any]) -> dict[str, Any]:
+    """`update_grid_tariff`'s answer with its block as the app reads it (`_grid_tariff_for_app`)."""
+    if "grid_tariff" not in answer:
+        return answer
+    return {**answer, "grid_tariff": _grid_tariff_for_app(answer["grid_tariff"], _opted_in(payload))}
+
+
 def _for_app(body: dict[str, Any], payload: dict[str, Any]) -> dict[str, Any]:
     """`body` with what the app cannot read yet taken out: fields of its settings record, and status lines.
 
@@ -266,12 +288,15 @@ def _for_app(body: dict[str, Any], payload: dict[str, Any]) -> dict[str, Any]:
     `phase_switching` block; `grid_tariff` for its `grid_tariff` block; `price_provider` for `prices.provider`; `setup` for its `setup` block; `plan_facts` for the status lines
     `plan_saving` and `solar_forecast` and hybrid's `sun_start`/`sun_end`; `own_mode_status` for the status line
     `charger_own_mode`; `sun_past_target` for the status line `sun_past_target`; `import_target_status` for the import
-    target's five status lines); anything else in it, or a `reads` that is not a list, is ignored.
+    target's five status lines; `effective_target` for `grid_tariff.demand.effective_target_kw`); anything else in
+    it, or a `reads` that is not a list, is ignored.
     """
     opted_in = _opted_in(payload)
     withheld_blocks = {block for block, read in APP_DASHBOARD_BLOCK_READS.items() if read not in opted_in}
     if withheld_blocks & set(body):
         body = {key: value for key, value in body.items() if key not in withheld_blocks}
+    if "grid_tariff" in body:
+        body = {**body, "grid_tariff": _grid_tariff_for_app(body["grid_tariff"], opted_in)}
     for (block, field), read in APP_DASHBOARD_NESTED_READS.items():
         inner = body.get(block)
         if read not in opted_in and isinstance(inner, dict) and field in inner:
@@ -506,7 +531,8 @@ def _bounded_write(
     return handler
 
 
-#: Every action the webhook answers. `dashboard`, `sessions`, `price_days` and `get_power_month` are the reads.
+#: Every action the webhook answers. `dashboard`, `sessions`, `price_days`, `get_power_month` and
+#: `suggest_import_target` are the reads.
 ACTIONS: Final[dict[str, Handler]] = {
     "start": _start,
     "stop": _stop,
@@ -526,13 +552,16 @@ ACTIONS: Final[dict[str, Handler]] = {
     "update_phase_switching": _bounded_write(async_webhook_update_phase_switching, "update_phase_switching"),
     "choose_price_source": _bounded_write(async_webhook_choose_price_source, "choose_price_source"),
     "answer_price_duplicate": _bounded_write(async_webhook_answer_price_duplicate, "answer_price_duplicate"),
-    "update_grid_tariff": _bounded_write(async_webhook_update_grid_tariff, "update_grid_tariff"),
+    "update_grid_tariff": _bounded_write(
+        async_webhook_update_grid_tariff, "update_grid_tariff", _grid_tariff_answer_for_app
+    ),
     "push_register": _push_register,
     "identify_vehicle": webhook_identify_vehicle,
     "choose_vehicle_identification": webhook_choose_vehicle_identification,
     "fix_own_mode": webhook_fix_own_mode,
     "release_import_target": webhook_release_import_target,
     "get_power_month": webhook_get_power_month,
+    "suggest_import_target": webhook_suggest_import_target,
     "dismiss_setup_item": webhook_dismiss_setup_item,
     **CAMERA_ACTIONS,
 }
