@@ -412,7 +412,8 @@ The current and where it came from are in the charger's diagnostics (`switched_c
 - **It is resumed whole.** A charge load balancing paused, or a start it held back for want of room, is
   started again once every phase it uses has room for its whole switched current plus 1 A, for the
   dwell (60 s), with the usual limit on resumes. A start goes out only where the site has room for all of
-  it.
+  it. A plain switch that cannot say whether a car is plugged in is resumed while the charge is still wanted;
+  a charger that can say must say a car is there.
 - **A lost measurement does nothing to it.** It cannot be stepped to a minimum, and pausing it on a meter
   that merely went quiet would stop charges with no overload shown; it is treated as a charger already at
   its minimum.
@@ -576,8 +577,10 @@ charger draws on would turn from import to export (so the current the fuse carri
 - **Release the import target tonight** (from the notification, the card or the app) sets the target aside for that charge until its
   departure, or until the car is unplugged or the plan is made for another departure; a restart keeps it. A charge
   without a departure ahead (a person's Start, or a plan without one) is set aside until the car is unplugged, the
-  car ends the charge by itself (full, or at its limit), or the next noon, whichever comes first: tonight means
-  tonight, also on a charger that cannot tell whether a car is plugged in. The
+  car ends the charge by itself (full, or at its limit), or the first noon at least six hours after the press
+  (pressed at 11:59, the next day's), whichever comes first: tonight means tonight, also on a charger that cannot
+  tell whether a car is plugged in. A Start pressed after a release keeps it: the plan the Start drops no longer
+  ends it, and it lasts until the car is unplugged as above. The
   card offers it beside every line where the target holds or pauses a charge, and asks first, since a press can
   cost the month: *Release the import target? The car then charges at full power until it is unplugged, or until the
   departure at 07:00. The month's peak may reach up to 11 kW, against 6.0 kW today.* (up to: the house's typical
