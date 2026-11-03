@@ -117,9 +117,11 @@ the same phase's voltage, or the reactive or apparent power the site reads for i
 maximum age: some meters (a Sigenergy with the grid held at about 0 W by its battery) leave a phase's
 power unchanged for minutes while the meter is live. The last value is kept, and it is trusted for
 holding and lowering a charger only, never for raising one: while a phase the charger draws on sits
-still, load balancing keeps the charger's current rather than raise it (`held_still_no_raise` in the
-diagnostics), and no yield step, probe or resume raises or starts it either; nor does a still value
-widen the room an increase may take. Once the phase's power changes again, raises are judged as ever.
+still, load balancing keeps the current last written to the charger rather than raise it
+(`held_still_no_raise` in the diagnostics; never the lower current a car that has just started still
+draws, so a start is never paused for it), and no yield step or battery probe raises it either; nor
+does a still value widen the room an increase may take. A charge load balancing paused is resumed as
+ever, at its minimum when the measured current leaves room. Once the phase's power changes again, raises are judged as ever.
 A phase whose power is unavailable or unknown, whose age Home Assistant cannot tell, or whose other
 readings sit still too, is stale as before. The diagnostics
 show such a phase under `phase_signed_active_power_held_still` (`held_still`, with the companion

@@ -56,6 +56,8 @@ class _World:
     #: does with the grid held at about 0 W; with `quiet_companions` the phase's voltage and reactive power too.
     quiet_phases: tuple[str, ...] = ()
     quiet_companions: bool = False
+    #: Steps after a start during which the car draws nothing yet (`drawn_a`).
+    ramp_steps: int = 0
     #: Extra current (A) on one phase only, beside the house on all three: an unbalanced load.
     phase_extra_a: dict[str, float] = field(default_factory=dict)
     turn_offs: int = 0
@@ -72,6 +74,12 @@ class _World:
     departure: datetime | None = None
 
     @property
+    def drawn_a(self) -> float:
+        """What the car draws: what it was given (`car_a`), but nothing for `ramp_steps` steps after a start, as a car
+        takes a while to begin drawing (a real charger then reports 0 A)."""
+        return 0.0 if self.ramp_steps > 0 else self.car_a
+
+    @property
     def car_a(self) -> float:
         if self.halo.hass.states.get(f"switch.{self.halo.prefix}").state != "on":
             return 0.0
@@ -81,12 +89,12 @@ class _World:
         return float(written[-1].split(",")[0].split(".")[1])
 
     def site_w(self) -> float:
-        return 3 * _V * (self.house_a + self.extra_a + self.car_a) + _V * sum(self.phase_extra_a.values())
+        return 3 * _V * (self.house_a + self.extra_a + self.drawn_a) + _V * sum(self.phase_extra_a.values())
 
     def show(self) -> None:
         """The meter and the charger report now, changed or not (a meter that reports every few seconds)."""
         hass = self.halo.hass
-        amps = self.house_a + self.extra_a + self.car_a
+        amps = self.house_a + self.extra_a + self.drawn_a
         if self.battery_w is not None:
             hass.states.async_set(
                 f"sensor.{self.halo.site.removesuffix('_site')}_battery_power",
@@ -115,7 +123,7 @@ class _World:
                 force_update=not companions_quiet,
             )
             hass.states.async_set(
-                f"sensor.{self.halo.prefix}_{phase}", str(self.car_a), {"unit_of_measurement": "A"}, force_update=True
+                f"sensor.{self.halo.prefix}_{phase}", str(self.drawn_a), {"unit_of_measurement": "A"}, force_update=True
             )
 
     def follow_commands(self) -> None:
@@ -140,7 +148,9 @@ class _World:
             self.energy[hour][0] += watts * span
             self.energy[hour][1] += span
             moment = until
-        self.delivered_kwh += 3 * _V * self.car_a * seconds / 3600.0 / 1000.0
+        self.delivered_kwh += 3 * _V * self.drawn_a * seconds / 3600.0 / 1000.0
+        if self.ramp_steps > 0:
+            self.ramp_steps -= 1
         self.frozen.tick(timedelta(seconds=seconds))
         self.halo.advance(seconds)
         if self.register is not None:
@@ -829,7 +839,7 @@ async def test_a_discharging_battery_counts_as_import_only_under_battery_first(
 async def _battery_holds_the_grid(world: _World, minutes: float) -> None:
     """A battery in AI mode: it discharges what the house and the car draw, leaving the grid a little exporting."""
     for _ in range(int(minutes * 2)):
-        load_a = world.house_a + world.car_a
+        load_a = world.house_a + world.drawn_a
         world.battery_w = -3 * _V * load_a
         world.extra_a = -load_a - 0.1
         await world.step()
@@ -943,6 +953,47 @@ async def test_a_still_phase_counts_as_fresh_while_its_voltage_moves(
         else:
             assert held["L1"] is None and result.phase_signed_active_power_reason["L1"] == "stale"
             assert decision.proposed_current_a is None
+
+
+@pytest.mark.parametrize(("start", "target_kw"), [("hand", 6.5), ("hand", None), ("window", 6.5), ("window", None)])
+async def test_a_charge_started_on_still_phases_runs_and_is_never_paused_for_them(
+    hass: HomeAssistant, monkeypatch, start: str, target_kw: float | None
+) -> None:
+    """The owner's site after the held-still change: a battery holds the grid flat, so all three phases' active power
+    sits still (fresh on the voltage only). A charge started there, by a person's Start through the executor or by
+    a plan's window, while the car takes a minute to begin drawing (0 A first): it starts and runs, never paused for
+    the still phases (`held_still_no_raise` keeps what was written, never the 0 A the car draws at first), and the
+    import target holds it to 9 A or less; with no target it runs at its request."""
+    with freeze_time(_HOUR - timedelta(minutes=5, seconds=-5)) as frozen:
+        name = f"flat{start}{'t' if target_kw else 'n'}"
+        world = await _world(
+            hass, monkeypatch, frozen, name, target_kw=target_kw, house_w=500.0,
+            battery_entity=f"sensor.{name}_battery_power",
+        )
+        controller = world.halo.controller
+        controller.config["solar_priority"] = "battery_first"
+        world.quiet_phases = ("l1", "l2", "l3")
+        # Long enough flat that every phase's power is older than the maximum age: held still before the start.
+        await _battery_holds_the_grid(world, 4)
+        assert all(held is not None for held in controller.result.phase_signed_active_power_held_still.values())
+        world.ramp_steps = 2
+        if start == "hand":
+            await _start_by_hand(world)
+        else:
+            await _charging(world)
+        reasons = []
+        for _ in range(24):
+            await _battery_holds_the_grid(world, 0.5)
+            reasons.append((world.decision.reason, world.decision.proposed_current_a))
+            assert world.turn_offs == 0, f"paused: {reasons}"
+            assert world.car_a >= 6.0, reasons
+        assert any(held is not None for held in controller.result.phase_signed_active_power_held_still.values())
+        # While the car had not begun drawing, the refused raise kept the 16 A written, never the 0 A drawn.
+        assert reasons[0] == ("held_still_no_raise", 16.0), reasons
+        if target_kw:
+            assert world.car_a <= 9.0, reasons
+        else:
+            assert world.car_a == 16.0, reasons
 
 
 async def test_a_battery_that_cannot_be_read_lowers_no_further_than_the_grids_phases(
