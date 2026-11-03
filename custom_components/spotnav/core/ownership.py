@@ -503,6 +503,11 @@ def _unplug(session: ChargeSession, event: Unplug, now: datetime) -> Decision:
         # The plug-in session the pause was given in is over (also when the first connection known after a
         # restart says no car: it ended while nobody looked).
         s = s.with_changes(manual=None)
+    if s.owner == OWNER_PERSON:
+        # A person's Start holds until the car is unplugged, also when the unplug is the first connection known
+        # after a restart: no charge ran then for a report of the charger off to end, so the next charge the
+        # charger begins by itself is its own, never the person's.
+        s = s.with_changes(owner=OWNER_NONE)
     return s, ()
 
 

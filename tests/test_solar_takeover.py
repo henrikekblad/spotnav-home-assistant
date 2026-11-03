@@ -533,3 +533,53 @@ async def test_after_a_restart_a_missing_reading_is_waited_for_briefly_then_the_
     await tick_site(hass, site)
     assert len(turn_off_calls) == 1
     assert _decisions(coordinator)[-1] == ("stop", "no_basis_stopped")
+
+
+async def _found_after_restart(hass: HomeAssistant, states: tuple[bool, ...]) -> tuple[Any, ...]:
+    """HA restarted with the saved state saying a person started the last charge, the charger off. The charger
+    then states each connection in `states`, the first being the first one known since the restart."""
+    setup = await solar_setup(hass, strategy=STRATEGY_SOLAR, charge_origin_at_setup="manual")
+    controller = setup[2]
+    assert controller.charge_origin == "manual"
+    connected: list[bool | None] = [None]
+    controller.adapter.vehicle_connected = lambda: connected[0]  # type: ignore[method-assign]
+    for state in states:
+        connected[0] = state
+        controller._observe_connection()  # noqa: SLF001 - the observation point under test
+        await hass.async_block_till_done()
+    return setup
+
+
+async def test_an_unplug_found_after_a_restart_ends_a_persons_start(hass: HomeAssistant) -> None:
+    """The field case (2026-11-03, a Peblar, Solar): the car was gone when HA came back, so the person's Start
+    ended with it. At the next plug-in the charger began a charge by itself at 11 kW: it is the charger's own,
+    stopped on the first reading with no surplus, not left running as the person's."""
+    charger, site_entry, controller, coordinator, clock, turn_on_calls, turn_off_calls = await _found_after_restart(
+        hass, (False, True)
+    )
+    assert controller.charge_origin is None
+    site = controller_of(hass, site_entry.entry_id)
+    clock.value = 3600.0
+    set_site_power_w(hass, "solar_site", 16.0 * 230.0 + 150.0)
+    _self_start(hass, charger.entry_id, 16.0)
+
+    await tick_site(hass, site)
+
+    assert len(turn_off_calls) == 1
+    assert ("take_over", "take_over") in _decisions(coordinator)
+    assert not turn_on_calls
+
+
+async def test_a_persons_start_outlives_a_restart_while_the_car_stays_plugged_in(hass: HomeAssistant) -> None:
+    charger, site_entry, controller, coordinator, clock, turn_on_calls, turn_off_calls = await _found_after_restart(
+        hass, (True,)
+    )
+    site = controller_of(hass, site_entry.entry_id)
+    clock.value = 3600.0
+    set_site_power_w(hass, "solar_site", 16.0 * 230.0 + 150.0)
+    _self_start(hass, charger.entry_id, 16.0)
+
+    await tick_site(hass, site)
+
+    assert controller.charge_origin == "manual"
+    assert not turn_off_calls
