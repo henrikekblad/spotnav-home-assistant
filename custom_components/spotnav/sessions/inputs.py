@@ -21,6 +21,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.util import dt as dt_util
 
 from .. import time_zones
+from ..const import GUEST_VEHICLE_ID
 from ..execution.controller import ChargingController
 from ..execution.solar_execution import solar_execution_state, SolarExecutionState
 from ..planning.auto_controller import fiscal_choice_for
@@ -32,6 +33,9 @@ from ..pricing.price_source import effective_settings
 from ..runtime import charger_data, domain_data
 from ..planning.phases import charger_wiring, charging_phases
 from ..site.phase_detection import async_detect_phases
+from ..notifications.messages import identify_text
+from ..texts import language_of
+from ..vehicles.guest import is_guest
 from ..vehicles.vehicle_discovery import resolve_target_vehicle
 from .costing import spot_intervals
 from .recorder import PauseFacts, PriceBook, SessionFacts
@@ -128,7 +132,10 @@ def session_facts(hass: HomeAssistant, controller: ChargingController) -> Sessio
         else None
     )
     vehicle_id = vehicle_name = None
-    if settings is not None:
+    if is_guest(settings):
+        # A guest car's charge is the guest's, named in Home Assistant's language (`vehicles/guest.py`).
+        vehicle_id, vehicle_name = GUEST_VEHICLE_ID, identify_text(language_of(hass.config.language), "guest")
+    elif settings is not None:
         vehicle_id, candidates = resolve_target_vehicle(hass, settings.target.vehicle_id, settings.vehicle_ids)
         vehicle_name = next((item.name for item in candidates if item.id == vehicle_id), None)
     strategy = None if settings is None else settings.strategy
