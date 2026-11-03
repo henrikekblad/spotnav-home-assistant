@@ -239,3 +239,31 @@ async def test_over_the_socket_and_the_webhook_a_site_that_cannot_measure_and_a_
     _pinned("get_power_month_no_site.json", body)
     status, body = await post(web, "webhook-entry_c", {"action": "get_power_month"})
     assert status == 200 and body["ok"] and body["action"] == "get_power_month" and body["hours"] == []
+
+
+async def test_the_imported_month_fixture_with_the_months_peak(hass: HomeAssistant, freezer) -> None:
+    """A month whose first days came from Home Assistant's statistics (`imported`), and an evening on the 8th when the
+    house alone set the month's day peak (6.8 kW): from then on the line of the month's peak stands above the target
+    in the day part's hours."""
+    from dataclasses import replace
+
+    site = await seeded_site(hass, freezer)
+    controller = site_controller_for(hass, site.entry_id)
+    assert controller is not None
+    tracker = controller.demand.tracker
+    sauna = datetime(2026, 9, 8, 18, tzinfo=timezone.utc) - CEST
+    hours = []
+    for hour in tracker.hours:
+        local_day = (hour.start + CEST).day
+        if hour.start == sauna:
+            hour = replace(hour, kw=6.8, house_kw=6.8, held=False, paused=True, floor_kw=6.8)
+        if local_day <= 4:
+            hour = replace(hour, held=False, paused=False, incomplete=False, imported=True, floor_kw=hour.kw)
+        hours.append(hour)
+    tracker.hours = hours
+    month = (await ask(hass, 1, api_version=1, charger_id="entry_a"))["result"]
+    assert [day["date"] for day in month["days"] if day["imported"]] == [f"2026-09-0{day}" for day in range(1, 5)]
+    lifted = [hour for hour in month["hours"] if hour["month_peak_kw"] is not None]
+    assert lifted and all(hour["start"] > "2026-09-08T18" for hour in lifted)
+    assert {hour["month_peak_kw"] for hour in lifted} == {6.664}
+    _fixture("pilot_imported_month.json", month)

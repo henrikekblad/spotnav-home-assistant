@@ -44,6 +44,8 @@
       "date": "2026-08-01",
       "held": true,
       "house_kw": 2.3,
+      "imported": false,
+      "month_peak_kw": null,
       "paused": false,
       "peak_kw": 5.85,
       "peak_start": "2026-08-01T19:00:00+02:00"
@@ -53,6 +55,8 @@
       "date": "2026-08-02",
       "held": false,
       "house_kw": 0.85,
+      "imported": false,
+      "month_peak_kw": null,
       "paused": false,
       "peak_kw": 5.55,
       "peak_start": "2026-08-02T03:00:00+02:00"
@@ -62,6 +66,8 @@
       "date": "2026-08-03",
       "held": false,
       "house_kw": 2.35,
+      "imported": false,
+      "month_peak_kw": null,
       "paused": false,
       "peak_kw": 2.35,
       "peak_start": "2026-08-03T19:00:00+02:00"
@@ -73,6 +79,8 @@
       "date": "2026-08-04",
       "held": true,
       "house_kw": 0.55,
+      "imported": false,
+      "month_peak_kw": null,
       "paused": false,
       "peak_kw": 5.85,
       "peak_start": "2026-08-04T01:00:00+02:00"
@@ -82,6 +90,8 @@
       "date": "2026-08-05",
       "held": true,
       "house_kw": 2.3,
+      "imported": false,
+      "month_peak_kw": null,
       "paused": false,
       "peak_kw": 5.8,
       "peak_start": "2026-08-05T18:00:00+02:00"
@@ -91,6 +101,8 @@
       "date": "2026-08-06",
       "held": false,
       "house_kw": 2.4,
+      "imported": false,
+      "month_peak_kw": null,
       "paused": false,
       "peak_kw": 2.4,
       "peak_start": "2026-08-06T19:00:00+02:00"
@@ -100,6 +112,8 @@
       "date": "2026-08-07",
       "held": false,
       "house_kw": 0.85,
+      "imported": false,
+      "month_peak_kw": null,
       "paused": false,
       "peak_kw": 5.55,
       "peak_start": "2026-08-07T03:00:00+02:00"
@@ -109,6 +123,8 @@
       "date": "2026-08-08",
       "held": true,
       "house_kw": 0.85,
+      "imported": false,
+      "month_peak_kw": null,
       "paused": false,
       "peak_kw": 5.85,
       "peak_start": "2026-08-08T04:00:00+02:00"
@@ -118,6 +134,8 @@
       "date": "2026-08-09",
       "held": false,
       "house_kw": 2.0,
+      "imported": false,
+      "month_peak_kw": null,
       "paused": false,
       "peak_kw": 5.7,
       "peak_start": "2026-08-09T18:00:00+02:00"
@@ -127,6 +145,8 @@
       "date": "2026-08-10",
       "held": false,
       "house_kw": 1.0,
+      "imported": false,
+      "month_peak_kw": null,
       "paused": false,
       "peak_kw": 5.1,
       "peak_start": "2026-08-10T03:00:00+02:00"
@@ -136,6 +156,8 @@
       "date": "2026-08-11",
       "held": false,
       "house_kw": 1.0,
+      "imported": false,
+      "month_peak_kw": null,
       "paused": false,
       "peak_kw": 5.4,
       "peak_start": "2026-08-11T04:00:00+02:00"
@@ -145,6 +167,8 @@
       "date": "2026-08-12",
       "held": false,
       "house_kw": 2.2,
+      "imported": false,
+      "month_peak_kw": null,
       "paused": false,
       "peak_kw": 2.2,
       "peak_start": "2026-08-12T20:00:00+02:00"
@@ -154,6 +178,8 @@
       "date": "2026-08-13",
       "held": true,
       "house_kw": 1.0,
+      "imported": false,
+      "month_peak_kw": null,
       "paused": false,
       "peak_kw": 5.85,
       "peak_start": "2026-08-13T01:00:00+02:00"
@@ -163,6 +189,8 @@
       "date": "2026-08-14",
       "held": true,
       "house_kw": 0.55,
+      "imported": false,
+      "month_peak_kw": null,
       "paused": false,
       "peak_kw": 5.85,
       "peak_start": "2026-08-14T01:00:00+02:00"
@@ -172,6 +200,8 @@
       "date": "2026-08-15",
       "held": false,
       "house_kw": 2.5,
+      "imported": false,
+      "month_peak_kw": null,
       "paused": true,
       "peak_kw": 2.5,
       "peak_start": "2026-08-15T18:00:00+02:00"
@@ -181,6 +211,8 @@
       "date": "2026-08-16",
       "held": false,
       "house_kw": 1.0,
+      "imported": false,
+      "month_peak_kw": null,
       "paused": false,
       "peak_kw": 5.4,
       "peak_start": "2026-08-16T04:00:00+02:00"
@@ -190,6 +222,8 @@
       "date": "2026-08-17",
       "held": false,
       "house_kw": 2.15,
+      "imported": false,
+      "month_peak_kw": null,
       "paused": false,
       "peak_kw": 5.85,
       "peak_start": "2026-08-17T18:00:00+02:00"
@@ -199,6 +233,8 @@
       "date": "2026-08-18",
       "held": false,
       "house_kw": 2.25,
+      "imported": false,
+      "month_peak_kw": null,
       "paused": false,
       "peak_kw": 2.25,
       "peak_start": "2026-08-18T19:00:00+02:00"
@@ -208,6 +244,8 @@
       "date": "2026-08-19",
       "held": true,
       "house_kw": 0.55,
+      "imported": false,
+      "month_peak_kw": null,
       "paused": false,
       "peak_kw": 5.85,
       "peak_start": "2026-08-19T01:00:00+02:00"
@@ -217,6 +255,8 @@
       "date": "2026-08-20",
       "held": false,
       "house_kw": 1.0,
+      "imported": false,
+      "month_peak_kw": null,
       "paused": false,
       "peak_kw": 5.1,
       "peak_start": "2026-08-20T03:00:00+02:00"
@@ -228,6 +268,8 @@
       "date": "2026-08-21",
       "held": true,
       "house_kw": 2.3,
+      "imported": false,
+      "month_peak_kw": null,
       "paused": false,
       "peak_kw": 5.9,
       "peak_start": "2026-08-21T19:00:00+02:00"
@@ -237,6 +279,8 @@
       "date": "2026-08-22",
       "held": false,
       "house_kw": 0.85,
+      "imported": false,
+      "month_peak_kw": null,
       "paused": false,
       "peak_kw": 5.55,
       "peak_start": "2026-08-22T03:00:00+02:00"
@@ -246,6 +290,8 @@
       "date": "2026-08-23",
       "held": true,
       "house_kw": 0.85,
+      "imported": false,
+      "month_peak_kw": null,
       "paused": false,
       "peak_kw": 5.85,
       "peak_start": "2026-08-23T04:00:00+02:00"
@@ -255,6 +301,8 @@
       "date": "2026-08-24",
       "held": false,
       "house_kw": 2.2,
+      "imported": false,
+      "month_peak_kw": null,
       "paused": false,
       "peak_kw": 2.2,
       "peak_start": "2026-08-24T17:00:00+02:00"
@@ -264,6 +312,8 @@
       "date": "2026-08-25",
       "held": true,
       "house_kw": 2.3,
+      "imported": false,
+      "month_peak_kw": null,
       "paused": false,
       "peak_kw": 5.85,
       "peak_start": "2026-08-25T18:00:00+02:00"
@@ -273,6 +323,8 @@
       "date": "2026-08-26",
       "held": false,
       "house_kw": 1.0,
+      "imported": false,
+      "month_peak_kw": null,
       "paused": false,
       "peak_kw": 5.4,
       "peak_start": "2026-08-26T04:00:00+02:00"
@@ -282,6 +334,8 @@
       "date": "2026-08-27",
       "held": false,
       "house_kw": 2.5,
+      "imported": false,
+      "month_peak_kw": null,
       "paused": false,
       "peak_kw": 2.5,
       "peak_start": "2026-08-27T20:00:00+02:00"
@@ -291,6 +345,8 @@
       "date": "2026-08-28",
       "held": true,
       "house_kw": 1.0,
+      "imported": false,
+      "month_peak_kw": null,
       "paused": false,
       "peak_kw": 5.85,
       "peak_start": "2026-08-28T01:00:00+02:00"
@@ -300,6 +356,8 @@
       "date": "2026-08-29",
       "held": true,
       "house_kw": 0.55,
+      "imported": false,
+      "month_peak_kw": null,
       "paused": false,
       "peak_kw": 5.85,
       "peak_start": "2026-08-29T01:00:00+02:00"
@@ -309,6 +367,8 @@
       "date": "2026-08-30",
       "held": false,
       "house_kw": 2.4,
+      "imported": false,
+      "month_peak_kw": null,
       "paused": false,
       "peak_kw": 2.4,
       "peak_start": "2026-08-30T18:00:00+02:00"
@@ -318,6 +378,8 @@
       "date": "2026-08-31",
       "held": false,
       "house_kw": 1.0,
+      "imported": false,
+      "month_peak_kw": null,
       "paused": false,
       "peak_kw": 5.4,
       "peak_start": "2026-08-31T04:00:00+02:00"
