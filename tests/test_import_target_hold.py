@@ -593,8 +593,15 @@ async def test_a_departure_the_held_power_still_meets_keeps_the_hold(hass: HomeA
 
 
 async def _start_by_hand(world: _World) -> None:
-    """A person's Start at 16 A."""
-    assert await world.halo.cc.async_start(16, manual=True)
+    """A person's Start at 16 A, through the charger's authority boundary as the card's Start goes: it stores the
+    manual pause (`PauseIntent` choice `manual`, action `start`) the status reads."""
+    from custom_components.spotnav.runtime import executor_for
+
+    executor = executor_for(world.halo.hass, world.halo.charger.entry_id)
+    assert executor is not None
+    await executor.async_manual_start(16)
+    pause = executor._store.settings(world.halo.charger.entry_id).pause  # noqa: SLF001
+    assert (pause.choice, pause.action) == ("manual", "start")
     world.follow_commands()
     world.halo.switch("on")
     world.show()
@@ -630,7 +637,9 @@ async def test_a_persons_start_is_held_and_paused_like_a_plans_charge(hass: Home
         assert world.turn_offs == 1
         facts = dashboard_api.status_facts(dashboard_api.capture_dashboard(hass, world.halo.charger))
         lines = compose_status(replace(facts, **ready))["lines"]
-        assert lines[0]["code"] == "import_target_paused" and lines[0]["params"]["releasable"] is True
+        # Under the person's own "Charging manually" line, with the release offered.
+        assert [line["code"] for line in lines[:2]] == ["paused", "import_target_paused"], lines
+        assert lines[1]["params"]["releasable"] is True
         # No phone is told for a held Start: nothing about a departure is at risk.
         assert world.halo.controller.import_target_snapshot()["at_risk"] == {}
 
