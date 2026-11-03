@@ -78,7 +78,7 @@ def compose(event: str, name: str, facts: dict[str, Any], language: str) -> tupl
     `facts` by event: `plan_stopped` {reason} (`charger_ignores_stop` too: the charger keeps charging under a
     person's Stop); `plan_at_risk` {time?}; `charge_complete` {reason,
     target_percent?, level_percent?, basis?, kwh?, cost?}; `charge_started` {until?}; `plan_installed` {time, kwh?,
-    cost?}.
+    cost?, guest?} (`guest`: the plan is a guest car's).
 
     A target's completion says what the stop was taken on (`_target_message`): the target and the car's own level
     for a reading at or above it, the level as an estimate for one from delivered energy, and the level below the
@@ -109,7 +109,8 @@ def compose(event: str, name: str, facts: dict[str, Any], language: str) -> tupl
         until = facts.get("until")
         message = text["started.until"].format(time=until) if until else text["started"]
     elif event == "plan_installed":
-        message = text["plan_installed"].format(time=facts.get("time")) + _figures(
+        key = "plan_installed.guest" if facts.get("guest") else "plan_installed"
+        message = text[key].format(time=facts.get("time")) + _figures(
             language, text, "planned", kwh, cost, estimate=True
         )
     elif event == "vehicle_identify":
@@ -142,7 +143,7 @@ def _target_message(
 
 
 def identify_text(language: str, key: str, vehicle: str | None = None) -> str:
-    """One of the identification question's own texts (`ask`, `open`, `chosen`, `recognised`, `kept`)."""
+    """One of the identification question's own texts (`ask`, `open`, `chosen`, `recognised`, `kept`, `guest`)."""
     text = table(language, NAMESPACE)
     return text[f"identify.{key}"].format(vehicle=vehicle or "")
 
