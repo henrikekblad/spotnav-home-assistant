@@ -35,6 +35,7 @@ from typing import Any, Literal
 from homeassistant.core import HomeAssistant, State
 from homeassistant.helpers import device_registry as dr, entity_registry as er
 
+from ..const import GUEST_VEHICLE_ID
 from ..runtime import domain_data
 from .discovery_decisions import DECISION_DOMAIN_VEHICLE, DECISION_DOMAIN_VEHICLE_CHARGE_LIMIT
 from .entity_keys import EntityKey, entity_key
@@ -342,6 +343,9 @@ def resolve_target_vehicle(
     candidates = [
         c for c in soc_choices(hass) if c.selected_entity_id is not None and (allowed is None or c.id in allowed)
     ]
+    if stored_vehicle_id == GUEST_VEHICLE_ID:
+        # A guest car is no vehicle: nothing of a car is read for it, not even the only one at the charger.
+        return None, candidates
     if isinstance(stored_vehicle_id, str) and any(c.id == stored_vehicle_id for c in candidates):
         return stored_vehicle_id, candidates
     if len(candidates) == 1:
