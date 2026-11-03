@@ -257,7 +257,7 @@ shows the site's whole import, not only this charger's:
   3.6 kW · counts for day 06–23*.
 
 The site keeps every hour of this month and the month before, and the days of each month for two years: an older
-month shows its days only, and a month before 2.4.0 nothing.
+month shows its days only, and a month before 2.3.0 nothing.
 
 ## The settings popover
 

@@ -139,7 +139,7 @@ it. A replacement may leave it out, and then the stored value is kept; a value t
 with `invalid_permission`. It is withheld from the webhook like the fields above (ask with
 `"reads": ["users_change_plan"]`).
 
-Since 2.4 the record carries `if_not_ready` (`ask`, the default, `release` or `hold`): what the site's import target
+Since 2.3 the record carries `if_not_ready` (`ask`, the default, `release` or `hold`): what the site's import target
 does when the plan cannot be ready by its departure under it (see
 [Holding the chargers under the import target](site-and-load-balancing.md#holding-the-chargers-under-the-import-target)).
 A plan field: a user who may change the plan may change it. A replacement may leave it out, and then the stored
@@ -203,7 +203,7 @@ under Hybrid, unless the request asks for it (`"reads": ["sun_past_target"]`).
 enough for load balancing to hold the car at its minimum current, `load_balancing_limited` carries `cause`
 `measurement_lost` and `limit_a` that minimum. An app that does not know the value words it as a plain limit.
 
-**The site's import target.** Since 2.4, while the site's import target holds a charge (see
+**The site's import target.** Since 2.3, while the site's import target holds a charge (see
 [Holding the chargers under the import target](site-and-load-balancing.md#holding-the-chargers-under-the-import-target)),
 the status carries these lines, tone `normal` but for `import_target_at_risk` (`notice`):
 
@@ -365,7 +365,7 @@ belong to the day it started on, for its days and its months alike: weekdays 22-
 Saturday 06:00 but not Sunday night. `write_revision` is the electricity price's write counter, which a write
 names. See [Prices](prices.md#what-you-pay) for the arithmetic.
 
-`demand` (since 2.4; a reader of 2.3 never meets it because it is inside this opt-in block) is the demand charge
+`demand` (since 2.3, inside this opt-in block) is the demand charge
 and the import target, measured on the charger's site. `components` is the electricity price's demand-charge parts
 as a write states them, at most three, `[]` for none: each `{"window", "top_n", "price_per_kw": {"winter",
 "summer"}}`, where `window` is `null` (all hours count) or a window of `high_load_window`'s shape, `top_n` is 1, 3
@@ -383,7 +383,7 @@ night belonging to the day it starts on). An hour with more than ten minutes wit
 `hour` is the clock hour running now, `{"start", "kw_so_far", "kwh_so_far"}` (the mean import over the time
 measured so far, and the energy), or `null` before it has a reading. `import_target_kw` is the site's import target
 (`null` for none), which is set with the site's `import_target_kw` field in `spotnav/update_entity_config` (a number
-of at least 0.1, `null` or `""` to clear; written without reloading the site). Since 2.4 the import target holds
+of at least 0.1, `null` or `""` to clear; written without reloading the site). Since 2.3 the import target holds
 the site's chargers through load balancing (the status lines below); a demand charge is measured only. A full example is `tests/fixtures/grid_tariff/pilot_demand.json`.
 
 `update_grid_tariff {"expected_write_revision", "grid_tariff"}` replaces the three parts in full; `grid_tariff` is
@@ -434,7 +434,7 @@ for this charger, sent to the webhook only when the request asks for it (`"reads
 `id` is `vehicle` (no vehicle is set up for the charger), `car_level` (the plan charges to a target level, a
 vehicle is set up and no source reports its level; never dismissible, and never beside `vehicle`), `site` (the
 charger has no site), `solar_forecast` (the site can measure solar surplus and has no forecast source),
-`demand_grid_power` (since 2.4: a demand-charge part or the site's import target is set and the site is a direct
+`demand_grid_power` (since 2.3: a demand-charge part or the site's import target is set and the site is a direct
 one without the meter's total grid power; never dismissible),
 `phase_switching` (offered for the charger and off), `phone` (no phone is chosen for notifications and the paired
 app has no push registration) or `app` (no charger's webhook has been used yet); a reader should skip an id it does not know. `spotnav/dismiss_setup_item {"item"}` (administrators
@@ -525,7 +525,7 @@ integration refused the write). Each write is logged at INFO.
 out (and answers the action `Unsupported action`), so an app offers the feature only where its key is `true`.
 `site_import_target` is `true` where `update_site_settings` takes `import_target_kw` (below).
 
-**The site's import target over the webhook.** Since 2.4 `update_site_settings` (and `spotnav/update_site_settings`)
+**The site's import target over the webhook.** Since 2.3 `update_site_settings` (and `spotnav/update_site_settings`)
 takes `import_target_kw` in `changes`: a JSON number from 0.1 to 1000 (kW, an hourly mean), or `null` to clear it.
 It is stored as the card's `spotnav/update_entity_config` stores it and written without reloading the site (the
 target is read on every recompute). `expected` may name it, the value last seen (`null` for none): a different
@@ -938,7 +938,7 @@ A charger's `energy_register_entity` field in `get_entity_config` carries the ad
 `update_entity_config` takes `"none"` for it (no register, and none looked up or detected again) and `""`
 for the one SpotNav finds itself; while "None" is chosen the field reads back as `"none"`.
 
-Since 2.4 a site's fields in `get_entity_config` carry `import_target_kw` after `safety_margin_a`: a number field
+Since 2.3 a site's fields in `get_entity_config` carry `import_target_kw` after `safety_margin_a`: a number field
 (`required: false`, `minimum: 0.1`, `value` in kW or `null` for none), the site's import target. `update_entity_config`
 takes a number up to 1000, or `null` or `""` to clear it, and writes it without reloading the site; any other value
 is `invalid_value` on that field.
@@ -1169,5 +1169,5 @@ Refusals: `spotnav_unsupported_api_version`, `spotnav_charger_required` (neither
 `spotnav_unknown_site`, `spotnav_no_site` (the charger is in no site, or the site is not loaded),
 `spotnav_needs_total_grid_power` (the site cannot measure its import: a direct site without its total grid power)
 and `spotnav_invalid_range` (the month). The site keeps each hour of the running month and the month before, and a
-summary of each day for 24 months; a month before the update to 2.4.0 has nothing. Example answers are in
+summary of each day for 24 months; a month before the update to 2.3.0 has nothing. Example answers are in
 `tests/fixtures/power_month/` and `tests/fixtures/webhook/get_power_month_*.json`.

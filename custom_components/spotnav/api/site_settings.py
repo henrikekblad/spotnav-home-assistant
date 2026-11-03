@@ -14,7 +14,7 @@ A compare-and-set over one site config entry's stored data, reusing the dashboar
   and a disable answers with a `restore` outcome (`not_needed | restored | failed`, per charger).
   Any other key is refused. Load balancing is WebSocket-only: the webhook secret may write
   solar settings but never the fuse-protection switch.
-* `import_target_kw` (since 2.4, so the paired app can set the site's import target as the card does with
+* `import_target_kw` (since 2.3, so the paired app can set the site's import target as the card does with
   `spotnav/update_entity_config`): a number from 0.1 to 1000 (kW, an hourly mean), or `null` to clear it. Stored in
   the site entry's data as the card's write stores it, and written without a reload (the target is read on every
   recompute). `expected` may name it (the value last seen, `null` for none) for the compare-and-set. A write that

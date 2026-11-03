@@ -493,7 +493,7 @@ holds the site's chargers, through load balancing, so the hour stays under it (s
   charger's current down or paused a charger in it.
 - **Two years of days.** Beside the hours the site keeps, per day, its highest hour (with the house's part of it and
   the hour it started), whether the import target held or paused a charger that day, and per month each part's
-  counted peaks and figure, for 24 months. They are written as each hour ends. The months before 2.4.0 have none.
+  counted peaks and figure, for 24 months. They are written as each hour ends. The months before 2.3.0 have none.
 - **Where to see it.** The charge history's [Power view](card.md#power) shows a month day by day, with the import
   target as a line and the days it held or paused a charger marked, and a tapped day's hours; it is offered where the
   site measures its import.
