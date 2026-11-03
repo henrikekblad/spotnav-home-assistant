@@ -3,9 +3,10 @@
 // write's body built over the block as it is stored, and the editor for the high-load hours.
 //
 // A write replaces the three parts in full (`spotnav/update_grid_tariff`), so every change is made on the block
-// the card holds when it is sent: a change to one part keeps the other two as stored. The high-load fee needs its
-// window, and no window is ever made up: turning the fee on with none stored asks for the hours first, prefilled
-// with a common window the person confirms (`SUGGESTED_WINDOW`).
+// the card holds when it is sent: a change to one part keeps the other two as stored. The high-load fee and its
+// hours are one dialog (`highLoadEditor`) and one write: the fee needs its window, and no window is ever made up
+// (with none stored the hours are prefilled with a common window, `SUGGESTED_WINDOW`, said to be a suggestion, and
+// nothing is written until Save). "Remove the high-load fee" turns the fee off and clears the hours in one write.
 
 import { formatNumber } from "./format";
 import { translate, type Language, type TranslationKey } from "./i18n";
@@ -120,18 +121,19 @@ export function withPercent(block: GridTariffBlock, value: number | null): GridT
   return { ...storedBody(block), transfer_percent: feeChange(block.transfer_percent, value) };
 }
 
-/**
- * The high-load fee set (`null` is off), with `window` when the person has just confirmed one, else the stored
- * window. The backend refuses a fee that is on without a window; this never supplies one.
- */
-export function withHigh(block: GridTariffBlock, value: number | null, window: HighLoadWindow | null = null): GridTariffBody {
-  const body = { ...storedBody(block), transfer_high: feeChange(block.transfer_high, value) };
-  return window === null ? body : { ...body, high_load_window: { ...window } };
-}
-
 /** The high-load hours set, the fees as stored. */
 export function withWindow(block: GridTariffBlock, window: HighLoadWindow): GridTariffBody {
   return { ...storedBody(block), high_load_window: { ...window } };
+}
+
+/** The high-load fee on with `value` over `window`, the rest as stored: the one dialog's Save. */
+export function withHighLoad(block: GridTariffBlock, value: number, window: HighLoadWindow): GridTariffBody {
+  return { ...storedBody(block), transfer_high: { enabled: true, value }, high_load_window: { ...window } };
+}
+
+/** The high-load fee off (its figure kept, as any fee turned off) and the hours cleared: the dialog's Remove. */
+export function withoutHighLoad(block: GridTariffBlock): GridTariffBody {
+  return { ...storedBody(block), transfer_high: feeChange(block.transfer_high, null), high_load_window: null };
 }
 
 export function sameBody(left: GridTariffBody, right: GridTariffBody): boolean {
@@ -238,16 +240,6 @@ export function gridTariffRows(language: Language, block: GridTariffBlock | null
     });
   }
   return rows;
-}
-
-export interface WindowEditorInput {
-  /** What is stored, or `null`: the editor then offers `SUGGESTED_WINDOW` and says it is a suggestion. */
-  current: HighLoadWindow | null;
-  idPrefix: string;
-  /** The line above the fields; the turn-on flow says why the hours come first. */
-  intro?: string;
-  /** The Save button's word ("Next" when the fee's figure follows). */
-  positive?: string;
 }
 
 function hourSelect(doc: Document, id: string, from: number, to: number, selected: number): HTMLSelectElement {
@@ -358,18 +350,36 @@ export function windowFields(doc: Document, language: Language, idPrefix: string
   };
 }
 
+export interface HighLoadEditorInput {
+  /** The fee as stored: its figure fills the field (also one kept while the fee is off). */
+  fee: GridTariffFee;
+  /** The hours as stored, or `null`: the fields then hold `SUGGESTED_WINDOW` and say it is a suggestion. */
+  window: HighLoadWindow | null;
+  idPrefix: string;
+}
+
+/** What the dialog's Save hands on: the fee's figure and its hours; `null` is Remove. */
+export interface HighLoadChoice {
+  value: number;
+  window: HighLoadWindow;
+}
+
+/** The highest figure the fee takes (the area's minor unit per kWh). */
+export const HIGH_LOAD_MAX = 100000;
+
 /**
- * The high-load hours (`windowFields`). With none stored it is prefilled with `SUGGESTED_WINDOW` and says so;
- * nothing is written until Save. Saving the stored hours unchanged writes nothing.
+ * The grid fee in high-load hours, in one dialog: the fee's figure and its hours (`windowFields`), one Save that
+ * hands both on, and, while the fee is on or hours are stored, "Remove the high-load fee", which hands on `null`.
+ * Saving what is stored unchanged writes nothing.
  */
-export function windowEditor(
+export function highLoadEditor(
   doc: Document,
   language: Language,
-  input: WindowEditorInput,
-  save: SaveValue<HighLoadWindow>,
+  input: HighLoadEditorInput,
+  save: SaveValue<HighLoadChoice | null>,
   handlers: EditorHandlers,
 ): HTMLFormElement {
-  const editor = shell(doc, language, "window", handlers, input.positive);
+  const editor = shell(doc, language, "highLoad", handlers);
   const body = editor.body;
   const help = (text: string, key: string): void => {
     const line = doc.createElement("p");
@@ -378,25 +388,70 @@ export function windowEditor(
     line.dataset["windowHelp"] = key;
     body.append(line);
   };
-  if (input.intro !== undefined) {
-    help(input.intro, "intro");
-  }
+  help(translate(language, "gridFee.high.help"), "fee");
+  const field = doc.createElement("input");
+  field.type = "text";
+  field.inputMode = "decimal";
+  field.className = C.settingsInput;
+  field.id = `${input.idPrefix}-high-load-fee`;
+  field.dataset["highLoad"] = "fee";
+  const figure = input.fee.effective_value ?? input.fee.explicit_value;
+  field.value = figure === null ? "" : formatNumber(language, figure, 2).replace(/\s/g, "");
+  const unit = input.fee.unit === null ? "" : ` (${input.fee.unit})`;
+  body.append(labelled(doc, `${translate(language, "gridFee.high.fee")}${unit}`, field));
   help(translate(language, "gridFee.window.help"), "what");
-  const shown = input.current ?? SUGGESTED_WINDOW;
-  if (input.current === null) {
+  if (input.window === null) {
     help(translate(language, "gridFee.window.suggestion"), "suggestion");
   }
+  const shown = input.window ?? SUGGESTED_WINDOW;
   const fields = windowFields(doc, language, input.idPrefix, shown);
   body.append(...fields.nodes);
+  const on = input.fee.policy === "manual";
+  if (on || input.window !== null) {
+    const remove = doc.createElement("button");
+    remove.type = "button";
+    remove.className = C.button;
+    remove.dataset["highLoad"] = "remove";
+    remove.textContent = translate(language, "gridFee.high.remove");
+    remove.addEventListener("click", () => {
+      remove.disabled = true;
+      void save(null)
+        .then((message) => {
+          if (message === null) {
+            handlers.onDone();
+          } else {
+            editor.setError(message);
+          }
+        })
+        .finally(() => {
+          remove.disabled = false;
+        });
+    });
+    // Beside Save and Cancel: the form's last part is its actions line.
+    (editor.form.lastElementChild ?? body).append(remove);
+  }
   editor.submit(async () => {
-    const chosen = fields.read();
-    if (chosen.to_hour === chosen.from_hour) {
+    const text = field.value.trim().replace(/\s/g, "").replace(",", ".");
+    const value = text === "" ? Number.NaN : Number(text);
+    if (!Number.isFinite(value)) {
+      return translate(language, "gridFee.high.needsFee");
+    }
+    if (value < 0 || value > HIGH_LOAD_MAX) {
+      return translate(language, "settings.error.range", {
+        min: formatNumber(language, 0, 2),
+        max: formatNumber(language, HIGH_LOAD_MAX, 2),
+      });
+    }
+    const rounded = Math.round(value * 100) / 100;
+    const window = fields.read();
+    if (window.to_hour === window.from_hour) {
       return translate(language, "gridFee.window.sameHours");
     }
-    if (input.current !== null && sameWindow(input.current, chosen)) {
+    if (on && input.fee.explicit_value === rounded && input.window !== null && sameWindow(input.window, window)) {
       return null;
     }
-    return await save(chosen);
+    return await save({ value: rounded, window });
   });
   return editor.form;
 }
+
