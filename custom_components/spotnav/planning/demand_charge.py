@@ -48,6 +48,10 @@ class HourMean:
     #: The hour's import over the whole hour, the time without a reading counted as no import (kW): never above what
     #: the meter billed, where `kw` (the mean over the time measured) may be. `None` for an hour kept before it was.
     floor_kw: float | None = None
+    #: Read from Home Assistant's hourly statistics (`site/hour_statistics.py`), not measured by SpotNav: shown and
+    #: counted in a month's peaks, but never part of the month's free level (`free_levels_by_hour`, the import
+    #: target's lift), so an approximation never raises what a charger may draw.
+    imported: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -134,3 +138,52 @@ def component_month(
     _year, month = month_of(hour_start(now, tz), tz)
     price = component.price_winter if is_winter(month) else component.price_summer
     return ComponentMonth(bar_kw=bar, free_kw=free, peaks=top, days_counted=len(peaks), price_per_kw=price)
+
+
+def free_level_hours(hours: Iterable[HourMean]) -> list[HourMean]:
+    """The hours the month's free level is worked out from: SpotNav's own measured hours (never an imported one),
+    each at its floor (its import over the whole hour, a gap counted as none: never above what the meter billed)."""
+    return [
+        hour if hour.floor_kw is None else replace(hour, kw=min(hour.kw, hour.floor_kw))
+        for hour in hours
+        if not hour.imported
+    ]
+
+
+def free_levels_by_hour(
+    components: Sequence[DemandComponent], hours: Sequence[HourMean], tz: str
+) -> dict[datetime, float | None]:
+    """For each of a month's `hours`, the month's free level when it ran: the lowest `free_kw` among the parts that
+    count it, worked out as `component_month` would have at its start from the month's earlier hours
+    (`free_level_hours`: measured ones only, at their floor). `None` for an hour no part counts. For the power view's
+    line of the month's peak; the import target's own lift reads the running hour the same way."""
+    ordered = sorted(hours, key=lambda hour: hour.start)
+    peaks: list[dict[date, DayPeak]] = [{} for _ in components]
+    levels: dict[datetime, float | None] = {}
+    for hour in ordered:
+        found: list[float] = []
+        for index, component in enumerate(components):
+            today = counted_day(component, hour.start, tz)
+            if today is None:
+                continue
+            ranked = sorted(peaks[index].values(), key=lambda peak: (-peak.kw, peak.start))
+            top = ranked[: component.top_n]
+            own = peaks[index].get(today)
+            if own is not None and own in top:
+                found.append(own.kw)
+            elif len(ranked) >= component.top_n:
+                found.append(top[-1].kw)
+            else:
+                found.append(0.0 if own is None else own.kw)
+        levels[hour.start] = min(found) if found else None
+        for counted in free_level_hours((hour,)):
+            if counted.incomplete:
+                continue
+            for index, component in enumerate(components):
+                day = counted_day(component, counted.start, tz)
+                if day is None:
+                    continue
+                best = peaks[index].get(day)
+                if best is None or counted.kw > best.kw:
+                    peaks[index][day] = DayPeak(day=day, start=counted.start, kw=counted.kw)
+    return levels

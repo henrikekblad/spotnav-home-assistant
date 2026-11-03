@@ -1051,6 +1051,37 @@ class SiteCapacityController:
             )
         except Exception:  # noqa: BLE001 - a measurement must never disturb the site
             _LOGGER.debug("SpotNav site %s: the hour's import could not be measured", self.entry_id, exc_info=True)
+        if self.demand.backfill_due():
+            self.async_start_backfill()
+
+    @callback
+    def async_start_backfill(self) -> bool:
+        """Read the hours before SpotNav measured from Home Assistant's statistics, once, in the background
+        (`SiteDemand.async_backfill`): only when the recorder runs. Whether it started. Changes nothing a charger is
+        told: an imported hour is shown and counted in the month's peaks, never in the import target's lift."""
+        from homeassistant.core import CoreState  # noqa: PLC0415 - kept beside its only use
+
+        from .hour_statistics import recorder_ready, RecorderReader, site_series  # noqa: PLC0415
+
+        if self._closed or self.hass.state is not CoreState.running or not recorder_ready(self.hass):
+            return False
+        from ..pricing.price_source import site_demand_components  # noqa: PLC0415 - it imports the planner
+
+        try:
+            series = site_series(self.hass, self.config)
+            components = site_demand_components(self.hass, self.entry_id)
+        except Exception:  # noqa: BLE001 - a back-fill must never disturb the site
+            _LOGGER.debug("SpotNav site %s: the statistics' sources could not be read", self.entry_id, exc_info=True)
+            return False
+        # Marked as running at once, so the next recompute does not start another.
+        self.demand._backfill_running = True  # noqa: SLF001 - the demand's own flag, set before the task runs
+
+        async def run() -> None:
+            self.demand._backfill_running = False  # noqa: SLF001 - async_backfill sets it again
+            await self.demand.async_backfill(RecorderReader(self.hass), series, components)
+
+        self.hass.async_create_background_task(run(), f"spotnav_site_backfill_{self.entry_id}")
+        return True
 
     def _target_mark(self) -> TargetMark | None:
         """What the import target did this hour as of its last decision (held a charger's current down, or paused a
@@ -4663,35 +4694,47 @@ class SiteCapacityController:
         entry = self.hass.config_entries.async_get_entry(self.entry_id)
         return stored_import_target_kw(self.config if entry is None else entry.data)
 
+    def effective_import_target_kw(self, set_kw: float | None) -> float | None:
+        """The level the running hour is held under now (`_effective_import_target`): the import target lifted to the
+        month's free level, for the dashboard's line beside the target. `None` without a target. Worked out on its
+        own, never through the hold's cache: reading it changes nothing a charger is told."""
+        if set_kw is None:
+            return None
+        return self._worked_out_import_target(set_kw, self.demand.now())[0].kw
+
     def _effective_import_target(self, set_kw: float, now: datetime) -> EffectiveTarget:
         """The import target lifted to the month's free level for the running hour (`effective_target`), from the
         hours the site's tracker kept this month and the electricity price's demand-charge parts. Worked out again
         when an hour completes, the hour turns or the parts or the target change."""
+        found, key = self._worked_out_import_target(set_kw, now, self._target_effective_key)
+        if found is None:
+            assert self._target_effective is not None
+            return self._target_effective
+        self._target_effective_key = key
+        return found
+
+    def _worked_out_import_target(
+        self, set_kw: float, now: datetime, known_key: Any = None
+    ) -> tuple[Any, Any]:
+        """`(effective target, its key)`; `(None, key)` when `known_key` is the key and the hold's own figure stands."""
         from ..planning.demand_charge import hour_start  # noqa: PLC0415 - kept beside its only use
         from ..pricing.price_source import site_demand_components  # noqa: PLC0415 - it imports the planner
 
         components = site_demand_components(self.hass, self.entry_id)
         tracker = self.demand.tracker
         key = (set_kw, components, tracker.month, len(tracker.hours), hour_start(now, tracker.tz), tracker.tz)
-        if key == self._target_effective_key and self._target_effective is not None:
-            return self._target_effective
+        if known_key is not None and key == known_key and self._target_effective is not None:
+            return None, key
         if not components:
-            found = effective_target(set_kw, ())
-        else:
-            from dataclasses import replace as with_kw  # noqa: PLC0415 - kept beside its only use
+            return effective_target(set_kw, ()), key
+        from ..planning.demand_charge import component_month, free_level_hours  # noqa: PLC0415 - kept beside its only use
 
-            from ..planning.demand_charge import component_month  # noqa: PLC0415 - kept beside its only use
-
-            # Each hour at its floor (its import over the whole hour, a gap counted as none): never above what the
-            # operator billed, where the mean over the time measured may be.
-            hours = [
-                hour if hour.floor_kw is None else with_kw(hour, kw=min(hour.kw, hour.floor_kw))
-                for hour in tracker.month_hours(now)
-            ]
-            levels = [component_month(component, hours, tracker.tz, now).free_kw for component in components]
-            found = effective_target(set_kw, levels)
-        self._target_effective_key = key
-        return found
+        # Each hour at its floor (its import over the whole hour, a gap counted as none): never above what the
+        # operator billed, where the mean over the time measured may be. An hour read from Home Assistant's
+        # statistics (`imported`) is an approximation: it never lifts the target.
+        hours = free_level_hours(tracker.month_hours(now))
+        levels = [component_month(component, hours, tracker.tz, now).free_kw for component in components]
+        return effective_target(set_kw, levels), key
 
     def _battery_first_discharge(self) -> tuple[bool, float | None]:
         """Whether a home battery's discharge counts as import for the target (`battery_first` with a battery set),
@@ -4791,7 +4834,12 @@ class SiteCapacityController:
         running hour so far, each by the time it was measured; `None` before any is. A kettle's half minute weighs half
         a minute in it."""
         tracker = self.demand.tracker
-        hours = [hour.house_kw for hour in (*tracker.previous, *tracker.hours) if hour.house_kw is not None]
+        # Only SpotNav's own hours: one read from Home Assistant's statistics never changes what a charger is told.
+        hours = [
+            hour.house_kw
+            for hour in (*tracker.previous, *tracker.hours)
+            if hour.house_kw is not None and not hour.imported
+        ]
         recent = hours[-TARGET_HOUSE_HOURS:]
         energy_kwh, span_h = sum(recent), float(len(recent))
         running = tracker.running
