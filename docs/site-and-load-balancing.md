@@ -412,8 +412,10 @@ The current and where it came from are in the charger's diagnostics (`switched_c
 - **It is resumed whole.** A charge load balancing paused, or a start it held back for want of room, is
   started again once every phase it uses has room for its whole switched current plus 1 A, for the
   dwell (60 s), with the usual limit on resumes. A start goes out only where the site has room for all of
-  it. A plain switch that cannot say whether a car is plugged in is resumed while the charge is still wanted;
-  a charger that can say must say a car is there.
+  it. A charger that cannot report whether a car is plugged in (a plain switch, an OCPP charger whose connector
+  status cannot be found, or a status sensor SpotNav cannot map for its platform) is resumed while the charge is
+  still wanted; a charger that can report it must say a car is there. This holds for any paused charger, not only
+  a switch.
 - **A lost measurement does nothing to it.** It cannot be stepped to a minimum, and pausing it on a meter
   that merely went quiet would stop charges with no overload shown; it is treated as a charger already at
   its minimum.
