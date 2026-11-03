@@ -58,7 +58,7 @@
   "status.importTargetPausedHousePeak": "Pausad till kl. {time} – huset ensamt ligger över månadens topp på {target} kW (effektmål {set} kW) den här timmen.",
   "status.importTargetPausedHousePeakNextHour": "Pausad till nästa hela timme – huset ensamt ligger över månadens topp på {target} kW (effektmål {set} kW) den här timmen.",
   "status.importTargetHouseOverPeak": "Huset ensamt ligger över månadens topp på {target} kW (effektmål {set} kW) den här timmen.",
-  "issue.importTargetRelease": "Släpp effektmålet i natt",
+  "issue.importTargetRelease": "Släpp effektmålet för den här laddningen",
   "release.confirm.title": "Släppa effektmålet?",
   "release.confirm.unplug": "Bilen laddar då med full effekt tills den kopplas ur eller laddningen är klar, senast kl. 12.",
   "release.confirm.departure": "Bilen laddar då med full effekt tills den kopplas ur (eller till avresan {time}).",

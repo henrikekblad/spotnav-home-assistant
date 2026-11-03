@@ -219,14 +219,14 @@ the status carries these lines, tone `normal` but for `import_target_at_risk` (`
 - `import_target_paused` `{until, target_kw}` in place of `balancing_paused` while the target paused the charge (a
   plan's or a person's Start): it waits for the next clock hour, `until`.
 - `import_target_held` and `import_target_paused` carry `releasable` (`true`: offer "Release the import target
-  tonight", `release_import_target`, after a confirmation), `release_until` (the plan's departure ahead, or `null`:
+  for this charge", `release_import_target`, after a confirmation), `release_until` (the plan's departure ahead, or `null`:
   until the car is unplugged, the charge is done or noon) and `release_peak_kw` (what the month's peak could reach once set aside: the house's
   typical load and the charge's full power, kW rounded; `null` when not known), for that confirmation.
 - `import_target_paused` carries `house_over` too: `true` where the house alone ends the hour above the target, said in
   place of "so the hour stays under it".
 - `import_target_at_risk` `{departure, missing_kwh, target_kw, releasable}` after the issues while the plan cannot be
   ready by `departure` under the target: `missing_kwh` short. `releasable` (the plan's `if_not_ready` `ask`): offer
-  "Release the import target tonight", `release_import_target`; `false` (`hold`): only say it.
+  "Release the import target for this charge", `release_import_target`; `false` (`hold`): only say it.
 - `import_target_released` `{target_kw, departure, automatic}` after the issues while the charge runs with the target
   set aside until `departure`: by a person (`automatic` `false`), or by the plan's own `if_not_ready` `release`.
   `departure` `null`: set aside by a person until the car is unplugged (a Start, or a plan without a departure), the

@@ -58,7 +58,7 @@
   "status.importTargetPausedHousePeak": "Tauolla klo {time} asti – talo yksinään ylittää kuukauden {target} kW:n huipun (tehotavoite {set} kW) tällä tunnilla.",
   "status.importTargetPausedHousePeakNextHour": "Tauolla seuraavaan tasatuntiin asti – talo yksinään ylittää kuukauden {target} kW:n huipun (tehotavoite {set} kW) tällä tunnilla.",
   "status.importTargetHouseOverPeak": "Talo yksinään ylittää kuukauden {target} kW:n huipun (tehotavoite {set} kW) tällä tunnilla.",
-  "issue.importTargetRelease": "Ohita tehotavoite tänä yönä",
+  "issue.importTargetRelease": "Ohita tehotavoite tämän latauksen ajaksi",
   "release.confirm.title": "Ohitetaanko tehotavoite?",
   "release.confirm.unplug": "Auto latautuu silloin täydellä teholla, kunnes se irrotetaan tai lataus on valmis, viimeistään klo 12.",
   "release.confirm.departure": "Auto latautuu silloin täydellä teholla, kunnes se irrotetaan (tai lähtöön klo {time}).",

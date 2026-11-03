@@ -19,7 +19,7 @@ energy to charge (or a [target state of charge](target-soc.md)), the charger's *
   is paused until the car is unplugged. Nothing automatic starts or stops the charger meanwhile (no plan
   period, top-off, hold, solar or hybrid); load balancing still keeps the fuse safe, and a site's
   [import target](site-and-load-balancing.md#holding-the-chargers-under-the-import-target) holds a
-  Start as it holds a plan, until *Release the import target tonight* sets it aside until the car is
+  Start as it holds a plan, until *Release the import target for this charge* sets it aside until the car is
   unplugged or the charge is done, by noon at the latest. A **Start** also
   ends when the car ends the charge by itself (full, at its limit, or no longer drawing): Auto then
   resumes and plans again without starting the period that is already running. When the car's state of
@@ -158,7 +158,7 @@ measured hours (its load now until an hour is measured), never below the power a
 plan then buys the quarter-hours the held charge needs. A period the hold keeps short anyway (the house drew more
 than usual) is planned again at its end once it is half a kWh behind (not only below the usual 80 %), so what the
 target keeps back each period does not add up. When the held power can no longer deliver what the plan needs before
-the departure, the plan's *If the car cannot be ready in time* decides: ask (a notification with *Release the import target tonight*),
+the departure, the plan's *If the car cannot be ready in time* decides: ask (a notification with *Release the import target for this charge*),
 release the target by itself (the plan then counts on the car's own power), or hold it and say what will be missing.
 The car's minimum level is charged at once whatever the target.
 

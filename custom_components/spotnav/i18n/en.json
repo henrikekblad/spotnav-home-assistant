@@ -33,7 +33,7 @@
     "cost": "about {cost}",
     "import_target.at_risk.time": "The car will not be ready by {time} under the {target} kW import target – {kwh} kWh short.",
     "import_target.at_risk": "The car will not be ready by the departure under the {target} kW import target – {kwh} kWh short.",
-    "import_target.release": "Release the import target tonight",
+    "import_target.release": "Release the import target for this charge",
     "import_target.at_risk.peak.time": "The car will not be ready by {time} under the month's peak of {target} kW (import target {set} kW) – {kwh} kWh short.",
     "import_target.at_risk.peak": "The car will not be ready by the departure under the month's peak of {target} kW (import target {set} kW) – {kwh} kWh short."
   },

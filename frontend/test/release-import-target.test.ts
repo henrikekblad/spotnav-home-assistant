@@ -1,4 +1,4 @@
-// "Release the import target tonight" beside the held or paused line, for any user, confirmed before it is sent.
+// "Release the import target for this charge" beside the held or paused line, for any user, confirmed before it is sent.
 
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -46,7 +46,7 @@ afterEach(() => {
   document.body.replaceChildren();
 });
 
-describe("Release the import target tonight", () => {
+describe("Release the import target for this charge", () => {
   it("is offered with the held line to a user who is not an administrator, and only Release sends it", async () => {
     const hass = new FakeHass();
     const element = mountCard(CONFIG, hass);
@@ -56,7 +56,7 @@ describe("Release the import target tonight", () => {
     await settle();
     const root = shadow(element);
     const offer = root.querySelector<HTMLButtonElement>("[data-part='release-import-target'] button");
-    expect(offer?.textContent).toBe("Släpp effektmålet i natt");
+    expect(offer?.textContent).toBe("Släpp effektmålet för den här laddningen");
     offer!.click();
     await settle();
     const dialogText = (): string =>

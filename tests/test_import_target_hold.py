@@ -58,6 +58,8 @@ class _World:
     quiet_companions: bool = False
     #: Steps after a start during which the car draws nothing yet (`drawn_a`).
     ramp_steps: int = 0
+    #: Steps during which the car draws but its charger still reports 0 A (its meter lags the site's).
+    reading_lag_steps: int = 0
     #: Extra current (A) on one phase only, beside the house on all three: an unbalanced load.
     phase_extra_a: dict[str, float] = field(default_factory=dict)
     turn_offs: int = 0
@@ -123,7 +125,10 @@ class _World:
                 force_update=not companions_quiet,
             )
             hass.states.async_set(
-                f"sensor.{self.halo.prefix}_{phase}", str(self.drawn_a), {"unit_of_measurement": "A"}, force_update=True
+                f"sensor.{self.halo.prefix}_{phase}",
+                str(0.0 if self.reading_lag_steps > 0 else self.drawn_a),
+                {"unit_of_measurement": "A"},
+                force_update=True,
             )
 
     def follow_commands(self) -> None:
@@ -151,6 +156,8 @@ class _World:
         self.delivered_kwh += 3 * _V * self.drawn_a * seconds / 3600.0 / 1000.0
         if self.ramp_steps > 0:
             self.ramp_steps -= 1
+        if self.reading_lag_steps > 0:
+            self.reading_lag_steps -= 1
         self.frozen.tick(timedelta(seconds=seconds))
         self.halo.advance(seconds)
         if self.register is not None:
@@ -392,7 +399,7 @@ async def test_ask_holds_the_target_and_tells_once_with_a_button(hass: HomeAssis
         assert "6.0 kW" in told[0]["message"] and "kWh short" in told[0]["message"]
         actions = told[0]["data"]["actions"]
         stamp = int(world.departure.timestamp())
-        assert actions == [{"action": f"SPOTNAV_IMPORT_TARGET_RELEASE_{charger}_{stamp}", "title": "Release the import target tonight"}]
+        assert actions == [{"action": f"SPOTNAV_IMPORT_TARGET_RELEASE_{charger}_{stamp}", "title": "Release the import target for this charge"}]
         assert told[0]["data"]["tag"] == f"spotnav_{charger}_plan_at_risk"
         # The phone's button sets the target aside until the departure.
         hass.bus.async_fire("mobile_app_notification_action", {"action": actions[0]["action"]})
@@ -994,6 +1001,30 @@ async def test_a_charge_started_on_still_phases_runs_and_is_never_paused_for_the
             assert world.car_a <= 9.0, reasons
         else:
             assert world.car_a == 16.0, reasons
+
+
+async def test_a_start_whose_charger_reads_late_is_not_held_for_its_own_draw(hass: HomeAssistant, monkeypatch) -> None:
+    """The owner's 12:24 Start: the battery covered the car at once while the charger still read 0 A, so the car's
+    draw counted as the house's (about 11 kW) and the first recompute held the car at 9 A for a moment. While a
+    charger written at least its minimum still reads below it, the house counts at most its typical load: the car is
+    not held for its own draw. Half an hour into a quiet hour the budget has room for the whole car."""
+    with freeze_time(_HOUR + timedelta(seconds=5)) as frozen:
+        world = await _world(
+            hass, monkeypatch, frozen, "lagread", target_kw=6.5, house_w=500.0,
+            battery_entity="sensor.lagread_battery_power",
+        )
+        controller = world.halo.controller
+        controller.config["solar_priority"] = "battery_first"
+        await _battery_holds_the_grid(world, 30)
+        world.reading_lag_steps = 2
+        await _start_by_hand(world)
+        reasons = []
+        for _ in range(3):
+            await _battery_holds_the_grid(world, 0.5)
+            reasons.append(world.decision.reason)
+            assert world.car_a == 16.0, reasons
+        assert REASON_IMPORT_TARGET_HELD not in reasons
+        assert controller.import_target_snapshot()["budget"]["house_w"] < 1500
 
 
 async def test_a_battery_that_cannot_be_read_lowers_no_further_than_the_grids_phases(

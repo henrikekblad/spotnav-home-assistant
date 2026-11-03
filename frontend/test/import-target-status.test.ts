@@ -62,7 +62,7 @@ describe("the import target's status lines", () => {
     expect(lineText(risk, SV, NOW)).toBe("Bilen blir inte klar till 07:00 under effektmålet 6,0 kW – 4 kWh saknas.");
     const [issue] = issuesOf({ tone: "notice", lines: [risk] }, "sv", undefined, SV, NOW);
     expect(issue?.fix?.action).toBe("release_import_target");
-    expect(translate("sv", issue!.fix!.labelKey)).toBe("Släpp effektmålet i natt");
+    expect(translate("sv", issue!.fix!.labelKey)).toBe("Släpp effektmålet för den här laddningen");
     const held = line("import_target_at_risk", {
       departure: "2026-11-03T06:00:00+00:00",
       missing_kwh: 4,
@@ -119,7 +119,7 @@ describe("the plan's choice when the car cannot be ready under the import target
 
 
 describe("the press beside the import target's shortfall", () => {
-  it("keeps the issue banner, so any user reaches Release the import target tonight", async () => {
+  it("keeps the issue banner, so any user reaches Release the import target for this charge", async () => {
     const { bannerRepeatsStatus } = await import("../src/card-view");
     const risk = line("import_target_at_risk", {
       departure: "2026-11-03T06:00:00+00:00",
@@ -188,7 +188,7 @@ describe("the house alone above the month's peak", () => {
   });
 });
 
-describe("Release the import target tonight, confirmed first", () => {
+describe("Release the import target for this charge, confirmed first", () => {
   it("says until when and how high the month's peak may go, and only Release sends it", async () => {
     const { releaseConfirmText } = await import("../src/status");
     const held = line("import_target_held", {

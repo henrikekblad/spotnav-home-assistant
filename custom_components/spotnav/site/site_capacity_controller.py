@@ -306,7 +306,7 @@ TARGET_NOT_APPLIED_BATTERY_UNKNOWN = "battery_unknown"
 ERROR_NO_IMPORT_TARGET = "spotnav_no_import_target"
 #: What a set-aside with no departure ahead (a person's Start, a plan without one) is kept as, followed by "/" and the
 #: moment it was given (`_unplug_release_since`): until the car is unplugged, the car ends the charge by itself, or the
-#: next local noon, whichever comes first, so "tonight" ends even on a charger that never reports a plug state.
+#: next local noon, whichever comes first, so a release always ends by then, even on a charger that never reports a plug state.
 RELEASED_UNTIL_UNPLUG = "until_unplug"
 #: The local hour an until-unplug set-aside ends at the latest, at least `RELEASED_UNTIL_UNPLUG_LEAST` after it was
 #: given: one given at 11:59 lasts to the next day's noon.
@@ -339,7 +339,7 @@ def unplug_release_value(now: datetime) -> str:
 
 def unplug_release_latest(since: datetime) -> datetime:
     """The first local noon at least `RELEASED_UNTIL_UNPLUG_LEAST` after `since`: an until-unplug set-aside ends
-    there at the latest, so "tonight" given late in the morning still lasts to the next day's noon."""
+    there at the latest, so a release given late in the morning still lasts to the next day's noon."""
     earliest = since + RELEASED_UNTIL_UNPLUG_LEAST
     local = dt_util.as_local(earliest)
     noon = local.replace(hour=RELEASED_UNTIL_UNPLUG_LATEST_HOUR, minute=0, second=0, microsecond=0)
@@ -454,7 +454,7 @@ class TargetRisk:
     departure: str
     missing_kwh: float
     target_kw: float
-    #: The plan's `if_not_ready`: `ask` is told and offered "Release the import target tonight", `hold` only said, `release` set aside.
+    #: The plan's `if_not_ready`: `ask` is told and offered "Release the import target for this charge", `hold` only said, `release` set aside.
     choice: str = IF_NOT_READY_ASK
     #: The import target as set, below `target_kw` where the month's peak lifts the running hour (`None`: the same).
     set_kw: float | None = None
@@ -4865,6 +4865,13 @@ class SiteCapacityController:
         grid_w = site_net_grid_w(self)
         car_w = None if grid_w is None else site_car_w(self.hass, self)
         house_w = None if grid_w is None or car_w is None else grid_w + (discharge_w or 0.0) - car_w
+        if house_w is not None and self._a_start_not_yet_drawing():
+            # A charger just started (written at or above its minimum) still reads below its minimum while the meter,
+            # or a battery covering the car, already sees the car: its draw would count as the house's. Never more
+            # than what the house typically draws then, so the hold does not flash on a start.
+            typical_kw = self._typical_house_kw()
+            if typical_kw is not None:
+                house_w = min(house_w, max(0.0, typical_kw) * 1000.0)
         running = self.demand.tracker.running_hour(now)
         main_fuse_a = self.config.get(CONF_MAIN_FUSE_A)
         ceiling_w = float("inf") if main_fuse_a is None else float(main_fuse_a) * len(PHASES) * HOLD_VOLTAGE_V
@@ -4934,6 +4941,34 @@ class SiteCapacityController:
             switch_only=request.switch_only,
             paused_this_hour=self._target_paused_hour.get(charger_entry_id) == budget.hour_start,
         )
+
+    def _a_start_not_yet_drawing(self) -> bool:
+        """Whether a member charger is in a charge it was written at least its minimum for, but its own reading is
+        still below that minimum: a start (or a resume) whose draw the charger has not reported yet."""
+        max_age_s = float(self.config.get(CONF_MAX_AGE_S, DEFAULT_MAX_AGE_S))
+        wiring_by_charger: dict[str, Any] = self.config.get(CONF_PHASE_WIRING) or {}
+        for charger_entry_id in self.config.get(CONF_CHARGER_ENTRY_IDS) or []:
+            charger_controller = controller_for(self.hass, charger_entry_id)
+            if charger_controller is None or not (charger_controller.charging or charger_controller.start_pending):
+                continue
+            minimum = self._min_current_a(charger_entry_id)
+            written = getattr(charger_controller.adapter, "last_current_a", None)
+            if not isinstance(written, (int, float)) or isinstance(written, bool) or written < minimum:
+                continue
+            delivered = self._read_charger_measured_current(wiring_by_charger.get(charger_entry_id) or {})
+            readings = (
+                []
+                if delivered is None
+                else [
+                    value.value
+                    for value in (delivered.get(phase) for phase in PHASES)
+                    if value.value is not None and value.problem is None and value.age_s is not None
+                    and value.age_s <= max_age_s
+                ]
+            )
+            if readings and max(readings) < minimum:
+                return True
+        return False
 
     def _typical_house_kw(self) -> float | None:
         """What the house typically draws (kW): its mean over its last `TARGET_HOUSE_HOURS` measured hours and the
@@ -5425,7 +5460,7 @@ class SiteCapacityController:
         assert plan is not None
         if for_departure is not None and for_departure != int(departure.timestamp()):
             _LOGGER.info(
-                "SpotNav site %s: a Release the import target tonight for charger %s was for another departure than its plan's %s; "
+                "SpotNav site %s: a Release the import target for this charge for charger %s was for another departure than its plan's %s; "
                 "nothing is set aside",
                 self.entry_id,
                 charger_entry_id,
