@@ -47,6 +47,9 @@ rules hold for the Companion phones and for the SpotNav app's instant notificati
 - **Not your own change.** A new plan that SpotNav calculates within a minute after someone changed that
   charger's settings (in the app, the card or a SpotNav entity) is not told, nor does it wake the app, because
   the person already sees it.
+- **Not a held Start.** A charge someone started by hand that the site's import target holds or pauses is said
+  in the card's status (with *Release the import target tonight*), never on the phones: the person who pressed
+  Start sees it there.
 
 The SpotNav app's own check every 15 minutes follows the same decision: it tells a new plan when Home
 Assistant counted one (`plan_notice` in the [dashboard](api.md#the-dashboard-document)), not by comparing plans

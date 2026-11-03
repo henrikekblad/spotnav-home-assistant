@@ -745,7 +745,7 @@ CASES: list[tuple[str, StatusFacts, str, list[dict[str, Any]]]] = [
         "normal",
         [
             {"code": "charging_now", "params": {"until": None}},
-            {"code": "import_target_held", "params": {"limit_a": 7.0, "target_kw": 6.0, "hour_kw": 5.1, "set_kw": 6.0}},
+            {"code": "import_target_held", "params": {"limit_a": 7.0, "target_kw": 6.0, "hour_kw": 5.1, "set_kw": 6.0, "releasable": True, "release_until": None, "release_peak_kw": None}},
         ],
     ),
     (
@@ -759,7 +759,7 @@ CASES: list[tuple[str, StatusFacts, str, list[dict[str, Any]]]] = [
         "normal",
         [
             {"code": "charging_now", "params": {"until": None}},
-            {"code": "import_target_held", "params": {"limit_a": 9.0, "target_kw": 6.6, "hour_kw": 5.9, "set_kw": 6.0}},
+            {"code": "import_target_held", "params": {"limit_a": 9.0, "target_kw": 6.6, "hour_kw": 5.9, "set_kw": 6.0, "releasable": True, "release_until": None, "release_peak_kw": None}},
         ],
     ),
     (
@@ -774,7 +774,9 @@ CASES: list[tuple[str, StatusFacts, str, list[dict[str, Any]]]] = [
         "normal",
         [{
                 "code": "import_target_paused",
-                "params": {"until": iso(0.5), "target_kw": 6.0, "house_over": True, "set_kw": 6.0},
+                "params": {
+                    "until": iso(0.5), "target_kw": 6.0, "house_over": True, "set_kw": 6.0, "releasable": True, "release_until": None, "release_peak_kw": None,
+                },
             }],
     ),
     (
@@ -809,7 +811,10 @@ CASES: list[tuple[str, StatusFacts, str, list[dict[str, Any]]]] = [
             {"code": "charging_now", "params": {"until": None}},
             {
                 "code": "import_target_at_risk",
-                "params": {"departure": iso(9), "missing_kwh": 4.0, "target_kw": 6.0, "releasable": True, "set_kw": 6.0},
+                "params": {
+                    "departure": iso(9), "missing_kwh": 4.0, "target_kw": 6.0, "releasable": True, "set_kw": 6.0,
+                    "release_until": None, "release_peak_kw": None,
+                },
             },
         ],
     ),
@@ -826,7 +831,10 @@ CASES: list[tuple[str, StatusFacts, str, list[dict[str, Any]]]] = [
             {"code": "charging_now", "params": {"until": None}},
             {
                 "code": "import_target_at_risk",
-                "params": {"departure": iso(9), "missing_kwh": 4.0, "target_kw": 6.0, "releasable": False, "set_kw": 6.0},
+                "params": {
+                    "departure": iso(9), "missing_kwh": 4.0, "target_kw": 6.0, "releasable": False, "set_kw": 6.0,
+                    "release_until": None, "release_peak_kw": None,
+                },
             },
         ],
     ),
@@ -1749,3 +1757,48 @@ async def test_the_dashboard_and_the_webhook_carry_the_same_block(
     direct = dashboard_api.serialize_dashboard(capture, can_act=False)
     assert dashboard["status"] == direct["status"]
     assert set(dashboard["status"]) == {"tone", "lines"}
+
+
+# -- a person's Start under the import target
+
+
+def test_a_persons_start_the_import_target_paused_says_so_and_offers_the_release() -> None:
+    facts = base(
+        paused=True,
+        pause_choice="manual",
+        pause_action="start",
+        pause_scope="plug_in",
+        reports_plug_in=True,
+        balancing_paused=True,
+        balancing_retry_at=at(0.5),
+        balancing_cause="import_target",
+        import_target=ImportTargetFacts(target_kw=6.0, hour_kw=6.2, paused_until=at(0.5), house_over=False),
+    )
+    status = compose_status(facts)
+    codes = [line["code"] for line in status["lines"]]
+    assert codes[:2] == ["paused", "import_target_paused"], codes
+    paused = status["lines"][1]["params"]
+    assert paused["releasable"] is True and paused["until"] == aware_iso(at(0.5)), paused
+
+
+def test_a_persons_start_the_import_target_held_offers_the_release() -> None:
+    site = LoadBalancingFacts(
+        state="capacity_limited",
+        cause="import_target",
+        active_control_enabled=True,
+        current_settable=True,
+        proposed_current_a=7.0,
+        limiting_phase=None,
+    )
+    facts = base(
+        charging=True,
+        paused=True,
+        pause_choice="manual",
+        pause_action="start",
+        pause_scope="plug_in",
+        reports_plug_in=True,
+        load_balancing=site,
+        import_target=ImportTargetFacts(target_kw=6.0, hour_kw=5.1),
+    )
+    status = compose_status(facts)
+    assert any(line["code"] == "import_target_held" and line["params"]["releasable"] for line in status["lines"]), status

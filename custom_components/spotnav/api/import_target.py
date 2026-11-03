@@ -1,11 +1,12 @@
-"""`spotnav/release_import_target`: "Release the import target tonight" beside the import target's shortfall (the status line
-`import_target_at_risk`, and the notification's button).
+"""`spotnav/release_import_target`: "Release the import target tonight" beside the import target's lines (held, paused,
+`import_target_at_risk`) and the notification's button.
 
 `{api_version: 1, charger_id}` sets the site's import target aside for that charger's charge until its plan's
-departure (`SiteCapacityController.async_release_import_target`): kept across a restart, ended by the departure or an
-unplug. Any user may ask, as any user may start a charge. The answer is `{"api_version": 1, "ok", "error"}`;
-refusals: `spotnav_no_site` (the charger has no site), `spotnav_no_import_target` (the site has none set),
-`spotnav_no_departure` (no plan with a departure ahead), and the charger lookup's codes. Logged at INFO.
+departure or an unplug; where no departure is ahead (a person's Start, or a plan without one), until the car is
+unplugged, the car ends the charge or the first local noon six hours on (`SiteCapacityController.async_release_import_target`).
+Kept across a restart. Any user may ask, as any user may start a charge. The answer is `{"api_version": 1, "ok", "error"}`; refusals:
+`spotnav_no_site` (the charger has no site), `spotnav_no_import_target` (the site has none set), and the charger
+lookup's codes. Logged at INFO.
 
 The charger webhook's `release_import_target` (`webhook_release_import_target`) is the same for the paired app.
 """

@@ -7,7 +7,11 @@ smaller of that and what the fuse allows.
 
 * **The level.** The import target as set, lifted to the month's free level where a demand-charge part counts the
   running hour (`effective_target`): an hour may reach a peak the month has already paid for.
-* **Budget.** `target x 1 h - import so far this hour` is what the rest of the hour may still import. Spread over the
+* **The margin.** The hold keeps the hour under that level less a margin (`held_level_kw`: the larger of
+  `TARGET_MARGIN_KW` and `TARGET_MARGIN_SHARE` of it, never below nothing), applied once to the final level, for a
+  meter that reads differently from the operator's and the hour's last minutes. What a person is shown is the level
+  itself (the target as set, the month's peak); the diagnostics show both.
+* **Budget.** `held level x 1 h - import so far this hour` is what the rest of the hour may still import. Spread over the
   time left it is a power; less the house's own load now (`house_w`, the site's net import less what its chargers
   draw, signed: a solar surplus makes it negative and leaves the chargers more) it is what the chargers may draw:
   `allowed_w = budget / remaining_h - house_w`, clamped to `[0, ceiling_w]`. The division explodes in the last
@@ -73,13 +77,18 @@ ACTION_UNHELD: Final = "unheld"
 
 @dataclass(frozen=True, slots=True)
 class EffectiveTarget:
-    """The level the hold keeps the running hour under (`effective_target`): the import target as set (`set_kw`), the
-    month's free level for the running hour (`free_kw`, `None` where no demand-charge part counts it), and the higher
-    of the two (`kw`)."""
+    """The level the running hour is held to (`effective_target`): the import target as set (`set_kw`), the month's
+    free level for the running hour (`free_kw`, `None` where no demand-charge part counts it), the higher of the two
+    (`kw`, what a person is shown), and that level less the margin (`hold_kw`, what the budget holds the hour under)."""
 
     set_kw: float
     free_kw: float | None
     kw: float
+
+    @property
+    def hold_kw(self) -> float:
+        """The level less its margin, once (`held_level_kw`): what the hour is held under."""
+        return held_level_kw(self.kw)
 
     @property
     def lifted(self) -> bool:
@@ -87,10 +96,18 @@ class EffectiveTarget:
         return self.kw > self.set_kw
 
 
-#: How far below the month's free level the target is lifted to: a sensor that reads a little above the operator's
-#: meter must not let an hour set a new peak (`effective_target`).
-FREE_LEVEL_MARGIN_KW: Final = 0.1
-FREE_LEVEL_MARGIN_SHARE: Final = 0.02
+#: How far below its level (the target as set, or the month's free level) the hold keeps the hour: a meter that reads
+#: a little below the operator's, and the hour's last minutes the hold can no longer act on, must not carry the hour
+#: over it (`held_level_kw`).
+TARGET_MARGIN_KW: Final = 0.1
+TARGET_MARGIN_SHARE: Final = 0.02
+
+
+def held_level_kw(level_kw: float) -> float:
+    """What the hour is held under for a level (kW): the level less the larger of `TARGET_MARGIN_KW` and
+    `TARGET_MARGIN_SHARE` of it, never below nothing. Applied once, to the final level: the target as set, or the
+    month's free level that lifts it."""
+    return max(0.0, level_kw - max(TARGET_MARGIN_KW, TARGET_MARGIN_SHARE * level_kw))
 
 
 def effective_target(set_kw: float, free_levels: Iterable[float | None]) -> EffectiveTarget:
@@ -99,22 +116,21 @@ def effective_target(set_kw: float, free_levels: Iterable[float | None]) -> Effe
     (`planning/demand_charge.component_month`) of the parts that count the running hour (`None` for one that does not):
     a highest-hour part's month peak; a top-N part's N-th highest day, or today's own peak while today is among them,
     and with fewer than N days today's own peak or nothing (0). An hour no part counts keeps the target. Only ever
-    raises the target, to a level an hour has already reached this month (an incomplete hour never sets a peak), less
-    a margin (`FREE_LEVEL_MARGIN_KW`, or `FREE_LEVEL_MARGIN_SHARE` of it where more) for a sensor that reads above the
-    operator's meter. The caller gives the levels from each hour's floor (its import over the whole hour), never more
+    raises the target, to a level an hour has already reached this month (an incomplete hour never sets a peak). The
+    margin is not taken here: `EffectiveTarget.hold_kw` takes it once from the level found. The caller gives the levels from each hour's floor (its import over the whole hour), never more
     than the meter billed."""
     counted = [level for level in free_levels if level is not None]
     free = min(counted) if counted else None
     if free is None:
         return EffectiveTarget(set_kw=set_kw, free_kw=None, kw=set_kw)
-    lifted = free - max(FREE_LEVEL_MARGIN_KW, FREE_LEVEL_MARGIN_SHARE * free)
-    return EffectiveTarget(set_kw=set_kw, free_kw=free, kw=max(set_kw, lifted))
+    return EffectiveTarget(set_kw=set_kw, free_kw=free, kw=max(set_kw, free))
 
 
 @dataclass(frozen=True, slots=True)
 class HourBudget:
     """The running hour against the target (see the module)."""
 
+    #: The level a person is shown (the target as set, or the month's free level).
     target_kw: float
     hour_start: datetime
     hour_end: datetime
@@ -130,6 +146,8 @@ class HourBudget:
     allowed_w: float
     #: The house alone, without any charger, ends the hour above the target.
     house_over: bool
+    #: What the hour is held under (kW): the level less its margin (`held_level_kw`).
+    hold_kw: float = 0.0
 
 
 def hour_budget(
@@ -145,7 +163,8 @@ def hour_budget(
     """The running hour's budget at `now`, or `(None, reason)` while it is not applied (see the module).
 
     `extra_wh` is energy counted as import beside the grid's (a discharging battery under `battery_first`), measured
-    over `extra_covered_s` (`None`: no such energy is counted)."""
+    over `extra_covered_s` (`None`: no such energy is counted). `target_kw` is the level (the target as set, or the
+    month's free level that lifts it); the hour is held under it less its margin (`held_level_kw`), taken here once."""
     if running is None or not running.start <= now < running.start + timedelta(hours=1):
         return None, NOT_APPLIED_NO_HOUR
     if running.last_at is None or running.last_grid_w is None:
@@ -166,10 +185,12 @@ def hour_budget(
             so_far_wh += extra_wh * measured_span_s / extra_covered_s
     hour_end = running.start + timedelta(hours=1)
     remaining_s = max(MIN_REMAINING_S, (hour_end - now).total_seconds())
-    target_wh = target_kw * 1000.0
+    hold_kw = held_level_kw(target_kw)
+    target_wh = hold_kw * 1000.0
     rate_w = (target_wh - so_far_wh) * HOUR_S / remaining_s
     allowed_w = min(max(0.0, rate_w - house_w), max(0.0, ceiling_w))
-    house_over = so_far_wh + max(0.0, house_w) * remaining_s / HOUR_S > target_wh
+    # The house alone against the level a person is shown (the line names it), the chargers held under the margin.
+    house_over = so_far_wh + max(0.0, house_w) * remaining_s / HOUR_S > target_kw * 1000.0
     return (
         HourBudget(
             target_kw=target_kw,
@@ -182,6 +203,7 @@ def hour_budget(
             rate_w=rate_w,
             allowed_w=allowed_w,
             house_over=house_over,
+            hold_kw=hold_kw,
         ),
         None,
     )

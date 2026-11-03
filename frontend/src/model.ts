@@ -31,7 +31,7 @@ import {
   type EntityWords,
 } from "./format";
 import { chargeBarFor, type ChargeBarFacts } from "./charge-bar";
-import { issuesOf, statusNote, statusText, type Issue } from "./status";
+import { issuesOf, statusNote, statusText, type Issue, releaseConfirmText } from "./status";
 import { chargeCeiling, effectiveTarget } from "./target-need";
 import { pluralForm, translate, type Language, type TranslationKey } from "./i18n";
 import {
@@ -245,6 +245,11 @@ export interface CardModel {
   /** The running charge's bar under the status line, from the backend's `progress`; `null` with none. */
   chargeBar: ChargeBarFacts | null;
   issues: Issue[];
+  /**
+   * The import target may be set aside for this charge (a held, paused or at-risk line offers it): what doing so
+   * would mean, said in the confirmation before it is sent; `null` when nothing offers it.
+   */
+  releaseConfirm: string | null;
   severity: Severity | null;
   chart: ChartSeries;
   bands: PlanBands;
@@ -924,6 +929,7 @@ export function buildModel(input: BuildInput): CardModel {
     statusNote: statusNote(status, format, input.nowMs),
     chargeBar: chargeBarFor(dashboard.progress, format, input.nowMs),
     issues,
+    releaseConfirm: releaseConfirmText(status, format, input.nowMs),
     severity: status === null || status.tone === "normal" || issues.length === 0 ? null : status.tone,
     chart,
     bands,

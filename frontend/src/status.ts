@@ -300,6 +300,7 @@ export const STATUS_VARIANT_KEYS: readonly TranslationKey[] = [
   "status.importTargetPausedHousePeakNextHour",
   "status.importTargetHouseOverPeak",
   "status.importTargetReleasedAuto",
+  "status.importTargetReleasedUnplug",
   "status.importTargetReleasedAutoNoTime",
   "strategy.status.solar.chargingUnknown",
   "strategy.status.solar.chargingOnePhaseUnknown",
@@ -421,6 +422,43 @@ function monthPeak(p: StatusLine["params"]): boolean {
   const target = num(p["target_kw"]);
   const set = num(p["set_kw"]);
   return target !== null && set !== null && target > set + 1e-9;
+}
+
+/** The lines that offer setting the import target aside (`releasable`): the target holds, pauses or would miss a
+ * departure. */
+const RELEASE_LINES: ReadonlySet<string> = new Set(["import_target_held", "import_target_paused", "import_target_at_risk"]);
+
+/**
+ * What setting the import target aside would mean, for the confirmation before it is sent: until the unplug (or the
+ * departure, at its time), and the month's peak it may reach against today's level. `null` when no line offers it.
+ */
+export function releaseConfirmText(status: Status | null, format: FormatContext, nowMs: number): string | null {
+  const line = status?.lines.find((entry) => RELEASE_LINES.has(entry.code) && entry.params["releasable"] === true);
+  if (line === undefined) {
+    return null;
+  }
+  const p = line.params;
+  const language = format.language;
+  const until = ms(p["release_until"]);
+  const sentences = [
+    until === null || !hasZone(format)
+      ? translate(language, "release.confirm.unplug")
+      : translate(language, "release.confirm.departure", {
+          // Tonight's departure by its time; one more than a day ahead with its day, as the status lines say it.
+          time: until - nowMs < 24 * 3600 * 1000 ? clock(format, until) : momentText(format, until, nowMs),
+        }),
+  ];
+  const peak = num(p["release_peak_kw"]);
+  const today = num(p["target_kw"]);
+  if (peak !== null && today !== null) {
+    sentences.push(
+      translate(language, "release.confirm.peak", {
+        peak: formatNumber(language, peak, 0),
+        target: formatFixed(language, today, 1),
+      }),
+    );
+  }
+  return sentences.join(" ");
 }
 
 /** The wording for why a charger is unavailable when its charge control is gone or disabled. */
@@ -740,6 +778,10 @@ export function lineText(
       // The target is set aside for this charge until its departure: by a person, or by the plan's own choice.
       const departure = ms(p["departure"]);
       const automatic = p["automatic"] === true;
+      if (p["departure"] === null && !automatic) {
+        // A person's release with no departure ahead (a Start): until the car is unplugged.
+        return say("status.importTargetReleasedUnplug");
+      }
       if (departure === null || !zoned) {
         return say(automatic ? "status.importTargetReleasedAutoNoTime" : "status.importTargetReleasedNoTime");
       }

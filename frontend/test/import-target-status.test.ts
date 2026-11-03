@@ -187,3 +187,43 @@ describe("the house alone above the month's peak", () => {
     );
   });
 });
+
+describe("Release the import target tonight, confirmed first", () => {
+  it("says until when and how high the month's peak may go, and only Release sends it", async () => {
+    const { releaseConfirmText } = await import("../src/status");
+    const held = line("import_target_held", {
+      limit_a: 7,
+      target_kw: 6,
+      hour_kw: 5.1,
+      set_kw: 6,
+      releasable: true,
+      release_until: null,
+      release_peak_kw: 11,
+    });
+    expect(releaseConfirmText({ tone: "normal", lines: [held] } as never, SV, NOW)).toBe(
+      "Bilen laddar då med full effekt tills den kopplas ur eller laddningen är klar, senast kl. 12. Månadens topp kan bli upp till 11 kW, mot 6,0 kW i dag.",
+    );
+    const planned = line("import_target_paused", {
+      until: "2026-11-02T14:00:00+00:00",
+      target_kw: 6,
+      house_over: false,
+      set_kw: 6,
+      releasable: true,
+      release_until: "2026-11-03T06:00:00+00:00",
+      release_peak_kw: null,
+    });
+    expect(releaseConfirmText({ tone: "normal", lines: [planned] } as never, SV, NOW)).toBe(
+      "Bilen laddar då med full effekt tills den kopplas ur (eller till avresan 07:00).",
+    );
+    // A departure more than a day ahead is said with its day, as the status lines say it.
+    const later = { ...planned, params: { ...planned.params, release_until: "2026-11-05T06:00:00+00:00" } };
+    expect(releaseConfirmText({ tone: "normal", lines: [later] } as never, SV, NOW)).toBe(
+      "Bilen laddar då med full effekt tills den kopplas ur (eller till avresan tors 5 nov. 07:00).",
+    );
+    expect(releaseConfirmText({ tone: "normal", lines: [line("charging_now", { until: null })] } as never, SV, NOW)).toBeNull();
+    // A release with no departure ahead is said so.
+    expect(lineText(line("import_target_released", { target_kw: 6, departure: null, automatic: false }), SV, NOW)).toBe(
+      "Effektmålet är släppt av dig tills bilen kopplas ur eller laddningen är klar, senast kl. 12.",
+    );
+  });
+});

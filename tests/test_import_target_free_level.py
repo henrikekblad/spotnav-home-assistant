@@ -30,7 +30,7 @@ def _hour(day: int, hour_utc: int, kw: float, *, incomplete: bool = False) -> Ho
 
 
 def _lifted(free: float) -> float:
-    """The month's free level less its margin (`FREE_LEVEL_MARGIN_KW`, `FREE_LEVEL_MARGIN_SHARE`)."""
+    """The month's free level less its margin, once (`TARGET_MARGIN_KW`, `TARGET_MARGIN_SHARE`)."""
     return free - max(0.1, 0.02 * free)
 
 
@@ -45,7 +45,9 @@ def test_a_highest_hour_part_lifts_the_target_to_the_months_peak() -> None:
     sauna = [_hour(3, 17, 6.6), _hour(4, 17, 4.0)]
     found = effective_target(6.0, _levels([DemandComponent(top_n=1)], sauna))
     assert found.free_kw == 6.6 and found.lifted
-    assert found.kw == pytest.approx(_lifted(6.6))
+    # Shown at the month's peak, held under it less its margin, once.
+    assert found.kw == 6.6
+    assert found.hold_kw == pytest.approx(_lifted(6.6))
     # Below the target nothing changes; an incomplete hour never sets a peak.
     assert effective_target(6.0, _levels([DemandComponent(top_n=1)], [_hour(3, 17, 5.0)])).kw == 6.0
     assert effective_target(6.0, _levels([DemandComponent(top_n=1)], [_hour(3, 17, 9.0, incomplete=True)])).kw == 6.0
@@ -60,20 +62,20 @@ def test_a_top_three_part_with_fewer_than_three_days_does_not_lift_it() -> None:
 def test_a_top_three_part_with_today_counted_lifts_it_to_todays_own_peak() -> None:
     # Three days counted and today (the 10th) among them: today's own peak is free.
     hours = [_hour(3, 17, 9.0), _hour(4, 17, 8.0), _hour(10, 10, 7.0), _hour(5, 17, 5.0)]
-    assert effective_target(6.0, _levels([DemandComponent(top_n=3)], hours)).kw == pytest.approx(_lifted(7.0))
+    assert effective_target(6.0, _levels([DemandComponent(top_n=3)], hours)).hold_kw == pytest.approx(_lifted(7.0))
     # Today not among them: the third highest day.
     hours = [_hour(3, 17, 9.0), _hour(4, 17, 8.0), _hour(5, 17, 6.8), _hour(10, 10, 5.0)]
-    assert effective_target(6.0, _levels([DemandComponent(top_n=3)], hours)).kw == pytest.approx(_lifted(6.8))
+    assert effective_target(6.0, _levels([DemandComponent(top_n=3)], hours)).hold_kw == pytest.approx(_lifted(6.8))
 
 
 def test_two_parts_counting_the_same_hour_lift_it_to_the_lower() -> None:
     hours = [_hour(3, 17, 9.0), _hour(4, 17, 6.6)]
     parts = [DemandComponent(top_n=1), DemandComponent(top_n=1, window=DAY)]
     hours_day_only = [*hours, _hour(5, 3, 3.0)]
-    assert effective_target(6.0, _levels(parts, hours_day_only)).kw == pytest.approx(_lifted(9.0))
+    assert effective_target(6.0, _levels(parts, hours_day_only)).hold_kw == pytest.approx(_lifted(9.0))
     # A day part whose own peak is lower holds the hour to it.
     parts = [DemandComponent(top_n=1), DemandComponent(top_n=2, window=DAY)]
-    assert effective_target(6.0, _levels(parts, hours)).kw == pytest.approx(_lifted(6.6))
+    assert effective_target(6.0, _levels(parts, hours)).hold_kw == pytest.approx(_lifted(6.6))
 
 
 def test_an_hour_no_part_counts_keeps_the_target() -> None:
@@ -84,10 +86,13 @@ def test_an_hour_no_part_counts_keeps_the_target() -> None:
     assert (found.kw, found.free_kw, found.lifted) == (6.0, None, False)
 
 
-def test_the_margin_never_takes_the_level_below_the_target() -> None:
-    # A peak a hair above the target lifts nothing: less its margin it is below the target.
+def test_the_margin_never_takes_the_level_below_the_targets_own_hold() -> None:
+    # A peak a hair above the target lifts the level to it, and its margin comes off once: never below what the
+    # target as set is held under.
     found = effective_target(6.0, _levels([DemandComponent(top_n=1)], [_hour(3, 17, 6.05)]))
-    assert found.free_kw == 6.05 and found.kw == 6.0 and not found.lifted
+    assert found.free_kw == 6.05 and found.kw == 6.05 and found.lifted
+    assert found.hold_kw == pytest.approx(6.05 - 0.121)
+    assert found.hold_kw >= effective_target(6.0, ()).hold_kw == pytest.approx(5.88)
 
 
 def test_an_hour_with_a_gap_frees_no_more_than_its_import_over_the_whole_hour() -> None:
@@ -133,13 +138,16 @@ async def test_the_hold_lets_the_hour_reach_the_months_peak_and_says_so(hass: Ho
         controller = world.halo.controller
         charger = world.halo.charger.entry_id
         status = controller.import_target_status(charger)
-        assert status is not None and status.target_kw == pytest.approx(_lifted(7.0)) and status.set_kw == 6.0
+        # Shown at the person's numbers: the month's peak and the target as set, not the margined level.
+        assert status is not None and status.target_kw == 7.0 and status.set_kw == 6.0
         assert controller.load_balancing_limit(charger) == (8.0, LIMIT_CAUSE_IMPORT_TARGET)
         assert controller.import_target_snapshot()["effective"] == {
-            "kw": pytest.approx(_lifted(7.0)), "free_kw": pytest.approx(7.0),
+            "kw": pytest.approx(7.0), "free_kw": pytest.approx(7.0), "hold_kw": pytest.approx(_lifted(7.0)),
         }
-        # The plan counts on the target as set: the lift is the running hour's hold only.
-        assert controller.import_target_plan_kw(charger) == pytest.approx(5.0, abs=0.05)
+        assert controller.import_target_snapshot()["budget"]["hold_kw"] == pytest.approx(_lifted(7.0))
+        # The plan counts on the target as set less its margin (5.88 kW) less the house: the lift is the running
+        # hour's hold only.
+        assert controller.import_target_plan_kw(charger) == pytest.approx(4.88, abs=0.05)
         for hour in world.complete_hours():
             assert world.hour_kw(hour) <= 7.0
 
@@ -178,10 +186,10 @@ async def test_a_departure_at_risk_is_told_at_the_months_peak(hass: HomeAssistan
         await world.run(10)
         told = _told(world)
         # The month's peak and the import target as set, both named.
-        assert told and "the month's peak of 6.9 kW (import target 6.0 kW)" in told[-1]["message"], told
+        assert told and "the month's peak of 7.0 kW (import target 6.0 kW)" in told[-1]["message"], told
         status = world.halo.controller.import_target_status(world.halo.charger.entry_id)
         assert status is not None and status.at_risk is not None
-        assert status.at_risk.target_kw == pytest.approx(_lifted(7.0)) and status.at_risk.set_kw == 6.0
+        assert status.at_risk.target_kw == 7.0 and status.at_risk.set_kw == 6.0
         assert dt_util.utcnow() < _HOUR + timedelta(hours=1)
         assert _plan is not None
 
@@ -210,7 +218,7 @@ async def test_a_plan_at_night_never_counts_on_a_day_parts_peak(hass: HomeAssist
         controller = world.halo.controller
         charger = world.halo.charger.entry_id
         assert controller.import_target_snapshot()["effective"]["kw"] > 8.0
-        assert controller.import_target_plan_kw(charger) == pytest.approx(5.0, abs=0.1)
+        assert controller.import_target_plan_kw(charger) == pytest.approx(4.88, abs=0.1)
 
 
 async def test_a_top_three_parts_own_peak_today_is_not_planned_on(hass: HomeAssistant, monkeypatch) -> None:
@@ -223,7 +231,7 @@ async def test_a_top_three_parts_own_peak_today_is_not_planned_on(hass: HomeAssi
         await world.run(5)
         controller = world.halo.controller
         assert controller.import_target_snapshot()["effective"]["kw"] > 7.0
-        assert controller.import_target_plan_kw(world.halo.charger.entry_id) == pytest.approx(5.0, abs=0.1)
+        assert controller.import_target_plan_kw(world.halo.charger.entry_id) == pytest.approx(4.88, abs=0.1)
 
 
 async def test_the_departures_later_hours_are_judged_at_the_target_as_set(hass: HomeAssistant, monkeypatch) -> None:

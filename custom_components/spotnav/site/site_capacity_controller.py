@@ -79,6 +79,7 @@ from .import_target import (
     departure_shortfall_kwh,
     effective_target,
     EffectiveTarget,
+    held_level_kw,
     HOLD_VOLTAGE_V,
     hour_budget,
     HourBudget,
@@ -302,7 +303,47 @@ TARGET_NOT_APPLIED_LOAD_BALANCING_OFF = "load_balancing_off"
 TARGET_NOT_APPLIED_BATTERY_UNKNOWN = "battery_unknown"
 #: Why a person's set-aside was refused (`async_release_import_target`).
 ERROR_NO_IMPORT_TARGET = "spotnav_no_import_target"
-ERROR_NO_DEPARTURE = "spotnav_no_departure"
+#: What a set-aside with no departure ahead (a person's Start, a plan without one) is kept as, followed by "/" and the
+#: moment it was given (`_unplug_release_since`): until the car is unplugged, the car ends the charge by itself, or the
+#: next local noon, whichever comes first, so "tonight" ends even on a charger that never reports a plug state.
+RELEASED_UNTIL_UNPLUG = "until_unplug"
+#: The local hour an until-unplug set-aside ends at the latest, at least `RELEASED_UNTIL_UNPLUG_LEAST` after it was
+#: given: one given at 11:59 lasts to the next day's noon.
+RELEASED_UNTIL_UNPLUG_LATEST_HOUR = 12
+RELEASED_UNTIL_UNPLUG_LEAST = timedelta(hours=6)
+
+
+def _aware_instant(value: str) -> datetime | None:
+    """An instant kept as text, with its offset; one without (a store edited by hand) is taken as UTC, and one that
+    cannot be read is `None`: never a naive datetime to compare with an aware one."""
+    try:
+        moment = dt_util.parse_datetime(value)
+    except ValueError:
+        return None
+    if moment is None:
+        return None
+    return moment if moment.tzinfo is not None else moment.replace(tzinfo=dt_util.UTC)
+
+
+def _unplug_release_since(value: str) -> datetime | None:
+    """When an until-unplug set-aside (`RELEASED_UNTIL_UNPLUG/<instant>`) was given, else `None`."""
+    head, _, since = value.partition("/")
+    return _aware_instant(since) if head == RELEASED_UNTIL_UNPLUG and since else None
+
+
+def unplug_release_value(now: datetime) -> str:
+    """The value an until-unplug set-aside given at `now` is kept as."""
+    return f"{RELEASED_UNTIL_UNPLUG}/{now.isoformat()}"
+
+
+def unplug_release_latest(since: datetime) -> datetime:
+    """The first local noon at least `RELEASED_UNTIL_UNPLUG_LEAST` after `since`: an until-unplug set-aside ends
+    there at the latest, so "tonight" given late in the morning still lasts to the next day's noon."""
+    earliest = since + RELEASED_UNTIL_UNPLUG_LEAST
+    local = dt_util.as_local(earliest)
+    noon = local.replace(hour=RELEASED_UNTIL_UNPLUG_LATEST_HOUR, minute=0, second=0, microsecond=0)
+    # Wall-clock arithmetic on the local zone: the next day's noon also across a DST change.
+    return noon if noon >= earliest else noon + timedelta(days=1)
 ERROR_STALE_DEPARTURE = "spotnav_stale_departure"
 #: The target's own code failed (`_compute_regulator_decisions`): the fuse's decisions went as they were.
 TARGET_NOT_APPLIED_ERROR = "error"
@@ -379,6 +420,11 @@ class ImportTargetStatus:
     released_automatically: bool = False
     #: The departure the charge will miss under the target, and by how much (`TargetRisk`), else `None`.
     at_risk: TargetRisk | None = None
+    #: What a release would mean, for the card's confirmation: until when it would last (the plan's departure ahead,
+    #: `None`: until the car is unplugged), and the hour's import it may reach (kW, whole: the house's typical load and
+    #: the charge's full power at its setting; `None` when not known).
+    release_until: str | None = None
+    release_peak_kw: float | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -3403,7 +3449,7 @@ class SiteCapacityController:
             or not charger_controller.paused_by_balancing
             or not self._charge_still_wanted(charger_entry_id, charger_controller)
             or charger_controller.held_by_charger
-            or charger_controller.adapter.vehicle_connected() is not True
+            or not _plugged_in_for_resume(charger_controller.adapter)
             or (previous_setpoint is not None and previous_setpoint >= min_current_a)
             or charger_controller.car_ended_holds_charge
         ):
@@ -4756,9 +4802,10 @@ class SiteCapacityController:
         proposed = None if decision is None else decision.proposed_current_a
         holdable = (
             charger_controller is not None
-            # A person's Start is theirs: counted, never held (as the sun leaves it alone). Below the car's minimum level
-            # SpotNav charges at once (`execution/min_soc_floor.py`): the floor wins over the target.
-            and origin not in ("manual", ORIGIN_MIN_SOC)
+            # A person's Start charges now, within the target, as any charge does (its way past the target is a release,
+            # `async_release_import_target`). Below the car's minimum level SpotNav charges at once
+            # (`execution/min_soc_floor.py`): the floor wins over the target.
+            and origin != ORIGIN_MIN_SOC
             # A person set the target aside for this charge until its departure (`async_release_import_target`).
             and charger_entry_id not in released
             # Neither an overload's lowering nor a decision with nothing to write is the target's to change.
@@ -4839,8 +4886,9 @@ class SiteCapacityController:
         car_kw = member_w(member.phases, max(member.min_a, member.wants_a)) / 1000.0
         ceiling_kw = max(power_kw, car_kw)
         held_kw = min(ceiling_kw, max(0.0, budget.rate_w / 1000.0 - max(0.0, house_kw)))
-        # Later hours at the target as set: the month's free level lifts the running hour only.
-        set_kw = budget.target_kw if self._target_effective is None else self._target_effective.set_kw
+        # Later hours at the target as set, less its margin as the hold keeps it: the month's free level lifts the
+        # running hour only.
+        set_kw = held_level_kw(budget.target_kw if self._target_effective is None else self._target_effective.set_kw)
         later_kw = min(ceiling_kw, max(0.0, set_kw - max(0.0, house_kw)))
         minimum_kw = member_w(member.phases, member.min_a) / 1000.0
         held_kw = 0.0 if held_kw < minimum_kw else held_kw
@@ -5076,11 +5124,19 @@ class SiteCapacityController:
             return
         released = raw.get("released") if isinstance(raw, dict) else None
         if isinstance(released, dict):
-            self._target_released = {
-                key: value
-                for key, value in released.items()
-                if isinstance(key, str) and isinstance(value, str) and dt_util.parse_datetime(value) is not None
-            }
+            kept: dict[str, str] = {}
+            for key, value in released.items():
+                if not isinstance(key, str) or not isinstance(value, str):
+                    continue
+                since = _unplug_release_since(value)
+                if since is not None:
+                    kept[key] = unplug_release_value(since)
+                    continue
+                moment = _aware_instant(value)
+                if moment is not None:
+                    # Kept as written where it has its offset (the plan's departure is compared as text).
+                    kept[key] = value if dt_util.parse_datetime(value).tzinfo is not None else moment.isoformat()
+            self._target_released = kept
 
     def _save_released(self) -> None:
         self._target_release_store.async_delay_save(lambda: {"released": dict(self._target_released)}, 1.0)
@@ -5092,17 +5148,34 @@ class SiteCapacityController:
 
     def _release_over(self, charger_entry_id: str, departure: str, now: datetime) -> bool:
         """Whether a set-aside until `departure` has ended: the departure passed, the car was unplugged, or the plan
-        is now for another departure (earlier or later), which the set-aside was not given for."""
-        moment = dt_util.parse_datetime(departure)
+        is now for another departure (earlier or later), which the set-aside was not given for. One with no departure
+        (`RELEASED_UNTIL_UNPLUG`) ends at the unplug, when the car ends the charge by itself after it was given
+        (`car_ended_at`), or at the next local noon (`unplug_release_latest`), whichever comes first: a charger that
+        cannot report the plug, or a car that is full, does not keep it into the next day."""
         charger_controller = controller_for(self.hass, charger_entry_id)
-        plan = None if charger_controller is None else getattr(charger_controller, "plan", None)
         unplugged = charger_controller is not None and charger_controller.adapter.vehicle_connected() is False
+        since = _unplug_release_since(departure)
+        if since is not None:
+            ended = None if charger_controller is None else getattr(charger_controller, "car_ended_at", None)
+            return (
+                unplugged
+                or now >= unplug_release_latest(since)
+                or (isinstance(ended, datetime) and ended > since)
+            )
+        moment = _aware_instant(departure)
+        plan = None if charger_controller is None else getattr(charger_controller, "plan", None)
         return moment is None or moment <= now or unplugged or plan is None or plan.departure != departure
 
     def _prune_released(self, now: datetime) -> None:
-        """A person's set-aside, and one the plan's choice made, end as `_release_over` says."""
+        """A person's set-aside, and one the plan's choice made, end as `_release_over` says. A person's set-aside
+        until a departure whose plan a person's Start then dropped is kept, until the unplug (`unplug_release_value`,
+        from now): the Start is a charge of theirs, and they released the target for this plug-in."""
         changed = False
         for charger_entry_id, departure in list(self._target_released.items()):
+            if self._dropped_by_a_start(charger_entry_id, departure, now):
+                self._target_released[charger_entry_id] = unplug_release_value(now)
+                changed = True
+                continue
             if self._release_over(charger_entry_id, departure, now):
                 del self._target_released[charger_entry_id]
                 changed = True
@@ -5114,17 +5187,59 @@ class SiteCapacityController:
             if not self._release_over(charger_entry_id, departure, now)
         }
 
+    def _dropped_by_a_start(self, charger_entry_id: str, departure: str, now: datetime) -> bool:
+        """Whether a person's set-aside until `departure` (still ahead, the car still plugged in) lost its plan to a
+        person's Start (no plan, and the charge a person's, `_persons_start`): kept then, until the unplug."""
+        if _unplug_release_since(departure) is not None:
+            return False
+        charger_controller = controller_for(self.hass, charger_entry_id)
+        if charger_controller is None or getattr(charger_controller, "plan", None) is not None:
+            return False
+        if not self._persons_start(charger_entry_id, charger_controller):
+            return False
+        if charger_controller.adapter.vehicle_connected() is False:
+            return False
+        moment = _aware_instant(departure)
+        return moment is not None and moment > now
+
+    def _persons_start(self, charger_entry_id: str, charger_controller: Any) -> bool:
+        """Whether the charge is a person's Start: charging as one (`charge_origin` `manual`), held back by load
+        balancing as one (for room, or paused by the fuse: `paused_charge_origin`), or stored as one (the manual pause
+        with action `start`, as `charge_still_wanted` reads it)."""
+        if getattr(charger_controller, "charge_origin", None) == "manual":
+            return True
+        if getattr(charger_controller, "paused_charge_origin", None) == "manual":
+            return True
+        store = domain_data(self.hass).auto_store
+        settings = None if store is None else store.settings(charger_entry_id)
+        if settings is None:
+            return False
+        pause = settings.pause
+        return bool(pause.admitted and pause.manual and pause.action == MANUAL_START)
+
     def async_release_import_target(self, charger_entry_id: str, *, for_departure: int | None = None) -> str | None:
-        """Set the import target aside for this charger's charge until its plan's departure (a person's choice, from
-        the notification, the card or the app). The error's code, else `None`: `spotnav_no_import_target` (the site
-        has none set), `spotnav_no_departure` (no plan with a departure ahead), `spotnav_stale_departure` (a phone's
-        button told for a departure, `for_departure` in epoch seconds, that is not the plan's any more)."""
+        """Set the import target aside for this charger's charge (a person's choice, from the notification, the card or
+        the app): until its plan's departure where one is ahead, else (a person's Start, a plan without a departure)
+        until the car is unplugged. The error's code, else `None`: `spotnav_no_import_target` (the site has none set),
+        `spotnav_stale_departure` (a phone's button told for a departure, `for_departure` in epoch seconds, that is not
+        the plan's any more)."""
         if self._import_target_kw() is None:
             return ERROR_NO_IMPORT_TARGET
         plan = getattr(controller_for(self.hass, charger_entry_id), "plan", None)
         departure = None if plan is None or not plan.departure else dt_util.parse_datetime(plan.departure)
-        if plan is None or departure is None or departure <= dt_util.utcnow():
-            return ERROR_NO_DEPARTURE
+        if departure is not None and departure <= dt_util.utcnow():
+            departure = None
+        if departure is None:
+            if for_departure is not None:
+                _LOGGER.info(
+                    "SpotNav site %s: a release of the import target for charger %s was for a departure its plan no "
+                    "longer has; nothing is set aside",
+                    self.entry_id,
+                    charger_entry_id,
+                )
+                return ERROR_STALE_DEPARTURE
+            return self._release(charger_entry_id, unplug_release_value(dt_util.utcnow()))
+        assert plan is not None
         if for_departure is not None and for_departure != int(departure.timestamp()):
             _LOGGER.info(
                 "SpotNav site %s: a Release the import target tonight for charger %s was for another departure than its plan's %s; "
@@ -5140,13 +5255,17 @@ class SiteCapacityController:
             charger_entry_id,
             plan.departure,
         )
-        self._target_released[charger_entry_id] = plan.departure
+        return self._release(charger_entry_id, plan.departure)
+
+    def _release(self, charger_entry_id: str, until: str) -> str | None:
+        """Keep the target aside for this charger `until` a departure (ISO) or the unplug (`unplug_release_value`)."""
+        self._target_released[charger_entry_id] = until
         self._target_risk.pop(charger_entry_id, None)
         self._tell_target_risk()
         self._target_paused_hour.pop(charger_entry_id, None)
         self._save_released()
         if self._target_budget is not None:
-            self._note_target(charger_entry_id, "released", self._target_budget, departure=plan.departure)
+            self._note_target(charger_entry_id, "released", self._target_budget, departure=until)
         self._recompute()
         return None
 
@@ -5206,6 +5325,7 @@ class SiteCapacityController:
                 "action": action,
                 "cap_a": cap_a,
                 "departure": departure,
+                "hold_kw": round(budget.hold_kw, 3),
                 "hour_kw": round(budget.hour_kw, 3),
                 "allowed_w": round(budget.allowed_w),
                 "house_w": round(budget.house_w),
@@ -5246,11 +5366,11 @@ class SiteCapacityController:
         house_kw = self._typical_house_kw()
         if house_kw is None:
             return None
-        # The target as set: the month's free level lifts the running hour's hold only, and a plan's later hours may
-        # be counted by no part, a new day or a new month.
+        # The target as set, less its margin as the hold keeps it (`held_level_kw`): the month's free level lifts the
+        # running hour's hold only, and a plan's later hours may be counted by no part, a new day or a new month.
         phases, _phase = self.reckoned_phases(charger_entry_id)
         minimum_kw = member_w(phases, float(wiring.get("min_current_a", DEFAULT_MIN_CURRENT_A))) / 1000.0
-        return max(minimum_kw, target_kw - house_kw)
+        return max(minimum_kw, held_level_kw(target_kw) - house_kw)
 
     def _target_start_cap(self, charger_entry_id: str) -> float | None:
         """The most a resume or a probe may give this charger for the import target: `0.0` while the target pauses
@@ -5261,6 +5381,28 @@ class SiteCapacityController:
         if share.action == ACTION_PAUSED:
             return 0.0
         return share.cap_a if share.action == ACTION_HELD else None
+
+    @staticmethod
+    def _release_until(charger_controller: Any) -> str | None:
+        """The departure a release would last until (the plan's, while ahead), else `None`: until the unplug."""
+        plan = getattr(charger_controller, "plan", None)
+        departure = None if plan is None or not plan.departure else dt_util.parse_datetime(plan.departure)
+        return None if departure is None or departure <= dt_util.utcnow() else plan.departure
+
+    def _release_peak_kw(self, charger_entry_id: str, charger_controller: Any, budget: HourBudget) -> float | None:
+        """The hour's import a release may reach (kW, whole): the house's typical load (its load now while none is
+        measured) and the charge's full power at the current it is set to."""
+        amps = getattr(charger_controller, "requested_current_a", None)
+        plan = getattr(charger_controller, "plan", None)
+        if not amps and plan is not None:
+            amps = plan.amps
+        if not amps:
+            return None
+        phases, _phase = self.reckoned_phases(charger_entry_id)
+        house_kw = self._typical_house_kw()
+        if house_kw is None:
+            house_kw = max(0.0, budget.house_w) / 1000.0
+        return float(round(max(0.0, house_kw) + member_w(phases, float(amps)) / 1000.0))
 
     def import_target_status(self, charger_entry_id: str) -> ImportTargetStatus | None:
         """What the import target does to this charger now, as the status says it, or `None` while it does nothing
@@ -5291,6 +5433,8 @@ class SiteCapacityController:
             house_over=budget.house_over,
             released_automatically=charger_entry_id not in self._target_released
             and charger_entry_id in self._target_auto_released,
+            release_until=self._release_until(charger_controller),
+            release_peak_kw=self._release_peak_kw(charger_entry_id, charger_controller, budget),
             at_risk=None if charger_entry_id in self._target_auto_released else self._target_risk.get(charger_entry_id),
         )
 
@@ -5306,12 +5450,17 @@ class SiteCapacityController:
             else {
                 "kw": self._target_effective.kw,
                 "free_kw": self._target_effective.free_kw,
+                # What the hour is held under: the level less its margin, once.
+                "hold_kw": round(self._target_effective.hold_kw, 3),
             },
             "not_applied": self._target_not_applied,
             "budget": None
             if budget is None
             else {
                 "hour_start": budget.hour_start.isoformat(),
+                # The level shown (the target, or the month's peak) and what the hour is held under.
+                "target_kw": budget.target_kw,
+                "hold_kw": round(budget.hold_kw, 3),
                 "hour_kw": round(budget.hour_kw, 3),
                 "so_far_kwh": round(budget.so_far_kwh, 3),
                 "remaining_s": round(budget.remaining_s, 1),
@@ -5906,6 +6055,17 @@ def charge_still_wanted(hass: HomeAssistant, charger_entry_id: str, charger_cont
         return True
     charger_controller.forget_balancing_pause()
     return False
+
+
+def _plugged_in_for_resume(adapter: Any) -> bool:
+    """Whether a charge load balancing paused (for the fuse or the import target) may be resumed as far as the plug
+    goes: a charger that can say whether a car is plugged in must say one is; one that cannot (a plain switch, an
+    OCPP charger whose connector status is not found, a status sensor on a platform with no mapping:
+    `reports_connection` false) is resumed while the charge is still wanted, or a pause would hold it off for good."""
+    connected = adapter.vehicle_connected()
+    if connected is not None:
+        return connected is True
+    return not getattr(adapter, "reports_connection", True)
 
 
 async def async_release_held_charges(hass: HomeAssistant, charger_entry_ids: Sequence[str]) -> None:
