@@ -33,7 +33,7 @@
     "cost": "cirka {cost}",
     "import_target.at_risk.time": "Bilen blir ikke ferdig til kl. {time} under effektmålet på {target} kW – {kwh} kWh mangler.",
     "import_target.at_risk": "Bilen blir ikke ferdig til avreise under effektmålet på {target} kW – {kwh} kWh mangler.",
-    "import_target.release": "Slipp effektmålet i natt",
+    "import_target.release": "Slipp effektmålet for denne ladingen",
     "import_target.at_risk.peak.time": "Bilen blir ikke ferdig til kl. {time} under månedens topp på {target} kW (effektmål {set} kW) – {kwh} kWh mangler.",
     "import_target.at_risk.peak": "Bilen blir ikke ferdig til avreise under månedens topp på {target} kW (effektmål {set} kW) – {kwh} kWh mangler."
   },

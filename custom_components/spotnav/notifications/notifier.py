@@ -64,7 +64,7 @@ replaced on every phone that got it (`retire_vehicle_question`) or cleared (`cle
 
 The site's import target making a plan miss its departure (`import_target_risk`, from the site on each recompute) is
 told as `plan_at_risk` is, under its choice and in its place: the same tag, so it replaces one told before, and no
-`plan_at_risk` while it stands. It says how much is missing and carries one button, "Release the import target tonight", which sets the
+`plan_at_risk` while it stands. It says how much is missing and carries one button, "Release the import target for this charge", which sets the
 target aside for that charge until its departure (`SiteCapacityController.async_release_import_target`). It is told
 once per departure, again only when the shortfall grows clearly (`TARGET_RISK_GROWTH_KWH`, and by half), and taken
 off the phones once the departure can be met again (or the target is set aside). Not kept across a restart: a restart
@@ -120,7 +120,7 @@ _STORE_KEY_PREFIX: Final = f"{DOMAIN}.notified_plan"
 REPEAT_S: Final = 15 * 60.0
 #: How much more (kWh, and at least half as much again) a told import-target shortfall must grow to be told again.
 TARGET_RISK_GROWTH_KWH: Final = 1.0
-#: The action id prefix of the import target's "Release the import target tonight" button.
+#: The action id prefix of the import target's "Release the import target for this charge" button.
 TARGET_RELEASE_ACTION: Final = "SPOTNAV_IMPORT_TARGET_RELEASE_"
 #: The event Home Assistant's companion app fires when a notification's button is pressed.
 NOTIFICATION_ACTION_EVENT: Final = "mobile_app_notification_action"
@@ -873,7 +873,7 @@ class ChargerNotifier:
 
     @callback
     def _on_action(self, event: Any) -> None:
-        """A phone's "Release the import target tonight": the target is set aside for this charger's charge until its departure."""
+        """A phone's "Release the import target for this charge": the target is set aside for this charger's charge until its departure."""
         action = event.data.get("action")
         prefix = f"{TARGET_RELEASE_ACTION}{self._entry_id}_"
         if not isinstance(action, str) or not action.startswith(prefix):

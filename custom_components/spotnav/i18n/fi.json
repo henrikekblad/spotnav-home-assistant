@@ -33,7 +33,7 @@
     "cost": "noin {cost}",
     "import_target.at_risk.time": "Auto ei ole valmis klo {time} mennessä {target} kW:n tehotavoitteella – {kwh} kWh puuttuu.",
     "import_target.at_risk": "Auto ei ole valmis lähtöön {target} kW:n tehotavoitteella – {kwh} kWh puuttuu.",
-    "import_target.release": "Ohita tehotavoite tänä yönä",
+    "import_target.release": "Ohita tehotavoite tämän latauksen ajaksi",
     "import_target.at_risk.peak.time": "Auto ei ole valmis klo {time} mennessä kuukauden {target} kW:n huipulla (tehotavoite {set} kW) – {kwh} kWh puuttuu.",
     "import_target.at_risk.peak": "Auto ei ole valmis lähtöön kuukauden {target} kW:n huipulla (tehotavoite {set} kW) – {kwh} kWh puuttuu."
   },

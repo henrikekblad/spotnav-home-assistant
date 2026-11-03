@@ -306,7 +306,7 @@ TARGET_NOT_APPLIED_BATTERY_UNKNOWN = "battery_unknown"
 ERROR_NO_IMPORT_TARGET = "spotnav_no_import_target"
 #: What a set-aside with no departure ahead (a person's Start, a plan without one) is kept as, followed by "/" and the
 #: moment it was given (`_unplug_release_since`): until the car is unplugged, the car ends the charge by itself, or the
-#: next local noon, whichever comes first, so "tonight" ends even on a charger that never reports a plug state.
+#: next local noon, whichever comes first, so a release always ends by then, even on a charger that never reports a plug state.
 RELEASED_UNTIL_UNPLUG = "until_unplug"
 #: The local hour an until-unplug set-aside ends at the latest, at least `RELEASED_UNTIL_UNPLUG_LEAST` after it was
 #: given: one given at 11:59 lasts to the next day's noon.
@@ -339,7 +339,7 @@ def unplug_release_value(now: datetime) -> str:
 
 def unplug_release_latest(since: datetime) -> datetime:
     """The first local noon at least `RELEASED_UNTIL_UNPLUG_LEAST` after `since`: an until-unplug set-aside ends
-    there at the latest, so "tonight" given late in the morning still lasts to the next day's noon."""
+    there at the latest, so a release given late in the morning still lasts to the next day's noon."""
     earliest = since + RELEASED_UNTIL_UNPLUG_LEAST
     local = dt_util.as_local(earliest)
     noon = local.replace(hour=RELEASED_UNTIL_UNPLUG_LATEST_HOUR, minute=0, second=0, microsecond=0)
@@ -454,7 +454,7 @@ class TargetRisk:
     departure: str
     missing_kwh: float
     target_kw: float
-    #: The plan's `if_not_ready`: `ask` is told and offered "Release the import target tonight", `hold` only said, `release` set aside.
+    #: The plan's `if_not_ready`: `ask` is told and offered "Release the import target for this charge", `hold` only said, `release` set aside.
     choice: str = IF_NOT_READY_ASK
     #: The import target as set, below `target_kw` where the month's peak lifts the running hour (`None`: the same).
     set_kw: float | None = None
@@ -5425,7 +5425,7 @@ class SiteCapacityController:
         assert plan is not None
         if for_departure is not None and for_departure != int(departure.timestamp()):
             _LOGGER.info(
-                "SpotNav site %s: a Release the import target tonight for charger %s was for another departure than its plan's %s; "
+                "SpotNav site %s: a Release the import target for this charge for charger %s was for another departure than its plan's %s; "
                 "nothing is set aside",
                 self.entry_id,
                 charger_entry_id,

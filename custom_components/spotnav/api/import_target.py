@@ -1,4 +1,4 @@
-"""`spotnav/release_import_target`: "Release the import target tonight" beside the import target's lines (held, paused,
+"""`spotnav/release_import_target`: "Release the import target for this charge" beside the import target's lines (held, paused,
 `import_target_at_risk`) and the notification's button.
 
 `{api_version: 1, charger_id}` sets the site's import target aside for that charger's charge until its plan's

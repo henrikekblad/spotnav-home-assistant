@@ -392,7 +392,7 @@ async def test_ask_holds_the_target_and_tells_once_with_a_button(hass: HomeAssis
         assert "6.0 kW" in told[0]["message"] and "kWh short" in told[0]["message"]
         actions = told[0]["data"]["actions"]
         stamp = int(world.departure.timestamp())
-        assert actions == [{"action": f"SPOTNAV_IMPORT_TARGET_RELEASE_{charger}_{stamp}", "title": "Release the import target tonight"}]
+        assert actions == [{"action": f"SPOTNAV_IMPORT_TARGET_RELEASE_{charger}_{stamp}", "title": "Release the import target for this charge"}]
         assert told[0]["data"]["tag"] == f"spotnav_{charger}_plan_at_risk"
         # The phone's button sets the target aside until the departure.
         hass.bus.async_fire("mobile_app_notification_action", {"action": actions[0]["action"]})
