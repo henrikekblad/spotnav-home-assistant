@@ -460,6 +460,61 @@ async def test_a_release_holds_until_the_departure_and_survives_a_restart(hass: 
         assert controller._target_released == {}  # noqa: SLF001
 
 
+async def test_a_start_after_the_release_keeps_it_until_the_unplug(hass: HomeAssistant, monkeypatch) -> None:
+    from custom_components.spotnav.site.site_capacity_controller import _unplug_release_since
+
+    with freeze_time(_HOUR + timedelta(seconds=5)) as frozen:
+        world = await _tight_night(hass, monkeypatch, frozen, "startafter")
+        await world.run(2)
+        charger = world.halo.charger.entry_id
+        controller = world.halo.controller
+        assert controller.async_release_import_target(charger) is None
+        await world.run(2)
+        assert controller._target_released == {charger: world.departure.isoformat()}  # noqa: SLF001
+        # A person presses Start: the plan is dropped, the release is not.
+        await _start_by_hand(world)
+        assert world.halo.cc.plan is None
+        await world.run(3)
+        kept = controller._target_released[charger]  # noqa: SLF001
+        assert _unplug_release_since(kept) is not None, kept
+        assert world.car_a == 16.0, "still set aside: the Start charges at full power"
+        status = controller.import_target_status(charger)
+        assert status is not None and status.released_for == kept
+
+
+async def test_a_hand_edited_release_store_never_breaks_a_recompute(hass: HomeAssistant, monkeypatch) -> None:
+    from custom_components.spotnav.site.site_capacity_controller import (
+        _unplug_release_since,
+        SiteCapacityController,
+        unplug_release_value,
+    )
+
+    with freeze_time(_HOUR + timedelta(seconds=5)) as frozen:
+        world, controller, charger = await _released_by_hand(hass, monkeypatch, frozen, "handedit")
+        await controller._target_release_store.async_save(  # noqa: SLF001
+            {
+                "released": {
+                    charger: "until_unplug/2026-11-02T12:00:00",  # no offset: taken as UTC
+                    "naive_departure": "2026-11-02T20:00:00",
+                    "garbage": "until_unplug/garbage",
+                    "bad_month": "2026-13-02T20:00:00+00:00",
+                    "number": 7,
+                }
+            }
+        )
+        fresh = SiteCapacityController(hass, controller.entry_id, dict(controller.config))
+        await fresh._async_load_released()  # noqa: SLF001
+        released = fresh._target_released  # noqa: SLF001
+        assert set(released) == {charger, "naive_departure"}
+        assert released[charger] == unplug_release_value(datetime(2026, 11, 2, 12, 0, tzinfo=timezone.utc))
+        assert dt_util.parse_datetime(released["naive_departure"]).tzinfo is not None
+        assert _unplug_release_since("until_unplug/2026-11-02T12:00:00").tzinfo is not None
+        # The live site, given the same hand-edited values, recomputes without raising.
+        controller._target_released = {charger: "until_unplug/2026-11-02T12:00:00", "x": "2026-11-02T20:00:00"}  # noqa: SLF001
+        controller._prune_released(dt_util.utcnow())  # noqa: SLF001
+        await world.run(1)
+
+
 async def _released_by_hand(hass: HomeAssistant, monkeypatch, frozen, name: str):
     """A person's Start held at 7 A, then released without a departure: the world, its site and the charger's id."""
     world = await _world(hass, monkeypatch, frozen, name)
@@ -527,16 +582,21 @@ async def test_a_release_until_unplug_ends_at_noon_on_a_charger_without_a_plug_s
         assert controller._target_released == {}  # noqa: SLF001
 
 
-def test_an_until_unplug_release_ends_at_the_first_local_noon_after_it() -> None:
+def test_an_until_unplug_release_ends_at_the_first_local_noon_six_hours_after_it() -> None:
     from custom_components.spotnav.site.site_capacity_controller import unplug_release_latest
 
     zone = dt_util.get_default_time_zone()
     evening = datetime(2026, 11, 2, 22, 0, tzinfo=zone)
     assert unplug_release_latest(evening) == datetime(2026, 11, 3, 12, 0, tzinfo=zone)
+    early = datetime(2026, 11, 3, 5, 30, tzinfo=zone)
+    assert unplug_release_latest(early) == datetime(2026, 11, 3, 12, 0, tzinfo=zone)
+    # At least six hours: one given at 09:30 or 11:59 lasts to the next day's noon.
     morning = datetime(2026, 11, 3, 9, 30, tzinfo=zone)
-    assert unplug_release_latest(morning) == datetime(2026, 11, 3, 12, 0, tzinfo=zone)
-    at_noon = datetime(2026, 11, 3, 12, 0, tzinfo=zone)
-    assert unplug_release_latest(at_noon) == datetime(2026, 11, 4, 12, 0, tzinfo=zone)
+    assert unplug_release_latest(morning) == datetime(2026, 11, 4, 12, 0, tzinfo=zone)
+    late = datetime(2026, 11, 3, 11, 59, tzinfo=zone)
+    assert unplug_release_latest(late) == datetime(2026, 11, 4, 12, 0, tzinfo=zone)
+    at_six = datetime(2026, 11, 3, 6, 0, tzinfo=zone)
+    assert unplug_release_latest(at_six) == datetime(2026, 11, 3, 12, 0, tzinfo=zone)
 
 
 async def test_a_release_until_unplug_ends_when_the_car_ends_the_charge(hass: HomeAssistant, monkeypatch) -> None:
@@ -766,19 +826,36 @@ async def test_a_restart_mid_hour_keeps_the_hour_and_the_hold(hass: HomeAssistan
 # -- a switch-only charger
 
 
-async def _switch_only_hour(hass: HomeAssistant, monkeypatch, frozen, name: str, target_kw: float) -> Any:
-    """A site of one switch-only charger drawing 10 A on three phases (6.9 kW) beside a 0.5 kW house, for ten minutes
-    of readings every 30 seconds."""
+async def _switch_only_hour(
+    hass: HomeAssistant,
+    monkeypatch,
+    frozen,
+    name: str,
+    target_kw: float,
+    *,
+    minutes: int = 10,
+    plug: bool = True,
+    house_w: Any = None,
+) -> Any:
+    """A site of one switch-only charger drawing 10 A on three phases (6.9 kW) beside a 0.5 kW house, for `minutes`
+    of readings every 30 seconds. `plug` false: a plain switch that cannot say whether a car is plugged in. `house_w`:
+    the house's power (W) at each reading's index, where it changes."""
+    from custom_components.spotnav.execution.chargers.adapter import ChargerAdapter
+
     from .test_switch_only_balancing import _charging as _switch_charging, _world as _switch_world
 
     world = await _switch_world(hass, monkeypatch, name, commandable=False)
+    if not plug:
+        monkeypatch.setattr(ChargerAdapter, "vehicle_connected", lambda self: None)
+        monkeypatch.setattr(ChargerAdapter, "reports_connection", property(lambda self: False))
     entry = hass.config_entries.async_get_entry(world.site.entry_id)
     hass.config_entries.async_update_entry(entry, data={**entry.data, CONF_IMPORT_TARGET_KW: target_kw})
     house_a = 500.0 / (3 * _V)
     await _switch_charging(world, "b", 10.0)
-    for _ in range(20):
+    for index in range(minutes * 2):
         on = hass.states.get(f"switch.{name}_b").state == "on"
-        amps = house_a + (10.0 if on else 0.0)
+        house = house_a if house_w is None else house_w(index) / (3 * _V)
+        amps = house + (10.0 if on else 0.0)
         for phase in ("l1", "l2", "l3"):
             for kind, value, unit in (("power", amps * _V, "W"), ("reactive", 0, "var"), ("voltage", _V, "V")):
                 hass.states.async_set(
@@ -790,8 +867,10 @@ async def _switch_only_hour(hass: HomeAssistant, monkeypatch, frozen, name: str,
         frozen.tick(timedelta(seconds=30))
         world.advance(30.0)
         await world.tick()
-        if world.stops("b"):
+        if world.stops("b") > world.starts("b") - 1:
             world.switch("b", "off")
+        elif world.starts("b") > 1:
+            world.switch("b", "on")
     return world
 
 
@@ -807,6 +886,20 @@ async def test_a_switch_only_charger_runs_only_while_its_whole_power_fits_the_ho
         assert any(entry["reason"] == REASON_IMPORT_TARGET_PAUSED for entry in over.site.regulator_decision_log)
         pause = over.site.balancing_pause(over.entry_id("b"))
         assert pause is not None and pause.cause == LIMIT_CAUSE_IMPORT_TARGET
+
+
+async def test_a_switch_that_cannot_report_the_plug_is_resumed_the_next_hour(hass: HomeAssistant, monkeypatch) -> None:
+    # A plain switch says nothing of a car: the target's pause ends at the next hour as for any charger, not never.
+    # An 8 kW target; the house takes 3 kW for the hour's first ten minutes (the whole 6.9 kW no longer fits: paused
+    # to the hour's end), then 0.5 kW, where it fits again from the next hour.
+    with freeze_time(_HOUR + timedelta(seconds=5)) as frozen:
+        world = await _switch_only_hour(
+            hass, monkeypatch, frozen, "noplugsw", 8.0, minutes=70, plug=False,
+            house_w=lambda index: 3000.0 if index < 20 else 500.0,
+        )
+        assert world.stops("b") == 1
+        assert world.starts("b") >= 2, "resumed in the next hour"
+        assert not world.cc("b").paused_by_balancing
 
 
 # -- yield stepping never steps above the target, and never holds its lowering back
