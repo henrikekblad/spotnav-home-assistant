@@ -354,8 +354,23 @@ TARGET_INERT_EXPORTING = "phase_exporting"
 #: How many of the house's last measured hours a plan under the import target takes its typical load from
 #: (`import_target_plan_kw`).
 TARGET_HOUSE_HOURS = 24
-#: How many of the import target's changes per charger the diagnostics keep (`import_target_snapshot`).
-TARGET_LOG_LENGTH = 48
+#: What a charger's minute row says the import target does to it (`import_target_charger_row`).
+TARGET_ROW_ACTIONS = {ACTION_UNHELD: "exempt"}
+#: Where a release of the import target came from (`async_release_import_target`'s `source`, in the change log).
+RELEASE_SOURCE_PHONE = "phone"
+RELEASE_SOURCE_CARD = "card"
+RELEASE_SOURCE_APP = "app"
+RELEASE_SOURCE_PLAN = "plan"
+#: Why a release ended (`_release_end`, in the change log).
+RELEASE_END_DEPARTURE_PASSED = "departure_passed"
+RELEASE_END_UNPLUGGED = "unplugged"
+RELEASE_END_CHARGE_ENDED = "charge_ended"
+RELEASE_END_NOON = "noon"
+RELEASE_END_DEPARTURE_CHANGED = "departure_changed"
+RELEASE_END_TARGET_REMOVED = "target_removed"
+#: The import target's state as the change log tells its transitions: off (no target), applied, or why not.
+TARGET_STATE_OFF = "off"
+TARGET_STATE_APPLIED = "applied"
 
 #: How far (amps) above its minimum a charger's own fresh reading must be for a charger whose current the site does
 #: not know to count as drawing above it, once the site's measurement is lost: a car at its minimum reads a little
@@ -655,7 +670,10 @@ class SiteCapacityController:
         # The departures a plan's own choice (`if_not_ready` `release`) sets the target aside for, while holding
         # would miss them: decided again on every recompute, never stored.
         self._target_auto_released: dict[str, str] = {}
-        self._target_log: deque[dict[str, Any]] = deque(maxlen=TARGET_LOG_LENGTH)
+        # The import target's change log lives with the minute rows (`SiteHistory.note_target`), kept 24 hours across
+        # restarts; the state it last told (`_note_target_state`).
+        self._target_logged_state: str | None = None
+        self._target_noticed: dict[str, tuple[str, float]] = {}
         # Logging-only memory of the last conflict list; `membership_conflicts` itself is always
         # live.
         self._last_logged_conflicts: list[SiteMembershipConflict] = self.membership_conflicts
@@ -4729,6 +4747,7 @@ class SiteCapacityController:
             self._target_lowered = set()
             self._target_raise_lock = {}
             self._target_not_applied = TARGET_NOT_APPLIED_ERROR
+            self._note_target_state(TARGET_NOT_APPLIED_ERROR)
             return decisions
 
     # -- the import target (`site/import_target.py`)
@@ -4998,12 +5017,17 @@ class SiteCapacityController:
         target_kw = self._import_target_kw()
         if target_kw is None:
             self._target_not_applied = None
+            self._note_target_state(TARGET_STATE_OFF)
             self._target_effective = None
             self._target_paused_hour.clear()
             self._target_risk = {}
+            for charger_entry_id, until in self._target_auto_released.items():
+                self._log_target(charger_entry_id, "release_ended", reason=RELEASE_END_TARGET_REMOVED, until=until, automatic=True)
             self._target_auto_released = {}
             self._tell_target_risk()
             if self._target_released:
+                for charger_entry_id, until in self._target_released.items():
+                    self._log_target(charger_entry_id, "release_ended", reason=RELEASE_END_TARGET_REMOVED, until=until)
                 self._target_released.clear()
                 self._save_released()
             self._target_last_cap.clear()
@@ -5014,6 +5038,7 @@ class SiteCapacityController:
         self._target_effective = self._effective_import_target(target_kw, now)
         budget, reason = self._import_target_budget(self._target_effective.kw, now)
         self._target_not_applied = reason
+        self._note_target_state(TARGET_STATE_APPLIED if reason is None else reason)
         if budget is None:
             return decisions
         self._target_budget = budget
@@ -5069,7 +5094,9 @@ class SiteCapacityController:
                 self._note_target(charger_entry_id, "at_risk", budget, departure=risk.departure)
         for charger_entry_id, departure in automatic.items():
             if charger_entry_id not in self._target_auto_released:
-                self._note_target(charger_entry_id, "released", budget, departure=departure)
+                self._log_target(
+                    charger_entry_id, "release", budget, source=RELEASE_SOURCE_PLAN, until=departure, automatic=True
+                )
             risks.pop(charger_entry_id, None)
         self._target_risk = risks
         self._target_auto_released = automatic
@@ -5159,7 +5186,21 @@ class SiteCapacityController:
             risk = self._target_risk.get(charger_entry_id)
             if notifier is not None:
                 # Told only where the plan asks; `hold` and `release` are said in the status alone.
-                notifier.import_target_risk(risk if risk is not None and risk.choice == IF_NOT_READY_ASK else None)
+                told = risk if risk is not None and risk.choice == IF_NOT_READY_ASK else None
+                outcome = notifier.import_target_risk(told)
+                if outcome is not None:
+                    # What the phones were told, for the change log: told, told again (grown) or taken off (with
+                    # the departure and shortfall last told).
+                    if told is not None:
+                        self._target_noticed[charger_entry_id] = (told.departure, told.missing_kwh)
+                    departure, missing_kwh = (
+                        self._target_noticed.pop(charger_entry_id, (None, None))
+                        if told is None
+                        else (told.departure, told.missing_kwh)
+                    )
+                    self._log_target(
+                        charger_entry_id, f"notice_{outcome}", departure=departure, missing_kwh=missing_kwh
+                    )
 
     # -- a person sets the import target aside until a charge's departure
 
@@ -5195,6 +5236,9 @@ class SiteCapacityController:
         await Store(hass, 1, f"{DOMAIN}.import_target_release.{entry_id}").async_remove()
 
     def _release_over(self, charger_entry_id: str, departure: str, now: datetime) -> bool:
+        return self._release_end(charger_entry_id, departure, now) is not None
+
+    def _release_end(self, charger_entry_id: str, departure: str, now: datetime) -> str | None:
         """Whether a set-aside until `departure` has ended: the departure passed, the car was unplugged, or the plan
         is now for another departure (earlier or later), which the set-aside was not given for. One with no departure
         (`RELEASED_UNTIL_UNPLUG`) ends at the unplug, when the car ends the charge by itself after it was given
@@ -5202,17 +5246,21 @@ class SiteCapacityController:
         cannot report the plug, or a car that is full, does not keep it into the next day."""
         charger_controller = controller_for(self.hass, charger_entry_id)
         unplugged = charger_controller is not None and charger_controller.adapter.vehicle_connected() is False
+        if unplugged:
+            return RELEASE_END_UNPLUGGED
         since = _unplug_release_since(departure)
         if since is not None:
             ended = None if charger_controller is None else getattr(charger_controller, "car_ended_at", None)
-            return (
-                unplugged
-                or now >= unplug_release_latest(since)
-                or (isinstance(ended, datetime) and ended > since)
-            )
+            if isinstance(ended, datetime) and ended > since:
+                return RELEASE_END_CHARGE_ENDED
+            return RELEASE_END_NOON if now >= unplug_release_latest(since) else None
         moment = _aware_instant(departure)
+        if moment is None or moment <= now:
+            return RELEASE_END_DEPARTURE_PASSED
         plan = None if charger_controller is None else getattr(charger_controller, "plan", None)
-        return moment is None or moment <= now or unplugged or plan is None or plan.departure != departure
+        if plan is None or plan.departure != departure:
+            return RELEASE_END_DEPARTURE_CHANGED
+        return None
 
     def _prune_released(self, now: datetime) -> None:
         """A person's set-aside, and one the plan's choice made, end as `_release_over` says. A person's set-aside
@@ -5221,19 +5269,26 @@ class SiteCapacityController:
         changed = False
         for charger_entry_id, departure in list(self._target_released.items()):
             if self._dropped_by_a_start(charger_entry_id, departure, now):
-                self._target_released[charger_entry_id] = unplug_release_value(now)
+                kept = unplug_release_value(now)
+                self._target_released[charger_entry_id] = kept
+                self._log_target(charger_entry_id, "release_kept", reason="person_start", until=kept, was=departure)
                 changed = True
                 continue
-            if self._release_over(charger_entry_id, departure, now):
+            reason = self._release_end(charger_entry_id, departure, now)
+            if reason is not None:
                 del self._target_released[charger_entry_id]
+                self._log_target(charger_entry_id, "release_ended", reason=reason, until=departure)
                 changed = True
         if changed:
             self._save_released()
-        self._target_auto_released = {
-            charger_entry_id: departure
-            for charger_entry_id, departure in self._target_auto_released.items()
-            if not self._release_over(charger_entry_id, departure, now)
-        }
+        kept_auto: dict[str, str] = {}
+        for charger_entry_id, departure in self._target_auto_released.items():
+            reason = self._release_end(charger_entry_id, departure, now)
+            if reason is None:
+                kept_auto[charger_entry_id] = departure
+            else:
+                self._log_target(charger_entry_id, "release_ended", reason=reason, until=departure, automatic=True)
+        self._target_auto_released = kept_auto
 
     def _dropped_by_a_start(self, charger_entry_id: str, departure: str, now: datetime) -> bool:
         """Whether a person's set-aside until `departure` (still ahead, the car still plugged in) lost its plan to a
@@ -5265,13 +5320,16 @@ class SiteCapacityController:
         pause = settings.pause
         return bool(pause.admitted and pause.manual and pause.action == MANUAL_START)
 
-    def async_release_import_target(self, charger_entry_id: str, *, for_departure: int | None = None) -> str | None:
+    def async_release_import_target(
+        self, charger_entry_id: str, *, for_departure: int | None = None, source: str | None = None
+    ) -> str | None:
         """Set the import target aside for this charger's charge (a person's choice, from the notification, the card or
         the app): until its plan's departure where one is ahead, else (a person's Start, a plan without a departure)
         until the car is unplugged. The error's code, else `None`: `spotnav_no_import_target` (the site has none set),
         `spotnav_stale_departure` (a phone's button told for a departure, `for_departure` in epoch seconds, that is not
-        the plan's any more)."""
+        the plan's any more). `source` (`phone`, `card`, `app`) is only kept in the change log, with any refusal."""
         if self._import_target_kw() is None:
+            self._log_target(charger_entry_id, "release_refused", source=source, error=ERROR_NO_IMPORT_TARGET)
             return ERROR_NO_IMPORT_TARGET
         plan = getattr(controller_for(self.hass, charger_entry_id), "plan", None)
         departure = None if plan is None or not plan.departure else dt_util.parse_datetime(plan.departure)
@@ -5285,8 +5343,9 @@ class SiteCapacityController:
                     self.entry_id,
                     charger_entry_id,
                 )
+                self._log_target(charger_entry_id, "release_refused", source=source, error=ERROR_STALE_DEPARTURE)
                 return ERROR_STALE_DEPARTURE
-            return self._release(charger_entry_id, unplug_release_value(dt_util.utcnow()))
+            return self._release(charger_entry_id, unplug_release_value(dt_util.utcnow()), source)
         assert plan is not None
         if for_departure is not None and for_departure != int(departure.timestamp()):
             _LOGGER.info(
@@ -5296,6 +5355,7 @@ class SiteCapacityController:
                 charger_entry_id,
                 plan.departure,
             )
+            self._log_target(charger_entry_id, "release_refused", source=source, error=ERROR_STALE_DEPARTURE)
             return ERROR_STALE_DEPARTURE
         _LOGGER.info(
             "SpotNav site %s: the import target is set aside for charger %s until %s, as a person asked",
@@ -5303,17 +5363,16 @@ class SiteCapacityController:
             charger_entry_id,
             plan.departure,
         )
-        return self._release(charger_entry_id, plan.departure)
+        return self._release(charger_entry_id, plan.departure, source)
 
-    def _release(self, charger_entry_id: str, until: str) -> str | None:
+    def _release(self, charger_entry_id: str, until: str, source: str | None = None) -> str | None:
         """Keep the target aside for this charger `until` a departure (ISO) or the unplug (`unplug_release_value`)."""
         self._target_released[charger_entry_id] = until
         self._target_risk.pop(charger_entry_id, None)
         self._tell_target_risk()
         self._target_paused_hour.pop(charger_entry_id, None)
         self._save_released()
-        if self._target_budget is not None:
-            self._note_target(charger_entry_id, "released", self._target_budget, departure=until)
+        self._log_target(charger_entry_id, "release", self._target_budget, source=source, until=until)
         self._recompute()
         return None
 
@@ -5361,24 +5420,65 @@ class SiteCapacityController:
         departure: str | None = None,
     ) -> None:
         """Keep a change of what the target does to a charger, for the diagnostics (one entry per change)."""
-        last = next((entry for entry in reversed(self._target_log) if entry["charger"] == charger_entry_id), None)
+        log = self._history.target_log
+        last = next((entry for entry in reversed(log) if entry.get("charger") == charger_entry_id), None)
         hour = budget.hour_start.isoformat()
-        if last is not None and (last["hour"], last["action"], last["cap_a"]) == (hour, action, cap_a):
+        if last is not None and (last.get("hour"), last.get("action"), last.get("cap_a")) == (hour, action, cap_a):
             return
-        self._target_log.append(
-            {
-                "at": dt_util.utcnow().isoformat(),
-                "hour": hour,
-                "charger": charger_entry_id,
-                "action": action,
-                "cap_a": cap_a,
-                "departure": departure,
-                "hold_kw": round(budget.hold_kw, 3),
-                "hour_kw": round(budget.hour_kw, 3),
-                "allowed_w": round(budget.allowed_w),
-                "house_w": round(budget.house_w),
-            }
-        )
+        self._log_target(charger_entry_id, action, budget, cap_a=cap_a, departure=departure)
+
+    def _log_target(
+        self, charger_entry_id: str | None, action: str, budget: HourBudget | None = None, **fields: Any
+    ) -> None:
+        """One entry of the import target's change log (`SiteHistory.note_target`), kept 24 hours across restarts:
+        when, which charger (`None` for the site), what, the hour's budget where there is one, and the action's own
+        fields. For the debug bundle only; never raises."""
+        try:
+            entry: dict[str, Any] = {"at": dt_util.utcnow().isoformat(), "charger": charger_entry_id, "action": action}
+            if budget is not None:
+                entry.update(
+                    hour=budget.hour_start.isoformat(),
+                    hold_kw=round(budget.hold_kw, 3),
+                    hour_kw=round(budget.hour_kw, 3),
+                    allowed_w=round(budget.allowed_w),
+                    house_w=round(budget.house_w),
+                )
+            # Empty fields left out: a day of entries stays small.
+            entry.update({key: value for key, value in fields.items() if value is not None})
+            self._history.note_target(entry)
+        except Exception:  # noqa: BLE001 - a diagnostic log never disturbs a decision
+            _LOGGER.debug("SpotNav site %s: the import target's change could not be logged", self.entry_id, exc_info=True)
+
+    def _note_target_state(self, state: str) -> None:
+        """Log the import target's state (off, applied, or why it is not applied) when it changes."""
+        if state == self._target_logged_state:
+            return
+        self._target_logged_state = state
+        if state in (TARGET_STATE_APPLIED, TARGET_STATE_OFF):
+            self._log_target(None, state)
+        else:
+            self._log_target(None, "not_applied", reason=state)
+
+    def import_target_row(self) -> list[Any]:
+        """The import target's columns on the site's minute row (`site_history.TARGET_SITE_COLUMNS`): the level the
+        hour is held under (kW), what the chargers may draw (W), the house's power the budget used (W), and why it is
+        not applied. All empty while no target is set."""
+        budget = self._target_budget
+        if budget is None:
+            return [None, None, None, self._target_not_applied]
+        return [round(budget.hold_kw, 3), round(budget.allowed_w), round(budget.house_w), None]
+
+    def import_target_charger_row(self, charger_entry_id: str) -> list[Any]:
+        """The import target's columns on a member charger's minute row (`site_history.TARGET_CHARGER_COLUMNS`): what
+        it does to the charger (`free`, `held`, `paused`, `released`, `exempt`) and the amps it caps it at."""
+        if self._target_budget is None:
+            return [None, None]
+        if charger_entry_id in self._target_released or charger_entry_id in self._target_auto_released:
+            return ["released", None]
+        share = self._target_shares.get(charger_entry_id)
+        if share is None:
+            return [None, None]
+        return [TARGET_ROW_ACTIONS.get(share.action, share.action), share.cap_a]
 
     def _target_ceiling_a(self, charger_entry_id: str) -> float | None:
         """The most the import target leaves this charger now (`TargetShare.room_a`; `0.0` while it pauses it), `None`
@@ -5533,7 +5633,7 @@ class SiteCapacityController:
                 charger_entry_id: {"departure": risk.departure, "missing_kwh": risk.missing_kwh, "choice": risk.choice}
                 for charger_entry_id, risk in self._target_risk.items()
             },
-            "log": list(self._target_log),
+            "log": self._history.target_log,
         }
 
     def charger_measured_current(self, charger_entry_id: str) -> DirectPhaseMeasurement | None:

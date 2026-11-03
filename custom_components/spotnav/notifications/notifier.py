@@ -790,9 +790,10 @@ class ChargerNotifier:
 
     # ------------------------------------------------------------------ the import target's shortfall
 
-    def import_target_risk(self, risk: Any | None) -> None:
+    def import_target_risk(self, risk: Any | None) -> str | None:
         """The site's word on this charger (`SiteCapacityController._hold_to_import_target`): the departure the
-        import target makes the plan miss and by how much (`TargetRisk`), or `None` (see the module)."""
+        import target makes the plan miss and by how much (`TargetRisk`), or `None` (see the module). Answers what the
+        phones were told for the site's change log: `told`, `retold` (the shortfall grew), `cleared`, or `None`."""
         now = dt_util.utcnow()
         told = self._target_told
         if risk is None:
@@ -806,25 +807,28 @@ class ChargerNotifier:
                     # The plan still cannot be met for reasons of its own: told now, as it was not before.
                     self._mark_at_risk_told(behind, now)
                     self._maybe_send(EVENT_PLAN_AT_RISK, behind, now)
+                self._at_risk_behind_target = None
+                return "cleared"
             self._at_risk_behind_target = None
-            return
+            return None
         if told is not None and told[0] == risk.departure:
             grown = risk.missing_kwh - told[1]
             if grown < max(TARGET_RISK_GROWTH_KWH, told[1] / 2):
-                return
+                return None
         if self._connected is False:
-            return  # nothing is charged with no car there
+            return None  # nothing is charged with no car there
         if self._push is not None and self._target_pushed != (risk.departure, risk.missing_kwh):
             self._target_pushed = (risk.departure, risk.missing_kwh)
             self._push.async_event(EVENT_PLAN_AT_RISK, now)
         notifications = self._store.settings(self._entry_id).notifications
         if not notifications.wants(EVENT_PLAN_AT_RISK) or not self._within_hourly_limit(now):
-            return
+            return None
         targets = tuple(
             target for target in notifications.targets if self._hass.services.has_service(NOTIFY_DOMAIN, target)
         )
         if not targets:
-            return
+            return None
+        retold = told is not None and told[0] == risk.departure
         # Told from here on (not before: a notice the phones never got is no reason to keep `plan_at_risk` back).
         self._target_told = (risk.departure, risk.missing_kwh)
         self._sent_times.append(now)
@@ -862,6 +866,7 @@ class ChargerNotifier:
         self._target_phones = targets
         for target in targets:
             self._hass.async_create_task(self._async_send(target, payload), eager_start=True)
+        return "retold" if retold else "told"
 
     def _at_risk_tag(self) -> str:
         return f"spotnav_{self._entry_id}_{EVENT_PLAN_AT_RISK}"
@@ -880,7 +885,7 @@ class ChargerNotifier:
 
         site = site_controller_for_charger(self._hass, self._entry_id)
         if site is not None:
-            site.async_release_import_target(self._entry_id, for_departure=int(stamp))
+            site.async_release_import_target(self._entry_id, for_departure=int(stamp), source="phone")
 
     # ------------------------------------------------------------------ which car is plugged in?
 
