@@ -306,7 +306,13 @@ def test_a_discharging_battery_under_battery_first_lets_the_car_down_by_what_it_
         "voltage_v": _VOLTS,
     }
     assert lowering_floor_a(**common) == pytest.approx(15.0)
-    assert lowering_floor_a(**common, battery_discharge_w=10800.0) == pytest.approx(15.0 - 10800.0 / 690.0)
+    # The fuse's margin on each phase (20 A, 0.1 A exported) is wider than the 15.65 A the discharge covers.
+    margins = {phase: 19.9 for phase in _THREE}
+    assert lowering_floor_a(**common, battery_discharge_w=10800.0, fuse_margin_a=margins) == pytest.approx(
+        15.0 - 10800.0 / 690.0
+    )
+    # Without the fuse's margins, no extra drop at all.
+    assert lowering_floor_a(**common, battery_discharge_w=10800.0) == pytest.approx(15.0)
 
 
 def test_a_battery_not_discharging_leaves_the_per_phase_floor_as_it_was() -> None:
@@ -316,7 +322,7 @@ def test_a_battery_not_discharging_leaves_the_per_phase_floor_as_it_was() -> Non
         "signed_power_w": {phase: 1150.0 for phase in _THREE},
         "voltage_v": _VOLTS,
     }
-    assert lowering_floor_a(**common, battery_discharge_w=0.0) == pytest.approx(11.0)
+    assert lowering_floor_a(**common, battery_discharge_w=0.0, fuse_margin_a={p: 10.0 for p in _THREE}) == pytest.approx(11.0)
     assert lowering_floor_a(**common) == pytest.approx(11.0)
 
 
@@ -328,6 +334,7 @@ def test_a_drop_beyond_the_discharge_is_held_to_the_discharge_and_the_grids_own_
         signed_power_w={phase: 1150.0 for phase in _THREE},
         voltage_v=_VOLTS,
         battery_discharge_w=2070.0,
+        fuse_margin_a={phase: 10.0 for phase in _THREE},
     )
     assert floor == pytest.approx(8.0)
     # A phase that cannot be judged still lowers nothing, battery or not.
@@ -338,9 +345,44 @@ def test_a_drop_beyond_the_discharge_is_held_to_the_discharge_and_the_grids_own_
             signed_power_w={"L1": None, "L2": 1150.0, "L3": 1150.0},
             voltage_v=_VOLTS,
             battery_discharge_w=10000.0,
+            fuse_margin_a={phase: 10.0 for phase in _THREE},
         )
         is None
     )
+
+
+def test_the_batterys_part_of_the_drop_stays_within_the_smallest_fuse_margin() -> None:
+    # A 12 kW discharge would cover 17.4 A a phase; L2 has 4 A of fuse left. Should the battery not follow the car
+    # down, the export it leaves stays within the fuse: the extra drop is 4 A, on every phase.
+    common = {
+        "phases": _THREE,
+        "measured_a": {phase: 15.0 for phase in _THREE},
+        "signed_power_w": {phase: -230.0 for phase in _THREE},
+        "voltage_v": _VOLTS,
+        "battery_discharge_w": 12000.0,
+    }
+    assert lowering_floor_a(**common, fuse_margin_a={"L1": 9.0, "L2": 4.0, "L3": 9.0}) == pytest.approx(11.0)
+    # A phase over its fuse already (a negative margin): no extra drop; one unknown: none either.
+    assert lowering_floor_a(**common, fuse_margin_a={"L1": 9.0, "L2": -1.0, "L3": 9.0}) == pytest.approx(15.0)
+    assert lowering_floor_a(**common, fuse_margin_a={"L1": 9.0, "L2": None, "L3": 9.0}) == pytest.approx(15.0)
+
+
+def test_two_cars_share_the_discharge_and_never_each_count_on_all_of_it() -> None:
+    from custom_components.spotnav.site.import_target import battery_discharge_shares_w
+
+    shares = battery_discharge_shares_w(6900.0, ["a", "b"])
+    assert shares == {"a": 3450.0, "b": 3450.0}
+    common = {
+        "phases": _THREE,
+        "measured_a": {phase: 16.0 for phase in _THREE},
+        "signed_power_w": {phase: -23.0 for phase in _THREE},
+        "voltage_v": _VOLTS,
+        "fuse_margin_a": {phase: 19.0 for phase in _THREE},
+    }
+    floors = [lowering_floor_a(**common, battery_discharge_w=shares[key]) for key in ("a", "b")]
+    # Together they come down by what the 6.9 kW covers (10 A a phase), not twice that.
+    assert sum(16.0 - floor for floor in floors) == pytest.approx(6900.0 / 690.0)
+    assert battery_discharge_shares_w(6900.0, []) == {} and battery_discharge_shares_w(0.0, ["a"]) == {}
 
 
 def test_on_a_signed_current_the_drop_also_stays_within_the_margin() -> None:
