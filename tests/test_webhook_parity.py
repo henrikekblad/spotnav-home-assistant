@@ -358,6 +358,42 @@ async def test_site_settings_over_the_webhook_write_solar_only(
     _pinned("update_site_settings_not_permitted.json", _pin(forbidden[0]))
 
 
+async def test_the_app_sets_and_clears_the_sites_import_target_over_the_webhook(
+    hass: HomeAssistant, hass_client_no_auth
+) -> None:
+    from custom_components.spotnav.const import CONF_IMPORT_TARGET_KW
+    from custom_components.spotnav.runtime import site_controller_for
+
+    _charger, site = await setup_site_with_charger(hass, charger_entry_id="entry_target", site_entry_id="site_target")
+    client = await hass_client_no_auth()
+    controller = site_controller_for(hass, site.entry_id)
+
+    async def write(**body: Any) -> tuple[int, dict[str, Any]]:
+        return await post(client, "webhook-entry_target", {"action": "update_site_settings", **body})
+
+    # Set: stored as the card's write stores it, and the site is not reloaded (the same controller runs).
+    status, success = await write(expected={"import_target_kw": None}, changes={"import_target_kw": 6.0})
+    assert status == 200 and success["ok"] is True and success["import_target_kw"] == 6.0
+    assert site.data[CONF_IMPORT_TARGET_KW] == 6.0
+    assert site_controller_for(hass, site.entry_id) is controller
+    # An older app's write that does not name it leaves it as it is, and is answered as before.
+    status, solar = await write(expected={}, changes={"solar_priority": SOLAR_PRIORITY_CAR_FIRST})
+    assert status == 200 and "import_target_kw" not in solar
+    assert site.data[CONF_IMPORT_TARGET_KW] == 6.0
+    # A stale value is a conflict; a value out of bounds, of the wrong type or a string is refused, and nothing moves.
+    status, conflict = await write(expected={"import_target_kw": 5.0}, changes={"import_target_kw": 7.0})
+    assert status == 409 and conflict["error"] == "spotnav_conflict" and conflict["import_target_kw"] == 6.0
+    for bad in (0.05, 1000.5, -1, True, "6", [6]):
+        status, refused = await write(expected={}, changes={"import_target_kw": bad})
+        assert status == 400 and refused["error"] == "spotnav_invalid_value", bad
+    assert site.data[CONF_IMPORT_TARGET_KW] == 6.0
+    # Clear.
+    status, cleared = await write(expected={"import_target_kw": 6.0}, changes={"import_target_kw": None})
+    assert status == 200 and cleared["import_target_kw"] is None
+    assert CONF_IMPORT_TARGET_KW not in site.data
+    _pinned("update_site_settings_import_target.json", _pin(success))
+
+
 # --------------------------------------------------------- update_charger_priority
 
 
@@ -688,6 +724,8 @@ async def test_no_fixture_is_left_unwritten() -> None:
             "choose_price_source_unknown_entry.json",
             "dashboard.json",
             "dashboard_unsupported_version.json",
+            "get_power_month_no_site.json",
+            "get_power_month_success.json",
             "price_days_no_price_area.json",
             "price_days_no_prices.json",
             "price_days_nordpool_fi.json",
@@ -700,6 +738,7 @@ async def test_no_fixture_is_left_unwritten() -> None:
             "update_charger_priority_no_site.json",
             "update_charger_priority_success.json",
             "update_site_settings_conflict.json",
+            "update_site_settings_import_target.json",
             "update_site_settings_invalid_value.json",
             "update_site_settings_not_permitted.json",
             "update_phase_switching_conflict.json",

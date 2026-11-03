@@ -924,7 +924,8 @@ export function entityEditorBody(
     scope === "site" ? MANAGED_SITE.has(name) : MANAGED_CHARGER.has(name);
 
   for (const field of fieldsOf(config, scope)) {
-    if (!field.writable || isPhaseField(field.field) || field.field === "measurement_mode") {
+    // The import target is set beside the main fuse in Settings' site rows, with the running hour against it.
+    if (!field.writable || isPhaseField(field.field) || field.field === "measurement_mode" || field.field === "import_target_kw") {
       continue;
     }
     const label = labelOf(language, field.field);

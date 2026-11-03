@@ -471,6 +471,137 @@ sensor) or missing total is an unknown surplus, never zero export. The site sens
 `solar_capable` and `solar_reason` attributes and the diagnostics' `grid_power` block show the
 state; `solar_reason` is `needs_total_grid_power` when a direct site lacks it.
 
+## Demand charge and import target
+
+A site measures each clock hour's mean import, for a [demand charge](prices.md#a-demand-charge) on its
+electricity price and for its own **import target**. A demand charge is measured and shown only. The import target
+holds the site's chargers, through load balancing, so the hour stays under it (see
+[Holding the chargers under the import target](#holding-the-chargers-under-the-import-target)).
+
+- **What is measured.** The net import from the grid, from the same signed grid power solar reads: a derived
+  site's per-phase power, or a direct site's [total grid power](#total-grid-power). Export within an hour lowers
+  that hour's import, as on the meter; a negative reading counts as no import. A direct site without the total
+  cannot measure: the price section says so under the demand charge, and "Get started" asks for the site's total
+  grid power while a demand charge or an import target is set.
+- **Hours.** Each reading is held until the next one, for at most two minutes. An hour is its import energy over
+  the time it was measured, on the clock of the electricity price's area (Home Assistant's own where the site has
+  no electricity price); the repeated hour in October is two hours, as on the meter. An hour with more than ten
+  minutes without a usable reading is kept but never sets a peak. The running hour is kept at most once a minute
+  and the month's hours when an hour ends, so a restart keeps them; the minutes the restart took count as missing.
+  At the first hour of a new month the month starts again; the month before is kept beside it. What the house
+  imports without the chargers' measured power is kept beside each hour too, and whether the import target held a
+  charger's current down or paused a charger in it.
+- **Two years of days.** Beside the hours the site keeps, per day, its highest hour (with the house's part of it and
+  the hour it started), whether the import target held or paused a charger that day, and per month each part's
+  counted peaks and figure, for 24 months. They are written as each hour ends. The months before 2.4.0 have none.
+- **Where to see it.** The charge history's [Power view](card.md#power) shows a month day by day, with the import
+  target as a line and the days it held or paused a charger marked, and a tapped day's hours; it is offered where the
+  site measures its import.
+- **Import target.** An optional hourly mean of import, in kW, set in the card's Settings beside the main fuse
+  (*Import target*, off until set). It is written without restarting load balancing. While it is set, a line under
+  it shows the hour running now against it, *This hour: 4.2 of 6.0 kW* (the mean over the minutes measured so far).
+- **The Demand-charge peak sensor.** While the site's electricity price has a demand-charge part, the site has a
+  *Demand-charge peak* sensor (kW): the first part's figure this month. Its attributes are every part with its
+  figure, its peaks and how many days counted, and the running hour. It goes away with the last part.
+- **Diagnostics.** The site's diagnostics (and the debug bundle) carry a `demand` block: every hour of the month
+  (`[start, kW, house kW, incomplete, held, paused, floor kW]`: kW the mean over the time measured, floor kW the import over the whole hour with any gap counted as none), each part's figure and peaks, the running hour with its gaps, and the
+  import target.
+
+### Holding the chargers under the import target
+
+While a site has an import target and load balancing (active control) is on, each recompute works out what the
+site's chargers may still draw this clock hour, and load balancing gives each charger the smaller of that and what
+the main fuse allows. The fuse's rules come first and are never loosened: the target only ever lowers a charger, an
+overload's lowering is never changed by it, and a lowering for the target never goes so far that a phase the
+charger draws on would turn from import to export (so the current the fuse carries can only fall).
+
+- **The month's peak lifts the target, for the running hour.** Where the electricity price has a
+  [demand charge](prices.md#a-demand-charge), the hour running now may reach a level the month has already paid
+  for: its hold is lifted to the month's free level, the lowest of what each part that counts the running hour
+  leaves free (a highest-hour part's peak this month; a top-3 or top-5 part's third or fifth highest day, or today's
+  own peak while today is among them; with fewer days than that, today's own peak or nothing). Each hour is counted
+  at its floor for this, its import over the whole hour with any minutes without a reading counted as none, so never
+  above what the operator billed; and the level is the free level less a margin (0.1 kW, or 2 % where more), so a
+  sensor that reads a little above the operator's meter cannot make a new peak. Never below the target as set. An
+  hour no part counts keeps the target, a new month starts from it, and an incomplete hour never sets a peak.
+  Example: a 6.0 kW target, and a sauna evening made the day part's peak 7.0 kW: for the rest of the month day hours
+  may reach 6.86 kW. Only the running hour's hold is lifted: a plan, and the later hours of the departure's check,
+  count on the target as set (a later hour may be counted by no part, a new day or a new month). The fuse is
+  untouched. The status names both (*Held to 8 A to keep this hour under 6.9 kW, the month's peak (import target
+  6.0 kW)*), as do the house-alone lines and the notice. No setting. **A power-level subscriber** (Göteborg's
+  tidsindelad level, which must never be exceeded) should leave the demand charge's parts out, or set them so they
+  never free more than the level, or the month's peak lifts the hold above it.
+- **The hour's budget.** The target times one hour, less what was imported so far this hour, is what the rest of
+  the hour may import. Spread over the time left, less what the house draws now (the site's net import less what
+  its chargers draw; a solar surplus counts as less, so it leaves the chargers more), it is what the chargers may
+  draw. In the hour's last minute the time left counts as a minute, and the fuse's own ceiling bounds the result.
+  A few minutes without a reading count at the hour's own mean.
+- **Several chargers** share it in the site's order (priority First, Normal, Last, then the order they joined). Each
+  is held to the whole amps that still fit. A switch-only charger runs only while its whole switched power fits.
+- **At the minimum.** A charger is never held below its minimum current. Once the hour can no longer end at or under
+  the target with it at its minimum for the rest of the hour, it is paused until the next clock hour and given back
+  then, as any load-balancing pause is (with the resume's margin and dwell). It is paused at most once per hour: it
+  stays paused to the hour's end even when the house uses less again, from the moment the pause goes out (whenever
+  the charger reports itself off). A pause decided for a moment (a kettle) and taken back before the dwell let it
+  out pauses nothing.
+- **Raises** come at the next hour, or when the budget allows them, through the same deadband and dwell as every
+  write. A lowering to a current is written at once (no deadband: an amp kept back would be drawn to the hour's
+  end), and a raise that only gives back the target's own lowering within the hour passes the deadband too (it still
+  waits for the dwell), so a wobbling house does not ratchet the car down. In the hour's last ten minutes a charger the target held is raised no further than it held it (the budget
+  left is spread over too little time to be worth a raise the next hour takes back); a charger the target did not
+  hold is the fuse's and the budget's as at any other time.
+- **The house alone over the target.** When the house by itself ends the hour above the target, SpotNav pauses its
+  chargers and holds back nothing else; the status says that the house alone is above the target, never that the
+  hour stays under it.
+- **The car's minimum level comes first.** Below the car's [minimum level](target-soc.md) SpotNav charges at once,
+  and that charge is never held by the target. A minimum level at or above the plan's target makes the whole charge
+  a minimum-level charge: none of it is held.
+- **Above it the target holds, even past a departure.** When the plan cannot be ready by its departure under the
+  target (what it still needs, against what the target leaves the car by then beside the house's typical load: its
+  mean over the last 24 measured hours and the hour so far, so a kettle's half minute changes nothing; decided again
+  on every recompute, with half a kWh of margin either way), what happens is the plan's own choice, *If the car
+  cannot be ready in time* in the card's Plan dialog (shown while the site has a target):
+  - **Ask** (the default): the target holds, and the phones chosen for *the charge will not be ready in time* are
+    told once, in its place: *The car will not be ready by 07:00 under the 6.0 kW import target – 4 kWh short*, with
+    one button, *Release the import target tonight*. Told again only when the shortfall grows clearly (by a kWh and by half), and taken
+    off the phones once it can be met again. No answer: the target holds. The card's status says the same, with the
+    same press.
+  - **Release the import target**: the departure wins by itself; once holding would miss it the target is set aside for that
+    charge until its departure, as *Release the import target tonight* does, and the plan counts on the car's own power.
+  - **Keep the import target**: the target holds, nothing is sent, and the status says how much will be missing.
+- **Release the import target tonight** (from the notification, the card or the app) sets the target aside for that charge until its
+  departure, or until the car is unplugged or the plan is made for another departure; a restart keeps it. A phone's
+  button carries the departure it was told for: pressed once the plan is for another departure (after a restart or a
+  new plan), it sets nothing aside. While the target's notice stands, the plan's own *will not be ready* notice is
+  held back; once the target's notice comes down and the plan still cannot be met for reasons of its own, that
+  notice is told. The status says *The import target is set aside by
+  you until 07:00*.
+- **Plans count on the target.** A plan for a charger on the site counts on the power the target leaves it (the
+  target less the house's typical load as above, never below the charger's minimum), so it buys the quarter-hours
+  the held charge needs and says honestly what it can deliver by the departure (see
+  [Planning strategies](strategies.md)). Not for a plan set to *Release the import target*, nor for a charger the hold
+  cannot act on (no current of its own to judge a lowering on, or a phase that cannot be judged).
+- **A person's Start is left alone**, as the sun leaves it: such a charge counts toward the hour but is never held. A
+  person's Stop is untouched. A charge of a person's that the fuse paused counts as nothing while it waits.
+- **Solar and Hybrid.** The target counts import from the grid only, so a charge the sun covers is free. Under
+  *battery first* a home battery's discharge counts as import too (the car is not to be paid for by the battery);
+  under *car first* only the grid counts.
+- **Yield stepping and the battery probe** never step a charger above what the target leaves it, and no probe or
+  resume starts a charge the target holds back.
+- **Not applied** (nothing held for the target, and the fuse rules as always) while load balancing is off, the
+  site cannot measure the hour (a direct site without its total grid power), the meter has no live reading, the
+  hour has more than ten minutes without one, or under *battery first* the battery cannot be read. After a restart
+  the hour kept by the tracker decides again; the minutes the restart took count as missing. Should the target's own
+  code fail, the fuse's decisions go out as they are and nothing is held for it.
+- **Shown.** The charger's status says *Held to 7 A to keep this hour under 6.0 kW (now 5.1 kW)*, *Paused until
+  15:00 to keep this hour under 6.0 kW* (or, where the house alone is above the target, *Paused until 15:00 – the
+  house alone is above the 6.0 kW import target this hour*), *The car will not be ready by 07:00 under the 6.0 kW import
+  target – 4 kWh short* with *Release the import target tonight*, or that the target is set aside until 07:00. The site's
+  load-balancing limit names the cause `import_target` only where the target's budget holds the charger. The site's
+  diagnostics carry an `import_target` block: the hour's budget or why it is not applied, the level held to (`effective`: the lifted level, the month's free level and whether every part counts the hour), what it does to each
+  charger (held, paused, kept at the hour's end, or why it could not hold it), the hour each was paused in, the
+  departures at risk and those set aside, and its recent holds, pauses and releases.
+
 ## Meter detection, signs and estimated current
 
 SpotNav scans the entity registry (including entities an integration ships disabled) for grid meters and home batteries and offers them in the site editor and the create flow (the recognised integrations are listed under [supported hardware](supported.md)); nothing is applied until confirmed, and applying enables only entities the integration disabled, never ones a person disabled. Each integration carries its sign conventions:

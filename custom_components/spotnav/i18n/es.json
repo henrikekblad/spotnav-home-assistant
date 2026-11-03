@@ -30,7 +30,12 @@
     "identify.kept": "Se mantiene {vehicle}.",
     "charged": "{kwh} cargados",
     "planned": "{kwh} planificados",
-    "cost": "unos {cost}"
+    "cost": "unos {cost}",
+    "import_target.at_risk.time": "El coche no estará listo a las {time} con el objetivo de consumo de {target} kW: faltan {kwh} kWh.",
+    "import_target.at_risk": "El coche no estará listo para la salida con el objetivo de consumo de {target} kW: faltan {kwh} kWh.",
+    "import_target.release": "Dejar el objetivo de consumo esta noche",
+    "import_target.at_risk.peak.time": "El coche no estará listo a las {time} con el pico del mes de {target} kW (objetivo de consumo {set} kW): faltan {kwh} kWh.",
+    "import_target.at_risk.peak": "El coche no estará listo para la salida con el pico del mes de {target} kW (objetivo de consumo {set} kW): faltan {kwh} kWh."
   },
   "add_charger": {
     "hint": "Añade un cargador: Ajustes → Dispositivos y servicios → SpotNav → Añadir entrada → Cargador; te ofrecerá unirse a esta instalación."

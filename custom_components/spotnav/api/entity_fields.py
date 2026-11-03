@@ -36,6 +36,7 @@ into a wire refusal and a pass into a write.
 from __future__ import annotations
 
 from dataclasses import dataclass
+import math
 from typing import Any, Final, Literal
 
 from homeassistant.config_entries import ConfigEntry
@@ -65,6 +66,7 @@ from ..const import (
     CONF_POWER_ENTITY,
     CONF_GRID_POWER_INVERTED,
     CONF_GRID_POWER_SOURCE,
+    CONF_IMPORT_TARGET_KW,
     CONF_MAIN_FUSE_A,
     CONF_MAX_AGE_S,
     CONF_MEASUREMENT_MODE,
@@ -177,6 +179,8 @@ CHARGER_FIELDS: Final = (
 )
 FIELD_MAIN_FUSE_A: Final = "main_fuse_a"
 FIELD_SAFETY_MARGIN_A: Final = "safety_margin_a"
+#: The site's import target in kW (`CONF_IMPORT_TARGET_KW`): optional, `null` (or `""` in a write) is none.
+FIELD_IMPORT_TARGET_KW: Final = "import_target_kw"
 FIELD_MEASUREMENT_MODE: Final = "measurement_mode"
 FIELD_MAX_AGE_S: Final = "max_age_s"
 FIELD_BATTERY_AGGREGATE_POWER: Final = "battery_aggregate_power_entity"
@@ -215,6 +219,7 @@ def site_fixed_fields() -> tuple[str, ...]:
     return (
         FIELD_MAIN_FUSE_A,
         FIELD_SAFETY_MARGIN_A,
+        FIELD_IMPORT_TARGET_KW,
         FIELD_MEASUREMENT_MODE,
         FIELD_VOLTAGE_BETWEEN_PHASES,
         FIELD_MAX_AGE_S,
@@ -249,6 +254,9 @@ MAIN_FUSE_MIN_A: Final = 0.1
 #: The flow allows a margin of zero; it must stay below the main fuse (`flows/site_form.site_margin_errors`).
 SAFETY_MARGIN_MIN_A: Final = 0.0
 MAX_AGE_MIN_S: Final = 1.0
+#: An import target's bounds (kW): above nothing a household imports, below what a main fuse could carry.
+IMPORT_TARGET_MIN_KW: Final = 0.1
+IMPORT_TARGET_MAX_KW: Final = 1000.0
 
 # Stable per-field codes, looked up by the card, never shown as prose.
 ERR_REQUIRED: Final = "required"
@@ -1032,6 +1040,7 @@ def current_site_values(entry: ConfigEntry) -> dict[str, Any]:
         FIELD_MAIN_FUSE_A: entry.data.get(CONF_MAIN_FUSE_A),
         # Absent is zero, as the calculation reads it.
         FIELD_SAFETY_MARGIN_A: entry.data.get(CONF_SAFETY_MARGIN_A, 0.0),
+        FIELD_IMPORT_TARGET_KW: stored_import_target_kw(entry.data),
         FIELD_MEASUREMENT_MODE: entry.data.get(CONF_MEASUREMENT_MODE, MEASUREMENT_MODE_DIRECT),
         FIELD_VOLTAGE_BETWEEN_PHASES: _voltage_text(entry),
         FIELD_MAX_AGE_S: entry.data.get(CONF_MAX_AGE_S, DEFAULT_MAX_AGE_S),
@@ -1047,6 +1056,32 @@ def current_site_values(entry: ConfigEntry) -> dict[str, Any]:
         for sub in DERIVED_SUBFIELDS:
             values[derived_field(phase, sub)] = subvalues.get(sub) or ""
     return values
+
+
+def stored_import_target_kw(data: Any) -> float | None:
+    """The site's import target as stored (kW), or `None` for none or one that cannot be read."""
+    value = data.get(CONF_IMPORT_TARGET_KW) if hasattr(data, "get") else None
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value <= 0:
+        return None
+    return float(value)
+
+
+def import_target_error(changes: dict[str, Any]) -> FieldError | None:
+    """`import_target_kw` in a write: `null` or `""` clears it, else a number within the bounds."""
+    if FIELD_IMPORT_TARGET_KW not in changes:
+        return None
+    value = changes[FIELD_IMPORT_TARGET_KW]
+    if value is None or value == "":
+        return None
+    if isinstance(value, bool):
+        return FieldError(FIELD_IMPORT_TARGET_KW, ERR_INVALID_VALUE)
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return FieldError(FIELD_IMPORT_TARGET_KW, ERR_INVALID_VALUE)
+    if not math.isfinite(number) or not IMPORT_TARGET_MIN_KW <= number <= IMPORT_TARGET_MAX_KW:
+        return FieldError(FIELD_IMPORT_TARGET_KW, ERR_INVALID_VALUE)
+    return None
 
 
 def _resulting_measurement_mode(entry: ConfigEntry, changes: dict[str, Any]) -> tuple[str, FieldError | None]:
@@ -1113,6 +1148,9 @@ def site_field_errors(
                     ERR_INVALID_VALUE,
                 )
             )
+
+    if (target_error := import_target_error(changes)) is not None:
+        errors.append(target_error)
 
     mode, mode_error = _resulting_measurement_mode(entry, changes)
     if mode_error is not None:
@@ -1261,6 +1299,16 @@ def site_field_descriptors(hass: HomeAssistant, entry: ConfigEntry) -> list[dict
             "writable": True,
             "value": values[FIELD_SAFETY_MARGIN_A],
             "minimum": SAFETY_MARGIN_MIN_A,
+        },
+        {
+            # Beside the fuse: the hourly mean of import the site aims to stay under (none while `null`).
+            "field": FIELD_IMPORT_TARGET_KW,
+            "scope": "site",
+            "kind": "number",
+            "required": False,
+            "writable": True,
+            "value": values[FIELD_IMPORT_TARGET_KW],
+            "minimum": IMPORT_TARGET_MIN_KW,
         },
         {
             "field": FIELD_MEASUREMENT_MODE,

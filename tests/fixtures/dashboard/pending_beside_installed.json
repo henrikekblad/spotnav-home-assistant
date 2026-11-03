@@ -18,7 +18,10 @@
       "price_days": true,
       "plan_preview": true,
       "dismiss_setup_item": true,
-      "fix_own_mode": true
+      "fix_own_mode": true,
+      "release_import_target": true,
+      "get_power_month": true,
+      "site_import_target": true
     }
   },
   "settings": {
@@ -63,7 +66,8 @@
     "vehicle_ids": null,
     "identify_mode": "automatic",
     "identify_camera": null,
-    "users_change_plan": false
+    "users_change_plan": false,
+    "if_not_ready": "ask"
   },
   "fiscal": {
     "vat": {

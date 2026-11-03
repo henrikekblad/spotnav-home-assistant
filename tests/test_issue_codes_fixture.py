@@ -17,6 +17,7 @@ from typing import Any, get_args
 
 from custom_components.spotnav.execution import auto_execution
 from custom_components.spotnav.api import dashboard as dashboard_api
+from custom_components.spotnav.api import grid_tariff
 from custom_components.spotnav.planning.auto_controller import AutoReason, AutoState
 from custom_components.spotnav.vehicles.capability import HealthState, REASON_SITE_DIRECTION_UNKNOWN
 from custom_components.spotnav.planning.hybrid_plan import HybridReason
@@ -67,6 +68,8 @@ def produced_codes() -> dict[str, Any]:
             [f"site_measurement_{state}" for state in get_args(HealthState) if state != "healthy"]
             + ["duplicate_membership", "no_commandable_charger", REASON_SITE_DIRECTION_UNKNOWN]
         ),
+        # Why a site cannot measure the demand charge or the import target (`grid_tariff.demand.reason`).
+        "demand_reasons": _sorted(grid_tariff.DEMAND_REASONS),
         "solar_reasons": _sorted(get_args(SolarReason)),
         "hybrid_reasons": _sorted(get_args(HybridReason)),
         # Every code of the composed `status` block, its tone (blocking ones are always `blocking`; a

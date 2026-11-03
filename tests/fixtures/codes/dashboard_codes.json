@@ -14,6 +14,10 @@
     "no_settings",
     "pause_unsettled"
   ],
+  "demand_reasons": [
+    "needs_total_grid_power",
+    "no_site"
+  ],
   "execution_errors": [
     "action_failed",
     "action_unavailable",
@@ -274,6 +278,49 @@
     },
     "identifying_vehicle": {
       "params": [],
+      "tone": "normal"
+    },
+    "import_target_at_risk": {
+      "params": [
+        "departure",
+        "missing_kwh",
+        "releasable",
+        "set_kw",
+        "target_kw"
+      ],
+      "tone": "notice"
+    },
+    "import_target_held": {
+      "params": [
+        "hour_kw",
+        "limit_a",
+        "set_kw",
+        "target_kw"
+      ],
+      "tone": "normal"
+    },
+    "import_target_house_over": {
+      "params": [
+        "set_kw",
+        "target_kw"
+      ],
+      "tone": "normal"
+    },
+    "import_target_paused": {
+      "params": [
+        "house_over",
+        "set_kw",
+        "target_kw",
+        "until"
+      ],
+      "tone": "normal"
+    },
+    "import_target_released": {
+      "params": [
+        "automatic",
+        "departure",
+        "target_kw"
+      ],
       "tone": "normal"
     },
     "load_balancing_limited": {

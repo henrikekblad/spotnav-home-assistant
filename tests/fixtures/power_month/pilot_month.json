@@ -1,0 +1,4863 @@
+{
+  "api_version": 1,
+  "available_months": [
+    "2026-09",
+    "2026-08"
+  ],
+  "bars": [
+    5.9,
+    5.85
+  ],
+  "components": [
+    {
+      "price_per_kw": {
+        "summer": 23.0,
+        "winter": 45.0
+      },
+      "top_n": 1,
+      "window": {
+        "days": "all",
+        "from_hour": 6,
+        "from_month": 1,
+        "to_hour": 23,
+        "to_month": 12
+      }
+    },
+    {
+      "price_per_kw": {
+        "summer": 8.0,
+        "winter": 12.0
+      },
+      "top_n": 1,
+      "window": {
+        "days": "all",
+        "from_hour": 23,
+        "from_month": 1,
+        "to_hour": 6,
+        "to_month": 12
+      }
+    }
+  ],
+  "days": [
+    {
+      "counted": [],
+      "date": "2026-09-01",
+      "held": true,
+      "house_kw": 2.3,
+      "paused": false,
+      "peak_kw": 5.85,
+      "peak_start": "2026-09-01T19:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "date": "2026-09-02",
+      "held": false,
+      "house_kw": 0.85,
+      "paused": false,
+      "peak_kw": 5.55,
+      "peak_start": "2026-09-02T03:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "date": "2026-09-03",
+      "held": false,
+      "house_kw": 2.35,
+      "paused": false,
+      "peak_kw": 2.35,
+      "peak_start": "2026-09-03T19:00:00+02:00"
+    },
+    {
+      "counted": [
+        1
+      ],
+      "date": "2026-09-04",
+      "held": true,
+      "house_kw": 0.55,
+      "paused": false,
+      "peak_kw": 5.85,
+      "peak_start": "2026-09-04T01:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "date": "2026-09-05",
+      "held": true,
+      "house_kw": 2.3,
+      "paused": false,
+      "peak_kw": 5.8,
+      "peak_start": "2026-09-05T18:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "date": "2026-09-06",
+      "held": false,
+      "house_kw": 2.4,
+      "paused": false,
+      "peak_kw": 2.4,
+      "peak_start": "2026-09-06T19:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "date": "2026-09-07",
+      "held": false,
+      "house_kw": 0.85,
+      "paused": false,
+      "peak_kw": 5.55,
+      "peak_start": "2026-09-07T03:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "date": "2026-09-08",
+      "held": true,
+      "house_kw": 0.85,
+      "paused": false,
+      "peak_kw": 5.85,
+      "peak_start": "2026-09-08T04:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "date": "2026-09-09",
+      "held": false,
+      "house_kw": 2.0,
+      "paused": false,
+      "peak_kw": 5.7,
+      "peak_start": "2026-09-09T18:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "date": "2026-09-10",
+      "held": false,
+      "house_kw": 1.0,
+      "paused": false,
+      "peak_kw": 5.1,
+      "peak_start": "2026-09-10T03:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "date": "2026-09-11",
+      "held": false,
+      "house_kw": 1.0,
+      "paused": false,
+      "peak_kw": 5.4,
+      "peak_start": "2026-09-11T04:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "date": "2026-09-12",
+      "held": false,
+      "house_kw": 2.2,
+      "paused": false,
+      "peak_kw": 2.2,
+      "peak_start": "2026-09-12T20:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "date": "2026-09-13",
+      "held": true,
+      "house_kw": 1.0,
+      "paused": false,
+      "peak_kw": 5.85,
+      "peak_start": "2026-09-13T01:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "date": "2026-09-14",
+      "held": true,
+      "house_kw": 0.55,
+      "paused": false,
+      "peak_kw": 5.85,
+      "peak_start": "2026-09-14T01:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "date": "2026-09-15",
+      "held": false,
+      "house_kw": 2.5,
+      "paused": true,
+      "peak_kw": 2.5,
+      "peak_start": "2026-09-15T18:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "date": "2026-09-16",
+      "held": false,
+      "house_kw": 1.0,
+      "paused": false,
+      "peak_kw": 5.4,
+      "peak_start": "2026-09-16T04:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "date": "2026-09-17",
+      "held": false,
+      "house_kw": 2.15,
+      "paused": false,
+      "peak_kw": 5.85,
+      "peak_start": "2026-09-17T18:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "date": "2026-09-18",
+      "held": false,
+      "house_kw": 2.25,
+      "paused": false,
+      "peak_kw": 2.25,
+      "peak_start": "2026-09-18T19:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "date": "2026-09-19",
+      "held": true,
+      "house_kw": 0.55,
+      "paused": false,
+      "peak_kw": 5.85,
+      "peak_start": "2026-09-19T01:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "date": "2026-09-20",
+      "held": false,
+      "house_kw": 1.0,
+      "paused": false,
+      "peak_kw": 5.1,
+      "peak_start": "2026-09-20T03:00:00+02:00"
+    },
+    {
+      "counted": [
+        0
+      ],
+      "date": "2026-09-21",
+      "held": true,
+      "house_kw": 2.3,
+      "paused": false,
+      "peak_kw": 5.9,
+      "peak_start": "2026-09-21T19:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "date": "2026-09-22",
+      "held": false,
+      "house_kw": 0.85,
+      "paused": false,
+      "peak_kw": 5.55,
+      "peak_start": "2026-09-22T03:00:00+02:00"
+    }
+  ],
+  "hours": [
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.7,
+      "incomplete": false,
+      "kw": 0.7,
+      "paused": false,
+      "start": "2026-09-01T00:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.4,
+      "incomplete": false,
+      "kw": 4.8,
+      "paused": false,
+      "start": "2026-09-01T01:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.85,
+      "incomplete": false,
+      "kw": 5.25,
+      "paused": false,
+      "start": "2026-09-01T02:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.55,
+      "incomplete": false,
+      "kw": 4.95,
+      "paused": false,
+      "start": "2026-09-01T03:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 1.0,
+      "incomplete": false,
+      "kw": 5.4,
+      "paused": false,
+      "start": "2026-09-01T04:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.7,
+      "incomplete": false,
+      "kw": 0.7,
+      "paused": false,
+      "start": "2026-09-01T05:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.4,
+      "incomplete": false,
+      "kw": 0.4,
+      "paused": false,
+      "start": "2026-09-01T06:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.85,
+      "incomplete": false,
+      "kw": 0.85,
+      "paused": false,
+      "start": "2026-09-01T07:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.55,
+      "incomplete": false,
+      "kw": 0.55,
+      "paused": false,
+      "start": "2026-09-01T08:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 1.0,
+      "incomplete": false,
+      "kw": 1.0,
+      "paused": false,
+      "start": "2026-09-01T09:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.7,
+      "incomplete": false,
+      "kw": 0.7,
+      "paused": false,
+      "start": "2026-09-01T10:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.4,
+      "incomplete": false,
+      "kw": 0.4,
+      "paused": false,
+      "start": "2026-09-01T11:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.85,
+      "incomplete": false,
+      "kw": 0.85,
+      "paused": false,
+      "start": "2026-09-01T12:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.55,
+      "incomplete": false,
+      "kw": 0.55,
+      "paused": false,
+      "start": "2026-09-01T13:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 1.0,
+      "incomplete": false,
+      "kw": 1.0,
+      "paused": false,
+      "start": "2026-09-01T14:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.7,
+      "incomplete": false,
+      "kw": 0.7,
+      "paused": false,
+      "start": "2026-09-01T15:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.4,
+      "incomplete": false,
+      "kw": 0.4,
+      "paused": false,
+      "start": "2026-09-01T16:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 2.15,
+      "incomplete": false,
+      "kw": 2.15,
+      "paused": false,
+      "start": "2026-09-01T17:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 1.85,
+      "incomplete": false,
+      "kw": 5.55,
+      "paused": false,
+      "start": "2026-09-01T18:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": true,
+      "house_kw": 2.3,
+      "incomplete": false,
+      "kw": 5.85,
+      "paused": false,
+      "start": "2026-09-01T19:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 2.0,
+      "incomplete": false,
+      "kw": 2.0,
+      "paused": false,
+      "start": "2026-09-01T20:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.4,
+      "incomplete": false,
+      "kw": 0.4,
+      "paused": false,
+      "start": "2026-09-01T21:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.85,
+      "incomplete": false,
+      "kw": 0.85,
+      "paused": false,
+      "start": "2026-09-01T22:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.55,
+      "incomplete": false,
+      "kw": 0.55,
+      "paused": false,
+      "start": "2026-09-01T23:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 1.0,
+      "incomplete": false,
+      "kw": 1.0,
+      "paused": false,
+      "start": "2026-09-02T00:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.7,
+      "incomplete": false,
+      "kw": 5.4,
+      "paused": false,
+      "start": "2026-09-02T01:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.4,
+      "incomplete": false,
+      "kw": 5.1,
+      "paused": false,
+      "start": "2026-09-02T02:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.85,
+      "incomplete": false,
+      "kw": 5.55,
+      "paused": false,
+      "start": "2026-09-02T03:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.55,
+      "incomplete": false,
+      "kw": 5.25,
+      "paused": false,
+      "start": "2026-09-02T04:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 1.0,
+      "incomplete": false,
+      "kw": 1.0,
+      "paused": false,
+      "start": "2026-09-02T05:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.7,
+      "incomplete": false,
+      "kw": 0.7,
+      "paused": false,
+      "start": "2026-09-02T06:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.4,
+      "incomplete": false,
+      "kw": 0.4,
+      "paused": false,
+      "start": "2026-09-02T07:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.85,
+      "incomplete": false,
+      "kw": 0.85,
+      "paused": false,
+      "start": "2026-09-02T08:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.55,
+      "incomplete": false,
+      "kw": 0.55,
+      "paused": false,
+      "start": "2026-09-02T09:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 1.0,
+      "incomplete": false,
+      "kw": 1.0,
+      "paused": false,
+      "start": "2026-09-02T10:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.7,
+      "incomplete": false,
+      "kw": 0.7,
+      "paused": false,
+      "start": "2026-09-02T11:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.4,
+      "incomplete": false,
+      "kw": 0.4,
+      "paused": false,
+      "start": "2026-09-02T12:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.85,
+      "incomplete": false,
+      "kw": 0.85,
+      "paused": false,
+      "start": "2026-09-02T13:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.55,
+      "incomplete": false,
+      "kw": 0.55,
+      "paused": false,
+      "start": "2026-09-02T14:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 1.0,
+      "incomplete": false,
+      "kw": 1.0,
+      "paused": false,
+      "start": "2026-09-02T15:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.7,
+      "incomplete": false,
+      "kw": 0.7,
+      "paused": false,
+      "start": "2026-09-02T16:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 1.8,
+      "incomplete": false,
+      "kw": 1.8,
+      "paused": false,
+      "start": "2026-09-02T17:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 2.25,
+      "incomplete": false,
+      "kw": 2.25,
+      "paused": false,
+      "start": "2026-09-02T18:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 1.95,
+      "incomplete": false,
+      "kw": 1.95,
+      "paused": false,
+      "start": "2026-09-02T19:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 2.4,
+      "incomplete": false,
+      "kw": 2.4,
+      "paused": false,
+      "start": "2026-09-02T20:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.7,
+      "incomplete": false,
+      "kw": 0.7,
+      "paused": false,
+      "start": "2026-09-02T21:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.4,
+      "incomplete": false,
+      "kw": 0.4,
+      "paused": false,
+      "start": "2026-09-02T22:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.85,
+      "incomplete": false,
+      "kw": 0.85,
+      "paused": false,
+      "start": "2026-09-02T23:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.55,
+      "incomplete": false,
+      "kw": 0.55,
+      "paused": false,
+      "start": "2026-09-03T00:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 1.0,
+      "incomplete": false,
+      "kw": 1.0,
+      "paused": false,
+      "start": "2026-09-03T01:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.7,
+      "incomplete": false,
+      "kw": 0.7,
+      "paused": false,
+      "start": "2026-09-03T02:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.4,
+      "incomplete": false,
+      "kw": 0.4,
+      "paused": false,
+      "start": "2026-09-03T03:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.85,
+      "incomplete": false,
+      "kw": 0.85,
+      "paused": false,
+      "start": "2026-09-03T04:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.55,
+      "incomplete": false,
+      "kw": 0.55,
+      "paused": false,
+      "start": "2026-09-03T05:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 1.0,
+      "incomplete": false,
+      "kw": 1.0,
+      "paused": false,
+      "start": "2026-09-03T06:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.7,
+      "incomplete": false,
+      "kw": 0.7,
+      "paused": false,
+      "start": "2026-09-03T07:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.4,
+      "incomplete": false,
+      "kw": 0.4,
+      "paused": false,
+      "start": "2026-09-03T08:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.85,
+      "incomplete": false,
+      "kw": 0.85,
+      "paused": false,
+      "start": "2026-09-03T09:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.55,
+      "incomplete": false,
+      "kw": 0.55,
+      "paused": false,
+      "start": "2026-09-03T10:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 1.0,
+      "incomplete": false,
+      "kw": 1.0,
+      "paused": false,
+      "start": "2026-09-03T11:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.7,
+      "incomplete": false,
+      "kw": 0.7,
+      "paused": false,
+      "start": "2026-09-03T12:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.4,
+      "incomplete": false,
+      "kw": 0.4,
+      "paused": false,
+      "start": "2026-09-03T13:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.85,
+      "incomplete": false,
+      "kw": 0.85,
+      "paused": false,
+      "start": "2026-09-03T14:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.55,
+      "incomplete": false,
+      "kw": 0.55,
+      "paused": false,
+      "start": "2026-09-03T15:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 1.0,
+      "incomplete": false,
+      "kw": 1.0,
+      "paused": false,
+      "start": "2026-09-03T16:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 2.2,
+      "incomplete": false,
+      "kw": 2.2,
+      "paused": false,
+      "start": "2026-09-03T17:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 1.9,
+      "incomplete": false,
+      "kw": 1.9,
+      "paused": false,
+      "start": "2026-09-03T18:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 2.35,
+      "incomplete": false,
+      "kw": 2.35,
+      "paused": false,
+      "start": "2026-09-03T19:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 2.05,
+      "incomplete": false,
+      "kw": 2.05,
+      "paused": false,
+      "start": "2026-09-03T20:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 1.0,
+      "incomplete": false,
+      "kw": 1.0,
+      "paused": false,
+      "start": "2026-09-03T21:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.7,
+      "incomplete": false,
+      "kw": 0.7,
+      "paused": false,
+      "start": "2026-09-03T22:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.4,
+      "incomplete": false,
+      "kw": 0.4,
+      "paused": false,
+      "start": "2026-09-03T23:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.85,
+      "incomplete": false,
+      "kw": 0.85,
+      "paused": false,
+      "start": "2026-09-04T00:00:00+02:00"
+    },
+    {
+      "counted": [
+        1
+      ],
+      "held": false,
+      "house_kw": 0.55,
+      "incomplete": false,
+      "kw": 5.85,
+      "paused": false,
+      "start": "2026-09-04T01:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": true,
+      "house_kw": 1.0,
+      "incomplete": false,
+      "kw": 5.85,
+      "paused": false,
+      "start": "2026-09-04T02:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": true,
+      "house_kw": 0.7,
+      "incomplete": false,
+      "kw": 5.85,
+      "paused": false,
+      "start": "2026-09-04T03:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.4,
+      "incomplete": false,
+      "kw": 5.7,
+      "paused": false,
+      "start": "2026-09-04T04:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.85,
+      "incomplete": false,
+      "kw": 0.85,
+      "paused": false,
+      "start": "2026-09-04T05:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.55,
+      "incomplete": false,
+      "kw": 0.55,
+      "paused": false,
+      "start": "2026-09-04T06:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 1.0,
+      "incomplete": false,
+      "kw": 1.0,
+      "paused": false,
+      "start": "2026-09-04T07:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.7,
+      "incomplete": false,
+      "kw": 0.7,
+      "paused": false,
+      "start": "2026-09-04T08:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.4,
+      "incomplete": false,
+      "kw": 0.4,
+      "paused": false,
+      "start": "2026-09-04T09:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.85,
+      "incomplete": false,
+      "kw": 0.85,
+      "paused": false,
+      "start": "2026-09-04T10:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.55,
+      "incomplete": false,
+      "kw": 0.55,
+      "paused": false,
+      "start": "2026-09-04T11:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 1.0,
+      "incomplete": false,
+      "kw": 1.0,
+      "paused": false,
+      "start": "2026-09-04T12:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.7,
+      "incomplete": false,
+      "kw": 0.7,
+      "paused": false,
+      "start": "2026-09-04T13:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.4,
+      "incomplete": false,
+      "kw": 0.4,
+      "paused": false,
+      "start": "2026-09-04T14:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.85,
+      "incomplete": false,
+      "kw": 0.85,
+      "paused": false,
+      "start": "2026-09-04T15:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.55,
+      "incomplete": false,
+      "kw": 0.55,
+      "paused": false,
+      "start": "2026-09-04T16:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 2.2,
+      "incomplete": false,
+      "kw": 2.2,
+      "paused": false,
+      "start": "2026-09-04T17:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 1.9,
+      "incomplete": false,
+      "kw": 1.9,
+      "paused": false,
+      "start": "2026-09-04T18:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 1.6,
+      "incomplete": false,
+      "kw": 1.6,
+      "paused": false,
+      "start": "2026-09-04T19:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 2.05,
+      "incomplete": false,
+      "kw": 2.05,
+      "paused": false,
+      "start": "2026-09-04T20:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.55,
+      "incomplete": false,
+      "kw": 0.55,
+      "paused": false,
+      "start": "2026-09-04T21:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 1.0,
+      "incomplete": false,
+      "kw": 1.0,
+      "paused": false,
+      "start": "2026-09-04T22:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.7,
+      "incomplete": false,
+      "kw": 0.7,
+      "paused": false,
+      "start": "2026-09-04T23:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.4,
+      "incomplete": false,
+      "kw": 0.4,
+      "paused": false,
+      "start": "2026-09-05T00:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.85,
+      "incomplete": false,
+      "kw": 4.95,
+      "paused": false,
+      "start": "2026-09-05T01:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.55,
+      "incomplete": false,
+      "kw": 4.65,
+      "paused": false,
+      "start": "2026-09-05T02:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 1.0,
+      "incomplete": false,
+      "kw": 5.1,
+      "paused": false,
+      "start": "2026-09-05T03:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.7,
+      "incomplete": false,
+      "kw": 4.8,
+      "paused": false,
+      "start": "2026-09-05T04:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.4,
+      "incomplete": false,
+      "kw": 0.4,
+      "paused": false,
+      "start": "2026-09-05T05:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.85,
+      "incomplete": false,
+      "kw": 0.85,
+      "paused": false,
+      "start": "2026-09-05T06:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.55,
+      "incomplete": false,
+      "kw": 0.55,
+      "paused": false,
+      "start": "2026-09-05T07:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 1.0,
+      "incomplete": false,
+      "kw": 1.0,
+      "paused": false,
+      "start": "2026-09-05T08:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.7,
+      "incomplete": false,
+      "kw": 0.7,
+      "paused": false,
+      "start": "2026-09-05T09:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.4,
+      "incomplete": false,
+      "kw": 0.4,
+      "paused": false,
+      "start": "2026-09-05T10:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.85,
+      "incomplete": false,
+      "kw": 0.85,
+      "paused": false,
+      "start": "2026-09-05T11:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.55,
+      "incomplete": false,
+      "kw": 0.55,
+      "paused": false,
+      "start": "2026-09-05T12:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 1.0,
+      "incomplete": false,
+      "kw": 1.0,
+      "paused": false,
+      "start": "2026-09-05T13:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.7,
+      "incomplete": false,
+      "kw": 0.7,
+      "paused": false,
+      "start": "2026-09-05T14:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.4,
+      "incomplete": false,
+      "kw": 0.4,
+      "paused": false,
+      "start": "2026-09-05T15:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.85,
+      "incomplete": false,
+      "kw": 0.85,
+      "paused": false,
+      "start": "2026-09-05T16:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 1.85,
+      "incomplete": false,
+      "kw": 1.85,
+      "paused": false,
+      "start": "2026-09-05T17:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": true,
+      "house_kw": 2.3,
+      "incomplete": false,
+      "kw": 5.8,
+      "paused": false,
+      "start": "2026-09-05T18:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 2.0,
+      "incomplete": false,
+      "kw": 5.7,
+      "paused": false,
+      "start": "2026-09-05T19:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 1.7,
+      "incomplete": false,
+      "kw": 1.7,
+      "paused": false,
+      "start": "2026-09-05T20:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.85,
+      "incomplete": false,
+      "kw": 0.85,
+      "paused": false,
+      "start": "2026-09-05T21:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.55,
+      "incomplete": false,
+      "kw": 0.55,
+      "paused": false,
+      "start": "2026-09-05T22:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 1.0,
+      "incomplete": false,
+      "kw": 1.0,
+      "paused": false,
+      "start": "2026-09-05T23:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.7,
+      "incomplete": false,
+      "kw": 0.7,
+      "paused": false,
+      "start": "2026-09-06T00:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.4,
+      "incomplete": false,
+      "kw": 0.4,
+      "paused": false,
+      "start": "2026-09-06T01:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.85,
+      "incomplete": false,
+      "kw": 0.85,
+      "paused": false,
+      "start": "2026-09-06T02:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.55,
+      "incomplete": false,
+      "kw": 0.55,
+      "paused": false,
+      "start": "2026-09-06T03:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 1.0,
+      "incomplete": false,
+      "kw": 1.0,
+      "paused": false,
+      "start": "2026-09-06T04:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.7,
+      "incomplete": false,
+      "kw": 0.7,
+      "paused": false,
+      "start": "2026-09-06T05:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.4,
+      "incomplete": false,
+      "kw": 0.4,
+      "paused": false,
+      "start": "2026-09-06T06:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.85,
+      "incomplete": false,
+      "kw": 0.85,
+      "paused": false,
+      "start": "2026-09-06T07:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.55,
+      "incomplete": false,
+      "kw": 0.55,
+      "paused": false,
+      "start": "2026-09-06T08:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 1.0,
+      "incomplete": true,
+      "kw": 1.0,
+      "paused": false,
+      "start": "2026-09-06T09:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.7,
+      "incomplete": false,
+      "kw": 0.7,
+      "paused": false,
+      "start": "2026-09-06T10:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.4,
+      "incomplete": false,
+      "kw": 0.4,
+      "paused": false,
+      "start": "2026-09-06T11:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.85,
+      "incomplete": false,
+      "kw": 0.85,
+      "paused": false,
+      "start": "2026-09-06T12:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.55,
+      "incomplete": false,
+      "kw": 0.55,
+      "paused": false,
+      "start": "2026-09-06T13:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 1.0,
+      "incomplete": false,
+      "kw": 1.0,
+      "paused": false,
+      "start": "2026-09-06T14:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.7,
+      "incomplete": false,
+      "kw": 0.7,
+      "paused": false,
+      "start": "2026-09-06T15:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.4,
+      "incomplete": false,
+      "kw": 0.4,
+      "paused": false,
+      "start": "2026-09-06T16:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 2.25,
+      "incomplete": false,
+      "kw": 2.25,
+      "paused": false,
+      "start": "2026-09-06T17:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 1.95,
+      "incomplete": false,
+      "kw": 1.95,
+      "paused": false,
+      "start": "2026-09-06T18:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 2.4,
+      "incomplete": false,
+      "kw": 2.4,
+      "paused": false,
+      "start": "2026-09-06T19:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 2.1,
+      "incomplete": false,
+      "kw": 2.1,
+      "paused": false,
+      "start": "2026-09-06T20:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.4,
+      "incomplete": false,
+      "kw": 0.4,
+      "paused": false,
+      "start": "2026-09-06T21:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.85,
+      "incomplete": false,
+      "kw": 0.85,
+      "paused": false,
+      "start": "2026-09-06T22:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.55,
+      "incomplete": false,
+      "kw": 0.55,
+      "paused": false,
+      "start": "2026-09-06T23:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 1.0,
+      "incomplete": false,
+      "kw": 1.0,
+      "paused": false,
+      "start": "2026-09-07T00:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.7,
+      "incomplete": false,
+      "kw": 5.4,
+      "paused": false,
+      "start": "2026-09-07T01:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.4,
+      "incomplete": false,
+      "kw": 5.1,
+      "paused": false,
+      "start": "2026-09-07T02:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.85,
+      "incomplete": false,
+      "kw": 5.55,
+      "paused": false,
+      "start": "2026-09-07T03:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.55,
+      "incomplete": false,
+      "kw": 5.25,
+      "paused": false,
+      "start": "2026-09-07T04:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 1.0,
+      "incomplete": false,
+      "kw": 1.0,
+      "paused": false,
+      "start": "2026-09-07T05:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.7,
+      "incomplete": false,
+      "kw": 0.7,
+      "paused": false,
+      "start": "2026-09-07T06:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.4,
+      "incomplete": false,
+      "kw": 0.4,
+      "paused": false,
+      "start": "2026-09-07T07:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.85,
+      "incomplete": false,
+      "kw": 0.85,
+      "paused": false,
+      "start": "2026-09-07T08:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.55,
+      "incomplete": false,
+      "kw": 0.55,
+      "paused": false,
+      "start": "2026-09-07T09:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 1.0,
+      "incomplete": false,
+      "kw": 1.0,
+      "paused": false,
+      "start": "2026-09-07T10:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.7,
+      "incomplete": false,
+      "kw": 0.7,
+      "paused": false,
+      "start": "2026-09-07T11:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.4,
+      "incomplete": false,
+      "kw": 0.4,
+      "paused": false,
+      "start": "2026-09-07T12:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.85,
+      "incomplete": false,
+      "kw": 0.85,
+      "paused": false,
+      "start": "2026-09-07T13:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.55,
+      "incomplete": false,
+      "kw": 0.55,
+      "paused": false,
+      "start": "2026-09-07T14:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 1.0,
+      "incomplete": false,
+      "kw": 1.0,
+      "paused": false,
+      "start": "2026-09-07T15:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.7,
+      "incomplete": false,
+      "kw": 0.7,
+      "paused": false,
+      "start": "2026-09-07T16:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 1.9,
+      "incomplete": false,
+      "kw": 1.9,
+      "paused": false,
+      "start": "2026-09-07T17:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 2.35,
+      "incomplete": false,
+      "kw": 2.35,
+      "paused": false,
+      "start": "2026-09-07T18:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 2.05,
+      "incomplete": false,
+      "kw": 2.05,
+      "paused": false,
+      "start": "2026-09-07T19:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 2.5,
+      "incomplete": false,
+      "kw": 2.5,
+      "paused": false,
+      "start": "2026-09-07T20:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.7,
+      "incomplete": false,
+      "kw": 0.7,
+      "paused": false,
+      "start": "2026-09-07T21:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.4,
+      "incomplete": false,
+      "kw": 0.4,
+      "paused": false,
+      "start": "2026-09-07T22:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.85,
+      "incomplete": false,
+      "kw": 0.85,
+      "paused": false,
+      "start": "2026-09-07T23:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.55,
+      "incomplete": false,
+      "kw": 0.55,
+      "paused": false,
+      "start": "2026-09-08T00:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": true,
+      "house_kw": 1.0,
+      "incomplete": false,
+      "kw": 5.8,
+      "paused": false,
+      "start": "2026-09-08T01:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.7,
+      "incomplete": false,
+      "kw": 5.7,
+      "paused": false,
+      "start": "2026-09-08T02:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.4,
+      "incomplete": false,
+      "kw": 5.4,
+      "paused": false,
+      "start": "2026-09-08T03:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.85,
+      "incomplete": false,
+      "kw": 5.85,
+      "paused": false,
+      "start": "2026-09-08T04:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.55,
+      "incomplete": false,
+      "kw": 0.55,
+      "paused": false,
+      "start": "2026-09-08T05:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 1.0,
+      "incomplete": false,
+      "kw": 1.0,
+      "paused": false,
+      "start": "2026-09-08T06:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.7,
+      "incomplete": false,
+      "kw": 0.7,
+      "paused": false,
+      "start": "2026-09-08T07:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.4,
+      "incomplete": false,
+      "kw": 0.4,
+      "paused": false,
+      "start": "2026-09-08T08:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.85,
+      "incomplete": false,
+      "kw": 0.85,
+      "paused": false,
+      "start": "2026-09-08T09:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.55,
+      "incomplete": false,
+      "kw": 0.55,
+      "paused": false,
+      "start": "2026-09-08T10:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 1.0,
+      "incomplete": false,
+      "kw": 1.0,
+      "paused": false,
+      "start": "2026-09-08T11:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.7,
+      "incomplete": false,
+      "kw": 0.7,
+      "paused": false,
+      "start": "2026-09-08T12:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.4,
+      "incomplete": false,
+      "kw": 0.4,
+      "paused": false,
+      "start": "2026-09-08T13:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.85,
+      "incomplete": false,
+      "kw": 0.85,
+      "paused": false,
+      "start": "2026-09-08T14:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.55,
+      "incomplete": false,
+      "kw": 0.55,
+      "paused": false,
+      "start": "2026-09-08T15:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 1.0,
+      "incomplete": false,
+      "kw": 1.0,
+      "paused": false,
+      "start": "2026-09-08T16:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 1.9,
+      "incomplete": false,
+      "kw": 1.9,
+      "paused": false,
+      "start": "2026-09-08T17:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 1.6,
+      "incomplete": false,
+      "kw": 1.6,
+      "paused": false,
+      "start": "2026-09-08T18:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 2.05,
+      "incomplete": false,
+      "kw": 2.05,
+      "paused": false,
+      "start": "2026-09-08T19:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 1.75,
+      "incomplete": false,
+      "kw": 1.75,
+      "paused": false,
+      "start": "2026-09-08T20:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 1.0,
+      "incomplete": false,
+      "kw": 1.0,
+      "paused": false,
+      "start": "2026-09-08T21:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.7,
+      "incomplete": false,
+      "kw": 0.7,
+      "paused": false,
+      "start": "2026-09-08T22:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.4,
+      "incomplete": false,
+      "kw": 0.4,
+      "paused": false,
+      "start": "2026-09-08T23:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.85,
+      "incomplete": false,
+      "kw": 0.85,
+      "paused": false,
+      "start": "2026-09-09T00:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.55,
+      "incomplete": false,
+      "kw": 0.55,
+      "paused": false,
+      "start": "2026-09-09T01:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 1.0,
+      "incomplete": false,
+      "kw": 1.0,
+      "paused": false,
+      "start": "2026-09-09T02:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.7,
+      "incomplete": false,
+      "kw": 0.7,
+      "paused": false,
+      "start": "2026-09-09T03:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.4,
+      "incomplete": false,
+      "kw": 0.4,
+      "paused": false,
+      "start": "2026-09-09T04:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.85,
+      "incomplete": false,
+      "kw": 0.85,
+      "paused": false,
+      "start": "2026-09-09T05:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.55,
+      "incomplete": false,
+      "kw": 0.55,
+      "paused": false,
+      "start": "2026-09-09T06:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 1.0,
+      "incomplete": false,
+      "kw": 1.0,
+      "paused": false,
+      "start": "2026-09-09T07:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.7,
+      "incomplete": false,
+      "kw": 0.7,
+      "paused": false,
+      "start": "2026-09-09T08:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.4,
+      "incomplete": false,
+      "kw": 0.4,
+      "paused": false,
+      "start": "2026-09-09T09:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.85,
+      "incomplete": false,
+      "kw": 0.85,
+      "paused": false,
+      "start": "2026-09-09T10:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.55,
+      "incomplete": false,
+      "kw": 0.55,
+      "paused": false,
+      "start": "2026-09-09T11:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 1.0,
+      "incomplete": false,
+      "kw": 1.0,
+      "paused": false,
+      "start": "2026-09-09T12:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.7,
+      "incomplete": false,
+      "kw": 0.7,
+      "paused": false,
+      "start": "2026-09-09T13:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.4,
+      "incomplete": false,
+      "kw": 0.4,
+      "paused": false,
+      "start": "2026-09-09T14:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.85,
+      "incomplete": false,
+      "kw": 0.85,
+      "paused": false,
+      "start": "2026-09-09T15:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.55,
+      "incomplete": false,
+      "kw": 0.55,
+      "paused": false,
+      "start": "2026-09-09T16:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 2.3,
+      "incomplete": false,
+      "kw": 2.3,
+      "paused": false,
+      "start": "2026-09-09T17:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 2.0,
+      "incomplete": false,
+      "kw": 5.7,
+      "paused": false,
+      "start": "2026-09-09T18:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 1.7,
+      "incomplete": false,
+      "kw": 5.4,
+      "paused": false,
+      "start": "2026-09-09T19:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 2.15,
+      "incomplete": false,
+      "kw": 2.15,
+      "paused": false,
+      "start": "2026-09-09T20:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.55,
+      "incomplete": false,
+      "kw": 0.55,
+      "paused": false,
+      "start": "2026-09-09T21:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 1.0,
+      "incomplete": false,
+      "kw": 1.0,
+      "paused": false,
+      "start": "2026-09-09T22:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.7,
+      "incomplete": false,
+      "kw": 0.7,
+      "paused": false,
+      "start": "2026-09-09T23:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.4,
+      "incomplete": false,
+      "kw": 0.4,
+      "paused": false,
+      "start": "2026-09-10T00:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.85,
+      "incomplete": false,
+      "kw": 4.95,
+      "paused": false,
+      "start": "2026-09-10T01:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.55,
+      "incomplete": false,
+      "kw": 4.65,
+      "paused": false,
+      "start": "2026-09-10T02:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 1.0,
+      "incomplete": false,
+      "kw": 5.1,
+      "paused": false,
+      "start": "2026-09-10T03:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.7,
+      "incomplete": false,
+      "kw": 4.8,
+      "paused": false,
+      "start": "2026-09-10T04:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.4,
+      "incomplete": false,
+      "kw": 0.4,
+      "paused": false,
+      "start": "2026-09-10T05:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.85,
+      "incomplete": false,
+      "kw": 0.85,
+      "paused": false,
+      "start": "2026-09-10T06:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.55,
+      "incomplete": false,
+      "kw": 0.55,
+      "paused": false,
+      "start": "2026-09-10T07:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 1.0,
+      "incomplete": false,
+      "kw": 1.0,
+      "paused": false,
+      "start": "2026-09-10T08:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.7,
+      "incomplete": false,
+      "kw": 0.7,
+      "paused": false,
+      "start": "2026-09-10T09:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.4,
+      "incomplete": false,
+      "kw": 0.4,
+      "paused": false,
+      "start": "2026-09-10T10:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.85,
+      "incomplete": false,
+      "kw": 0.85,
+      "paused": false,
+      "start": "2026-09-10T11:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.55,
+      "incomplete": false,
+      "kw": 0.55,
+      "paused": false,
+      "start": "2026-09-10T12:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 1.0,
+      "incomplete": false,
+      "kw": 1.0,
+      "paused": false,
+      "start": "2026-09-10T13:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.7,
+      "incomplete": false,
+      "kw": 0.7,
+      "paused": false,
+      "start": "2026-09-10T14:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.4,
+      "incomplete": false,
+      "kw": 0.4,
+      "paused": false,
+      "start": "2026-09-10T15:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.85,
+      "incomplete": false,
+      "kw": 0.85,
+      "paused": false,
+      "start": "2026-09-10T16:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 1.95,
+      "incomplete": false,
+      "kw": 1.95,
+      "paused": false,
+      "start": "2026-09-10T17:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 2.4,
+      "incomplete": false,
+      "kw": 2.4,
+      "paused": false,
+      "start": "2026-09-10T18:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 2.1,
+      "incomplete": false,
+      "kw": 2.1,
+      "paused": false,
+      "start": "2026-09-10T19:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 1.8,
+      "incomplete": false,
+      "kw": 1.8,
+      "paused": false,
+      "start": "2026-09-10T20:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.85,
+      "incomplete": false,
+      "kw": 0.85,
+      "paused": false,
+      "start": "2026-09-10T21:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.55,
+      "incomplete": false,
+      "kw": 0.55,
+      "paused": false,
+      "start": "2026-09-10T22:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 1.0,
+      "incomplete": false,
+      "kw": 1.0,
+      "paused": false,
+      "start": "2026-09-10T23:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.7,
+      "incomplete": false,
+      "kw": 0.7,
+      "paused": false,
+      "start": "2026-09-11T00:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.4,
+      "incomplete": false,
+      "kw": 4.8,
+      "paused": false,
+      "start": "2026-09-11T01:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.85,
+      "incomplete": false,
+      "kw": 5.25,
+      "paused": false,
+      "start": "2026-09-11T02:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.55,
+      "incomplete": false,
+      "kw": 4.95,
+      "paused": false,
+      "start": "2026-09-11T03:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 1.0,
+      "incomplete": false,
+      "kw": 5.4,
+      "paused": false,
+      "start": "2026-09-11T04:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.7,
+      "incomplete": false,
+      "kw": 0.7,
+      "paused": false,
+      "start": "2026-09-11T05:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.4,
+      "incomplete": false,
+      "kw": 0.4,
+      "paused": false,
+      "start": "2026-09-11T06:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.85,
+      "incomplete": false,
+      "kw": 0.85,
+      "paused": false,
+      "start": "2026-09-11T07:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.55,
+      "incomplete": false,
+      "kw": 0.55,
+      "paused": false,
+      "start": "2026-09-11T08:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 1.0,
+      "incomplete": false,
+      "kw": 1.0,
+      "paused": false,
+      "start": "2026-09-11T09:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.7,
+      "incomplete": false,
+      "kw": 0.7,
+      "paused": false,
+      "start": "2026-09-11T10:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.4,
+      "incomplete": false,
+      "kw": 0.4,
+      "paused": false,
+      "start": "2026-09-11T11:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.85,
+      "incomplete": false,
+      "kw": 0.85,
+      "paused": false,
+      "start": "2026-09-11T12:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.55,
+      "incomplete": false,
+      "kw": 0.55,
+      "paused": false,
+      "start": "2026-09-11T13:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 1.0,
+      "incomplete": false,
+      "kw": 1.0,
+      "paused": false,
+      "start": "2026-09-11T14:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.7,
+      "incomplete": false,
+      "kw": 0.7,
+      "paused": false,
+      "start": "2026-09-11T15:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.4,
+      "incomplete": false,
+      "kw": 0.4,
+      "paused": false,
+      "start": "2026-09-11T16:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 2.35,
+      "incomplete": false,
+      "kw": 2.35,
+      "paused": false,
+      "start": "2026-09-11T17:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 2.05,
+      "incomplete": false,
+      "kw": 2.05,
+      "paused": false,
+      "start": "2026-09-11T18:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 2.5,
+      "incomplete": false,
+      "kw": 2.5,
+      "paused": false,
+      "start": "2026-09-11T19:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 2.2,
+      "incomplete": false,
+      "kw": 2.2,
+      "paused": false,
+      "start": "2026-09-11T20:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.4,
+      "incomplete": false,
+      "kw": 0.4,
+      "paused": false,
+      "start": "2026-09-11T21:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.85,
+      "incomplete": false,
+      "kw": 0.85,
+      "paused": false,
+      "start": "2026-09-11T22:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.55,
+      "incomplete": false,
+      "kw": 0.55,
+      "paused": false,
+      "start": "2026-09-11T23:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 1.0,
+      "incomplete": false,
+      "kw": 1.0,
+      "paused": false,
+      "start": "2026-09-12T00:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.7,
+      "incomplete": false,
+      "kw": 0.7,
+      "paused": false,
+      "start": "2026-09-12T01:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.4,
+      "incomplete": false,
+      "kw": 0.4,
+      "paused": false,
+      "start": "2026-09-12T02:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.85,
+      "incomplete": false,
+      "kw": 0.85,
+      "paused": false,
+      "start": "2026-09-12T03:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.55,
+      "incomplete": false,
+      "kw": 0.55,
+      "paused": false,
+      "start": "2026-09-12T04:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 1.0,
+      "incomplete": false,
+      "kw": 1.0,
+      "paused": false,
+      "start": "2026-09-12T05:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.7,
+      "incomplete": false,
+      "kw": 0.7,
+      "paused": false,
+      "start": "2026-09-12T06:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.4,
+      "incomplete": false,
+      "kw": 0.4,
+      "paused": false,
+      "start": "2026-09-12T07:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.85,
+      "incomplete": false,
+      "kw": 0.85,
+      "paused": false,
+      "start": "2026-09-12T08:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.55,
+      "incomplete": false,
+      "kw": 0.55,
+      "paused": false,
+      "start": "2026-09-12T09:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 1.0,
+      "incomplete": false,
+      "kw": 1.0,
+      "paused": false,
+      "start": "2026-09-12T10:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.7,
+      "incomplete": false,
+      "kw": 0.7,
+      "paused": false,
+      "start": "2026-09-12T11:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.4,
+      "incomplete": false,
+      "kw": 0.4,
+      "paused": false,
+      "start": "2026-09-12T12:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.85,
+      "incomplete": false,
+      "kw": 0.85,
+      "paused": false,
+      "start": "2026-09-12T13:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.55,
+      "incomplete": false,
+      "kw": 0.55,
+      "paused": false,
+      "start": "2026-09-12T14:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 1.0,
+      "incomplete": false,
+      "kw": 1.0,
+      "paused": false,
+      "start": "2026-09-12T15:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.7,
+      "incomplete": false,
+      "kw": 0.7,
+      "paused": false,
+      "start": "2026-09-12T16:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 1.6,
+      "incomplete": false,
+      "kw": 1.6,
+      "paused": false,
+      "start": "2026-09-12T17:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 2.05,
+      "incomplete": false,
+      "kw": 2.05,
+      "paused": false,
+      "start": "2026-09-12T18:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 1.75,
+      "incomplete": false,
+      "kw": 1.75,
+      "paused": false,
+      "start": "2026-09-12T19:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 2.2,
+      "incomplete": false,
+      "kw": 2.2,
+      "paused": false,
+      "start": "2026-09-12T20:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.7,
+      "incomplete": false,
+      "kw": 0.7,
+      "paused": false,
+      "start": "2026-09-12T21:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.4,
+      "incomplete": false,
+      "kw": 0.4,
+      "paused": false,
+      "start": "2026-09-12T22:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.85,
+      "incomplete": false,
+      "kw": 0.85,
+      "paused": false,
+      "start": "2026-09-12T23:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.55,
+      "incomplete": false,
+      "kw": 0.55,
+      "paused": false,
+      "start": "2026-09-13T00:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": true,
+      "house_kw": 1.0,
+      "incomplete": false,
+      "kw": 5.85,
+      "paused": false,
+      "start": "2026-09-13T01:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.7,
+      "incomplete": false,
+      "kw": 5.7,
+      "paused": false,
+      "start": "2026-09-13T02:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.4,
+      "incomplete": false,
+      "kw": 5.4,
+      "paused": false,
+      "start": "2026-09-13T03:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.85,
+      "incomplete": false,
+      "kw": 5.85,
+      "paused": false,
+      "start": "2026-09-13T04:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.55,
+      "incomplete": false,
+      "kw": 0.55,
+      "paused": false,
+      "start": "2026-09-13T05:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 1.0,
+      "incomplete": false,
+      "kw": 1.0,
+      "paused": false,
+      "start": "2026-09-13T06:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.7,
+      "incomplete": false,
+      "kw": 0.7,
+      "paused": false,
+      "start": "2026-09-13T07:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.4,
+      "incomplete": false,
+      "kw": 0.4,
+      "paused": false,
+      "start": "2026-09-13T08:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.85,
+      "incomplete": false,
+      "kw": 0.85,
+      "paused": false,
+      "start": "2026-09-13T09:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.55,
+      "incomplete": false,
+      "kw": 0.55,
+      "paused": false,
+      "start": "2026-09-13T10:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 1.0,
+      "incomplete": false,
+      "kw": 1.0,
+      "paused": false,
+      "start": "2026-09-13T11:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.7,
+      "incomplete": false,
+      "kw": 0.7,
+      "paused": false,
+      "start": "2026-09-13T12:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.4,
+      "incomplete": false,
+      "kw": 0.4,
+      "paused": false,
+      "start": "2026-09-13T13:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.85,
+      "incomplete": false,
+      "kw": 0.85,
+      "paused": false,
+      "start": "2026-09-13T14:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.55,
+      "incomplete": false,
+      "kw": 0.55,
+      "paused": false,
+      "start": "2026-09-13T15:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 1.0,
+      "incomplete": false,
+      "kw": 1.0,
+      "paused": false,
+      "start": "2026-09-13T16:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 2.0,
+      "incomplete": false,
+      "kw": 2.0,
+      "paused": false,
+      "start": "2026-09-13T17:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 1.7,
+      "incomplete": false,
+      "kw": 5.4,
+      "paused": false,
+      "start": "2026-09-13T18:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 2.15,
+      "incomplete": false,
+      "kw": 5.85,
+      "paused": false,
+      "start": "2026-09-13T19:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 1.85,
+      "incomplete": false,
+      "kw": 1.85,
+      "paused": false,
+      "start": "2026-09-13T20:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 1.0,
+      "incomplete": false,
+      "kw": 1.0,
+      "paused": false,
+      "start": "2026-09-13T21:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.7,
+      "incomplete": true,
+      "kw": 0.7,
+      "paused": false,
+      "start": "2026-09-13T22:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.4,
+      "incomplete": false,
+      "kw": 0.4,
+      "paused": false,
+      "start": "2026-09-13T23:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.85,
+      "incomplete": false,
+      "kw": 0.85,
+      "paused": false,
+      "start": "2026-09-14T00:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.55,
+      "incomplete": false,
+      "kw": 5.85,
+      "paused": false,
+      "start": "2026-09-14T01:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": true,
+      "house_kw": 1.0,
+      "incomplete": false,
+      "kw": 5.8,
+      "paused": false,
+      "start": "2026-09-14T02:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": true,
+      "house_kw": 0.7,
+      "incomplete": false,
+      "kw": 5.8,
+      "paused": false,
+      "start": "2026-09-14T03:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.4,
+      "incomplete": false,
+      "kw": 5.7,
+      "paused": false,
+      "start": "2026-09-14T04:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.85,
+      "incomplete": false,
+      "kw": 0.85,
+      "paused": false,
+      "start": "2026-09-14T05:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.55,
+      "incomplete": false,
+      "kw": 0.55,
+      "paused": false,
+      "start": "2026-09-14T06:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 1.0,
+      "incomplete": false,
+      "kw": 1.0,
+      "paused": false,
+      "start": "2026-09-14T07:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.7,
+      "incomplete": false,
+      "kw": 0.7,
+      "paused": false,
+      "start": "2026-09-14T08:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.4,
+      "incomplete": false,
+      "kw": 0.4,
+      "paused": false,
+      "start": "2026-09-14T09:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.85,
+      "incomplete": false,
+      "kw": 0.85,
+      "paused": false,
+      "start": "2026-09-14T10:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.55,
+      "incomplete": false,
+      "kw": 0.55,
+      "paused": false,
+      "start": "2026-09-14T11:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 1.0,
+      "incomplete": false,
+      "kw": 1.0,
+      "paused": false,
+      "start": "2026-09-14T12:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.7,
+      "incomplete": false,
+      "kw": 0.7,
+      "paused": false,
+      "start": "2026-09-14T13:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.4,
+      "incomplete": false,
+      "kw": 0.4,
+      "paused": false,
+      "start": "2026-09-14T14:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.85,
+      "incomplete": false,
+      "kw": 0.85,
+      "paused": false,
+      "start": "2026-09-14T15:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.55,
+      "incomplete": false,
+      "kw": 0.55,
+      "paused": false,
+      "start": "2026-09-14T16:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 2.4,
+      "incomplete": false,
+      "kw": 2.4,
+      "paused": false,
+      "start": "2026-09-14T17:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 2.1,
+      "incomplete": false,
+      "kw": 2.1,
+      "paused": false,
+      "start": "2026-09-14T18:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 1.8,
+      "incomplete": false,
+      "kw": 1.8,
+      "paused": false,
+      "start": "2026-09-14T19:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 2.25,
+      "incomplete": false,
+      "kw": 2.25,
+      "paused": false,
+      "start": "2026-09-14T20:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.55,
+      "incomplete": false,
+      "kw": 0.55,
+      "paused": false,
+      "start": "2026-09-14T21:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 1.0,
+      "incomplete": false,
+      "kw": 1.0,
+      "paused": false,
+      "start": "2026-09-14T22:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.7,
+      "incomplete": false,
+      "kw": 0.7,
+      "paused": false,
+      "start": "2026-09-14T23:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.4,
+      "incomplete": false,
+      "kw": 0.4,
+      "paused": false,
+      "start": "2026-09-15T00:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.85,
+      "incomplete": false,
+      "kw": 0.85,
+      "paused": false,
+      "start": "2026-09-15T01:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.55,
+      "incomplete": false,
+      "kw": 0.55,
+      "paused": false,
+      "start": "2026-09-15T02:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 1.0,
+      "incomplete": false,
+      "kw": 1.0,
+      "paused": false,
+      "start": "2026-09-15T03:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.7,
+      "incomplete": false,
+      "kw": 0.7,
+      "paused": false,
+      "start": "2026-09-15T04:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.4,
+      "incomplete": false,
+      "kw": 0.4,
+      "paused": false,
+      "start": "2026-09-15T05:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.85,
+      "incomplete": false,
+      "kw": 0.85,
+      "paused": false,
+      "start": "2026-09-15T06:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.55,
+      "incomplete": false,
+      "kw": 0.55,
+      "paused": false,
+      "start": "2026-09-15T07:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 1.0,
+      "incomplete": false,
+      "kw": 1.0,
+      "paused": false,
+      "start": "2026-09-15T08:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.7,
+      "incomplete": false,
+      "kw": 0.7,
+      "paused": false,
+      "start": "2026-09-15T09:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.4,
+      "incomplete": false,
+      "kw": 0.4,
+      "paused": false,
+      "start": "2026-09-15T10:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.85,
+      "incomplete": false,
+      "kw": 0.85,
+      "paused": false,
+      "start": "2026-09-15T11:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.55,
+      "incomplete": false,
+      "kw": 0.55,
+      "paused": false,
+      "start": "2026-09-15T12:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 1.0,
+      "incomplete": false,
+      "kw": 1.0,
+      "paused": false,
+      "start": "2026-09-15T13:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.7,
+      "incomplete": false,
+      "kw": 0.7,
+      "paused": false,
+      "start": "2026-09-15T14:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.4,
+      "incomplete": false,
+      "kw": 0.4,
+      "paused": false,
+      "start": "2026-09-15T15:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.85,
+      "incomplete": false,
+      "kw": 0.85,
+      "paused": false,
+      "start": "2026-09-15T16:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 2.05,
+      "incomplete": false,
+      "kw": 2.05,
+      "paused": false,
+      "start": "2026-09-15T17:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 2.5,
+      "incomplete": false,
+      "kw": 2.5,
+      "paused": false,
+      "start": "2026-09-15T18:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 2.2,
+      "incomplete": false,
+      "kw": 2.2,
+      "paused": true,
+      "start": "2026-09-15T19:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 1.9,
+      "incomplete": false,
+      "kw": 1.9,
+      "paused": false,
+      "start": "2026-09-15T20:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.85,
+      "incomplete": false,
+      "kw": 0.85,
+      "paused": false,
+      "start": "2026-09-15T21:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.55,
+      "incomplete": false,
+      "kw": 0.55,
+      "paused": false,
+      "start": "2026-09-15T22:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 1.0,
+      "incomplete": false,
+      "kw": 1.0,
+      "paused": false,
+      "start": "2026-09-15T23:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.7,
+      "incomplete": false,
+      "kw": 0.7,
+      "paused": false,
+      "start": "2026-09-16T00:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.4,
+      "incomplete": false,
+      "kw": 4.8,
+      "paused": false,
+      "start": "2026-09-16T01:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.85,
+      "incomplete": false,
+      "kw": 5.25,
+      "paused": false,
+      "start": "2026-09-16T02:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.55,
+      "incomplete": false,
+      "kw": 4.95,
+      "paused": false,
+      "start": "2026-09-16T03:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 1.0,
+      "incomplete": false,
+      "kw": 5.4,
+      "paused": false,
+      "start": "2026-09-16T04:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.7,
+      "incomplete": false,
+      "kw": 0.7,
+      "paused": false,
+      "start": "2026-09-16T05:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.4,
+      "incomplete": false,
+      "kw": 0.4,
+      "paused": false,
+      "start": "2026-09-16T06:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.85,
+      "incomplete": false,
+      "kw": 0.85,
+      "paused": false,
+      "start": "2026-09-16T07:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.55,
+      "incomplete": false,
+      "kw": 0.55,
+      "paused": false,
+      "start": "2026-09-16T08:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 1.0,
+      "incomplete": false,
+      "kw": 1.0,
+      "paused": false,
+      "start": "2026-09-16T09:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.7,
+      "incomplete": false,
+      "kw": 0.7,
+      "paused": false,
+      "start": "2026-09-16T10:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.4,
+      "incomplete": false,
+      "kw": 0.4,
+      "paused": false,
+      "start": "2026-09-16T11:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.85,
+      "incomplete": false,
+      "kw": 0.85,
+      "paused": false,
+      "start": "2026-09-16T12:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.55,
+      "incomplete": false,
+      "kw": 0.55,
+      "paused": false,
+      "start": "2026-09-16T13:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 1.0,
+      "incomplete": false,
+      "kw": 1.0,
+      "paused": false,
+      "start": "2026-09-16T14:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.7,
+      "incomplete": false,
+      "kw": 0.7,
+      "paused": false,
+      "start": "2026-09-16T15:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.4,
+      "incomplete": false,
+      "kw": 0.4,
+      "paused": false,
+      "start": "2026-09-16T16:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 2.05,
+      "incomplete": false,
+      "kw": 2.05,
+      "paused": false,
+      "start": "2026-09-16T17:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 1.75,
+      "incomplete": false,
+      "kw": 1.75,
+      "paused": false,
+      "start": "2026-09-16T18:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 2.2,
+      "incomplete": false,
+      "kw": 2.2,
+      "paused": false,
+      "start": "2026-09-16T19:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 1.9,
+      "incomplete": false,
+      "kw": 1.9,
+      "paused": false,
+      "start": "2026-09-16T20:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.4,
+      "incomplete": false,
+      "kw": 0.4,
+      "paused": false,
+      "start": "2026-09-16T21:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.85,
+      "incomplete": false,
+      "kw": 0.85,
+      "paused": false,
+      "start": "2026-09-16T22:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.55,
+      "incomplete": false,
+      "kw": 0.55,
+      "paused": false,
+      "start": "2026-09-16T23:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 1.0,
+      "incomplete": false,
+      "kw": 1.0,
+      "paused": false,
+      "start": "2026-09-17T00:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.7,
+      "incomplete": false,
+      "kw": 5.4,
+      "paused": false,
+      "start": "2026-09-17T01:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.4,
+      "incomplete": false,
+      "kw": 5.1,
+      "paused": false,
+      "start": "2026-09-17T02:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.85,
+      "incomplete": false,
+      "kw": 5.55,
+      "paused": false,
+      "start": "2026-09-17T03:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.55,
+      "incomplete": false,
+      "kw": 5.25,
+      "paused": false,
+      "start": "2026-09-17T04:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 1.0,
+      "incomplete": false,
+      "kw": 1.0,
+      "paused": false,
+      "start": "2026-09-17T05:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.7,
+      "incomplete": false,
+      "kw": 0.7,
+      "paused": false,
+      "start": "2026-09-17T06:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.4,
+      "incomplete": false,
+      "kw": 0.4,
+      "paused": false,
+      "start": "2026-09-17T07:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.85,
+      "incomplete": false,
+      "kw": 0.85,
+      "paused": false,
+      "start": "2026-09-17T08:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.55,
+      "incomplete": false,
+      "kw": 0.55,
+      "paused": false,
+      "start": "2026-09-17T09:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 1.0,
+      "incomplete": false,
+      "kw": 1.0,
+      "paused": false,
+      "start": "2026-09-17T10:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.7,
+      "incomplete": false,
+      "kw": 0.7,
+      "paused": false,
+      "start": "2026-09-17T11:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.4,
+      "incomplete": false,
+      "kw": 0.4,
+      "paused": false,
+      "start": "2026-09-17T12:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.85,
+      "incomplete": false,
+      "kw": 0.85,
+      "paused": false,
+      "start": "2026-09-17T13:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.55,
+      "incomplete": false,
+      "kw": 0.55,
+      "paused": false,
+      "start": "2026-09-17T14:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 1.0,
+      "incomplete": false,
+      "kw": 1.0,
+      "paused": false,
+      "start": "2026-09-17T15:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.7,
+      "incomplete": false,
+      "kw": 0.7,
+      "paused": false,
+      "start": "2026-09-17T16:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 1.7,
+      "incomplete": false,
+      "kw": 1.7,
+      "paused": false,
+      "start": "2026-09-17T17:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 2.15,
+      "incomplete": false,
+      "kw": 5.85,
+      "paused": false,
+      "start": "2026-09-17T18:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 1.85,
+      "incomplete": false,
+      "kw": 5.55,
+      "paused": false,
+      "start": "2026-09-17T19:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 2.3,
+      "incomplete": false,
+      "kw": 2.3,
+      "paused": false,
+      "start": "2026-09-17T20:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.7,
+      "incomplete": false,
+      "kw": 0.7,
+      "paused": false,
+      "start": "2026-09-17T21:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.4,
+      "incomplete": false,
+      "kw": 0.4,
+      "paused": false,
+      "start": "2026-09-17T22:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.85,
+      "incomplete": false,
+      "kw": 0.85,
+      "paused": false,
+      "start": "2026-09-17T23:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.55,
+      "incomplete": false,
+      "kw": 0.55,
+      "paused": false,
+      "start": "2026-09-18T00:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 1.0,
+      "incomplete": false,
+      "kw": 1.0,
+      "paused": false,
+      "start": "2026-09-18T01:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.7,
+      "incomplete": false,
+      "kw": 0.7,
+      "paused": false,
+      "start": "2026-09-18T02:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.4,
+      "incomplete": false,
+      "kw": 0.4,
+      "paused": false,
+      "start": "2026-09-18T03:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.85,
+      "incomplete": false,
+      "kw": 0.85,
+      "paused": false,
+      "start": "2026-09-18T04:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.55,
+      "incomplete": false,
+      "kw": 0.55,
+      "paused": false,
+      "start": "2026-09-18T05:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 1.0,
+      "incomplete": false,
+      "kw": 1.0,
+      "paused": false,
+      "start": "2026-09-18T06:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.7,
+      "incomplete": false,
+      "kw": 0.7,
+      "paused": false,
+      "start": "2026-09-18T07:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.4,
+      "incomplete": false,
+      "kw": 0.4,
+      "paused": false,
+      "start": "2026-09-18T08:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.85,
+      "incomplete": false,
+      "kw": 0.85,
+      "paused": false,
+      "start": "2026-09-18T09:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.55,
+      "incomplete": false,
+      "kw": 0.55,
+      "paused": false,
+      "start": "2026-09-18T10:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 1.0,
+      "incomplete": false,
+      "kw": 1.0,
+      "paused": false,
+      "start": "2026-09-18T11:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.7,
+      "incomplete": false,
+      "kw": 0.7,
+      "paused": false,
+      "start": "2026-09-18T12:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.4,
+      "incomplete": false,
+      "kw": 0.4,
+      "paused": false,
+      "start": "2026-09-18T13:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.85,
+      "incomplete": false,
+      "kw": 0.85,
+      "paused": false,
+      "start": "2026-09-18T14:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.55,
+      "incomplete": false,
+      "kw": 0.55,
+      "paused": false,
+      "start": "2026-09-18T15:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 1.0,
+      "incomplete": false,
+      "kw": 1.0,
+      "paused": false,
+      "start": "2026-09-18T16:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 2.1,
+      "incomplete": false,
+      "kw": 2.1,
+      "paused": false,
+      "start": "2026-09-18T17:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 1.8,
+      "incomplete": false,
+      "kw": 1.8,
+      "paused": false,
+      "start": "2026-09-18T18:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 2.25,
+      "incomplete": false,
+      "kw": 2.25,
+      "paused": false,
+      "start": "2026-09-18T19:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 1.95,
+      "incomplete": false,
+      "kw": 1.95,
+      "paused": false,
+      "start": "2026-09-18T20:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 1.0,
+      "incomplete": false,
+      "kw": 1.0,
+      "paused": false,
+      "start": "2026-09-18T21:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.7,
+      "incomplete": false,
+      "kw": 0.7,
+      "paused": false,
+      "start": "2026-09-18T22:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.4,
+      "incomplete": false,
+      "kw": 0.4,
+      "paused": false,
+      "start": "2026-09-18T23:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.85,
+      "incomplete": false,
+      "kw": 0.85,
+      "paused": false,
+      "start": "2026-09-19T00:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.55,
+      "incomplete": false,
+      "kw": 5.85,
+      "paused": false,
+      "start": "2026-09-19T01:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": true,
+      "house_kw": 1.0,
+      "incomplete": false,
+      "kw": 5.85,
+      "paused": false,
+      "start": "2026-09-19T02:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": true,
+      "house_kw": 0.7,
+      "incomplete": false,
+      "kw": 5.85,
+      "paused": false,
+      "start": "2026-09-19T03:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.4,
+      "incomplete": false,
+      "kw": 5.7,
+      "paused": false,
+      "start": "2026-09-19T04:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.85,
+      "incomplete": false,
+      "kw": 0.85,
+      "paused": false,
+      "start": "2026-09-19T05:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.55,
+      "incomplete": false,
+      "kw": 0.55,
+      "paused": false,
+      "start": "2026-09-19T06:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 1.0,
+      "incomplete": false,
+      "kw": 1.0,
+      "paused": false,
+      "start": "2026-09-19T07:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.7,
+      "incomplete": false,
+      "kw": 0.7,
+      "paused": false,
+      "start": "2026-09-19T08:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.4,
+      "incomplete": false,
+      "kw": 0.4,
+      "paused": false,
+      "start": "2026-09-19T09:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.85,
+      "incomplete": false,
+      "kw": 0.85,
+      "paused": false,
+      "start": "2026-09-19T10:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.55,
+      "incomplete": false,
+      "kw": 0.55,
+      "paused": false,
+      "start": "2026-09-19T11:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 1.0,
+      "incomplete": false,
+      "kw": 1.0,
+      "paused": false,
+      "start": "2026-09-19T12:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.7,
+      "incomplete": false,
+      "kw": 0.7,
+      "paused": false,
+      "start": "2026-09-19T13:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.4,
+      "incomplete": false,
+      "kw": 0.4,
+      "paused": false,
+      "start": "2026-09-19T14:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.85,
+      "incomplete": false,
+      "kw": 0.85,
+      "paused": false,
+      "start": "2026-09-19T15:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.55,
+      "incomplete": false,
+      "kw": 0.55,
+      "paused": false,
+      "start": "2026-09-19T16:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 2.5,
+      "incomplete": false,
+      "kw": 2.5,
+      "paused": false,
+      "start": "2026-09-19T17:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 2.2,
+      "incomplete": false,
+      "kw": 2.2,
+      "paused": false,
+      "start": "2026-09-19T18:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 1.9,
+      "incomplete": false,
+      "kw": 1.9,
+      "paused": false,
+      "start": "2026-09-19T19:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 2.35,
+      "incomplete": false,
+      "kw": 2.35,
+      "paused": false,
+      "start": "2026-09-19T20:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.55,
+      "incomplete": false,
+      "kw": 0.55,
+      "paused": false,
+      "start": "2026-09-19T21:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 1.0,
+      "incomplete": false,
+      "kw": 1.0,
+      "paused": false,
+      "start": "2026-09-19T22:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.7,
+      "incomplete": false,
+      "kw": 0.7,
+      "paused": false,
+      "start": "2026-09-19T23:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.4,
+      "incomplete": false,
+      "kw": 0.4,
+      "paused": false,
+      "start": "2026-09-20T00:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.85,
+      "incomplete": false,
+      "kw": 4.95,
+      "paused": false,
+      "start": "2026-09-20T01:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.55,
+      "incomplete": false,
+      "kw": 4.65,
+      "paused": false,
+      "start": "2026-09-20T02:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 1.0,
+      "incomplete": false,
+      "kw": 5.1,
+      "paused": false,
+      "start": "2026-09-20T03:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.7,
+      "incomplete": false,
+      "kw": 4.8,
+      "paused": false,
+      "start": "2026-09-20T04:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.4,
+      "incomplete": false,
+      "kw": 0.4,
+      "paused": false,
+      "start": "2026-09-20T05:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.85,
+      "incomplete": false,
+      "kw": 0.85,
+      "paused": false,
+      "start": "2026-09-20T06:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.55,
+      "incomplete": false,
+      "kw": 0.55,
+      "paused": false,
+      "start": "2026-09-20T07:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 1.0,
+      "incomplete": false,
+      "kw": 1.0,
+      "paused": false,
+      "start": "2026-09-20T08:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.7,
+      "incomplete": false,
+      "kw": 0.7,
+      "paused": false,
+      "start": "2026-09-20T09:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.4,
+      "incomplete": false,
+      "kw": 0.4,
+      "paused": false,
+      "start": "2026-09-20T10:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.85,
+      "incomplete": false,
+      "kw": 0.85,
+      "paused": false,
+      "start": "2026-09-20T11:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.55,
+      "incomplete": false,
+      "kw": 0.55,
+      "paused": false,
+      "start": "2026-09-20T12:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 1.0,
+      "incomplete": false,
+      "kw": 1.0,
+      "paused": false,
+      "start": "2026-09-20T13:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.7,
+      "incomplete": false,
+      "kw": 0.7,
+      "paused": false,
+      "start": "2026-09-20T14:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.4,
+      "incomplete": false,
+      "kw": 0.4,
+      "paused": false,
+      "start": "2026-09-20T15:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.85,
+      "incomplete": false,
+      "kw": 0.85,
+      "paused": false,
+      "start": "2026-09-20T16:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 1.75,
+      "incomplete": false,
+      "kw": 1.75,
+      "paused": false,
+      "start": "2026-09-20T17:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 2.2,
+      "incomplete": false,
+      "kw": 2.2,
+      "paused": false,
+      "start": "2026-09-20T18:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 1.9,
+      "incomplete": false,
+      "kw": 1.9,
+      "paused": false,
+      "start": "2026-09-20T19:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 1.6,
+      "incomplete": false,
+      "kw": 1.6,
+      "paused": false,
+      "start": "2026-09-20T20:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.85,
+      "incomplete": false,
+      "kw": 0.85,
+      "paused": false,
+      "start": "2026-09-20T21:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.55,
+      "incomplete": false,
+      "kw": 0.55,
+      "paused": false,
+      "start": "2026-09-20T22:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 1.0,
+      "incomplete": false,
+      "kw": 1.0,
+      "paused": false,
+      "start": "2026-09-20T23:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.7,
+      "incomplete": false,
+      "kw": 0.7,
+      "paused": false,
+      "start": "2026-09-21T00:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.4,
+      "incomplete": false,
+      "kw": 0.4,
+      "paused": false,
+      "start": "2026-09-21T01:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.85,
+      "incomplete": false,
+      "kw": 0.85,
+      "paused": false,
+      "start": "2026-09-21T02:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.55,
+      "incomplete": false,
+      "kw": 0.55,
+      "paused": false,
+      "start": "2026-09-21T03:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 1.0,
+      "incomplete": false,
+      "kw": 1.0,
+      "paused": false,
+      "start": "2026-09-21T04:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.7,
+      "incomplete": false,
+      "kw": 0.7,
+      "paused": false,
+      "start": "2026-09-21T05:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.4,
+      "incomplete": false,
+      "kw": 0.4,
+      "paused": false,
+      "start": "2026-09-21T06:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.85,
+      "incomplete": false,
+      "kw": 0.85,
+      "paused": false,
+      "start": "2026-09-21T07:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.55,
+      "incomplete": false,
+      "kw": 0.55,
+      "paused": false,
+      "start": "2026-09-21T08:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 1.0,
+      "incomplete": false,
+      "kw": 1.0,
+      "paused": false,
+      "start": "2026-09-21T09:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.7,
+      "incomplete": false,
+      "kw": 0.7,
+      "paused": false,
+      "start": "2026-09-21T10:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.4,
+      "incomplete": false,
+      "kw": 0.4,
+      "paused": false,
+      "start": "2026-09-21T11:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.85,
+      "incomplete": false,
+      "kw": 0.85,
+      "paused": false,
+      "start": "2026-09-21T12:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.55,
+      "incomplete": false,
+      "kw": 0.55,
+      "paused": false,
+      "start": "2026-09-21T13:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 1.0,
+      "incomplete": false,
+      "kw": 1.0,
+      "paused": false,
+      "start": "2026-09-21T14:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.7,
+      "incomplete": false,
+      "kw": 0.7,
+      "paused": false,
+      "start": "2026-09-21T15:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.4,
+      "incomplete": false,
+      "kw": 0.4,
+      "paused": false,
+      "start": "2026-09-21T16:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 2.15,
+      "incomplete": false,
+      "kw": 2.15,
+      "paused": false,
+      "start": "2026-09-21T17:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 1.85,
+      "incomplete": false,
+      "kw": 5.55,
+      "paused": false,
+      "start": "2026-09-21T18:00:00+02:00"
+    },
+    {
+      "counted": [
+        0
+      ],
+      "held": true,
+      "house_kw": 2.3,
+      "incomplete": false,
+      "kw": 5.9,
+      "paused": false,
+      "start": "2026-09-21T19:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 2.0,
+      "incomplete": false,
+      "kw": 2.0,
+      "paused": false,
+      "start": "2026-09-21T20:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.4,
+      "incomplete": false,
+      "kw": 0.4,
+      "paused": false,
+      "start": "2026-09-21T21:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.85,
+      "incomplete": false,
+      "kw": 0.85,
+      "paused": false,
+      "start": "2026-09-21T22:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.55,
+      "incomplete": false,
+      "kw": 0.55,
+      "paused": false,
+      "start": "2026-09-21T23:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 1.0,
+      "incomplete": false,
+      "kw": 1.0,
+      "paused": false,
+      "start": "2026-09-22T00:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.7,
+      "incomplete": false,
+      "kw": 5.4,
+      "paused": false,
+      "start": "2026-09-22T01:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.4,
+      "incomplete": false,
+      "kw": 5.1,
+      "paused": false,
+      "start": "2026-09-22T02:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.85,
+      "incomplete": false,
+      "kw": 5.55,
+      "paused": false,
+      "start": "2026-09-22T03:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.55,
+      "incomplete": false,
+      "kw": 5.25,
+      "paused": false,
+      "start": "2026-09-22T04:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 1.0,
+      "incomplete": false,
+      "kw": 1.0,
+      "paused": false,
+      "start": "2026-09-22T05:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.7,
+      "incomplete": false,
+      "kw": 0.7,
+      "paused": false,
+      "start": "2026-09-22T06:00:00+02:00"
+    },
+    {
+      "counted": [],
+      "held": false,
+      "house_kw": 0.4,
+      "incomplete": false,
+      "kw": 0.4,
+      "paused": false,
+      "start": "2026-09-22T07:00:00+02:00"
+    }
+  ],
+  "import_target_kw": 6.0,
+  "month": "2026-09",
+  "site_id": "site_entry_a",
+  "unit": "kW"
+}

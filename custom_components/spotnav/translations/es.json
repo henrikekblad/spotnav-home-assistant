@@ -718,6 +718,9 @@
       },
       "price_now": {
         "name": "Precio ahora"
+      },
+      "demand_peak": {
+        "name": "Pico de potencia"
       }
     },
     "select": {

@@ -202,6 +202,18 @@ def _charger_diagnostics(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, A
     }
 
 
+def _demand_diagnostics(hass: HomeAssistant, entry: ConfigEntry, controller: Any) -> dict[str, Any] | None:
+    from .api.entity_fields import stored_import_target_kw  # noqa: PLC0415 - the API imports this module's peers
+    from .pricing.price_source import site_demand_components  # noqa: PLC0415
+
+    try:
+        return controller.demand.diagnostics(
+            site_demand_components(hass, entry.entry_id), import_target_kw=stored_import_target_kw(entry.data)
+        )
+    except Exception:  # noqa: BLE001 - diagnostics must never fail on one block
+        return None
+
+
 def _site_diagnostics(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, Any]:
     controller = site_controller_for(hass, entry.entry_id)
     return {
@@ -219,6 +231,12 @@ def _site_diagnostics(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, Any]
         # The meter's total grid power (what solar and hybrid read on a direct site): where it is
         # configured, its value and age, and the export derived from it.
         "grid_power": None if controller is None else controller.grid_power_snapshot(),
+        # Each clock hour's mean import this month, what each demand-charge component bills so far, the running hour
+        # with its gaps, and the import target (`site/demand_tracker.py`).
+        "demand": None if controller is None else _demand_diagnostics(hass, entry, controller),
+        # What the import target does this hour (`SiteCapacityController.import_target_snapshot`): the hour's budget or
+        # why it is not applied, per charger held, paused or free, and each hold, pause and release it made.
+        "import_target": None if controller is None else controller.import_target_snapshot(),
         "membership_conflicts": []
         if controller is None
         else [

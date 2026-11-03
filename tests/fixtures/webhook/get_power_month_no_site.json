@@ -1,0 +1,5 @@
+{
+  "action": "get_power_month",
+  "error": "spotnav_no_site",
+  "ok": false
+}

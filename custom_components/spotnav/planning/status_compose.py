@@ -50,7 +50,9 @@ Precedence (first match wins the headline; "add" rows append a fact line)
      starts it again until its level is read) > charging_now (+plan_energy +plan_cost) >
      balancing_paused{retry_at, cause} (+plan_energy +plan_cost; inside an installed period, load balancing
      paused the plan's charge because the house, or a home battery charging from the grid (`cause`), takes the
-     whole fuse: it is tried again at `retry_at`, or as soon as there is room when that is null) >
+     whole fuse: it is tried again at `retry_at`, or as soon as there is room when that is null;
+     import_target_paused{until, target_kw, house_over} in its place when the site's import target paused it to the next clock
+     hour, `until`) >
      held_until_window{time} (+plan_energy +plan_cost +plan_distance, only while the proposal is the
      installed plan it waits for; a charge that started by itself outside the plan was stopped, or a car
      waits for the next window) >
@@ -99,8 +101,12 @@ Precedence (first match wins the headline; "add" rows append a fact line)
    when the meter reports export as a negative current on a site not set to read it signed; the capture
    gives these facts only once the measurement has been lost for a minute, so a meter that drops out for
    seconds shows nothing, except a negative current, at once), duplicate_charger (another entry is the same physical
-   charger), load_balancing_limited, load_balancing_unavailable. Tone `notice` if any is present;
-   otherwise `normal`. A proposal waiting for a window boundary is the normal line proposal_pending.
+   charger), load_balancing_limited (import_target_held{limit_a, target_kw, hour_kw} in its place, tone normal,
+   when the site's import target holds the car, not the fuse), load_balancing_unavailable, then
+   import_target_at_risk{departure, missing_kwh, target_kw} (notice: under the target the plan misses its
+   departure, and the target may be set aside for it), import_target_released{target_kw, departure} (a charge a
+   person set the target aside for, until its departure) and import_target_house_over{target_kw} (the house alone ends the hour above the target, while the
+   car charges; a pause says it in its own line), both normal. Tone `notice` if any notice is present; otherwise `normal`. A proposal waiting for a window boundary is the normal line proposal_pending.
 
 0b. While the car's minimum charge level charges it (`min_soc_percent`, its floor), min_soc_charging{percent}
    is the headline in place of the strategy's and the plan's (3 and 4), after the identification line; the plan's
@@ -186,6 +192,11 @@ STATUS_CODES: Final[dict[str, tuple[str, tuple[str, ...]]]] = {
     # the grid (`cause`, as `load_balancing_limited`'s), takes the whole fuse. It is tried again at `retry_at` (a
     # battery probe's or a resume's back-off end), or as soon as there is room when that is null.
     "balancing_paused": (TONE_NORMAL, ("retry_at", "cause")),
+    # In its place where the site's import target paused the plan's charge (`site/import_target.py`): the hour could
+    # no longer end under `target_kw` (kW, an hourly mean) with the car at its minimum, so it waits for the next clock
+    # hour, `until`. `house_over`: the house alone ends the hour above the target (said in place of "so the hour stays
+    # under it", which it does not).
+    "import_target_paused": (TONE_NORMAL, ("until", "target_kw", "house_over", "set_kw")),
     # The plan's last window ended with the car still drawing on a charge to its own limit: it goes on
     # until the car stops by itself, at most until `until` (an hour past the window, never past the
     # departure).
@@ -274,6 +285,22 @@ STATUS_CODES: Final[dict[str, tuple[str, tuple[str, ...]]]] = {
     # `cause` names why where it is known: `battery_shares_fuse` (a home battery charging from the grid
     # shares the main fuse with the car) or `house_consumption`; `None` when it is not known.
     "load_balancing_limited": (TONE_NOTICE, ("limit_a", "phase", "cause")),
+    # In its place where the site's import target, not the fuse, holds the car: to `limit_a` so the hour stays under
+    # `target_kw`; `hour_kw` is the hour's mean import so far (kW).
+    # `set_kw`, here and on the paused and at-risk lines: the import target as set; below `target_kw` where the
+    # month's free level (a demand charge's peak already paid for) lifts it this hour.
+    "import_target_held": (TONE_NORMAL, ("limit_a", "target_kw", "hour_kw", "set_kw")),
+    # The house alone, with no charger, ends this hour above the import target (`target_kw`), while the car charges
+    # (a charge the target paused says it in its own line): SpotNav holds back nothing more than its chargers, and does
+    # not claim the hour stays under it.
+    "import_target_house_over": (TONE_NORMAL, ("target_kw", "set_kw")),
+    # The import target (`target_kw`) is set aside for this charge until its departure (`departure`, an instant): by a
+    # person, or by the plan's own choice (`automatic`, `if_not_ready` `release`) while holding would miss it.
+    "import_target_released": (TONE_NORMAL, ("target_kw", "departure", "automatic")),
+    # Under the import target (`target_kw`) the plan misses its departure (`departure`, an instant) by `missing_kwh`.
+    # `releasable` (the plan's `if_not_ready` `ask`): a person may set the target aside for this charge until then
+    # (`spotnav/release_import_target`); else (`hold`) it is only said.
+    "import_target_at_risk": (TONE_NOTICE, ("departure", "missing_kwh", "target_kw", "releasable", "set_kw")),
     "load_balancing_unavailable": (TONE_NOTICE, ()),
     # The charger's own scheduler, smart start or load balancer holds the charge (Easee): nothing is
     # wrong, and nothing SpotNav sends releases it.
@@ -472,6 +499,28 @@ class LoadBalancingFacts:
 
 
 @dataclass(frozen=True, slots=True)
+class ImportTargetFacts:
+    """What the site's import target does to this charger now (`SiteCapacityController.import_target_status`)."""
+
+    target_kw: float
+    hour_kw: float
+    #: The import target as set (below `target_kw` where the month's free level lifts it), `None`: the same.
+    set_kw: float | None = None
+    #: The next hour's start while the target paused the charge, else `None`.
+    paused_until: datetime | None = None
+    #: The departure a person set the target aside until, else `None`.
+    released_for: datetime | None = None
+    house_over: bool = False
+    #: The departure the target makes the plan miss, and by how much (kWh), else `None`.
+    at_risk_departure: datetime | None = None
+    missing_kwh: float | None = None
+    #: The plan asks (`if_not_ready` `ask`): the target may be set aside from the status.
+    releasable: bool = True
+    #: The plan's own choice set it aside, not a person.
+    released_automatically: bool = False
+
+
+@dataclass(frozen=True, slots=True)
 class SiteMeasurementFacts:
     """Why the site's measurement is unusable: the phases with no usable value (and the entities they
     are read from) and the phases whose value is older than `max_age_s`."""
@@ -547,6 +596,8 @@ class StatusFacts:
     #: The charger advertises load balancing, and its site summary.
     load_balancing_capable: bool = False
     load_balancing: LoadBalancingFacts | None = None
+    #: The site's import target, while it is set and measured this hour.
+    import_target: ImportTargetFacts | None = None
     target: TargetFacts | None = None
     #: The site's measurement problem, `None` while it is healthy or there is no site.
     site_measurement: SiteMeasurementFacts | None = None
@@ -900,6 +951,18 @@ def _plan_headline(facts: StatusFacts) -> list[dict[str, Any]]:
         ]
     if facts.charging:
         return [_line("charging_now", until=None)]
+    target = facts.import_target
+    if facts.balancing_paused and active is not None and target is not None and target.paused_until is not None:
+        return [
+            _line(
+                "import_target_paused",
+                until=aware_iso(target.paused_until),
+                target_kw=round(target.target_kw, 2),
+                house_over=target.house_over,
+                set_kw=round(target.target_kw if target.set_kw is None else target.set_kw, 2),
+            ),
+            *_plan_facts(proposal, energy=True, cost=True, distance=False),
+        ]
     if facts.balancing_paused and active is not None:
         retry_at = facts.balancing_retry_at
         return [
@@ -1038,16 +1101,57 @@ def _notices(facts: StatusFacts) -> list[dict[str, Any]]:
             and site.current_settable
             and facts.charging
         ):
-            lines.append(
-                _line(
-                    "load_balancing_limited",
-                    limit_a=site.proposed_current_a,
-                    phase=site.limiting_phase,
-                    cause=site.cause,
+            target = facts.import_target
+            if site.cause == "import_target" and target is not None:
+                lines.append(
+                    _line(
+                        "import_target_held",
+                        limit_a=site.proposed_current_a,
+                        target_kw=round(target.target_kw, 2),
+                        hour_kw=round(target.hour_kw, 2),
+                        set_kw=round(target.target_kw if target.set_kw is None else target.set_kw, 2),
+                    )
                 )
-            )
+            else:
+                lines.append(
+                    _line(
+                        "load_balancing_limited",
+                        limit_a=site.proposed_current_a,
+                        phase=site.limiting_phase,
+                        cause=site.cause,
+                    )
+                )
     elif facts.load_balancing_capable:
         lines.append(_line("load_balancing_unavailable"))
+    target = facts.import_target
+    if target is not None and target.at_risk_departure is not None and target.missing_kwh is not None:
+        lines.append(
+            _line(
+                "import_target_at_risk",
+                departure=aware_iso(target.at_risk_departure),
+                missing_kwh=round(target.missing_kwh, 1),
+                target_kw=round(target.target_kw, 2),
+                releasable=target.releasable,
+                set_kw=round(target.target_kw if target.set_kw is None else target.set_kw, 2),
+            )
+        )
+    if target is not None and target.released_for is not None and facts.charging:
+        lines.append(
+            _line(
+                "import_target_released",
+                target_kw=round(target.target_kw, 2),
+                departure=aware_iso(target.released_for),
+                automatic=target.released_automatically,
+            )
+        )
+    if target is not None and target.house_over and facts.charging:
+        lines.append(
+            _line(
+                "import_target_house_over",
+                target_kw=round(target.target_kw, 2),
+                set_kw=round(target.target_kw if target.set_kw is None else target.set_kw, 2),
+            )
+        )
     return lines
 
 

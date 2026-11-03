@@ -6,6 +6,7 @@ import { localDayKey } from "./chart";
 import {
   clock,
   distanceText,
+  formatFixed,
   formatNumber,
   hasZone,
   localeMoney,
@@ -32,10 +33,15 @@ export interface Issue {
   hintKey?: TranslationKey;
 }
 
-/** A charger's own setting set back by one press: the entity, the value the backend named, and the button's words. */
+/**
+ * A charger's own setting set back by one press: the entity, the value the backend named, and the button's words.
+ * With `action` `release_import_target` it is the import target set aside for this charge instead
+ * (`spotnav/release_import_target`), offered to any user.
+ */
 export interface IssueFix {
   entity: string;
   value: string;
+  action?: "release_import_target";
   labelKey: TranslationKey;
   labelParams: Record<string, string>;
 }
@@ -220,6 +226,11 @@ export const STATUS_WORDING: Readonly<Record<StatusCode, TranslationKey>> = {
   price_data_degraded: "issue.priceDegraded",
   unpriced: "issue.unpriced",
   balancing_paused: "status.balancingPausedHouse",
+  import_target_paused: "status.importTargetPaused",
+  import_target_held: "status.importTargetHeld",
+  import_target_house_over: "status.importTargetHouseOver",
+  import_target_released: "status.importTargetReleased",
+  import_target_at_risk: "status.importTargetAtRisk",
   load_balancing_limited: "status.loadBalancingLimitedTo",
   load_balancing_unavailable: "issue.loadBalancing",
   held_by_charger: "issue.heldByCharger",
@@ -273,6 +284,23 @@ export const STATUS_VARIANT_KEYS: readonly TranslationKey[] = [
   "status.balancingPausedBattery",
   "status.balancingPausedHouseRoom",
   "status.balancingPausedBatteryRoom",
+  "status.importTargetHeldNoLimit",
+  "status.importTargetPausedNextHour",
+  "status.importTargetPausedHouse",
+  "status.importTargetPausedHouseNextHour",
+  "status.importTargetReleasedNoTime",
+  "status.importTargetAtRiskNoTime",
+  "status.importTargetHeldPeak",
+  "status.importTargetHeldPeakNoLimit",
+  "status.importTargetPausedPeak",
+  "status.importTargetPausedPeakNextHour",
+  "status.importTargetAtRiskPeak",
+  "status.importTargetAtRiskPeakNoTime",
+  "status.importTargetPausedHousePeak",
+  "status.importTargetPausedHousePeakNextHour",
+  "status.importTargetHouseOverPeak",
+  "status.importTargetReleasedAuto",
+  "status.importTargetReleasedAutoNoTime",
   "strategy.status.solar.chargingUnknown",
   "strategy.status.solar.chargingOnePhaseUnknown",
   "strategy.status.hybrid.creditSuffix",
@@ -386,6 +414,13 @@ function needEstimated(language: Language, p: StatusLine["params"]): { key: Tran
     key: p["basis"] === "sessions" ? "issue.needFromSessions" : "issue.needKept",
     params: { kwh: formatNumber(language, num(p["kwh"]) ?? 0, 1) },
   };
+}
+
+/** Whether the line's level is the month's peak (a demand charge's, already paid for) above the target as set. */
+function monthPeak(p: StatusLine["params"]): boolean {
+  const target = num(p["target_kw"]);
+  const set = num(p["set_kw"]);
+  return target !== null && set !== null && target > set + 1e-9;
 }
 
 /** The wording for why a charger is unavailable when its charge control is gone or disabled. */
@@ -635,6 +670,82 @@ export function lineText(
       }
       return say(battery ? "status.balancingPausedBattery" : "status.balancingPausedHouse", { time: clock(format, at) });
     }
+    case "import_target_held": {
+      // The site's import target, not the fuse, holds the car: to what, the target, and the hour's mean so far.
+      const limit = num(p["limit_a"]);
+      const peak = monthPeak(p);
+      const kw = {
+        target: formatFixed(language, num(p["target_kw"]) ?? 0, 1),
+        hour: formatFixed(language, num(p["hour_kw"]) ?? 0, 1),
+        set: formatFixed(language, num(p["set_kw"]) ?? 0, 1),
+      };
+      if (limit === null) {
+        return say(peak ? "status.importTargetHeldPeakNoLimit" : "status.importTargetHeldNoLimit", kw);
+      }
+      return say(peak ? "status.importTargetHeldPeak" : "status.importTargetHeld", {
+        ...kw,
+        limit: formatNumber(language, limit, 0),
+      });
+    }
+    case "import_target_paused": {
+      // Paused to the next clock hour so the running one stays under the target.
+      const target = formatFixed(language, num(p["target_kw"]) ?? 0, 1);
+      const until = ms(p["until"]);
+      // The house alone over the target: said in place of "so the hour stays under it", which it does not.
+      const house = p["house_over"] === true;
+      const peak = monthPeak(p);
+      const set = formatFixed(language, num(p["set_kw"]) ?? 0, 1);
+      if (until === null || !zoned) {
+        const key = house
+          ? peak
+            ? "status.importTargetPausedHousePeakNextHour"
+            : "status.importTargetPausedHouseNextHour"
+          : peak
+            ? "status.importTargetPausedPeakNextHour"
+            : "status.importTargetPausedNextHour";
+        return say(key, { target, set });
+      }
+      const key = house
+        ? peak
+          ? "status.importTargetPausedHousePeak"
+          : "status.importTargetPausedHouse"
+        : peak
+          ? "status.importTargetPausedPeak"
+          : "status.importTargetPaused";
+      return say(key, { target, set, time: clock(format, until) });
+    }
+    case "import_target_house_over":
+      return say(monthPeak(p) ? "status.importTargetHouseOverPeak" : "status.importTargetHouseOver", {
+        target: formatFixed(language, num(p["target_kw"]) ?? 0, 1),
+        set: formatFixed(language, num(p["set_kw"]) ?? 0, 1),
+      });
+    case "import_target_at_risk": {
+      // Under the target the plan misses its departure: by how much, and when.
+      const departure = ms(p["departure"]);
+      const peak = monthPeak(p);
+      const params = {
+        target: formatFixed(language, num(p["target_kw"]) ?? 0, 1),
+        kwh: formatNumber(language, num(p["missing_kwh"]) ?? 0, 0),
+        set: formatFixed(language, num(p["set_kw"]) ?? 0, 1),
+      };
+      return departure === null || !zoned
+        ? say(peak ? "status.importTargetAtRiskPeakNoTime" : "status.importTargetAtRiskNoTime", params)
+        : say(peak ? "status.importTargetAtRiskPeak" : "status.importTargetAtRisk", {
+            ...params,
+            // The coming night's departure by its time, as the notification says it; one further ahead with its day.
+            time: departure - nowMs < 24 * 3600 * 1000 ? clock(format, departure) : momentText(format, departure, nowMs),
+          });
+    }
+    case "import_target_released": {
+      // The target is set aside for this charge until its departure: by a person, or by the plan's own choice.
+      const departure = ms(p["departure"]);
+      const automatic = p["automatic"] === true;
+      if (departure === null || !zoned) {
+        return say(automatic ? "status.importTargetReleasedAutoNoTime" : "status.importTargetReleasedNoTime");
+      }
+      const time = momentText(format, departure, nowMs);
+      return say(automatic ? "status.importTargetReleasedAuto" : "status.importTargetReleased", { time });
+    }
     case "load_balancing_limited": {
       const limit = num(p["limit_a"]);
       return limit === null
@@ -754,7 +865,13 @@ function reasonOf(line: StatusLine): string | null {
  * The Info dialog's list: the block's own non-normal lines, worded. Severity is the line's tone.
  * A normal line is never an item to review, whatever the block's tone says.
  */
-export function issuesOf(status: Status | null, language: Language, words?: EntityWords): Issue[] {
+export function issuesOf(
+  status: Status | null,
+  language: Language,
+  words?: EntityWords,
+  format?: FormatContext,
+  nowMs?: number,
+): Issue[] {
   if (status === null) {
     return [];
   }
@@ -762,6 +879,33 @@ export function issuesOf(status: Status | null, language: Language, words?: Enti
   for (const line of status.lines) {
     const severity = STATUS_CODE_TABLE[line.code][0];
     if (severity === "normal") {
+      continue;
+    }
+    if (line.code === "import_target_at_risk") {
+      // The plan misses its departure under the import target: said with the one press that sets it aside.
+      issues.push({
+        code: line.code,
+        severity,
+        textKey: "status.importTargetAtRiskNoTime",
+        params: {
+          target: formatFixed(language, num(line.params["target_kw"]) ?? 0, 1),
+          kwh: formatNumber(language, num(line.params["missing_kwh"]) ?? 0, 0),
+        },
+        technical: null,
+        ...(format === undefined ? {} : { text: lineText(line, format, nowMs ?? Date.now()) }),
+        // Offered where the plan asks; a plan set to hold the target only says what will be missing.
+        ...(line.params["releasable"] === false
+          ? {}
+          : {
+              fix: {
+                entity: "",
+                value: "",
+                action: "release_import_target" as const,
+                labelKey: "issue.importTargetRelease" as const,
+                labelParams: {},
+              },
+            }),
+      });
       continue;
     }
     if (line.code === "site_measurement_problem") {

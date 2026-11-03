@@ -50,7 +50,7 @@ charger executed whose pause could not be saved answers `{"ok": true, "action": 
 | `refresh_vehicle` | Re-read the vehicle's Home Assistant entities (`vehicle_id`); never a brand's wake-up (Kia Uvo may still ask the car itself, see [target SoC](target-soc.md)). |
 | `set_charge_limit` | Write the vehicle's charge-limit entity (`vehicle_id`, `percent`). |
 | `update_vehicle` | Change a vehicle's capacity, consumption, onboard charger, target, minimum charge level or wake for a reading, with `expected` values. |
-| `update_site_settings` | Change solar priority or forecast sources of the charger's site. |
+| `update_site_settings` | Change solar priority, forecast sources or the import target of the charger's site (see below). |
 | `update_charger_priority` | Change this charger's priority on its site: `{"priority", "expected"}` (see below). |
 | `update_phase_switching` | Turn phase switching for solar on or off for this charger: `{"enabled", "expected"}` (see below). |
 | `choose_price_source` | The electricity price this charger uses: `{"price_entry_id"}` (see below). |
@@ -61,6 +61,8 @@ charger executed whose pause could not be saved answers `{"ok": true, "action": 
 | `choose_vehicle_identification` | Choose a car's plug or location source: `{"vehicle_id", "source", "entity_id"}` (see [vehicle identification](#vehicle-identification)). |
 | `dismiss_setup_item` | Answer a "Get started" row with "Not needed": `{"item"}` (see below). |
 | `fix_own_mode` | Set one of the charger's own settings back to the value SpotNav works with: `{"entity_id", "value"}` (see below). |
+| `release_import_target` | Set the site's import target aside for this charge until its departure: `{}` (see below). |
+| `get_power_month` | One month of this charger's site's measured import: `{"month"}` (optional), the answer of `spotnav/get_power_month` with `"ok": true` and the `action` beside it; a refusal is HTTP 400 with `{"ok": false, "error", "action"}` (see [Power by month](#power-by-month)). |
 
 **Charge periods.** `max_periods` is `null` for automatic periods (the default: the planner counts a start
 cost of a quarter of a kWh at the window's average price for each period and keeps each period at least half an
@@ -137,6 +139,13 @@ it. A replacement may leave it out, and then the stored value is kept; a value t
 with `invalid_permission`. It is withheld from the webhook like the fields above (ask with
 `"reads": ["users_change_plan"]`).
 
+Since 2.4 the record carries `if_not_ready` (`ask`, the default, `release` or `hold`): what the site's import target
+does when the plan cannot be ready by its departure under it (see
+[Holding the chargers under the import target](site-and-load-balancing.md#holding-the-chargers-under-the-import-target)).
+A plan field: a user who may change the plan may change it. A replacement may leave it out, and then the stored
+value is kept; any other value is refused with `invalid_departure`. It is withheld from the webhook like the fields
+above (ask with `"reads": ["if_not_ready"]`), so an older app's full write keeps it.
+
 **Who may replace the settings.** An administrator may change any field. A user who is not one is refused with
 `spotnav_not_admin` while the charger's `users_change_plan` is off; while it is on, a replacement from them is
 accepted only when every field it changes is one of the strategy and plan fields: `strategy`, `requested_kwh`,
@@ -193,6 +202,46 @@ under Hybrid, unless the request asks for it (`"reads": ["sun_past_target"]`).
 **A car held at its minimum on a lost measurement.** While the site's measurement has been stale or missing long
 enough for load balancing to hold the car at its minimum current, `load_balancing_limited` carries `cause`
 `measurement_lost` and `limit_a` that minimum. An app that does not know the value words it as a plain limit.
+
+**The site's import target.** Since 2.4, while the site's import target holds a charge (see
+[Holding the chargers under the import target](site-and-load-balancing.md#holding-the-chargers-under-the-import-target)),
+the status carries these lines, tone `normal` but for `import_target_at_risk` (`notice`):
+
+- Since the month's free level (`set_kw` on `import_target_held`, `import_target_paused` and `import_target_at_risk`):
+  `target_kw` is the level held to this hour, the import target lifted to the demand charge's month peak already
+  paid for where a part counts the hour; `set_kw` is the target as set. Equal where nothing lifts it.
+- `import_target_held` `{limit_a, target_kw, hour_kw}` in place of `load_balancing_limited` while the target, not the
+  fuse, holds the charging car: held to `limit_a` (amps, `null` when not known) so the hour stays under `target_kw`
+  (kW, an hourly mean); `hour_kw` is the hour's mean import so far.
+- `import_target_paused` `{until, target_kw}` in place of `balancing_paused` while the target paused the plan's
+  charge: it waits for the next clock hour, `until`.
+- `import_target_paused` carries `house_over` too: `true` where the house alone ends the hour above the target, said in
+  place of "so the hour stays under it".
+- `import_target_at_risk` `{departure, missing_kwh, target_kw, releasable}` after the issues while the plan cannot be
+  ready by `departure` under the target: `missing_kwh` short. `releasable` (the plan's `if_not_ready` `ask`): offer
+  "Release the import target tonight", `release_import_target`; `false` (`hold`): only say it.
+- `import_target_released` `{target_kw, departure, automatic}` after the issues while the charge runs with the target
+  set aside until `departure`: by a person (`automatic` `false`), or by the plan's own `if_not_ready` `release`.
+- `import_target_house_over` `{target_kw}` after the issues while the house alone ends the hour above the target and
+  the car charges.
+
+**Setting the import target aside.** `spotnav/release_import_target {"api_version": 1, "charger_id"}` (any user, as a
+Start) and the webhook's `release_import_target` (optional `api_version`, `1`) set the site's import target aside for
+that charger's charge until its plan's departure, or until the car is unplugged; it is kept across a restart. The
+answer is `{"api_version": 1, "ok", "error"}` (the webhook adds `"action": "release_import_target"`, HTTP 200, or 400
+with the refusal): `spotnav_no_site`, `spotnav_no_import_target` (the site has none), `spotnav_no_departure` (no plan
+with a departure ahead), or the charger lookup's codes. The set-aside also ends when the plan is made for another
+departure. The phone's button on the notification does the same (its action id is
+`SPOTNAV_IMPORT_TARGET_RELEASE_<charger id>_<departure, epoch seconds>`); a press for a departure that is no longer the
+plan's sets nothing aside (`spotnav_stale_departure`, logged). The dashboard's `charger.capabilities` carries
+`release_import_target`, `true` where the webhook answers the action.
+
+A load-balancing limit or pause the target makes carries `cause` `import_target` (in `load_balancing_limited`, and in
+`balancing_paused` with `retry_at` the next hour's start). The webhook gives an app that does not ask for them
+(`"reads": ["import_target_status"]`) the lines it already words in their place: `load_balancing_limited`
+(`limit_a` the same, `phase` `null`, `cause` `import_target`) for `import_target_held`; for `import_target_paused`
+`balancing_paused` (`retry_at` its `until`) where it reads that, else `load_balancing_limited` with `limit_a` `0`;
+and nothing for the other three. An app that does not know the cause words it as a plain limit.
 
 **A car's charge limit range.** A vehicle row carries the additive `charge_limit_range`: `{"min", "max", "step"}`,
 the percents `set_charge_limit` (and `spotnav/write_charge_limit`) can write to the car's own limit, or `null` when
@@ -283,6 +332,21 @@ prices with an electricity price) and reaches the webhook only when the request 
   "transfer_percent": {"policy": "manual", "explicit_value": 5.0, "effective_value": 5.0, "unit": "%"},
   "transfer_high": {"policy": "off", "explicit_value": null, "effective_value": null, "unit": "öre/kWh"},
   "high_load_window": {"days": "weekdays", "from_month": 11, "to_month": 3, "from_hour": 7, "to_hour": 19},
+  "demand": {
+    "components": [
+      {"window": {"days": "all", "from_month": 1, "to_month": 12, "from_hour": 6, "to_hour": 23},
+       "top_n": 1, "price_per_kw": {"winter": 45.0, "summer": 23.0}}
+    ],
+    "available": true,
+    "reason": null,
+    "price_unit": "kr/kW",
+    "per_component": [
+      {"bar_kw": 6.975, "free_kw": 6.975, "price_per_kw": 23.0, "days_counted": 1,
+       "peaks": [{"date": "2026-09-22", "start": "2026-09-22T07:00:00+00:00", "kw": 6.975}]}
+    ],
+    "hour": {"start": "2026-09-22T08:00:00+00:00", "kw_so_far": 3.1, "kwh_so_far": 1.033},
+    "import_target_kw": 6.0
+  },
   "writable": true
 }
 ```
@@ -301,14 +365,37 @@ belong to the day it started on, for its days and its months alike: weekdays 22-
 Saturday 06:00 but not Sunday night. `write_revision` is the electricity price's write counter, which a write
 names. See [Prices](prices.md#what-you-pay) for the arithmetic.
 
+`demand` (since 2.4; a reader of 2.3 never meets it because it is inside this opt-in block) is the demand charge
+and the import target, measured on the charger's site. `components` is the electricity price's demand-charge parts
+as a write states them, at most three, `[]` for none: each `{"window", "top_n", "price_per_kw": {"winter",
+"summer"}}`, where `window` is `null` (all hours count) or a window of `high_load_window`'s shape, `top_n` is 1, 3
+or 5 (the mean of that many of the month's highest hourly means, each on a different day) and the prices are per
+kW in the area's major unit, winter November to March, each `null` while unknown. `available` says whether the
+site can measure them; `reason` is then `null`, else `no_site` (the charger is in no site) or
+`needs_total_grid_power` (a direct site without the meter's total grid power); the codes are in
+`tests/fixtures/codes/dashboard_codes.json` (`demand_reasons`). `price_unit` is the area's major unit per kW,
+`null` while the area is not listed. `per_component` is aligned with `components` while the site measures, else
+`[]`: for the month so far on the area's clock, `bar_kw` (the mean of the `top_n` highest day peaks, of fewer while
+fewer days have one; `null` before any), `free_kw` (the hourly mean the running hour may reach without raising
+`bar_kw`; `null` while the running hour does not count for the part), `price_per_kw` (this month's season's),
+`days_counted` and `peaks` (`[{"date", "start", "kw"}]`, highest first; `date` is the day the hour counts under, a
+night belonging to the day it starts on). An hour with more than ten minutes without a reading never sets a peak.
+`hour` is the clock hour running now, `{"start", "kw_so_far", "kwh_so_far"}` (the mean import over the time
+measured so far, and the energy), or `null` before it has a reading. `import_target_kw` is the site's import target
+(`null` for none), which is set with the site's `import_target_kw` field in `spotnav/update_entity_config` (a number
+of at least 0.1, `null` or `""` to clear; written without reloading the site). Since 2.4 the import target holds
+the site's chargers through load balancing (the status lines below); a demand charge is measured only. A full example is `tests/fixtures/grid_tariff/pilot_demand.json`.
+
 `update_grid_tariff {"expected_write_revision", "grid_tariff"}` replaces the three parts in full; `grid_tariff` is
 `{"transfer_percent": {"enabled", "value"}, "transfer_high": {"enabled", "value"}, "high_load_window"}`, every key
-required. A fee that is on needs its figure, and the high-load fee needs a window (a window may stay while its fee
+required, and optionally `"demand_components"` (the list as `demand.components` states it, `[]` removes every
+part; absent keeps the stored parts, so a writer that does not know them leaves them alone). A part needs `top_n`
+1, 3 or 5, a window of whole hours or `null`, and prices that are `null` or not negative; at most three parts. A fee that is on needs its figure, and the high-load fee needs a window (a window may stay while its fee
 is off). It is the card's `spotnav/update_grid_tariff` for the webhook's own charger, through the same core, and
 answers `{"ok", "error", "field_errors", "grid_tariff", "action"}` with the block re-read after the write. HTTP 200
 on success; 409 `revision_conflict` (the electricity price was written since `write_revision`); 400
 `invalid_fiscal` (with `field_errors` `[{"field": "transfer_percent" | "transfer_high" | "high_load_window" |
-"grid_tariff", "code": "invalid_value"}]`), `invalid_number` (`expected_write_revision` is not a whole number) or
+"demand_components" | "grid_tariff", "code": "invalid_value"}]`), `invalid_number` (`expected_write_revision` is not a whole number) or
 `spotnav_no_price_entry` (the charger prices with its own settings). Nothing is written on a refusal. The write
 counts as a write of the electricity price: every charger using it replans, and their settings records' `revision`
 moves with it. A write of the tariff as stored (all off where nothing is stored) passes the compare-and-set and
@@ -347,6 +434,8 @@ for this charger, sent to the webhook only when the request asks for it (`"reads
 `id` is `vehicle` (no vehicle is set up for the charger), `car_level` (the plan charges to a target level, a
 vehicle is set up and no source reports its level; never dismissible, and never beside `vehicle`), `site` (the
 charger has no site), `solar_forecast` (the site can measure solar surplus and has no forecast source),
+`demand_grid_power` (since 2.4: a demand-charge part or the site's import target is set and the site is a direct
+one without the meter's total grid power; never dismissible),
 `phase_switching` (offered for the charger and off), `phone` (no phone is chosen for notifications and the paired
 app has no push registration) or `app` (no charger's webhook has been used yet); a reader should skip an id it does not know. `spotnav/dismiss_setup_item {"item"}` (administrators
 only) keeps a dismissible row away for the whole installation and answers `{"ok": true}`, else
@@ -434,6 +523,26 @@ integration refused the write). Each write is logged at INFO.
 **Capabilities of the webhook.** The dashboard's `charger.capabilities` has `plan_preview`, `dismiss_setup_item` and
 `fix_own_mode` beside `price_days`, `true` where the webhook answers that action. An older Home Assistant leaves them
 out (and answers the action `Unsupported action`), so an app offers the feature only where its key is `true`.
+`site_import_target` is `true` where `update_site_settings` takes `import_target_kw` (below).
+
+**The site's import target over the webhook.** Since 2.4 `update_site_settings` (and `spotnav/update_site_settings`)
+takes `import_target_kw` in `changes`: a JSON number from 0.1 to 1000 (kW, an hourly mean), or `null` to clear it.
+It is stored as the card's `spotnav/update_entity_config` stores it and written without reloading the site (the
+target is read on every recompute). `expected` may name it, the value last seen (`null` for none): a different
+stored value is `spotnav_conflict` (HTTP 409). A string, a boolean or a number out of bounds is
+`spotnav_invalid_value` (HTTP 400) and nothing is written. It may go with the solar fields in one write. A request
+that names it is answered with `import_target_kw` beside `site` (the value stored now, `null` for none), success or
+refusal:
+
+```json
+{"action": "update_site_settings", "expected": {"import_target_kw": null}, "changes": {"import_target_kw": 6.0}}
+→ {"api_version": 1, "ok": true, "error": null, "site": {…}, "restore": null, "import_target_kw": 6.0,
+   "action": "update_site_settings"}
+```
+
+A request that does not name it is answered as before and leaves the stored target as it is, so an older app's
+write keeps it. The dashboard shows it in `grid_tariff.demand.import_target_kw`. Full example:
+`tests/fixtures/webhook/update_site_settings_import_target.json`.
 
 **Permissions over the webhook.** The webhook id is the credential: whoever holds it acts as an administrator for
 its own charger (the dashboard's `writable` flags are true), so these writes, like `update_site_settings` and
@@ -465,13 +574,14 @@ and `charger_priority.writable` say whether it may change those (an administrato
 | `spotnav/update_vehicle` | A vehicle's battery capacity, consumption, onboard charger, target, minimum charge level and wake for a reading. |
 | `spotnav/write_charge_limit` | Write a car's own charge limit (`vehicle_id`, `percent`), the webhook's `set_charge_limit` over the WebSocket: same entity, range checks and one write a minute per car. Answers `{"api_version": 1, "ok", "error", "retry_after_s"}`; refusals `spotnav_invalid_value` (not a car with a writable limit, or a percent it cannot take), `spotnav_too_soon` (with `retry_after_s`), `spotnav_charge_limit_failed` (the car's integration failed the write). |
 | `spotnav/fix_own_mode` | Set one of the charger's own settings back (administrators only), the card's button on the status lines `charger_own_mode` (`entity`, `label`, `state`, `value`: one of the charger's own modes is on and works against SpotNav; `value` is the one value that ends it, `null` where there is no single safe one; `entity_name`, `state_name`, `value_name`: Home Assistant's name of the entity and the display names of `state` and `value` in its configured language, for a client without its frontend, the id or the raw value where it names none, `value_name` `null` with `value`) and `charger_disabled` (`entity`: its own enable switch, turned on; `entity_name` its name, `null` with `entity`). `{"api_version": 1, "charger_id", "entity_id", "value"}` is written only when, read again, that entity is still a conflict of this charger (an entity of its own device and integration that its profile names) and `value` is that conflict's fix: `select.select_option`, `switch.turn_off` or, for the enable switch, `switch.turn_on`. Answers `{"api_version": 1, "ok", "error"}`; refusals `spotnav_no_conflict` (any other entity or value, or a conflict that has ended) and `spotnav_own_mode_failed` (the charger's integration refused the write). Each write is logged at INFO. The webhook leaves `charger_own_mode` out unless the request asks for it (`"reads": ["own_mode_status"]`), and the block's tone is then its strongest line left. |
-| `spotnav/update_site_settings` | Solar priority, forecast sources, active load balancing. |
+| `spotnav/update_site_settings` | Solar priority, forecast sources, the import target, active load balancing. |
 | `spotnav/update_grid_tariff` | The grid tariff of the charger's electricity price (administrators only): `{"charger_id", "expected_write_revision", "grid_tariff"}` as the webhook's `update_grid_tariff` (see **Grid tariff** under [Charger webhook](#charger-webhook)). Answers `{"ok": true, "grid_tariff": {...}}` with the block re-read, or the error codes `invalid_fiscal`, `invalid_number`, `revision_conflict`, `spotnav_no_price_entry`, `spotnav_not_admin` and the charger lookup's. |
 | `spotnav/get_debug_bundle` | The redacted installation-wide debug bundle (administrators only). |
 | `spotnav/get_blueprints` | How many automations use each of SpotNav's [blueprints](automations.md) (administrators only): `{"api_version": 1, "ok": true, "error": null, "blueprints": [{"file", "path", "automations"}]}`, one row per blueprint, `path` being `spotnav/<file>` as an automation refers to it. A non-administrator gets `spotnav_not_admin` and no rows. Not a dashboard field, so the app is never handed a key it does not know. |
 | `spotnav/get_card_info` | Which card the integration serves, for any signed-in user: `{"api_version": 1, "ok": true, "error": null, "spotnav_version", "card_bundle_hash"}`. The card compares the hash with the one in the URL it was loaded from. Not a dashboard field, so an older card is never handed a key it does not know. |
 | `spotnav/identify_vehicle`, `spotnav/choose_vehicle_identification` | Answer "which car is plugged in?", and choose a car's plug or location source (see [vehicle identification](#vehicle-identification)). |
 | `spotnav/get_sessions` | A charger's charge sessions: summaries per month and day and the latest sessions, the same for one chosen `month`, or with `format: "csv"` and optional `from` and `to` dates (or a `month`) the sessions of that range as CSV text. |
+| `spotnav/get_power_month` | One month of a site's measured import, by day and hour, against its demand-charge parts and import target (see [Power by month](#power-by-month)). |
 
 Rules that hold across them:
 
@@ -828,6 +938,11 @@ A charger's `energy_register_entity` field in `get_entity_config` carries the ad
 `update_entity_config` takes `"none"` for it (no register, and none looked up or detected again) and `""`
 for the one SpotNav finds itself; while "None" is chosen the field reads back as `"none"`.
 
+Since 2.4 a site's fields in `get_entity_config` carry `import_target_kw` after `safety_margin_a`: a number field
+(`required: false`, `minimum: 0.1`, `value` in kW or `null` for none), the site's import target. `update_entity_config`
+takes a number up to 1000, or `null` or `""` to clear it, and writes it without reloading the site; any other value
+is `invalid_value` on that field.
+
 A site's `warnings` in `get_entity_config` carry the additive `limits_a` (`null`, or for
 `battery_import_limit_differs` `{"battery": A, "spotnav": A}` per phase). That warning says a home battery
 integration's own grid import limit and SpotNav's (the main fuse minus the safety margin) differ by more
@@ -1029,3 +1144,30 @@ Assistant's hourly statistics (its `started_by` is then `"unknown"` and its `sol
 ignores values it does not know. With `format: "csv"` and a `month` the CSV is
 that whole month and the file is named by its first and last day; `month` together with `from` or `to` is
 refused.
+
+### Power by month
+
+`spotnav/get_power_month {"api_version": 1, "charger_id" | "site_id", "month"}` (any signed-in user, as the
+dashboard) answers one month of the site's measured net import, the history dialog's *Power* view. `month` is
+`"YYYY-MM"` on the area's clock, optional (the running month), at most 24 months back and never ahead. The webhook's
+`get_power_month` answers the same for the charger's site (`month` and an optional `api_version`), with `"ok": true`
+and `"action": "get_power_month"` beside it. The dashboard's `charger.capabilities` carries `get_power_month`, `true`
+where the webhook answers the action.
+
+| Field | Meaning |
+| --- | --- |
+| `api_version`, `site_id`, `month` | `1`, the site, the month shown. |
+| `available_months` | The months with measured hours, newest first, within the 24 months `month` accepts. |
+| `unit` | `"kW"`: every power below is an hourly mean of net import. |
+| `import_target_kw` | The site's import target now, `null` for none. |
+| `components` | The demand-charge parts the month was measured against, as `grid_tariff.demand.components`: those set now for the running month and the month before, those set when its last hour completed for an older month. |
+| `days` | One row per day with a measured hour, oldest first: `date`, `peak_kw` (the day's highest hourly mean, among its complete hours where it has one), `peak_start` (that hour's start, local time with its offset), `house_kw` (the house's part of that hour, without what the chargers drew; `null` when they could not be read), `counted` (the indexes into `components` whose counted peaks fall on this day; a night part's peak after midnight counts on the date it falls on), `held` and `paused` (the import target held a charger's current down, or paused a charger, in any hour of the day). |
+| `hours` | For the running month and the month before: every measured hour, oldest first, `{start, kw, house_kw, incomplete, held, paused, counted}` (`incomplete`: more than ten minutes without a reading, never a peak). `null` for an older month, which keeps its days only. The hour running now is not among them. |
+| `bars` | Per part, its figure that month (`null` while nothing counted), the same as `grid_tariff.demand.per_component[].bar_kw` for the running month. |
+
+Refusals: `spotnav_unsupported_api_version`, `spotnav_charger_required` (neither id), the charger lookup's codes,
+`spotnav_unknown_site`, `spotnav_no_site` (the charger is in no site, or the site is not loaded),
+`spotnav_needs_total_grid_power` (the site cannot measure its import: a direct site without its total grid power)
+and `spotnav_invalid_range` (the month). The site keeps each hour of the running month and the month before, and a
+summary of each day for 24 months; a month before the update to 2.4.0 has nothing. Example answers are in
+`tests/fixtures/power_month/` and `tests/fixtures/webhook/get_power_month_*.json`.

@@ -219,7 +219,7 @@ async def test_a_date_the_person_chose_wins_over_the_set(harness: Harness) -> No
     assert chosen.snapshot().proposal.periods == plain.snapshot().proposal.periods
 
 
-def test_a_plan_stored_by_2_4_is_read_past_its_if_not_ready_choice() -> None:
-    """2.4 stores what an import target does when the car cannot be ready; this release keeps the plan on a downgrade."""
+def test_a_stored_if_not_ready_choice_is_read_back() -> None:
+    """The import target's choice for a car that cannot be ready is stored and read back as chosen."""
     stored = AutoSettings().validated().as_dict() | {"if_not_ready": "hold"}
-    assert AutoSettings.from_stored(stored) == AutoSettings().validated()
+    assert AutoSettings.from_stored(stored).if_not_ready == "hold"

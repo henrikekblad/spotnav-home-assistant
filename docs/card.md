@@ -235,6 +235,30 @@ Sessions are kept for two years, per charger, and survive restarts. Each charger
 for the energy and cost this month and last month and for the last charge, which can be used on
 Home Assistant's own dashboards and in automations.
 
+### Power
+
+Where the charger's site measures its import (its [total grid power](site-and-load-balancing.md#total-grid-power),
+or a derived site), the dialog has a second view, **Power**, beside **Charges**, with the same month picker. It
+shows the site's whole import, not only this charger's:
+
+- **One bar per day**: the day's highest hourly mean of import from the grid, split into the house's part (the
+  lighter shade) and the cars' (the darker). A day whose split is not known (the chargers could not be read) is grey.
+- **The [demand charge](prices.md#a-demand-charge)**: the month's figure per part above the chart, each part named
+  by its hours (for Linköping's two parts *Day 06–23: 6.6 kW · Night 23–06: 5.9 kW*; the days and months are added
+  only where they are not all; two parts that would read the same are numbered instead), and the day that holds each
+  part's counted peak outlined and tagged with the part's number, which the legend names (a night's peak after
+  midnight is on the date it falls on).
+- **The scale** on the left: 0, a middle step and the top, with a faint line at the middle and the top. A bar under
+  the pointer or chosen is underlined.
+- **The [import target](site-and-load-balancing.md#demand-charge-and-import-target)** as a dashed line, and a small
+  dot under a day the target held a charger's current down, a ring where it paused a charger.
+- **A tapped day** shows its hours the same way, an hour with gaps in the reading paler; *Whole month* goes back.
+  Hover or focus a bar for its figures, for example *Tue 15 Sep: highest 5.9 kW at 19:00 · house 2.3 kW, car
+  3.6 kW · counts for day 06–23*.
+
+The site keeps every hour of this month and the month before, and the days of each month for two years: an older
+month shows its days only, and a month before 2.4.0 nothing.
+
 ## The settings popover
 
 The gear icon opens **Card settings**, built fresh each time you open it. The plan and the strategy

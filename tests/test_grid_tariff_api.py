@@ -30,6 +30,29 @@ OWNER = {
 }
 
 
+#: The demand block of a charger in no site with nothing set: what every charger had before a component.
+NO_DEMAND = {
+    "components": [],
+    "available": False,
+    "reason": "no_site",
+    "price_unit": "kr/kW",
+    "per_component": [],
+    "hour": None,
+    "import_target_kw": None,
+}
+#: The pilot's tariff (Tekniska verken "alternativ"): a day peak 06-23 and a night peak 23-06, all year.
+DAY = {"days": "all", "from_month": 1, "to_month": 12, "from_hour": 6, "to_hour": 23}
+NIGHT = {"days": "all", "from_month": 1, "to_month": 12, "from_hour": 23, "to_hour": 6}
+PILOT = [
+    {"window": DAY, "top_n": 1, "price_per_kw": {"winter": 45.0, "summer": 23.0}},
+    {"window": NIGHT, "top_n": 1, "price_per_kw": {"winter": 12.0, "summer": 8.0}},
+]
+
+
+#: The owner's tariff with the pilot's components, as an entry stores it.
+STORED = {**OWNER, "demand_components": PILOT}
+
+
 def update(charger: str, revision: Any, tariff: Any) -> dict[str, Any]:
     return {
         "type": "spotnav/update_grid_tariff",
@@ -65,6 +88,7 @@ async def test_the_block_sits_beside_the_price_source_and_is_off_until_written(
         "transfer_percent": {"policy": "off", "explicit_value": None, "effective_value": None, "unit": "%"},
         "transfer_high": {"policy": "off", "explicit_value": None, "effective_value": None, "unit": "öre/kWh"},
         "high_load_window": None,
+        "demand": NO_DEMAND,
         "writable": True,
     }
 
@@ -131,6 +155,11 @@ async def test_an_administrator_writes_the_owners_tariff_and_every_price_follows
             "invalid_fiscal",
         ),
         ({**OWNER, "demand": None}, "invalid_fiscal"),
+        ({**OWNER, "demand_components": None}, "invalid_fiscal"),
+        ({**OWNER, "demand_components": [{**PILOT[0], "top_n": 2}]}, "invalid_fiscal"),
+        ({**OWNER, "demand_components": [{**PILOT[0], "price_per_kw": {"winter": -1, "summer": 0}}]}, "invalid_fiscal"),
+        ({**OWNER, "demand_components": [{**PILOT[1], "window": {**NIGHT, "to_hour": 23}}]}, "invalid_fiscal"),
+        ({**OWNER, "demand_components": PILOT * 2}, "invalid_fiscal"),
         ({"transfer_percent": OFF}, "invalid_fiscal"),
         (None, "invalid_fiscal"),
     ],
@@ -222,7 +251,7 @@ async def test_an_older_apps_full_settings_write_keeps_the_grid_tariff(
     client = await hass_client_no_auth()
     freezer.move_to(NOW)
     await go_auto(hass)
-    price = await add_price(hass, **OWNER)
+    price = await add_price(hass, **STORED)
     record = (await webhook_dashboard(client, "webhook-a"))["settings"]
     body = {key: value for key, value in record.items() if key != "revision"}
     rows = [
@@ -240,8 +269,8 @@ async def test_an_older_apps_full_settings_write_keeps_the_grid_tariff(
 
     assert response.status == 200, await response.text()
     assert price.data["vat"] == {"enabled": True, "value": 12.0}
-    for key in ("transfer_percent", "transfer_high", "high_load_window"):
-        assert price.data[key] == OWNER[key], key
+    for key in ("transfer_percent", "transfer_high", "high_load_window", "demand_components"):
+        assert price.data[key] == STORED[key], key
     # An echo of the record as read moves no fee: the price entry is not written at all.
     record = (await webhook_dashboard(client, "webhook-a"))["settings"]
     written = price_write_revision(price)
@@ -308,3 +337,59 @@ async def test_the_apps_area_change_keeps_the_high_fees_figure_off(
     assert price.data["transfer_high"] == {"enabled": False, "value": 60.0}
     assert price.data["transfer_percent"] == OWNER["transfer_percent"]
     assert price.data["high_load_window"] == WINDOW
+
+
+async def test_the_demand_components_are_written_read_back_and_kept_by_a_writer_that_does_not_know_them(
+    hass: HomeAssistant, hass_ws_client, hass_client_no_auth, freezer
+) -> None:
+    await setup_charger(hass)
+    client = await admin(hass, hass_ws_client)
+    app = await hass_client_no_auth()
+    freezer.move_to(NOW)
+    await go_auto(hass)
+    price = await add_price(hass)
+    revision = price_source_for(hass, "entry_a").revision
+
+    frame = await ws_call(client, update("entry_a", 0, {**OWNER, "demand_components": PILOT}))
+    assert frame["success"] is True, frame
+    demand = frame["result"]["grid_tariff"]["demand"]
+    assert demand == {**NO_DEMAND, "components": PILOT}
+    assert price.data["demand_components"] == PILOT
+    assert price_source_for(hass, "entry_a").revision != revision
+
+    # A body without the components (an older card or app) changes the fees and keeps them.
+    frame = await ws_call(client, update("entry_a", 1, {**OWNER, "transfer_percent": OFF}))
+    assert frame["success"] is True, frame
+    assert frame["result"]["grid_tariff"]["demand"]["components"] == PILOT
+    assert price.data["demand_components"] == PILOT
+    # The same body again is the tariff as stored: nothing written.
+    again = await ws_call(client, update("entry_a", 2, {**OWNER, "transfer_percent": OFF}))
+    assert again["result"]["grid_tariff"]["write_revision"] == 2
+
+    # The app writes them over the webhook; a bad one is refused naming the field.
+    one = [{"window": None, "top_n": 3, "price_per_kw": {"winter": None, "summer": None}}]
+    response = await app.post(
+        "/api/webhook/webhook-a",
+        json={
+            "version": 1, "action": "update_grid_tariff", "expected_write_revision": 2,
+            "grid_tariff": {**OWNER, "demand_components": one},
+        },
+    )
+    body = await response.json()
+    assert response.status == 200, body
+    assert body["grid_tariff"]["demand"]["components"] == one
+    refused = await app.post(
+        "/api/webhook/webhook-a",
+        json={
+            "version": 1, "action": "update_grid_tariff", "expected_write_revision": 3,
+            "grid_tariff": {**OWNER, "demand_components": [{**one[0], "top_n": 4}]},
+        },
+    )
+    refused_body = await refused.json()
+    assert refused.status == 400 and refused_body["error"] == "invalid_fiscal"
+    assert refused_body["field_errors"] == [{"field": "demand_components", "code": "invalid_value"}]
+
+    # Removing every component is a write of an empty list.
+    frame = await ws_call(client, update("entry_a", 3, {**OWNER, "demand_components": []}))
+    assert frame["result"]["grid_tariff"]["demand"]["components"] == []
+    assert price.data["demand_components"] == []

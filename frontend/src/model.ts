@@ -313,6 +313,11 @@ export interface CardModel {
   priceEntry: PriceEntryFacts | null;
   /** The electricity price entry's grid tariff, as the price section shows and changes it; `null` without one. */
   gridTariff: GridTariffBlock | null;
+  /**
+   * Whether the history dialog offers its Power view: the charger's site measures its import (its grid's signed power,
+   * which the solar strategies need too), or the demand-charge block says it measures.
+   */
+  powerView: boolean;
   /** The area's price provider and its notice (`prices.provider`); `null` without one. */
   priceProvider: PriceProvider | null;
   /** What is still left to set up for this charger, the "Get started" rows (shown to an administrator only). */
@@ -883,7 +888,7 @@ export function buildModel(input: BuildInput): CardModel {
   const chart = chartSeries(rows, format.timeZone, input.nowMs, chartAxis);
   const bands = plannedBands(rows, chart.days, format.timeZone, pendingProposalOf(dashboard, input.nowMs), chart.time);
   const status = dashboard.status;
-  const issues = issuesOf(status, language, input.entityWords);
+  const issues = issuesOf(status, language, input.entityWords, format, input.nowMs);
   const zone = hasZone(format);
   // A fact nobody has is omitted from the plot, never shown as "unknown": this returns `null` rather than
   // `missing`'s text, and `card-view.ts` hides the whole line.
@@ -966,6 +971,7 @@ export function buildModel(input: BuildInput): CardModel {
     priceSource: market?.source ?? null,
     priceEntry: priceEntryFor(dashboard),
     gridTariff: dashboard.grid_tariff,
+    powerView: dashboard.strategy_options.includes("solar") || dashboard.grid_tariff?.demand?.available === true,
     priceProvider: dashboard.prices.provider,
     setup: setupRowsOf(dashboard.setup),
     technicalCodes,

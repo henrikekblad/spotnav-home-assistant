@@ -85,7 +85,8 @@ import {
 import { settingsEditorBody, settingsTrigger, type SettingsEditorForm } from "./settings-editor";
 import { renderPlanPreview, type PreviewState } from "./plan-preview";
 import { type Fiscal, type GridTariffBlock, type HighLoadWindow, type ReferencePicture, type Vehicle } from "./validate";
-import { gridTariffRows, windowEditor, withHigh, withPercent, withWindow, type GridTariffRowKey } from "./grid-tariff";
+import { gridTariffRows, windowEditor, withComponent, withHigh, withPercent, withWindow, type GridTariffRowKey } from "./grid-tariff";
+import { componentEditor, demandRows, hourLine, kwText } from "./demand-charge";
 import { floorEditor, limitEditor, targetEditor } from "./percent-editors";
 import { defaultTargetPercent } from "./percent-slider";
 import { vehicleSummary, type VehicleEdits, type VehicleReference } from "./vehicle-settings";
@@ -116,7 +117,8 @@ import { issueText, type IssueFix } from "./status";
 import { keyEditor, priceProviderNodes } from "./price-provider";
 import { setupLineText, setupSection, type SetupRowId } from "./setup-checklist";
 import { automationsBody, type BlueprintUse } from "./automations";
-import { historyBody, type HistoryState, type HistoryUi } from "./history";
+import { historyBody, type HistoryPower, type HistoryState, type HistoryUi, type HistoryView } from "./history";
+import type { PowerState, PowerUi } from "./power-view";
 import { connectionLabel, vehicleLineFor } from "./vehicle-line";
 import type { ChargeBarFacts } from "./charge-bar";
 import {
@@ -265,6 +267,11 @@ export interface CardViewInput {
   onHistoryMonth?: (month: string) => void;
   /** Export CSV was pressed: the card fetches the shown month's file and saves it. */
   onExportHistory?: () => void;
+  /**
+   * The History dialog's Power view wants a month (`YYYY-MM`, `null` for the current one): the card reads the site's
+   * power and answers through `setPowerState`.
+   */
+  onPowerMonth?: (month: string | null) => void;
   onOpenEntityEditor?: (scope: EntityScope) => void;
   /** The admin pressed "Download debug info" in the Settings popover. */
   onDownloadDebug?: () => void;
@@ -282,6 +289,8 @@ export interface CardViewInput {
   onDismissSetup?: (id: SetupRowId) => void;
   /** An issue's "Set to …" or "Turn on" (administrators only): the card writes that fix, then reads again. */
   onFixOwnMode?: (entity: string, value: string) => void;
+  /** An issue's "Release the import target tonight" (any user): the card sets the import target aside for this charge, then reads again. */
+  onReleaseImportTarget?: () => void;
   /** Where Settings was left for a child dialog: the page returns there (owned by the card, kept across renders). */
   overviewPlace?: OverviewPlaceHolder;
   /** A picture for the camera's editors: the camera's picture now, or a car's reference thumbnail. */
@@ -329,6 +338,8 @@ export interface CardView {
   /** The charge history dialog, showing what `setHistoryState` last said (loading until it says more). */
   openHistory(): void;
   setHistoryState(state: HistoryState): void;
+  /** What the History dialog's Power view shows (loading until it says more). */
+  setPowerState(state: PowerState): void;
   /** One sentence about the last export, or `null`; `exporting` disables the button while it runs. */
   setHistoryExport(notice: TranslationKey | null, exporting: boolean): void;
   dialogOpen(
@@ -516,7 +527,8 @@ export function bannerRepeatsStatus(model: CardModel, severity: "blocking" | "no
   if (severity !== "notice" || model.status === null || model.issues.length === 0) {
     return false;
   }
-  if (model.issues.some((issue) => ACT_ON_CODES.has(issue.code))) {
+  if (model.issues.some((issue) => ACT_ON_CODES.has(issue.code) || issue.fix?.action !== undefined)) {
+    // A press to act on (a charger setting, or the import target set aside): the banner opens it.
     return false;
   }
   const strip = (text: string): string => text.trim().replace(/[.。]$/u, "");
@@ -876,13 +888,14 @@ export function issueListBody(
   model: CardModel,
   setup: HTMLElement | null = null,
   fix: ((fix: IssueFix) => void) | null = null,
+  admin = true,
 ): HTMLElement {
   const body = element(doc, "div");
   if (model.issues.length > 0 || setup === null) {
     body.append(element(doc, "p", `${C.muted} ${C.dialogIntro}`, translate(model.language, "dialog.issuesIntro")));
   }
   for (const issue of model.issues) {
-    body.append(issueRow(doc, model, issue, fix));
+    body.append(issueRow(doc, model, issue, fix, admin));
   }
   if (setup !== null) {
     body.append(setup);
@@ -890,11 +903,19 @@ export function issueListBody(
   return body;
 }
 
-function issueRow(doc: Document, model: CardModel, issue: Issue, fix: ((fix: IssueFix) => void) | null): HTMLElement {
+function issueRow(
+  doc: Document,
+  model: CardModel,
+  issue: Issue,
+  fix: ((fix: IssueFix) => void) | null,
+  admin = true,
+): HTMLElement {
   const row = element(doc, "div", C.issueItem);
   row.dataset["code"] = issue.code;
   row.dataset["severity"] = issue.severity;
-  const offered = fix !== null && issue.fix !== undefined ? issue.fix : null;
+  // A charger's own setting is set back by an administrator only; the import target is set aside by anyone.
+  const offered =
+    fix !== null && issue.fix !== undefined && (admin || issue.fix.action !== undefined) ? issue.fix : null;
   const text = issueText(model.language, issue);
   const hint = offered === null && issue.hintKey !== undefined ? ` ${translate(model.language, issue.hintKey)}` : "";
   row.append(element(doc, "span", C.issueText, `${text}${hint}`));
@@ -2081,7 +2102,7 @@ export function createCardView(input: CardViewInput): CardView {
     issuesDialog.show({
       // Only setup rows to show: the dialog is "Get started" itself.
       title: translate(model.language, model.issues.length === 0 && setup !== null ? "setup.heading" : "dialog.issues"),
-      body: issueListBody(doc, model, setup, input.isAdmin && input.onFixOwnMode !== undefined ? fixOwnMode : null),
+      body: issueListBody(doc, model, setup, issueFix, input.isAdmin),
       opener,
     });
   }
@@ -2114,8 +2135,12 @@ export function createCardView(input: CardViewInput): CardView {
   }
 
   /** An issue's button was pressed: the dialog closes and the card writes the fix, then reads the dashboard again. */
-  function fixOwnMode(fix: IssueFix): void {
+  function issueFix(fix: IssueFix): void {
     issuesDialog.hide({ restoreFocus: false });
+    if (fix.action === "release_import_target") {
+      input.onReleaseImportTarget?.();
+      return;
+    }
     input.onFixOwnMode?.(fix.entity, fix.value);
   }
 
@@ -2785,7 +2810,42 @@ export function createCardView(input: CardViewInput): CardView {
         section.append(...gridTariffNodes());
       }
     }
+    section.append(...demandNodes());
     return section;
+  }
+
+  /**
+   * The demand charge's rows below the fees: "None" until a component is added, then each component with its
+   * prices and this month's mean and peaks beneath, and a row adding another (at most three).
+   */
+  function demandNodes(): HTMLElement[] {
+    const block = model.gridTariff;
+    if (block === null || block.demand === null) {
+      return [];
+    }
+    const nodes: HTMLElement[] = [];
+    for (const row of demandRows(model.format, block.demand)) {
+      const key = row.key === "add" ? "demand_add" : `demand_${row.key}`;
+      const index = row.key;
+      nodes.push(overviewRow(key, row.label, row.value, block.writable ? () => editDemandComponent(block, index) : undefined));
+      row.lines.forEach((line, at) => nodes.push(rowHelp(`${key}_${at}`, line)));
+    }
+    return nodes;
+  }
+
+  /** One demand-charge component's editor (`add` adds one); Save writes the tariff with it, Remove without it. */
+  function editDemandComponent(block: GridTariffBlock, key: number | "add"): void {
+    const components = block.demand?.components ?? [];
+    const index = key === "add" ? components.length : key;
+    openValueEditor(translate(model.language, "demand.title"), (handlers) =>
+      componentEditor(
+        doc,
+        model.language,
+        { current: key === "add" ? null : (components[key] ?? null), idPrefix, unit: block.demand?.price_unit ?? null },
+        (component) => writeValue({ kind: "gridTariff", change: (current) => withComponent(current, index, component) }),
+        handlers,
+      ),
+    );
   }
 
   /**
@@ -3784,6 +3844,36 @@ export function createCardView(input: CardViewInput): CardView {
           : undefined),
       );
     }
+    // Beside the fuse: the import target, and the hour running now against it.
+    const target = fieldsOf(config, "site").find((entry) => entry.field === "import_target_kw");
+    if (target !== undefined && target.kind === "number") {
+      const label = translate(model.language, "site.importTarget");
+      const current = target.value;
+      const shown = current === null ? translate(model.language, "settings.value.off") : kwText(model.language, current);
+      nodes.push(
+        overviewRow("import_target_kw", label, shown, target.writable
+          ? () =>
+              editNumber(
+                label,
+                {
+                  help: translate(model.language, "site.importTarget.help"),
+                  unit: "kW",
+                  current,
+                  min: target.minimum,
+                  max: 1000,
+                  decimals: 1,
+                  noneLabel: translate(model.language, "settings.value.off"),
+                },
+                (value) =>
+                  writeValue({ kind: "entity", scope: "site", draft: { import_target_kw: value === null ? "" : String(value) } }),
+              )
+          : undefined),
+      );
+      const hour = hourLine(model.language, model.gridTariff?.demand ?? null);
+      if (hour !== null) {
+        nodes.push(rowHelp("import_target_hour", hour));
+      }
+    }
     const mode = storedMode(config);
     if (mode !== null) {
       nodes.push(
@@ -4227,7 +4317,55 @@ export function createCardView(input: CardViewInput): CardView {
   // ---- the charge history dialog. The card owns the request; this holds what was last said and
   // what the reader chose in it (the month, the day under the readout), and repaints on any change.
   let historyState: HistoryState = { kind: "loading" };
-  const historyUi: HistoryUi = { month: null, pending: false, day: null, exporting: false, notice: null };
+  const historyUi: HistoryUi = { view: "charges", month: null, pending: false, day: null, exporting: false, notice: null };
+  // The Power view: offered where the site measures its import; read when first chosen, then with the month.
+  let powerState: PowerState | null = null;
+  const powerUi: PowerUi = { day: null, pending: false };
+
+  function historyPower(): HistoryPower {
+    return {
+      offered: model.powerView,
+      state: powerState,
+      ui: powerUi,
+      handlers: {
+        onDay: (day) => {
+          powerUi.day = day;
+          paintHistory();
+          // Into a day: its way back takes the focus; back to the month: the day's bar does.
+          const target =
+            day === null
+              ? null
+              : historyDialog.element.querySelector<HTMLElement>("[data-action='power-month']");
+          target?.focus();
+        },
+      },
+    };
+  }
+
+  function chooseView(view: HistoryView): void {
+    historyUi.view = view;
+    historyUi.notice = null;
+    if (view === "power") {
+      powerUi.day = null;
+      const shown = powerState?.kind === "ready" ? powerState.answer.month : null;
+      if (powerState === null || powerState.kind === "failed" || (historyUi.month !== null && shown !== historyUi.month)) {
+        if (powerState?.kind === "ready") {
+          powerUi.pending = true;
+        } else {
+          powerState = { kind: "loading" };
+        }
+        paintHistory();
+        input.onPowerMonth?.(historyUi.month);
+        return;
+      }
+    } else if (historyState.kind === "ready" && historyUi.month !== null && historyState.answer.month !== historyUi.month) {
+      historyUi.pending = true;
+      paintHistory();
+      input.onHistoryMonth?.(historyUi.month);
+      return;
+    }
+    paintHistory();
+  }
 
   function paintHistory(): void {
     if (destroyed || !historyDialog.isOpen()) {
@@ -4238,7 +4376,9 @@ export function createCardView(input: CardViewInput): CardView {
       | null;
     const refocus =
       focused !== null && historyDialog.element.contains(focused)
-        ? focused.dataset["month"] !== undefined
+        ? focused.dataset["view"] !== undefined
+          ? `button[data-view="${focused.dataset["view"]}"]`
+          : focused.dataset["month"] !== undefined
           ? `button[data-month="${focused.dataset["month"]}"]`
           : focused.dataset["action"] === "export"
             ? "[data-action='export']"
@@ -4254,16 +4394,24 @@ export function createCardView(input: CardViewInput): CardView {
       body: historyBody(doc, model.language, historyState, historyUi, {
         onMonth: (month) => {
           historyUi.month = month;
-          historyUi.pending = true;
           historyUi.day = null;
           historyUi.notice = null;
+          if (historyUi.view === "power") {
+            powerUi.day = null;
+            powerUi.pending = true;
+            paintHistory();
+            input.onPowerMonth?.(month);
+            return;
+          }
+          historyUi.pending = true;
           paintHistory();
           input.onHistoryMonth?.(month);
         },
         onExport: () => {
           input.onExportHistory?.();
         },
-      }, model.priceUnit),
+        onView: chooseView,
+      }, model.priceUnit, historyPower()),
     });
     if (refocus !== null) {
       historyDialog.element.querySelector<HTMLElement>(refocus)?.focus();
@@ -4285,7 +4433,11 @@ export function createCardView(input: CardViewInput): CardView {
     historyUi.month = null;
     historyUi.pending = false;
     historyUi.day = null;
+    historyUi.view = "charges";
     historyState = { kind: "loading" };
+    powerState = null;
+    powerUi.day = null;
+    powerUi.pending = false;
     historyDialog.show({
       title: translate(model.language, "history.title"),
       body: historyBody(doc, model.language, historyState, historyUi, {
@@ -4792,6 +4944,17 @@ export function createCardView(input: CardViewInput): CardView {
       historyUi.pending = false;
       if (state.kind === "ready") {
         historyUi.month = state.answer.month;
+      }
+      paintHistory();
+    },
+    setPowerState(state: PowerState): void {
+      powerUi.pending = false;
+      powerState = state;
+      if (state.kind === "ready") {
+        historyUi.month = state.answer.month;
+        if (powerUi.day !== null && !state.answer.days.some((day) => day.date === powerUi.day)) {
+          powerUi.day = null;
+        }
       }
       paintHistory();
     },

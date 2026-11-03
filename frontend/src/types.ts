@@ -186,7 +186,16 @@ export interface SettingsBody {
    * after the first release of the contract: absent on an older backend, and then never sent). An administrator's.
    */
   users_change_plan?: boolean;
+  /**
+   * What the site's import target does when the plan cannot be ready by its departure under it (added in 2.4:
+   * absent on an older backend, and then never sent): `ask`, `release` or `hold`.
+   */
+  if_not_ready?: IfNotReady;
 }
+
+/** `if_not_ready`'s values. */
+export const IF_NOT_READY = ["ask", "release", "hold"] as const;
+export type IfNotReady = (typeof IF_NOT_READY)[number];
 
 /** The parking spot in the camera's picture, as fractions of its width and height (0-1). */
 export interface CameraFrame {
@@ -261,6 +270,9 @@ export const MARKET_API_VERSION = 1;
 
 /** The charge-session history contract (`spotnav/get_sessions`), independent of the others. */
 export const SESSIONS_API_VERSION = 1;
+
+/** The site's power by month (`spotnav/get_power_month`), independent of the others. */
+export const POWER_MONTH_API_VERSION = 1;
 
 /**
  * The five catalogue states in the backend's vocabulary: `loading` (attempt running, nothing held),

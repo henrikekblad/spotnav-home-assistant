@@ -51,7 +51,7 @@ async def test_get_reports_charger_and_direct_site_fields(hass: HomeAssistant, h
     names = [item["field"] for item in result["config"]["fields"]]
     assert names == [
         "charge_control", "current_limit", "energy_register_entity", "power_entity", "charger_phases", "charger_priority", "measured_current_source", "vehicle_soc",
-        "main_fuse_a", "safety_margin_a", "measurement_mode", "voltage_between_phases_v", "direct_L1", "direct_L2", "direct_L3",
+        "main_fuse_a", "safety_margin_a", "import_target_kw", "measurement_mode", "voltage_between_phases_v", "direct_L1", "direct_L2", "direct_L3",
         "site_current_signed", "grid_power_source_power", "grid_power_source_power_export", "grid_power_inverted",
         "battery_aggregate_power_entity", "battery_discharge_power_entity",
         "battery_power_inverted", "max_age_s",
@@ -197,6 +197,64 @@ async def test_the_safety_margin_is_a_site_field_next_to_the_fuse_and_stays_belo
         )
     )["result"]
     assert both["ok"] is True
+
+
+async def test_the_import_target_is_an_optional_site_number_written_without_a_reload(
+    hass: HomeAssistant, hass_ws_client
+) -> None:
+    charger, site = await setup_charger_and_site(hass)
+    client = await admin(hass, hass_ws_client)
+    got = (await ws_call(client, get_message(charger.entry_id)))["result"]
+    target = field(got, "import_target_kw")
+    assert (target["scope"], target["kind"], target["required"], target["value"], target["minimum"]) == (
+        "site",
+        "number",
+        False,
+        None,
+        0.1,
+    )
+    controller = site.runtime_data.controller
+
+    written = (
+        await ws_call(
+            client,
+            update_entity_config_message(charger.entry_id, scope="site", changes={"import_target_kw": 6}),
+        )
+    )["result"]
+    assert written["ok"] is True
+    assert field(written, "import_target_kw")["value"] == 6.0
+    assert hass.config_entries.async_get_entry(site.entry_id).data["import_target_kw"] == 6.0
+    # Load balancing kept running: the same controller, not a reloaded one.
+    assert site.runtime_data.controller is controller
+
+    for bad in (0, -1, "six", True, 5000):
+        refused = (
+            await ws_call(
+                client, update_entity_config_message(charger.entry_id, scope="site", changes={"import_target_kw": bad})
+            )
+        )["result"]
+        assert refused["field_errors"] == [{"field": "import_target_kw", "code": "invalid_value"}], bad
+
+    stale = (
+        await ws_call(
+            client,
+            update_entity_config_message(
+                charger.entry_id, scope="site", expected={"import_target_kw": None}, changes={"import_target_kw": 7}
+            ),
+        )
+    )["result"]
+    assert stale["error"] == "spotnav_conflict"
+
+    cleared = (
+        await ws_call(
+            client,
+            update_entity_config_message(
+                charger.entry_id, scope="site", expected={"import_target_kw": 6}, changes={"import_target_kw": ""}
+            ),
+        )
+    )["result"]
+    assert cleared["ok"] is True and field(cleared, "import_target_kw")["value"] is None
+    assert "import_target_kw" not in hass.config_entries.async_get_entry(site.entry_id).data
 
 
 async def test_switching_to_derived_needs_the_six_required_meters_and_keeps_direct(hass: HomeAssistant, hass_ws_client) -> None:

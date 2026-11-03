@@ -260,6 +260,20 @@ describe("the dialog's Get started section", () => {
     }
   });
 
+  it("sends the demand charge's row to the site's measurement, with no Not needed", async () => {
+    const rows: Row[] = [{ id: "demand_grid_power", dismissible: false }];
+    const { element } = await open(dashboard(rows, "cheapest_direct_site_admin.json"));
+    line(element)!.click();
+    await settle();
+    expect(row(element, "demand_grid_power").querySelector(".spotnav-suggestion-text")?.textContent).toBe(
+      translate("en", "setup.demandGridPower.text"),
+    );
+    expect(button(row(element, "demand_grid_power"), "dismiss")).toBeNull();
+    button(row(element, "demand_grid_power"), "open")!.click();
+    await settle();
+    expect(shadow(element).querySelector("[data-section='site']")).not.toBeNull();
+  });
+
   it("asks the integration to keep a row away, then reads the dashboard again", async () => {
     const { hass, element } = await open(dashboard(ALL.slice(1)));
     line(element)!.click();

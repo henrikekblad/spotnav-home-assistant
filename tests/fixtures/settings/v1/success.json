@@ -27,6 +27,7 @@
     "fiscal_included": [],
     "identify_camera": null,
     "identify_mode": "automatic",
+    "if_not_ready": "ask",
     "max_periods": null,
     "notifications": {
       "available": [],

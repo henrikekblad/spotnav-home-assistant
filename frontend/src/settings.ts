@@ -18,7 +18,9 @@ import {
   SETTINGS_NOT_COMMITTED,
   SETTINGS_RECONCILE_FAILED,
   IDENTIFY_MODES,
+  IF_NOT_READY,
   type IdentifyMode,
+  type IfNotReady,
   SETTINGS_STRATEGY_CHEAPEST,
   SETTINGS_STRATEGY_HYBRID,
   SETTINGS_STRATEGY_SOLAR,
@@ -191,6 +193,7 @@ const OPTIONAL_RECORD_KEYS = [
   "identify_mode",
   "identify_camera",
   "users_change_plan",
+  "if_not_ready",
 ] as const;
 /** Every weekday, Monday (1) to Sunday (7): what a record without `departure_weekdays` means. */
 export const ALL_WEEKDAYS: readonly number[] = [1, 2, 3, 4, 5, 6, 7];
@@ -366,6 +369,7 @@ export function decodeSettingsRecord(raw: unknown): SettingsRecord {
     ...(present.includes("users_change_plan")
       ? { users_change_plan: booleanValue(source, "users_change_plan") }
       : {}),
+    ...(present.includes("if_not_ready") ? { if_not_ready: oneOf(source, "if_not_ready", IF_NOT_READY) } : {}),
   };
 }
 
@@ -507,6 +511,7 @@ export function encodeBody(record: SettingsRecord): SettingsBody {
     ...(record.identify_mode === undefined ? {} : { identify_mode: record.identify_mode }),
     ...(record.identify_camera === undefined ? {} : { identify_camera: copyCamera(record.identify_camera) }),
     ...(record.users_change_plan === undefined ? {} : { users_change_plan: record.users_change_plan }),
+    ...(record.if_not_ready === undefined ? {} : { if_not_ready: record.if_not_ready }),
   };
 }
 
@@ -658,6 +663,8 @@ export interface SettingsFormValues {
   driver: string;
   targetPercent: string;
   vehicleId: string;
+  /** The plan's `if_not_ready`, `""` (or absent) against a backend without it. */
+  ifNotReady?: string;
 }
 
 export function formFromRecord(record: SettingsRecord): SettingsFormValues {
@@ -673,6 +680,7 @@ export function formFromRecord(record: SettingsRecord): SettingsFormValues {
     targetPercent:
       record.target.target_percent === null ? "" : String(record.target.target_percent),
     vehicleId: record.target.vehicle_id ?? "",
+    ...(record.if_not_ready === undefined ? {} : { ifNotReady: record.if_not_ready }),
   };
 }
 
@@ -1067,6 +1075,14 @@ export function replacementFor(
       values.deadlineEnabled !== record.departure_enabled ||
       time.value !== record.departure_time ||
       (date !== null && date.ok && date.value !== record.departure_date);
+  }
+  // The plan's choice under the import target goes only to a backend that has it.
+  if (kind === "plan" && record.if_not_ready !== undefined && (IF_NOT_READY as readonly string[]).includes(values.ifNotReady ?? "")) {
+    const shown = opened === null ? record.if_not_ready : opened.if_not_ready;
+    if (values.ifNotReady !== shown) {
+      next.if_not_ready = values.ifNotReady as IfNotReady;
+      changed = changed || values.ifNotReady !== record.if_not_ready;
+    }
   }
   return { ok: true, body: next, changed };
 }

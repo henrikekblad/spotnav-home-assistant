@@ -88,6 +88,7 @@ from ..planning.auto_settings import (
     AutoSettings,
     AutoSettingsStore,
     DEFAULT_CONSUMPTION_KWH_PER_10KM,
+    IF_NOT_READY_ASK,
     FiscalOverride,
     PauseIntent,
     STRATEGY_CHEAPEST,
@@ -103,6 +104,7 @@ from ..sessions.inputs import sessions_block
 from ..planning.status_compose import (
     compose_status,
     HybridFacts,
+    ImportTargetFacts,
     LoadBalancingFacts,
     OwnModeFacts,
     PlanningFacts,
@@ -146,7 +148,7 @@ from ..vehicles.vehicle_discovery import discover_vehicles, resolve_target_vehic
 from ..vehicles.vehicle_wake import wake_supported
 from .charge_bar import charge_bar, ProgressFacts
 from .entity_fields import phase_switching_offered
-from .grid_tariff import capture_grid_tariff, CapturedGridTariff, serialize_grid_tariff
+from .grid_tariff import capture_grid_tariff, CapturedGridTariff, demand_needs_grid_power, serialize_grid_tariff
 from .price_source import capture_price_source, CapturedPriceSource, serialize_price_source
 from .price_days import serialize_source as source_attribution
 from .common import (
@@ -186,9 +188,11 @@ STRATEGY_HYBRID_REASON: Final = "needs_solar_and_price_control"
 MAX_RESPONSE_BYTES: Final = 256 * 1024
 
 #: Capability facts every charger advertises, all of them, in this order. The first six are about
-#: this charger's configuration and adapter (`execution/chargers/`); the last seven are the
-#: server's abilities and always `true` (`price_days`, `plan_preview`, `dismiss_setup_item`, `fix_own_mode`: the
-#: webhook answers that action, so an app can tell an older Home Assistant that does not).
+#: this charger's configuration and adapter (`execution/chargers/`); the last ten are the
+#: server's abilities and always `true` (`price_days`, `plan_preview`, `dismiss_setup_item`, `fix_own_mode`,
+#: `release_import_target`, `get_power_month`: the
+#: webhook answers that action, so an app can tell an older Home Assistant that does not; `site_import_target`:
+#: `update_site_settings` takes `import_target_kw`).
 #: `current_limit`: the charger has a dynamic current limit (a configured number, or a service path); `set_current`: SpotNav may write a current to it (the
 #: person opted in and its adapter can); `regulated_current`: load balancing may write it during a
 #: session (false for a flash-stored setting, which is written at a session start only).
@@ -206,6 +210,9 @@ CAPABILITY_KEYS: Final = (
     "plan_preview",
     "dismiss_setup_item",
     "fix_own_mode",
+    "release_import_target",
+    "get_power_month",
+    "site_import_target",
 )
 
 
@@ -372,6 +379,8 @@ class CapturedSite:
     #: Whether load balancing can set this charger's current at all; one that can only be switched on and off is
     #: paused whole, never limited to a current.
     current_settable: bool = True
+    #: What the site's import target does to this charger now (`SiteCapacityController.import_target_status`).
+    import_target: Any = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -665,7 +674,7 @@ def capabilities_for(
     `auto_price`: the Auto preview exists; `current_limit`: a current-limit entity is configured, or
     the adapter sets a current some other way; `set_current` and `regulated_current`: what the
     charger's adapter supports now (see `CAPABILITY_KEYS`); `target_soc`: `target_soc_capable`;
-    `load_balancing`: a loaded site lists it; the last seven are the server's abilities.
+    `load_balancing`: a loaded site lists it; the last ten are the server's abilities.
     """
     adapter_capabilities = None if controller is None else controller.adapter.capabilities
     set_current = bool(adapter_capabilities is not None and adapter_capabilities.set_current)
@@ -686,6 +695,9 @@ def capabilities_for(
         ("plan_preview", True),
         ("dismiss_setup_item", True),
         ("fix_own_mode", True),
+        ("release_import_target", True),
+        ("get_power_month", True),
+        ("site_import_target", True),
     )
 
 
@@ -1056,6 +1068,7 @@ def capture_site(
         balancing_retry_at=None if balancing is None else balancing.retry_at,
         balancing_cause=None if balancing is None else balancing.cause,
         current_settable=bool(getattr(controller_for(hass, charger_entry_id), "is_commandable", True)),
+        import_target=controller.import_target_status(charger_entry_id),
     )
 
 
@@ -1162,6 +1175,7 @@ def capture_dashboard(
         forecast_pending=_forecast_pending(settings, site, _entry_loaded(hass)),
         charger_pending=bool(controller is not None and controller.states_unreported),
     )
+    grid_tariff = capture_grid_tariff(hass, entry_id)
     return CapturedDashboard(
         generated_at=now,
         charger=capture_charger(hass, entry),
@@ -1247,7 +1261,7 @@ def capture_dashboard(
         session=capture_session(hass, entry_id),
         plan_notice=_plan_notice(hass, entry_id),
         price_source=capture_price_source(hass, entry_id),
-        grid_tariff=capture_grid_tariff(hass, entry_id),
+        grid_tariff=grid_tariff,
         setup=capture_setup(
             hass,
             entry_id,
@@ -1258,6 +1272,7 @@ def capture_dashboard(
             site_solar_capable=site is not None and site.solar_capable,
             has_solar_forecast=site is not None and bool(site.solar_forecast_selected),
             phase_switching=capture_phase_switching(hass, entry),
+            demand_needs_grid_power=demand_needs_grid_power(grid_tariff),
         ),
         solar_forecast=(
             None
@@ -2572,6 +2587,28 @@ def status_facts(capture: CapturedDashboard) -> StatusFacts:
             cause=site.limit_cause,
             current_settable=site.current_settable,
         ),
+        import_target=None if site is None else _import_target_facts(site.import_target),
+    )
+
+
+def _import_target_facts(status: Any) -> ImportTargetFacts | None:
+    """The site's import target for the status (`SiteCapacityController.import_target_status`)."""
+    if status is None:
+        return None
+    released = None if status.released_for is None else dt_util.parse_datetime(status.released_for)
+    risk = status.at_risk
+    risk_departure = None if risk is None else dt_util.parse_datetime(risk.departure)
+    return ImportTargetFacts(
+        target_kw=status.target_kw,
+        set_kw=status.set_kw,
+        hour_kw=status.hour_kw,
+        paused_until=None if status.paused_until is None else _utc(status.paused_until),
+        released_for=None if released is None else _utc(released),
+        house_over=status.house_over,
+        at_risk_departure=None if risk_departure is None else _utc(risk_departure),
+        missing_kwh=None if risk is None else risk.missing_kwh,
+        releasable=risk is None or risk.choice == IF_NOT_READY_ASK,
+        released_automatically=status.released_automatically,
     )
 
 

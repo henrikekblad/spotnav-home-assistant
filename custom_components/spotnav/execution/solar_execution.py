@@ -604,7 +604,7 @@ def _battery_reading(site: SiteCapacityController) -> tuple[float | None, bool]:
     return None, True
 
 
-def _site_net_grid_w(site: SiteCapacityController) -> float | None:
+def site_net_grid_w(site: SiteCapacityController) -> float | None:
     """The site's net grid power (positive = import) on solar's basis: a direct site's total grid power (unknown
     unless fresh), a derived site's signed power summed over every phase, each live (`_liveness_gated`)."""
     if site.config.get("measurement_mode") == MEASUREMENT_MODE_DIRECT:
@@ -627,15 +627,9 @@ def _charger_idle(controller: ChargingController) -> bool:
     return controller.connection()[0] != CHARGING
 
 
-def site_solar_surplus(hass: HomeAssistant, site: SiteCapacityController) -> SiteSurplus | None:
-    """What a car could take from the sun at the site now (`site_surplus`), whatever its chargers' strategies:
-    the net grid power and the battery as solar reads them, and what every member charger draws (an idle one
-    nothing, one whose draw cannot be read nothing either). `None` without a usable grid reading or with a
-    configured battery that cannot be read."""
-    net_grid_w = _site_net_grid_w(site)
-    if net_grid_w is None:
-        return None
-    battery_w, battery_configured = _battery_reading(site)
+def site_car_w(hass: HomeAssistant, site: SiteCapacityController, *, unread_as_zero: bool = False) -> float | None:
+    """What every member charger draws now (W), as solar reads it: an idle one nothing. A charger whose draw cannot
+    be read counts as nothing with `unread_as_zero`, else makes the sum unknown (`None`)."""
     car_w = 0.0
     for charger_entry_id in site.config.get(CONF_CHARGER_ENTRY_IDS) or []:
         controller = controller_for(hass, charger_entry_id)
@@ -649,7 +643,23 @@ def site_solar_surplus(hass: HomeAssistant, site: SiteCapacityController) -> Sit
             charger_idle=_charger_idle(controller),
             forced_one_phase=controller.switched_phases == 1,
         )
-        car_w += car_draw_w(observation) or 0.0
+        drawn = car_draw_w(observation)
+        if drawn is None and not unread_as_zero:
+            return None
+        car_w += drawn or 0.0
+    return car_w
+
+
+def site_solar_surplus(hass: HomeAssistant, site: SiteCapacityController) -> SiteSurplus | None:
+    """What a car could take from the sun at the site now (`site_surplus`), whatever its chargers' strategies:
+    the net grid power and the battery as solar reads them, and what every member charger draws (an idle one
+    nothing, one whose draw cannot be read nothing either). `None` without a usable grid reading or with a
+    configured battery that cannot be read."""
+    net_grid_w = site_net_grid_w(site)
+    if net_grid_w is None:
+        return None
+    battery_w, battery_configured = _battery_reading(site)
+    car_w = site_car_w(hass, site, unread_as_zero=True) or 0.0
     return site_surplus(
         net_grid_w=net_grid_w,
         car_w=car_w,

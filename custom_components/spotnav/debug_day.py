@@ -80,12 +80,22 @@ LOG_STORE_KEY: Final = f"{DOMAIN}.debug_day.log"
 
 class DayStore:
     """A debounced `Store` (module docstring). `data` returns what to write; the owner calls `changed` after each
-    change and `async_load` once before anything is written."""
+    change and `async_load` once before anything is written. `save_delay_s` shortens the wait for a keeper that
+    needs it (the site's hour tracker, `site/demand_tracker.py`)."""
 
-    def __init__(self, hass: HomeAssistant, key: str, data: Callable[[], dict[str, Any]]) -> None:
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        key: str,
+        data: Callable[[], dict[str, Any]],
+        *,
+        save_delay_s: float = SAVE_DELAY_S,
+    ) -> None:
         self._hass = hass
         self._store: Store[dict[str, Any]] = Store(hass, STORE_VERSION, key)
         self._data = data
+        # How long a change waits for its write (`SAVE_DELAY_S` unless the keeper needs it sooner).
+        self._save_delay_s = save_delay_s
         self._loaded = False
         self._dirty = False
         self._save_waits = False
@@ -115,7 +125,7 @@ class DayStore:
             return
         self._save_waits = True
         try:
-            self._store.async_delay_save(self._to_save, SAVE_DELAY_S)
+            self._store.async_delay_save(self._to_save, self._save_delay_s)
         except Exception:  # noqa: BLE001 - a diagnostic store must never disturb a decision
             # No traceback: this also runs for a logged warning, and must not log one of its own.
             self._save_waits = False

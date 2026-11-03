@@ -195,6 +195,15 @@
         "writable": true
       },
       {
+        "field": "import_target_kw",
+        "kind": "number",
+        "minimum": 0.1,
+        "required": false,
+        "scope": "site",
+        "value": null,
+        "writable": true
+      },
+      {
         "choices": [
           "direct_phase_current",
           "derived_phase_current"

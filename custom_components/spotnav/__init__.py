@@ -29,6 +29,8 @@ from .api.camera import async_setup_camera_api
 from .api.charge_limit import async_setup_charge_limit_api
 from .api.identification import async_setup_identification_api
 from .api.manual_action import async_setup_manual_action_api
+from .api.import_target import async_setup_import_target_api
+from .api.power_month import async_setup_power_month_api
 from .api.own_mode import async_setup_own_mode_api
 from .api.plan_preview import async_setup_plan_preview_api
 from .api.market import async_setup_market_api
@@ -120,6 +122,7 @@ from .site.site_join import (
 )
 from .site.site_capacity_controller import async_release_held_charges, SiteCapacityController
 from .site.site_history import charger_alone_values, SiteHistory
+from .site.demand_tracker import SiteDemand
 from .texts import async_load as async_load_texts
 from .vehicles.discovery_decisions import async_setup_decisions
 from .vehicles.soc_estimate import SocReader
@@ -187,6 +190,8 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     async_setup_identification_api(hass)
     async_setup_charge_limit_api(hass)
     async_setup_own_mode_api(hass)
+    async_setup_import_target_api(hass)
+    async_setup_power_month_api(hass)
     async_setup_camera_api(hass)
     async_setup_debug_api(hass)
     async_setup_blueprints_api(hass)
@@ -841,6 +846,8 @@ async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
         # Its load balancing is gone with it: a charge it held back is given back or forgotten.
         await async_release_held_charges(hass, entry.data.get(CONF_CHARGER_ENTRY_IDS) or [])
         await SiteHistory.async_remove_stored(hass, entry.entry_id)
+        await SiteDemand.async_remove_stored(hass, entry.entry_id)
+        await SiteCapacityController.async_remove_released(hass, entry.entry_id)
         return
     # The charger is left as someone without SpotNav expects it: allowed to charge, at its full current.
     # Read before the stores below go (an Easee pause of ours is remembered in the controller's).

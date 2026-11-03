@@ -718,6 +718,9 @@
       },
       "price_now": {
         "name": "Elpris nu"
+      },
+      "demand_peak": {
+        "name": "Effekttopp"
       }
     },
     "select": {

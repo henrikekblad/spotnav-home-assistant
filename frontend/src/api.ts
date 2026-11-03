@@ -10,6 +10,7 @@ import {
   DEBUG_API_VERSION,
   ENTITY_CONFIG_API_VERSION,
   MARKET_API_VERSION,
+  POWER_MONTH_API_VERSION,
   SESSIONS_API_VERSION,
   SETTINGS_API_VERSION,
   REGION_API_VERSION,
@@ -491,6 +492,21 @@ export async function fixOwnMode(
   });
 }
 
+/** `spotnav/release_import_target`'s own version. */
+export const RELEASE_IMPORT_TARGET_API_VERSION = 1;
+
+/**
+ * Set the site's import target aside for this charger's charge until its departure (any user), the press beside
+ * the status line `import_target_at_risk`. Answers `{api_version, ok, error}`.
+ */
+export async function releaseImportTarget(hass: HomeAssistantLike, chargerId: string): Promise<unknown> {
+  return await call<unknown>(hass, {
+    type: "spotnav/release_import_target",
+    api_version: RELEASE_IMPORT_TARGET_API_VERSION,
+    charger_id: chargerId,
+  });
+}
+
 /** `spotnav/write_charge_limit`'s own version. */
 export const CHARGE_LIMIT_API_VERSION = 1;
 
@@ -557,6 +573,22 @@ export async function getSessions(
     api_version: SESSIONS_API_VERSION,
     charger_id: chargerId,
     limit,
+  };
+  if (month !== null) {
+    message.month = month;
+  }
+  return await call<unknown>(hass, message);
+}
+
+/**
+ * One month (`YYYY-MM`, `null` for the current one) of the charger's site's measured import, `unknown` until
+ * `decodePowerMonth()` decodes it. Any signed-in user may read it.
+ */
+export async function getPowerMonth(hass: HomeAssistantLike, chargerId: string, month: string | null = null): Promise<unknown> {
+  const message: Record<string, unknown> = {
+    type: "spotnav/get_power_month",
+    api_version: POWER_MONTH_API_VERSION,
+    charger_id: chargerId,
   };
   if (month !== null) {
     message.month = month;

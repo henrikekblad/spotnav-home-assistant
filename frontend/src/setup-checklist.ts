@@ -10,7 +10,16 @@ import type { SetupBlock } from "./validate";
 import { VISUAL_CLASSES as C } from "./visual-styles";
 
 /** The rows this card knows, in the order it lists them. */
-export const SETUP_ROWS = ["vehicle", "car_level", "site", "solar_forecast", "phase_switching", "phone", "app"] as const;
+export const SETUP_ROWS = [
+  "vehicle",
+  "car_level",
+  "site",
+  "solar_forecast",
+  "demand_grid_power",
+  "phase_switching",
+  "phone",
+  "app",
+] as const;
 export type SetupRowId = (typeof SETUP_ROWS)[number];
 
 export interface SetupRow {
@@ -30,6 +39,7 @@ const WORDS: Record<SetupRowId, { text: TranslationKey; action: TranslationKey }
   car_level: { text: "setup.carLevel.text", action: "setup.carLevel.action" },
   site: { text: "setup.site.text", action: "setup.site.action" },
   solar_forecast: { text: "setup.solarForecast.text", action: "setup.solarForecast.action" },
+  demand_grid_power: { text: "setup.demandGridPower.text", action: "setup.demandGridPower.action" },
   phase_switching: { text: "setup.phaseSwitching.text", action: "setup.phaseSwitching.action" },
   phone: { text: "setup.phone.text", action: "setup.phone.action" },
   app: { text: "setup.app.text", action: "setup.app.action" },
@@ -138,6 +148,10 @@ function open(input: SetupSectionInput, id: SetupRowId): void {
       } else {
         input.navigate(addIntegrationPath(FORECAST_DOMAIN));
       }
+      return;
+    case "demand_grid_power":
+      // The site's measurement row opens its entity dialog, where the total grid power is chosen.
+      input.openSetting("site", "measurement_mode");
       return;
     case "phase_switching":
       input.openSetting("entities", "phase_switching");

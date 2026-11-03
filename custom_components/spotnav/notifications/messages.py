@@ -145,3 +145,28 @@ def identify_text(language: str, key: str, vehicle: str | None = None) -> str:
     """One of the identification question's own texts (`ask`, `open`, `chosen`, `recognised`, `kept`)."""
     text = table(language, NAMESPACE)
     return text[f"identify.{key}"].format(vehicle=vehicle or "")
+
+
+
+def import_target_text(
+    name: str, language: str, *, time: str | None, target_kw: float, kwh: float, set_kw: float | None = None
+) -> tuple[str, str]:
+    """The title and message of the import target's shortfall (`ChargerNotifier.import_target_risk`): "The car will
+    not be ready by 07:00 under the 6.0 kW import target – 4 kWh short.". Where the month's peak lifts the hour
+    (`target_kw` above the target as set, `set_kw`), it says the month's peak and the import target both."""
+    text = table(language, NAMESPACE)
+    peak = set_kw is not None and target_kw > set_kw + 1e-9
+    key = "import_target.at_risk.peak" if peak else "import_target.at_risk"
+    key = f"{key}.time" if time else key
+    message = text[key].format(
+        time=time or "",
+        target=_number(language, target_kw, 1),
+        set=_number(language, target_kw if set_kw is None else set_kw, 1),
+        kwh=_number(language, kwh, 0),
+    )
+    return text["title"].format(name=name), message
+
+
+def import_target_release_text(language: str) -> str:
+    """The import target's button: set it aside for this charge until its departure."""
+    return table(language, NAMESPACE)["import_target.release"]

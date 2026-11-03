@@ -14,6 +14,12 @@ A compare-and-set over one site config entry's stored data, reusing the dashboar
   and a disable answers with a `restore` outcome (`not_needed | restored | failed`, per charger).
   Any other key is refused. Load balancing is WebSocket-only: the webhook secret may write
   solar settings but never the fuse-protection switch.
+* `import_target_kw` (since 2.4, so the paired app can set the site's import target as the card does with
+  `spotnav/update_entity_config`): a number from 0.1 to 1000 (kW, an hourly mean), or `null` to clear it. Stored in
+  the site entry's data as the card's write stores it, and written without a reload (the target is read on every
+  recompute). `expected` may name it (the value last seen, `null` for none) for the compare-and-set. A write that
+  names it answers with `import_target_kw` beside the `site` block (the value stored now); one that does not is
+  answered as before, and leaves the stored target as it is.
 * Refusals are stable codes in the success envelope shape: `not_admin`, `no_site`, `conflict`,
   `invalid_value`, `unavailable`, `active_control_unavailable` (may be turned off, never newly on)
   and `confirmation_failed` (the read-back state was not the requested one; the previous value
@@ -34,6 +40,7 @@ from homeassistant.core import callback, HomeAssistant
 
 from ..const import (
     CONF_ACTIVE_CONTROL_ENABLED,
+    CONF_IMPORT_TARGET_KW,
     CONF_SOLAR_FORECAST_ENTRIES,
     CONF_SOLAR_PRIORITY,
     DEFAULT_SOLAR_PRIORITY,
@@ -49,6 +56,7 @@ from ..site.site_capacity_controller import (
     SiteControllerClosed,
 )
 from .common import ERROR_NOT_ADMIN, ERROR_UNSUPPORTED_VERSION, is_admin, send_unsupported_version
+from .entity_fields import import_target_error, stored_import_target_kw
 from .dashboard import (
     capture_site,
     DashboardFailure,
@@ -77,7 +85,8 @@ ERROR_NOT_PERMITTED_OVER_WEBHOOK: Final = "spotnav_not_permitted_over_webhook"
 _SOLAR_PRIORITY: Final = "solar_priority"
 _SOLAR_FORECAST: Final = "solar_forecast"
 _ACTIVE_CONTROL: Final = CONF_ACTIVE_CONTROL_ENABLED
-_WRITABLE_FIELDS: Final = (_SOLAR_PRIORITY, _SOLAR_FORECAST, _ACTIVE_CONTROL)
+_IMPORT_TARGET: Final = "import_target_kw"
+_WRITABLE_FIELDS: Final = (_SOLAR_PRIORITY, _SOLAR_FORECAST, _ACTIVE_CONTROL, _IMPORT_TARGET)
 
 
 class SiteSettingsRefusal(Exception):
@@ -277,6 +286,21 @@ async def _update_locked(
         if expected_active != controller.active_control_enabled:
             await _refuse(ERROR_CONFLICT)
 
+    current_target = stored_import_target_kw(site_entry.data)
+    if _IMPORT_TARGET in expected and expected[_IMPORT_TARGET] != current_target:
+        await _refuse(ERROR_CONFLICT)
+    new_target = current_target
+    if _IMPORT_TARGET in changes:
+        # A JSON number or `null`, judged by the same bounds as the card's write (`import_target_error`).
+        candidate_target = changes[_IMPORT_TARGET]
+        if candidate_target is not None and (
+            isinstance(candidate_target, bool)
+            or not isinstance(candidate_target, (int, float))
+            or import_target_error({_IMPORT_TARGET: candidate_target}) is not None
+        ):
+            await _refuse(ERROR_INVALID_VALUE)
+        new_target = None if candidate_target is None else float(candidate_target)
+
     new_priority = current_priority
     if _SOLAR_PRIORITY in changes:
         candidate_priority = changes[_SOLAR_PRIORITY]
@@ -298,6 +322,16 @@ async def _update_locked(
         if any(item not in valid_ids for item in candidate_forecast):
             await _refuse(ERROR_INVALID_VALUE)
         new_forecast = tuple(candidate_forecast)
+
+    if new_target != current_target:
+        # As the card's write (`entity_config._write_site`): in the entry's data, with no reload; the running
+        # controller reads it from the entry on its next recompute.
+        target_data = dict(site_entry.data)
+        if new_target is None:
+            target_data.pop(CONF_IMPORT_TARGET_KW, None)
+        else:
+            target_data[CONF_IMPORT_TARGET_KW] = new_target
+        hass.config_entries.async_update_entry(site_entry, data=target_data)
 
     if (new_priority, new_forecast) != (current_priority, current_forecast):
         updated_data = dict(site_entry.data)
@@ -396,6 +430,15 @@ async def _change_active_control(
     )
 
 
+def _with_target(hass: HomeAssistant, charger_id: Any, changes: Any, answer: dict[str, Any]) -> dict[str, Any]:
+    """`answer` with the site's import target as stored now (`import_target_kw`), where the request named it: the
+    `site` block does not carry it (the dashboard's `grid_tariff.demand.import_target_kw` does)."""
+    if not isinstance(changes, dict) or _IMPORT_TARGET not in changes or not isinstance(charger_id, str):
+        return answer
+    site_entry = site_binding(hass, charger_id)
+    return {**answer, _IMPORT_TARGET: None if site_entry is None else stored_import_target_kw(site_entry.data)}
+
+
 def _envelope(site: dict[str, Any] | None, restore: dict[str, Any] | None) -> dict[str, Any]:
     """The success answer: this contract's version, the re-read `site` block and the `restore`."""
     return {
@@ -457,13 +500,14 @@ async def websocket_update_site_settings(
     except SiteSettingsRefusal as refusal:
         connection.send_result(msg["id"], _failure(refusal.code, refusal.site, refusal.restore))
         return
-    connection.send_result(msg["id"], _envelope(site, restore))
+    answer = _envelope(site, restore)
+    connection.send_result(msg["id"], _with_target(hass, msg.get("charger_id"), msg.get("changes"), answer))
 
 
 async def async_webhook_update_site_settings(
     hass: HomeAssistant, entry: ConfigEntry, payload: dict[str, Any]
 ) -> tuple[int, dict[str, Any]]:
-    """`update_site_settings` over the webhook: solar priority and forecast sources only.
+    """`update_site_settings` over the webhook: solar priority, forecast sources and the import target.
 
     Same core, compare-and-set and envelope as the WebSocket command; the charger is the webhook's
     own entry. Naming `active_control_enabled` is `spotnav_not_permitted_over_webhook` and nothing is
@@ -485,8 +529,8 @@ async def async_webhook_update_site_settings(
             ERROR_CONFLICT: 409,
             ERROR_NOT_PERMITTED_OVER_WEBHOOK: 403,
         }.get(refusal.code, 400)
-        return status, _failure(refusal.code, refusal.site)
-    return 200, _envelope(site, restore)
+        return status, _with_target(hass, entry.entry_id, payload.get("changes"), _failure(refusal.code, refusal.site))
+    return 200, _with_target(hass, entry.entry_id, payload.get("changes"), _envelope(site, restore))
 
 
 @callback

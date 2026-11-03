@@ -148,6 +148,17 @@ the car's onboard phases are not set), and never lowers the current SpotNav send
 plug-in does not count as another plug-in. A change of the phases the charge uses, the voltage between phases or the
 charging current starts the learning again. There is no setting.
 
+**A site's import target.** Where the charger's site has an
+[import target](site-and-load-balancing.md#holding-the-chargers-under-the-import-target) and load balancing is on,
+the plan counts on no more than the target leaves the car: the target less the house's mean over its last 24
+measured hours (its load now until an hour is measured), never below the power at the charger's least current. The
+plan then buys the quarter-hours the held charge needs. A period the hold keeps short anyway (the house drew more
+than usual) is planned again at its end once it is half a kWh behind (not only below the usual 80 %), so what the
+target keeps back each period does not add up. When the held power can no longer deliver what the plan needs before
+the departure, the plan's *If the car cannot be ready in time* decides: ask (a notification with *Release the import target tonight*),
+release the target by itself (the plan then counts on the car's own power), or hold it and say what will be missing.
+The car's minimum level is charged at once whatever the target.
+
 **A target counts on the energy one percent of the car's battery really takes.** A target's need is
 the battery size x (target - level) / 100, divided by the charging efficiency (0.9). A battery size that
 is off (an aged pack, net against gross capacity, a guess) or a real efficiency far from 0.9 (a cold pack,

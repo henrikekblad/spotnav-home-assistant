@@ -63,13 +63,14 @@ describe("the grid_tariff block", () => {
       const withBlock = decodeDashboard({ ...read("dashboard", fixture), grid_tariff: BLOCK });
       expect(plain.ok, fixture).toBe(true);
       expect(plain.ok && plain.value.grid_tariff, fixture).toBeNull();
-      expect(withBlock.ok && withBlock.value.grid_tariff, fixture).toEqual(BLOCK);
+      // A block without `demand` (a backend before the demand charge) reads with none.
+      expect(withBlock.ok && withBlock.value.grid_tariff, fixture).toEqual({ ...BLOCK, demand: null });
       expect(withBlock.ok && { ...withBlock.value, grid_tariff: null }, fixture).toEqual(plain.ok && plain.value);
     }
-    expect(decodeGridTariff(NOTHING)).toEqual(NOTHING);
+    expect(decodeGridTariff(NOTHING)).toEqual({ ...NOTHING, demand: null });
     const night = { ...BLOCK, high_load_window: { days: "mon_sat", from_month: 1, to_month: 12, from_hour: 22, to_hour: 6 } };
-    expect(decodeGridTariff(night)).toEqual(night);
-    expect(decodeGridTariff(INCLUDED)).toEqual(INCLUDED);
+    expect(decodeGridTariff(night)).toEqual({ ...night, demand: null });
+    expect(decodeGridTariff(INCLUDED)).toEqual({ ...INCLUDED, demand: null });
     expect(decodeGridTariff({ ...BLOCK, transfer_high: { ...BLOCK.transfer_high, unit: null } }).transfer_high.unit).toBeNull();
   });
 

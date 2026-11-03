@@ -30,7 +30,12 @@
     "identify.kept": "{vehicle} beholdes.",
     "charged": "{kwh} ladet",
     "planned": "{kwh} planlagt",
-    "cost": "cirka {cost}"
+    "cost": "cirka {cost}",
+    "import_target.at_risk.time": "Bilen blir ikke ferdig til kl. {time} under effektmålet på {target} kW – {kwh} kWh mangler.",
+    "import_target.at_risk": "Bilen blir ikke ferdig til avreise under effektmålet på {target} kW – {kwh} kWh mangler.",
+    "import_target.release": "Slipp effektmålet i natt",
+    "import_target.at_risk.peak.time": "Bilen blir ikke ferdig til kl. {time} under månedens topp på {target} kW (effektmål {set} kW) – {kwh} kWh mangler.",
+    "import_target.at_risk.peak": "Bilen blir ikke ferdig til avreise under månedens topp på {target} kW (effektmål {set} kW) – {kwh} kWh mangler."
   },
   "add_charger": {
     "hint": "Legg til en lader: Innstillinger → Enheter og tjenester → SpotNav → Legg til oppføring → Lader; den tilbyr å bli med i dette anlegget."

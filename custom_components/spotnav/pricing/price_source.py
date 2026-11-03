@@ -59,6 +59,8 @@ from ..planning.auto_settings import (
     AreaAutoSettings,
     AutoSettings,
     AutoSettingsError,
+    DEMAND_COMPONENTS,
+    DemandComponent,
     FiscalOverride,
     GRID_TARIFF_FEES,
     GridTariff,
@@ -163,11 +165,15 @@ class PriceSource:
 def source_revision(overrides: AreaAutoSettings) -> str:
     """A digest of an area and its fees: equal for equal fees, different when the area or a fee moves.
 
-    The grid tariff joins the digest only while one is stored, so an entry without one keeps the revision it had.
+    The grid tariff joins the digest only while one is stored, so an entry without one keeps the revision it had;
+    its demand-charge components only while there are any, so a tariff without them keeps its revision too.
     """
     body = overrides.as_dict()
     if overrides.grid_tariff is not None:
-        body = {**body, "grid_tariff": overrides.grid_tariff.as_dict()}
+        tariff = overrides.grid_tariff.as_dict()
+        if not overrides.grid_tariff.demand:
+            del tariff[DEMAND_COMPONENTS]
+        body = {**body, "grid_tariff": tariff}
     canonical = json.dumps(body, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:16]
 
@@ -264,6 +270,30 @@ def entry_source_for(hass: HomeAssistant, charger_id: str) -> PriceSource | None
     if len(entries) == 1:
         return _from_entry(hass, entries[0], VIA_ONLY)
     return None
+
+
+def site_price_source(hass: HomeAssistant, site_entry_id: str) -> PriceSource | None:
+    """The electricity price entry a site's demand charge is read from: the site's own pointer, else the only
+    entry, else the first member charger's, or `None` when none applies (the site then has no demand charge)."""
+    site = hass.config_entries.async_get_entry(site_entry_id)
+    pointed = _pointed(hass, site)
+    if pointed is not None:
+        return _from_entry(hass, pointed, VIA_SITE)
+    entries = price_entries(hass)
+    if len(entries) == 1:
+        return _from_entry(hass, entries[0], VIA_ONLY)
+    for charger_id in [] if site is None else site.data.get(CONF_CHARGER_ENTRY_IDS) or []:
+        source = entry_source_for(hass, charger_id)
+        if source is not None:
+            return source
+    return None
+
+
+def site_demand_components(hass: HomeAssistant, site_entry_id: str) -> tuple[DemandComponent, ...]:
+    """The demand-charge components of the electricity price the site measures for (none without one)."""
+    source = site_price_source(hass, site_entry_id)
+    tariff = None if source is None else source.overrides.grid_tariff
+    return () if tariff is None else tariff.demand
 
 
 def price_source_for(
