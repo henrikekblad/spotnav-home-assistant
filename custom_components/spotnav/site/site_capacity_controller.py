@@ -75,6 +75,7 @@ from .import_target import (
     ACTION_HELD,
     ACTION_PAUSED,
     ACTION_UNHELD,
+    battery_discharge_shares_w,
     departure_at_risk,
     departure_shortfall_kwh,
     effective_target,
@@ -657,6 +658,8 @@ class SiteCapacityController:
         self._target_last_cap: dict[str, tuple[datetime, float]] = {}
         self._target_locked: set[str] = set()
         self._target_inert: dict[str, str] = {}
+        # The chargers the target lowered this pass, but not as far as their share: the floor stopped it.
+        self._target_floor_limited: set[str] = set()
         self._target_failed_logged = False
         self._target_paused_hour: dict[str, datetime] = {}
         self._target_pause_pending: dict[str, datetime] = {}
@@ -4971,10 +4974,17 @@ class SiteCapacityController:
         return None if shortfall is None else (plan.departure, shortfall)
 
     def _target_floor_a(
-        self, request: ChargerRequest, voltage_by_phase: Mapping[PhaseName, float | None], max_age_s: float
+        self,
+        request: ChargerRequest,
+        voltage_by_phase: Mapping[PhaseName, float | None],
+        max_age_s: float,
+        battery_discharge_w: float = 0.0,
     ) -> float | None:
         """How far the target may lower this charger without raising what the fuse carries (`lowering_floor_a`), on
-        this recompute's own readings; `None` when a phase cannot be judged."""
+        this recompute's own readings; `None` when a phase cannot be judged. Under `battery_first` with the home
+        battery read live and discharging, a drop up to this charger's part of its discharge (`battery_discharge_w`, the
+        caller's share of `_battery_first_discharge`) only lowers the discharge, within the smallest fuse margin over
+        its phases; under `car_first`, or with a battery that cannot be read live, the grid's phases alone decide."""
         phases = request.phases_used() or ()
         result = self.result
         if not phases or request.measured_current_a is None:
@@ -4990,6 +5000,8 @@ class SiteCapacityController:
             signed_power_w={phase: result.phase_signed_active_power_w.get(phase) for phase in phases},
             voltage_v={phase: voltage_by_phase.get(phase) for phase in phases},
             margin_a={phase: result.measured_margin_a.get(phase) for phase in phases} if signed_current else None,
+            battery_discharge_w=battery_discharge_w,
+            fuse_margin_a={phase: result.measured_margin_a.get(phase) for phase in phases},
         )
 
     def _hold_to_import_target(
@@ -5013,6 +5025,7 @@ class SiteCapacityController:
         self._target_locked = set()
         self._target_raise_lock = {}
         self._target_inert = {}
+        self._target_floor_limited = set()
         self._target_budget = None
         target_kw = self._import_target_kw()
         if target_kw is None:
@@ -5119,18 +5132,37 @@ class SiteCapacityController:
                 if request.charger_entry_id in previously_held and held_cap is not None:
                     self._target_raise_lock[request.charger_entry_id] = held_cap[1]
         held = dict(decisions)
-        for request in ordered:
-            charger_entry_id = request.charger_entry_id
-            share = shares.get(charger_entry_id)
-            decision = decisions.get(charger_entry_id)
-            member = next(m for m in members if m.charger_entry_id == charger_entry_id)
-            if (
+
+        def holds_now(request: ChargerRequest) -> bool:
+            """Whether this charger is one the target may lower in this pass (running, held, above its share)."""
+            share = shares.get(request.charger_entry_id)
+            decision = decisions.get(request.charger_entry_id)
+            member = next(m for m in members if m.charger_entry_id == request.charger_entry_id)
+            return not (
                 share is None
                 or decision is None
                 or decision.proposed_current_a is None
                 or not member.holdable
                 or not request.requested_current_a
-            ):
+            )
+
+        # Under `battery_first` the battery's live discharge is shared out among the chargers the target lowers in
+        # this pass, so two cannot each count on the whole of it (`_target_floor_a`).
+        discharge_shares = battery_discharge_shares_w(
+            self._battery_first_discharge()[1] or 0.0,
+            [
+                request.charger_entry_id
+                for request in ordered
+                if holds_now(request)
+                and (cap := shares[request.charger_entry_id].cap_a) is not None
+                and decisions[request.charger_entry_id].proposed_current_a > cap  # type: ignore[operator]
+            ],
+        )
+        for request in ordered:
+            charger_entry_id = request.charger_entry_id
+            share = shares.get(charger_entry_id)
+            decision = decisions.get(charger_entry_id)
+            if not holds_now(request):
                 # Nothing held, or a charge that is not running (a paused one is held back by `_target_start_cap`).
                 continue
             proposed = decision.proposed_current_a
@@ -5143,7 +5175,9 @@ class SiteCapacityController:
                     self._target_locked.add(charger_entry_id)
                 continue
             cap_a = share.cap_a if locked is None else min(share.cap_a, locked)
-            floor = self._target_floor_a(request, voltage_by_phase, max_age_s)
+            floor = self._target_floor_a(
+                request, voltage_by_phase, max_age_s, discharge_shares.get(charger_entry_id, 0.0)
+            )
             if floor is None:
                 self._target_inert[charger_entry_id] = TARGET_INERT_NOT_JUDGED
                 continue
@@ -5169,7 +5203,12 @@ class SiteCapacityController:
                 self._target_last_cap[charger_entry_id] = (budget.hour_start, highest)
                 self._note_target(charger_entry_id, "held", budget, cap_a=lowered)
             if lowered > max(cap_a, request.min_current_a):
-                self._target_inert[charger_entry_id] = TARGET_INERT_EXPORTING
+                if lowered >= proposed:
+                    # Nothing could be lowered: every amp of the drop would turn a phase it draws on to export.
+                    self._target_inert[charger_entry_id] = TARGET_INERT_EXPORTING
+                else:
+                    # Lowered, but not as far as its share: the floor stopped it (`floor_limited`).
+                    self._target_floor_limited.add(charger_entry_id)
         return held
 
     def _if_not_ready(self, charger_entry_id: str) -> str:
@@ -5497,7 +5536,8 @@ class SiteCapacityController:
         """The power a plan for this charger counts on under the site's import target (kW): the target less what the
         house typically draws (`_typical_house_kw`), and never below the charger's minimum, which is all the hold ever
         gives a charge it runs. `None` while the target holds nothing (not set, load balancing off), cannot hold this
-        charger (no current of its own, `_target_inert`) or the house's load is not known: the plan then counts on the car's
+        charger (no current of its own, `_target_inert`) or held it only part of the way (`_target_floor_limited`), or
+        the house's load is not known: the plan then counts on the car's
         own power, and a window the hold keeps short is planned again at its end (`planning/plan_watch.py`)."""
         target_kw = self._import_target_kw()
         if target_kw is None or not self._active_control_allowed():
@@ -5507,7 +5547,11 @@ class SiteCapacityController:
             # The plan lets the departure win: it counts on the car's own power, and the target gives way when needed.
             return None
         switch_only = self._is_switch_only_charger(controller_for(self.hass, charger_entry_id))
-        if (not switch_only and not wiring.get(CONF_MEASURED_CURRENT_SOURCE)) or charger_entry_id in self._target_inert:
+        if (
+            (not switch_only and not wiring.get(CONF_MEASURED_CURRENT_SOURCE))
+            or charger_entry_id in self._target_inert
+            or charger_entry_id in self._target_floor_limited
+        ):
             # The hold cannot act on this charger (no current of its own to judge a lowering on, or a phase that cannot
             # be judged now): the plan counts on the car's own power, not on a hold that does not come.
             return None
@@ -5623,6 +5667,7 @@ class SiteCapacityController:
                     "lowered": charger_entry_id in self._target_lowered,
                     "kept_at_hour_end": charger_entry_id in self._target_locked,
                     "inert": self._target_inert.get(charger_entry_id),
+                    "floor_limited": charger_entry_id in self._target_floor_limited,
                 }
                 for charger_entry_id, share in self._target_shares.items()
             },

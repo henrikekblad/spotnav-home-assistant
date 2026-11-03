@@ -812,6 +812,123 @@ async def test_a_discharging_battery_counts_as_import_only_under_battery_first(
         assert world.car_a == held_a
 
 
+async def _battery_holds_the_grid(world: _World, minutes: float) -> None:
+    """A battery in AI mode: it discharges what the house and the car draw, leaving the grid a little exporting."""
+    for _ in range(int(minutes * 2)):
+        load_a = world.house_a + world.car_a
+        world.battery_w = -3 * _V * load_a
+        world.extra_a = -load_a - 0.1
+        await world.step()
+
+
+@pytest.mark.parametrize("priority", ["battery_first", "car_first"])
+async def test_a_battery_holding_the_grid_at_nothing_lets_the_target_lower_the_car_under_battery_first(
+    hass: HomeAssistant, monkeypatch, priority: str
+) -> None:
+    """The owner's site: a 6.5 kW target, a battery discharging what the car takes, the grid at about 0. Under
+    `battery_first` the discharge counts as import and the drop only lowers it: the car is held (at 9 A or less), no
+    longer `phase_exporting`. Under `car_first` the grid alone counts: nothing to hold, the car keeps its 16 A."""
+    with freeze_time(_HOUR + timedelta(seconds=5)) as frozen:
+        name = f"aimode{priority.split('_')[0]}"
+        world = await _world(
+            hass, monkeypatch, frozen, name, target_kw=6.5, house_w=500.0, battery_entity=f"sensor.{name}_battery_power"
+        )
+        controller = world.halo.controller
+        controller.config["solar_priority"] = priority
+        charger = world.halo.charger.entry_id
+        await _battery_holds_the_grid(world, 1)
+        await _charging(world)
+        await _battery_holds_the_grid(world, 10)
+        if priority == "battery_first":
+            assert 6.0 <= world.car_a <= 9.0
+            assert controller.import_target_snapshot()["chargers"][charger]["inert"] is None
+            assert world.decision.reason == REASON_IMPORT_TARGET_HELD
+        else:
+            assert world.car_a == 16.0
+
+
+async def test_a_battery_that_cannot_be_read_lowers_no_further_than_the_grids_phases(
+    hass: HomeAssistant, monkeypatch
+) -> None:
+    """The extra drop needs a discharge read live under `battery_first`; without one, the per-phase floor alone."""
+    from custom_components.spotnav.site.site_capacity_controller import SiteCapacityController
+
+    with freeze_time(_HOUR + timedelta(seconds=5)) as frozen:
+        world = await _world(hass, monkeypatch, frozen, "battstale", battery_entity="sensor.battstale_battery_power")
+        controller = world.halo.controller
+        controller.config["solar_priority"] = "battery_first"
+        world.battery_w = -5000.0
+        world.show()
+        await world.step()
+        await _charging(world)
+        await world.run(2)
+        request = next(r for r in controller._build_requests(credit=False) if r.charger_entry_id == world.halo.charger.entry_id)  # noqa: SLF001
+        voltages = {phase: _V for phase in ("L1", "L2", "L3")}
+        # The hold gives the floor no discharge where it cannot be read live, nor under `car_first`.
+        monkeypatch.setattr(SiteCapacityController, "_battery_first_discharge", lambda self: (True, None))
+        assert (controller._battery_first_discharge()[1] or 0.0) == 0.0  # noqa: SLF001
+        base = controller._target_floor_a(request, voltages, 120.0)  # noqa: SLF001
+        assert controller._target_floor_a(request, voltages, 120.0, 0.0) == base  # noqa: SLF001
+        # Read live: at most the discharge's amps, and never more than the smallest fuse margin.
+        with_battery = controller._target_floor_a(request, voltages, 120.0, 5000.0)  # noqa: SLF001
+        margin = min(controller.result.measured_margin_a[phase] for phase in ("L1", "L2", "L3"))
+        assert base is not None and with_battery == pytest.approx(base - min(5000.0 / (3 * _V), max(0.0, margin)))
+
+
+async def test_a_battery_that_does_not_follow_the_car_never_takes_a_phase_over_the_fuse(
+    hass: HomeAssistant, monkeypatch
+) -> None:
+    """A battery at a fixed 12 kW discharge on a 16 A fuse, under `battery_first`, a 3 kW target that wants the car
+    paused. Lowering the car only raises the export, so the battery's part of the drop stays within the fuse's margin:
+    the grid's current never goes above the fuse, and the car is held, not paused, while the margin is short."""
+    with freeze_time(_HOUR + timedelta(seconds=5)) as frozen:
+        world = await _world(
+            hass, monkeypatch, frozen, "fixedbatt", target_kw=3.0, house_w=500.0,
+            battery_entity="sensor.fixedbatt_battery_power",
+        )
+        controller = world.halo.controller
+        controller.config["solar_priority"] = "battery_first"
+        controller.config["main_fuse_a"] = 16.0
+        charger = world.halo.charger.entry_id
+        # The battery covers the house while the car starts, then goes to a fixed 12 kW (17.4 A a phase) discharge.
+        world.battery_w = -500.0
+        world.extra_a = -500.0 / (3 * _V)
+        world.show()
+        await world.step()
+        await _charging(world, 15)
+        world.battery_w = -12000.0
+        world.extra_a = -12000.0 / (3 * _V)
+        for _ in range(40):
+            await world.step()
+            grid_a = world.house_a + world.extra_a + world.car_a
+            assert abs(grid_a) <= 16.0 + 1e-6, (world.car_a, grid_a)
+        assert world.car_a > 0.0, "never paused into an export above the fuse"
+        snapshot = controller.import_target_snapshot()["chargers"][charger]
+        assert snapshot["inert"] is None
+
+
+async def test_a_hold_the_floor_stops_short_of_its_share_is_marked_and_not_planned_on(
+    hass: HomeAssistant, monkeypatch
+) -> None:
+    """Lowered, but not as far as its share (the floor stopped it): `floor_limited`, not `inert` (something is held),
+    and a plan does not count on the hold's power for it."""
+    from custom_components.spotnav.site.site_capacity_controller import SiteCapacityController
+
+    with freeze_time(_HOUR + timedelta(seconds=5)) as frozen:
+        world = await _world(hass, monkeypatch, frozen, "floorlimited")
+        controller = world.halo.controller
+        charger = world.halo.charger.entry_id
+        await world.step()
+        await _charging(world)
+        await world.run(3)
+        assert world.car_a == 7.0 and controller.import_target_plan_kw(charger) is not None
+        monkeypatch.setattr(SiteCapacityController, "_target_floor_a", lambda self, *args, **kwargs: 11.5)
+        await world.run(3)
+        snapshot = controller.import_target_snapshot()["chargers"][charger]
+        assert snapshot["floor_limited"] is True and snapshot["inert"] is None
+        assert controller.import_target_plan_kw(charger) is None
+
+
 # -- a restart in the middle of an hour
 
 
