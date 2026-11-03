@@ -632,17 +632,17 @@ charger draws on would turn from import to export (so the current the fuse carri
   cannot be ready in time* in the card's Plan dialog (shown while the site has a target):
   - **Ask** (the default): the target holds, and the phones chosen for *the charge will not be ready in time* are
     told once, in its place: *The car will not be ready by 07:00 under the 6.0 kW import target – 4 kWh short*, with
-    one button, *Release the import target tonight*. Told again only when the shortfall grows clearly (by a kWh and by half), and taken
+    one button, *Release the import target for this charge*. Told again only when the shortfall grows clearly (by a kWh and by half), and taken
     off the phones once it can be met again. No answer: the target holds. The card's status says the same, with the
     same press.
   - **Release the import target**: the departure wins by itself; once holding would miss it the target is set aside for that
-    charge until its departure, as *Release the import target tonight* does, and the plan counts on the car's own power.
+    charge until its departure, as *Release the import target for this charge* does, and the plan counts on the car's own power.
   - **Keep the import target**: the target holds, nothing is sent, and the status says how much will be missing.
-- **Release the import target tonight** (from the notification, the card or the app) sets the target aside for that charge until its
+- **Release the import target for this charge** (from the notification, the card or the app) sets the target aside for that charge until its
   departure, or until the car is unplugged or the plan is made for another departure; a restart keeps it. A charge
   without a departure ahead (a person's Start, or a plan without one) is set aside until the car is unplugged, the
   car ends the charge by itself (full, or at its limit), or the first noon at least six hours after the press
-  (pressed at 11:59, the next day's), whichever comes first: tonight means tonight, also on a charger that cannot
+  (pressed at 11:59, the next day's), whichever comes first: a release always ends by then, also on a charger that cannot
   tell whether a car is plugged in. A Start pressed after a release keeps it: the plan the Start drops no longer
   ends it, and it lasts until the car is unplugged as above. The
   card offers it beside every line where the target holds or pauses a charge, and asks first, since a press can
@@ -661,7 +661,7 @@ charger draws on would turn from import to export (so the current the fuse carri
   [Planning strategies](strategies.md)). Not for a plan set to *Release the import target*, nor for a charger the hold
   cannot act on (no current of its own to judge a lowering on, or a phase that cannot be judged).
 - **A person's Start obeys the target** as a plan's charge does: held, or paused to the hour's end, and shown so,
-  with *Release the import target tonight* the only way past it. No phone is told just because a Start is held. A
+  with *Release the import target for this charge* the only way past it. No phone is told just because a Start is held. A
   person's Stop is untouched. Only the car's minimum level is never held (above), and the sun's charge is left
   alone: it counts toward the hour but is never held. A held charge the fuse paused counts at what it resumes at.
 - **Solar and Hybrid.** The target counts import from the grid only, so a charge the sun covers is free. Under
@@ -685,7 +685,7 @@ charger draws on would turn from import to export (so the current the fuse carri
 - **Shown.** The charger's status says *Held to 7 A to keep this hour under 6.0 kW (now 5.1 kW)*, *Paused until
   15:00 to keep this hour under 6.0 kW* (or, where the house alone is above the target, *Paused until 15:00 – the
   house alone is above the 6.0 kW import target this hour*), *The car will not be ready by 07:00 under the 6.0 kW import
-  target – 4 kWh short* with *Release the import target tonight*, or that the target is set aside until 07:00. The site's
+  target – 4 kWh short* with *Release the import target for this charge*, or that the target is set aside until 07:00. The site's
   load-balancing limit names the cause `import_target` only where the target's budget holds the charger. The site's
   diagnostics carry an `import_target` block: the hour's budget or why it is not applied, the level held to (`effective`: the lifted level, the month's free level and whether every part counts the hour), what it does to each
   charger (held, paused, kept at the hour's end, or why it could not hold it), the hour each was paused in, the

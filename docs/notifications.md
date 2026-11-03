@@ -17,7 +17,7 @@ has its own choice, so the driver of each car can follow their own charger.
 | Event | On by default | When |
 |---|---|---|
 | Charging stopped or did not start as planned | yes | see below |
-| The charge will not be ready by the departure | yes | the departure cannot be met with the time left; once each time it becomes so ; where the site's [import target](site-and-load-balancing.md#holding-the-chargers-under-the-import-target) is what makes it miss (and the plan asks), it says how much is missing under the target instead, with a *Release the import target tonight* button, and is taken off the phones once the departure can be met again |
+| The charge will not be ready by the departure | yes | the departure cannot be met with the time left; once each time it becomes so ; where the site's [import target](site-and-load-balancing.md#holding-the-chargers-under-the-import-target) is what makes it miss (and the plan asks), it says how much is missing under the target instead, with a *Release the import target for this charge* button, and is taken off the phones once the departure can be met again |
 | Charging complete | yes | the target state of charge was reached, the requested energy was delivered, the car stopped by itself when full after the plan's last window, or the plan's last window (or the hour after it that a car still charging to its own limit gets) ended while the car was charging |
 | Charging started | no | the charger starts charging, for whatever reason |
 | Car plugged in / Car unplugged | no | for a charger that can say whether a car is connected |
@@ -48,7 +48,7 @@ rules hold for the Companion phones and for the SpotNav app's instant notificati
   charger's settings (in the app, the card or a SpotNav entity) is not told, nor does it wake the app, because
   the person already sees it.
 - **Not a held Start.** A charge someone started by hand that the site's import target holds or pauses is said
-  in the card's status (with *Release the import target tonight*), never on the phones: the person who pressed
+  in the card's status (with *Release the import target for this charge*), never on the phones: the person who pressed
   Start sees it there.
 
 The SpotNav app's own check every 15 minutes follows the same decision: it tells a new plan when Home
