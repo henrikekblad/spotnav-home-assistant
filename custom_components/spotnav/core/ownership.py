@@ -39,6 +39,11 @@ The rules are today's, as the manual-pause specs and their three review rounds s
   own, through any plan, window or sun, but never through a pause a person chose or their Stop, and never takes a
   person's own charge. A window's end, a re-arm, the hold, the sun's stop and a strategy change leave it alone. At
   the floor a plan window open now or the sun takes it over with no command, or it is stopped once.
+* A guest car's amount delivered (`GuestMet`, `guest_met`): the charge is stopped unless a person's Start or a
+  Charge-now start runs it, and until the unplug nothing automatic starts the charger (no window, no sun, no claim,
+  no balancing resume of such a charge); a charge the charger begins by itself is held as one outside the windows
+  (and a person's override of that hold, as there, lets it go on). A person's Start and Charge now still charge.
+  A plug-in after a known unplug, the unplug, or the guest plan ending (`met` false) clears it; a restart keeps it.
 * A strategy change hands a running charge over instead of stopping it: to `solar`, the plan's charge goes to the
   sun when the sun's rules keep it (`sun_keeps`), else it is stopped once. The other way, a plan window that opens
   while the sun runs a charge takes it over at its start, with no command.
@@ -69,6 +74,7 @@ from .events import (
     FinalWindowEnd,
     HAND_TO_PLAN,
     HAND_TO_SOLAR,
+    GuestMet,
     MinSocEnd,
     MinSocStart,
     NeedMet,
@@ -164,6 +170,8 @@ REASON_TARGET: Final = "target"
 REASON_NEED_MET: Final = "need_met"
 REASON_TOP_OFF_END: Final = "top_off_end"
 REASON_MIN_SOC: Final = "min_soc"
+#: A guest car's amount is delivered: its charge is stopped and the plan cleared (`GuestMet`).
+REASON_GUEST_MET: Final = "guest_met"
 
 #: Who owns a charge a start of this reason began, when no pending command says (a result that came back after
 #: a later command replaced the pending one).
@@ -244,6 +252,9 @@ def automatic_allowed(session: ChargeSession, kind: str) -> bool:
     manual = session.manual
     if kind == GATE_PERSON_RESUME:
         return not (manual is not None and manual.action == MANUAL_STOP)
+    if kind == GATE_START and session.guest_met:
+        # A guest car's amount is delivered: nothing automatic starts the charger until the unplug.
+        return False
     if not session.paused:
         return True
     if manual is not None:
@@ -474,7 +485,7 @@ def _plug_in(session: ChargeSession, event: PlugIn, now: datetime) -> Decision:
         # A new plug-in session: what load balancing held, a safety stop and the hold belong to the one that ended.
         s = _plug_in_ended(
             _no_balancing(s).with_changes(
-                held_for_safety=False, safety_stopped_at=None, held=False, overridden=False
+                held_for_safety=False, safety_stopped_at=None, held=False, overridden=False, guest_met=False
             )
         )
     if previous is not None:
@@ -494,7 +505,7 @@ def _plug_in(session: ChargeSession, event: PlugIn, now: datetime) -> Decision:
 
 def _unplug(session: ChargeSession, event: Unplug, now: datetime) -> Decision:
     s = _plug_in_ended(_no_balancing(session)).with_changes(
-        plugged=False, held_for_safety=False, safety_stopped_at=None, held=False, overridden=False
+        plugged=False, held_for_safety=False, safety_stopped_at=None, held=False, overridden=False, guest_met=False
     )
     if event.previous is not None:
         s = _reset_person_hold(s).with_changes(car_ended=None)
@@ -672,7 +683,7 @@ def _strategy_change(session: ChargeSession, event: StrategyChange, now: datetim
 
 
 def _solar_start(session: ChargeSession, event: SolarStart, now: datetime) -> Decision:
-    if session.paused or not event.strategy_ok:
+    if session.paused or session.guest_met or not event.strategy_ok:
         return session, ()
     return _start(session, REASON_SOLAR, OWNER_SOLAR)
 
@@ -770,7 +781,8 @@ def _reported_on(session: ChargeSession, event: ChargerReportedOn, now: datetime
     if event.connected is False:
         s = s.with_changes(held=False, overridden=False)
     blocked = hold_blocked(s, solar_holds=event.solar_holds, plan_auto_owned=event.plan_auto_owned)
-    gap = event.window_ahead_outside and not blocked
+    # A guest car whose amount is delivered is held as a charge outside the windows is, whatever else owns the charger.
+    gap = (event.window_ahead_outside and not blocked) or s.guest_met
     owned = event.owned if event.owned is not None else spotnav_owned(s)
     commands: list[Command] = []
     hold = False
@@ -885,6 +897,9 @@ def _balancing_resume(session: ChargeSession, event: BalancingResume, now: datet
     gate = GATE_PERSON_RESUME if origin == OWNER_PERSON else GATE_BALANCING_RESUME
     if not automatic_allowed(session, gate) or not session.balancing_paused or event.charging:
         return session, ()
+    if session.guest_met and origin not in WINDOW_START_SPARED:
+        # The guest's amount is delivered: only a charge a person started is given back.
+        return session, ()
     if session.held_for_safety and session.safety_stopped_at is not None:
         since = (now - session.safety_stopped_at).total_seconds()
         if 0 <= since < SAFETY_RESUME_GAP_S:
@@ -912,6 +927,27 @@ def _need_met(session: ChargeSession, event: NeedMet, now: datetime) -> Decision
     if session.owner == OWNER_TOP_OFF:
         return session.with_changes(owner=OWNER_PLAN), ()
     return session, ()
+
+
+def _guest_met(session: ChargeSession, event: GuestMet, now: datetime) -> Decision:
+    """A guest car's amount is delivered: its charge is stopped and the plan cleared, unless a person's Start or a
+    Charge-now start runs it; from now until the unplug nothing automatic starts the charger (`automatic_allowed`).
+    What load balancing holds back for such a charge is not given back. `met` false: the guest plan ended."""
+    if not event.met:
+        return session.with_changes(guest_met=False), ()
+    s = session.with_changes(guest_met=True)
+    if s.balancing_paused and s.paused_origin not in WINDOW_START_SPARED:
+        s = _no_balancing(s)
+    if (
+        event.control_on
+        and s.owner not in WINDOW_START_SPARED
+        and not event.start_pending
+        and not s.start_pending
+        and not event.stop_recent
+        and automatic_allowed(s, GATE_STOP)
+    ):
+        return _stop(s, REASON_GUEST_MET, clear_schedule=True)
+    return s, ()
 
 
 def _top_off_end(session: ChargeSession, event: TopOffEnd, now: datetime) -> Decision:
@@ -974,8 +1010,7 @@ def _recheck(session: ChargeSession, event: Recheck, now: datetime) -> Decision:
         owned = event.owned if event.owned is not None else spotnav_owned(s)
         if (
             automatic_allowed(s, GATE_STOP)
-            and event.window_ahead_outside
-            and not blocked
+            and ((event.window_ahead_outside and not blocked) or s.guest_met)
             and not owned
             and event.control_on
         ):
@@ -1165,6 +1200,7 @@ _HANDLERS: Final[dict[type[Event], Callable[[ChargeSession, Event, datetime], De
     BalancingDropped: _balancing_dropped,  # type: ignore[dict-item]
     TargetReached: _target_reached,  # type: ignore[dict-item]
     NeedMet: _need_met,  # type: ignore[dict-item]
+    GuestMet: _guest_met,  # type: ignore[dict-item]
     TopOffEnd: _top_off_end,  # type: ignore[dict-item]
     PlanInstalled: _plan_installed,  # type: ignore[dict-item]
     PlanDropped: _plan_dropped,  # type: ignore[dict-item]

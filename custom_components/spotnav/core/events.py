@@ -411,6 +411,19 @@ class NeedMet(Event):
 
 
 @dataclass(frozen=True)
+class GuestMet(Event):
+    """A guest car's amount is delivered (`met`), or the guest plan the flag was for ended without an unplug (a
+    person chose a household car, or raised the amount above what was delivered: `met` false). `control_on`,
+    `start_pending` and `stop_recent` as for `ChargerReportedOn`."""
+
+    kind: ClassVar[str] = "guest_met"
+    met: bool = True
+    control_on: bool = False
+    start_pending: bool = False
+    stop_recent: bool = False
+
+
+@dataclass(frozen=True)
 class TopOffEnd(Event):
     """A top-off ends (deadline, unplug, the charge off, the car idle): `valid` once its own check holds."""
 
@@ -546,6 +559,7 @@ EVENT_TYPES: Final[dict[str, type[Event]]] = {
         BalancingDropped,
         TargetReached,
         NeedMet,
+        GuestMet,
         TopOffEnd,
         PlanInstalled,
         PlanDropped,

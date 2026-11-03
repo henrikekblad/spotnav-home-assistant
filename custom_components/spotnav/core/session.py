@@ -24,6 +24,9 @@ charger_state_machine_2026-10-04.md`, section 1); this record names each once:
   sooner than its gap.
 * `hold_stop_*`: the stops sent under a person's Stop of a charge the charger began by itself (C7, R5): when
   they went out, when the last was tried, whether SpotNav gave up, and whether one is on its way.
+* `guest_met`: a guest car's amount is delivered at this plug-in (`events.GuestMet`): nothing automatic starts the
+  charger again until the unplug, and a charge the charger begins by itself is held; a person's Start or a
+  Charge-now start still charges.
 * `spotnav_resumed`: load balancing gave back a charge nobody here owns (the charger's own) with a start of
   SpotNav's: the hold leaves it alone, as a charge SpotNav started, until it is seen off or stopped (today's
   `WindowHold.owned` from that start on). Its owner stays nobody's.
@@ -65,7 +68,10 @@ TRANSIENT_FIELDS: Final = (
     "spotnav_resumed",
 )
 #: Fields a serialised record written before they were kept may lack (an older debug bundle): read as their default.
-LATER_FIELDS: Final = frozenset({"spotnav_resumed"})
+LATER_FIELDS: Final = frozenset({"spotnav_resumed", "guest_met"})
+#: Fields the stored record carries only when they are not their default (`to_store`), so a record without a guest
+#: is the one an older build reads.
+STORED_WHEN_SET: Final = frozenset({"guest_met"})
 
 OWNER_NONE: Final = "none"
 OWNER_PLAN: Final = "plan"
@@ -188,6 +194,7 @@ class ChargeSession:
     held: bool = False
     overridden: bool = False
     car_ended: CarEnded | None = None
+    guest_met: bool = False
     balancing_paused: bool = False
     paused_origin: str | None = None
     held_for_safety: bool = False
@@ -254,6 +261,7 @@ class ChargeSession:
             "held": self.held,
             "overridden": self.overridden,
             "car_ended": None if self.car_ended is None else self.car_ended.to_dict(),
+            "guest_met": self.guest_met,
             "balancing_paused": self.balancing_paused,
             "paused_origin": self.paused_origin,
             "held_for_safety": self.held_for_safety,
@@ -298,6 +306,7 @@ class ChargeSession:
                 held=_bool(raw["held"], "held"),
                 overridden=_bool(raw["overridden"], "overridden"),
                 car_ended=_car_ended(raw["car_ended"]),
+                guest_met=_bool(raw.get("guest_met", False), "guest_met"),
                 balancing_paused=_bool(raw["balancing_paused"], "balancing_paused"),
                 paused_origin=_optional_text(raw["paused_origin"], "paused_origin"),
                 held_for_safety=_bool(raw["held_for_safety"], "held_for_safety"),
@@ -335,7 +344,11 @@ class ChargeSession:
     def to_store(self) -> dict[str, Any]:
         """The record a charger keeps across restarts: `to_dict` without the transient fields, with its own
         version (`STORED_VERSION`)."""
-        record = {key: value for key, value in self.to_dict().items() if key not in TRANSIENT_FIELDS}
+        record = {
+            key: value
+            for key, value in self.to_dict().items()
+            if key not in TRANSIENT_FIELDS and not (key in STORED_WHEN_SET and value == _STORED_DEFAULTS[key])
+        }
         record["version"] = STORED_VERSION
         return record
 
@@ -349,7 +362,7 @@ class ChargeSession:
             raise SessionError(f"stored session version {raw.get('version')!r} is not one of {READ_VERSIONS}")
         raw = upgraded(raw)
         expected = {"version"} | {item.name for item in fields(cls) if item.name not in TRANSIENT_FIELDS}
-        if set(raw) != expected:
+        if not expected - STORED_WHEN_SET <= set(raw) <= expected:
             raise SessionError(f"stored session fields differ: {sorted(set(raw) ^ expected)}")
         full = ChargeSession().to_dict()
         full.update({key: value for key, value in raw.items() if key != "version"})
@@ -474,3 +487,4 @@ def _required_instant(value: Any, what: str) -> datetime:
 
 
 _DEFAULTS: Final[dict[str, Any]] = {name: getattr(ChargeSession(), name) for name in TRANSIENT_FIELDS}
+_STORED_DEFAULTS: Final[dict[str, Any]] = {name: getattr(ChargeSession(), name) for name in STORED_WHEN_SET}
