@@ -23,6 +23,7 @@
       "set_charge_limit": true,
       "set_current": false,
       "site_import_target": true,
+      "suggest_import_target": true,
       "target_soc": false,
       "target_stop": true
     },

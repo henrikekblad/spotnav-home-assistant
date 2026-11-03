@@ -20,7 +20,7 @@ The dashboard's optional `grid_tariff` block (`serialize_grid_tariff`), present 
   (`planning/planner.py:HighLoadWindow`).
 * `demand`: the demand charge and the import target, measured on the charger's site (`serialize_demand`):
 
-      {components, available, reason, price_unit, per_component, hour, import_target_kw}
+      {components, available, reason, price_unit, per_component, hour, import_target_kw, effective_target_kw}
 
   `components` is the price entry's demand-charge components as a write states them
   (`[{window, top_n, price_per_kw: {winter, summer}}]`, at most three, empty for none; `window` `null` counts all
@@ -32,8 +32,10 @@ The dashboard's optional `grid_tariff` block (`serialize_grid_tariff`), present 
   clock (`planning/demand_charge.py`; `price_per_kw` is this month's season's). `hour` is the clock hour running
   now, `{start, kw_so_far, kwh_so_far}`, or `null` before it has a reading: `kw_so_far` the mean import over the
   time measured so far, `kwh_so_far` the energy. `import_target_kw` is the site's import target (`null` for none),
-  set in the site's settings (`import_target_kw` in `spotnav/update_entity_config`): only shown against the running
-  hour; nothing holds a charger for it yet.
+  set in the site's settings (`import_target_kw` in `spotnav/update_entity_config`). `effective_target_kw` is the
+  level the running hour is held under (`site/import_target.effective_target`): the target lifted to the month's
+  free level where a demand-charge part counts the hour and the month has already reached more (the month's peak),
+  else the target itself; `null` without a target or where the site cannot measure.
 * `write_revision`: the price entry's write counter, which a write names as `expected_write_revision`.
 * `writable`: whether this caller may change it (an administrator; the paired app).
 
@@ -110,6 +112,8 @@ class CapturedDemand:
     #: What the site's hours bill per component and the running hour; `None` while nothing is measured.
     snapshot: DemandSnapshot | None
     import_target_kw: float | None
+    #: The level the running hour is held under (the target lifted to the month's free level), `None` without one.
+    effective_target_kw: float | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -150,7 +154,15 @@ def capture_demand(hass: HomeAssistant, charger_id: str, components: tuple[Deman
         )
     controller = site_controller_for(hass, site.entry_id)
     snapshot = None if controller is None else controller.demand.snapshot(components, import_target_kw=target)
-    return CapturedDemand(available=True, reason=None, snapshot=snapshot, import_target_kw=target)
+    effective = None
+    if controller is not None and target is not None:
+        try:
+            effective = controller.effective_import_target_kw(target)
+        except Exception:  # noqa: BLE001 - a figure shown only: the target itself stands in for it
+            effective = target
+    return CapturedDemand(
+        available=True, reason=None, snapshot=snapshot, import_target_kw=target, effective_target_kw=effective
+    )
 
 
 def demand_needs_grid_power(captured: CapturedGridTariff | None) -> bool:
@@ -228,6 +240,7 @@ def serialize_demand(captured: CapturedGridTariff) -> dict[str, Any]:
         "per_component": per_component,
         "hour": hour,
         "import_target_kw": demand.import_target_kw,
+        "effective_target_kw": _kw(demand.effective_target_kw),
     }
 
 

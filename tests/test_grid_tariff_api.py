@@ -39,6 +39,7 @@ NO_DEMAND = {
     "per_component": [],
     "hour": None,
     "import_target_kw": None,
+    "effective_target_kw": None,
 }
 #: The pilot's tariff (Tekniska verken "alternativ"): a day peak 06-23 and a night peak 23-06, all year.
 DAY = {"days": "all", "from_month": 1, "to_month": 12, "from_hour": 6, "to_hour": 23}
