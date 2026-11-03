@@ -209,7 +209,9 @@ the status carries these lines, tone `normal` but for `import_target_at_risk` (`
 
 - Since the month's free level (`set_kw` on `import_target_held`, `import_target_paused` and `import_target_at_risk`):
   `target_kw` is the level held to this hour, the import target lifted to the demand charge's month peak already
-  paid for where a part counts the hour; `set_kw` is the target as set. Equal where nothing lifts it.
+  paid for where a part counts the hour; `set_kw` is the target as set. Both are the person's numbers: the hold keeps
+  the hour under `target_kw` less a small margin (the larger of 0.1 kW and 2 %), shown only in the diagnostics
+  (`hold_kw`). Equal where nothing lifts it.
 - `import_target_held` `{limit_a, target_kw, hour_kw}` in place of `load_balancing_limited` while the target, not the
   fuse, holds the charging car: held to `limit_a` (amps, `null` when not known) so the hour stays under `target_kw`
   (kW, an hourly mean); `hour_kw` is the hour's mean import so far.

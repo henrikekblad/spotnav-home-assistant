@@ -521,17 +521,21 @@ charger draws on would turn from import to export (so the current the fuse carri
   leaves free (a highest-hour part's peak this month; a top-3 or top-5 part's third or fifth highest day, or today's
   own peak while today is among them; with fewer days than that, today's own peak or nothing). Each hour is counted
   at its floor for this, its import over the whole hour with any minutes without a reading counted as none, so never
-  above what the operator billed; and the level is the free level less a margin (0.1 kW, or 2 % where more), so a
-  sensor that reads a little above the operator's meter cannot make a new peak. Never below the target as set. An
+  above what the operator billed. Never below the target as set. An
   hour no part counts keeps the target, a new month starts from it, and an incomplete hour never sets a peak.
   Example: a 6.0 kW target, and a sauna evening made the day part's peak 7.0 kW: for the rest of the month day hours
-  may reach 6.86 kW. Only the running hour's hold is lifted: a plan, and the later hours of the departure's check,
+  are held under 7.0 kW (less the margin below, 6.86 kW). Only the running hour's hold is lifted: a plan, and the later hours of the departure's check,
   count on the target as set (a later hour may be counted by no part, a new day or a new month). The fuse is
-  untouched. The status names both (*Held to 8 A to keep this hour under 6.9 kW, the month's peak (import target
+  untouched. The status names both (*Held to 8 A to keep this hour under 7.0 kW, the month's peak (import target
   6.0 kW)*), as do the house-alone lines and the notice. No setting. **A power-level subscriber** (Göteborg's
   tidsindelad level, which must never be exceeded) should leave the demand charge's parts out, or set them so they
   never free more than the level, or the month's peak lifts the hold above it.
-- **The hour's budget.** The target times one hour, less what was imported so far this hour, is what the rest of
+- **A small margin.** SpotNav keeps a small margin below the target, the larger of 0.1 kW and 2 %, for a meter that
+  reads differently from the operator's and the hour's last minutes: a 6.0 kW target holds the hour under 5.88 kW.
+  It is taken once, from the level the hour is held to (the target, or the month's peak that lifts it), never below
+  nothing. Plans and the departure's check count on the target less it too, so they agree with what the hold allows.
+  What you are shown stays your own numbers (the 6.0 kW target, the month's peak); the diagnostics show both.
+- **The hour's budget.** The target (less its margin) times one hour, less what was imported so far this hour, is what the rest of
   the hour may import. Spread over the time left, less what the house draws now (the site's net import less what
   its chargers draw; a solar surplus counts as less, so it leaves the chargers more), it is what the chargers may
   draw. In the hour's last minute the time left counts as a minute, and the fuse's own ceiling bounds the result.
