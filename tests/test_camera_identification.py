@@ -275,7 +275,7 @@ async def test_between_similar_cars_the_camera_only_puts_its_car_first(garage: G
     assert garage.camera_evidence()["used"] is True
     await world.later(ASK_AFTER_S + 5)
     question = world.sent()[0]
-    assert [action["title"] for action in question["data"]["actions"]] == ["Tesla", "Kia"], "the camera's car first"
+    assert [action["title"] for action in question["data"]["actions"]] == ["Tesla", "Kia", "Guest car"], "the camera's car first"
     assert [item["vehicle_id"] for item in garage.block["candidates"]] == [world.cars["Tesla"], world.cars["Kia"]]
 
 
@@ -287,7 +287,7 @@ async def test_a_less_sure_answer_only_orders_the_buttons(garage: Garage) -> Non
     await garage.settle()
     assert garage.world.settings.target.vehicle_id == garage.world.cars["Kia"]
     await garage.world.later(ASK_AFTER_S + 5)
-    assert [a["title"] for a in garage.world.sent()[0]["data"]["actions"]] == ["Tesla", "Kia"]
+    assert [a["title"] for a in garage.world.sent()[0]["data"]["actions"]] == ["Tesla", "Kia", "Guest car"]
 
 
 async def test_a_car_without_a_reference_picture_keeps_the_camera_from_deciding(garage: Garage) -> None:
@@ -306,7 +306,7 @@ async def test_no_car_at_the_spot_counts_for_nothing(garage: Garage) -> None:
     await garage.settle()
     assert garage.camera_evidence() == {"entity_id": "camera.norr", "answer": "none", "confidence": "high", "used": False}
     await garage.world.later(ASK_AFTER_S + 5)
-    assert [a["title"] for a in garage.world.sent()[0]["data"]["actions"]] == ["Kia", "Tesla"]
+    assert [a["title"] for a in garage.world.sent()[0]["data"]["actions"]] == ["Kia", "Tesla", "Guest car"]
     assert len(garage.model.tasks) == 1, "one query per plug-in"
 
 
@@ -365,7 +365,7 @@ async def test_a_slow_model_is_ignored_and_the_question_asked_as_without_a_camer
     await garage.settle()
     assert garage.camera_evidence() == {"entity_id": "camera.norr", "answer": None, "confidence": None, "used": False}
     await garage.world.later(ASK_AFTER_S + 5)
-    assert [a["title"] for a in garage.world.sent()[0]["data"]["actions"]] == ["Kia", "Tesla"]
+    assert [a["title"] for a in garage.world.sent()[0]["data"]["actions"]] == ["Kia", "Tesla", "Guest car"]
     assert len(garage.model.tasks) == 1, "no retry after a timeout"
     garage.model.hold.set()
 
@@ -486,7 +486,7 @@ async def test_at_night_the_camera_only_orders_the_buttons_however_sure(garage: 
     assert garage.world.identifier.method == METHOD_ASSUMED, "an infrared picture has no colour to tell cars apart"
     assert garage.camera_evidence()["used"] is True
     await garage.world.later(ASK_AFTER_S + 5)
-    assert [a["title"] for a in garage.world.sent()[0]["data"]["actions"]] == ["Tesla", "Kia"]
+    assert [a["title"] for a in garage.world.sent()[0]["data"]["actions"]] == ["Tesla", "Kia", "Guest car"]
 
 
 async def test_a_redrawn_frame_keeps_every_reference_and_crops_it_anew(garage: Garage) -> None:
@@ -635,7 +635,7 @@ async def test_a_sure_answer_against_the_colour_now_only_orders(garage: Garage) 
     await garage.settle()
     assert garage.world.identifier.method == METHOD_ASSUMED, "the red car named for a blue crop"
     await garage.world.later(ASK_AFTER_S + 5)
-    assert [a["title"] for a in garage.world.sent()[0]["data"]["actions"]] == ["Kia", "Tesla"]
+    assert [a["title"] for a in garage.world.sent()[0]["data"]["actions"]] == ["Kia", "Tesla", "Guest car"]
 
 
 async def test_an_ai_task_entity_names_the_model_of_its_subentry(hass: HomeAssistant) -> None:
