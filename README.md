@@ -88,12 +88,6 @@ Every dialog is described in [Set up SpotNav](docs/setup.md), including pairing 
 - [Charge ownership: the session model](docs/architecture-state.md): how charger control is structured.
 - [Translating SpotNav](docs/translating.md): where the texts are, and the glossary for each language.
 
-## Something wrong?
-
-Download the debug file from the card (**Settings, Support, Download debug info**) and attach it as a
-file to a bug report. [Troubleshooting](docs/troubleshooting.md) covers the common problems and what
-the file contains.
-
 ## Development
 
 ```sh
@@ -105,6 +99,21 @@ cd frontend && npm ci && npm test && npm run check-dist
 The card source is in `frontend/`. The compiled bundle in `custom_components/spotnav/www/` and its
 language files in `www/i18n/` are committed; `npm run build` regenerates both, and
 `npm run check-dist` fails while either is stale.
+
+## Support SpotNav
+
+- **Report a problem.** Open an issue with the [bug report form](https://github.com/henrikekblad/spotnav-home-assistant/issues/new/choose).
+  Then download the debug file from the card (**Settings, Support, Download debug info**) and email it to
+  **support@sensnology.se** with the issue's number in the subject. The file holds your entity names and
+  charging times, so please don't attach it to the public issue. [Troubleshooting](docs/troubleshooting.md)
+  covers the common problems.
+- **Tell how your hardware works.** A short [hardware report](https://github.com/henrikekblad/spotnav-home-assistant/issues/new/choose)
+  moves a charger, meter or car from "supported" to "confirmed" and helps the next person decide.
+- **Contribute.** Pull requests are welcome, for code as well as [translations](docs/translating.md); see
+  [Development](#development) for the checks.
+- **Star the repository.** Stars help others find SpotNav on GitHub and in HACS.
+- **Sponsor.** If SpotNav saves you money, [GitHub Sponsors](https://github.com/sponsors/henrikekblad) takes a
+  one-time or monthly contribution and keeps the project going.
 
 ## Licence
 
