@@ -320,12 +320,19 @@ def lowering_floor_a(
     signed_power_w: Mapping[str, float | None],
     voltage_v: Mapping[str, float | None],
     margin_a: Mapping[str, float | None] | None = None,
+    battery_discharge_w: float = 0.0,
 ) -> float | None:
     """The lowest current a charger may be lowered to for the target without its lowering raising the current the
     fuse carries on any phase it draws on: each phase's net import must stay an import (`P - d x U >= 0`), so its
     magnitude only falls. Where the direction comes from a signed current (`margin_a` given) the drop also stays within
     the phase's margin, as the regulator's own decrease does (`|net - d| <= |net| + d`). `None` when a phase cannot
-    be judged: nothing is then lowered for the target."""
+    be judged: nothing is then lowered for the target.
+
+    `battery_discharge_w` (only under `battery_first`, with the home battery read live and discharging: the caller
+    gives 0 otherwise): a drop of the car's power up to the battery's measured discharge only lowers that discharge,
+    not the grid's phases, so the floor goes that much further down, spread evenly over the charger's phases
+    (`discharge / sum of the phases' voltages`, in amps on each). The per-phase rule above still holds for the part of
+    the drop the discharge does not cover. Only ever lowers the floor; a charger is never raised through it."""
     floors: list[float] = []
     for phase in phases:
         measured = measured_a.get(phase)
@@ -340,4 +347,10 @@ def lowering_floor_a(
                 return None
             drop = min(drop, max(0.0, margin))
         floors.append(measured - drop)
-    return max(floors) if floors else None
+    if not floors:
+        return None
+    covered_a = 0.0
+    if battery_discharge_w > 0 and math.isfinite(battery_discharge_w):
+        volts = sum(voltage_v.get(phase) or HOLD_VOLTAGE_V for phase in phases)
+        covered_a = battery_discharge_w / volts if volts > 0 else 0.0
+    return max(floors) - covered_a

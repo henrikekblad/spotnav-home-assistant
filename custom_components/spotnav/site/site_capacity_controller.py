@@ -4974,7 +4974,9 @@ class SiteCapacityController:
         self, request: ChargerRequest, voltage_by_phase: Mapping[PhaseName, float | None], max_age_s: float
     ) -> float | None:
         """How far the target may lower this charger without raising what the fuse carries (`lowering_floor_a`), on
-        this recompute's own readings; `None` when a phase cannot be judged."""
+        this recompute's own readings; `None` when a phase cannot be judged. Under `battery_first` with the home
+        battery read live and discharging, a drop up to its discharge only lowers the discharge (`battery_discharge_w`);
+        under `car_first`, or with a battery that cannot be read live, the grid's phases alone decide, as before."""
         phases = request.phases_used() or ()
         result = self.result
         if not phases or request.measured_current_a is None:
@@ -4990,6 +4992,7 @@ class SiteCapacityController:
             signed_power_w={phase: result.phase_signed_active_power_w.get(phase) for phase in phases},
             voltage_v={phase: voltage_by_phase.get(phase) for phase in phases},
             margin_a={phase: result.measured_margin_a.get(phase) for phase in phases} if signed_current else None,
+            battery_discharge_w=self._battery_first_discharge()[1] or 0.0,
         )
 
     def _hold_to_import_target(
@@ -5168,7 +5171,8 @@ class SiteCapacityController:
                 highest = lowered if was_held is None or was_held[0] != budget.hour_start else max(was_held[1], lowered)
                 self._target_last_cap[charger_entry_id] = (budget.hour_start, highest)
                 self._note_target(charger_entry_id, "held", budget, cap_a=lowered)
-            if lowered > max(cap_a, request.min_current_a):
+            if lowered >= proposed and lowered > max(cap_a, request.min_current_a):
+                # Nothing could be lowered: every amp of the drop would turn a phase it draws on to export.
                 self._target_inert[charger_entry_id] = TARGET_INERT_EXPORTING
         return held
 

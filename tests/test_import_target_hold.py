@@ -812,6 +812,67 @@ async def test_a_discharging_battery_counts_as_import_only_under_battery_first(
         assert world.car_a == held_a
 
 
+async def _battery_holds_the_grid(world: _World, minutes: float) -> None:
+    """A battery in AI mode: it discharges what the house and the car draw, leaving the grid a little exporting."""
+    for _ in range(int(minutes * 2)):
+        load_a = world.house_a + world.car_a
+        world.battery_w = -3 * _V * load_a
+        world.extra_a = -load_a - 0.1
+        await world.step()
+
+
+@pytest.mark.parametrize("priority", ["battery_first", "car_first"])
+async def test_a_battery_holding_the_grid_at_nothing_lets_the_target_lower_the_car_under_battery_first(
+    hass: HomeAssistant, monkeypatch, priority: str
+) -> None:
+    """The owner's site: a 6.5 kW target, a battery discharging what the car takes, the grid at about 0. Under
+    `battery_first` the discharge counts as import and the drop only lowers it: the car is held (at 9 A or less), no
+    longer `phase_exporting`. Under `car_first` the grid alone counts: nothing to hold, the car keeps its 16 A."""
+    with freeze_time(_HOUR + timedelta(seconds=5)) as frozen:
+        name = f"aimode{priority.split('_')[0]}"
+        world = await _world(
+            hass, monkeypatch, frozen, name, target_kw=6.5, house_w=500.0, battery_entity=f"sensor.{name}_battery_power"
+        )
+        controller = world.halo.controller
+        controller.config["solar_priority"] = priority
+        charger = world.halo.charger.entry_id
+        await _battery_holds_the_grid(world, 1)
+        await _charging(world)
+        await _battery_holds_the_grid(world, 10)
+        if priority == "battery_first":
+            assert 6.0 <= world.car_a <= 9.0
+            assert controller.import_target_snapshot()["chargers"][charger]["inert"] is None
+            assert world.decision.reason == REASON_IMPORT_TARGET_HELD
+        else:
+            assert world.car_a == 16.0
+
+
+async def test_a_battery_that_cannot_be_read_lowers_no_further_than_the_grids_phases(
+    hass: HomeAssistant, monkeypatch
+) -> None:
+    """The extra drop needs a discharge read live under `battery_first`; without one, the per-phase floor alone."""
+    from custom_components.spotnav.site.site_capacity_controller import SiteCapacityController
+
+    with freeze_time(_HOUR + timedelta(seconds=5)) as frozen:
+        world = await _world(hass, monkeypatch, frozen, "battstale", battery_entity="sensor.battstale_battery_power")
+        controller = world.halo.controller
+        controller.config["solar_priority"] = "battery_first"
+        world.battery_w = -5000.0
+        world.show()
+        await world.step()
+        await _charging(world)
+        await world.run(2)
+        request = next(r for r in controller._build_requests(credit=False) if r.charger_entry_id == world.halo.charger.entry_id)  # noqa: SLF001
+        voltages = {phase: _V for phase in ("L1", "L2", "L3")}
+        with_battery = controller._target_floor_a(request, voltages, 120.0)  # noqa: SLF001
+        monkeypatch.setattr(SiteCapacityController, "_battery_first_discharge", lambda self: (True, None))
+        unread = controller._target_floor_a(request, voltages, 120.0)  # noqa: SLF001
+        monkeypatch.setattr(SiteCapacityController, "_battery_first_discharge", lambda self: (False, None))
+        car_first = controller._target_floor_a(request, voltages, 120.0)  # noqa: SLF001
+        assert unread == car_first is not None
+        assert with_battery == pytest.approx(car_first - 5000.0 / (3 * _V))
+
+
 # -- a restart in the middle of an hour
 
 

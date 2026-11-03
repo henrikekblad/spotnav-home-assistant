@@ -291,6 +291,58 @@ def test_a_phase_exporting_allows_no_lowering_and_an_unknown_one_none_at_all() -
     assert lowering_floor_a(signed_power_w={"L1": None}, **common) is None
 
 
+_THREE = ("L1", "L2", "L3")
+_VOLTS = {phase: 230.0 for phase in _THREE}
+
+
+def test_a_discharging_battery_under_battery_first_lets_the_car_down_by_what_it_discharges() -> None:
+    # The owner's site: a battery in AI mode holds the grid at about 0 (here a little export) by discharging 10.8 kW
+    # while the car draws 15 A on three phases. The grid's phases allow no drop at all; the discharge covers
+    # 10800 / 690 = 15.65 A on each phase, so the car may come down as far as the target asks.
+    common = {
+        "phases": _THREE,
+        "measured_a": {phase: 15.0 for phase in _THREE},
+        "signed_power_w": {phase: -23.0 for phase in _THREE},
+        "voltage_v": _VOLTS,
+    }
+    assert lowering_floor_a(**common) == pytest.approx(15.0)
+    assert lowering_floor_a(**common, battery_discharge_w=10800.0) == pytest.approx(15.0 - 10800.0 / 690.0)
+
+
+def test_a_battery_not_discharging_leaves_the_per_phase_floor_as_it_was() -> None:
+    common = {
+        "phases": _THREE,
+        "measured_a": {phase: 16.0 for phase in _THREE},
+        "signed_power_w": {phase: 1150.0 for phase in _THREE},
+        "voltage_v": _VOLTS,
+    }
+    assert lowering_floor_a(**common, battery_discharge_w=0.0) == pytest.approx(11.0)
+    assert lowering_floor_a(**common) == pytest.approx(11.0)
+
+
+def test_a_drop_beyond_the_discharge_is_held_to_the_discharge_and_the_grids_own_import() -> None:
+    # 5 A of import on each phase, and 2070 W of discharge (3 A on each of three phases): down by 8 A, to 8 A.
+    floor = lowering_floor_a(
+        phases=_THREE,
+        measured_a={phase: 16.0 for phase in _THREE},
+        signed_power_w={phase: 1150.0 for phase in _THREE},
+        voltage_v=_VOLTS,
+        battery_discharge_w=2070.0,
+    )
+    assert floor == pytest.approx(8.0)
+    # A phase that cannot be judged still lowers nothing, battery or not.
+    assert (
+        lowering_floor_a(
+            phases=_THREE,
+            measured_a={phase: 16.0 for phase in _THREE},
+            signed_power_w={"L1": None, "L2": 1150.0, "L3": 1150.0},
+            voltage_v=_VOLTS,
+            battery_discharge_w=10000.0,
+        )
+        is None
+    )
+
+
 def test_on_a_signed_current_the_drop_also_stays_within_the_margin() -> None:
     floor = lowering_floor_a(
         phases=("L1",),
