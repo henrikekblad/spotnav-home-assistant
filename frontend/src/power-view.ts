@@ -3,7 +3,9 @@
 // One bar per day of the month is the day's highest hourly mean of import from the grid, split into the house's part
 // and the car's (two shades of one hue); the days that hold a demand-charge part's counted peak are outlined and
 // tagged with the part's number; the site's import target is a dashed line across; a day the target held or paused a
-// charger has a small mark under its bar. A tap on a day shows its hours the same way (for a month whose hours are
+// charger has a small mark under its bar. Where the month's peak lifted the target (a demand-charge part's free level),
+// a thin solid line stands at that level over the days and hours it applied to. A day or hour read from Home
+// Assistant's statistics is hatched and the legend says so. A tap on a day shows its hours the same way (for a month whose hours are
 // still kept; an older month keeps its days only). Hover, focus or a tap shows the figures in the readout under the
 // chart, as the charge history's day chart does. Nothing is recomputed: every figure is the backend's.
 
@@ -25,6 +27,10 @@ export interface PowerDay {
   counted: number[];
   held: boolean;
   paused: boolean;
+  /** The peak hour was read from Home Assistant's statistics, not measured (`false` from an older backend). */
+  imported: boolean;
+  /** The level the month's peak lifted the import target to at the peak hour, `null` where it did not. */
+  month_peak_kw: number | null;
 }
 
 export interface PowerHour {
@@ -35,6 +41,8 @@ export interface PowerHour {
   held: boolean;
   paused: boolean;
   counted: number[];
+  imported: boolean;
+  month_peak_kw: number | null;
 }
 
 export interface PowerMonth {
@@ -78,6 +86,11 @@ function flag(value: unknown): boolean {
   return typeof value === "boolean" ? value : bad();
 }
 
+/** A field an older backend did not state: absent reads as `fallback`, present must be its shape. */
+function additive<T>(source: Record<string, unknown>, key: string, read: (value: unknown) => T, fallback: T): T {
+  return key in source ? read(source[key]) : fallback;
+}
+
 function list(value: unknown): unknown[] {
   return Array.isArray(value) ? value : bad();
 }
@@ -116,6 +129,8 @@ export function decodePowerMonth(raw: unknown): PowerDecodeResult {
         counted: indexes(day.counted, count),
         held: flag(day.held),
         paused: flag(day.paused),
+        imported: additive(day, "imported", flag, false),
+        month_peak_kw: additive(day, "month_peak_kw", powerOrNull, null),
       };
     });
     const hours =
@@ -131,6 +146,8 @@ export function decodePowerMonth(raw: unknown): PowerDecodeResult {
               held: flag(hour.held),
               paused: flag(hour.paused),
               counted: indexes(hour.counted, count),
+              imported: additive(hour, "imported", flag, false),
+              month_peak_kw: additive(hour, "month_peak_kw", powerOrNull, null),
             };
           });
     return {
@@ -263,7 +280,16 @@ export function partNames(language: Language, components: DemandComponent[]): Pa
  * the parts' names inside a sentence when there are several (`partNames`), else empty. */
 function notes(
   language: Language,
-  item: { kw: number; house_kw: number | null; counted: number[]; held: boolean; paused: boolean; incomplete?: boolean },
+  item: {
+    kw: number;
+    house_kw: number | null;
+    counted: number[];
+    held: boolean;
+    paused: boolean;
+    incomplete?: boolean;
+    imported: boolean;
+    month_peak_kw: number | null;
+  },
   parts: string[],
 ): string[] {
   const words: string[] = [];
@@ -289,6 +315,12 @@ function notes(
   }
   if (item.incomplete === true) {
     words.push(translate(language, "power.incomplete"));
+  }
+  if (item.month_peak_kw !== null) {
+    words.push(translate(language, "power.peak", { kw: kw(language, item.month_peak_kw) }));
+  }
+  if (item.imported) {
+    words.push(translate(language, "power.imported"));
   }
   return words;
 }
@@ -316,6 +348,9 @@ interface Column {
   held: boolean;
   paused: boolean;
   incomplete: boolean;
+  imported: boolean;
+  /** The month's peak level over this column (`null`: the target was not lifted). */
+  peak: number | null;
   figures: string;
 }
 
@@ -335,7 +370,7 @@ function barChart(
 ): HTMLElement {
   const wrap = element(doc, "div", `${C.historyChart} ${C.powerChart}`);
   const top = scaleTop(
-    columns.map((column) => column.kw ?? 0),
+    columns.map((column) => Math.max(column.kw ?? 0, column.peak ?? 0)),
     target,
   );
   const readout = element(doc, "p", `${C.muted} ${C.historyReadout}`);
@@ -369,6 +404,9 @@ function barChart(
       if (column.incomplete) {
         stack.dataset["incomplete"] = "true";
       }
+      if (column.imported) {
+        stack.dataset["imported"] = "true";
+      }
       if (column.house === null) {
         const whole = element(doc, "span", C.powerUnsplit);
         whole.style.flexGrow = "1";
@@ -390,6 +428,12 @@ function barChart(
       bar.append(stack);
     } else {
       bar.append(element(doc, "span", `${C.historyBarFill} ${C.powerEmpty}`));
+    }
+    if (column.peak !== null) {
+      const peak = element(doc, "span", C.powerPeak);
+      peak.setAttribute("aria-hidden", "true");
+      peak.style.bottom = `${(column.peak / top) * 100}%`;
+      bar.append(peak);
     }
     bar.addEventListener("mouseenter", () => show(column));
     bar.addEventListener("focus", () => show(column));
@@ -455,6 +499,13 @@ function legend(doc: Document, language: Language, answer: PowerMonth, columns: 
   if (answer.import_target_kw !== null) {
     list.append(swatch(doc, C.powerTargetSwatch, translate(language, "power.legend.target", { kw: kw(language, answer.import_target_kw) })));
   }
+  const peaks = columns.map((column) => column.peak).filter((peak): peak is number => peak !== null);
+  if (peaks.length > 0) {
+    list.append(swatch(doc, C.powerPeakSwatch, translate(language, "power.legend.peak", { kw: kw(language, Math.max(...peaks)) })));
+  }
+  if (columns.some((column) => column.imported)) {
+    list.append(swatch(doc, C.powerImportedSwatch, translate(language, "power.legend.imported")));
+  }
   const names = partNames(language, answer.components);
   answer.components.forEach((_component, index) => {
     const label = translate(language, "power.legend.countedPart", { part: names.inline[index] ?? "" });
@@ -502,6 +553,8 @@ function monthColumns(language: Language, answer: PowerMonth): Column[] {
       held: day?.held ?? false,
       paused: day?.paused ?? false,
       incomplete: false,
+      imported: day?.imported ?? false,
+      peak: day?.month_peak_kw ?? null,
       figures: day === undefined ? translate(language, "power.noData", { date: dateLabel(language, date) }) : dayFigures(language, day, parts),
     };
   });
@@ -523,6 +576,8 @@ function hourColumns(language: Language, answer: PowerMonth, date: string): Colu
         held: hour.held,
         paused: hour.paused,
         incomplete: hour.incomplete,
+        imported: hour.imported,
+        peak: hour.month_peak_kw,
         figures: hourFigures(language, hour, parts),
       };
     });
@@ -603,5 +658,10 @@ export function powerBody(doc: Document, language: Language, state: PowerState, 
     );
   }
   body.append(legend(doc, language, answer, columns));
+  if (columns.some((column) => column.imported)) {
+    const note = element(doc, "p", C.muted, translate(language, "power.importedNote"));
+    note.dataset["note"] = "imported";
+    body.append(note);
+  }
   return body;
 }

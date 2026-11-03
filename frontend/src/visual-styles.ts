@@ -298,6 +298,9 @@ export const VISUAL_CLASSES = {
   powerFrame: "spotnav-power-frame",
   powerTicks: "spotnav-power-ticks",
   powerGrid: "spotnav-power-grid",
+  powerPeak: "spotnav-power-peak",
+  powerPeakSwatch: "spotnav-power-peak-swatch",
+  powerImportedSwatch: "spotnav-power-imported-swatch",
   muted: "spotnav-muted",
   unavailable: "spotnav-unavailable",
 } as const;
@@ -2629,6 +2632,41 @@ export const VISUAL_STYLES = `
   }
   .${VISUAL_CLASSES.powerStack}[data-incomplete="true"] {
     opacity: 0.45;
+  }
+  /* A day or hour from Home Assistant's statistics: hatched in the card's own background over its colours. */
+  .${VISUAL_CLASSES.powerStack}[data-imported="true"]::after,
+  .${VISUAL_CLASSES.powerSwatch}.${VISUAL_CLASSES.powerImportedSwatch} {
+    background-image: repeating-linear-gradient(
+      135deg,
+      var(--ha-card-background, var(--card-background-color, #ffffff)) 0 1.5px,
+      transparent 1.5px 4px
+    );
+  }
+  .${VISUAL_CLASSES.powerStack}[data-imported="true"]::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+  }
+  .${VISUAL_CLASSES.powerSwatch}.${VISUAL_CLASSES.powerImportedSwatch} {
+    background-color: color-mix(in srgb, var(--primary-color, #03a9f4) 50%, var(--ha-card-background, var(--card-background-color, #ffffff)));
+  }
+  /* The month's peak where it lifted the target: a thin solid line in the warning colour, across each bar it held
+   * for (the bars' gaps bridged), distinct from the target's dashed line. */
+  .${VISUAL_CLASSES.powerPeak} {
+    position: absolute;
+    left: -1px;
+    right: -1px;
+    height: 0;
+    border-top: 2px solid var(--warning-color, #ffa600);
+    pointer-events: none;
+    z-index: 1;
+  }
+  .${VISUAL_CLASSES.powerSwatch}.${VISUAL_CLASSES.powerPeakSwatch} {
+    height: 0;
+    border-radius: 0;
+    border-top: 2px solid var(--warning-color, #ffa600);
   }
   .${VISUAL_CLASSES.powerCar},
   .${VISUAL_CLASSES.powerHouse},
