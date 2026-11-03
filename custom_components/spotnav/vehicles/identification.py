@@ -560,8 +560,11 @@ class VehicleIdentifier:
             else:
                 # Plugged in across a restart with nothing decided: identify it as a plug-in seen late.
                 self._plugged_in(dt_util.utcnow(), trigger=TRIGGER_RESTART)
-        elif remembered is not None:
+        elif remembered is not None and self._connected is False:
             self._remember(None)
+        elif remembered is not None:
+            # Not known yet whether a car is plugged in: what was decided holds until the charger says.
+            self._method = remembered["method"]
         if self._connected is False:
             # The guest left while Home Assistant was down.
             self._end_guest()
@@ -703,7 +706,9 @@ class VehicleIdentifier:
         elif before is True and connected is False:
             self._unplugged()
         elif before is None and connected is False and self._session is None:
-            # The first connection known since a restart says no car: a guest left meanwhile.
+            # The first connection known since a restart says no car: what was decided, and a guest, left meanwhile.
+            if self._kept is not None:
+                self._remember(None)
             self._end_guest()
 
     @callback
