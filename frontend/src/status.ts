@@ -443,7 +443,10 @@ export function releaseConfirmText(status: Status | null, format: FormatContext,
   const sentences = [
     until === null || !hasZone(format)
       ? translate(language, "release.confirm.unplug")
-      : translate(language, "release.confirm.departure", { time: clock(format, until) }),
+      : translate(language, "release.confirm.departure", {
+          // Tonight's departure by its time; one more than a day ahead with its day, as the status lines say it.
+          time: until - nowMs < 24 * 3600 * 1000 ? clock(format, until) : momentText(format, until, nowMs),
+        }),
   ];
   const peak = num(p["release_peak_kw"]);
   const today = num(p["target_kw"]);

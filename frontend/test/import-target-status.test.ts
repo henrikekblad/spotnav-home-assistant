@@ -215,6 +215,11 @@ describe("Release the import target tonight, confirmed first", () => {
     expect(releaseConfirmText({ tone: "normal", lines: [planned] } as never, SV, NOW)).toBe(
       "Bilen laddar då med full effekt tills den kopplas ur (eller till avresan 07:00).",
     );
+    // A departure more than a day ahead is said with its day, as the status lines say it.
+    const later = { ...planned, params: { ...planned.params, release_until: "2026-11-05T06:00:00+00:00" } };
+    expect(releaseConfirmText({ tone: "normal", lines: [later] } as never, SV, NOW)).toBe(
+      "Bilen laddar då med full effekt tills den kopplas ur (eller till avresan tors 5 nov. 07:00).",
+    );
     expect(releaseConfirmText({ tone: "normal", lines: [line("charging_now", { until: null })] } as never, SV, NOW)).toBeNull();
     // A release with no departure ahead is said so.
     expect(lineText(line("import_target_released", { target_kw: 6, departure: null, automatic: false }), SV, NOW)).toBe(
