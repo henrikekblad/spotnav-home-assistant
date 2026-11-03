@@ -1,0 +1,50 @@
+{
+  "action": "suggest_import_target",
+  "api_version": 1,
+  "available": true,
+  "car_kw": 6.4,
+  "car_min_kw": 4.14,
+  "chargers": [
+    {
+      "charger_id": "entry_a",
+      "has_statistics": false,
+      "source": null
+    }
+  ],
+  "counted": "windows",
+  "days": 31,
+  "grid_entities": [
+    "sensor.site_grid_power"
+  ],
+  "highest": {
+    "date": "2026-09-04",
+    "kw": 7.5,
+    "start": "2026-09-04T19:00:00+02:00"
+  },
+  "hours": 720,
+  "months": [
+    {
+      "days": 10,
+      "month": "2026-08",
+      "peak_kw": 2.8,
+      "peak_start": "2026-08-31T19:00:00+02:00",
+      "typical_kw": 2.35
+    },
+    {
+      "days": 21,
+      "month": "2026-09",
+      "peak_kw": 7.5,
+      "peak_start": "2026-09-04T19:00:00+02:00",
+      "typical_kw": 2.4
+    }
+  ],
+  "ok": true,
+  "period": {
+    "end": "2026-09-22T08:00:00+02:00",
+    "start": "2026-06-22T08:00:00+02:00"
+  },
+  "reason": null,
+  "site_id": "site_entry_a",
+  "suggestion_kw": 7.0,
+  "typical_kw": 2.4
+}
