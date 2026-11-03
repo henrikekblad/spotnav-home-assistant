@@ -936,6 +936,21 @@ def _charging_until(facts: StatusFacts, active: tuple[datetime, datetime]) -> da
     return active[1]
 
 
+def _import_target_paused_line(facts: StatusFacts) -> dict[str, Any] | None:
+    """`import_target_paused` while the site's import target paused this charge to the next hour, else `None`."""
+    target = facts.import_target
+    if not facts.balancing_paused or target is None or target.paused_until is None:
+        return None
+    return _line(
+        "import_target_paused",
+        until=aware_iso(target.paused_until),
+        target_kw=round(target.target_kw, 2),
+        house_over=target.house_over,
+        set_kw=round(target.target_kw if target.set_kw is None else target.set_kw, 2),
+        **_release_params(target),
+    )
+
+
 def _plan_headline(facts: StatusFacts) -> list[dict[str, Any]]:
     """The card's `statusSentence` chain, with the compound facts as their own lines."""
     now = facts.now
@@ -970,18 +985,11 @@ def _plan_headline(facts: StatusFacts) -> list[dict[str, Any]]:
         ]
     if facts.charging:
         return [_line("charging_now", until=None)]
-    target = facts.import_target
-    if facts.balancing_paused and target is not None and target.paused_until is not None:
+    paused_by_target = _import_target_paused_line(facts)
+    if paused_by_target is not None:
         # A plan's charge or a person's Start alike: the target paused it to the next hour.
         return [
-            _line(
-                "import_target_paused",
-                until=aware_iso(target.paused_until),
-                target_kw=round(target.target_kw, 2),
-                house_over=target.house_over,
-                set_kw=round(target.target_kw if target.set_kw is None else target.set_kw, 2),
-                **_release_params(target),
-            ),
+            paused_by_target,
             *(_plan_facts(proposal, energy=True, cost=True, distance=False) if active is not None else []),
         ]
     if facts.balancing_paused and active is not None:
@@ -1320,6 +1328,11 @@ def compose_status(facts: StatusFacts) -> dict[str, Any]:
         lines.append(_paused_line(facts))
         if facts.charging:
             lines.append(_line("charging_now", until=None))
+        elif facts.pause_choice == "manual" and facts.pause_action == "start":
+            # A person's Start the import target paused to the next hour: said, with the release, as for a plan.
+            paused_by_target = _import_target_paused_line(facts)
+            if paused_by_target is not None:
+                lines.append(paused_by_target)
     elif facts.min_soc_percent is not None:
         lines.append(_line("min_soc_charging", percent=round(facts.min_soc_percent)))
     elif facts.solar is not None:
