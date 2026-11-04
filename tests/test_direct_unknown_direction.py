@@ -440,3 +440,40 @@ async def test_a_pause_still_settling_is_not_sent_again_on_the_old_current(hass:
     assert cc.stop_settling
     assert len(turn_off) == 1
     assert site._damper_for(charger.entry_id).last_written_a == 0.0  # noqa: SLF001
+
+
+async def test_a_charge_a_person_restarts_after_a_pause_is_lowered_not_paused_again(
+    hass: HomeAssistant, freezer
+) -> None:
+    """Paused by |I|, the charger stops; minutes later a person starts it on the charger at 10 A (no start of ours,
+    the site is not told) and L3 is 3 A over: the remembered pause is forgotten and the charge is lowered to the
+    proposal, as for an import overload, never stopped a second time."""
+    charger, configure_calls, site = await _setup(hass, "restart")
+    cc = controller_of(hass, charger.entry_id)
+    assert await cc.async_start(amps=10, manual=True)
+    hass.states.async_set("switch.restart_charger", "on")
+    _charger_reads(hass, "restart_charger", 10.0)
+    _report(hass, "restart_site", (20.0, 20.0, 18.0), 0.0)
+    await _tick(hass)
+    turn_off = async_mock_service(hass, "switch", "turn_off")
+    _report(hass, "restart_site", (20.0, 20.0, 31.0), 0.0)
+    await _tick(hass)
+    assert len(turn_off) == 1
+    assert site._damper_for(charger.entry_id).last_written_a == 0.0  # noqa: SLF001
+    freezer.tick(timedelta(seconds=5))
+    hass.states.async_set("switch.restart_charger", "off")
+    _charger_reads(hass, "restart_charger", 0.0)
+    _report(hass, "restart_site", (20.0, 20.0, 20.0), 0.0)
+    await _tick(hass)
+
+    freezer.tick(timedelta(seconds=CATCH_UP_S * 30))
+    hass.states.async_set("switch.restart_charger", "on")
+    _charger_reads(hass, "restart_charger", 10.0)
+    _report(hass, "restart_site", (20.0, 20.0, 27.0), 0.0)
+    configure_calls.clear()
+    await _tick(hass)
+    await _tick(hass)
+
+    assert site.regulator_decisions[charger.entry_id].reason == MAGNITUDE
+    assert _assigned(configure_calls)[-1:] == [7]
+    assert len(turn_off) == 1, "lowered, not stopped again"

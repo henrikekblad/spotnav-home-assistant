@@ -2409,20 +2409,9 @@ class SiteCapacityController:
                 "min_current_a", DEFAULT_MIN_CURRENT_A
             )
         )
-        if (
-            previous_setpoint is not None
-            and previous_setpoint < min_current_a
-            and (charger_controller.charging or charger_controller.start_pending)
-            # A pause again while a stop of ours settles: the charger still reporting the charge has not answered
-            # that stop yet. Paused again it is sent nothing, but the site is told again and decides again at once
-            # (a pass, the pause, a recompute, a pass, as fast as the loop runs, until the charger reports off). The
-            # pause stays remembered; once the stop has had its time, a charger still charging is paused again.
-            and not (charger_controller.stop_settling and proposed < DEFAULT_MIN_CURRENT_A)
-        ):
-            # The damper remembers a pause, but the charger charges again (a start, a resume, a person): what it is
-            # at is not known here, so the next proposal is a first write, at once (a lowering one above all).
-            damper.forget_write(None)
-            previous_setpoint = None
+        previous_setpoint = self._forget_pause_when_charging(
+            damper, charger_controller, previous_setpoint, min_current_a, proposed
+        )
 
         # What was written, before an overload takes a reading above it for what is on the charger.
         written_a = previous_setpoint
@@ -2870,6 +2859,30 @@ class SiteCapacityController:
         )
         return True
 
+    @staticmethod
+    def _forget_pause_when_charging(
+        damper: RegulatorDamper,
+        charger_controller: ChargingController,
+        previous_setpoint: float | None,
+        min_current_a: float,
+        proposed: float,
+    ) -> float | None:
+        """What was written, with a remembered pause forgotten when the charger charges again (a start, a resume, a
+        person): what it is at is not known here, so the next proposal is a first write, at once (a lowering one
+        above all), never the pause again. Not while a stop of ours settles: the charger still reporting the charge
+        has not answered that stop yet. Paused again it is sent nothing, but the site is told again and decides again
+        at once (a pass, the pause, a recompute, a pass, as fast as the loop runs, until the charger reports off). The
+        pause stays remembered; once the stop has had its time, a charger still charging is paused again."""
+        if (
+            previous_setpoint is not None
+            and previous_setpoint < min_current_a
+            and (charger_controller.charging or charger_controller.start_pending)
+            and not (charger_controller.stop_settling and proposed < DEFAULT_MIN_CURRENT_A)
+        ):
+            damper.forget_write(None)
+            return None
+        return previous_setpoint
+
     def _overload_from_charger(
         self,
         charger_entry_id: str,
@@ -2932,10 +2945,14 @@ class SiteCapacityController:
             self._log_active_control_outcome(charger_entry_id, decision, outcome="held", detail="overload_over")
             return
         damper = self._damper_for(charger_entry_id)
-        previous_setpoint = damper.last_written_a
+        setpoint = min(decision.proposed_current_a, again.proposed_current_a)
+        # A pause remembered while the charger charges again (a person restarted it) is a first write, as for an
+        # import overload: the charge is lowered, not paused again.
+        previous_setpoint = self._forget_pause_when_charging(
+            damper, charger_controller, damper.last_written_a, self._min_current_a(charger_entry_id), setpoint
+        )
         measured = [b.measured_current_a for b in decision.basis.values() if b.measured_current_a is not None]
         ceiling = previous_setpoint if previous_setpoint is not None else (max(measured) if measured else None)
-        setpoint = min(decision.proposed_current_a, again.proposed_current_a)
         # A charger reading above what was written is lowered from what it draws, as an import overload is: the
         # ceiling is its reading, and the setpoint never goes above what was written (a car drawing 16 A on a
         # remembered 8 A, 3 A over, was held `not_a_lowering` at 13 A on every pass, the phase over the fuse).
