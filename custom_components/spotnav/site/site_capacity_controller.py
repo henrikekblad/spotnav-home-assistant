@@ -2426,40 +2426,15 @@ class SiteCapacityController:
 
         # What was written, before an overload takes a reading above it for what is on the charger.
         written_a = previous_setpoint
-        if (
-            is_import_overload(decision)
-            and previous_setpoint is not None
-            # A stop of ours still settling: the charger reads its old current until it answers, which is the stop
-            # on its way, not a current above the one written (the pause would otherwise be sent again and again).
-            and not (previous_setpoint < min_current_a and charger_controller.stop_settling)
-        ):
-            # An overload is measured against what is on the charger, not only against what was written: a fresh
-            # reading a step above it (a limit the charger dropped, a write the site was not told of) is where the
-            # lowering starts from, and the proposal never goes above what was written on that account.
-            measured = [
-                basis.measured_current_a
-                for basis in decision.basis.values()
-                if basis.measured_current_a is not None
-            ]
-            on_charger = charger_above_written(
-                written_a=previous_setpoint,
-                measured_a=max(measured) if measured else None,
-                charger_read_at=self._charger_read_at(decision),
-                written_at=self._written_at.get(charger_entry_id),
+        if is_import_overload(decision):
+            on_charger = self._overload_from_charger(
+                charger_entry_id, charger_controller, decision, damper, previous_setpoint, min_current_a
             )
-            if on_charger is not None:
-                _LOGGER.info(
-                    "SpotNav site %s active control: charger %s reads %.1fA, above the %sA written to it; "
-                    "the overload is lowered from what it draws",
-                    self.entry_id,
-                    charger_entry_id,
-                    on_charger,
-                    previous_setpoint,
-                )
+            if on_charger is not None and previous_setpoint is not None:
+                # The proposal never goes above what was written on that account.
                 if proposed > previous_setpoint:
                     proposed = previous_setpoint
                     decision = replace(decision, proposed_current_a=proposed)
-                damper.record_write(on_charger)
                 previous_setpoint = on_charger
 
         # An import overload (`is_import_overload`, its pause included): from here on no gate that is not about safety holds its lowering.
@@ -2895,6 +2870,46 @@ class SiteCapacityController:
         )
         return True
 
+    def _overload_from_charger(
+        self,
+        charger_entry_id: str,
+        charger_controller: ChargingController,
+        decision: RegulatorDecision,
+        damper: RegulatorDamper,
+        written_a: float | None,
+        min_current_a: float,
+    ) -> float | None:
+        """For an overload (by import, or by |I| where the direction is not known): the charger's fresh reading
+        when it is a step above `written_a`, what was last written (`charger_above_written`: a limit the charger
+        dropped, a current set in its own app, a write the site was not told of), else `None`. Then the damper
+        takes that reading for what is on the charger and the lowering starts from there; the caller keeps its
+        proposal at or below `written_a`.
+
+        Never while a stop of ours settles (`written_a` below the minimum): the charger reads its old current until
+        it answers, which is the stop on its way, not a current above the one written (the pause would otherwise be
+        sent again and again)."""
+        if written_a is None or (written_a < min_current_a and charger_controller.stop_settling):
+            return None
+        measured = [basis.measured_current_a for basis in decision.basis.values() if basis.measured_current_a is not None]
+        on_charger = charger_above_written(
+            written_a=written_a,
+            measured_a=max(measured) if measured else None,
+            charger_read_at=self._charger_read_at(decision),
+            written_at=self._written_at.get(charger_entry_id),
+        )
+        if on_charger is None:
+            return None
+        _LOGGER.info(
+            "SpotNav site %s active control: charger %s reads %.1fA, above the %sA written to it; "
+            "the overload is lowered from what it draws",
+            self.entry_id,
+            charger_entry_id,
+            on_charger,
+            written_a,
+        )
+        damper.record_write(on_charger)
+        return on_charger
+
     async def _async_apply_magnitude_lowering(
         self,
         charger_entry_id: str,
@@ -2921,6 +2936,20 @@ class SiteCapacityController:
         measured = [b.measured_current_a for b in decision.basis.values() if b.measured_current_a is not None]
         ceiling = previous_setpoint if previous_setpoint is not None else (max(measured) if measured else None)
         setpoint = min(decision.proposed_current_a, again.proposed_current_a)
+        # A charger reading above what was written is lowered from what it draws, as an import overload is: the
+        # ceiling is its reading, and the setpoint never goes above what was written (a car drawing 16 A on a
+        # remembered 8 A, 3 A over, was held `not_a_lowering` at 13 A on every pass, the phase over the fuse).
+        on_charger = self._overload_from_charger(
+            charger_entry_id,
+            charger_controller,
+            decision,
+            damper,
+            previous_setpoint,
+            self._min_current_a(charger_entry_id),
+        )
+        if on_charger is not None and previous_setpoint is not None:
+            setpoint = min(setpoint, previous_setpoint)
+            ceiling = previous_setpoint = on_charger
         if ceiling is None or setpoint >= ceiling:
             self._log_active_control_outcome(charger_entry_id, decision, outcome="held", detail="not_a_lowering")
             return
