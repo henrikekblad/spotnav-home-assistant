@@ -26,6 +26,11 @@ source an area uses follows from what you have set up; there is no setting to ch
   needs, in euro. The area and currency you pick when adding the integration do not matter. Nord Pool's
   day is the CET day, so a Finnish, Baltic, Romanian or Bulgarian day is cut from two of Nord Pool's days.
   Nord Pool keeps about two months of past days.
+- **Nord Pool from HACS is not this one.** The HACS integration called Nord Pool has the same name inside
+  Home Assistant and replaces the built-in one, but it has no `nordpool.get_prices_for_date`, so SpotNav cannot read
+  prices from it. SpotNav says so in the card (**Settings → Electricity price**). You can keep it for your own
+  charts and automations and add your ENTSO-E key: the prices then come from ENTSO-E. Without a key the area has
+  no source, as without Nord Pool.
 - **Your ENTSO-E key** works for every area the platform publishes, the Nord Pool areas included; where
   both are there, Nord Pool is used. To get one: register at
   [transparency.entsoe.eu](https://transparency.entsoe.eu/), then e-mail transparency@entsoe.eu with the

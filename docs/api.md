@@ -428,7 +428,7 @@ webhook only when the request asks for it (`"reads": ["price_provider"]`):
 
 `key` is `nordpool`, `entsoe`, `pvpc`, `octopus` or `zonneplan` (`null`, with `name` and `url`, when the area has no
 source at all; since 2.0 no area is read from the relay, and a reader should treat an unknown key as no key); `null` for the whole object without an area. `notice` is `null` while the area has a source of its
-own, else the one thing an administrator can do: `add_nordpool`, `nordpool_not_loaded`, `add_entsoe_key`,
+own, else the one thing an administrator can do: `add_nordpool`, `nordpool_not_loaded`, `nordpool_custom` (Nord Pool from HACS stands in for Home Assistant's, which has the action SpotNav reads), `add_entsoe_key`,
 `entsoe_key_rejected`, `add_pvpc`, `pvpc_not_loaded`, `add_octopus`, `octopus_not_loaded`, `octopus_no_agile`,
 `octopus_region_mismatch` (`params.region`, the meter's region, whose rates are used), `add_zonneplan`,
 `zonneplan_not_loaded`, `zonneplan_no_tariff`, `zonneplan_area` (a hint on another area of the Netherlands while
