@@ -1,5 +1,5 @@
-# Installed by SpotNav in blueprints/automation/spotnav/ and overwritten whenever SpotNav is updated.
-# To keep changes of your own, copy this file to another folder under blueprints/automation/ and edit the copy.
+# Installed by SpotNav in blueprints/automation/spotnav/ and updated with SpotNav while it is left unchanged.
+# A copy you edit is kept as it is and no longer updated; delete it and restart Home Assistant to get SpotNav's again.
 blueprint:
   name: "SpotNav: run on solar surplus"
   description: >-
