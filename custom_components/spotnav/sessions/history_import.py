@@ -38,7 +38,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.event import async_track_point_in_time
 from homeassistant.util import dt as dt_util
 
-from .costing import merge_slices, Slice, spot_intervals, split_energy
+from .costing import merge_slices, Slice, spot_intervals, split_energy, SpotIndex
 from .inputs import local_zone, price_market, PriceMarket
 from .model import (
     ChargeSession,
@@ -149,13 +149,15 @@ def build_sessions(
     market: PriceMarket | None,
     energy_source: str,
 ) -> Built:
-    """The imported sessions of `groups`, each hour split over `spot` (the raw intervals of the days)."""
+    """The imported sessions of `groups`, each hour split over `spot` (the raw intervals of the days, indexed once:
+    `SpotIndex`)."""
+    index = SpotIndex(spot)
     sessions = []
     priced_hours = unpriced_hours = 0
     for group in groups:
         slices: tuple[Slice, ...] = ()
         for hour in group:
-            parts = split_energy(spot, hour.start, hour.end, hour.kwh)
+            parts = index.split(hour.start, hour.end, hour.kwh)
             if sum(part.kwh for part in parts) >= hour.kwh * PRICED_SHARE:
                 priced_hours += 1
             else:

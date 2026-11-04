@@ -15,6 +15,7 @@ published interval has no slice (it stays in the session's energy, unpriced), ne
 
 from __future__ import annotations
 
+from bisect import bisect_left, bisect_right
 import math
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, replace
@@ -147,26 +148,57 @@ def day_averages_eur(spot: Sequence[SpotInterval]) -> dict[date, float]:
     return {day: weighted[day] / seconds[day] for day in weighted if seconds[day] > 0}
 
 
-def split_energy(spot: Sequence[SpotInterval], start: datetime, end: datetime, energy_kwh: float) -> list[Slice]:
-    """The slices of `energy_kwh` delivered evenly from `start` to `end`, one per interval it touched.
+class SpotIndex:
+    """`spot` made ready for many splits: its intervals in instant order, their starts for a binary search, the
+    longest interval's length (how far before an instant an interval holding it may start) and each day's average
+    (`day_averages_eur`), all once. A split then visits only the intervals near its span, not every one: an import of
+    24 months' hours over 24 months' intervals was quadratic, on the event loop."""
 
-    A span with no length is a point: its energy takes the interval holding that instant.
-    """
+    __slots__ = ("_averages", "_longest", "_spot", "_starts")
+
+    def __init__(self, spot: Sequence[SpotInterval]) -> None:
+        self._spot = sorted(spot, key=lambda interval: interval.utc_start)
+        self._starts = [interval.utc_start for interval in self._spot]
+        self._longest = max((interval.utc_end - interval.utc_start for interval in self._spot), default=None)
+        self._averages = day_averages_eur(self._spot)
+
+    def _near(self, start: datetime, end: datetime, *, point: bool) -> Sequence[SpotInterval]:
+        """The intervals, in instant order, that may hold `start` (`point`) or overlap `start` to `end`: none starts
+        at or before `start` less the longest length (it ends by `start`), none starts at or after `end`
+        (after `start` for a point)."""
+        if self._longest is None or self._longest.total_seconds() <= 0:
+            return ()
+        low = bisect_right(self._starts, start - self._longest)
+        high = bisect_right(self._starts, start) if point else bisect_left(self._starts, end)
+        return self._spot[low:high]
+
+    def split(self, start: datetime, end: datetime, energy_kwh: float) -> list[Slice]:
+        """The slices of `energy_kwh` delivered evenly from `start` to `end`, one per interval it touched.
+
+        A span with no length is a point: its energy takes the interval holding that instant.
+        """
+        if energy_kwh <= 0 or not self._spot:
+            return []
+        span = (end - start).total_seconds()
+        if span <= 0:
+            for interval in self._near(start, end, point=True):
+                if interval.utc_start <= start < interval.utc_end:
+                    return [_slice(interval, energy_kwh, self._averages)]
+            return []
+        out = []
+        for interval in self._near(start, end, point=False):
+            overlap = (min(end, interval.utc_end) - max(start, interval.utc_start)).total_seconds()
+            if overlap > 0:
+                out.append(_slice(interval, energy_kwh * overlap / span, self._averages))
+        return out
+
+
+def split_energy(spot: Sequence[SpotInterval], start: datetime, end: datetime, energy_kwh: float) -> list[Slice]:
+    """The slices of `energy_kwh` delivered evenly from `start` to `end`, one per interval it touched
+    (`SpotIndex.split`; build the index once where many spans are split over the same intervals)."""
     if energy_kwh <= 0 or not spot:
         return []
-    averages = day_averages_eur(spot)
-    span = (end - start).total_seconds()
-    if span <= 0:
-        for interval in spot:
-            if interval.utc_start <= start < interval.utc_end:
-                return [_slice(interval, energy_kwh, averages)]
-        return []
-    out = []
-    for interval in spot:
-        overlap = (min(end, interval.utc_end) - max(start, interval.utc_start)).total_seconds()
-        if overlap > 0:
-            out.append(_slice(interval, energy_kwh * overlap / span, averages))
-    return out
+    return SpotIndex(spot).split(start, end, energy_kwh)
 
 
 def _slice(interval: SpotInterval, kwh: float, averages: dict[date, float]) -> Slice:
