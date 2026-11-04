@@ -574,12 +574,13 @@ describe("12-13. hostile input and the audits", () => {
     expect(stripComments(readFileSync(resolve(__dirname, "../src/i18n/index.ts"), "utf8"))).toContain(
       "globalThis.fetch(",
     );
-    // Browser storage only for the chart's remembered collapsed state: one module names it, once.
+    // Browser storage only for the chart's remembered collapsed state and, where a kiosk browser gives no
+    // session storage, the count of reloads after an update: two modules name it, once each.
     const storageUsers = readdirSync(resolve(__dirname, "../src"))
       .filter((name) => name.endsWith(".ts"))
       .filter((name) => stripComments(readFileSync(resolve(__dirname, "../src", name), "utf8")).includes("localStorage"));
-    expect(storageUsers).toEqual(["chart-preference.ts"]);
-    expect(bundle.split("localStorage").length - 1).toBe(1);
+    expect(storageUsers).toEqual(["chart-preference.ts", "self-heal.ts"]);
+    expect(bundle.split("localStorage").length - 1).toBe(2);
     // The one backend operation, and only it: the element calls the API helper for the one version
     // it speaks, and the compiled bundle carries exactly that one command.
     expect(sources[0]).toContain("getDashboard(hass, charger, API_VERSION)");

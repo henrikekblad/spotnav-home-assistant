@@ -16,9 +16,11 @@ import {
   MALFORMED_RETRY_DELAYS_MS,
   RELOAD_DELAY_MS,
   RELOAD_KEY_PREFIX,
+  RETRY_RELOAD_DELAY_MS,
   UPDATE_WORDS,
   claimReload,
   isMalformed,
+  sessionStore,
   setReloadForTest,
 } from "../src/self-heal";
 import { API_VERSION, SETTINGS_API_VERSION } from "../src/types";
@@ -84,21 +86,36 @@ describe("the pieces", () => {
     expect(isMalformed(null)).toBe(false);
   });
 
-  it("claims one reload per served hash, and none where storage fails", () => {
-    expect(claimReload(sessionStorage, "aaaaaaaa")).toBe(true);
-    expect(claimReload(sessionStorage, "aaaaaaaa")).toBe(false);
-    expect(claimReload(sessionStorage, "bbbbbbbb")).toBe(true);
-    expect(sessionStorage.getItem(`${RELOAD_KEY_PREFIX}aaaaaaaa`)).toBe("1");
-    expect(claimReload(null, "cccccccc")).toBe(false);
+  it("claims two reloads per served hash, and none where storage fails", () => {
+    expect(claimReload(sessionStorage, "aaaaaaaa")).toBe(1);
+    expect(claimReload(sessionStorage, "aaaaaaaa")).toBe(2);
+    expect(claimReload(sessionStorage, "aaaaaaaa")).toBeNull();
+    expect(claimReload(sessionStorage, "bbbbbbbb")).toBe(1);
+    expect(sessionStorage.getItem(`${RELOAD_KEY_PREFIX}aaaaaaaa`)).toBe("2");
+    sessionStorage.setItem(`${RELOAD_KEY_PREFIX}eeeeeeee`, "nonsense");
+    expect(claimReload(sessionStorage, "eeeeeeee")).toBeNull();
+    expect(claimReload(null, "cccccccc")).toBeNull();
     const broken = {
       getItem: () => null,
       setItem: () => {
         throw new Error("QuotaExceededError");
       },
     };
-    expect(claimReload(broken, "cccccccc")).toBe(false);
+    expect(claimReload(broken, "cccccccc")).toBeNull();
     // A store that forgets what it was told cannot guard a reload either.
-    expect(claimReload({ getItem: () => null, setItem: () => undefined }, "dddddddd")).toBe(false);
+    expect(claimReload({ getItem: () => null, setItem: () => undefined }, "dddddddd")).toBeNull();
+  });
+
+  it("counts in local storage where a kiosk browser gives no session storage", () => {
+    const spy = vi.spyOn(globalThis, "sessionStorage", "get").mockImplementation(() => {
+      throw new Error("SecurityError");
+    });
+    try {
+      expect(sessionStore()).toBe(localStorage);
+    } finally {
+      spy.mockRestore();
+    }
+    expect(sessionStore()).toBe(sessionStorage);
   });
 
   it("has the line and the button in every language", () => {
@@ -131,20 +148,34 @@ describe("an unreadable dashboard from an outdated card", () => {
     expect(reloads).toBe(1);
     expect(sessionStorage.getItem(`${RELOAD_KEY_PREFIX}${SERVED}`)).toBe("1");
 
-    // After the reload the old card is still here (the browser kept it): the button, no second reload.
+    // After the reload the old card is still here (a cache served the old page): the button, and a second
+    // reload once the cache has had time to catch up.
+    document.body.innerHTML = "";
+    forgetPageReloadForTest();
+    const second = await mounted();
+    second.hass.resolveNext(MALFORMED);
+    await settle();
+    expect(notice(second.element)?.dataset["cardUpdated"]).toBe("button");
+    await vi.advanceTimersByTimeAsync(RELOAD_DELAY_MS * 4);
+    expect(reloads).toBe(1);
+    await vi.advanceTimersByTimeAsync(RETRY_RELOAD_DELAY_MS);
+    expect(reloads).toBe(2);
+    expect(sessionStorage.getItem(`${RELOAD_KEY_PREFIX}${SERVED}`)).toBe("2");
+
+    // Still the old card after both: the button only, no third reload.
     document.body.innerHTML = "";
     forgetPageReloadForTest();
     const again = await mounted();
     again.hass.resolveNext(MALFORMED);
     await settle();
-    await vi.advanceTimersByTimeAsync(RELOAD_DELAY_MS * 4);
-    expect(reloads).toBe(1);
+    await vi.advanceTimersByTimeAsync(RETRY_RELOAD_DELAY_MS * 2);
+    expect(reloads).toBe(2);
     expect(notice(again.element)?.dataset["cardUpdated"]).toBe("button");
     expect(text(again.element)).toContain(UPDATE_WORDS.sv.updated);
     const button = notice(again.element)?.querySelector<HTMLButtonElement>("button");
     expect(button?.textContent).toBe(UPDATE_WORDS.sv.reload);
     button?.click();
-    expect(reloads).toBe(2);
+    expect(reloads).toBe(3);
   });
 
   it("reloads again for a newer served hash", async () => {
