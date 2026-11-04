@@ -30,7 +30,7 @@ from custom_components.spotnav.pricing.providers.pvpc import PvpcProvider
 from custom_components.spotnav.pricing.providers.zonneplan import PUBLICATION, ZonneplanProvider
 from custom_components.spotnav.pricing.relay_contract import parse_day
 
-from .relay import Clock, FakeScheduler, StoreDouble, StubTransport
+from .relay import Clock, FakeScheduler, register_nordpool_action, StoreDouble, StubTransport
 
 UTC = timezone.utc
 AMSTERDAM = "Europe/Amsterdam"
@@ -522,6 +522,7 @@ async def test_nl_hints_at_the_zonneplan_area_while_the_integration_is_loaded(wo
 
     nordpool = MockConfigEntry(domain="nordpool", title="Nord Pool", data={})
     nordpool.add_to_hass(world.hass)
+    register_nordpool_action(world.hass)
     nordpool.mock_state(world.hass, ConfigEntryState.LOADED)
     try:
         # NL has prices of its own: now the hint, beside the source.

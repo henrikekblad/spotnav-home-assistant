@@ -31,7 +31,7 @@ from custom_components.spotnav.notifications import push as push_module
 from custom_components.spotnav.pricing.price_repository import STORAGE_KEY
 from custom_components.spotnav.runtime import domain_data
 
-from .relay import day_body, fixture, SE4, TODAY, YESTERDAY
+from .relay import day_body, fixture, register_nordpool_action, SE4, TODAY, YESTERDAY
 from .test_price_device import add_price, NOW
 
 #: The relay's host: since 2.0 it is asked for push wake-ups only, never for prices.
@@ -159,6 +159,7 @@ async def test_with_nord_pool_added_the_held_days_stay_and_the_notice_goes(
     hass_storage[STORAGE_KEY] = {"version": 1, "key": STORAGE_KEY, "data": relay_era_store()}
     nordpool = MockConfigEntry(domain="nordpool", title="Nord Pool", data={})
     nordpool.add_to_hass(hass)
+    register_nordpool_action(hass)
     try:
         with freeze_time(NOW):
             price = await add_price(hass)

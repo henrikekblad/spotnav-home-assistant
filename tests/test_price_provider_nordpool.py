@@ -33,7 +33,7 @@ from custom_components.spotnav.pricing.providers import nordpool as nordpool_mod
 from custom_components.spotnav.pricing.providers.nordpool import NordPoolProvider, PUBLICATION
 from custom_components.spotnav.pricing.relay_contract import parse_day
 
-from .relay import Clock, FakeScheduler, StoreDouble, StubTransport
+from .relay import Clock, FakeScheduler, register_nordpool_action, StoreDouble, StubTransport
 
 UTC = timezone.utc
 BRUSSELS = "Europe/Brussels"
@@ -596,6 +596,7 @@ async def test_setup_builds_the_router_and_the_rates_for_the_installation(hass: 
 
     entry = MockConfigEntry(domain="nordpool", title="Nord Pool", data={})
     entry.add_to_hass(hass)
+    register_nordpool_action(hass)
     repository = await async_setup_price_repository(hass, store=StoreDouble())
     try:
         assert domain_data(hass).fx_rates is not None

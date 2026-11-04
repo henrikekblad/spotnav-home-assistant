@@ -30,7 +30,15 @@ from custom_components.spotnav.pricing.providers.nordpool import NordPoolProvide
 from custom_components.spotnav.pricing.relay_contract import DEFAULT_PUBLICATION, parse_day
 
 from .entsoe_helpers import area as entsoe_area, entsoe_body, fixture, SECRET, with_sequence
-from .relay import Clock, day_body as relay_day_body, FakeScheduler, serve, StoreDouble, StubTransport
+from .relay import (
+    Clock,
+    day_body as relay_day_body,
+    FakeScheduler,
+    register_nordpool_action,
+    serve,
+    StoreDouble,
+    StubTransport,
+)
 
 UTC = timezone.utc
 #: The relay fixtures' day, before the publication (08:00 in Stockholm).
@@ -547,6 +555,7 @@ async def test_the_router_follows_the_key_and_the_nordpool_entry(world: World) -
     # No route on the platform: no source.
     assert world.repository.provider_for("GB-A") is None
 
+    register_nordpool_action(world.hass)
     world.nordpool_entry.mock_state(world.hass, ConfigEntryState.LOADED)
     assert world.repository.provider_for("FI").key == "nordpool"
     assert world.repository.provider_for("ES") is world.provider

@@ -198,6 +198,9 @@ once there is nothing priced for today Home Assistant raises the Repairs issue *
   ENTSO-E key instead"** works too.
 - **"Nord Pool is added in Home Assistant but did not start"**: open the Nord Pool integration under
   **Settings → Devices & services** and look at its error; SpotNav follows it as soon as it is loaded.
+- **"Nord Pool from HACS is installed and replaces Home Assistant's built-in Nord Pool"**: the HACS integration
+  has no action SpotNav can read prices from. Keep it and enter an ENTSO-E key in the card, or remove it and add
+  Home Assistant's own Nord Pool.
 - **"Add your ENTSO-E key"** (the other European areas): follow the how-to under the key's field. Access to
   ENTSO-E's API is granted by e-mail and can take a few days; until then the platform refuses the key.
 - **"ENTSO-E did not accept the saved key"**: the key was refused when it was saved or later. Generate a new

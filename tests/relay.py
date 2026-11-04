@@ -19,7 +19,7 @@ from typing import Any, Callable
 from zoneinfo import ZoneInfo
 
 from aiohttp import ClientError
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, SupportsResponse
 
 from custom_components.spotnav import time_zones
 from custom_components.spotnav.pricing.area_catalogue import BUNDLED_PATH, parse_bundled
@@ -646,3 +646,15 @@ async def today_back(world: Any, area: str = SE4) -> None:
     if route is not None:
         world.transport.routes[path] = route
     await world.repository.async_get_day(area, TODAY, refresh=True)
+
+
+def register_nordpool_action(hass: HomeAssistant) -> None:
+    """Home Assistant's own Nord Pool registers `nordpool.get_prices_for_date`; the HACS one has no such action.
+    SpotNav counts a loaded `nordpool` entry only with it, so a test that loads an entry as the built-in one calls
+    this first."""
+
+    async def handle(call: Any) -> dict[str, Any]:
+        return {}
+
+    if not hass.services.has_service("nordpool", "get_prices_for_date"):
+        hass.services.async_register("nordpool", "get_prices_for_date", handle, supports_response=SupportsResponse.ONLY)

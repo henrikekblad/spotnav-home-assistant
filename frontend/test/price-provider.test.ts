@@ -217,6 +217,17 @@ describe("the notices", () => {
     expect(pushed).toEqual([path]);
   });
 
+  it("nordpool_custom explains the HACS Nord Pool, shows the key field and has no button", async () => {
+    const { element } = await open(dashboard(provider(SOURCE, "nordpool_custom")));
+    const box = notice(element)!;
+    expect(box.dataset["priceNotice"]).toBe("nordpool_custom");
+    expect(box.querySelector(".spotnav-suggestion-text")?.textContent).toBe(
+      "Nord Pool from HACS is installed and replaces Home Assistant's built-in Nord Pool, which SpotNav reads its prices from. Keep it and enter a free ENTSO-E key below, or switch to the built-in Nord Pool.",
+    );
+    // Only the key's own button: no integration to add or open.
+    expect(labels(box)).toEqual(["Add your ENTSO-E key"]);
+  });
+
   it("the integrations' pages are Home Assistant's own routes", () => {
     expect(addIntegrationPath("pvpc_hourly_pricing")).toBe("/config/integrations/dashboard/add?domain=pvpc_hourly_pricing");
     expect(integrationPath("octopus_energy")).toBe("/config/integrations/integration/octopus_energy");
@@ -324,7 +335,7 @@ describe("the notices", () => {
 
   it("has its words in every language", () => {
     const keys = Object.keys(TRANSLATIONS.en).filter((key) => key.startsWith("price.notice.") || key.startsWith("price.key.") || key.startsWith("price.provider."));
-    expect(keys.length).toBe(38);
+    expect(keys.length).toBe(39);
     for (const language of LANGUAGES) {
       const words = TRANSLATIONS[language] as Record<string, string>;
       for (const key of keys) {

@@ -46,6 +46,7 @@ OCTOPUS_REPOSITORY_URL: Final = "https://github.com/BottlecapDave/HomeAssistant-
 _STEPS: Final[dict[str, tuple[str, str | None]]] = {
     "add_nordpool": ("prices_nordpool", ADD_INTEGRATION_PATH.format(domain="nordpool")),
     "nordpool_not_loaded": ("prices_nordpool", INTEGRATION_PATH.format(domain="nordpool")),
+    "nordpool_custom": ("prices_entsoe", None),
     "add_entsoe_key": ("prices_entsoe", None),
     "entsoe_key_rejected": ("prices_entsoe", None),
     "add_pvpc": ("prices_pvpc", ADD_INTEGRATION_PATH.format(domain="pvpc_hourly_pricing")),

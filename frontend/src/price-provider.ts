@@ -67,6 +67,8 @@ const NOTICES: Record<string, NoticeSpec> = {
     action: { label: "price.notice.nordpoolNotLoaded.action", does: { kind: "page", path: integrationPath("nordpool") } },
     key: "offered",
   },
+  // Nord Pool from HACS has the built-in one's domain and no action: nothing to add, the key is the way on.
+  nordpool_custom: { text: "price.notice.nordpoolCustom", key: "shown" },
   add_entsoe_key: { text: "price.notice.addEntsoeKey", key: "shown" },
   entsoe_key_rejected: { text: "price.notice.entsoeKeyRejected", key: "shown" },
   add_pvpc: {

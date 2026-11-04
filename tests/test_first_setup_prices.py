@@ -22,6 +22,7 @@ from custom_components.spotnav.runtime import domain_data
 
 from .charger_shapes import register_shape, SHAPES
 from .entsoe_helpers import SECRET
+from .relay import register_nordpool_action
 from .test_charger_config_flow import _to_detected_entities
 from .test_price_provider_entsoe import FakePlatform
 from .world import setup_charger
@@ -85,11 +86,24 @@ async def test_with_nord_pool_loaded_there_is_no_step(hass: HomeAssistant) -> No
     entry = MockConfigEntry(domain="nordpool", title="Nord Pool", data={})
     entry.add_to_hass(hass)
     entry.mock_state(hass, ConfigEntryState.LOADED)
+    register_nordpool_action(hass)
     try:
         result = await add_wallbox(hass)
     finally:
         entry.mock_state(hass, ConfigEntryState.NOT_LOADED)
     assert result["type"] == FlowResultType.CREATE_ENTRY
+
+
+async def test_nord_pool_from_hacs_is_asked_for_the_entsoe_key(hass: HomeAssistant) -> None:
+    # A loaded `nordpool` entry without Home Assistant's action: the HACS integration, which SpotNav cannot read.
+    entry = MockConfigEntry(domain="nordpool", title="Nord Pool", data={})
+    entry.add_to_hass(hass)
+    entry.mock_state(hass, ConfigEntryState.LOADED)
+    try:
+        result = await add_wallbox(hass)
+    finally:
+        entry.mock_state(hass, ConfigEntryState.NOT_LOADED)
+    assert result["type"] == FlowResultType.FORM and result["step_id"] == "prices_entsoe"
 
 
 async def test_only_the_first_charger_is_asked(hass: HomeAssistant) -> None:

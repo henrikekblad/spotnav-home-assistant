@@ -23,9 +23,10 @@ that is there but failing (Nord Pool unreachable, ENTSO-E asking to wait) stays 
 | Zonneplan | the integration loaded, no enabled tariff sensor | `zonneplan_no_tariff` |
 | Zonneplan | no entry | `add_zonneplan` |
 | another area of Zonneplan's country (NL) | a source of its own, a `zonneplan_one` entry loaded | `zonneplan_area` |
-| Nord Pool area | a `nordpool` entry loaded, or a usable ENTSO-E key | none |
+| Nord Pool area | a `nordpool` entry loaded with the `get_prices_for_date` action, or a usable ENTSO-E key | none |
+| Nord Pool area | a `nordpool` entry loaded without the action (Nord Pool from HACS), no usable key | `nordpool_custom` |
 | Nord Pool area | a `nordpool` entry, not loaded | `nordpool_not_loaded` |
-| Nord Pool area | no entry, the ENTSO-E key rejected | `entsoe_key_rejected` |
+| Nord Pool area | no entry, or the HACS one, the ENTSO-E key rejected | `entsoe_key_rejected` |
 | Nord Pool area | no entry, no key | `add_nordpool` |
 | ENTSO-E area | a usable key | none |
 | ENTSO-E area | the key rejected | `entsoe_key_rejected` |
@@ -52,8 +53,13 @@ from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant
 
 #: A config entry of an integration a provider reads: loaded, there but not loaded (failed, disabled, still
-#: starting), or none.
-EntryState = Literal["loaded", "not_loaded", "none"]
+#: starting), or none. `custom` is only for `nordpool`: an entry is loaded but the integration is not Home
+#: Assistant's own (Nord Pool from HACS has the same domain and no `get_prices_for_date` action).
+EntryState = Literal["loaded", "not_loaded", "none", "custom"]
+
+#: The action SpotNav reads Nord Pool's prices through; Home Assistant's own integration registers it.
+NORDPOOL_DOMAIN: Final = "nordpool"
+NORDPOOL_ACTION: Final = "get_prices_for_date"
 
 #: An ENTSO-E key: none stored, or the stored key's state.
 KeyState = Literal["none", "ok", "unchecked", "rejected"]
@@ -71,6 +77,7 @@ NOTICE_CODES: Final = (
     "add_zonneplan",
     "zonneplan_area",
     "nordpool_not_loaded",
+    "nordpool_custom",
     "entsoe_key_rejected",
     "add_nordpool",
     "add_entsoe_key",
@@ -88,6 +95,7 @@ NoticeCode = Literal[
     "add_zonneplan",
     "zonneplan_area",
     "nordpool_not_loaded",
+    "nordpool_custom",
     "entsoe_key_rejected",
     "add_nordpool",
     "add_entsoe_key",
@@ -192,6 +200,8 @@ def _own_notice(facts: SourceFacts) -> ProviderNotice | None:
             return ProviderNotice("nordpool_not_loaded")
         if facts.entsoe_route and facts.entsoe_key == "rejected":
             return ProviderNotice("entsoe_key_rejected")
+        if facts.nordpool_entry == "custom":
+            return ProviderNotice("nordpool_custom")
         return ProviderNotice("add_nordpool")
     if facts.entsoe_route:
         if key_usable:
@@ -201,10 +211,20 @@ def _own_notice(facts: SourceFacts) -> ProviderNotice | None:
 
 
 def entry_state(hass: HomeAssistant | None, domain: str) -> EntryState:
-    """Whether an integration has a loaded config entry, one that is not loaded, or none."""
+    """Whether an integration has a loaded config entry, one that is not loaded, or none. A loaded `nordpool` entry
+    without its `get_prices_for_date` action is `custom`: Nord Pool from HACS, which replaces Home Assistant's."""
     if hass is None:
         return "none"
     entries = hass.config_entries.async_entries(domain)
     if not entries:
         return "none"
-    return "loaded" if any(entry.state is ConfigEntryState.LOADED for entry in entries) else "not_loaded"
+    if not any(entry.state is ConfigEntryState.LOADED for entry in entries):
+        return "not_loaded"
+    if domain == NORDPOOL_DOMAIN and not hass.services.has_service(NORDPOOL_DOMAIN, NORDPOOL_ACTION):
+        return "custom"
+    return "loaded"
+
+
+def nordpool_loaded(hass: HomeAssistant) -> bool:
+    """Whether Home Assistant's own Nord Pool counts as there: an entry loaded and its action registered."""
+    return entry_state(hass, NORDPOOL_DOMAIN) == "loaded"
