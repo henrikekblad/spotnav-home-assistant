@@ -1,12 +1,63 @@
 // A small Chrome DevTools Protocol client: headless chromium, shadow-DOM-piercing queries, real mouse clicks,
 // element screenshots. No dependencies beyond Node and a chromium binary.
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { BASE, CLIENT_ID } from "./ha.mjs";
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+const PROFILE_PREFIX = "docs-shots-";
+
+// Every chromium this process started, so it goes with the process however that ends: close() as normal,
+// and an exit, a signal or an uncaught error otherwise. Chromium is started in its own process group, so the
+// whole group (renderer and GPU processes too) is killed at once.
+const live = new Set();
+function killGroup(b) {
+  try { process.kill(-b.proc.pid, "SIGKILL"); } catch {}
+  try { fs.rmSync(b.dir, { recursive: true, force: true }); } catch {}
+  live.delete(b);
+}
+process.on("exit", () => { for (const b of [...live]) killGroup(b); });
+for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) {
+  process.on(signal, () => { for (const b of [...live]) killGroup(b); process.exit(128 + os.constants.signals[signal]); });
+}
+for (const event of ["uncaughtException", "unhandledRejection"]) {
+  process.on(event, (error) => { console.error(error); for (const b of [...live]) killGroup(b); process.exit(1); });
+}
+
+// A run killed with SIGKILL cannot clean up after itself, so each launch first stops what earlier runs left:
+// a profile is named after the driver's pid (`docs-shots-<pid>-…`), and a chromium whose driver is no longer a
+// live node process is killed, its profile removed. A profile no process uses any more (also an older one
+// without a pid in its name) is removed too. A chromium of another run that is still going is left alone.
+function driverAlive(pid) {
+  try {
+    process.kill(pid, 0);
+    return fs.readFileSync(`/proc/${pid}/comm`, "utf8").trim() === "node";
+  } catch { return false; }
+}
+function sweepOrphans() {
+  let table;
+  try { table = execFileSync("ps", ["-eo", "pid=,args="], { encoding: "utf8" }); } catch { return; }
+  const inUse = new Set();
+  for (const line of table.split("\n")) {
+    const row = line.trim().match(/^(\d+)\s+(.*)$/);
+    const dir = row && row[2].match(new RegExp(`--user-data-dir=(\\S*${PROFILE_PREFIX}\\S*)`));
+    if (!dir) continue;
+    const owner = path.basename(dir[1]).match(/^docs-shots-(\d+)-/);
+    if (owner && driverAlive(Number(owner[1]))) { inUse.add(dir[1]); continue; }
+    if (row[2].includes("--type=")) continue;
+    try { process.kill(Number(row[1]), "SIGKILL"); } catch {}
+    console.error(`stopped a left-over screenshot chromium (pid ${row[1]})`);
+  }
+  for (const name of fs.readdirSync(os.tmpdir())) {
+    const dir = path.join(os.tmpdir(), name);
+    if (name.startsWith(PROFILE_PREFIX) && !inUse.has(dir)) {
+      try { fs.rmSync(dir, { recursive: true, force: true }); } catch {}
+    }
+  }
+}
 
 // Helpers evaluated inside the page. `deepAll` walks every shadow root.
 const PAGE_HELPERS = `
@@ -34,13 +85,15 @@ window.__docs = {
 
 export class Browser {
   static async launch({ width = 1280, height = 1800 } = {}) {
+    sweepOrphans();
     const b = new Browser();
-    b.dir = fs.mkdtempSync(path.join(os.tmpdir(), "docs-shots-"));
-        b.proc = spawn(process.env.CHROMIUM || "chromium", [
+    b.dir = fs.mkdtempSync(path.join(os.tmpdir(), `${PROFILE_PREFIX}${process.pid}-`));
+    b.proc = spawn(process.env.CHROMIUM || "chromium", [
       "--headless=new", "--disable-gpu", "--no-sandbox", "--hide-scrollbars", "--force-color-profile=srgb",
       "--lang=en-US", "--font-render-hinting=none",
       "--remote-debugging-port=0", `--user-data-dir=${b.dir}`, `--window-size=${width},${height}`, "about:blank",
-    ], { stdio: process.env.DEBUG_CHROMIUM ? "inherit" : "ignore" });
+    ], { stdio: process.env.DEBUG_CHROMIUM ? "inherit" : "ignore", detached: true });
+    live.add(b);
     let targets, port;
     for (let i = 0; i < 150; i++) {
       try {
@@ -177,9 +230,9 @@ export class Browser {
   async close() {
     try { this.ws.close(); } catch {}
     const exited = new Promise((r) => this.proc.once("exit", r));
-    this.proc.kill();
+    try { process.kill(-this.proc.pid, "SIGTERM"); } catch {}
     await Promise.race([exited, sleep(3000)]);
-    try { fs.rmSync(this.dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 }); } catch {}
+    killGroup(this);
   }
 }
 export { sleep };
