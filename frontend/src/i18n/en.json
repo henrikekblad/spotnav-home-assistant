@@ -984,6 +984,7 @@
   "price.notice.addNordpool.action": "Add Nord Pool",
   "price.notice.nordpoolNotLoaded": "Nord Pool is added in Home Assistant but did not start.",
   "price.notice.nordpoolNotLoaded.action": "Open Nord Pool",
+  "price.notice.nordpoolCustom": "Nord Pool from HACS is installed and replaces Home Assistant's built-in Nord Pool, which SpotNav reads its prices from. Keep it and enter a free ENTSO-E key below, or switch to the built-in Nord Pool.",
   "price.notice.useEntsoeKey": "Use my ENTSO-E key instead",
   "price.notice.addEntsoeKey": "Prices for {area} come from ENTSO-E with your own free key.",
   "price.notice.entsoeKeyRejected": "ENTSO-E did not accept the saved key. Enter a new one.",
