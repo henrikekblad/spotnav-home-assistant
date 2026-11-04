@@ -11,7 +11,8 @@ only before the charger's first live session, so nothing overlaps:
   or hourly alike, so a 15-minute day is the hour's average) and kept with their raw spot prices exactly
   like a live session, so a cost is made when it is read, with the person's settings then;
 * an hour with no price is unpriced: its energy is kept, the cost stays absent;
-* the sessions say `source: "imported_hourly"`, start `unknown`, and have no solar share.
+* the sessions say `source: "imported_hourly"`, start `unknown`, and have no solar share;
+* they are built in the executor (`build_sessions` is a pure function of its arguments), never on the event loop.
 
 The marker the store keeps per charger says the import ran and what it covered. If hours were unpriced
 (the price history's backfill may still be running), a later start tries again, at most once a day;
@@ -32,6 +33,7 @@ import random
 from collections.abc import Awaitable, Callable, Iterable, Sequence
 from dataclasses import dataclass, replace
 from datetime import date, datetime, time, timedelta
+from functools import partial
 from typing import Any, Final
 
 from homeassistant.core import HomeAssistant
@@ -150,7 +152,8 @@ def build_sessions(
     energy_source: str,
 ) -> Built:
     """The imported sessions of `groups`, each hour split over `spot` (the raw intervals of the days, indexed once:
-    `SpotIndex`)."""
+    `SpotIndex`). A pure function of its arguments (of `market` only the area's units and id are read), so it runs
+    in the executor: 24 months of hours is too much work for the event loop."""
     index = SpotIndex(spot)
     sessions = []
     priced_hours = unpriced_hours = 0
@@ -389,7 +392,9 @@ class HistoryImporter:
                     documents.append(document)
             spot = spot_intervals(documents, market.area.currency)
         source = SOURCE_INTEGRATED if self._energy_from_power() else SOURCE_REGISTER
-        return build_sessions(self._charger_id, groups, spot, market=market, energy_source=source)
+        return await self._hass.async_add_executor_job(
+            partial(build_sessions, self._charger_id, groups, spot, market=market, energy_source=source)
+        )
 
     async def _day(self, market: PriceMarket, day: date) -> Any:
         """The day's document: what the repository holds, else asked of the area's provider (archive) one request at

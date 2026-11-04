@@ -324,6 +324,26 @@ def test_two_years_of_hours_build_the_same_sessions_as_before_the_index() -> Non
         assert split_energy(spot, middle, middle, item.kwh) == _old_split_energy(spot, middle, middle, item.kwh)
 
 
+async def test_the_sessions_are_built_off_the_event_loop(hass: HomeAssistant, store: SessionStore, monkeypatch) -> None:
+    import threading
+
+    from custom_components.spotnav.sessions import history_import
+
+    threads: list[threading.Thread] = []
+    original = history_import.build_sessions
+
+    def _recorded(*args, **kwargs):
+        threads.append(threading.current_thread())
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(history_import, "build_sessions", _recorded)
+    repository = Repository(held={D1: document(D1, [0.2] * 24)})
+    await importer_for(hass, store, Statistics([hour(D1, 5, 5.0)]), repository).async_run()
+
+    assert len(threads) == 1 and threads[0] is not threading.main_thread()
+    assert len(store.closed(CHARGER)) == 1
+
+
 async def test_an_import_is_priced_with_the_settings_as_they_are_read(hass: HomeAssistant, store: SessionStore) -> None:
     repository = Repository(held={D1: document(D1, [0.2] * 24)})
     importer = importer_for(hass, store, Statistics([hour(D1, 5, 5.0)]), repository)
