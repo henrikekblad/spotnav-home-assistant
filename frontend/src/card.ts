@@ -90,6 +90,7 @@ import {
   CARD_INFO_TIMEOUT_MS,
   MALFORMED_RETRY_DELAYS_MS,
   RELOAD_DELAY_MS,
+  RETRY_RELOAD_DELAY_MS,
   claimReload,
   isMalformed,
   reloadPage,
@@ -2696,24 +2697,27 @@ export class SpotnavCard extends HTMLElement {
   }
 
   /**
-   * A newer card is served: reload the page once for it, with the line saying so just before. Where the
-   * reload was already made for this hash (the old card is still here), storage cannot remember it, or a
-   * card on the page holds unsaved input, the line offers the Reload button instead.
+   * A newer card is served: reload the page for it, with the line saying so just before; the second time
+   * for this hash (the old card is still here, from a cache) after `RETRY_RELOAD_DELAY_MS`. Where the reloads
+   * for this hash are spent, storage cannot remember them, or a card on the page holds unsaved input, the
+   * line offers the Reload button instead.
    */
   private offerNewerCard(served: string): void {
     if (pageReloading) {
       this.showUpdateNotice("reloading");
       return;
     }
-    if (SpotnavCard.anyUnsavedInput() || !claimReload(sessionStore(), served)) {
+    const attempt = SpotnavCard.anyUnsavedInput() ? null : claimReload(sessionStore(), served);
+    if (attempt === null) {
       this.showUpdateNotice("button");
       return;
     }
     pageReloading = true;
-    this.showUpdateNotice("reloading");
+    // The second wait is long: the button lets the reader reload at once meanwhile.
+    this.showUpdateNotice(attempt === 1 ? "reloading" : "button");
     window.setTimeout(() => {
       if (SpotnavCard.anyUnsavedInput()) {
-        // Input began meanwhile: nothing reloads by itself now (the one reload for this hash is spent).
+        // Input began meanwhile: nothing reloads by itself now (this reload for the hash is spent).
         pageReloading = false;
         for (const card of liveCards) {
           if (card.updateNotice === "reloading") {
@@ -2723,7 +2727,7 @@ export class SpotnavCard extends HTMLElement {
         return;
       }
       reloadPage();
-    }, RELOAD_DELAY_MS);
+    }, attempt === 1 ? RELOAD_DELAY_MS : RETRY_RELOAD_DELAY_MS);
   }
 
   private static anyUnsavedInput(): boolean {

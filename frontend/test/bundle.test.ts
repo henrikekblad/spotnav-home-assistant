@@ -75,14 +75,15 @@ describe("the committed asset", () => {
     }
   });
 
-  it("reaches browser storage once, for the chart's remembered collapsed state only", () => {
-    // The one guarded read of `localStorage` in chart-preference.ts; nothing else in the bundle names it.
-    expect(SOURCE.split("localStorage").length - 1).toBe(1);
+  it("reaches browser storage twice, for the chart's remembered collapsed state and the reloads' count only", () => {
+    // The guarded read of `localStorage` in chart-preference.ts, and self-heal.ts's fallback where a kiosk
+    // browser gives no session storage; nothing else in the bundle names it.
+    expect(SOURCE.split("localStorage").length - 1).toBe(2);
     expect(SOURCE).toContain("spotnav-card.chart.");
   });
 
-  it("reaches session storage once, for the one reload after an update only", () => {
-    // The guarded `sessionStorage` in self-heal.ts: it remembers the reload made for a served card, so it
+  it("reaches session storage once, for the reloads after an update only", () => {
+    // The guarded `sessionStorage` in self-heal.ts: it counts the reloads made for a served card, so they
     // cannot loop. Nothing else in the bundle names it.
     expect(SOURCE.split("sessionStorage").length - 1).toBe(1);
     expect(SOURCE).toContain("spotnav-card-reloaded:");

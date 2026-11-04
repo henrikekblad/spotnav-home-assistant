@@ -5,10 +5,12 @@
 // gone, so it would speak English. When either happens the card asks which bundle is served
 // (`card-identity.ts`):
 //
-// - Another bundle: the page reloads once to load it, after a short line says so. The reload is claimed
-//   per served hash in `sessionStorage`, so it can never loop; where storage fails, while a dialog holds
-//   unsaved input, or when the reload already happened for that hash, the line offers a Reload button
-//   instead.
+// - Another bundle: the page reloads to load it, after a short line says so. The reloads are counted per
+//   served hash in `sessionStorage` (`localStorage` where a kiosk browser gives no session storage), at most
+//   `MAX_RELOADS`, so they can never loop. The second waits `RETRY_RELOAD_DELAY_MS`: a page served from a
+//   cache (Home Assistant's service worker hands out its stored copy and refreshes it behind) still runs
+//   the old card after the first. Where storage fails, while a dialog holds unsaved input, or when the
+//   reloads for that hash are spent, the line offers a Reload button instead.
 // - The same bundle: the answer is taken as transient (Home Assistant restarting) and the dashboard read
 //   is retried a couple of times before `state.malformed` shows.
 //
@@ -27,8 +29,14 @@ export const RELOAD_DELAY_MS = 800;
 /** How long the card waits for `spotnav/get_card_info` before it gives up on knowing. */
 export const CARD_INFO_TIMEOUT_MS = 5_000;
 
-/** The `sessionStorage` key that records the one reload made for a served bundle hash. */
+/** The storage key that counts the reloads made for a served bundle hash. */
 export const RELOAD_KEY_PREFIX = "spotnav-card-reloaded:";
+
+/** The most reloads a tab makes by itself for one served bundle hash. */
+export const MAX_RELOADS = 2;
+
+/** How long the old card waits before its second reload, for a cache that served the old page to catch up. */
+export const RETRY_RELOAD_DELAY_MS = 30_000;
 
 /** How the line shows: about to reload, or with a button for the reader. */
 export type UpdateNotice = "reloading" | "button";
@@ -82,33 +90,43 @@ export interface ReloadStore {
   setItem(key: string, value: string): void;
 }
 
-/** This tab's `sessionStorage`, or `null` where the browser will not give it. */
+/** This tab's `sessionStorage`, else `localStorage` (a kiosk browser may give only that), or `null`. */
 export function sessionStore(): ReloadStore | null {
   try {
-    return globalThis.sessionStorage ?? null;
+    const session = globalThis.sessionStorage;
+    if (session) {
+      return session;
+    }
+  } catch {
+    // Fall through to the local storage.
+  }
+  try {
+    return globalThis.localStorage ?? null;
   } catch {
     return null;
   }
 }
 
 /**
- * Claim the one reload this tab may make for the served bundle `served`: `true` when it is claimed now,
- * `false` when it was made before or storage cannot be trusted to remember it (then nothing reloads by
- * itself, so a page that still runs the old card after its reload cannot loop).
+ * Claim the next reload this tab may make for the served bundle `served`: its number (1 or up to
+ * `MAX_RELOADS`) when it is claimed now, `null` when they are spent or storage cannot be trusted to remember
+ * it (then nothing reloads by itself, so a page that still runs the old card after its reloads cannot loop).
  */
-export function claimReload(store: ReloadStore | null, served: string): boolean {
+export function claimReload(store: ReloadStore | null, served: string): number | null {
   if (store === null) {
-    return false;
+    return null;
   }
   const key = `${RELOAD_KEY_PREFIX}${served}`;
   try {
-    if (store.getItem(key) !== null) {
-      return false;
+    const made = Number(store.getItem(key) ?? "0");
+    if (!Number.isInteger(made) || made < 0 || made >= MAX_RELOADS) {
+      return null;
     }
-    store.setItem(key, "1");
-    return store.getItem(key) === "1";
+    const next = String(made + 1);
+    store.setItem(key, next);
+    return store.getItem(key) === next ? made + 1 : null;
   } catch {
-    return false;
+    return null;
   }
 }
 
