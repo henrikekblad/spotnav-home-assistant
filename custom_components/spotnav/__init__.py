@@ -200,7 +200,8 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     # Static route for the bundled card asset, versioned by the manifest.
     await async_setup_card_asset(hass)
     async_register_pairing(hass)
-    # SpotNav's automation blueprints, copied to blueprints/automation/spotnav/ when they differ (`blueprint_install.py`).
+    # SpotNav's automation blueprints, copied to blueprints/automation/spotnav/ when they differ and were not edited
+    # (`blueprint_install.py`).
     hass.async_create_background_task(async_install_blueprints(hass), "spotnav blueprints")
     # Once Home Assistant has started (every entry known), the chargers' own area and fees move to electricity
     # price entries, once per installation (`pricing/price_setup.py`).

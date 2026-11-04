@@ -6,11 +6,14 @@ a car started at 16 A, L3 read 32.8 A."""
 
 from __future__ import annotations
 
+from datetime import timedelta
+
 import pytest
 from homeassistant.core import HomeAssistant
 from pytest_homeassistant_custom_component.common import async_mock_service
 
 from custom_components.spotnav.const import CONF_GRID_POWER_SOURCE, CONF_SITE_CURRENT_SIGNED, REGULATOR_DWELL_S
+from custom_components.spotnav.site.step_guard import CATCH_UP_S
 
 from .helpers import make_entry, make_site_entry
 from .test_direct_signed_active_control import _assigned, _charger_reads, _ocpp_charger, _report, _tick, _wiring
@@ -336,3 +339,141 @@ async def test_a_lowered_charger_still_reading_its_old_current_is_not_given_it_b
     await cc.async_apply_setting_current()
     await hass.async_block_till_done()
     assert _assigned(configure_calls) in ([], [7])
+
+
+async def _at_eight(hass: HomeAssistant, freezer, name: str):
+    """A car started at 16 A, lowered to 8 A by L3 at 32 A against the 24 A limit; it follows to 8 A."""
+    charger, configure_calls, site = await _setup(hass, name)
+    cc = controller_of(hass, charger.entry_id)
+    assert await cc.async_start(amps=16, manual=True)
+    hass.states.async_set(f"switch.{name}_charger", "on")
+    _charger_reads(hass, f"{name}_charger", 16.0)
+    _report(hass, f"{name}_site", (24.0, 24.0, 24.0), 0.0)
+    await _tick(hass)
+    _report(hass, f"{name}_site", (24.0, 24.0, 32.0), 0.0)
+    await _tick(hass)
+    assert _assigned(configure_calls)[-1:] == [8]
+    assert site._damper_for(charger.entry_id).last_written_a == 8.0  # noqa: SLF001
+    # The car follows: the site's meter shows it first, then the charger's own reading.
+    freezer.tick(timedelta(seconds=15))
+    _report(hass, f"{name}_site", (16.0, 16.0, 20.0), 0.0)
+    _charger_reads(hass, f"{name}_charger", 8.0)
+    await _tick(hass)
+    configure_calls.clear()
+    return charger, configure_calls, site
+
+
+async def test_a_charger_above_what_was_written_is_lowered_from_what_it_draws(
+    hass: HomeAssistant, freezer, monkeypatch
+) -> None:
+    """8 A remembered, the car at 16 A (a current set in the vendor's app), L3 3 A over: the proposal is 13 A, above
+    the 8 A written, and was held `not_a_lowering` on every pass with the phase over the fuse. Now the lowering
+    starts from the 16 A the charger draws and goes out at no more than the 8 A written, at once."""
+    from custom_components.spotnav.execution.chargers.ocpp import OcppAssignedCurrent
+
+    async def _confirmed(self, connector: int, amps: int) -> bool:
+        return True
+
+    # The must-lower write is read back; this charger confirms it.
+    monkeypatch.setattr(OcppAssignedCurrent, "_async_confirm", _confirmed)
+    charger, configure_calls, site = await _at_eight(hass, freezer, "above")
+    # The charger first, the site's meter a moment later (each reading is a pass of its own).
+    freezer.tick(timedelta(seconds=15))
+    _charger_reads(hass, "above_charger", 16.0)
+    await hass.async_block_till_done()
+    assert configure_calls == []
+    _report(hass, "above_site", (24.0, 24.0, 27.0), 0.0)
+    await _tick(hass)
+    decision = site.regulator_decisions[charger.entry_id]
+    assert (decision.proposed_current_a, decision.reason) == (13.0, MAGNITUDE)
+    assert _assigned(configure_calls) == [8]
+    assert site._damper_for(charger.entry_id).last_written_a == 8.0  # noqa: SLF001
+
+
+async def test_a_reading_before_the_charger_had_time_to_follow_the_write_does_not_count(
+    hass: HomeAssistant, freezer
+) -> None:
+    """A reading taken within `CATCH_UP_S` of the write is the charger still on its way down, not a charger above
+    what was written: held as before, also once that reading has aged."""
+    charger, configure_calls, site = await _setup(hass, "early")
+    cc = controller_of(hass, charger.entry_id)
+    assert await cc.async_start(amps=16, manual=True)
+    hass.states.async_set("switch.early_charger", "on")
+    _charger_reads(hass, "early_charger", 16.0)
+    _report(hass, "early_site", (24.0, 24.0, 24.0), 0.0)
+    await _tick(hass)
+    _report(hass, "early_site", (24.0, 24.0, 32.0), 0.0)
+    await _tick(hass)
+    assert _assigned(configure_calls)[-1:] == [8]
+    configure_calls.clear()
+    freezer.tick(timedelta(seconds=CATCH_UP_S / 2))
+    _report(hass, "early_site", (24.0, 24.0, 26.0), 0.0)
+    _charger_reads(hass, "early_charger", 15.0)
+    await _tick(hass)
+    assert site.regulator_decisions[charger.entry_id].reason == MAGNITUDE
+    freezer.tick(timedelta(seconds=CATCH_UP_S))
+    _report(hass, "early_site", (24.0, 24.0, 26.5), 0.0)
+    await _tick(hass)
+    assert configure_calls == []
+    assert site._damper_for(charger.entry_id).last_written_a == 8.0  # noqa: SLF001
+
+
+async def test_a_pause_still_settling_is_not_sent_again_on_the_old_current(hass: HomeAssistant, freezer) -> None:
+    """A pause by |I| goes out; the charger still reports its 10 A until it answers the stop. That is the stop on its
+    way, not a charger above the nothing written: the pause is not sent again."""
+    charger, configure_calls, site = await _setup(hass, "settle")
+    cc = controller_of(hass, charger.entry_id)
+    assert await cc.async_start(amps=10, manual=True)
+    hass.states.async_set("switch.settle_charger", "on")
+    _charger_reads(hass, "settle_charger", 10.0)
+    _report(hass, "settle_site", (20.0, 20.0, 18.0), 0.0)
+    await _tick(hass)
+    turn_off = async_mock_service(hass, "switch", "turn_off")
+    _report(hass, "settle_site", (20.0, 20.0, 31.0), 0.0)
+    await _tick(hass)
+    assert len(turn_off) == 1
+    assert cc.stop_settling
+    freezer.tick(timedelta(seconds=CATCH_UP_S + 1))
+    _charger_reads(hass, "settle_charger", 10.5)
+    _report(hass, "settle_site", (20.0, 20.0, 31.5), 0.0)
+    await _tick(hass)
+    assert cc.stop_settling
+    assert len(turn_off) == 1
+    assert site._damper_for(charger.entry_id).last_written_a == 0.0  # noqa: SLF001
+
+
+async def test_a_charge_a_person_restarts_after_a_pause_is_lowered_not_paused_again(
+    hass: HomeAssistant, freezer
+) -> None:
+    """Paused by |I|, the charger stops; minutes later a person starts it on the charger at 10 A (no start of ours,
+    the site is not told) and L3 is 3 A over: the remembered pause is forgotten and the charge is lowered to the
+    proposal, as for an import overload, never stopped a second time."""
+    charger, configure_calls, site = await _setup(hass, "restart")
+    cc = controller_of(hass, charger.entry_id)
+    assert await cc.async_start(amps=10, manual=True)
+    hass.states.async_set("switch.restart_charger", "on")
+    _charger_reads(hass, "restart_charger", 10.0)
+    _report(hass, "restart_site", (20.0, 20.0, 18.0), 0.0)
+    await _tick(hass)
+    turn_off = async_mock_service(hass, "switch", "turn_off")
+    _report(hass, "restart_site", (20.0, 20.0, 31.0), 0.0)
+    await _tick(hass)
+    assert len(turn_off) == 1
+    assert site._damper_for(charger.entry_id).last_written_a == 0.0  # noqa: SLF001
+    freezer.tick(timedelta(seconds=5))
+    hass.states.async_set("switch.restart_charger", "off")
+    _charger_reads(hass, "restart_charger", 0.0)
+    _report(hass, "restart_site", (20.0, 20.0, 20.0), 0.0)
+    await _tick(hass)
+
+    freezer.tick(timedelta(seconds=CATCH_UP_S * 30))
+    hass.states.async_set("switch.restart_charger", "on")
+    _charger_reads(hass, "restart_charger", 10.0)
+    _report(hass, "restart_site", (20.0, 20.0, 27.0), 0.0)
+    configure_calls.clear()
+    await _tick(hass)
+    await _tick(hass)
+
+    assert site.regulator_decisions[charger.entry_id].reason == MAGNITUDE
+    assert _assigned(configure_calls)[-1:] == [7]
+    assert len(turn_off) == 1, "lowered, not stopped again"

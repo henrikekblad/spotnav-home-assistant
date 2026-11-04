@@ -12,14 +12,15 @@ installs them itself; you make as many automations from each as you like, each w
 ## SpotNav keeps them up to date
 
 Each time Home Assistant starts, SpotNav copies its blueprints to the folder
-`blueprints/automation/spotnav/` in your configuration, writing a file only when it differs from the one
-SpotNav ships. An update of SpotNav that changes a blueprint therefore replaces it at the next start, and
-automations made from it are reloaded so they run the new version. Your automations themselves, their
-chosen entities and values, and every other folder are left alone.
+`blueprints/automation/spotnav/` in your configuration, writing a file only when it is missing or differs
+from the one SpotNav ships. An update of SpotNav that changes a blueprint therefore replaces it at the next
+start, and automations made from it are reloaded so they run the new version. Your automations themselves,
+their chosen entities and values, and every other folder are left alone.
 
-**Changes you make to these files are overwritten.** To change a blueprint for yourself, copy the file
-to another folder, for example `blueprints/automation/mine/`, change the copy, and make your
-automations from that one. The first lines of each file say the same.
+**A blueprint you edit is kept.** SpotNav remembers what it wrote, and a file you changed is left as it is
+and no longer updated (the Home Assistant log says so at each start). To get SpotNav's version again,
+delete the file and restart Home Assistant. To keep both, copy the file to another folder, for example
+`blueprints/automation/mine/`, and change the copy. The first lines of each file say the same.
 
 ## Making an automation from one
 

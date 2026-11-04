@@ -15,9 +15,10 @@ from custom_components.spotnav.diagnostics import entry_diagnostics
 from custom_components.spotnav.planning.planner import FiscalChoice
 from custom_components.spotnav.pricing.relay_contract import parse_day
 from custom_components.spotnav.runtime import charger_data
-from custom_components.spotnav.sessions.costing import spot_intervals
+from custom_components.spotnav.sessions.costing import _slice, day_averages_eur, merge_slices, spot_intervals, split_energy
 from custom_components.spotnav.sessions.history_import import (
     build_sessions,
+    Built,
     FETCH_GAP_S,
     group_hours,
     Hour,
@@ -25,9 +26,11 @@ from custom_components.spotnav.sessions.history_import import (
     HistoryImporter,
     migrate_legacy,
     next_reprice,
+    PRICED_SHARE,
 )
 from custom_components.spotnav.sessions.inputs import PriceMarket
 from custom_components.spotnav.sessions.model import (
+    ChargeSession,
     SOURCE_IMPORTED_HOURLY,
     SOURCE_REGISTER,
     STARTED_UNKNOWN,
@@ -214,6 +217,131 @@ def test_an_hour_without_a_price_keeps_its_energy_and_has_no_cost() -> None:
     assert (built.priced_hours, built.unpriced_hours) == (1, 1)
     nothing = build_sessions(CHARGER, groups, (), market=None, energy_source=SOURCE_REGISTER)
     assert priced(nothing.sessions)[0].cost_minor is None and nothing.unpriced_hours == 2
+
+
+def _old_split_energy(spot, start, end, energy_kwh):
+    """`costing.split_energy` as it was before `SpotIndex`: the day averages and a scan of every interval, per call."""
+    if energy_kwh <= 0 or not spot:
+        return []
+    averages = day_averages_eur(spot)
+    span = (end - start).total_seconds()
+    if span <= 0:
+        for interval in spot:
+            if interval.utc_start <= start < interval.utc_end:
+                return [_slice(interval, energy_kwh, averages)]
+        return []
+    out = []
+    for interval in spot:
+        overlap = (min(end, interval.utc_end) - max(start, interval.utc_start)).total_seconds()
+        if overlap > 0:
+            out.append(_slice(interval, energy_kwh * overlap / span, averages))
+    return out
+
+
+def _old_build_sessions(charger_id, groups, spot, *, market, energy_source):
+    """`build_sessions` as it was before `SpotIndex`, on `_old_split_energy`: the reference the new one must equal."""
+    sessions = []
+    priced_hours = unpriced_hours = 0
+    for group in groups:
+        slices = ()
+        for item in group:
+            parts = _old_split_energy(spot, item.start, item.end, item.kwh)
+            if sum(part.kwh for part in parts) >= item.kwh * PRICED_SHARE:
+                priced_hours += 1
+            else:
+                unpriced_hours += 1
+            slices = merge_slices(slices, parts)
+        first = group[0].start
+        sessions.append(
+            ChargeSession(
+                id=f"{charger_id}-imp-{int(first.timestamp())}", charger_id=charger_id, start=first,
+                end=group[-1].end, energy_kwh=sum(item.kwh for item in group), energy_source=energy_source,
+                priced_kwh=0.0, cost_minor=None, reference_cost_minor=None,
+                currency=None if market is None else market.area.currency,
+                major_unit=None if market is None else market.area.major_unit,
+                minor_unit=None if market is None else market.area.minor_unit,
+                started_by=STARTED_UNKNOWN, strategy=None, vehicle_id=None, vehicle_name=None, solar_kwh=0.0,
+                solar_known_kwh=0.0, last_register_kwh=None, last_sample_at=None, source=SOURCE_IMPORTED_HOURLY,
+                intervals=slices, area_id=None if market is None else market.area_id,
+            )
+        )
+    return Built(sessions, priced_hours, unpriced_hours)
+
+
+def _any_length_day(day: date, minutes: int, seed: int):
+    """A day document of `minutes` intervals over the day's real length (23, 24 or 25 hours), prices from `seed`."""
+    begin = datetime(day.year, day.month, day.day, tzinfo=STOCKHOLM)
+    after = day + timedelta(days=1)
+    # In UTC: two times of one zone subtract by the wall clock, which has no 23- or 25-hour day.
+    length = (datetime(after.year, after.month, after.day, tzinfo=STOCKHOLM).astimezone(UTC) - begin.astimezone(UTC)).total_seconds()
+    count = int(length // (minutes * 60))
+    prices = [round(0.05 + ((seed * 7919 + index * 104729) % 997) / 2000.0, 5) for index in range(count)]
+    return parse_day(
+        {
+            "v": 1, "area": "SE3", "date": day.isoformat(), "tz": "Europe/Stockholm", "start": begin.isoformat(),
+            "res": minutes, "unit": "EUR/kWh", "prices": prices, "fx": {"SEK": 10.0 + seed % 3},
+            "fx_date": "2026-01-01", "fx_src": "ECB", "src": "test",
+            "published": "2026-01-01T00:00:00+01:00", "retrieved": "2026-01-01T00:00:01+01:00",
+        },
+        area_id="SE3",
+        day=day,
+    )
+
+
+def test_two_years_of_hours_build_the_same_sessions_as_before_the_index() -> None:
+    """730 days of prices (hourly, every tenth day by the quarter, the clock changes included, a day now and then
+    without a file) and a charge every few days, some across midnight: the indexed build equals the old one."""
+    first = TODAY.date() - timedelta(days=730)
+    days = [first + timedelta(days=offset) for offset in range(731)]
+    documents = [
+        _any_length_day(day, 15 if offset % 10 == 0 else 60, offset)
+        for offset, day in enumerate(days)
+        if offset % 37 != 11
+    ]
+    assert any(document.day.month == 3 and len(document.intervals) == 23 for document in documents)
+    assert any(document.day.month == 10 and len(document.intervals) == 25 for document in documents)
+    spot = spot_intervals(documents, "SEK")
+    hours = [
+        Hour(at(day, start) + timedelta(hours=step), 0.5 + ((offset + step) % 7) * 1.1)
+        for offset, day in enumerate(days)
+        if offset % 15 == 0
+        for start, length in (((offset % 24), 1 + offset % 5), (22, 4))
+        for step in range(length)
+    ]
+    groups = group_hours(hours)
+    market = market_of(Repository())
+
+    new = build_sessions(CHARGER, groups, spot, market=market, energy_source=SOURCE_REGISTER)
+    old = _old_build_sessions(CHARGER, groups, spot, market=market, energy_source=SOURCE_REGISTER)
+
+    assert len(new.sessions) > 80 and new.unpriced_hours > 0 and new.priced_hours > 200
+    assert (new.priced_hours, new.unpriced_hours) == (old.priced_hours, old.unpriced_hours)
+    assert new.sessions == old.sessions
+    # The single-span entry point and a point in time agree as well.
+    for item in hours[::17]:
+        assert split_energy(spot, item.start, item.end, item.kwh) == _old_split_energy(spot, item.start, item.end, item.kwh)
+        middle = item.start + timedelta(minutes=29)
+        assert split_energy(spot, middle, middle, item.kwh) == _old_split_energy(spot, middle, middle, item.kwh)
+
+
+async def test_the_sessions_are_built_off_the_event_loop(hass: HomeAssistant, store: SessionStore, monkeypatch) -> None:
+    import threading
+
+    from custom_components.spotnav.sessions import history_import
+
+    threads: list[threading.Thread] = []
+    original = history_import.build_sessions
+
+    def _recorded(*args, **kwargs):
+        threads.append(threading.current_thread())
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(history_import, "build_sessions", _recorded)
+    repository = Repository(held={D1: document(D1, [0.2] * 24)})
+    await importer_for(hass, store, Statistics([hour(D1, 5, 5.0)]), repository).async_run()
+
+    assert len(threads) == 1 and threads[0] is not threading.main_thread()
+    assert len(store.closed(CHARGER)) == 1
 
 
 async def test_an_import_is_priced_with_the_settings_as_they_are_read(hass: HomeAssistant, store: SessionStore) -> None:

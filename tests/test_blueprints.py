@@ -55,9 +55,10 @@ def test_each_blueprint_passes_home_assistants_schema(name: str) -> None:
     assert blueprint.metadata["source_url"] == (
         f"https://raw.githubusercontent.com/henrikekblad/spotnav-home-assistant/main/custom_components/spotnav/blueprints/automation/{name}"
     )
-    # The first lines say SpotNav overwrites the file, and how to keep a changed copy.
-    first = (BLUEPRINTS / name).read_text().splitlines()[0]
-    assert first.startswith("# Installed by SpotNav") and "overwritten" in first
+    # The first lines say SpotNav updates the file while it is unchanged, and that an edited copy is kept.
+    first, second = (BLUEPRINTS / name).read_text().splitlines()[:2]
+    assert first.startswith("# Installed by SpotNav") and "unchanged" in first
+    assert second.startswith("# A copy you edit is kept")
 
 
 async def _automation(hass: HomeAssistant, tmp_path: Path, name: str, inputs: dict[str, Any]) -> None:
