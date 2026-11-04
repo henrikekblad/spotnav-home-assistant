@@ -42,7 +42,7 @@ from custom_components.spotnav.pricing.providers.pvpc import PvpcProvider
 from custom_components.spotnav.runtime import domain_data
 
 from .entsoe_helpers import SECRET
-from .relay import Clock, day_body, StoreDouble, StubTransport, TODAY
+from .relay import Clock, day_body, register_nordpool_action, StoreDouble, StubTransport, TODAY
 from .test_price_device import add_price, entity, NOW
 from .test_price_provider_entsoe import FakePlatform
 from .test_webhook_parity import post
@@ -90,6 +90,11 @@ NL_BESIDE_ZONNEPLAN = {**NP, "zonneplan_entry": "loaded", "zonneplan_elsewhere":
         (SourceFacts(**NP, nordpool_entry="not_loaded", entsoe_key="rejected"), "nordpool_not_loaded"),
         (SourceFacts(**NP, entsoe_key="rejected"), "entsoe_key_rejected"),
         (SourceFacts(**NP), "add_nordpool"),
+        # Nord Pool from HACS: an entry is loaded, its action is not there.
+        (SourceFacts(**NP, nordpool_entry="custom"), "nordpool_custom"),
+        (SourceFacts(**NP, nordpool_entry="custom", entsoe_key="ok"), None),
+        (SourceFacts(**NP, nordpool_entry="custom", entsoe_key="unchecked"), None),
+        (SourceFacts(**NP, nordpool_entry="custom", entsoe_key="rejected"), "entsoe_key_rejected"),
         (SourceFacts(**ENTSOE, entsoe_key="ok"), None),
         (SourceFacts(**ENTSOE, entsoe_key="unchecked"), None),
         (SourceFacts(**ENTSOE, entsoe_key="rejected"), "entsoe_key_rejected"),
@@ -179,6 +184,7 @@ async def test_a_nordpool_entry_that_did_not_start_says_so_and_is_followed(world
     await world.start()
     entry = MockConfigEntry(domain="nordpool", title="Nord Pool", data={})
     entry.add_to_hass(world.hass)
+    register_nordpool_action(world.hass)
     entry.mock_state(world.hass, ConfigEntryState.SETUP_ERROR)
     # Still no provider, but the notice moved: the listeners were told.
     assert world.changes == 1
@@ -191,6 +197,58 @@ async def test_a_nordpool_entry_that_did_not_start_says_so_and_is_followed(world
     assert (nordpool.name, nordpool.url) == ("Nord Pool", "https://www.nordpoolgroup.com/")
     # Nord Pool does not trade Spain.
     assert world.status("ES") == (None, "add_entsoe_key")
+
+
+async def test_nord_pool_from_hacs_is_no_source_and_says_so(world: World) -> None:
+    """The HACS integration has the domain `nordpool` and no `get_prices_for_date`: its entry is loaded, and it
+    is still not what SpotNav reads."""
+    await world.start()
+    entry = MockConfigEntry(domain="nordpool", title="Nord Pool", data={})
+    entry.add_to_hass(world.hass)
+    entry.mock_state(world.hass, ConfigEntryState.LOADED)
+    assert world.changes == 1
+    assert world.status("SE4") == (None, "nordpool_custom")
+    assert world.router.nordpool_in_use is False
+    # Not a Nord Pool area: the entry does not matter.
+    assert world.status("ES") == (None, "add_entsoe_key")
+
+    await world.keys.async_set_entsoe_key(EntsoeToken(SECRET), "ok")
+    assert world.status("SE4") == ("entsoe", None)
+    assert world.status("ES") == ("entsoe", None)
+
+    await world.keys.async_set_entsoe_key(EntsoeToken(SECRET), "rejected")
+    assert world.status("SE4") == (None, "entsoe_key_rejected")
+
+    await world.keys.async_set_entsoe_key(None)
+    assert world.status("SE4") == (None, "nordpool_custom")
+
+
+async def test_the_action_registered_after_the_entry_loaded_moves_the_area(world: World) -> None:
+    await world.start()
+    await world.keys.async_set_entsoe_key(EntsoeToken(SECRET), "ok")
+    entry = MockConfigEntry(domain="nordpool", title="Nord Pool", data={})
+    entry.add_to_hass(world.hass)
+    entry.mock_state(world.hass, ConfigEntryState.LOADED)
+    assert world.status("SE4") == ("entsoe", None)
+
+    before = world.changes
+    register_nordpool_action(world.hass)
+    await world.hass.async_block_till_done()
+    assert world.changes == before + 1
+    assert world.status("SE4") == ("nordpool", None)
+    assert world.router.nordpool_in_use is True
+
+    world.hass.services.async_remove("nordpool", "get_prices_for_date")
+    await world.hass.async_block_till_done()
+    assert world.changes == before + 2
+    assert world.status("SE4") == ("entsoe", None)
+
+
+async def test_the_action_alone_without_an_entry_is_no_source(world: World) -> None:
+    await world.start()
+    register_nordpool_action(world.hass)
+    await world.hass.async_block_till_done()
+    assert world.status("SE4") == (None, "add_nordpool")
 
 
 async def test_the_key_moves_the_notice_and_the_provider(world: World) -> None:
@@ -240,6 +298,7 @@ async def test_the_dashboard_names_the_provider_and_its_attribution(hass: HomeAs
         assert before["market"]["source"] is None
         entry = MockConfigEntry(domain="nordpool", title="Nord Pool", data={})
         entry.add_to_hass(hass)
+        register_nordpool_action(hass)
         entry.mock_state(hass, ConfigEntryState.LOADED)
         try:
             after = dashboard(hass, "entry_np")

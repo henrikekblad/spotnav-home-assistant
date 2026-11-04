@@ -22,11 +22,12 @@ when a day is worth asking for ([schedule_authority]).
 
 [ProviderRouter] picks one per area ([choose_provider]): the PVPC integration for the PVPC area while one of its
 entries is loaded; the Octopus integration for a GB area while an Agile meter's rates are there for it; the
-Zonneplan integration for the Zonneplan area while its tariff sensor is there; Nord Pool for an area Nord Pool trades while a `nordpool` config entry is loaded; else ENTSO-E for an area the platform
+Zonneplan integration for the Zonneplan area while its tariff sensor is there; Nord Pool for an area Nord Pool trades while a `nordpool` config entry is loaded and has its `get_prices_for_date` action (Nord Pool from HACS has the same
+domain and no action, so it does not count); else ENTSO-E for an area the platform
 publishes while a key is set that it has not rejected; else **none**: the area has no source, nothing is asked for,
 and its notice names the action that gives it one. There is no fallback from one to the other within an attempt.
 The choice is taken again whenever a `nordpool`, `pvpc_hourly_pricing`, `octopus_energy` or `zonneplan_one` entry is
-added, removed, loaded or unloaded (Home Assistant's `SIGNAL_CONFIG_ENTRY_CHANGED`, which it sends for each of those,
+added, removed, loaded or unloaded, or the `nordpool` action registered or removed (Home Assistant's `SIGNAL_CONFIG_ENTRY_CHANGED`, which it sends for each of those,
 a load or unload being a state change of the entry), whenever one of the Octopus integration's rate entities changes
 (the meter's tariff is read from it), whenever a sensor is added to, removed from, enabled or disabled in the entity
 registry (Zonneplan's tariff sensor), and whenever the ENTSO-E key is set, cleared or rejected.
@@ -43,15 +44,15 @@ from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from typing import Any, Final, Literal, Protocol, TYPE_CHECKING
 
-from homeassistant.config_entries import ConfigEntryState, SIGNAL_CONFIG_ENTRY_CHANGED
-from homeassistant.const import EVENT_STATE_CHANGED
+from homeassistant.config_entries import SIGNAL_CONFIG_ENTRY_CHANGED
+from homeassistant.const import EVENT_SERVICE_REGISTERED, EVENT_SERVICE_REMOVED, EVENT_STATE_CHANGED
 from homeassistant.core import callback, HomeAssistant
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 
 from ... import time_zones
 from ..relay_contract import AreaPublication, ParseCode
-from .notices import entry_state, EntryState, source_notice, SourceFacts, SourceStatus
+from .notices import entry_state, EntryState, nordpool_loaded, source_notice, SourceFacts, SourceStatus
 
 if TYPE_CHECKING:
     from ..relay_contract import PriceDocument
@@ -383,7 +384,7 @@ class ProviderRouter:
         that stops following."""
         self._hass = hass
         self._entry_states = {domain: entry_state(hass, domain) for domain in FOLLOWED_DOMAINS}
-        self._nordpool_loaded = _nordpool_loaded(hass)
+        self._nordpool_loaded = nordpool_loaded(hass)
         self._pvpc_loaded = self._pvpc is not None and self._pvpc.loaded()
         if self._octopus is not None:
             self._octopus.refresh()
@@ -399,12 +400,8 @@ class ProviderRouter:
             state = entry_state(hass, domain)
             moved = state != self._entry_states.get(domain)
             self._entry_states[domain] = state
-            if domain == "nordpool":
-                loaded = _nordpool_loaded(hass)
-                if loaded != self._nordpool_loaded:
-                    self._nordpool_loaded = loaded
-                    _LOGGER.debug("Nord Pool through Home Assistant is %s", "in use" if loaded else "not in use")
-                    moved = True
+            if domain == "nordpool" and self._nordpool_moved():
+                moved = True
             elif domain == PVPC_DOMAIN and self._pvpc is not None:
                 loaded = self._pvpc.loaded()
                 if loaded != self._pvpc_loaded:
@@ -419,6 +416,20 @@ class ProviderRouter:
                 moved = True
             if moved:
                 self._notify()
+
+        @callback
+        def nordpool_service_changed(_event: Any) -> None:
+            # Nord Pool's action may be registered after its entry loaded (or by another integration of the same
+            # domain, Nord Pool from HACS having none), so the order of start-up does not matter.
+            state = entry_state(hass, "nordpool")
+            moved = state != self._entry_states.get("nordpool")
+            self._entry_states["nordpool"] = state
+            if self._nordpool_moved() or moved:
+                self._notify()
+
+        @callback
+        def nordpool_service_filter(event_data: Any) -> bool:
+            return event_data.get("domain") == "nordpool"
 
         @callback
         def octopus_changed() -> None:
@@ -436,6 +447,10 @@ class ProviderRouter:
             return isinstance(entity_id, str) and self._octopus is not None and self._octopus.is_rate_entity(entity_id)
 
         self._unsubscribe.append(async_dispatcher_connect(hass, SIGNAL_CONFIG_ENTRY_CHANGED, changed))
+        for event_type in (EVENT_SERVICE_REGISTERED, EVENT_SERVICE_REMOVED):
+            self._unsubscribe.append(
+                hass.bus.async_listen(event_type, nordpool_service_changed, event_filter=nordpool_service_filter)
+            )
         if self._octopus is not None:
             # The meter's tariff, and so its region and whether it is Agile, is read from its rate entities.
             self._unsubscribe.append(
@@ -463,6 +478,17 @@ class ProviderRouter:
         if self._entsoe is not None:
             self._unsubscribe.append(self._entsoe.add_key_listener(self._notify))
         return self.async_stop
+
+    def _nordpool_moved(self) -> bool:
+        """Read whether Home Assistant's Nord Pool is in use again; whether that changed."""
+        if self._hass is None:
+            return False
+        loaded = nordpool_loaded(self._hass)
+        if loaded == self._nordpool_loaded:
+            return False
+        self._nordpool_loaded = loaded
+        _LOGGER.debug("Nord Pool through Home Assistant is %s", "in use" if loaded else "not in use")
+        return True
 
     @callback
     def async_stop(self) -> None:
@@ -495,7 +521,3 @@ OCTOPUS_DOMAIN: Final = "octopus_energy"
 ZONNEPLAN_DOMAIN: Final = "zonneplan_one"
 #: Every integration whose entries decide a provider or a notice.
 FOLLOWED_DOMAINS: Final = ("nordpool", PVPC_DOMAIN, OCTOPUS_DOMAIN, ZONNEPLAN_DOMAIN)
-
-
-def _nordpool_loaded(hass: HomeAssistant) -> bool:
-    return any(entry.state is ConfigEntryState.LOADED for entry in hass.config_entries.async_entries("nordpool"))
