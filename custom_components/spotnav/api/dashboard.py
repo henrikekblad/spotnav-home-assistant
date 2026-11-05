@@ -81,7 +81,7 @@ from ..execution.controller import (
     CURRENT_RANGE_SOURCE_DEFAULT,
 )
 from ..notifications.targets import available_targets
-from ..setup_checklist import SetupItem, capture_setup, serialize_setup
+from ..setup_checklist import SetupItem, capture_setup, grid_sign_rows, serialize_setup
 from ..planning.auto_controller import AutoSnapshot, fiscal_choice_for
 from ..pricing.price_source import effective_settings, wire_revision
 from ..planning.auto_settings import (
@@ -1296,6 +1296,7 @@ def _capture_dashboard(
             has_solar_forecast=site is not None and bool(site.solar_forecast_selected),
             phase_switching=capture_phase_switching(hass, entry),
             demand_needs_grid_power=demand_needs_grid_power(grid_tariff),
+            grid_sign=_grid_sign_rows(hass, entry_id),
         ),
         solar_forecast=(
             None
@@ -1308,6 +1309,12 @@ def _capture_dashboard(
             )
         ),
     )
+
+
+def _grid_sign_rows(hass: HomeAssistant, entry_id: str) -> tuple[Any, ...]:
+    """The grid sign warnings of the charger's site (`setup_checklist.grid_sign_rows`)."""
+    site = site_binding(hass, entry_id)
+    return grid_sign_rows(None if site is None else site_controller_for(hass, site.entry_id))
 
 
 #: The least sun worth telling, in kWh to the car.

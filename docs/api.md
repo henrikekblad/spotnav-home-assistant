@@ -451,11 +451,17 @@ for this charger, sent to the webhook only when the request asks for it (`"reads
 vehicle is set up and no source reports its level; never dismissible, and never beside `vehicle`), `site` (the
 charger has no site), `solar_forecast` (the site can measure solar surplus and has no forecast source),
 `demand_grid_power` (since 2.3: a demand-charge part or the site's import target is set and the site is a direct
-one without the meter's total grid power; never dismissible),
+one without the meter's total grid power; never dismissible), `grid_power_sign` and `grid_current_sign` (since 2.4.3:
+the charger's site reads its grid power, or a direct site its signed phase currents, with the sign the wrong way round,
+as the chargers' own steps show; never dismissible, and gone by itself once the steps agree or the setting is changed),
 `phase_switching` (offered for the charger and off), `phone` (no phone is chosen for notifications and the paired
 app has no push registration) or `app` (no charger's webhook has been used yet); a reader should skip an id it does not know. `spotnav/dismiss_setup_item {"item"}` (administrators
 only) keeps a dismissible row away for the whole installation and answers `{"ok": true}`, else
-`spotnav_setup_item_not_dismissible`. The rows are in `setup_checklist.py`.
+`spotnav_setup_item_not_dismissible`. A grid sign row also carries `field` (the site option, `grid_power_inverted` or
+`site_current_signed`) and `value` (what its button writes), e.g. `{"id": "grid_power_sign", "dismissible": false,
+"field": "grid_power_inverted", "value": false}`: an administrator's button writes that one option with
+`spotnav/update_entity_config` (`scope` `site`, `expected` the other value); nothing is written without it. The rows
+are in `setup_checklist.py`.
 
 **What the status line says about a plan.** Three facts are sent to the webhook only when the request asks for
 them (`"reads": ["plan_facts"]`): the line `plan_saving` (`amount_minor`, `currency`), what a plan saves against

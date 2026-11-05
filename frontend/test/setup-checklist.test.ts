@@ -290,6 +290,84 @@ describe("the dialog's Get started section", () => {
   });
 });
 
+describe("the grid sign rows", () => {
+  type WriteRow = { id: string; dismissible: boolean; field: string; value: boolean };
+  const POWER: WriteRow = { id: "grid_power_sign", dismissible: false, field: "grid_power_inverted", value: false };
+  const CURRENT: WriteRow = { id: "grid_current_sign", dismissible: false, field: "site_current_signed", value: false };
+  const withRows = (rows: object[]): Record<string, any> => {
+    const payload = dashboard(null, "cheapest_direct_site_admin.json");
+    payload["setup"] = { items: rows };
+    return payload;
+  };
+
+  it("are read with the option their button writes, and a row that names half of it is refused", () => {
+    const decoded = decodeDashboard(withRows([POWER]));
+    const setup = decoded.ok ? decoded.value.setup : null;
+    expect(setup).toEqual({ items: [{ id: "grid_power_sign", dismissible: false, write: { field: "grid_power_inverted", value: false } }] });
+    expect(setupRowsOf(setup)).toEqual([{ id: "grid_power_sign", dismissible: false, write: { field: "grid_power_inverted", value: false } }]);
+    for (const half of [{ id: "grid_power_sign", dismissible: false, field: "grid_power_inverted" }, { ...POWER, value: "no" }]) {
+      const refused = decodeDashboard(withRows([half]));
+      expect(refused.ok && refused.value.setup).toBeNull();
+    }
+    // Without the option to write the card has no button for it: the row is left out.
+    expect(setupRowsOf({ items: [{ id: "grid_power_sign", dismissible: false }] })).toEqual([]);
+  });
+
+  it("say what the steps showed, with no Not needed, and write only that option when pressed", async () => {
+    const { hass, element } = await open(withRows([POWER]));
+    line(element)!.click();
+    await settle();
+    expect(row(element, "grid_power_sign").querySelector(".spotnav-suggestion-text")?.textContent).toBe(
+      "The grid meter's sign looks reversed: when the charger's draw changed, the grid moved the other way. " +
+        "Solar and load balancing read export as import.",
+    );
+    expect(button(row(element, "grid_power_sign"), "dismiss")).toBeNull();
+    expect(button(row(element, "grid_power_sign"), "open")).toBeNull();
+    const write = button(row(element, "grid_power_sign"), "write")!;
+    expect(write.textContent).toBe("Turn off “The sensor shows export as positive”");
+    // Nothing is written by showing it.
+    expect(hass.entityMessages).toEqual([]);
+    hass.entityHandler = async () => ({ api_version: 1, ok: true, error: null, field_errors: [], config: null });
+    const reads = hass.messages.length;
+    write.click();
+    await settle();
+    expect(hass.entityMessages).toEqual([
+      {
+        type: "spotnav/update_entity_config",
+        api_version: 1,
+        charger_id: "entry_a",
+        scope: "site",
+        expected: { grid_power_inverted: true },
+        changes: { grid_power_inverted: false },
+      },
+    ]);
+    expect(hass.messages.slice(reads).map((message) => message["type"])).toEqual(["spotnav/get_dashboard"]);
+  });
+
+  it("offer to turn the option on when the steps say it should be on, in Swedish too", async () => {
+    const { element } = await open(withRows([{ ...POWER, value: true }]), { language: "sv" });
+    line(element)!.click();
+    await settle();
+    expect(button(row(element, "grid_power_sign"), "write")?.textContent).toBe("Slå på ”Sensorn visar export som positiv”");
+  });
+
+  it("turn Grid current is signed off for the phase currents", async () => {
+    const { hass, element } = await open(withRows([CURRENT]));
+    line(element)!.click();
+    await settle();
+    const write = button(row(element, "grid_current_sign"), "write")!;
+    expect(write.textContent).toBe("Turn off “Grid current is signed”");
+    write.click();
+    await settle();
+    expect(hass.entityMessages.at(-1)).toMatchObject({
+      type: "spotnav/update_entity_config",
+      scope: "site",
+      expected: { site_current_signed: true },
+      changes: { site_current_signed: false },
+    });
+  });
+});
+
 describe("the words", () => {
   it("are in every language", () => {
     for (const language of LANGUAGES) {
@@ -305,6 +383,11 @@ describe("the words", () => {
         "setup.solarForecast.add",
         "setup.phaseSwitching.text",
         "setup.phone.text",
+        "setup.gridPowerSign.text",
+        "setup.gridPowerSign.turnOff",
+        "setup.gridPowerSign.turnOn",
+        "setup.gridCurrentSign.text",
+        "setup.gridCurrentSign.turnOff",
       ]) {
         expect(words[key], `${language} ${key}`).toBeTruthy();
       }

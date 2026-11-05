@@ -160,6 +160,14 @@ from .regulator import (
     RegulatorDecision,
 )
 from .current_sign import CurrentSignCheck
+from .grid_sign import (
+    Change as GridSignChange,
+    GridSignCheck,
+    KIND_CURRENT as GRID_SIGN_CURRENT,
+    KIND_POWER as GRID_SIGN_POWER,
+    Reading as GridSignReading,
+    Sample as GridSignSample,
+)
 from .auto_phase import AutoPhaseTracker, drawn_phase
 from .site_capacity import (
     ACTIVE_CONTROL_READY,
@@ -716,6 +724,13 @@ class SiteCapacityController:
         # Since when (`_yield_now`) the site's measurement has been unhealthy at all (`UNHEALTHY_STATES`), whichever
         # charger it concerns; the status line waits on it (`lasting_measurement_problem`).
         self._measurement_unhealthy_since: float | None = None
+        # Whether the grid reading's sign looks set the wrong way, from what the chargers' own steps do to it
+        # (`site/grid_sign.py`). Only ever a warning: no setting is changed here. The tally is kept in the site's
+        # store, so a restart keeps it, and dropped once the setting it was counted under is changed.
+        self._grid_sign = GridSignCheck(self._grid_sign_flags())
+        self._grid_sign_store: Store[dict[str, Any]] = Store(hass, 1, f"{DOMAIN}.grid_sign.{entry_id}")
+        # A changed tally not yet written: written at the latest when the site shuts down (a reload, a restart).
+        self._grid_sign_unsaved = False
         self.result: SiteCapacityResult = self._calculate()
         self._update_direction_history()
         # One regulator decision per associated charger (`site/regulator.py`); acting on them is
@@ -768,6 +783,7 @@ class SiteCapacityController:
         self._register_controller_listeners()
         await self.demand.async_load()
         await self._async_load_released()
+        await self._async_load_grid_sign()
         await self._history.async_load()
         self._history_cancel = async_track_time_interval(
             self.hass, self._async_sample_history, timedelta(seconds=HISTORY_SAMPLE_INTERVAL_S)
@@ -791,6 +807,9 @@ class SiteCapacityController:
             self._history_cancel = None
         await self._history.async_close()
         await self.demand.async_close()
+        if self._grid_sign_unsaved:
+            self._grid_sign_unsaved = False
+            await self._grid_sign_store.async_save(self._grid_sign.as_dict())
         if self._timer_cancel is not None:
             self._timer_cancel()
             self._timer_cancel = None
@@ -1080,6 +1099,10 @@ class SiteCapacityController:
             self._learn_switched_currents()
         except Exception:  # noqa: BLE001 - learning is optional: it never holds back a decision or a lowering
             _LOGGER.exception("SpotNav site %s: learning a switched current failed", self.entry_id)
+        try:
+            self._observe_grid_sign()
+        except Exception:  # noqa: BLE001 - a warning only: it never holds back a decision or a lowering
+            _LOGGER.exception("SpotNav site %s: checking the grid meter's sign failed", self.entry_id)
         self._update_direction_history()
         self._update_measurement_lost()
         previous_decisions = self.regulator_decisions
@@ -5389,8 +5412,167 @@ class SiteCapacityController:
 
     @staticmethod
     async def async_remove_released(hass: HomeAssistant, entry_id: str) -> None:
-        """The site is gone for good: forget what was set aside."""
+        """The site is gone for good: forget what was set aside, and the grid sign's tally."""
         await Store(hass, 1, f"{DOMAIN}.import_target_release.{entry_id}").async_remove()
+        await Store(hass, 1, f"{DOMAIN}.grid_sign.{entry_id}").async_remove()
+
+    # -- whether the grid reading's sign looks set the wrong way (`site/grid_sign.py`)
+
+    def _grid_sign_flags(self) -> dict[str, bool]:
+        """The readings the step test checks on this site and their setting's value: the grid power (a total grid
+        power, or a derived site's per-phase power, `grid_power_inverted`) and a direct site's signed phase currents
+        (`site_current_signed`, only while it is on)."""
+        flags: dict[str, bool] = {}
+        mode = self.config.get(CONF_MEASUREMENT_MODE)
+        if mode == MEASUREMENT_MODE_DERIVED or grid_power_source_from_dict(self.config.get(CONF_GRID_POWER_SOURCE)):
+            flags[GRID_SIGN_POWER] = bool(self.config.get(CONF_GRID_POWER_INVERTED, False))
+        if mode == MEASUREMENT_MODE_DIRECT and self.config.get(CONF_SITE_CURRENT_SIGNED):
+            flags[GRID_SIGN_CURRENT] = True
+        return flags
+
+    def grid_sign_warned(self, kind: str) -> bool:
+        """Whether the step test says this reading's sign (`grid_power` or `grid_current`) looks reversed."""
+        return self._grid_sign.warned(kind)
+
+    def grid_sign_flag(self, kind: str) -> bool | None:
+        """The value of the setting the reading's tally was counted under; `None` when it is not tested."""
+        return self._grid_sign.flag(kind)
+
+    def grid_sign_snapshot(self) -> dict[str, Any]:
+        """For the diagnostics: the tallies and the last counted step."""
+        return self._grid_sign.snapshot()
+
+    async def _async_load_grid_sign(self) -> None:
+        try:
+            raw = await self._grid_sign_store.async_load()
+        except Exception:  # noqa: BLE001 - a warning's tally: a site never fails to start on it
+            _LOGGER.debug("SpotNav site %s: the grid sign's tally could not be read", self.entry_id, exc_info=True)
+            return
+        changes = self._grid_sign.load(raw)
+        self._grid_sign_changed(changes, save=bool(changes))
+
+    @staticmethod
+    def _fresh_reading(value: PhaseValue | None, now: float, max_age_s: float) -> GridSignReading | None:
+        """A usable value with when its source last reported it, if within `max_age_s`; else `None`."""
+        if value is None or value.value is None or value.problem is not None or value.age_s is None:
+            return None
+        age_s = value.age_s if value.report_age_s is None else min(value.age_s, value.report_age_s)
+        if age_s > max_age_s:
+            return None
+        return GridSignReading(float(value.value), now - age_s)
+
+    def _grid_sign_power(self, now: float, max_age_s: float) -> GridSignReading | None:
+        """The grid power as the site reads it (positive = import): the meter's total, else a derived site's phases
+        added up."""
+        total = self.grid_total_power()
+        if total is not None:
+            return self._fresh_reading(total, now, max_age_s)
+        powers = self.result.phase_signed_active_power_w
+        ages = self.result.phase_signed_active_power_age_s
+        if any(powers.get(phase) is None or ages.get(phase) is None for phase in PHASES):
+            return None
+        oldest = max(cast(float, ages[phase]) for phase in PHASES)
+        if oldest > max_age_s:
+            return None
+        return GridSignReading(sum(cast(float, powers[phase]) for phase in PHASES), now - oldest)
+
+    def _grid_sign_current(self, now: float, max_age_s: float) -> GridSignReading | None:
+        """A direct site's signed phase currents added up at the nominal voltage (positive = import as read)."""
+        signed = self._read_direct_signed_entities()
+        if signed is None:
+            return None
+        readings = [self._fresh_reading(signed.get(phase), now, max_age_s) for phase in PHASES]
+        if any(reading is None for reading in readings):
+            return None
+        found = [cast(GridSignReading, reading) for reading in readings]
+        return GridSignReading(
+            sum(reading.value for reading in found) * DIRECTION_NOMINAL_PHASE_VOLTAGE_V,
+            min(reading.at for reading in found),
+        )
+
+    def _grid_sign_charger(self, charger_entry_id: str, now: float, max_age_s: float) -> GridSignReading | None:
+        """A member charger's own draw in watts: its measured current source on the site, else its own current
+        sensors or its smart plug's power. Nothing while it is off (no charge, no start of ours on its way); `None`
+        while it charges and nothing fresh measures it."""
+        charger_controller = controller_for(self.hass, charger_entry_id)
+        if charger_controller is None:
+            return None
+        if not charger_controller.charging and not charger_controller.start_pending:
+            # An OCPP charger keeps its last value after a stop: off draws nothing.
+            return GridSignReading(0.0, now)
+        wiring = (self.config.get(CONF_PHASE_WIRING) or {}).get(charger_entry_id) or {}
+        delivered = self._read_charger_measured_current(wiring)
+        if delivered is not None:
+            readings = [self._fresh_reading(delivered.get(phase), now, max_age_s) for phase in PHASES]
+            if any(reading is None for reading in readings):
+                return None
+            found = [cast(GridSignReading, reading) for reading in readings]
+            return GridSignReading(
+                sum(reading.value for reading in found) * DIRECTION_NOMINAL_PHASE_VOLTAGE_V,
+                min(reading.at for reading in found),
+            )
+        phases, _phase = self.reckoned_phases(charger_entry_id)
+        own = self._switched_own_reading(charger_controller, phases)
+        if own is None or own[1] > max_age_s:
+            return None
+        return GridSignReading(own[0] * phases * DIRECTION_NOMINAL_PHASE_VOLTAGE_V, now - own[1])
+
+    def _observe_grid_sign(self) -> None:
+        """Give the step test this recompute's readings."""
+        if not self._grid_sign_flags():
+            return
+        now = dt_util.utcnow().timestamp()
+        max_age_s = float(self.config.get(CONF_MAX_AGE_S, DEFAULT_MAX_AGE_S))
+        grid: dict[str, GridSignReading | None] = {}
+        if self._grid_sign.flag(GRID_SIGN_POWER) is not None:
+            grid[GRID_SIGN_POWER] = self._grid_sign_power(now, max_age_s)
+        if self._grid_sign.flag(GRID_SIGN_CURRENT) is not None:
+            grid[GRID_SIGN_CURRENT] = self._grid_sign_current(now, max_age_s)
+        battery_known = bool(self.config.get(CONF_BATTERY_AGGREGATE_POWER_ENTITY))
+        sample = GridSignSample(
+            at=now,
+            chargers={
+                charger_entry_id: self._grid_sign_charger(charger_entry_id, now, max_age_s)
+                for charger_entry_id in self.config.get(CONF_CHARGER_ENTRY_IDS) or []
+            },
+            grid=grid,
+            battery=self._fresh_reading(self.battery_aggregate_power(), now, max_age_s) if battery_known else None,
+            battery_known=battery_known,
+        )
+        counted = self._grid_sign.steps_counted
+        changes = self._grid_sign.observe(sample)
+        self._grid_sign_changed(changes, save=self._grid_sign.steps_counted != counted)
+
+    def _grid_sign_changed(self, changes: list[GridSignChange], *, save: bool) -> None:
+        """Log a warning raised or cleared, and keep the tally."""
+        for change in changes:
+            setting = "grid_power_inverted" if change.kind == GRID_SIGN_POWER else "site_current_signed"
+            if change.raised:
+                _LOGGER.info(
+                    "SpotNav site %s: the %s's sign looks reversed (%s is %s): %d of the last counted charger steps "
+                    "moved the grid the other way, %d the same way",
+                    self.entry_id, change.kind.replace("_", " "), setting, self._grid_sign.flag(change.kind),
+                    change.inverted, change.consistent,
+                )
+            elif change.cause == "setting":
+                _LOGGER.info(
+                    "SpotNav site %s: the %s's sign warning is cleared, %s was changed (tally was %d the other way, "
+                    "%d the same way)",
+                    self.entry_id, change.kind.replace("_", " "), setting, change.inverted, change.consistent,
+                )
+            else:
+                _LOGGER.info(
+                    "SpotNav site %s: the %s's sign warning is cleared: charger steps move the grid the same way "
+                    "again (%d of the last counted the other way, %d the same way)",
+                    self.entry_id, change.kind.replace("_", " "), change.inverted, change.consistent,
+                )
+        if save:
+            self._grid_sign_unsaved = True
+            self._grid_sign_store.async_delay_save(self._grid_sign_to_store, 5.0)
+
+    def _grid_sign_to_store(self) -> dict[str, Any]:
+        self._grid_sign_unsaved = False
+        return self._grid_sign.as_dict()
 
     def _release_over(self, charger_entry_id: str, departure: str, now: datetime) -> bool:
         return self._release_end(charger_entry_id, departure, now) is not None

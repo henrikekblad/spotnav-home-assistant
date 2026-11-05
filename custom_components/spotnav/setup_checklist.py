@@ -16,6 +16,12 @@ browser and for every charger.
 * `demand_grid_power`: a demand-charge component or the site's import target is set, but the charger's site is a
   direct one without the meter's total grid power, so its hours cannot be measured. Not dismissible: the place is
   the site's Total grid power (or removing what was set).
+* `grid_power_sign`: the charger's site reads its grid power with the sign the wrong way round, as far as the
+  chargers' own steps show (`site/grid_sign.py`): when a charger's draw changed, the grid moved the other way.
+  Not dismissible; it goes by itself once the steps agree again or the setting is changed. The row carries the one
+  site option its button writes (`field`, `grid_power_inverted`) and the value it writes (`value`); nothing is
+  written unless a person presses it.
+* `grid_current_sign`: the same for a direct site's signed phase currents (`site_current_signed`, written off).
 * `phase_switching`: the charger can switch phases and its site can do solar (the setting is offered), but phase
   switching for solar is off. Dismissible.
 * `phone`: no phone is chosen for this charger's notifications, and the paired SpotNav app does not take them
@@ -36,15 +42,18 @@ from typing import Any, Final
 from homeassistant.core import HomeAssistant
 from homeassistant.util import dt as dt_util
 
-from .const import DOMAIN
+from .const import CONF_GRID_POWER_INVERTED, CONF_SITE_CURRENT_SIGNED, DOMAIN
 from .planning.auto_settings import DRIVER_TARGET_SOC, AutoSettings
 from .runtime import charger_data, domain_data
+from .site.grid_sign import KIND_CURRENT, KIND_POWER
 
 SETUP_VEHICLE: Final = "vehicle"
 SETUP_CAR_LEVEL: Final = "car_level"
 SETUP_SITE: Final = "site"
 SETUP_SOLAR_FORECAST: Final = "solar_forecast"
 SETUP_DEMAND_GRID_POWER: Final = "demand_grid_power"
+SETUP_GRID_POWER_SIGN: Final = "grid_power_sign"
+SETUP_GRID_CURRENT_SIGN: Final = "grid_current_sign"
 SETUP_PHASE_SWITCHING: Final = "phase_switching"
 SETUP_PHONE: Final = "phone"
 SETUP_APP: Final = "app"
@@ -53,6 +62,8 @@ SETUP_ITEMS: Final = (
     SETUP_VEHICLE,
     SETUP_CAR_LEVEL,
     SETUP_SITE,
+    SETUP_GRID_POWER_SIGN,
+    SETUP_GRID_CURRENT_SIGN,
     SETUP_SOLAR_FORECAST,
     SETUP_DEMAND_GRID_POWER,
     SETUP_PHASE_SWITCHING,
@@ -69,15 +80,51 @@ DECISION_DOMAIN_SETUP: Final = "setup"
 DECISION_DOMAIN_SETUP_DONE: Final = "setup_done"
 
 
+#: The grid sign rows (`site/grid_sign.py`): per reading the step test checks, its row and the site option it names.
+GRID_SIGN_ROWS: Final = {
+    KIND_POWER: (SETUP_GRID_POWER_SIGN, CONF_GRID_POWER_INVERTED),
+    KIND_CURRENT: (SETUP_GRID_CURRENT_SIGN, CONF_SITE_CURRENT_SIGNED),
+}
+
+
 @dataclass(frozen=True, slots=True)
 class SetupItem:
-    """One row still left: what it is and whether it can be dismissed."""
+    """One row still left: what it is and whether it can be dismissed; a grid sign row also the site option its
+    button writes and the value."""
 
     id: str
     dismissible: bool
+    field: str | None = None
+    value: bool | None = None
 
     def as_dict(self) -> dict[str, Any]:
-        return {"id": self.id, "dismissible": self.dismissible}
+        found: dict[str, Any] = {"id": self.id, "dismissible": self.dismissible}
+        if self.field is not None:
+            found["field"] = self.field
+            found["value"] = self.value
+        return found
+
+
+@dataclass(frozen=True, slots=True)
+class GridSignRow:
+    """A grid sign warning standing on the charger's site: its row, the site option and the value that undoes it."""
+
+    id: str
+    field: str
+    value: bool
+
+
+def grid_sign_rows(site_controller: Any) -> tuple[GridSignRow, ...]:
+    """The grid sign warnings the site's step test raised, each with the value its option would be set to: the
+    other one of what it was counted under."""
+    if site_controller is None:
+        return ()
+    found: list[GridSignRow] = []
+    for kind, (item, field) in GRID_SIGN_ROWS.items():
+        flag = site_controller.grid_sign_flag(kind)
+        if flag is not None and site_controller.grid_sign_warned(kind):
+            found.append(GridSignRow(item, field, not flag))
+    return tuple(found)
 
 
 def _dismissed(hass: HomeAssistant, item: str) -> bool:
@@ -126,10 +173,12 @@ def capture_setup(
     has_solar_forecast: bool,
     phase_switching: bool | None,
     demand_needs_grid_power: bool = False,
+    grid_sign: tuple[GridSignRow, ...] = (),
 ) -> tuple[SetupItem, ...]:
     """The rows still left for this charger, in `SETUP_ITEMS` order. `phase_switching` is the setting's value,
     `None` while it is not offered (`api/dashboard.py:capture_phase_switching`). `demand_needs_grid_power`: a
-    demand-charge component or an import target is set and the site cannot measure it (`api/grid_tariff.py`)."""
+    demand-charge component or an import target is set and the site cannot measure it (`api/grid_tariff.py`).
+    `grid_sign`: the site's grid sign warnings (`grid_sign_rows`)."""
     data = charger_data(hass, entry_id)
     push = None if data is None else data.push
     app_notifies = push is not None and push.registration is not None
@@ -140,8 +189,10 @@ def capture_setup(
         left.append(SETUP_CAR_LEVEL)
     if not has_site:
         left.append(SETUP_SITE)
-    elif site_solar_capable and not has_solar_forecast:
-        left.append(SETUP_SOLAR_FORECAST)
+    else:
+        left += [row.id for row in grid_sign]
+        if site_solar_capable and not has_solar_forecast:
+            left.append(SETUP_SOLAR_FORECAST)
     if has_site and demand_needs_grid_power:
         left.append(SETUP_DEMAND_GRID_POWER)
     if phase_switching is False:
@@ -150,8 +201,14 @@ def capture_setup(
         left.append(SETUP_PHONE)
     if not app_used(hass):
         left.append(SETUP_APP)
+    writes = {row.id: row for row in grid_sign}
     return tuple(
-        SetupItem(item, item in DISMISSIBLE_ITEMS)
+        SetupItem(
+            item,
+            item in DISMISSIBLE_ITEMS,
+            writes[item].field if item in writes else None,
+            writes[item].value if item in writes else None,
+        )
         for item in left
         if item not in DISMISSIBLE_ITEMS or not _dismissed(hass, item)
     )
