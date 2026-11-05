@@ -29,6 +29,9 @@ by brand. A wrong guess is worse than a miss, so:
 from __future__ import annotations
 
 import math
+from collections.abc import Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
@@ -301,8 +304,36 @@ class VehicleSocChoice:
     source: Literal["confirmed", "automatic"] | None
 
 
+#: Inside `one_vehicle_scan`: the scan made there, once made.
+_SCAN: ContextVar[list[list[VehicleSocChoice]] | None] = ContextVar("spotnav_vehicle_scan", default=None)
+
+
+@contextmanager
+def one_vehicle_scan() -> Iterator[None]:
+    """Within this block the registries are scanned for vehicles once (`soc_choices`), however many readers ask.
+
+    Only for a block that does not await, so neither the registries nor the states can change inside it: the
+    dashboard's capture asks about six times."""
+    token = _SCAN.set([])
+    try:
+        yield
+    finally:
+        _SCAN.reset(token)
+
+
 def soc_choices(hass: HomeAssistant) -> list[VehicleSocChoice]:
     """Vehicle-shaped, not dismissed devices with a state-of-charge candidate, by name then id."""
+    held = _SCAN.get()
+    if held:
+        return list(held[0])
+    choices = _scan_soc_choices(hass)
+    if held is not None:
+        held.append(choices)
+        return list(choices)
+    return choices
+
+
+def _scan_soc_choices(hass: HomeAssistant) -> list[VehicleSocChoice]:
     device_registry = dr.async_get(hass)
     entity_registry = er.async_get(hass)
     decisions = domain_data(hass).decision_store
