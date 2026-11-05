@@ -435,23 +435,18 @@ async def test_the_bundle_is_redacted_and_encoded_off_the_event_loop(
     assert threads["encode"] and loop_thread not in threads["encode"]
 
 
-async def test_a_bundle_that_changes_under_the_executor_is_redacted_on_the_loop(
-    hass: HomeAssistant, monkeypatch
-) -> None:
-    from custom_components.spotnav import debug_bundle as bundle_module
+def test_the_bundle_is_detached_from_live_containers_before_the_executor_redacts_it() -> None:
+    from custom_components.spotnav.debug_bundle import detached
 
-    await setup_charger_and_site(hass)
-    calls = []
+    live_rows = [{"a": 1}]
+    live = {"rows": live_rows, "set": {"x"}, "tuple": (1, "token"), "text": "plain"}
+    copy = detached(live)
+    live_rows.append({"b": 2})
+    live_rows[0]["a"] = 9
+    live["new"] = 1
 
-    def redact(value, scrubber):
-        if isinstance(value, dict) and "bundle_version" in value:
-            calls.append(value)
-            if len(calls) == 1:
-                raise RuntimeError("dictionary changed size during iteration")
-        return redact_bundle(value, scrubber)
-
-    monkeypatch.setattr(bundle_module, "redact_bundle", redact)
-
-    bundle = await async_build_debug_bundle(hass)
-
-    assert len(calls) == 2 and bundle["bundle_version"]
+    assert copy == {"rows": [{"a": 1}], "set": ["x"], "tuple": [1, "token"], "text": "plain"}
+    scrubber = Scrubber(secrets=["token"], names=[], places=[])
+    assert redact_bundle(copy, scrubber) == redact_bundle(
+        {"rows": [{"a": 1}], "set": {"x"}, "tuple": (1, "token"), "text": "plain"}, scrubber
+    )

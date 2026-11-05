@@ -849,7 +849,7 @@
   "settings.vehicle.onboardHelp": "Hur många faser bilens egen laddare kan ta emot. En laddning använder det lägsta av detta och laddarens koppling.",
   "settings.vehicle.error.onboardPhases": "Den inbyggda laddaren måste vara 1-fas eller 3-fas.",
   "entity.phases.fromSite": "Laddaren är kopplad till {phases} (från anläggningen).",
-  "entity.phases.openSite": "Öppna anläggningens inställningar",
+  "entity.phases.openSite": "Öppna SpotNav-inställningar",
   "entity.measuredSource.none": "Anläggningen läser ingen uppmätt ström för den här laddaren. Sol och regleringen behöver den; ange den i anläggningens inställningar (Konfigurera → Inkoppling för {charger} → Källa för uppmätt ström).",
   "entity.measuredSource.noneOwn": "Anläggningen läser ingen uppmätt ström för den här laddaren. Sol och regleringen behöver den: välj {sensors} från {integration} i anläggningens inställningar (Konfigurera → Inkoppling för {charger} → Källa för uppmätt ström), eller tryck på Använd där.",
   "entity.measuredSource.from": "Anläggningen läser laddarens uppmätta ström från {source}.",

@@ -19,7 +19,7 @@ from pytest_homeassistant_custom_component.common import async_fire_time_changed
 
 from custom_components.spotnav.planning.auto_settings import AreaAutoSettings, FiscalOverride
 from custom_components.spotnav.planning.planner import FiscalChoice, HighLoadWindow
-from custom_components.spotnav.runtime import charger_data, domain_data
+from custom_components.spotnav.runtime import charger_data, domain_data, preview_for
 from custom_components.spotnav.sessions import model as model_module
 from custom_components.spotnav.sessions.costing import Slice
 from custom_components.spotnav.sessions.model import ChargeSession, SOURCE_IMPORTED_HOURLY
@@ -314,7 +314,7 @@ async def test_a_record_of_todays_format_loads_and_is_written_back_unchanged(
     await store.async_flush()
     assert hass_storage["spotnav_sessions"]["data"] == written
 
-    assert hass_storage["spotnav_sessions_open"]["data"] == {"open": {CHARGER: opened.as_dict()}}
+    assert hass_storage["spotnav_sessions_open"]["data"] == {"open": {CHARGER: opened.as_dict()}, "closing": {}}
 
 
 async def test_a_record_from_before_the_small_store_resumes_its_open_session_from_the_big_one(
@@ -337,7 +337,7 @@ async def test_a_record_from_before_the_small_store_resumes_its_open_session_fro
     with freeze_time(END + timedelta(seconds=SAVE_DELAY_S + 1)):
         async_fire_time_changed(hass, END + timedelta(seconds=SAVE_DELAY_S + 1))
         await hass.async_block_till_done()
-    assert hass_storage["spotnav_sessions_open"]["data"] == {"open": {CHARGER: later.as_dict()}}
+    assert hass_storage["spotnav_sessions_open"]["data"] == {"open": {CHARGER: later.as_dict()}, "closing": {}}
     assert hass_storage["spotnav_sessions"]["data"] == todays_document(sessions, opened, {})
 
 
@@ -366,7 +366,7 @@ async def test_the_small_store_wins_and_a_session_it_holds_that_ended_is_dropped
     assert store.open_raw(CHARGER) is None
     assert store.closed_raw(CHARGER)[-1] == ended
     await store.async_flush()
-    assert hass_storage["spotnav_sessions_open"]["data"] == {"open": {}}
+    assert hass_storage["spotnav_sessions_open"]["data"] == {"open": {}, "closing": {}}
 
 
 async def test_an_open_sessions_minute_writes_only_the_small_store_and_a_close_writes_the_big_one_first(
@@ -402,20 +402,20 @@ async def test_an_open_sessions_minute_writes_only_the_small_store_and_a_close_w
     assert hass_storage["spotnav_sessions"]["data"] is big
     assert hass_storage["spotnav_sessions_open"]["data"]["open"][CHARGER]["energy_kwh"] == 3.0
 
-    # The session ends: the big store gets it, and the small one forgets it after that.
+    # The session ends: the small store holds it as ending until the big store has it, then forgets it.
     made.clear()
     done = replace(running, end=moment)
     with freeze_time(moment):
         store.close(done, moment)
+        assert store._open_document()["closing"] == {CHARGER: [real(done)]}  # noqa: SLF001
         async_fire_time_changed(hass, moment + timedelta(seconds=SAVE_DELAY_S + 1))
         await hass.async_block_till_done()
     assert hass_storage["spotnav_sessions"]["data"]["sessions"][CHARGER][-1] == real(done)
     assert hass_storage["spotnav_sessions"]["data"]["open"] == {}
-    assert CHARGER in hass_storage["spotnav_sessions_open"]["data"]["open"]
     with freeze_time(moment):
         async_fire_time_changed(hass, moment + timedelta(seconds=2 * SAVE_DELAY_S + 1))
         await hass.async_block_till_done()
-    assert hass_storage["spotnav_sessions_open"]["data"] == {"open": {}}
+    assert hass_storage["spotnav_sessions_open"]["data"] == {"open": {}, "closing": {}}
 
 
 async def test_the_big_stores_snapshot_is_the_store_as_it_stood(hass: HomeAssistant) -> None:
@@ -433,3 +433,27 @@ async def test_the_big_stores_snapshot_is_the_store_as_it_stood(hass: HomeAssist
 
     assert len(closed[CHARGER]) == 60 and opened == {}
     assert imports == {CHARGER: {"version": 2, "unpriced_days": ["2026-01-01"]}}
+
+
+@pytest.mark.usefixtures("offline_relay")
+async def test_a_new_price_catalogue_shows_in_the_cost_sensors_at_once(hass: HomeAssistant) -> None:
+    with freeze_time(NOW) as frozen:
+        entry = await charger(hass)
+        await go_auto(hass)
+        await one_charge(hass, frozen, entry, hours=1.0, kwh=6.0)
+        await hass.async_block_till_done()
+        cost = entity_id(hass, entry.entry_id, "sessions_last_cost")
+        before = float(hass.states.get(cost).state)
+
+        # The catalogue now suggests other fees: a fee left at its suggestion follows them, and the charger's plan,
+        # made from the same effective prices, republishes.
+        data = domain_data(hass)
+        data.session_store.set_fiscal_resolver(lambda charger_id, area_id: FiscalChoice(vat_enabled=True, vat_percent=50.0))
+        preview = preview_for(hass, entry.entry_id)
+        for listener in list(preview._listeners):  # noqa: SLF001 - what a meaningful new plan does
+            listener(preview.snapshot())
+        await hass.async_block_till_done()
+
+        after = float(hass.states.get(cost).state)
+        assert after != before
+        assert after == pytest.approx(round(data.session_store.closed(entry.entry_id)[-1].cost_minor / 100, 4))

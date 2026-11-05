@@ -1,8 +1,8 @@
 """The session sensors of one charger, for Home Assistant's own dashboards and automations.
 
 Energy and cost this month and last month, and the last session's energy and cost. They read the session
-store (memory), refresh when it changes, when the charger's settings or a price entry change (a cost is made
-with the fees as they are now) and every ten minutes (so "this month" turns over at midnight without a
+store (memory), refresh when it changes, when the charger's settings, a price entry or its plan change (a new
+price catalogue republishes the plan; a cost is made with the fees as they are now) and every ten minutes (so "this month" turns over at midnight without a
 session), and are `unknown` when there is nothing to say, never zero.
 
 The figures are built in those callbacks and kept in `_attr_*`, so a state write only reads them; the store
@@ -25,7 +25,7 @@ from homeassistant.util import dt as dt_util
 from ..entity import SpotNavChargingEntity
 from ..execution.controller import ChargingController
 from ..pricing.price_source import SIGNAL_PRICE_SOURCES
-from ..runtime import domain_data
+from ..runtime import domain_data, preview_for
 from .inputs import local_zone
 from .summary import month_key, previous_month
 
@@ -92,6 +92,11 @@ class SessionSensor(SpotNavChargingEntity, SensorEntity):
             async_track_time_interval(self._hass, self._tick, timedelta(seconds=REFRESH_S))
         )
         self._refresh()
+        if (preview := preview_for(self._hass, self._entry.entry_id)) is not None:
+            # The charger's plan republishes when its effective prices move, a new price catalogue suggesting another
+            # fee among them (a fee left at its suggestion follows it). Told at once of the plan as it is: the
+            # figures were just built, so nothing is written.
+            self.async_on_remove(preview.add_listener(self._price_sources))
 
     @callback
     def _changed(self) -> None:

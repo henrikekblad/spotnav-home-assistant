@@ -849,7 +849,7 @@
   "settings.vehicle.onboardHelp": "Hoeveel fasen de eigen lader van de auto aankan. Bij het laden wordt de kleinste van deze waarde en de aansluiting van de laadpaal gebruikt.",
   "settings.vehicle.error.onboardPhases": "De boordlader moet 1-fase of 3-fase zijn.",
   "entity.phases.fromSite": "De laadpaal is aangesloten op {phases} (van de locatie).",
-  "entity.phases.openSite": "Open locatie-instellingen",
+  "entity.phases.openSite": "SpotNav-instellingen openen",
   "entity.measuredSource.none": "De locatie leest geen gemeten stroom voor deze laadpaal. Zon en de regelaar hebben die nodig; stel hem in in de locatie-instellingen (Configureren → Aansluiting van {charger} → Bron van gemeten stroom).",
   "entity.measuredSource.noneOwn": "De locatie leest geen gemeten stroom voor deze laadpaal. Zon en de regelaar hebben die nodig: kies {sensors} van {integration} in de locatie-instellingen (Configureren → Aansluiting van {charger} → Bron van gemeten stroom), of druk daar op Gebruiken.",
   "entity.measuredSource.from": "De locatie leest de gemeten stroom van deze laadpaal van {source}.",
