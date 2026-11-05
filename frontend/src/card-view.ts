@@ -423,8 +423,6 @@ export interface CardView {
   setUpdateNotice(notice: HTMLElement | null): void;
   /** Close the Settings popover without returning focus (the card is about to redraw it). */
   closeSettingsOverview(): void;
-  /** Whether a value editor is open. */
-  valueEditorOpen(): boolean;
   /** Close the value editor after its write took (the card then reads the dashboard and shows Settings). */
   closeValueEditor(): void;
   /** A fee's own number editor, with the area's suggestion the card read for it. */
@@ -5126,7 +5124,6 @@ export function createCardView(input: CardViewInput): CardView {
       paintEntities();
     },
     openEntityEditor,
-    valueEditorOpen: () => valueDialog.isOpen(),
     closeValueEditor(): void {
       valueDialog.hide({ restoreFocus: false });
     },
