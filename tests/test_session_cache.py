@@ -314,7 +314,7 @@ async def test_a_record_of_todays_format_loads_and_is_written_back_unchanged(
     await store.async_flush()
     assert hass_storage["spotnav_sessions"]["data"] == written
 
-    assert hass_storage["spotnav_sessions_open"]["data"] == {"open": {CHARGER: opened.as_dict()}}
+    assert hass_storage["spotnav_sessions_open"]["data"] == {"open": {CHARGER: opened.as_dict()}, "closing": {}}
 
 
 async def test_a_record_from_before_the_small_store_resumes_its_open_session_from_the_big_one(
@@ -337,7 +337,7 @@ async def test_a_record_from_before_the_small_store_resumes_its_open_session_fro
     with freeze_time(END + timedelta(seconds=SAVE_DELAY_S + 1)):
         async_fire_time_changed(hass, END + timedelta(seconds=SAVE_DELAY_S + 1))
         await hass.async_block_till_done()
-    assert hass_storage["spotnav_sessions_open"]["data"] == {"open": {CHARGER: later.as_dict()}}
+    assert hass_storage["spotnav_sessions_open"]["data"] == {"open": {CHARGER: later.as_dict()}, "closing": {}}
     assert hass_storage["spotnav_sessions"]["data"] == todays_document(sessions, opened, {})
 
 
@@ -366,7 +366,7 @@ async def test_the_small_store_wins_and_a_session_it_holds_that_ended_is_dropped
     assert store.open_raw(CHARGER) is None
     assert store.closed_raw(CHARGER)[-1] == ended
     await store.async_flush()
-    assert hass_storage["spotnav_sessions_open"]["data"] == {"open": {}}
+    assert hass_storage["spotnav_sessions_open"]["data"] == {"open": {}, "closing": {}}
 
 
 async def test_an_open_sessions_minute_writes_only_the_small_store_and_a_close_writes_the_big_one_first(
@@ -402,20 +402,20 @@ async def test_an_open_sessions_minute_writes_only_the_small_store_and_a_close_w
     assert hass_storage["spotnav_sessions"]["data"] is big
     assert hass_storage["spotnav_sessions_open"]["data"]["open"][CHARGER]["energy_kwh"] == 3.0
 
-    # The session ends: the big store gets it, and the small one forgets it after that.
+    # The session ends: the small store holds it as ending until the big store has it, then forgets it.
     made.clear()
     done = replace(running, end=moment)
     with freeze_time(moment):
         store.close(done, moment)
+        assert store._open_document()["closing"] == {CHARGER: [real(done)]}  # noqa: SLF001
         async_fire_time_changed(hass, moment + timedelta(seconds=SAVE_DELAY_S + 1))
         await hass.async_block_till_done()
     assert hass_storage["spotnav_sessions"]["data"]["sessions"][CHARGER][-1] == real(done)
     assert hass_storage["spotnav_sessions"]["data"]["open"] == {}
-    assert CHARGER in hass_storage["spotnav_sessions_open"]["data"]["open"]
     with freeze_time(moment):
         async_fire_time_changed(hass, moment + timedelta(seconds=2 * SAVE_DELAY_S + 1))
         await hass.async_block_till_done()
-    assert hass_storage["spotnav_sessions_open"]["data"] == {"open": {}}
+    assert hass_storage["spotnav_sessions_open"]["data"] == {"open": {}, "closing": {}}
 
 
 async def test_the_big_stores_snapshot_is_the_store_as_it_stood(hass: HomeAssistant) -> None:
