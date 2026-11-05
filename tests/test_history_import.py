@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from dataclasses import replace
 from datetime import date, datetime, timedelta
 from types import SimpleNamespace
@@ -471,7 +472,7 @@ async def test_a_day_the_relay_lacks_stays_unpriced_and_is_asked_once_per_run(
 
 
 async def test_a_day_beyond_the_providers_history_is_never_asked_nor_waited_for(
-    hass: HomeAssistant, store: SessionStore
+    hass: HomeAssistant, store: SessionStore, caplog: pytest.LogCaptureFixture
 ) -> None:
     # Nord Pool keeps about two months: D1 is older than that, D2 is not.
     repository = Repository(later={D1: document(D1, [0.2] * 24), D2: document(D2, [0.3] * 24)}, oldest=D2)
@@ -486,11 +487,23 @@ async def test_a_day_beyond_the_providers_history_is_never_asked_nor_waited_for(
     assert by_start[at(D1, 5)].cost_minor is None and by_start[at(D1, 5)].energy_kwh == 5.0
     assert store.import_marker(CHARGER)["unpriced_hours"] == 1  # type: ignore[index]
 
-    # The daily re-price looks again for the unpriced hour, but asks nothing for a day out of reach.
-    clock[0] = TODAY + timedelta(days=1)
-    await importer_for(hass, store, statistics, repository, clock=clock, sleeps=sleeps).async_run()
-    assert D1 not in repository.asked and repository.asked == [D2, D2]
-    assert sleeps == [FETCH_GAP_S, FETCH_GAP_S]
+    assert store.import_marker(CHARGER)["unpriced_days"] == [D1.isoformat()]  # type: ignore[index]
+
+    # The only unpriced day is out of every source's reach: the daily re-price reads nothing and asks nothing, and
+    # says so once.
+    caplog.set_level(logging.INFO, logger="custom_components.spotnav.sessions.history_import")
+    importer = importer_for(hass, store, statistics, repository, clock=clock, sleeps=sleeps)
+    for offset in (1, 2):
+        clock[0] = TODAY + timedelta(days=offset)
+        await importer.async_run()
+    assert repository.asked == [D2] and sleeps == [FETCH_GAP_S] and len(statistics.calls) == 1
+    assert sum("no price source reaches" in record.getMessage() for record in caplog.records) == 1
+
+    # A source that reaches it (ENTSO-E keeps years): the re-price comes back, still asking only what it needs.
+    repository.oldest = None
+    clock[0] = TODAY + timedelta(days=3)
+    await importer.async_run()
+    assert repository.asked == [D2, D1, D2] and len(statistics.calls) == 2
 
 
 async def test_a_version_one_marker_with_unpriced_hours_is_priced_at_once(
@@ -652,6 +665,59 @@ async def test_the_recorders_hourly_energy_is_asked_in_kwh_as_a_change(
 
     assert [(item.start, item.kwh) for item in hours] == [(at(D1, 5), 2.0)]
     assert seen == [({REGISTER}, "hour", {"energy": "kWh"}, {"change"})]
+
+
+async def test_the_rows_hours_charges_and_prices_are_worked_on_in_executor_jobs(
+    hass: HomeAssistant, store: SessionStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from homeassistant.components import recorder  # noqa: PLC0415
+    from homeassistant.components.recorder import statistics  # noqa: PLC0415
+
+    from custom_components.spotnav.sessions import costing, history_import  # noqa: PLC0415
+
+    in_job = [False]
+    seen: dict[str, list[bool]] = {"hours_from_rows": [], "group_hours": [], "spot_intervals": []}
+
+    def watched(name, function):
+        def call(*args, **kwargs):
+            seen[name].append(in_job[0])
+            return function(*args, **kwargs)
+        return call
+
+    def job(function, *args):
+        in_job[0] = True
+        try:
+            return function(*args)
+        finally:
+            in_job[0] = False
+
+    class FakeInstance:
+        async def async_add_executor_job(self, function, *args):
+            return job(function, *args)
+
+    async def executor_job(function, *args):
+        return job(function, *args)
+
+    monkeypatch.setattr(
+        statistics, "statistics_during_period",
+        lambda *args: {REGISTER: [{"start": at(D1, 5).timestamp(), "change": 2.0}]},
+    )
+    monkeypatch.setattr(recorder, "get_instance", lambda hass_: FakeInstance())
+    monkeypatch.setattr(hass, "async_add_executor_job", executor_job)
+    for name in ("hours_from_rows", "group_hours", "spot_intervals"):
+        monkeypatch.setattr(history_import, name, watched(name, getattr(history_import, name)))
+    assert costing.spot_intervals is not history_import.spot_intervals
+
+    repository = Repository(held={D1: document(D1, [0.1] * 24)})
+    importer = HistoryImporter(
+        hass, CHARGER, store, register_entity=lambda: REGISTER, market=lambda: market_of(repository),
+        now=lambda: TODAY, recorder_ready=lambda: True,
+    )
+    await importer.async_run()
+
+    (imported,) = store.closed(CHARGER)
+    assert imported.energy_kwh == 2.0 and imported.cost_minor == pytest.approx(200.0)
+    assert seen == {"hours_from_rows": [True], "group_hours": [True], "spot_intervals": [True]}
 
 
 # ---- the daily timer
