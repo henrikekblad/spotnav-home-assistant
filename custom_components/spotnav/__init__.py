@@ -51,6 +51,7 @@ from .const import (
     CONF_CORE_OWNERSHIP,
     CONF_ENTRY_TYPE,
     DOMAIN,
+    ENTRY_TYPE_CHARGER,
     ENTRY_TYPE_PRICE,
     ENTRY_TYPE_SITE,
     LEGACY_SITE_KEYS,
@@ -874,3 +875,9 @@ async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
     session_store = domain_data(hass).session_store
     if session_store is not None:
         await session_store.async_remove_charger(entry.entry_id)
+        if not any(
+            other.entry_id != entry.entry_id and entry_kind(other) == ENTRY_TYPE_CHARGER
+            for other in hass.config_entries.async_entries(DOMAIN)
+        ):
+            # The last charger went: the record of charge sessions goes with it (both files).
+            await session_store.async_remove_stores()

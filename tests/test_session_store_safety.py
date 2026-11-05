@@ -193,3 +193,18 @@ async def test_a_clean_stop_writes_the_big_store_current(hass: HomeAssistant, ha
     assert [row["energy_kwh"] for row in data["sessions"][entry.entry_id]] == [pytest.approx(6.0)]
     assert data["open"][entry.entry_id]["id"] == "next"
     assert hass_storage[SMALL]["data"]["closing"] == {}
+
+
+@pytest.mark.usefixtures("offline_relay")
+async def test_removing_the_last_charger_removes_both_session_stores(hass: HomeAssistant, hass_storage: dict) -> None:
+    with freeze_time(NOW) as frozen:
+        entry = await charger(hass)
+        await go_auto(hass)
+        await one_charge(hass, frozen, entry, hours=1.0, kwh=6.0)
+        await domain_data(hass).session_store.async_flush()
+        assert BIG in hass_storage and SMALL in hass_storage
+
+        assert await hass.config_entries.async_remove(entry.entry_id)
+        await hass.async_block_till_done()
+
+    assert BIG not in hass_storage and SMALL not in hass_storage
