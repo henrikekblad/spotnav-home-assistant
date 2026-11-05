@@ -263,6 +263,8 @@ async def test_the_integration_installs_them_once_as_it_sets_up(hass: HomeAssist
     assert calls == [hass]
 
 
+# The test installs the blueprints itself, on the loop.
+@pytest.mark.allow_loop_io
 async def test_the_command_counts_the_automations_using_each(
     hass: HomeAssistant, hass_ws_client, hass_read_only_access_token: str, tmp_path: Path, monkeypatch, stopped_after
 ) -> None:

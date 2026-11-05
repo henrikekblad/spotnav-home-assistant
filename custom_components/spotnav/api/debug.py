@@ -19,6 +19,7 @@ from typing import Any, Final
 
 import voluptuous as vol
 from homeassistant.components import websocket_api
+from homeassistant.components.websocket_api.messages import message_to_json_bytes, result_message
 from homeassistant.core import callback, HomeAssistant
 
 from ..card_asset import async_manifest_version, read_bundle_digest
@@ -51,9 +52,12 @@ async def websocket_get_debug_bundle(
         )
         return
     bundle = await async_build_debug_bundle(hass)
-    connection.send_result(
-        msg["id"], {"api_version": DEBUG_API_VERSION, "ok": True, "error": None, "bundle": bundle}
+    # The same message `send_result` makes, encoded in the executor: the bundle is about a megabyte.
+    message = await hass.async_add_executor_job(
+        message_to_json_bytes,
+        result_message(msg["id"], {"api_version": DEBUG_API_VERSION, "ok": True, "error": None, "bundle": bundle}),
     )
+    connection.send_message(message)
 
 
 @websocket_api.websocket_command(

@@ -2037,3 +2037,32 @@ async def test_a_real_entry_charts_on_reload_and_releases_everything_on_removal(
     await hass.async_block_till_done()
     assert manager.area_snapshot(SE4) is None
     assert manager._catalogue_listeners == []
+
+
+async def test_one_capture_scans_the_registries_for_vehicles_once(hass: HomeAssistant, monkeypatch) -> None:
+    import contextlib
+
+    from custom_components.spotnav.vehicles import vehicle_discovery
+
+    from .world import setup_charger_and_site, vehicle_device
+
+    charger, _site = await setup_charger_and_site(hass)
+    vehicle_device(hass, unique_id="car-a", name="Volvo")
+    vehicle_device(hass, unique_id="car-b", name="Polestar")
+    scans = []
+    real = vehicle_discovery._scan_soc_choices
+
+    def counted(hass_):
+        scans.append(1)
+        return real(hass_)
+
+    monkeypatch.setattr(vehicle_discovery, "_scan_soc_choices", counted)
+    once = dashboard_api.serialize_dashboard(dashboard_api.capture_dashboard(hass, charger), can_act=True)
+    assert len(scans) == 1
+    assert {vehicle["name"] for vehicle in once["vehicles"]} >= {"Volvo", "Polestar"}
+
+    # The same capture scanning at every ask answers the same.
+    monkeypatch.setattr(dashboard_api, "one_vehicle_scan", contextlib.nullcontext)
+    every = dashboard_api.serialize_dashboard(dashboard_api.capture_dashboard(hass, charger), can_act=True)
+    assert len(scans) > 2
+    assert {**every, "generated_at": None} == {**once, "generated_at": None}

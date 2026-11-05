@@ -400,3 +400,58 @@ async def test_card_info_answers_any_user(
     assert frame["result"]["card_bundle_hash"] == "abcd1234"
     wrong = await ws_call(await admin(hass, hass_ws_client), {"type": "spotnav/get_card_info", "api_version": 2})
     assert wrong["success"] is False and wrong["error"]["code"] == "spotnav_unsupported_api_version"
+
+
+async def test_the_bundle_is_redacted_and_encoded_off_the_event_loop(
+    hass: HomeAssistant, hass_ws_client, monkeypatch
+) -> None:
+    import threading
+
+    from custom_components.spotnav import debug_bundle as bundle_module
+    from custom_components.spotnav.api import debug as debug_module
+
+    await setup_charger_and_site(hass)
+    loop_thread = threading.get_ident()
+    threads: dict[str, list[int]] = {"redact": [], "encode": []}
+
+    def redact(value, scrubber):
+        if isinstance(value, dict) and "bundle_version" in value:
+            threads["redact"].append(threading.get_ident())
+        return redact_bundle(value, scrubber)
+
+    def encode(message):
+        threads["encode"].append(threading.get_ident())
+        return real_encode(message)
+
+    real_encode = debug_module.message_to_json_bytes
+    monkeypatch.setattr(bundle_module, "redact_bundle", redact)
+    monkeypatch.setattr(debug_module, "message_to_json_bytes", encode)
+
+    frame = await ws_call(await admin(hass, hass_ws_client), {"type": "spotnav/get_debug_bundle", "api_version": 1})
+
+    assert frame["success"] is True and frame["result"]["ok"] is True
+    assert frame["result"]["bundle"]["bundle_version"]
+    assert threads["redact"] and loop_thread not in threads["redact"]
+    assert threads["encode"] and loop_thread not in threads["encode"]
+
+
+async def test_a_bundle_that_changes_under_the_executor_is_redacted_on_the_loop(
+    hass: HomeAssistant, monkeypatch
+) -> None:
+    from custom_components.spotnav import debug_bundle as bundle_module
+
+    await setup_charger_and_site(hass)
+    calls = []
+
+    def redact(value, scrubber):
+        if isinstance(value, dict) and "bundle_version" in value:
+            calls.append(value)
+            if len(calls) == 1:
+                raise RuntimeError("dictionary changed size during iteration")
+        return redact_bundle(value, scrubber)
+
+    monkeypatch.setattr(bundle_module, "redact_bundle", redact)
+
+    bundle = await async_build_debug_bundle(hass)
+
+    assert len(calls) == 2 and bundle["bundle_version"]

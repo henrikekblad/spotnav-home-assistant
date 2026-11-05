@@ -180,6 +180,28 @@ async def test_the_peak_sensor_exists_only_while_a_component_does(hass: HomeAssi
     assert float(hass.states.get(entity_id).state) == pytest.approx(4.958)  # type: ignore[union-attr]
 
 
+async def test_the_peak_sensor_builds_the_month_once_per_reading(hass: HomeAssistant, freezer, monkeypatch) -> None:
+    site = await pilot_site(hass, freezer)
+    await run(hass, freezer, 61, 5000.0)
+    tracker = site_controller_for(hass, site.entry_id).demand  # type: ignore[union-attr]
+    calls = []
+    real = type(tracker).snapshot
+
+    def counted(self, *args, **kwargs):
+        calls.append(1)
+        return real(self, *args, **kwargs)
+
+    monkeypatch.setattr(type(tracker), "snapshot", counted)
+    before = tracker.readings
+    await run(hass, freezer, 1, 5000.0)
+
+    rebuilds = tracker.readings - before
+    assert rebuilds > 0 and len(calls) == rebuilds
+    state = hass.states.get(peak_sensor(hass, site.entry_id))  # type: ignore[arg-type]
+    assert float(state.state) == pytest.approx(4.958)  # type: ignore[union-attr]
+    assert state.attributes["components"][0]["bar_kw"] == 4.958  # type: ignore[union-attr]
+
+
 async def test_a_site_without_a_component_has_no_peak_sensor(hass: HomeAssistant, freezer) -> None:
     freezer.move_to(NOW)
     hass.states.async_set(GRID, "0", {"unit_of_measurement": "W"})

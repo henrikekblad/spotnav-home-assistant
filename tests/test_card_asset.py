@@ -87,6 +87,8 @@ def test_the_url_carries_the_bundle_hash_and_falls_back_to_the_version(tmp_path:
     assert card_asset.card_asset_url("1.2.3", None) == "/spotnav/spotnav-card.js?v=1.2.3"
 
 
+# The test reads the bundle's digest itself, on the loop, to compare.
+@pytest.mark.allow_loop_io
 async def test_setup_registers_the_hashed_url_computed_off_the_loop(
     hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch
 ) -> None:

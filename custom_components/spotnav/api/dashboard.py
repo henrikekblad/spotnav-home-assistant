@@ -145,7 +145,7 @@ from ..vehicles.duplicate_chargers import duplicates_of
 from ..vehicles.soc_estimate import battery_room_kwh, CHARGE_EFFICIENCY
 from ..vehicles.identification_sources import sources_block
 from ..vehicles.vehicle_charge_limit import charge_limit_range
-from ..vehicles.vehicle_discovery import discover_vehicles, resolve_target_vehicle
+from ..vehicles.vehicle_discovery import discover_vehicles, one_vehicle_scan, resolve_target_vehicle
 from ..vehicles.vehicle_wake import wake_supported
 from .charge_bar import charge_bar, ProgressFacts
 from .entity_fields import phase_switching_offered
@@ -1136,8 +1136,22 @@ def capture_dashboard(
     Everything a response can carry is read here: the settings record, the preview snapshot, the
     catalogue snapshot, the held documents, the controller's and execution boundary's facts and the
     site summary. `forecast_domains` is passed straight to `capture_site`; `solar_forecast_wh` is the site's
-    forecast (`async_solar_forecast_wh`), read first because this capture is synchronous.
+    forecast (`async_solar_forecast_wh`), read first because this capture is synchronous. Being synchronous, it
+    scans the registries for vehicles once, for every part that asks (`one_vehicle_scan`).
     """
+    with one_vehicle_scan():
+        return _capture_dashboard(
+            hass, entry, forecast_domains=forecast_domains, solar_forecast_wh=solar_forecast_wh
+        )
+
+
+def _capture_dashboard(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    *,
+    forecast_domains: frozenset[str],
+    solar_forecast_wh: Mapping[datetime, float] | None,
+) -> CapturedDashboard:
     entry_id = entry.entry_id
     store: AutoSettingsStore | None = domain_data(hass).auto_store
     manager: PriceRefreshManager | None = domain_data(hass).price_refresh

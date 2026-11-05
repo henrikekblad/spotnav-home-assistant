@@ -1,9 +1,16 @@
-"""The installation's record of charge sessions: one HA `Store`, bounded, surviving restarts.
+"""The installation's record of charge sessions: two HA `Store`s, bounded, surviving restarts.
 
 Closed sessions are kept per charger for `RETENTION_DAYS` (two years) and at most `MAX_PER_CHARGER`,
 oldest dropped first. A session still open is stored too (written a few seconds after each change), so
 a restart can resume it (`recorder.SessionRecorder`). Readers (the sensors, the dashboard block, the
 WebSocket command) read memory; nothing here awaits.
+
+The open sessions change about once a minute while a car charges, so they have a small store of their own
+(`OPEN_STORAGE_KEY`). The big one (`STORAGE_KEY`: the finished sessions, the import markers and, as when it was
+the only one, the open sessions as they stood) is written only when a session ends, an import ran or a charger
+went, and turned into JSON in the executor. On load the small store's open sessions win; one whose id is already
+among the charger's finished sessions ended before the restart and is dropped. A record from before the small
+store existed has none: its open sessions are read from the big one, as they always were.
 
 What is stored is energy and raw spot prices per interval, never a cost. `closed` and `open_session`
 answer sessions with the cost made from the person's *current* fiscal settings (the resolver the
@@ -13,9 +20,11 @@ only has the cost it was written with keeps it (`cost_basis: "stored"`).
 
 from __future__ import annotations
 
+import copy
 import logging
 from collections.abc import Callable
-from datetime import datetime, timedelta
+from dataclasses import dataclass, field
+from datetime import datetime, timedelta, tzinfo
 from typing import Any, Final
 
 from homeassistant.core import callback, HomeAssistant
@@ -26,11 +35,14 @@ from ..const import DOMAIN
 from ..planning.planner import FiscalChoice
 from ..execution.power_energy import configured_register_entity
 from .model import ChargeSession
+from .summary import month_key, month_summary, previous_month
 
 _LOGGER = logging.getLogger(__name__)
 
 STORAGE_VERSION: Final = 1
 STORAGE_KEY: Final = f"{DOMAIN}_sessions"
+OPEN_STORAGE_VERSION: Final = 1
+OPEN_STORAGE_KEY: Final = f"{DOMAIN}_sessions_open"
 RETENTION_DAYS: Final = 730
 MAX_PER_CHARGER: Final = 5000
 #: How long after a change the document is written; a flush on Home Assistant's stop covers the rest.
@@ -42,16 +54,36 @@ SAVE_DELAY_S: Final = 15
 FiscalResolver = Callable[[str, "str | None"], "FiscalChoice | None"]
 
 
+@dataclass(slots=True)
+class _PricedCache:
+    """One charger's finished sessions as last costed: valid while the store's revision for the charger and the
+    fiscal choice of every market they are priced in are what they were then (a closed session never changes)."""
+
+    revision: int
+    choices: dict[tuple[str, "str | None"], "FiscalChoice | None"]
+    sessions: tuple[ChargeSession, ...]
+    #: Month summaries made from `sessions`, by (zone, `YYYY-MM`).
+    months: dict[tuple[tzinfo, str], dict[str, Any]] = field(default_factory=dict)
+
+
 class SessionStore:
     def __init__(self, hass: HomeAssistant) -> None:
         self._hass = hass
-        self._store: Store[dict[str, Any]] = Store(hass, STORAGE_VERSION, STORAGE_KEY)
+        # Put together on the loop as a snapshot of lists (cheap), turned into rows and JSON in the executor.
+        self._store: Store[dict[str, Any]] = Store(
+            hass, STORAGE_VERSION, STORAGE_KEY, serialize_in_event_loop=False
+        )
+        self._open_store: Store[dict[str, Any]] = Store(hass, OPEN_STORAGE_VERSION, OPEN_STORAGE_KEY)
         self._closed: dict[str, list[ChargeSession]] = {}
         self._open: dict[str, ChargeSession] = {}
         #: Per charger, what the one-off import of earlier charges did (`history_import`).
         self._imports: dict[str, dict[str, Any]] = {}
         self._listeners: dict[str, set[Callable[[], None]]] = {}
         self._fiscal: FiscalResolver | None = None
+        #: How many times a list of finished sessions changed (any charger's: a prune reaches them all). The costed
+        #: sessions are cached against it; an open session's minute-by-minute changes do not move it.
+        self._closed_revision = 0
+        self._priced_cache: dict[str, _PricedCache] = {}
 
     async def async_load(self) -> None:
         raw = await self._store.async_load()
@@ -67,11 +99,19 @@ class SessionStore:
                 dropped += sum(1 for item in kept if item is None)
                 self._closed[charger_id] = [item for item in kept if item is not None and item.end is not None]
         opened = raw.get("open")
+        own = await self._open_store.async_load()
+        if isinstance(own, dict):
+            opened = own.get("open")
         if isinstance(opened, dict):
             for charger_id, item in opened.items():
                 session = ChargeSession.from_dict(item)
                 if session is None or session.end is not None or session.charger_id != charger_id:
                     dropped += 1
+                    continue
+                if any(done.id == session.id for done in self._closed.get(charger_id, ())):
+                    # It ended before the restart, and the small store was not written again after that: it is
+                    # written now, so the record never holds it as open once it is pruned from the finished ones.
+                    self._open_store.async_delay_save(self._open_document, SAVE_DELAY_S)
                     continue
                 if session.register_entity is None and session.last_register_kwh is not None:
                     # Read before any charger is set up (and may have its register replaced): the register its
@@ -87,15 +127,22 @@ class SessionStore:
             # Counted, not quoted: a log line about stored data must not repeat it.
             _LOGGER.warning("Ignored %d unreadable stored charge session record(s)", dropped)
         self._prune(dt_util.utcnow())
+        self._closed_changed()
 
     # ---- reads
 
     def set_fiscal_resolver(self, resolver: FiscalResolver | None) -> None:
         self._fiscal = resolver
 
-    def _priced(self, sessions: tuple[ChargeSession, ...]) -> tuple[ChargeSession, ...]:
-        """The sessions with their costs made from the current settings (one lookup per market)."""
-        choices: dict[tuple[str, str | None], FiscalChoice | None] = {}
+    def _priced(
+        self,
+        sessions: tuple[ChargeSession, ...],
+        choices: dict[tuple[str, str | None], FiscalChoice | None] | None = None,
+    ) -> tuple[ChargeSession, ...]:
+        """The sessions with their costs made from the current settings (one lookup per market, kept in
+        `choices` when given)."""
+        if choices is None:
+            choices = {}
         out = []
         for item in sessions:
             if not item.intervals:
@@ -112,8 +159,40 @@ class SessionStore:
         return self._priced((session,))[0]
 
     def closed(self, charger_id: str) -> tuple[ChargeSession, ...]:
-        """The charger's finished sessions, oldest first, costed with the current settings."""
-        return self._priced(tuple(self._closed.get(charger_id, ())))
+        """The charger's finished sessions, oldest first, costed with the current settings.
+
+        Costed once per change: the answer is cached until a list of finished sessions changes or the fiscal choice
+        of a market these are priced in does (resolving the choices is cheap; costing every interval is not)."""
+        return self._costed(charger_id).sessions
+
+    def month_summary(self, charger_id: str, zone: tzinfo, key: str) -> dict[str, Any]:
+        """`summary.month_summary` of the charger's finished sessions for the month `key`, made once per change."""
+        cache = self._costed(charger_id)
+        summary = cache.months.get((zone, key))
+        if summary is None:
+            summary = cache.months[(zone, key)] = month_summary(cache.sessions, zone, key)
+        return dict(summary)
+
+    def sessions_summary(self, charger_id: str, zone: tzinfo, now: datetime) -> dict[str, Any]:
+        """`summary.sessions_summary` of the charger's finished sessions: this month and last month."""
+        today = now.astimezone(zone).date()
+        return {
+            "this_month": self.month_summary(charger_id, zone, month_key(today)),
+            "last_month": self.month_summary(charger_id, zone, previous_month(today)),
+        }
+
+    def _costed(self, charger_id: str) -> _PricedCache:
+        revision = self._closed_revision
+        cache = self._priced_cache.get(charger_id)
+        if cache is not None and cache.revision == revision and all(
+            (None if self._fiscal is None else self._fiscal(*key)) == choice for key, choice in cache.choices.items()
+        ):
+            return cache
+        stored = tuple(self._closed.get(charger_id, ()))
+        choices: dict[tuple[str, str | None], FiscalChoice | None] = {}
+        sessions = self._priced(stored, choices)
+        cache = self._priced_cache[charger_id] = _PricedCache(revision, choices, sessions)
+        return cache
 
     def closed_raw(self, charger_id: str) -> tuple[ChargeSession, ...]:
         """The finished sessions as stored (no cost made)."""
@@ -152,19 +231,21 @@ class SessionStore:
         self._closed[charger_id] = kept + list(sessions)
         self._imports[charger_id] = dict(marker)
         self._prune(now)
-        self._changed(charger_id)
+        self._closed_changed()
+        self._changed(charger_id, record=True)
 
     @callback
     def replace_closed(self, charger_id: str, sessions: list[ChargeSession], now: datetime) -> None:
         """Replace the charger's finished sessions (a migration rewrote some of them)."""
         self._closed[charger_id] = list(sessions)
         self._prune(now)
-        self._changed(charger_id)
+        self._closed_changed()
+        self._changed(charger_id, record=True)
 
     @callback
     def set_import_marker(self, charger_id: str, marker: dict[str, Any]) -> None:
         self._imports[charger_id] = dict(marker)
-        self._changed(charger_id)
+        self._changed(charger_id, record=True)
 
     @callback
     def set_open(self, session: ChargeSession | None, *, charger_id: str) -> None:
@@ -173,7 +254,7 @@ class SessionStore:
             self._open.pop(charger_id, None)
         else:
             self._open[charger_id] = session
-        self._changed(charger_id)
+        self._changed(charger_id, opened=True)
 
     @callback
     def close(self, session: ChargeSession, now: datetime) -> None:
@@ -181,7 +262,11 @@ class SessionStore:
         self._open.pop(session.charger_id, None)
         self._closed.setdefault(session.charger_id, []).append(session)
         self._prune(now)
-        self._changed(session.charger_id)
+        self._closed_changed()
+        self._changed(session.charger_id, record=True)
+        # Written after the big store: until then the small one still holds the session as open, and a restart
+        # in between drops it there (it is among the finished ones) or, had the big write not landed, resumes it.
+        self._open_store.async_delay_save(self._open_document, 2 * SAVE_DELAY_S)
 
     async def async_remove_charger(self, charger_id: str) -> None:
         """A charger entry was deleted for good: its sessions go with it."""
@@ -189,12 +274,15 @@ class SessionStore:
         self._imports.pop(charger_id, None)
         self._closed.pop(charger_id, None)
         self._open.pop(charger_id, None)
+        self._closed_changed()
         if had:
             await self._store.async_save(self._document())
+            await self._open_store.async_save(self._open_document())
         self._notify(charger_id)
 
     async def async_flush(self) -> None:
         await self._store.async_save(self._document())
+        await self._open_store.async_save(self._open_document())
 
     # ---- listeners
 
@@ -216,20 +304,47 @@ class SessionStore:
             self._closed[charger_id] = kept[-MAX_PER_CHARGER:]
 
     def _document(self) -> dict[str, Any]:
-        return {
-            "sessions": {
-                charger_id: [item.as_dict() for item in items]
-                for charger_id, items in self._closed.items()
-                if items
-            },
-            "open": {charger_id: item.as_dict() for charger_id, item in self._open.items()},
-            "imports": dict(self._imports),
-        }
+        """The big store's document (built at once; `_snapshot` defers the rows to the executor)."""
+        return _rows(*self._snapshot())
 
-    def _changed(self, charger_id: str) -> None:
-        self._store.async_delay_save(self._document, SAVE_DELAY_S)
+    def _snapshot(self) -> tuple[dict[str, list[ChargeSession]], dict[str, Any], dict[str, Any]]:
+        """What the big store's document is made of, taken on the loop and the writer's own: the lists of finished
+        sessions copied (a finished session never changes; a migration replaces the object), the open sessions
+        already as rows and the import markers copied whole."""
+        return (
+            {charger_id: list(items) for charger_id, items in self._closed.items() if items},
+            self._open_document()["open"],
+            copy.deepcopy(self._imports),
+        )
+
+    def _open_document(self) -> dict[str, Any]:
+        return {"open": {charger_id: item.as_dict() for charger_id, item in self._open.items()}}
+
+    def _closed_changed(self) -> None:
+        """A list of finished sessions changed: what was costed from them is stale."""
+        self._closed_revision += 1
+        self._priced_cache.clear()
+
+    def _changed(self, charger_id: str, *, record: bool = False, opened: bool = False) -> None:
+        """Save what changed: the finished sessions or the markers (`record`), an open session (`opened`)."""
+        if record:
+            snapshot = self._snapshot()
+            self._store.async_delay_save(lambda: _rows(*snapshot), SAVE_DELAY_S)
+        if opened:
+            self._open_store.async_delay_save(self._open_document, SAVE_DELAY_S)
         self._notify(charger_id)
 
     def _notify(self, charger_id: str) -> None:
         for listener in list(self._listeners.get(charger_id, ())):
             listener()
+
+
+def _rows(
+    closed: dict[str, list[ChargeSession]], opened: dict[str, Any], imports: dict[str, Any]
+) -> dict[str, Any]:
+    """The big store's document, in the shape it always had. Pure: the store calls it in the executor."""
+    return {
+        "sessions": {charger_id: [item.as_dict() for item in items] for charger_id, items in closed.items()},
+        "open": opened,
+        "imports": imports,
+    }

@@ -531,5 +531,13 @@ async def async_build_debug_bundle(hass: HomeAssistant) -> dict[str, Any]:
             "warnings_24h": [] if buffer is None else buffer.warnings(),
         },
     }
-    return redact_bundle(bundle, await _scrubber(hass, entries))
+    scrubber = await _scrubber(hass, entries)
+    try:
+        # Pure, and the bundle was built for this call alone: the redaction (every string scrubbed, the larger part
+        # of the work) runs in the executor.
+        return await hass.async_add_executor_job(redact_bundle, bundle, scrubber)
+    except RuntimeError:
+        # A live dict or set read into the bundle changed size while it was being copied: copy it here instead.
+        _LOGGER.debug("Redacting the debug bundle in the executor failed; redacting it on the loop", exc_info=True)
+        return redact_bundle(bundle, scrubber)
 

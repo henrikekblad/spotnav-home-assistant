@@ -250,6 +250,8 @@ async def test_a_dropped_plan_keeps_its_charge_the_plans(hass: HomeAssistant, ti
     await world.shutdown()
 
 
+# The replay tool's command line reads its bundle file; the test runs it on the loop.
+@pytest.mark.allow_loop_io
 async def test_an_owners_recording_replays_with_no_line_up(
     hass: HomeAssistant, timers: FakeScheduler, drives: bool, tmp_path
 ) -> None:
