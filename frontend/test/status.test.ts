@@ -6,7 +6,8 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { issuesOf, issueText, statusNote, statusText } from "../src/status";
+import { translate } from "../src/i18n";
+import { issuesOf, issueText, statusForCharger, statusNeedsSiteSettings, statusNote, statusText } from "../src/status";
 import type { Status } from "../src/validate";
 import { statusLine } from "./dashboard-fixtures";
 
@@ -85,37 +86,75 @@ describe("the status line renders the block and nothing else", () => {
     ]);
   });
 
-  it("says why solar has no full basis and names the meter's unavailable sensors, in every language", () => {
-    const field = block(
-      statusLine("solar_waiting_for_sun"),
-      statusLine("solar_charger_current_missing", { entity: null }),
-      statusLine("solar_site_incomplete", { phases: ["L1"] }),
-      statusLine("site_meter_unavailable", { entities: ["sensor.solax_grid_current_l1"], cause: "inverter_standby" }),
+  it("names the real place of the charger's own current, as its step and field are titled in each language", () => {
+    const facts = (language: string) => {
+      const file = JSON.parse(
+        readFileSync(join(__dirname, "../../custom_components/spotnav/translations", `${language}.json`), "utf8"),
+      ) as { options: { step: { site_charger_wiring: { title: string; data: { measured_source: string } } } } };
+      const step = file.options.step.site_charger_wiring;
+      return { title: step.title.replace("{charger}", "Garage"), field: step.data.measured_source.replace(/\s*\([^)]*\)$/u, "") };
+    };
+    const missing = statusForCharger(block(statusLine("solar_charger_current_missing", { entity: null })), "Garage");
+    const ownSensors = statusForCharger(
+      block(statusLine("solar_charger_current_missing", { entity: null, integration: "Peblar", sensors: "Current" })),
+      "Garage",
     );
+    for (const language of ["en", "sv", "nl", "da", "de", "es", "fi", "fr", "nb"] as const) {
+      const { title, field } = facts(language);
+      for (const status of [missing, ownSensors]) {
+        const text = statusText(status, format(language), NOW) ?? "";
+        expect(text, language).toContain(title);
+        expect(text, language).toContain(field);
+        expect(text, language).not.toMatch(/\{\w+\}/u);
+      }
+      for (const key of ["entity.measuredSource.none", "entity.measuredSource.noneOwn"] as const) {
+        const text = translate(language, key, { integration: "Peblar", sensors: "Current", charger: "Garage" });
+        expect(text, `${language} ${key}`).toContain(title);
+        expect(text, `${language} ${key}`).toContain(field);
+      }
+    }
+  });
+
+  it("says why solar has no full basis and names the meter's unavailable sensors, in every language", () => {
+    const field = statusForCharger(
+      block(
+        statusLine("solar_waiting_for_sun"),
+        statusLine("solar_charger_current_missing", { entity: null }),
+        statusLine("solar_site_incomplete", { phases: ["L1"] }),
+        statusLine("site_meter_unavailable", { entities: ["sensor.solax_grid_current_l1"], cause: "inverter_standby" }),
+      ),
+      "Garage",
+    )!;
     expect(statusText(field, format("en"), NOW)).toBe(
-      "Solar · waiting for sun · The charger's own current is not set — choose it under Site wiring; until then solar starts only at the minimum current · The site measurement is incomplete (L1) — solar runs on total grid power only · The meter's sensors are unavailable (the inverter may be in standby): sensor.solax_grid_current_l1.",
+      "Solar · waiting for sun · The charger's own current is not set — choose it in the site's settings (Configure → Wiring for Garage → Measured current source); until then solar starts only at the minimum current · The site measurement is incomplete (L1) — solar runs on total grid power only · The meter's sensors are unavailable (the inverter may be in standby): sensor.solax_grid_current_l1.",
     );
     expect(statusText(field, format("sv"), NOW)).toContain(
-      "Laddarens egen ström är inte vald — välj den under Anläggningens koppling;",
+      "Laddarens egen ström är inte vald — välj den i anläggningens inställningar (Konfigurera → Inkoppling för Garage → Källa för uppmätt ström);",
     );
     expect(statusText(field, format("sv"), NOW)).toContain(
       "Mätarens sensorer är otillgängliga (växelriktaren kan vara i viloläge): sensor.solax_grid_current_l1.",
     );
     // The charger's own sensors are named when its integration has them, in every language.
-    const own = block(
-      statusLine("solar_charger_current_missing", { entity: null, integration: "Peblar", sensors: "Current phase 1–3" }),
+    const own = statusForCharger(
+      block(
+        statusLine("solar_charger_current_missing", { entity: null, integration: "Peblar", sensors: "Current phase 1–3" }),
+      ),
+      "Garage",
     );
     expect(statusText(own, format("en"), NOW)).toBe(
-      "The charger's own current is not set — choose Peblar's Current phase 1–3 under Site wiring, or press Use there; until then solar starts only at the minimum current.",
+      "The charger's own current is not set — choose Peblar's Current phase 1–3 in the site's settings (Configure → Wiring for Garage → Measured current source), or press Use there; until then solar starts only at the minimum current.",
     );
     expect(statusText(own, format("sv"), NOW)).toContain(
-      "välj Current phase 1–3 från Peblar under Anläggningens koppling, eller tryck på Använd där",
+      "välj Current phase 1–3 från Peblar i anläggningens inställningar (Konfigurera → Inkoppling för Garage → Källa för uppmätt ström), eller tryck på Använd där",
     );
     for (const language of ["da", "de", "es", "fi", "fr", "nb", "nl"] as const) {
       const text = statusText(own, format(language), NOW);
       expect(text).toContain("Current phase 1–3");
       expect(text).not.toMatch(/\{\w+\}/u);
     }
+    expect(statusNeedsSiteSettings(own)).toBe(true);
+    expect(statusNeedsSiteSettings(block(statusLine("solar_charger_current_missing", { entity: "sensor.halo_current" })))).toBe(false);
+    expect(statusNeedsSiteSettings(block(statusLine("solar_waiting_for_sun")))).toBe(false);
     const grid = block(statusLine("solar_no_grid_power", { entity: null }));
     expect(statusText(grid, format("en"), NOW)).toBe("Solar · no grid power reading — set Total grid power under Site entities");
     const unreadable = block(statusLine("solar_no_grid_power", { entity: "sensor.net" }));

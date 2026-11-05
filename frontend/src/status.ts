@@ -145,11 +145,14 @@ function basisWording(line: StatusLine): { key: TranslationKey; params: Record<s
         return { key: "strategy.status.solar.chargerCurrentUnreadable", params: { entity } };
       }
       // Not set: the charger's own sensors are named when its integration has them.
+      // The text names the site's page "Wiring for {charger}", so it needs the charger's name (`charger`,
+      // which the model adds to the lines it reads).
       const integration = p["integration"];
       const sensors = p["sensors"];
+      const charger = typeof p["charger"] === "string" ? p["charger"] : "";
       return typeof integration === "string" && integration !== "" && typeof sensors === "string" && sensors !== ""
-        ? { key: "strategy.status.solar.chargerCurrentNotSetOwn", params: { integration, sensors } }
-        : { key: "strategy.status.solar.chargerCurrentNotSet", params: {} };
+        ? { key: "strategy.status.solar.chargerCurrentNotSetOwn", params: { integration, sensors, charger } }
+        : { key: "strategy.status.solar.chargerCurrentNotSet", params: { charger } };
     }
     case "solar_site_incomplete":
       return { key: "strategy.status.solar.siteIncomplete", params: { phases: strings(p["phases"]).join(", ") } };
@@ -879,6 +882,21 @@ export function lineText(
     default:
       return say(STATUS_WORDING[line.code]);
   }
+}
+
+/** The status with the charger's name in every line's params, for the lines that name the site's page for it. */
+export function statusForCharger(status: Status | null, charger: string): Status | null {
+  return status === null
+    ? null
+    : { ...status, lines: status.lines.map((line) => ({ ...line, params: { ...line.params, charger } })) };
+}
+
+/** Whether a line sends the reader to the site's settings for the charger's own measured current. */
+export function statusNeedsSiteSettings(status: Status | null): boolean {
+  return (
+    status?.lines.some((line) => line.code === "solar_charger_current_missing" && entityOf(line.params) === null) ??
+    false
+  );
 }
 
 /** The suggestion note has its own muted line, never a part of the plan line. */
