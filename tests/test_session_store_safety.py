@@ -9,18 +9,22 @@ not make the small store's stale open session win.
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import replace
+from unittest.mock import patch
 from datetime import datetime, timedelta, timezone
 
 import pytest
 from freezegun import freeze_time
-from homeassistant.const import EVENT_HOMEASSISTANT_STOP
-from homeassistant.core import HomeAssistant
+from homeassistant.const import EVENT_HOMEASSISTANT_FINAL_WRITE, EVENT_HOMEASSISTANT_STOP
+from homeassistant.core import CoreState, HomeAssistant
+from homeassistant.helpers.storage import Store
+from homeassistant.util.file import WriteError
 from pytest_homeassistant_custom_component.common import async_fire_time_changed
 
 from custom_components.spotnav.runtime import domain_data
 from custom_components.spotnav.sessions.model import ChargeSession
-from custom_components.spotnav.sessions.store import SAVE_DELAY_S, SessionStore
+from custom_components.spotnav.sessions.store import CLOSING_KEEP, SAVE_DELAY_S, SessionStore
 
 from .test_session_integration import charger, NOW, one_charge
 from .world import go_auto
@@ -49,7 +53,8 @@ async def at(hass: HomeAssistant, moment: datetime) -> None:
     """Let every timer due by `moment` fire, and what it started finish."""
     with freeze_time(moment):
         async_fire_time_changed(hass, moment)
-        await hass.async_block_till_done()
+        # The big store's write is a background task (it must not hold up a stop).
+        await hass.async_block_till_done(wait_background_tasks=True)
 
 
 async def restarted(hass: HomeAssistant) -> SessionStore:
@@ -88,30 +93,108 @@ async def test_a_close_is_kept_when_other_writes_move_the_timers(hass: HomeAssis
     assert again.open_raw(B) is not None and again.open_raw(B).energy_kwh == 6.0
 
 
-async def test_a_close_whose_big_write_never_lands_is_finished_from_the_small_store(
-    hass: HomeAssistant, hass_storage: dict, monkeypatch: pytest.MonkeyPatch
+def big_write_fails():
+    """Every write of the big store fails as a full disk makes it fail: `Store` logs it and returns. (Patched over
+    the test harness's own storage stand-in, for as long as the `with` lasts.)"""
+    real = Store._async_write_data  # noqa: SLF001
+
+    async def write(self, data):
+        if self.key == BIG:
+            raise WriteError("disk full")
+        return await real(self, data)
+
+    return patch.object(Store, "_async_write_data", write)
+
+
+async def test_a_close_whose_big_write_fails_is_finished_from_the_small_store(
+    hass: HomeAssistant, hass_storage: dict
 ) -> None:
     store, a_open, _b_open = await two_charging(hass)
-
-    async def lost(*_args, **_kwargs):
-        raise OSError("disk full")
-
-    monkeypatch.setattr(store._store, "async_save", lost)  # noqa: SLF001
-    with freeze_time(T0):
-        store.close(ended(a_open, T0), T0)
-    await at(hass, T0 + timedelta(seconds=SAVE_DELAY_S + 1))
+    with big_write_fails():
+        with freeze_time(T0):
+            store.close(ended(a_open, T0), T0)
+        await at(hass, T0 + timedelta(seconds=SAVE_DELAY_S + 1))
+        await at(hass, T0 + timedelta(seconds=2 * SAVE_DELAY_S + 2))
+    assert A not in hass_storage.get(BIG, {}).get("data", {}).get("sessions", {})
     assert hass_storage[SMALL]["data"]["open"].keys() == {B}
     assert [row["id"] for row in hass_storage[SMALL]["data"]["closing"][A]] == ["A-1"]
-    assert A not in hass_storage.get(BIG, {}).get("data", {}).get("sessions", {})
 
     again = await restarted(hass)
     assert again.open_raw(A) is None
     assert [item.id for item in again.closed_raw(A)] == ["A-1"]
-    # The next big write holds it, and only then does the small store let it go.
-    await at(hass, T0 + timedelta(seconds=2 * SAVE_DELAY_S + 2))
+
+
+async def test_a_close_just_before_a_stop_whose_big_write_fails_is_kept(
+    hass: HomeAssistant, hass_storage: dict
+) -> None:
+    """Close, then Home Assistant stops 2 s later: the stop's flush only hands the writes to the final write, and
+    there the big one fails."""
+    store, a_open, _b_open = await two_charging(hass)
+    with freeze_time(T0):
+        store.close(ended(a_open, T0), T0)
+    with freeze_time(T0 + timedelta(seconds=2)):
+        hass.set_state(CoreState.stopping)
+        await store.async_flush()
+        assert A not in hass_storage.get(BIG, {}).get("data", {}).get("sessions", {}), "nothing landed yet"
+        with big_write_fails():
+            hass.set_state(CoreState.final_write)
+            hass.bus.async_fire(EVENT_HOMEASSISTANT_FINAL_WRITE)
+            await hass.async_block_till_done()
+    assert A not in hass_storage.get(BIG, {}).get("data", {}).get("sessions", {})
+    assert [row["id"] for row in hass_storage[SMALL]["data"]["closing"][A]] == ["A-1"]
+
+    hass.set_state(CoreState.running)
+    again = await restarted(hass)
+    assert again.open_raw(A) is None
+    assert [item.id for item in again.closed_raw(A)] == ["A-1"]
+
+
+async def test_an_ended_session_leaves_the_small_store_a_day_after_its_end(
+    hass: HomeAssistant, hass_storage: dict
+) -> None:
+    store, a_open, b_open = await two_charging(hass)
+    with freeze_time(T0):
+        store.close(ended(a_open, T0), T0)
+    await at(hass, T0 + timedelta(seconds=SAVE_DELAY_S + 1))
     assert [row["id"] for row in hass_storage[BIG]["data"]["sessions"][A]] == ["A-1"]
-    await at(hass, T0 + timedelta(seconds=3 * SAVE_DELAY_S + 3))
+    # The big write landed, and the small store keeps it all the same.
+    assert [row["id"] for row in hass_storage[SMALL]["data"]["closing"][A]] == ["A-1"]
+
+    later = T0 + CLOSING_KEEP + timedelta(minutes=1)
+    with freeze_time(later):
+        store.set_open(replace(b_open, energy_kwh=7.0), charger_id=B)
+    await at(hass, later + timedelta(seconds=SAVE_DELAY_S + 1))
     assert hass_storage[SMALL]["data"]["closing"] == {}
+
+
+async def test_a_record_write_cancelled_at_the_stop_is_made_at_the_final_write(
+    hass: HomeAssistant, hass_storage: dict, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store, a_open, _b_open = await two_charging(hass)
+    with freeze_time(T0):
+        store.close(ended(a_open, T0), T0)
+    held = asyncio.Event()
+    real = store._store.async_save  # noqa: SLF001
+
+    async def slow(data):
+        await held.wait()
+        await real(data)
+
+    monkeypatch.setattr(store._store, "async_save", slow)  # noqa: SLF001
+    task = hass.async_create_task(store._async_write_record())  # noqa: SLF001
+    await asyncio.sleep(0.05)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert store._record_dirty is True  # noqa: SLF001
+
+    held.set()
+    hass.set_state(CoreState.final_write)
+    with freeze_time(T0 + timedelta(seconds=1)):
+        hass.bus.async_fire(EVENT_HOMEASSISTANT_FINAL_WRITE)
+        await hass.async_block_till_done()
+    hass.set_state(CoreState.running)
+    assert [row["id"] for row in hass_storage[BIG]["data"]["sessions"][A]] == ["A-1"]
 
 
 async def test_a_crash_before_any_write_after_the_close_resumes_the_session(
@@ -192,7 +275,8 @@ async def test_a_clean_stop_writes_the_big_store_current(hass: HomeAssistant, ha
     data = hass_storage[BIG]["data"]
     assert [row["energy_kwh"] for row in data["sessions"][entry.entry_id]] == [pytest.approx(6.0)]
     assert data["open"][entry.entry_id]["id"] == "next"
-    assert hass_storage[SMALL]["data"]["closing"] == {}
+    # The small store keeps the charge as ended for a day all the same.
+    assert [row["energy_kwh"] for row in hass_storage[SMALL]["data"]["closing"][entry.entry_id]] == [pytest.approx(6.0)]
 
 
 @pytest.mark.usefixtures("offline_relay")
