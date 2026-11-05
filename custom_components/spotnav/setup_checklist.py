@@ -17,7 +17,7 @@ browser and for every charger.
   direct one without the meter's total grid power, so its hours cannot be measured. Not dismissible: the place is
   the site's Total grid power (or removing what was set).
 * `grid_power_sign`: the charger's site reads its grid power with the sign the wrong way round, as far as the
-  chargers' own steps show (`site/grid_sign.py`): when a charger started, the grid showed less import, not more.
+  chargers' own steps show (`site/grid_sign.py`): when a charger's draw changed, the grid moved the other way.
   Not dismissible; it goes by itself once the steps agree again or the setting is changed. The row carries the one
   site option its button writes (`field`, `grid_power_inverted`) and the value it writes (`value`); nothing is
   written unless a person presses it.

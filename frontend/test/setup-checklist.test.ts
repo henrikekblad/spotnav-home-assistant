@@ -318,7 +318,7 @@ describe("the grid sign rows", () => {
     line(element)!.click();
     await settle();
     expect(row(element, "grid_power_sign").querySelector(".spotnav-suggestion-text")?.textContent).toBe(
-      "The grid meter's sign looks reversed: when the charger started, the grid showed less import, not more. " +
+      "The grid meter's sign looks reversed: when the charger's draw changed, the grid moved the other way. " +
         "Solar and load balancing read export as import.",
     );
     expect(button(row(element, "grid_power_sign"), "dismiss")).toBeNull();
