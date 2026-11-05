@@ -169,6 +169,7 @@ class EaseeCommandPath(StartStopPath):
     """
 
     kind = PATH_EASEE
+    writes_current = True
 
     def __init__(
         self,

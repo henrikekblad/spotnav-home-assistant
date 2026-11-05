@@ -228,6 +228,15 @@ class OcppAssignedCurrent(CurrentPath):
                 return False
             await asyncio.sleep(OCPP_VERIFY_RETRY_S)
 
+    async def async_present_a(self) -> int | None:
+        """This connector's entry in `AssignedCurrent`, read as every write reads it first; `None` when the slot
+        cannot be read or has no entry for the connector."""
+        read = await self.async_read_assigned_current()
+        if read is None:
+            return None
+        _devid, connector, current = read
+        return assigned_amps_for_connector(current, connector)
+
     async def async_read_assigned_current(self) -> tuple[str, int, str] | None:
         """Read the charger's `AssignedCurrent` slot."""
         target = self._target()

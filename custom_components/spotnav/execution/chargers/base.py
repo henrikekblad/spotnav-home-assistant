@@ -88,8 +88,8 @@ WRITE_RESTORE: Final = "restore"
 WRITE_RESEND: Final = "resend"
 WRITE_SOLAR: Final = "solar"
 WRITE_SETTING: Final = "setting"
-#: The one write that hands a charger back at its full current when its SpotNav entry is deleted for good
-#: (`execution/charger_handback.py`): written once, so a flash-stored setting takes it too.
+#: The one write that gives a charger back the current it had before SpotNav when its SpotNav entry is deleted for
+#: good (`execution/charger_handback.py`): written once, so a flash-stored setting takes it too.
 WRITE_HANDBACK: Final = "handback"
 #: The writes that modulate a running charge, again and again: each obeys a charger's policy for repeated writes
 #: (no flash-stored setting, the Easee's start floor held, the same value not sent twice) and never lands while a
@@ -311,6 +311,10 @@ class StartStopPath(ABC):
     #: The entity that says whether the charge is enabled when that is not the charge control (ABB: the charge
     #: control is the start button, which reads `unknown` until it is first pressed, while the limit says it).
     control_entity_id: str | None = None
+    #: A start or a stop through this path may change what the current path reads (ABB's pause by 0 A, Easee's
+    #: pause by its dynamic limit, Peblar's hold at the floor): the current the charger had before SpotNav is read
+    #: before such a command too (`ChargerAdapter.pre_current`).
+    writes_current: bool = False
 
     def __init__(self, hass: HomeAssistant) -> None:
         self.hass = hass
@@ -396,6 +400,14 @@ class CurrentPath(ABC):
     def read_back_a(self) -> int | None:
         """The limit the charger itself reports, when it can be read back; `None` otherwise."""
         return None
+
+    async def async_present_a(self) -> int | None:
+        """What the charger carries now on this path, read the way this path reads it back, whole amperes; `None`
+        when it cannot be read or cannot be trusted to be what the charger applies. Read before SpotNav's first
+        write, so the value can be given back when the charger is removed (`execution/charger_handback.py`).
+        Never writes, and reads nothing a write would not.
+        """
+        return self.read_back_a()
 
     def available(self) -> str | None:
         """`None` while this path can write, else the code saying why it cannot right now."""
