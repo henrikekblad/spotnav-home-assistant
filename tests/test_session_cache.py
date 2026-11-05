@@ -15,6 +15,7 @@ from zoneinfo import ZoneInfo
 import pytest
 from freezegun import freeze_time
 from homeassistant.core import HomeAssistant
+from pytest_homeassistant_custom_component.common import async_fire_time_changed
 
 from custom_components.spotnav.planning.auto_settings import AreaAutoSettings, FiscalOverride
 from custom_components.spotnav.planning.planner import FiscalChoice, HighLoadWindow
@@ -22,7 +23,7 @@ from custom_components.spotnav.runtime import charger_data, domain_data
 from custom_components.spotnav.sessions import model as model_module
 from custom_components.spotnav.sessions.costing import Slice
 from custom_components.spotnav.sessions.model import ChargeSession, SOURCE_IMPORTED_HOURLY
-from custom_components.spotnav.sessions.store import SessionStore
+from custom_components.spotnav.sessions.store import SAVE_DELAY_S, SessionStore
 from custom_components.spotnav.sessions.summary import (
     available_months,
     month_key,
@@ -275,3 +276,160 @@ async def test_a_fee_changed_in_the_settings_shows_in_the_cost_sensors_at_once(h
         assert after != before
         store = domain_data(hass).session_store
         assert after == pytest.approx(round(store.closed(entry.entry_id)[-1].cost_minor / 100, 4))
+
+
+# ---------------------------------------------------------------------------------------------- the save
+
+
+def todays_document(sessions: list[ChargeSession], opened: ChargeSession | None, imports: dict) -> dict:
+    """The document as the store wrote it before the save kept rows per session (2.4.2)."""
+    return {
+        "sessions": {CHARGER: [item.as_dict() for item in sessions]},
+        "open": {} if opened is None else {CHARGER: opened.as_dict()},
+        "imports": imports,
+    }
+
+
+async def test_a_record_of_todays_format_loads_and_is_written_back_unchanged(
+    hass: HomeAssistant, hass_storage: dict
+) -> None:
+    sessions = sorted(history(), key=lambda item: item.start)
+    template = sessions[-1]
+    opened = replace(template, id="open", start=END + timedelta(hours=1), end=None, last_register_kwh=12.5,
+                     last_sample_at=END + timedelta(hours=2), register_entity="sensor.charger_energy")
+    imports = {CHARGER: {"version": 2, "entity_id": "sensor.charger_energy", "from": "2024-11-04T22:00:00+00:00",
+                         "to": "2026-11-04T22:00:00+00:00", "sessions": 3, "priced_hours": 10, "unpriced_hours": 0,
+                         "checked_day": "2026-11-04"}}
+    written = todays_document(sessions, opened, imports)
+    hass_storage["spotnav_sessions"] = {"version": 1, "data": written}
+
+    store = SessionStore(hass)
+    store.set_fiscal_resolver(lambda charger_id, area_id: PLAIN)
+    with freeze_time(END):
+        await store.async_load()
+    assert list(store.closed_raw(CHARGER)) == sessions
+    assert store.open_raw(CHARGER) == opened
+    assert store.import_marker(CHARGER) == imports[CHARGER]
+
+    await store.async_flush()
+    assert hass_storage["spotnav_sessions"]["data"] == written
+
+    assert hass_storage["spotnav_sessions_open"]["data"] == {"open": {CHARGER: opened.as_dict()}}
+
+
+async def test_a_record_from_before_the_small_store_resumes_its_open_session_from_the_big_one(
+    hass: HomeAssistant, hass_storage: dict
+) -> None:
+    sessions = sorted(history(30), key=lambda item: item.start)
+    opened = replace(sessions[-1], id="open", start=END + timedelta(hours=1), end=None)
+    hass_storage["spotnav_sessions"] = {"version": 1, "data": todays_document(sessions, opened, {})}
+    assert "spotnav_sessions_open" not in hass_storage
+
+    store = SessionStore(hass)
+    with freeze_time(END):
+        await store.async_load()
+
+    assert store.open_raw(CHARGER) == opened
+    # The first minute after the update writes the small store only; the big one is left as it was.
+    later = replace(opened, energy_kwh=opened.energy_kwh + 0.5)
+    store.set_open(later, charger_id=CHARGER)
+    await hass.async_block_till_done()
+    with freeze_time(END + timedelta(seconds=SAVE_DELAY_S + 1)):
+        async_fire_time_changed(hass, END + timedelta(seconds=SAVE_DELAY_S + 1))
+        await hass.async_block_till_done()
+    assert hass_storage["spotnav_sessions_open"]["data"] == {"open": {CHARGER: later.as_dict()}}
+    assert hass_storage["spotnav_sessions"]["data"] == todays_document(sessions, opened, {})
+
+
+async def test_the_small_store_wins_and_a_session_it_holds_that_ended_is_dropped(
+    hass: HomeAssistant, hass_storage: dict
+) -> None:
+    sessions = sorted(history(30), key=lambda item: item.start)
+    stale = replace(sessions[0], id="stale-open", end=None)
+    hass_storage["spotnav_sessions"] = {"version": 1, "data": todays_document(sessions, stale, {})}
+
+    # The small store says no session is open: the big one's stale open session is not resumed.
+    hass_storage["spotnav_sessions_open"] = {"version": 1, "data": {"open": {}}}
+    store = SessionStore(hass)
+    with freeze_time(END):
+        await store.async_load()
+    assert store.open_raw(CHARGER) is None
+
+    # The small store still holds a session that the big one has among the finished ones: it ended.
+    ended = sessions[-1]
+    hass_storage["spotnav_sessions_open"] = {
+        "version": 1, "data": {"open": {CHARGER: replace(ended, end=None).as_dict()}},
+    }
+    store = SessionStore(hass)
+    with freeze_time(END):
+        await store.async_load()
+    assert store.open_raw(CHARGER) is None
+    assert store.closed_raw(CHARGER)[-1] == ended
+    await store.async_flush()
+    assert hass_storage["spotnav_sessions_open"]["data"] == {"open": {}}
+
+
+async def test_an_open_sessions_minute_writes_only_the_small_store_and_a_close_writes_the_big_one_first(
+    hass: HomeAssistant, hass_storage: dict, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store = SessionStore(hass)
+    await store.async_load()
+    sessions = history(60)
+    with freeze_time(END):
+        store.replace_closed(CHARGER, sessions, END)
+        async_fire_time_changed(hass, END + timedelta(seconds=SAVE_DELAY_S + 1))
+        await hass.async_block_till_done()
+    assert store._store._serialize_in_event_loop is False  # noqa: SLF001 - the rows are made in the executor
+    big = hass_storage["spotnav_sessions"]["data"]
+
+    made = []
+    real = ChargeSession.as_dict
+
+    def counted(self):
+        made.append(self.id)
+        return real(self)
+
+    monkeypatch.setattr(ChargeSession, "as_dict", counted)
+    running = replace(sessions[-1], id="open", start=END + timedelta(hours=1), end=None)
+    moment = END
+    for minute in range(3):
+        moment = END + timedelta(minutes=minute + 1)
+        with freeze_time(moment):
+            store.set_open(replace(running, energy_kwh=minute + 1.0), charger_id=CHARGER)
+            async_fire_time_changed(hass, moment + timedelta(seconds=SAVE_DELAY_S + 1))
+            await hass.async_block_till_done()
+    assert set(made) == {"open"}, "no finished session is turned into a row while a car charges"
+    assert hass_storage["spotnav_sessions"]["data"] is big
+    assert hass_storage["spotnav_sessions_open"]["data"]["open"][CHARGER]["energy_kwh"] == 3.0
+
+    # The session ends: the big store gets it, and the small one forgets it after that.
+    made.clear()
+    done = replace(running, end=moment)
+    with freeze_time(moment):
+        store.close(done, moment)
+        async_fire_time_changed(hass, moment + timedelta(seconds=SAVE_DELAY_S + 1))
+        await hass.async_block_till_done()
+    assert hass_storage["spotnav_sessions"]["data"]["sessions"][CHARGER][-1] == real(done)
+    assert hass_storage["spotnav_sessions"]["data"]["open"] == {}
+    assert CHARGER in hass_storage["spotnav_sessions_open"]["data"]["open"]
+    with freeze_time(moment):
+        async_fire_time_changed(hass, moment + timedelta(seconds=2 * SAVE_DELAY_S + 1))
+        await hass.async_block_till_done()
+    assert hass_storage["spotnav_sessions_open"]["data"] == {"open": {}}
+
+
+async def test_the_big_stores_snapshot_is_the_store_as_it_stood(hass: HomeAssistant) -> None:
+    store = SessionStore(hass)
+    await store.async_load()
+    sessions = history(60)
+    store.replace_closed(CHARGER, sessions, END)
+    store.set_import_marker(CHARGER, {"version": 2, "unpriced_days": ["2026-01-01"]})
+    closed, opened, imports = store._snapshot()  # noqa: SLF001
+
+    running = replace(sessions[-1], id="open", start=END + timedelta(hours=1), end=None)
+    store.set_open(running, charger_id=CHARGER)
+    store.close(replace(running, end=END + timedelta(hours=2)), END + timedelta(hours=2))
+    store._imports[CHARGER]["unpriced_days"].append("2026-01-02")  # noqa: SLF001
+
+    assert len(closed[CHARGER]) == 60 and opened == {}
+    assert imports == {CHARGER: {"version": 2, "unpriced_days": ["2026-01-01"]}}
