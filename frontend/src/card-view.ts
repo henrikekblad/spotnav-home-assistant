@@ -297,6 +297,8 @@ export interface CardViewInput {
   onWriteValue?: (write: ValueWrite) => Promise<string | null>;
   /** A "Get started" row answered "Not needed": the card asks the integration to keep it away, then reads again. */
   onDismissSetup?: (id: SetupRowId) => void;
+  /** A grid sign row's button (administrators only): the card writes that one site option, then reads again. */
+  onWriteSiteOption?: (field: string, value: boolean) => void;
   /** An issue's "Set to …" or "Turn on" (administrators only): the card writes that fix, then reads again. */
   onFixOwnMode?: (entity: string, value: string) => void;
   /** An issue's "Release the import target for this charge" (any user): the card sets the import target aside for this charge, then reads again. */
@@ -2257,6 +2259,10 @@ export function createCardView(input: CardViewInput): CardView {
       dismiss: (id: SetupRowId) => {
         issuesDialog.hide({ restoreFocus: false });
         input.onDismissSetup?.(id);
+      },
+      writeSiteOption: (field, value) => {
+        issuesDialog.hide({ restoreFocus: false });
+        input.onWriteSiteOption?.(field, value);
       },
     });
   }

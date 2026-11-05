@@ -2,7 +2,8 @@
 // administrator in the card's attention line and the "What needs attention" dialog. Each row says what is
 // missing and has one button to the place where it is done; an optional row can also be answered "Not needed",
 // which the integration keeps for the whole installation. The backend decides which rows are left; the words
-// and the places are the card's.
+// and the places are the card's. A grid sign row (the site's grid reading looks to have its sign the wrong way round)
+// names the one site option its button writes and the value; nothing is written unless a person presses it.
 
 import { pluralForm, translate, type Language, type TranslationKey } from "./i18n";
 import { addIntegrationPath } from "./price-provider";
@@ -14,6 +15,8 @@ export const SETUP_ROWS = [
   "vehicle",
   "car_level",
   "site",
+  "grid_power_sign",
+  "grid_current_sign",
   "solar_forecast",
   "demand_grid_power",
   "phase_switching",
@@ -25,7 +28,12 @@ export type SetupRowId = (typeof SETUP_ROWS)[number];
 export interface SetupRow {
   id: SetupRowId;
   dismissible: boolean;
+  /** The site option a grid sign row's button writes, and the value; absent on every other row. */
+  write?: { field: string; value: boolean } | null;
 }
+
+/** The rows whose button writes a site option rather than opening a place. */
+const WRITING_ROWS: ReadonlySet<SetupRowId> = new Set(["grid_power_sign", "grid_current_sign"]);
 
 /** The SpotNav app on Google Play. */
 export const APP_STORE_URL = "https://play.google.com/store/apps/details?id=se.sensnology.spotnav";
@@ -38,6 +46,8 @@ const WORDS: Record<SetupRowId, { text: TranslationKey; action: TranslationKey }
   vehicle: { text: "setup.vehicle.text", action: "setup.vehicle.action" },
   car_level: { text: "setup.carLevel.text", action: "setup.carLevel.action" },
   site: { text: "setup.site.text", action: "setup.site.action" },
+  grid_power_sign: { text: "setup.gridPowerSign.text", action: "setup.gridPowerSign.turnOff" },
+  grid_current_sign: { text: "setup.gridCurrentSign.text", action: "setup.gridCurrentSign.turnOff" },
   solar_forecast: { text: "setup.solarForecast.text", action: "setup.solarForecast.action" },
   demand_grid_power: { text: "setup.demandGridPower.text", action: "setup.demandGridPower.action" },
   phase_switching: { text: "setup.phaseSwitching.text", action: "setup.phaseSwitching.action" },
@@ -52,7 +62,11 @@ export function setupRowsOf(block: SetupBlock | null): SetupRow[] {
   }
   return SETUP_ROWS.flatMap((id) => {
     const found = block.items.find((item) => item.id === id);
-    return found === undefined ? [] : [{ id, dismissible: found.dismissible }];
+    const write = found?.write ?? null;
+    if (found === undefined || WRITING_ROWS.has(id) !== (write !== null)) {
+      return [];
+    }
+    return [write === null ? { id, dismissible: found.dismissible } : { id, dismissible: found.dismissible, write }];
   });
 }
 
@@ -78,6 +92,8 @@ export interface SetupSectionInput {
   heading: boolean;
   /** "Not needed": the card asks the integration to keep the row away. */
   dismiss: (id: SetupRowId) => void;
+  /** A grid sign row's button: the card writes that one site option, then reads the dashboard again. */
+  writeSiteOption: (field: string, value: boolean) => void;
 }
 
 /**
@@ -117,9 +133,16 @@ export function setupSection(doc: Document, input: SetupSectionInput): HTMLEleme
       created.addEventListener("click", run);
       answers.append(created);
     };
-    const action =
-      row.id === "solar_forecast" && !input.forecastChoosable ? "setup.solarForecast.add" : WORDS[row.id].action;
-    button(action, "open", () => open(input, row.id));
+    const write = row.write ?? null;
+    if (write !== null) {
+      const label: TranslationKey =
+        row.id === "grid_power_sign" && write.value ? "setup.gridPowerSign.turnOn" : WORDS[row.id].action;
+      button(label, "write", () => input.writeSiteOption(write.field, write.value));
+    } else {
+      const action =
+        row.id === "solar_forecast" && !input.forecastChoosable ? "setup.solarForecast.add" : WORDS[row.id].action;
+      button(action, "open", () => open(input, row.id));
+    }
     if (row.dismissible) {
       button("setup.dismiss", "dismiss", () => input.dismiss(row.id));
     }
@@ -148,6 +171,11 @@ function open(input: SetupSectionInput, id: SetupRowId): void {
       } else {
         input.navigate(addIntegrationPath(FORECAST_DOMAIN));
       }
+      return;
+    case "grid_power_sign":
+    case "grid_current_sign":
+      // Their button writes the option itself (`writeSiteOption`); the site's settings are where it is otherwise.
+      input.openSetting("site", "measurement_mode");
       return;
     case "demand_grid_power":
       // The site's measurement row opens its entity dialog, where the total grid power is chosen.

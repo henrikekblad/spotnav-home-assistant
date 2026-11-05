@@ -2015,6 +2015,31 @@ export class SpotnavCard extends HTMLElement {
   }
 
   /**
+   * A grid sign row's button: that one site option is written through the entity configuration, expecting the value
+   * the row was counted under, so a setting changed meanwhile is refused; then the dashboard is read again.
+   */
+  private async writeSiteOption(field: string, value: boolean): Promise<void> {
+    const hass = this.hassObject;
+    const config = this.config;
+    if (!this.connected || hass === null || config === null || config.charger === "" || !this.isAdmin) {
+      return;
+    }
+    const generation = this.generation;
+    try {
+      await updateEntityConfig(hass, config.charger, {
+        scope: "site",
+        expected: { [field]: !value },
+        changes: { [field]: value },
+      });
+    } catch {
+      // Not written: the row stays until the next read says otherwise.
+    }
+    if (generation === this.generation && this.connected) {
+      await this.refresh({ purpose: "confirm" });
+    }
+  }
+
+  /**
    * An issue's "Set to …" or "Turn on": the charger's own setting is written by the integration, which checks
    * again that the conflict still holds, then the dashboard is read again. A refusal leaves the row as the read says.
    */
@@ -2913,6 +2938,9 @@ export class SpotnavCard extends HTMLElement {
         onCancelEntities: () => !this.entitySaving,
         onDismissSetup: (item) => {
           void this.dismissSetup(item);
+        },
+        onWriteSiteOption: (field, value) => {
+          void this.writeSiteOption(field, value);
         },
         onFixOwnMode: (entity, value) => {
           void this.fixOwnMode(entity, value);

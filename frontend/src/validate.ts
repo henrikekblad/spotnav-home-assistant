@@ -326,6 +326,8 @@ export const GUEST_KWH_MAX = 150;
 export interface SetupBlockItem {
   id: string;
   dismissible: boolean;
+  /** A grid sign row's one site option its button writes, and the value it writes; absent on every other row. */
+  write?: { field: string; value: boolean } | null;
 }
 
 /** The dashboard's `setup` block. */
@@ -1951,8 +1953,10 @@ function setupOrNull(root: Record<string, unknown>): SetupBlock | null {
     exactKeys(value, ["items"]);
     const items = arrayValue(value, "items").map((entry) => {
       const item = record(entry);
-      exactKeys(item, ["id", "dismissible"]);
-      return { id: text(item, "id"), dismissible: booleanValue(item, "dismissible") };
+      const writes = "field" in item || "value" in item;
+      exactKeys(item, writes ? ["id", "dismissible", "field", "value"] : ["id", "dismissible"]);
+      const row = { id: text(item, "id"), dismissible: booleanValue(item, "dismissible") };
+      return writes ? { ...row, write: { field: text(item, "field"), value: booleanValue(item, "value") } } : row;
     });
     return { items };
   } catch {
