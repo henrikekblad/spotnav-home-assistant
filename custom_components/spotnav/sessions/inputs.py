@@ -39,7 +39,6 @@ from ..vehicles.guest import is_guest
 from ..vehicles.vehicle_discovery import resolve_target_vehicle
 from .costing import spot_intervals
 from .recorder import PauseFacts, PriceBook, SessionFacts
-from .summary import sessions_summary
 
 #: Days around today whose prices a session may need.
 DAYS_BEFORE: int = 1
@@ -237,7 +236,7 @@ def sessions_block(hass: HomeAssistant, charger_id: str, now: datetime) -> dict 
     store = domain_data(hass).session_store
     if store is None:
         return None
-    return sessions_summary(store.closed(charger_id), local_zone(hass), now)
+    return store.sessions_summary(charger_id, local_zone(hass), now)
 
 
 def current_fiscal(hass: HomeAssistant, charger_id: str, area_id: str | None = None) -> FiscalChoice | None:

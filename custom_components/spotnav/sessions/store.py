@@ -15,7 +15,8 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable
-from datetime import datetime, timedelta
+from dataclasses import dataclass, field
+from datetime import datetime, timedelta, tzinfo
 from typing import Any, Final
 
 from homeassistant.core import callback, HomeAssistant
@@ -26,6 +27,7 @@ from ..const import DOMAIN
 from ..planning.planner import FiscalChoice
 from ..execution.power_energy import configured_register_entity
 from .model import ChargeSession
+from .summary import month_key, month_summary, previous_month
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -42,6 +44,18 @@ SAVE_DELAY_S: Final = 15
 FiscalResolver = Callable[[str, "str | None"], "FiscalChoice | None"]
 
 
+@dataclass(slots=True)
+class _PricedCache:
+    """One charger's finished sessions as last costed: valid while the store's revision for the charger and the
+    fiscal choice of every market they are priced in are what they were then (a closed session never changes)."""
+
+    revision: int
+    choices: dict[tuple[str, "str | None"], "FiscalChoice | None"]
+    sessions: tuple[ChargeSession, ...]
+    #: Month summaries made from `sessions`, by (zone, `YYYY-MM`).
+    months: dict[tuple[tzinfo, str], dict[str, Any]] = field(default_factory=dict)
+
+
 class SessionStore:
     def __init__(self, hass: HomeAssistant) -> None:
         self._hass = hass
@@ -52,6 +66,10 @@ class SessionStore:
         self._imports: dict[str, dict[str, Any]] = {}
         self._listeners: dict[str, set[Callable[[], None]]] = {}
         self._fiscal: FiscalResolver | None = None
+        #: How many times a list of finished sessions changed (any charger's: a prune reaches them all). The costed
+        #: sessions are cached against it; an open session's minute-by-minute changes do not move it.
+        self._closed_revision = 0
+        self._priced_cache: dict[str, _PricedCache] = {}
 
     async def async_load(self) -> None:
         raw = await self._store.async_load()
@@ -87,15 +105,22 @@ class SessionStore:
             # Counted, not quoted: a log line about stored data must not repeat it.
             _LOGGER.warning("Ignored %d unreadable stored charge session record(s)", dropped)
         self._prune(dt_util.utcnow())
+        self._closed_changed()
 
     # ---- reads
 
     def set_fiscal_resolver(self, resolver: FiscalResolver | None) -> None:
         self._fiscal = resolver
 
-    def _priced(self, sessions: tuple[ChargeSession, ...]) -> tuple[ChargeSession, ...]:
-        """The sessions with their costs made from the current settings (one lookup per market)."""
-        choices: dict[tuple[str, str | None], FiscalChoice | None] = {}
+    def _priced(
+        self,
+        sessions: tuple[ChargeSession, ...],
+        choices: dict[tuple[str, str | None], FiscalChoice | None] | None = None,
+    ) -> tuple[ChargeSession, ...]:
+        """The sessions with their costs made from the current settings (one lookup per market, kept in
+        `choices` when given)."""
+        if choices is None:
+            choices = {}
         out = []
         for item in sessions:
             if not item.intervals:
@@ -112,8 +137,40 @@ class SessionStore:
         return self._priced((session,))[0]
 
     def closed(self, charger_id: str) -> tuple[ChargeSession, ...]:
-        """The charger's finished sessions, oldest first, costed with the current settings."""
-        return self._priced(tuple(self._closed.get(charger_id, ())))
+        """The charger's finished sessions, oldest first, costed with the current settings.
+
+        Costed once per change: the answer is cached until a list of finished sessions changes or the fiscal choice
+        of a market these are priced in does (resolving the choices is cheap; costing every interval is not)."""
+        return self._costed(charger_id).sessions
+
+    def month_summary(self, charger_id: str, zone: tzinfo, key: str) -> dict[str, Any]:
+        """`summary.month_summary` of the charger's finished sessions for the month `key`, made once per change."""
+        cache = self._costed(charger_id)
+        summary = cache.months.get((zone, key))
+        if summary is None:
+            summary = cache.months[(zone, key)] = month_summary(cache.sessions, zone, key)
+        return dict(summary)
+
+    def sessions_summary(self, charger_id: str, zone: tzinfo, now: datetime) -> dict[str, Any]:
+        """`summary.sessions_summary` of the charger's finished sessions: this month and last month."""
+        today = now.astimezone(zone).date()
+        return {
+            "this_month": self.month_summary(charger_id, zone, month_key(today)),
+            "last_month": self.month_summary(charger_id, zone, previous_month(today)),
+        }
+
+    def _costed(self, charger_id: str) -> _PricedCache:
+        revision = self._closed_revision
+        cache = self._priced_cache.get(charger_id)
+        if cache is not None and cache.revision == revision and all(
+            (None if self._fiscal is None else self._fiscal(*key)) == choice for key, choice in cache.choices.items()
+        ):
+            return cache
+        stored = tuple(self._closed.get(charger_id, ()))
+        choices: dict[tuple[str, str | None], FiscalChoice | None] = {}
+        sessions = self._priced(stored, choices)
+        cache = self._priced_cache[charger_id] = _PricedCache(revision, choices, sessions)
+        return cache
 
     def closed_raw(self, charger_id: str) -> tuple[ChargeSession, ...]:
         """The finished sessions as stored (no cost made)."""
@@ -152,6 +209,7 @@ class SessionStore:
         self._closed[charger_id] = kept + list(sessions)
         self._imports[charger_id] = dict(marker)
         self._prune(now)
+        self._closed_changed()
         self._changed(charger_id)
 
     @callback
@@ -159,6 +217,7 @@ class SessionStore:
         """Replace the charger's finished sessions (a migration rewrote some of them)."""
         self._closed[charger_id] = list(sessions)
         self._prune(now)
+        self._closed_changed()
         self._changed(charger_id)
 
     @callback
@@ -181,6 +240,7 @@ class SessionStore:
         self._open.pop(session.charger_id, None)
         self._closed.setdefault(session.charger_id, []).append(session)
         self._prune(now)
+        self._closed_changed()
         self._changed(session.charger_id)
 
     async def async_remove_charger(self, charger_id: str) -> None:
@@ -189,6 +249,7 @@ class SessionStore:
         self._imports.pop(charger_id, None)
         self._closed.pop(charger_id, None)
         self._open.pop(charger_id, None)
+        self._closed_changed()
         if had:
             await self._store.async_save(self._document())
         self._notify(charger_id)
@@ -225,6 +286,11 @@ class SessionStore:
             "open": {charger_id: item.as_dict() for charger_id, item in self._open.items()},
             "imports": dict(self._imports),
         }
+
+    def _closed_changed(self) -> None:
+        """A list of finished sessions changed: what was costed from them is stale."""
+        self._closed_revision += 1
+        self._priced_cache.clear()
 
     def _changed(self, charger_id: str) -> None:
         self._store.async_delay_save(self._document, SAVE_DELAY_S)
