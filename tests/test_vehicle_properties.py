@@ -296,7 +296,7 @@ async def test_the_dashboard_states_every_vehicle_the_target_vehicle_and_the_for
         "consumption_kwh_per_10km": 2.0, "max_percent": 80.0, "soc_percent": 40.0,
         "onboard_phases": 3, "suggested_onboard_phases": None,
         "identification": {
-            "plug": {"entity_id": None, "name": None, "chosen": False, "candidates": []},
+            "plug": {"entity_id": None, "name": None, "chosen": False, "candidates": [], "others": [], "reading": None},
             "location": {"entity_id": None, "name": None, "chosen": False, "candidates": []},
         },
         "target_percent": 80.0,

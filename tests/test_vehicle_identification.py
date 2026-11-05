@@ -598,7 +598,7 @@ async def test_a_person_chooses_a_cars_sources_over_both_transports(
     assert result["ok"] is True
     assert result["identification"]["location"] == {
         "entity_id": None, "name": None, "chosen": True,
-        "candidates": [{"entity_id": world.trackers["Kia"], "name": "kia location"}],
+        "candidates": [{"entity_id": world.trackers["Kia"], "name": "kia location", "state": "home"}],
     }
     refused = await ws_call(
         socket,
