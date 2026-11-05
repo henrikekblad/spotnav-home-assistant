@@ -10,12 +10,14 @@ The open sessions change about once a minute while a car charges, so they have a
 the only one, the open sessions as they stood) is written only when a session ends, an import ran or a charger
 went, and turned into JSON in the executor.
 
-Nothing may be lost between the two. A session that ends is kept in the small store's `closing` list until a write
-of the big store that holds it has landed; only then does the small store let it go. On load, a `closing` session
-the big store lacks is taken into the finished ones. For each charger the open session is the more recent of the
-two stores' (its last sample, else its start): an older version run in between writes only the big one. An open
-session is dropped when it is among the charger's finished sessions or began before the newest of them ended; a
-crash before the big write landed leaves it open in the small store and among no finished ones, so it resumes.
+Nothing may be lost between the two. A session that ends is kept in the small store's `closing` list for
+`CLOSING_KEEP` after its end, whatever became of the big store's writes (a failed write is only logged by Home
+Assistant, and one made while it stops lands only at its final write, so a write's return proves nothing). On
+load, a `closing` session the big store lacks is taken into the finished ones; one it has is let go. For each
+charger the open session is the more recent of the two stores' (its last sample, else its start): an older version
+run in between writes only the big one. An open session is dropped when it is among the charger's finished
+sessions or began before the newest of them ended; a crash before the small store was written after the close
+leaves it open there and among no finished ones, so it resumes.
 A record from before the small store existed has none: its open sessions are read from the big one.
 
 What is stored is energy and raw spot prices per interval, never a cost. `closed` and `open_session`
@@ -35,7 +37,7 @@ from datetime import datetime, timedelta, tzinfo
 from typing import Any, Final
 
 from homeassistant.const import EVENT_HOMEASSISTANT_FINAL_WRITE
-from homeassistant.core import callback, CALLBACK_TYPE, CoreState, Event, HomeAssistant
+from homeassistant.core import callback, CALLBACK_TYPE, Event, HomeAssistant
 from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
@@ -55,6 +57,8 @@ RETENTION_DAYS: Final = 730
 MAX_PER_CHARGER: Final = 5000
 #: How long after a change the document is written; a flush on Home Assistant's stop covers the rest.
 SAVE_DELAY_S: Final = 15
+#: How long an ended session stays in the small store's `closing` list after its end.
+CLOSING_KEEP: Final = timedelta(hours=24)
 
 
 #: The person's current fiscal choice for a charger and the market a session is priced in (`None`
@@ -78,7 +82,7 @@ class SessionStore:
     def __init__(self, hass: HomeAssistant) -> None:
         self._hass = hass
         # Put together on the loop as a snapshot of lists (cheap), turned into rows and JSON in the executor, and
-        # written by `_async_write_record` (not a delayed save: the small store must know when it landed).
+        # written by `_async_write_record` (a write that did not complete is kept waiting, with the final write armed).
         self._store: Store[dict[str, Any]] = Store(
             hass, STORAGE_VERSION, STORAGE_KEY, serialize_in_event_loop=False
         )
@@ -93,7 +97,7 @@ class SessionStore:
         #: sessions are cached against it; an open session's minute-by-minute changes do not move it.
         self._closed_revision = 0
         self._priced_cache: dict[str, _PricedCache] = {}
-        #: Per charger, the sessions that ended and are not yet in a big-store write that landed.
+        #: Per charger, the sessions that ended in the last `CLOSING_KEEP`: the small store keeps them too.
         self._closing: dict[str, list[ChargeSession]] = {}
         self._record_lock = asyncio.Lock()
         # A loop timer as `Store`'s own delayed save has (not a tracked Home Assistant timer), and a write at Home
@@ -312,7 +316,7 @@ class SessionStore:
         """Move a finished session into the record and prune it."""
         self._open.pop(session.charger_id, None)
         self._closed.setdefault(session.charger_id, []).append(session)
-        # Held in the small store until a big write that holds it has landed (`_async_write_record`).
+        # Held in the small store for `CLOSING_KEEP` too, in case no big write that holds it lands.
         self._closing.setdefault(session.charger_id, []).append(session)
         self._prune(now)
         self._closed_changed()
@@ -331,8 +335,9 @@ class SessionStore:
         self._notify(charger_id)
 
     async def async_flush(self) -> None:
-        """Write both stores now: the big one first, then the small one without what the big one now holds. Home
-        Assistant's stop calls it, so the big store is current after a clean stop (an older version reads only it)."""
+        """Write both stores now, the big one first. Home Assistant's stop calls it, so the big store is current after
+        a clean stop (an older version reads only it). While Home Assistant stops, `Store` keeps both for its final
+        write; the small one keeps its `closing` list either way."""
         self._record_dirty = True
         await self._async_write_record()
         await self._open_store.async_save(self._open_document())
@@ -340,6 +345,7 @@ class SessionStore:
     async def async_remove_stores(self) -> None:
         """The last charger went: the record goes too (both files), with anything still waiting to be written."""
         self._cancel_record_timer()
+        self._drop_final_write()
         self._record_dirty = False
         async with self._record_lock:
             await self._store.async_remove()
@@ -379,11 +385,18 @@ class SessionStore:
         )
 
     def _open_document(self) -> dict[str, Any]:
+        """The small store's document: the open sessions, and the ended ones of the last `CLOSING_KEEP` (older ones
+        are let go here)."""
+        cutoff = dt_util.utcnow() - CLOSING_KEEP
+        for charger_id in list(self._closing):
+            kept = [item for item in self._closing[charger_id] if item.end is not None and item.end > cutoff]
+            if kept:
+                self._closing[charger_id] = kept
+            else:
+                del self._closing[charger_id]
         return {
             "open": {charger_id: item.as_dict() for charger_id, item in self._open.items()},
-            "closing": {
-                charger_id: [item.as_dict() for item in items] for charger_id, items in self._closing.items() if items
-            },
+            "closing": {charger_id: [item.as_dict() for item in items] for charger_id, items in self._closing.items()},
         }
 
     def _closed_changed(self) -> None:
@@ -422,42 +435,35 @@ class SessionStore:
         if self._record_timer is not None:
             self._record_timer.cancel()
             self._record_timer = None
+
+    @callback
+    def _drop_final_write(self) -> None:
         if self._record_final is not None:
             self._record_final()
             self._record_final = None
 
     async def _async_write_record(self) -> None:
-        """Write the big store if it has changes, then let the small one drop the ended sessions it now holds."""
+        """Write the big store if it has changes. A write that did not complete (cancelled at Home Assistant's
+        stop, or failed before it reached the `Store`) leaves the changes waiting, with the final write still armed.
+        `Store.async_save` itself raises on no write failure (Home Assistant logs one), and while Home Assistant
+        stops it only hands the data to the final write: the small store's `closing` list covers both."""
         self._cancel_record_timer()
         async with self._record_lock:
             if not self._record_dirty:
                 return
             self._record_dirty = False
             snapshot = self._snapshot()
-            written = {id(item) for items in self._closing.values() for item in items}
             try:
                 document = await self._hass.async_add_executor_job(_rows, *snapshot)
                 await self._store.async_save(document)
-            except Exception:  # noqa: BLE001 - the small store keeps what ended; the next change tries again
+            except BaseException:
                 self._record_dirty = True
-                _LOGGER.warning("Could not write the charge session record; it is tried again", exc_info=True)
-                return
-            landed = False
-            for charger_id in list(self._closing):
-                kept = [item for item in self._closing[charger_id] if id(item) not in written]
-                landed = landed or len(kept) != len(self._closing[charger_id])
-                if kept:
-                    self._closing[charger_id] = kept
-                else:
-                    del self._closing[charger_id]
-            if landed:
-                if self._hass.state is CoreState.running:
-                    self._open_store.async_delay_save(self._open_document, SAVE_DELAY_S)
-                else:
-                    # Stopping: no timer is left behind.
-                    await self._open_store.async_save(self._open_document())
-        if self._record_dirty and self._hass.state is CoreState.running:
-            self._schedule_record()
+                raise
+        if self._record_dirty:
+            if not self._hass.is_stopping:
+                self._schedule_record()
+        else:
+            self._drop_final_write()
 
     def _notify(self, charger_id: str) -> None:
         for listener in list(self._listeners.get(charger_id, ())):
