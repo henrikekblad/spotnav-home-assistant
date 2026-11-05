@@ -19,7 +19,7 @@ from pytest_homeassistant_custom_component.common import async_fire_time_changed
 
 from custom_components.spotnav.planning.auto_settings import AreaAutoSettings, FiscalOverride
 from custom_components.spotnav.planning.planner import FiscalChoice, HighLoadWindow
-from custom_components.spotnav.runtime import charger_data, domain_data
+from custom_components.spotnav.runtime import charger_data, domain_data, preview_for
 from custom_components.spotnav.sessions import model as model_module
 from custom_components.spotnav.sessions.costing import Slice
 from custom_components.spotnav.sessions.model import ChargeSession, SOURCE_IMPORTED_HOURLY
@@ -445,13 +445,13 @@ async def test_a_new_price_catalogue_shows_in_the_cost_sensors_at_once(hass: Hom
         cost = entity_id(hass, entry.entry_id, "sessions_last_cost")
         before = float(hass.states.get(cost).state)
 
-        # The catalogue now suggests other fees: a fee left at its suggestion follows them.
+        # The catalogue now suggests other fees: a fee left at its suggestion follows them, and the charger's plan,
+        # made from the same effective prices, republishes.
         data = domain_data(hass)
         data.session_store.set_fiscal_resolver(lambda charger_id, area_id: FiscalChoice(vat_enabled=True, vat_percent=50.0))
-        manager = data.price_refresh
-        manager._deliver_catalogue(  # noqa: SLF001 - what a new catalogue does
-            data.price_repository.catalogue_snapshot(), list(manager._catalogue_listeners)  # noqa: SLF001
-        )
+        preview = preview_for(hass, entry.entry_id)
+        for listener in list(preview._listeners):  # noqa: SLF001 - what a meaningful new plan does
+            listener(preview.snapshot())
         await hass.async_block_till_done()
 
         after = float(hass.states.get(cost).state)
