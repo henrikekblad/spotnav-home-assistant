@@ -87,6 +87,7 @@ from typing import Any, Final
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import __version__ as HA_VERSION
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.system_info import async_get_system_info
 from homeassistant.loader import async_get_integration
 from homeassistant.util import dt as dt_util
 
@@ -289,8 +290,6 @@ async def _versions(hass: HomeAssistant) -> dict[str, Any]:
     digest = await hass.async_add_executor_job(read_bundle_digest)
     installation_type: str | None = None
     try:
-        from homeassistant.helpers.system_info import async_get_system_info
-
         installation_type = (await async_get_system_info(hass)).get("installation_type")
     except Exception:  # noqa: BLE001
         _LOGGER.debug("Could not read the installation type", exc_info=True)
