@@ -14,12 +14,16 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 from freezegun import freeze_time
+from homeassistant.const import EVENT_HOMEASSISTANT_STOP
 from homeassistant.core import HomeAssistant
 from pytest_homeassistant_custom_component.common import async_fire_time_changed
 
+from custom_components.spotnav.runtime import domain_data
 from custom_components.spotnav.sessions.model import ChargeSession
 from custom_components.spotnav.sessions.store import SAVE_DELAY_S, SessionStore
 
+from .test_session_integration import charger, NOW, one_charge
+from .world import go_auto
 
 UTC = timezone.utc
 T0 = datetime(2026, 11, 5, 10, 0, tzinfo=UTC)
@@ -169,3 +173,23 @@ async def test_a_small_store_without_a_big_one_still_resumes(hass: HomeAssistant
 
     with freeze_time(T0):
         assert (await restarted(hass)).open_raw(A) == first
+
+
+@pytest.mark.usefixtures("offline_relay")
+async def test_a_clean_stop_writes_the_big_store_current(hass: HomeAssistant, hass_storage: dict) -> None:
+    with freeze_time(NOW) as frozen:
+        entry = await charger(hass)
+        await go_auto(hass)
+        await one_charge(hass, frozen, entry, hours=1.0, kwh=6.0)
+        store = domain_data(hass).session_store
+        running = replace(store.closed_raw(entry.entry_id)[-1], id="next", end=None)
+        store.set_open(running, charger_id=entry.entry_id)
+        assert BIG not in hass_storage, "no big write has landed yet"
+
+        hass.bus.async_fire(EVENT_HOMEASSISTANT_STOP)
+        await hass.async_block_till_done()
+
+    data = hass_storage[BIG]["data"]
+    assert [row["energy_kwh"] for row in data["sessions"][entry.entry_id]] == [pytest.approx(6.0)]
+    assert data["open"][entry.entry_id]["id"] == "next"
+    assert hass_storage[SMALL]["data"]["closing"] == {}

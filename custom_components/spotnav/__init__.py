@@ -260,6 +260,9 @@ async def _async_stop(hass: HomeAssistant, _event: Event | None = None) -> None:
         await fx_rates.async_stop()
     if (buffer := getattr(domain_data(hass), "log_buffer", None)) is not None:
         await buffer.async_flush()
+    if (sessions := domain_data(hass).session_store) is not None:
+        # Both session stores current at a clean stop: an older version, installed again, reads only the big one.
+        await sessions.async_flush()
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
