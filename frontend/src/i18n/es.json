@@ -849,7 +849,7 @@
   "settings.vehicle.onboardHelp": "Cuántas fases admite el cargador propio del coche. Una carga usa el menor entre este valor y la conexión del cargador.",
   "settings.vehicle.error.onboardPhases": "El cargador de a bordo debe ser monofásico o trifásico.",
   "entity.phases.fromSite": "El cargador está conectado a {phases} (según la instalación).",
-  "entity.phases.openSite": "Abrir ajustes de la instalación",
+  "entity.phases.openSite": "Abrir ajustes de SpotNav",
   "entity.measuredSource.none": "La instalación no lee ninguna corriente medida para este cargador. La carga solar y el regulador la necesitan; defínela en los ajustes de la instalación (Configurar → Conexión de {charger} → Fuente de corriente medida).",
   "entity.measuredSource.noneOwn": "La instalación no lee ninguna corriente medida para este cargador. La carga solar y el regulador la necesitan: elige {sensors} de {integration} en los ajustes de la instalación (Configurar → Conexión de {charger} → Fuente de corriente medida), o pulsa Usar allí.",
   "entity.measuredSource.from": "La instalación lee la corriente medida de este cargador desde {source}.",

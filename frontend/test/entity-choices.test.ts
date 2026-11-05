@@ -834,7 +834,7 @@ describe("the phases the charger is wired for: 1 or 3, chosen like a type, for a
     const line = document.querySelector<HTMLElement>("[data-wired-phases]")!;
     expect(line.dataset["wiredPhases"]).toBe("3");
     expect(line.textContent).toContain("The charger is wired for 3 phases (from the site).");
-    expect(line.querySelector("button")?.textContent).toBe("Open site settings");
+    expect(line.querySelector("button")?.textContent).toBe("Open SpotNav settings");
     expect(entityChange(cfg, "charger", built.draft())).toEqual({ ok: true, changed: false });
     line.querySelector<HTMLButtonElement>("[data-action='open-site']")!.click();
     expect(opened).toBe(1);
@@ -907,7 +907,7 @@ describe("the phases the charger is wired for: 1 or 3, chosen like a type, for a
       return { button, opened: () => opened };
     };
     const admin = render(unset, false);
-    expect(admin.button?.textContent).toBe("Open site settings");
+    expect(admin.button?.textContent).toBe("Open SpotNav settings");
     admin.button!.click();
     expect(admin.opened()).toBe(1);
     expect(render(unset, true).button).toBeNull();

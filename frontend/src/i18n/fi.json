@@ -849,7 +849,7 @@
   "settings.vehicle.onboardHelp": "Kuinka monta vaihetta auton oma laturi voi vastaanottaa. Lataus käyttää pienempää tästä ja laturin kytkennästä.",
   "settings.vehicle.error.onboardPhases": "Sisäisen laturin on oltava 1- tai 3-vaiheinen.",
   "entity.phases.fromSite": "Laturi on kytketty: {phases} (kohteesta).",
-  "entity.phases.openSite": "Avaa kohteen asetukset",
+  "entity.phases.openSite": "Avaa SpotNavin asetukset",
   "entity.measuredSource.none": "Kohde ei lue tämän laturin mitattua virtaa. Aurinko ja säätö tarvitsevat sen; aseta se kohteen asetuksissa (Määritä → Kytkentä: {charger} → Mitatun virran lähde).",
   "entity.measuredSource.noneOwn": "Kohde ei lue tämän laturin mitattua virtaa. Aurinko ja säätö tarvitsevat sen: valitse {sensors} ({integration}) kohteen asetuksissa (Määritä → Kytkentä: {charger} → Mitatun virran lähde) tai paina siellä Käytä.",
   "entity.measuredSource.from": "Kohde lukee laturin mitatun virran lähteestä {source}.",

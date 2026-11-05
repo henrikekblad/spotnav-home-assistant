@@ -145,7 +145,7 @@ describe("the banner and the issue dialog", () => {
     expect(model.statusNeedsSiteSettings).toBe(true);
     const admin = view(model, { isAdmin: true }, "wiring-admin");
     const button = admin.root.querySelector<HTMLButtonElement>("[data-part='open-site'] [data-action='open-site']");
-    expect(button?.textContent).toBe("Open site settings");
+    expect(button?.textContent).toBe("Open SpotNav settings");
     button!.click();
     expect(window.location.pathname).toBe("/config/integrations/integration/spotnav");
     admin.view.destroy();

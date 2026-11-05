@@ -849,7 +849,7 @@
   "settings.vehicle.onboardHelp": "Le nombre de phases que le chargeur embarqué de la voiture accepte. Une charge utilise la plus petite valeur entre celle-ci et le raccordement de la borne.",
   "settings.vehicle.error.onboardPhases": "Le chargeur embarqué doit être monophasé ou triphasé.",
   "entity.phases.fromSite": "La borne est raccordée sur {phases} (d'après le site).",
-  "entity.phases.openSite": "Ouvrir les réglages du site",
+  "entity.phases.openSite": "Ouvrir les réglages de SpotNav",
   "entity.measuredSource.none": "Le site ne lit aucun courant mesuré pour cette borne. Le solaire et le régulateur en ont besoin ; définissez-le dans les réglages du site (Configurer → Câblage de {charger} → Source du courant mesuré).",
   "entity.measuredSource.noneOwn": "Le site ne lit aucun courant mesuré pour cette borne. Le solaire et le régulateur en ont besoin : choisissez {sensors} de {integration} dans les réglages du site (Configurer → Câblage de {charger} → Source du courant mesuré), ou appuyez sur Utiliser.",
   "entity.measuredSource.from": "Le site lit le courant mesuré de cette borne depuis {source}.",

@@ -849,7 +849,7 @@
   "settings.vehicle.onboardHelp": "How many phases the car's own charger can take. A charge uses the smaller of this and the charger's wiring.",
   "settings.vehicle.error.onboardPhases": "The onboard charger must be 1-phase or 3-phase.",
   "entity.phases.fromSite": "The charger is wired for {phases} (from the site).",
-  "entity.phases.openSite": "Open site settings",
+  "entity.phases.openSite": "Open SpotNav settings",
   "entity.measuredSource.none": "The site reads no measured current for this charger. Solar and the regulator need it; set it in the site's settings (Configure → Wiring for {charger} → Measured current source).",
   "entity.measuredSource.noneOwn": "The site reads no measured current for this charger. Solar and the regulator need it: choose {integration}'s {sensors} in the site's settings (Configure → Wiring for {charger} → Measured current source), or press Use there.",
   "entity.measuredSource.from": "The site reads this charger's measured current from {source}.",
