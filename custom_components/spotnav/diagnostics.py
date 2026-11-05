@@ -276,6 +276,9 @@ def _site_diagnostics(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, Any]
         "solar_surplus": {} if controller is None else controller.solar_surplus_snapshot,
         "hybrid": {} if controller is None else controller.hybrid_snapshot,
         "start_credit": {} if controller is None else controller.start_credit_snapshot(),
+        # Whether the grid reading's sign looks set the wrong way (`site/grid_sign.py`): per tested reading its
+        # setting, the last counted charger steps and the warning, and the last step counted.
+        "grid_sign": {} if controller is None else controller.grid_sign_snapshot(),
         # Per member charger, the phase load balancing reckons it on and how that was decided: `chosen` in the
         # wiring, `measured` (an "Automatic" single-phase charger followed by its own measured current) or
         # `worst_case` (the phase with the least headroom).
