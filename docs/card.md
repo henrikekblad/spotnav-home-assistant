@@ -20,6 +20,10 @@ Assistant when the card starts, so for a moment the card shows an empty loading 
 English. Change the language in your profile and the card follows once the new words are in. If they
 cannot be loaded, the card is in English until the page is reloaded.
 
+After SpotNav is updated, a browser or the Companion app may still run the old card. The card notices
+and shows **SpotNav has been updated** with a **Reload** button; the page reloads when you press it. The
+card never reloads the page by itself.
+
 ## Header
 
 The header shows the charger's name and three icons.

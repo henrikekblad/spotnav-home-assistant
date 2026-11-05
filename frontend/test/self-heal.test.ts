@@ -1,26 +1,20 @@
-// The card heals itself after SpotNav is updated: an answer it cannot read, or a language file it cannot
-// fetch, makes it ask which card is served. A newer one reloads the page once (never twice for one hash),
-// or offers a button where a reload could loop or lose input; the same one is retried before the card says
-// it cannot read.
+// The card notices that SpotNav was updated: an answer it cannot read, or a language file it cannot fetch,
+// makes it ask which card is served. A newer one shows the "SpotNav has been updated" line with a Reload
+// button, and the page reloads only when the reader presses it, never by itself; the same one is retried
+// (a read, not a page reload) before the card says it cannot read.
 
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { forgetPageReloadForTest } from "../src/card";
 import { setOwnCardBundleHashForTest } from "../src/card-identity";
 import { LANGUAGES, forgetLanguages, translate } from "../src/i18n";
 import {
   CARD_INFO_TIMEOUT_MS,
   MALFORMED_RETRY_DELAYS_MS,
-  RELOAD_DELAY_MS,
-  RELOAD_KEY_PREFIX,
-  RETRY_RELOAD_DELAY_MS,
   UPDATE_WORDS,
-  claimReload,
   isMalformed,
-  sessionStore,
   setReloadForTest,
 } from "../src/self-heal";
 import { API_VERSION, SETTINGS_API_VERSION } from "../src/types";
@@ -31,6 +25,8 @@ const CONFIG = { type: "custom:spotnav-card", charger: "entry_a" };
 const OWN = "11111111";
 const SERVED = "22222222";
 const MALFORMED = { api_version: API_VERSION, charger: { charger_id: "entry_a" } };
+/** Long enough for any timer the card could have set to have run: an hour. */
+const LONG_WAIT_MS = 60 * 60 * 1000;
 
 const shadow = (element: Element): ShadowRoot => element.shadowRoot as ShadowRoot;
 const text = (element: Element): string => shadow(element).textContent ?? "";
@@ -55,14 +51,12 @@ beforeEach(() => {
   setReloadForTest(() => {
     reloads += 1;
   });
-  forgetPageReloadForTest();
   setOwnCardBundleHashForTest(OWN);
 });
 
 afterEach(() => {
   setOwnCardBundleHashForTest(null);
   setReloadForTest(null);
-  forgetPageReloadForTest();
   vi.useRealTimers();
 });
 
@@ -86,47 +80,13 @@ describe("the pieces", () => {
     expect(isMalformed(null)).toBe(false);
   });
 
-  it("claims two reloads per served hash, and none where storage fails", () => {
-    expect(claimReload(sessionStorage, "aaaaaaaa")).toBe(1);
-    expect(claimReload(sessionStorage, "aaaaaaaa")).toBe(2);
-    expect(claimReload(sessionStorage, "aaaaaaaa")).toBeNull();
-    expect(claimReload(sessionStorage, "bbbbbbbb")).toBe(1);
-    expect(sessionStorage.getItem(`${RELOAD_KEY_PREFIX}aaaaaaaa`)).toBe("2");
-    sessionStorage.setItem(`${RELOAD_KEY_PREFIX}eeeeeeee`, "nonsense");
-    expect(claimReload(sessionStorage, "eeeeeeee")).toBeNull();
-    expect(claimReload(null, "cccccccc")).toBeNull();
-    const broken = {
-      getItem: () => null,
-      setItem: () => {
-        throw new Error("QuotaExceededError");
-      },
-    };
-    expect(claimReload(broken, "cccccccc")).toBeNull();
-    // A store that forgets what it was told cannot guard a reload either.
-    expect(claimReload({ getItem: () => null, setItem: () => undefined }, "dddddddd")).toBeNull();
-  });
-
-  it("counts in local storage where a kiosk browser gives no session storage", () => {
-    const spy = vi.spyOn(globalThis, "sessionStorage", "get").mockImplementation(() => {
-      throw new Error("SecurityError");
-    });
-    try {
-      expect(sessionStore()).toBe(localStorage);
-    } finally {
-      spy.mockRestore();
-    }
-    expect(sessionStore()).toBe(sessionStorage);
-  });
-
   it("has the line and the button in every language", () => {
     for (const language of LANGUAGES) {
       const words = UPDATE_WORDS[language];
-      expect(words.reloading.length, language).toBeGreaterThan(0);
       expect(words.updated.length, language).toBeGreaterThan(0);
       expect(words.reload.length, language).toBeGreaterThan(0);
     }
     expect(UPDATE_WORDS.sv).toEqual({
-      reloading: "SpotNav har uppdaterats – laddar om…",
       updated: "SpotNav har uppdaterats.",
       reload: "Ladda om",
     });
@@ -134,70 +94,52 @@ describe("the pieces", () => {
 });
 
 describe("an unreadable dashboard from an outdated card", () => {
-  it("says so, reloads once, and never twice for the same served hash", async () => {
+  it("shows the line with the Reload button and never reloads by itself", async () => {
+    const setItem = vi.spyOn(Storage.prototype, "setItem");
     const { hass, element } = await mounted();
     hass.resolveNext(MALFORMED);
     await settle();
 
     expect(hass.cardInfoMessages).toHaveLength(1);
-    expect(notice(element)?.dataset["cardUpdated"]).toBe("reloading");
-    expect(text(element)).toContain(UPDATE_WORDS.sv.reloading);
+    expect(notice(element)?.dataset["cardUpdated"]).toBe("button");
+    expect(text(element)).toContain(UPDATE_WORDS.sv.updated);
     expect(text(element)).not.toContain(translate("sv", "state.malformed"));
-    expect(reloads).toBe(0);
-    await vi.advanceTimersByTimeAsync(RELOAD_DELAY_MS);
-    expect(reloads).toBe(1);
-    expect(sessionStorage.getItem(`${RELOAD_KEY_PREFIX}${SERVED}`)).toBe("1");
-
-    // After the reload the old card is still here (a cache served the old page): the button, and a second
-    // reload once the cache has had time to catch up.
-    document.body.innerHTML = "";
-    forgetPageReloadForTest();
-    const second = await mounted();
-    second.hass.resolveNext(MALFORMED);
-    await settle();
-    expect(notice(second.element)?.dataset["cardUpdated"]).toBe("button");
-    await vi.advanceTimersByTimeAsync(RELOAD_DELAY_MS * 4);
-    expect(reloads).toBe(1);
-    await vi.advanceTimersByTimeAsync(RETRY_RELOAD_DELAY_MS);
-    expect(reloads).toBe(2);
-    expect(sessionStorage.getItem(`${RELOAD_KEY_PREFIX}${SERVED}`)).toBe("2");
-
-    // Still the old card after both: the button only, no third reload.
-    document.body.innerHTML = "";
-    forgetPageReloadForTest();
-    const again = await mounted();
-    again.hass.resolveNext(MALFORMED);
-    await settle();
-    await vi.advanceTimersByTimeAsync(RETRY_RELOAD_DELAY_MS * 2);
-    expect(reloads).toBe(2);
-    expect(notice(again.element)?.dataset["cardUpdated"]).toBe("button");
-    expect(text(again.element)).toContain(UPDATE_WORDS.sv.updated);
-    const button = notice(again.element)?.querySelector<HTMLButtonElement>("button");
+    const button = notice(element)?.querySelector<HTMLButtonElement>("button");
     expect(button?.textContent).toBe(UPDATE_WORDS.sv.reload);
-    button?.click();
-    expect(reloads).toBe(3);
+
+    // However long the card stays, the page is not reloaded and nothing is counted in browser storage.
+    await vi.advanceTimersByTimeAsync(LONG_WAIT_MS);
+    expect(reloads).toBe(0);
+    expect(setItem).not.toHaveBeenCalled();
+    expect(sessionStorage.length).toBe(0);
+    expect(notice(element)?.dataset["cardUpdated"]).toBe("button");
+    // Asked once: the line stays without asking again.
+    expect(hass.cardInfoMessages).toHaveLength(1);
   });
 
-  it("reloads again for a newer served hash", async () => {
-    sessionStorage.setItem(`${RELOAD_KEY_PREFIX}${SERVED}`, "1");
-    const { hass, element } = await mounted("33333333");
-    hass.resolveNext(MALFORMED);
-    await settle();
-    expect(notice(element)?.dataset["cardUpdated"]).toBe("reloading");
-    await vi.advanceTimersByTimeAsync(RELOAD_DELAY_MS);
-    expect(reloads).toBe(1);
-  });
-
-  it("offers the button and never reloads when storage throws", async () => {
-    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
-      throw new Error("SecurityError");
-    });
+  it("reloads the page when the reader presses Reload, once per press", async () => {
     const { hass, element } = await mounted();
     hass.resolveNext(MALFORMED);
     await settle();
-    await vi.advanceTimersByTimeAsync(RELOAD_DELAY_MS * 4);
+    const button = notice(element)?.querySelector<HTMLButtonElement>("button");
+    button?.click();
+    expect(reloads).toBe(1);
+    await vi.advanceTimersByTimeAsync(LONG_WAIT_MS);
+    expect(reloads).toBe(1);
+    button?.click();
+    expect(reloads).toBe(2);
+  });
+
+  it("shows the same line, with no reload, on the next page load that still runs the old card", async () => {
+    for (let load = 0; load < 3; load += 1) {
+      document.body.innerHTML = "";
+      const { hass, element } = await mounted();
+      hass.resolveNext(MALFORMED);
+      await settle();
+      await vi.advanceTimersByTimeAsync(LONG_WAIT_MS);
+      expect(notice(element)?.dataset["cardUpdated"]).toBe("button");
+    }
     expect(reloads).toBe(0);
-    expect(notice(element)?.dataset["cardUpdated"]).toBe("button");
   });
 
   it("keeps a dashboard already shown under the line when a later read cannot be read", async () => {
@@ -212,7 +154,9 @@ describe("an unreadable dashboard from an outdated card", () => {
     hass.resolveNext(MALFORMED);
     await settle();
     expect(shadow(element).querySelector(".spotnav-card")).toBe(card);
-    expect(card?.firstElementChild?.getAttribute("data-card-updated")).toBe("reloading");
+    expect(card?.firstElementChild?.getAttribute("data-card-updated")).toBe("button");
+    await vi.advanceTimersByTimeAsync(LONG_WAIT_MS);
+    expect(reloads).toBe(0);
   });
 });
 
@@ -237,6 +181,9 @@ describe("an unreadable dashboard from the card that is served", () => {
     hass.resolveNext(MALFORMED);
     await settle();
     expect(text(element)).toContain(translate("sv", "state.malformed"));
+    expect(reloads).toBe(0);
+    // The retries read the dashboard again; they never reload the page.
+    await vi.advanceTimersByTimeAsync(LONG_WAIT_MS);
     expect(reloads).toBe(0);
   });
 
@@ -299,11 +246,9 @@ describe("a dialog with unsaved input", () => {
     expect(hass.previewMessages.length).toBeGreaterThan(0);
     expect(hass.cardInfoMessages).toHaveLength(1);
 
-    await vi.advanceTimersByTimeAsync(RELOAD_DELAY_MS * 4);
+    await vi.advanceTimersByTimeAsync(LONG_WAIT_MS);
     expect(reloads).toBe(0);
     expect(notice(element)?.dataset["cardUpdated"]).toBe("button");
-    // The reload for this hash was not spent: it is still there for when nothing would be lost.
-    expect(sessionStorage.getItem(`${RELOAD_KEY_PREFIX}${SERVED}`)).toBeNull();
   });
 });
 
@@ -317,10 +262,10 @@ describe("a language file that cannot be had", () => {
     const { hass, element } = await mounted();
     await settle();
     expect(hass.cardInfoMessages).toHaveLength(1);
-    expect(notice(element)?.dataset["cardUpdated"]).toBe("reloading");
-    expect(text(element)).toContain(UPDATE_WORDS.sv.reloading);
-    await vi.advanceTimersByTimeAsync(RELOAD_DELAY_MS);
-    expect(reloads).toBe(1);
+    expect(notice(element)?.dataset["cardUpdated"]).toBe("button");
+    expect(text(element)).toContain(UPDATE_WORDS.sv.updated);
+    await vi.advanceTimersByTimeAsync(LONG_WAIT_MS);
+    expect(reloads).toBe(0);
   });
 
   it("stays in English, with no line, when the same card is served", async () => {
@@ -335,7 +280,7 @@ describe("a language file that cannot be had", () => {
     hass.resolveNext(dashboard());
     await settle();
     expect(notice(element)).toBeNull();
-    await vi.advanceTimersByTimeAsync(RELOAD_DELAY_MS * 4);
+    await vi.advanceTimersByTimeAsync(LONG_WAIT_MS);
     expect(reloads).toBe(0);
   });
 });

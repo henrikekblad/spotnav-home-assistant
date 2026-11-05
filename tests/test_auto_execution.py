@@ -1433,10 +1433,10 @@ async def test_a_pause_whose_stop_fails_is_reported_and_retried(
     refusing = {"on": True}
     original = session.controller.async_stop
 
-    async def maybe_refuse(*, clear_schedule: bool = False) -> None:
+    async def maybe_refuse(*, clear_schedule: bool = False, by_person: bool = False) -> None:
         if refusing["on"]:
             raise RuntimeError("the charger said no")
-        return await original(clear_schedule=clear_schedule)
+        return await original(clear_schedule=clear_schedule, by_person=by_person)
 
     monkeypatch.setattr(session.controller, "async_stop", maybe_refuse)
 

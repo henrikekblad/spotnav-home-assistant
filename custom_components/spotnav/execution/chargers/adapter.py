@@ -15,6 +15,11 @@ two interchangeable parts plus read-only facts:
 * optional capabilities, found by the charger's platform through the entity registry each time they are
   asked for: a `PhaseSwitch` (one or three phases) where the integration offers one.
 
+The adapter also keeps, for its controller, what the charger carried on its current path before SpotNav first
+wrote it (`PreSpotnavCurrent`): read once, through the current path's own read-back (`CurrentPath.async_present_a`),
+just before the first command that writes a current goes out, and never again. The charger's hand-back gives that
+value back when its SpotNav entry is deleted (`execution/charger_handback.py`).
+
 The controller keeps its locks, deadband, dwell and yield stepping; this module only decides whether
 one write may go out *now* and sends it. Nothing here waits for a rate limit: a write the policy does
 not allow is refused with a stable code and the controller decides what that means for the fuse
@@ -27,7 +32,7 @@ from __future__ import annotations
 import logging
 from collections import deque
 from collections.abc import Awaitable, Callable
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from typing import Any, Final, Literal
 
@@ -55,6 +60,9 @@ from .base import (
     _finite,
     _lower,
     AdapterCapabilities,
+    ASSIGN_ASSIGNED,
+    ASSIGN_REBOOT_REQUIRED,
+    ASSIGN_UNCONFIRMED,
     ASSIGN_WRITE_FAILED,
     CurrentPath,
     end_call_tap,
@@ -107,6 +115,42 @@ _VEHICLE_STATES: Final = frozenset({CONNECTED, CHARGING, PAUSED, FINISHED})
 #: Status values the connection table words as connected that do not prove a vehicle is there: a
 #: Wallbox says `Ready` with or without a car.
 _CONNECTION_UNSURE: Final = frozenset({("wallbox", "ready")})
+
+#: The controller's store key for `PreSpotnavCurrent`, beside `adapter_memory`.
+PRE_SPOTNAV_CURRENT_STORE_KEY: Final = "pre_spotnav_current"
+
+#: Current outcomes after which a write may have reached the charger: the value it carried before is gone.
+_SENT_OUTCOMES: Final = frozenset({ASSIGN_ASSIGNED, ASSIGN_UNCONFIRMED, ASSIGN_WRITE_FAILED, ASSIGN_REBOOT_REQUIRED})
+
+
+@dataclass(frozen=True, slots=True)
+class PreSpotnavCurrent:
+    """The current a charger carried on its current path before SpotNav first wrote one, for its hand-back.
+
+    `recorded` is `False` while SpotNav has written nothing yet, so the reading is still to be taken. Once taken it
+    is `True` for good, with `amps` the whole amperes read, or `None` when the reading was unknown, unavailable, not a
+    number or below the 6 A floor (no current a charge runs at): after SpotNav's first write the charger no longer
+    shows what the person had, so an unknown is never filled in later.
+    """
+
+    recorded: bool = False
+    amps: int | None = None
+
+    def to_store(self) -> dict[str, Any]:
+        return {"recorded": self.recorded, "amps": self.amps}
+
+    @classmethod
+    def from_store(cls, raw: Any, *, record_exists: bool) -> PreSpotnavCurrent:
+        """The stored record. A charger record without one (or with one that cannot be read) is an installation
+        SpotNav may already have written to before this was kept: recorded as unknown. No charger record at all is a
+        new charger: nothing written yet, so the reading is still to be taken."""
+        if isinstance(raw, dict) and isinstance(raw.get("recorded"), bool):
+            amps = raw.get("amps")
+            if amps is None or (
+                isinstance(amps, int) and not isinstance(amps, bool) and DEFAULT_MIN_CURRENT_A <= amps <= 1000
+            ):
+                return cls(recorded=raw["recorded"], amps=amps if raw["recorded"] else None)
+        return cls(recorded=True, amps=None) if record_exists else cls()
 
 
 class ChargerAdapter:
@@ -165,6 +209,11 @@ class ChargerAdapter:
         #: Who also keeps each command logged, as the same record (the debug bundle's plug-ins, `debug_day.py`).
         self.command_listener: Callable[[dict[str, Any]], None] | None = None
         self._after_reads: set[CALLBACK_TYPE] = set()
+        #: What the charger carried before SpotNav first wrote it; `None` when this adapter keeps no such record
+        #: (until its controller restores one, and in the hand-back's own adapter).
+        self.pre_current: PreSpotnavCurrent | None = None
+        #: Awaited once the reading is recorded, to save it (the controller's store).
+        self.pre_current_recorded: Callable[[], Awaitable[None]] | None = None
 
     # -- what a restart must not forget
 
@@ -176,14 +225,57 @@ class ChargerAdapter:
         if isinstance(memory, dict):
             self.path.restore_memory(memory)
 
+    # -- the current the charger had before SpotNav
+
+    async def _pre_current_reading(self, writes_current: bool) -> tuple[bool, int | None]:
+        """Before a command: whether the current before SpotNav is still to be recorded for it, and what the
+        current path reads now (`None` when unknown or below the floor). Never raises."""
+        pre = self.pre_current
+        if pre is None or pre.recorded or not writes_current:
+            return False, None
+        try:
+            amps = await self.current.async_present_a()
+        except Exception:  # noqa: BLE001 - a reading that fails is an unknown one, never a failed command
+            _LOGGER.debug("The charger's current could not be read before SpotNav's first write", exc_info=True)
+            amps = None
+        if amps is not None and amps < DEFAULT_MIN_CURRENT_A:
+            amps = None
+        return True, amps
+
+    async def _record_pre_current(self, amps: int | None) -> None:
+        """Record what the charger carried before SpotNav's first write, once, and have it saved. Never raises."""
+        if self.pre_current is None or self.pre_current.recorded:
+            return
+        self.pre_current = PreSpotnavCurrent(recorded=True, amps=amps)
+        _LOGGER.debug(
+            "Before SpotNav first wrote its current, the charger carried %s",
+            "an unknown current" if amps is None else f"{amps} A",
+        )
+        saved = self.pre_current_recorded
+        if saved is None:
+            return
+        try:
+            await saved()
+        except Exception:  # noqa: BLE001 - kept in memory; the next save stores it
+            _LOGGER.debug("Saving the charger's current before SpotNav failed", exc_info=True)
+
     # -- commands
 
     async def async_start(self, amps: int | None = None) -> bool:
         """Start the charge; `False` when the command was not executed (its entity is unavailable)."""
+        wanted, before = await self._pre_current_reading(self.path.writes_current)
         self._started_at = self._now()
-        executed = await self._logged(COMMAND_START, lambda: self.path.async_start(amps))
-        if not executed:
-            self._started_at = None
+        executed: bool = False
+        try:
+            executed = await self._logged(COMMAND_START, lambda: self.path.async_start(amps))
+        except BaseException:
+            executed = True  # it may have reached the charger
+            raise
+        finally:
+            if not executed:
+                self._started_at = None
+            if wanted and executed:
+                await self._record_pre_current(before)
         return executed
 
     async def async_stop(self) -> bool | str:
@@ -191,14 +283,24 @@ class ChargerAdapter:
         `STOP_HELD_AT_FLOOR` when the charger held the charge at its floor instead of pausing it (a Peblar
         out of pauses): the charge still runs, so what was started stays started.
         """
+        wanted, before = await self._pre_current_reading(self.path.writes_current)
         started_at, self._started_at = self._started_at, None
-        result = await self._logged(COMMAND_STOP, lambda: self.path.async_stop())
+        result: bool | str = False
+        try:
+            result = await self._logged(COMMAND_STOP, lambda: self.path.async_stop())
+        except BaseException:
+            result = True  # it may have reached the charger
+            raise
+        finally:
+            if wanted and result:
+                await self._record_pre_current(before)
         if result == STOP_HELD_AT_FLOOR:
             self._started_at = started_at
         return result
 
     async def async_set_current(self, amps: int, *, reason: str, verify: bool = False) -> str:
         outcome: str | None = None
+        wanted, before = await self._pre_current_reading(True)
 
         async def run() -> str:
             nonlocal outcome
@@ -215,6 +317,9 @@ class ChargerAdapter:
                 "outcome": outcome,
                 "in_effect": None if outcome is None else outcome in IN_EFFECT_OUTCOMES,
             }
+            # `None`: the write raised, and may have reached the charger all the same.
+            if wanted and (outcome is None or outcome in _SENT_OUTCOMES):
+                await self._record_pre_current(before)
 
     @property
     def phase_switch(self) -> PhaseSwitch | None:

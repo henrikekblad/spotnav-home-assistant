@@ -386,9 +386,13 @@ each with its own private webhook secret. Treat webhook ids as secrets. See
   when chargers were added or removed, or when the measurement is incomplete.
 - **The site's entities**, from the card: **Site, Change site entities**.
 - **Removing a charger.** Deleting a charger's entry under **Settings, Devices & services, SpotNav**
-  leaves the charger as it would be without SpotNav: turned back on if SpotNav had stopped it, and,
-  if SpotNav set its current, at the top of its range (the current entity's own maximum, else 32 A,
-  which the charger's own limit still caps). It is written once, so a charger that stores the current
-  in flash takes it too. A restart, a reload or disabling the entry changes nothing on the charger.
+  gives the charger back as SpotNav found it, as far as SpotNav knows. Just before SpotNav first set
+  the charger's current, it noted the current the charger had then; when you remove the charger,
+  SpotNav sets that current again, once, so a charger that stores the current in flash takes it too.
+  When SpotNav did not know it (it could not be read then, or the charger was added before SpotNav
+  2.4.2), the current is left as it is. SpotNav turns the charger back on only if SpotNav itself had
+  stopped it (a plan waiting, the sun, load balancing, a target reached); a stop you made in the card
+  or the app, or one made outside SpotNav, is left as it is. A restart, a reload or disabling the
+  entry changes nothing on the charger.
 
 See [Diagnostics and troubleshooting](troubleshooting.md) if something does not behave as expected.

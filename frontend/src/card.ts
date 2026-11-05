@@ -13,8 +13,8 @@
 //   words, so a Swedish reader never sees English first; a language changed later keeps the card in
 //   the old one until the new one is in. A failed fetch leaves the card in English until a reload.
 // - Self-heal (`self-heal.ts`): an answer the card cannot read, or a language file it cannot fetch, makes it
-//   ask which card the integration serves. A newer one: the page reloads once for it (or offers a button);
-//   the same one: the dashboard read is retried twice before `state.malformed` shows.
+//   ask which card the integration serves. A newer one: a line with a Reload button (the page reloads only
+//   when it is pressed); the same one: the dashboard read is retried twice before `state.malformed` shows.
 // - Disconnect stops the timer, bumps the generation, forgets the in-flight attempt and destroys the view.
 // - Actions: one request per click, only for an action and choice the rendered snapshot offered and only
 //   when `can_act`. Nothing is rendered optimistically. While an action is in flight, ordinary reads are
@@ -89,14 +89,8 @@ import { saveTextFile } from "./download";
 import {
   CARD_INFO_TIMEOUT_MS,
   MALFORMED_RETRY_DELAYS_MS,
-  RELOAD_DELAY_MS,
-  RETRY_RELOAD_DELAY_MS,
-  claimReload,
   isMalformed,
-  reloadPage,
-  sessionStore,
   updateNoticeElement,
-  type UpdateNotice,
 } from "./self-heal";
 import { ensureHaSelector } from "./entity-editor";
 import type { FiscalComponentName, ValueWrite } from "./value-writes";
@@ -282,17 +276,6 @@ const SETTINGS_CONFIRM_NOTICE: ConfirmNotice = {
 /** Which card the integration serves, against the one running here (`unknown` when it cannot be told). */
 type CardCheck = "newer" | "same" | "unknown";
 
-/** The cards on this page: a reload is made only when none of them holds unsaved input. */
-const liveCards = new Set<SpotnavCard>();
-
-/** True once this page has decided to reload for a newer card (the line says so meanwhile). */
-let pageReloading = false;
-
-/** Tests only: forget that this page decided to reload. */
-export function forgetPageReloadForTest(): void {
-  pageReloading = false;
-}
-
 type CardState =
   | { kind: "unconfigured" }
   | { kind: "loading" }
@@ -396,7 +379,8 @@ export class SpotnavCard extends HTMLElement {
   private confirmReadFailed = false;
   private deferredRefresh = false;
   /** The line saying SpotNav was updated, once this card knows it runs an older card than the one served. */
-  private updateNotice: UpdateNotice | null = null;
+  /** A newer card is served: the "SpotNav has been updated" line with its Reload button shows. */
+  private updateNotice = false;
   /** The question to the integration about which card it serves, while it is asked. */
   private cardCheck: Promise<CardCheck> | null = null;
   /** Retries made after unreadable dashboards from the same card version, and the one waiting. */
@@ -515,7 +499,6 @@ export class SpotnavCard extends HTMLElement {
 
   connectedCallback(): void {
     this.connected = true;
-    liveCards.add(this);
     globalThis.addEventListener?.(CHART_AXIS_EVENT, this.onDisplayChanged);
     globalThis.addEventListener?.(PRICE_UNIT_EVENT, this.onDisplayChanged);
     globalThis.addEventListener?.("storage", this.onDisplayChanged);
@@ -524,7 +507,6 @@ export class SpotnavCard extends HTMLElement {
 
   disconnectedCallback(): void {
     this.connected = false;
-    liveCards.delete(this);
     this.stopMalformedRetry();
     globalThis.removeEventListener?.(CHART_AXIS_EVENT, this.onDisplayChanged);
     globalThis.removeEventListener?.(PRICE_UNIT_EVENT, this.onDisplayChanged);
@@ -2646,12 +2628,12 @@ export class SpotnavCard extends HTMLElement {
   }
 
   /**
-   * Ask which card the integration serves. `newer`: another than this one, and the line then shows (the
-   * page reloads once for it when it may); `same`: this card; `unknown`: either hash cannot be had, the
+   * Ask which card the integration serves. `newer`: another than this one, and the line with its Reload
+   * button then shows; `same`: this card; `unknown`: either hash cannot be had, the
    * command is missing or does not answer in time. One question at a time per card.
    */
   private checkForNewerCard(): Promise<CardCheck> {
-    if (this.updateNotice !== null) {
+    if (this.updateNotice) {
       return Promise.resolve("newer");
     }
     if (this.cardCheck === null) {
@@ -2690,68 +2672,10 @@ export class SpotnavCard extends HTMLElement {
     if (outdated !== true || served === null) {
       return "unknown";
     }
-    if (this.updateNotice === null) {
-      this.offerNewerCard(served);
+    if (!this.updateNotice) {
+      this.showUpdateNotice();
     }
     return "newer";
-  }
-
-  /**
-   * A newer card is served: reload the page for it, with the line saying so just before; the second time
-   * for this hash (the old card is still here, from a cache) after `RETRY_RELOAD_DELAY_MS`. Where the reloads
-   * for this hash are spent, storage cannot remember them, or a card on the page holds unsaved input, the
-   * line offers the Reload button instead.
-   */
-  private offerNewerCard(served: string): void {
-    if (pageReloading) {
-      this.showUpdateNotice("reloading");
-      return;
-    }
-    const attempt = SpotnavCard.anyUnsavedInput() ? null : claimReload(sessionStore(), served);
-    if (attempt === null) {
-      this.showUpdateNotice("button");
-      return;
-    }
-    pageReloading = true;
-    // The second wait is long: the button lets the reader reload at once meanwhile.
-    this.showUpdateNotice(attempt === 1 ? "reloading" : "button");
-    window.setTimeout(() => {
-      if (SpotnavCard.anyUnsavedInput()) {
-        // Input began meanwhile: nothing reloads by itself now (this reload for the hash is spent).
-        pageReloading = false;
-        for (const card of liveCards) {
-          if (card.updateNotice === "reloading") {
-            card.showUpdateNotice("button");
-          }
-        }
-        return;
-      }
-      reloadPage();
-    }, attempt === 1 ? RELOAD_DELAY_MS : RETRY_RELOAD_DELAY_MS);
-  }
-
-  private static anyUnsavedInput(): boolean {
-    for (const card of liveCards) {
-      if (card.holdsUnsavedInput()) {
-        return true;
-      }
-    }
-    return false;
-  }
-
-  /** An editor dialog is open (the Plan dialog, a settings, fee, entity or value editor), or a save runs. */
-  private holdsUnsavedInput(): boolean {
-    const view = this.view;
-    return (
-      this.editor !== null ||
-      this.marketEditor !== null ||
-      this.entitySaving ||
-      (view !== null &&
-        (view.settingsEditorOpen() !== null ||
-          view.marketEditorOpen() ||
-          view.entityEditorOpen() !== null ||
-          view.valueEditorOpen()))
-    );
   }
 
   /** The words for the line: the reader's language even when its file could not be had. */
@@ -2759,13 +2683,17 @@ export class SpotnavCard extends HTMLElement {
     return this.wantedLanguage ?? this.languageOrFallback;
   }
 
-  private showUpdateNotice(notice: UpdateNotice): void {
-    this.updateNotice = notice;
+  /**
+   * A newer card is served: show the line with its Reload button. The page reloads only when the reader
+   * presses the button; nothing here reloads it.
+   */
+  private showUpdateNotice(): void {
+    this.updateNotice = true;
     if (!this.connected) {
       return;
     }
     if (this.cardState.kind === "ready" && this.view !== null) {
-      this.view.setUpdateNotice(updateNoticeElement(this.ownerDocument, this.noticeLanguage, notice));
+      this.view.setUpdateNotice(updateNoticeElement(this.ownerDocument, this.noticeLanguage));
       return;
     }
     this.render();
@@ -2853,8 +2781,8 @@ export class SpotnavCard extends HTMLElement {
     host.className = VISUAL_CLASSES.shell;
     this.root.replaceChildren(style, host);
 
-    if (this.updateNotice !== null && this.cardState.kind !== "ready" && this.cardState.kind !== "unconfigured") {
-      host.append(updateNoticeElement(doc, this.noticeLanguage, this.updateNotice));
+    if (this.updateNotice && this.cardState.kind !== "ready" && this.cardState.kind !== "unconfigured") {
+      host.append(updateNoticeElement(doc, this.noticeLanguage));
       return;
     }
 
@@ -3015,8 +2943,8 @@ export class SpotnavCard extends HTMLElement {
           }
         },
       });
-      if (this.updateNotice !== null) {
-        this.view.setUpdateNotice(updateNoticeElement(doc, this.noticeLanguage, this.updateNotice));
+      if (this.updateNotice) {
+        this.view.setUpdateNotice(updateNoticeElement(doc, this.noticeLanguage));
       }
       if (this.reopenOverview && this.confirmingReturn === 0) {
         this.reopenOverview = false;

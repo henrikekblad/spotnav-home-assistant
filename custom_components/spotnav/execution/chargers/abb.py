@@ -42,6 +42,7 @@ class NumberPausePath(StartStopPath):
     """Stop writes 0 A to the current number, Start writes the requested current."""
 
     kind = PATH_NUMBER_PAUSE
+    writes_current = True
 
     def __init__(
         self,

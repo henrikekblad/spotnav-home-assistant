@@ -52,6 +52,7 @@ class PauseBudgetSwitchPath(SwitchPath):
     """The charge switch, with at most `budget` pauses in any `PAUSE_WINDOW_S`."""
 
     kind = PATH_SWITCH_BUDGET
+    writes_current = True
 
     def __init__(
         self,

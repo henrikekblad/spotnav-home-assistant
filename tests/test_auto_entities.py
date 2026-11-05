@@ -602,7 +602,7 @@ async def test_a_partial_pause_reads_as_an_execution_error_not_a_clean_pause(
     controller = controller_of(hass, entry.entry_id)
     assert controller.plan is not None
 
-    async def refuse(*, clear_schedule: bool = False) -> None:
+    async def refuse(*, clear_schedule: bool = False, by_person: bool = False) -> None:
         raise RuntimeError("the charger said no")
 
     monkeypatch.setattr(controller, "async_stop", refuse)

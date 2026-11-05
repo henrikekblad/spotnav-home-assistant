@@ -70,7 +70,7 @@ from ..vehicles.ocpp_identity import (
 from .charger_connection import FINISHED as CONNECTION_FINISHED
 from .charger_entities import charger_conflicts, charger_is_disabled, FixableConflict
 from .power_energy import integrated_energy_unique_id, read_power_w
-from .chargers.adapter import build_adapter, ChargerAdapter
+from .chargers.adapter import build_adapter, ChargerAdapter, PRE_SPOTNAV_CURRENT_STORE_KEY, PreSpotnavCurrent
 from .charger_profiles import PATH_BUTTONS_TOGGLE
 from .chargers.base import (
     ASSIGN_ASSIGNED,
@@ -132,7 +132,15 @@ from .target_stop import (
 )
 from . import top_off
 from .window_hold import WindowHold
-from .ownership_state import BalancingMemory, CarEndedRecord, HoldState, PersonHoldStops, SafetyHold
+from .ownership_state import (
+    BalancingMemory,
+    CarEndedRecord,
+    HoldState,
+    OWN_STOP_STORE_KEY,
+    own_stop_from_record,
+    PersonHoldStops,
+    SafetyHold,
+)
 from ..core import events as core_events
 from ..core.ownership import (
     car_ended_awaits_level,
@@ -969,6 +977,13 @@ class ChargingController:
         self._store: Store[dict[str, Any]] = Store(
             hass, STORE_VERSION, f"{DOMAIN}.{entry_id}"
         )
+        # Whether the charger's stopped state is one SpotNav made itself (a plan waiting, the sun, a balancing pause, a
+        # target reached, the hold): only such a stop is undone when the charger is handed back
+        # (`charger_handback.py`). Cleared by any start, a person's Stop or pause, and a charge or an "on" control seen
+        # with no stop of ours on its way. Saved (`OWN_STOP_STORE_KEY`).
+        self._own_stop = False
+        # `_handback_facts` as last saved.
+        self._saved_handback: tuple[Any, ...] | None = None
         self._timer_cancels: list[Callable[[], None]] = []
         self._listeners: set[Callable[[], None]] = set()
         # Who wants to know what Home Assistant reports for the charge control, as opposed to what
@@ -1134,6 +1149,13 @@ class ChargingController:
         # The core's own record is the truth. Today's keys are read only to migrate (`migrate_from_keys`): no record,
         # one it cannot read, or an earlier build's saying the keys were written after it (`_stored_session`).
         stored, migrate = self._stored_session(saved)
+        # What the charger carried before SpotNav first wrote it: still to be read for a new charger, unknown for one
+        # whose record is older than this reading (SpotNav may have written to it already).
+        self.adapter.pre_current = PreSpotnavCurrent.from_store(
+            saved.get(PRE_SPOTNAV_CURRENT_STORE_KEY) if isinstance(saved, dict) else None,
+            record_exists=bool(saved),
+        )
+        self.adapter.pre_current_recorded = self._async_save_quietly
         if saved:
             if saved.get("plan"):
                 # Never a plain `ChargingPlan(**record)`: the record carries ownership, so it goes
@@ -1183,6 +1205,7 @@ class ChargingController:
                 parsed_top_off if parsed_top_off is not None and parsed_top_off.tzinfo is not None else None
             )
             self.adapter.restore_memory(saved.get("adapter_memory"))
+            self._own_stop = own_stop_from_record(saved)
             # Forced to one phase by us before the restart: kept, until the charger's read-back says otherwise
             # (`reconcile_phases`).
             self._phases = PhaseSwitchState.from_store(saved.get(PHASE_SWITCHING_STORE_KEY))
@@ -1212,6 +1235,7 @@ class ChargingController:
         self._owner_told = self._core_owner
         self._session_saved = stored
         self._saved_memory = self._memory_signature()
+        self._saved_handback = self._handback_facts()
         if migrate or (stored is not None and self._keys_differ(saved)):
             # Migrated from today's keys once (the core's own record is written now, beside them), or today's keys on
             # disk say otherwise than the record (an earlier build saved its record after them): written again, derived
@@ -1496,6 +1520,7 @@ class ChargingController:
         self._maybe_write_after_start(event)
         self._observe_connection()
         self._top_off_tick()
+        self._observe_own_stop()
         # The hold's memory before the report: the core decides the report at once.
         before = self._hold_state
         report = self._core_report_begin()
@@ -1519,6 +1544,37 @@ class ChargingController:
         if charging and self._seen_charging is False:
             self._stop_settle_since = None
         self._seen_charging = charging
+
+    def _handback_facts(self) -> tuple[Any, ...]:
+        """What the charger's hand-back reads from the record (`charger_handback.py`), as one comparable value."""
+        pre = self.adapter.pre_current
+        return (self._own_stop, None if pre is None else (pre.recorded, pre.amps))
+
+    async def _async_save_handback_facts(self) -> None:
+        """At a shutdown or Home Assistant's stop: save the record when what the hand-back reads changed since the last
+        save, so a charger removed right after (its unload saves, then the removal reads) is handed back as it was."""
+        if self._restored and self._handback_facts() != self._saved_handback:
+            await self._async_save_quietly()
+
+    def _set_own_stop(self, own: bool) -> None:
+        """Whether the charger's stopped state is SpotNav's own (`_own_stop`), saved soon when it changes."""
+        if self._own_stop != own:
+            self._own_stop = own
+            self._save_memory_soon()
+
+    def note_person_stop(self) -> None:
+        """A person stopped or paused the charger (the card, the app, a button) even where no stop was sent: what
+        stops it now is theirs, never undone when the charger is handed back."""
+        self._set_own_stop(False)
+
+    def _observe_own_stop(self) -> None:
+        """A charge or an "on" control seen while no stop of ours is on its way: something started the charger, so
+        its stopped state is no longer SpotNav's own; a stop by anyone else after that is theirs. While a stop of
+        ours settles, the charger still showing the charge is that stop not landed yet."""
+        if not self._own_stop or self._stop_in_flight or self._stop_settling():
+            return
+        if self.charging or self._control_observation is True:
+            self._set_own_stop(False)
 
     def _stop_settling(self) -> bool:
         """Whether a stop of ours went out less than `STOP_SETTLE_S` ago and nothing has started the charge since
@@ -3241,13 +3297,13 @@ class ChargingController:
                 "the previous charging plan could not be restored",
             ) from cause
 
-    async def async_cancel(self) -> None:
-        """Stop charging and remove the active schedule. One operation, one lock."""
+    async def async_cancel(self, *, by_person: bool = False) -> None:
+        """Stop charging and remove the active schedule. One operation, one lock. `by_person` as for `async_stop`."""
         async with self._lock:
             if self._runner.depth:
-                await self._stop_locked(clear_schedule=True)
+                await self._stop_locked(clear_schedule=True, by_person=by_person)
                 return
-            await self._core_direct_stop(self._stop_locked(clear_schedule=True), True)
+            await self._core_direct_stop(self._stop_locked(clear_schedule=True, by_person=by_person), True)
 
     async def async_follow_schedule(self) -> None:
         """Immediately restore the charger state required by the saved plan."""
@@ -3642,6 +3698,7 @@ class ChargingController:
                 if executed:
                     # A start went out after any stop before it: a stop from now on is a new decision.
                     self._stop_settle_since = None
+                    self._set_own_stop(False)
             except BaseException:
                 # The command failed outright: whatever it was to begin is not ours, nor anybody's.
                 if reserved:
@@ -4145,18 +4202,21 @@ class ChargingController:
         }
 
     async def async_stop(
-        self, *, clear_schedule: bool = False, balancing: bool = False, urgent: bool = True
+        self, *, clear_schedule: bool = False, balancing: bool = False, urgent: bool = True, by_person: bool = False
     ) -> None:
         """Stop charging, optionally removing the saved schedule. Takes the operation lock and
         delegates to `_stop_locked`. A person's Stop is the execution boundary's: it pauses Auto for the
-        plug-in session and clears the plan (`AutoExecutor`).
+        plug-in session and clears the plan (`AutoExecutor`), and says so (`by_person`): a person's stop is never
+        undone when the charger is handed back.
 
         Any stop but load balancing's pause (`balancing`) ends a top-off, and with it the plan whose
         windows are all past: a person's Stop, a pause, solar standing it down. A stop through here goes out
         even while another settles (`urgent`, a person's): an automatic decision passes `urgent=False`.
         """
         async with self._lock:
-            request = self._stop_request_locked(clear_schedule=clear_schedule, balancing=balancing, urgent=urgent)
+            request = self._stop_request_locked(
+                clear_schedule=clear_schedule, balancing=balancing, urgent=urgent, by_person=by_person
+            )
             if self._runner.depth:
                 await request
                 return
@@ -4169,6 +4229,7 @@ class ChargingController:
         balancing: bool = False,
         urgent: bool = False,
         defer_unready: bool = False,
+        by_person: bool = False,
     ) -> None:
         """`async_stop` itself, with the operation lock held."""
         if self._top_off_until is not None and not balancing:
@@ -4176,7 +4237,11 @@ class ChargingController:
             _LOGGER.info("SpotNav charger %s: the top-off is stopped", self.entry_id)
             clear_schedule = True
         await self._stop_locked(
-            clear_schedule=clear_schedule, urgent=urgent, defer_unready=defer_unready, balancing=balancing
+            clear_schedule=clear_schedule,
+            urgent=urgent,
+            defer_unready=defer_unready,
+            balancing=balancing,
+            by_person=by_person,
         )
 
     async def _stop_locked(
@@ -4186,9 +4251,14 @@ class ChargingController:
         urgent: bool = False,
         defer_unready: bool = False,
         balancing: bool = False,
+        by_person: bool = False,
     ) -> None:
         """The stop itself, with the operation lock held: stop charging, optionally removing the saved
         schedule.
+
+        A stop that goes out makes the charger's stopped state SpotNav's own (`_own_stop`), unless a person asked for
+        it (`by_person`) or it upholds a person's Stop or pause; a person's stop clears it whether or not anything
+        is sent.
 
         Says nothing about a target stop: `_async_target_stop` writes that record before calling this, so
         the window-end stop and an explicit cancel record nothing. Clearing the plan drops the state-change
@@ -4203,6 +4273,8 @@ class ChargingController:
         A stop the charger answers by holding the charge at its floor (`STOP_HELD_AT_FLOOR`) did not end the charge:
         like one not executed it forgets nothing and raises, as `EXECUTION_STOP_HELD_AT_FLOOR`.
         """
+        if by_person:
+            self._set_own_stop(False)
         if defer_unready and not self._stop_needed and self._control_observation is None:
             _LOGGER.debug(
                 "SpotNav charger %s: the stop was not sent, the charge control cannot be read yet", self.entry_id
@@ -4274,6 +4346,10 @@ class ChargingController:
             self._stop_settle_since = self._stop_sent_at
             self._seen_charging = self.charging
             self._command_unfed = SENT_STOP
+            if not by_person:
+                # A stop of SpotNav's own decision, unless it holds the charger off for a person's Stop or pause.
+                session = self._runner.session
+                self._set_own_stop(not (session.held_off_by_person or session.span_pause is not None))
             if start_on_its_way:
                 # Nor is a current owed to it once it lands (a session-bound number): a late answer of the start
                 # would otherwise write the plan's current into the paused charge.
@@ -4665,6 +4741,7 @@ class ChargingController:
         # for the lock (`_shut_down` is set before it, and no decision saves once it is).
         self._cancel_session_save()
         await self._async_save_changed()
+        await self._async_save_handback_facts()
         await self._runner.coverage.async_flush()
         self._cancel_stop_retry()
         self._cancel_owed()
@@ -4897,6 +4974,8 @@ class ChargingController:
             tuple(sorted(self.adapter.memory().items())),
             self._phases.to_store(),
             self._switched.signature(),
+            self._own_stop,
+            None if (pre := self.adapter.pre_current) is None else (pre.recorded, pre.amps),
             # Last: `_persist_session` compares it alone.
             self._car_ended_signature(),
         )
@@ -4930,8 +5009,10 @@ class ChargingController:
         session = self._session_record()
         if session is not None:
             record[SESSION_STORE_KEY] = session[1]
+        handback = self._handback_facts()
         await self._store.async_save(record)
         self._saved_memory = signature
+        self._saved_handback = handback
         self._session_saved = None if session is None else session[0]
         if session is not None:
             self._cancel_session_save()
@@ -4989,6 +5070,10 @@ class ChargingController:
         if switched is not None:
             # Only once something is learned: a charger whose current is set keeps exactly its old record.
             record[SWITCHED_CURRENT_STORE_KEY] = switched
+        # For the charger's hand-back when its entry is deleted (`charger_handback.py`).
+        record[OWN_STOP_STORE_KEY] = self._own_stop
+        if self.adapter.pre_current is not None:
+            record[PRE_SPOTNAV_CURRENT_STORE_KEY] = self.adapter.pre_current.to_store()
         return record
 
     # ------------------------------------------------------------------ the core's stored session
@@ -5121,6 +5206,7 @@ class ChargingController:
         the core's session still waiting for its debounced save is saved now, and the core's coverage tally."""
         self._cancel_session_save()
         await self._async_save_changed()
+        await self._async_save_handback_facts()
         await self._runner.coverage.async_flush()
 
     async def _integration_version(self) -> str | None:

@@ -539,9 +539,9 @@ async def test_two_concurrent_requests_produce_one_effect_each(
         choice = PAUSE_UNTIL_RESUMED
         inner_stop = executor._controller.async_stop
 
-        async def gated_stop(*, clear_schedule: bool = False) -> None:
+        async def gated_stop(*, clear_schedule: bool = False, by_person: bool = False) -> None:
             await gate.wait()
-            await inner_stop(clear_schedule=clear_schedule)
+            await inner_stop(clear_schedule=clear_schedule, by_person=by_person)
 
         executor._controller.async_stop = gated_stop  # type: ignore[method-assign]
     else:

@@ -1645,6 +1645,8 @@ class AutoExecutor:
             self._arm_pause_expiry(intent.expires_at)
             # A pause the person picks replaces a manual one, and its watch.
             self._sync_manual_watch()
+            # What stops the charger from now on is the person's, even where nothing is stopped below.
+            self._controller.note_person_stop()
         note["stored"] = True
         self._pending = None
         if self.applied is None:
@@ -1655,7 +1657,7 @@ class AutoExecutor:
         try:
             # Through the controller: the same path every stop uses, and the only code here that
             # may touch a charger.
-            await self._controller.async_stop(clear_schedule=True)
+            await self._controller.async_stop(clear_schedule=True, by_person=True)
             note["outcome"] = self._core_stop_outcome()
         except Exception as err:  # noqa: BLE001 - reported as a partial failure, never hidden
             _LOGGER.warning(
@@ -1891,7 +1893,7 @@ class AutoExecutor:
         try:
             note["outcome"] = CommandOutcome(False)
             try:
-                await self._controller.async_stop(clear_schedule=True)
+                await self._controller.async_stop(clear_schedule=True, by_person=True)
                 note["outcome"] = self._core_stop_outcome()
             except Exception as err:  # noqa: BLE001 - raised below, after the pause is stored
                 stop_error = err

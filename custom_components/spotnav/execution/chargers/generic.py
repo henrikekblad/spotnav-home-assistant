@@ -259,6 +259,18 @@ class NumberCurrent(CurrentPath):
             return self.last_written_a
         return int(math.floor(present + 1e-9))
 
+    async def async_present_a(self) -> int | None:
+        """The number's state in whole amperes; `None` when it is unavailable, unknown, not a number or not in A
+        or mA, and for a number whose state is not what the charger applies (`state_is_not_setpoint`)."""
+        if self.policy.state_is_not_setpoint:
+            return None
+        state = self.hass.states.get(self.entity_id)
+        factor = _amps_factor(state)
+        if state is None or factor is None or state.state in (STATE_UNAVAILABLE, STATE_UNKNOWN):
+            return None
+        present = self._present_amps(state, factor)
+        return None if present is None else int(math.floor(present + 1e-9))
+
     def available(self) -> str | None:
         if self.policy.installation_wide and self._balanced_elsewhere is not None and self._balanced_elsewhere():
             return ASSIGN_EXTERNAL_BALANCER

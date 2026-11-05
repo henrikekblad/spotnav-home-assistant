@@ -2,6 +2,7 @@
 
 from collections.abc import Awaitable, Callable
 from dataclasses import replace
+from functools import partial
 from typing import Any
 
 from homeassistant.components.button import ButtonEntity
@@ -56,9 +57,9 @@ def manual_actions(
     if executor is None:
         return [
             ("start", controller.async_start),
-            ("stop", controller.async_stop),
+            ("stop", partial(controller.async_stop, by_person=True)),
             ("follow", controller.async_follow_schedule),
-            ("cancel", controller.async_cancel),
+            ("cancel", partial(controller.async_cancel, by_person=True)),
         ]
     return [
         ("start", executor.async_manual_start),
