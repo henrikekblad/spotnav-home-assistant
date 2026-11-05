@@ -852,8 +852,8 @@ async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
         await SiteDemand.async_remove_stored(hass, entry.entry_id)
         await SiteCapacityController.async_remove_released(hass, entry.entry_id)
         return
-    # The charger is left as someone without SpotNav expects it: allowed to charge, at its full current.
-    # Read before the stores below go (an Easee pause of ours is remembered in the controller's).
+    # The charger is given back as SpotNav found it, as far as SpotNav knows: the current it had before SpotNav,
+    # and a stop of SpotNav's own undone. Read before the stores below go (it is kept in the controller's).
     await async_hand_back_charger(hass, entry)
     async_leave_sites(hass, entry.entry_id)
     if (price_store := domain_data(hass).price_store) is not None:
