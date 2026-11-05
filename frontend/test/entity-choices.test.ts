@@ -834,7 +834,7 @@ describe("the phases the charger is wired for: 1 or 3, chosen like a type, for a
     const line = document.querySelector<HTMLElement>("[data-wired-phases]")!;
     expect(line.dataset["wiredPhases"]).toBe("3");
     expect(line.textContent).toContain("The charger is wired for 3 phases (from the site).");
-    expect(line.querySelector("button")?.textContent).toBe("Site wiring");
+    expect(line.querySelector("button")?.textContent).toBe("Open site settings");
     expect(entityChange(cfg, "charger", built.draft())).toEqual({ ok: true, changed: false });
     line.querySelector<HTMLButtonElement>("[data-action='open-site']")!.click();
     expect(opened).toBe(1);
@@ -859,20 +859,20 @@ describe("the phases the charger is wired for: 1 or 3, chosen like a type, for a
     };
     expect(render("sensor.easee_driveway_current")).toContain("measured current from sensor.easee_driveway_current");
     expect(render(null)).toContain("reads no measured current");
-    expect(render(null)).toContain("set it in the site wiring");
+    expect(render(null)).toContain("set it in the site's settings (Configure → Wiring for  → Measured current source)");
     // The charger's own sensors are named when its integration has them.
     const own = { integration: "Peblar", sensors: "Current phase 1–3" };
     const named = { ...cfg, fields: cfg.fields.map((entry) => (entry.field === "measured_current_source" ? { ...entry, value: null, ownSensors: own } : entry)) } as typeof cfg;
     const built = entityEditorBody(
       document,
       "en",
-      { scope: "charger", config: named, hass: () => undefined, appliesText: null },
+      { scope: "charger", config: named, hass: () => undefined, appliesText: null, chargerName: "Garage" },
       { onSave: () => undefined, onCancel: () => undefined },
       "t",
     );
     document.body.replaceChildren(built.body);
     expect(document.querySelector("[data-measured-source]")?.textContent).toBe(
-      "The site reads no measured current for this charger. Solar and the regulator need it: choose Peblar's Current phase 1–3 in the site wiring, or press Use there.",
+      "The site reads no measured current for this charger. Solar and the regulator need it: choose Peblar's Current phase 1–3 in the site's settings (Configure → Wiring for Garage → Measured current source), or press Use there.",
     );
     for (const language of LANGUAGES) {
       expect(translate(language, "entity.measuredSource.from", { source: "x" }), language).toContain("x");
@@ -881,6 +881,38 @@ describe("the phases the charger is wired for: 1 or 3, chosen like a type, for a
       expect(text, language).toContain("Current phase 1–3");
       expect(text, language).toContain("Peblar");
     }
+  });
+
+  it("offers the way to the site's settings where the measured current is not set, to an administrator only", () => {
+    const cfg = config("get_direct");
+    const unset = {
+      ...cfg,
+      fields: cfg.fields.map((entry) => (entry.field === "measured_current_source" ? { ...entry, value: null } : entry)),
+    } as typeof cfg;
+    const set = {
+      ...cfg,
+      fields: cfg.fields.map((entry) => (entry.field === "measured_current_source" ? { ...entry, value: "sensor.x" } : entry)),
+    } as typeof cfg;
+    const render = (edited: typeof cfg, readOnly: boolean, withHandler = true) => {
+      let opened = 0;
+      const built = entityEditorBody(
+        document,
+        "en",
+        { scope: "charger", config: edited, hass: () => undefined, appliesText: null, readOnly },
+        { onSave: () => undefined, onCancel: () => undefined, ...(withHandler ? { onOpenSite: () => (opened += 1) } : {}) },
+        "t",
+      );
+      document.body.replaceChildren(built.body);
+      const button = document.querySelector<HTMLButtonElement>("[data-measured-source] [data-action='open-site']");
+      return { button, opened: () => opened };
+    };
+    const admin = render(unset, false);
+    expect(admin.button?.textContent).toBe("Open site settings");
+    admin.button!.click();
+    expect(admin.opened()).toBe(1);
+    expect(render(unset, true).button).toBeNull();
+    expect(render(unset, false, false).button).toBeNull();
+    expect(render(set, false).button).toBeNull();
   });
 
   it("is not stated for a charger in no site, which chooses it", () => {

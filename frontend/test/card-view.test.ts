@@ -138,6 +138,25 @@ describe("the banner and the issue dialog", () => {
     shown.view.destroy();
   });
 
+  it("offers the way to the site's settings under the status line that sends there, to an administrator only", () => {
+    const status = { tone: "notice" as const, lines: [statusLine("solar_charger_current_missing", { entity: null })] };
+    const model = modelWith({ status });
+    expect(model.status).toContain("Wiring for ");
+    expect(model.statusNeedsSiteSettings).toBe(true);
+    const admin = view(model, { isAdmin: true }, "wiring-admin");
+    const button = admin.root.querySelector<HTMLButtonElement>("[data-part='open-site'] [data-action='open-site']");
+    expect(button?.textContent).toBe("Open site settings");
+    button!.click();
+    expect(window.location.pathname).toBe("/config/integrations/integration/spotnav");
+    admin.view.destroy();
+    const reader = view(model, { isAdmin: false }, "wiring-reader");
+    expect(reader.root.querySelector("[data-action='open-site']")).toBeNull();
+    reader.view.destroy();
+    const other = view(modelWith({ status: { tone: "normal", lines: [statusLine("solar_waiting_for_sun")] } }), {}, "wiring-none");
+    expect(other.root.querySelector("[data-action='open-site']")).toBeNull();
+    other.view.destroy();
+  });
+
   it("leaves out the neutral banner when the headline is itself the notice, and when the notice carries the line's own facts", () => {
     const headline = modelWith({ status: { tone: "notice", lines: [statusLine("charging_without_prices")] } });
     expect(headline.severity).toBe("notice");

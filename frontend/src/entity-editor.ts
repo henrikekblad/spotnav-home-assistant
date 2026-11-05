@@ -419,7 +419,7 @@ export function entityNameIn(config: EntityConfig, entityId: string): string {
 export interface EntityEditorHandlers {
   onSave: (draft: EntityDraft) => void;
   onCancel: () => void;
-  /** A charger in a site: open the site's entities, where the wiring is held. */
+  /** A charger in a site: open the site's settings in Home Assistant, where the wiring is held. */
   onOpenSite?: () => void;
 }
 
@@ -429,6 +429,8 @@ export interface EntityEditorInput {
   hass: () => unknown;
   appliesText: string | null;
   readOnly?: boolean;
+  /** The charger's name, for the lines that name its page in the site's settings. */
+  chargerName?: string;
   /**
    * One value of the Settings page: only the dialog part of that name is shown (`charge-control`,
    * `current-limit`, `energy`), the rest kept hidden and unchanged. Without it, or when the part is not
@@ -1642,13 +1644,28 @@ export function entityEditorBody(
     // Shown with the charger's current, the Settings row it belongs to (a part's dialog hides the rest).
     sourceLine.dataset["focusWith"] = "current-limit";
     const own = sourceField.ownSensors;
+    const unset = sourceField.value === null || sourceField.value === "";
+    const charger = input.chargerName ?? "";
     sourceLine.append(
-      sourceField.value !== null && sourceField.value !== ""
-        ? translate(language, "entity.measuredSource.from", { source: sourceField.value })
+      !unset
+        ? translate(language, "entity.measuredSource.from", { source: sourceField.value ?? "" })
         : own !== null
-          ? translate(language, "entity.measuredSource.noneOwn", { integration: own.integration, sensors: own.sensors })
-          : translate(language, "entity.measuredSource.none"),
+          ? translate(language, "entity.measuredSource.noneOwn", {
+              integration: own.integration,
+              sensors: own.sensors,
+              charger,
+            })
+          : translate(language, "entity.measuredSource.none", { charger }),
     );
+    // Where it is not set, the way to the site's settings, where it is chosen (administrators only).
+    if (unset && handlers.onOpenSite !== undefined && !locked) {
+      const link = element(doc, "button", C.strategyLink, translate(language, "entity.phases.openSite"));
+      link.type = "button";
+      link.dataset["action"] = "open-site";
+      link.addEventListener("click", () => handlers.onOpenSite?.());
+      sourceLine.append(" ", link);
+      disabledWhenPending.push(link);
+    }
     body.append(sourceLine);
   }
 

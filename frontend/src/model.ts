@@ -31,7 +31,15 @@ import {
   type EntityWords,
 } from "./format";
 import { chargeBarFor, type ChargeBarFacts } from "./charge-bar";
-import { issuesOf, statusNote, statusText, type Issue, releaseConfirmText } from "./status";
+import {
+  issuesOf,
+  statusForCharger,
+  statusNeedsSiteSettings,
+  statusNote,
+  statusText,
+  type Issue,
+  releaseConfirmText,
+} from "./status";
 import { chargeCeiling, effectiveTarget } from "./target-need";
 import { pluralForm, translate, type Language, type TranslationKey } from "./i18n";
 import {
@@ -243,6 +251,8 @@ export interface CardModel {
   status: string | null;
   /** The "suggested from your location and charger" note: its own muted line under the status. */
   statusNote: string | null;
+  /** The status line sends the reader to the site's settings (the charger's own current is not set). */
+  statusNeedsSiteSettings: boolean;
   /** The running charge's bar under the status line, from the backend's `progress`; `null` with none. */
   chargeBar: ChargeBarFacts | null;
   issues: Issue[];
@@ -895,7 +905,8 @@ export function buildModel(input: BuildInput): CardModel {
   const chartAxis = input.chartAxis ?? DEFAULT_CHART_AXIS;
   const chart = chartSeries(rows, format.timeZone, input.nowMs, chartAxis);
   const bands = plannedBands(rows, chart.days, format.timeZone, pendingProposalOf(dashboard, input.nowMs), chart.time);
-  const status = dashboard.status;
+  const chargerName = dashboard.charger.charger_name ?? dashboard.charger.charger_id;
+  const status = statusForCharger(dashboard.status, chargerName);
   const issues = issuesOf(status, language, input.entityWords, format, input.nowMs);
   const zone = hasZone(format);
   // A fact nobody has is omitted from the plot, never shown as "unknown": this returns `null` rather than
@@ -924,12 +935,13 @@ export function buildModel(input: BuildInput): CardModel {
     language,
     format,
     timesAvailable: zone,
-    chargerName: dashboard.charger.charger_name ?? dashboard.charger.charger_id,
+    chargerName,
     dashboardSettings: dashboard.settings,
     today: zone ? localDayKey(input.nowMs, format.timeZone) : null,
     dashboardFiscal: dashboard.fiscal,
     status: statusText(status, format, input.nowMs, dashboard.planning?.publication_at ?? null),
     statusNote: statusNote(status, format, input.nowMs),
+    statusNeedsSiteSettings: statusNeedsSiteSettings(status),
     chargeBar: chargeBarFor(dashboard.progress, format, input.nowMs),
     issues,
     releaseConfirm: releaseConfirmText(status, format, input.nowMs),
