@@ -575,7 +575,19 @@ class SiteDemandPeakEntity(_BuiltOnChangeSiteSensor):
         if self._rebuild():
             self.async_write_ha_state()
 
+    #: The month's snapshot while `_rebuild` runs: the value and the attributes are built from one.
+    _building: Any = None
+
+    def _rebuild(self) -> bool:
+        self._building = self._snapshot()
+        try:
+            return super()._rebuild()
+        finally:
+            self._building = None
+
     def _snapshot(self) -> Any:
+        if self._building is not None:
+            return self._building
         components = site_demand_components(self.hass, self._entry.entry_id)
         return components, self.controller.demand.snapshot(
             components, import_target_kw=stored_import_target_kw(self._entry.data)
