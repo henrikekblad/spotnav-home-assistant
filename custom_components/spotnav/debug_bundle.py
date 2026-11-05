@@ -532,12 +532,18 @@ async def async_build_debug_bundle(hass: HomeAssistant) -> dict[str, Any]:
         },
     }
     scrubber = await _scrubber(hass, entries)
-    try:
-        # Pure, and the bundle was built for this call alone: the redaction (every string scrubbed, the larger part
-        # of the work) runs in the executor.
-        return await hass.async_add_executor_job(redact_bundle, bundle, scrubber)
-    except RuntimeError:
-        # A live dict or set read into the bundle changed size while it was being copied: copy it here instead.
-        _LOGGER.debug("Redacting the debug bundle in the executor failed; redacting it on the loop", exc_info=True)
-        return redact_bundle(bundle, scrubber)
+    # Some parts are read straight from live objects (a controller's diagnostics, a log buffer's records): their
+    # containers are copied here, on the loop, so nothing the loop goes on changing is read by the executor. The
+    # redaction (every string scrubbed, the larger part of the work) then runs there, on the bundle's own copy.
+    return await hass.async_add_executor_job(redact_bundle, detached(bundle), scrubber)
+
+
+def detached(value: Any) -> Any:
+    """`value` with every mapping, list, tuple and set copied (as `redact_bundle` writes them: a dict, else a list);
+    strings, numbers and other leaves are shared, as they cannot change."""
+    if isinstance(value, Mapping):
+        return {key: detached(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple, set, frozenset)):
+        return [detached(item) for item in value]
+    return value
 
