@@ -433,3 +433,27 @@ async def test_the_big_stores_snapshot_is_the_store_as_it_stood(hass: HomeAssist
 
     assert len(closed[CHARGER]) == 60 and opened == {}
     assert imports == {CHARGER: {"version": 2, "unpriced_days": ["2026-01-01"]}}
+
+
+@pytest.mark.usefixtures("offline_relay")
+async def test_a_new_price_catalogue_shows_in_the_cost_sensors_at_once(hass: HomeAssistant) -> None:
+    with freeze_time(NOW) as frozen:
+        entry = await charger(hass)
+        await go_auto(hass)
+        await one_charge(hass, frozen, entry, hours=1.0, kwh=6.0)
+        await hass.async_block_till_done()
+        cost = entity_id(hass, entry.entry_id, "sessions_last_cost")
+        before = float(hass.states.get(cost).state)
+
+        # The catalogue now suggests other fees: a fee left at its suggestion follows them.
+        data = domain_data(hass)
+        data.session_store.set_fiscal_resolver(lambda charger_id, area_id: FiscalChoice(vat_enabled=True, vat_percent=50.0))
+        manager = data.price_refresh
+        manager._deliver_catalogue(  # noqa: SLF001 - what a new catalogue does
+            data.price_repository.catalogue_snapshot(), list(manager._catalogue_listeners)  # noqa: SLF001
+        )
+        await hass.async_block_till_done()
+
+        after = float(hass.states.get(cost).state)
+        assert after != before
+        assert after == pytest.approx(round(data.session_store.closed(entry.entry_id)[-1].cost_minor / 100, 4))

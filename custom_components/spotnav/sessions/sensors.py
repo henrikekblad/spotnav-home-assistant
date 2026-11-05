@@ -1,8 +1,8 @@
 """The session sensors of one charger, for Home Assistant's own dashboards and automations.
 
 Energy and cost this month and last month, and the last session's energy and cost. They read the session
-store (memory), refresh when it changes, when the charger's settings or a price entry change (a cost is made
-with the fees as they are now) and every ten minutes (so "this month" turns over at midnight without a
+store (memory), refresh when it changes, when the charger's settings, a price entry or the price catalogue change
+(a cost is made with the fees as they are now) and every ten minutes (so "this month" turns over at midnight without a
 session), and are `unknown` when there is nothing to say, never zero.
 
 The figures are built in those callbacks and kept in `_attr_*`, so a state write only reads them; the store
@@ -92,6 +92,10 @@ class SessionSensor(SpotNavChargingEntity, SensorEntity):
             async_track_time_interval(self._hass, self._tick, timedelta(seconds=REFRESH_S))
         )
         self._refresh()
+        if data.price_refresh is not None:
+            # A new catalogue may suggest another fee, which a fee left at its suggestion follows. (Told at once of
+            # the catalogue as it is: the figures were just built from it, so nothing is written.)
+            self.async_on_remove(data.price_refresh.add_catalogue_listener(self._price_sources))
 
     @callback
     def _changed(self) -> None:
