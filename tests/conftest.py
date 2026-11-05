@@ -235,7 +235,7 @@ def loop_callback_guard(monkeypatch):
 
 _SPOTNAV_DIR = str(Path(__file__).resolve().parents[1] / "custom_components" / "spotnav")
 #: Python's own library (in a virtual environment `platstdlib` holds the site-packages: not that one), and its frozen
-#: modules.
+#: modules. Without a virtual environment (as on CI) the site-packages lie inside it: those frames are not stdlib.
 _STDLIB_DIRS = (sysconfig.get_paths()["stdlib"] + "/", "<frozen ")
 #: Asyncio's debug mode (on in tests) reads source lines for the traceback of every task and handle it makes.
 _NOISE = ("/linecache.py", "/traceback.py")
@@ -248,7 +248,7 @@ def _spotnav_caller() -> str | None:
         name = frame.f_code.co_filename
         if "importlib" in name or name.endswith(_NOISE):
             return None
-        if name.startswith(_STDLIB_DIRS) or name == __file__:
+        if (name.startswith(_STDLIB_DIRS) and "/site-packages/" not in name) or name == __file__:
             frame = frame.f_back
             continue
         return f"{name}:{frame.f_lineno}" if name.startswith(_SPOTNAV_DIR) else None
