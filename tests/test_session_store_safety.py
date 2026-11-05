@@ -269,14 +269,22 @@ async def test_a_clean_stop_writes_the_big_store_current(hass: HomeAssistant, ha
         store.set_open(running, charger_id=entry.entry_id)
         assert BIG not in hass_storage, "no big write has landed yet"
 
+        # As Home Assistant stops: the stop's flush hands both writes to the final write, which lands them.
+        hass.set_state(CoreState.stopping)
         hass.bus.async_fire(EVENT_HOMEASSISTANT_STOP)
         await hass.async_block_till_done()
+        assert BIG not in hass_storage, "nothing lands before the final write"
+        hass.set_state(CoreState.final_write)
+        hass.bus.async_fire(EVENT_HOMEASSISTANT_FINAL_WRITE)
+        await hass.async_block_till_done()
+        hass.set_state(CoreState.running)
 
     data = hass_storage[BIG]["data"]
     assert [row["energy_kwh"] for row in data["sessions"][entry.entry_id]] == [pytest.approx(6.0)]
     assert data["open"][entry.entry_id]["id"] == "next"
-    # The small store keeps the charge as ended for a day all the same.
-    assert [row["energy_kwh"] for row in hass_storage[SMALL]["data"]["closing"][entry.entry_id]] == [pytest.approx(6.0)]
+    small = hass_storage[SMALL]["data"]
+    assert small["open"][entry.entry_id]["id"] == "next"
+    assert [row["energy_kwh"] for row in small["closing"][entry.entry_id]] == [pytest.approx(6.0)]
 
 
 @pytest.mark.usefixtures("offline_relay")
