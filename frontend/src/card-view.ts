@@ -29,6 +29,8 @@ import {
   identificationSummary,
   methodWords,
   sourceChoice,
+  sourceOption,
+  sourceReadingText,
 } from "./identification";
 import { eventOptions, noRecipientsNote, notificationsSummary, phoneOptions } from "./notifications";
 import {
@@ -2825,12 +2827,13 @@ export function createCardView(input: CardViewInput): CardView {
     selected: string | null,
     save: (value: string) => Promise<string | null>,
     intro?: string,
+    status?: string,
   ): void {
     openValueEditor(title, (handlers) =>
       singleEditor(
         doc,
         model.language,
-        { ...(intro === undefined ? {} : { intro }), options, selected, idPrefix },
+        { ...(intro === undefined ? {} : { intro }), ...(status === undefined ? {} : { status }), options, selected, idPrefix },
         save,
         handlers,
       ),
@@ -3857,13 +3860,17 @@ export function createCardView(input: CardViewInput): CardView {
             translate(model.language, kind === "plug" ? "identify.source.plug" : "identify.source.location"),
             [
               { value: "", label: translate(model.language, "identify.source.automatic") },
-              ...source.candidates.map((candidate) => ({ value: candidate.entity_id, label: candidate.name ?? candidate.entity_id })),
+              ...source.candidates.map((candidate) => sourceOption(candidate)),
+              ...source.others.map((other, index) =>
+                sourceOption(other, index === 0 ? translate(model.language, "identify.source.others") : undefined),
+              ),
               { value: "none", label: translate(model.language, "identify.source.none") },
             ],
             sourceChoice(source),
             (chosen) =>
               writeValue({ kind: "vehicleSource", vehicleId: row.id, source: kind, entityId: chosen === "" ? null : chosen }),
             translate(model.language, "identify.source.help"),
+            sourceReadingText(model.language, source),
           );
       }
     }

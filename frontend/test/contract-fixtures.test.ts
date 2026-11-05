@@ -716,8 +716,8 @@ describe("the backend's v7 vehicles", () => {
         onboard_phases: 3,
         suggested_onboard_phases: null,
         identification: {
-          plug: { entity_id: null, name: null, chosen: false, candidates: [] },
-          location: { entity_id: null, name: null, chosen: false, candidates: [] },
+          plug: { entity_id: null, name: null, chosen: false, candidates: [], others: [], reading: null },
+          location: { entity_id: null, name: null, chosen: false, candidates: [], others: [], reading: null },
         },
         target_percent: 80,
         min_percent: null,
@@ -736,8 +736,8 @@ describe("the backend's v7 vehicles", () => {
         onboard_phases: 3,
         suggested_onboard_phases: null,
         identification: {
-          plug: { entity_id: null, name: null, chosen: false, candidates: [] },
-          location: { entity_id: null, name: null, chosen: false, candidates: [] },
+          plug: { entity_id: null, name: null, chosen: false, candidates: [], others: [], reading: null },
+          location: { entity_id: null, name: null, chosen: false, candidates: [], others: [], reading: null },
         },
         target_percent: null,
         min_percent: null,

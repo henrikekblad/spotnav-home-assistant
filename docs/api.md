@@ -1064,8 +1064,13 @@ last look: `{"vehicle_id", "plug": {"entity_id", "state", "changed", "reported"}
 "low" | null, "used": <bool>}}` (`answer` `null`: the camera or the model failed or took too long; `used`: the answer
 decided the car or ordered the candidates). A client that reads the list by `vehicle_id` skips it. A vehicle row in `vehicles` carries the
 additive `identification`: `{"plug": source, "location": source}`, each source `{"entity_id", "name", "chosen",
-"candidates": [{"entity_id", "name"}]}`; `entity_id` `null` with `chosen` false is nothing found, or several to
-choose from, and with `chosen` true it is the person's "none".
+"candidates": [{"entity_id", "name", "state"}]}`; `entity_id` `null` with `chosen` false is nothing found, or
+several to choose from, and with `chosen` true it is the person's "none". `state` is the entity's current state
+text (`null`: no state). The `plug` source also carries `others` (same shape as `candidates`): the car's other
+entities a person may choose as the plug source (any `binary_sensor`, or a `sensor` without a unit and with no
+device class or `enum`; not those already in `candidates`; sorted by name), and `reading`: what the source
+says now, `"plugged"`, `"unplugged"` or `"nothing"` (its value does not read as either), `null` when there is no
+source. A client that ignores keys it does not know can leave all three out.
 
 `spotnav/identify_vehicle` (any signed-in user: the question goes to the household's phones) and the webhook action
 `identify_vehicle` take `vehicle_id`, one of this charger's cars (`vehicle_ids`, every detected car when `null`) or
@@ -1081,7 +1086,8 @@ car is plugged in), `spotnav_invalid_value` (not one of this charger's cars), `s
 identification (`vehicle_ids`, `identify_mode`, a car's sources) stay an administrator's.
 
 `spotnav/choose_vehicle_identification` (administrators) and the webhook action of the same name take
-`vehicle_id`, `source` (`plug` or `location`) and `entity_id`: one of the source's candidates, `"none"` (the car
+`vehicle_id`, `source` (`plug` or `location`) and `entity_id`: one of the source's `candidates` (for `plug` also
+one of its `others`), `"none"` (the car
 has no such source) or `null` (back to automatic). The answer carries `identification`, the vehicle row's block
 after the write; a value that is not one of these is `spotnav_invalid_value`.
 

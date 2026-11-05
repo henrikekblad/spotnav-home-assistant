@@ -5,7 +5,8 @@
 import { translate, type Language } from "./i18n";
 import type { IdentificationChoice } from "./settings";
 import type { SettingsRecord } from "./types";
-import { GUEST_VEHICLE_ID, type Identification, type IdentificationSource } from "./validate";
+import { GUEST_VEHICLE_ID, type Identification, type IdentificationSource, type SourceChoice } from "./validate";
+import type { ChoiceOption } from "./value-editors";
 
 /** A car the charger's car list can tick: every detected car (`vehicle_choices`). */
 export type CarChoice = { id: string; name: string | null };
@@ -238,6 +239,27 @@ export function sourceText(language: Language, source: IdentificationSource): st
     return translate(language, "identify.source.none");
   }
   return translate(language, source.candidates.length > 1 ? "identify.source.choose" : "settings.status.missing");
+}
+
+/** A sensor as an option of a source's choice: its name and, when known, what it says now. */
+export function sourceOption(choice: SourceChoice, group?: string): ChoiceOption {
+  const name = choice.name ?? choice.entity_id;
+  return {
+    value: choice.entity_id,
+    label: choice.state === null || choice.state === "" ? name : `${name} (${choice.state})`,
+    ...(group === undefined ? {} : { group }),
+  };
+}
+
+const READING_KEYS = {
+  plugged: "identify.source.reading.plugged",
+  unplugged: "identify.source.reading.unplugged",
+  nothing: "identify.source.reading.nothing",
+} as const;
+
+/** What the source reads as now ("plugged in", "unplugged" or "says nothing"), as the backend decided; else `undefined`. */
+export function sourceReadingText(language: Language, source: IdentificationSource): string | undefined {
+  return source.reading === null ? undefined : translate(language, READING_KEYS[source.reading]);
 }
 
 /** A source's choice as the vehicle dialog's select holds it: `""` automatic, `"none"`, or an entity id. */

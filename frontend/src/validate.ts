@@ -496,8 +496,21 @@ export interface IdentificationSource {
   name: string | null;
   /** A person chose it; a chosen `null` is "none". */
   chosen: boolean;
-  candidates: Array<{ entity_id: string; name: string | null }>;
+  candidates: SourceChoice[];
+  /** The plug source only: the car's other sensors a person may choose too (absent from an older backend). */
+  others: SourceChoice[];
+  /** The plug source only: what the read entity says now (`null`: none, or an older backend). */
+  reading: SourceReading | null;
 }
+
+export interface SourceChoice {
+  entity_id: string;
+  name: string | null;
+  /** The entity's current state text (`null`: not known, or an older backend). */
+  state: string | null;
+}
+
+export type SourceReading = "plugged" | "unplugged" | "nothing";
 
 export interface VehicleSources {
   plug: IdentificationSource;
@@ -2278,19 +2291,40 @@ function oneOfValues<T extends string>(value: string, allowed: readonly T[]): T 
 
 function decodeSource(raw: unknown): IdentificationSource {
   const source = record(raw);
-  exactKeys(source, ["entity_id", "name", "chosen", "candidates"]);
+  presentKeys(source, ["entity_id", "name", "chosen", "candidates"]);
+  for (const key of Object.keys(source)) {
+    if (!["entity_id", "name", "chosen", "candidates", "others", "reading"].includes(key)) {
+      bad();
+    }
+  }
   if (typeof source.chosen !== "boolean") {
+    return bad();
+  }
+  const choices = (key: string): SourceChoice[] =>
+    arrayValue(source, key).map((entry) => {
+      const item = record(entry);
+      for (const name of Object.keys(item)) {
+        if (!["entity_id", "name", "state"].includes(name)) {
+          bad();
+        }
+      }
+      return {
+        entity_id: text(item, "entity_id"),
+        name: textOrNull(item, "name"),
+        state: item["state"] === undefined ? null : textOrNull(item, "state"),
+      };
+    });
+  const reading = source["reading"];
+  if (reading !== undefined && reading !== null && reading !== "plugged" && reading !== "unplugged" && reading !== "nothing") {
     return bad();
   }
   return {
     entity_id: textOrNull(source, "entity_id"),
     name: textOrNull(source, "name"),
     chosen: source.chosen,
-    candidates: arrayValue(source, "candidates").map((entry) => {
-      const item = record(entry);
-      exactKeys(item, ["entity_id", "name"]);
-      return { entity_id: text(item, "entity_id"), name: textOrNull(item, "name") };
-    }),
+    candidates: choices("candidates"),
+    others: source["others"] === undefined ? [] : choices("others"),
+    reading: reading ?? null,
   };
 }
 

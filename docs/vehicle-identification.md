@@ -29,6 +29,10 @@ them.
   SpotNav found them. If a car has more than one, you choose. You can also choose **None**, or go back to
   **Automatic**. SpotNav only reads these entities, and only for identification. They are never used as a
   charge level, a range or a way to start or stop a charge.
+  The plug sensor's list also has **Other sensors of this car**: every other on/off sensor and every text
+  sensor without a unit on the car's device, each with its current state. If SpotNav missed your car's plug
+  sensor, or ruled it out, choose it there. The dialog says what the chosen sensor reads as now: plugged in,
+  unplugged, or says nothing (a value SpotNav cannot tell as plugged or unplugged, so it is not used).
 
 The **target** belongs to the car: each car has one target percent, the same at every charger. Changing it at
 one charger changes it at every charger planning for that car, and when the car at a charger changes, its own

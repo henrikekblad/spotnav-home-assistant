@@ -2393,7 +2393,9 @@
           "candidates": [],
           "chosen": false,
           "entity_id": null,
-          "name": null
+          "name": null,
+          "others": [],
+          "reading": null
         }
       },
       "max_percent": null,

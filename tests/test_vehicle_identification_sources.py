@@ -22,6 +22,7 @@ from custom_components.spotnav.runtime import domain_data
 from custom_components.spotnav.vehicles.discovery_decisions import async_setup_decisions
 from custom_components.spotnav.vehicles.identification_sources import (
     async_choose_source,
+    sources_block,
     identification_sources,
     location_reading,
     plug_reading,
@@ -162,3 +163,66 @@ async def test_a_person_chooses_a_candidate_or_none_and_can_go_back(hass: HomeAs
     with pytest.raises(ValueError):
         await async_choose_source(hass, vehicle, "camera", one)
     assert domain_data(hass).decision_store is not None
+
+
+# ------------------------------------------------------------------------------- any sensor of the car
+
+
+async def test_others_hold_what_detection_rejects_and_nothing_else(hass: HomeAssistant) -> None:
+    vehicle = car(hass)
+    other_car = car(hass, "Other")
+    detected = add(hass, vehicle, "binary_sensor", "ev_plugged_in", "off", device_class="plug")
+    port = add(hass, vehicle, "binary_sensor", "ev_charge_port", "on")
+    text = add(hass, vehicle, "sensor", "charge_state", "Connected")
+    add(hass, vehicle, "sensor", "charging_power", "0", unit_of_measurement="kW")
+    add(hass, vehicle, "sensor", "charger_kind", "ac", device_class="power")
+    add(hass, vehicle, "device_tracker", "location", "home")
+    add(hass, other_car, "binary_sensor", "other_port", "on")
+    plug = identification_sources(hass, vehicle)[0]
+    assert plug.candidates == (detected,)
+    assert plug.others == (text, port), "sorted by name"
+    assert identification_sources(hass, vehicle)[1].others == ()
+    block = sources_block(hass, vehicle)
+    assert [row["entity_id"] for row in block["plug"]["others"]] == [text, port]
+    assert block["plug"]["others"][1]["state"] == "on"
+    assert block["plug"]["candidates"][0]["state"] == "off"
+    assert "others" not in block["location"]
+
+
+async def test_a_person_chooses_from_others_and_the_reading_is_read(hass: HomeAssistant) -> None:
+    await async_setup_decisions(hass)
+    vehicle = car(hass)
+    port = add(hass, vehicle, "binary_sensor", "ev_charge_port", "on")
+    await async_choose_source(hass, vehicle, SOURCE_PLUG, port)
+    plug = identification_sources(hass, vehicle)[0]
+    assert plug.entity_id == port and plug.chosen is True
+    assert sources_block(hass, vehicle)["plug"]["reading"] == "plugged"
+    hass.states.async_set(port, "off")
+    assert sources_block(hass, vehicle)["plug"]["reading"] == "unplugged"
+    assert plug_reading(hass.states.get(port)) is False
+
+
+async def test_a_chosen_sensor_that_says_nothing_is_shown_so(hass: HomeAssistant) -> None:
+    await async_setup_decisions(hass)
+    vehicle = car(hass)
+    status = add(hass, vehicle, "sensor", "charge_state", "charging")
+    await async_choose_source(hass, vehicle, SOURCE_PLUG, status)
+    assert sources_block(hass, vehicle)["plug"]["reading"] == "nothing"
+    none = identification_sources(hass, vehicle)[0]
+    assert none.entity_id == status
+
+
+async def test_an_entity_of_another_device_or_with_a_unit_is_refused(hass: HomeAssistant) -> None:
+    await async_setup_decisions(hass)
+    vehicle = car(hass)
+    other_car = car(hass, "Other")
+    elsewhere = add(hass, other_car, "binary_sensor", "other_port", "on")
+    unit = add(hass, vehicle, "sensor", "charging_power", "0", unit_of_measurement="kW")
+    for entity_id in (elsewhere, unit):
+        with pytest.raises(ValueError):
+            await async_choose_source(hass, vehicle, SOURCE_PLUG, entity_id)
+    tracker = add(hass, vehicle, "device_tracker", "location", "home")
+    port = add(hass, vehicle, "binary_sensor", "ev_charge_port", "on")
+    with pytest.raises(ValueError):
+        await async_choose_source(hass, vehicle, SOURCE_LOCATION, port)
+    await async_choose_source(hass, vehicle, SOURCE_LOCATION, tracker)

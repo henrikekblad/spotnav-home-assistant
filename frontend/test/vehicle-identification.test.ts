@@ -307,6 +307,45 @@ describe("the Settings page", () => {
       entity_id: "device_tracker.ev6_phone",
     });
   });
+
+  it("offers the car's other sensors for the plug source and says what the chosen one reads as", async () => {
+    const payload = dashboard();
+    const ev6 = payload["vehicles"].find((row: Record<string, any>) => row["id"] === EV6)!;
+    ev6["identification"]["plug"] = {
+      ...ev6["identification"]["plug"],
+      candidates: [{ entity_id: "binary_sensor.ev6_plugged_in", name: "EV6 plugged in", state: "off" }],
+      others: [{ entity_id: "binary_sensor.ev6_charge_port", name: "EV6 charge port", state: "on" }],
+      reading: "nothing",
+    };
+    const { hass, element } = await openSettings(payload);
+    carSection(openDialog(element)!, EV6).querySelector<HTMLButtonElement>("[data-edit='plug']")!.click();
+    await settle();
+    const form = openDialog(element)!.querySelector<HTMLFormElement>("form[data-value-editor='single']")!;
+    expect(Array.from(form.querySelectorAll<HTMLInputElement>("[data-value-option]")).map((o) => o.dataset["valueOption"])).toEqual([
+      "", "binary_sensor.ev6_plugged_in", "binary_sensor.ev6_charge_port", "none",
+    ]);
+    expect(form.querySelector("[data-value-group]")?.textContent).toBe(translate("en", "identify.source.others"));
+    expect(form.textContent).toContain("EV6 charge port (on)");
+    expect(form.querySelector("[data-value-status]")?.textContent).toBe(translate("en", "identify.source.reading.nothing"));
+    form.querySelector<HTMLInputElement>("[data-value-option='binary_sensor.ev6_charge_port']")!.click();
+    form.requestSubmit();
+    await settle();
+    const sent = hass.messages.find((message) => message.type === "spotnav/choose_vehicle_identification");
+    expect(sent).toMatchObject({ vehicle_id: EV6, source: "plug", entity_id: "binary_sensor.ev6_charge_port" });
+  });
+
+  it("says plugged in or unplugged for a sensor that reads so", async () => {
+    for (const [reading, key] of [["plugged", "plugged"], ["unplugged", "unplugged"]] as const) {
+      const payload = dashboard();
+      const ev6 = payload["vehicles"].find((row: Record<string, any>) => row["id"] === EV6)!;
+      ev6["identification"]["plug"]["reading"] = reading;
+      const { element } = await openSettings(payload);
+      carSection(openDialog(element)!, EV6).querySelector<HTMLButtonElement>("[data-edit='plug']")!.click();
+      await settle();
+      const form = openDialog(element)!.querySelector<HTMLFormElement>("form[data-value-editor='single']")!;
+      expect(form.querySelector("[data-value-status]")?.textContent).toBe(translate("en", `identify.source.reading.${key}`));
+    }
+  });
 });
 
 function decided(method: string, evidence: Array<Record<string, unknown>> = []): Record<string, any> {

@@ -345,13 +345,15 @@ export interface ChoiceOption {
   label: string;
   /** A muted line under the option. */
   help?: string;
+  /** A heading shown before this option and the ones after it, until another heading. */
+  group?: string;
 }
 
 /** One of a few, the current one marked, each with its help line when it has one. Choose saves a new choice. */
 export function singleEditor(
   doc: Document,
   language: Language,
-  input: { intro?: string; options: readonly ChoiceOption[]; selected: string | null; idPrefix: string },
+  input: { intro?: string; status?: string; options: readonly ChoiceOption[]; selected: string | null; idPrefix: string },
   save: SaveValue<string>,
   handlers: EditorHandlers,
 ): HTMLFormElement {
@@ -360,9 +362,19 @@ export function singleEditor(
   if (input.intro !== undefined) {
     body.append(helpLine(doc, input.intro));
   }
+  if (input.status !== undefined) {
+    const status = helpLine(doc, input.status);
+    status.dataset["valueStatus"] = "true";
+    body.append(status);
+  }
   let chosen = input.selected;
   const group = element(doc, "fieldset", C.siteFieldset);
   for (const option of input.options) {
+    if (option.group !== undefined) {
+      const heading = element(doc, "p", C.settingsNote, option.group);
+      heading.dataset["valueGroup"] = "true";
+      group.append(heading);
+    }
     const label = element(doc, "label", C.siteChoice);
     const radio = doc.createElement("input");
     radio.type = "radio";
