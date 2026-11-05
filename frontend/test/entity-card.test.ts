@@ -1097,7 +1097,7 @@ describe("the site's estimate, warnings, sign options and detected meters", () =
     edit(element, "charger", "current");
     const line = openDialog(element)?.querySelector<HTMLElement>("[data-measured-source]");
     expect(line?.hidden).toBe(false);
-    expect(line?.textContent).toContain(translate("en", "entity.measuredSource.none"));
+    expect(line?.textContent).toContain("The site reads no measured current for this charger.");
   });
 
   it("offers a charger's own current sensors in the site editor, with Use that applies them by id", async () => {

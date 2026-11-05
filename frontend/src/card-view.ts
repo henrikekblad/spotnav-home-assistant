@@ -124,7 +124,7 @@ import {
   type ReferenceAnswer,
 } from "./camera-editor";
 import { issueText, type IssueFix } from "./status";
-import { keyEditor, priceProviderNodes } from "./price-provider";
+import { integrationPath, keyEditor, priceProviderNodes } from "./price-provider";
 import { setupLineText, setupSection, type SetupRowId } from "./setup-checklist";
 import { automationsBody, type BlueprintUse } from "./automations";
 import { historyBody, type HistoryPower, type HistoryState, type HistoryUi, type HistoryView } from "./history";
@@ -1431,6 +1431,17 @@ export function createCardView(input: CardViewInput): CardView {
   if (statusNode !== null) {
     card.append(statusNode);
   }
+  // A status line that sends the reader to the site's settings has the way there, for an administrator.
+  if (model.status !== null && model.statusNeedsSiteSettings && input.isAdmin) {
+    const answers = element(doc, "div", C.suggestionAnswers);
+    answers.dataset["part"] = "open-site";
+    const open = element(doc, "button", C.choiceButton, translate(model.language, "entity.phases.openSite"));
+    open.setAttribute("type", "button");
+    open.dataset["action"] = "open-site";
+    open.addEventListener("click", openSiteSettings);
+    answers.append(open);
+    card.append(answers);
+  }
   if (model.releaseConfirm !== null && input.onReleaseImportTarget !== undefined) {
     // The one way past the import target, offered whenever it holds or pauses the charge: confirmed first.
     const answers = element(doc, "div", C.suggestionAnswers);
@@ -2724,6 +2735,12 @@ export function createCardView(input: CardViewInput): CardView {
    * every way into the dialog from this view, so a later open never inherits it.
    */
   let entityFocus: { scope: EntityScope; part: string; title: string } | null = null;
+
+  /** Home Assistant has no address for one entry's options, so the SpotNav page, where its Configure is. */
+  function openSiteSettings(): void {
+    entityDialog.hide({ restoreFocus: false });
+    navigateTo(doc, integrationPath("spotnav"));
+  }
 
   function openEntities(scope: EntityScope, focus: { part: string; title: string } | null = null): void {
     entityFocus = focus === null ? null : { scope, ...focus };
@@ -4946,15 +4963,13 @@ export function createCardView(input: CardViewInput): CardView {
         config,
         hass: () => input.hass?.(),
         appliesText: scope === "site" ? (model.site?.appliesToText ?? null) : null,
+        ...(model.chargerName === null ? {} : { chargerName: model.chargerName }),
         ...(focus === null ? {} : { focus: focus.part }),
       },
       {
         onSave: (draft) => input.onSaveEntities?.(scope, draft),
         onCancel: () => leaveSettingsChild(entityDialog, input.onCancelEntities),
-        onOpenSite: () => {
-          entityDialog.hide({ restoreFocus: false });
-          openEntities("site");
-        },
+        onOpenSite: openSiteSettings,
       },
       idPrefix,
     );
