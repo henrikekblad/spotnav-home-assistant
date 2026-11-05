@@ -114,6 +114,22 @@ async def test_a_text_plug_state_counts_when_nothing_better_is_there(hass: HomeA
     assert identification_sources(hass, vehicle)[0].entity_id == better
 
 
+async def test_bmw_cardatas_charging_port_plug_state_counts_and_the_port_door_does_not(hass: HomeAssistant) -> None:
+    """BavarianData (BMW CarData): `vehicle.body.chargingPort.status`, "Charging Port plug state", CONNECTED or
+    DISCONNECTED, beside the DC inlet's state and the combined connection state; Kia's port door never counts."""
+    vehicle = car(hass)
+    add(hass, vehicle, "binary_sensor", "ev_charge_port", "on")
+    add(hass, vehicle, "sensor", "ix3_charging_port_plug_dc_state", "DISCONNECTED")
+    add(hass, vehicle, "sensor", "ix3_charging_port_connection_state", "CONNECTED")
+    plug = add(hass, vehicle, "sensor", "ix3_charging_port_plug_state", "CONNECTED")
+    source = identification_sources(hass, vehicle)[0]
+    assert source.entity_id == plug
+    assert "binary_sensor.ev_charge_port" not in source.candidates
+    assert plug_reading(hass.states.get(plug)) is True
+    assert plug_reading(State("sensor.x", "INVALID")) is None
+    assert plug_reading(State("sensor.x", "-NA-")) is None
+
+
 async def test_two_alike_are_a_choice_and_nothing_is_none(hass: HomeAssistant) -> None:
     vehicle = car(hass)
     assert identification_sources(hass, vehicle)[0].entity_id is None

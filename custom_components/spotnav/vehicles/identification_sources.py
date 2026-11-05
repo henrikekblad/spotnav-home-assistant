@@ -35,15 +35,17 @@ SOURCES: Final = (SOURCE_PLUG, SOURCE_LOCATION)
 #: What a person sends to say the car has no such source.
 CHOICE_NONE: Final = "none"
 
-# Never a plug signal, whatever the device class: a lock, a door or flap, the car's online state, charging.
-# Never a plug signal, whatever the key or device class: a lock or latch, and the charge port's door, flap or lid
-# (Kia's `ev_charge_port` is the port door, open while charging or not; its `switch` opens it).
+# Never a plug signal, whatever the key or device class: a lock or latch, and the charge port's door, flap or lid.
 _PLUG_EXCLUDED_PHRASES: Final = (
-    "lock", "locked", "latch", "door", "flap", "lid", "cover", "window", "port",
+    "lock", "locked", "latch", "door", "flap", "lid", "cover", "window",
 )
 # Not a plug signal unless the key also names the cable or plug ("charging cable" is one, "charging" is not):
-# the car's online state and a charging-in-progress sensor.
-_PLUG_SOFT_EXCLUDED_PHRASES: Final = ("online", "cloud", "internet", "charging")
+# the car's online state, a charging-in-progress sensor, and the charge port itself (Kia's `ev_charge_port` is
+# the port door, open while charging or not; BMW CarData's `chargingPort.status`, "Charging Port plug state",
+# names the plug and is one).
+_PLUG_SOFT_EXCLUDED_PHRASES: Final = ("online", "cloud", "internet", "charging", "port")
+# A text sensor for the DC inlet only says nothing of a car on an AC charger: ranked after the others.
+_PLUG_DC_PHRASES: Final = ("dc",)
 # A connectivity (or class-less) binary sensor counts when its key says it is the cable or plug.
 _PLUG_PHRASES: Final = ("plug", "plugged", "cable", "gun", "connector", "coupler", "inlet")
 _PLUG_FRAGMENTS: Final = ("chargerconnected", "chargercable", "conncharge", "plugged", "chargecable")
@@ -121,7 +123,9 @@ def _plug_rank(entry: er.RegistryEntry, state: State) -> int | None:
         if state.attributes.get("unit_of_measurement") or device_class not in (None, "enum"):
             return None
         if key.contains_any(_PLUG_TEXT_FRAGMENTS):
-            return 2
+            # One that names the plug before one that names only a connection, and the DC inlet's last.
+            rank = 2 if names_plug else 3
+            return rank + 2 if key.has_any(_PLUG_DC_PHRASES) else rank
     return None
 
 
