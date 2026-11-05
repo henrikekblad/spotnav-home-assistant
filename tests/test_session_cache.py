@@ -13,9 +13,12 @@ from datetime import date, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 import pytest
+from freezegun import freeze_time
 from homeassistant.core import HomeAssistant
 
+from custom_components.spotnav.planning.auto_settings import AreaAutoSettings, FiscalOverride
 from custom_components.spotnav.planning.planner import FiscalChoice, HighLoadWindow
+from custom_components.spotnav.runtime import charger_data, domain_data
 from custom_components.spotnav.sessions import model as model_module
 from custom_components.spotnav.sessions.costing import Slice
 from custom_components.spotnav.sessions.model import ChargeSession, SOURCE_IMPORTED_HOURLY
@@ -29,6 +32,8 @@ from custom_components.spotnav.sessions.summary import (
     sessions_summary,
 )
 
+from .test_session_integration import charger, NOW, one_charge
+from .world import entity_id, go_auto, SE4
 
 UTC = timezone.utc
 STOCKHOLM = ZoneInfo("Europe/Stockholm")
@@ -208,3 +213,65 @@ async def test_a_removed_charger_drops_its_costed_sessions(store: SessionStore) 
 
     assert store.closed(CHARGER) == ()
     assert store.month_summary(CHARGER, STOCKHOLM, month_key(END.date()))["sessions"] == 0
+
+
+@pytest.mark.usefixtures("offline_relay")
+async def test_the_sensors_cost_nothing_on_a_controller_notify(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    keys = (
+        "sessions_energy_this_month", "sessions_cost_this_month", "sessions_energy_last_month",
+        "sessions_cost_last_month", "sessions_last_energy", "sessions_last_cost",
+    )
+    with freeze_time(NOW) as frozen:
+        entry = await charger(hass)
+        await go_auto(hass)
+        await one_charge(hass, frozen, entry, hours=1.0, kwh=6.0)
+        await hass.async_block_till_done()
+
+        def states():
+            return {
+                key: (hass.states.get(entity_id(hass, entry.entry_id, key)).state,
+                      dict(hass.states.get(entity_id(hass, entry.entry_id, key)).attributes))
+                for key in keys
+            }
+
+        shown = states()
+        assert float(shown["sessions_last_energy"][0]) == pytest.approx(6.0)
+        calls = []
+        real = model_module.price_slices
+
+        def counted(slices, fiscal):
+            calls.append(1)
+            return real(slices, fiscal)
+
+        monkeypatch.setattr(model_module, "price_slices", counted)
+        controller = charger_data(hass, entry.entry_id).controller
+        for _ in range(3):
+            controller._notify()  # noqa: SLF001 - what every controller change does
+        await hass.async_block_till_done()
+
+        assert calls == []
+        assert states() == shown
+        # The store's cache is what the sensors show.
+        store = domain_data(hass).session_store
+        last = store.closed(entry.entry_id)[-1]
+        assert float(shown["sessions_last_cost"][0]) == pytest.approx(round(last.cost_minor / 100, 4))
+
+
+@pytest.mark.usefixtures("offline_relay")
+async def test_a_fee_changed_in_the_settings_shows_in_the_cost_sensors_at_once(hass: HomeAssistant) -> None:
+    with freeze_time(NOW) as frozen:
+        entry = await charger(hass)
+        await go_auto(hass)
+        await one_charge(hass, frozen, entry, hours=1.0, kwh=6.0)
+        await hass.async_block_till_done()
+        cost = entity_id(hass, entry.entry_id, "sessions_last_cost")
+        before = float(hass.states.get(cost).state)
+
+        await go_auto(hass, overrides=(AreaAutoSettings(area_id=SE4, transfer=FiscalOverride(True, 100.0)),))
+
+        after = float(hass.states.get(cost).state)
+        assert after != before
+        store = domain_data(hass).session_store
+        assert after == pytest.approx(round(store.closed(entry.entry_id)[-1].cost_minor / 100, 4))
