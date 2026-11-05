@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import asyncio
+import sys
+import sysconfig
+from pathlib import Path
 from typing import Any, Callable
 
 import pytest
@@ -215,6 +219,90 @@ def loop_callback_guard(monkeypatch):
                 monkeypatch.setattr(module, name, make_wrapper(name, real))
     yield
     assert not violations, "\n".join(violations)
+
+
+# --- Guard: SpotNav's own code does no file I/O and no sleep on the event loop ---
+#
+# Home Assistant's blocking-call detection (`block_async_io`) is not on in tests, and even on it skips `open` and the
+# `Path` reads and writes when `unittest` is loaded. This guard wraps the cheap-to-patch blocking calls: `open`, the
+# `Path` reads, writes, stats and listings, `os.listdir/scandir/walk/stat`, `os.path.exists/isfile/isdir/getsize`,
+# `shutil`'s copies and `rmtree`, and `time.sleep`. A call is a violation when it is made on the thread running the
+# event loop and the first frame above it outside Python's own library is SpotNav's (`custom_components/spotnav`):
+# Home Assistant's own I/O and the tests' fixture reads are not SpotNav's to fix, and an executor job runs on a
+# worker thread, so it is allowed. Imports are left to Home Assistant's own detector (an importlib frame ends the
+# walk), and so are the source-line reads of asyncio's debug mode (a `linecache` or `traceback` frame ends it). It records instead of raising (a raise can be swallowed by the code under test) and fails the test at
+# teardown. A test about a deliberate read on the loop opts out with the `allow_loop_io` marker.
+
+_SPOTNAV_DIR = str(Path(__file__).resolve().parents[1] / "custom_components" / "spotnav")
+#: Python's own library (in a virtual environment `platstdlib` holds the site-packages: not that one), and its frozen
+#: modules.
+_STDLIB_DIRS = (sysconfig.get_paths()["stdlib"] + "/", "<frozen ")
+#: Asyncio's debug mode (on in tests) reads source lines for the traceback of every task and handle it makes.
+_NOISE = ("/linecache.py", "/traceback.py")
+
+
+def _spotnav_caller() -> str | None:
+    """The SpotNav file and line that made this blocking call, when SpotNav made it."""
+    frame = sys._getframe(2)
+    while frame is not None:
+        name = frame.f_code.co_filename
+        if "importlib" in name or name.endswith(_NOISE):
+            return None
+        if name.startswith(_STDLIB_DIRS) or name == __file__:
+            frame = frame.f_back
+            continue
+        return f"{name}:{frame.f_lineno}" if name.startswith(_SPOTNAV_DIR) else None
+    return None
+
+
+def _on_loop_thread() -> bool:
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return False
+    return True
+
+
+@pytest.fixture(autouse=True)
+def loop_io_guard(request, monkeypatch):
+    import builtins
+    import io
+    import os
+    import shutil
+    import time
+
+    if request.node.get_closest_marker("allow_loop_io") is not None:
+        yield
+        return
+    violations: list[str] = []
+
+    def guarded(label, real):
+        def wrapper(*args, **kwargs):
+            if _on_loop_thread():
+                caller = _spotnav_caller()
+                if caller is not None:
+                    violations.append(f"{label} on the event loop from {caller}")
+            return real(*args, **kwargs)
+
+        wrapper.__wrapped__ = real
+        return wrapper
+
+    monkeypatch.setattr(builtins, "open", guarded("open", builtins.open))
+    monkeypatch.setattr(io, "open", guarded("open", io.open))
+    for name in (
+        "open", "read_text", "read_bytes", "write_text", "write_bytes", "stat", "exists", "is_file", "is_dir",
+        "iterdir", "glob", "rglob", "mkdir", "unlink", "rmdir", "rename", "replace", "touch",
+    ):
+        monkeypatch.setattr(Path, name, guarded(f"Path.{name}", getattr(Path, name)))
+    for name in ("listdir", "scandir", "walk", "stat", "remove", "unlink", "replace", "rename", "makedirs"):
+        monkeypatch.setattr(os, name, guarded(f"os.{name}", getattr(os, name)))
+    for name in ("exists", "isfile", "isdir", "getsize"):
+        monkeypatch.setattr(os.path, name, guarded(f"os.path.{name}", getattr(os.path, name)))
+    for name in ("copy", "copy2", "copyfile", "copytree", "rmtree", "move"):
+        monkeypatch.setattr(shutil, name, guarded(f"shutil.{name}", getattr(shutil, name)))
+    monkeypatch.setattr(time, "sleep", guarded("time.sleep", time.sleep))
+    yield violations
+    assert not violations, "blocking calls on the event loop:\n" + "\n".join(dict.fromkeys(violations))
 
 
 # --- The charge-ownership core: every decision it could not take fails the test ---
