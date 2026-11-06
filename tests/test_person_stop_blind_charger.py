@@ -337,3 +337,79 @@ async def test_the_plans_notices_come_back_after_an_unplug_and_a_plug_in(
     await _go(hass, freezer, at(14, 21))
     await _at_risk_again(hass, night)
     assert night.told() and relay.requests, "a departure at risk is told again"
+
+
+# ------------------------------------------------------------------ after the Stop
+
+
+async def test_a_start_after_the_cars_sensor_ended_the_stop_is_never_refused_for_the_cars_word(
+    hass: HomeAssistant, freezer: Any, relay: FakeRelay
+) -> None:
+    """The car's sensor told the unplug; the person plugs in again and presses Start before the car's cloud says
+    "plugged in". Only the charger's own word refuses a Start, and it says nothing."""
+    night = await _night(hass, freezer, off_status="Unavailable", car=True)
+    await _with_car(hass, night)
+    await _charging(hass, freezer, night)
+    await _stop(night)
+    _car_reports_again(hass)
+    _car_says(hass, "off")
+    await hass.async_block_till_done()
+    assert not night.controller.held_off_by_person
+    assert night.controller.adapter.vehicle_connected() is False, "the car's sensor stands in until the plug-in"
+    starts = len(night.starts)
+
+    await _executor(night).async_manual_start()
+    await hass.async_block_till_done()
+    assert len(night.starts) == starts + 1, "the person's Start goes out"
+    person_start = [
+        record["event"]
+        for record in night.controller.session_runner.events
+        if record["event"]["kind"] == "person_start"
+    ][-1]
+    assert person_start["connected"] is None, "the charger's own word, not the car's sensor's"
+    # The connector, on again, says the car is there: the first it states since the car's sensor stood in, which
+    # ends no plug-in, so the person's Start holds, in the core and the stored pause alike.
+    assert _connection_events(night)[-1] == {"kind": "plug_in", "previous": None, "source": None}
+    manual = night.controller.session_runner.session.manual
+    assert (manual.action, manual.scope) == ("start", "plug_in")
+    pause = domain_data(hass).auto_store.settings(night.entry.entry_id).pause
+    assert (pause.action, pause.scope) == ("start", "plug_in")
+
+
+async def test_after_resume_the_cars_sensor_no_longer_stands_in(
+    hass: HomeAssistant, freezer: Any, relay: FakeRelay
+) -> None:
+    night = await _night(hass, freezer, off_status="Unavailable", car=True)
+    await _with_car(hass, night)
+    await _charging(hass, freezer, night)
+    await _stop(night)
+    assert night.controller.car_plug_facts()["armed_since"]
+    events = len(_connection_events(night))
+
+    await _executor(night).async_manual_follow()
+    await hass.async_block_till_done()
+    assert not night.controller.held_off_by_person
+    assert night.controller.car_plug_facts()["armed_since"] is None
+
+    _car_says(hass, "off")
+    await hass.async_block_till_done()
+    await _go(hass, freezer, FIRST[0] + timedelta(minutes=20))
+    assert len(_connection_events(night)) == events, "no unplug from the car's sensor outside a person's Stop"
+    assert night.controller.car_plug_facts()["armed_since"] is None
+
+
+async def test_the_card_line_comes_back_when_the_cars_sensor_goes_unavailable(
+    hass: HomeAssistant, freezer: Any, relay: FakeRelay
+) -> None:
+    night = await _night(hass, freezer, off_status="Unavailable", car=True)
+    await _with_car(hass, night)
+    await _charging(hass, freezer, night)
+    await _stop(night)
+    _car_reports_again(hass)
+    await hass.async_block_till_done()
+    assert _status(night) == []
+    hass.states.async_set(PLUG, "unavailable", {"device_class": "plug"})
+    await hass.async_block_till_done()
+    assert _status(night) == ["stop_unplug_unseen"]
+    assert night.controller.held_off_by_person, "a sensor gone unavailable is no unplug"
+

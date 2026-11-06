@@ -1286,7 +1286,7 @@ class AutoExecutor:
         * A paused Auto's plan is dropped without touching the charger (its windows' ends would stop what
           the person started), and the start is marked as awaiting the charger's report.
         """
-        connected = self._core_connected(fallback=False, kind=core_events.PersonStart.kind)
+        connected = self._core_connected(fallback=False, kind=core_events.PersonStart.kind, charger_only=True)
         token = self._runner.begin(early=None if connected is ... else core_events.PersonStart(connected=connected))
         note: dict[str, Any] = {"outcome": None, "token": token}
         try:
@@ -1326,11 +1326,16 @@ class AutoExecutor:
         except Exception:  # noqa: BLE001 - the outcome's reading never fails the stop
             return CommandOutcome(True)
 
-    def _core_connected(self, *, fallback: bool, kind: str) -> Any:
+    def _core_connected(self, *, fallback: bool, kind: str, charger_only: bool = False) -> Any:
         """What the charger says of a car now (with `fallback`, the last it stated when it says nothing), for the
-        core's event of `kind`; `...` when it cannot be read (a failure: the event is not fed)."""
+        core's event of `kind`; `...` when it cannot be read (a failure: the event is not fed). `charger_only`: the
+        charger's own word, never the car's plug sensor standing in for it (`car_plug_fallback.py`)."""
         try:
-            connected = self._controller.adapter.vehicle_connected()
+            connected = (
+                self._controller.charger_says_connected()
+                if charger_only
+                else self._controller.adapter.vehicle_connected()
+            )
             if connected is None and fallback:
                 connected = self._controller.known_connected
             return connected
@@ -1339,7 +1344,9 @@ class AutoExecutor:
             return ...
 
     async def _manual_start_body(self, amps: int | None, note: dict[str, Any]) -> None:
-        if self._controller.adapter.vehicle_connected() is False:
+        # Only the charger's own word refuses a person's Start: a car's sensor that has not yet reported a plug-in the
+        # person just made never does.
+        if self._controller.charger_says_connected() is False:
             raise AutoControlRefused(EXECUTION_VEHICLE_NOT_CONNECTED, "no car is plugged in")
         # A Start supersedes a Stop still awaiting its report: what is pending now is this command's.
         self._end_stop_pending()
@@ -1592,6 +1599,8 @@ class AutoExecutor:
             self._end_stop_pending()
             if self.pause_intent.manual:
                 await self._end_manual_pause_locked("follow")
+                # The person ended their Stop: the car's plug sensor no longer stands in for the charger.
+                self._controller.end_car_plug_fallback()
                 if self._controller.plan is None:
                     # Auto has the charger back and nothing to follow yet: the pause's end was the request.
                     await self._notify_change()
@@ -1989,6 +1998,11 @@ class AutoExecutor:
         if self._shutdown or not (self.pause_intent.manual or self._manual_write_in_flight):
             return
         want = getattr(self._controller, "core_connection_manual", ...)
+        if previous is None and connected and self._manual_write_in_flight:
+            # The first connection the charger states (after a restart, or once it speaks again after the car's plug
+            # sensor stood in) ends no plug-in: a person's Start on its way, which may be what turned the charger on,
+            # is read under the lock, once the core has it, never ended by the pause the core held before it.
+            want = ...
         self._hass.async_create_task(self._async_connection_changed(previous, connected, want))
 
     async def _async_connection_changed(self, previous: bool | None, connected: bool, want: Any = ...) -> None:

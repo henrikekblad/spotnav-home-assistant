@@ -7,9 +7,10 @@ unplugged, so with nothing that saw the unplug it held for days.
 So while a person's Stop holds and the charger's own reading says nothing (its status `unknown` or `unavailable`, at a
 charger that otherwise says when a car is plugged in), the car's plug sensor stands in for it:
 
-* **Armed** (`arm`) by the controller when both hold, from that moment (`since`). It stays armed through the unplug
-  and the plug-in it gives (the stop ends at that unplug), until the charger's own reading says something again: the
-  charger always wins (`disarm`).
+* **Armed** (`arm`) by the controller when both hold, from that moment (`since`). It stays armed while the Stop
+  holds, and after an unplug it gave (which ended the Stop) until the plug-in after it (`awaits_plug_in`); it is
+  disarmed otherwise, when the person acts (Start, Resume, Stop again), and as soon as the charger's own reading says
+  something again: the charger always wins.
 * **The car** is the one the charger's plan is for (`AutoSettings.target`, the car identified for this plug-in or the
   charger's only one; never a guest car), and only its plug source as `identification_sources` resolves it, detected
   or chosen.
@@ -69,21 +70,26 @@ class CarPlugFallback:
         self._since: datetime | None = None
         self._vehicle_id: str | None = None
         self._entity_id: str | None = None
-        #: A fresh reading was seen since it was armed.
-        self._fresh_seen = False
         #: The last unplug or plug-in it gave: when, which, from which sensor.
         self._last: dict[str, Any] | None = None
+        #: It gave an unplug, and no plug-in since: it stays armed for that plug-in.
+        self._awaits_plug_in = False
 
     @property
     def armed(self) -> bool:
         return self._since is not None
+
+    @property
+    def awaits_plug_in(self) -> bool:
+        """Whether it gave an unplug (which ended the Stop) and the plug-in after it is still to come."""
+        return self._since is not None and self._awaits_plug_in
 
     def arm(self) -> None:
         """Read the car's sensor from now on (nothing it said before counts)."""
         if self._since is not None:
             return
         self._since = dt_util.utcnow()
-        self._fresh_seen = False
+        self._awaits_plug_in = False
         self.refresh()
 
     def disarm(self) -> None:
@@ -91,7 +97,7 @@ class CarPlugFallback:
         if self._since is None:
             return
         self._since = None
-        self._fresh_seen = False
+        self._awaits_plug_in = False
         self._vehicle_id = self._entity_id = None
         self._changes.watch(())
 
@@ -101,6 +107,10 @@ class CarPlugFallback:
             return
         vehicle = self._vehicle()
         entity_id = None if vehicle is None else identification_sources(self._hass, vehicle)[0].entity_id
+        if (vehicle, entity_id) != (self._vehicle_id, self._entity_id) and self._vehicle_id is not None:
+            # Another car (or another sensor of it): nothing it said before now counts.
+            self._since = dt_util.utcnow()
+            self._awaits_plug_in = False
         self._vehicle_id, self._entity_id = vehicle, entity_id
         self._changes.watch(() if entity_id is None else (entity_id,))
 
@@ -117,16 +127,16 @@ class CarPlugFallback:
         stamps = [stamp for stamp in (self._changes.changed(state), self._changes.reported(state)) if stamp is not None]
         if not stamps or max(stamps) < since:
             return None
-        self._fresh_seen = True
         return value
 
     @property
     def usable(self) -> bool:
-        """Whether the car's sensor can tell an unplug: it gave a fresh reading since it was armed."""
-        return self._fresh_seen or self.reading() is not None
+        """Whether the car's sensor can tell an unplug now: it says something fresh since it was armed."""
+        return self.reading() is not None
 
     def note(self, connected: bool) -> None:
         """The controller took an unplug or a plug-in from it."""
+        self._awaits_plug_in = not connected
         self._last = {
             "at": dt_util.utcnow().isoformat(),
             "connected": connected,
@@ -143,6 +153,7 @@ class CarPlugFallback:
             "armed_since": None if self._since is None else self._since.isoformat(),
             "vehicle_id": self._vehicle_id,
             "entity_id": self._entity_id,
-            "fresh_seen": self._fresh_seen,
+            "reading": self.reading(),
+            "awaits_plug_in": self.awaits_plug_in,
             "last": self._last,
         }

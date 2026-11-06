@@ -182,6 +182,8 @@ _LOGGER = logging.getLogger(__name__)
 PHASE_SAMPLE_INTERVAL = timedelta(seconds=30)
 #: How often the plan's charge is looked at for the car ending it by itself (`PlanChargeWatch`).
 PLAN_WATCH_INTERVAL = timedelta(seconds=30)
+#: The car's plug sensor standing in is found again every this many plan watches (five minutes).
+CAR_PLUG_REFRESH_TICKS: Final = 10
 STORE_VERSION = 1
 #: The store key of the core's own session record (`ChargeSession.to_store`), the truth a restart reads; today's keys
 #: are still written beside it, derived from it, for one release more.
@@ -924,6 +926,9 @@ class ChargingController:
             hass, vehicle=lambda: plan_vehicle(hass, entry_id), on_update=self._on_car_plug_update
         )
         self.adapter.connection_fallback = self._car_plug.reading
+        self._car_plug_ticks = 0
+        # The last connection stated came from the car's plug sensor, and the charger has said nothing since.
+        self._plugged_by_car = False
         self.plan: ChargingPlan | None = None
         # How this controller reads a vehicle's state of charge, or `None` when it enforces no
         # target.
@@ -1624,14 +1629,10 @@ class ChargingController:
         plug-in inside an open window of the installed plan starts that window now unless the handler
         takes care of it (`async_start_on_plug_in`).
         """
-        self._watch_car_plug()
+        own = self._watch_car_plug()
         connected = self.adapter.vehicle_connected()
         # The car's own plug sensor said it, in place of a charger that could not (`car_plug_fallback.py`).
-        source = (
-            SOURCE_CAR_PLUG
-            if connected is not None and self.adapter.charger_vehicle_connected() is None
-            else None
-        )
+        source = SOURCE_CAR_PLUG if connected is not None and own is None and self._car_plug.armed else None
         if connected is None:
             if self._plugged is True:
                 # Nobody watches the connection now (a charger offline, a cloud outage): a car may leave and
@@ -1643,12 +1644,18 @@ class ChargingController:
                 self._connection_gap = True
             return
         previous = self._plugged
+        by_car, self._plugged_by_car = self._plugged_by_car, source is not None or (own is None and self._plugged_by_car)
         if self._connection_gap:
             self._connection_gap = False
             if connected and previous is True:
                 self._first_known_connected_at = dt_util.utcnow()
         if previous == connected:
             return
+        if source is None and by_car:
+            # The charger speaks again after the car's sensor stood in for it: what it says is the first connection
+            # it states, as after a restart, not a change of its own (a person's Start may have turned on a connector
+            # whose car was plugged in again before the car's sensor said so: that Start is not this plug-in's end).
+            previous = None
         # Read before the feed begins: the core decides the plug-in or the unplug there.
         had_car_ended = self._car_ended.at is not None
         if source is not None:
@@ -1669,16 +1676,33 @@ class ChargingController:
         finally:
             self._runner.end(token, event)
 
-    def _watch_car_plug(self) -> None:
+    def _watch_car_plug(self) -> bool | None:
         """Arm the car's plug sensor in place of the charger's reading while a person's Stop holds and the charger,
         which otherwise says when a car is plugged in, says nothing; disarm it once the charger says again (its own
-        reading always wins). Armed, it stays so through the unplug and the plug-in it gives."""
+        reading always wins), and once no Stop holds, except between the unplug it gave and the plug-in after it.
+        Answers the charger's own reading."""
         fallback = self._car_plug
-        if not self.adapter.reports_connection or self.adapter.charger_vehicle_connected() is not None:
+        own = self.adapter.charger_vehicle_connected()
+        if not self.adapter.reports_connection or own is not None:
             fallback.disarm()
-            return
-        if not fallback.armed and self._held_off_by_person():
+        elif self._held_off_by_person():
             fallback.arm()
+        elif not fallback.awaits_plug_in:
+            fallback.disarm()
+        return own
+
+    def end_car_plug_fallback(self) -> None:
+        """The person acted (Start, Resume, Stop again): the car's sensor stops standing in, and is armed afresh only
+        under a Stop from now."""
+        self._car_plug.disarm()
+        self._watch_car_plug()
+
+    def charger_says_connected(self) -> bool | None:
+        """Whether a car is plugged in by the charger's own word (`None`: it cannot say), never the car's plug sensor
+        standing in for it: what refuses a person's Start."""
+        if self._car_plug.armed and self.adapter.charger_vehicle_connected() is None:
+            return None
+        return self.adapter.vehicle_connected()
 
     @callback
     def _on_car_plug_update(self) -> None:
@@ -1695,7 +1719,10 @@ class ChargingController:
         """Every plan watch: arm or disarm, find the car's sensor again, and look whether it says something new."""
         self._watch_car_plug()
         if self._car_plug.armed:
-            self._car_plug.refresh()
+            # The car or its sensor found again now and then (a car identified, a source chosen meanwhile).
+            self._car_plug_ticks = (self._car_plug_ticks + 1) % CAR_PLUG_REFRESH_TICKS
+            if self._car_plug_ticks == 0:
+                self._car_plug.refresh()
             self._on_car_plug_update()
 
     @property
@@ -2588,8 +2615,10 @@ class ChargingController:
             cancel()
 
     def reset_person_hold(self) -> None:
-        """A person's Stop again (`AutoExecutor`): they acted, so the stops under it start afresh."""
+        """A person's Start or Stop (`AutoExecutor`): they acted, so the stops under it start afresh, and the car's
+        plug sensor stands in afresh only under a Stop (`end_car_plug_fallback`)."""
         self._reset_person_hold()
+        self.end_car_plug_fallback()
 
     def _reset_person_hold(self) -> None:
         """A new plug-in session, the person acting, or no person's Stop any more: the stops start afresh."""
