@@ -106,7 +106,15 @@ starts; it does nothing while the surplus is unknown or the load is unavailable.
 | **Off at surplus** | 0 kW | 0 switches off as soon as the site takes power from the grid; a little above 0 keeps a margin. |
 | **Minimum on time**, **Minimum off time** | 10 and 5 minutes | |
 | **Window starts**, **Window ends** | 00:00, 00:00 (no window) | With a window the load is only switched on inside it, and switched off at its end. |
+| **Also on while cheap** | none | Optional: the price device's **Cheap now** sensor, for example `binary_sensor.electricity_price_se4_cheap_now`. See below. |
 | **Allowed when on** | none | Optional input boolean or switch: while it is off nothing is done, so you can run the load by hand. |
+
+With **Also on while cheap** set, the load is switched on when the surplus is at or above the on threshold
+or Cheap now is on, and switched off only when the surplus is at or below the off threshold and Cheap now is
+off. That lets one automation, and one relay, serve both reasons, for example a heat pump's low-price input
+that should close on solar surplus or in the cheap hours. The minimum on and off times, the window and the
+allowed entity apply to both reasons alike: a cheap hour outside the window does not switch the load on, and
+the window's end still switches it off. Left empty, the blueprint runs on surplus only, as before.
 
 SpotNav counts what its own chargers draw as part of the surplus, so a load run by this blueprint comes
 before a car that charges on [Solar](strategies.md#solar): the car's current goes down when the load
