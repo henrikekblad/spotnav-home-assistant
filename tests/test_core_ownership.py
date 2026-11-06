@@ -177,6 +177,52 @@ def test_a_person_start_overrules_what_the_car_ended() -> None:
     assert session.car_ended_at is None
 
 
+@pytest.mark.parametrize("before", [STOP, STOP_NEXT, None])
+@pytest.mark.parametrize("unplug", [ev.Unplug(previous=True), ev.Unplug(previous=None)])
+@pytest.mark.parametrize("told", ["pending", "result"])
+@pytest.mark.parametrize("held", [False, True])
+def test_a_person_start_whose_car_was_unplugged_before_its_result_ends_with_it(before, unplug, told, held) -> None:
+    """The car left while the Start was on its way (a connector that said nothing until the Start turned it on): the
+    Start ends with that plug-in as if the unplug had come after it, so no pause outlives it, the Stop it replaced
+    included, and the charge is nobody's. The same whether the core asked for the Start before the unplug
+    (`pending`) or the shell decided it before and fed it after (`result`)."""
+    result = ev.CommandResult(
+        command="start", reason="person", executed=not held, balancing_held=held, earlier_plug_in=told == "result"
+    )
+    session = ChargeSession(plugged=True, manual=before)
+    if told == "pending":
+        events: tuple[ev.Event, ...] = (ev.PersonStart(), unplug, result)
+    else:
+        session, _ = run(session, ev.PersonStart())
+        session = session.with_changes(plugged=False)
+        events = (result,)
+    session, commands = run(session, *events)
+    assert kinds(commands) == []
+    assert session.manual is None and session.owner == "none" and session.pending == ()
+    assert not session.balancing_paused
+
+
+@pytest.mark.parametrize("before", [STOP, STOP_NEXT, None])
+def test_a_person_start_holds_for_a_car_plugged_in_while_it_was_on_its_way(before) -> None:
+    """A car plugged in before the result (also once the one before was unplugged, or one a charger that said nothing
+    saw only once the Start turned it on) is the one the person started for: theirs, for its plug-in (A)."""
+    for ended in ((ev.PlugIn(previous=False),), (ev.Unplug(previous=True), ev.PlugIn(previous=False))):
+        session, _ = run(ChargeSession(plugged=True, manual=before), ev.PersonStart(), *ended, ok("start", "person"))
+        assert session.manual == START and session.owner == "person"
+    session, _ = run(ChargeSession(plugged=True, manual=before), ev.PersonStart(), ok("start", "person"))
+    assert session.manual == START and session.owner == "person"
+
+
+def test_a_person_start_whose_plug_in_ended_keeps_a_pause_they_chose_for_a_span() -> None:
+    session, _ = run(
+        ChargeSession(plugged=True, span_pause="until_resumed"),
+        ev.PersonStart(),
+        ev.Unplug(previous=True),
+        ok("start", "person"),
+    )
+    assert session.span_pause == "until_resumed" and session.manual is None and session.owner == "none"
+
+
 # ---------------------------------------------------------------------------------------------- the plug-in session
 
 
