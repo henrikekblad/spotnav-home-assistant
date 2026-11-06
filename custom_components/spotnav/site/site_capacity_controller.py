@@ -85,9 +85,10 @@ from .import_target import (
     hour_budget,
     HourBudget,
     lowering_floor_a,
-    RAISE_LOCK_S,
     member_w,
     plan_remaining_kwh,
+    RAISE_LOCK_S,
+    raise_lock_s,
     share_budget,
     TargetMember,
     TargetShare,
@@ -403,6 +404,36 @@ REASON_MAGNITUDE_LOWERING = "lowering_overload_on_current_magnitude_direction_un
 # |I| still lowers it (`magnitude_overload_lowering`), and a charge that lowering paused is still resumed.
 DIRECTION_UNKNOWN_REASONS = frozenset({"phase_direction_unknown", "phase_direction_unknown_at_charge_start"})
 
+def _current_write_lock(charger_controller: Any) -> tuple[float, float, float | None]:
+    """A charger's current writes as the import target counts them (`TargetMember`): the seconds until its current
+    may be written again, the least time between two writes, and what it is set to (`None` when unknown). `(0, 0,
+    None)` for a charger whose current SpotNav does not write. Never raises."""
+    try:
+        adapter = getattr(charger_controller, "adapter", None)
+        current = getattr(adapter, "current", None)
+        if (
+            current is None
+            or not getattr(current, "can_set", False)
+            or not getattr(adapter, "current_enabled", False)
+            or not current.policy.regulator_writes
+        ):
+            return 0.0, 0.0, None
+        wait_s = float(current.wait_s())
+        interval_s = float(current.policy.min_interval_s)
+        setpoint = current.setpoint_a()
+        if setpoint is None:
+            setpoint = getattr(charger_controller, "requested_current_a", None)
+        set_a = float(setpoint) if isinstance(setpoint, (int, float)) and not isinstance(setpoint, bool) else None
+        return (
+            wait_s if math.isfinite(wait_s) and wait_s > 0 else 0.0,
+            interval_s if math.isfinite(interval_s) and interval_s > 0 else 0.0,
+            set_a,
+        )
+    except Exception:  # noqa: BLE001 - a charger that cannot say counts as one written at once, as before
+        _LOGGER.debug("A charger's current write lock could not be read", exc_info=True)
+        return 0.0, 0.0, None
+
+
 def _must_lower(decision: RegulatorDecision) -> bool:
     """Whether `decision` lowers a charger for an overload: an import overload (`is_import_overload`), or one by |I|
     where the direction is not known (`REASON_MAGNITUDE_LOWERING`). Neither is held by anything that is not about
@@ -664,6 +695,11 @@ class SiteCapacityController:
         self._target_shares: dict[str, TargetShare] = {}
         self._target_lowered: set[str] = set()
         self._target_raise_lock: dict[str, float] = {}
+        # Each member's wait for its next current write as the last share saw it (diagnostics only).
+        self._target_write_wait: dict[str, float] = {}
+        # Why the target paused a charger this hour, where a rule beyond the share decided (`slow_charger`): the
+        # pause's hour and reason, for the diagnostics and the change log.
+        self._target_pause_reasons: dict[str, tuple[datetime, str]] = {}
         # The amps the target last held each charger to this hour (the lock in the hour's last minutes keeps no more),
         # the chargers the lock alone kept from a raise, and the chargers the target could not hold, and why.
         self._target_last_cap: dict[str, tuple[datetime, float]] = {}
@@ -5003,6 +5039,7 @@ class SiteCapacityController:
             wants = 0.0
         else:
             wants = drawn if proposed is None else max(0.0, proposed)
+        write_wait_s, write_interval_s, set_a = _current_write_lock(charger_controller)
         return TargetMember(
             charger_entry_id=charger_entry_id,
             phases=phases,
@@ -5011,6 +5048,10 @@ class SiteCapacityController:
             holdable=holdable,
             switch_only=request.switch_only,
             paused_this_hour=self._target_paused_hour.get(charger_entry_id) == budget.hour_start,
+            draws_a=0.0 if paused else drawn,
+            set_a=0.0 if paused else set_a,
+            write_wait_s=write_wait_s,
+            write_interval_s=write_interval_s,
         )
 
     def _a_start_not_yet_drawing(self) -> bool:
@@ -5167,6 +5208,7 @@ class SiteCapacityController:
         self._target_lowered = set()
         self._target_locked = set()
         self._target_raise_lock = {}
+        self._target_write_wait = {}
         self._target_inert = {}
         self._target_floor_limited = set()
         self._target_budget = None
@@ -5216,7 +5258,7 @@ class SiteCapacityController:
             self._target_member(request, decisions.get(request.charger_entry_id), budget, self._target_released)
             for request in ordered
         ]
-        shares = share_budget(budget.allowed_w, members)
+        shares = share_budget(budget.allowed_w, members, remaining_s=budget.remaining_s)
         # Above the car's minimum level the target holds a plan's charge even past its departure: whether it would miss
         # it is said (`_target_risk`, decided again on every recompute, with a margin either way), and a person may set
         # the target aside for it (`async_release_import_target`).
@@ -5263,17 +5305,27 @@ class SiteCapacityController:
                 self._target_member(request, decisions.get(request.charger_entry_id), budget, released)
                 for request in ordered
             ]
-            shares = share_budget(budget.allowed_w, members)
+            shares = share_budget(budget.allowed_w, members, remaining_s=budget.remaining_s)
         self._target_shares = shares
+        self._target_write_wait = {member.charger_entry_id: member.write_wait_s for member in members}
         # The hour's last minutes raise nothing the target held this hour above what it held it to: what is left of
         # the budget is spread over too little time to be worth a raise the next hour takes back (and the lowering
         # then waits for the dwell, past the hour's start). A charger the target did not hold (one the fuse lowered,
-        # say) is the fuse's and the budget's to raise, as at any other time.
-        if budget.remaining_s < RAISE_LOCK_S:
-            for request in ordered:
-                held_cap = self._target_last_cap.get(request.charger_entry_id)
-                if request.charger_entry_id in previously_held and held_cap is not None:
-                    self._target_raise_lock[request.charger_entry_id] = held_cap[1]
+        # say) is the fuse's and the budget's to raise, as at any other time. For a charger whose current may be
+        # written only every few minutes the lock starts a whole interval and a dwell before the hour's end
+        # (`raise_lock_s`), so the lowering that takes a raise back always comes within the hour, and it is kept
+        # where it is set: a raise there would hold into the next hour, as no write may follow it before then.
+        for member in members:
+            held_cap = self._target_last_cap.get(member.charger_entry_id)
+            if (
+                budget.remaining_s < raise_lock_s(member.write_interval_s)
+                and member.charger_entry_id in previously_held
+                and held_cap is not None
+            ):
+                lock = held_cap[1]
+                if member.write_interval_s > RAISE_LOCK_S and member.set_a is not None and member.set_a > 0:
+                    lock = min(lock, member.set_a)
+                self._target_raise_lock[member.charger_entry_id] = lock
         held = dict(decisions)
 
         def holds_now(request: ChargerRequest) -> bool:
@@ -5326,6 +5378,12 @@ class SiteCapacityController:
                 continue
             if share.action == ACTION_PAUSED and floor <= 0.0:
                 held[charger_entry_id] = replace(decision, proposed_current_a=0.0, reason=REASON_IMPORT_TARGET_PAUSED)
+                if charger_entry_id not in self._target_paused_hour:
+                    # Why this pause, until it is taken (a pause already latched keeps the reason it was taken for).
+                    if share.reason is not None:
+                        self._target_pause_reasons[charger_entry_id] = (budget.hour_start, share.reason)
+                    else:
+                        self._target_pause_reasons.pop(charger_entry_id, None)
                 # Kept to the hour's end once the charger is seen paused for it (`_latch_target_pauses`): a pause
                 # decided for a kettle's half minute and taken back before the dwell let it out pauses nothing.
                 self._target_pause_pending[charger_entry_id] = budget.hour_start
@@ -5724,7 +5782,7 @@ class SiteCapacityController:
             return
         self._target_paused_hour[charger_entry_id] = budget.hour_start
         self._target_pause_pending.pop(charger_entry_id, None)
-        self._note_target(charger_entry_id, "paused", budget)
+        self._note_target(charger_entry_id, "paused", budget, reason=self._target_pause_reason(charger_entry_id, budget))
 
     def _latch_target_pauses(self, budget: HourBudget) -> None:
         """A pause the target decided this hour that the charger has taken (paused by load balancing) holds to the
@@ -5738,8 +5796,17 @@ class SiteCapacityController:
             if bool(getattr(charger_controller, "paused_by_balancing", False)):
                 if self._target_paused_hour.get(charger_entry_id) != hour:
                     self._target_paused_hour[charger_entry_id] = hour
-                    self._note_target(charger_entry_id, "paused", budget)
+                    self._note_target(
+                        charger_entry_id, "paused", budget, reason=self._target_pause_reason(charger_entry_id, budget)
+                    )
             # Not taken yet: this recompute decides again whether the target still pauses it.
+
+    def _target_pause_reason(self, charger_entry_id: str, budget: HourBudget | None) -> str | None:
+        """Why the target paused this charger this hour, where a rule beyond the share decided (`slow_charger`)."""
+        found = self._target_pause_reasons.get(charger_entry_id)
+        if found is None or budget is None or found[0] != budget.hour_start:
+            return None
+        return found[1]
 
     def import_target_holds(self, charger_entry_id: str) -> bool:
         """Whether the site's import target holds this charge back now: lowered, kept at the hour's end, or paused this
@@ -5759,6 +5826,7 @@ class SiteCapacityController:
         *,
         cap_a: float | None = None,
         departure: str | None = None,
+        reason: str | None = None,
     ) -> None:
         """Keep a change of what the target does to a charger, for the diagnostics (one entry per change)."""
         log = self._history.target_log
@@ -5766,7 +5834,7 @@ class SiteCapacityController:
         hour = budget.hour_start.isoformat()
         if last is not None and (last.get("hour"), last.get("action"), last.get("cap_a")) == (hour, action, cap_a):
             return
-        self._log_target(charger_entry_id, action, budget, cap_a=cap_a, departure=departure)
+        self._log_target(charger_entry_id, action, budget, cap_a=cap_a, departure=departure, reason=reason)
 
     def _log_target(
         self, charger_entry_id: str | None, action: str, budget: HourBudget | None = None, **fields: Any
@@ -5868,13 +5936,19 @@ class SiteCapacityController:
 
     def _target_start_cap(self, charger_entry_id: str) -> float | None:
         """The most a resume or a probe may give this charger for the import target: `0.0` while the target pauses
-        it, the held amps while it holds it, `None` when the target holds nothing back."""
+        it, the held amps while it holds it (no more than the hour's end keeps it at), `None` when the target holds
+        nothing back."""
         share = self._target_shares.get(charger_entry_id)
         if share is None:
             return None
         if share.action == ACTION_PAUSED:
             return 0.0
-        return share.cap_a if share.action == ACTION_HELD else None
+        cap = share.cap_a if share.action == ACTION_HELD else None
+        # The hour's end raises nothing the target held above where it keeps it, and a resume is a raise.
+        locked = None if share.action == ACTION_UNHELD else self._target_raise_lock.get(charger_entry_id)
+        if locked is not None and locked > 0:
+            cap = locked if cap is None else min(cap, locked)
+        return cap
 
     @staticmethod
     def _release_until(charger_controller: Any) -> str | None:
@@ -5970,6 +6044,9 @@ class SiteCapacityController:
                     "kept_at_hour_end": charger_entry_id in self._target_locked,
                     "inert": self._target_inert.get(charger_entry_id),
                     "floor_limited": charger_entry_id in self._target_floor_limited,
+                    # Why a rule beyond the share decided (`slow_charger`), and the wait for its next current write.
+                    "reason": share.reason or self._target_pause_reason(charger_entry_id, budget),
+                    "write_wait_s": round(self._target_write_wait.get(charger_entry_id, 0.0), 1),
                 }
                 for charger_entry_id, share in self._target_shares.items()
             },
