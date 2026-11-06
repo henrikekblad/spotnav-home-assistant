@@ -473,3 +473,23 @@ async def test_a_departure_at_risk_under_the_stop_is_not_told_after_a_person_sta
     await _go(hass, freezer, at(14, 20))
     assert night.told() == [] and relay.requests == []
 
+
+async def test_the_chargers_next_word_after_the_cars_sensor_only_agreed_is_a_real_change(
+    hass: HomeAssistant, freezer: Any, relay: FakeRelay
+) -> None:
+    """The car's sensor said what was known already (no event): the charger's own next differing word is an
+    ordinary unplug, from what it last stated, not a first connection."""
+    night = await _night(hass, freezer, off_status="Unavailable", car=True)
+    await _with_car(hass, night)
+    await _charging(hass, freezer, night)
+    await _stop(night)
+    events = len(_connection_events(night))
+    _car_reports_again(hass)
+    await hass.async_block_till_done()
+    assert night.controller.adapter.vehicle_connected() is True
+    assert len(_connection_events(night)) == events, "the car's sensor agreeing is no event"
+
+    hass.states.async_set(STATUS, "Available")
+    await hass.async_block_till_done()
+    assert _connection_events(night)[-1] == {"kind": "unplug", "previous": True, "source": None}
+    assert not night.controller.held_off_by_person

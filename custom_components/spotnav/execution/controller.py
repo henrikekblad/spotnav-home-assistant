@@ -1644,7 +1644,10 @@ class ChargingController:
                 self._connection_gap = True
             return
         previous = self._plugged
-        by_car, self._plugged_by_car = self._plugged_by_car, source is not None or (own is None and self._plugged_by_car)
+        by_car = self._plugged_by_car
+        if own is not None:
+            # The charger's own word: the last connection is no longer the car's sensor's from here on.
+            self._plugged_by_car = False
         if self._connection_gap:
             self._connection_gap = False
             if connected and previous is True:
@@ -1660,6 +1663,7 @@ class ChargingController:
         had_car_ended = self._car_ended.at is not None
         if source is not None:
             self._car_plug.note(connected)
+            self._plugged_by_car = True
             _LOGGER.info(
                 "SpotNav charger %s: the car's plug sensor says it was %s while the charger cannot tell",
                 self.entry_id,
@@ -2618,6 +2622,7 @@ class ChargingController:
         """A person's Start or Stop (`AutoExecutor`): they acted, so the stops under it start afresh, and the car's
         plug sensor stands in afresh only under a Stop (`end_car_plug_fallback`)."""
         self._reset_person_hold()
+        # Under a Stop that still holds (a person's Stop again) this re-arms at once, from now: intended.
         self.end_car_plug_fallback()
 
     def _reset_person_hold(self) -> None:
