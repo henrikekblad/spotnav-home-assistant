@@ -160,6 +160,11 @@ APP_READS_GRID_TARIFF: Final = "grid_tariff"
 #: stands in the settings' target and the identification block (its decoder knows no such car).
 APP_READS_GUEST: Final = "guest"
 APP_UNREAD_GUEST_CODES: Final = ("guest_planned", "guest_done")
+#: Under a person's Stop nothing can see the unplug that would end it (`stop_unplug_unseen`): left out for an app that
+#: does not read `APP_READS_STOP_UNPLUG_UNSEEN` (it would word it as "see Home Assistant"). Its tone is `normal`, so the
+#: block's tone stays as it was.
+APP_UNREAD_STOP_UNPLUG_UNSEEN_CODES: Final = ("stop_unplug_unseen",)
+APP_READS_STOP_UNPLUG_UNSEEN: Final = "stop_unplug_unseen"
 #: Each optional top-level dashboard block an app released before it does not read, with the `reads` name that opts
 #: into it.
 APP_DASHBOARD_BLOCK_READS: Final = {
@@ -210,6 +215,8 @@ def _status_for_app(line: Any, opted_in: set[str], *, under_solar: bool = False)
     if code in APP_UNREAD_OWN_MODE_CODES and APP_READS_OWN_MODE_STATUS not in opted_in:
         return None
     if code in APP_UNREAD_GUEST_CODES and APP_READS_GUEST not in opted_in:
+        return None
+    if code in APP_UNREAD_STOP_UNPLUG_UNSEEN_CODES and APP_READS_STOP_UNPLUG_UNSEEN not in opted_in:
         return None
     if APP_READS_IMPORT_TARGET_STATUS not in opted_in:
         params = line.get("params") if isinstance(line.get("params"), dict) else {}
@@ -313,7 +320,8 @@ def _for_app(body: dict[str, Any], payload: dict[str, Any]) -> dict[str, Any]:
     `plan_saving` and `solar_forecast` and hybrid's `sun_start`/`sun_end`; `own_mode_status` for the status line
     `charger_own_mode`; `sun_past_target` for the status line `sun_past_target`; `import_target_status` for the import
     target's five status lines; `effective_target` for `grid_tariff.demand.effective_target_kw`; `guest` for the guest
-    car: the `guest` block, its status lines, a one-car charger's question and the guest standing as the vehicle);
+    car: the `guest` block, its status lines, a one-car charger's question and the guest standing as the vehicle;
+    `stop_unplug_unseen` for the status line of a person's Stop nothing can see end);
     anything else in it, or a `reads` that is not a list, is ignored.
     """
     opted_in = _opted_in(payload)

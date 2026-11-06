@@ -195,6 +195,13 @@ is room; `cause` is `battery_shares_fuse` (a home battery charging from the grid
 `load_balancing_limited` (`limit_a` `0`, `phase` `null`, the same `cause`) in its place unless the request asks for
 it (`"reads": ["balancing_paused"]`).
 
+**A person's Stop nothing can see end.** A person's Stop ends when the car is unplugged. A charger that otherwise
+says when a car is plugged in may say nothing while it is stopped (a Charge Amps connector turned off says
+`Unavailable`, with or without a car); then the car's own plug sensor, read fresh since then, tells the unplug and
+the next plug-in. When neither can, the line `stop_unplug_unseen` (no params, tone `normal`) follows the `paused`
+headline: only Start or Resume ends the Stop. It is a status line only, never a notification. The webhook leaves it
+out unless the request asks for it (`"reads": ["stop_unplug_unseen"]`).
+
 **The sun filling past a reached target.** Under Solar or Hybrid with a target, once the car is at the target and
 below its own known charge limit, the sun may keep charging it to that limit. The status then says
 `sun_past_target` (`percent`, the car's limit; tone `normal`): after the solar headline, and under Hybrid in place

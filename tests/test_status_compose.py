@@ -597,6 +597,21 @@ CASES: list[tuple[str, StatusFacts, str, list[dict[str, Any]]]] = [
         [{"code": "paused", "params": {"until": None, "choice": "manual", "action": "stop", "ends": "resume"}}],
     ),
     (
+        "a person's Stop at a charger that cannot tell now, with no car plug sensor: press Start or Resume",
+        base(paused=True, pause_choice="manual", pause_action="stop", pause_scope="plug_in", stop_unplug_unseen=True),
+        "normal",
+        [
+            {"code": "paused", "params": {"until": None, "choice": "manual", "action": "stop", "ends": "unplug"}},
+            {"code": "stop_unplug_unseen", "params": {}},
+        ],
+    ),
+    (
+        "a person's Start says nothing of an unplug nobody sees: the car being full ends it too",
+        base(paused=True, pause_choice="manual", pause_action="start", pause_scope="plug_in", stop_unplug_unseen=True),
+        "normal",
+        [{"code": "paused", "params": {"until": None, "choice": "manual", "action": "start", "ends": "unplug"}}],
+    ),
+    (
         "a person's Stop with no car plugged in lasts through the next plug-in",
         base(paused=True, pause_choice="manual", pause_action="stop", pause_scope="next_plug_in"),
         "normal",
