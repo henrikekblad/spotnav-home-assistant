@@ -257,7 +257,7 @@
           "entsoe_key": "Clé ENTSO-E (facultative)"
         },
         "data_description": {
-          "entsoe_key": "Inscrivez-vous sur [transparency.entsoe.eu]({entsoe_url}), puis écrivez à transparency@entsoe.eu avec l'objet « Restful API access » et l'adresse e-mail de votre compte dans le texte. Une fois l'accès accordé (cela peut prendre quelques jours), générez le jeton de sécurité dans My Account Settings et collez-le ici. Une clé pour toute l'installation."
+          "entsoe_key": "Inscrivez-vous sur [transparency.entsoe.eu]({entsoe_url}), puis écrivez à transparency@entsoe.eu avec l'objet « Restful API access » et l'adresse e-mail de votre compte dans le texte. Une fois l'accès accordé (cela peut prendre quelques jours), générez le jeton de sécurité dans My Account Settings et collez-le ici. Une clé pour toute l'installation. Avec Nord Pool de HACS, qui remplace celui intégré, saisissez la clé et les prix viennent d'ENTSO-E."
         }
       },
       "prices_entsoe": {
@@ -267,7 +267,7 @@
           "entsoe_key": "Clé ENTSO-E (facultative)"
         },
         "data_description": {
-          "entsoe_key": "Inscrivez-vous sur [transparency.entsoe.eu]({entsoe_url}), puis écrivez à transparency@entsoe.eu avec l'objet « Restful API access » et l'adresse e-mail de votre compte dans le texte. Une fois l'accès accordé (cela peut prendre quelques jours), générez le jeton de sécurité dans My Account Settings et collez-le ici. Une clé pour toute l'installation."
+          "entsoe_key": "Inscrivez-vous sur [transparency.entsoe.eu]({entsoe_url}), puis écrivez à transparency@entsoe.eu avec l'objet « Restful API access » et l'adresse e-mail de votre compte dans le texte. Une fois l'accès accordé (cela peut prendre quelques jours), générez le jeton de sécurité dans My Account Settings et collez-le ici. Une clé pour toute l'installation. Avec Nord Pool de HACS, qui remplace celui intégré, saisissez la clé et les prix viennent d'ENTSO-E."
         }
       },
       "prices_pvpc": {
@@ -464,7 +464,7 @@
           "entsoe_key_remove": "Supprimer la clé ENTSO-E"
         },
         "data_description": {
-          "entsoe_key": "Votre propre jeton de sécurité pour la Transparency Platform d'ENTSO-E. Avec lui, les zones que Nord Pool ne négocie pas obtiennent leurs prix d'ENTSO-E. Une clé pour toute l'installation ; laissez vide pour garder celle enregistrée. Elle n'est plus jamais affichée."
+          "entsoe_key": "Votre propre jeton de sécurité pour la Transparency Platform d'ENTSO-E. Avec lui, les zones que Nord Pool ne négocie pas obtiennent leurs prix d'ENTSO-E. Une clé pour toute l'installation ; laissez vide pour garder celle enregistrée. Elle n'est plus jamais affichée. Avec Nord Pool de HACS, qui remplace celui intégré, saisissez la clé et les prix viennent d'ENTSO-E."
         }
       },
       "price_fees": {

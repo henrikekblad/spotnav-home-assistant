@@ -257,7 +257,7 @@
           "entsoe_key": "ENTSO-E-sleutel (optioneel)"
         },
         "data_description": {
-          "entsoe_key": "Registreer je op [transparency.entsoe.eu]({entsoe_url}) en mail daarna transparency@entsoe.eu met als onderwerp \"Restful API access\" en het e-mailadres van je account in de tekst. Zodra je toegang hebt (dat kan een paar dagen duren), maak je de beveiligingssleutel aan onder My Account Settings en plak je hem hier. Eén sleutel voor de hele installatie."
+          "entsoe_key": "Registreer je op [transparency.entsoe.eu]({entsoe_url}) en mail daarna transparency@entsoe.eu met als onderwerp \"Restful API access\" en het e-mailadres van je account in de tekst. Zodra je toegang hebt (dat kan een paar dagen duren), maak je de beveiligingssleutel aan onder My Account Settings en plak je hem hier. Eén sleutel voor de hele installatie. Met Nord Pool uit HACS, dat de ingebouwde vervangt, vul je de sleutel in en komen de prijzen van ENTSO-E."
         }
       },
       "prices_entsoe": {
@@ -267,7 +267,7 @@
           "entsoe_key": "ENTSO-E-sleutel (optioneel)"
         },
         "data_description": {
-          "entsoe_key": "Registreer je op [transparency.entsoe.eu]({entsoe_url}) en mail daarna transparency@entsoe.eu met als onderwerp \"Restful API access\" en het e-mailadres van je account in de tekst. Zodra je toegang hebt (dat kan een paar dagen duren), maak je de beveiligingssleutel aan onder My Account Settings en plak je hem hier. Eén sleutel voor de hele installatie."
+          "entsoe_key": "Registreer je op [transparency.entsoe.eu]({entsoe_url}) en mail daarna transparency@entsoe.eu met als onderwerp \"Restful API access\" en het e-mailadres van je account in de tekst. Zodra je toegang hebt (dat kan een paar dagen duren), maak je de beveiligingssleutel aan onder My Account Settings en plak je hem hier. Eén sleutel voor de hele installatie. Met Nord Pool uit HACS, dat de ingebouwde vervangt, vul je de sleutel in en komen de prijzen van ENTSO-E."
         }
       },
       "prices_pvpc": {
@@ -464,7 +464,7 @@
           "entsoe_key_remove": "ENTSO-E-sleutel verwijderen"
         },
         "data_description": {
-          "entsoe_key": "Je eigen beveiligingssleutel voor het Transparency Platform van ENTSO-E. Daarmee halen prijsgebieden die Nord Pool niet verhandelt hun prijzen bij ENTSO-E. Eén sleutel voor de hele installatie; laat leeg om de opgeslagen sleutel te houden. Hij wordt nooit meer getoond."
+          "entsoe_key": "Je eigen beveiligingssleutel voor het Transparency Platform van ENTSO-E. Daarmee halen prijsgebieden die Nord Pool niet verhandelt hun prijzen bij ENTSO-E. Eén sleutel voor de hele installatie; laat leeg om de opgeslagen sleutel te houden. Hij wordt nooit meer getoond. Met Nord Pool uit HACS, dat de ingebouwde vervangt, vul je de sleutel in en komen de prijzen van ENTSO-E."
         }
       },
       "price_fees": {

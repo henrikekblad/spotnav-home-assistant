@@ -257,7 +257,7 @@
           "entsoe_key": "ENTSO-E-Schlüssel (optional)"
         },
         "data_description": {
-          "entsoe_key": "Registriere dich auf [transparency.entsoe.eu]({entsoe_url}) und schreibe dann eine E-Mail an transparency@entsoe.eu mit dem Betreff \"Restful API access\" und der E-Mail-Adresse deines Kontos im Text. Sobald der Zugang freigeschaltet ist (das kann ein paar Tage dauern), erzeugst du den Sicherheitsschlüssel unter My Account Settings und fügst ihn hier ein. Ein Schlüssel für die ganze Installation."
+          "entsoe_key": "Registriere dich auf [transparency.entsoe.eu]({entsoe_url}) und schreibe dann eine E-Mail an transparency@entsoe.eu mit dem Betreff \"Restful API access\" und der E-Mail-Adresse deines Kontos im Text. Sobald der Zugang freigeschaltet ist (das kann ein paar Tage dauern), erzeugst du den Sicherheitsschlüssel unter My Account Settings und fügst ihn hier ein. Ein Schlüssel für die ganze Installation. Mit Nord Pool aus HACS, das das eingebaute ersetzt, gibst du den Schlüssel ein und die Preise kommen von ENTSO-E."
         }
       },
       "prices_entsoe": {
@@ -267,7 +267,7 @@
           "entsoe_key": "ENTSO-E-Schlüssel (optional)"
         },
         "data_description": {
-          "entsoe_key": "Registriere dich auf [transparency.entsoe.eu]({entsoe_url}) und schreibe dann eine E-Mail an transparency@entsoe.eu mit dem Betreff \"Restful API access\" und der E-Mail-Adresse deines Kontos im Text. Sobald der Zugang freigeschaltet ist (das kann ein paar Tage dauern), erzeugst du den Sicherheitsschlüssel unter My Account Settings und fügst ihn hier ein. Ein Schlüssel für die ganze Installation."
+          "entsoe_key": "Registriere dich auf [transparency.entsoe.eu]({entsoe_url}) und schreibe dann eine E-Mail an transparency@entsoe.eu mit dem Betreff \"Restful API access\" und der E-Mail-Adresse deines Kontos im Text. Sobald der Zugang freigeschaltet ist (das kann ein paar Tage dauern), erzeugst du den Sicherheitsschlüssel unter My Account Settings und fügst ihn hier ein. Ein Schlüssel für die ganze Installation. Mit Nord Pool aus HACS, das das eingebaute ersetzt, gibst du den Schlüssel ein und die Preise kommen von ENTSO-E."
         }
       },
       "prices_pvpc": {
@@ -464,7 +464,7 @@
           "entsoe_key_remove": "ENTSO-E-Schlüssel entfernen"
         },
         "data_description": {
-          "entsoe_key": "Dein eigener Sicherheitsschlüssel für die Transparency Platform von ENTSO-E. Damit erhalten Preiszonen, die Nord Pool nicht handelt, ihre Preise von ENTSO-E. Ein Schlüssel für die ganze Installation; leer lassen, um den gespeicherten zu behalten. Er wird nie wieder angezeigt."
+          "entsoe_key": "Dein eigener Sicherheitsschlüssel für die Transparency Platform von ENTSO-E. Damit erhalten Preiszonen, die Nord Pool nicht handelt, ihre Preise von ENTSO-E. Ein Schlüssel für die ganze Installation; leer lassen, um den gespeicherten zu behalten. Er wird nie wieder angezeigt. Mit Nord Pool aus HACS, das das eingebaute ersetzt, gibst du den Schlüssel ein und die Preise kommen von ENTSO-E."
         }
       },
       "price_fees": {
