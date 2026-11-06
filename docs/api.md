@@ -1240,7 +1240,8 @@ Refusals: `spotnav_unsupported_api_version`, `spotnav_charger_required` (neither
 `spotnav_needs_total_grid_power` (the site cannot measure its import: a direct site without its total grid power)
 and `spotnav_invalid_range` (the month). The site keeps each hour of the running month and the month before, and a
 summary of each day for 24 months. The months before SpotNav measured are filled once from Home Assistant's
-statistics, three months back (`imported: true`; they count in the parts' peaks but never in `month_peak_kw`, see
+statistics, three months back (`imported: true`; they count in the parts' peaks, and in `month_peak_kw` only when
+complete, see
 [earlier months](site-and-load-balancing.md#earlier-months-from-home-assistants-statistics)); while no earlier month
 is kept, a request asks for that once more at most once a day. `imported` and `month_peak_kw` are additive: a reader
 treats them as `false` and `null` where absent. Example answers are in `tests/fixtures/power_month/`

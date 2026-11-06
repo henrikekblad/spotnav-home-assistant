@@ -7,7 +7,8 @@ Beside them the site keeps, per month, one summary per day for `ARCHIVE_MONTHS` 
   hours, else among all of them) and that hour's start, the house's part of that hour (`None` when not known),
   whether the import target held or paused a charger in any of its hours, whether that peak hour was read from Home
   Assistant's statistics (`imported`, `site/hour_statistics.py`) rather than measured, and the month's free level
-  when that hour ran (`free_kw`, `planning/demand_charge.free_levels_by_hour`: never from an imported hour).
+  when that hour ran (`free_kw`, `planning/demand_charge.free_levels_by_hour`: never from an imported hour unless
+  it is `complete`).
 * **A month**: the demand-charge components it was measured against, and per component the hours counted as its
   peaks and its figure (`bar_kw`). These are worked out from the month's hours with the components set when its
   last hour completed: a later change of the components does not rewrite an older month.

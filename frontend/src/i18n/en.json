@@ -221,7 +221,7 @@
   "power.legend.target": "Import target {kw}",
   "power.legend.peak": "The month's peak {kw}",
   "power.legend.imported": "From Home Assistant's statistics",
-  "power.importedNote": "The hours from Home Assistant's statistics are approximate: they count in the month's peaks but never lift the import target.",
+  "power.importedNote": "The hours from Home Assistant's statistics are approximate: they count in the month's peaks, but only this month's complete hours (every 5-minute reading there) lift the import target.",
   "power.peak": "the month's peak {kw}",
   "power.imported": "from Home Assistant's statistics",
   "power.legend.countedPart": "Counted peak, {part}",

@@ -1151,7 +1151,8 @@ class SiteCapacityController:
     def async_start_backfill(self) -> bool:
         """Read the hours before SpotNav measured from Home Assistant's statistics, once, in the background
         (`SiteDemand.async_backfill`): only when the recorder runs. Whether it started. Changes nothing a charger is
-        told: an imported hour is shown and counted in the month's peaks, never in the import target's lift."""
+        told now: an imported hour is shown and counted in the month's peaks, and in the import target's lift only
+        when it is a running month's hour shown complete by the 5-minute statistics."""
         from homeassistant.core import CoreState  # noqa: PLC0415 - kept beside its only use
 
         from .hour_statistics import recorder_ready, RecorderReader, site_series  # noqa: PLC0415
@@ -4905,7 +4906,8 @@ class SiteCapacityController:
 
         # Each hour at its floor (its import over the whole hour, a gap counted as none): never above what the
         # operator billed, where the mean over the time measured may be. An hour read from Home Assistant's
-        # statistics (`imported`) is an approximation: it never lifts the target.
+        # statistics (`imported`) is an approximation: it lifts the target only when shown `complete` (all twelve
+        # 5-minute rows, read once with the back-fill, never here).
         hours = free_level_hours(tracker.month_hours(now))
         levels = [component_month(component, hours, tracker.tz, now).free_kw for component in components]
         return effective_target(set_kw, levels), key

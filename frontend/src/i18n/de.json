@@ -221,7 +221,7 @@
   "power.legend.target": "Bezugsziel {kw}",
   "power.legend.peak": "Spitze des Monats {kw}",
   "power.legend.imported": "Aus Home Assistants Statistik",
-  "power.importedNote": "Die Stunden aus Home Assistants Statistik sind Näherungen: Sie zählen in den Spitzen des Monats, heben das Bezugsziel aber nie an.",
+  "power.importedNote": "Die Stunden aus Home Assistants Statistik sind Näherungen: Sie zählen in den Spitzen des Monats, aber nur vollständige Stunden dieses Monats (alle 5-Minuten-Werte vorhanden) heben das Bezugsziel an.",
   "power.peak": "Spitze des Monats {kw}",
   "power.imported": "aus Home Assistants Statistik",
   "power.legend.countedPart": "Zählende Spitze, {part}",

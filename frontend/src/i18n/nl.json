@@ -221,7 +221,7 @@
   "power.legend.target": "Afnamedoel {kw}",
   "power.legend.peak": "Piek van de maand {kw}",
   "power.legend.imported": "Uit de statistieken van Home Assistant",
-  "power.importedNote": "De uren uit de statistieken van Home Assistant zijn benaderingen: ze tellen mee in de pieken van de maand, maar verhogen het afnamedoel nooit.",
+  "power.importedNote": "De uren uit de statistieken van Home Assistant zijn benaderingen: ze tellen mee in de pieken van de maand, maar alleen volledige uren van deze maand (alle 5-minutenwaarden aanwezig) verhogen het afnamedoel.",
   "power.peak": "piek van de maand {kw}",
   "power.imported": "uit de statistieken van Home Assistant",
   "power.legend.countedPart": "Piek die telt, {part}",

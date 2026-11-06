@@ -221,7 +221,7 @@
   "power.legend.target": "Objectif de soutirage {kw}",
   "power.legend.peak": "Pic du mois {kw}",
   "power.legend.imported": "Des statistiques de Home Assistant",
-  "power.importedNote": "Les heures issues des statistiques de Home Assistant sont approximatives : elles comptent dans les pics du mois mais ne relèvent jamais l'objectif de soutirage.",
+  "power.importedNote": "Les heures issues des statistiques de Home Assistant sont approximatives : elles comptent dans les pics du mois, mais seules les heures complètes de ce mois (toutes les valeurs de 5 minutes présentes) relèvent l'objectif de soutirage.",
   "power.peak": "pic du mois {kw}",
   "power.imported": "des statistiques de Home Assistant",
   "power.legend.countedPart": "Pic retenu, {part}",

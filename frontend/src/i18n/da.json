@@ -221,7 +221,7 @@
   "power.legend.target": "Effektmål {kw}",
   "power.legend.peak": "Månedens top {kw}",
   "power.legend.imported": "Fra Home Assistants statistik",
-  "power.importedNote": "Timerne fra Home Assistants statistik er omtrentlige: de tæller i månedens toppe, men løfter aldrig effektmålet.",
+  "power.importedNote": "Timerne fra Home Assistants statistik er omtrentlige: de tæller i månedens toppe, men kun denne måneds komplette timer (alle 5-minutters værdier findes) løfter effektmålet.",
   "power.peak": "månedens top {kw}",
   "power.imported": "fra Home Assistants statistik",
   "power.legend.countedPart": "Top der tæller, {part}",

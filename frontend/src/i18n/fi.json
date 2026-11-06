@@ -221,7 +221,7 @@
   "power.legend.target": "Tehotavoite {kw}",
   "power.legend.peak": "Kuukauden huippu {kw}",
   "power.legend.imported": "Home Assistantin tilastoista",
-  "power.importedNote": "Home Assistantin tilastoista luetut tunnit ovat likimääräisiä: ne lasketaan kuukauden huippuihin, mutta ne eivät koskaan nosta tehotavoitetta.",
+  "power.importedNote": "Home Assistantin tilastoista luetut tunnit ovat likimääräisiä: ne lasketaan kuukauden huippuihin, mutta vain tämän kuukauden täydet tunnit (kaikki 5 minuutin arvot tallessa) nostavat tehotavoitetta.",
   "power.peak": "kuukauden huippu {kw}",
   "power.imported": "Home Assistantin tilastoista",
   "power.legend.countedPart": "Laskettava huippu, {part}",
