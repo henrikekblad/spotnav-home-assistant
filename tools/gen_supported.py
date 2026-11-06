@@ -28,6 +28,7 @@ if str(ROOT) not in sys.path:
 from custom_components.spotnav.execution import charger_profiles as cp  # noqa: E402
 from custom_components.spotnav.execution import other_controllers as oc  # noqa: E402
 from custom_components.spotnav.site import site_detection as sd  # noqa: E402
+from custom_components.spotnav.site.import_target import RAISE_LOCK_S  # noqa: E402
 
 OUTPUT = ROOT / "docs" / "supported.md"
 VEHICLE_CASES = ROOT / "tests" / "test_vehicle_catalogue.py"
@@ -320,6 +321,11 @@ def charger_notes(profile: cp.PlatformProfile) -> str:
         lines.append(f"Phase switching for solar through {profile.phase_switching}.")
         tested = PHASE_SWITCHING_TESTED_ON.get(profile.platform)
         lines.append(f"Phase switching tested on {tested}." if tested else "Phase switching: untested on real hardware.")
+    if profile.policy.min_interval_s > RAISE_LOCK_S:
+        lines.append(
+            "Under an import target see [chargers that take a new current only every few minutes]"
+            "(site-and-load-balancing.md#holding-the-chargers-under-the-import-target)."
+        )
     note = HARDWARE_NOTES.get(("charger", profile.platform))
     if note:
         lines.append(note)
