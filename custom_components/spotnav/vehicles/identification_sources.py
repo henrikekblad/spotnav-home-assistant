@@ -172,8 +172,18 @@ def _name_of(entities: list[tuple[er.RegistryEntry, State]], entity_id: str) -> 
     return next((state.name for entry, state in entities if entry.entity_id == entity_id), None)
 
 
+# A tracker for the navigation's destination (Tesla Fleet's `route`), not where the car is.
+_LOCATION_EXCLUDED_PHRASES: Final = ("route", "destination", "navigation")
+
+
 def _location_candidates(entities: list[tuple[er.RegistryEntry, State]]) -> tuple[str, ...]:
-    return tuple(sorted(entry.entity_id for entry, _ in entities if entry.domain == "device_tracker"))
+    return tuple(
+        sorted(
+            entry.entity_id
+            for entry, _ in entities
+            if entry.domain == "device_tracker" and not entity_key(entry).has_any(_LOCATION_EXCLUDED_PHRASES)
+        )
+    )
 
 
 def _chosen(hass: HomeAssistant, vehicle_id: str) -> dict[str, str | None]:
