@@ -38,7 +38,7 @@ TESTED = "Tested: charging verified"
 SET_UP = "Set up by users: detected and configured, charging not yet confirmed"
 DETECTED = "Detected from the integration's source"
 
-#: Hardware confirmed by the owner on real equipment. Everything else is read from the
+#: Hardware confirmed on real equipment, by the owner or a user's report. Everything else is read from the
 #: integration's source. Keys: (category, home assistant domain).
 TESTED_ON: dict[tuple[str, str], str] = {
     ("charger", "ocpp"): "Charge Amps HALO",
@@ -51,11 +51,12 @@ TESTED_ON: dict[tuple[str, str], str] = {
     ("vehicle", "mbapi2020"): "Mercedes-Benz",
     ("vehicle", "mazda_cs"): "Mazda MX-30",
     ("forecast", "solcast_solar"): "Solcast",
+    ("charger", "peblar"): "Peblar",
 }
 
-#: Chargers whose phase switching for solar the owner has confirmed on real hardware, by platform. Every other
+#: Chargers whose phase switching for solar has been confirmed on real hardware, by platform. Every other
 #: platform that can switch is marked untested.
-PHASE_SWITCHING_TESTED_ON: dict[str, str] = {}
+PHASE_SWITCHING_TESTED_ON: dict[str, str] = {"peblar": "Peblar"}
 
 #: Hardware that users have set up successfully (SpotNav found and configured it) but where nobody
 #: has confirmed a charge or a balanced current yet. Same keys as `TESTED_ON`.
