@@ -525,7 +525,7 @@ holds the site's chargers, through load balancing, so the hour stays under it (s
   *Demand-charge peak* sensor (kW): the first part's figure this month. Its attributes are every part with its
   figure, its peaks and how many days counted, and the running hour. It goes away with the last part.
 - **Diagnostics.** The site's diagnostics (and the debug bundle) carry a `demand` block: every hour of the month
-  (`[start, kW, house kW, incomplete, held, paused, floor kW]`: kW the mean over the time measured, floor kW the import over the whole hour with any gap counted as none; an hour from Home Assistant's statistics has an eighth column, `1`), each part's figure and peaks, the running hour with its gaps, the
+  (`[start, kW, house kW, incomplete, held, paused, floor kW]`: kW the mean over the time measured, floor kW the import over the whole hour with any gap counted as none; an hour from Home Assistant's statistics has an eighth column, `1`, and a ninth, `1`, when it is complete), each part's figure and peaks, the running hour with its gaps, the
   import target, and `backfill` (when the [earlier months](#earlier-months-from-home-assistants-statistics) were
   read, what came of it and how many hours were filed).
 
@@ -566,9 +566,13 @@ the grid's mean (never below zero), the house's part as above where the chargers
 Home Assistant's statistics (hatched in the [Power view](card.md#power), and `imported` in the API), with no holds or
 pauses and never as incomplete; an hour the statistics lack is simply missing. An hour SpotNav measured itself is
 never overwritten: nothing at or after its first measured hour is filled. The demand-charge parts' counted peaks and
-figures count them, only approximately what the meter billed. **They never lift the import target**: the month's
-free level is worked out from SpotNav's own measured hours only, and the house's typical load (for the departure's
-check and the plans) too, so an approximation never changes what a charger is told. Where nothing could be read (no
+figures count them, only approximately what the meter billed. **Only complete hours of the running month may lift
+the import target**: an hour for which Home Assistant's 5-minute statistics have all twelve rows for every grid
+power sensor (they are kept ten days by default, Home Assistant's `purge_keep_days`, so only the last ten days
+before SpotNav first measured), at the mean of those twelve rows, counts for the month's free level like a measured
+hour. Other hours from the statistics never do: an hourly mean of a sensor that was unavailable part of the hour is
+the mean of the rest, possibly above what the meter billed. The house's typical load (for the departure's check and
+the plans) is worked out from SpotNav's own measured hours only. Where nothing could be read (no
 statistics of the grid power yet) the Power view asks again at most once a day while no earlier month is kept.
 
 ### Holding the chargers under the import target
@@ -592,7 +596,8 @@ charger draws on would turn from import to export (so the current the fuse carri
   count on the target as set (a later hour may be counted by no part, a new day or a new month). The fuse is
   untouched. The status names both (*Held to 8 A to keep this hour under 7.0 kW, the month's peak (import target
   6.0 kW)*), as do the house-alone lines and the notice, the line under the target in Settings, and the Power
-  view's line of the month's peak. An hour read from Home Assistant's statistics never lifts it. No setting. **A power-level subscriber** (Göteborg's
+  view's line of the month's peak. An hour read from Home Assistant's statistics lifts it only when it is
+  [complete](#earlier-months-from-home-assistants-statistics). No setting. **A power-level subscriber** (Göteborg's
   tidsindelad level, which must never be exceeded) should leave the demand charge's parts out, or set them so they
   never free more than the level, or the month's peak lifts the hold above it.
 - **A small margin.** SpotNav keeps a small margin below the target, the larger of 0.1 kW and 2 %, for a meter that
