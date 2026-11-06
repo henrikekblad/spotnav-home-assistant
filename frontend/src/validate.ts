@@ -1599,6 +1599,7 @@ export const STATUS_CODE_TABLE = {
   planning_unavailable: ["blocking", { reason: "textOrNull" }],
   planning_error: ["blocking", { reason: "textOrNull" }],
   paused: ["normal", { until: "instantOrNull", choice: "choiceOrNull", action: "textOrNull", ends: "textOrNull" }],
+  stop_unplug_unseen: ["normal", {}],
   charging_now: ["normal", { until: "instantOrNull" }],
   topping_off: ["normal", { until: "instant" }],
   charging_without_prices: ["notice", {}],

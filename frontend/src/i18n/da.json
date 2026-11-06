@@ -1098,6 +1098,7 @@
   "status.guestPlanned": "Gæstebil · {kwh} kWh inden kl. {time}",
   "status.guestPlannedNoTime": "Gæstebil · {kwh} kWh",
   "status.guestDone": "Gæstebil · færdig, venter på at blive koblet fra",
+  "status.stopUnplugUnseen": "Stoppet manuelt. Tryk på Start eller Genoptag for at lade igen.",
   "settings.guest.amount": "Mængde til gæstebil",
   "settings.guest.amountHelp": "Det en gæstebil lades med. En ændring i en gæstebils plan gemmes til næste gæst."
 }

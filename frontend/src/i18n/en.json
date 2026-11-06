@@ -1098,6 +1098,7 @@
   "status.guestPlanned": "Guest car · {kwh} kWh by {time}",
   "status.guestPlannedNoTime": "Guest car · {kwh} kWh",
   "status.guestDone": "Guest car · done, waiting to be unplugged",
+  "status.stopUnplugUnseen": "Stopped by hand. Press Start or Resume to charge again.",
   "settings.guest.amount": "Guest amount",
   "settings.guest.amountHelp": "What a guest car is charged with. A change in a guest car's plan is kept for the next guest."
 }

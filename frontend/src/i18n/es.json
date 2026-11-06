@@ -1098,6 +1098,7 @@
   "status.guestPlanned": "Coche de invitado · {kwh} kWh antes de las {time}",
   "status.guestPlannedNoTime": "Coche de invitado · {kwh} kWh",
   "status.guestDone": "Coche de invitado · listo, esperando a que se desenchufe",
+  "status.stopUnplugUnseen": "Detenida a mano. Pulsa Iniciar o Reanudar para volver a cargar.",
   "settings.guest.amount": "Cantidad para coche de invitado",
   "settings.guest.amountHelp": "Lo que se carga a un coche de invitado. Un cambio en el plan de un coche de invitado se guarda para el siguiente."
 }
