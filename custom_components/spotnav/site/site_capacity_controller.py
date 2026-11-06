@@ -6045,7 +6045,8 @@ class SiteCapacityController:
                     "inert": self._target_inert.get(charger_entry_id),
                     "floor_limited": charger_entry_id in self._target_floor_limited,
                     # Why a rule beyond the share decided (`slow_charger`), and the wait for its next current write.
-                    "reason": share.reason or self._target_pause_reason(charger_entry_id, budget),
+                    "reason": share.reason
+                    or (self._target_pause_reason(charger_entry_id, budget) if share.action == ACTION_PAUSED else None),
                     "write_wait_s": round(self._target_write_wait.get(charger_entry_id, 0.0), 1),
                 }
                 for charger_entry_id, share in self._target_shares.items()
