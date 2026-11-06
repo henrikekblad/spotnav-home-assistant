@@ -1998,10 +1998,13 @@ class AutoExecutor:
         if self._shutdown or not (self.pause_intent.manual or self._manual_write_in_flight):
             return
         want = getattr(self._controller, "core_connection_manual", ...)
-        if previous is None and connected and self._manual_write_in_flight:
-            # The first connection the charger states (after a restart, or once it speaks again after the car's plug
-            # sensor stood in) ends no plug-in: a person's Start on its way, which may be what turned the charger on,
-            # is read under the lock, once the core has it, never ended by the pause the core held before it.
+        if self._manual_write_in_flight:
+            # A person's Start or Stop is on its way, holding the lock: the pause the core decided for this connection
+            # is not the last word, since the person's action and its result are decided after it (a Start whose
+            # plug-in ended before its result ends with it). It is read under the lock, once the person's write is
+            # done, never the pause the core held before it. This also covers the first connection the charger
+            # states (after a restart, or once it speaks again after the car's plug sensor stood in), which ends no
+            # plug-in: a person's Start, which may be what turned the charger on, is kept.
             want = ...
         self._hass.async_create_task(self._async_connection_changed(previous, connected, want))
 
