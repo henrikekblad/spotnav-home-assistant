@@ -182,7 +182,7 @@ describe("every status code the backend composes is decoded and worded", () => {
   it("says to press Start or Resume when nothing can see the unplug that ends a person's Stop", () => {
     const line = { code: "stop_unplug_unseen", params: {} } as StatusLine;
     expect(lineText(line, FORMAT, NOW)).toBe("Stopped by hand. Press Start or Resume to charge again.");
-    expect(lineText(line, { ...FORMAT, language: "sv" } as typeof FORMAT, NOW)).toBe(
+    expect(lineText(line, { ...FORMAT, language: "sv" as Language } as unknown as typeof FORMAT, NOW)).toBe(
       "Stoppad för hand. Tryck Starta eller Återuppta för att ladda igen.",
     );
     // The buttons' own names, in each language.
