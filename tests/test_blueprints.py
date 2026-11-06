@@ -368,10 +368,12 @@ async def test_surplus_without_the_cheap_input_ignores_cheap(hass: HomeAssistant
 
 
 async def test_cheap_on_without_surplus_switches_on(hass: HomeAssistant, tmp_path: Path, freezer) -> None:
+    # The clock first: states set before it would be newer than the frozen time when it lies before now, so the
+    # minimum off time would never have passed.
+    freezer.move_to(dt_util.now().replace(hour=12, minute=1))
     _surplus(hass, 0)
     hass.states.async_set(CHEAP, "off")
     hass.states.async_set(POOL, "off")
-    freezer.move_to(dt_util.now().replace(hour=12, minute=1))
     freezer.tick(timedelta(minutes=30))
     on, _, _, _ = await _cheap_automation(hass, tmp_path)
     hass.states.async_set(CHEAP, "on")
