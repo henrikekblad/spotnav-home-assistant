@@ -73,7 +73,8 @@ may tell it once more.
 No notice about the plan is told while a person's Stop holds (the core's person intent, `held_off_by_person`): no
 `plan_installed` (nor counted), no `plan_at_risk` (nor the import target's in its place) and no `plan_stopped`, but
 for `charger_ignores_stop`, which is about the person's Stop itself. A departure at risk that arose under the Stop is
-told once when the person ends it (Start, Resume) if it still cannot be met; an unplug drops it. The plan still shows in the
+told once when the person resumes the plan (Resume) if it still cannot be met; a person's Start or an unplug drops
+it. The plan still shows in the
 card, under the paused line. Kept as they are: `charge_started`, `plugged_in`, `unplugged`, `charge_complete` and the
 question of which car is plugged in. Once the Stop ends (Start, Resume, or the unplug) the plan's notices come back.
 
@@ -508,9 +509,18 @@ class ChargerNotifier:
             self._at_risk_told = None
             self._at_risk_under_stop = None
         if self._held_before and not held and self._at_risk_under_stop is not None:
-            # The person ended their Stop (an unplug dropped what arose under it): a departure still at risk is told.
+            # The person ended their Stop (an unplug dropped what arose under it): a departure still at risk is told,
+            # but only when Auto has the charger back with its plan (Resume). A person's Start drops the plan and
+            # charges by hand: nothing about the plan is news then.
             owed, self._at_risk_under_stop = self._at_risk_under_stop, None
-            if facts.at_risk and not away and self._target_told is None and not self._at_risk_told_for(owed, now):
+            auto_back = controller.plan is not None and not controller.session_runner.session.person_started
+            if (
+                auto_back
+                and facts.at_risk
+                and not away
+                and self._target_told is None
+                and not self._at_risk_told_for(owed, now)
+            ):
                 self._mark_at_risk_told(owed, now)
                 events.append((EVENT_PLAN_AT_RISK, owed))
         self._held_before = held

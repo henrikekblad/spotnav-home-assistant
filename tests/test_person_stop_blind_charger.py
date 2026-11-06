@@ -453,3 +453,23 @@ async def test_a_departure_at_risk_under_the_stop_is_dropped_by_the_unplug_that_
     night.notifier._on_snapshot(AT_RISK)
     await _go(hass, freezer, at(14, 20))
     assert night.told() == [] and relay.requests == [], "nothing is told for a car that left"
+
+
+async def test_a_departure_at_risk_under_the_stop_is_not_told_after_a_person_start(
+    hass: HomeAssistant, freezer: Any, relay: FakeRelay
+) -> None:
+    """A person's Start drops the plan and charges by hand: what the plan risked under the Stop is no news."""
+    night = await _night(hass, freezer, off_status="SuspendedEVSE", car=True)
+    await _stop(night)
+    await night.controller.async_install(plan_of([(at(20), at(21))], 10.0))
+    await hass.async_block_till_done()
+    night.notifier._on_snapshot(AT_RISK)
+    await hass.async_block_till_done()
+
+    await _executor(night).async_manual_start()
+    await hass.async_block_till_done()
+    assert not night.controller.held_off_by_person
+    night.notifier._on_snapshot(AT_RISK)
+    await _go(hass, freezer, at(14, 20))
+    assert night.told() == [] and relay.requests == []
+
