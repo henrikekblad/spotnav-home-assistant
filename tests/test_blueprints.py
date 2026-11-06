@@ -343,3 +343,147 @@ async def test_surplus_turns_a_climate_entity_on(hass: HomeAssistant, tmp_path: 
     assert on == []
     assert len(climate_on) == 1
 
+
+
+# ------------------------------------------------------------------------------------------------ surplus and cheap
+
+
+async def _cheap_automation(hass: HomeAssistant, tmp_path: Path, **extra: Any):
+    return await _surplus_automation(hass, tmp_path, POOL, cheap_entity=CHEAP, **extra)
+
+
+async def test_surplus_without_the_cheap_input_ignores_cheap(hass: HomeAssistant, tmp_path: Path, freezer) -> None:
+    _surplus(hass, 0)
+    hass.states.async_set(CHEAP, "on")
+    hass.states.async_set(POOL, "off")
+    freezer.tick(timedelta(minutes=30))
+    on, _, _, _ = await _surplus_automation(hass, tmp_path, POOL)
+    hass.states.async_set(CHEAP, "off")
+    hass.states.async_set(CHEAP, "on")
+    await hass.async_block_till_done()
+    assert on == []
+    _surplus(hass, 3500)
+    await hass.async_block_till_done()
+    assert len(on) == 1
+
+
+async def test_cheap_on_without_surplus_switches_on(hass: HomeAssistant, tmp_path: Path, freezer) -> None:
+    _surplus(hass, 0)
+    hass.states.async_set(CHEAP, "off")
+    hass.states.async_set(POOL, "off")
+    freezer.move_to(dt_util.now().replace(hour=12, minute=1))
+    freezer.tick(timedelta(minutes=30))
+    on, _, _, _ = await _cheap_automation(hass, tmp_path)
+    hass.states.async_set(CHEAP, "on")
+    await hass.async_block_till_done()
+    assert [call.data["entity_id"] for call in on] == [[POOL]]
+
+
+async def test_cheap_off_without_surplus_switches_off_after_minimum_on_time(
+    hass: HomeAssistant, tmp_path: Path, freezer
+) -> None:
+    _surplus(hass, 0)
+    hass.states.async_set(CHEAP, "on")
+    hass.states.async_set(POOL, "on")
+    freezer.tick(timedelta(minutes=1))
+    _, off, _, _ = await _cheap_automation(hass, tmp_path, min_on_minutes=10)
+    hass.states.async_set(CHEAP, "off")
+    await hass.async_block_till_done()
+    assert off == []
+    freezer.tick(timedelta(minutes=10))
+    _surplus(hass, 100)
+    await hass.async_block_till_done()
+    _surplus(hass, 0)
+    await hass.async_block_till_done()
+    assert off and all(call.data["entity_id"] == [POOL] for call in off)
+
+
+async def test_cheap_keeps_it_on_when_the_surplus_is_gone(hass: HomeAssistant, tmp_path: Path, freezer) -> None:
+    _surplus(hass, 0)
+    hass.states.async_set(CHEAP, "on")
+    hass.states.async_set(POOL, "on")
+    freezer.tick(timedelta(minutes=30))
+    _, off, _, _ = await _cheap_automation(hass, tmp_path)
+    _surplus(hass, 0)
+    await hass.async_block_till_done()
+    _surplus(hass, 50)
+    await hass.async_block_till_done()
+    assert off == []
+
+
+async def test_surplus_while_not_cheap_switches_on(hass: HomeAssistant, tmp_path: Path, freezer) -> None:
+    _surplus(hass, 0)
+    hass.states.async_set(CHEAP, "off")
+    hass.states.async_set(POOL, "off")
+    freezer.tick(timedelta(minutes=30))
+    on, _, _, _ = await _cheap_automation(hass, tmp_path)
+    _surplus(hass, 3500)
+    await hass.async_block_till_done()
+    assert len(on) == 1
+
+
+async def test_cheap_outside_the_window_stays_off_and_window_end_switches_off(
+    hass: HomeAssistant, tmp_path: Path, freezer
+) -> None:
+    local = dt_util.now().replace(hour=8, minute=0, second=0, microsecond=0)
+    freezer.move_to(local)
+    _surplus(hass, 0)
+    hass.states.async_set(CHEAP, "off")
+    hass.states.async_set(POOL, "off")
+    on, off, _, _ = await _cheap_automation(
+        hass, tmp_path, window_start="09:00:00", window_end="16:00:00", min_off_minutes=0, min_on_minutes=0
+    )
+    hass.states.async_set(CHEAP, "on")
+    await hass.async_block_till_done()
+    assert on == []
+
+    freezer.move_to(local.replace(hour=9, minute=1))
+    hass.states.async_set(CHEAP, "off")
+    hass.states.async_set(CHEAP, "on")
+    await hass.async_block_till_done()
+    assert len(on) == 1
+
+    hass.states.async_set(POOL, "on")
+    end = local.replace(hour=16)
+    freezer.move_to(end)
+    async_fire_time_changed(hass, end)
+    await hass.async_block_till_done()
+    assert len(off) == 1
+
+
+async def test_minimum_times_hold_across_a_switch_between_reasons(
+    hass: HomeAssistant, tmp_path: Path, freezer
+) -> None:
+    _surplus(hass, 0)
+    hass.states.async_set(CHEAP, "on")
+    hass.states.async_set(POOL, "on")
+    freezer.tick(timedelta(minutes=1))
+    _, off, _, _ = await _cheap_automation(hass, tmp_path, min_on_minutes=10)
+    # Cheap ends and the sun takes over at once: still on, nothing asked.
+    _surplus(hass, 4000)
+    hass.states.async_set(CHEAP, "off")
+    await hass.async_block_till_done()
+    assert off == []
+    # The sun goes within the minimum on time: held.
+    freezer.tick(timedelta(minutes=2))
+    _surplus(hass, 0)
+    await hass.async_block_till_done()
+    assert off == []
+    freezer.tick(timedelta(minutes=10))
+    _surplus(hass, 10)
+    await hass.async_block_till_done()
+    _surplus(hass, 0)
+    await hass.async_block_till_done()
+    assert off
+
+    # Off after the sun: cheap starts within the minimum off time, held until it has passed.
+    on = async_mock_service(hass, "homeassistant", "turn_on")
+    hass.states.async_set(POOL, "off")
+    hass.states.async_set(CHEAP, "on")
+    await hass.async_block_till_done()
+    assert on == []
+    freezer.tick(timedelta(minutes=6))
+    hass.states.async_set(CHEAP, "off")
+    hass.states.async_set(CHEAP, "on")
+    await hass.async_block_till_done()
+    assert len(on) == 1

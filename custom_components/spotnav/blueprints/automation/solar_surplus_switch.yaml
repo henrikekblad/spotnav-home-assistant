@@ -8,9 +8,11 @@ blueprint:
 
 
     It is switched on when the surplus is at or above the on threshold and off when the surplus is
-    at or below the off threshold. The surplus is never below zero: 0 means the site takes power
+    at or below the off threshold. If you also choose a Cheap now sensor, the load is switched on
+    while electricity is cheap too, and only switched off when the surplus is gone and electricity
+    is no longer cheap. The surplus is never below zero: 0 means the site takes power
     from the grid. A minimum on time and a minimum off time keep it from switching back and forth
-    when a cloud passes. It runs when the surplus changes, every 5 minutes, and when Home Assistant
+    when a cloud passes, and apply to both reasons alike. It runs when the surplus changes, every 5 minutes, and when Home Assistant
     starts.
 
 
@@ -103,6 +105,17 @@ blueprint:
           default: "00:00:00"
           selector:
             time: {}
+    cheap_entity:
+      name: Also on while cheap (optional)
+      description: >-
+        The price device's Cheap now sensor, such as binary_sensor.electricity_price_se4_cheap_now.
+        While it is on the load is switched on even without a surplus. Leave empty to run on surplus only.
+      default: []
+      selector:
+        entity:
+          filter:
+            - integration: spotnav
+              domain: binary_sensor
     allowed:
       name: Allowed (optional)
       collapsed: true
@@ -125,6 +138,9 @@ triggers:
   - trigger: state
     entity_id: !input surplus_sensor
     to: null
+  - trigger: state
+    entity_id: !input cheap_entity
+    to: null
   - trigger: time_pattern
     minutes: "/5"
   - trigger: homeassistant
@@ -143,6 +159,7 @@ variables:
   window_start: !input window_start
   window_end: !input window_end
   allowed_entity: !input allowed_entity
+  cheap_entity: !input cheap_entity
   surplus_known: "{{ states(surplus_sensor) | is_number }}"
   surplus_kw: >-
     {% set value = states(surplus_sensor) | float(0) %}
@@ -162,18 +179,20 @@ variables:
     {% else %}
       {{ now_time >= window_start or now_time < window_end }}
     {% endif %}
+  cheap_now: "{{ cheap_entity not in ['', [], none] and is_state(cheap_entity, 'on') }}"
   allowed: "{{ allowed_entity == '' or is_state(allowed_entity, 'on') }}"
   action_wanted: >-
     {% if not allowed or not target_usable %}
       none
     {% elif trigger.id == 'window_end' and has_window %}
       {{ 'off' if target_on else 'none' }}
-    {% elif not in_window or not surplus_known %}
+    {% elif not in_window or not (surplus_known or cheap_now) %}
       none
-    {% elif not target_on and surplus_kw | float >= on_threshold | float
+    {% elif not target_on
+         and (cheap_now or (surplus_known and surplus_kw | float >= on_threshold | float))
          and minutes_in_state | float >= min_off_minutes | float %}
       on
-    {% elif target_on and surplus_kw | float <= off_threshold | float
+    {% elif target_on and surplus_known and not cheap_now and surplus_kw | float <= off_threshold | float
          and minutes_in_state | float >= min_on_minutes | float %}
       off
     {% else %}
