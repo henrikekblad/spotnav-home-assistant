@@ -23,6 +23,7 @@ from custom_components.spotnav.site.import_target import (
     ACTION_HELD,
     ACTION_PAUSED,
     ACTION_UNHELD,
+    hour_end_lock_a,
     PAUSE_SLOW_CHARGER,
     raise_lock_s,
     share_budget,
@@ -173,6 +174,27 @@ async def test_a_lowering_whose_reading_lags_it_is_not_taken_for_a_charger_stuck
         assert world.hour_kw(_HOUR) <= 8.82, "\n".join(rows)
 
 
+async def test_a_slow_charger_the_budget_freed_just_before_the_hours_end_is_not_raised_into_the_next_hour(
+    hass: HomeAssistant, monkeypatch
+) -> None:
+    with freeze_time(_HOUR + timedelta(seconds=5)) as frozen:
+        world, limiter = await _slow_world(hass, monkeypatch, frozen, "slowfreed")
+        rows: list[str] = []
+        await _replay(world, 31, rows)
+        limiter.record()  # written at :32: the next write may go out at :47, inside the last 16 minutes
+        await _replay(world, 10, rows)
+        set_a = world.car_a
+        # The sun covers the house and more from :42: the budget frees the car before the hour's end lock begins (:44).
+        world.house_a = -3000.0 / (3 * _V)
+        await _replay(world, 2, rows)
+        assert _share(world)["action"] == "free", "\n".join(rows)
+        while dt_util.utcnow() < _HOUR + timedelta(minutes=59, seconds=30):
+            await world.run(1)
+            assert world.car_a == set_a, "\n".join(rows) + f"\n{dt_util.utcnow():%M:%S}: {world.car_a} A"
+        await _replay(world, 3, rows)
+        assert world.car_a > set_a, "the next hour raises it"
+
+
 async def test_a_charger_written_every_90_s_is_held_at_the_hours_end_not_paused(hass: HomeAssistant, monkeypatch) -> None:
     with freeze_time(_HOUR + timedelta(seconds=5)) as frozen:
         world, limiter = await _slow_world(
@@ -279,6 +301,27 @@ def test_a_resume_at_the_hours_end_is_a_raise() -> None:
 def test_zaptec_is_the_slow_charger_these_rules_are_for() -> None:
     assert _ZAPTEC.min_interval_s == 900.0
     assert raise_lock_s(_ZAPTEC.min_interval_s) > 600.0
+
+
+def test_the_hour_end_lock() -> None:
+    zaptec = _member(set_a=9.0, write_interval_s=900.0)
+    fast = _member(set_a=9.0, write_interval_s=10.0)
+    # Outside its window, nothing; a slow charger's window is 16 minutes, a fast one's ten.
+    assert hour_end_lock_a(zaptec, held_cap_a=11.0, held_last_pass=True, remaining_s=970.0) is None
+    assert hour_end_lock_a(fast, held_cap_a=11.0, held_last_pass=True, remaining_s=900.0) is None
+    # A fast charger: kept at its held cap, only where the last pass held it.
+    assert hour_end_lock_a(fast, held_cap_a=11.0, held_last_pass=True, remaining_s=500.0) == 11.0
+    assert hour_end_lock_a(fast, held_cap_a=11.0, held_last_pass=False, remaining_s=500.0) is None
+    # A slow one: where it is set, whenever the target held it this hour.
+    assert hour_end_lock_a(zaptec, held_cap_a=11.0, held_last_pass=True, remaining_s=900.0) == 9.0
+    assert hour_end_lock_a(zaptec, held_cap_a=11.0, held_last_pass=False, remaining_s=900.0) == 9.0
+    assert hour_end_lock_a(zaptec, held_cap_a=None, held_last_pass=False, remaining_s=900.0) is None
+    # Never below its minimum: a current set to 3 A by hand is kept at 6 A, not paused.
+    low = replace(zaptec, set_a=3.0)
+    assert hour_end_lock_a(low, held_cap_a=11.0, held_last_pass=True, remaining_s=900.0) == 6.0
+    # What it is set to unknown: its held cap.
+    unknown = replace(zaptec, set_a=None)
+    assert hour_end_lock_a(unknown, held_cap_a=11.0, held_last_pass=False, remaining_s=900.0) == 11.0
 
 
 def test_a_last_minute_blip_pauses_no_slow_charger() -> None:

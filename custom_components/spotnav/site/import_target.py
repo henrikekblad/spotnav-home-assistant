@@ -276,6 +276,24 @@ class TargetShare:
     reason: str | None = None
 
 
+def hour_end_lock_a(
+    member: TargetMember, *, held_cap_a: float | None, held_last_pass: bool, remaining_s: float
+) -> float | None:
+    """Where the hour's end keeps a charger the target held this hour (`held_cap_a`: the highest it held it to), or
+    `None` while it may be raised (see the module). Within `raise_lock_s` of the hour's end: a charger held in the last
+    pass is kept at its held cap; a slow one (`write_interval_s` above `RAISE_LOCK_S`) whenever it was held this
+    hour, also when the budget freed it just before, and where it is set if that is lower (a raise would hold into
+    the next hour), never below its minimum (a current set below it by hand is no reason to pause it)."""
+    if held_cap_a is None or remaining_s >= raise_lock_s(member.write_interval_s):
+        return None
+    slow = member.write_interval_s > RAISE_LOCK_S
+    if not (slow or held_last_pass):
+        return None
+    if slow and member.set_a is not None and member.set_a > 0:
+        return max(member.min_a, min(held_cap_a, member.set_a))
+    return held_cap_a
+
+
 def member_w(phases: int, amps: float, voltage_v: float = HOLD_VOLTAGE_V) -> float:
     return max(0.0, amps) * max(1, phases) * voltage_v
 
