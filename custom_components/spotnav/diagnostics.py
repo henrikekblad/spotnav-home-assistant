@@ -198,6 +198,9 @@ def _charger_diagnostics(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, A
             # events (no entity ids, no secrets), replayable by `core/replay.py`, and its tally per event kind kept
             # across restarts (`coverage`).
             "ownership": controller.session_runner.diagnostics(),
+            # The car's plug sensor standing in for a charger that cannot tell under a person's Stop
+            # (`execution/car_plug_fallback.py`): since when, which car and sensor, and the last unplug or plug-in it gave.
+            "car_plug": controller.car_plug_facts(),
         },
     }
 

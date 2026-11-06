@@ -60,18 +60,22 @@ class Event:
 @dataclass(frozen=True)
 class PlugIn(Event):
     """The charger stated a car is plugged in. `previous` is the connection it last stated (`None`: none since a
-    restart, so this is the first known, not necessarily a new plug-in)."""
+    restart, so this is the first known, not necessarily a new plug-in). `source` is `car_plug` when the car's own
+    plug sensor said it in place of a charger that could not (`execution/car_plug_fallback.py`), else `None`; it is
+    decided the same."""
 
     kind: ClassVar[str] = "plug_in"
     previous: bool | None = False
+    source: str | None = None
 
 
 @dataclass(frozen=True)
 class Unplug(Event):
-    """The charger stated no car is plugged in (`previous` as for `PlugIn`)."""
+    """The charger stated no car is plugged in (`previous` and `source` as for `PlugIn`)."""
 
     kind: ClassVar[str] = "unplug"
     previous: bool | None = True
+    source: str | None = None
 
 
 @dataclass(frozen=True)

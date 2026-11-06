@@ -197,6 +197,9 @@ class ChargerAdapter:
             dict.fromkeys((*(value.lower() for value in disconnected_values), *no_vehicle_values(platform)))
         )
         self._connector_status_entity = connector_status_entity
+        #: Asked for the car's own plug reading while this charger's own says nothing, at a charger that otherwise
+        #: says when a car is plugged in (`execution/car_plug_fallback.py`); `None`: nothing stands in.
+        self.connection_fallback: Callable[[], bool | None] | None = None
         self._phase_switch = phase_switch
         #: The lowest current a charge is started at: the profile's, never below the 6 A floor.
         self.min_start_current_a = max(DEFAULT_MIN_CURRENT_A, min_start_current_a or 0.0)
@@ -514,7 +517,17 @@ class ChargerAdapter:
         return bool(self._disconnected_values)
 
     def vehicle_connected(self) -> bool | None:
-        """Whether a vehicle is plugged in, or `None` when this charger cannot say.
+        """Whether a vehicle is plugged in, or `None` when nothing can say: the charger's own reading
+        (`charger_vehicle_connected`), and while it says nothing at a charger that otherwise does, what the
+        car's own plug sensor stands in with (`connection_fallback`). The charger's own reading always wins."""
+        own = self.charger_vehicle_connected()
+        fallback = self.connection_fallback
+        if own is not None or fallback is None or not self.reports_connection:
+            return own
+        return fallback()
+
+    def charger_vehicle_connected(self) -> bool | None:
+        """Whether the charger itself says a vehicle is plugged in, or `None` when it cannot say.
 
         An OCPP connector says it through its status (`Available` is no vehicle); another charger
         through its status sensor, read by the same table as the dashboard's connection

@@ -20,7 +20,7 @@ A time is only given while the entity still holds the value it was seen with.
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -46,8 +46,10 @@ class _Seen:
 class SourceChanges:
     """The real changes and reports of the entities `watch` names."""
 
-    def __init__(self, hass: HomeAssistant) -> None:
+    def __init__(self, hass: HomeAssistant, on_update: Callable[[], None] | None = None) -> None:
         self._hass = hass
+        #: Told after each change or report of a watched entity has been taken in.
+        self._on_update = on_update
         self._watched: frozenset[str] = frozenset()
         self._seen: dict[str, _Seen] = {}
         self._unsubscribe: list[CALLBACK_TYPE] = []
@@ -110,6 +112,7 @@ class SourceChanges:
             seen.value, seen.changed, seen.reported = new.state, new.last_changed, new.last_reported
         elif _valid(old):
             seen.reported = new.last_reported
+        self._updated()
 
     @callback
     def _on_reported(self, event: Event[EventStateReportedData]) -> None:
@@ -117,3 +120,8 @@ class SourceChanges:
         seen = self._seen.get(new.entity_id)
         if seen is not None and seen.value == new.state:
             seen.reported = event.data["last_reported"]
+        self._updated()
+
+    def _updated(self) -> None:
+        if self._on_update is not None:
+            self._on_update()
