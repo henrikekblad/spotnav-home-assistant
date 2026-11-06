@@ -131,6 +131,18 @@ async def test_bmw_cardatas_charging_port_plug_state_counts_and_the_port_door_do
     assert plug_reading(State("sensor.x", "-NA-")) is None
 
 
+async def test_a_navigation_route_tracker_is_no_location(hass: HomeAssistant) -> None:
+    """Tesla Fleet has a `location` tracker and a `route` one (the navigation's destination): only the first is
+    where the car is, so it is detected alone."""
+    vehicle = car(hass)
+    add(hass, vehicle, "device_tracker", "tesla_route", "not_home", source_type="gps")
+    add(hass, vehicle, "device_tracker", "tesla_destination", "not_home", source_type="gps")
+    tracker = add(hass, vehicle, "device_tracker", "tesla_location", "home", source_type="gps")
+    location = identification_sources(hass, vehicle)[1]
+    assert location.entity_id == tracker
+    assert location.candidates == (tracker,)
+
+
 async def test_two_alike_are_a_choice_and_nothing_is_none(hass: HomeAssistant) -> None:
     vehicle = car(hass)
     assert identification_sources(hass, vehicle)[0].entity_id is None
