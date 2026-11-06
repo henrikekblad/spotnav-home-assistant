@@ -83,12 +83,11 @@ from .import_target import (
     held_level_kw,
     HOLD_VOLTAGE_V,
     hour_budget,
+    hour_end_lock_a,
     HourBudget,
     lowering_floor_a,
     member_w,
     plan_remaining_kwh,
-    RAISE_LOCK_S,
-    raise_lock_s,
     share_budget,
     TargetMember,
     TargetShare,
@@ -5314,17 +5313,18 @@ class SiteCapacityController:
         # say) is the fuse's and the budget's to raise, as at any other time. For a charger whose current may be
         # written only every few minutes the lock starts a whole interval and a dwell before the hour's end
         # (`raise_lock_s`), so the lowering that takes a raise back always comes within the hour, and it is kept
-        # where it is set: a raise there would hold into the next hour, as no write may follow it before then.
+        # where it is set: a raise there would hold into the next hour, as no write may follow it before then. Such
+        # a charger is locked whenever the target held it this hour, also when the budget freed it just before the
+        # window; never below its minimum (a current set below it by hand is no reason to pause it).
         for member in members:
             held_cap = self._target_last_cap.get(member.charger_entry_id)
-            if (
-                budget.remaining_s < raise_lock_s(member.write_interval_s)
-                and member.charger_entry_id in previously_held
-                and held_cap is not None
-            ):
-                lock = held_cap[1]
-                if member.write_interval_s > RAISE_LOCK_S and member.set_a is not None and member.set_a > 0:
-                    lock = min(lock, member.set_a)
+            lock = hour_end_lock_a(
+                member,
+                held_cap_a=None if held_cap is None else held_cap[1],
+                held_last_pass=member.charger_entry_id in previously_held,
+                remaining_s=budget.remaining_s,
+            )
+            if lock is not None:
                 self._target_raise_lock[member.charger_entry_id] = lock
         held = dict(decisions)
 
@@ -6045,7 +6045,8 @@ class SiteCapacityController:
                     "inert": self._target_inert.get(charger_entry_id),
                     "floor_limited": charger_entry_id in self._target_floor_limited,
                     # Why a rule beyond the share decided (`slow_charger`), and the wait for its next current write.
-                    "reason": share.reason or self._target_pause_reason(charger_entry_id, budget),
+                    "reason": share.reason
+                    or (self._target_pause_reason(charger_entry_id, budget) if share.action == ACTION_PAUSED else None),
                     "write_wait_s": round(self._target_write_wait.get(charger_entry_id, 0.0), 1),
                 }
                 for charger_entry_id, share in self._target_shares.items()

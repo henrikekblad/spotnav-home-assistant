@@ -626,13 +626,15 @@ charger draws on would turn from import to export (so the current the fuse carri
   waits for the dwell), so a wobbling house does not ratchet the car down. In the hour's last ten minutes a charger the target held is raised no further than it held it (the budget
   left is spread over too little time to be worth a raise the next hour takes back); a charger the target did not
   hold is the fuse's and the budget's as at any other time.
-- **Chargers that take a new current only every few minutes** (Zaptec: every 15) are held by energy. Until its next
-  write the charger keeps drawing what it draws now, so a lowering is made deep enough that this wait and then the
-  lower current still end the hour under the target. Where no current at or above the minimum can do that (late in
-  the hour, or the house takes too much at once), the charge is paused instead, to the hour's end as any target
-  pause: a pause is a command the charger takes within seconds, not a current. From one interval and a minute before
-  the hour's end (16 minutes for Zaptec) such a charger is kept where it is set, so no raise reaches into the next
-  hour. In such hours the car may get a little less than with a charger that takes a new current at once. The
+- **Chargers that take a new current only every few minutes** (Zaptec: every 15; one that takes it every 90
+  seconds or more often is held as any other) are held by energy. Until its next write the charger keeps drawing
+  what it is set to, so a lowering is made deep enough that this wait and then the lower current still end the hour
+  under the target. Where no current at or above the minimum can do that (late in the hour, or the house takes too
+  much at once), the charge is paused instead, to the hour's end as any target pause: a pause is a command the
+  charger takes within seconds, not a current. A wait that ends in the hour's last minute and carries only a few
+  watt-hours too many pauses nothing; the margin takes it. From one interval and a minute before the hour's end (16
+  minutes for Zaptec) such a charger, once the target has held it this hour, is kept where it is set (never below
+  its minimum), so no raise reaches into the next hour. In such hours the car may get a little less than with a charger that takes a new current at once. The
   diagnostics show each charger's wait for its next write (`write_wait_s`) and, for such a pause, `slow_charger`.
 - **The house alone over the target.** When the house by itself ends the hour above the target, SpotNav pauses its
   chargers and holds back nothing else; the status says that the house alone is above the target, never that the
