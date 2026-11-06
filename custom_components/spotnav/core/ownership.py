@@ -1114,6 +1114,17 @@ def _command_result(session: ChargeSession, event: CommandResult, now: datetime)
                 s = s.with_changes(balancing_paused=True, paused_origin=owner_after)
         else:
             return s, ()
+        if (
+            event.reason == REASON_PERSON
+            and (event.earlier_plug_in or (pending is not None and pending.earlier_plug_in))
+            and s.plugged is False
+        ):
+            # A person's Start whose car was unplugged before its result (a connector that said nothing until the Start
+            # turned it on, or an unplug while the Start was on its way): it ends with that plug-in as if the unplug
+            # had come after it, so neither the Start's pause nor its charge outlives the car it was for, and a Stop it
+            # replaced is over too. A span pause they chose is kept. A car plugged in since is the one the person
+            # started for (a charger that saw it only once the Start turned it on): the Start holds for it, below.
+            return _reset_person_hold(s).with_changes(manual=None, owner=OWNER_NONE), ()
         if event.reason == REASON_PERSON and s.span_pause is None:
             # The person owns the charger for the plug-in session (A); a span pause they chose is kept.
             s = s.with_changes(manual=ManualPause(MANUAL_START, SCOPE_PLUG_IN))

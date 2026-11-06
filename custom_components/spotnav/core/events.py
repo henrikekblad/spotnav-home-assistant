@@ -520,7 +520,8 @@ class CommandResult(Event):
     `unobserved` (nothing says whether the charge still runs, so its owner is kept unless the plan was cleared); a
     stop that sent nothing because one of ours was still on its way (it answers for it) is `settled`. A command today's
     code decided in a plug-in that ended before its result (an unplug, also one followed by a new plug-in) is
-    `earlier_plug_in`: load balancing holds nothing back on it."""
+    `earlier_plug_in`: load balancing holds nothing back on it, and a person's Start whose car is unplugged by then
+    ends with that plug-in (no pause of theirs, nobody's charge)."""
 
     kind: ClassVar[str] = "command_result"
     command: str = "start"
