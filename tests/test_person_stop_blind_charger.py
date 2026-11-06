@@ -44,9 +44,14 @@ PLUG = "binary_sensor.tesla_charging_cable"
 ON_TIME = SimpleNamespace(reason="ready", proposal=None, applied=True)
 
 
-async def _with_car(hass: HomeAssistant, night: Night, *, plug: str | None = "on") -> str:
-    """The Tesla as the charger's car, with its plug sensor saying `plug` (`None`: it has none)."""
+async def _with_car(
+    hass: HomeAssistant, night: Night, *, plug: str | None = "on", location: str | None = None
+) -> str:
+    """The Tesla as the charger's car, with its plug sensor saying `plug` (`None`: it has none) and, given one, a
+    tracker saying `location`."""
     tesla = add_car(hass, "Tesla")
+    if location is not None:
+        vehicle_entity(hass, device_id=tesla, domain="device_tracker", object_id="tesla_location", state=location)
     if plug is not None:
         vehicle_entity(
             hass, device_id=tesla, domain="binary_sensor", object_id="tesla_charging_cable", state=plug,
@@ -493,3 +498,41 @@ async def test_the_chargers_next_word_after_the_cars_sensor_only_agreed_is_a_rea
     await hass.async_block_till_done()
     assert _connection_events(night)[-1] == {"kind": "unplug", "previous": True, "source": None}
     assert not night.controller.held_off_by_person
+
+
+async def test_a_car_plugged_in_away_from_home_is_no_plug_in_here(
+    hass: HomeAssistant, freezer: Any, relay: FakeRelay
+) -> None:
+    """The car's sensor ended the Stop; the car is then plugged in at work. Its cloud says "plugged in", its tracker
+    says it is away: no plug-in at the home charger, no start of an empty connector, nothing told. Plugged in at home,
+    it is a plug-in as before."""
+    night = await _night(hass, freezer, off_status="Unavailable", car=True)
+    await _with_car(hass, night, location="home")
+    await _charging(hass, freezer, night)
+    await _stop(night)
+    _car_reports_again(hass)
+    _car_says(hass, "off")
+    await hass.async_block_till_done()
+    assert not night.controller.held_off_by_person
+    await night.controller.async_install(plan_of([FIRST, LAST], 30.0))
+    await hass.async_block_till_done()
+    events, starts, told, pushed = len(_connection_events(night)), len(night.starts), night.told(), len(relay.requests)
+
+    hass.states.async_set("device_tracker.tesla_location", "not_home")
+    _car_says(hass, "on")
+    await hass.async_block_till_done()
+    await _go(hass, freezer, FIRST[0] + timedelta(minutes=30))
+    assert len(_connection_events(night)) == events, "plugged in elsewhere: no plug-in here"
+    assert len(night.starts) == starts, "no start of an empty connector"
+    assert night.told() == told and len(relay.requests) == pushed
+    assert night.controller.car_plug_facts()["awaits_plug_in"], "still waiting for the plug-in at home"
+
+    # Home again, unplugged on the way and plugged in here: a plug-in, and the plan's open window starts it.
+    _car_says(hass, "off")
+    hass.states.async_set("device_tracker.tesla_location", "home")
+    await hass.async_block_till_done()
+    _car_says(hass, "on")
+    await hass.async_block_till_done()
+    await _go(hass, freezer, FIRST[0] + timedelta(minutes=31))
+    assert _connection_events(night)[-1] == {"kind": "plug_in", "previous": False, "source": SOURCE_CAR_PLUG}
+    assert len(night.starts) == starts + 1

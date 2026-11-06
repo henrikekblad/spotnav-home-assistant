@@ -17,6 +17,9 @@ charger that otherwise says when a car is plugged in), the car's plug sensor sta
 * **Fresh only**: a reading counts when SpotNav saw the sensor change to it, or its integration write it again, since
   the fallback was armed (`SourceChanges`, so a state re-created at a restart is no report). A reading from before the
   stop never counts.
+* **At home**: "plugged in" counts only while the car's location source (its tracker, detected or chosen) does not
+  say it is away: a car plugged in at work is no plug-in here. A car with no location source, or one that says
+  nothing, is read by its plug sensor alone. "Unplugged" needs no location.
 
 What it gives is the controller's connection reading (`ChargerAdapter.connection_fallback`), so an unplug and a
 plug-in from it run through the one place a charger's own do (`ChargingController._observe_connection`): the
@@ -34,7 +37,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.util import dt as dt_util
 
 from ..vehicles.identification_changes import SourceChanges
-from ..vehicles.identification_sources import identification_sources, plug_reading
+from ..vehicles.identification_sources import identification_sources, location_reading, plug_reading
 
 #: The event source that says an unplug or a plug-in came from the car's own plug sensor.
 SOURCE_CAR_PLUG: Final = "car_plug"
@@ -70,6 +73,8 @@ class CarPlugFallback:
         self._since: datetime | None = None
         self._vehicle_id: str | None = None
         self._entity_id: str | None = None
+        #: The car's location source (`None`: none).
+        self._location_id: str | None = None
         #: The last unplug or plug-in it gave: when, which, from which sensor.
         self._last: dict[str, Any] | None = None
         #: It gave an unplug, and no plug-in since: it stays armed for that plug-in.
@@ -98,7 +103,7 @@ class CarPlugFallback:
             return
         self._since = None
         self._awaits_plug_in = False
-        self._vehicle_id = self._entity_id = None
+        self._vehicle_id = self._entity_id = self._location_id = None
         self._changes.watch(())
 
     def refresh(self) -> None:
@@ -106,13 +111,16 @@ class CarPlugFallback:
         if self._since is None:
             return
         vehicle = self._vehicle()
-        entity_id = None if vehicle is None else identification_sources(self._hass, vehicle)[0].entity_id
+        sources = None if vehicle is None else identification_sources(self._hass, vehicle)
+        entity_id = None if sources is None else sources[0].entity_id
+        self._location_id = None if sources is None or entity_id is None else sources[1].entity_id
         if (vehicle, entity_id) != (self._vehicle_id, self._entity_id) and self._vehicle_id is not None:
             # Another car (or another sensor of it): nothing it said before now counts.
             self._since = dt_util.utcnow()
             self._awaits_plug_in = False
         self._vehicle_id, self._entity_id = vehicle, entity_id
-        self._changes.watch(() if entity_id is None else (entity_id,))
+        # The location is watched too, so a car that comes home is read again.
+        self._changes.watch(tuple(item for item in (entity_id, self._location_id) if item is not None))
 
     def reading(self) -> bool | None:
         """What the car's plug sensor says, fresh since it was armed: plugged in, unplugged, or `None` (not armed, no
@@ -126,6 +134,9 @@ class CarPlugFallback:
             return None
         stamps = [stamp for stamp in (self._changes.changed(state), self._changes.reported(state)) if stamp is not None]
         if not stamps or max(stamps) < since:
+            return None
+        if value and self._location_id is not None and location_reading(self._hass.states.get(self._location_id)) is False:
+            # Plugged in elsewhere (at work): no plug-in at this charger.
             return None
         return value
 
