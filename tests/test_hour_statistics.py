@@ -473,19 +473,93 @@ def test_a_complete_hour_of_the_month_before_never_counts() -> None:
     assert free_level_hours(demand.tracker.previous) == []
 
 
-def test_the_complete_flag_is_kept_as_a_ninth_column_and_a_row_without_it_is_not_complete() -> None:
-    start = cet(2026, 11, 2, 17)
-    complete = HourMean(start=start, kw=6.4, floor_kw=6.4, imported=True, complete=True)
-    row = hour_row(complete)
-    assert row[7:] == [1, 1]
-    assert _hour_from_row(row) == complete
-    eight = hour_row(HourMean(start=start, kw=6.4, floor_kw=6.4, imported=True))
-    assert len(eight) == 8
+def _old_row_length_rule(raw: Any) -> bool:
+    """2.4.5's `_hour_from_row` length rule: a row of any other length was dropped."""
+    return isinstance(raw, list) and len(raw) in (4, 6, 7, 8)
+
+
+def _store_with_complete_hour() -> SiteDemand:
+    demand = demand_with_measured(cet(2026, 11, 3, 10))
+    peak = cet(2026, 11, 2, 17)
+    demand.apply_backfill(
+        backfill_hours(stat_hours(cet(2026, 11, 2, 0), 34, 2.0), {peak: 6.4}), PILOT, demand.now()
+    )
+    return demand
+
+
+def test_the_complete_flag_is_kept_beside_the_rows_and_survives_a_round_trip() -> None:
+    demand = _store_with_complete_hour()
+    peak = cet(2026, 11, 2, 17)
+    stored = demand.tracker.month_dict()
+    assert stored["complete"] == [peak.isoformat()]
+    assert all(len(row) in (7, 8) for row in (*stored["hours"], *stored["previous"]))
+    again = SiteDemand(None, None, TZ)
+    assert again.tracker.restore(stored, None) is False
+    assert again.tracker.hours == demand.tracker.hours
+    assert [hour.start for hour in again.tracker.hours if hour.complete] == [peak]
+    # A row without its start listed is not complete; a measured hour listed never is.
+    stored["complete"] = [cet(2026, 11, 3, 10).isoformat()]
+    bare = SiteDemand(None, None, TZ)
+    bare.tracker.restore(stored, None)
+    assert not any(hour.complete for hour in bare.tracker.hours)
+
+
+def test_a_release_before_2_5_reads_every_row_of_the_new_document() -> None:
+    stored = _store_with_complete_hour().tracker.month_dict()
+    rows_kept = [*stored["hours"], *stored["previous"]]
+    assert rows_kept and all(_old_row_length_rule(row) for row in rows_kept)
+    # A downgrade writes the rows back without `complete`: the hours stay, only not complete.
+    downgraded = {key: value for key, value in stored.items() if key != "complete"}
+    again = SiteDemand(None, None, TZ)
+    again.tracker.restore(downgraded, None)
+    assert len(again.tracker.hours) == len(stored["hours"]) and not any(hour.complete for hour in again.tracker.hours)
+
+
+def test_a_ninth_element_from_a_development_build_is_read_as_complete_and_written_back_as_eight() -> None:
+    demand = _store_with_complete_hour()
+    peak = cet(2026, 11, 2, 17)
+    stored = demand.tracker.month_dict()
+    del stored["complete"]
+    stored["hours"] = [[*row, 1] if row[0] == peak.isoformat() else row for row in stored["hours"]]
+    again = SiteDemand(None, None, TZ)
+    assert again.tracker.restore(stored, None) is True
+    assert [hour.start for hour in again.tracker.hours if hour.complete] == [peak]
+    written = again.tracker.month_dict()
+    assert written["complete"] == [peak.isoformat()] and all(len(row) <= 8 for row in written["hours"])
+    # A malformed ninth element drops the row.
+    eight = hour_row(HourMean(start=peak, kw=6.4, floor_kw=6.4, imported=True))
+    assert _hour_from_row([*eight, 0]) is None and _hour_from_row([*eight, True]) is None
     read = _hour_from_row(eight)
     assert read is not None and read.imported and not read.complete
-    assert len(hour_row(HourMean(start=start, kw=3.0, floor_kw=3.0))) == 7
-    # A malformed ninth column drops the row.
-    assert _hour_from_row([*eight, 0]) is None and _hour_from_row([*eight, True]) is None
+
+
+async def test_a_migrated_store_is_written_again_at_load() -> None:
+    demand = _store_with_complete_hour()
+    stored = demand.tracker.month_dict()
+    stored["hours"] = [[*row, 1] if len(row) == 8 else row for row in stored["hours"]]
+
+    class LoadedStore(KeptStore):
+        def __init__(self, data: Any) -> None:
+            super().__init__()
+            self.data = data
+
+        async def async_load(self) -> Any:
+            return self.data
+
+    again = SiteDemand(None, None, TZ)
+    month_store, running_store = LoadedStore(stored), LoadedStore(None)
+    again._month_store = month_store  # type: ignore[assignment]  # noqa: SLF001
+    again._running_store = running_store  # type: ignore[assignment]  # noqa: SLF001
+    await again.async_load()
+    assert month_store.writes == 1
+
+
+def test_a_complete_hours_house_part_is_its_five_minute_mean_less_the_chargers() -> None:
+    start = cet(2026, 11, 2, 17)
+    (hour,) = backfill_hours([StatHour(start, 6.5, 1.0)], {start: 6.4})
+    assert hour.house_kw == pytest.approx(5.4) and hour.kw == pytest.approx(6.4)
+    (unknown,) = backfill_hours([StatHour(start, 6.5, None)], {start: 6.4})
+    assert unknown.house_kw is None
 
 
 def test_a_site_that_never_measured_is_not_back_filled() -> None:

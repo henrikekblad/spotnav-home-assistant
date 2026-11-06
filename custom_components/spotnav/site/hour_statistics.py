@@ -440,16 +440,17 @@ def backfill_hours(
     """Statistics hours as the hour tracker keeps them, marked `imported`: the grid's mean as import
     (`max(0, grid)`, also as the hour's floor), the house where the chargers are known. Never incomplete: an hour
     the statistics lack is simply not there. An hour in `complete` (`read_complete_hours`) is marked `complete`, at
-    its twelve 5-minute rows' mean."""
+    its twelve 5-minute rows' mean (its house part too: that mean less the chargers' hourly figure)."""
     complete = complete or {}
     hours = []
     for hour in stat_hours:
         grid_kw = complete.get(hour.start, hour.grid_kw)
+        house_kw = None if hour.car_kw is None else max(0.0, grid_kw - hour.car_kw)
         hours.append(
             HourMean(
                 start=hour.start,
                 kw=max(0.0, grid_kw),
-                house_kw=hour.known_house_kw,
+                house_kw=house_kw,
                 floor_kw=max(0.0, grid_kw),
                 imported=True,
                 complete=hour.start in complete,

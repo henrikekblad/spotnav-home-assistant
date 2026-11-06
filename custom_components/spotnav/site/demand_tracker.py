@@ -194,8 +194,9 @@ def hour_row(hour: HourMean) -> list[Any]:
     """A completed hour as it is kept and shown in the diagnostics: `[start, kW, house kW, incomplete, held,
     paused, floor kW]`, the flags as 0 or 1; `kW` is the mean over the time measured, `floor kW` the import over
     the whole hour with any gap counted as none (`null` for an hour kept before it was). An hour read from Home
-    Assistant's statistics (`imported`) has an eighth element, `1`, and a ninth, `1`, only when it is `complete`; a
-    measured one has seven."""
+    Assistant's statistics (`imported`) has an eighth element, `1`; a measured one has seven. Whether an imported
+    hour is `complete` is kept beside the rows (`HourTracker.month_dict`'s `complete`), never in them, so a release
+    that knows rows of eight only still reads every row."""
     row = [
         hour.start.isoformat(),
         round(hour.kw, 3),
@@ -207,15 +208,14 @@ def hour_row(hour: HourMean) -> list[Any]:
     ]
     if hour.imported:
         row.append(1)
-        if hour.complete:
-            row.append(1)
     return row
 
 
 def _hour_from_row(raw: Any) -> HourMean | None:
     """A kept hour, or `None`. A row of four (kept before the import target's hours were marked) is unmarked; one of
-    six (kept before the hour's floor was) has none; one of eight was read from Home Assistant's statistics, and one
-    of nine was too and is `complete` (a row of eight is not)."""
+    six (kept before the hour's floor was) has none; one of eight was read from Home Assistant's statistics. One of
+    nine (`complete` as a ninth element, written only by a development build before 2.5.0) is read as complete and
+    written back as eight with the flag beside the rows."""
     if not isinstance(raw, list) or len(raw) not in (4, 6, 7, 8, 9):
         return None
     imported = raw[7] if len(raw) >= 8 else 0
@@ -396,28 +396,56 @@ class HourTracker:
     # ---- storage
 
     def month_dict(self) -> dict[str, Any]:
+        """The month store's document. `complete` lists the starts of the imported hours shown complete
+        (`HourMean.complete`): beside the rows, which keep their length, so a release before 2.5.0 (which ignores the
+        key) still reads every row."""
         return {
             "tz": self.tz,
             "month": _month_text(self.month),
             "hours": [hour_row(hour) for hour in self.hours],
             "previous_month": _month_text(self.previous_month),
             "previous": [hour_row(hour) for hour in self.previous],
+            "complete": [hour.start.isoformat() for hour in (*self.previous, *self.hours) if hour.complete],
         }
 
-    def restore(self, month_data: Any, running_data: Any) -> None:
-        """Take what the stores kept; a malformed part is dropped. The running hour's last reading is unknown."""
+    def restore(self, month_data: Any, running_data: Any) -> bool:
+        """Take what the stores kept; a malformed part is dropped. The running hour's last reading is unknown. An
+        imported hour is complete when its start is in `complete` (or, from a development build, its row has a ninth
+        element). Whether the month's document should be written again in today's form (such a row was read)."""
+        migrate = False
         if isinstance(month_data, dict):
             month = _month_from(month_data.get("month"))
             if month is not None:
+                complete = _complete_starts(month_data.get("complete"))
+                migrate = _has_ninth(month_data.get("hours")) or _has_ninth(month_data.get("previous"))
                 self.month = month
-                self.hours = _rows(month_data.get("hours"))
+                self.hours = _with_complete(_rows(month_data.get("hours")), complete)
                 previous = _month_from(month_data.get("previous_month"))
                 if previous is not None:
                     self.previous_month = previous
-                    self.previous = _rows(month_data.get("previous"))
+                    self.previous = _with_complete(_rows(month_data.get("previous")), complete)
         running = RunningHour.from_dict(running_data)
         if running is not None:
             self.running = running
+        return migrate
+
+
+def _complete_starts(raw: Any) -> set[datetime]:
+    if not isinstance(raw, list):
+        return set()
+    return {start for start in (_instant(item) for item in raw) if start is not None}
+
+
+def _has_ninth(raw: Any) -> bool:
+    return isinstance(raw, list) and any(isinstance(item, list) and len(item) == 9 for item in raw)
+
+
+def _with_complete(hours: list[HourMean], complete: set[datetime]) -> list[HourMean]:
+    """`hours`, an imported one marked complete where its start is listed (a measured hour never is)."""
+    return [
+        replace(hour, complete=True) if hour.imported and not hour.complete and hour.start in complete else hour
+        for hour in hours
+    ]
 
 
 def _rows(raw: Any) -> list[HourMean]:
@@ -481,7 +509,8 @@ class SiteDemand:
         running = await self._running_store.async_load()
         days = None if self._days_store is None else await self._days_store.async_load()
         try:
-            self.tracker.restore(month, running.get("running") if isinstance(running, dict) else None)
+            if self.tracker.restore(month, running.get("running") if isinstance(running, dict) else None):
+                self._month_store.changed()
         except Exception:  # noqa: BLE001 - what was kept is a measurement: a site never fails to start on it
             _LOGGER.debug("SpotNav site demand: the kept hours could not be read", exc_info=True)
         try:
@@ -766,6 +795,7 @@ class SiteDemand:
             "hours_kept": snapshot.hours_kept,
             "incomplete_hours": snapshot.incomplete_hours,
             "hours": [hour_row(hour) for hour in self.tracker.month_hours(now)],
+            "complete_hours": [hour.start.isoformat() for hour in self.tracker.month_hours(now) if hour.complete],
             "months_with_days": len(self.archive.months),
             "backfill": self.archive.backfill,
         }
