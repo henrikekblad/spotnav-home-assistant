@@ -554,6 +554,14 @@ async def test_a_migrated_store_is_written_again_at_load() -> None:
     assert month_store.writes == 1
 
 
+def test_a_complete_hours_house_part_is_its_five_minute_mean_less_the_chargers() -> None:
+    start = cet(2026, 11, 2, 17)
+    (hour,) = backfill_hours([StatHour(start, 6.5, 1.0)], {start: 6.4})
+    assert hour.house_kw == pytest.approx(5.4) and hour.kw == pytest.approx(6.4)
+    (unknown,) = backfill_hours([StatHour(start, 6.5, None)], {start: 6.4})
+    assert unknown.house_kw is None
+
+
 def test_a_site_that_never_measured_is_not_back_filled() -> None:
     demand = SiteDemand(None, None, TZ)
     demand._days_store = KeptStore()  # type: ignore[assignment]  # noqa: SLF001
