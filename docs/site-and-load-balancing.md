@@ -525,7 +525,7 @@ holds the site's chargers, through load balancing, so the hour stays under it (s
   *Demand-charge peak* sensor (kW): the first part's figure this month. Its attributes are every part with its
   figure, its peaks and how many days counted, and the running hour. It goes away with the last part.
 - **Diagnostics.** The site's diagnostics (and the debug bundle) carry a `demand` block: every hour of the month
-  (`[start, kW, house kW, incomplete, held, paused, floor kW]`: kW the mean over the time measured, floor kW the import over the whole hour with any gap counted as none; an hour from Home Assistant's statistics has an eighth column, `1`, and a ninth, `1`, when it is complete), each part's figure and peaks, the running hour with its gaps, the
+  (`[start, kW, house kW, incomplete, held, paused, floor kW]`: kW the mean over the time measured, floor kW the import over the whole hour with any gap counted as none; an hour from Home Assistant's statistics has an eighth column, `1`; `complete_hours` lists the starts of those that are [complete](#earlier-months-from-home-assistants-statistics)), each part's figure and peaks, the running hour with its gaps, the
   import target, and `backfill` (when the [earlier months](#earlier-months-from-home-assistants-statistics) were
   read, what came of it and how many hours were filed).
 
