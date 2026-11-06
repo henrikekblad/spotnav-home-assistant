@@ -131,6 +131,48 @@ async def test_a_lowering_early_in_the_hour_is_held_by_energy_and_written_at_the
         assert world.hour_kw(_HOUR) <= 8.82, "\n".join(rows)
 
 
+def _lagging_reading(world: _World, shows: int = 8) -> None:
+    """The charger's own current reading lags what the car draws by `shows` of the world's reports (two a step, so
+    eight are two minutes): a cloud integration polled every minute or two. The meter sees the car at once."""
+    seen: list[float] = []
+    show = world.show
+
+    def lagged() -> None:
+        show()
+        seen.append(world.drawn_a)
+        value = seen[-shows - 1] if len(seen) > shows else seen[0]
+        for phase in ("l1", "l2", "l3"):
+            world.halo.hass.states.async_set(
+                f"sensor.{world.halo.prefix}_{phase}", str(value), {"unit_of_measurement": "A"}, force_update=True
+            )
+
+    world.show = lagged  # type: ignore[method-assign]
+
+
+async def test_a_lowering_whose_reading_lags_it_is_not_taken_for_a_charger_stuck_above_it(
+    hass: HomeAssistant, monkeypatch
+) -> None:
+    with freeze_time(_HOUR + timedelta(seconds=5)) as frozen:
+        world, _limiter = await _slow_world(hass, monkeypatch, frozen, "slowlag")
+        _lagging_reading(world)
+        rows: list[str] = []
+        await _replay(world, 40, rows)
+        assert world.car_a == 11.0
+        assert _share(world)["write_wait_s"] == 0.0
+        # The house takes 1.5 kW more at :41: the lowering goes out at once (no write for a quarter), and the
+        # charger's reading shows the old current for two more minutes while the next write waits 15.
+        world.house_a = 2500.0 / (3 * _V)
+        controller = world.halo.controller
+        for _ in range(5):
+            await _replay(world, 1, rows)
+            # No pass decides a pause for a wait the charger is not stuck above (it is set lower already).
+            assert not controller._target_pause_reasons, "\n".join(rows)  # noqa: SLF001
+        assert world.car_a < 11.0, "\n".join(rows)
+        await _replay(world, 13, rows)
+        assert world.turn_offs == 0, "\n".join(rows)
+        assert world.hour_kw(_HOUR) <= 8.82, "\n".join(rows)
+
+
 async def test_a_charger_written_every_90_s_is_held_at_the_hours_end_not_paused(hass: HomeAssistant, monkeypatch) -> None:
     with freeze_time(_HOUR + timedelta(seconds=5)) as frozen:
         world, limiter = await _slow_world(
@@ -190,7 +232,7 @@ def test_a_slow_charger_counts_what_it_draws_meanwhile_against_the_next_charger(
     assert shares["a"].action == ACTION_FREE
     # The first takes 11 A for the whole of the rest of the hour: 9 A left, as without the wait.
     assert shares["b"] == TargetShare(ACTION_HELD, 9.0, 9.0)
-    over = share_budget(12 * _A3, [replace(zaptec, draws_a=16.0, wants_a=8.0), other], remaining_s=1200.0)
+    over = share_budget(12 * _A3, [replace(zaptec, draws_a=16.0, set_a=16.0, wants_a=8.0), other], remaining_s=1200.0)
     # 16 A for 720 s leaves 6 A for the 480 s after it, 12 A over the hour's rest: nothing left for the second.
     assert over["a"] == TargetShare(ACTION_HELD, 6.0, 6.0)
     assert over["b"] == TargetShare(ACTION_PAUSED, 0.0, 0.0)
@@ -202,9 +244,10 @@ def test_a_charger_the_target_may_not_hold_is_never_paused_for_its_write() -> No
 
 
 def test_fast_chargers_share_as_before() -> None:
-    """A charger written every 10 s or every minute: the slow rules never apply, whatever its wait."""
+    """A charger written every 10 s, every minute, every 90 s or every two minutes: the slow rules never apply,
+    whatever its wait."""
     cases = [(allowed, remaining) for allowed in (0.0, 4000.0, 6 * _A3, 9 * _A3, 30 * _A3) for remaining in (60.0, 600.0, 3000.0)]
-    for interval, wait in ((10.0, 8.0), (60.0, 55.0), (0.0, 30.0)):
+    for interval, wait in ((10.0, 8.0), (60.0, 55.0), (90.0, 85.0), (120.0, 115.0), (0.0, 30.0)):
         members = [
             _member("a", write_wait_s=wait, write_interval_s=interval),
             _member("b", draws_a=16.0, wants_a=10.0, write_wait_s=wait, write_interval_s=interval),
@@ -236,3 +279,20 @@ def test_a_resume_at_the_hours_end_is_a_raise() -> None:
 def test_zaptec_is_the_slow_charger_these_rules_are_for() -> None:
     assert _ZAPTEC.min_interval_s == 900.0
     assert raise_lock_s(_ZAPTEC.min_interval_s) > 600.0
+
+
+def test_a_last_minute_blip_pauses_no_slow_charger() -> None:
+    zaptec = _member(draws_a=9.0, set_a=9.0, wants_a=8.0, write_wait_s=880.0, write_interval_s=900.0)
+    # 40 s left, its write after the hour's end, 1 A over its share: about 3 Wh, which the margin takes.
+    assert share_budget(8 * _A3, [zaptec], remaining_s=40.0)["a"] == TargetShare(ACTION_FREE, None, 8.0)
+    # 4 A over it for the last three minutes is some 140 Wh: paused.
+    over = replace(zaptec, draws_a=12.0, set_a=12.0)
+    assert share_budget(8 * _A3, [over], remaining_s=180.0)["a"] == TargetShare(
+        ACTION_PAUSED, 0.0, 0.0, PAUSE_SLOW_CHARGER
+    )
+
+
+def test_a_slow_charger_set_below_its_reading_counts_at_what_it_is_set_to() -> None:
+    """A lowering just written: the charger's own reading still shows the old current, but it is set lower."""
+    lowered = _member(draws_a=11.0, set_a=8.0, wants_a=8.0, write_wait_s=870.0, write_interval_s=900.0)
+    assert share_budget(8 * _A3, [lowered], remaining_s=1100.0)["a"] == TargetShare(ACTION_FREE, None, 8.0)

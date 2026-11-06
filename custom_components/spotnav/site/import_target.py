@@ -67,9 +67,14 @@ MIN_REMAINING_S: Final = 60.0
 #: _hold_to_import_target`): what is left of the budget is spread over too little time to be worth a raise that the
 #: next hour takes back, and the lowering that follows waits for the dwell, past the next hour's start.
 RAISE_LOCK_S: Final = 600.0
-#: A charger whose current may be written at most this often or less is held by energy (`share_budget`): one written
-#: at least every dwell already follows the regulator as any other.
-SLOW_WRITE_INTERVAL_S: Final = REGULATOR_DWELL_S
+#: A charger whose current may be written only less often than this is held by energy (`share_budget`): one written
+#: at least every two dwells (a 90 s cloud charger) follows the regulator closely enough, and pausing it for its
+#: wait would cost more than the few watt-hours the wait carries.
+SLOW_WRITE_INTERVAL_S: Final = 2 * REGULATOR_DWELL_S
+#: A slow charger's wait that ends within this of the hour's end, carrying less than `SLOW_TINY_WH` beyond its share,
+#: pauses nothing (the margin takes it): no pause and resume for a last-minute blip.
+SLOW_TINY_REST_S: Final = 60.0
+SLOW_TINY_WH: Final = 10.0
 #: Why the target pauses a charger it could otherwise hold at its minimum: its next current write comes too late
 #: for the hour (diagnostics only).
 PAUSE_SLOW_CHARGER: Final = "slow_charger"
@@ -303,13 +308,20 @@ def _slow_wait(
     member: TargetMember, left_w: float, remaining_s: float | None, voltage_v: float
 ) -> _SlowWait | None:
     """A slow charger's wait for its next write where it matters (it draws more meanwhile than its share), else
-    `None`."""
+    `None`. What it draws meanwhile is what it is set to where that is known and less than its reading: a charger's
+    own reading lags a lowering just written (a cloud polled every minute or two), while the wait has begun."""
     if remaining_s is None or member.write_interval_s <= SLOW_WRITE_INTERVAL_S or member.write_wait_s <= 0:
         return None
-    stuck_w = member_w(member.phases, member.draws_a, voltage_v)
+    stuck_a = member.draws_a
+    if member.set_a is not None and member.set_a > 0:
+        stuck_a = min(stuck_a, member.set_a)
+    stuck_w = member_w(member.phases, stuck_a, voltage_v)
     if stuck_w <= left_w + 1e-6:
         return None
-    return _SlowWait(stuck_w=stuck_w, wait_s=min(member.write_wait_s, remaining_s), remaining_s=remaining_s)
+    wait_s = min(member.write_wait_s, remaining_s)
+    if remaining_s - wait_s <= SLOW_TINY_REST_S and (stuck_w - left_w) * wait_s / HOUR_S < SLOW_TINY_WH:
+        return None
+    return _SlowWait(stuck_w=stuck_w, wait_s=wait_s, remaining_s=remaining_s)
 
 
 def share_budget(
