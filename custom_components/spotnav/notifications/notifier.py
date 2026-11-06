@@ -70,6 +70,12 @@ once per departure, again only when the shortfall grows clearly (`TARGET_RISK_GR
 off the phones once the departure can be met again (or the target is set aside). Not kept across a restart: a restart
 may tell it once more.
 
+No notice about the plan is told while a person's Stop holds (the core's person intent, `held_off_by_person`): no
+`plan_installed` (nor counted), no `plan_at_risk` (nor the import target's in its place, nor kept to tell later) and
+no `plan_stopped`, but for `charger_ignores_stop`, which is about the person's Stop itself. The plan still shows in the
+card, under the paused line. Kept as they are: `charge_started`, `plugged_in`, `unplugged`, `charge_complete` and the
+question of which car is plugged in. Once the Stop ends (Start, Resume, or the unplug) the plan's notices come back.
+
 The paired app's instant notifications (`push.py`) hear about the same events, with their own choice
 of events and their own limits, whether or not any phone is chosen here.
 """
@@ -149,6 +155,10 @@ _EDGE_S: Final = 60.0
 _ENERGY_SLACK_KWH: Final = 0.05
 #: A completed charge's session is the open one, or one that closed this recently.
 _SESSION_RECENT_S: Final = 600.0
+
+#: The notices about the plan: none is told while a person's Stop holds (`plan_stopped`'s `charger_ignores_stop`
+#: excepted, which is about the Stop itself).
+_PLAN_NOTICES: Final = (EVENT_PLAN_INSTALLED, EVENT_PLAN_AT_RISK, EVENT_PLAN_STOPPED)
 
 #: Tracker events that are notification events of the same name.
 _TRACKED: Final = (
@@ -459,8 +469,13 @@ class ChargerNotifier:
         events: list[tuple[str, dict[str, Any]]] = []
         facts = charger_facts(self._hass, controller, self._snapshot, settings)
         at_risk_told = self._at_risk_told
+        held = self._person_stop_holds()
         for kind, attributes in self._tracker.observe(facts):
             if kind == EVENT_PLAN_AT_RISK:
+                if held:
+                    # A person's Stop holds: nothing is told about the plan, now or later.
+                    _LOGGER.debug("SpotNav charger %s: plan_at_risk not told under a person's Stop", self._entry_id)
+                    continue
                 if self._target_told is not None:
                     # The import target's own shortfall is told in its place (`import_target_risk`); kept, and told
                     # once that notice is taken down while the plan still cannot be met.
@@ -489,7 +504,7 @@ class ChargerNotifier:
         if stop_state != self._stop_state or self._at_risk_told != at_risk_told:
             self._stop_state = stop_state
             self._save_plan()
-        if reason is not None and not (away and reason == REASON_NOT_STARTED):
+        if reason is not None and not (away and reason == REASON_NOT_STARTED) and not held:
             events.append((EVENT_PLAN_STOPPED, {"reason": reason}))
         ignores_stop = bool(controller.ignores_person_stop)
         if self._baselined and ignores_stop and not self._ignores_stop:
@@ -612,8 +627,9 @@ class ChargerNotifier:
     # ------------------------------------------------------------------ a new plan, settled
 
     def _plan_installed(self, now: datetime) -> None:
-        """A plan was installed: start or extend its burst. Nothing is told while the car is away."""
-        if self._connected is False:
+        """A plan was installed: start or extend its burst. Nothing is told while the car is away, nor while a
+        person's Stop holds."""
+        if self._connected is False or self._person_stop_holds():
             return
         written = self._store.last_settings_write(self._entry_id)
         self._burst_quiet = written is not None and 0 <= (now - written).total_seconds() < QUIET_AFTER_WRITE_S
@@ -663,6 +679,10 @@ class ChargerNotifier:
         self._burst_since = self._burst_due = self._owed_until = None
         self._burst_quiet = False
         self._save_plan()
+        if self._person_stop_holds():
+            # Nothing about the plan is told (nor counted) under a person's Stop; an owed `plan_at_risk` is dropped.
+            self._at_risk_owed = None
+            return
         self._tell_owed_at_risk(now)
         plan = self._controller.plan
         fingerprint = plan_fingerprint(plan)
@@ -733,7 +753,18 @@ class ChargerNotifier:
             return
         self._send(event, attributes, now, None)
 
+    def _person_stop_holds(self) -> bool:
+        """Whether a person's Stop holds: no notice about the plan is told then."""
+        return bool(self._controller.held_off_by_person)
+
     def _send(self, event: str, attributes: dict[str, Any], now: datetime, fingerprint: str | None) -> None:
+        if (
+            event in _PLAN_NOTICES
+            and attributes.get("reason") != REASON_CHARGER_IGNORES_STOP
+            and self._person_stop_holds()
+        ):
+            _LOGGER.debug("SpotNav charger %s: %s not told under a person's Stop", self._entry_id, event)
+            return
         if self._push is not None:
             # The paired app's wake-up, with its own events and limits, whatever phones are chosen here.
             if self._push.async_event(event, now):
@@ -818,6 +849,8 @@ class ChargerNotifier:
                 return None
         if self._connected is False:
             return None  # nothing is charged with no car there
+        if self._person_stop_holds():
+            return None  # nothing about the plan is told under a person's Stop
         if self._push is not None and self._target_pushed != (risk.departure, risk.missing_kwh):
             self._target_pushed = (risk.departure, risk.missing_kwh)
             self._push.async_event(EVENT_PLAN_AT_RISK, now)
