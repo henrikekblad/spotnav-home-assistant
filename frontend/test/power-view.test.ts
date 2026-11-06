@@ -382,7 +382,7 @@ describe("the month's peak and the days from Home Assistant's statistics", () =>
     const legend = body.querySelector("ul")?.textContent ?? "";
     expect(legend).toContain("Från Home Assistants statistik");
     expect(body.querySelector("[data-note='imported']")?.textContent).toBe(
-      "Timmarna från Home Assistants statistik är ungefärliga: de räknas i månadens toppar men lyfter aldrig effektmålet.",
+      "Timmarna från Home Assistants statistik är ungefärliga: de räknas i månadens toppar, men bara den här månadens kompletta timmar (alla 5-minutersvärden finns) lyfter effektmålet.",
     );
     const first = answer.days[0]!;
     expect(dayFigures("sv", first)).toContain("från Home Assistants statistik");
