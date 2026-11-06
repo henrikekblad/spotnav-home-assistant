@@ -28,7 +28,9 @@ import target; this module only measures and never decides anything a charger is
   earlier month), the hours before SpotNav's first measured one are read from Home Assistant's hourly statistics
   (`site/hour_statistics.py`, `PERIOD_DAYS` back), marked `imported`: the running month's and the month before's as
   hours, older months as day summaries where none are kept. An hour SpotNav measured is never overwritten (nothing
-  at or after its first measured hour is filled), and an imported hour never lifts the import target.
+  at or after its first measured hour is filled). An imported hour lifts the import target only when it is a
+  running month's hour shown complete by the 5-minute statistics (`hour_statistics.read_complete_hours`, read once
+  here, never in the regulator's loop); any other imported hour never does.
 
 `HourTracker` is pure (the clock is passed in); `SiteDemand` keeps it in the site's own three stores (the month's
 hours and the day summaries, written when an hour completes; the running hour, at most once a minute). Storage is
@@ -38,7 +40,7 @@ untrusted: a malformed record is dropped, never raised on.
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta, timezone
 import logging
 import math
@@ -47,6 +49,7 @@ from typing import Any, Final
 from homeassistant.core import HomeAssistant
 from homeassistant.util import dt as dt_util
 
+from .. import time_zones
 from ..const import DOMAIN
 from ..debug_day import DayStore
 from ..planning.auto_settings import DemandComponent
@@ -191,7 +194,8 @@ def hour_row(hour: HourMean) -> list[Any]:
     """A completed hour as it is kept and shown in the diagnostics: `[start, kW, house kW, incomplete, held,
     paused, floor kW]`, the flags as 0 or 1; `kW` is the mean over the time measured, `floor kW` the import over
     the whole hour with any gap counted as none (`null` for an hour kept before it was). An hour read from Home
-    Assistant's statistics (`imported`) has an eighth element, `1`; a measured one has seven."""
+    Assistant's statistics (`imported`) has an eighth element, `1`, and a ninth, `1`, only when it is `complete`; a
+    measured one has seven."""
     row = [
         hour.start.isoformat(),
         round(hour.kw, 3),
@@ -203,16 +207,22 @@ def hour_row(hour: HourMean) -> list[Any]:
     ]
     if hour.imported:
         row.append(1)
+        if hour.complete:
+            row.append(1)
     return row
 
 
 def _hour_from_row(raw: Any) -> HourMean | None:
     """A kept hour, or `None`. A row of four (kept before the import target's hours were marked) is unmarked; one of
-    six (kept before the hour's floor was) has none; one of eight was read from Home Assistant's statistics."""
-    if not isinstance(raw, list) or len(raw) not in (4, 6, 7, 8):
+    six (kept before the hour's floor was) has none; one of eight was read from Home Assistant's statistics, and one
+    of nine was too and is `complete` (a row of eight is not)."""
+    if not isinstance(raw, list) or len(raw) not in (4, 6, 7, 8, 9):
         return None
-    imported = raw[7] if len(raw) == 8 else 0
-    if isinstance(imported, bool) or imported != 1 and len(raw) == 8:
+    imported = raw[7] if len(raw) >= 8 else 0
+    if isinstance(imported, bool) or imported != 1 and len(raw) >= 8:
+        return None
+    complete = raw[8] if len(raw) == 9 else 0
+    if isinstance(complete, bool) or complete != 1 and len(raw) == 9:
         return None
     start = _instant(raw[0])
     kw, house, incomplete = raw[1], raw[2], raw[3]
@@ -235,6 +245,7 @@ def _hour_from_row(raw: Any) -> HourMean | None:
         paused=bool(paused),
         floor_kw=None if floor is None else float(floor),
         imported=imported == 1,
+        complete=complete == 1,
     )
 
 
@@ -582,7 +593,8 @@ class SiteDemand:
             if not read.grid_readable:
                 status = BACKFILL_NO_STATISTICS
             else:
-                filed = self.apply_backfill(backfill_hours(read.hours), components, now)
+                complete = await self._complete_hours(reader, series, start, end)
+                filed = self.apply_backfill(backfill_hours(read.hours, complete), components, now)
                 status = BACKFILL_DONE
         except Exception:  # noqa: BLE001 - a back-fill must never disturb the site
             _LOGGER.debug("SpotNav site demand: the statistics could not be read", exc_info=True)
@@ -593,6 +605,24 @@ class SiteDemand:
             self._days_store.changed()
         _LOGGER.info("SpotNav site demand: back-fill from Home Assistant's statistics %s, %d hours", status, filed)
         return status
+
+    async def _complete_hours(
+        self, reader: Any, series: Any, start: datetime, end: datetime
+    ) -> dict[datetime, float]:
+        """The running month's complete hours (`hour_statistics.read_complete_hours`), none when they cannot be read:
+        the back-fill then files every hour as not complete."""
+        from .hour_statistics import read_complete_hours  # noqa: PLC0415
+
+        month = self.tracker.month
+        if month is None:
+            return {}
+        zone = time_zones.require_zone(self.tracker.tz)
+        month_start = datetime(month[0], month[1], 1, tzinfo=zone).astimezone(timezone.utc)
+        try:
+            return await read_complete_hours(reader, series, max(start, month_start), end)
+        except Exception:  # noqa: BLE001 - the hours are filed without it
+            _LOGGER.debug("SpotNav site demand: the 5-minute statistics could not be read", exc_info=True)
+            return {}
 
     def apply_backfill(self, imported: Sequence[HourMean], components: Sequence[DemandComponent], now: datetime) -> int:
         """File `imported` hours (see the module): only those before the first hour SpotNav measured, the running
@@ -615,6 +645,9 @@ class SiteDemand:
             if hour.start >= cutoff or hour.start in kept:
                 continue
             month = month_of(hour.start, tracker.tz)
+            if month != current and hour.complete:
+                # Only the running month's hours may lift the import target.
+                hour = replace(hour, complete=False)  # noqa: PLW2901
             if oldest <= month <= current:
                 by_month.setdefault(month, []).append(hour)
         previous = months_before(current, 1)

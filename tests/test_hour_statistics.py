@@ -18,7 +18,13 @@ from custom_components.spotnav.planning.demand_charge import (
     free_levels_by_hour,
     HourMean,
 )
-from custom_components.spotnav.site.demand_tracker import BACKFILL_DONE, BACKFILL_NO_STATISTICS, SiteDemand
+from custom_components.spotnav.site.demand_tracker import (
+    _hour_from_row,
+    BACKFILL_DONE,
+    BACKFILL_NO_STATISTICS,
+    hour_row,
+    SiteDemand,
+)
 from custom_components.spotnav.site.hour_statistics import (
     backfill_hours,
     ChargerSeries,
@@ -26,6 +32,7 @@ from custom_components.spotnav.site.hour_statistics import (
     KIND_ENERGY,
     KIND_POWER,
     MIN_DAYS,
+    read_complete_hours,
     read_site_hours,
     REASON_NO_CHARGERS,
     REASON_TOO_FEW_DAYS,
@@ -57,12 +64,20 @@ def cest(year: int, month: int, day: int, hour: int) -> datetime:
 
 
 class FakeRecorder:
-    """The recorder's metadata and hourly rows, as `statistics_during_period` answers them (`start` in seconds)."""
+    """The recorder's metadata, hourly and 5-minute rows, as `statistics_during_period` answers them (`start` in
+    seconds)."""
 
-    def __init__(self, meta: Mapping[str, StatMeta], rows: Mapping[str, list[dict[str, Any]]]) -> None:
+    def __init__(
+        self,
+        meta: Mapping[str, StatMeta],
+        rows: Mapping[str, list[dict[str, Any]]],
+        short: Mapping[str, list[dict[str, Any]]] | None = None,
+    ) -> None:
         self.meta = dict(meta)
         self.rows_by_id = rows
+        self.short_by_id = short or {}
         self.asked: list[tuple[set[str], set[str]]] = []
+        self.asked_short: list[tuple[datetime, datetime]] = []
 
     async def metadata(self, entity_ids: set[str]) -> dict[str, StatMeta]:
         return {entity_id: self.meta[entity_id] for entity_id in entity_ids if entity_id in self.meta}
@@ -74,6 +89,17 @@ class FakeRecorder:
         return {
             entity_id: [
                 row for row in self.rows_by_id.get(entity_id, []) if start.timestamp() <= row["start"] < end.timestamp()
+            ]
+            for entity_id in entity_ids
+        }
+
+    async def short_rows(
+        self, entity_ids: set[str], start: datetime, end: datetime
+    ) -> Mapping[str, Sequence[Mapping[str, Any]]]:
+        self.asked_short.append((start, end))
+        return {
+            entity_id: [
+                row for row in self.short_by_id.get(entity_id, []) if start.timestamp() <= row["start"] < end.timestamp()
             ]
             for entity_id in entity_ids
         }
@@ -364,6 +390,102 @@ async def test_the_back_fill_runs_once_and_a_site_without_statistics_says_so() -
     assert await bare.async_backfill(FakeRecorder({}, {}), series(), PILOT) == BACKFILL_NO_STATISTICS
     assert not bare.backfill_due() and not bare.backfill_wanted_again(bare.now() + timedelta(hours=2))
     assert bare.backfill_wanted_again(bare.now() + timedelta(days=1, hours=1))
+
+
+def five_minutes(hour: datetime, count: int = 12) -> list[datetime]:
+    """The first `count` 5-minute starts of the hour starting at `hour`."""
+    return [hour + timedelta(minutes=5 * index) for index in range(count)]
+
+
+async def test_twelve_five_minute_rows_for_every_grid_entity_make_an_hour_complete_at_their_mean() -> None:
+    complete, short_by_one, half_missing = cet(2026, 11, 2, 17), cet(2026, 11, 2, 18), cet(2026, 11, 2, 19)
+    import_rows = [
+        *rows(five_minutes(complete), lambda start: 7000.0 if start.minute < 30 else 6000.0),
+        *rows(five_minutes(short_by_one, 11), lambda start: 9000.0),
+        *rows(five_minutes(half_missing), lambda start: 5000.0),
+    ]
+    export_rows = [
+        *rows(five_minutes(complete), lambda start: 100.0),
+        *rows(five_minutes(short_by_one), lambda start: 0.0),
+        *rows(five_minutes(half_missing, 6), lambda start: 0.0),
+    ]
+    recorder = FakeRecorder({GRID: MEAN_W, EXPORT: MEAN_W}, {}, {GRID: import_rows, EXPORT: export_rows})
+    pair = series(grid=(Term(GRID), Term(EXPORT, KIND_POWER, -1.0)))
+    found = await read_complete_hours(recorder, pair, cet(2026, 11, 1, 0), cet(2026, 11, 3, 0))
+    assert found == {complete: pytest.approx(6.4)}
+    # A grid entity without statistics: nothing is complete.
+    assert await read_complete_hours(FakeRecorder({GRID: MEAN_W}, {}, {GRID: import_rows}), pair, complete, short_by_one) == {}
+
+
+def backfill_recorder(first: datetime, count: int, hourly_kw: Callable[[datetime], float], short: dict[datetime, tuple[int, float]]) -> FakeRecorder:
+    """Hourly statistics of the grid, and for the hours in `short` that many 5-minute rows at that kW."""
+    starts = hours_between(first, count)
+    five = [row for hour, (count_rows, kw) in short.items() for row in rows(five_minutes(hour, count_rows), lambda start, kw=kw: kw * 1000)]
+    return FakeRecorder({GRID: MEAN_W}, {GRID: rows(starts, lambda start: hourly_kw(start) * 1000)}, {GRID: five})
+
+
+async def test_a_complete_hour_of_the_running_month_lifts_the_import_target_and_eleven_rows_do_not() -> None:
+    # The owner-like pilot: installed on the 3rd at 10:00, a 6.0 kW target. On the 2nd at 17:00 the house drew
+    # 6.4 kW, every 5-minute row there; at 19:00 a 9 kW hourly mean with one 5-minute row missing.
+    first_measured = cet(2026, 11, 3, 10)
+    demand = demand_with_measured(first_measured)
+    peak, short_hour = cet(2026, 11, 2, 17), cet(2026, 11, 2, 19)
+    hourly = {peak: 6.5, short_hour: 9.0}
+    recorder = backfill_recorder(
+        cet(2026, 11, 1, 0), 58, lambda start: hourly.get(start, 2.0), {peak: (12, 6.4), short_hour: (11, 9.0)}
+    )
+    assert await demand.async_backfill(recorder, series(), PILOT) == BACKFILL_DONE
+    # Only the running month's 5-minute statistics are asked for, up to the running hour.
+    assert recorder.asked_short == [(cet(2026, 11, 1, 0), cet(2026, 11, 3, 13))]
+    hours = {hour.start: hour for hour in demand.tracker.month_hours(demand.now())}
+    assert hours[peak].complete and hours[peak].kw == hours[peak].floor_kw == pytest.approx(6.4)
+    assert not hours[short_hour].complete and hours[short_hour].kw == 9.0
+    free = [
+        component_month(component, free_level_hours(hours.values()), TZ, demand.now()).free_kw for component in PILOT
+    ]
+    found = effective_target(6.0, free)
+    # Lifted to the complete hour's 6.4 kW, not to the 9 kW hour, and held under it less its margin once.
+    assert found.lifted and found.kw == pytest.approx(6.4)
+    assert found.hold_kw == pytest.approx(6.4 - max(0.1, 0.02 * 6.4)) == pytest.approx(6.272)
+    # The power view's line of the month's peak starts after it.
+    levels = free_levels_by_hour(PILOT, list(hours.values()), TZ)
+    assert levels[cet(2026, 11, 2, 18)] == pytest.approx(6.4)
+
+
+async def test_without_five_minute_statistics_every_imported_hour_stays_out_of_the_free_level() -> None:
+    demand = demand_with_measured(cet(2026, 11, 3, 10))
+    recorder = backfill_recorder(cet(2026, 11, 1, 0), 58, lambda start: 6.4, {})
+    assert await demand.async_backfill(recorder, series(), PILOT) == BACKFILL_DONE
+    hours = demand.tracker.month_hours(demand.now())
+    assert not any(hour.complete for hour in hours)
+    free = [component_month(component, free_level_hours(hours), TZ, demand.now()).free_kw for component in PILOT]
+    assert effective_target(6.0, free).kw == 6.0
+
+
+def test_a_complete_hour_of_the_month_before_never_counts() -> None:
+    demand = demand_with_measured(cet(2026, 11, 3, 10))
+    october = cet(2026, 10, 31, 17)
+    imported = backfill_hours(stat_hours(october, 1, 8.0), {october: 8.0})
+    assert imported[0].complete
+    assert demand.apply_backfill(imported, PILOT, demand.now()) == 1
+    (kept,) = demand.tracker.previous
+    assert kept.imported and not kept.complete
+    assert free_level_hours(demand.tracker.previous) == []
+
+
+def test_the_complete_flag_is_kept_as_a_ninth_column_and_a_row_without_it_is_not_complete() -> None:
+    start = cet(2026, 11, 2, 17)
+    complete = HourMean(start=start, kw=6.4, floor_kw=6.4, imported=True, complete=True)
+    row = hour_row(complete)
+    assert row[7:] == [1, 1]
+    assert _hour_from_row(row) == complete
+    eight = hour_row(HourMean(start=start, kw=6.4, floor_kw=6.4, imported=True))
+    assert len(eight) == 8
+    read = _hour_from_row(eight)
+    assert read is not None and read.imported and not read.complete
+    assert len(hour_row(HourMean(start=start, kw=3.0, floor_kw=3.0))) == 7
+    # A malformed ninth column drops the row.
+    assert _hour_from_row([*eight, 0]) is None and _hour_from_row([*eight, True]) is None
 
 
 def test_a_site_that_never_measured_is_not_back_filled() -> None:

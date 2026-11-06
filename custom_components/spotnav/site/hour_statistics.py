@@ -4,8 +4,8 @@ earlier months.
 SpotNav measures a site's hours itself only from the day it is installed (`site/demand_tracker.py`). Home
 Assistant's recorder has kept hourly statistics of the same sensors for longer: this module reads them, on request
 (the import target's editor asks for a suggestion) and once to back-fill the power view. Nothing here decides
-anything a charger is told, and an hour read from the statistics never lifts the import target
-(`planning/demand_charge.free_level_hours`).
+anything a charger is told, and an hour read from the statistics lifts the import target
+(`planning/demand_charge.free_level_hours`) only when it is shown complete (below).
 
 * **What is read**: the hourly statistics of the site's grid power (a direct site's total grid power, one signed
   entity or an import/export pair, negated where the site says the meter is export-positive; a derived site's
@@ -19,6 +19,11 @@ anything a charger is told, and an hour read from the statistics never lifts the
   is `None` where one with statistics lacks the hour. The house is `max(0, grid - chargers)`, or `max(0, grid)`
   where the chargers are not known: a mean within the hour, so solar that exported in one half and was imported in
   the other nets out (the documentation says so).
+* **A complete hour** (`read_complete_hours`, with the back-fill only): an hour of the running month for which Home
+  Assistant's 5-minute statistics (kept `purge_keep_days`, ten days by default) have all `SHORT_ROWS_PER_HOUR` rows
+  for every grid entity. Its grid figure is the mean of those rows: the hourly mean, but now known to cover the whole
+  hour, where an hourly mean of a sensor that was unavailable part of the hour is the mean of the rest and may be
+  above what the meter billed. Only such an hour counts for the month's free level (`HourMean.complete`).
 * **The suggestion** (`suggest_target`): the house's typical daily peak, the median over the days of each day's
   highest hourly mean (only within the hours a demand-charge part counts when every part has its own hours, else
   all hours), plus the car's minimum power on this site (the smallest member charger's minimum current x its phases
@@ -56,6 +61,8 @@ PERIOD_DAYS: Final = 92
 MIN_DAYS: Final = 7
 #: The suggestion is rounded up to this (kW).
 SUGGEST_STEP_KW: Final = 0.5
+#: The 5-minute statistics rows a complete hour has per grid entity.
+SHORT_ROWS_PER_HOUR: Final = 12
 #: The local hours a car typically charges in (the evening and the night): `hour >= 18 or hour < 6`.
 CHARGING_FROM_HOUR: Final = 18
 CHARGING_TO_HOUR: Final = 6
@@ -129,6 +136,10 @@ class StatisticsReader(Protocol):
         self, entity_ids: set[str], start: datetime, end: datetime, types: set[str]
     ) -> Mapping[str, Sequence[Mapping[str, Any]]]: ...
 
+    async def short_rows(
+        self, entity_ids: set[str], start: datetime, end: datetime
+    ) -> Mapping[str, Sequence[Mapping[str, Any]]]: ...
+
 
 @dataclass(frozen=True, slots=True)
 class StatHour:
@@ -199,6 +210,21 @@ def term_watts(term: Term, factor: float, rows: Iterable[Mapping[str, Any]]) -> 
     return found
 
 
+def term_five_minutes(term: Term, factor: float, rows: Iterable[Mapping[str, Any]]) -> dict[datetime, float]:
+    """One power entity's 5-minute means as W (signed by `term.sign`); a row without a finite figure, or off the five
+    minutes, is dropped."""
+    found: dict[datetime, float] = {}
+    for row in rows:
+        start = _row_start(row)
+        value = row.get("mean")
+        if start is None or start.minute % 5 or start.second or start.microsecond or isinstance(value, bool):
+            continue
+        if not isinstance(value, (int, float)) or not math.isfinite(value):
+            continue
+        found[start] = term.sign * float(value) * factor
+    return found
+
+
 def _summed(series: Sequence[dict[datetime, float]]) -> dict[datetime, float]:
     """The hours every series has, summed."""
     if not series:
@@ -253,6 +279,36 @@ async def read_site_hours(reader: StatisticsReader, site: SiteSeries, start: dat
             car = sum(charger[moment] for charger in chargers) / 1000.0
         hours.append(StatHour(start=moment, grid_kw=grid[moment] / 1000.0, car_kw=car))
     return SiteHours(hours=tuple(hours), chargers_without_statistics=without, charger_sources=sources)
+
+
+async def read_complete_hours(
+    reader: StatisticsReader, site: SiteSeries, start: datetime, end: datetime
+) -> dict[datetime, float]:
+    """The complete hours between `start` and `end` (see the module): each hour's start (UTC) and the grid's mean
+    over its twelve 5-minute rows (kW, signed). Empty where the grid cannot be read."""
+    if not site.grid or any(term.kind != KIND_POWER for term in site.grid):
+        return {}
+    ids = {term.entity_id for term in site.grid}
+    meta = await reader.metadata(ids)
+    factors = {term: _usable(meta.get(term.entity_id), term.kind) for term in site.grid}
+    if any(factor is None for factor in factors.values()):
+        return {}
+    rows = await reader.short_rows(ids, start, end)
+    per_term = []
+    for term in site.grid:
+        factor = factors[term]
+        assert factor is not None
+        per_term.append(term_five_minutes(term, factor, rows.get(term.entity_id, ())))
+    slots = _summed(per_term)
+    by_hour: dict[datetime, list[float]] = {}
+    for moment, watts in slots.items():
+        if start <= moment < end:
+            by_hour.setdefault(moment.replace(minute=0), []).append(watts)
+    return {
+        hour: sum(values) / len(values) / 1000.0
+        for hour, values in sorted(by_hour.items())
+        if len(values) == SHORT_ROWS_PER_HOUR
+    }
 
 
 # ------------------------------------------------------------------------------------------------ the suggestion
@@ -378,27 +434,36 @@ def suggest_target(
 # --------------------------------------------------------------------------------------------------- back-fill
 
 
-def backfill_hours(stat_hours: Iterable[StatHour]) -> list[HourMean]:
+def backfill_hours(
+    stat_hours: Iterable[StatHour], complete: Mapping[datetime, float] | None = None
+) -> list[HourMean]:
     """Statistics hours as the hour tracker keeps them, marked `imported`: the grid's mean as import
     (`max(0, grid)`, also as the hour's floor), the house where the chargers are known. Never incomplete: an hour
-    the statistics lack is simply not there."""
-    return [
-        HourMean(
-            start=hour.start,
-            kw=max(0.0, hour.grid_kw),
-            house_kw=hour.known_house_kw,
-            floor_kw=max(0.0, hour.grid_kw),
-            imported=True,
+    the statistics lack is simply not there. An hour in `complete` (`read_complete_hours`) is marked `complete`, at
+    its twelve 5-minute rows' mean."""
+    complete = complete or {}
+    hours = []
+    for hour in stat_hours:
+        grid_kw = complete.get(hour.start, hour.grid_kw)
+        hours.append(
+            HourMean(
+                start=hour.start,
+                kw=max(0.0, grid_kw),
+                house_kw=hour.known_house_kw,
+                floor_kw=max(0.0, grid_kw),
+                imported=True,
+                complete=hour.start in complete,
+            )
         )
-        for hour in stat_hours
-    ]
+    return hours
 
 
 # --------------------------------------------------------------------------------------------- Home Assistant
 
 
 class RecorderReader:
-    """The recorder's long-term statistics (hourly), read in its executor."""
+    """The recorder's statistics (the long-term hourly ones, and the 5-minute ones for a complete hour), read in its
+    executor."""
 
     def __init__(self, hass: HomeAssistant) -> None:
         self.hass = hass
@@ -427,6 +492,16 @@ class RecorderReader:
 
         return await get_instance(self.hass).async_add_executor_job(
             statistics_during_period, self.hass, start, end, entity_ids, "hour", None, types
+        )
+
+    async def short_rows(
+        self, entity_ids: set[str], start: datetime, end: datetime
+    ) -> Mapping[str, Sequence[Mapping[str, Any]]]:
+        from homeassistant.components.recorder import get_instance  # noqa: PLC0415
+        from homeassistant.components.recorder.statistics import statistics_during_period  # noqa: PLC0415
+
+        return await get_instance(self.hass).async_add_executor_job(
+            statistics_during_period, self.hass, start, end, entity_ids, "5minute", None, {"mean"}
         )
 
 

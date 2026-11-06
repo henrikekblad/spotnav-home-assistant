@@ -49,9 +49,13 @@ class HourMean:
     #: the meter billed, where `kw` (the mean over the time measured) may be. `None` for an hour kept before it was.
     floor_kw: float | None = None
     #: Read from Home Assistant's hourly statistics (`site/hour_statistics.py`), not measured by SpotNav: shown and
-    #: counted in a month's peaks, but never part of the month's free level (`free_levels_by_hour`, the import
-    #: target's lift), so an approximation never raises what a charger may draw.
+    #: counted in a month's peaks, but part of the month's free level (`free_levels_by_hour`, the import target's
+    #: lift) only when `complete`, so an approximation never raises what a charger may draw.
     imported: bool = False
+    #: An imported hour of the running month shown to cover the whole hour: Home Assistant's 5-minute statistics had
+    #: all twelve rows of it for every grid entity, and `kw` is their mean. Counts for the free level like a
+    #: measured hour. Always `False` for a measured hour.
+    complete: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -141,12 +145,13 @@ def component_month(
 
 
 def free_level_hours(hours: Iterable[HourMean]) -> list[HourMean]:
-    """The hours the month's free level is worked out from: SpotNav's own measured hours (never an imported one),
-    each at its floor (its import over the whole hour, a gap counted as none: never above what the meter billed)."""
+    """The hours the month's free level is worked out from: SpotNav's own measured hours and the imported hours shown
+    `complete` (never another imported one), each at its floor (its import over the whole hour, a gap counted as
+    none: never above what the meter billed)."""
     return [
         hour if hour.floor_kw is None else replace(hour, kw=min(hour.kw, hour.floor_kw))
         for hour in hours
-        if not hour.imported
+        if not hour.imported or hour.complete
     ]
 
 
@@ -155,7 +160,7 @@ def free_levels_by_hour(
 ) -> dict[datetime, float | None]:
     """For each of a month's `hours`, the month's free level when it ran: the lowest `free_kw` among the parts that
     count it, worked out as `component_month` would have at its start from the month's earlier hours
-    (`free_level_hours`: measured ones only, at their floor). `None` for an hour no part counts. For the power view's
+    (`free_level_hours`: measured and complete ones only, at their floor). `None` for an hour no part counts. For the power view's
     line of the month's peak; the import target's own lift reads the running hour the same way."""
     ordered = sorted(hours, key=lambda hour: hour.start)
     peaks: list[dict[date, DayPeak]] = [{} for _ in components]
