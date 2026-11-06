@@ -413,3 +413,43 @@ async def test_the_card_line_comes_back_when_the_cars_sensor_goes_unavailable(
     assert _status(night) == ["stop_unplug_unseen"]
     assert night.controller.held_off_by_person, "a sensor gone unavailable is no unplug"
 
+
+async def test_a_departure_at_risk_under_the_stop_is_told_once_when_the_person_resumes(
+    hass: HomeAssistant, freezer: Any, relay: FakeRelay
+) -> None:
+    night = await _night(hass, freezer, off_status="SuspendedEVSE", car=True)
+    await _stop(night)
+    await night.controller.async_install(plan_of([(at(20), at(21))], 10.0))
+    await hass.async_block_till_done()
+    night.notifier._on_snapshot(AT_RISK)
+    await hass.async_block_till_done()
+    await _go(hass, freezer, at(14, 10))
+    assert night.told() == [] and relay.requests == []
+
+    await _executor(night).async_manual_follow()
+    await hass.async_block_till_done()
+    night.notifier._on_snapshot(AT_RISK)
+    await hass.async_block_till_done()
+    assert len(night.told()) == 1, "told once the Stop is over, as it still holds"
+    night.notifier._on_snapshot(AT_RISK)
+    await _go(hass, freezer, at(14, 20))
+    assert len(night.told()) == 1, "and only once"
+
+
+async def test_a_departure_at_risk_under_the_stop_is_dropped_by_the_unplug_that_ends_it(
+    hass: HomeAssistant, freezer: Any, relay: FakeRelay
+) -> None:
+    night = await _night(hass, freezer, off_status="SuspendedEVSE", car=True)
+    await _stop(night)
+    await night.controller.async_install(plan_of([(at(20), at(21))], 10.0))
+    await hass.async_block_till_done()
+    night.notifier._on_snapshot(AT_RISK)
+    await hass.async_block_till_done()
+
+    hass.states.async_set(STATUS, "Available")
+    night.car = False
+    await hass.async_block_till_done()
+    assert not night.controller.held_off_by_person
+    night.notifier._on_snapshot(AT_RISK)
+    await _go(hass, freezer, at(14, 20))
+    assert night.told() == [] and relay.requests == [], "nothing is told for a car that left"

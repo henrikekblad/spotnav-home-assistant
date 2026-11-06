@@ -71,8 +71,9 @@ off the phones once the departure can be met again (or the target is set aside).
 may tell it once more.
 
 No notice about the plan is told while a person's Stop holds (the core's person intent, `held_off_by_person`): no
-`plan_installed` (nor counted), no `plan_at_risk` (nor the import target's in its place, nor kept to tell later) and
-no `plan_stopped`, but for `charger_ignores_stop`, which is about the person's Stop itself. The plan still shows in the
+`plan_installed` (nor counted), no `plan_at_risk` (nor the import target's in its place) and no `plan_stopped`, but
+for `charger_ignores_stop`, which is about the person's Stop itself. A departure at risk that arose under the Stop is
+told once when the person ends it (Start, Resume) if it still cannot be met; an unplug drops it. The plan still shows in the
 card, under the paused line. Kept as they are: `charge_started`, `plugged_in`, `unplugged`, `charge_complete` and the
 question of which car is plugged in. Once the Stop ends (Start, Resume, or the unplug) the plan's notices come back.
 
@@ -341,6 +342,11 @@ class ChargerNotifier:
         # still cannot be met then; and whether it cannot be met now.
         self._at_risk_owed: dict[str, Any] | None = None
         self._at_risk_now = False
+        # A `plan_at_risk` that arose under a person's Stop (its attributes): told once when the person ends the Stop
+        # (Start, Resume) if the departure still cannot be met then; an unplug drops it. And whether a Stop held at
+        # the last observation.
+        self._at_risk_under_stop: dict[str, Any] | None = None
+        self._held_before = False
         # The `plan_at_risk` told for the coming departure (its departure time and that departure's instant): one
         # seen again after a restart, before that departure, is not news.
         self._at_risk_told: dict[str, Any] | None = None
@@ -473,8 +479,9 @@ class ChargerNotifier:
         for kind, attributes in self._tracker.observe(facts):
             if kind == EVENT_PLAN_AT_RISK:
                 if held:
-                    # A person's Stop holds: nothing is told about the plan, now or later.
+                    # A person's Stop holds: nothing is told about the plan; told once the person ends it, if it holds.
                     _LOGGER.debug("SpotNav charger %s: plan_at_risk not told under a person's Stop", self._entry_id)
+                    self._at_risk_under_stop = attributes
                     continue
                 if self._target_told is not None:
                     # The import target's own shortfall is told in its place (`import_target_risk`); kept, and told
@@ -499,6 +506,14 @@ class ChargerNotifier:
             # Read from a snapshot (before the first one after a start, nothing is known either way).
             self._at_risk_owed = None
             self._at_risk_told = None
+            self._at_risk_under_stop = None
+        if self._held_before and not held and self._at_risk_under_stop is not None:
+            # The person ended their Stop (an unplug dropped what arose under it): a departure still at risk is told.
+            owed, self._at_risk_under_stop = self._at_risk_under_stop, None
+            if facts.at_risk and not away and self._target_told is None and not self._at_risk_told_for(owed, now):
+                self._mark_at_risk_told(owed, now)
+                events.append((EVENT_PLAN_AT_RISK, owed))
+        self._held_before = held
         reason = self._stops.observe(self._expectation(now))
         stop_state = self._stops.window_state
         if stop_state != self._stop_state or self._at_risk_told != at_risk_told:
@@ -536,8 +551,10 @@ class ChargerNotifier:
             return
         reading = adapter.vehicle_connected()
         if reading is False:
-            # Unplugged (also when found so at start-up): the next plug-in's first plan is told.
+            # Unplugged (also when found so at start-up): the next plug-in's first plan is told, and what arose under
+            # a person's Stop is over with it.
             self._end_plug_in()
+            self._at_risk_under_stop = None
         if reading is None or reading == self._connected:
             return
         before, self._connected = self._connected, reading
