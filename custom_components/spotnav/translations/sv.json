@@ -257,7 +257,7 @@
           "entsoe_key": "ENTSO-E-nyckel (valfri)"
         },
         "data_description": {
-          "entsoe_key": "Registrera dig på [transparency.entsoe.eu]({entsoe_url}) och mejla sedan transparency@entsoe.eu med ämnet \"Restful API access\" och kontots e-postadress i texten. När du fått åtkomst (det kan ta några dagar) skapar du säkerhetsnyckeln under My Account Settings och klistrar in den här. En nyckel för hela installationen."
+          "entsoe_key": "Registrera dig på [transparency.entsoe.eu]({entsoe_url}) och mejla sedan transparency@entsoe.eu med ämnet \"Restful API access\" och kontots e-postadress i texten. När du fått åtkomst (det kan ta några dagar) skapar du säkerhetsnyckeln under My Account Settings och klistrar in den här. En nyckel för hela installationen. Med Nord Pool från HACS, som ersätter den inbyggda, lägger du in nyckeln så kommer priserna från ENTSO-E."
         }
       },
       "prices_entsoe": {
@@ -267,7 +267,7 @@
           "entsoe_key": "ENTSO-E-nyckel (valfri)"
         },
         "data_description": {
-          "entsoe_key": "Registrera dig på [transparency.entsoe.eu]({entsoe_url}) och mejla sedan transparency@entsoe.eu med ämnet \"Restful API access\" och kontots e-postadress i texten. När du fått åtkomst (det kan ta några dagar) skapar du säkerhetsnyckeln under My Account Settings och klistrar in den här. En nyckel för hela installationen."
+          "entsoe_key": "Registrera dig på [transparency.entsoe.eu]({entsoe_url}) och mejla sedan transparency@entsoe.eu med ämnet \"Restful API access\" och kontots e-postadress i texten. När du fått åtkomst (det kan ta några dagar) skapar du säkerhetsnyckeln under My Account Settings och klistrar in den här. En nyckel för hela installationen. Med Nord Pool från HACS, som ersätter den inbyggda, lägger du in nyckeln så kommer priserna från ENTSO-E."
         }
       },
       "prices_pvpc": {
@@ -464,7 +464,7 @@
           "entsoe_key_remove": "Ta bort ENTSO-E-nyckeln"
         },
         "data_description": {
-          "entsoe_key": "Din egen säkerhetsnyckel för ENTSO-E:s Transparency Platform. Med den hämtar områden som Nord Pool inte handlar sina priser från ENTSO-E. En nyckel för hela installationen; lämna tomt för att behålla den sparade. Den visas aldrig igen."
+          "entsoe_key": "Din egen säkerhetsnyckel för ENTSO-E:s Transparency Platform. Med den hämtar områden som Nord Pool inte handlar sina priser från ENTSO-E. En nyckel för hela installationen; lämna tomt för att behålla den sparade. Den visas aldrig igen. Med Nord Pool från HACS, som ersätter den inbyggda, lägger du in nyckeln så kommer priserna från ENTSO-E."
         }
       },
       "price_fees": {

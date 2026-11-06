@@ -257,7 +257,7 @@
           "entsoe_key": "Clave de ENTSO-E (opcional)"
         },
         "data_description": {
-          "entsoe_key": "Regístrate en [transparency.entsoe.eu]({entsoe_url}) y después escribe a transparency@entsoe.eu con el asunto \"Restful API access\" y el correo de tu cuenta en el texto. Cuando te den acceso (puede tardar unos días), genera el token de seguridad en My Account Settings y pégalo aquí. Una clave para toda la instalación."
+          "entsoe_key": "Regístrate en [transparency.entsoe.eu]({entsoe_url}) y después escribe a transparency@entsoe.eu con el asunto \"Restful API access\" y el correo de tu cuenta en el texto. Cuando te den acceso (puede tardar unos días), genera el token de seguridad en My Account Settings y pégalo aquí. Una clave para toda la instalación. Con Nord Pool de HACS, que sustituye al integrado, introduce la clave y los precios vendrán de ENTSO-E."
         }
       },
       "prices_entsoe": {
@@ -267,7 +267,7 @@
           "entsoe_key": "Clave de ENTSO-E (opcional)"
         },
         "data_description": {
-          "entsoe_key": "Regístrate en [transparency.entsoe.eu]({entsoe_url}) y después escribe a transparency@entsoe.eu con el asunto \"Restful API access\" y el correo de tu cuenta en el texto. Cuando te den acceso (puede tardar unos días), genera el token de seguridad en My Account Settings y pégalo aquí. Una clave para toda la instalación."
+          "entsoe_key": "Regístrate en [transparency.entsoe.eu]({entsoe_url}) y después escribe a transparency@entsoe.eu con el asunto \"Restful API access\" y el correo de tu cuenta en el texto. Cuando te den acceso (puede tardar unos días), genera el token de seguridad en My Account Settings y pégalo aquí. Una clave para toda la instalación. Con Nord Pool de HACS, que sustituye al integrado, introduce la clave y los precios vendrán de ENTSO-E."
         }
       },
       "prices_pvpc": {
@@ -464,7 +464,7 @@
           "entsoe_key_remove": "Eliminar la clave de ENTSO-E"
         },
         "data_description": {
-          "entsoe_key": "Tu propia clave de seguridad para la Transparency Platform de ENTSO-E. Con ella, las zonas que Nord Pool no negocia obtienen sus precios de ENTSO-E. Una clave para toda la instalación; déjalo vacío para conservar la guardada. No se vuelve a mostrar."
+          "entsoe_key": "Tu propia clave de seguridad para la Transparency Platform de ENTSO-E. Con ella, las zonas que Nord Pool no negocia obtienen sus precios de ENTSO-E. Una clave para toda la instalación; déjalo vacío para conservar la guardada. No se vuelve a mostrar. Con Nord Pool de HACS, que sustituye al integrado, introduce la clave y los precios vendrán de ENTSO-E."
         }
       },
       "price_fees": {

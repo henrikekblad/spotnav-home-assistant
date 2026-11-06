@@ -257,7 +257,7 @@
           "entsoe_key": "ENTSO-E-avain (valinnainen)"
         },
         "data_description": {
-          "entsoe_key": "Rekisteröidy osoitteessa [transparency.entsoe.eu]({entsoe_url}) ja lähetä sitten sähköposti osoitteeseen transparency@entsoe.eu aiheella \"Restful API access\" ja tilisi sähköpostiosoite tekstissä. Kun pääsy on myönnetty (se voi kestää muutaman päivän), luo suojausavain kohdassa My Account Settings ja liitä se tähän. Yksi avain koko asennukselle."
+          "entsoe_key": "Rekisteröidy osoitteessa [transparency.entsoe.eu]({entsoe_url}) ja lähetä sitten sähköposti osoitteeseen transparency@entsoe.eu aiheella \"Restful API access\" ja tilisi sähköpostiosoite tekstissä. Kun pääsy on myönnetty (se voi kestää muutaman päivän), luo suojausavain kohdassa My Account Settings ja liitä se tähän. Yksi avain koko asennukselle. Jos käytät HACS:n Nord Poolia, joka korvaa sisäänrakennetun, anna avain, niin hinnat tulevat ENTSO-E:ltä."
         }
       },
       "prices_entsoe": {
@@ -267,7 +267,7 @@
           "entsoe_key": "ENTSO-E-avain (valinnainen)"
         },
         "data_description": {
-          "entsoe_key": "Rekisteröidy osoitteessa [transparency.entsoe.eu]({entsoe_url}) ja lähetä sitten sähköposti osoitteeseen transparency@entsoe.eu aiheella \"Restful API access\" ja tilisi sähköpostiosoite tekstissä. Kun pääsy on myönnetty (se voi kestää muutaman päivän), luo suojausavain kohdassa My Account Settings ja liitä se tähän. Yksi avain koko asennukselle."
+          "entsoe_key": "Rekisteröidy osoitteessa [transparency.entsoe.eu]({entsoe_url}) ja lähetä sitten sähköposti osoitteeseen transparency@entsoe.eu aiheella \"Restful API access\" ja tilisi sähköpostiosoite tekstissä. Kun pääsy on myönnetty (se voi kestää muutaman päivän), luo suojausavain kohdassa My Account Settings ja liitä se tähän. Yksi avain koko asennukselle. Jos käytät HACS:n Nord Poolia, joka korvaa sisäänrakennetun, anna avain, niin hinnat tulevat ENTSO-E:ltä."
         }
       },
       "prices_pvpc": {
@@ -464,7 +464,7 @@
           "entsoe_key_remove": "Poista ENTSO-E-avain"
         },
         "data_description": {
-          "entsoe_key": "Oma suojausavaimesi ENTSO-E:n Transparency Platformiin. Sen avulla alueet, joilla Nord Pool ei käy kauppaa, saavat hintansa ENTSO-E:ltä. Yksi avain koko asennukselle; jätä tyhjäksi, niin tallennettu avain säilyy. Avainta ei näytetä enää."
+          "entsoe_key": "Oma suojausavaimesi ENTSO-E:n Transparency Platformiin. Sen avulla alueet, joilla Nord Pool ei käy kauppaa, saavat hintansa ENTSO-E:ltä. Yksi avain koko asennukselle; jätä tyhjäksi, niin tallennettu avain säilyy. Avainta ei näytetä enää. Jos käytät HACS:n Nord Poolia, joka korvaa sisäänrakennetun, anna avain, niin hinnat tulevat ENTSO-E:ltä."
         }
       },
       "price_fees": {
