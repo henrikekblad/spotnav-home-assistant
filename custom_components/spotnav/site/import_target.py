@@ -32,7 +32,7 @@ smaller of that and what the fuse allows.
   last `RAISE_LOCK_S` nothing is raised above what a charger is given: only lowerings and pauses still act.
 * **A slow charger** (`TargetMember.write_interval_s` above `SLOW_WRITE_INTERVAL_S`: a current written at most every
   few minutes, Zaptec every 15) is held by energy. While its next write must wait (`write_wait_s`) it keeps drawing
-  what it draws now (`draws_a`); a lowering is sized so that this wait and then the lower current still end the hour
+  what it draws now (`draws_a`, no more than it is set to, `set_a`: its own reading lags a write); a lowering is sized so that this wait and then the lower current still end the hour
   under the held level, and where no current at or above its minimum can do that (the wait runs past the hour's end,
   or too little time is left after it), it is paused instead (`PAUSE_SLOW_CHARGER`): a pause is a command, not a
   current, and is not held back by the interval. A raise needs no rule of its own within the hour: the share is a
