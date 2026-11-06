@@ -30,6 +30,16 @@ smaller of that and what the fuse allows.
   runs only while its whole switched power fits what is left. A charger the target may not hold (a person's Start, a
   charge the departure needs, a decision the fuse made) is counted at what it draws and never held. In the hour's
   last `RAISE_LOCK_S` nothing is raised above what a charger is given: only lowerings and pauses still act.
+* **A slow charger** (`TargetMember.write_interval_s` above `SLOW_WRITE_INTERVAL_S`: a current written at most every
+  few minutes, Zaptec every 15) is held by energy. While its next write must wait (`write_wait_s`) it keeps drawing
+  what it draws now (`draws_a`); a lowering is sized so that this wait and then the lower current still end the hour
+  under the held level, and where no current at or above its minimum can do that (the wait runs past the hour's end,
+  or too little time is left after it), it is paused instead (`PAUSE_SLOW_CHARGER`): a pause is a command, not a
+  current, and is not held back by the interval. A raise needs no rule of its own within the hour: the share is a
+  power the rest of the hour can carry, so a whole interval at it never breaks the hour. Across the hour's end it
+  does: the hour-end lock starts a whole interval and a dwell before the end (`raise_lock_s`) and keeps such a charger
+  where it is set, a resume included (`SiteCapacityController._hold_to_import_target`). A charger the target may not
+  hold is never paused here.
 * **The departure** (`departure_shortfall_kwh`, `departure_at_risk`): above the car's minimum level the target holds
   a plan's charge even when that makes it miss its departure. What it still needs before its departure (what the
   plan expects of its windows' time left, `plan_remaining_kwh`, plus what the running window is already behind)
@@ -46,6 +56,7 @@ from datetime import datetime, timedelta
 import math
 from typing import Final
 
+from ..const import REGULATOR_DWELL_S
 from .demand_tracker import GAP_MAX_S, HOUR_S, RunningHour
 
 #: The nominal phase voltage a charger's amps are turned into power with (as the regulator's steps are).
@@ -56,6 +67,19 @@ MIN_REMAINING_S: Final = 60.0
 #: _hold_to_import_target`): what is left of the budget is spread over too little time to be worth a raise that the
 #: next hour takes back, and the lowering that follows waits for the dwell, past the next hour's start.
 RAISE_LOCK_S: Final = 600.0
+#: A charger whose current may be written at most this often or less is held by energy (`share_budget`): one written
+#: at least every dwell already follows the regulator as any other.
+SLOW_WRITE_INTERVAL_S: Final = REGULATOR_DWELL_S
+#: Why the target pauses a charger it could otherwise hold at its minimum: its next current write comes too late
+#: for the hour (diagnostics only).
+PAUSE_SLOW_CHARGER: Final = "slow_charger"
+
+
+def raise_lock_s(write_interval_s: float) -> float:
+    """How long before the hour's end the target raises a charger it held no further (`RAISE_LOCK_S`): for a charger
+    whose current may be written only every `write_interval_s`, a whole interval and a dwell, so a raise is always
+    followed in the same hour by the lowering that may take it back."""
+    return max(RAISE_LOCK_S, max(0.0, write_interval_s) + REGULATOR_DWELL_S)
 #: How much more (kWh) a plan must still need than the held power delivers by its departure to count as at risk, and
 #: how much it must then have to spare to count as safe again.
 RISK_ENTER_KWH: Final = 0.5
@@ -224,6 +248,14 @@ class TargetMember:
     switch_only: bool = False
     #: The target paused it this hour already: it stays paused until the next.
     paused_this_hour: bool = False
+    #: What it draws now (A per phase, the highest of its phases; 0 while paused).
+    draws_a: float = 0.0
+    #: The current it is set to (A; 0 while paused, `None` when unknown): where the hour-end lock keeps a slow charger.
+    set_a: float | None = None
+    #: Seconds until its current may be written again (0: now, or a charger whose current SpotNav does not write).
+    write_wait_s: float = 0.0
+    #: The least time between two writes of its current (its write policy's `min_interval_s`; 0 where none).
+    write_interval_s: float = 0.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -235,16 +267,59 @@ class TargetShare:
     action: str
     cap_a: float | None = None
     room_a: float | None = None
+    #: Why, where a rule beyond the share itself decided (`PAUSE_SLOW_CHARGER`).
+    reason: str | None = None
 
 
 def member_w(phases: int, amps: float, voltage_v: float = HOLD_VOLTAGE_V) -> float:
     return max(0.0, amps) * max(1, phases) * voltage_v
 
 
+@dataclass(frozen=True, slots=True)
+class _SlowWait:
+    """A slow charger's wait for its next write, against its share of the budget: it draws `stuck_w` for `wait_s` of
+    the hour's `remaining_s` whatever it is given meanwhile."""
+
+    stuck_w: float
+    wait_s: float
+    remaining_s: float
+
+    def room_w(self, left_w: float) -> float | None:
+        """What it may draw from its next write on (W), so that the wait and then this power end the hour within
+        `left_w`; `None` when no power can (the wait runs past the hour's end, or takes the whole share)."""
+        rest_s = self.remaining_s - self.wait_s
+        if rest_s <= 1.0:
+            return None
+        room_w = (left_w * self.remaining_s - self.stuck_w * self.wait_s) / rest_s
+        return room_w if room_w > 0 else None
+
+    def mean_w(self, then_w: float) -> float:
+        """Its mean power over the hour's rest: the wait at what it draws now, then `then_w`."""
+        rest_s = max(0.0, self.remaining_s - self.wait_s)
+        return (self.stuck_w * self.wait_s + then_w * rest_s) / max(1.0, self.remaining_s)
+
+
+def _slow_wait(
+    member: TargetMember, left_w: float, remaining_s: float | None, voltage_v: float
+) -> _SlowWait | None:
+    """A slow charger's wait for its next write where it matters (it draws more meanwhile than its share), else
+    `None`."""
+    if remaining_s is None or member.write_interval_s <= SLOW_WRITE_INTERVAL_S or member.write_wait_s <= 0:
+        return None
+    stuck_w = member_w(member.phases, member.draws_a, voltage_v)
+    if stuck_w <= left_w + 1e-6:
+        return None
+    return _SlowWait(stuck_w=stuck_w, wait_s=min(member.write_wait_s, remaining_s), remaining_s=remaining_s)
+
+
 def share_budget(
-    allowed_w: float, members: Sequence[TargetMember], voltage_v: float = HOLD_VOLTAGE_V
+    allowed_w: float,
+    members: Sequence[TargetMember],
+    voltage_v: float = HOLD_VOLTAGE_V,
+    remaining_s: float | None = None,
 ) -> dict[str, TargetShare]:
-    """Share `allowed_w` among `members`, in the order given (the site's `allocation_order`; see the module)."""
+    """Share `allowed_w` among `members`, in the order given (the site's `allocation_order`; see the module).
+    `remaining_s` (the hour's time left) turns on the rules for slow chargers; without it none applies."""
     left = max(0.0, allowed_w)
     shares: dict[str, TargetShare] = {}
     for member in members:
@@ -256,20 +331,32 @@ def share_budget(
         if member.paused_this_hour:
             shares[member.charger_entry_id] = TargetShare(ACTION_PAUSED, 0.0, 0.0)
             continue
-        room_a = float(math.floor(left / (phases * voltage_v) + 1e-9))
+        plain_room_a = float(math.floor(left / (phases * voltage_v) + 1e-9))
+        # Where only a slow charger's own rules take its minimum away, the pause says so.
+        slow_reason = PAUSE_SLOW_CHARGER if plain_room_a >= member.min_a and not member.switch_only else None
+        wait = _slow_wait(member, left, remaining_s, voltage_v)
+        room_w = left if wait is None else wait.room_w(left)
+        if room_w is None:
+            # Its next write comes too late for the hour: only a pause gives the car less in time.
+            shares[member.charger_entry_id] = TargetShare(ACTION_PAUSED, 0.0, 0.0, slow_reason)
+            continue
+        room_a = float(math.floor(room_w / (phases * voltage_v) + 1e-9))
         if member.wants_a <= 0:
             shares[member.charger_entry_id] = TargetShare(ACTION_FREE, None, room_a)
             continue
         wanted_w = member_w(phases, member.wants_a, voltage_v)
-        if wanted_w <= left + 1e-6:
+        if wanted_w <= room_w + 1e-6:
             shares[member.charger_entry_id] = TargetShare(ACTION_FREE, None, room_a)
-            left -= wanted_w
+            left = max(0.0, left - (wanted_w if wait is None else wait.mean_w(wanted_w)))
             continue
         if member.switch_only or room_a < member.min_a:
-            shares[member.charger_entry_id] = TargetShare(ACTION_PAUSED, 0.0, 0.0)
+            shares[member.charger_entry_id] = TargetShare(
+                ACTION_PAUSED, 0.0, 0.0, None if room_a == plain_room_a else slow_reason
+            )
             continue
         shares[member.charger_entry_id] = TargetShare(ACTION_HELD, room_a, room_a)
-        left -= member_w(phases, room_a, voltage_v)
+        held_w = member_w(phases, room_a, voltage_v)
+        left = max(0.0, left - (held_w if wait is None else wait.mean_w(held_w)))
     return shares
 
 
