@@ -179,6 +179,20 @@ describe("every status code the backend composes is decoded and worded", () => {
     ).toBe("Schedule paused until you resume.");
   });
 
+  it("says to press Start or Resume when nothing can see the unplug that ends a person's Stop", () => {
+    const line = { code: "stop_unplug_unseen", params: {} } as StatusLine;
+    expect(lineText(line, FORMAT, NOW)).toBe("Stopped by hand. Press Start or Resume to charge again.");
+    expect(lineText(line, { ...FORMAT, language: "sv" } as typeof FORMAT, NOW)).toBe(
+      "Stoppad för hand. Tryck Starta eller Återuppta för att ladda igen.",
+    );
+    // The buttons' own names, in each language.
+    for (const language of LANGUAGES) {
+      const text = lineText(line, { ...FORMAT, language } as typeof FORMAT, NOW);
+      expect(text).toContain(translate(language as Language, "bar.start"));
+      expect(text).toContain(translate(language as Language, "action.resumeShort"));
+    }
+  });
+
   it.each(STATUS_CODES)("%s has a wording in every language", (code) => {
     const key = STATUS_WORDING[code as StatusCode];
     expect(key, `no wording for status code ${code}`).toBeDefined();

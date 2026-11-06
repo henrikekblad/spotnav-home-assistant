@@ -600,6 +600,10 @@
       "params": [],
       "tone": "normal"
     },
+    "stop_unplug_unseen": {
+      "params": [],
+      "tone": "normal"
+    },
     "sun_past_target": {
       "params": [
         "percent"

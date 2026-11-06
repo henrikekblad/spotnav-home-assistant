@@ -1098,6 +1098,7 @@
   "status.guestPlanned": "Gastauto · {kwh} kWh bis {time}",
   "status.guestPlannedNoTime": "Gastauto · {kwh} kWh",
   "status.guestDone": "Gastauto · fertig, wartet auf das Abstecken",
+  "status.stopUnplugUnseen": "Von Hand gestoppt. Tippe auf Starten oder Fortsetzen, um wieder zu laden.",
   "settings.guest.amount": "Menge für Gastauto",
   "settings.guest.amountHelp": "So viel wird ein Gastauto geladen. Eine Änderung im Plan eines Gastautos gilt auch für den nächsten Gast."
 }

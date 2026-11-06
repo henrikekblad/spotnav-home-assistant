@@ -1098,6 +1098,7 @@
   "status.guestPlanned": "Gastauto · {kwh} kWh vóór {time}",
   "status.guestPlannedNoTime": "Gastauto · {kwh} kWh",
   "status.guestDone": "Gastauto · klaar, wacht op loskoppelen",
+  "status.stopUnplugUnseen": "Handmatig gestopt. Tik op Starten of Hervatten om weer te laden.",
   "settings.guest.amount": "Hoeveelheid voor gastauto",
   "settings.guest.amountHelp": "Zoveel wordt een gastauto geladen. Een wijziging in het plan van een gastauto blijft voor de volgende gast."
 }

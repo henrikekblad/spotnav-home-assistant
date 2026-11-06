@@ -27,7 +27,11 @@ Precedence (first match wins the headline; "add" rows append a fact line)
    `manual`, `action` the Start or the Stop, and `ends` what ends it: `unplug` (the plug-in the car is
    in), `next_plug_in` (a Stop given with no car plugged in: the unplug after the next plug-in) or
    `resume` (a charger that cannot say when a car is plugged in). A Start also ends when the car is full;
-   clients say so. Every other pause carries `action` and `ends` as null.
+   clients say so. Every other pause carries `action` and `ends` as null. Under a person's Stop that the unplug
+   would end, stop_unplug_unseen follows when nothing can see the unplug: the charger, which otherwise says when a
+   car is plugged in, says nothing now (a Charge Amps connector turned off says `Unavailable`), and the car has no
+   plug sensor that gave a fresh reading since (`execution/car_plug_fallback.py`). Clients say to press Start or
+   Resume; it is never a notification.
 3. Strategy headline when `strategy_state` exists (solar / hybrid), in place of 4. A solar that is off
    for want of a basis says why where it is known (solar_no_grid_power, solar_battery_unreadable) in
    place of solar_no_reading_*; then solar_charger_current_missing (it runs blind, at the minimum current)
@@ -194,6 +198,8 @@ STATUS_CODES: Final[dict[str, tuple[str, tuple[str, ...]]]] = {
     "planning_unavailable": (TONE_BLOCKING, ("reason",)),
     "planning_error": (TONE_BLOCKING, ("reason",)),
     "paused": (TONE_NORMAL, ("until", "choice", "action", "ends")),
+    # Under a person's Stop nothing can see the unplug that would end it: only Start or Resume does.
+    "stop_unplug_unseen": (TONE_NORMAL, ()),
     # The car's known state of charge is below its minimum charge level (`percent`): SpotNav charges at once.
     "min_soc_charging": (TONE_NORMAL, ("percent",)),
     "charging_now": (TONE_NORMAL, ("until",)),
@@ -602,6 +608,8 @@ class StatusFacts:
     hold_overridden: bool = False
     #: Whether the charger says when a car is plugged in, so an unplug ends a person's manual pause.
     reports_plug_in: bool = True
+    #: Under a person's Stop nothing can see the unplug (`ChargingController.stop_unplug_unseen`).
+    stop_unplug_unseen: bool = False
     #: A Start is in effect for a plan that charges to the car's own limit: that limit (100 when the car
     #: states none), else `None`.
     vehicle_limit_percent: float | None = None
@@ -1342,6 +1350,13 @@ def compose_status(facts: StatusFacts) -> dict[str, Any]:
         lines.append(_line("guest_planned", kwh=round(facts.guest_kwh, 1), departure=aware_iso(departure)))
     if facts.paused:
         lines.append(_paused_line(facts))
+        if (
+            facts.stop_unplug_unseen
+            and facts.pause_choice == "manual"
+            and facts.pause_action == "stop"
+            and facts.reports_plug_in
+        ):
+            lines.append(_line("stop_unplug_unseen"))
         if facts.charging:
             lines.append(_line("charging_now", until=None))
         elif facts.pause_choice == "manual" and facts.pause_action == "start":

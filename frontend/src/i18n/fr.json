@@ -1098,6 +1098,7 @@
   "status.guestPlanned": "Voiture invitée · {kwh} kWh avant {time}",
   "status.guestPlannedNoTime": "Voiture invitée · {kwh} kWh",
   "status.guestDone": "Voiture invitée · terminé, attend d'être débranchée",
+  "status.stopUnplugUnseen": "Arrêtée manuellement. Appuyez sur Démarrer ou Reprendre pour recharger.",
   "settings.guest.amount": "Quantité pour voiture invitée",
   "settings.guest.amountHelp": "Ce qui est chargé pour une voiture invitée. Une modification dans son plan est gardée pour la prochaine invitée."
 }

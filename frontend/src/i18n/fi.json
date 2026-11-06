@@ -1098,6 +1098,7 @@
   "status.guestPlanned": "Vierasauto · {kwh} kWh klo {time} mennessä",
   "status.guestPlannedNoTime": "Vierasauto · {kwh} kWh",
   "status.guestDone": "Vierasauto · valmis, odottaa irrottamista",
+  "status.stopUnplugUnseen": "Pysäytetty käsin. Paina Aloita tai Jatka, niin lataus jatkuu.",
   "settings.guest.amount": "Vierasauton määrä",
   "settings.guest.amountHelp": "Määrä, jolla vierasauto ladataan. Vierasauton suunnitelmaan tehty muutos säilyy seuraavalle vieraalle."
 }

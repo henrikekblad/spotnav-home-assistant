@@ -183,6 +183,7 @@ export const STATUS_WORDING: Readonly<Record<StatusCode, TranslationKey>> = {
   planning_unavailable: "issue.planningUnavailable",
   planning_error: "issue.error",
   paused: "control.pausedUntil",
+  stop_unplug_unseen: "status.stopUnplugUnseen",
   charging_now: "status.chargingNow",
   topping_off: "status.toppingOff",
   charging_without_prices: "issue.chargingWithoutPrices",
