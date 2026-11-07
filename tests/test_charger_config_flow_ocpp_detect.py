@@ -192,7 +192,7 @@ async def test_automatic_flow_hides_a_non_ocpp_hub_device_without_entities(hass:
 
 
 def _config_entry_of(hass: HomeAssistant, device_id: str) -> str:
-    return next(iter(dr.async_get(hass).async_get(device_id).config_entries))
+    return dr.async_get(hass).async_get(device_id).config_entry_id
 
 
 async def test_automatic_flow_tolerates_a_device_with_a_three_part_identifier(hass: HomeAssistant) -> None:
