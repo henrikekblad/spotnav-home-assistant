@@ -37,7 +37,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.util import dt as dt_util
 
 from ..vehicles.identification_changes import SourceChanges
-from ..vehicles.identification_sources import identification_sources, location_reading, plug_reading
+from ..vehicles.identification_sources import identification_sources, location_reading, source_plug_reading
 
 #: The event source that says an unplug or a plug-in came from the car's own plug sensor.
 SOURCE_CAR_PLUG: Final = "car_plug"
@@ -129,7 +129,7 @@ class CarPlugFallback:
         if since is None or entity_id is None:
             return None
         state = self._hass.states.get(entity_id)
-        value = plug_reading(state)
+        value = source_plug_reading(self._hass, state)
         if value is None:
             return None
         stamps = [stamp for stamp in (self._changes.changed(state), self._changes.reported(state)) if stamp is not None]

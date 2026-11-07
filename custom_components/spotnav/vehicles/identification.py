@@ -95,7 +95,13 @@ from .camera_rule import (
 )
 from .guest import async_set_guest_amount, guest_amount_kwh, GuestPrevious, is_guest, restored, valid_amount, with_guest
 from .identification_changes import SourceChanges
-from .identification_sources import identification_sources, location_reading, plug_reading
+from .identification_sources import (
+    identification_sources,
+    is_charging_state_source,
+    location_reading,
+    plug_reading,
+    source_plug_reading,
+)
 from . import vehicle_properties
 from .vehicle_discovery import resolve_target_vehicle
 from .vehicle_refresh import limiter_for, REFRESH_SERVICE, REFRESH_SERVICE_DOMAIN
@@ -203,6 +209,8 @@ class Candidate:
     elsewhere: bool = False
     #: When SpotNav last asked Home Assistant to re-read this car's entities (`REFRESH_ECHO_S`).
     refreshed_at: datetime | None = None
+    #: The plug entity is a charging-state enum, read by its own rule (`plug_reading`).
+    plug_charging_state: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -230,7 +238,7 @@ def judge(candidate: Candidate, t0: datetime, now: datetime) -> Evidence:
     positive: str | None = None
     negative: str | None = METHOD_LOCATION if candidate.elsewhere else None
     plug = candidate.plug
-    reading = plug_reading(plug)
+    reading = plug_reading(plug, charging_state=candidate.plug_charging_state)
     changed = candidate.plug_changed
     if plug is not None and reading is True:
         recent = changed is not None and changed >= t0 - timedelta(seconds=PLUG_WINDOW_BEFORE_S)
@@ -902,12 +910,12 @@ class VehicleIdentifier:
             plug = None if plug_id is None else self._hass.states.get(plug_id)
             location = None if location_id is None else self._hass.states.get(location_id)
             if car == decided:
-                gone = (plug_reading(plug) is False and _since(self._changes.changed(plug), since)) or (
+                gone = (source_plug_reading(self._hass, plug) is False and _since(self._changes.changed(plug), since)) or (
                     location_reading(location) is False and _since(self._changes.reported(location), since)
                 )
                 if gone:
                     break
-            elif not person and plug_reading(plug) is True and _since(self._changes.changed(plug), since):
+            elif not person and source_plug_reading(self._hass, plug) is True and _since(self._changes.changed(plug), since):
                 break
         else:
             return
@@ -976,6 +984,7 @@ class VehicleIdentifier:
                 location_reported=self._changes.reported(location),
                 elsewhere=self._elsewhere(car),
                 refreshed_at=self._refreshed_at.get(car),
+                plug_charging_state=plug_id is not None and is_charging_state_source(self._hass, plug_id),
             )
             evidence = judge(candidate, session.t0, now)
             found.append(evidence)
