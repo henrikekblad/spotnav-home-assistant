@@ -101,8 +101,10 @@ _LIMIT_POSITIVE_FRAGMENTS = (
     "targetcharge", "chargetarget", "chargingtarget", "targetbatterychargelevel", "maxsoc",
     "maxstateofcharge",
 )
+# A variant of the target, not the car's own: for V2L, a profile, solar, a departure or a mode
+# (BMW CarData's `targetSoCForProfessionalMode`).
 _LIMIT_DEMOTED_PHRASES = (
-    "v2l", "discharge", "min", "minimum", "profile", "solar", "share", "arrival", "departure",
+    "v2l", "discharge", "min", "minimum", "profile", "solar", "share", "arrival", "departure", "mode",
 )
 _LIMIT_DEMOTED_FRAGMENTS = ("batterycare",)
 _LIMIT_GLOBAL_FRAGMENT = "global"
