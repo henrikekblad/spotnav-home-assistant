@@ -172,17 +172,23 @@ def _name_of(entities: list[tuple[er.RegistryEntry, State]], entity_id: str) -> 
     return next((state.name for entry, state in entities if entry.entity_id == entity_id), None)
 
 
-# A tracker for the navigation's destination (Tesla Fleet's `route`), not where the car is.
-_LOCATION_EXCLUDED_PHRASES: Final = ("route", "destination", "navigation")
+# A tracker for the navigation's destination (Tesla Fleet's `route`) or the route's start (Teslemetry's
+# `origin`), not where the car is.
+_LOCATION_EXCLUDED_PHRASES: Final = ("route", "destination", "navigation", "origin")
+# A last known or parked position: a tracker that may lag where the car is, used only when it is the only kind.
+_LOCATION_DEMOTED_PHRASES: Final = ("parked", "last", "previous")
 
 
-def _location_candidates(entities: list[tuple[er.RegistryEntry, State]]) -> tuple[str, ...]:
-    return tuple(
-        sorted(
-            entry.entity_id
-            for entry, _ in entities
-            if entry.domain == "device_tracker" and not entity_key(entry).has_any(_LOCATION_EXCLUDED_PHRASES)
-        )
+def _location_candidates(entities: list[tuple[er.RegistryEntry, State]]) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """(every tracker that may be the car's position, the preferred ones), each sorted."""
+    trackers = [
+        entry
+        for entry, _ in entities
+        if entry.domain == "device_tracker" and not entity_key(entry).has_any(_LOCATION_EXCLUDED_PHRASES)
+    ]
+    live = [entry for entry in trackers if not entity_key(entry).has_any(_LOCATION_DEMOTED_PHRASES)]
+    return tuple(sorted(entry.entity_id for entry in trackers)), tuple(
+        sorted(entry.entity_id for entry in live or trackers)
     )
 
 
@@ -215,10 +221,10 @@ def identification_sources(
     entities = _device_entities(hass, vehicle_id)
     chosen = _chosen(hass, vehicle_id)
     plugs, best_plugs = _plug_candidates(entities)
-    trackers = _location_candidates(entities)
+    trackers, best_trackers = _location_candidates(entities)
     return (
         _source(hass, chosen, SOURCE_PLUG, plugs, best_plugs, _plug_others(entities, plugs)),
-        _source(hass, chosen, SOURCE_LOCATION, trackers, trackers),
+        _source(hass, chosen, SOURCE_LOCATION, trackers, best_trackers),
     )
 
 
