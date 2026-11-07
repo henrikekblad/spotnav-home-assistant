@@ -281,6 +281,18 @@ CASES: tuple[Case, ...] = (
         ceiling="vehicle.powertrain.electric.battery.stateOfCharge.target",
     ),
     Case(
+        "cardata: the minimum and the professional-mode target are variants of the target",
+        (
+            soc("vehicle.powertrain.electric.battery.stateOfCharge.displayed", "61"),
+            soc("vehicle.powertrain.electric.battery.stateOfCharge.target", "80"),
+            soc("vehicle.powertrain.electric.battery.stateOfCharge.targetMin", "20"),
+            soc("vehicle.powertrain.electric.battery.stateOfCharge.targetSoCForProfessionalMode", "90"),
+            rng("vehicle.drivetrain.electricEngine.kombiRemainingElectricRange"),
+        ),
+        soc="vehicle.powertrain.electric.battery.stateOfCharge.displayed",
+        ceiling="vehicle.powertrain.electric.battery.stateOfCharge.target",
+    ),
+    Case(
         "volkswagencarnet: the charge target is tagged as a battery sensor too",
         (
             soc("battery_level"),

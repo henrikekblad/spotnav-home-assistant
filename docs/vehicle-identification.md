@@ -45,6 +45,36 @@ charger planning for it is aligned once.
 **Vehicles at this charger** also limit what the charger plans for: only those cars are offered as the target
 vehicle in the card and the app, and with one car ticked that car is planned for.
 
+### How SpotNav finds a car's plug sensor and location
+
+SpotNav reads the entities on the car's own device, by their shape and the generic words in what the
+integration calls them, never by brand:
+
+- **Plug sensor**, best first:
+  1. an on/off sensor of the kind "plug";
+  2. an on/off sensor of the kind "connectivity" (or no kind) that names the cable, the plug or the charger
+     connection;
+  3. a text sensor that names the plug, the connector or the connection, and that can say both: among the values
+     it declares, one reads as plugged in and one as unplugged. The car's online state ("Car connection") never
+     can, and a sensor whose value is a number is never one. The DC inlet's own sensor comes after the others;
+  4. last of all, and only when the car has nothing above: a **charging state** that declares exactly one
+     "unplugged" value, such as `connect_cable` or `disconnected`. Through it that value is unplugged, and every
+     other value it declares (charging, ready for charging, conserving, interrupted) means the cable is in;
+     `none`, `error` and unknown values say nothing. A charging state with no single unplugged value is never a
+     plug sensor. This is how a Skoda in Home Assistant's own integration, which has no plug sensor, is found.
+
+  A lock, a latch and the charge port's door or flap are never one. When several of the best kind are left, the
+  one for the whole car wins ("any" or "all" in its name, such as BMW CarData's `anyPosition.isPlugged` beside one
+  sensor per port); otherwise you choose.
+- **Location**: the car's tracker. A tracker for a route's start or destination (`origin`, `route`,
+  `destination`) is never one. When the car has a live position and a last or parked one (Polestar's
+  `location` and `parked_location`), the live one is used; otherwise several are a choice.
+- **Toyota** (`toyota`, pytoyoda) has no plug sensor, only a charging status whose value `none` is what Toyota
+  reports while the car is not charging, also with the cable in. SpotNav cannot read "unplugged" from it, so a
+  Toyota is identified by its position alone.
+- An integration that names its entities with the car's name in front ("Jeep Max Battery") is read without that
+  name, so a car called Max, Trip or Key is found like any other.
+
 ## What happens at a plug-in
 
 SpotNav starts when the charger reports that a car was plugged in. A charger that cannot tell whether a car is

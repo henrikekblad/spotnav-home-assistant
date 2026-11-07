@@ -1,0 +1,192 @@
+{
+ "domain": "skoda",
+ "repo": "home-assistant/core",
+ "commit": "3124627fb0dd27f9faa338beaa0495e7e62a9dc2",
+ "entities": [
+  {
+   "platform": "sensor",
+   "key": "battery_percentage",
+   "translation_key": "battery_percentage",
+   "unique_id_pattern": "{vin}_battery_percentage",
+   "name_en": "Battery state of charge",
+   "device_class": "battery",
+   "unit": "%",
+   "state_class": null,
+   "options": null,
+   "example_state": "64",
+   "enabled_by_default": true
+  },
+  {
+   "platform": "sensor",
+   "key": "remaining_electric_range",
+   "translation_key": "electric_range",
+   "unique_id_pattern": "{vin}_remaining_electric_range",
+   "name_en": "Electric range",
+   "device_class": "distance",
+   "unit": "km",
+   "state_class": null,
+   "options": null,
+   "example_state": "210",
+   "enabled_by_default": true
+  },
+  {
+   "platform": "sensor",
+   "key": "remaining_range",
+   "translation_key": "total_range",
+   "unique_id_pattern": "{vin}_remaining_range",
+   "name_en": "Total range",
+   "device_class": "distance",
+   "unit": "km",
+   "state_class": null,
+   "options": null,
+   "example_state": "480",
+   "enabled_by_default": true
+  },
+  {
+   "platform": "sensor",
+   "key": "mileage",
+   "translation_key": "mileage",
+   "unique_id_pattern": "{vin}_mileage",
+   "name_en": "Mileage",
+   "device_class": "distance",
+   "unit": "km",
+   "state_class": "total_increasing",
+   "options": null,
+   "example_state": "23456",
+   "enabled_by_default": true
+  },
+  {
+   "platform": "sensor",
+   "key": "charging_state",
+   "translation_key": "charging_state",
+   "unique_id_pattern": "{vin}_charging_state",
+   "name_en": "Charging state",
+   "device_class": "enum",
+   "unit": null,
+   "state_class": null,
+   "options": [
+    "charging",
+    "connect_cable",
+    "ready_for_charging",
+    "conserving",
+    "discharging",
+    "charging_interrupted"
+   ],
+   "example_state": "ready_for_charging",
+   "enabled_by_default": true
+  },
+  {
+   "platform": "sensor",
+   "key": "charge_type",
+   "translation_key": "charge_type",
+   "unique_id_pattern": "{vin}_charge_type",
+   "name_en": "Charge type",
+   "device_class": "enum",
+   "unit": null,
+   "state_class": null,
+   "options": [
+    "ac",
+    "dc",
+    "off",
+    "not_charging"
+   ],
+   "example_state": "not_charging",
+   "enabled_by_default": true
+  },
+  {
+   "platform": "sensor",
+   "key": "charging_power",
+   "translation_key": "charging_power",
+   "unique_id_pattern": "{vin}_charging_power",
+   "name_en": "Charging power",
+   "device_class": "power",
+   "unit": "kW",
+   "state_class": "measurement",
+   "options": null,
+   "example_state": "0.0",
+   "enabled_by_default": true
+  },
+  {
+   "platform": "sensor",
+   "key": "remaining_time_to_full_battery",
+   "translation_key": "remaining_time_to_full_battery",
+   "unique_id_pattern": "{vin}_remaining_time_to_full_battery",
+   "name_en": "Time to full charge",
+   "device_class": "timestamp",
+   "unit": null,
+   "state_class": null,
+   "options": null,
+   "example_state": "2026-11-07T22:30:00+00:00",
+   "enabled_by_default": true
+  },
+  {
+   "platform": "sensor",
+   "key": "fuel_level",
+   "translation_key": "fuel_level",
+   "unique_id_pattern": "{vin}_fuel_level",
+   "name_en": "Fuel level",
+   "device_class": null,
+   "unit": "%",
+   "state_class": null,
+   "options": null,
+   "example_state": "55",
+   "enabled_by_default": true
+  },
+  {
+   "platform": "sensor",
+   "key": "licence_plate",
+   "translation_key": "licence_plate",
+   "unique_id_pattern": "{vin}_licence_plate",
+   "name_en": "Registration plate",
+   "device_class": null,
+   "unit": null,
+   "state_class": null,
+   "options": null,
+   "example_state": "ABC123",
+   "enabled_by_default": true
+  },
+  {
+   "platform": "number",
+   "key": "charge_limit",
+   "translation_key": "charge_limit",
+   "unique_id_pattern": "{vin}_charge_limit",
+   "name_en": "Charge limit",
+   "device_class": "battery",
+   "unit": "%",
+   "state_class": null,
+   "options": {
+    "min": 50,
+    "max": 100,
+    "step": 10
+   },
+   "example_state": "80",
+   "enabled_by_default": true
+  },
+  {
+   "platform": "switch",
+   "key": "charging",
+   "translation_key": "charging",
+   "unique_id_pattern": "{vin}_charging",
+   "name_en": "Charging",
+   "device_class": null,
+   "unit": null,
+   "state_class": null,
+   "options": null,
+   "example_state": "off",
+   "enabled_by_default": true
+  },
+  {
+   "platform": "device_tracker",
+   "key": "parking_position",
+   "translation_key": null,
+   "unique_id_pattern": "{vin}_parking_position",
+   "name_en": "(device name; _attr_name = None)",
+   "device_class": null,
+   "unit": null,
+   "state_class": null,
+   "options": null,
+   "example_state": "home",
+   "enabled_by_default": true
+  }
+ ]
+}

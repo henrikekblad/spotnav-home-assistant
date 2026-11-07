@@ -24,3 +24,9 @@ file (`spotnav-relay/testdata/upstream/ecb_daily.xml`, table of 2026-09-18) and 
 (`current_quarter_hourly_electricity_tariff`) as one installation showed it on 2026-11-01: 232 quarter-hours from
 2026-10-31 14:00 to 2026-11-03 00:00 Amsterdam time, turned from the developer tools' YAML into JSON. It holds
 Zonneplan's public tariff only, nothing about the connection.
+
+`cars/<domain>.json` are 23 car integrations' entity shapes, read from each integration's source at the recorded
+`commit` (research round 6, 2026-11-07): platform, key, translation key, unique id pattern, English name, device
+class, unit, state class, options, an invented example state and whether the entity is enabled by default. Literal
+names keep their placeholders (`{make} {nickname_or_model} …`). `tests/car_catalogs.py` registers one as a car and
+`tests/test_car_catalogs.py` holds SpotNav's golden picks for each.

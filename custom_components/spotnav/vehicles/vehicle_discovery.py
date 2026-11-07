@@ -41,7 +41,7 @@ from homeassistant.helpers import device_registry as dr, entity_registry as er
 from ..const import GUEST_VEHICLE_ID
 from ..runtime import domain_data
 from .discovery_decisions import DECISION_DOMAIN_VEHICLE, DECISION_DOMAIN_VEHICLE_CHARGE_LIMIT
-from .entity_keys import EntityKey, entity_key
+from .entity_keys import EntityKey, entity_key, without_device_name
 
 
 CapacitySource = Literal["detected", "unknown"]
@@ -101,8 +101,10 @@ _LIMIT_POSITIVE_FRAGMENTS = (
     "targetcharge", "chargetarget", "chargingtarget", "targetbatterychargelevel", "maxsoc",
     "maxstateofcharge",
 )
+# A variant of the target, not the car's own: for V2L, a profile, solar, a departure or a mode
+# (BMW CarData's `targetSoCForProfessionalMode`).
 _LIMIT_DEMOTED_PHRASES = (
-    "v2l", "discharge", "min", "minimum", "profile", "solar", "share", "arrival", "departure",
+    "v2l", "discharge", "min", "minimum", "profile", "solar", "share", "arrival", "departure", "mode",
 )
 _LIMIT_DEMOTED_FRAGMENTS = ("batterycare",)
 _LIMIT_GLOBAL_FRAGMENT = "global"
@@ -539,10 +541,13 @@ def _device_entities(
 ) -> list[tuple[er.RegistryEntry, State]]:
     """Entities on this device that have a live state, paired with it, by entity id.
 
-    An `unavailable`/`unknown` value is kept: its attributes still describe the entity.
+    An `unavailable`/`unknown` value is kept: its attributes still describe the entity. A literal
+    original name is read without the device's name in front (`without_device_name`).
     """
+    device = dr.async_get(hass).async_get(device_id)
+    device_name = None if device is None else device.name
     return [
-        (entry, state)
+        (without_device_name(entry, device_name), state)
         for entry in sorted(
             er.async_entries_for_device(entity_registry, device_id),
             key=lambda entry: entry.entity_id,

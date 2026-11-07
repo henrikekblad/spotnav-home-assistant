@@ -1,0 +1,98 @@
+{
+ "domain": "nissan_leaf",
+ "repo": "home-assistant/core",
+ "commit": "3124627fb0dd27f9faa338beaa0495e7e62a9dc2",
+ "entities": [
+  {
+   "platform": "sensor",
+   "key": "battery_soc (class LeafBatterySensor)",
+   "translation_key": null,
+   "unique_id_pattern": "{vin_lower}_soc",
+   "name_en": "{nickname} Charge",
+   "device_class": "battery",
+   "unit": "%",
+   "state_class": null,
+   "options": null,
+   "example_state": "76",
+   "enabled_by_default": true
+  },
+  {
+   "platform": "sensor",
+   "key": "range_ac_off (LeafRangeSensor ac_on=False)",
+   "translation_key": null,
+   "unique_id_pattern": "{vin_lower}_range",
+   "name_en": "{nickname} Range",
+   "device_class": null,
+   "unit": "km (or mi when HA unit system is US customary OR config force_miles true)",
+   "state_class": null,
+   "options": null,
+   "example_state": "168",
+   "enabled_by_default": true
+  },
+  {
+   "platform": "sensor",
+   "key": "range_ac_on (LeafRangeSensor ac_on=True)",
+   "translation_key": null,
+   "unique_id_pattern": "{vin_lower}_range_ac",
+   "name_en": "{nickname} Range (AC)",
+   "device_class": null,
+   "unit": "km (or mi, see above)",
+   "state_class": null,
+   "options": null,
+   "example_state": "148",
+   "enabled_by_default": true
+  },
+  {
+   "platform": "binary_sensor",
+   "key": "plugged_in (LeafPluggedInSensor)",
+   "translation_key": null,
+   "unique_id_pattern": "{vin_lower}_plugstatus",
+   "name_en": "{nickname} Plug Status",
+   "device_class": "plug",
+   "unit": null,
+   "state_class": null,
+   "options": null,
+   "example_state": "on",
+   "enabled_by_default": true
+  },
+  {
+   "platform": "binary_sensor",
+   "key": "charging (LeafChargingSensor)",
+   "translation_key": null,
+   "unique_id_pattern": "{vin_lower}_chargingstatus",
+   "name_en": "{nickname} Charging Status",
+   "device_class": "battery_charging",
+   "unit": null,
+   "state_class": null,
+   "options": null,
+   "example_state": "off",
+   "enabled_by_default": true
+  },
+  {
+   "platform": "button",
+   "key": "start_charging (LeafChargingButton)",
+   "translation_key": null,
+   "unique_id_pattern": "(no unique_id set)",
+   "name_en": "Start {nickname} Charging",
+   "device_class": null,
+   "unit": null,
+   "state_class": null,
+   "options": null,
+   "example_state": "unknown",
+   "enabled_by_default": true
+  },
+  {
+   "platform": "switch",
+   "key": "climate_control (LeafClimateSwitch)",
+   "translation_key": null,
+   "unique_id_pattern": "{vin_lower}_climatecontrol",
+   "name_en": "{nickname} Climate Control",
+   "device_class": null,
+   "unit": null,
+   "state_class": null,
+   "options": null,
+   "example_state": "off",
+   "enabled_by_default": true
+  }
+ ]
+}

@@ -710,7 +710,15 @@ def vehicles_section() -> list[str]:
         "Kia Uvo (`kia_uvo`) asks the car itself when its last report is older than the integration's force-refresh "
         "interval (in the Australian region at every update), which can wake the car.",
         "- **No range sensor, no vehicle.** A device without a distance-class range sensor, or with no "
-        "device classes at all, is not detected.",
+        "device classes at all, is not detected. Nor is an integration that registers no device: Nissan Leaf "
+        "(`nissan_leaf`) has no device and no device class on its ranges, and Volkswagen GoConnect "
+        "(`volkswagen_goconnect`) none on its charge level or range.",
+        "- **A charge limit that is writable only in one mode.** The unofficial Polestar integration (`polestar`) "
+        "accepts its charge target only while its own charging mode is custom. In daily or long-trip mode "
+        "SpotNav's write fails and is reported as a failed charge limit.",
+        "- **The car's own solar charging.** Teslemetry's (`teslemetry`) charge on solar and its lower limit drive "
+        "Tesla's own solar charging. Turn it off for a car SpotNav charges: two controllers on one charge fight "
+        "each other, as with a charger's built-in PV mode.",
     ]
     lines.append("- Shapes the detection was checked to leave alone:")
     for case in misses:
