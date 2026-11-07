@@ -20,10 +20,10 @@ from typing import Final
 
 from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers import device_registry as dr, entity_registry as er
 from homeassistant.util import dt as dt_util
 
-from .entity_keys import entity_key, EntityKey
+from .entity_keys import entity_key, EntityKey, without_device_name
 
 #: Keys naming the battery's own report time: preferred over a device-wide one.
 BATTERY_REPORT_KEYS: Final = (
@@ -103,6 +103,8 @@ def report_time_entity_id(hass: HomeAssistant, soc_entity_id: str | None) -> str
     soc_entry = registry.async_get(soc_entity_id)
     if soc_entry is None or soc_entry.device_id is None:
         return None
+    device = dr.async_get(hass).async_get(soc_entry.device_id)
+    device_name = None if device is None else device.name
     battery: list[str] = []
     whole: list[str] = []
     for entry in er.async_entries_for_device(registry, soc_entry.device_id):
@@ -111,7 +113,7 @@ def report_time_entity_id(hass: HomeAssistant, soc_entity_id: str | None) -> str
         state = hass.states.get(entry.entity_id)
         if state is not None and state.attributes.get("device_class") not in (None, "timestamp"):
             continue
-        key = entity_key(entry)
+        key = entity_key(without_device_name(entry, device_name))
         if key.has_any(NOT_A_REPORT_WORDS):
             continue
         if _names_any(key, BATTERY_REPORT_KEYS):
