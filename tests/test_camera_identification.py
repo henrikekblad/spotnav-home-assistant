@@ -153,7 +153,8 @@ class Garage:
             return True
 
         assert await async_setup_component(hass, "homeassistant", {})
-        mock_integration(hass, MockModule("test", async_setup_entry=setup_entry))
+        # Not built in: Home Assistant 2026.11 refuses a built-in integration whose async_setup_entry returns True.
+        mock_integration(hass, MockModule("test", async_setup_entry=setup_entry), built_in=False)
         mock_platform(hass, "test.config_flow")
         setup_test_component_platform(hass, "camera", [self.camera], from_config_entry=True)
         setup_test_component_platform(hass, "ai_task", [self.model], from_config_entry=True)

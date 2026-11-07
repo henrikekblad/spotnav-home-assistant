@@ -1,7 +1,8 @@
 # Set up SpotNav
 
 This page walks through the whole setup in Home Assistant, dialog by dialog. It assumes you
-installed SpotNav from HACS and restarted Home Assistant (see the [README](../README.md)). SpotNav
+installed SpotNav from **Settings → Marketplace** (Home Assistant 2026.11 and newer) or from HACS (older versions,
+then restart Home Assistant); see the [README](../README.md). SpotNav
 itself needs no account; the prices come from a source you add in Home Assistant (below).
 
 There are four steps, and only the first is required:

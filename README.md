@@ -1,6 +1,6 @@
 ![SpotNav for Home Assistant: smart EV charging on spot prices and solar](assets/spotnav-social-preview.png)
 
-[![Open your Home Assistant instance and open this repository in HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=henrikekblad&repository=spotnav-home-assistant&category=integration)
+[![Open SpotNav in the Marketplace or HACS of your Home Assistant](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=henrikekblad&repository=spotnav-home-assistant&category=integration)
 
 SpotNav plans and runs your EV charging inside Home Assistant. Tell it when the car must be ready, or
 what charge level you want, and it charges in the cheapest hours, on your solar surplus, and within your
@@ -31,8 +31,9 @@ meter and your cars.
 
 ## Does my hardware work?
 
-You need Home Assistant 2026.9 or newer with [HACS](https://hacs.xyz), and a charger Home Assistant can
-switch on and off. Confirmed on real hardware: OCPP (Charge Amps HALO) and Easee; almost 30 more
+You need Home Assistant 2026.9 or newer and a charger Home Assistant can switch on and off. SpotNav installs
+from **Settings → Marketplace** (built in from Home Assistant 2026.11) or, on older versions, from
+[HACS](https://hacs.xyz). Confirmed on real hardware: OCPP (Charge Amps HALO) and Easee; almost 30 more
 charger integrations are supported, and any charger that exposes a switch works through the manual path. A grid meter is
 optional, needed for load balancing and solar. The full lists of chargers, meters, batteries and cars
 are in [Supported hardware](docs/supported.md). Rows marked "detected from the integration's source"
@@ -41,7 +42,10 @@ reports on how they work are welcome.
 
 ## Quick start
 
-1. Open this repository in HACS with the button above and choose **Download**, then restart Home Assistant.
+1. Install SpotNav: use the button above, or search for **SpotNav** in **Settings → Marketplace** (Home Assistant
+   2026.11 and newer) or in HACS (older versions), and choose **Install** (HACS: **Download**). From the Marketplace a
+   first install needs no restart and the setup opens by itself, so continue with step 2 in that dialog. From HACS,
+   restart Home Assistant first.
 2. Go to **Settings, Devices & services, Add integration** and add **SpotNav**. Choose **A charger**,
    then **Automatic (recommended)**, and pick the charger's device.
 3. Confirm what SpotNav found. If you have a main fuse to share or want solar, also add **A site**:
