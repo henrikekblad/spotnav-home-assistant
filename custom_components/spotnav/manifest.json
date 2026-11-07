@@ -2,6 +2,7 @@
   "domain": "spotnav",
   "name": "SpotNav",
   "after_dependencies": ["ai_task", "camera", "media_source", "nordpool", "ocpp", "pvpc_hourly_pricing", "recorder"],
+  "categories": ["energy.ev_charging"],
   "codeowners": ["@henrikekblad"],
   "config_flow": true,
   "dependencies": ["webhook", "websocket_api", "repairs", "http", "frontend"],

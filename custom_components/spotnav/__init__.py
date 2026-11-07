@@ -812,7 +812,7 @@ async def _async_price_entry_updated(hass: HomeAssistant, entry: PriceConfigEntr
     device keeps the entry's name, and every charger that prices with it is told."""
     entry.runtime_data.device.update_data(entry.data)
     registry = dr.async_get(hass)
-    device = registry.async_get_device(identifiers={(DOMAIN, entry.entry_id)})
+    device = registry.async_get_device_by_identifier((DOMAIN, entry.entry_id), entry.entry_id)
     if device is not None and device.name != entry.title:
         registry.async_update_device(device.id, name=entry.title)
     async_price_sources_changed(hass, entry.entry_id)
