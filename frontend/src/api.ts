@@ -356,6 +356,23 @@ export async function getDebugBundle(hass: HomeAssistantLike): Promise<unknown> 
   });
 }
 
+/**
+ * Send the redacted debug bundle, with the administrator's message and optional e-mail address, to SpotNav's
+ * developer (administrators only); `client` is the card's own block, as the download adds it. `unknown` until decoded.
+ */
+export async function sendDebugInfo(
+  hass: HomeAssistantLike,
+  report: { message: string; email: string | null; client: Record<string, unknown> },
+): Promise<unknown> {
+  return await call<unknown>(hass, {
+    type: "spotnav/send_debug_info",
+    api_version: DEBUG_API_VERSION,
+    message: report.message,
+    ...(report.email === null ? {} : { email: report.email }),
+    client: report.client,
+  });
+}
+
 /** How many automations use each of SpotNav's blueprints (administrators only): `unknown` until decoded. */
 export async function getBlueprints(hass: HomeAssistantLike): Promise<unknown> {
   return await call<unknown>(hass, {

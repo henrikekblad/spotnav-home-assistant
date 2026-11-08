@@ -15,6 +15,7 @@ import { VISUAL_CLASSES } from "../src/visual-styles";
 import { CARD_OUTDATED_NOTE, setOwnCardBundleHashForTest } from "../src/card-identity";
 import { CARD_VERSION } from "../src/generated/version";
 import { automationsUsingPath, BLUEPRINTS, BLUEPRINTS_PATH, decodeBlueprintUse } from "../src/automations";
+import { decodeSendAnswer, waitText } from "../src/send-debug";
 import { FakeHass, mountCard, settingsOffered, shownSections } from "./helpers";
 
 const DASHBOARD_DIR = join(__dirname, "..", "..", "tests", "fixtures", "dashboard");
@@ -273,6 +274,7 @@ describe("Download debug info", () => {
     expect(Array.from(actions).map((button) => button.textContent)).toEqual([
       translate("en", "settings.about.open"),
       translate("en", "debug.download"),
+      translate("en", "sendDebug.open"),
     ]);
 
     // A reader who is not an administrator is shown only what they may change: Display, and no Support.
@@ -369,6 +371,174 @@ describe("Download debug info", () => {
 
     expect(text(element)).toContain(translate("en", "debug.error.notAdmin"));
     expect(debugButton(element)?.disabled).toBe(false);
+  });
+});
+
+describe("Send debug info", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  const root = (element: Element): ShadowRoot => shadow(element);
+  const form = (element: Element): HTMLFormElement | null =>
+    root(element).querySelector<HTMLFormElement>("[data-send-debug='form']");
+  const field = <T extends HTMLElement>(element: Element, name: string): T =>
+    form(element)?.querySelector<T>(`[data-send-debug-field='${name}']`) as T;
+  const sends = (hass: FakeHass) => hass.messages.filter((message) => message.type === "spotnav/send_debug_info");
+
+  async function openSend(element: Element): Promise<void> {
+    settingsGeneralButton(element).click();
+    await settle();
+    root(element).querySelector<HTMLButtonElement>("[data-send-debug='open']")?.click();
+    await settle();
+  }
+
+  function fill(element: Element, message: string, email: string, consent: boolean): void {
+    field<HTMLTextAreaElement>(element, "message").value = message;
+    field<HTMLInputElement>(element, "email").value = email;
+    field<HTMLInputElement>(element, "consent").checked = consent;
+  }
+
+  async function submit(element: Element): Promise<void> {
+    form(element)?.querySelector<HTMLButtonElement>("button[type='submit']")?.click();
+    await settle();
+  }
+
+  const errorText = (element: Element): string =>
+    form(element)?.querySelector<HTMLElement>("[role='alert']")?.textContent ?? "";
+
+  it("reads the answer strictly and says a wait in minutes, or hours beyond two", () => {
+    expect(decodeSendAnswer({ api_version: 1, ok: true, error: null, ref: "SN-AB2C" })).toEqual({ ok: true, ref: "SN-AB2C" });
+    expect(decodeSendAnswer({ api_version: 1, ok: true, error: null, ref: null })).toBeNull();
+    expect(decodeSendAnswer({ api_version: 2, ok: true, ref: "SN-AB2C" })).toBeNull();
+    expect(decodeSendAnswer({ api_version: 1, ok: false, error: "spotnav_report_rate_limited", retry_after_s: 60 })).toEqual({
+      ok: false,
+      code: "spotnav_report_rate_limited",
+      retryAfterS: 60,
+    });
+    expect(waitText("en", 30)).toBe("1 min");
+    expect(waitText("en", 3600)).toBe("60 min");
+    expect(waitText("en", 7201)).toBe("3 h");
+  });
+
+  it("is offered to administrators only", async () => {
+    const reader = await mounted(fixture("start_idle"), false);
+    settingsGeneralButton(reader.element).click();
+    await settle();
+    expect(root(reader.element).querySelector("[data-send-debug='open']")).toBeNull();
+  });
+
+  it("says what is sent, links the privacy policy and asks for a message, an e-mail address and consent", async () => {
+    const { element } = await mounted();
+    await openSend(element);
+
+    const dialog = openDialog(element);
+    expect(dialog?.textContent).toContain(translate("en", "sendDebug.title"));
+    expect(dialog?.textContent).toContain(translate("en", "sendDebug.intro"));
+    const link = form(element)?.querySelector<HTMLAnchorElement>("[data-send-debug-intro] a");
+    expect(link?.href).toBe("https://spotnav.sensnology.se/privacy");
+    expect(link?.target).toBe("_blank");
+    expect(field<HTMLTextAreaElement>(element, "message").maxLength).toBe(4000);
+    expect(field<HTMLInputElement>(element, "email").type).toBe("email");
+    expect(field<HTMLInputElement>(element, "consent").type).toBe("checkbox");
+    expect(field<HTMLInputElement>(element, "consent").checked).toBe(false);
+    expect(dialog?.textContent).toContain(translate("en", "sendDebug.consent"));
+  });
+
+  it("sends nothing without a message or without consent, or with a bad address", async () => {
+    const { hass, element } = await mounted();
+    await openSend(element);
+
+    fill(element, "   ", "", true);
+    await submit(element);
+    expect(errorText(element)).toBe(translate("en", "sendDebug.error.message"));
+
+    fill(element, "It stopped", "", false);
+    await submit(element);
+    expect(errorText(element)).toBe(translate("en", "sendDebug.error.consent"));
+
+    fill(element, "It stopped", "not an address", true);
+    await submit(element);
+    expect(errorText(element)).toBe(translate("en", "sendDebug.error.email"));
+
+    expect(sends(hass)).toEqual([]);
+  });
+
+  it("sends the message and shows the reference", async () => {
+    const { hass, element } = await mounted();
+    await openSend(element);
+    fill(element, "  It stopped at 03:00 ", " me@example.com ", true);
+    await submit(element);
+
+    expect(sends(hass)).toHaveLength(1);
+    expect(sends(hass)[0]).toMatchObject({
+      type: "spotnav/send_debug_info",
+      api_version: 1,
+      message: "It stopped at 03:00",
+      email: "me@example.com",
+      client: { card_version: CARD_VERSION },
+    });
+    hass.resolveNext({ api_version: 1, ok: true, error: null, ref: "SN-7KQ4", retry_after_s: null });
+    await settle();
+
+    const sent = form(element)?.querySelector<HTMLElement>("[data-send-debug-sent]");
+    expect(sent?.textContent).toBe(translate("en", "sendDebug.sent", { ref: "SN-7KQ4" }));
+    expect(sent?.textContent).toContain("SN-7KQ4");
+    form(element)?.querySelector<HTMLButtonElement>("[data-send-debug-close]")?.click();
+    await settle();
+    expect(openDialog(element)?.querySelector("[data-send-debug='form']")).toBeNull();
+    // Back on the Settings page it was opened from.
+    expect(section(element, "support")).not.toBeNull();
+  });
+
+  it("leaves out an empty e-mail address", async () => {
+    const { hass, element } = await mounted();
+    await openSend(element);
+    fill(element, "It stopped", "", true);
+    await submit(element);
+    expect(sends(hass)[0]).not.toHaveProperty("email");
+  });
+
+  it("says why a send failed and suggests the download instead", async () => {
+    const { hass, element } = await mounted();
+    await openSend(element);
+    fill(element, "It stopped", "", true);
+
+    await submit(element);
+    hass.resolveNext({ api_version: 1, ok: false, error: "spotnav_report_rate_limited", ref: null, retry_after_s: 7200 });
+    await settle();
+    expect(errorText(element)).toBe(
+      `${translate("en", "sendDebug.error.rateLimited", { wait: "2 h" })} ${translate("en", "sendDebug.error.download")}`,
+    );
+
+    // A short wait is the server busy with other reports: try again in a moment, not tomorrow.
+    await submit(element);
+    hass.resolveNext({ api_version: 1, ok: false, error: "spotnav_report_rate_limited", ref: null, retry_after_s: 10 });
+    await settle();
+    expect(errorText(element)).toBe(translate("en", "sendDebug.error.busy"));
+
+    await submit(element);
+    hass.resolveNext({ api_version: 1, ok: false, error: "spotnav_report_too_large", ref: null, retry_after_s: null });
+    await settle();
+    expect(errorText(element)).toContain(translate("en", "sendDebug.error.tooLarge"));
+    expect(errorText(element)).toContain(translate("en", "sendDebug.error.download"));
+
+    await submit(element);
+    hass.resolveNext({ api_version: 1, ok: false, error: "spotnav_report_network", ref: null, retry_after_s: null });
+    await settle();
+    expect(errorText(element)).toContain(translate("en", "sendDebug.error.network"));
+
+    await submit(element);
+    hass.rejectNext({ code: "unauthorized" });
+    await settle();
+    expect(errorText(element)).toContain(translate("en", "sendDebug.error.notAdmin"));
+
+    // The form stays, filled in, for another try.
+    expect(field<HTMLTextAreaElement>(element, "message").value).toBe("It stopped");
+    expect(sends(hass)).toHaveLength(5);
   });
 });
 

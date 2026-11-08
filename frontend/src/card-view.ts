@@ -129,6 +129,7 @@ import { issueText, type IssueFix } from "./status";
 import { integrationPath, keyEditor, priceProviderNodes } from "./price-provider";
 import { setupLineText, setupSection, type SetupRowId } from "./setup-checklist";
 import { automationsBody, type BlueprintUse } from "./automations";
+import { sendDebugEditor, type SendDebug } from "./send-debug";
 import { historyBody, type HistoryPower, type HistoryState, type HistoryUi, type HistoryView } from "./history";
 import type { PowerState, PowerUi } from "./power-view";
 import { connectionLabel, guestLineFor, vehicleLineFor } from "./vehicle-line";
@@ -287,6 +288,8 @@ export interface CardViewInput {
   onOpenEntityEditor?: (scope: EntityScope) => void;
   /** The admin pressed "Download debug info" in the Settings popover. */
   onDownloadDebug?: () => void;
+  /** The admin sent the debug info from its dialog: the reference, or the sentence to show. */
+  onSendDebug?: SendDebug;
   /** How many automations use each of SpotNav's blueprints (`automations.ts`), `null` when it could not be read. */
   onLoadBlueprintUse?: () => Promise<BlueprintUse | null>;
   onSaveEntities?: (scope: EntityScope, draft: EntityDraft) => void;
@@ -2651,7 +2654,8 @@ export function createCardView(input: CardViewInput): CardView {
 
   /**
    * Support: "About this card" (the capability list, for everyone) and, for administrators only, the
-   * "Automations" row (SpotNav's blueprints) and the button that saves the debug bundle. Nothing is sent anywhere.
+   * "Automations" row (SpotNav's blueprints), the button that saves the debug bundle and the one that sends it to
+   * SpotNav's developer (only from its dialog, with the reader's consent).
    */
   function supportSectionBody(): HTMLElement {
     const section = element(doc, "section", C.settingsSection);
@@ -2697,9 +2701,26 @@ export function createCardView(input: CardViewInput): CardView {
       debugButton = button;
       paintDebugButton();
       actions.append(button);
+      const send = element(doc, "button", `${C.button} ${C.settingsSectionConfigure}`);
+      send.type = "button";
+      send.dataset["sendDebug"] = "open";
+      send.textContent = translate(model.language, "sendDebug.open");
+      send.addEventListener("click", () => openSendDebug());
+      actions.append(send);
     }
     section.append(actions);
     return section;
+  }
+
+  /** "Send debug info": its dialog, in the value editors' dialog, back to Settings when closed. Administrators only. */
+  function openSendDebug(): void {
+    const send = input.onSendDebug;
+    if (send === undefined) {
+      return;
+    }
+    openValueEditor(translate(model.language, "sendDebug.title"), (handlers) =>
+      sendDebugEditor(doc, model.language, idPrefix, send, handlers),
+    );
   }
 
   let debugButton: HTMLButtonElement | null = null;

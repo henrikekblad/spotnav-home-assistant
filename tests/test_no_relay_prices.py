@@ -66,10 +66,10 @@ def issues(hass: HomeAssistant) -> list[str]:
 
 
 def test_the_relay_address_is_left_in_the_push_module_only() -> None:
-    """The source names the relay's host only where push uses it; nothing under `pricing/` does."""
+    """The source names the relay's host only where push and the debug report use it; nothing under `pricing/` does."""
     for path in PACKAGE.rglob("*.py"):
         text = path.read_text(encoding="utf-8")
-        if path.name == "push.py":
+        if path.name in ("push.py", "support_report.py"):
             assert "DEFAULT_BASE_URL" in text
             continue
         assert "DEFAULT_BASE_URL" not in text, path

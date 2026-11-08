@@ -502,7 +502,12 @@ they hold until the page is reloaded and the card then starts on **Day** and the
 **Automations** lists the blueprints SpotNav installs, *Setpoint by electricity price* and *Run on
 solar surplus*, with how many automations use each and **Create automation**, which opens Home
 Assistant's Blueprints page; see [Automations](automations.md). **Download debug info** saves one file for a bug report (see
-[Diagnostics and troubleshooting](troubleshooting.md)).
+[Diagnostics and troubleshooting](troubleshooting.md)). **Send debug info**, also for an administrator, sends that
+same file to SpotNav's developer instead: its dialog says what is sent and links the privacy policy, asks what
+happened and roughly when (required) and an e-mail address (optional, for an answer), and sends only once you tick
+*I agree that this information is sent to SpotNav's developer*. It then shows a reference such as `SN-7KQ4` to
+mention in your post or message; when sending fails, it says why and suggests the download instead (see
+[Send debug info](troubleshooting.md#send-debug-info)).
 
 ![Support: Automations, the debug info and About this card](images/card-settings-support.png)
 
