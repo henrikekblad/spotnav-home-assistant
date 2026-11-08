@@ -603,6 +603,80 @@ def test_until_the_battery_is_verified_the_ceiling_is_the_fuse() -> None:
     assert verdict.reason == "passthrough_ceiling"
 
 
+def _held_grid(now: float, site: float, delivered: float, *, battery_w: float = 6700.0, car_first: bool = True):
+    """The night of 2026-11-08 on L2: a 20 A fuse, the battery charging from the grid and holding it at the fuse."""
+    return YieldObservation(
+        now=now,
+        site_current_a={"L2": site},
+        delivered_current_a={"L2": delivered},
+        phases=("L2",),
+        limit_a={"L2": 20.0},
+        battery_power_w=battery_w,
+        battery_charge_a=battery_w / 230.0,
+        battery_fresh=True,
+        credit_allowed=car_first,
+    )
+
+
+def test_a_battery_holding_the_grid_at_the_fuse_gets_a_step_into_its_share() -> None:
+    """The night of 2026-11-08: the car at 9 A, the grid at 20.07 A, the battery charging 6.7 kW, never verified. The
+    unverified ceiling (the fuse) does not stop a step into the battery's share: it goes out, bound by its allowance."""
+    stepper = YieldStepper(_config(unverified_ceiling_a=20.0))
+    verdict = stepper.observe(8.0, 16.0, 9.0, _held_grid(0.0, 20.07, 8.9))
+    assert (verdict.action, verdict.current_a, verdict.reason) == ("write", 11.0, "probe_step")
+    assert verdict.battery_share_step is True
+    assert verdict.yield_verified is False
+
+
+@pytest.mark.parametrize(
+    ("site", "battery_w", "car_first"),
+    [(20.6, 6700.0, True), (20.07, 400.0, True), (20.07, 6700.0, False)],
+    ids=["above_the_band", "battery_charging_less_than_a_step", "battery_first"],
+)
+def test_no_step_into_the_share_outside_the_held_grid(site: float, battery_w: float, car_first: bool) -> None:
+    stepper = YieldStepper(_config(unverified_ceiling_a=20.0))
+    verdict = stepper.observe(
+        8.0, 16.0, 9.0, _held_grid(0.0, site, 8.9, battery_w=battery_w, car_first=car_first)
+    )
+    assert (verdict.action, verdict.reason, verdict.battery_share_step) == ("passthrough", "passthrough_ceiling", False)
+
+
+def test_a_step_into_the_share_the_battery_does_not_give_way_to_is_taken_back() -> None:
+    """The step goes out, the car takes it, the grid rises by it and stays there: taken back to 9 A, and backoff."""
+    cfg = _config(unverified_ceiling_a=20.0)
+    stepper = YieldStepper(cfg)
+    assert stepper.observe(8.0, 16.0, 9.0, _held_grid(0.0, 20.07, 8.9)).reason == "probe_step"
+    in_flight = stepper.observe(8.0, 16.0, 11.0, _held_grid(5.0, 20.1, 8.9))
+    assert (in_flight.action, in_flight.reason, in_flight.battery_share_step) == (
+        "hold",
+        "held_battery_probe_in_flight",
+        True,
+    )
+    shown = stepper.observe(8.0, 16.0, 11.0, _held_grid(10.0, 22.0, 10.9))
+    assert shown.state == "settling" and shown.action == "hold"
+    verdict = stepper.observe(8.0, 16.0, 11.0, _held_grid(10.0 + cfg.settle_s, 22.0, 10.9))
+    assert (verdict.action, verdict.current_a, verdict.reason, verdict.state) == (
+        "write",
+        9.0,
+        "revert_not_absorbed",
+        "backoff",
+    )
+    assert verdict.battery_share_step is False
+
+
+def test_a_step_into_the_share_that_takes_the_site_past_its_allowance_is_taken_back_at_once() -> None:
+    stepper = YieldStepper(_config(unverified_ceiling_a=20.0))
+    stepper.observe(8.0, 16.0, 9.0, _held_grid(0.0, 20.07, 8.9))
+    stepper.observe(8.0, 16.0, 11.0, _held_grid(5.0, 20.1, 8.9))
+    verdict = stepper.observe(8.0, 16.0, 11.0, _held_grid(10.0, 22.6, 8.9))
+    assert (verdict.action, verdict.current_a, verdict.reason, verdict.urgent) == (
+        "write",
+        9.0,
+        "revert_over_allowance",
+        True,
+    )
+
+
 def test_without_an_unverified_ceiling_the_configured_one_holds_throughout() -> None:
     stepper = YieldStepper(_config())
     verdict = stepper.observe(0.0, 16.0, 6.0, _obs(0.0, site=20.2, delivered=5.9))

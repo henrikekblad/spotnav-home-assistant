@@ -2605,13 +2605,15 @@ class SiteCapacityController:
 
         if overload and not (
             yield_verdict is not None
-            and yield_verdict.yield_verified
+            and (yield_verdict.yield_verified or yield_verdict.battery_share_step)
             and yield_verdict.reason != "passthrough_ceiling"
         ):
             # The stepper is still fed the observation (its bookkeeping follows the site), but only its own lowering
-            # is taken from it; a hold, a step up or a passthrough leaves the overload's proposal as it is. The one
-            # exception is a battery whose yield is verified on this site, below the yield ceiling (the stepper's
-            # hard ceiling, `yield_ceiling_a`): the stepper judges that overload as before.
+            # is taken from it; a hold, a step up or a passthrough leaves the overload's proposal as it is. The
+            # exceptions are a battery whose yield is verified on this site, below the yield ceiling (the stepper's
+            # hard ceiling, `yield_ceiling_a`), and a step into the battery's share within its allowance over the
+            # limit, which is how that yield gets verified on a battery holding the grid at the fuse: the stepper
+            # judges that overload, and takes the step back unless the battery gives way.
             stepped = (
                 yield_verdict.current_a
                 if yield_verdict is not None

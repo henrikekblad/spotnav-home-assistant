@@ -113,8 +113,10 @@ class YieldConfig:
 
     `ceiling_a` has no default: it is a property of the site, so the caller supplies it. It holds only while
     the battery's yield is verified on the site (`YieldStepper.yield_verified`); until then the ceiling is
-    `unverified_ceiling_a` (the main fuse), so no step or probe takes a site above its fuse on a battery that has
-    not shown it gives way. `None` there keeps `ceiling_a` throughout. `min_current_a` is the charger's configured
+    `unverified_ceiling_a` (the main fuse), so no step takes a site above its fuse on a battery that has not shown it
+    gives way. The one exception is a step into the battery's share (`battery_probe_over_a`): bound by its own
+    allowance over the limit and taken back unless the battery gives way, it is how the yield gets verified on a
+    battery that holds the grid at the fuse. `None` there keeps `ceiling_a` throughout. `min_current_a` is the charger's configured
     minimum; a raw pause at the floor is recognised as not a carryable reduction by using it.
     """
 
@@ -165,6 +167,10 @@ class YieldConfig:
     # reports about once a minute) is taken back.
     battery_probe_over_a: float = 2.5
     battery_probe_detect_s: float = 90.0
+    # A battery that holds the grid at the limit reads a few hundredths over it (`site/battery_probe.py`'s
+    # `HELD_BAND_A`): within this band above the limit the unverified ceiling (the fuse) does not stop a step into
+    # the battery's share, which is bound by its own allowance instead.
+    held_band_a: float = 0.5
     ceiling_a: float
     unverified_ceiling_a: float | None = None
 
@@ -252,6 +258,9 @@ class YieldVerdict:
     # The battery's yield is verified on the site (`YieldStepper.yield_verified`): the configured ceiling holds,
     # and an import overload below it is the stepper's to judge (`SiteCapacityController`).
     yield_verified: bool = False
+    # A step into the battery's share is being tried (proposed, in flight or settling) within its allowance over the
+    # limit: like a verified yield, an import overload within that allowance is the stepper's to judge.
+    battery_share_step: bool = False
 
 
 def _clamp01(value: float) -> float:
@@ -349,6 +358,33 @@ class YieldStepper:
             return cfg.ceiling_a
         return min(cfg.ceiling_a, cfg.unverified_ceiling_a)
 
+    def _share_step_active(self) -> bool:
+        """A step into the battery's share is proposed, in flight or being measured (until a backoff)."""
+        return self._battery_probe is not None or self._over_limit_steps
+
+    def _hard_ceiling_a(
+        self,
+        observation: YieldObservation,
+        site_a: Mapping[PhaseName, float],
+        limit_a: Mapping[PhaseName, float] | None,
+    ) -> float:
+        """The hard ceiling of step 2. `_ceiling_a` as a rule; while a step into the battery's share is tried, or one
+        may start (the battery charges from the grid by a step's worth and holds every phase within the held band
+        over the limit), the configured `ceiling_a`: such a step answers to its allowance, which is lower."""
+        cfg = self._config
+        ceiling_a = self._ceiling_a()
+        if ceiling_a >= cfg.ceiling_a or limit_a is None:
+            return ceiling_a
+        if self._share_step_active() and self._state != "backoff":
+            return cfg.ceiling_a
+        if (
+            self._state == "unknown"
+            and all(site_a[phase] <= limit_a[phase] + cfg.held_band_a for phase in site_a)
+            and self._battery_room(observation, site_a, limit_a)
+        ):
+            return cfg.ceiling_a
+        return ceiling_a
+
     def observe(
         self,
         raw_proposed_current_a: float | None,
@@ -424,6 +460,10 @@ class YieldStepper:
                 self._stable_assigned is not None
                 and assigned_a > self._stable_assigned
                 and any(delivered_a[phase] < cfg.follow_ratio * assigned_a for phase in phases)
+            ) or (
+                # A step into the battery's share is in flight until the car's reading shows it, however near the car
+                # already draws to the new setting (8.9 A of 9 A is 0.8 of 11 A).
+                self._battery_probe is not None and assigned_a >= self._battery_probe.to_a - 0.01
             )
             if prev_delivered is None or (steady and not in_flight):
                 self._stable_site = dict(site_a)
@@ -459,8 +499,10 @@ class YieldStepper:
                 # The car's reading shows the step: settling measures it from here.
                 self._battery_probe = None
 
-        # 2. Hard ceiling: checked before everything else; nothing overrides it.
-        ceiling_a = self._ceiling_a()
+        # 2. Hard ceiling: checked before everything else; nothing overrides it. A step into the battery's share is
+        # bound by its allowance instead (`_over_allowance`, checked where the step is measured), and a grid the
+        # battery holds within the band over the limit is not over the unverified ceiling for one about to start.
+        ceiling_a = self._hard_ceiling_a(observation, site_a, limit_a)
         over_ceiling = [site_a[phase] - ceiling_a for phase in phases if site_a[phase] >= ceiling_a]
         if not over_ceiling:
             self._ceiling_hits = 0
@@ -679,19 +721,26 @@ class YieldStepper:
                         reaches_request=assigned_a + step_a > requested_a,
                     )
 
-            ceiling_ok = all(site_a[phase] + cfg.step_a <= self._ceiling_a() for phase in phases)
+            # A step into the battery's share is bound by its allowance (`_battery_room`), not by the unverified ceiling.
+            ceiling_ok = battery_room or all(
+                site_a[phase] + cfg.step_a <= self._ceiling_a() for phase in phases
+            )
             stale_confirmed = self._state == "confirmed" and not fresh
             if (self._state == "unknown" or stale_confirmed) and ceiling_ok:
                 target = min(requested_a, assigned_a + cfg.step_a)
                 self._last_step_a = cfg.step_a
                 if battery_room:
                     # Into the battery's share: watched until the car's reading shows it, and
-                    # bound by the allowance over the limit until a backoff.
+                    # bound by the allowance over the limit until a backoff. Measured, and taken
+                    # back, from the readings before it.
                     if self._battery_probe is None or self._battery_probe.to_a != target:
                         self._battery_probe = _BatteryProbe(
                             from_a=assigned_a,
                             to_a=target,
                             delivered_before_a=max(delivered_a.values()),
+                            site_before=dict(site_a),
+                            delivered_before=dict(delivered_a),
+                            battery_before_a=observation.battery_charge_a,
                         )
                     self._over_limit_steps = True
                 return self._verdict(
@@ -711,12 +760,13 @@ class YieldStepper:
         self, site_a: Mapping[PhaseName, float], limit_a: Mapping[PhaseName, float] | None
     ) -> bool:
         """Whether a phase is (or would be) over its limit by more than `battery_probe_over_a`, or
-        over `ceiling_a`. An unknown limit counts as over."""
+        over `ceiling_a`. An unknown limit counts as over. The allowance is a step into the battery's share's own
+        bound, so the unverified ceiling (the fuse) does not cut it: the step is what verifies the yield."""
         cfg = self._config
         if limit_a is None:
             return True
         return any(
-            site_a[phase] > min(self._ceiling_a(), limit_a[phase] + cfg.battery_probe_over_a)
+            site_a[phase] > min(cfg.ceiling_a, limit_a[phase] + cfg.battery_probe_over_a)
             for phase in site_a
         )
 
@@ -731,7 +781,7 @@ class YieldStepper:
         return max(
             0.0,
             min(
-                min(self._ceiling_a(), limit_a[phase] + cfg.battery_probe_over_a) - site_a[phase]
+                min(cfg.ceiling_a, limit_a[phase] + cfg.battery_probe_over_a) - site_a[phase]
                 for phase in site_a
             ),
         )
@@ -1038,4 +1088,16 @@ class YieldStepper:
             battery_credit_a=battery_credit_a,
             reaches_request=reaches_request,
             yield_verified=self.yield_verified,
+            battery_share_step=(
+                self._share_step_active()
+                and self._state != "backoff"
+                and reason
+                in (
+                    "probe_step",
+                    "held_battery_probe_in_flight",
+                    "settling_hold",
+                    "confirmed_after_settling",
+                    "confirmed_step",
+                )
+            ),
         )
