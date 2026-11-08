@@ -296,8 +296,10 @@ It is best effort and is not a protective device. Turning it off gives back any 
   default) is for sites with a load that gives way when the car
   draws more, for example a house battery holding the grid at its setpoint. SpotNav then judges a
   step by whether it moves the site current, within a hard ceiling. Until the battery's yield is
-  verified on the site, the ceiling is the main fuse itself: no step or probe takes a phase above the
-  fuse on a battery that has not shown it gives way, and an import overload is lowered at once. Verified
+  verified on the site, the ceiling is the main fuse itself: no step takes a phase above the fuse on a
+  battery that has not shown it gives way, and an import overload is lowered at once. The exceptions are
+  the probes that find out: a step into the battery's share (below, at most 2.5 A over the limit) and the
+  probe of a paused charge, each taken back unless the battery gives way. Verified
   means the battery probe below succeeded, or a step was confirmed and the battery's own charge fell by
   what the car took; a failed step (its backoff) or the end of the car's draw forgets it. With the battery
   verified, the *yield ceiling* holds (1.15 times the fuse, fixed: below the 1.25 times a gG fuse carries
@@ -349,8 +351,8 @@ It is best effort and is not a protective device. Turning it off gives back any 
     A running car that such a battery would have lowered or paused for an import overload within the band (or a
     grid read at exactly the fuse) keeps its current, as long as the battery charges, on a fresh reading, at least as
     hard as the cut would free (all of the car's minimum for a pause): `held_battery_at_limit` in the decision log.
-    This verifies nothing: the fuse stays the ceiling of every step until a step or a probe of a paused charge has
-    seen the battery give way, so the car is not stepped back up into the battery's share meanwhile. An overload
+    This verifies nothing by itself, but the car is not held there for good: a step into the battery's share (below)
+    finds out whether the battery gives way, and the car climbs back to its plan if it does. An overload
     above the band is lowered at once, as before, and the car is held from where that leaves it; a request lowered
     below the car's current is always followed. For the resume and the probe a stopped charger's own current read before
     its pause, or not reported for longer than the site's maximum age, counts as nothing drawn: an OCPP
@@ -358,15 +360,17 @@ It is best effort and is not a protective device. Turning it off gives back any 
     Sigenergy battery held a 20 A fuse at 20.0-20.1 A from 03:15 and grew to 12.5 kW as the car was lowered
     to its minimum and paused; the HALO kept showing 6 A, and the paused charge was not resumed when the
     battery stopped at 04:07. Now the car is lowered once, from 16 to 14 A for the 21.6 A at the battery's
-    start, keeps 14 A until the battery is done, and is back at 16 A within three minutes of that.)
+    start, and is stepped back to 16 A into the share of the battery, which gives way. On 8 November, before
+    that step was allowed on a battery not yet verified, the car stayed at 9 A all evening under a battery
+    charging 6.7 kW at 20.07 A.)
   - **A running car below its plan while the battery fills the fuse.** Only with *car first* and yield
     stepping on. While the car draws what it was given and the battery charges from the grid by at
     least a 2 A step's worth over the car's phases (2 A x 230 V x 3 = 1380 W on three phases, on a
     fresh reading), the car is not lowered for the grid sitting at the limit, and it is stepped up
     2 A into the battery's share even though the fuse has no headroom left. Such a step may take a
-    phase over the limit by at most 2.5 A (the 0.5 A band plus the step, and never past the ceiling,
-    which is the main fuse until the battery's yield is verified): a step that would go further is not
-    tried. It is then measured like any other yield
+    phase over the limit by at most 2.5 A (the 0.5 A band plus the step, and never past the yield
+    ceiling), also while the battery's yield is not yet verified: this step is what verifies it. A step
+    that would go further is not tried. It is then measured like any other yield
     step: if the battery's charge falls by what the car took, the grid stays put and the car goes
     on, one step at a time (each sized to stay within the 2.5 A, and paced by the settle time) up to
     its plan. If the grid carries the step instead, or a phase goes past the 2.5 A, or the charger's

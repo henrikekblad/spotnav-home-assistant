@@ -209,12 +209,14 @@ async def _the_night(
 # -- 03:15: the battery takes the fuse while the car charges
 
 
-async def test_0315_the_car_keeps_its_current_while_the_battery_holds_the_grid(
+async def test_0315_the_car_steps_back_into_the_share_of_a_battery_that_holds_the_grid(
     hass: HomeAssistant, monkeypatch, freezer
 ) -> None:
-    """Lowered once, for the overload above the band at the battery's start, then held there for as long as the battery
-    holds the grid within the band; back to the plan's current once the battery is done. Nothing verifies the battery
-    meanwhile, so no step goes into its share above the fuse."""
+    """Lowered once, for the overload above the band at the battery's start, and never lowered for the battery's own
+    regulation within the band. Nor held there (the night of 2026-11-08: 9 A all evening): a step goes into the
+    battery's share within its allowance over the limit, the battery gives way, and the car is back at the plan's
+    current while the battery still charges. The site goes over the fuse only by a step, for the passes until the
+    battery follows; back to the plan's current once the battery is done."""
     night = await _the_night(hass, monkeypatch, freezer, "nov1hold")
     night.lowest_a = None
     await night.battery_starts()
@@ -222,12 +224,11 @@ async def test_0315_the_car_keeps_its_current_while_the_battery_holds_the_grid(
     await night.run(52 * 60.0)
 
     assert len(night.halo.turn_off) == 0, "never paused"
-    assert night.lowest_a == 14.0 and night.car_a == 14.0, "lowered once, for the overload above the band"
-    assert night.outcomes() == [], "no probe: the car held in the band verifies nothing"
-    yield_last = night.halo.controller._yield_stepping_last[night.halo.charger.entry_id]  # noqa: SLF001
-    assert yield_last["battery_verified"] is False
+    assert night.lowest_a == 14.0, "lowered once, for the overload above the band"
+    assert night.car_a == 16.0, "\n".join(night.trace[-36:])
+    assert night.outcomes() == [], "no probe of a paused charge: the car never paused"
     low, high = night.site_range
-    assert max(high) <= _FUSE_A + 0.5 and min(low) >= _FUSE_A - 2.5, "\n".join(night.trace[60:120])
+    assert max(high) <= _FUSE_A + 2.5 and min(low) >= _FUSE_A - 2.5, "\n".join(night.trace[60:120])
 
     # 04:07 the battery is done: the car goes back to the plan's 16 A within three minutes (the regulator's dwell, and
     # the HALO's meter values half a minute behind), and stays there.
@@ -269,24 +270,26 @@ async def test_0315_a_battery_held_in_the_band_never_keeps_the_car_above_it(
     assert high[0] < _FUSE_A + 2.0, "lowered in the first pass that saw it"
 
 
-async def test_0315_a_held_car_is_not_stepped_above_the_fuse(hass: HomeAssistant, monkeypatch, freezer) -> None:
-    """On a battery that holds the grid at the fuse but was never seen to give way, nothing steps the car back into
-    its share: the site stays within the band (the review's peak case)."""
+async def test_0315_a_step_into_the_share_stays_within_its_allowance(
+    hass: HomeAssistant, monkeypatch, freezer
+) -> None:
+    """On a battery that holds the grid at the fuse but was never seen to give way, a step into its share takes the
+    site over the fuse by no more than the step's allowance (`YieldConfig.battery_probe_over_a`, 2.5 A) while the
+    battery follows (the review's peak case)."""
     night = await _the_night(hass, monkeypatch, freezer, "nov1peak")
     await night.battery_starts()
     night.site_range = None
     await night.run(5 * 60.0)
     low, high = night.site_range
-    assert max(high) <= _FUSE_A + 0.5, "\n".join(night.trace[-60:])
+    assert max(high) <= _FUSE_A + 2.5, "\n".join(night.trace[-60:])
 
 
 async def test_a_battery_that_takes_the_freed_current_is_not_stepped_into_above_the_fuse(
     hass: HomeAssistant, monkeypatch, freezer
 ) -> None:
     """A battery that takes every amp the car frees and gives none back, holding the grid just under the fuse: a
-    lowering it absorbed is no proof that it gives way to a raise, so the car is not stepped back up past the fuse.
-    Before, the step back up went out on a battery never seen to give way, and the site read the fuse plus the step
-    for a pass."""
+    lowering it absorbed is no proof that it gives way to a raise, so the car is not stepped back up past the fuse for
+    it. A step into its share is tried within its allowance and taken back, as the battery does not give way."""
     night = await _the_night(hass, monkeypatch, freezer, "nov1takes")
     # A load far over the fuse cuts the car; the battery then fills what it freed and keeps it.
     night.battery = "fixed"
@@ -299,9 +302,11 @@ async def test_a_battery_that_takes_the_freed_current_is_not_stepped_into_above_
     night.taken = (7.1, 7.1, 7.1)
     night.battery = "takes"
     night.site_range = None
+    held_a = night.assigned_a()
     await night.run(15 * 60.0)
     low, high = night.site_range
-    assert max(high) <= _FUSE_A + 0.5, "\n".join(line for line in night.trace if "down_step" in line)
+    assert max(high) <= _FUSE_A + 2.5, "\n".join(line for line in night.trace if "down_step" in line)
+    assert night.assigned_a() <= held_a, "\n".join(night.trace[-36:])
     assert not [line for line in night.trace if "down_step_absorbed_by_battery" in line]
 
 
