@@ -404,10 +404,11 @@ async def test_a_plan_cleared_for_its_settings_while_its_start_is_on_its_way_is_
     hass: HomeAssistant, timers: FakeScheduler, drives: bool
 ) -> None:
     """The settings changed and the answer for them is to wait while the plan's window start is on its way, not yet
-    reported charging. The wait does not clear the plan then: its window is open, which counts as its charge running
-    (`AutoExecutor._plan_charge_runs`), so the clear waits for the window's boundary. A clear that does go through
-    (`_clear_superseded_locked`, here called directly while the start is on its way) is fed to the core as a dropped
-    plan, as `async_drop_plan` feeds it: the charge goes on, its owner as after any dropped plan
+    reported charging. A window open with no charge running does not keep the plan (`AutoExecutor._plan_charge_runs`):
+    the wait clears it at once. Under the boundary's lock that clear cannot meet a start on its way (the window's start
+    holds the lock, and a superseded plan starts nothing); called directly here while one is, the clear touches no
+    charge (`_clear_superseded_locked`: nothing of the plan's is on yet) and is fed to the core as a dropped plan, as
+    `async_drop_plan` feeds it: the charge goes on, its owner as after any dropped plan
     (`test_a_dropped_plan_keeps_its_charge_the_plans`), with no stop and no failure."""
     world = await pause_world(hass, timers)
     controller = world.controller
@@ -425,7 +426,7 @@ async def test_a_plan_cleared_for_its_settings_while_its_start_is_on_its_way_is_
     install = hass.async_create_task(install_schedule(controller, open_window()))
     await called.wait()
     assert not controller.charging
-    assert world.executor._plan_charge_runs()  # noqa: SLF001 - what the wait's answer reads: it defers the clear
+    assert not world.executor._plan_charge_runs()  # noqa: SLF001 - not charging yet: nothing keeps the plan
     clear = hass.async_create_task(world.executor._clear_superseded_locked())  # noqa: SLF001
     await asyncio.sleep(0)
     release.set()

@@ -1363,8 +1363,8 @@ class ChargingController:
         """Whether the installed plan expects this charger to be charging now, so a charge that is not
         running is a surprise: a window of the plan is open, nothing else owns the charger (a pause,
         solar), Auto is not paused (a person's Start or Stop pauses it), the car has not ended the charge
-        in this window, load balancing has not paused the charge, the target is not being stopped for, and
-        the vehicle is not known to be unplugged.
+        in this window, load balancing has not paused the charge, the target is not being stopped for, the
+        plan is not superseded by a wait (`_superseded_holds_start`), and the vehicle is not known to be unplugged.
         """
         return (
             self.plan_window_active_now
@@ -1372,6 +1372,7 @@ class ChargingController:
             and not self._balancing.paused
             and not self._hold_blocked()
             and self._automatic_permitted(AUTOMATIC_START)
+            and not self._superseded_holds_start()
             and not self._car_ended_holds_window()
             and self.adapter.vehicle_connected() is not False
         )
@@ -2345,6 +2346,9 @@ class ChargingController:
     async def _plug_in_start_locked(self, *, trigger: str = core_events.TRIGGER_PLUG_IN) -> bool:
         """The start at plug-in, with the lock held; also a window start's retry (`TRIGGER_RETRY`), which rechecks
         everything a plug-in does."""
+        if self._superseded_holds_start():
+            # The settings changed and the answer for them is to wait: nothing of the earlier plan starts.
+            return False
         token = self._runner.begin()
         self._core_car_facts = NO_CAR_FACTS
         facts = self._core_facts(
@@ -3583,6 +3587,46 @@ class ChargingController:
                 await self._end_plan_locked()
             finally:
                 self._runner.end(token, core_events.PlanDropped())
+
+    async def async_end_superseded_plan(self) -> bool:
+        """A settings change whose answer is to wait superseded the plan while its own charge runs: stop that charge
+        and clear the plan (`AutoExecutor._clear_superseded_locked`). The core decides the stop (`PlanSuperseded`): only
+        the plan's own charge is stopped; one a person, the car's minimum level, the sun or the hybrid hand-off owns
+        goes on and only the plan is cleared. Nothing is told: the charge did not stop unexpectedly. Returns whether the
+        plan was cleared (`False` when the core could not decide: nothing is stopped, and the next calculation asks
+        again)."""
+        async with self._lock:
+            if self.plan is None:
+                return True
+            token = self._runner.begin()
+            facts = self._core_facts(
+                lambda: {
+                    "control_on": self._control_on,
+                    "handed_off": self._core_handed_off(),
+                    **self._core_hold_facts(),
+                },
+                core_events.PlanSuperseded.kind,
+                token=token,
+            )
+            outcome: CommandOutcome | None = None
+            try:
+                verdict = None if facts is None else self._runner.verdict(core_events.PlanSuperseded(**facts), token)
+                if verdict is None:
+                    return False
+                if ("stop", "superseded") in verdict:
+                    _LOGGER.info(
+                        "SpotNav charger %s: the settings changed and the answer for them is to wait; stopping the "
+                        "earlier plan's charge",
+                        self.entry_id,
+                    )
+                    outcome = CommandOutcome(False)
+                    await self._stop_locked(clear_schedule=True)
+                    outcome = self._core_stop_outcome(True)
+                    return self.plan is None
+                await self._end_plan_locked()
+                return True
+            finally:
+                self._core_end_event(token, facts, lambda: core_events.PlanSuperseded(**facts), outcome=outcome)
 
     def forget_balancing_pause(self) -> None:
         """The wish to charge is gone (Auto paused by a person, say): balancing's pause is not a charge
@@ -5469,6 +5513,13 @@ class ChargingController:
         the target ended the plan instead of starting anything, so a caller arming timers knows there is no
         plan left to arm.
         """
+        if self._superseded_holds_start():
+            _LOGGER.info(
+                "SpotNav charger %s: a window of the earlier plan opens, but the settings changed and the answer for "
+                "them is to wait; nothing is started",
+                self.entry_id,
+            )
+            return False
         # The feed opens first: the window start ends the hold of the plug-in session before anything else of it.
         token = self._runner.begin()
         if self._target_stopping:
@@ -6000,6 +6051,18 @@ class ChargingController:
 
     def _window_end(self) -> None:
         self._async_spawn(self._async_window_end_stop(clear_schedule=False), "the window end's stop")
+
+    def _superseded_holds_start(self) -> bool:
+        """Whether the plan in force is superseded by a wait (`AutoExecutor.superseded_by_wait`): the person changed
+        their settings and the answer for them is to wait, so none of its windows starts a charge, whatever opens it
+        (its timer, a re-arm after a restart, a plug-in, a retry)."""
+        probe = getattr(self._automatic_gate, "superseded_by_wait", None)
+        if probe is None:
+            return False
+        try:
+            return bool(probe())
+        except Exception:  # noqa: BLE001 - an unreadable boundary holds nothing back: the window as ever
+            return False
 
     def _successor_continues(self) -> bool:
         """Whether the execution boundary holds the next plan, waiting for this window boundary, with a window

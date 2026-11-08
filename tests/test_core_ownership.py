@@ -1368,6 +1368,23 @@ def test_the_target_and_the_need() -> None:
     assert session.owner == "plan"
 
 
+def test_a_plan_superseded_by_a_wait_stops_only_its_own_charge() -> None:
+    _, commands = run(ChargeSession(owner="plan"), ev.PlanSuperseded())
+    assert commands == (Stop("superseded", True),)
+    for event in (
+        ev.PlanSuperseded(control_on=False),
+        ev.PlanSuperseded(handed_off=True),
+        ev.PlanSuperseded(solar_holds=True),
+    ):
+        assert kinds(run(ChargeSession(owner="plan"), event)[1]) == []
+    for owner in ("person", "charge_now", "min_soc", "solar", "charger_self", "none"):
+        assert kinds(run(ChargeSession(owner=owner), ev.PlanSuperseded())[1]) == [], owner
+    _, commands = run(ChargeSession(owner="person", manual=START), ev.PlanSuperseded())
+    assert kinds(commands) == [], "a person's Start goes on"
+    session, commands = run(ChargeSession(owner="top_off"), ev.PlanSuperseded())
+    assert kinds(commands) == [] and session.owner == "plan"
+
+
 def test_the_top_off_end() -> None:
     _, commands = run(ChargeSession(owner="top_off"), ev.TopOffEnd(reason="full"))
     assert commands == (Stop("top_off_end", True),)
@@ -1604,6 +1621,7 @@ def _unobserved(reason: str) -> ev.CommandResult:
         (PLUGGED.with_changes(owner="top_off"), (ev.NeedMet(control_on=False),), "plan"),
         (PLUGGED.with_changes(owner="top_off"), (ev.PlanInstalled(),), "plan"),
         (PLUGGED.with_changes(owner="top_off"), (ev.PlanDropped(),), "plan"),
+        (PLUGGED.with_changes(owner="top_off"), (ev.PlanSuperseded(control_on=False),), "plan"),
         (PLUGGED.with_changes(owner="top_off"), (ev.Rearm(past_last=True),), "plan"),
         # Observed: a charge nobody here started is the charger's own once reported on.
         (PLUGGED, (on(),), "charger_self"),

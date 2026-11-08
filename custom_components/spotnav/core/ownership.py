@@ -44,6 +44,9 @@ The rules are today's, as the manual-pause specs and their three review rounds s
   no balancing resume of such a charge); a charge the charger begins by itself is held as one outside the windows
   (and a person's override of that hold, as there, lets it go on). A person's Start and Charge now still charge.
   A plug-in after a known unplug, the unplug, or the guest plan ending (`met` false) clears it; a restart keeps it.
+* A settings change whose answer is to wait supersedes the plan (`plan_superseded`): the plan's own charge is stopped
+  and the plan cleared, as a need met does; a charge the plan does not own (a person's Start, a Charge-now start, the
+  car's minimum level, the sun's, a top-off) goes on.
 * A strategy change hands a running charge over instead of stopping it: to `solar`, the plan's charge goes to the
   sun when the sun's rules keep it (`sun_keeps`), else it is stopped once. The other way, a plan window that opens
   while the sun runs a charge takes it over at its start, with no command.
@@ -83,6 +86,7 @@ from .events import (
     PersonStop,
     PlanDropped,
     PlanInstalled,
+    PlanSuperseded,
     PlugIn,
     Rearm,
     Recheck,
@@ -168,6 +172,9 @@ REASON_PAUSE: Final = "pause"
 REASON_STRATEGY: Final = "strategy"
 REASON_TARGET: Final = "target"
 REASON_NEED_MET: Final = "need_met"
+#: A settings change answered by a wait superseded the plan: its own charge is stopped and the plan cleared
+#: (`PlanSuperseded`).
+REASON_SUPERSEDED: Final = "superseded"
 REASON_TOP_OFF_END: Final = "top_off_end"
 REASON_MIN_SOC: Final = "min_soc"
 #: A guest car's amount is delivered: its charge is stopped and the plan cleared (`GuestMet`).
@@ -929,6 +936,17 @@ def _need_met(session: ChargeSession, event: NeedMet, now: datetime) -> Decision
     return session, ()
 
 
+def _plan_superseded(session: ChargeSession, event: PlanSuperseded, now: datetime) -> Decision:
+    """The plan's own charge is stopped, as a need met stops it; a person's Start, a Charge-now start, the car's
+    minimum level, the sun's charge (or the hybrid hand-off) and a top-off go on: only the plan is cleared."""
+    blocked = hold_blocked(session, solar_holds=event.solar_holds, plan_auto_owned=event.plan_auto_owned)
+    if session.owner == OWNER_PLAN and event.control_on and not blocked and not event.handed_off:
+        return _stop(session, REASON_SUPERSEDED, clear_schedule=True)
+    if session.owner == OWNER_TOP_OFF:
+        return session.with_changes(owner=OWNER_PLAN), ()
+    return session, ()
+
+
 def _guest_met(session: ChargeSession, event: GuestMet, now: datetime) -> Decision:
     """A guest car's amount is delivered: its charge is stopped and the plan cleared, unless a person's Start or a
     Charge-now start runs it; from now until the unplug nothing automatic starts the charger (`automatic_allowed`).
@@ -1211,6 +1229,7 @@ _HANDLERS: Final[dict[type[Event], Callable[[ChargeSession, Event, datetime], De
     BalancingDropped: _balancing_dropped,  # type: ignore[dict-item]
     TargetReached: _target_reached,  # type: ignore[dict-item]
     NeedMet: _need_met,  # type: ignore[dict-item]
+    PlanSuperseded: _plan_superseded,  # type: ignore[dict-item]
     GuestMet: _guest_met,  # type: ignore[dict-item]
     TopOffEnd: _top_off_end,  # type: ignore[dict-item]
     PlanInstalled: _plan_installed,  # type: ignore[dict-item]

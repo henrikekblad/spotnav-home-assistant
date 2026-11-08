@@ -70,6 +70,7 @@ AUTOMATIC = {
     "recheck",
     "top_off_end",
     "need_met",
+    "plan_superseded",
     "target_reached",
     "balancing_resume",
     "strategy_change",
@@ -582,6 +583,10 @@ class OwnershipMachine(RuleBasedStateMachine):
     @rule(data=st.data(), control_on=st.booleans(), handed_off=st.booleans(), solar=st.booleans())
     def need_met(self, data, control_on, handed_off, solar) -> None:
         self.step(ev.NeedMet(control_on=control_on, handed_off=handed_off, solar_holds=solar), data)
+
+    @rule(data=st.data(), control_on=st.booleans(), handed_off=st.booleans(), solar=st.booleans())
+    def plan_superseded(self, data, control_on, handed_off, solar) -> None:
+        self.step(ev.PlanSuperseded(control_on=control_on, handed_off=handed_off, solar_holds=solar), data)
 
     @rule(data=st.data(), valid=st.booleans())
     def top_off_end(self, data, valid) -> None:

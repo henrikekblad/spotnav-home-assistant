@@ -45,7 +45,8 @@ window; a car full for the plan then also gives `target_reached`, or `need_met` 
 plan's charge short of the target on a level nobody read then makes the plan wait for the car's level; the event
 carries the record's facts: the level read then, the car, the wait), `car_level_read` (a level read after the end that
 is not full for the plan ends the wait), `charger_reported_unreadable` (a report whose control cannot be read, fed when it states no car: it decides nothing of the charge and only ends the hold), `balancing_pause`, `balancing_resume`, `balancing_dropped` (the regulator
-finds the charge it holds back no longer wanted), `target_reached`, `need_met`,
+finds the charge it holds back no longer wanted), `target_reached`, `need_met`, `plan_superseded` (a settings change
+answered by a wait: the plan's own charge is stopped, as for `need_met`),
 `top_off_end`, `plan_installed`, `plan_dropped`, `restart`, `timer`, `command_result`.
 
 The car-ended rule (R3, `ownership.car_ended_holds_window`) decides from the session's record and the car facts
@@ -111,7 +112,7 @@ stateDiagram-v2
         min_soc --> none: min_soc_end (stop went out), person_stop, charger_reported_off
         plan --> top_off: final_window_end (car still drawing)
         top_off --> plan: plan_installed, rearm past the last window
-        plan --> none: window_end, target, need_met, rearm, stray, stop went out, charger_reported_off
+        plan --> none: window_end, target, need_met, plan_superseded, rearm, stray, stop went out, charger_reported_off
         person --> none: person_stop, balancing_pause (stop went out), charger_reported_off
         solar --> none: solar_stop (stop went out), charger_reported_off
         plan --> solar: strategy_change (to solar, the sun keeps it)

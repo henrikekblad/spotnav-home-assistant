@@ -1282,7 +1282,8 @@ def _target_lines(facts: StatusFacts, *, charging_told: bool) -> list[dict[str, 
 
 
 def _pending_proposal(facts: StatusFacts) -> bool:
-    """This very proposal is queued for a window boundary (Auto never cuts a charging window short)."""
+    """This very proposal is queued for a window boundary (a new plan never cuts a charging window short; a settings
+    change answered by a wait stops the plan's own charge instead, `AutoExecutor._reconcile_locked`)."""
     proposal = facts.proposal
     return (
         facts.relation_applied is False

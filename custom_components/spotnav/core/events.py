@@ -415,6 +415,18 @@ class NeedMet(Event):
 
 
 @dataclass(frozen=True)
+class PlanSuperseded(Event):
+    """A settings change whose answer is to wait superseded the plan in force while its own charge runs: that charge
+    is stopped and the plan cleared. Facts as for `NeedMet`; a charge the plan does not own goes on."""
+
+    kind: ClassVar[str] = "plan_superseded"
+    control_on: bool = True
+    handed_off: bool = False
+    solar_holds: bool = False
+    plan_auto_owned: bool = True
+
+
+@dataclass(frozen=True)
 class GuestMet(Event):
     """A guest car's amount is delivered (`met`), or the guest plan the flag was for ended without an unplug (a
     person chose a household car, or raised the amount above what was delivered: `met` false). `control_on`,
@@ -564,6 +576,7 @@ EVENT_TYPES: Final[dict[str, type[Event]]] = {
         BalancingDropped,
         TargetReached,
         NeedMet,
+        PlanSuperseded,
         GuestMet,
         TopOffEnd,
         PlanInstalled,
