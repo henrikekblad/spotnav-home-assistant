@@ -614,7 +614,7 @@
           {
             "applied": false,
             "confidence": "high",
-            "current_signed": true,
+            "current_signed": false,
             "disabled_entities": [
               "sensor.se_m1_var_a",
               "sensor.se_m1_var_b",
