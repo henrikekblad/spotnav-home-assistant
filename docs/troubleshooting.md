@@ -15,6 +15,27 @@ included. It still holds your entity ids, device names, prices and charging time
 public GitHub issue: open the issue with the **bug report** form, then email the file to
 **support@sensnology.se** with the issue's number in the subject.
 
+### Send debug info
+
+Instead of downloading the file and emailing it, an administrator can send it from the card: **Settings, Support,
+Send debug info**. Write what happened and roughly when, add an e-mail address if you want an answer, tick the box
+to agree that the information is sent to SpotNav's developer, and press **Send**. The card then shows a reference
+such as `SN-7KQ4`: mention it in your forum post, your message in the group or your GitHub issue, so the report can
+be found.
+
+What is sent is the same file **Download debug info** saves (below): versions, settings, entity names, and the
+logs and charge history of the last days, with no passwords, tokens or exact location. With it go your message,
+the e-mail address if you gave one, the SpotNav and Home Assistant versions, and an anonymous id for the
+installation (a salted hash of Home Assistant's instance id, never the id itself), which lets the server limit how
+many reports one installation sends a day. Nothing is sent until you press **Send**; SpotNav never sends a report
+by itself. The report is kept for 30 days and read only by the developer, and the e-mail address is used only to
+answer you; see the [privacy policy](https://spotnav.sensnology.se/privacy).
+
+If sending fails (too many reports today, no connection, or the server is unavailable), the dialog says why.
+Download the debug info instead and email it as above.
+
+### What the debug bundle holds
+
 The site entry's file (and the card's **Download debug info** in Settings, Support, for
 administrators) also carries the whole installation as one debug bundle (`bundle_version` 10). It keeps
 the last day, also across restarts and updates: what it holds below is stored by SpotNav (written at

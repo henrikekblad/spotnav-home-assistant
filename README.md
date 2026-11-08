@@ -107,9 +107,10 @@ language files in `www/i18n/` are committed; `npm run build` regenerates both, a
 ## Support SpotNav
 
 - **Report a problem.** Open an issue with the [bug report form](https://github.com/henrikekblad/spotnav-home-assistant/issues/new/choose).
-  Then download the debug file from the card (**Settings, Support, Download debug info**) and email it to
-  **support@sensnology.se** with the issue's number in the subject. The file holds your entity names and
-  charging times, so please don't attach it to the public issue. [Troubleshooting](docs/troubleshooting.md)
+  Then send the debug info from the card (**Settings, Support, Send debug info**) and mention the reference it
+  shows in the issue, or download the file (**Download debug info**) and email it to **support@sensnology.se**
+  with the issue's number in the subject. The file holds your entity names and charging times, so please don't
+  attach it to the public issue. [Troubleshooting](docs/troubleshooting.md)
   covers the common problems.
 - **Tell how your hardware works.** A short [hardware report](https://github.com/henrikekblad/spotnav-home-assistant/issues/new/choose)
   moves a charger, meter or car from "supported" to "confirmed" and helps the next person decide.
