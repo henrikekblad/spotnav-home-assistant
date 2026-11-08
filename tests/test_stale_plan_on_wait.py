@@ -154,11 +154,7 @@ async def test_a_wait_over_unchanged_settings_keeps_the_plan(session: Session) -
     written since, but a calculation of the written settings proposed the same plan again."""
     # A wait answer, from a second charger on the same prices whose departure is on Sunday.
     _publish(session)
-    other = Session(
-        session.hass, session.transport, session.clock, session.timers, entry_id="entry-b", charge_control="switch.b"
-    )
-    await other.start()
-    waiting = await _move_to_sunday(other)
+    waiting = await _waiting_answer(session)
 
     await session.set_auto(departure=time(8, 0), requested_kwh=10.0)
     installed = session.executor.applied
@@ -204,6 +200,19 @@ async def test_an_answer_that_says_nothing_about_the_settings_keeps_the_plan(ses
     session.executor.begin_attempt()
     await session.executor.async_reconcile(session.settings(), not_in_yet, attempt=session.executor.attempt)
     assert session.controller.plan is installed.plan
+
+
+async def _waiting_answer(session: Session):
+    """A wait answer, from a second charger on the same prices whose departure is on Sunday. Its start registers the
+    switch services again, so this charger's recorded calls are read from the new recordings from here on."""
+    other = Session(
+        session.hass, session.transport, session.clock, session.timers, entry_id="entry-b", charge_control="switch.b"
+    )
+    await other.start()
+    waiting = await _move_to_sunday(other)
+    assert other.on_calls == [] and other.off_calls == []
+    session.on_calls, session.off_calls = other.on_calls, other.off_calls
+    return waiting
 
 
 def _expects_nothing(session: Session) -> None:
@@ -323,11 +332,7 @@ async def test_a_superseded_plan_starts_nothing_while_it_waits_to_be_cleared(ses
     await session.set_auto(departure=time(8, 0), requested_kwh=10.0)
     installed = session.executor.applied
     assert installed is not None
-    other = Session(
-        session.hass, session.transport, session.clock, session.timers, entry_id="entry-b", charge_control="switch.b"
-    )
-    await other.start()
-    waiting = await _move_to_sunday(other)
+    waiting = await _waiting_answer(session)
     assert session.executor.automatic_allowed(AUTOMATIC_START)
 
     # The settings change is stored and the preview's answer for them is to wait; the reconcile has not run yet.
@@ -382,11 +387,7 @@ async def test_a_sun_charge_is_not_stopped_and_the_plan_is_cleared(session: Sess
     await session.set_auto(departure=time(8, 0), requested_kwh=10.0)
     installed = session.executor.applied
     assert installed is not None and installed.plan.windows[0][0] > session.clock()
-    other = Session(
-        session.hass, session.transport, session.clock, session.timers, entry_id="entry-b", charge_control="switch.b"
-    )
-    await other.start()
-    waiting = await _move_to_sunday(other)
+    waiting = await _waiting_answer(session)
     await session.store.async_update(
         session.entry_id, mutate=lambda settings: replace(settings, strategy=STRATEGY_HYBRID, requested_kwh=5.0)
     )
@@ -541,3 +542,67 @@ async def test_a_restart_with_unchanged_settings_keeps_the_plan_and_publishes_it
     assert snapshot.applied is True and snapshot.applied_identity == restored.auto_identity
     assert restarted.executor.execution_state() == EXECUTION_SCHEDULED
     assert restarted.on_calls == [] and restarted.off_calls == []
+
+
+# ------------------------------------------------------------------------------------- a charge not seen yet
+
+
+@pytest.mark.usefixtures("both_restarts")
+async def test_a_restart_with_the_charge_running_and_the_control_unreadable_keeps_the_plan_until_it_can_stop_it(
+    session: Session, both_restarts: str
+) -> None:
+    """The plan's charge runs, the settings change to a wait, and Home Assistant restarts with the charger's integration
+    not loaded: the charge cannot be seen. The plan is not dropped then (its charge would run on with nothing to stop
+    it); once the charger reports the charge on, it is stopped and the plan cleared."""
+    plan = await _charging_window(session)
+
+    async def down() -> None:
+        await session.store.async_update(session.entry_id, mutate=_wait_settings)
+        session.hass.states.async_set(session.charge_control, "unavailable")
+
+    restarted = await _restart(session, both_restarts, meanwhile=down)
+
+    assert restarted.controller.plan is not None, "kept while its charge cannot be seen"
+    assert restarted.executor.superseded_by_wait(), "nothing of it starts meanwhile"
+    assert len(restarted.on_calls) == 1 and restarted.off_calls == []
+
+    restarted.hass.states.async_set(restarted.charge_control, "on")
+    await restarted.hass.async_block_till_done()
+
+    assert len(restarted.off_calls) == 1, "the plan's own charge is stopped once it is seen"
+    await _report_off(restarted)
+    assert restarted.controller.plan is None and restarted.timers.pending == []
+    _expects_nothing(restarted)
+    restarted.clock.now = plan.windows[0][1]
+    await _fire_due(restarted)
+    await restarted.tick()
+    assert len(restarted.on_calls) == 1 and len(restarted.off_calls) == 1
+
+
+async def test_a_window_start_answered_after_the_wait_is_stopped_once_it_is_seen(session: Session) -> None:
+    """The window's start went out and the charger has not answered it when the settings change to a wait: the plan is
+    kept until the answer, and the charge the answer reports is stopped."""
+    _publish(session)
+    await session.set_auto(departure=time(8, 0), requested_kwh=10.0)
+    plan = session.controller.plan
+    assert plan is not None
+    session.clock.now = plan.windows[0][0]
+    await _fire_due(session)
+    assert len(session.on_calls) == 1 and not session.controller.charge_control_on
+
+    await _move_to_sunday(session)
+
+    assert session.controller.plan is not None, "kept while its start is unanswered"
+    assert session.off_calls == []
+
+    session.hass.states.async_set(session.charge_control, "on")
+    await session.hass.async_block_till_done()
+
+    assert len(session.off_calls) == 1, "the charge the start began is stopped"
+    await _report_off(session)
+    assert session.controller.plan is None and session.timers.pending == []
+    session.clock.now = plan.windows[0][1]
+    await _fire_due(session)
+    await session.tick()
+    assert len(session.on_calls) == 1 and len(session.off_calls) == 1
+    _expects_nothing(session)

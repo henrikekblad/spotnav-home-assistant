@@ -580,6 +580,9 @@ class AutoExecutor:
         # The installed plan's identity and the settings revision whose calculation proposed the same thing for the
         # charger (`_is_material`): built from older settings, it still says what those settings want.
         self._confirmed: tuple[str, int] | None = None
+        # While a superseded plan is kept because its own charge cannot be seen yet: the charge control's reports, each
+        # of which decides it again (`_watch_unseen_charge`).
+        self._cancel_unseen_listener: Callable[[], None] | None = None
         self._last_error: str | None = None
         self._cancel_listener: Callable[[], None] | None = None
         # The settings store's word of a committed change (`_on_settings_written`), for the changed charging current.
@@ -919,6 +922,7 @@ class AutoExecutor:
             self._start_ack_timed_out = False
             self._disarm_start_ack()
             self._end_stop_pending()
+            self._unwatch_unseen_charge()
             self._sync_manual_watch()
             if self._controller._connection_observer == self._on_connection:  # noqa: SLF001 - our own hook
                 self._controller.set_connection_observer(None)
@@ -1049,7 +1053,7 @@ class AutoExecutor:
                     self._clear_waiting = attempt
                     await self._notify_change()
                     return applied
-                return await self._clear_superseded_locked()
+                return await self._clear_superseded_locked(attempt)
             return applied
         if not self._may_apply(application, attempt):
             # Nothing installs and a waiting change is superseded by this attempt's answer, but a
@@ -1111,25 +1115,24 @@ class AutoExecutor:
             return True
         return is_guest(self._store.settings(self._entry_id)) and self._plan_charge_runs()
 
-    async def _clear_superseded_locked(self) -> AutoApplication | None:
-        """Clear a plan whose settings are gone, with its timers, with this boundary's lock held. Its own charge that
-        runs now is stopped (`ChargingController.async_end_superseded_plan`, where the core decides what is the plan's);
-        any other charge is not touched (`async_clear_plan_keep_charge`), and a charge of the plan that load balancing
-        holds back is not given back. Nothing is told. Returns what remains applied."""
+    async def _clear_superseded_locked(self, attempt: int) -> AutoApplication | None:
+        """Clear a plan whose settings are gone, with its timers, with this boundary's lock held
+        (`ChargingController.async_end_superseded_plan`, which decides under its own lock): its own charge that runs now
+        is stopped, any other charge is not touched, and a charge of the plan that load balancing holds back is not
+        given back. A plan whose own charge cannot be seen yet (its control unreadable after a restart, a start not
+        answered) is kept, marked for clearing (`_clear_waiting`, for `attempt`): it is decided again at the controller's
+        next change, and nothing of it starts meanwhile. Nothing is told. Returns what remains applied."""
         self._clear_waiting = None
-        controller = self._controller
+        self._unwatch_unseen_charge()
         try:
-            if controller.charge_origin == ORIGIN_PLAN_WINDOW and controller.charge_control_on:
-                if not await controller.async_end_superseded_plan():
-                    # The core could not decide: nothing is stopped and the plan is kept; the next calculation asks.
-                    return self.applied
-            else:
-                if controller.balancing_holds(ORIGIN_PLAN_WINDOW):
-                    # The plan's charge load balancing paused is not wanted any more: not given back.
-                    controller.forget_balancing_pause()
-                await controller.async_clear_plan_keep_charge(dropped=True)
+            cleared = await self._controller.async_end_superseded_plan()
         except Exception as err:  # noqa: BLE001 - reported, the next calculation retries
             _LOGGER.warning("Clearing a plan whose settings changed failed: %s", type(err).__name__)
+            return self.applied
+        if not cleared:
+            self._clear_waiting = attempt
+            self._watch_unseen_charge()
+            await self._notify_change()
             return self.applied
         _LOGGER.info(
             "SpotNav charger %s: the settings changed and the answer for them is to wait; the earlier plan is cleared",
@@ -1140,9 +1143,32 @@ class AutoExecutor:
         await self._notify_change()
         return None
 
+    def _watch_unseen_charge(self) -> None:
+        """Hear the charge control's reports while a superseded plan is kept for a charge that cannot be seen: a report
+        that the control is on (or off) does not always change this controller's state, so the controller's own
+        listener (`_on_controller_changed`) may not hear it."""
+        if self._cancel_unseen_listener is not None or self._shutdown:
+            return
+
+        @callback
+        def _reported() -> None:
+            if self._shutdown or self._clear_waiting is None:
+                self._unwatch_unseen_charge()
+                return
+            self._hass.async_create_task(self.async_clear_superseded_plan())
+
+        self._cancel_unseen_listener = self._controller.add_charge_state_listener(_reported)
+
+    def _unwatch_unseen_charge(self) -> None:
+        cancel = self._cancel_unseen_listener
+        self._cancel_unseen_listener = None
+        if cancel is not None:
+            cancel()
+
     async def async_clear_superseded_plan(self) -> AutoApplication | None:
         """The charger's state changed: clear the plan a waiting answer superseded while its top-off or a guest car's
-        charge ran, once that charge has ended, if that still holds."""
+        charge ran, once that charge has ended, or while its own charge could not be seen, once it can (stopping it if it
+        runs), if that still holds (`_clear_superseded_locked` keeps it again while it still cannot be seen)."""
         async with self._lock:
             attempt = self._clear_waiting
             if attempt is None:
@@ -1163,7 +1189,7 @@ class AutoExecutor:
                 return applied
             if self._superseded_runs_to_end():
                 return applied
-            return await self._clear_superseded_locked()
+            return await self._clear_superseded_locked(attempt)
 
     async def async_apply_pending(self) -> AutoApplication | None:
         """A boundary arrived: install the waiting proposal, if it still holds.

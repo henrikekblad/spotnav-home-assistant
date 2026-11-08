@@ -400,16 +400,13 @@ async def test_the_debug_day_hears_every_owner_decision(hass: HomeAssistant, tim
     await world.shutdown()
 
 
-async def test_a_plan_cleared_for_its_settings_while_its_start_is_on_its_way_is_fed_as_dropped(
+async def test_a_plan_cleared_for_its_settings_while_its_start_is_on_its_way_stops_that_start(
     hass: HomeAssistant, timers: FakeScheduler, drives: bool
 ) -> None:
     """The settings changed and the answer for them is to wait while the plan's window start is on its way, not yet
-    reported charging. A window open with no charge running does not keep the plan (`AutoExecutor._plan_charge_runs`):
-    the wait clears it at once. Under the boundary's lock that clear cannot meet a start on its way (the window's start
-    holds the lock, and a superseded plan starts nothing); called directly here while one is, the clear touches no
-    charge (`_clear_superseded_locked`: nothing of the plan's is on yet) and is fed to the core as a dropped plan, as
-    `async_drop_plan` feeds it: the charge goes on, its owner as after any dropped plan
-    (`test_a_dropped_plan_keeps_its_charge_the_plans`), with no stop and no failure."""
+    answered. The clear is decided under the controller's lock (`async_end_superseded_plan`), so it comes after the
+    start: the charge the start began is the plan's and is stopped with the plan, never left running with no plan to
+    stop it (before, the plan was dropped and the charge ran on)."""
     world = await pause_world(hass, timers)
     controller = world.controller
     shadow = controller.session_runner
@@ -426,27 +423,20 @@ async def test_a_plan_cleared_for_its_settings_while_its_start_is_on_its_way_is_
     install = hass.async_create_task(install_schedule(controller, open_window()))
     await called.wait()
     assert not controller.charging
-    assert not world.executor._plan_charge_runs()  # noqa: SLF001 - not charging yet: nothing keeps the plan
-    clear = hass.async_create_task(world.executor._clear_superseded_locked())  # noqa: SLF001
+    clear = hass.async_create_task(
+        world.executor._clear_superseded_locked(world.executor.attempt)  # noqa: SLF001
+    )
     await asyncio.sleep(0)
     release.set()
     await install
     await clear
     await hass.async_block_till_done()
 
-    assert controller.plan is None and controller.charging
-    assert _owner(world) == ("plan_window", drives)
+    assert controller.plan is None
+    assert len(world.stops) == 1 and hass.states.get(SWITCH).state == "off", "the plan's charge is stopped"
     kinds = [record["event"]["kind"] for record in shadow.events]
-    assert "plan_dropped" in kinds, kinds
-    if drives:
-        assert shadow.session.owner == "plan" and not shadow.session.start_pending
-    for index in range(3):
-        hass.states.async_set(SWITCH, "on", {"report": index})
-        await hass.async_block_till_done()
-    assert world.stops == [] and hass.states.get(SWITCH).state == "on"
+    assert "plan_superseded" in kinds, kinds
     assert shadow.counts["failures"] == {}
-    stored = await _stored(world)
-    assert (stored["charge_origin"], stored["plan_charge"]) == ("plan_window", drives)
     await world.shutdown()
 
 
