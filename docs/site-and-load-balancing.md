@@ -252,43 +252,45 @@ It is best effort and is not a protective device. Turning it off gives back any 
   current is stored in the charger cannot be adjusted during a charge, but can be stopped when the
   fuse needs less than its setting. It is refused while a charger belongs to more than one site, and
   held while a meter it reads reports too seldom; an import overload is still lowered then.
-- **It needs to know which way each phase flows** (import or export). Lowering a car lowers the import,
-  which on a phase that nets to export raises the current instead, so a lowering is only allowed where
-  the phase is known to import. A *derived* site knows this from its signed power on every phase. A
-  *direct* site knows it only when its currents carry a sign (*The grid current is signed*) **and** it
-  has the meter's **total grid power**: the sign is trusted on a phase only after that phase has agreed
-  with the total on three readings in a row where the answer is clear (the total and the phase outside
-  ±500 W, every phase outside it on the total's side, and the phases adding up to the total). Not every
-  meter counts export as negative, so the sign is checked rather than assumed; a reading against the
-  total withdraws it again, and after a restart it is checked again (on a solar site, where the phases
-  often point different ways in the daytime, that can take until a reading where they agree, such as
-  the evening). A charger on one chosen phase, or an *Automatic* one followed to its phase, needs that
-  phase; a three-phase charger, or an Automatic one not yet followed, needs all three. Elsewhere the
-  regulator never raises the charger (`phase_direction_unknown` in the diagnostics) and the sun,
-  if it runs the charge, writes its current itself. **An overload is still lowered there**, whoever
-  started the charge (a plan, a person, the sun): a phase the charger draws on that goes over the limit
-  by its measured current lowers it at once to the room that leaves (a pause below its minimum; a
-  charger that can only be switched is paused), and a charge paused so is started again as any
-  balancing pause is, at no more than the room there is. Every start and every current SpotNav writes
-  is held to that room as on any site. The one case this does worse is a phase over the limit by
-  export, which the car's draw was reducing: such a site cannot tell it from import. A phase known to
-  export (a signed site once confirmed) is never lowered on, one known to import still is, and a charger read seldom
-  (a cloud) is reckoned at no more than was last written to it until its reading catches up, so a
-  lowered car is not given its old current back. Slow meters and doubtful membership never hold this
-  lowering, as for an import overload. A direct site
-  without both *The grid current is signed* and the total grid power never knows the direction: the
-  load-balancing row in the card's settings then says that it only protects the fuse and does not use
-  all the room there is, and what to set (the reason `site_direction_unknown` in the site's state and diagnostics). If the site editor
-  lists your meter under *Found in Home Assistant*, **Use** sets both; nothing changes until you press
-  it. The line goes by itself once both are set. Who writes is settled when a charge starts and kept
-  until it ends (the charger stops or the car is unplugged): a charge that started before its phases were
-  confirmed stays the sun's (`phase_direction_unknown_at_charge_start`), and one that started with active
-  load balancing keeps it if the confirmation is withdrawn meanwhile: the current is never raised then, and
-  a phase it draws on that goes over the limit by its measured current still lowers it at once to the room
-  that leaves (as the sun's own capped write did), until the confirmation is back or the charge ends. Room
-  the sun's write gave its charger, or a raise active control gave one of its own, is not given to the
-  other writer until the charger draws it (at most two minutes). On a direct site a raise is judged on the measured
-  current as it is (export on a phase is not counted as room), and a lowering also stays within the
+- **It needs to know which way each phase flows** (import or export) to lower a car that is not over the fuse:
+  lowering a car lowers the import, which on a phase that nets to export raises the current instead, so such a
+  lowering is only allowed where the phase is known to import. A *derived* site knows this from its signed power on
+  every phase. A *direct* site knows it only when its currents carry a sign (*The grid current is signed*) **and**
+  it has the meter's **total grid power**: the sign is trusted on a phase only after that phase has agreed with the
+  total on three readings in a row where the answer is clear (the total and the phase outside ±500 W, every phase
+  outside it on the total's side, and the phases adding up to the total). Not every meter counts export as
+  negative, so the sign is checked rather than assumed; a reading against the total withdraws it again, and after a
+  restart it is checked again (on a solar site, where the phases often point different ways in the daytime, that
+  can take until a reading where they agree, such as the evening). A charger on one chosen phase, or an *Automatic*
+  one followed to its phase, needs that phase; a three-phase charger, or an Automatic one not yet followed, needs
+  all three.
+- **Without a direction, load balancing works on the measured current alone** (`phase_direction_unknown` in the
+  diagnostics), whoever started the charge (a plan, a person, the sun, a guest, the minimum level). A phase the
+  charger draws on that goes over the limit by its measured current lowers it at once to the room that leaves (a
+  pause below its minimum; a charger that can only be switched is paused), and a charge below what was asked for
+  is raised again within the room the measured current leaves on every phase it draws on
+  (`increase_within_room_on_current_magnitude_direction_unknown`): a raise of d on a phase reading |I| gives at
+  most |I| + d whichever way the phase flows, so a step kept within `limit − |I|` cannot overload the fuse. The
+  raise never goes above what the plan, the person or the sun asked for, takes the same dwell, deadband and step
+  margin as any raise (a cycling load such as an oven lowers the car at once and raises it once the load has stayed
+  off), shares the room between chargers as raises do elsewhere, and is held while a meter reports too seldom.
+  A charger read seldom (a cloud) is reckoned at no more than was last written to it until its reading catches up,
+  so neither a raise nor a changed setting gives a lowered car its old current back on a stale reading. Every start
+  and every current SpotNav writes is held to that room as on any site, and a charge paused so is started again as
+  any balancing pause is. What this cannot do is lower a car on a phase that exports (a phase over the limit by
+  export, which the car's draw was reducing, cannot be told from import: it is lowered on too) and count export as
+  room; a phase known to export (a signed site once confirmed) is never lowered on, one known to import still is.
+  A direct site without both *The grid current is signed* and the total grid power never knows the direction: the
+  load-balancing row in the card's settings then says what to set (the reason `site_direction_unknown` in the
+  site's state and diagnostics). If the site editor lists your meter under *Found in Home Assistant*, **Use** sets
+  it up; nothing changes until you press it. Who writes the current is settled when a charge starts and kept until
+  it ends (the charger stops or the car is unplugged): a charge that started before its phases were confirmed stays
+  the sun's (`phase_direction_unknown_at_charge_start`), and one that started with active load balancing keeps it
+  if the confirmation is withdrawn meanwhile; both are then on the rules above (lowered on an overload by the
+  measured current, raised within the room it leaves, never above what the writer asked) until the confirmation is
+  back or the charge ends. Room the sun's write gave its charger, or a raise active control gave one of its own, is
+  not given to the other writer until the charger draws it (at most two minutes). On a direct site a raise is judged
+  on the measured current as it is (export on a phase is not counted as room), and a lowering also stays within the
   room the phase has, since a current with a sign does not tell how much of it is active power.
 - **Yield-verified stepping** (**Car may take the home battery's share** in the site's settings, off by
   default) is for sites with a load that gives way when the car

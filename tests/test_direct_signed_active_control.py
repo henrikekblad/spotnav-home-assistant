@@ -35,8 +35,11 @@ def _report(hass: HomeAssistant, site: str, currents, grid_w: float) -> None:
     hass.states.async_set(f"sensor.{site}_grid_power", str(grid_w), {"unit_of_measurement": "W"})
 
 
-async def _confirm(hass: HomeAssistant, site: str, currents=(12.0, 13.0, 14.0), times: int = 8) -> None:
+async def _confirm(hass: HomeAssistant, site: str, currents=(12.0, 13.0, 14.0), times: int = 8, freezer=None) -> None:
     for _ in range(times):
+        if freezer is not None:
+            # Under a frozen clock each reading still has to be a new one.
+            freezer.tick(timedelta(seconds=1))
         _report(hass, site, currents, sum(currents) * 230.0)
         await _tick(hass)
 
@@ -104,7 +107,9 @@ def _assigned(calls) -> list[int]:
     return [int(call.data["value"].split(",")[0].split(".")[1]) for call in calls]
 
 
-async def test_a_lost_confirmation_still_lowers_an_overload_by_magnitude_and_never_raises(hass: HomeAssistant) -> None:
+async def test_a_lost_confirmation_lowers_an_overload_by_magnitude_and_raises_within_its_room(
+    hass: HomeAssistant, freezer
+) -> None:
     charger, configure_calls = await _ocpp_charger(hass, "lost_charger")
     _charger_reads(hass, "lost_charger", 0.0)
     _report(hass, "lost_site", (12.0, 13.0, 14.0), 39.0 * 230.0)
@@ -112,16 +117,17 @@ async def test_a_lost_confirmation_still_lowers_an_overload_by_magnitude_and_nev
     assert await hass.config_entries.async_setup(site_entry.entry_id)
     await hass.async_block_till_done()
     site_controller = controller_of(hass, site_entry.entry_id)
-    await _confirm(hass, "lost_site")
+    await _confirm(hass, "lost_site", freezer=freezer)
 
     # The charge starts confirmed: active control is its writer for the whole charge.
     await _start(hass, charger, "lost_charger", 10)
     _charger_reads(hass, "lost_charger", 10.0)
-    await _confirm(hass, "lost_site", currents=(12.0, 13.0, 14.0), times=4)
+    await _confirm(hass, "lost_site", currents=(12.0, 13.0, 14.0), times=4, freezer=freezer)
     assert site_controller._writer_direction_known(charger.entry_id)
     assert site_controller.active_control_writes(charger.entry_id)
 
     # The total turns against the currents: the direction is withdrawn mid-charge.
+    freezer.tick(timedelta(seconds=1))
     _report(hass, "lost_site", (12.0, 13.0, 14.0), -39.0 * 230.0)
     await _tick(hass)
     assert not site_controller._direction_known_for(charger.entry_id)
@@ -129,25 +135,38 @@ async def test_a_lost_confirmation_still_lowers_an_overload_by_magnitude_and_nev
     decision = site_controller.regulator_decisions[charger.entry_id]
     assert (decision.proposed_current_a, decision.reason) == (None, "phase_direction_unknown")
 
-    # No overload and a raise asked for: nothing is written.
+    # No overload and a raise asked for: raised within the room |I| leaves (10 A on L3 with the car at 10 A), after
+    # the dwell; the export on every phase is not counted as room.
     configure_calls.clear()
+    freezer.tick(timedelta(seconds=1))
     await controller_of(hass, charger.entry_id).async_set_requested_current(20)
     _charger_reads(hass, "lost_charger", 10.0)
     _report(hass, "lost_site", (12.0, 13.0, 14.0), -39.0 * 230.0)
     await _tick(hass)
-    assert site_controller.regulator_decisions[charger.entry_id].proposed_current_a is None
+    decision = site_controller.regulator_decisions[charger.entry_id]
+    assert (decision.proposed_current_a, decision.reason, decision.limiting_phase) == (
+        20.0,
+        "increase_within_room_on_current_magnitude_direction_unknown",
+        "L3",
+    )
     assert configure_calls == []
+    freezer.tick(timedelta(seconds=61))
+    _report(hass, "lost_site", (12.0, 13.0, 14.0), -39.0 * 230.0)
+    await _tick(hass)
+    assert _assigned(configure_calls) == [20]
 
-    # L3 over the 24 A limit by |I|: lowered at once to the charger's 10 A less the 2 A over.
-    _report(hass, "lost_site", (12.0, 13.0, 26.0), -51.0 * 230.0)
+    # The car follows. L3 over the 24 A limit by |I|: lowered at once to the charger's 20 A less the 2 A over.
+    freezer.tick(timedelta(seconds=15))
+    _charger_reads(hass, "lost_charger", 20.0)
+    _report(hass, "lost_site", (22.0, 23.0, 26.0), -71.0 * 230.0)
     await _tick(hass)
     decision = site_controller.regulator_decisions[charger.entry_id]
     assert (decision.proposed_current_a, decision.reason, decision.limiting_phase) == (
-        8.0,
+        18.0,
         "lowering_overload_on_current_magnitude_direction_unknown",
         "L3",
     )
-    assert _assigned(configure_calls)[-1:] == [8]
+    assert _assigned(configure_calls)[-1:] == [18]
 
 
 async def test_the_sun_and_active_control_do_not_give_the_same_room_away_twice(hass: HomeAssistant) -> None:
