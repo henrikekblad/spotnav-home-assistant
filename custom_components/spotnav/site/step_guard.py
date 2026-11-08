@@ -120,11 +120,7 @@ class StepGuard:
         over_a = 0.0 if margin_a is None else max(0.0, -margin_a)
         if over_a > TRIM_MAX_OVER_A or margin_a is None:
             return GuardResult(proposed_a)
-        if (
-            site_read_at is not None
-            and self._last_cut_reading_at is not None
-            and site_read_at <= self._last_cut_reading_at
-        ):
+        if self.cut_on_reading(site_read_at):
             return GuardResult(previous_a, "held_same_reading")
         if not self._in_flight(now, charger_read_at):
             return GuardResult(proposed_a)
@@ -160,6 +156,21 @@ class StepGuard:
         if target <= previous_a or target < min_current_a:
             return GuardResult(previous_a, rule)
         return GuardResult(target, rule)
+
+    def cut_on_reading(self, site_read_at: float | None) -> bool:
+        """Whether the last cut was made on this site reading (taken at `site_read_at`, epoch seconds) or a later
+        one: one reading, one cut. Never with an unknown time."""
+        return (
+            site_read_at is not None
+            and self._last_cut_reading_at is not None
+            and site_read_at <= self._last_cut_reading_at
+        )
+
+    def note_cut_reading(self, site_read_at: float | None) -> None:
+        """Remember the site reading a cut was made on where `note_write` cannot tell it was one: the first write
+        of a session (nothing written before to compare with), a lowering its caller knows to be one."""
+        if site_read_at is not None:
+            self._last_cut_reading_at = site_read_at
 
     def note_write(
         self,

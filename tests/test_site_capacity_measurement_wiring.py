@@ -322,7 +322,7 @@ async def test_site_state_entity_exposes_capability_attributes(hass: HomeAssista
     state = hass.states.get("sensor.site_capacity_state")
     assert state.attributes["site_measurement_health"] == "healthy"
     assert state.attributes["active_load_balancing_available"] is False
-    # A direct site without a signed current and the total grid power: load balancing only lowers there.
+    # A direct site without a signed current and the total grid power: load balancing works on the measured current alone there.
     assert state.attributes["blocking_reasons"] == ["site_direction_unknown"]
 
 

@@ -1005,11 +1005,12 @@ def _active_control_reason(controller: SiteCapacityController) -> str | None:
     """
     load_balancing = controller.capability_snapshot.load_balancing
     if load_balancing.active_available:
-        # Available, but only to lower an overload: said so, with what to set (`REASON_SITE_DIRECTION_UNKNOWN`).
+        # Available, but on the measured current alone (lowered on an overload, raised within the room it leaves,
+        # no export counted as room): said so, with what to set (`REASON_SITE_DIRECTION_UNKNOWN`).
         if REASON_SITE_DIRECTION_UNKNOWN in load_balancing.blocking_reasons:
             return REASON_SITE_DIRECTION_UNKNOWN
         return None
-    # Unavailable for another cause: that one, never the "only lowers" reason, which needs it available.
+    # Unavailable for another cause: that one, never the direction reason, which needs it available.
     other = [reason for reason in load_balancing.blocking_reasons if reason != REASON_SITE_DIRECTION_UNKNOWN]
     if other:
         return str(other[0])
