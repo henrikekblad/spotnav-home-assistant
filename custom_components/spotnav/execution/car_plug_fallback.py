@@ -16,7 +16,9 @@ charger that otherwise says when a car is plugged in), the car's plug sensor sta
   or chosen.
 * **Fresh only**: a reading counts when SpotNav saw the sensor change to it, or its integration write it again, since
   the fallback was armed (`SourceChanges`, so a state re-created at a restart is no report). A reading from before the
-  stop never counts.
+  stop never counts. A charging-state source (`is_charging_state_source`, Skoda's `charging_state`) counts only when
+  it changed since: its integration may keep re-reporting `connect_cable` while the cable is in and the connector is
+  off, so a value written again proves nothing there.
 * **At home**: "plugged in" counts only while the car's location source (its tracker, detected or chosen) does not
   say it is away: a car plugged in at work is no plug-in here. A car with no location source, or one that says
   nothing, is read by its plug sensor alone. "Unplugged" needs no location.
@@ -37,7 +39,12 @@ from homeassistant.core import HomeAssistant
 from homeassistant.util import dt as dt_util
 
 from ..vehicles.identification_changes import SourceChanges
-from ..vehicles.identification_sources import identification_sources, location_reading, source_plug_reading
+from ..vehicles.identification_sources import (
+    identification_sources,
+    is_charging_state_source,
+    location_reading,
+    plug_reading,
+)
 
 #: The event source that says an unplug or a plug-in came from the car's own plug sensor.
 SOURCE_CAR_PLUG: Final = "car_plug"
@@ -129,10 +136,15 @@ class CarPlugFallback:
         if since is None or entity_id is None:
             return None
         state = self._hass.states.get(entity_id)
-        value = source_plug_reading(self._hass, state)
+        charging_state = is_charging_state_source(self._hass, entity_id)
+        value = plug_reading(state, charging_state=charging_state)
         if value is None:
             return None
-        stamps = [stamp for stamp in (self._changes.changed(state), self._changes.reported(state)) if stamp is not None]
+        # A charging state counts only as a change; a real plug sensor's report counts too.
+        reports = (self._changes.changed(state),) if charging_state else (
+            self._changes.changed(state), self._changes.reported(state),
+        )
+        stamps = [stamp for stamp in reports if stamp is not None]
         if not stamps or max(stamps) < since:
             return None
         if value and self._location_id is not None and location_reading(self._hass.states.get(self._location_id)) is False:
