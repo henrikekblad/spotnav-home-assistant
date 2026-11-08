@@ -1,8 +1,9 @@
 """A direct site that can never know a phase's direction (its currents carry no sign, or no total grid power to
-confirm one): load balancing still lowers an overload by |I|, whoever started the charge, never raises on it, caps a
-start by the room |I| leaves, and resumes a charge it paused (`SiteCapacityController`). The reported case: a Tibber
-Pulse's currents picked by hand without *The grid current is signed* and without the total, 25 A fuse, 1 A margin,
-a car started at 16 A, L3 read 32.8 A."""
+confirm one): load balancing still lowers an overload by |I|, whoever started the charge, raises the charge again
+within the room |I| leaves (never above its request), caps a start by that room, and resumes a charge it paused
+(`SiteCapacityController`). The reported cases: a Tibber Pulse's currents picked by hand without *The grid current is
+signed* and without the total, 25 A fuse, 1 A margin, a car started at 16 A, L3 read 32.8 A; and a SolarEdge meter's
+currents (magnitudes), 25 A fuse, no margin, a plan's 16 A lowered to 6 A by the oven and never raised again."""
 
 from __future__ import annotations
 
@@ -13,6 +14,7 @@ from homeassistant.core import HomeAssistant
 from pytest_homeassistant_custom_component.common import async_mock_service
 
 from custom_components.spotnav.const import CONF_GRID_POWER_SOURCE, CONF_SITE_CURRENT_SIGNED, REGULATOR_DWELL_S
+from custom_components.spotnav.site.regulator import MAGNITUDE_RAISE_REASON
 from custom_components.spotnav.site.step_guard import CATCH_UP_S
 
 from .helpers import make_entry, make_site_entry
@@ -20,6 +22,7 @@ from .test_direct_signed_active_control import _assigned, _charger_reads, _ocpp_
 from .world import controller_of
 
 MAGNITUDE = "lowering_overload_on_current_magnitude_direction_unknown"
+RAISE = MAGNITUDE_RAISE_REASON
 
 
 class _Clock:
@@ -30,12 +33,33 @@ class _Clock:
         return self.now
 
 
-def _unsigned_site(hass: HomeAssistant, site: str, chargers: list, prefixes: list[str], extra: dict | None = None):
+class _DwellClock:
+    """The damper's clock, run ahead of the wall clock by `shift` seconds: the raise's dwell is elapsed without
+    freezing the wall clock, under which a write and the reading it answers would share one instant."""
+
+    def __init__(self) -> None:
+        self.shift = 0.0
+
+    def __call__(self):
+        from homeassistant.util import dt as dt_util
+
+        return dt_util.utcnow() + timedelta(seconds=self.shift)
+
+
+def _dwell_clock(site, charger_entry_id: str) -> _DwellClock:
+    clock = _DwellClock()
+    site._damper_for(charger_entry_id)._now = clock  # noqa: SLF001
+    return clock
+
+
+def _unsigned_site(
+    hass: HomeAssistant, site: str, chargers: list, prefixes: list[str], extra: dict | None = None, margin: float = 1.0
+):
     return make_site_entry(
         hass,
         entry_id=site,
         main_fuse_a=25.0,
-        safety_margin_a=1.0,
+        safety_margin_a=margin,
         charger_entry_ids=[charger.entry_id for charger in chargers],
         phase_wiring={charger.entry_id: _wiring(prefix) for charger, prefix in zip(chargers, prefixes)},
         active_control_enabled=True,
@@ -43,18 +67,19 @@ def _unsigned_site(hass: HomeAssistant, site: str, chargers: list, prefixes: lis
     )
 
 
-async def _setup(hass: HomeAssistant, name: str, site_currents=(8.0, 8.0, 8.0)):
+async def _setup(hass: HomeAssistant, name: str, site_currents=(8.0, 8.0, 8.0), margin: float = 1.0):
     charger, configure_calls = await _ocpp_charger(hass, f"{name}_charger")
     _charger_reads(hass, f"{name}_charger", 0.0)
     _report(hass, f"{name}_site", site_currents, 0.0)
-    site_entry = _unsigned_site(hass, f"{name}_site", [charger], [f"{name}_charger"])
+    site_entry = _unsigned_site(hass, f"{name}_site", [charger], [f"{name}_charger"], margin=margin)
     assert await hass.config_entries.async_setup(site_entry.entry_id)
     await hass.async_block_till_done()
     return charger, configure_calls, controller_of(hass, site_entry.entry_id)
 
 
-async def test_the_reported_case_is_lowered_at_once_and_never_raised(hass: HomeAssistant) -> None:
+async def test_the_reported_case_is_lowered_at_once_and_raised_again_within_the_room(hass: HomeAssistant) -> None:
     charger, configure_calls, site = await _setup(hass, "pulse")
+    dwell = _dwell_clock(site, charger.entry_id)
     cc = controller_of(hass, charger.entry_id)
 
     # The plan's window opens with room for the car's 16 A on every phase (24 A limit, 8 A on L3).
@@ -77,15 +102,81 @@ async def test_the_reported_case_is_lowered_at_once_and_never_raised(hass: HomeA
     assert (decision.proposed_current_a, decision.reason, decision.limiting_phase) == (7.0, MAGNITUDE, "L3")
     assert _assigned(configure_calls)[-1:] == [7]
 
-    # The load goes and more is asked for: nothing is raised on an unknown direction.
+    # The load goes and more is asked for: raised within the room |I| leaves (7 A on L1 with the car at 7 A, so 14 A),
+    # a step short of the edge, once the room has lasted for the dwell. Never the 20 A asked for.
     configure_calls.clear()
+    _report(hass, "pulse_site", (17.0, 17.0, 15.0), 0.0)
     _charger_reads(hass, "pulse_charger", 7.0)
     await cc.async_set_requested_current(20)
-    _report(hass, "pulse_site", (17.0, 17.0, 15.0), 0.0)
     await _tick(hass)
+    decision = site.regulator_decisions[charger.entry_id]
+    assert (decision.proposed_current_a, decision.reason, decision.limiting_phase) == (14.0, RAISE, "L1")
+    assert configure_calls == []  # the dwell
+    dwell.shift = REGULATOR_DWELL_S + 1
+    await _tick(hass)
+    assert _assigned(configure_calls) == [13]
+
+
+async def test_the_oven_case_is_lowered_at_once_and_comes_back_up_in_steps(hass: HomeAssistant) -> None:
+    """The SolarEdge case: 25 A fuse, no margin, a plan's 16 A on three phases. The oven puts L3 at 34.4 A: lowered at
+    once to 6 A. The oven goes off: the car comes back up in steps within the room, to its 16 A, each step after the
+    dwell. The oven comes on again: lowered again at once. Never a write storm: one lowering, one raise per step."""
+    charger, configure_calls, site = await _setup(hass, "oven", site_currents=(2.0, 2.0, 3.5), margin=0.0)
+    dwell = _dwell_clock(site, charger.entry_id)
+    cc = controller_of(hass, charger.entry_id)
+    assert await cc.async_start(amps=16, cause="plan_window")
+    hass.states.async_set("switch.oven_charger", "on")
+    _charger_reads(hass, "oven_charger", 16.0)
+    _report(hass, "oven_site", (18.0, 18.0, 19.5), 0.0)
+    await _tick(hass)
+    assert _assigned(configure_calls) == [16]
+
+    # 08:17, the oven: L3 at 34.4 A against the 25 A fuse, the car at 16 A: 16 - 9.4 = 6.6, so 6 A, at once.
+    _report(hass, "oven_site", (18.0, 18.0, 34.4), 0.0)
+    await _tick(hass)
+    decision = site.regulator_decisions[charger.entry_id]
+    assert (decision.proposed_current_a, decision.reason, decision.limiting_phase) == (6.0, MAGNITUDE, "L3")
+    assert _assigned(configure_calls) == [16, 6]
+    # The car follows (the site's meter shows it first, then the charger's own reading); the oven is still on: 0.6 A
+    # of room is no whole amp, nothing is raised.
+    _report(hass, "oven_site", (8.0, 8.0, 24.4), 0.0)
+    _charger_reads(hass, "oven_charger", 6.0)
     await _tick(hass)
     assert site.regulator_decisions[charger.entry_id].proposed_current_a is None
-    assert configure_calls == []
+    assert _assigned(configure_calls) == [16, 6]
+
+    # The oven cycles off but another load keeps L3 at 18 A: 7 A of room, so 13 A proposed, 12 A a step short of the
+    # edge, and only once the room has lasted for the dwell. Before, this was held `not_a_lowering` for hours.
+    _report(hass, "oven_site", (8.0, 8.0, 18.0), 0.0)
+    await _tick(hass)
+    decision = site.regulator_decisions[charger.entry_id]
+    assert (decision.proposed_current_a, decision.reason, decision.limiting_phase) == (13.0, RAISE, "L3")
+    assert _assigned(configure_calls) == [16, 6]
+    dwell.shift = REGULATOR_DWELL_S / 2
+    await _tick(hass)
+    assert _assigned(configure_calls) == [16, 6]
+    dwell.shift = REGULATOR_DWELL_S + 1
+    await _tick(hass)
+    assert _assigned(configure_calls) == [16, 6, 12]
+
+    # The car follows to 12 A and the other load goes too: L3 at 15.5 A, 9.5 A of room, the request within it: 16 A,
+    # a new candidate with its own dwell.
+    _report(hass, "oven_site", (14.0, 14.0, 15.5), 0.0)
+    _charger_reads(hass, "oven_charger", 12.0)
+    await _tick(hass)
+    decision = site.regulator_decisions[charger.entry_id]
+    assert (decision.proposed_current_a, decision.reason) == (16.0, RAISE)
+    assert _assigned(configure_calls) == [16, 6, 12]
+    dwell.shift += REGULATOR_DWELL_S + 1
+    await _tick(hass)
+    assert _assigned(configure_calls) == [16, 6, 12, 16]
+    assert cc.requested_current_a == 16
+
+    # The oven again, the car at 16 A: lowered again at once.
+    _charger_reads(hass, "oven_charger", 16.0)
+    _report(hass, "oven_site", (18.0, 18.0, 34.4), 0.0)
+    await _tick(hass)
+    assert _assigned(configure_calls) == [16, 6, 12, 16, 6]
 
 
 async def test_a_person_start_and_a_plan_start_are_capped_by_the_room_the_current_leaves(hass: HomeAssistant) -> None:
@@ -232,10 +323,10 @@ async def test_the_site_says_load_balancing_only_lowers_until_the_sign_and_the_t
 
 
 async def test_a_raised_charging_current_setting_is_capped_by_the_room_the_current_leaves(
-    hass: HomeAssistant, monkeypatch
+    hass: HomeAssistant, monkeypatch, freezer
 ) -> None:
     """The person raises the charging current during a charge (`async_apply_setting_current`): the write goes out at
-    no more than the room |I| leaves, as a start does, and the regulator raises nothing from there."""
+    no more than the room |I| leaves, as a start does; the regulator gives the rest once there is room for it."""
     charger, configure_calls, site = await _setup(hass, "setting")
     cc = controller_of(hass, charger.entry_id)
     assert await cc.async_start(amps=10, manual=True)
@@ -253,10 +344,23 @@ async def test_a_raised_charging_current_setting_is_capped_by_the_room_the_curre
     assert _assigned(configure_calls) == [12]
     assert cc.requested_current_a == 16
 
+    # The 12 A written is all the room there is: the regulator's 12 A is no raise over it.
     configure_calls.clear()
     await _tick(hass)
-    assert site.regulator_decisions[charger.entry_id].proposed_current_a is None
+    assert site.regulator_decisions[charger.entry_id].proposed_current_a == 12.0
     assert configure_calls == []
+
+    # The car follows and the house gives way (L3 at 14 A with the car at 12 A): the rest of the 16 A, after the dwell.
+    freezer.tick(timedelta(seconds=15))
+    _report(hass, "setting_site", (18.0, 18.0, 14.0), 0.0)
+    _charger_reads(hass, "setting_charger", 12.0)
+    await _tick(hass)
+    assert (site.regulator_decisions[charger.entry_id].proposed_current_a, site.regulator_decisions[charger.entry_id].reason) == (16.0, RAISE)
+    assert configure_calls == []
+    freezer.tick(timedelta(seconds=REGULATOR_DWELL_S + 1))
+    _report(hass, "setting_site", (18.0, 18.0, 14.0), 0.0)
+    await _tick(hass)
+    assert _assigned(configure_calls) == [16]
 
 
 async def test_a_ceiling_between_nothing_and_the_minimum_pauses_the_charge(hass: HomeAssistant) -> None:

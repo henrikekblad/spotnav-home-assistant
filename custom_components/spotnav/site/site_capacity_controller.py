@@ -152,7 +152,9 @@ from .regulator import (
     DEFAULT_ZERO_MARGIN_W,
     direction_phases,
     DirectionClass,
+    magnitude_decision,
     magnitude_overload_lowering,
+    MAGNITUDE_RAISE_REASON,
     is_import_overload,
     measurement_lost,
     MEASUREMENT_LOST_GRACE_S,
@@ -399,8 +401,13 @@ BATTERY_RISE_WINDOW_S = 60.0
 #: unchanged and unreported, for as long as it is stopped.
 REASON_CHARGER_MEASUREMENT_UNUSABLE = "charger_measurement_unusable"
 REASON_MAGNITUDE_LOWERING = "lowering_overload_on_current_magnitude_direction_unknown"
+# The regulator's raise of a charge on a phase whose direction is not known, within the room the measured |I| leaves
+# (`regulator.magnitude_decision`): written on its own path (`_async_apply_magnitude_raise`), which needs no signed
+# power, with the step guard's margin and the damper's deadband and dwell as any raise.
+REASON_MAGNITUDE_RAISE = MAGNITUDE_RAISE_REASON
 # The regulator's reasons for deciding nothing on a charger because a phase's direction is not known: an overload by
-# |I| still lowers it (`magnitude_overload_lowering`), and a charge that lowering paused is still resumed.
+# |I| still lowers it (`magnitude_overload_lowering`), a charge below its request is raised within the room |I| leaves
+# (`magnitude_decision`), and a charge that lowering paused is still resumed.
 DIRECTION_UNKNOWN_REASONS = frozenset({"phase_direction_unknown", "phase_direction_unknown_at_charge_start"})
 
 def _current_write_lock(charger_controller: Any) -> tuple[float, float, float | None]:
@@ -2095,6 +2102,9 @@ class SiteCapacityController:
         reckons it on its followed or worst phase. Wherever it does not, the sun writes its own current
         (`execution/solar_execution.py`); wherever it does, it stays the only writer. On a direct site the direction
         is the one the charge started with (`_update_charge_writers`), so the writer does not change mid-charge.
+        Whoever writes, a charge on a phase whose direction is not known is still lowered on an overload by |I| and
+        raised again within the room |I| leaves, never above its request (`regulator.magnitude_decision`): that
+        path judges the fuse on the magnitude alone and writes nothing the writer did not ask for.
         """
         if not self._active_control_allowed():
             return False
@@ -2126,9 +2136,10 @@ class SiteCapacityController:
     def _update_charge_writers(self) -> None:
         """On a direct site, note for each charger whose charge just started whether its direction is known now,
         and forget it for a charger no longer in a charge. A charge that started with the sun writing its current
-        keeps the sun as its writer, and the regulator off it, even once its phases are confirmed; one that started
-        with active control keeps active control, which only holds the current if a confirmation is withdrawn
-        (the regulator decides nothing without a direction) rather than handing a raise to the sun."""
+        keeps the sun as its writer, and the regulator's full rules off it, even once its phases are confirmed; one
+        that started with active control keeps active control, which falls back to the magnitude's rules if a
+        confirmation is withdrawn (a lowering on an overload by |I|, a raise within the room |I| leaves) rather
+        than handing the charge to the sun."""
         if self.config.get(CONF_MEASUREMENT_MODE) != MEASUREMENT_MODE_DIRECT:
             self._direction_at_charge_start.clear()
             return
@@ -2438,6 +2449,11 @@ class SiteCapacityController:
             return True
         if decision.reason == REASON_MAGNITUDE_LOWERING:
             await self._async_apply_magnitude_lowering(charger_entry_id, charger_controller, decision, fresh, max_age_s)
+            return True
+        if decision.reason == REASON_MAGNITUDE_RAISE:
+            await self._async_apply_magnitude_raise(
+                charger_entry_id, charger_controller, decision, fresh, max_age_s, margin_by_charger.get(charger_entry_id)
+            )
             return True
         failure = applyability_failure(
             decision=decision,
@@ -3051,6 +3067,109 @@ class SiteCapacityController:
             previous_setpoint,
             None,
             site_read_at=self._site_read_at(fresh),
+        )
+
+    async def _async_apply_magnitude_raise(
+        self,
+        charger_entry_id: str,
+        charger_controller: ChargingController,
+        decision: RegulatorDecision,
+        fresh: SiteCapacityResult,
+        max_age_s: float,
+        margin_a: float | None,
+    ) -> None:
+        """Write a `magnitude_decision` raise: a charge on a phase whose direction is not known, below its request
+        with no phase over, is raised within the room the measured |I| leaves. Judged again on the fresh reading
+        (`magnitude_decision` on the site's own margins, less what other chargers' starts and writes on their way have
+        not drawn yet), and the step is reckoned from no more than was last written: a charger read seldom (a cloud)
+        still reports the current from before a lowering, and a raise reckoned from that reading would give it that
+        current straight back. Never above the proposal, the request or the fresh room, never at or below what was
+        written (that is no raise), and then as any raise: the step guard stops a step short of the edge and keeps
+        off a level that overshot, the damper's deadband and dwell hold it until the room has lasted (a cycling load
+        such as an oven lowers at once and raises once it has stayed off), and the charger's own write policy may
+        refuse it until its interval has passed."""
+        request = next(
+            (r for r in self._build_requests(credit=False) if r.charger_entry_id == charger_entry_id), None
+        )
+        phases = None if request is None else request.phases_used()
+        delivered = None if request is None else request.measured_current_a
+        if (
+            request is None
+            or not phases
+            or delivered is None
+            or fresh.state != "observing"
+            or decision.proposed_current_a is None
+            or charger_controller.paused_by_balancing
+        ):
+            self._log_active_control_outcome(charger_entry_id, decision, outcome="held", detail="room_not_judged")
+            return
+        again = magnitude_decision(site_result=fresh, request=request, max_age_s=max_age_s)
+        if again.reason != REASON_MAGNITUDE_RAISE or again.proposed_current_a is None:
+            self._log_active_control_outcome(charger_entry_id, decision, outcome="held", detail="room_gone")
+            return
+        damper = self._damper_for(charger_entry_id)
+        # A pause remembered while the charger charges again (a person restarted it) is a first write, as everywhere.
+        previous_setpoint = self._forget_pause_when_charging(
+            damper, charger_controller, damper.last_written_a, self._min_current_a(charger_entry_id), again.proposed_current_a
+        )
+        drawn = max((delivered.get(phase).value or 0.0) for phase in phases)
+        base = drawn if previous_setpoint is None else min(drawn, previous_setpoint)
+        reserved = self._reserved_by_others_a(charger_entry_id)
+        rooms = [fresh.measured_margin_a.get(phase) for phase in phases]
+        if any(room is None for room in rooms):
+            self._log_active_control_outcome(charger_entry_id, decision, outcome="held", detail="room_not_judged")
+            return
+        room = min(max(0.0, room - reserved.get(phase, 0.0)) for phase, room in zip(phases, rooms))  # type: ignore[operator]
+        setpoint = math.floor(min(decision.proposed_current_a, again.proposed_current_a, base + room) + 1e-9)
+        if setpoint <= base or (previous_setpoint is not None and setpoint <= previous_setpoint):
+            self._log_active_control_outcome(charger_entry_id, decision, outcome="held", detail="not_a_raise")
+            return
+        guarded = self._step_guard_for(charger_entry_id).guard(
+            now=dt_util.utcnow().timestamp(),
+            proposed_a=float(setpoint),
+            previous_a=previous_setpoint,
+            requested_a=request.requested_current_a,
+            margin_a=margin_a,
+            charger_read_at=self._charger_read_at(decision),
+            site_read_at=None,
+            min_current_a=self._min_current_a(charger_entry_id),
+        )
+        if guarded.rule is not None and guarded.proposed_a != setpoint:
+            _LOGGER.debug(
+                "SpotNav site %s active control: charger %s proposal %sA taken as %sA (%s)",
+                self.entry_id,
+                charger_entry_id,
+                setpoint,
+                guarded.proposed_a,
+                guarded.rule,
+            )
+            setpoint = math.floor(guarded.proposed_a + 1e-9)
+            if setpoint <= base or (previous_setpoint is not None and setpoint <= previous_setpoint):
+                self._log_active_control_outcome(charger_entry_id, decision, outcome="held", detail=guarded.rule)
+                return
+        decision = replace(decision, proposed_current_a=float(setpoint))
+        damping = damper.consider(proposed_current_a=float(setpoint), margin_a=margin_a)
+        if not damping.write or damping.current_a is None:
+            self._log_active_control_outcome(
+                charger_entry_id, decision, outcome="held", detail=f"damping_{damping.reason}"
+            )
+            return
+        if damping.current_a > setpoint:
+            # The dwell's pending value was a little above today's room: today's room decides.
+            damper.record_write(float(setpoint))
+            damping = DampingDecision(True, float(setpoint), damping.reason)
+        if not self._active_control_allowed() or self._closed:
+            return
+        await self._async_write_regulated(
+            charger_entry_id,
+            charger_controller,
+            decision,
+            damper,
+            damping,
+            int(damping.current_a),
+            previous_setpoint,
+            None,
+            site_read_at=None,
         )
 
     # -- the site's measurement lost
@@ -4812,19 +4931,29 @@ class SiteCapacityController:
             for phase in PHASES
         }
         self._update_charge_writers()
-        # A direct site's charge that started without a known direction stays the sun's (or nobody's) to write.
+        # A charge on a phase whose direction is not known (never confirmed, lost meanwhile, or a charge that started
+        # before it was), whoever started it, is decided on the measured magnitude (`regulator.magnitude_decision`):
+        # lowered on an overload by |I|, raised within the room |I| leaves, never above its request. The one case this
+        # does worse is a phase over the limit by export, which the car's draw was reducing; a direct site cannot
+        # tell that from import, and the limit read on |I| is the fuse's own measure. A direct site's charge that
+        # started without a known direction stays the sun's (or nobody's) to write: the regulator's full rules never
+        # reach it, even once its phases are confirmed.
+        in_charge = {
+            charger_entry_id
+            for charger_entry_id in (self.config.get(CONF_CHARGER_ENTRY_IDS) or [])
+            if self._in_charge(charger_entry_id)
+        }
         not_ours = {
             charger_entry_id
             for charger_entry_id, known in self._direction_at_charge_start.items()
-            if not known and self._in_charge(charger_entry_id)
+            if not known and charger_entry_id in in_charge
         }
         # Built once: the credited requests are the same requests with a start's credit applied.
         uncredited = self._build_requests(credit=False)
         credited = self._with_credits(uncredited)
-        requests = [request for request in credited if request.charger_entry_id not in not_ours]
         decisions = allocate_regulator_decisions(
             site_result=self.result,
-            requests=requests,
+            requests=credited,
             # A credited start or raise is judged on its own reading too: the credit never stands for a raise.
             own_measured_current_a={request.charger_entry_id: request.measured_current_a for request in uncredited},
             credit_raise_tolerance_a=START_CREDIT_RAISE_TOLERANCE_A,
@@ -4834,30 +4963,9 @@ class SiteCapacityController:
             zero_margin_w=DEFAULT_ZERO_MARGIN_W,
             help_margin_factor=DEFAULT_HELP_MARGIN_FACTOR,
             increase_reserved_by_phase=self._solar_reserved_a() if not_ours else None,
+            direction_unknown_in_charge=in_charge,
+            direction_unknown_at_start=not_ours,
         )
-        for charger_entry_id in not_ours:
-            decisions[charger_entry_id] = RegulatorDecision(None, "phase_direction_unknown_at_charge_start", None, {})
-        # A charge on a phase whose direction is not known (never confirmed, lost meanwhile, or a charge that started
-        # before it was), whoever started it: still lowered on an overload by |I|, never raised. The one case this
-        # makes worse is a phase over the limit by export, which the car's draw was reducing; a direct site cannot
-        # tell that from import, and the limit read on |I| is the fuse's own measure (`magnitude_overload_lowering`).
-        for request in credited:
-            charger_entry_id = request.charger_entry_id
-            decision = decisions.get(charger_entry_id)
-            if (
-                decision is not None
-                and decision.reason in DIRECTION_UNKNOWN_REASONS
-                and self._in_charge(charger_entry_id)
-            ):
-                lowering = magnitude_overload_lowering(
-                    site_result=self.result, request=request, max_age_s=config.max_age_s
-                )
-                if lowering.proposed_current_a is None:
-                    continue  # no overload by |I|: the decision stays what it was
-                if request.switch_only:
-                    # It cannot be lowered: any lowering the overload by |I| calls for is a pause.
-                    lowering = replace(lowering, proposed_current_a=0.0, reason=REASON_MAGNITUDE_LOWERING)
-                decisions[charger_entry_id] = lowering
         for request in credited:
             decision = decisions.get(request.charger_entry_id)
             if decision is not None and decision.reason == REASON_HELD_STILL_NO_RAISE:
