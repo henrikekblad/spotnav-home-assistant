@@ -379,16 +379,23 @@ METER_ROWS: Final[tuple[MeterRow, ...]] = (
             _p("voltage", r"(?P<m>m\d)_ac_voltage_(?P<a>[abc])n$"),
             _p("reactive_power", r"(?P<m>m\d)_ac_var_(?P<a>[abc])$"),
         ),
-        signed_current=True,
+        # The meter's per-phase current is the SunSpec `A_a..c` register as the integration passes it on,
+        # and a SolarEdge meter reports its size only: positive on import and on export (binsentsu
+        # issue 24: "+ for PV export but no negative when importing"; a field bundle of the core
+        # integration reads the same). The direction is in the per-phase power, which is export-positive.
+        signed_current=False,
         invert_power=True,
         label="SolarEdge Modbus Multi / SolarEdge Modbus (HACS)",
     ),
     # Home Assistant core's `solaredge_modbus` (2026.10, library `solaredged` 0.4.0), which shares the
     # platform name with the HACS integration above. The meter's entities are `<serial>_meter_<id>_<key>`
     # on a "Meter n" sub-device (the inverter's own `<serial>_ac_current_phase_a` has no `_meter_`, so the
-    # inverter is never read as a meter). The library hands the SunSpec meter registers on unchanged, as
-    # the HACS integration does, so the signs are the same: current and power signed with export
-    # positive, and the meter's total `ac_power` likewise. Only a wye meter has the neutral voltages.
+    # inverter is never read as a meter). The library (`solaredged` `components.py`, class `Meter`) reads
+    # the SunSpec meter registers as signed int16 and the integration (`sensor.py`, `METER_SENSORS`)
+    # publishes them unchanged, as the HACS integration does. The meter itself reports the current as a
+    # magnitude (positive on import and export, seen in a field bundle) while its power is signed with
+    # export positive, as is the total `ac_power`. Only a wye meter has the neutral voltages, and they
+    # ship disabled; a delta meter has none, which is the derived candidate without voltages.
     MeterRow(
         platforms=("solaredge_modbus",),
         patterns=(
@@ -397,7 +404,7 @@ METER_ROWS: Final[tuple[MeterRow, ...]] = (
             _p("voltage", r"_meter_(?P<m>.+?)_ac_voltage_phase_(?P<a>[abc])n$"),
         ),
         totals=(_p("grid_power", r"_meter_(?P<m>.+?)_ac_power$"),),
-        signed_current=True,
+        signed_current=False,
         invert_power=True,
         label="SolarEdge Modbus (Home Assistant core)",
     ),

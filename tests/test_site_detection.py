@@ -578,11 +578,11 @@ CASES = {
     ),
     "solaredge_modbus_multi": (
         solaredge_modbus_multi,
-        Expect(MEASUREMENT_MODE_DERIVED, signed_current=True, power_inverted=True, roles=frozenset({"power", "voltage", "current", "reactive_power"}), disabled=3, integration="solaredge_modbus_multi"),
+        Expect(MEASUREMENT_MODE_DERIVED, power_inverted=True, roles=frozenset({"power", "voltage", "current", "reactive_power"}), disabled=3, integration="solaredge_modbus_multi"),
     ),
     "solaredge_modbus_core": (
         solaredge_modbus_core,
-        Expect(MEASUREMENT_MODE_DERIVED, signed_current=True, power_inverted=True, roles=frozenset({"power", "voltage", "current", "grid_power"}), disabled=3, integration="solaredge_modbus"),
+        Expect(MEASUREMENT_MODE_DERIVED, power_inverted=True, roles=frozenset({"power", "voltage", "current", "grid_power"}), disabled=3, integration="solaredge_modbus"),
     ),
     "bitvis": (
         bitvis_power_hub,
@@ -1382,7 +1382,7 @@ def test_applying_a_huawei_candidate_sets_both_sign_flags() -> None:
 # ---- core `solaredge_modbus` (HA 2026.10) next to the HACS integration of the same platform name -----
 
 
-def test_core_solaredge_modbus_reads_the_meter_not_the_inverter_with_the_sign_of_the_registers() -> None:
+def test_core_solaredge_modbus_reads_the_meter_not_the_inverter_and_its_current_as_a_magnitude() -> None:
     candidate = one_meter(solaredge_modbus_core())
 
     assert candidate.derived_entities["L2"] == {
@@ -1391,7 +1391,8 @@ def test_core_solaredge_modbus_reads_the_meter_not_the_inverter_with_the_sign_of
         "current": "sensor.meter_1_current_phase_b",
     }
     assert candidate.grid_power == GridPowerSource(power="sensor.meter_1_power")
-    assert candidate.signed_current and candidate.power_inverted
+    # The meter's current is a size (positive on import and export); the direction is in the power.
+    assert candidate.signed_current is False and candidate.power_inverted
     assert not any("inverter" in item.entity_id for item in candidate.entities)
     assert candidate.estimated is False
 
@@ -1402,7 +1403,7 @@ def test_core_solaredge_modbus_without_neutral_voltages_is_a_direct_meter_whose_
     assert candidate.mode == MEASUREMENT_MODE_DIRECT
     assert candidate.direct_entities == {phase: f"sensor.meter_1_current_phase_{ph}" for phase, ph in zip(PHASES, "abc")}
     assert candidate.grid_power == GridPowerSource(power="sensor.meter_1_power")
-    assert candidate.signed_current
+    assert not candidate.signed_current
     assert candidate.power_inverted
     applied = apply_meter_candidate({}, candidate)
     assert applied["grid_power_inverted"] is True
