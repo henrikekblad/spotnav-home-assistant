@@ -376,7 +376,7 @@ each with its own private webhook secret. Treat webhook ids as secrets. See
   entry under **Settings, Devices & services, SpotNav**, which shows **Charge control**, **Charging
   current (optional)**, the energy meter and **Set the charger current**.
 - **A site.** Use **Configure** on the site's entry. The first page, **Site settings**, has the
-  site's basics, load balancing, whether the car may take the home battery's share, solar priority, the home
+  site's basics, load balancing, whether the car may take the home battery's share, car or home battery first, the home
   battery power sensor and the solar forecast sources, each with a line on what it does, and last the
   switch **Next: change meter and phases**.
 

@@ -105,7 +105,7 @@ surplus* and one *Proposed current* sensor per charger.
 *Capacity state* carries what a person reads it for: `reason`, `site_activity`, `measurement_mode`,
 `confidence`, `current_estimated`, the membership conflicts, the measurement health, why load balancing
 is blocked, whether it is available and on, whether solar can run (`solar_capable`, `solar_reason`) and
-the solar priority. *Proposed current* carries the requested current, the setpoint, the allocation's
+the car or home battery first setting. *Proposed current* carries the requested current, the setpoint, the allocation's
 `state` and `reason`, the charger measurement's health and the regulator's proposal and reason. The
 per-phase readings, their ages, the headroom figures, the limiting phase, the grid power and the
 per-charger solar, hybrid, yield-stepping, battery-probe and resume detail are in the site's

@@ -353,7 +353,7 @@
           "active_control_enabled": "Kuormanhallinta",
           "max_age_s": "Mittauksen enimmäisikä (sekuntia)",
           "yield_stepping_enabled": "Auto saa ottaa kotiakun osuuden",
-          "solar_priority": "Aurinkoylijäämä menee ensin",
+          "solar_priority": "Auto vai kotiakku ensin",
           "battery_aggregate_power_entity": "Kotiakun teho (valinnainen)",
           "solar_forecast_entries": "Aurinkoennuste (valinnainen)",
           "change_measurement": "Seuraavaksi: muuta mittaria ja vaiheita"
@@ -368,7 +368,7 @@
           "active_control_enabled": "Pienentää laturien virtaa, kun talo kuluttaa paljon, jotta pääsulake ei pala. Pois: SpotNav vain näyttää, mitä se tekisi. Toimii parhaan kyvyn mukaan eikä korvaa sulaketta.",
           "max_age_s": "Tätä vanhempaan lukemaan SpotNav ei luota. Suurenna vain, jos mittari todella päivittyy näin harvoin.",
           "yield_stepping_enabled": "Antaa auton ottaa enemmän kuin pääsulakkeen osuuden, kun joustavaksi havaittu kotiakku lakkaa latautumasta, ei koskaan yli 1,15-kertaisesti pääsulakkeeseen nähden. Ota käyttöön, jos kotiakku pitää verkon sulakkeen kohdalla.",
-          "solar_priority": "Autolle vai kotiakulle: kumpi saa auringon ylijäämän ensin.",
+          "solar_priority": "Kumpi saa mennä ensin, kun auto ja kotiakku haluavat saman sähkön.\n\n• Auto ensin: Auto saa aurinkoylijäämän ennen akkua. Kun akku lataa verkosta, se väistää autoa pääsulakkeella (kun ”Auto saa ottaa kotiakun osuuden” on päällä). Tehotavoite laskee vain verkosta otetun sähkön.\n• Akku ensin: Akku saa aurinkoylijäämän ensin, ja auto lataa sillä, mikä jää yli. Pääsulakkeella auto väistää akkua. Tehotavoite laskee myös akun purkamisen tuonniksi, jotta akku ei maksa auton latausta.",
           "battery_aggregate_power_entity": "Kotiakun tehoanturi, positiivinen akun latautuessa. Aurinkolataus ja yllä oleva kotiakun osuus käyttävät sitä nähdäkseen, milloin akku latautuu.",
           "solar_forecast_entries": "Mistä hybridistrategia saa aurinkoennusteensa. Tyhjä: hybridi lataa vain halvimpina tunteina.",
           "change_measurement": "Jätä pois päältä, jos haluat tallentaa vain tämän sivun tiedot."
@@ -530,7 +530,7 @@
     "solar_priority": {
       "options": {
         "car_first": "Auto ensin",
-        "battery_first": "Kotiakku ensin"
+        "battery_first": "Akku ensin"
       }
     },
     "voltage_between_phases": {

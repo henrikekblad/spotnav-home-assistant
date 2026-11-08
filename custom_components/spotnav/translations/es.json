@@ -353,7 +353,7 @@
           "active_control_enabled": "Equilibrado de carga",
           "max_age_s": "Antigüedad máxima de la medición (segundos)",
           "yield_stepping_enabled": "El coche puede tomar la parte de la batería doméstica",
-          "solar_priority": "El excedente solar va primero a",
+          "solar_priority": "Coche o batería doméstica primero",
           "battery_aggregate_power_entity": "Potencia de la batería doméstica (opcional)",
           "solar_forecast_entries": "Previsión solar (opcional)",
           "change_measurement": "Siguiente: cambiar contador y fases"
@@ -368,7 +368,7 @@
           "active_control_enabled": "Baja la corriente de los cargadores cuando la casa consume mucho, para que no salte el fusible general. Desactivado: SpotNav solo muestra lo que haría. Funciona lo mejor posible y no sustituye al fusible.",
           "max_age_s": "SpotNav no se fía de una lectura más antigua. Auméntelo solo si su contador de verdad se actualiza con tan poca frecuencia.",
           "yield_stepping_enabled": "Deja que el coche tome más que la parte del fusible general mientras una batería doméstica que ha demostrado ceder deja de cargar, nunca por encima de 1,15 veces el fusible general. Actívelo si una batería doméstica mantiene la red en el fusible.",
-          "solar_priority": "El coche o la batería doméstica: quién recibe primero el excedente del sol.",
+          "solar_priority": "Quién va primero cuando el coche y la batería doméstica quieren la misma energía.\n\n• Primero el coche: El coche recibe el excedente solar antes que la batería. Cuando la batería carga desde la red, cede el paso al coche en el fusible principal (con «El coche puede tomar la parte de la batería doméstica» activado). El objetivo de potencia solo cuenta la energía de la red.\n• Primero la batería: La batería recibe primero el excedente solar y el coche carga con lo que sobra. En el fusible principal el coche cede ante la batería. El objetivo de potencia cuenta también la descarga de la batería como importación, para que la batería no pague el coche.",
           "battery_aggregate_power_entity": "El sensor de potencia de la batería doméstica, positivo mientras carga. La carga solar y la parte de la batería doméstica de arriba lo usan para ver cuándo carga la batería.",
           "solar_forecast_entries": "De dónde toma la estrategia híbrida su previsión solar. Vacío: el modo híbrido carga solo en las horas más baratas.",
           "change_measurement": "Déjelo desactivado para guardar solo lo que hay en esta página."
@@ -530,7 +530,7 @@
     "solar_priority": {
       "options": {
         "car_first": "Primero el coche",
-        "battery_first": "Primero la batería doméstica"
+        "battery_first": "Primero la batería"
       }
     },
     "voltage_between_phases": {

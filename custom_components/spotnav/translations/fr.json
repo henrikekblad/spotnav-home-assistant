@@ -353,7 +353,7 @@
           "active_control_enabled": "Équilibrage de charge",
           "max_age_s": "Âge maximal des mesures (secondes)",
           "yield_stepping_enabled": "La voiture peut prendre la part de la batterie domestique",
-          "solar_priority": "Le surplus solaire va d'abord à",
+          "solar_priority": "Voiture ou batterie domestique d'abord",
           "battery_aggregate_power_entity": "Puissance de la batterie domestique (facultatif)",
           "solar_forecast_entries": "Prévision solaire (facultatif)",
           "change_measurement": "Suivant : modifier le compteur et les phases"
@@ -368,7 +368,7 @@
           "active_control_enabled": "Réduit le courant des bornes quand la maison consomme beaucoup, pour que le fusible principal ne saute pas. Désactivé : SpotNav montre seulement ce qu'il ferait. Fonctionne au mieux et ne remplace pas le fusible.",
           "max_age_s": "SpotNav ne se fie pas à une mesure plus ancienne. Augmentez-le seulement si votre compteur se met vraiment à jour aussi rarement.",
           "yield_stepping_enabled": "Laisse la voiture prendre plus que la part du fusible principal pendant qu'une batterie domestique dont on a vu qu'elle cède arrête de charger, jamais au-delà de 1,15 fois le fusible principal. À activer si une batterie domestique maintient le réseau au fusible.",
-          "solar_priority": "La voiture ou la batterie domestique : qui reçoit en premier le surplus du soleil.",
+          "solar_priority": "Qui passe en premier quand la voiture et la batterie domestique veulent la même énergie.\n\n• Voiture d'abord: La voiture reçoit le surplus solaire avant la batterie. Quand la batterie charge depuis le réseau, elle cède la place à la voiture au disjoncteur principal (avec « La voiture peut prendre la part de la batterie domestique » activé). L'objectif de puissance ne compte que l'énergie du réseau.\n• Batterie d'abord: La batterie reçoit le surplus solaire en premier, et la voiture charge avec le reste. Au disjoncteur principal, la voiture recule devant la batterie. L'objectif de puissance compte aussi la décharge de la batterie comme importation, pour que la batterie ne paie pas la voiture.",
           "battery_aggregate_power_entity": "Le capteur de puissance de la batterie domestique, positif quand elle charge. La charge solaire et la part de la batterie domestique ci-dessus s'en servent pour voir quand la batterie charge.",
           "solar_forecast_entries": "Où la stratégie hybride prend sa prévision solaire. Vide : l'hybride charge seulement aux heures les moins chères.",
           "change_measurement": "Laissez désactivé pour enregistrer seulement cette page."
@@ -530,7 +530,7 @@
     "solar_priority": {
       "options": {
         "car_first": "Voiture d'abord",
-        "battery_first": "Batterie domestique d'abord"
+        "battery_first": "Batterie d'abord"
       }
     },
     "voltage_between_phases": {

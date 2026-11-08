@@ -353,7 +353,7 @@
           "active_control_enabled": "Lastmanagement",
           "max_age_s": "Maximales Alter der Messung (Sekunden)",
           "yield_stepping_enabled": "Auto darf den Anteil der Hausbatterie nehmen",
-          "solar_priority": "Solarüberschuss geht zuerst an",
+          "solar_priority": "Auto oder Hausbatterie zuerst",
           "battery_aggregate_power_entity": "Leistung der Hausbatterie (optional)",
           "solar_forecast_entries": "Solarprognose (optional)",
           "change_measurement": "Weiter: Zähler und Phasen ändern"
@@ -368,7 +368,7 @@
           "active_control_enabled": "Senkt den Strom der Ladestationen, wenn das Haus viel verbraucht, damit die Hauptsicherung nicht auslöst. Aus: SpotNav zeigt nur, was es tun würde. Nach bestem Bemühen; ersetzt die Sicherung nicht.",
           "max_age_s": "Einem älteren Messwert vertraut SpotNav nicht. Nur erhöhen, wenn Ihr Zähler wirklich so selten meldet.",
           "yield_stepping_enabled": "Lässt das Auto mehr als den Anteil der Hauptsicherung nehmen, während eine Hausbatterie, die nachweislich nachgibt, das Laden einstellt, nie über das 1,15-Fache der Hauptsicherung. Einschalten, wenn eine Hausbatterie das Netz an der Sicherung hält.",
-          "solar_priority": "Das Auto oder die Hausbatterie: wer den Überschuss der Sonne zuerst bekommt.",
+          "solar_priority": "Wer zuerst darf, wenn Auto und Hausbatterie denselben Strom wollen.\n\n• Zuerst das Auto: Das Auto bekommt den Solarüberschuss vor der Batterie. Lädt die Batterie aus dem Netz, weicht sie an der Hauptsicherung dem Auto (bei eingeschaltetem „Auto darf den Anteil der Hausbatterie nehmen“). Das Leistungsziel zählt nur Strom aus dem Netz.\n• Zuerst die Batterie: Die Batterie bekommt den Solarüberschuss zuerst, das Auto lädt mit dem, was übrig bleibt. An der Hauptsicherung weicht das Auto der Batterie. Das Leistungsziel zählt auch die Entladung der Batterie als Bezug, damit die Batterie das Auto nicht bezahlt.",
           "battery_aggregate_power_entity": "Der Leistungssensor der Hausbatterie, positiv beim Laden. Solarladen und der Anteil der Hausbatterie oben lesen daraus, wann die Batterie lädt.",
           "solar_forecast_entries": "Woher die Hybrid-Strategie ihre Solarprognose nimmt. Leer: Hybrid lädt nur in den günstigsten Stunden.",
           "change_measurement": "Aus lassen, um nur diese Seite zu speichern."
@@ -530,7 +530,7 @@
     "solar_priority": {
       "options": {
         "car_first": "Zuerst das Auto",
-        "battery_first": "Zuerst die Hausbatterie"
+        "battery_first": "Zuerst die Batterie"
       }
     },
     "voltage_between_phases": {

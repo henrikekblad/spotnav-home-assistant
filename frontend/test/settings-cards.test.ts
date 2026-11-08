@@ -65,6 +65,7 @@ function openDialog(element: Element): HTMLElement | null {
 }
 const dlg = (element: Element): HTMLElement => openDialog(element)!;
 const solarCard = (element: Element) => dlg(element).querySelector<HTMLElement>("[data-section='solar']");
+const siteCard = (element: Element) => dlg(element).querySelector<HTMLElement>("[data-section='site']");
 const siteWrites = (hass: FakeHass) => hass.messages.filter((m) => m["type"] === "spotnav/update_site_settings");
 const saveButton = (element: Element) => dlg(element).querySelector<HTMLButtonElement>(".spotnav-settings-save")!;
 const cancelButton = (element: Element) =>
@@ -76,14 +77,16 @@ const choose = (element: Element, label: RegExp): HTMLInputElement =>
     .find((node) => label.test(node.textContent ?? ""))!
     .querySelector<HTMLInputElement>("input")!;
 
-/** Open the Solar section's value: the priority (one of two) or the forecast sources (several). */
+/** Open the Site section's priority (one of two) or the Solar section's forecast sources (several). */
 async function openSolar(
   which: "solar_priority" | "solar_forecast" = "solar_priority",
   payload = dashboard(withSources(["forecast_solar:roof"])),
   options = {},
 ) {
   const opened = await open(payload, options);
-  solarCard(opened.element)!.querySelector<HTMLButtonElement>(`[data-edit='${which}']`)!.click();
+  (which === "solar_priority" ? siteCard : solarCard)(opened.element)!
+    .querySelector<HTMLButtonElement>(`[data-edit='${which}']`)!
+    .click();
   await settle();
   return opened;
 }
@@ -105,11 +108,13 @@ describe("the Solar section", () => {
     expect(card.querySelector("h4")?.textContent).toBe(translate("en", "settings.section.solar"));
     expect(card.querySelector("h4 svg")?.getAttribute("data-icon")).toBe("solar");
     expect(card.textContent).not.toContain(translate("en", "site.applies.one"));
-    expect(card.querySelector("[data-row='solar_priority']")?.textContent).toContain(translate("en", "site.solarPriority.carFirst"));
+    expect(card.querySelector("[data-row='solar_priority']")).toBeNull();
+    expect(siteCard(element)!.querySelector("[data-row='solar_priority']")?.textContent).toContain(
+      translate("en", "site.solarPriority.carFirst"),
+    );
     expect(card.querySelector("[data-row='solar_forecast']")?.textContent).toContain("Roof, Garage");
     // Each value is its own button, and nothing on the page saves by itself.
     expect(Array.from(card.querySelectorAll<HTMLElement>("button")).map((node) => node.dataset["edit"])).toEqual([
-      "solar_priority",
       "solar_forecast",
     ]);
     expect(card.querySelector("input")).toBeNull();
@@ -200,7 +205,7 @@ describe("the Solar editors", () => {
     await settle();
     expect(siteWrites(hass)).toHaveLength(0);
     expect(dlg(element).querySelector("[data-section='solar']")).not.toBeNull();
-    expect(solarCard(element)!.querySelector("[data-row='solar_priority']")?.textContent).toContain(
+    expect(siteCard(element)!.querySelector("[data-row='solar_priority']")?.textContent).toContain(
       translate("en", "site.solarPriority.carFirst"),
     );
   });
