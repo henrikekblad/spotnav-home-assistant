@@ -179,6 +179,54 @@ async def test_the_oven_case_is_lowered_at_once_and_comes_back_up_in_steps(hass:
     assert _assigned(configure_calls) == [16, 6, 12, 16, 6]
 
 
+async def test_one_site_reading_makes_one_cut_when_the_charger_shows_the_drop_first(hass: HomeAssistant, freezer) -> None:
+    """The oven case again, but the charger's own reading drops to the 6 A written before the site's meter shows the
+    drop (a local charger read every second, a meter polled every ten). The site still reads 34.4 A on L3 against the
+    car's 6 A: reckoned afresh that is 6 - 9.4 A, a pause. It is the same site reading the first cut was made on, so it
+    makes no second cut. A new reading of the phase that still shows an overload does."""
+    charger, configure_calls, site = await _setup(hass, "twice", site_currents=(2.0, 2.0, 3.5), margin=0.0)
+    cc = controller_of(hass, charger.entry_id)
+    assert await cc.async_start(amps=16, cause="plan_window")
+    hass.states.async_set("switch.twice_charger", "on")
+    _charger_reads(hass, "twice_charger", 16.0)
+    freezer.tick(timedelta(seconds=1))
+    _report(hass, "twice_site", (18.0, 18.0, 19.5), 0.0)
+    await _tick(hass)
+    assert _assigned(configure_calls) == [16]
+
+    turn_off = async_mock_service(hass, "switch", "turn_off")
+
+    freezer.tick(timedelta(seconds=10))
+    _report(hass, "twice_site", (18.0, 18.0, 34.4), 0.0)
+    await _tick(hass)
+    assert _assigned(configure_calls) == [16, 6]
+    assert turn_off == []
+
+    # The charger follows first; the site's meter has not reported since. Nothing more is cut, and no pause.
+    freezer.tick(timedelta(seconds=2))
+    _charger_reads(hass, "twice_charger", 6.0)
+    await _tick(hass)
+    assert _assigned(configure_calls) == [16, 6]
+    assert turn_off == []
+    freezer.tick(timedelta(seconds=2))
+    await _tick(hass)
+    assert (_assigned(configure_calls), turn_off) == ([16, 6], [])
+
+    # The meter reports the drop: 24.4 A, 0.6 A of room, nothing to do.
+    freezer.tick(timedelta(seconds=6))
+    _report(hass, "twice_site", (8.0, 8.0, 24.4), 0.0)
+    await _tick(hass)
+    assert (_assigned(configure_calls), turn_off) == ([16, 6], [])
+
+    # A new reading of L3 with another load on it, the car at 6 A: 6 - 5 = 1 A, below the minimum, so the pause.
+    freezer.tick(timedelta(seconds=10))
+    _report(hass, "twice_site", (8.0, 8.0, 30.0), 0.0)
+    await _tick(hass)
+    assert site.regulator_decisions[charger.entry_id].proposed_current_a == 0.0
+    assert _assigned(configure_calls) == [16, 6]
+    assert [call.data.get("entity_id") for call in turn_off] == ["switch.twice_charger"]
+
+
 async def test_a_person_start_and_a_plan_start_are_capped_by_the_room_the_current_leaves(hass: HomeAssistant) -> None:
     charger, configure_calls, site = await _setup(hass, "capped", site_currents=(10.0, 10.0, 12.0))
     cc = controller_of(hass, charger.entry_id)

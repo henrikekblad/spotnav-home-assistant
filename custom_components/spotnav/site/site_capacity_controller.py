@@ -3008,7 +3008,12 @@ class SiteCapacityController:
         max_age_s: float,
     ) -> None:
         """Write a `magnitude_overload_lowering` decision: only while the fresh reading still shows the overload
-        by |I|, never above it again, and never above what was last written (a lowering only), at once."""
+        by |I|, never above it again, and never above what was last written (a lowering only), at once. One site
+        reading makes one cut (`StepGuard.cut_on_reading`): the charger's own reading often shows the lowering before
+        the site's meter does, and reckoned afresh from that reading against the site's unchanged overload the charger
+        would be cut again, by the whole overload a second time (a 16 A car cut to 6 A by an oven was paused on the
+        next pass). The reading is the over phase's own; a cut is made again on it only where the charger reads above
+        what was written (`_overload_from_charger`: the first cut did not take)."""
         request = next(
             (r for r in self._build_requests(credit=False) if r.charger_entry_id == charger_entry_id), None
         )
@@ -3020,6 +3025,7 @@ class SiteCapacityController:
         if again is None or again.proposed_current_a is None or decision.proposed_current_a is None:
             self._log_active_control_outcome(charger_entry_id, decision, outcome="held", detail="overload_over")
             return
+        site_read_at = self._phase_read_at(fresh, again.limiting_phase)
         damper = self._damper_for(charger_entry_id)
         setpoint = min(decision.proposed_current_a, again.proposed_current_a)
         # A pause remembered while the charger charges again (a person restarted it) is a first write, as for an
@@ -3046,6 +3052,10 @@ class SiteCapacityController:
         if ceiling is None or setpoint >= ceiling:
             self._log_active_control_outcome(charger_entry_id, decision, outcome="held", detail="not_a_lowering")
             return
+        guard = self._step_guard_for(charger_entry_id)
+        if on_charger is None and guard.cut_on_reading(site_read_at):
+            self._log_active_control_outcome(charger_entry_id, decision, outcome="held", detail="held_same_reading")
+            return
         damping = damper.consider(
             proposed_current_a=setpoint,
             margin_a=fresh.measured_margin_a.get(again.limiting_phase) if again.limiting_phase else None,
@@ -3058,7 +3068,7 @@ class SiteCapacityController:
             return
         if not self._active_control_allowed() or self._closed:
             return
-        await self._async_write_regulated(
+        write = await self._async_write_regulated(
             charger_entry_id,
             charger_controller,
             replace(decision, proposed_current_a=setpoint),
@@ -3067,8 +3077,11 @@ class SiteCapacityController:
             int(setpoint),
             previous_setpoint,
             None,
-            site_read_at=self._site_read_at(fresh),
+            site_read_at=site_read_at,
         )
+        if write.written or write.outcome == REGULATED_STOPPED:
+            # A cut, whatever was on the charger before (a first write knows no previous value): this reading made it.
+            guard.note_cut_reading(site_read_at)
 
     async def _async_apply_magnitude_raise(
         self,
@@ -4271,6 +4284,20 @@ class SiteCapacityController:
         if not ages:
             return None
         return dt_util.utcnow().timestamp() - min(ages)
+
+    @classmethod
+    def _phase_read_at(cls, fresh: SiteCapacityResult, phase: PhaseName | None) -> float | None:
+        """When this phase's own reading was taken (epoch seconds): its signed power's where the site has one, else
+        its measured current's (a direct site whose currents carry no sign has no signed power); `None` unknown.
+        Without a phase, the site's newest reading (`_site_read_at`)."""
+        if phase is None:
+            return cls._site_read_at(fresh)
+        age = fresh.phase_signed_active_power_age_s.get(phase)
+        if age is None:
+            age = fresh.phase_age_s.get(phase)
+        if age is None:
+            return None
+        return dt_util.utcnow().timestamp() - age
 
     @staticmethod
     def _charger_read_at(decision: RegulatorDecision) -> float | None:
