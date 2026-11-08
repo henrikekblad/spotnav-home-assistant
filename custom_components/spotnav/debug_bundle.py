@@ -150,6 +150,8 @@ COORDINATE_KEYS: Final = frozenset({"latitude", "longitude", "lat", "lon", "lng"
 
 _WEBHOOK_PATH = re.compile(r"(/api/webhook/)[A-Za-z0-9_\-]+")
 _BEARER = re.compile(r"(?i)\b(bearer\s+)[A-Za-z0-9._\-]+")
+#: An e-mail address in free text (a cloud account in a device name or a log line).
+_EMAIL = re.compile(r"[\w.+-]+@[\w-]+\.[\w.-]+")
 #: Shortest user name worth scrubbing; shorter ones would mangle ordinary words.
 _MIN_NAME_LENGTH = 3
 
@@ -170,7 +172,8 @@ class Scrubber:
         for name in self._names:
             value = value.replace(name, "<user>")
         value = _WEBHOOK_PATH.sub(rf"\1{REDACTED}", value)
-        return _BEARER.sub(rf"\1{REDACTED}", value)
+        value = _BEARER.sub(rf"\1{REDACTED}", value)
+        return _EMAIL.sub("<email>", value)
 
 
 def redact_bundle(value: Any, scrubber: Scrubber) -> Any:

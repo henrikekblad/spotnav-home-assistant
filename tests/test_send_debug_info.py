@@ -57,7 +57,8 @@ async def test_an_admin_sends_the_bundle_and_gets_the_reference(
     assert body["spotnav_version"] == body["bundle"]["versions"]["spotnav"]
     # The same bundle as the download, with the card's own block kept to its known keys.
     assert body["bundle"]["chargers"][0]["entry_id"] == charger.entry_id
-    assert body["bundle"]["client"] == {"card_version": "2.5.0", "user_agent": "x" * 512}
+    # The user agent and unknown keys stay out of a sent report.
+    assert body["bundle"]["client"] == {"card_version": "2.5.0"}
     # The installation is a salted hash; the instance id itself is never sent.
     raw = await instance_id.async_get(hass)
     assert body["install"] == hashlib.sha256(f"{raw}{INSTALL_SALT}".encode()).hexdigest()
@@ -184,3 +185,9 @@ async def test_the_body_is_encoded_and_compressed_off_the_event_loop(
 
     assert frame["result"]["ok"] is True
     assert threads and loop_thread not in threads
+
+
+def test_an_email_address_in_free_text_is_scrubbed() -> None:
+    from custom_components.spotnav.debug_bundle import Scrubber
+
+    assert Scrubber().text("Account henrik.e+ev@example.se logged in") == "Account <email> logged in"

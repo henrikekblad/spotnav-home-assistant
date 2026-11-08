@@ -51,7 +51,8 @@ MAX_MESSAGE_CHARS: Final = 4000
 MAX_EMAIL_CHARS: Final = 254
 MAX_BODY_BYTES: Final = 8 * 1024 * 1024
 #: The `client` block the card adds about itself: these keys only, strings cut to this length.
-CLIENT_KEYS: Final = ("card_bundle_hash", "card_version", "user_agent", "card_outdated", "note")
+#: The browser's user agent stays out of a sent report (the download keeps it).
+CLIENT_KEYS: Final = ("card_bundle_hash", "card_version", "card_outdated", "note")
 MAX_CLIENT_TEXT: Final = 512
 
 #: Stable refusal codes, as the card switches on them.

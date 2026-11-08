@@ -24,7 +24,8 @@ such as `SN-7KQ4`: mention it in your forum post, your message in the group or y
 be found.
 
 What is sent is the same file **Download debug info** saves (below): versions, settings, entity names, and the
-logs and charge history of the last days, with no passwords, tokens or exact location. With it go your message,
+logs and charge history of the last days, with no passwords, tokens, e-mail addresses or exact location, and without
+the browser's user agent. With it go your message,
 the e-mail address if you gave one, the SpotNav and Home Assistant versions, and an anonymous id for the
 installation (a salted hash of Home Assistant's instance id, never the id itself), which lets the server limit how
 many reports one installation sends a day. Nothing is sent until you press **Send**; SpotNav never sends a report
