@@ -102,7 +102,7 @@ async def test_the_editor_accepts_a_phase_with_current_and_no_voltage_but_not_po
     assert all(field(read, f"derived_{phase}_voltage")["required"] is False for phase in PHASES)
 
     # Power alone on a phase still needs a voltage.
-    cleared = {f"derived_L3_current": ""}
+    cleared = {"derived_L3_current": ""}
     refused = (await ws_call(client, update_entity_config_message(charger.entry_id, scope="site", changes=cleared)))["result"]
     assert refused["error"] == "spotnav_invalid_value"
     assert [item["field"] for item in refused["field_errors"]] == ["derived_L3_voltage"]
