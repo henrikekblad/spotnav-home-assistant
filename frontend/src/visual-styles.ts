@@ -140,6 +140,7 @@ export const VISUAL_CLASSES = {
   settingsField: "spotnav-settings-field",
   settingsLabel: "spotnav-settings-label",
   settingsInput: "spotnav-settings-input",
+  settingsTextarea: "spotnav-settings-textarea",
   actionBar: "spotnav-action-bar",
   actionBarWrap: "spotnav-action-bar-wrap",
   barCell: "spotnav-bar-cell",
@@ -473,6 +474,11 @@ export const VISUAL_STYLES = `
     border: 1px solid var(--divider-color, #e0e0e0);
     background: var(--secondary-background-color, transparent);
     color: var(--primary-text-color, #212121);
+  }
+  .spotnav-settings-textarea {
+    width: 100%;
+    min-height: 6rem;
+    resize: vertical;
   }
   .spotnav-settings-input:focus-visible {
     outline: 2px solid var(--primary-color, #03a9f4);

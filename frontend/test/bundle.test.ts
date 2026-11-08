@@ -12,6 +12,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import { translate } from "../src/i18n";
 import { APP_STORE_URL } from "../src/setup-checklist";
+import { PRIVACY_URL } from "../src/send-debug";
 import { API_VERSION } from "../src/types";
 
 const ASSET = resolve(__dirname, "../../custom_components/spotnav/www/spotnav-card.js");
@@ -57,8 +58,14 @@ describe("the committed asset", () => {
   });
 
   it.each(FORBIDDEN)("does not mention %s", (needle) => {
-    // The one allowed mention: the app's Google Play address, whose package name carries the company's name.
-    expect(SOURCE.split(APP_STORE_URL).join("")).not.toContain(needle);
+    // The allowed mentions, all text or links a person follows, none a request: the app's Google Play address, whose
+    // package name carries the company's name, the privacy policy "Send debug info" links, and the support address
+    // its failure sentence names.
+    let rest = SOURCE;
+    for (const allowed of [APP_STORE_URL, PRIVACY_URL, "support@sensnology.se"]) {
+      rest = rest.split(allowed).join("");
+    }
+    expect(rest).not.toContain(needle);
   });
 
   it("fetches once, its language file from Home Assistant's own /spotnav/i18n/ path", () => {
@@ -152,6 +159,8 @@ describe("the asset's only absolute URLs", () => {
       "https://github.com/henrikekblad/spotnav-home-assistant",
       // The SpotNav app on Google Play, opened in a new tab by "Get started" (where to get the app).
       "https://play.google.com/store/apps/details?id=se.sensnology.spotnav",
+      // The privacy policy, linked from "Send debug info" (a new tab): what a sent report holds and how long it is kept.
+      PRIVACY_URL,
       // ENTSO-E's Transparency Platform, linked from the key's how-to (a new tab).
       "https://transparency.entsoe.eu/",
       "http://www.w3.org/2000/svg",

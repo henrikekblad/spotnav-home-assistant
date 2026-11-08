@@ -34,6 +34,7 @@ import {
   getDashboard,
   getCardInfo,
   getDebugBundle,
+  sendDebugInfo,
   getBlueprints,
   getEntityConfig,
   getPowerMonth,
@@ -84,6 +85,7 @@ import {
 } from "./entity-config";
 import { decodeBlueprintUse, type BlueprintUse } from "./automations";
 import { decodeDebugAnswer, saveDebugBundle } from "./debug-download";
+import { decodeSendAnswer, sendFailureText, type SendOutcome } from "./send-debug";
 import { cardOutdated, clientBlock, decodeCardInfo, ownCardBundleHash, servedHashFromBundle } from "./card-identity";
 import { saveTextFile } from "./download";
 import {
@@ -322,6 +324,8 @@ export class SpotnavCard extends HTMLElement {
   private sentAction: SentAction | null = null;
   /** The automatic action last shown, so a pending action keeps the Schedule cell's caption. */
   private shownAutomatic: string | null = null;
+  /** The card bundle hash the integration serves, as `spotnav/get_card_info` last said; for a sent report's `client`. */
+  private servedCardHash: string | null = null;
   private outcomeTimer: number | null = null;
   private connected = false;
   private assigned = false;
@@ -1653,6 +1657,30 @@ export class SpotnavCard extends HTMLElement {
   }
 
   /**
+   * "Send debug info" from its dialog: the backend builds the same bundle as the download and sends it; the card adds
+   * its own `client` block, as the download does. Any failure is the sentence the dialog shows.
+   */
+  private async sendDebug(message: string, email: string | null): Promise<SendOutcome> {
+    const hass = this.hassObject;
+    const language = this.languageOrFallback;
+    if (!this.connected || hass === null || !this.isAdmin) {
+      return { error: sendFailureText(language, "unauthorized") };
+    }
+    const client = clientBlock(this.ownerDocument.defaultView?.navigator?.userAgent ?? null, this.servedCardHash);
+    let raw: unknown;
+    try {
+      raw = await sendDebugInfo(hass, { message, email, client: { ...client } });
+    } catch (error) {
+      return { error: sendFailureText(language, error instanceof SpotnavApiError ? error.code : null) };
+    }
+    const answer = decodeSendAnswer(raw);
+    if (answer === null) {
+      return { error: sendFailureText(language, null) };
+    }
+    return answer.ok ? { ref: answer.ref } : { error: sendFailureText(language, answer.code, answer.retryAfterS) };
+  }
+
+  /**
    * The Settings popover was opened: ask which card the integration serves, and say in Support when the
    * card running here is another (an old module kept by the browser or the Companion app). Any failure,
    * an integration without the command included, says nothing.
@@ -1670,6 +1698,7 @@ export class SpotnavCard extends HTMLElement {
       return;
     }
     const decoded = decodeCardInfo(raw);
+    this.servedCardHash = decoded?.cardBundleHash ?? null;
     const outdated = decoded === null ? null : cardOutdated(ownCardBundleHash(), decoded.cardBundleHash);
     if (outdated !== null && this.view === view) {
       view.setCardOutdated(outdated);
@@ -2931,6 +2960,7 @@ export class SpotnavCard extends HTMLElement {
         onDownloadDebug: () => {
           void this.downloadDebug();
         },
+        onSendDebug: (message, email) => this.sendDebug(message, email),
         onLoadBlueprintUse: () => this.loadBlueprintUse(),
         onSaveEntities: (scope, draft) => {
           void this.saveEntities(scope, draft);
