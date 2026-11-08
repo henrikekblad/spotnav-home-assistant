@@ -353,7 +353,7 @@
           "active_control_enabled": "Load balancing",
           "max_age_s": "Maximum measurement age (seconds)",
           "yield_stepping_enabled": "Car may take the home battery's share",
-          "solar_priority": "Solar surplus goes first to",
+          "solar_priority": "Car or home battery first",
           "battery_aggregate_power_entity": "Home battery power (optional)",
           "solar_forecast_entries": "Solar forecast (optional)",
           "change_measurement": "Next: change meter and phases"
@@ -368,7 +368,7 @@
           "active_control_enabled": "Lowers the chargers' current when the house draws a lot, so the main fuse does not blow. Off: SpotNav only shows what it would do. Best effort; it does not replace the fuse.",
           "max_age_s": "A reading older than this is not trusted. Raise it only if your meter really updates that seldom.",
           "yield_stepping_enabled": "Lets the car take more than the main fuse's share while a home battery shown to give way stops charging, never above 1.15 times the main fuse. Turn it on if a home battery holds the grid at the fuse.",
-          "solar_priority": "The car or the home battery: which one gets the sun's surplus first.",
+          "solar_priority": "Who goes first when the car and the home battery want the same power.\n\n• Car first: The car gets the sun's surplus before the battery. When the battery charges from the grid it gives way to the car at the main fuse (with “Car may take the home battery's share” on). The import target counts only grid power.\n• Battery first: The battery gets the sun's surplus first, and the car charges on what is left. At the main fuse the car backs off for the battery. The import target also counts the battery's discharge as import, so the battery does not pay for the car.",
           "battery_aggregate_power_entity": "The home battery's power sensor, positive while it charges. Solar and the home battery's share above use it to see when the battery charges.",
           "solar_forecast_entries": "Where the hybrid strategy gets its solar forecast. Empty: hybrid charges on the cheapest hours only.",
           "change_measurement": "Leave off to save only what is on this page."
@@ -530,7 +530,7 @@
     "solar_priority": {
       "options": {
         "car_first": "Car first",
-        "battery_first": "House battery first"
+        "battery_first": "Battery first"
       }
     },
     "voltage_between_phases": {

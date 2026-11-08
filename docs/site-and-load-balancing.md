@@ -301,7 +301,7 @@ It is best effort and is not a protective device. Turning it off gives back any 
   verified, the *yield ceiling* holds (1.15 times the fuse, fixed: below the 1.25 times a gG fuse carries
   for an hour), and an import overload below it is yield stepping's to judge.
   - **A home battery that charges from the grid and gives way.** With a *home battery power*
-    sensor and solar priority *car first* (the default), SpotNav also checks that the battery's
+    sensor and *Car or home battery first* set to *car first* (the default), SpotNav also checks that the battery's
     own charge falls when the car takes more. Once that is verified the car may climb in larger
     steps (up to 3 A, never more than the battery's charge per phase, and 1 A near the plan's
     current), the damper's dwell does not hold such a step, and the card says why the car is below
@@ -460,8 +460,8 @@ another strategy, or known to be unplugged takes no part, and its draw counts as
 
 ## Solar and forecast settings
 
-Set on the site, used by the [solar and hybrid strategies](strategies.md): **solar priority**
-(car first or house battery first), an optional **home battery power** sensor (positive means
+Set on the site, used by the [solar and hybrid strategies](strategies.md): **car or home battery first**
+(car first or battery first; it also decides who goes first at the main fuse and what the import target counts), an optional **home battery power** sensor (positive means
 charging), and the **solar forecast sources** for hybrid.
 
 The site's **Solar surplus** sensor shows, in watts, the power a car could take from the sun at the

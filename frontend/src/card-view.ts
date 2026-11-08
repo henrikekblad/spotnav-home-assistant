@@ -3881,6 +3881,38 @@ export function createCardView(input: CardViewInput): CardView {
    * The site's setup: the main fuse in its own number editor; the measurement and the battery in short words,
    * opening the site's entity dialog.
    */
+  /** Car or home battery first: a site setting, shown among the site's rows beside the home battery. */
+  function priorityRow(site: SiteFacts): HTMLElement {
+    const priorityLabel = translate(model.language, "site.solarPriority.title");
+    const priorities: ChoiceOption[] = [
+      {
+        value: "car_first",
+        label: translate(model.language, "site.solarPriority.carFirst"),
+        help: translate(model.language, "site.solarPriority.carFirstHelp"),
+      },
+      {
+        value: "battery_first",
+        label: translate(model.language, "site.solarPriority.batteryFirst"),
+        help: translate(model.language, "site.solarPriority.batteryFirstHelp"),
+      },
+    ];
+    return overviewRow(
+      "solar_priority",
+      priorityLabel,
+      priorities.find((option) => option.value === site.solarPriority)?.label ?? site.solarPriority,
+      site.writable
+        ? () =>
+            editSingle(
+              priorityLabel,
+              priorities,
+              site.solarPriority,
+              (chosen) => writeValue({ kind: "solar", priority: chosen }),
+              translate(model.language, "site.solarPriority.intro"),
+            )
+        : undefined,
+    );
+  }
+
   function siteRows(config: EntityConfig): HTMLElement[] {
     const nodes: HTMLElement[] = [];
     const fuse = fieldsOf(config, "site").find((entry) => entry.field === "main_fuse_a");
@@ -3952,6 +3984,9 @@ export function createCardView(input: CardViewInput): CardView {
         "site",
       ),
     );
+    if (model.site !== null) {
+      nodes.push(priorityRow(model.site));
+    }
     if (config.site !== null) {
       nodes.push(...siteWarningRows(doc, model.language, config.site));
     }
@@ -4192,7 +4227,7 @@ export function createCardView(input: CardViewInput): CardView {
     return siteSection;
   }
 
-  /** Solar: the priority (one of two) and the forecast sources (any of them), each in its own editor. */
+  /** Solar: the forecast sources (any of them), in their own editor. */
   function solarSectionBody(): HTMLElement | null {
     const site = model.site;
     if (site === null) {
@@ -4205,21 +4240,6 @@ export function createCardView(input: CardViewInput): CardView {
       section.append(element(doc, "p", C.siteApplies, site.appliesToText));
     }
     const writable = site.writable;
-    const priorityLabel = translate(model.language, "site.solarPriority.title");
-    const priorities: ChoiceOption[] = [
-      { value: "car_first", label: translate(model.language, "site.solarPriority.carFirst") },
-      { value: "battery_first", label: translate(model.language, "site.solarPriority.batteryFirst") },
-    ];
-    section.append(
-      overviewRow(
-        "solar_priority",
-        priorityLabel,
-        priorities.find((option) => option.value === site.solarPriority)?.label ?? site.solarPriority,
-        writable
-          ? () => editSingle(priorityLabel, priorities, site.solarPriority, (chosen) => writeValue({ kind: "solar", priority: chosen }))
-          : undefined,
-      ),
-    );
     const forecastLabel = translate(model.language, "site.solarForecast.title");
     const sources = site.solarForecastChoices.filter((choice) => choice.selected);
     section.append(

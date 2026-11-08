@@ -353,7 +353,7 @@
           "active_control_enabled": "Lastbalansering",
           "max_age_s": "Høyeste alder på målinger (sekunder)",
           "yield_stepping_enabled": "Bilen kan ta hjemmebatteriets andel",
-          "solar_priority": "Soloverskuddet går først til",
+          "solar_priority": "Bil eller hjemmebatteri først",
           "battery_aggregate_power_entity": "Hjemmebatteriets effekt (valgfritt)",
           "solar_forecast_entries": "Solprognose (valgfritt)",
           "change_measurement": "Neste: endre måler og faser"
@@ -368,7 +368,7 @@
           "active_control_enabled": "Senker ladernes strøm når huset trekker mye, så hovedsikringen ikke går. Av: SpotNav viser bare hva den ville gjort. Gjøres etter beste evne og erstatter ikke sikringen.",
           "max_age_s": "En måling som er eldre enn dette, stoler ikke SpotNav på. Øk den bare hvis måleren virkelig oppdaterer så sjelden.",
           "yield_stepping_enabled": "Lar bilen ta mer enn hovedsikringens andel mens et hjemmebatteri som har vist at det gir etter, slutter å lade, aldri over 1,15 ganger hovedsikringen. Slå på hvis et hjemmebatteri holder nettet ved sikringen.",
-          "solar_priority": "Bilen eller hjemmebatteriet: hvem som får solens overskudd først.",
+          "solar_priority": "Hvem som får gå først når bilen og hjemmebatteriet vil ha den samme strømmen.\n\n• Bilen først: Bilen får soloverskuddet før batteriet. Når batteriet lader fra nettet, gir det plass til bilen ved hovedsikringen (med «Bilen kan ta hjemmebatteriets andel» på). Effektmålet teller bare strøm fra nettet.\n• Batteriet først: Batteriet får soloverskuddet først, og bilen lader på det som blir igjen. Ved hovedsikringen rygger bilen for batteriet. Effektmålet teller også batteriets utlading som import, slik at batteriet ikke betaler for bilen.",
           "battery_aggregate_power_entity": "Hjemmebatteriets effektsensor, positiv når det lader. Soladingen og hjemmebatteriets andel over bruker den til å se når batteriet lader.",
           "solar_forecast_entries": "Hvor hybridstrategien henter solprognosen sin. Tom: hybrid lader bare i de billigste timene.",
           "change_measurement": "La den være av for bare å lagre det som står på denne siden."
@@ -530,7 +530,7 @@
     "solar_priority": {
       "options": {
         "car_first": "Bilen først",
-        "battery_first": "Hjemmebatteriet først"
+        "battery_first": "Batteriet først"
       }
     },
     "voltage_between_phases": {

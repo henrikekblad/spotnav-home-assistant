@@ -353,7 +353,7 @@
           "active_control_enabled": "Load balancing",
           "max_age_s": "Maximale leeftijd van metingen (seconden)",
           "yield_stepping_enabled": "Auto mag het deel van de thuisbatterij nemen",
-          "solar_priority": "Zonne-overschot gaat eerst naar",
+          "solar_priority": "Auto of thuisbatterij eerst",
           "battery_aggregate_power_entity": "Vermogen van de thuisbatterij (optioneel)",
           "solar_forecast_entries": "Zonneprognose (optioneel)",
           "change_measurement": "Volgende: meter en fasen wijzigen"
@@ -368,7 +368,7 @@
           "active_control_enabled": "Verlaagt de stroom van de laadpalen als het huis veel verbruikt, zodat de hoofdzekering niet doorslaat. Uit: SpotNav laat alleen zien wat het zou doen. Naar beste vermogen; vervangt de zekering niet.",
           "max_age_s": "Een oudere meting vertrouwt SpotNav niet. Verhoog dit alleen als uw meter echt zo zelden bijwerkt.",
           "yield_stepping_enabled": "Laat de auto meer nemen dan het deel van de hoofdzekering terwijl een thuisbatterij die aantoonbaar meegeeft stopt met laden, nooit boven 1,15 keer de hoofdzekering. Zet dit aan als een thuisbatterij het net op de zekering houdt.",
-          "solar_priority": "De auto of de thuisbatterij: wie het overschot van de zon het eerst krijgt.",
+          "solar_priority": "Wie voorgaat als de auto en de thuisbatterij dezelfde stroom willen.\n\n• Auto eerst: De auto krijgt het zonneoverschot vóór de batterij. Als de batterij van het net laadt, maakt ze bij de hoofdzekering plaats voor de auto (met “Auto mag het deel van de thuisbatterij nemen” aan). Het vermogensdoel telt alleen stroom van het net.\n• Batterij eerst: De batterij krijgt het zonneoverschot eerst, en de auto laadt met wat overblijft. Bij de hoofdzekering gaat de auto terug voor de batterij. Het vermogensdoel telt ook de ontlading van de batterij als import, zodat de batterij de auto niet betaalt.",
           "battery_aggregate_power_entity": "De vermogenssensor van de thuisbatterij, positief tijdens het laden. Zonneladen en het deel van de thuisbatterij hierboven zien daaraan wanneer de batterij laadt.",
           "solar_forecast_entries": "Waar de hybride strategie haar zonneprognose vandaan haalt. Leeg: hybride laadt alleen in de goedkoopste uren.",
           "change_measurement": "Laat uit om alleen deze pagina op te slaan."
@@ -530,7 +530,7 @@
     "solar_priority": {
       "options": {
         "car_first": "Auto eerst",
-        "battery_first": "Thuisbatterij eerst"
+        "battery_first": "Batterij eerst"
       }
     },
     "voltage_between_phases": {

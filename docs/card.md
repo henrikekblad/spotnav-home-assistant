@@ -457,8 +457,11 @@ several. A charger with no site says so.
 
 ![The site settings with active load balancing](images/card-settings-site.png)
 
-- **Solar priority**: **Car first** or **Battery first**.
-- **Solar forecast sources**: the forecast integrations the site may use for Hybrid. Without one,
+- **Car or home battery first** (beside the home battery row, formerly *Solar priority* in the Solar section): **Car first** or **Battery first**. It decides who gets the sun's surplus, who
+  goes first at the main fuse while the battery charges from the grid (under *car first*, with *Car may take the
+  home battery's share* on, the battery gives way; under *battery first* the car backs off), and what the import
+  target counts as import (under *battery first* the battery's discharge counts too).
+- **Solar forecast sources** (the only row left in the Solar section): the forecast integrations the site may use for Hybrid. Without one,
   Hybrid plans like Cheapest.
 - **Load balancing**: a switch for administrators, best effort and not a protective
   device. The card says when it is not available: the charger is claimed by more than one site, no

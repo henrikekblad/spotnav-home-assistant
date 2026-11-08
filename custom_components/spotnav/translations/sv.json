@@ -353,7 +353,7 @@
           "active_control_enabled": "Lastbalansering",
           "max_age_s": "Högsta ålder på mätvärden (sekunder)",
           "yield_stepping_enabled": "Bilen får ta hembatteriets andel",
-          "solar_priority": "Solöverskottet går först till",
+          "solar_priority": "Bil eller husbatteri först",
           "battery_aggregate_power_entity": "Hembatteriets effekt (valfritt)",
           "solar_forecast_entries": "Solprognos (valfritt)",
           "change_measurement": "Nästa: ändra mätare och faser"
@@ -368,7 +368,7 @@
           "active_control_enabled": "Sänker laddarnas ström när huset drar mycket, så att huvudsäkringen inte löser ut. Av: SpotNav visar bara vad den skulle göra. Görs efter bästa förmåga och ersätter inte säkringen.",
           "max_age_s": "Ett mätvärde som är äldre än så litar SpotNav inte på. Höj den bara om mätaren verkligen uppdaterar så sällan.",
           "yield_stepping_enabled": "Låter bilen ta mer än huvudsäkringens andel medan ett hembatteri som visat sig ge vika slutar ladda, aldrig över 1,15 gånger huvudsäkringen. Slå på om ett hembatteri håller nätet vid säkringen.",
-          "solar_priority": "Bilen eller hembatteriet: vem som får solens överskott först.",
+          "solar_priority": "Vem som får gå först när bilen och husbatteriet vill ha samma el.\n\n• Bil först: Bilen får solöverskottet före batteriet. När batteriet laddar från nätet ger det plats åt bilen vid huvudsäkringen (med ”Bilen får ta hembatteriets andel” på). Effektmålet räknar bara el från nätet.\n• Batteri först: Batteriet får solöverskottet först, och bilen laddar på det som blir över. Vid huvudsäkringen backar bilen för batteriet. Effektmålet räknar även batteriets urladdning som import, så att bilen inte betalas av batteriet.",
           "battery_aggregate_power_entity": "Hembatteriets effektsensor, positiv när det laddar. Solladdningen och hembatteriets andel ovan använder den för att se när batteriet laddar.",
           "solar_forecast_entries": "Var hybridstrategin hämtar sin solprognos. Tomt: hybrid laddar bara på de billigaste timmarna.",
           "change_measurement": "Lämna av för att bara spara det som står på den här sidan."
@@ -529,8 +529,8 @@
     },
     "solar_priority": {
       "options": {
-        "car_first": "Bilen först",
-        "battery_first": "Hembatteriet först"
+        "car_first": "Bil först",
+        "battery_first": "Batteri först"
       }
     },
     "voltage_between_phases": {

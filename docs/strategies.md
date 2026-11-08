@@ -322,7 +322,7 @@ cannot, and for a direct site without the total it says the meter's total grid p
 - **A target does not stop the sun.** Solar charges on surplus until the car ends the charge at its own
   limit. With a target set, once the car is at it and below a limit its integration states, the status
   says so: *Target reached – the sun tops up to the car's limit of 90 %*.
-- **Solar priority** (a site setting): *car first* uses surplus before the house battery;
+- **Car or home battery first** (a site setting, formerly *Solar priority*): *car first* uses surplus before the house battery;
   *battery first* leaves the surplus to the battery and charges the car from what it does not
   take. A house battery power sensor can be set on the site.
 - Several chargers on one site share the surplus by their
