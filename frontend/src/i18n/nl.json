@@ -483,6 +483,8 @@
   "site.activeControl.reason.noCommandableCharger": "Niet beschikbaar: geen enkele laadpaal op deze locatie accepteert een stroomcommando.",
   "site.activeControl.reason.measurement": "Niet beschikbaar: de eigen vermogensmeting van deze locatie is niet in orde.",
   "site.activeControl.reason.directionUnknown": "Load balancing kan niet zien of de stroom van het net komt of wordt teruggeleverd, dus beschermt het alleen de zekering en benut het niet alle ruimte. Zet „Netstroom heeft een teken” aan en kies het totale netvermogen, of druk op Gebruiken bij je meter onder Gevonden in Home Assistant.",
+  "site.activeControl.reason.directionUnknownUsePower": "Load balancing kan niet zien of de stroom van het net komt of wordt teruggeleverd, dus beschermt het alleen de zekering en benut het niet alle ruimte. Je meter meldt ook het vermogen per fase, dat de richting geeft: druk op Gebruiken bij je meter onder Gevonden in Home Assistant.",
+  "site.activeControl.reason.directionUnknownMagnitude": "Load balancing kan niet zien of de stroom van het net komt of wordt teruggeleverd, omdat je meter de stroom zonder richting meldt. Daarom beschermt het alleen de zekering en benut het niet alle ruimte.",
   "site.activeControl.note": "Naar beste vermogen, geen beveiligingsapparaat. Uitzetten geeft de stroom die werd verlaagd weer terug.",
   "site.activeControl.pending": "Opslaan…",
   "site.activeControl.error.unavailable": "Load balancing kan nu niet worden aangezet: de locatie kan op dit moment niet actief worden geregeld. Er is niets gewijzigd.",

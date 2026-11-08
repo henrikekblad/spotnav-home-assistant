@@ -238,6 +238,7 @@ describe("the overview's words", () => {
         enabled: false,
         writable: true,
         reason: "site_measurement_configured_missing",
+        direction_hint: null,
       };
     });
     const { element } = await open(payload);
@@ -250,7 +251,7 @@ describe("the overview's words", () => {
 
   it("words an unknown reason code as the generic sentence, never as the code", async () => {
     const payload = dashboard((p) => {
-      p["site"]["active_control"] = { available: false, enabled: false, writable: true, reason: "some_future_reason" };
+      p["site"]["active_control"] = { available: false, enabled: false, writable: true, reason: "some_future_reason", direction_hint: null };
     });
     const { element } = await open(payload);
     const text = dlg(element).textContent ?? "";

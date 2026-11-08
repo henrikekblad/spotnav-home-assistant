@@ -495,6 +495,7 @@ describe("the backend's dashboard strategy_state, site and status fixtures", () 
             available: expected.site.activeControlReason === null || expected.site.activeControlReason === "site_direction_unknown",
             enabled: false,
             reason: expected.site.activeControlReason,
+            direction_hint: null,
             // A WebSocket reader may switch it exactly when it may write the site.
             writable: expected.site.writable,
           },

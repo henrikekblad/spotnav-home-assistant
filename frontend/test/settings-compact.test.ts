@@ -26,7 +26,7 @@ function payload(): Record<string, any> {
   const two = read("dashboard", "target_soc_two_vehicles.json");
   d.charger.charger_name = "HALO Charger";
   d.site.name = "My Home";
-  d.site.active_control = { available: true, enabled: false, reason: null, writable: true };
+  d.site.active_control = { available: true, enabled: false, reason: null, direction_hint: null, writable: true };
   d.vehicles = two.vehicles;
   d.vehicles[0].target_percent = 80;
   d.vehicles[1].target_percent = null;

@@ -350,4 +350,26 @@ describe("the direction a direct site cannot know", () => {
     }
     expect(activeControlReasonText("sv", "site_direction_unknown")?.text).toContain("Nätströmmen är teckenmärkt");
   });
+
+  it("points at the meter's power per phase when its candidates have it, and says what is wrong when they cannot be signed", () => {
+    for (const language of ["sv", "en", "nb", "da", "fi", "de", "fr", "nl", "es"] as const) {
+      const power = activeControlReasonText(language, "site_direction_unknown", "use_power");
+      const magnitude = activeControlReasonText(language, "site_direction_unknown", "magnitude");
+      const general = activeControlReasonText(language, "site_direction_unknown", null);
+      expect(power?.code, language).toBeNull();
+      expect(magnitude?.code, language).toBeNull();
+      expect(new Set([power?.text, magnitude?.text, general?.text]).size, language).toBe(3);
+      // Neither refined text sends a person to a setting that cannot help.
+      expect(translate(language, "site.activeControl.reason.directionUnknownMagnitude"), language).not.toBe(
+        translate(language, "site.activeControl.reason.directionUnknown"),
+      );
+    }
+    expect(activeControlReasonText("en", "site_direction_unknown", "use_power")?.text).toContain("per phase");
+    expect(activeControlReasonText("en", "site_direction_unknown", "use_power")?.text).not.toContain("signed");
+    expect(activeControlReasonText("sv", "site_direction_unknown", "magnitude")?.text).not.toContain("teckenmärkt");
+    // A hint never changes another reason.
+    expect(activeControlReasonText("en", "duplicate_membership", "use_power")?.text).toBe(
+      activeControlReasonText("en", "duplicate_membership")?.text,
+    );
+  });
 });

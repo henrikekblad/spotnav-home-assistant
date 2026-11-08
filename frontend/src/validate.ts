@@ -222,6 +222,10 @@ export interface SolarForecastChoice {
  * resolved site. `writable` is whether *this connection* may call that command; it is not derived
  * from `control.can_act`.
  */
+/** `use_power`: the meter's per-phase power gives the direction; `magnitude`: the meter's current has none. */
+export type DirectionHint = "use_power" | "magnitude";
+export const DIRECTION_HINTS: readonly DirectionHint[] = ["use_power", "magnitude"];
+
 export interface Site {
   name: string;
   charger_count: number;
@@ -234,6 +238,8 @@ export interface Site {
     available: boolean;
     enabled: boolean;
     reason: string | null;
+    /** With `site_direction_unknown`: what the card says about it (`null`: the general advice). */
+    direction_hint: DirectionHint | null;
     writable: boolean;
   };
   writable: boolean;
@@ -1546,9 +1552,14 @@ export function decodeSite(source: Record<string, unknown>): Site {
     return bad();
   }
   const activeControl = record(required(source, "active_control"));
-  exactKeys(activeControl, ["available", "enabled", "reason", "writable"]);
+  exactKeys(activeControl, ["available", "enabled", "reason", "direction_hint", "writable"]);
   const available = booleanValue(activeControl, "available");
   const reason = textOrNull(activeControl, "reason");
+  const directionHint = enumOrNull(activeControl, "direction_hint", DIRECTION_HINTS);
+  // A hint only goes with the reason it refines.
+  if (directionHint !== null && reason !== "site_direction_unknown") {
+    return bad();
+  }
   // A reason goes with "not available", except the one that says load balancing only lowers on this site.
   if (available && reason !== null && reason !== "site_direction_unknown") {
     return bad();
@@ -1562,6 +1573,7 @@ export function decodeSite(source: Record<string, unknown>): Site {
       available,
       enabled: booleanValue(activeControl, "enabled"),
       reason,
+      direction_hint: directionHint,
       writable: booleanValue(activeControl, "writable"),
     },
     writable: booleanValue(source, "writable"),

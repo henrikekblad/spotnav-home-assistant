@@ -483,6 +483,8 @@
   "site.activeControl.reason.noCommandableCharger": "Not available: no charger on this site accepts a current command.",
   "site.activeControl.reason.measurement": "Not available: this site's own power measurement is not healthy.",
   "site.activeControl.reason.directionUnknown": "Load balancing cannot tell whether the current is drawn from the grid or exported, so it only protects the fuse and does not use all the room there is. Turn on “Grid current is signed” and choose the total grid power, or press Use on your meter under Found in Home Assistant.",
+  "site.activeControl.reason.directionUnknownUsePower": "Load balancing cannot tell whether the current is drawn from the grid or exported, so it only protects the fuse and does not use all the room there is. Your meter also reports power per phase, which gives the direction: press Use on your meter under Found in Home Assistant.",
+  "site.activeControl.reason.directionUnknownMagnitude": "Load balancing cannot tell whether the current is drawn from the grid or exported, because your meter reports the current without a direction. So it only protects the fuse and does not use all the room there is.",
   "site.activeControl.note": "Best effort, not a protective device. Turning it off gives any current it had lowered back.",
   "site.activeControl.pending": "Saving…",
   "site.activeControl.error.unavailable": "Load balancing cannot be turned on right now: the site cannot be actively controlled at the moment. Nothing was changed.",

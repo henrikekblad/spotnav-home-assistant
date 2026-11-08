@@ -483,6 +483,8 @@
   "site.activeControl.reason.noCommandableCharger": "Ikke tilgjengelig: ingen lader på anlegget tar imot en strømkommando.",
   "site.activeControl.reason.measurement": "Ikke tilgjengelig: anleggets egen effektmåling er ikke i orden.",
   "site.activeControl.reason.directionUnknown": "Lastbalanseringen kan ikke se om strømmen tas fra nettet eller går ut på det, så den beskytter bare sikringen og utnytter ikke all plassen. Slå på «Nettstrømmen har fortegn» og velg nettets samlede effekt, eller trykk Bruk ved måleren din under Funnet i Home Assistant.",
+  "site.activeControl.reason.directionUnknownUsePower": "Lastbalanseringen kan ikke se om strømmen tas fra nettet eller går ut på det, så den beskytter bare sikringen og utnytter ikke all plassen. Måleren din oppgir også effekten per fase, som gir retningen: trykk Bruk ved måleren din under Funnet i Home Assistant.",
+  "site.activeControl.reason.directionUnknownMagnitude": "Lastbalanseringen kan ikke se om strømmen tas fra nettet eller går ut på det, fordi måleren din oppgir strømmen uten retning. Den beskytter derfor bare sikringen og utnytter ikke all plassen.",
   "site.activeControl.note": "Best effort, ingen verneinnretning. Når den slås av, får laderen tilbake strømmen som var senket.",
   "site.activeControl.pending": "Lagrer…",
   "site.activeControl.error.unavailable": "Lastbalanseringen kan ikke slås på akkurat nå: anlegget kan ikke styres aktivt for øyeblikket. Ingenting ble endret.",

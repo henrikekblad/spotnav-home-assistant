@@ -57,6 +57,7 @@ import type {
   Dashboard,
   Fiscal,
   CameraIdentification,
+  DirectionHint,
   GridTariffBlock,
   GuestBlock,
   Identification,
@@ -706,12 +707,22 @@ export const ACTIVE_CONTROL_REASON_KEYS: Record<string, TranslationKey> = {
   site_direction_unknown: "site.activeControl.reason.directionUnknown",
 };
 
+/** What to say with `site_direction_unknown` when the meter's own candidates say more (`DirectionHint`). */
+const DIRECTION_HINT_KEYS: Record<DirectionHint, TranslationKey> = {
+  use_power: "site.activeControl.reason.directionUnknownUsePower",
+  magnitude: "site.activeControl.reason.directionUnknownMagnitude",
+};
+
 export function activeControlReasonText(
   language: Language,
   reason: string | null,
+  hint: DirectionHint | null = null,
 ): { text: string; code: string | null } | null {
   if (reason === null) {
     return null;
+  }
+  if (reason === "site_direction_unknown" && hint !== null) {
+    return { text: translate(language, DIRECTION_HINT_KEYS[hint]), code: null };
   }
   const known = ACTIVE_CONTROL_REASON_KEYS[reason];
   if (known !== undefined) {
@@ -807,7 +818,7 @@ export function siteFactsFor(site: Site | null, language: Language): SiteFacts |
     activeControlAvailable: site.active_control.available,
     activeControlWritable: site.active_control.writable,
     activeControlEnabled: site.active_control.enabled,
-    activeControlReason: activeControlReasonText(language, site.active_control.reason),
+    activeControlReason: activeControlReasonText(language, site.active_control.reason, site.active_control.direction_hint),
     writable: site.writable,
   };
 }
