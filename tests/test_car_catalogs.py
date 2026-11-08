@@ -20,10 +20,13 @@ classes on their state of charge or range (and nissan_leaf registers no device).
 
 from __future__ import annotations
 
-from typing import NamedTuple
+import copy
+from typing import Any, NamedTuple
 
 import pytest
 from homeassistant.core import HomeAssistant
+
+from custom_components.spotnav.vehicles.identification_sources import source_plug_reading
 
 from .car_catalogs import domains, literal_names, load, picks, register
 
@@ -230,3 +233,41 @@ async def test_a_nickname_in_literal_entity_names_changes_nothing(
     found = picks(hass, device_id, keys)
     assert found["vehicle"] is (domain not in NOT_CARS)
     assert Picks(found["soc"], found["limit"], found["target"], found["plug"], found["location"]) == EXPECTED[domain]
+
+
+def _bmw_as_streamed_in_german() -> dict[str, Any]:
+    """BavarianData's entities as eight real BMW and MINI cars stream them (issue #2): of the plug signals only
+    `chargingPort.status` (no `isPlugged` binary sensor, no `connectorStatus`, no other charging port state), on an
+    install whose entity names are not English."""
+    data = copy.deepcopy(CATALOGS["bavariandata"])
+    data["entities"] = [
+        entity
+        for entity in data["entities"]
+        if not entity["key"].endswith((".isPlugged", ".connectorStatus"))
+        and entity["key"]
+        not in (
+            "vehicle.body.chargingPort.combinedStatus",
+            "vehicle.body.chargingPort.dcStatus",
+            "vehicle.body.chargingPort.statusClearText",
+        )
+    ]
+    for number, entity in enumerate(data["entities"]):
+        if entity.get("name_en"):
+            entity["name_en"] = (
+                "Status der Ladesteckverbindung"
+                if entity["key"] == "vehicle.body.chargingPort.status"
+                else f"Wert {number}"
+            )
+    return data
+
+
+async def test_bmw_plug_state_is_found_in_any_language(hass: HomeAssistant) -> None:
+    """Only the English name of `chargingPort.status` says plug: it is found as a charging state, whose one
+    unplugged value is `disconnected`."""
+    device_id, keys = register(hass, _bmw_as_streamed_in_german(), all_enabled=False)
+    assert picks(hass, device_id, keys)["plug"] == "sensor:vehicle.body.chargingPort.status"
+    entity_id = next(entity_id for entity_id, key in keys.items() if key == "sensor:vehicle.body.chargingPort.status")
+    options = hass.states.get(entity_id).attributes["options"]
+    for value, reading in (("connected", True), ("disconnected", False), ("invalid", None)):
+        hass.states.async_set(entity_id, value, {"device_class": "enum", "options": options})
+        assert source_plug_reading(hass, hass.states.get(entity_id)) is reading
