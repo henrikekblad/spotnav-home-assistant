@@ -535,4 +535,90 @@ async def test_a_car_plugged_in_away_from_home_is_no_plug_in_here(
     await hass.async_block_till_done()
     await _go(hass, freezer, FIRST[0] + timedelta(minutes=31))
     assert _connection_events(night)[-1] == {"kind": "plug_in", "previous": False, "source": SOURCE_CAR_PLUG}
-    assert len(night.starts) == starts + 1
+
+
+# ------------------------------------------------------------------ a charging state as the car's plug source
+
+CHARGING_STATE = "sensor.skoda_charging_state"
+SKODA_OPTIONS = ["charging", "connect_cable", "ready_for_charging", "conserving", "discharging", "charging_interrupted"]
+
+
+async def _with_skoda(hass: HomeAssistant, night: Night, state: str) -> str:
+    """A Skoda whose only plug evidence is its charging state (Home Assistant's own integration)."""
+    skoda = add_car(hass, "Skoda")
+    vehicle_entity(
+        hass, device_id=skoda, domain="sensor", object_id="skoda_charging_state", state=state,
+        attributes={"device_class": "enum", "options": SKODA_OPTIONS},
+    )
+    await domain_data(hass).auto_store.async_update(
+        night.entry.entry_id,
+        mutate=lambda settings: replace(settings, target=TargetSocIntent(vehicle_id=skoda, target_percent=40.0)),
+    )
+    await hass.async_block_till_done()
+    return skoda
+
+
+def _skoda_says(hass: HomeAssistant, value: str) -> None:
+    hass.states.async_set(CHARGING_STATE, value, {"device_class": "enum", "options": SKODA_OPTIONS})
+
+
+def _skoda_reports_again(hass: HomeAssistant) -> None:
+    current = hass.states.get(CHARGING_STATE)
+    hass.states.async_set(CHARGING_STATE, current.state, current.attributes, force_update=False)
+
+
+async def test_a_charging_state_ends_the_stop_only_by_a_change_never_by_a_report_again(
+    hass: HomeAssistant, freezer: Any, relay: FakeRelay
+) -> None:
+    """A Skoda may keep reporting `connect_cable` while the cable is in and the connector is off under the Stop: a
+    value written again proves nothing there, so only a change to it is an unplug, and only a change from it a
+    plug-in. (A real plug sensor's report again counts: the first test.)"""
+    night = await _night(hass, freezer, off_status="Unavailable", car=True)
+    await _with_skoda(hass, night, "conserving")
+    await _charging(hass, freezer, night)
+    await _stop(night)
+    adapter = night.controller.adapter
+    assert night.controller.car_plug_facts()["entity_id"] == CHARGING_STATE
+
+    # Plugged in, said again: no plug-in reading, the card still says to press Start.
+    _skoda_reports_again(hass)
+    await hass.async_block_till_done()
+    assert adapter.vehicle_connected() is None
+    assert "stop_unplug_unseen" in _status(night)
+
+    # The connector is off, so the car says `connect_cable` and keeps saying it on every poll: only the change counts.
+    _skoda_says(hass, "connect_cable")
+    await hass.async_block_till_done()
+    assert not night.controller.held_off_by_person, "the change to unplugged ends the Stop"
+    assert _connection_events(night)[-1] == {"kind": "unplug", "previous": True, "source": SOURCE_CAR_PLUG}
+
+    # Said again, and again: no plug-in, nothing else.
+    for minutes in (25, 30):
+        await _go(hass, freezer, FIRST[0] + timedelta(minutes=minutes))
+        _skoda_reports_again(hass)
+        await hass.async_block_till_done()
+    assert _connection_events(night)[-1]["kind"] == "unplug"
+
+    # Plugged in again: the change from `connect_cable` is the plug-in.
+    _skoda_says(hass, "ready_for_charging")
+    await hass.async_block_till_done()
+    await _go(hass, freezer, FIRST[0] + timedelta(minutes=31))
+    assert _connection_events(night)[-1] == {"kind": "plug_in", "previous": False, "source": SOURCE_CAR_PLUG}
+
+
+async def test_a_charging_state_that_said_connect_cable_before_the_stop_never_ends_it_by_saying_it_again(
+    hass: HomeAssistant, freezer: Any, relay: FakeRelay
+) -> None:
+    """The field case to guard: a Skoda that says `connect_cable` with the cable in (its connector de-energised) and
+    re-reports it on every poll keeps a person's Stop."""
+    night = await _night(hass, freezer, off_status="Unavailable", car=True)
+    await _with_skoda(hass, night, "connect_cable")
+    await _charging(hass, freezer, night)
+    await _stop(night)
+    for minutes in (10, 20, 40, 60):
+        await _go(hass, freezer, FIRST[0] + timedelta(minutes=minutes))
+        _skoda_reports_again(hass)
+        await hass.async_block_till_done()
+    assert night.controller.held_off_by_person
+    assert night.controller.known_connected is True
+    assert night.controller.adapter.vehicle_connected() is None

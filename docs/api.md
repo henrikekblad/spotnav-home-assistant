@@ -198,7 +198,8 @@ it (`"reads": ["balancing_paused"]`).
 **A person's Stop nothing can see end.** A person's Stop ends when the car is unplugged. A charger that otherwise
 says when a car is plugged in may say nothing while it is stopped (a Charge Amps connector turned off says
 `Unavailable`, with or without a car); then the car's own plug sensor, read fresh since then, tells the unplug and
-the next plug-in. When neither can, the line `stop_unplug_unseen` (no params, tone `normal`) follows the `paused`
+the next plug-in. A car whose only plug evidence is its charging state (a Skoda's `connect_cable`) tells them only by
+a change of that state: a value it reports again says nothing. When neither can, the line `stop_unplug_unseen` (no params, tone `normal`) follows the `paused`
 headline: only Start or Resume ends the Stop. It is a status line only, never a notification. The webhook leaves it
 out unless the request asks for it (`"reads": ["stop_unplug_unseen"]`).
 
