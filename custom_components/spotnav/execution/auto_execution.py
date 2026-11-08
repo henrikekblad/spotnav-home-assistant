@@ -57,6 +57,7 @@ from ..pricing.price_source import effective_settings, plan_revision_for
 from .controller import (
     AUTOMATIC_BALANCING_RESUME,
     AUTOMATIC_PERSON_RESUME,
+    AUTOMATIC_START,
     AUTOMATIC_STOP,
     ChargingController,
     ChargingExecutionError,
@@ -66,10 +67,14 @@ from .manual_pause import ManualChargeWatch
 from ..core import events as core_events
 from ..core.ownership import REASON_MIN_SOC
 from .min_soc_floor import ORIGIN_MIN_SOC
+from ..vehicles.guest import is_guest
 from .session_runner import CommandOutcome, NullRunner, SessionRunner
 
 
 _LOGGER = logging.getLogger(__name__)
+
+#: The charge a window of the plan started, or claimed as the plan's (`ChargingController.charge_origin`).
+ORIGIN_PLAN_WINDOW: Final = "plan_window"
 
 
 #: What a charger's execution is doing, as one stable fact (about the charger, unlike
@@ -568,8 +573,9 @@ class AutoExecutor:
         self._shutdown = False
         self._applied: AutoApplication | None = None
         self._pending: PendingApplication | None = None
-        # The attempt whose wait found the plan built from older settings while that plan's charge ran: the plan is
-        # cleared at that window's boundary (`async_clear_superseded_plan`), as a waiting change would be installed there.
+        # The attempt whose wait found the plan built from older settings while a charge of it that is not stopped for
+        # that ran (its top-off, a guest car's charge): the plan is cleared when that charge ends
+        # (`async_clear_superseded_plan`), and nothing of it starts meanwhile (`superseded_by_wait`).
         self._clear_waiting: int | None = None
         # The installed plan's identity and the settings revision whose calculation proposed the same thing for the
         # charger (`_is_material`): built from older settings, it still says what those settings want.
@@ -645,11 +651,20 @@ class AutoExecutor:
         charger stopped (one whose own stop failed leaves its plan behind it). Under a person's manual
         pause the person owns the charger: nothing automatic stops their Start, and load balancing resumes
         only a charge they started. A charge a person started is resumed by load balancing under any pause
-        but their Stop (`AUTOMATIC_PERSON_RESUME`)."""
+        but their Stop (`AUTOMATIC_PERSON_RESUME`). A plan superseded by a wait (`superseded_by_wait`) starts
+        nothing: no window, plug-in or claim of it, and load balancing does not give its charge back."""
         settings = self._store.settings(self._entry_id)
         pause = settings.pause
         if kind == AUTOMATIC_PERSON_RESUME:
             return not (pause.manual and pause.action == MANUAL_STOP)
+        if kind == AUTOMATIC_START and self.superseded_by_wait():
+            return False
+        if (
+            kind == AUTOMATIC_BALANCING_RESUME
+            and self._controller.paused_charge_origin == ORIGIN_PLAN_WINDOW
+            and self.superseded_by_wait()
+        ):
+            return False
         if not pause_blocks_execution(settings):
             return True
         if pause.manual:
@@ -659,6 +674,25 @@ class AutoExecutor:
                 return pause.action == MANUAL_START
             return kind == AUTOMATIC_STOP and pause.action == MANUAL_STOP
         return kind == AUTOMATIC_STOP
+
+    def superseded_by_wait(self) -> bool:
+        """Whether the plan in force is superseded by a wait: it was built from settings the person has since changed
+        (`_superseded_by_settings`), and the answer for the settings stored now is to wait (`waiting_for_publication`),
+        or that answer already marked it for clearing. Nothing of such a plan starts a charge (`automatic_allowed`,
+        `ChargingController._superseded_holds_start`); stops are always allowed. Read without the lock and without side
+        effects: a restore's re-arm asks it before the first reconcile of the restored plan."""
+        if self._shutdown:
+            return False
+        applied = self.applied
+        if applied is None or not self._superseded_by_settings(applied):
+            return False
+        if self._clear_waiting is not None:
+            return True
+        snapshot = None if self._live_snapshot is None else self._live_snapshot()
+        return (
+            getattr(snapshot, "state", None) == "waiting_for_publication"
+            and getattr(snapshot, "settings_revision", None) == self._store.settings(self._entry_id).revision
+        )
 
     def holds_charger_off(self) -> bool:
         """Whether a person's Stop pauses Auto: any charge the charger begins by itself is stopped at once,
@@ -1005,11 +1039,13 @@ class AutoExecutor:
                 and self._superseded_by_settings(applied)
             ):
                 # The person changed what they want and the answer for it is to wait for prices still to be published
-                # (or for a cheaper night the history shows): the plan built from their old settings must not run. A
-                # charge of it that runs now is not cut; it is cleared at its window's boundary, as a waiting change
-                # would install. Only that answer: one that says nothing about the settings (prices not in yet after a
-                # start, stale or unavailable prices, incomplete settings) leaves the plan alone, as ever.
-                if self._plan_charge_runs():
+                # (or for a cheaper night the history shows): the plan built from their old settings must not run. Its
+                # own charge that runs now is stopped and the plan cleared at once; a charge it does not own (a
+                # person's Start, the car's minimum level, the sun's) goes on (`_clear_superseded_locked`). Only its
+                # top-off and a guest car's charge run to their end, the plan cleared then. Only that answer: one that
+                # says nothing about the settings (prices not in yet after a start, stale or unavailable prices,
+                # incomplete settings) leaves the plan alone, as ever.
+                if self._superseded_runs_to_end():
                     self._clear_waiting = attempt
                     await self._notify_change()
                     return applied
@@ -1032,8 +1068,8 @@ class AutoExecutor:
                 self._confirmed = (applied.identity, application.settings_revision)
             return applied
         if self.window_charging_now():
-            # A window is charging and is never shortened: the change waits for the boundary
-            # the plan's timers mark.
+            # A window is charging and a new plan never shortens it: the change waits for the boundary
+            # the plan's timers mark. (A change answered by a wait stops the plan's own charge instead, above.)
             self._pending = PendingApplication(
                 application=application,
                 attempt=attempt,
@@ -1061,18 +1097,37 @@ class AutoExecutor:
         return self._confirmed != (applied.identity, settings.revision)
 
     def _plan_charge_runs(self) -> bool:
-        """Whether the installed plan's charge runs now: a window of it is open (or its top-off), or the charge it
-        started still runs."""
-        if self.window_charging_now():
+        """Whether the installed plan's own charge runs now: its top-off, or the charge a window of it started while the
+        charger still charges. An open window with no charge (not started yet, the charger off, load balancing's
+        pause) is not one."""
+        if self._controller.top_off_until is not None:
             return True
-        return self._controller.charge_origin == "plan_window" and self._controller.charging
+        return self._controller.charge_origin == ORIGIN_PLAN_WINDOW and self._controller.charging
+
+    def _superseded_runs_to_end(self) -> bool:
+        """Whether a superseded plan's charge that runs now is left to end by itself rather than stopped: its top-off
+        (past the plan's windows, as a window's end would leave it), or a guest car's charge."""
+        if self._controller.top_off_until is not None:
+            return True
+        return is_guest(self._store.settings(self._entry_id)) and self._plan_charge_runs()
 
     async def _clear_superseded_locked(self) -> AutoApplication | None:
-        """Clear a plan whose settings are gone, with its timers, touching no charge (none of the plan's runs), with
-        this boundary's lock held. Returns what remains applied."""
+        """Clear a plan whose settings are gone, with its timers, with this boundary's lock held. Its own charge that
+        runs now is stopped (`ChargingController.async_end_superseded_plan`, where the core decides what is the plan's);
+        any other charge is not touched (`async_clear_plan_keep_charge`), and a charge of the plan that load balancing
+        holds back is not given back. Nothing is told. Returns what remains applied."""
         self._clear_waiting = None
+        controller = self._controller
         try:
-            await self._controller.async_clear_plan_keep_charge(dropped=True)
+            if controller.charge_origin == ORIGIN_PLAN_WINDOW and controller.charge_control_on:
+                if not await controller.async_end_superseded_plan():
+                    # The core could not decide: nothing is stopped and the plan is kept; the next calculation asks.
+                    return self.applied
+            else:
+                if controller.balancing_holds(ORIGIN_PLAN_WINDOW):
+                    # The plan's charge load balancing paused is not wanted any more: not given back.
+                    controller.forget_balancing_pause()
+                await controller.async_clear_plan_keep_charge(dropped=True)
         except Exception as err:  # noqa: BLE001 - reported, the next calculation retries
             _LOGGER.warning("Clearing a plan whose settings changed failed: %s", type(err).__name__)
             return self.applied
@@ -1086,7 +1141,8 @@ class AutoExecutor:
         return None
 
     async def async_clear_superseded_plan(self) -> AutoApplication | None:
-        """A boundary arrived: clear the plan a waiting answer superseded while its charge ran, if that still holds."""
+        """The charger's state changed: clear the plan a waiting answer superseded while its top-off or a guest car's
+        charge ran, once that charge has ended, if that still holds."""
         async with self._lock:
             attempt = self._clear_waiting
             if attempt is None:
@@ -1105,7 +1161,7 @@ class AutoExecutor:
             if not self._superseded_by_settings(applied):
                 self._clear_waiting = None
                 return applied
-            if self._plan_charge_runs():
+            if self._superseded_runs_to_end():
                 return applied
             return await self._clear_superseded_locked()
 
