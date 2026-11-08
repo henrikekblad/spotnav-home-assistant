@@ -758,6 +758,7 @@
   "sendDebug.error.consent": "Cochez la case pour donner votre accord avant d'envoyer.",
   "sendDebug.error.rateLimited": "Trop de rapports ont été envoyés aujourd'hui. Réessayez dans {wait}.",
   "sendDebug.error.rateLimitedLater": "Trop de rapports ont été envoyés aujourd'hui. Réessayez plus tard.",
+  "sendDebug.error.busy": "Le serveur de SpotNav est occupé par d'autres rapports. Réessayez dans un instant.",
   "sendDebug.error.tooLarge": "Les infos de débogage sont trop volumineuses pour être envoyées.",
   "sendDebug.error.rejected": "Le serveur de SpotNav n'a pas accepté le rapport.",
   "sendDebug.error.network": "Le serveur de SpotNav est injoignable.",

@@ -758,6 +758,7 @@
   "sendDebug.error.consent": "Marca la casilla para aceptar antes de enviar.",
   "sendDebug.error.rateLimited": "Hoy se han enviado demasiados informes. Inténtalo de nuevo en {wait}.",
   "sendDebug.error.rateLimitedLater": "Hoy se han enviado demasiados informes. Inténtalo más tarde.",
+  "sendDebug.error.busy": "El servidor de SpotNav está ocupado con otros informes. Inténtalo de nuevo en un momento.",
   "sendDebug.error.tooLarge": "La información de depuración es demasiado grande para enviarla.",
   "sendDebug.error.rejected": "El servidor de SpotNav no aceptó el informe.",
   "sendDebug.error.network": "No se pudo conectar con el servidor de SpotNav.",

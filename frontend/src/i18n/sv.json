@@ -758,6 +758,7 @@
   "sendDebug.error.consent": "Kryssa i rutan för att godkänna innan du skickar.",
   "sendDebug.error.rateLimited": "För många rapporter har skickats i dag. Försök igen om {wait}.",
   "sendDebug.error.rateLimitedLater": "För många rapporter har skickats i dag. Försök igen senare.",
+  "sendDebug.error.busy": "SpotNavs server är upptagen med andra rapporter. Försök igen om en stund.",
   "sendDebug.error.tooLarge": "Felsökningsinfon är för stor för att skickas.",
   "sendDebug.error.rejected": "SpotNavs server tog inte emot rapporten.",
   "sendDebug.error.network": "SpotNavs server gick inte att nå.",

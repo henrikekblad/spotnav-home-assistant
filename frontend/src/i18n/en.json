@@ -758,6 +758,7 @@
   "sendDebug.error.consent": "Tick the box to agree before sending.",
   "sendDebug.error.rateLimited": "Too many reports have been sent today. Try again in {wait}.",
   "sendDebug.error.rateLimitedLater": "Too many reports have been sent today. Try again later.",
+  "sendDebug.error.busy": "SpotNav's server is busy with other reports. Try again in a moment.",
   "sendDebug.error.tooLarge": "The debug info is too large to send.",
   "sendDebug.error.rejected": "SpotNav's server did not accept the report.",
   "sendDebug.error.network": "SpotNav's server could not be reached.",

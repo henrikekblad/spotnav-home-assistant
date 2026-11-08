@@ -758,6 +758,7 @@
   "sendDebug.error.consent": "Vink het vakje aan om akkoord te gaan voordat je verstuurt.",
   "sendDebug.error.rateLimited": "Er zijn vandaag te veel rapporten verstuurd. Probeer het over {wait} opnieuw.",
   "sendDebug.error.rateLimitedLater": "Er zijn vandaag te veel rapporten verstuurd. Probeer het later opnieuw.",
+  "sendDebug.error.busy": "De server van SpotNav is bezig met andere rapporten. Probeer het zo meteen opnieuw.",
   "sendDebug.error.tooLarge": "De debuginfo is te groot om te versturen.",
   "sendDebug.error.rejected": "De server van SpotNav heeft het rapport niet aangenomen.",
   "sendDebug.error.network": "De server van SpotNav was niet bereikbaar.",

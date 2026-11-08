@@ -758,6 +758,7 @@
   "sendDebug.error.consent": "Setz vor dem Senden das Häkchen, um zuzustimmen.",
   "sendDebug.error.rateLimited": "Heute wurden zu viele Berichte gesendet. Versuch es in {wait} erneut.",
   "sendDebug.error.rateLimitedLater": "Heute wurden zu viele Berichte gesendet. Versuch es später erneut.",
+  "sendDebug.error.busy": "Der Server von SpotNav ist mit anderen Berichten beschäftigt. Versuch es gleich noch einmal.",
   "sendDebug.error.tooLarge": "Die Debug-Infos sind zu groß zum Senden.",
   "sendDebug.error.rejected": "Der Server von SpotNav hat den Bericht nicht angenommen.",
   "sendDebug.error.network": "Der Server von SpotNav war nicht erreichbar.",

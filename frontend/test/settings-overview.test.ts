@@ -514,6 +514,12 @@ describe("Send debug info", () => {
       `${translate("en", "sendDebug.error.rateLimited", { wait: "2 h" })} ${translate("en", "sendDebug.error.download")}`,
     );
 
+    // A short wait is the server busy with other reports: try again in a moment, not tomorrow.
+    await submit(element);
+    hass.resolveNext({ api_version: 1, ok: false, error: "spotnav_report_rate_limited", ref: null, retry_after_s: 10 });
+    await settle();
+    expect(errorText(element)).toBe(translate("en", "sendDebug.error.busy"));
+
     await submit(element);
     hass.resolveNext({ api_version: 1, ok: false, error: "spotnav_report_too_large", ref: null, retry_after_s: null });
     await settle();
@@ -532,7 +538,7 @@ describe("Send debug info", () => {
 
     // The form stays, filled in, for another try.
     expect(field<HTMLTextAreaElement>(element, "message").value).toBe("It stopped");
-    expect(sends(hass)).toHaveLength(4);
+    expect(sends(hass)).toHaveLength(5);
   });
 });
 

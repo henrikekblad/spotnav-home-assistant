@@ -17,6 +17,9 @@ export const PRIVACY_URL = "https://spotnav.sensnology.se/privacy";
 export const MAX_MESSAGE_CHARS = 4000;
 export const MAX_EMAIL_CHARS = 254;
 
+/** A rate-limit wait shorter than this means "busy, try again in a moment". */
+const BUSY_WAIT_S = 60;
+
 const EMAIL = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
 export type SendAnswer =
@@ -57,6 +60,10 @@ export function sendFailureText(language: Language, code: string | null, retryAf
   let reason: string;
   switch (code) {
     case "spotnav_report_rate_limited":
+      // A wait under a minute is the server busy with other reports (it says 10 s), not the day's limit reached.
+      if (retryAfterS !== null && retryAfterS < BUSY_WAIT_S) {
+        return translate(language, "sendDebug.error.busy");
+      }
       reason =
         retryAfterS === null
           ? translate(language, "sendDebug.error.rateLimitedLater")

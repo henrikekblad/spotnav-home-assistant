@@ -127,6 +127,10 @@ def test_control_characters_are_stripped_but_newlines_kept() -> None:
     ("response", "expected"),
     [
         ({"status": 429, "json": {"retry_after_s": 3600}}, ("spotnav_report_rate_limited", 3600)),
+        (
+            {"status": 429, "json": {"error": "rate_limited", "retry_after_s": 10}, "headers": {"Retry-After": "10"}},
+            ("spotnav_report_rate_limited", 10),
+        ),
         ({"status": 429, "text": "", "headers": {"Retry-After": "120"}}, ("spotnav_report_rate_limited", 120)),
         ({"status": 413, "text": "too large"}, ("spotnav_report_too_large", None)),
         ({"status": 400, "text": "bad"}, ("spotnav_report_rejected", None)),

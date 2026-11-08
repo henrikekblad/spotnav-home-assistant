@@ -758,6 +758,7 @@
   "sendDebug.error.consent": "Hyväksy valitsemalla ruutu ennen lähettämistä.",
   "sendDebug.error.rateLimited": "Tänään on lähetetty liian monta raporttia. Yritä uudelleen {wait} kuluttua.",
   "sendDebug.error.rateLimitedLater": "Tänään on lähetetty liian monta raporttia. Yritä myöhemmin uudelleen.",
+  "sendDebug.error.busy": "SpotNavin palvelin käsittelee muita raportteja. Yritä hetken kuluttua uudelleen.",
   "sendDebug.error.tooLarge": "Vianetsintätiedot ovat liian suuret lähetettäviksi.",
   "sendDebug.error.rejected": "SpotNavin palvelin ei hyväksynyt raporttia.",
   "sendDebug.error.network": "SpotNavin palvelimeen ei saatu yhteyttä.",
