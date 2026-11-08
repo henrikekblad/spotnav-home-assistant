@@ -27,9 +27,11 @@ from ..site.solar_capability import SolarCapability
 
 
 #: A blocking reason that does not take `active_available` away: a direct site whose currents carry no sign, or
-#: without the total grid power to confirm one, can never know a phase's direction, so load balancing only lowers
-#: an overload by |I| there and never raises (`site/regulator.py`). The fix is the person's: *The grid current is
-#: signed* and the total grid power (or the detected meter, which brings both). Gone as soon as both are set.
+#: without the total grid power to confirm one, can never know a phase's direction, so load balancing works on
+#: the measured current alone there: lowered on an overload by |I|, raised again within the room |I| leaves, a
+#: phase's export never counted as room (`regulator.magnitude_decision`). The fix is the person's: *The grid
+#: current is signed* and the total grid power (or the detected meter, which brings both). Gone as soon as both are
+#: set.
 REASON_SITE_DIRECTION_UNKNOWN = "site_direction_unknown"
 
 
@@ -113,7 +115,7 @@ def build_capability_snapshot(
 
     `direction_never_known` (a direct site without both a signed current and the total grid power) adds
     `REASON_SITE_DIRECTION_UNKNOWN` to `blocking_reasons` but leaves `active_available` as it is: turned on,
-    load balancing still lowers an overload there, which is better than nothing.
+    load balancing still lowers an overload there and raises within the room the measured current leaves.
     """
     probe_result = calculate_site_capacity(config, requests)
 

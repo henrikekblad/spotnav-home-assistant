@@ -6522,8 +6522,9 @@ class SiteCapacityController:
     @property
     def direction_never_known(self) -> bool:
         """Whether this site can never know a phase's direction: a direct site without both a signed current and the
-        total grid power that confirms its sign (`site/current_sign.py`). Load balancing then only lowers an
-        overload by |I| and never raises."""
+        total grid power that confirms its sign (`site/current_sign.py`). Load balancing then works on the measured
+        current alone: lowered on an overload by |I|, raised within the room |I| leaves, a phase's export never
+        counted as room (`regulator.magnitude_decision`)."""
         if self.config.get(CONF_MEASUREMENT_MODE) != MEASUREMENT_MODE_DIRECT:
             return False
         return not (

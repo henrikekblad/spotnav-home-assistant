@@ -1339,7 +1339,7 @@ function decodeStrategyRow(source: Record<string, unknown>): StrategyRow {
     return bad();
   }
   // A row is either on with nothing to explain, or a placeholder that is off and says why.
-  // A reason goes with "not available", except the one that says load balancing only lowers on this site.
+  // A reason goes with "not available", except the one that says this site cannot tell import from export.
   if (available && reason !== null && reason !== "site_direction_unknown") {
     return bad();
   }
@@ -1560,7 +1560,7 @@ export function decodeSite(source: Record<string, unknown>): Site {
   if (directionHint !== null && reason !== "site_direction_unknown") {
     return bad();
   }
-  // A reason goes with "not available", except the one that says load balancing only lowers on this site.
+  // A reason goes with "not available", except the one that says this site cannot tell import from export.
   if (available && reason !== null && reason !== "site_direction_unknown") {
     return bad();
   }

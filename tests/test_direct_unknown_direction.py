@@ -349,14 +349,14 @@ async def test_a_signed_site_with_its_total_keeps_its_rules(hass: HomeAssistant)
     assert decision.reason == "reducing_current_due_to_active_import_overload"
 
 
-async def test_the_site_says_load_balancing_only_lowers_until_the_sign_and_the_total_are_set(
+async def test_the_site_says_the_direction_is_unknown_until_the_sign_and_the_total_are_set(
     hass: HomeAssistant,
 ) -> None:
     from custom_components.spotnav.api.dashboard import _active_control_reason
 
     charger, _, site = await _setup(hass, "hint")
     load_balancing = site.capability_snapshot.load_balancing
-    # Still available (it lowers an overload), but never without a reason.
+    # Still available (it lowers an overload and raises within the room |I| leaves), but never without a reason.
     assert load_balancing.active_available
     assert load_balancing.blocking_reasons == ("site_direction_unknown",)
     assert _active_control_reason(site) == "site_direction_unknown"

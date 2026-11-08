@@ -703,7 +703,7 @@ export interface SiteFacts {
 export const ACTIVE_CONTROL_REASON_KEYS: Record<string, TranslationKey> = {
   duplicate_membership: "site.activeControl.reason.duplicateMembership",
   no_commandable_charger: "site.activeControl.reason.noCommandableCharger",
-  // Available, but only to lower: a direct site that cannot tell import from export. Says what to set.
+  // Available, but on the measured current alone: a direct site that cannot tell import from export. Says what to set.
   site_direction_unknown: "site.activeControl.reason.directionUnknown",
 };
 

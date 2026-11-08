@@ -315,7 +315,7 @@ const V7_EXPECTED: Record<string, ExpectedV7> = {
       solar_priority: "car_first",
       forecastSelected: [],
       forecastChoices: [],
-      // Available (its plain-switch charger can be paused), but its current carries no sign: it only lowers.
+      // Available (its plain-switch charger can be paused), but its current carries no sign: it works on the measured current alone.
       activeControlReason: "site_direction_unknown",
       writable: true,
     },
@@ -491,7 +491,7 @@ describe("the backend's dashboard strategy_state, site and status fixtures", () 
           solar_priority: expected.site.solar_priority,
           solar_forecast: { selected: expected.site.forecastSelected, choices: expected.site.forecastChoices },
           active_control: {
-            // Only the reason that says it only lowers goes with "available".
+            // Only the reason that says the direction is unknown goes with "available".
             available: expected.site.activeControlReason === null || expected.site.activeControlReason === "site_direction_unknown",
             enabled: false,
             reason: expected.site.activeControlReason,
