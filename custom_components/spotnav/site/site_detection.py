@@ -723,6 +723,10 @@ class MeterCandidate:
     # A derived candidate with no current, apparent or reactive power: the fuse check will be
     # estimated from active power (`site_capacity.estimate_current_from_power`).
     estimated: bool = False
+    # A derived candidate whose meter has per-phase power and current but no complete per-phase voltage:
+    # the voltage is the site's nominal one (`voltage_between_phases_v / sqrt(3)`), and the meter's own
+    # current is still the fuse's |I|. Offered beside the meter's direct candidate, and above it.
+    nominal_voltage: bool = False
     entities: tuple[DetectedEntity, ...] = ()
     warnings: tuple[str, ...] = ()
     # The meter's total grid power where the integration reports one (`MeterRow.totals`).
@@ -877,13 +881,12 @@ def _catalogue_candidates(
                 key = (entity.config_entry_id or entity.device_id or "", meter)
                 groups.setdefault(key, {}).setdefault(role, {})[phase] = entity
             for (entry_key, meter), roles in groups.items():
-                candidate = _build_row_candidate(
+                built = _build_row_candidates(
                     row, platform, entry_key, meter, roles, devices, totals.get((entry_key, meter), {})
                 )
-                if candidate is None:
-                    continue
-                candidates.append(candidate)
-                claimed.update(item.entity_id for item in candidate.entities)
+                candidates.extend(built)
+                for candidate in built:
+                    claimed.update(item.entity_id for item in candidate.entities)
     return candidates, claimed
 
 
@@ -940,7 +943,10 @@ def _complete(roles: Mapping[Role, Mapping[PhaseName, RegistryEntity]], role: Ro
     return all(phase in roles.get(role, {}) for phase in PHASES)
 
 
-def _build_row_candidate(
+DIRECT_SUFFIX: Final = ":current"
+
+
+def _build_row_candidates(
     row: MeterRow,
     platform: str,
     entry_key: str,
@@ -948,18 +954,20 @@ def _build_row_candidate(
     roles: dict[Role, dict[PhaseName, RegistryEntity]],
     devices: Mapping[str, RegistryDevice],
     totals: Mapping[Role, RegistryEntity] | None = None,
-) -> MeterCandidate | None:
+) -> list[MeterCandidate]:
+    """The candidates one meter of a row makes: one, or two when the meter has per-phase power and
+    current but no complete per-phase voltage (a delta meter, or a wye meter that does not report them).
+    Then the derived candidate without voltages comes first and the direct one, which cannot tell the
+    direction, keeps the meter's id with `DIRECT_SUFFIX`."""
     candidate_id = ":".join(part for part in (platform, entry_key, meter) if part)
-    used: list[tuple[Role, PhaseName | None, RegistryEntity]] = []
 
-    def take(role: Role) -> dict[PhaseName, RegistryEntity] | None:
+    def take(used: list[tuple[Role, PhaseName | None, RegistryEntity]], role: Role) -> dict[PhaseName, RegistryEntity] | None:
         if not _complete(roles, role):
             return None
         for phase in PHASES:
             used.append((role, phase, roles[role][phase]))
         return {phase: roles[role][phase] for phase in PHASES}
 
-    derived_possible = _complete(roles, "power") and _complete(roles, "voltage")
     flat = [entity for by_phase in roles.values() for entity in by_phase.values()]
     title = _title(devices, flat, platform)
     warnings = list(row.warnings)
@@ -970,59 +978,78 @@ def _build_row_candidate(
 
     grid_power = _grid_power_of(row, totals or {})
 
-    def total_entities() -> GridPowerSource | None:
+    def total_entities(used: list[tuple[Role, PhaseName | None, RegistryEntity]]) -> GridPowerSource | None:
         # Only once the per-phase entities have made this a candidate at all.
         if grid_power is None:
             return None
         used.extend(grid_power[1])
         return grid_power[0]
 
-    if derived_possible:
-        power = take("power")
-        voltage = take("voltage")
-        assert power is not None and voltage is not None
-        extras = {role: take(role) for role in ("power_export", "current", "apparent_power", "reactive_power")}
-        derived: dict[PhaseName, dict[str, str]] = {}
+    def derived(with_voltage: bool, identity: str) -> MeterCandidate:
+        used: list[tuple[Role, PhaseName | None, RegistryEntity]] = []
+        power = take(used, "power")
+        voltage = take(used, "voltage") if with_voltage else None
+        assert power is not None and (voltage is not None or not with_voltage)
+        extras = {
+            role: take(used, role) for role in ("power_export", "current", "apparent_power", "reactive_power")
+        }
+        entries: dict[PhaseName, dict[str, str]] = {}
         for phase in PHASES:
-            entry: dict[str, str] = {"power": power[phase].entity_id, "voltage": voltage[phase].entity_id}
+            entry: dict[str, str] = {"power": power[phase].entity_id}
+            if voltage is not None:
+                entry["voltage"] = voltage[phase].entity_id
             for role, by_phase in extras.items():
                 if by_phase is not None:
                     entry[role] = by_phase[phase].entity_id
-            derived[phase] = entry
+            entries[phase] = entry
         estimated = not any(extras[role] is not None for role in ("current", "apparent_power", "reactive_power"))
-        grid_source = total_entities()
+        grid_source = total_entities(used)
         return MeterCandidate(
-            candidate_id=candidate_id,
+            candidate_id=identity,
             integration=platform,
             title=title,
             mode=MEASUREMENT_MODE_DERIVED,
             confidence="high",
-            derived_entities=derived,
+            derived_entities=entries,
             signed_current=row.signed_current,
             power_inverted=row.invert_power,
             estimated=estimated,
+            nominal_voltage=not with_voltage,
             entities=_display(used),
             warnings=tuple(warnings),
             grid_power=grid_source,
         )
-    current = take("current")
-    if current is None:
-        return None
-    grid_source = total_entities()
-    return MeterCandidate(
-        candidate_id=candidate_id,
-        integration=platform,
-        title=title,
-        mode=MEASUREMENT_MODE_DIRECT,
-        confidence="high",
-        direct_entities={phase: current[phase].entity_id for phase in PHASES},
-        signed_current=row.signed_current,
-        # The sign of the meter's total grid power; there is no per-phase power in direct mode.
-        power_inverted=row.invert_power and grid_source is not None,
-        entities=_display(used),
-        warnings=tuple(warnings),
-        grid_power=grid_source,
-    )
+
+    def direct(identity: str) -> MeterCandidate | None:
+        used: list[tuple[Role, PhaseName | None, RegistryEntity]] = []
+        current = take(used, "current")
+        if current is None:
+            return None
+        grid_source = total_entities(used)
+        return MeterCandidate(
+            candidate_id=identity,
+            integration=platform,
+            title=title,
+            mode=MEASUREMENT_MODE_DIRECT,
+            confidence="high",
+            direct_entities={phase: current[phase].entity_id for phase in PHASES},
+            signed_current=row.signed_current,
+            # The sign of the meter's total grid power; there is no per-phase power in direct mode.
+            power_inverted=row.invert_power and grid_source is not None,
+            entities=_display(used),
+            warnings=tuple(warnings),
+            grid_power=grid_source,
+        )
+
+    if _complete(roles, "power") and _complete(roles, "voltage"):
+        return [derived(True, candidate_id)]
+    if _complete(roles, "power") and _complete(roles, "current"):
+        # Power gives the direction and the meter's current the fuse's |I|; only the voltage is assumed.
+        alone = direct(candidate_id + DIRECT_SUFFIX)
+        assert alone is not None
+        return [derived(False, candidate_id), alone]
+    only = direct(candidate_id)
+    return [] if only is None else [only]
 
 
 def _display(used: list[tuple[Role, PhaseName | None, RegistryEntity]]) -> tuple[DetectedEntity, ...]:
@@ -1362,8 +1389,15 @@ def detect_site(
     # Within a confidence tier a meter with its own per-phase entities (direct or derived) comes
     # before an attributes source such as the Easee Equalizer, which reports a derived figure and
     # balances load by itself; then by integration and id for a stable order.
+    # A meter's own candidates stay together: with voltages, then without, then the direct one.
     meters.sort(
-        key=lambda c: (rank[c.confidence], c.current_source is not None, c.integration, c.candidate_id)
+        key=lambda c: (
+            rank[c.confidence],
+            c.current_source is not None,
+            c.integration,
+            c.candidate_id.removesuffix(DIRECT_SUFFIX),
+            c.mode != MEASUREMENT_MODE_DERIVED,
+        )
     )
     batteries = _battery_candidates(entities, device_map, excluded)
     batteries.sort(key=lambda c: (c.integration, c.candidate_id))

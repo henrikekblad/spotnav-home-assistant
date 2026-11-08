@@ -224,6 +224,12 @@ class DerivedPhaseInput:
     `apparent_power_va` and `current_a` (already |I|). A configured optional input
     that is unusable makes the phase unusable rather than silently falling back to
     a cruder basis; only a phase with none of them configured is estimated.
+
+    A phase with a `current_a` may have no voltage entity: `voltage_nominal` then marks `voltage_v` as
+    the site's nominal phase voltage (always fresh). The meter's own current is the fuse's |I| and the
+    power gives the direction; the voltage is only the number the rest of derived mode needs beside
+    them. It is never a sign of life: it does not stand in for a voltage that says a held power is
+    still heard.
     """
 
     active_power_w: PhaseValue
@@ -231,6 +237,7 @@ class DerivedPhaseInput:
     voltage_v: PhaseValue
     apparent_power_va: PhaseValue | None = None
     current_a: PhaseValue | None = None
+    voltage_nominal: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -1497,7 +1504,7 @@ def _held_still_companion(derived_input: DerivedPhaseInput, max_age_s: float) ->
     if power.age_s <= max_age_s or power.report_age_s > max_age_s:
         return None
     for role, companion in (
-        ("voltage", derived_input.voltage_v),
+        ("voltage", None if derived_input.voltage_nominal else derived_input.voltage_v),
         ("reactive_power", derived_input.reactive_power_var),
         ("apparent_power", derived_input.apparent_power_va),
     ):

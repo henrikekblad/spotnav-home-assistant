@@ -133,7 +133,7 @@ CHARGER_PRIORITIES = (CHARGER_PRIORITY_FIRST, CHARGER_PRIORITY_NORMAL, CHARGER_P
 DEFAULT_CHARGER_PRIORITY = CHARGER_PRIORITY_NORMAL
 CONF_PHASE_WIRING = "phase_wiring"  # {charger_entry_id: {"phases": 1|3, "phase": "L1"|"L2"|"L3"|None}}
 CONF_DIRECT_ENTITIES = "direct_entities"  # {"L1": entity_id, "L2": ..., "L3": ...}
-# {"L1": {"power": id, "voltage": id, optional "power_export": id (P = power - power_export, for a
+# {"L1": {"power": id, "voltage": id (optional on a phase with "current": the site's nominal voltage stands in), optional "power_export": id (P = power - power_export, for a
 # meter that reports import and export as two entities), optional "reactive_power", "apparent_power"
 # and "current": id}, ...}. Without any of the last three the phase current is estimated from power.
 CONF_DERIVED_ENTITIES = "derived_entities"

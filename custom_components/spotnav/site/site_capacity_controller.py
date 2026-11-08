@@ -110,6 +110,7 @@ from ..execution.chargers.base import WRITE_SESSION_START, WRITE_SOLAR
 from ..execution.min_soc_floor import ORIGIN_MIN_SOC
 from ..execution.switched_current import measured_amps
 from ..execution.yield_stepping import YieldConfig, YieldObservation, YieldStepper, YieldVerdict
+from ..planning.grid_voltage import stored_voltage_between_phases_v
 from ..planning.auto_settings import (
     IF_NOT_READY_ASK,
     IF_NOT_READY_RELEASE,
@@ -6520,6 +6521,7 @@ class SiteCapacityController:
         entities: dict[str, dict[str, str]] = self.config.get(CONF_DERIVED_ENTITIES) or {}
         invert = bool(self.config.get(CONF_GRID_POWER_INVERTED, False))
         signed_current = bool(self.config.get(CONF_SITE_CURRENT_SIGNED, False))
+        nominal_phase_voltage_v = stored_voltage_between_phases_v(self.config) / math.sqrt(3)
 
         def build(phase: str) -> DerivedPhaseInput:
             phase_entities = entities.get(phase) or {}
@@ -6527,6 +6529,10 @@ class SiteCapacityController:
             reactive_id = phase_entities.get("reactive_power")
             apparent_id = phase_entities.get("apparent_power")
             current_id = phase_entities.get("current")
+            voltage_id = phase_entities.get("voltage")
+            # A phase with its own current needs no voltage entity (a delta meter has none): the site's
+            # nominal phase voltage stands in, fresh by definition.
+            nominal = not voltage_id and bool(current_id)
             return DerivedPhaseInput(
                 active_power_w=combine_power_pair(
                     self._power_phase_value(phase_entities.get("power")),
@@ -6539,7 +6545,12 @@ class SiteCapacityController:
                     if reactive_id
                     else None
                 ),
-                voltage_v=self._voltage_phase_value(phase_entities.get("voltage")),
+                voltage_v=(
+                    PhaseValue(nominal_phase_voltage_v, 0.0, report_age_s=0.0)
+                    if nominal
+                    else self._voltage_phase_value(voltage_id)
+                ),
+                voltage_nominal=nominal,
                 apparent_power_va=(
                     self._apparent_phase_value(apparent_id) if apparent_id else None
                 ),

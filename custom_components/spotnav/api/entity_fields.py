@@ -16,7 +16,8 @@ into a wire refusal and a pass into a write.
   turning it off is always allowed.
 * Site fields (`SITE_FIELDS`): main fuse (A), measurement mode (`direct|derived`), the per-phase
   meters each mode needs (three `direct_L{n}`, or per phase in derived mode the required
-  `derived_L{n}_{power,voltage}` and the optional `_power_export` (the export half of an import/export
+  `derived_L{n}_{power,voltage}` (a phase with its own `_current` may leave the voltage empty: the site's
+  nominal voltage stands in) and the optional `_power_export` (the export half of an import/export
   pair), `_reactive_power`, `_apparent_power` and `_current`; without the last three the fuse check
   estimates the current from power), the meter's total grid power (`grid_power_source_power` and the
   optional `grid_power_source_power_export`, the export half of an import/export pair; it is what
@@ -36,6 +37,7 @@ into a wire refusal and a pass into a write.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from collections.abc import Callable
 import math
 from typing import Any, Final, Literal
 
@@ -237,6 +239,16 @@ def direct_fields() -> tuple[str, ...]:
 
 def derived_fields() -> tuple[str, ...]:
     return tuple(derived_field(phase, sub) for phase in PHASES for sub in DERIVED_SUBFIELDS)
+
+
+def _voltage_stands_in(field: str, value_of: Callable[[str], Any]) -> bool:
+    """Whether `field`, a derived phase's voltage, may stay empty: the phase has its own current, so the
+    site's nominal voltage stands in (a delta meter has no phase voltage; `DerivedPhaseInput`). A phase
+    with power alone still needs a voltage, and so does one with only apparent or reactive power."""
+    for phase in PHASES:
+        if field == derived_field(phase, "voltage"):
+            return bool(value_of(derived_field(phase, "current")))
+    return False
 
 
 def required_derived_fields() -> tuple[str, ...]:
@@ -1215,7 +1227,7 @@ def site_field_errors(
         if field in failed_fields:
             continue
         resulting = changes.get(field, current[field])
-        if not resulting:
+        if not resulting and not _voltage_stands_in(field, lambda name: changes.get(name, current[name])):
             errors.append(FieldError(field, ERR_REQUIRED))
     if mode != MEASUREMENT_MODE_DIRECT:
         # An export half on some phases only is no pair: all three or none (a half-filled set reads the
@@ -1328,7 +1340,7 @@ def site_field_descriptors(hass: HomeAssistant, entry: ConfigEntry) -> list[dict
                 hass,
                 field=field,
                 scope="site",
-                required=field not in _OPTIONAL_PHASE_FIELDS,
+                required=field not in _OPTIONAL_PHASE_FIELDS and not _voltage_stands_in(field, values.__getitem__),
                 writable=True,
                 current_entity_id=values[field] or None,
             )
@@ -1637,12 +1649,17 @@ def _current_source_row(hass: HomeAssistant, source: PhaseMeasurementSource | No
     }
 
 
-def _meter_row(hass: HomeAssistant, entry: ConfigEntry, candidate: MeterCandidate) -> dict[str, Any]:
+def meter_applied(entry: ConfigEntry, candidate: MeterCandidate) -> bool:
+    """Whether the site's stored meter setup is already what applying `candidate` would write."""
     applied = apply_meter_candidate(entry.data, candidate)
-    active = all(
+    return all(
         _applied_value(key, applied.get(key)) == _applied_value(key, entry.data.get(key))
         for key in _APPLIED_KEYS
     )
+
+
+def _meter_row(hass: HomeAssistant, entry: ConfigEntry, candidate: MeterCandidate) -> dict[str, Any]:
+    active = meter_applied(entry, candidate)
     return {
         "id": candidate.candidate_id,
         "integration": candidate.integration,

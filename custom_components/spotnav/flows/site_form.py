@@ -411,6 +411,11 @@ def site_details_schema(
                 existing_phase = derived_defaults.get(phase) or {}
                 for sub_key in ("power", "voltage"):
                     key = f"derived_{phase}_{sub_key}"
+                    if sub_key == "voltage" and existing_phase.get("current") and not existing_phase.get("voltage"):
+                        # A phase with its own current and no voltage (a delta meter): the site's nominal
+                        # voltage stands in, so the field may stay empty.
+                        schema_dict[vol.Optional(key)] = sensor_picker
+                        continue
                     field_marker = (
                         vol.Required(key, default=existing_phase[sub_key])
                         if existing_phase.get(sub_key)
@@ -559,10 +564,9 @@ def parse_site_details(
     elif mode == MEASUREMENT_MODE_DERIVED:
         derived_entities = {}
         for phase in PHASES:
-            entry = {
-                "power": details[f"derived_{phase}_power"],
-                "voltage": details[f"derived_{phase}_voltage"],
-            }
+            entry = {"power": details[f"derived_{phase}_power"]}
+            if details.get(f"derived_{phase}_voltage"):
+                entry["voltage"] = details[f"derived_{phase}_voltage"]
             for sub_key, _quantity in DERIVED_OPTIONAL_SUBKEYS:
                 value = details.get(f"derived_{phase}_{sub_key}")
                 if value:

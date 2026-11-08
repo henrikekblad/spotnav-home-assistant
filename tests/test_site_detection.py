@@ -1397,17 +1397,64 @@ def test_core_solaredge_modbus_reads_the_meter_not_the_inverter_and_its_current_
     assert candidate.estimated is False
 
 
-def test_core_solaredge_modbus_without_neutral_voltages_is_a_direct_meter_whose_total_is_export_positive() -> None:
-    candidate = one_meter(solaredge_modbus_core(wye=False))
+def test_core_solaredge_modbus_without_neutral_voltages_offers_derived_from_power_and_current_first() -> None:
+    """A delta meter has no neutral voltages: the derived candidate without them comes first, then the
+    meter's direct one (which cannot tell the direction)."""
+    detection = solaredge_modbus_core(wye=False).detect()
 
-    assert candidate.mode == MEASUREMENT_MODE_DIRECT
-    assert candidate.direct_entities == {phase: f"sensor.meter_1_current_phase_{ph}" for phase, ph in zip(PHASES, "abc")}
-    assert candidate.grid_power == GridPowerSource(power="sensor.meter_1_power")
-    assert not candidate.signed_current
-    assert candidate.power_inverted
-    applied = apply_meter_candidate({}, candidate)
+    derived, direct = detection.meters
+    assert [c.candidate_id.removesuffix(":current") for c in detection.meters][0] == derived.candidate_id
+    assert direct.candidate_id == derived.candidate_id + ":current"
+    assert derived.mode == MEASUREMENT_MODE_DERIVED and derived.nominal_voltage
+    assert derived.derived_entities == {
+        phase: {"power": f"sensor.meter_1_power_phase_{ph}", "current": f"sensor.meter_1_current_phase_{ph}"}
+        for phase, ph in zip(PHASES, "abc")
+    }
+    assert derived.estimated is False
+    assert derived.grid_power == GridPowerSource(power="sensor.meter_1_power")
+    assert derived.disabled_entity_ids == ()
+    assert direct.mode == MEASUREMENT_MODE_DIRECT and not direct.nominal_voltage
+    assert direct.direct_entities == {phase: f"sensor.meter_1_current_phase_{ph}" for phase, ph in zip(PHASES, "abc")}
+    assert direct.grid_power == GridPowerSource(power="sensor.meter_1_power")
+    assert not direct.signed_current and direct.power_inverted
+
+
+def test_the_derived_candidate_without_voltages_applies_power_for_direction_and_current_for_the_fuse() -> None:
+    derived = solaredge_modbus_core(wye=False).detect().meters[0]
+
+    applied = apply_meter_candidate({}, derived)
+    assert applied["measurement_mode"] == MEASUREMENT_MODE_DERIVED
+    assert applied["derived_entities"]["L2"] == {
+        "power": "sensor.meter_1_power_phase_b",
+        "current": "sensor.meter_1_current_phase_b",
+    }
+    assert "voltage" not in applied["derived_entities"]["L1"]
+    # The current is a magnitude (not signed) and the power is export-positive (negated).
+    assert applied["site_current_signed"] is False
     assert applied["grid_power_inverted"] is True
     assert applied["grid_power_source"] == {"power": "sensor.meter_1_power"}
+
+
+def test_a_derived_candidate_with_voltages_ranks_above_the_one_without_and_a_wye_meter_makes_only_the_first() -> None:
+    wye = solaredge_modbus_core(wye=True).detect()
+    assert len(wye.meters) == 1 and not wye.meters[0].nominal_voltage
+
+    both = solaredge_modbus_core(meters=("SNM1", "slot_2"), wye=False).detect()
+    order = [(c.candidate_id.rsplit(":", 1)[-1], c.mode, c.nominal_voltage) for c in both.meters]
+    assert order == [
+        ("slot_2", MEASUREMENT_MODE_DERIVED, True),
+        ("current", MEASUREMENT_MODE_DIRECT, False),
+        ("snm1", MEASUREMENT_MODE_DERIVED, True),
+        ("current", MEASUREMENT_MODE_DIRECT, False),
+    ]
+    assert both.meters[1].candidate_id == both.meters[0].candidate_id + ":current"
+
+
+def test_power_and_current_without_voltage_is_only_offered_where_both_are_complete() -> None:
+    registry = solaredge_modbus_core(wye=False)
+    registry.entities = [e for e in registry.entities if not e.unique_id.endswith("ac_power_phase_c")]
+    detection = registry.detect()
+    assert [c.mode for c in detection.meters] == [MEASUREMENT_MODE_DIRECT]
 
 
 def test_core_solaredge_modbus_keeps_each_meters_total_with_that_meter() -> None:

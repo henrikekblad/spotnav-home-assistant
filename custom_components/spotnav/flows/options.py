@@ -693,7 +693,8 @@ class SiteCapacityOptionsFlow(ChargerWiringSteps, config_entries.OptionsFlow):
         else:
             derived = data.get(CONF_DERIVED_ENTITIES) or {}
             if not all(
-                (derived.get(phase) or {}).get("power") and (derived.get(phase) or {}).get("voltage")
+                (derived.get(phase) or {}).get("power")
+                and ((derived.get(phase) or {}).get("voltage") or (derived.get(phase) or {}).get("current"))
                 for phase in PHASES
             ):
                 return "measurement"
