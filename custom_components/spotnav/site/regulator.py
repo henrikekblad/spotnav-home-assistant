@@ -6,10 +6,14 @@ decisions are acted on by `SiteCapacityController._async_apply_active_control`,
 which needs `ACTIVE_CONTROL_READY` and the site's `CONF_ACTIVE_CONTROL_ENABLED`
 opt-in, and re-checks live readings first (`decision_still_applyable`).
 
-A phase is decided on only where its import/export direction is known
+A phase is decided on with the full rules only where its import/export direction is known
 (`SiteCapacityResult.phase_direction_source`): derived mode's signed active power on every phase, or
 on a direct site a signed current whose sign the controller confirmed against the meter's total grid
-power. Elsewhere the charger gets `phase_direction_unknown`. A direct site's signed current stands in
+power. Elsewhere `decide_charging_current` gives `phase_direction_unknown`, and a charger in a charge
+is decided on the measured magnitude alone (`magnitude_decision`): a phase over the limit by |I|
+lowers it to the room |I| leaves, and a charger below its request is raised within that room, since a
+raise of d on a phase reading |I| gives at most |I| + d whichever way the phase flows. Only a
+lowering that is not an overload needs the direction. A direct site's signed current stands in
 for active power as `I x DIRECTION_NOMINAL_PHASE_VOLTAGE_V` and goes through the same rules and
 thresholds; since |I| also carries any reactive part, a decrease there additionally keeps the
 triangle-inequality worst case `|net| + drop` within the ceiling.
@@ -39,7 +43,7 @@ steps every charger it governs that draws above its minimum to that minimum
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
-from typing import Literal, Mapping, Sequence
+from typing import Collection, Literal, Mapping, Sequence
 
 from .site_capacity import (
     PHASES,
@@ -68,8 +72,12 @@ RegulatorReason = Literal[
     "phase_direction_unknown_at_charge_start",
     # A direct site's charge on a phase whose direction is not known (never confirmed, or lost meanwhile),
     # whoever started it: a phase it draws on is over the limit by |I|, so it is lowered to the room |I|
-    # leaves, never raised (`magnitude_overload_lowering`).
+    # leaves (`magnitude_overload_lowering`).
     "lowering_overload_on_current_magnitude_direction_unknown",
+    # The same charge below its request with no phase over: raised within the room the measured |I| leaves on
+    # every phase it draws on, never above the request (`magnitude_decision`). Safe whichever way a phase flows:
+    # a raise of d gives at most |I| + d.
+    "increase_within_room_on_current_magnitude_direction_unknown",
     # No longer given (`phase_direction_unknown` replaced it); kept so older diagnostics still read.
     "derived_mode_required",
     "requested_current_unknown",
@@ -112,6 +120,14 @@ RegulatorReason = Literal[
 # Decisions in which the fuse is in danger *now*: a write the charger cannot take in time must then
 # stop the charge (`ChargingController.async_apply_regulated_current`), not wait.
 MUST_LOWER_REASONS = frozenset({"reducing_current_due_to_active_import_overload"})
+
+# The decisions on the measured magnitude alone, for a charge on a phase whose direction is not known
+# (`magnitude_decision`); the controller writes them on their own path, which needs no signed power.
+MAGNITUDE_LOWERING_REASON: RegulatorReason = "lowering_overload_on_current_magnitude_direction_unknown"
+MAGNITUDE_RAISE_REASON: RegulatorReason = "increase_within_room_on_current_magnitude_direction_unknown"
+# The reasons a charger is held under where its direction is not known; a charge so held is decided on the
+# magnitude (`magnitude_decision`), and a charge paused on it is resumed as any balancing pause is.
+DIRECTION_UNKNOWN_REASONS = frozenset({"phase_direction_unknown", "phase_direction_unknown_at_charge_start"})
 
 # Within this band (W) of zero net power a sign-based prediction is not trusted.
 DEFAULT_ZERO_MARGIN_W = 500.0
@@ -694,15 +710,19 @@ def decide_switched_load(
 
 
 def magnitude_overload_lowering(
-    *, site_result: SiteCapacityResult, request: ChargerRequest, max_age_s: float
+    *,
+    site_result: SiteCapacityResult,
+    request: ChargerRequest,
+    max_age_s: float,
+    held_reason: RegulatorReason = "phase_direction_unknown",
 ) -> RegulatorDecision:
     """For a charger in a charge on a phase whose direction is not known: lowered only where a phase it draws on,
     not one known now to export, is over the limit by |I| (`measured_margin_a` < 0), to its own current plus
     that margin on the tightest such phase (what the sun's capped write allowed before), a pause (0, same reason)
-    where that is below its minimum, never raised; otherwise held (`phase_direction_unknown`, `None`). The sign of
-    the overload is not known, so this guards the fuse as a magnitude-only site always did; it is no better than
-    that."""
-    held = RegulatorDecision(None, "phase_direction_unknown", None, {})
+    where that is below its minimum or the charger can only be switched; otherwise held (`held_reason`, `None`:
+    `magnitude_decision` then judges a raise). The sign of the overload is not known, so this guards the fuse as a
+    magnitude-only site always did; it is no better than that."""
+    held = RegulatorDecision(None, held_reason, None, {})
     if site_result.measurement_mode == "derived_phase_current":
         return held  # a derived site knows the direction on every phase
     # Every phase but one known now to export: a phase over the limit by export is never lowered on (the car's draw
@@ -742,12 +762,78 @@ def magnitude_overload_lowering(
         return held
     limiting_phase = min(ceilings, key=lambda phase: ceilings[phase])
     proposed = round_down_to_step(ceilings[limiting_phase])
-    if 0.0 < proposed < request.min_current_a:
-        # A pause, but kept under this reason: only its own apply path writes it (it needs no signed power).
+    if request.switch_only or 0.0 < proposed < request.min_current_a:
+        # A pause, but kept under this reason: only its own apply path writes it (it needs no signed power). A
+        # charger that can only be switched cannot be lowered: any lowering the overload calls for is its pause.
         proposed = 0.0
-    return RegulatorDecision(
-        proposed, "lowering_overload_on_current_magnitude_direction_unknown", limiting_phase, basis
+    return RegulatorDecision(proposed, MAGNITUDE_LOWERING_REASON, limiting_phase, basis)
+
+
+def magnitude_decision(
+    *,
+    site_result: SiteCapacityResult,
+    request: ChargerRequest,
+    max_age_s: float,
+    headroom_by_phase: Mapping[PhaseName, float | None] | None = None,
+    increase_reserved_by_phase: Mapping[PhaseName, float] | None = None,
+    held_reason: RegulatorReason = "phase_direction_unknown",
+) -> RegulatorDecision:
+    """The decision for a charger in a charge on a phase whose direction is not known, on the measured magnitude
+    alone: the overload lowering first (`magnitude_overload_lowering`, on the site's own margins: every charger over
+    is lowered); else, with the charger drawing below its request, a raise within the room |I| leaves on every
+    phase it draws on (`increase_within_room_on_current_magnitude_direction_unknown`): on each phase the charger's
+    own current plus the phase's room (`headroom_by_phase`, the site's `measured_margin_a` by default, less
+    `increase_reserved_by_phase`, room another writer was given and has not drawn yet), the tightest phase winning,
+    rounded down to a whole amp and never above the request. Whichever way a phase flows, a raise of d on it gives at
+    most |I| + d, so a step within `limit - |I|` cannot overload the fuse; export is not counted as room. Held
+    (`held_reason`, `None`) where nothing is to be done: no room for a whole amp, a request not above what the
+    charger draws, a lowering that is not an overload (that needs the direction: another writer's, or nobody's), a
+    charger not drawing yet (a start gives it its current; a paused charge is resumed, not raised), one that can only
+    be switched, or an unusable reading."""
+    lowering = magnitude_overload_lowering(
+        site_result=site_result, request=request, max_age_s=max_age_s, held_reason=held_reason
     )
+    if lowering.proposed_current_a is not None or site_result.measurement_mode == "derived_phase_current":
+        return lowering
+    phases = request.phases_used()
+    measured_source = request.measured_current_a
+    requested = request.requested_current_a
+    if phases is None or measured_source is None or requested is None or request.switch_only:
+        return lowering
+    basis: dict[PhaseName, PhaseDecisionBasis] = {}
+    caps: dict[PhaseName, float] = {}
+    for phase in phases:
+        measured = measured_source.get(phase)
+        room = (
+            headroom_by_phase.get(phase) if headroom_by_phase is not None else site_result.measured_margin_a.get(phase)
+        )
+        if (
+            measured.value is None
+            or measured.problem is not None
+            or measured.age_s is None
+            or measured.age_s > max_age_s
+            or room is None
+        ):
+            return lowering
+        basis[phase] = PhaseDecisionBasis(
+            signed_active_power_w=None,
+            signed_active_power_age_s=None,
+            measured_current_a=measured.value,
+            measured_current_age_s=measured.age_s,
+            requested_current_a=requested,
+            direction=None,
+            confirmed_direction=None,
+        )
+        room = max(0.0, room - (increase_reserved_by_phase or {}).get(phase, 0.0))
+        caps[phase] = measured.value + room
+    drawn = max(basis[phase].measured_current_a or 0.0 for phase in phases)
+    if drawn < SWITCHED_DRAWING_FROM_A or requested <= drawn:
+        return lowering
+    limiting_phase = min(caps, key=lambda phase: caps[phase])
+    proposed = round_down_to_step(min(requested, caps[limiting_phase]))
+    if proposed <= drawn or proposed < request.min_current_a:
+        return lowering
+    return RegulatorDecision(proposed, MAGNITUDE_RAISE_REASON, limiting_phase, basis)
 
 
 def direction_phases(request: ChargerRequest) -> tuple[PhaseName, ...]:
@@ -804,9 +890,18 @@ def allocate_regulator_decisions(
     own_measured_current_a: Mapping[str, DirectPhaseMeasurement | None] | None = None,
     credit_raise_tolerance_a: float = 1.0,
     increase_reserved_by_phase: Mapping[PhaseName, float] | None = None,
+    direction_unknown_in_charge: Collection[str] = (),
+    direction_unknown_at_start: Collection[str] = (),
 ) -> dict[str, RegulatorDecision]:
     """One decision per charger, computed sequentially so chargers sharing a phase
     are never offered the same headroom.
+
+    `direction_unknown_in_charge` names the chargers in a charge: one of them `decide_charging_current` cannot
+    decide for want of a direction (`phase_direction_unknown`) is decided on the measured magnitude instead
+    (`magnitude_decision`), on the same shared headroom. `direction_unknown_at_start` names those whose charge
+    started without a direction: they are decided on the magnitude alone whatever is known now, held under
+    `phase_direction_unknown_at_charge_start` (the writer settled at the start keeps the charge, `SiteCapacityController`).
+    A magnitude decision that holds blocks no phase: the charger keeps what it draws, which the site reading carries.
 
     Chargers are processed in `allocation_order` (priority, then the site's charger order), or while a phase is over
     the limit in `overload_order` (lowest priority first, so the cut is taken from "last" first). A per-phase
@@ -836,6 +931,8 @@ def allocate_regulator_decisions(
         own_measured_current_a=own_measured_current_a,
         credit_raise_tolerance_a=credit_raise_tolerance_a,
         increase_reserved_by_phase=increase_reserved_by_phase,
+        direction_unknown_in_charge=direction_unknown_in_charge,
+        direction_unknown_at_start=direction_unknown_at_start,
     )
     overloaded = any(margin is not None and margin < 0.0 for margin in site_result.measured_margin_a.values())
     if overloaded and any(request.switch_only for request in requests):
@@ -872,6 +969,8 @@ class _Allocator:
         own_measured_current_a: Mapping[str, DirectPhaseMeasurement | None] | None,
         credit_raise_tolerance_a: float,
         increase_reserved_by_phase: Mapping[PhaseName, float] | None,
+        direction_unknown_in_charge: Collection[str] = (),
+        direction_unknown_at_start: Collection[str] = (),
     ) -> None:
         self.site_result = site_result
         self.voltage_by_phase = voltage_by_phase
@@ -882,6 +981,8 @@ class _Allocator:
         self.own_measured_current_a = own_measured_current_a
         self.credit_raise_tolerance_a = credit_raise_tolerance_a
         self.increase_reserved_by_phase = increase_reserved_by_phase
+        self.direction_unknown_in_charge = frozenset(direction_unknown_in_charge)
+        self.direction_unknown_at_start = frozenset(direction_unknown_at_start)
         self.remaining: dict[PhaseName, float | None] = dict(site_result.measured_margin_a)
         self.remaining_signed: dict[PhaseName, float | None] = dict(site_result.phase_signed_margin_a)
         self.blocked_phases: set[PhaseName] = set()
@@ -894,7 +995,24 @@ class _Allocator:
         # In a staged overload pass (`staged`).
         self._staging = False
 
-    def _decide_one(self, request: ChargerRequest) -> tuple[ChargerRequest, RegulatorDecision]:
+    def _on_magnitude(self, request: ChargerRequest) -> bool:
+        """Whether this charger is decided on the measured magnitude where its direction is not known (a charge)."""
+        return request.charger_entry_id in self.direction_unknown_in_charge or (
+            request.charger_entry_id in self.direction_unknown_at_start
+        )
+
+    def _decide_request(self, request: ChargerRequest) -> RegulatorDecision:
+        """One charger's decision on the headroom left: the full rules, or the magnitude's where the direction is
+        not known and the charger is in a charge (`allocate_regulator_decisions`)."""
+        if request.charger_entry_id in self.direction_unknown_at_start:
+            return magnitude_decision(
+                site_result=self.site_result,
+                request=request,
+                max_age_s=self.max_age_s,
+                headroom_by_phase=self.remaining,
+                increase_reserved_by_phase=self.increase_reserved_by_phase,
+                held_reason="phase_direction_unknown_at_charge_start",
+            )
         decision = decide_charging_current(
             site_result=self.site_result,
             request=request,
@@ -907,6 +1025,18 @@ class _Allocator:
             signed_headroom_by_phase=self.remaining_signed,
             increase_reserved_by_phase=self.increase_reserved_by_phase,
         )
+        if decision.reason == "phase_direction_unknown" and request.charger_entry_id in self.direction_unknown_in_charge:
+            return magnitude_decision(
+                site_result=self.site_result,
+                request=request,
+                max_age_s=self.max_age_s,
+                headroom_by_phase=self.remaining,
+                increase_reserved_by_phase=self.increase_reserved_by_phase,
+            )
+        return decision
+
+    def _decide_one(self, request: ChargerRequest) -> tuple[ChargerRequest, RegulatorDecision]:
+        decision = self._decide_request(request)
         phases_used = request.phases_used()
         own = (self.own_measured_current_a or {}).get(request.charger_entry_id, request.measured_current_a)
         if (
@@ -915,18 +1045,7 @@ class _Allocator:
             and _raises_on_credit(decision, request, own, phases_used, self.credit_raise_tolerance_a)
         ):
             request = replace(request, measured_current_a=own)
-            decision = decide_charging_current(
-                site_result=self.site_result,
-                request=request,
-                voltage_by_phase=self.voltage_by_phase,
-                confirmed_direction_by_phase=self.confirmed_direction_by_phase,
-                max_age_s=self.max_age_s,
-                zero_margin_w=self.zero_margin_w,
-                help_margin_factor=self.help_margin_factor,
-                headroom_by_phase=self.remaining,
-                signed_headroom_by_phase=self.remaining_signed,
-                increase_reserved_by_phase=self.increase_reserved_by_phase,
-            )
+            decision = self._decide_request(request)
         return request, decision
 
     def decide(self, request: ChargerRequest, *, floor_at_minimum: bool = False) -> RegulatorDecision:
@@ -963,6 +1082,9 @@ class _Allocator:
         if phases_used is None:
             return decision
         if decision.proposed_current_a is None:
+            if decision.reason in DIRECTION_UNKNOWN_REASONS and self._on_magnitude(request):
+                # Held on the magnitude: the charger keeps what it draws, which the site reading carries already.
+                return decision
             if request.switch_only and self._staging:
                 self.no_raise_phases.update(phases_used)
             else:
