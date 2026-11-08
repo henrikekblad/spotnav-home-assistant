@@ -577,9 +577,6 @@ class AutoExecutor:
         # that ran (its top-off, a guest car's charge): the plan is cleared when that charge ends
         # (`async_clear_superseded_plan`), and nothing of it starts meanwhile (`superseded_by_wait`).
         self._clear_waiting: int | None = None
-        # The installed plan's identity and the settings revision whose calculation proposed the same thing for the
-        # charger (`_is_material`): built from older settings, it still says what those settings want.
-        self._confirmed: tuple[str, int] | None = None
         # While a superseded plan is kept because its own charge cannot be seen yet: the charge control's reports, each
         # of which decides it again (`_watch_unseen_charge`).
         self._cancel_unseen_listener: Callable[[], None] | None = None
@@ -1064,12 +1061,14 @@ class AutoExecutor:
         if applied is not None and applied.identity == application.identity:
             self._applied = applied
             self._pending = None
-            return applied
+            await self._confirm_revision(applied, application)
+            return self.applied
         if not self._is_material(application, applied):
             self._applied = applied
             self._pending = None
             if applied is not None:
-                self._confirmed = (applied.identity, application.settings_revision)
+                await self._confirm_revision(applied, application)
+                return self.applied
             return applied
         if self.window_charging_now():
             # A window is charging and a new plan never shortens it: the change waits for the boundary
@@ -1087,6 +1086,17 @@ class AutoExecutor:
         await self._install_application(application)
         return self.applied
 
+    async def _confirm_revision(self, applied: AutoApplication, application: AutoApplication) -> None:
+        """A calculation of newer settings proposed what the installed plan already does: the plan stands for those
+        settings, so it carries their revision (`ChargingController.async_confirm_plan_revision`, saved with the plan, so
+        a restart does not read it as superseded)."""
+        if application.settings_revision <= applied.settings_revision:
+            return
+        try:
+            await self._controller.async_confirm_plan_revision(applied.identity, application.settings_revision)
+        except Exception as err:  # noqa: BLE001 - kept in memory; the next calculation writes it again
+            _LOGGER.warning("Saving the plan's confirmed settings revision failed: %s", type(err).__name__)
+
     def _superseded_by_settings(self, applied: AutoApplication) -> bool:
         """Whether the installed plan was built from settings older than the stored ones, and no calculation of these
         settings proposed the same thing. A recalculation over the same settings (new prices, a new reading) that
@@ -1096,9 +1106,7 @@ class AutoExecutor:
         settings = self._store.settings(self._entry_id)
         if pause_blocks_execution(settings) or applied.settings_revision < 0:
             return False
-        if applied.settings_revision >= settings.revision:
-            return False
-        return self._confirmed != (applied.identity, settings.revision)
+        return applied.settings_revision < settings.revision
 
     def _plan_charge_runs(self) -> bool:
         """Whether the installed plan's own charge runs now: its top-off, or the charge a window of it started while the
@@ -1139,7 +1147,6 @@ class AutoExecutor:
             self._entry_id,
         )
         self._applied = None
-        self._confirmed = None
         await self._notify_change()
         return None
 

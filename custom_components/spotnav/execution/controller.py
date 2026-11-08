@@ -3588,6 +3588,21 @@ class ChargingController:
             finally:
                 self._runner.end(token, core_events.PlanDropped())
 
+    async def async_confirm_plan_revision(self, identity: str, revision: int) -> None:
+        """A calculation of settings revision `revision` proposed what the installed plan `identity` already does: the
+        plan carries that revision from now, saved with it (`AutoExecutor._confirm_revision`). The plan is the same
+        object; nothing else of it changes."""
+        async with self._lock:
+            plan = self.plan
+            if plan is None or not plan.auto_owned or plan.auto_identity != identity:
+                return
+            current = plan.auto_settings_revision
+            if current is not None and current >= revision:
+                return
+            plan.auto_settings_revision = revision
+            await self._async_save_quietly()
+            self._notify()
+
     async def async_end_superseded_plan(self) -> bool:
         """A settings change whose answer is to wait superseded the plan (`AutoExecutor._clear_superseded_locked`),
         decided under this controller's lock, so no start of ours is half way:

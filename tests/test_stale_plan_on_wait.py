@@ -606,3 +606,29 @@ async def test_a_window_start_answered_after_the_wait_is_stopped_once_it_is_seen
     await session.tick()
     assert len(session.on_calls) == 1 and len(session.off_calls) == 1
     _expects_nothing(session)
+
+
+@pytest.mark.usefixtures("both_restarts")
+async def test_a_plan_confirmed_by_newer_settings_is_still_theirs_after_a_restart(
+    session: Session, both_restarts: str
+) -> None:
+    """The settings were written again and their calculation proposed the same plan: the plan stands for them. That
+    survives a restart (the confirming revision is saved with the plan), so a later wait over those same settings keeps
+    the plan and its running charge."""
+    _publish(session)
+    waiting = await _waiting_answer(session)
+    plan = await _charging_window(session)
+    await session.set_auto(departure=time(8, 0), requested_kwh=10.0)
+    assert session.controller.plan is plan
+    assert plan.auto_settings_revision == session.settings().revision, "the plan carries the confirming revision"
+
+    restarted = await _restart(session, both_restarts)
+
+    restored = restarted.controller.plan
+    assert restored is not None and restored.auto_settings_revision == session.settings().revision
+    restarted.executor.begin_attempt()
+    await restarted.executor.async_reconcile(
+        restarted.settings(), waiting, attempt=restarted.executor.attempt
+    )
+    assert restarted.controller.plan is restored, "a wait over the settings it stands for keeps it"
+    assert restarted.off_calls == []

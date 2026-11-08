@@ -363,7 +363,8 @@ async def test_different_hours_at_the_same_slot_count_are_a_material_change(
 async def test_a_cost_only_change_over_identical_periods_is_not_reinstalled(
     session: Session, install_spy: list[ChargingPlan], plan_saves: list[Any]
 ) -> None:
-    """A re-description of the same charge -- new revision, same hours -- installs nothing, and stays applied."""
+    """A re-description of the same charge -- new revision, same hours -- installs nothing, and stays applied; the plan
+    carries the newer revision."""
     serve(session.transport)
     await session.set_auto()
     assert len(install_spy) == 1
@@ -376,7 +377,11 @@ async def test_a_cost_only_change_over_identical_periods_is_not_reinstalled(
     after = await session.set_auto(overrides=(AreaAutoSettings(area_id="FI"),))
 
     assert after.settings_revision == 2
-    assert len(install_spy) == 1 and len(plan_saves) == saves
+    assert len(install_spy) == 1
+    # The plan now stands for the newer settings: it carries their revision, saved with it once (so a restart does not
+    # read it as built from older settings).
+    assert len(plan_saves) == saves + 1
+    assert session.controller.plan.auto_settings_revision == 2
     assert session.executor.applied is not None
     assert session.executor.applied.identity == applied.identity, "the old identity still stands"
     assert after.applied_identity == applied.identity
