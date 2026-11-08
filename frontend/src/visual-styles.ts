@@ -104,6 +104,7 @@ export const VISUAL_CLASSES = {
   entityRowLabel: "spotnav-entity-row-label",
   entityRowValue: "spotnav-entity-row-value",
   entityHelp: "spotnav-entity-help",
+  sendDebugRef: "spotnav-send-debug-ref",
   entityWarning: "spotnav-entity-warning",
   entityNotices: "spotnav-entity-notices",
   entityChecks: "spotnav-entity-checks",
@@ -2133,6 +2134,20 @@ export const VISUAL_STYLES = `
     margin: 2px 0 0;
     font-size: 0.8rem;
     overflow-wrap: break-word;
+  }
+  .${VISUAL_CLASSES.sendDebugRef} {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 8px 0 0;
+  }
+  .${VISUAL_CLASSES.sendDebugRef} > code {
+    font-size: 1.2rem;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    user-select: all;
+    -webkit-user-select: all;
+    cursor: text;
   }
   .${VISUAL_CLASSES.entityNotices} {
     margin: 8px 0 0;

@@ -194,15 +194,53 @@ export function sendDebugEditor(
     const done = element(doc, "p", undefined, say("sendDebug.sent", { ref: sentRef ?? "" }));
     done.dataset["sendDebugSent"] = sentRef ?? "";
     done.setAttribute("role", "status");
+    // The reference on its own, selectable even where Home Assistant's dialog turns selection off, with a Copy
+    // button; the clipboard API needs a secure origin, so plain http selects the code for the person to copy.
+    const refRow = element(doc, "div", C.sendDebugRef);
+    const code = element(doc, "code", undefined, sentRef ?? "");
+    code.dataset["sendDebugRef"] = "";
+    const copy = element(doc, "button", C.button, say("sendDebug.copy")) as HTMLButtonElement;
+    copy.type = "button";
+    copy.dataset["sendDebugCopy"] = "";
+    copy.addEventListener("click", () => {
+      void copyReference(doc, code, sentRef ?? "").then((copied) => {
+        if (copied) {
+          copy.textContent = say("sendDebug.copied");
+        }
+      });
+    });
+    refRow.append(code, copy);
     const actions = element(doc, "div", C.settingsActions);
     const close = element(doc, "button", `${C.button} ${C.settingsSave}`, say("dialog.close")) as HTMLButtonElement;
     close.type = "button";
     close.dataset["sendDebugClose"] = "";
     close.addEventListener("click", () => handlers.onDone());
     actions.append(close);
-    form.replaceChildren(done, actions);
+    form.replaceChildren(done, refRow, actions);
     close.focus();
   }
 
   return form;
+}
+
+/** Copies the reference: the clipboard where allowed, else the selected code and the browser's copy command. */
+async function copyReference(doc: Document, code: HTMLElement, ref: string): Promise<boolean> {
+  try {
+    if (doc.defaultView?.navigator.clipboard !== undefined && doc.defaultView.isSecureContext) {
+      await doc.defaultView.navigator.clipboard.writeText(ref);
+      return true;
+    }
+  } catch {
+    // Refused: fall back to the selection below.
+  }
+  const selection = doc.defaultView?.getSelection() ?? null;
+  if (selection === null) {
+    return false;
+  }
+  selection.selectAllChildren(code);
+  try {
+    return doc.execCommand("copy");
+  } catch {
+    return false;
+  }
 }

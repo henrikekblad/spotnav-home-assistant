@@ -487,6 +487,18 @@ describe("Send debug info", () => {
     const sent = form(element)?.querySelector<HTMLElement>("[data-send-debug-sent]");
     expect(sent?.textContent).toBe(translate("en", "sendDebug.sent", { ref: "SN-7KQ4" }));
     expect(sent?.textContent).toContain("SN-7KQ4");
+    // The reference stands alone, selectable, with a Copy button.
+    expect(form(element)?.querySelector("[data-send-debug-ref]")?.textContent).toBe("SN-7KQ4");
+    const writeText = vi.fn(async () => undefined);
+    vi.stubGlobal("isSecureContext", true);
+    Object.defineProperty(window.navigator, "clipboard", { value: { writeText }, configurable: true });
+    const copy = form(element)?.querySelector<HTMLButtonElement>("[data-send-debug-copy]");
+    expect(copy?.textContent).toBe(translate("en", "sendDebug.copy"));
+    copy?.click();
+    await settle();
+    expect(writeText).toHaveBeenCalledWith("SN-7KQ4");
+    expect(copy?.textContent).toBe(translate("en", "sendDebug.copied"));
+    vi.unstubAllGlobals();
     form(element)?.querySelector<HTMLButtonElement>("[data-send-debug-close]")?.click();
     await settle();
     expect(openDialog(element)?.querySelector("[data-send-debug='form']")).toBeNull();

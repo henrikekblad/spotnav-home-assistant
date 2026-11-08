@@ -755,6 +755,8 @@
   "sendDebug.consent": "Ich bin einverstanden, dass diese Informationen an den Entwickler von SpotNav gesendet werden",
   "sendDebug.send": "Senden",
   "sendDebug.sent": "Gesendet. Deine Referenz: {ref}. Gib sie an, wenn du im Forum oder in der Gruppe schreibst.",
+  "sendDebug.copy": "Kopieren",
+  "sendDebug.copied": "Kopiert",
   "sendDebug.error.message": "Schreib, was passiert ist.",
   "sendDebug.error.email": "Diese E-Mail-Adresse sieht nicht richtig aus.",
   "sendDebug.error.consent": "Setz vor dem Senden das Häkchen, um zuzustimmen.",

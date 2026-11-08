@@ -755,6 +755,8 @@
   "sendDebug.consent": "Ik ga ermee akkoord dat deze informatie naar de ontwikkelaar van SpotNav wordt verstuurd",
   "sendDebug.send": "Versturen",
   "sendDebug.sent": "Verstuurd. Je referentie: {ref}. Noem die wanneer je op het forum of in de groep schrijft.",
+  "sendDebug.copy": "Kopiëren",
+  "sendDebug.copied": "Gekopieerd",
   "sendDebug.error.message": "Schrijf wat er gebeurde.",
   "sendDebug.error.email": "Dat e-mailadres ziet er niet goed uit.",
   "sendDebug.error.consent": "Vink het vakje aan om akkoord te gaan voordat je verstuurt.",

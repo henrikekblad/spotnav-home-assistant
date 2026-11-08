@@ -755,6 +755,8 @@
   "sendDebug.consent": "Jeg godtar at informasjonen sendes til SpotNavs utvikler",
   "sendDebug.send": "Send",
   "sendDebug.sent": "Sendt. Referansen din: {ref}. Oppgi den når du skriver i forumet eller i gruppen.",
+  "sendDebug.copy": "Kopier",
+  "sendDebug.copied": "Kopiert",
   "sendDebug.error.message": "Skriv hva som skjedde.",
   "sendDebug.error.email": "E-postadressen ser ikke riktig ut.",
   "sendDebug.error.consent": "Kryss av i boksen for å godta før du sender.",

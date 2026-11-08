@@ -755,6 +755,8 @@
   "sendDebug.consent": "Hyväksyn, että tiedot lähetetään SpotNavin kehittäjälle",
   "sendDebug.send": "Lähetä",
   "sendDebug.sent": "Lähetetty. Viitteesi: {ref}. Mainitse se, kun kirjoitat foorumille tai ryhmään.",
+  "sendDebug.copy": "Kopioi",
+  "sendDebug.copied": "Kopioitu",
   "sendDebug.error.message": "Kirjoita, mitä tapahtui.",
   "sendDebug.error.email": "Sähköpostiosoite ei näytä oikealta.",
   "sendDebug.error.consent": "Hyväksy valitsemalla ruutu ennen lähettämistä.",
