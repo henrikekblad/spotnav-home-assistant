@@ -402,16 +402,12 @@ async def _async_setup_charger_entry(hass: HomeAssistant, entry: ChargerConfigEn
     push = data.push = ChargerPush(hass, entry.entry_id)
     await push.async_load()
     async_register_charger_webhook(hass, entry)
-    await controller.async_initialize()
+    await async_restore_execution(controller, data.executor, data.preview)
     if data.debug_day is not None:
         # A car plugged in before this release kept plug-ins: its plug-in is the first one kept.
         data.debug_day.ensure_session(
             controller.plugged_in_at if controller.adapter.vehicle_connected() is True else None
         )
-    if data.executor is not None:
-        # The restored record may carry an older release's person's Stop, and a manual Start's charge is
-        # watched again.
-        await data.executor.async_after_restore()
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     # After the platforms, so a smart plug's integrated-energy sensor already stands in for the register.
     _async_start_session_recorder(hass, entry, data, controller)
@@ -450,6 +446,30 @@ async def _async_setup_charger_entry(hass: HomeAssistant, entry: ChargerConfigEn
         remove_listener.append(price_manager.add_catalogue_listener(_on_catalogue))
         entry.async_on_unload(lambda: [remove() for remove in remove_listener])
     return True
+
+
+async def async_restore_execution(
+    controller: ChargingController, executor: AutoExecutor | None, preview: AutoPlannerController | None
+) -> None:
+    """Bring a charger's saved state back, after the preview's first calculation, and decide the restored plan against
+    that calculation's answer before anything else can start it.
+
+    The restore re-arms the plan; a window open now is started through its checks, which ask the execution boundary
+    whether the plan is superseded by a wait (`AutoExecutor.superseded_by_wait`, from the first calculation's answer):
+    such a plan starts nothing. The first calculation ran with no plan restored yet, so it could not clear one: the
+    restored plan is reconciled with a calculation of its own right after the restore, which clears a superseded plan
+    (and stops its own charge), and publishes the restored plan's execution facts (`applied_identity`)."""
+    await controller.async_initialize()
+    if executor is None:
+        return
+    # The restored record may carry an older release's person's Stop, and a manual Start's charge is watched again.
+    await executor.async_after_restore()
+    if preview is None or controller.plan is None:
+        return
+    try:
+        await preview.async_recalculate()
+    except Exception as err:  # noqa: BLE001 - the next calculation (a price, a reading, a timer) decides it
+        _LOGGER.warning("Deciding the restored plan failed: %s", type(err).__name__)
 
 
 def _async_start_session_recorder(
