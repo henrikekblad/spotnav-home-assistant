@@ -281,6 +281,40 @@ async def test_bundle_states_every_measurement_entity_as_home_assistant_holds_it
     assert "tok-meter-1" not in json.dumps(bundle)
 
 
+async def test_a_site_section_lists_the_detected_meters_and_which_one_the_config_is(hass: HomeAssistant) -> None:
+    from tests.site_registry import materialize
+    from tests.test_site_detection import solaredge_modbus_core
+
+    made = materialize(hass, solaredge_modbus_core(wye=False))
+    direct = {phase: made[f"meter_1_current_phase_{n}"] for phase, n in zip(("L1", "L2", "L3"), "abc")}
+    charger, site = await setup_charger_and_site(hass, direct_entities=direct)
+
+    section = (await async_build_debug_bundle(hass))["sites"][0]["detection"]
+
+    derived, current = section["meters"]
+    assert [(m["mode"], m["nominal_voltage"]) for m in section["meters"]] == [
+        ("derived_phase_current", True),
+        ("direct_phase_current", False),
+    ]
+    assert derived["integration"] == "solaredge_modbus" and current["id"] == derived["id"] + ":current"
+    assert derived["signed_current"] is False and derived["power_inverted"] is True and derived["estimated"] is False
+    assert {"role": "current", "phase": "L2", "entity_id": "sensor.meter_1_current_phase_b", "disabled": False} in derived["entities"]
+    assert {"role": "power", "phase": "L1", "entity_id": "sensor.meter_1_power_phase_a", "disabled": False} in derived["entities"]
+    # The site reads the meter's currents directly, without its total: not what applying either would write.
+    assert section["matches_config"] is None
+
+    from homeassistant.config_entries import ConfigEntry  # noqa: F401
+    from custom_components.spotnav.site.site_detection import apply_meter_candidate
+
+    entry = hass.config_entries.async_get_entry(site.entry_id)
+    from custom_components.spotnav.api.entity_fields import site_detection
+
+    chosen = site_detection(hass, entry).meters[0]
+    hass.config_entries.async_update_entry(entry, data=apply_meter_candidate(entry.data, chosen))
+    section = (await async_build_debug_bundle(hass))["sites"][0]["detection"]
+    assert section["matches_config"] == chosen.candidate_id
+
+
 async def test_a_secret_in_a_read_attribute_is_redacted_by_key(hass: HomeAssistant) -> None:
     hass.states.async_set("sensor.odd", "1", {"token": "tok-in-attribute"})
     charger, site = await setup_charger_and_site(
