@@ -2745,8 +2745,18 @@ class ChargingController:
 
     async def _async_claim_window_charge(self) -> None:
         """The claim of a window charge a report decided, decided again under the boundary's lock (`_recheck`)."""
-        async with self._automatic(AUTOMATIC_START):
-            await self._recheck(core_events.RECHECK_CLAIM, self._claim_locked)
+        async with self._automatic(AUTOMATIC_START) as allowed:
+            # Refused by the boundary (a plan superseded by a wait): nothing is claimed, and the core hears the claim did
+            # not go out.
+            await self._recheck(core_events.RECHECK_CLAIM, self._claim_locked if allowed else self._claim_refused)
+
+    async def _claim_refused(self) -> bool:
+        """The claim the execution boundary's gate refused: nothing is claimed."""
+        _LOGGER.info(
+            "SpotNav charger %s: a charge began by itself in a planned window; the plan is superseded, it is not claimed",
+            self.entry_id,
+        )
+        return False
 
     async def _claim_locked(self) -> bool:
         """The claim itself: the charge running is the plan's, on the charger's full phases."""

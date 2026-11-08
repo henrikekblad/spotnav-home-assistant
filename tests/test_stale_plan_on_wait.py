@@ -608,6 +608,28 @@ async def test_a_window_start_answered_after_the_wait_is_stopped_once_it_is_seen
     _expects_nothing(session)
 
 
+async def test_a_charge_the_charger_begins_by_itself_is_not_claimed_for_a_superseded_plan(session: Session) -> None:
+    """In the superseded plan's open window the charger begins a charge by itself: it is not claimed as the plan's (and
+    so not stopped as the plan's either)."""
+    _publish(session)
+    await session.set_auto(departure=time(8, 0), requested_kwh=10.0)
+    installed = session.executor.applied
+    assert installed is not None
+    waiting = await _waiting_answer(session)
+    await session.store.async_update(session.entry_id, mutate=lambda settings: replace(settings, requested_kwh=5.0))
+    session.executor._live_snapshot = lambda: replace(  # noqa: SLF001 - the answer for the stored settings
+        waiting, settings_revision=session.settings().revision
+    )
+    session.clock.now = installed.plan.windows[0][0] + timedelta(minutes=5)
+    await _fire_due(session)
+    assert session.on_calls == []
+
+    session.hass.states.async_set(session.charge_control, "on")
+    await session.hass.async_block_till_done()
+
+    assert session.controller.charge_origin != "plan_window", "not claimed as the superseded plan's"
+
+
 @pytest.mark.usefixtures("both_restarts")
 async def test_a_plan_confirmed_by_newer_settings_is_still_theirs_after_a_restart(
     session: Session, both_restarts: str
