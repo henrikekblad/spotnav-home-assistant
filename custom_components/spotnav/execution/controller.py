@@ -2745,8 +2745,18 @@ class ChargingController:
 
     async def _async_claim_window_charge(self) -> None:
         """The claim of a window charge a report decided, decided again under the boundary's lock (`_recheck`)."""
-        async with self._automatic(AUTOMATIC_START):
-            await self._recheck(core_events.RECHECK_CLAIM, self._claim_locked)
+        async with self._automatic(AUTOMATIC_START) as allowed:
+            # Refused by the boundary (a plan superseded by a wait): nothing is claimed, and the core hears the claim did
+            # not go out.
+            await self._recheck(core_events.RECHECK_CLAIM, self._claim_locked if allowed else self._claim_refused)
+
+    async def _claim_refused(self) -> bool:
+        """The claim the execution boundary's gate refused: nothing is claimed."""
+        _LOGGER.info(
+            "SpotNav charger %s: a charge began by itself in a planned window; the plan is superseded, it is not claimed",
+            self.entry_id,
+        )
+        return False
 
     async def _claim_locked(self) -> bool:
         """The claim itself: the charge running is the plan's, on the charger's full phases."""
@@ -3588,15 +3598,55 @@ class ChargingController:
             finally:
                 self._runner.end(token, core_events.PlanDropped())
 
+    async def async_confirm_plan_revision(self, identity: str, revision: int) -> None:
+        """A calculation of settings revision `revision` proposed what the installed plan `identity` already does: the
+        plan carries that revision from now, saved with it (`AutoExecutor._confirm_revision`). The plan is the same
+        object; nothing else of it changes."""
+        async with self._lock:
+            plan = self.plan
+            if plan is None or not plan.auto_owned or plan.auto_identity != identity:
+                return
+            current = plan.auto_settings_revision
+            if current is not None and current >= revision:
+                return
+            plan.auto_settings_revision = revision
+            await self._async_save_quietly()
+            self._notify()
+
     async def async_end_superseded_plan(self) -> bool:
-        """A settings change whose answer is to wait superseded the plan while its own charge runs: stop that charge
-        and clear the plan (`AutoExecutor._clear_superseded_locked`). The core decides the stop (`PlanSuperseded`): only
-        the plan's own charge is stopped; one a person, the car's minimum level, the sun or the hybrid hand-off owns
-        goes on and only the plan is cleared. Nothing is told: the charge did not stop unexpectedly. Returns whether the
-        plan was cleared (`False` when the core could not decide: nothing is stopped, and the next calculation asks
-        again)."""
+        """A settings change whose answer is to wait superseded the plan (`AutoExecutor._clear_superseded_locked`),
+        decided under this controller's lock, so no start of ours is half way:
+
+        * the plan's own charge whose control reads on is stopped and the plan cleared; the core decides the stop
+          (`PlanSuperseded`): one a person, the car's minimum level, the sun or the hybrid hand-off owns goes on and
+          only the plan is cleared;
+        * the plan's own charge that cannot be seen (its control unreadable, or a start of ours not answered yet)
+          keeps the plan: dropped now, the charge would run on with nothing to stop it. The boundary decides again at
+          this controller's next change;
+        * otherwise the plan is cleared touching no charge (fed as a dropped plan), and a charge of it load balancing
+          holds back is not given back.
+
+        Nothing is told: the charge did not stop unexpectedly. Returns whether the plan was cleared (`False`: kept, also
+        when the core could not decide)."""
         async with self._lock:
             if self.plan is None:
+                return True
+            if self._owner_origin == "plan_window" and not self._control_on:
+                if self._control_observation is None or self._core_start_pending():
+                    _LOGGER.debug(
+                        "SpotNav charger %s: the earlier plan's charge cannot be seen yet; the plan is kept until it can",
+                        self.entry_id,
+                    )
+                    return False
+            if not (self._owner_origin == "plan_window" and self._control_on):
+                if self.balancing_holds("plan_window"):
+                    # The plan's charge load balancing paused is not wanted any more: not given back.
+                    self.forget_balancing_pause()
+                token = self._runner.begin()
+                try:
+                    await self._end_plan_locked()
+                finally:
+                    self._runner.end(token, core_events.PlanDropped())
                 return True
             token = self._runner.begin()
             facts = self._core_facts(
