@@ -483,6 +483,8 @@
   "site.activeControl.reason.noCommandableCharger": "Indisponible : aucune borne de ce site n'accepte de consigne de courant.",
   "site.activeControl.reason.measurement": "Indisponible : la mesure de puissance propre à ce site n'est pas fiable.",
   "site.activeControl.reason.directionUnknown": "L'équilibrage de charge ne peut pas savoir si le courant est soutiré du réseau ou injecté : il protège seulement le fusible et n'utilise pas toute la marge. Activez « Le courant réseau est signé » et choisissez la puissance réseau totale, ou appuyez sur Utiliser pour votre compteur sous Trouvé dans Home Assistant.",
+  "site.activeControl.reason.directionUnknownUsePower": "L'équilibrage de charge ne peut pas savoir si le courant est soutiré du réseau ou injecté : il protège seulement le fusible et n'utilise pas toute la marge. Votre compteur indique aussi la puissance par phase, qui donne le sens : appuyez sur Utiliser pour votre compteur sous Trouvé dans Home Assistant.",
+  "site.activeControl.reason.directionUnknownMagnitude": "L'équilibrage de charge ne peut pas savoir si le courant est soutiré du réseau ou injecté, car votre compteur indique le courant sans sens. Il protège donc seulement le fusible et n'utilise pas toute la marge.",
   "site.activeControl.note": "Au mieux, ce n'est pas un dispositif de protection. Le désactiver rend tout courant qu'il avait réduit.",
   "site.activeControl.pending": "Enregistrement…",
   "site.activeControl.error.unavailable": "L'équilibrage de charge ne peut pas être activé maintenant : le site ne peut pas être contrôlé activement pour le moment. Rien n'a été modifié.",

@@ -2277,6 +2277,7 @@
   "site": {
     "active_control": {
       "available": false,
+      "direction_hint": null,
       "enabled": false,
       "reason": "site_measurement_configured_missing",
       "writable": true

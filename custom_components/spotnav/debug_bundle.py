@@ -71,6 +71,11 @@ the session before each event (`pre`) on every record, its counts (`events`, `qu
 `last_failure`) and its tally per event kind (`coverage`, whose comparison counts stay zero); no disagreements or
 drift any more.
 
+Since 2.5 a site section also carries `detection` (additive, no new version): the grid-meter candidates the site editor
+would offer now, as the editor reads them from the in-memory registries (id, integration, mode, the entities with their
+`disabled` state, `signed_current`, `power_inverted`, `estimated`, `nominal_voltage`, the warnings and the total grid power),
+and `matches_config`, the id of the one that equals what the site stores, if any (`site/site_detection.py`).
+
 Since 2.3 a site's `diagnostics` also carry `demand` (additive, no new version): the month's hourly means of net
 import (`[start, kW, house kW, incomplete, held, paused]`), what each demand-charge component bills so far with its peaks, the
 running hour with its gaps, and the import target (`site/demand_tracker.py`).
@@ -440,6 +445,37 @@ def _site_diagnostics(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, Any]
     return diagnostics
 
 
+def site_detection_section(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, Any]:
+    """The meter candidates the site editor would show now, and which one the stored config already is. The
+    registries are read in memory, as the editor reads them; nothing is awaited."""
+    from .api.entity_fields import meter_applied, site_detection
+
+    candidates = site_detection(hass, entry).meters
+    matched = next((c.candidate_id for c in candidates if meter_applied(entry, c)), None)
+    return {
+        "matches_config": matched,
+        "meters": [
+            {
+                "id": c.candidate_id,
+                "integration": c.integration,
+                "mode": c.mode,
+                "confidence": c.confidence,
+                "signed_current": c.signed_current,
+                "power_inverted": c.power_inverted,
+                "estimated": c.estimated,
+                "nominal_voltage": c.nominal_voltage,
+                "entities": [
+                    {"role": item.role, "phase": item.phase, "entity_id": item.entity_id, "disabled": item.disabled}
+                    for item in c.entities
+                ],
+                "grid_power": None if c.grid_power is None else list(c.grid_power.entity_ids),
+                "warnings": list(c.warnings),
+            }
+            for c in candidates
+        ],
+    }
+
+
 async def _charger_section(
     hass: HomeAssistant, entry: ConfigEntry, forecast: frozenset[str]
 ) -> dict[str, Any]:
@@ -491,6 +527,11 @@ async def async_build_debug_bundle(hass: HomeAssistant) -> dict[str, Any]:
         except Exception as err:  # noqa: BLE001 - one odd entity must not cost the whole bundle
             _LOGGER.warning("The debug bundle could not read a site's measurement entities: %s", type(err).__name__)
             measurement_entities = {"available": False, "reason": "read_failed"}
+        try:
+            detection: Any = site_detection_section(hass, entry)
+        except Exception as err:  # noqa: BLE001 - the registry scan must not cost the whole bundle
+            _LOGGER.warning("The debug bundle could not read a site's detection: %s", type(err).__name__)
+            detection = {"available": False, "reason": "read_failed"}
         controller = site_controller_for(hass, entry.entry_id)
         site_sections.append(
             {
@@ -498,6 +539,7 @@ async def async_build_debug_bundle(hass: HomeAssistant) -> dict[str, Any]:
                 "title": entry.title,
                 "diagnostics": _site_diagnostics(hass, entry),
                 "measurement_entities": measurement_entities,
+                "detection": detection,
                 "history_24h": None if controller is None else controller.history_samples,
             }
         )

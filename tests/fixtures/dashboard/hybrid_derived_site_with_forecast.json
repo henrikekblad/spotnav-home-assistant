@@ -2297,6 +2297,7 @@
   "site": {
     "active_control": {
       "available": true,
+      "direction_hint": null,
       "enabled": false,
       "reason": null,
       "writable": true

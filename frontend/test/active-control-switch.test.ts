@@ -12,6 +12,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { LANGUAGES, translate } from "../src/i18n";
 import { decodeSiteSettingsAnswer, activeControlNotice } from "../src/site-settings";
+import { decodeDashboard } from "../src/validate";
 import { VISUAL_CLASSES } from "../src/visual-styles";
 import { FakeHass, mountCard } from "./helpers";
 
@@ -20,7 +21,7 @@ const CONFIG = { type: "custom:spotnav-card", charger: "entry_a" };
 const shadow = (element: Element): ShadowRoot => element.shadowRoot as ShadowRoot;
 
 function dashboard(
-  active: { available: boolean; enabled: boolean; reason: string | null },
+  active: { available: boolean; enabled: boolean; reason: string | null; direction_hint?: string | null },
   writable = true,
   switchWritable = writable,
 ) {
@@ -28,7 +29,7 @@ function dashboard(
     readFileSync(join(ROOT, "dashboard", "cheapest_direct_site_admin.json"), "utf8"),
   ) as { site: { active_control: unknown; writable: boolean } };
   // The backend states the switch's own writability beside the site's: an admin reader may both.
-  payload.site.active_control = { ...active, writable: switchWritable };
+  payload.site.active_control = { direction_hint: null, ...active, writable: switchWritable };
   payload.site.writable = writable;
   return payload;
 }
@@ -42,7 +43,7 @@ async function settle(): Promise<void> {
 }
 
 async function open(
-  active: { available: boolean; enabled: boolean; reason: string | null },
+  active: { available: boolean; enabled: boolean; reason: string | null; direction_hint?: string | null },
   options: { admin?: boolean; writable?: boolean; switchWritable?: boolean; language?: string } = {},
 ): Promise<{ hass: FakeHass; element: ReturnType<typeof mountCard> }> {
   const hass = new FakeHass();
@@ -136,6 +137,32 @@ describe("the row in each available x enabled state", () => {
     expect(shadow(element).querySelector("form[data-value-editor='single']")?.textContent).toContain(
       translate("en", "site.activeControl.note"),
     );
+  });
+
+  it("says what a direction-less site can do about it: use the meter's power, or nothing the meter cannot give", async () => {
+    const unknown = { available: true, enabled: true, reason: "site_direction_unknown" };
+    const general = await open({ ...unknown, direction_hint: null });
+    expect(slot(general.element).textContent).toContain(translate("en", "site.activeControl.reason.directionUnknown"));
+    document.body.innerHTML = "";
+    const power = await open({ ...unknown, direction_hint: "use_power" });
+    expect(slot(power.element).textContent).toContain(translate("en", "site.activeControl.reason.directionUnknownUsePower"));
+    expect(slot(power.element).textContent).not.toContain("signed");
+    document.body.innerHTML = "";
+    const magnitude = await open({ ...unknown, direction_hint: "magnitude" });
+    expect(slot(magnitude.element).textContent).toContain(translate("en", "site.activeControl.reason.directionUnknownMagnitude"));
+  });
+
+  it("refuses a hint that goes with no direction reason, and one it does not know", () => {
+    const withHint = (reason: string | null, hint: string) => {
+      const payload = JSON.parse(
+        readFileSync(join(ROOT, "dashboard", "cheapest_direct_site_admin.json"), "utf8"),
+      ) as { site: { active_control: Record<string, unknown> } };
+      payload.site.active_control = { available: true, enabled: false, reason, direction_hint: hint, writable: true };
+      return payload;
+    };
+    expect(decodeDashboard(withHint(null, "use_power"))).toEqual({ ok: false, failure: "malformed" });
+    expect(decodeDashboard(withHint("site_direction_unknown", "sign_it"))).toEqual({ ok: false, failure: "malformed" });
+    expect(decodeDashboard(withHint("site_direction_unknown", "use_power")).ok).toBe(true);
   });
 
   it("is read-only for a reader who may not write: a state, no control, the reason kept", async () => {

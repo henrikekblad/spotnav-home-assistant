@@ -6,6 +6,7 @@
   "site": {
     "active_control": {
       "available": true,
+      "direction_hint": null,
       "enabled": true,
       "reason": null,
       "writable": true

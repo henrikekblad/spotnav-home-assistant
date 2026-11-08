@@ -134,6 +134,7 @@ from ..site.phase_detection import (
     UNKNOWN as UNKNOWN_PHASES,
 )
 from ..site.measurement_problem import MeasurementProblem
+from ..site.site_detection import direction_hint
 from ..site.site_capacity_controller import SiteCapacityController
 from ..site.solar_capability import REASON_NEEDS_TOTAL_GRID_POWER
 from ..util import aware_iso, finite_number
@@ -148,7 +149,7 @@ from ..vehicles.vehicle_charge_limit import charge_limit_range
 from ..vehicles.vehicle_discovery import discover_vehicles, one_vehicle_scan, resolve_target_vehicle
 from ..vehicles.vehicle_wake import wake_supported
 from .charge_bar import charge_bar, ProgressFacts
-from .entity_fields import phase_switching_offered
+from .entity_fields import phase_switching_offered, site_detection
 from .grid_tariff import capture_grid_tariff, CapturedGridTariff, demand_needs_grid_power, serialize_grid_tariff
 from .price_source import capture_price_source, CapturedPriceSource, serialize_price_source
 from .price_days import serialize_source as source_attribution
@@ -365,6 +366,10 @@ class CapturedSite:
     active_control_available: bool
     #: The stable reason `active_control_available` is `False`, from the snapshot's `blocking_reasons`.
     active_control_reason: str | None
+    #: With `site_direction_unknown`, what the card should say about it: `use_power` (the meter's per-phase
+    #: power would give the direction; the editor's Use applies it), `magnitude` (the meter reports its
+    #: current as a size, so signing it cannot help) or `None` (the general advice). `site_detection.direction_hint`.
+    active_control_hint: str | None
     #: This charger's row of `SiteCapacityController.solar_surplus_snapshot` / `.hybrid_snapshot`.
     solar_state: dict[str, Any] | None
     hybrid_state: dict[str, Any] | None
@@ -1011,6 +1016,16 @@ def _active_control_reason(controller: SiteCapacityController) -> str | None:
     return "no_commandable_charger"
 
 
+def _active_control_hint(
+    hass: HomeAssistant, entry: ConfigEntry, controller: SiteCapacityController, reason: str | None
+) -> str | None:
+    """`direction_hint` for a site that cannot tell import from export, read from the registries in memory;
+    `None` for any other reason."""
+    if reason != REASON_SITE_DIRECTION_UNKNOWN:
+        return None
+    return direction_hint(site_detection(hass, entry), controller.load_balancing_entity_ids())
+
+
 def capture_site(
     hass: HomeAssistant,
     charger_entry_id: str,
@@ -1045,6 +1060,7 @@ def capture_site(
     capability = controller.capability_snapshot
     limit_a, limit_cause = controller.load_balancing_limit(charger_entry_id)
     balancing = controller.balancing_pause(charger_entry_id)
+    active_control_reason = _active_control_reason(controller)
     return CapturedSite(
         site_name=entry.title,
         state=str(result.state),
@@ -1067,7 +1083,8 @@ def capture_site(
             hass, forecast_domains, selected_forecast_ids
         ),
         active_control_available=capability.load_balancing.active_available,
-        active_control_reason=_active_control_reason(controller),
+        active_control_reason=active_control_reason,
+        active_control_hint=_active_control_hint(hass, entry, controller, active_control_reason),
         solar_state=dict(solar_snapshot) if solar_snapshot is not None else None,
         hybrid_state=dict(hybrid_snapshot) if hybrid_snapshot is not None else None,
         measurement_problem=controller.lasting_measurement_problem,
@@ -2347,6 +2364,7 @@ def serialize_site(
             "available": site.active_control_available,
             "enabled": site.active_control_enabled,
             "reason": site.active_control_reason,
+            "direction_hint": site.active_control_hint,
             "writable": bool(active_control_writable),
         },
         "writable": bool(can_act),
