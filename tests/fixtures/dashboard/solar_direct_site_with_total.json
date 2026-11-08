@@ -314,6 +314,7 @@
   "site": {
     "active_control": {
       "available": true,
+      "direction_hint": null,
       "enabled": false,
       "reason": "site_direction_unknown",
       "writable": true

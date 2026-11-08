@@ -559,7 +559,7 @@ async def test_available_and_off_can_be_turned_on_and_the_card_sees_it_at_once(
     hass: HomeAssistant, hass_ws_client
 ) -> None:
     world = await make_world(hass, prefix="ao", active=False)
-    assert world.active() == {"available": True, "enabled": False, "reason": None, "writable": True}
+    assert world.active() == {"available": True, "enabled": False, "reason": None, "direction_hint": None, "writable": True}
     client = await admin(hass, hass_ws_client)
 
     result = await call(
@@ -572,8 +572,8 @@ async def test_available_and_off_can_be_turned_on_and_the_card_sees_it_at_once(
     )
 
     assert result["ok"] is True and result["error"] is None and result["restore"] is None
-    assert result["site"]["active_control"] == {"available": True, "enabled": True, "reason": None, "writable": True}
-    assert world.active() == {"available": True, "enabled": True, "reason": None, "writable": True}
+    assert result["site"]["active_control"] == {"available": True, "enabled": True, "reason": None, "direction_hint": None, "writable": True}
+    assert world.active() == {"available": True, "enabled": True, "reason": None, "direction_hint": None, "writable": True}
     assert world.stored() is True and world.controller.active_control_enabled is True
 
 

@@ -727,6 +727,9 @@ class MeterCandidate:
     # the voltage is the site's nominal one (`voltage_between_phases_v / sqrt(3)`), and the meter's own
     # current is still the fuse's |I|. Offered beside the meter's direct candidate, and above it.
     nominal_voltage: bool = False
+    # From a catalogue row (its sign flags are what the integration is known to report), not from the
+    # generic shape matching, where `signed_current=False` only means "not known to be signed".
+    catalogued: bool = False
     entities: tuple[DetectedEntity, ...] = ()
     warnings: tuple[str, ...] = ()
     # The meter's total grid power where the integration reports one (`MeterRow.totals`).
@@ -1015,6 +1018,7 @@ def _build_row_candidates(
             power_inverted=row.invert_power,
             estimated=estimated,
             nominal_voltage=not with_voltage,
+            catalogued=True,
             entities=_display(used),
             warnings=tuple(warnings),
             grid_power=grid_source,
@@ -1036,6 +1040,7 @@ def _build_row_candidates(
             signed_current=row.signed_current,
             # The sign of the meter's total grid power; there is no per-phase power in direct mode.
             power_inverted=row.invert_power and grid_source is not None,
+            catalogued=True,
             entities=_display(used),
             warnings=tuple(warnings),
             grid_power=grid_source,
@@ -1402,6 +1407,32 @@ def detect_site(
     batteries = _battery_candidates(entities, device_map, excluded)
     batteries.sort(key=lambda c: (c.integration, c.candidate_id))
     return Detection(meters=tuple(meters), batteries=tuple(batteries))
+
+
+DirectionHint = Literal["use_power", "magnitude"]
+
+
+def direction_hint(detection: Detection, current_entity_ids: Iterable[str]) -> DirectionHint | None:
+    """What to tell a direct site that cannot know the phase direction, from the candidates of its own meter
+    (the ones that use one of the site's current entities):
+
+    * `use_power`: one of them is derived, so the meter's per-phase power gives the direction (the editor's
+      **Use** applies it);
+    * `magnitude`: the meter is a catalogue row known to report the current as a magnitude, so "the grid
+      current is signed" cannot help;
+    * `None`: otherwise (an unknown meter, or one whose current is signed): the general advice stands.
+    """
+    wanted = set(current_entity_ids)
+    own = [
+        candidate
+        for candidate in detection.meters
+        if any(item.role == "current" and item.entity_id in wanted for item in candidate.entities)
+    ]
+    if any(candidate.mode == MEASUREMENT_MODE_DERIVED for candidate in own):
+        return "use_power"
+    if own and all(candidate.catalogued and not candidate.signed_current for candidate in own):
+        return "magnitude"
+    return None
 
 
 def enable_disabled_entities(hass: HomeAssistant, entity_ids: Iterable[str]) -> None:
