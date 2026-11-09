@@ -2623,7 +2623,8 @@ class SiteCapacityController:
                 and yield_verdict.current_a < previous_setpoint
                 else None
             )
-            target_a = proposed if stepped is None else stepped
+            # The stepper's own lowering (a step taken back) never goes above the overload's: the lower one is written.
+            target_a = proposed if stepped is None else (stepped if proposed is None else min(stepped, proposed))
             if self._lowering_held_by_battery(
                 charger_entry_id, charger_controller, decision, fresh, previous_setpoint, target_a
             ):

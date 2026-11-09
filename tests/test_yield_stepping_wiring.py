@@ -434,7 +434,8 @@ async def test_urgent_revert_reaches_the_charger_without_the_dwell(hass: HomeAss
 @pytest.mark.parametrize("limit_known", [True, False])
 async def test_a_step_not_absorbed_within_the_limit_is_kept(hass: HomeAssistant, monkeypatch, limit_known: bool) -> None:
     """The same step on a site with room for it (10 A, then 11 A, on a 39 A limit): nothing gave way, but the grid
-    carries the raise, so it is not taken back. No battery charged, so nothing could give way: no backoff either. With
+    carries the raise, so it is not taken back. Nothing was verified either: no further step for the backoff (no fresh
+    battery reading showed the battery idle, so this counts as a step nothing gave way to). With
     the limit unknown to the stepper nothing says the grid carries it, and it is taken back at once, as before."""
     if not limit_known:
         monkeypatch.setattr(YieldStepper, "_limit", staticmethod(lambda observation: None))
@@ -480,7 +481,7 @@ async def test_a_step_not_absorbed_within_the_limit_is_kept(hass: HomeAssistant,
     assert (verdict["action"], verdict["reason"], verdict["state"]) == (
         "passthrough",
         "kept_not_absorbed_within_limit",
-        "unknown",
+        "backoff",
     )
     assert configure_calls == [], "the raise the grid carries stays"
 

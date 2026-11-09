@@ -3363,12 +3363,13 @@ class ChargingController:
             amps, why = self.plan.amps, "the plan's current"
         if amps is None:
             amps, why = ASSUMED_CURRENT_A, f"{ASSUMED_CURRENT_A} A"
-            maximum = None
-            if self.current_limit:
-                state = self.hass.states.get(self.current_limit)
-                maximum = None if state is None else _safe_float(state.attributes.get("max"))
-            if maximum is not None and DEFAULT_MIN_CURRENT_A <= maximum < amps:
-                amps, why = int(maximum), "the current limit's maximum"
+        maximum = None
+        if self.current_limit:
+            state = self.hass.states.get(self.current_limit)
+            maximum = None if state is None else _safe_float(state.attributes.get("max"))
+        if maximum is not None and DEFAULT_MIN_CURRENT_A <= maximum < amps:
+            # Never reckoned above what the charger can take, whichever current it came from.
+            amps, why = int(maximum), "the current limit's maximum"
         if not self._assumed_told:
             self._assumed_told = True
             _LOGGER.info(
