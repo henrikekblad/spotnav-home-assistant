@@ -31,13 +31,12 @@ from custom_components.spotnav.core.session import OWNER_PLAN
 from custom_components.spotnav.execution.controller import STOP_CHECK_S, STOP_CHECK_TRIES
 
 from .harness import Session
-from .test_stale_plan_on_wait import (  # noqa: F401 - the module's clock fixture, used here too
-    _charging_window,
-    _expects_nothing,
-    _restart,
-    both_restarts,
-    thursday_evening,
-)
+from . import test_stale_plan_on_wait as stale
+from .test_stale_plan_on_wait import _charging_window, _expects_nothing, _restart
+
+# That module's fixtures, used here too: its clock on Thursday evening (autouse), and both kinds of restart.
+thursday_evening = stale.thursday_evening
+both_restarts = stale.both_restarts
 
 pytestmark = pytest.mark.usefixtures("offline_relay")
 
