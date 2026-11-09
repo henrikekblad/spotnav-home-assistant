@@ -276,3 +276,8 @@ export function shownSections(element: Element): string[] {
   const open = dialogs.find((dialog) => dialog.closest("[hidden]") === null) ?? null;
   return Array.from(open?.querySelectorAll<HTMLElement>("[data-section]") ?? []).map((node) => node.dataset["section"] ?? "");
 }
+
+/** The dialog panel an editor form is shown in: its fixed actions row (Save, Cancel, the error line) lives there, outside the form. */
+export function footerOf(form: Element): HTMLElement {
+  return form.closest<HTMLElement>("[role='dialog']")!;
+}

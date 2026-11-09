@@ -282,6 +282,22 @@ describe("the request lifecycle", () => {
     expect(energyText(element)).toBe("20.5 kWh");
   });
 
+  it("keeps Save and Cancel in the fixed row below the scrolling part, inside the focus trap", async () => {
+    const { element } = await openEditor("current");
+    const panel = editorDialog(element)!;
+    const footer = panel.querySelector<HTMLElement>(".spotnav-dialog-footer")!;
+    const scroller = panel.querySelector<HTMLElement>(".spotnav-dialog-scroll")!;
+    expect(footer.hidden).toBe(false);
+    const save = button(element, "spotnav-settings-save")!;
+    expect(footer.contains(save)).toBe(true);
+    expect(footer.querySelector("[data-action='cancel']")).not.toBeNull();
+    expect(scroller.querySelector(".spotnav-settings-actions")).toBeNull();
+    // Shift+Tab from the first control wraps to the last one: Cancel, in the footer.
+    (panel.querySelector(".spotnav-dialog-close") as HTMLElement).focus();
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", shiftKey: true, bubbles: true, cancelable: true }));
+    expect(shadow(element).activeElement).toBe(footer.querySelector("[data-action='cancel']"));
+  });
+
   it("writes nothing when a dialog is opened and closed again", async () => {
     const { hass, element } = await openEditor("deadline");
     const readsBefore = reads(hass).length;

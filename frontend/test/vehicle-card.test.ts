@@ -283,7 +283,7 @@ async function editValue(element: Element, id: string, row: string): Promise<voi
 const field = (element: Element) => dlg(element).querySelector<HTMLInputElement>("[data-value-field='number']")!;
 const noneBox = (element: Element) => dlg(element).querySelector<HTMLInputElement>("[data-value-none]");
 const editorError = (element: Element): HTMLElement | null => {
-  const node = dlg(element).querySelector<HTMLElement>("form[data-value-editor] [role='alert']");
+  const node = dlg(element).querySelector<HTMLElement>("[role='alert']");
   return node === null || node.hidden ? null : node;
 };
 const saveButton = (element: Element) => dlg(element).querySelector<HTMLButtonElement>(".spotnav-settings-save")!;
@@ -390,7 +390,7 @@ describe("the Settings page's vehicles", () => {
     expect(dlg(element).parentElement?.textContent).toContain(translate("en", "settings.consumption.label"));
     expect(field(element).value).toBe("1.7");
     expect(dlg(element).textContent).toContain(translate("en", "settings.consumption.unit"));
-    const buttons = Array.from(dlg(element).querySelectorAll<HTMLButtonElement>("form button")).map((node) => node.textContent);
+    const buttons = Array.from(dlg(element).querySelectorAll<HTMLButtonElement>(".spotnav-settings-actions button")).map((node) => node.textContent);
     expect(buttons).toEqual([translate("en", "settings.save"), translate("en", "settings.cancel")]);
     expect(vehicleUpdates(hass)).toHaveLength(0);
   });
@@ -490,7 +490,7 @@ describe("the Settings page's vehicles", () => {
     const { hass, element } = await openSettings(twoVehicles());
     await editValue(element, "vehicle_ev6", "capacity");
     field(element).value = "99";
-    const cancel = Array.from(dlg(element).querySelectorAll<HTMLButtonElement>("form button")).find(
+    const cancel = Array.from(dlg(element).querySelectorAll<HTMLButtonElement>(".spotnav-settings-actions button")).find(
       (node) => node.textContent === translate("en", "settings.cancel"),
     );
     cancel!.click();

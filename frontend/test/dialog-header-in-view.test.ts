@@ -27,7 +27,11 @@ function expectHeaderInView(panel: HTMLElement): void {
   const scroller = panel.querySelector<HTMLElement>(`.${C.dialogScroll}`)!;
   expect(header).not.toBeNull();
   expect(scroller).not.toBeNull();
-  expect(Array.from(panel.children)).toEqual([header, scroller]);
+  // The fixed actions row, when a dialog has one, is the panel's third part, below the scrolling one.
+  const footer = panel.querySelector<HTMLElement>(`.${C.dialogFooter}`)!;
+  expect(footer).not.toBeNull();
+  expect(Array.from(panel.children)).toEqual([header, scroller, footer]);
+  expect(scroller.contains(footer)).toBe(false);
   expect(scroller.contains(header)).toBe(false);
   expect(header.querySelector(`.${C.dialogTitle}`)).not.toBeNull();
   expect(header.querySelector(`.${C.dialogClose}`)).not.toBeNull();

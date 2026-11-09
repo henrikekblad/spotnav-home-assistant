@@ -243,6 +243,7 @@ export const VISUAL_CLASSES = {
   dialogBody: "spotnav-dialog-body",
   dialogScroll: "spotnav-dialog-scroll",
   dialogScrolled: "spotnav-dialog-scrolled",
+  dialogFooter: "spotnav-dialog-footer",
   issueItem: "spotnav-issue",
   issueText: "spotnav-issue-text",
   capabilityItem: "spotnav-capability",
@@ -2325,6 +2326,23 @@ export const VISUAL_STYLES = `
     overscroll-behavior: contain;
     -webkit-overflow-scrolling: touch;
     padding: 0 14px 14px;
+  }
+  /*
+   * The fixed bottom row (Save, Cancel): outside the scrolling part, so it is always in view. It has the panel's
+   * own background and a thin divider on top, and keeps clear of a phone's home indicator.
+   */
+  .${VISUAL_CLASSES.dialogFooter} {
+    flex: none;
+    min-width: 0;
+    padding: 8px 14px calc(12px + env(safe-area-inset-bottom, 0px));
+    background: inherit;
+    border-top: 1px solid var(--divider-color, rgba(0, 0, 0, 0.12));
+  }
+  .${VISUAL_CLASSES.dialogFooter}[hidden] {
+    display: none;
+  }
+  .${VISUAL_CLASSES.dialogFooter} > .spotnav-settings-actions {
+    margin-top: 4px;
   }
   .${VISUAL_CLASSES.dialogTitle} {
     flex: 1 1 auto;

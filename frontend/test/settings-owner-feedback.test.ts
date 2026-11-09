@@ -105,7 +105,7 @@ describe("a value's editor returns to where the page was", () => {
     opener.focus();
     opener.click();
     await settle();
-    page(element).querySelector<HTMLButtonElement>("form[data-value-editor] button[type='button']")!.click();
+    page(element).querySelector<HTMLButtonElement>(".spotnav-settings-actions button[type='button']")!.click();
     await settle();
     expect(scrollable(element).scrollTop).toBe(640);
     expect(shadow(element).activeElement?.getAttribute("data-edit")).toBe("identify_mode");
@@ -223,7 +223,7 @@ describe("two or more cars", () => {
     page(element).querySelector<HTMLButtonElement>("[data-vehicle-tab='vehicle_niro']")!.click();
     page(element).querySelector<HTMLButtonElement>("[data-vehicle='vehicle_niro'] [data-edit='capacity']")!.click();
     await settle();
-    page(element).querySelector<HTMLButtonElement>("form[data-value-editor] button[type='button']")!.click();
+    page(element).querySelector<HTMLButtonElement>(".spotnav-settings-actions button[type='button']")!.click();
     await settle();
     expect(page(element).querySelector("[data-section='vehicle']")?.getAttribute("data-vehicle")).toBe("vehicle_niro");
   });
