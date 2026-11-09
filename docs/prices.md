@@ -35,7 +35,7 @@ source an area uses follows from what you have set up; there is no setting to ch
   both are there, Nord Pool is used. To get one: register at
   [transparency.entsoe.eu](https://transparency.entsoe.eu/), then e-mail transparency@entsoe.eu with the
   subject "Restful API access" and your account's e-mail address in the text. Once access is granted (it can
-  take a few days), generate the security token under **My Account Settings**. Enter it in the card under
+  take a few days), generate the security token under **My Account → Web API Access**. Enter it in the card under
   **Settings → Electricity price**, or in the electricity price's **Configure**. There is one key for the
   whole installation. It is stored in Home Assistant, never logged and never shown in diagnostics; ENTSO-E
   checks it once when you save it.

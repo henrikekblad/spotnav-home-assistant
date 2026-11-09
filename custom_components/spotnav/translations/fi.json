@@ -257,7 +257,7 @@
           "entsoe_key": "ENTSO-E-avain (valinnainen)"
         },
         "data_description": {
-          "entsoe_key": "Rekisteröidy osoitteessa [transparency.entsoe.eu]({entsoe_url}) ja lähetä sitten sähköposti osoitteeseen transparency@entsoe.eu aiheella \"Restful API access\" ja tilisi sähköpostiosoite tekstissä. Kun pääsy on myönnetty (se voi kestää muutaman päivän), luo suojausavain kohdassa My Account Settings ja liitä se tähän. Yksi avain koko asennukselle. Jos käytät HACS:n Nord Poolia, joka korvaa sisäänrakennetun, anna avain, niin hinnat tulevat ENTSO-E:ltä."
+          "entsoe_key": "Rekisteröidy osoitteessa [transparency.entsoe.eu]({entsoe_url}) ja lähetä sitten sähköposti osoitteeseen transparency@entsoe.eu aiheella \"Restful API access\" ja tilisi sähköpostiosoite tekstissä. Kun pääsy on myönnetty (se voi kestää muutaman päivän), luo suojausavain kohdassa My Account → Web API Access ja liitä se tähän. Yksi avain koko asennukselle. Jos käytät HACS:n Nord Poolia, joka korvaa sisäänrakennetun, anna avain, niin hinnat tulevat ENTSO-E:ltä."
         }
       },
       "prices_entsoe": {
@@ -267,7 +267,7 @@
           "entsoe_key": "ENTSO-E-avain (valinnainen)"
         },
         "data_description": {
-          "entsoe_key": "Rekisteröidy osoitteessa [transparency.entsoe.eu]({entsoe_url}) ja lähetä sitten sähköposti osoitteeseen transparency@entsoe.eu aiheella \"Restful API access\" ja tilisi sähköpostiosoite tekstissä. Kun pääsy on myönnetty (se voi kestää muutaman päivän), luo suojausavain kohdassa My Account Settings ja liitä se tähän. Yksi avain koko asennukselle. Jos käytät HACS:n Nord Poolia, joka korvaa sisäänrakennetun, anna avain, niin hinnat tulevat ENTSO-E:ltä."
+          "entsoe_key": "Rekisteröidy osoitteessa [transparency.entsoe.eu]({entsoe_url}) ja lähetä sitten sähköposti osoitteeseen transparency@entsoe.eu aiheella \"Restful API access\" ja tilisi sähköpostiosoite tekstissä. Kun pääsy on myönnetty (se voi kestää muutaman päivän), luo suojausavain kohdassa My Account → Web API Access ja liitä se tähän. Yksi avain koko asennukselle. Jos käytät HACS:n Nord Poolia, joka korvaa sisäänrakennetun, anna avain, niin hinnat tulevat ENTSO-E:ltä."
         }
       },
       "prices_pvpc": {

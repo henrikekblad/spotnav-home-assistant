@@ -49,7 +49,7 @@ prices**, before it finishes:
 - **Another European area**: your own free **ENTSO-E key**. Register at
   [transparency.entsoe.eu](https://transparency.entsoe.eu/), then e-mail transparency@entsoe.eu with the
   subject "Restful API access" and your account's e-mail address in the text. Once access is granted (it
-  can take a few days), generate the security token under **My Account Settings** and paste it in. One key
+  can take a few days), generate the security token under **My Account → Web API Access** and paste it in. One key
   serves the whole installation.
 - **Spain – PVPC**: a link adds Home Assistant's own **PVPC** integration.
 - **Great Britain**: a link to the **Octopus Energy** integration, installed through HACS, with your Agile
