@@ -357,6 +357,12 @@ STOP_ACK_S: Final = 120.0
 #: a charger that has ended the transaction rejects a second stop. Shorter than the retry of a stop that did not go
 #: out (`STOP_RETRY_S`) and the person's hold's gap (`PERSON_HOLD_STOP_GAP_S`), so neither changes.
 STOP_SETTLE_S: Final = 15.0
+#: An automatic stop that went out is looked at again this long after (`_async_stop_check_callback`): a charger still
+#: charging then, never seen off since and with no start of ours after the stop, did not take it (an OCPP charger right
+#: after Home Assistant's restart: its integration does not know the transaction yet, and takes the stop as done with
+#: nothing sent). The decision is taken again, at most `STOP_CHECK_TRIES` times while the charge is never seen off.
+STOP_CHECK_S: Final = STOP_ACK_S
+STOP_CHECK_TRIES: Final = 3
 
 #: Why a top-off ends (`_async_end_top_off`): the car stopped drawing by itself, its deadline came, the
 #: car was unplugged, or the charge was turned off by other means.
@@ -803,6 +809,12 @@ class ChargingController:
         # The appointment at which an automatic stop the charger's control did not execute is decided again
         # (`_automatic_stop_locked`), or `None`.
         self._stop_retry_cancel: Callable[[], None] | None = None
+        # The look at an automatic stop that went out (`STOP_CHECK_S`): its timer, the stop it is for, and how many
+        # times the decision was taken again while the charge was never seen off.
+        self._stop_check_cancel: Callable[[], None] | None = None
+        self._stop_check_sent_at: datetime | None = None
+        self._stop_check_what = "the stop"
+        self._stop_check_tries = 0
         # A command not sent because the charger was not ready (`_owe`): since when, whether a start or stop decision
         # and whether a session's current is owed, and the watch that takes them up again once it is.
         self._owed_since: datetime | None = None
@@ -1568,6 +1580,9 @@ class ChargingController:
             self._end_target_stop(LAPSE_CHARGING)
         if charging and self._seen_charging is False:
             self._stop_settle_since = None
+        if not charging:
+            # Seen off: a stop of ours landed (or the charge ended anyway); nothing is left to look at again.
+            self._cancel_stop_check(reset=True)
         self._seen_charging = charging
 
     def _handback_facts(self) -> tuple[Any, ...]:
@@ -4600,6 +4615,7 @@ class ChargingController:
         theirs to hear about (`stop_not_executed`), never through here. A stop the charger answered by holding the
         charge at its floor (`stop_held_at_floor`) is the same: the charge runs on, and the stop is tried again.
         """
+        sent_before = self._stop_sent_at
         try:
             if request:
                 await self._stop_request_locked(clear_schedule=clear_schedule, defer_unready=True)
@@ -4638,6 +4654,9 @@ class ChargingController:
                     what,
                 )
             return False
+        sent_at = self._stop_sent_at
+        if sent_at is not None and sent_at != sent_before:
+            self._arm_stop_check(sent_at, what)
         return True
 
     def _start_retry_limit(self) -> int:
@@ -4811,6 +4830,60 @@ class ChargingController:
         if cancel is not None:
             cancel()
 
+    def _arm_stop_check(self, sent_at: datetime, what: str) -> None:
+        """An automatic stop went out at `sent_at`: look at the charger again in `STOP_CHECK_S`."""
+        self._cancel_stop_check()
+        self._stop_check_sent_at = sent_at
+        self._stop_check_what = what
+        self._stop_check_cancel = async_call_later(
+            self.hass,
+            STOP_CHECK_S,
+            HassJob(self._async_stop_check_callback, "SpotNav stop check", cancel_on_shutdown=True),
+        )
+
+    def _cancel_stop_check(self, *, reset: bool = False) -> None:
+        cancel = self._stop_check_cancel
+        self._stop_check_cancel = None
+        self._stop_check_sent_at = None
+        if reset:
+            self._stop_check_tries = 0
+        if cancel is not None:
+            cancel()
+
+    @callback
+    def _async_stop_check_callback(self, _now: datetime) -> None:
+        """`STOP_CHECK_S` after an automatic stop went out: a charge still running that was never seen off since, with
+        no stop or start of ours after it, did not take the stop. The decision is taken again (`_async_retry_stop`: the
+        plan re-armed as a restore arms it), at most `STOP_CHECK_TRIES` times while the charge is never seen off."""
+        self._stop_check_cancel = None
+        sent_at = self._stop_check_sent_at
+        self._stop_check_sent_at = None
+        if sent_at is None or self._shut_down or not self.charging or self._stop_sent_at != sent_at:
+            return
+        started = self._start_sent_at
+        if started is not None and started >= sent_at:
+            return
+        what = self._stop_check_what
+        if self._stop_check_tries >= STOP_CHECK_TRIES:
+            _LOGGER.warning(
+                "SpotNav charger %s: %s went out, but the charger still charges %ss later; it was decided again %s "
+                "times, and is left to the next report or plan",
+                self.entry_id,
+                what,
+                int(STOP_CHECK_S),
+                STOP_CHECK_TRIES,
+            )
+            return
+        self._stop_check_tries += 1
+        _LOGGER.warning(
+            "SpotNav charger %s: %s went out, but the charger still charges %ss later (it did not take the stop); "
+            "it is decided again",
+            self.entry_id,
+            what,
+            int(STOP_CHECK_S),
+        )
+        self._async_spawn(self._async_retry_stop(), "the stop's check")
+
     @callback
     def _async_stop_retry_callback(self, _now: datetime) -> None:
         self._stop_retry_cancel = None
@@ -4957,6 +5030,7 @@ class ChargingController:
         await self._async_save_handback_facts()
         await self._runner.coverage.async_flush()
         self._cancel_stop_retry()
+        self._cancel_stop_check(reset=True)
         self._cancel_owed()
         self._cancel_setting_retry()
         self._cancel_person_hold_retry()
