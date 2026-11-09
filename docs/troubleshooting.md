@@ -4,6 +4,10 @@ For when something does not work as expected: how to get diagnostics and the deb
 
 ## Diagnostics
 
+The easiest way to report a problem is to send the debug info from the card, right after it happened:
+**Settings, Support, Send debug info** (see [Send debug info](#send-debug-info) below). The rest of this section is
+for when you want the file yourself.
+
 Download diagnostics from **Settings, Devices & services, SpotNav**, the entry's menu, then
 **Download diagnostics**.
 
