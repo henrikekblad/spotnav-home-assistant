@@ -363,6 +363,10 @@ STOP_SETTLE_S: Final = 15.0
 #: nothing sent). The decision is taken again, at most `STOP_CHECK_TRIES` times while the charge is never seen off.
 STOP_CHECK_S: Final = STOP_ACK_S
 STOP_CHECK_TRIES: Final = 3
+#: What load balancing reckons a running charge at when nothing says what it asks for and no current is set or planned
+#: (`ChargingController.balancing_current`): a common home charger's 16 A, capped by the current-limit entity's own
+#: maximum. Reckoned at it, the charge is regulated (lowered to what the fuse allows) rather than left unregulated.
+ASSUMED_CURRENT_A: Final = 16
 
 #: Why a top-off ends (`_async_end_top_off`): the car stopped drawing by itself, its deadline came, the
 #: car was unplugged, or the charge was turned off by other means.
@@ -647,11 +651,12 @@ class ResolvedCurrent:
     """The best available answer to "what current is this charger about to use", with provenance.
 
     `source == "setpoint"` means the value came from the current-limit entity's live state, not from
-    anything SpotNav requested; callers must never report it as an explicit request.
+    anything SpotNav requested; callers must never report it as an explicit request. `"assumed"` (only from
+    `balancing_current`) is what load balancing reckons a running charge with neither at: never a request either.
     """
 
     amps: int | None
-    source: Literal["requested", "setpoint", "unknown"]
+    source: Literal["requested", "setpoint", "assumed", "unknown"]
 
 
 RESTORE_NOT_NEEDED = "not_needed"
@@ -814,6 +819,8 @@ class ChargingController:
         self._stop_check_cancel: Callable[[], None] | None = None
         self._stop_check_sent_at: datetime | None = None
         self._stop_check_what = "the stop"
+        # Whether `balancing_current` said it reckons the running charge at an assumed current.
+        self._assumed_told = False
         self._stop_check_tries = 0
         # A command not sent because the charger was not ready (`_owe`): since when, whether a start or stop decision
         # and whether a session's current is owed, and the watch that takes them up again once it is.
@@ -3334,6 +3341,42 @@ class ChargingController:
         if setpoint is not None:
             return ResolvedCurrent(setpoint, "setpoint")
         return ResolvedCurrent(None, "unknown")
+
+    def balancing_current(self) -> ResolvedCurrent:
+        """What load balancing reckons this charger asks for (`resolve_current`), never unknown while it charges.
+
+        A charge running with no current on record and no usable setpoint (a charge the charger began by itself, or one
+        whose record a restart lost) would leave the regulator nothing to work from (`requested_current_unknown`), and
+        the charge would run unregulated at whatever the charger was last given. It is reckoned instead at the charging
+        current the person set, else the plan's, else `ASSUMED_CURRENT_A` capped by the current-limit entity's maximum:
+        the regulator then lowers it to what the fuse allows, as any charge. Said once per charge. Not a request: the
+        hand-back (`async_restore_current`) still reads `resolve_current`."""
+        resolved = self.resolve_current()
+        if resolved.amps is not None or not self.charging:
+            self._assumed_told = False
+            return resolved
+        amps = self._setting_amps()
+        why = "the charging current set"
+        if amps is None and self.plan is not None:
+            amps, why = self.plan.amps, "the plan's current"
+        if amps is None:
+            amps, why = ASSUMED_CURRENT_A, f"{ASSUMED_CURRENT_A} A"
+            maximum = None
+            if self.current_limit:
+                state = self.hass.states.get(self.current_limit)
+                maximum = None if state is None else _safe_float(state.attributes.get("max"))
+            if maximum is not None and DEFAULT_MIN_CURRENT_A <= maximum < amps:
+                amps, why = int(maximum), "the current limit's maximum"
+        if not self._assumed_told:
+            self._assumed_told = True
+            _LOGGER.info(
+                "SpotNav charger %s: a charge runs with no current on record; load balancing reckons it at %s A (%s), "
+                "so it is regulated",
+                self.entry_id,
+                amps,
+                why,
+            )
+        return ResolvedCurrent(amps, "assumed")
 
     def validate_plan(self, plan: ChargingPlan) -> ChargingPlan:
         """The shared plan rules for a plan however built. Pure: nothing stored, timed or notified."""

@@ -86,6 +86,7 @@ async def test_a_restart_inside_the_window_keeps_the_plans_charge_with_its_reque
     assert controller.session_runner.session.owner == OWNER_PLAN
     assert controller.charge_origin == "plan_window"
     assert controller.requested_current_a == 10, "the request survives the restart"
+    assert controller.balancing_current().amps == 10, "load balancing regulates it on that request"
     assert restarted.off_calls == []
 
 
