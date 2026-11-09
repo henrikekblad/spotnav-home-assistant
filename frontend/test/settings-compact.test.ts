@@ -11,7 +11,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { translate } from "../src/i18n";
 import { MARKET_API_VERSION, SETTINGS_API_VERSION } from "../src/types";
 import { VISUAL_CLASSES } from "../src/visual-styles";
-import { FakeHass, mountCard, settingsOffered, shownSections } from "./helpers";
+import { FakeHass, footerOf, mountCard, settingsOffered, shownSections } from "./helpers";
 
 const FIX = join(__dirname, "..", "..", "tests", "fixtures");
 const read = (...parts: string[]): Record<string, any> => JSON.parse(readFileSync(join(FIX, ...parts), "utf8"));
@@ -158,7 +158,7 @@ describe("the number editor", () => {
     expect(form.querySelector<HTMLInputElement>("[data-value-none]")?.checked).toBe(false);
     field.value = "501";
     await submit(element);
-    expect(form.querySelector("[role='alert']")?.textContent).toBe("Between 1 and 500.");
+    expect(footerOf(form).querySelector("[role='alert']")?.textContent).toBe("Between 1 and 500.");
     expect(hass.entityMessages.some((message) => message["type"] === "spotnav/update_vehicle")).toBe(false);
     field.value = "80";
     hass.entityHandler = async (message) =>
@@ -221,7 +221,7 @@ describe("the choice editors", () => {
       box.click();
     }
     await submit(element);
-    expect(form.querySelector("[role='alert']")?.textContent).toBe(translate("en", "identify.error.noVehicle"));
+    expect(footerOf(form).querySelector("[role='alert']")?.textContent).toBe(translate("en", "identify.error.noVehicle"));
     expect(hass.messages.some((message) => message.type === "spotnav/get_settings")).toBe(false);
   });
 
@@ -439,13 +439,13 @@ describe("the car's charge limit", () => {
       vehicle_id: "vehicle_ev6",
       percent: 80,
     });
-    expect(form.querySelector("[role='alert']")?.textContent).toBe(translate("en", "settings.vehicle.limitTooSoon"));
+    expect(footerOf(form).querySelector("[role='alert']")?.textContent).toBe(translate("en", "settings.vehicle.limitTooSoon"));
     hass.entityHandler = async (message) =>
       message["type"] === "spotnav/write_charge_limit"
         ? { api_version: 1, ok: false, error: "spotnav_invalid_value", retry_after_s: null }
         : read("entity_config", "v1", "get_direct.json");
     await submit(element);
-    expect(form.querySelector("[role='alert']")?.textContent).toBe(translate("en", "settings.vehicle.limitFailed"));
+    expect(footerOf(form).querySelector("[role='alert']")?.textContent).toBe(translate("en", "settings.vehicle.limitFailed"));
     hass.entityHandler = async (message) =>
       message["type"] === "spotnav/write_charge_limit"
         ? { api_version: 1, ok: true, error: null, retry_after_s: null }

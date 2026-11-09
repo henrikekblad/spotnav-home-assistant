@@ -17,7 +17,7 @@ import {
   ZONNEPLAN_REPOSITORY_URL,
 } from "../src/price-provider";
 import { decodeDashboard, priceProviderOrNull, type PriceProvider } from "../src/validate";
-import { FakeHass, mountCard } from "./helpers";
+import { FakeHass, footerOf, mountCard } from "./helpers";
 import { TRANSLATIONS } from "../src/i18n/all";
 
 const ROOT = join(__dirname, "..", "..", "tests", "fixtures");
@@ -370,27 +370,27 @@ describe("the ENTSO-E key's editor", () => {
 
   it("asks for a key before sending anything", async () => {
     const { hass, form } = await editor();
-    form.querySelector<HTMLButtonElement>("button[type='submit']")!.click();
+    footerOf(form).querySelector<HTMLButtonElement>("button[type='submit']")!.click();
     await settle();
     expect(sent(hass, "spotnav/set_entsoe_key")).toEqual([]);
-    expect(form.querySelector("[role='alert']")?.textContent).toBe("Enter the key first.");
+    expect(footerOf(form).querySelector("[role='alert']")?.textContent).toBe("Enter the key first.");
   });
 
   it("sends the key for the area, keeps the editor open on a rejection and reads the dashboard after it took", async () => {
     const { hass, form } = await editor();
     const field = form.querySelector<HTMLInputElement>("[data-value-field='entsoeKey']")!;
     field.value = "  the-key \n";
-    form.querySelector<HTMLButtonElement>("button[type='submit']")!.click();
+    footerOf(form).querySelector<HTMLButtonElement>("button[type='submit']")!.click();
     await settle();
     expect(sent(hass, "spotnav/set_entsoe_key")).toEqual([
       { type: "spotnav/set_entsoe_key", key: "the-key", area_id: "SE4" },
     ]);
     hass.resolveNext({ ok: false, error: "entsoe_key_rejected", state: null });
     await settle();
-    expect(form.querySelector("[role='alert']")?.textContent).toBe(translate("en", "price.key.rejected"));
+    expect(footerOf(form).querySelector("[role='alert']")?.textContent).toBe(translate("en", "price.key.rejected"));
     expect(sent(hass, "spotnav/get_dashboard").length).toBe(1);
 
-    form.querySelector<HTMLButtonElement>("button[type='submit']")!.click();
+    footerOf(form).querySelector<HTMLButtonElement>("button[type='submit']")!.click();
     await settle();
     hass.resolveNext({ ok: true, error: null, state: "ok" });
     await settle();
@@ -400,7 +400,7 @@ describe("the ENTSO-E key's editor", () => {
   it("takes a key the platform could not be asked about (it is kept and proved later)", async () => {
     const { hass, form } = await editor("entsoe_key_rejected");
     form.querySelector<HTMLInputElement>("[data-value-field='entsoeKey']")!.value = "another";
-    form.querySelector<HTMLButtonElement>("button[type='submit']")!.click();
+    footerOf(form).querySelector<HTMLButtonElement>("button[type='submit']")!.click();
     await settle();
     hass.resolveNext({ ok: false, error: "entsoe_unreachable", state: "unchecked" });
     await settle();

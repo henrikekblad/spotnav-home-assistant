@@ -73,7 +73,7 @@ async function openSub(element: Element, sub: Sub): Promise<void> {
 
 const exits: Record<string, (element: Element) => void> = {
   Cancel: (element) => {
-    const buttons = Array.from(openDialog(element)?.querySelectorAll<HTMLButtonElement>("form button[type='button']") ?? []);
+    const buttons = Array.from(openDialog(element)?.querySelectorAll<HTMLButtonElement>(".spotnav-settings-actions button[type='button']") ?? []);
     buttons.find((node) => node.textContent === translate("en", "settings.cancel"))?.click();
   },
   "the close button": (element) => {

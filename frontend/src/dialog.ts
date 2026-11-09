@@ -6,7 +6,8 @@
 //   * focus is read from the caller's `activeElement` first (a ShadowRoot tracks its own), then the document's;
 //   * a removed opener is guarded by `isConnected`; a second `show()` updates in place;
 //   * only the backdrop itself closes; the background gets `inert`, else `aria-hidden`, restored on close;
-//   * the header (title and close) is the panel's fixed top row and only the intro and body below it scroll.
+//   * the header (title and close) is the panel's fixed top row and the optional actions row its fixed bottom row;
+//     only the intro and body between them scroll.
 //
 // No Home Assistant frontend internals are imported and no label is written in English.
 
@@ -24,6 +25,11 @@ export interface DialogShowInput {
   body: Node;
   opener?: HTMLElement | null;
   intro?: string | null;
+  /**
+   * A row that stays fixed below the scrolling part (Save and Cancel), part of the focus trap. A second
+   * `show()` replaces it; leave it out for a dialog that has none.
+   */
+  actions?: Node | null;
 }
 
 export interface DialogHandle {
@@ -138,7 +144,11 @@ export function createDialog(options: DialogOptions): DialogHandle {
   scroller.className = VISUAL_CLASSES.dialogScroll;
   scroller.append(intro, body);
 
-  dialog.append(header, scroller);
+  const footer = doc.createElement("div");
+  footer.className = VISUAL_CLASSES.dialogFooter;
+  footer.hidden = true;
+
+  dialog.append(header, scroller, footer);
   overlay.append(dialog);
   owner.append(overlay);
 
@@ -285,6 +295,13 @@ export function createDialog(options: DialogOptions): DialogHandle {
       dialog.setAttribute("aria-describedby", introId);
     }
     body.replaceChildren(input.body);
+    const actions = input.actions ?? null;
+    if (actions === null) {
+      footer.replaceChildren();
+    } else {
+      footer.replaceChildren(actions);
+    }
+    footer.hidden = actions === null;
     markScrolled();
     if (!wasOpen) {
       opener = input.opener ?? null;
@@ -332,4 +349,36 @@ export function createDialog(options: DialogOptions): DialogHandle {
       overlay.remove();
     },
   };
+}
+
+/**
+ * Lifts the actions row (Save, Cancel) out of an editor's `root`, with the error or notice lines that sit
+ * beside it, into one node for `DialogShowInput.actions`; `null` when `root` has no such row. Submit buttons
+ * keep their form through the `form` attribute, so Save, Enter in a field and `submit` listeners behave as
+ * before. Call it before the body is shown and before anything queries the buttons in the body.
+ */
+export function takeActions(root: HTMLElement, idPrefix: string): HTMLElement | null {
+  const rows = root.querySelectorAll<HTMLElement>(`.${VISUAL_CLASSES.settingsActions}`);
+  const row = rows.item(rows.length - 1);
+  if (row === null) {
+    return null;
+  }
+  const doc = root.ownerDocument;
+  const holder = doc.createElement("div");
+  for (const line of Array.from(root.children)) {
+    if (line.classList.contains(VISUAL_CLASSES.settingsError) || line.classList.contains(VISUAL_CLASSES.settingsNotice)) {
+      holder.append(line);
+    }
+  }
+  const form = row.closest("form");
+  if (form !== null) {
+    if (form.id === "") {
+      form.id = `${idPrefix}-dialog-form`;
+    }
+    for (const button of Array.from(row.querySelectorAll<HTMLButtonElement>("button[type='submit']"))) {
+      button.setAttribute("form", form.id);
+    }
+  }
+  holder.append(row);
+  return holder;
 }

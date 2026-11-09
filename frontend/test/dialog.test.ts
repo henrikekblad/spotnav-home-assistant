@@ -2,7 +2,7 @@
 
 import { describe, expect, it, vi } from "vitest";
 
-import { createDialog, type DialogHandle } from "../src/dialog";
+import { createDialog, takeActions, type DialogHandle } from "../src/dialog";
 import { VISUAL_CLASSES } from "../src/visual-styles";
 import { mountPoint } from "./visual-fixtures";
 
@@ -374,5 +374,77 @@ describe("the compact header", () => {
     ).filter((node) => node.tabIndex >= 0);
     expect(focusables[0]).toBe(close);
     handle.destroy();
+  });
+});
+
+describe("the fixed actions row", () => {
+  function actionsRow(): { row: HTMLElement; save: HTMLButtonElement; cancel: HTMLButtonElement } {
+    const row = document.createElement("div");
+    row.className = VISUAL_CLASSES.settingsActions;
+    const save = document.createElement("button");
+    save.type = "button";
+    const cancel = document.createElement("button");
+    cancel.type = "button";
+    row.append(save, cancel);
+    return { row, save, cancel };
+  }
+
+  it("sits below the scrolling part, outside it, and is hidden when a dialog has none", () => {
+    const mount = mountPoint();
+    const dialog = dialogFor(mount.root);
+    const { row } = actionsRow();
+    dialog.show({ title: "A", body: document.createElement("p"), actions: row });
+    const footer = dialog.element.querySelector<HTMLElement>(`.${VISUAL_CLASSES.dialogFooter}`)!;
+    const scroller = dialog.element.querySelector<HTMLElement>(`.${VISUAL_CLASSES.dialogScroll}`)!;
+    expect(footer.hidden).toBe(false);
+    expect(footer.contains(row)).toBe(true);
+    expect(scroller.contains(row)).toBe(false);
+    expect(footer.previousElementSibling).toBe(scroller);
+    // A second show without actions empties it.
+    dialog.show({ title: "B", body: document.createElement("p") });
+    expect(footer.hidden).toBe(true);
+    expect(footer.children).toHaveLength(0);
+  });
+
+  it("keeps the buttons' handlers and puts them inside the focus trap", () => {
+    const mount = mountPoint();
+    const dialog = dialogFor(mount.root);
+    const { row, save, cancel } = actionsRow();
+    const onSave = vi.fn();
+    save.addEventListener("click", onSave);
+    const field = document.createElement("input");
+    dialog.show({ title: "A", body: field, actions: row });
+    save.click();
+    expect(onSave).toHaveBeenCalledTimes(1);
+    // Tab from the last button wraps to the first control; Shift+Tab from the first reaches the last button.
+    cancel.focus();
+    const forward = press(document, "Tab");
+    expect(forward.defaultPrevented).toBe(true);
+    expect(mount.root.activeElement).toBe(dialog.element.querySelector(`.${VISUAL_CLASSES.dialogClose}`));
+    const backward = press(document, "Tab", true);
+    expect(backward.defaultPrevented).toBe(true);
+    expect(mount.root.activeElement).toBe(cancel);
+  });
+
+  it("lifts a form's actions out and a Save outside the form still submits it", () => {
+    const mount = mountPoint();
+    const dialog = dialogFor(mount.root);
+    const form = document.createElement("form");
+    const field = document.createElement("input");
+    const error = document.createElement("p");
+    error.className = VISUAL_CLASSES.settingsError;
+    const { row, save } = actionsRow();
+    save.type = "submit";
+    form.append(field, error, row);
+    const onSubmit = vi.fn((event: Event) => event.preventDefault());
+    form.addEventListener("submit", onSubmit);
+    const actions = takeActions(form, "view")!;
+    expect(form.contains(row)).toBe(false);
+    expect(actions.contains(row)).toBe(true);
+    expect(actions.contains(error)).toBe(true);
+    dialog.show({ title: "A", body: form, actions });
+    save.click();
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+    expect(takeActions(document.createElement("div"), "view")).toBeNull();
   });
 });

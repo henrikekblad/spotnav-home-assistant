@@ -176,7 +176,7 @@ describe("the Notifications section", () => {
       ["mobile_app_ipad", false],
       ["mobile_app_pixel_8", true],
     ]);
-    valueEditor(element).querySelector<HTMLButtonElement>("button[type='button']")!.click();
+    valueEditor(element).closest("[role='dialog']")!.querySelector<HTMLButtonElement>(".spotnav-settings-actions button[type='button']")!.click();
     await settle();
     openDialog(element)!.querySelector<HTMLButtonElement>("[data-edit='notification_events']")!.click();
     await settle();

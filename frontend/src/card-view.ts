@@ -22,7 +22,7 @@ import {
 import { planFill, type FillReading } from "./card-fill";
 import { applyFocus, chartHeightForWidth, renderChart, type ChartLabels } from "./chart-render";
 import { stripBarPlacement, stripBars, stripNowPosition, stripTicks } from "./chart-strip";
-import { createDialog, type DialogHandle } from "./dialog";
+import { createDialog, takeActions, type DialogHandle } from "./dialog";
 import {
   changeCarBody,
   identificationBanner,
@@ -2366,7 +2366,12 @@ export function createCardView(input: CardViewInput): CardView {
       },
       onCancel: () => vehicleDialog.hide(),
     });
-    vehicleDialog.show({ title: translate(model.language, "identify.changeCar"), body, opener });
+    vehicleDialog.show({
+      title: translate(model.language, "identify.changeCar"),
+      body,
+      opener,
+      actions: takeActions(body, `${idPrefix}-change-car`),
+    });
   }
 
   function openStrategy(): void {
@@ -2821,7 +2826,10 @@ export function createCardView(input: CardViewInput): CardView {
     };
     const built = build(handlers);
     valueLeave = "close" in built ? built.close : null;
-    valueDialog.show({ title, body: "close" in built ? built.form : built, opener: settingsGeneral });
+    const valueBody = "close" in built ? built.form : built;
+    // The report form swaps its whole content when sent, so its buttons stay in it.
+    const valueActions = valueBody.dataset["sendDebug"] === "form" ? null : takeActions(valueBody, `${idPrefix}-value`);
+    valueDialog.show({ title, body: valueBody, opener: settingsGeneral, actions: valueActions });
   }
 
   function writeValue(write: ValueWrite): Promise<string | null> {
@@ -4619,6 +4627,8 @@ export function createCardView(input: CardViewInput): CardView {
   let settingsBody: HTMLElement | null = null;
   let settingsNotice: FailureSentence | null = null;
   let settingsNoticeNode: HTMLParagraphElement | null = null;
+  /** The fixed row under the form (the notice, Save and Cancel); `null` while there is no form. */
+  let settingsFooter: HTMLElement | null = null;
   let settingsSaveButton: HTMLButtonElement | null = null;
   let settingsReapplyButton: HTMLButtonElement | null = null;
   let settingsPending = false;
@@ -4649,7 +4659,7 @@ export function createCardView(input: CardViewInput): CardView {
     if (settingsReapplyButton !== null) {
       settingsReapplyButton.disabled = settingsPending;
     }
-    const cancel = settingsBody?.querySelector<HTMLButtonElement>("[data-action='cancel']") ?? null;
+    const cancel = settingsFooter?.querySelector<HTMLButtonElement>("[data-action='cancel']") ?? null;
     if (cancel !== null) {
       cancel.disabled = settingsPending;
     }
@@ -4670,7 +4680,12 @@ export function createCardView(input: CardViewInput): CardView {
       if (settingsNotice.code !== null) {
         paragraph.dataset["code"] = settingsNotice.code;
       }
-      settingsBody.append(paragraph);
+      // Beside Save, in the fixed row, so a refusal is seen however far down the form is scrolled.
+      if (settingsForm !== null && settingsFooter !== null) {
+        settingsFooter.prepend(paragraph);
+      } else {
+        settingsBody.append(paragraph);
+      }
       settingsNoticeNode = paragraph;
     }
     applySettingsPending();
@@ -4711,10 +4726,12 @@ export function createCardView(input: CardViewInput): CardView {
     settingsPreviewSlot = built.preview;
     settingsSaveButton = built.body.querySelector<HTMLButtonElement>(`.${C.settingsSave}`);
     settingsReapplyButton = built.body.querySelector<HTMLButtonElement>(`.${C.settingsReapply}`);
+    settingsFooter = takeActions(built.body, `${idPrefix}-settings`);
     settingsDialog.show({
       title: settingsTitle(form.kind),
       body: built.body,
       opener: settingsTriggerFor(form.kind),
+      actions: settingsFooter,
     });
     paintSettingsNotice();
   }
@@ -4726,6 +4743,7 @@ export function createCardView(input: CardViewInput): CardView {
     settingsKind = kind;
     settingsForm = null;
     settingsBody = null;
+    settingsFooter = null;
     settingsBodyReader = null;
     settingsPreviewSlot = null;
     settingsNotice = null;
@@ -4750,6 +4768,7 @@ export function createCardView(input: CardViewInput): CardView {
     // This paragraph is the dialog's body until a form replaces it, so a failure that arrives while the
     // record is still being read has a node to be shown in rather than a sentence with nowhere to go.
     settingsBody = loading;
+    settingsFooter = null;
     settingsDialog.show({
       title: translate(model.language, settingsTitleKey(kind)),
       body: loading,
@@ -4804,6 +4823,7 @@ export function createCardView(input: CardViewInput): CardView {
     settingsKind = null;
     settingsForm = null;
     settingsBody = null;
+    settingsFooter = null;
     settingsBodyReader = null;
     settingsPreviewSlot = null;
     settingsNotice = null;
@@ -4843,6 +4863,8 @@ export function createCardView(input: CardViewInput): CardView {
   let marketBody: HTMLElement | null = null;
   let marketNotice: FailureSentence | null = null;
   let marketNoticeNode: HTMLParagraphElement | null = null;
+  /** The fixed row under the form (the notice, Save and Cancel); `null` while there is no form. */
+  let marketFooter: HTMLElement | null = null;
   let marketSaveButton: HTMLButtonElement | null = null;
   let marketReapplyButton: HTMLButtonElement | null = null;
   let marketPending = false;
@@ -4874,7 +4896,11 @@ export function createCardView(input: CardViewInput): CardView {
       if (marketNotice.code !== null) {
         paragraph.dataset["code"] = marketNotice.code;
       }
-      marketBody.append(paragraph);
+      if (marketForm !== null && marketFooter !== null) {
+        marketFooter.prepend(paragraph);
+      } else {
+        marketBody.append(paragraph);
+      }
       marketNoticeNode = paragraph;
     }
     applyMarketPending();
@@ -4904,10 +4930,12 @@ export function createCardView(input: CardViewInput): CardView {
     marketBodyReader = built.values;
     marketSaveButton = built.body.querySelector<HTMLButtonElement>(`.${C.settingsSave}`);
     marketReapplyButton = built.body.querySelector<HTMLButtonElement>(`.${C.settingsReapply}`);
+    marketFooter = takeActions(built.body, `${idPrefix}-market`);
     marketDialog.show({
       title: translate(model.language, "market.title"),
       body: built.body,
       opener: marketTriggerFor(),
+      actions: marketFooter,
     });
     paintMarketNotice();
   }
@@ -4918,6 +4946,7 @@ export function createCardView(input: CardViewInput): CardView {
     }
     marketForm = null;
     marketBody = null;
+    marketFooter = null;
     marketBodyReader = null;
     marketNotice = null;
     marketNoticeNode = null;
@@ -4936,6 +4965,7 @@ export function createCardView(input: CardViewInput): CardView {
     // This paragraph is the dialog's body until a form replaces it, so a failure that arrives while the
     // two reads are still out has a node to be shown in rather than a sentence with nowhere to go.
     marketBody = loading;
+    marketFooter = null;
     marketDialog.show({
       title: translate(model.language, "market.title"),
       body: loading,
@@ -4985,6 +5015,7 @@ export function createCardView(input: CardViewInput): CardView {
     marketDialog.hide(options);
     marketForm = null;
     marketBody = null;
+    marketFooter = null;
     marketBodyReader = null;
     marketNotice = null;
     marketNoticeNode = null;
@@ -5032,6 +5063,7 @@ export function createCardView(input: CardViewInput): CardView {
       built.setNotice(translate(model.language, notice.sentenceKey), notice.code);
     }
     entityDialog.show({
+      actions: takeActions(built.body, `${idPrefix}-entity`),
       title: focus !== null ? focus.title : translate(model.language, scope === "site" ? "entity.editor.site" : "entity.editor.charger"),
       body: built.body,
       opener: settingsGeneral,

@@ -69,7 +69,7 @@ const siteCard = (element: Element) => dlg(element).querySelector<HTMLElement>("
 const siteWrites = (hass: FakeHass) => hass.messages.filter((m) => m["type"] === "spotnav/update_site_settings");
 const saveButton = (element: Element) => dlg(element).querySelector<HTMLButtonElement>(".spotnav-settings-save")!;
 const cancelButton = (element: Element) =>
-  Array.from(dlg(element).querySelectorAll<HTMLButtonElement>("form button")).find(
+  Array.from(dlg(element).querySelectorAll<HTMLButtonElement>(".spotnav-settings-actions button")).find(
     (node) => node.textContent === translate("en", "settings.cancel"),
   )!;
 const choose = (element: Element, label: RegExp): HTMLInputElement =>
@@ -145,7 +145,7 @@ describe("the Solar editors", () => {
     const { hass, element } = await openSolar();
     expect(dlg(element).parentElement?.textContent).toContain(translate("en", "site.solarPriority.title"));
     expect(choose(element, /Car first/).checked).toBe(true);
-    const buttons = Array.from(dlg(element).querySelectorAll<HTMLButtonElement>("form button")).map((node) => node.textContent);
+    const buttons = Array.from(dlg(element).querySelectorAll<HTMLButtonElement>(".spotnav-settings-actions button")).map((node) => node.textContent);
     expect(buttons).toEqual([translate("en", "identify.choose"), translate("en", "settings.cancel")]);
     expect(siteWrites(hass)).toHaveLength(0);
     cancelButton(element).click();
