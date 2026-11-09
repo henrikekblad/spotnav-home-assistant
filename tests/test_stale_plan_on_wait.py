@@ -416,8 +416,9 @@ def both_restarts(request: pytest.FixtureRequest) -> str:
 
 
 async def _restart(session: Session, kind: str, *, meanwhile: Any = None) -> Session:
-    """Restart the charger's stack in `async_setup_entry`'s order: the boundary, the preview and its first calculation,
-    then the controller's restore (`async_restore_execution`). `meanwhile` runs while it is down."""
+    """Restart the charger's stack in `async_setup_entry`'s order: the boundary, the controller's record read back
+    (`async_initialize(arm=False)`), the preview and its first calculation, then the restored plan armed and decided
+    (`async_restore_execution`). `meanwhile` runs while it is down."""
     hass = session.hass
     await session.preview.async_shutdown()
     await session.executor.async_shutdown()
@@ -447,6 +448,7 @@ async def _restart(session: Session, kind: str, *, meanwhile: Any = None) -> Ses
     )
     restarted.executor = AutoExecutor(hass, restarted.controller, session.store, now=session.clock)
     await restarted.executor.async_start()
+    await restarted.controller.async_initialize(arm=False)
     restarted.preview = await start_preview(
         hass, session.entry_id, session.store, session.manager, executor=restarted.executor, now=session.clock
     )

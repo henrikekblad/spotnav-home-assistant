@@ -6537,10 +6537,11 @@ class SiteCapacityController:
     def _charger_requested_current(self, charger_entry_id: str) -> float | None:
         """How much this charger asks to draw, for capacity purposes.
 
-        `0.0` when it is off or not loaded; otherwise `ChargingController.resolve_current()`
-        (SpotNav's request, else the current-limit entity's setpoint). `None` (unknown, never a
-        guessed `0.0`) when it is charging and neither resolves, so the site calculation does not
-        treat an unquantified load as requesting nothing.
+        `0.0` when it is off or not loaded; otherwise `ChargingController.balancing_current()`
+        (SpotNav's request, else the current-limit entity's setpoint, else, while it charges, the
+        current it is reckoned at so it is regulated: never a guessed `0.0`, and never unknown for a
+        charge that runs, which the regulator would otherwise leave unregulated). `None` only from a
+        charger controller that cannot say.
         """
         charger_controller = controller_for(self.hass, charger_entry_id)
         if charger_controller is None:
@@ -6549,7 +6550,7 @@ class SiteCapacityController:
             # Off, and no start of ours on its way: it asks for nothing. A start the charger has not answered yet
             # asks for what it was given, or the regulator would pause the start it is waiting for.
             return 0.0
-        resolved = charger_controller.resolve_current()
+        resolved = charger_controller.balancing_current()
         return float(resolved.amps) if resolved.amps is not None else None
 
     def _resolve_site_current_source(self) -> PhaseMeasurementSource | None:

@@ -15,6 +15,8 @@ The rules are today's, as the manual-pause specs and their three review rounds s
   for the next plug-in, which a first definite connection after a restart starts (C1, C2); the pause ends at
   the unplug (or a plug-in that shows the session ended unseen), at Resume or Follow, at another pause choice,
   and for a Start when the car ends the charge by itself (R3, C8). A span pause the person chose is kept.
+* A person's Resume ends their Start too (2.5.1): the charge it ran is the plan's from then on, so the plan's re-arm or
+  install keeps it inside an open window and stops it outside every window, as its own. Follow ends the pause only.
 * Under a person's Stop a charge the charger begins by itself is stopped at once (C7), at most once per
   `PERSON_HOLD_STOP_GAP_S`, and after `PERSON_HOLD_MAX_STOPS` stops in `PERSON_HOLD_WINDOW_S` SpotNav gives up
   and says so (`charger_ignores_stop`, R5).
@@ -667,7 +669,17 @@ def _resume(session: ChargeSession, event: Resume, now: datetime) -> Decision:
         return session.with_changes(manual=None), ()
     if event.reason == RESUME_EXPIRED:
         return session.with_changes(span_pause=None), ()
-    return session.with_changes(manual=None, span_pause=None), ()
+    s = session.with_changes(manual=None, span_pause=None)
+    # The person's Resume is their newest word, "let the plan decide again": it ends their Start. The charge it ran is
+    # the plan's from now on, and so is one load balancing holds back for it: inside an open window the plan's re-arm
+    # keeps it as its own charge, outside every window it stops it as its own stop outside its windows (no notice). No
+    # command here: the plan decides, when it is armed again or installed. The car's minimum level, the sun's charge, a
+    # Charge-now start and load balancing's pause of any of them are not the person's Start and stay as they are.
+    if s.owner == OWNER_PERSON:
+        s = s.with_changes(owner=OWNER_PLAN)
+    if s.balancing_paused and s.paused_origin == OWNER_PERSON:
+        s = s.with_changes(paused_origin=OWNER_PLAN)
+    return s, ()
 
 
 def _pause_choice(session: ChargeSession, event: PauseChoiceMade, now: datetime) -> Decision:
