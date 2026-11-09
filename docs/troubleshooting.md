@@ -226,7 +226,7 @@ once there is nothing priced for today Home Assistant raises the Repairs issue *
 - **"Add your ENTSO-E key"** (the other European areas): follow the how-to under the key's field. Access to
   ENTSO-E's API is granted by e-mail and can take a few days; until then the platform refuses the key.
 - **"ENTSO-E did not accept the saved key"**: the key was refused when it was saved or later. Generate a new
-  one under **My Account Settings** on transparency.entsoe.eu and enter it.
+  one under **My Account → Web API Access** on transparency.entsoe.eu and enter it.
 - **"Add PVPC"** (Spain, regulated): add Home Assistant's PVPC integration.
 - **"Add Octopus Energy (HACS)"** (Great Britain): install the Octopus Energy integration from HACS and add
   it with your account. **"Octopus Energy found no meter on an Agile tariff"** means the integration is
