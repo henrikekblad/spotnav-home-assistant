@@ -572,8 +572,24 @@ class YieldStepper:
                     # A hold: a further step waits for a later observation.
                     return self._verdict(now, "hold", None, "confirmed_after_settling", False)
                 else:
+                    within_limit = limit_a is not None and all(
+                        site_a[phase] <= limit_a[phase] for phase in phases
+                    )
+                    if within_limit and self._baseline_battery is None and not self._over_limit_steps:
+                        # No battery charged when the step began, so nothing could give way: an ordinary
+                        # raise the grid carries, not a failed yield. No backoff, or a later battery's
+                        # first step would wait for every such raise doubled (the night of 2026-11-09:
+                        # two raises with the battery idle held the car at 7 A for 24 minutes).
+                        self._state = "unknown"
+                        self._battery_verified = False
+                        self._y = None
+                        self._y_at = None
+                        self._reference = None
+                        return self._verdict(
+                            now, "passthrough", None, "kept_not_absorbed_within_limit", False
+                        )
                     self._enter_backoff(now)
-                    if limit_a is not None and all(site_a[phase] <= limit_a[phase] for phase in phases):
+                    if within_limit:
                         # Nothing gave way, but the grid carries the raise within its limit: an ordinary
                         # raise, not one to take back. A revert is for a step that took the site over.
                         return self._verdict(
