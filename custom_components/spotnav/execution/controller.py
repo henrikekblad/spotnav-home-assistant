@@ -842,6 +842,9 @@ class ChargingController:
         # Whether `async_initialize` has restored the saved state: until then what this controller says
         # about a charge (its origin, a person's Stop) is not yet known.
         self._restored = False
+        # Whether the plan's timers were armed once since the restore (`_reschedule_locked`): the restore arms only
+        # what nothing armed before it (`async_initialize(arm=False)`, then a plan installed by the first calculation).
+        self._armed = False
         # When this controller last sent a stop, until the charger is seen to stop: a charge still
         # running then is one being stopped, not one the charger began by itself.
         self._stop_sent_at: datetime | None = None
@@ -1132,21 +1135,29 @@ class ChargingController:
         entry = self.hass.config_entries.async_get_entry(self.entry_id)
         return entry.title if entry is not None and entry.title else self.entry_id
 
-    async def async_initialize(self) -> None:
-        """Restore a saved schedule and requested-current memory, and resume."""
-        async with self._lock:
-            await self._initialize_locked()
+    async def async_initialize(self, *, arm: bool = True) -> None:
+        """Restore a saved schedule and requested-current memory, and resume.
 
-    async def _initialize_locked(self) -> None:
+        `arm=False` restores the record only, with no timer armed and nothing decided about the restored plan: what
+        Home Assistant's setup does before the first calculation, so the calculation reconciles with the plan and the
+        charge as they were (never with an empty controller, whose plan installed then would also be saved over the
+        record before it was read). A later call arms it, once; a plan installed meanwhile was armed by its install."""
+        async with self._lock:
+            await self._initialize_locked(arm=arm)
+
+    async def _initialize_locked(self, *, arm: bool = True) -> None:
         """The restore itself, with the operation lock held.
 
         The target-stop record is restored too: it explains why a finished charge ended, and a restart must
         not erase it.
         """
-        try:
-            await self._restore_locked()
-        finally:
-            self._restored = True
+        if not self._restored:
+            try:
+                await self._restore_locked()
+            finally:
+                self._restored = True
+        if arm and not self._armed:
+            await self._reschedule_locked()
 
     @property
     def restored(self) -> bool:
@@ -1154,6 +1165,8 @@ class ChargingController:
         return self._restored
 
     async def _restore_locked(self) -> None:
+        # The restored plan is armed afresh, whatever was armed before the record was read.
+        self._armed = False
         # The coverage tally first: from the store's read to the restart below nothing awaits, so no reader sees
         # ownership half restored.
         await self._runner.coverage.async_load(await self._integration_version())
@@ -1253,7 +1266,6 @@ class ChargingController:
             # disk say otherwise than the record (an earlier build saved its record after them): written again, derived
             # from it, so a rollback reads the same.
             await self._async_save_quietly()
-        await self._reschedule_locked()
         # Armed for the controller's whole life, not only while a plan is: a manual Start has no
         # plan, and a scheduled one is observed from acceptance.
         self._async_arm_progress_listener()
@@ -5434,6 +5446,7 @@ class ChargingController:
         `_rollback_install`, `async_initialize`, `_follow_locked`); re-acquiring would deadlock.
         """
         self._cancel_timers()
+        self._armed = True
         if self.plan is None:
             self._async_disarm_target_listener()
             return

@@ -79,13 +79,15 @@ async def test_a_best_effort_plan_charges_to_the_departure_and_the_next_departur
 
 
 async def _window_charging_after_restart(hass: HomeAssistant, transport: Any, frozen: Any) -> tuple[Car, list[Any]]:
-    """Restarted with the register not read yet (6.5 kWh kept of 10), then into the plan's window at 06:30: the
-    plan's own charge runs, counted on the kept remainder within the unread grace."""
+    """Restarted inside the plan's window with the register not read yet (6.5 kWh kept of 10): the restored plan is
+    the one the first calculation reconciles with (2.5.1; before, the calculation ran with no plan restored and
+    installed one of its own), so its open window's charge goes on from the restart as the plan's own, counted on the
+    kept remainder within the unread grace; nothing more is sent nine minutes on."""
     car = await _charged_and_restarted(hass, transport, frozen)
     calls = _record_charger_commands(hass)
     await _at(car, frozen, timedelta(minutes=9))
     assert car.executor.window_charging_now()
-    assert [call[0] for call in calls] == ["turn_on"]
+    assert calls == []
     assert car.preview.snapshot().energy_basis == "kept_recent"
     assert car.controller.session_runner.session.owner == OWNER_PLAN
     assert car.controller.charge_origin == "plan_window"

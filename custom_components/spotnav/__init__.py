@@ -396,6 +396,10 @@ async def _async_setup_charger_entry(hass: HomeAssistant, entry: ChargerConfigEn
             and state.state in ("on", "arming", "disarming")
         )
         if price_manager is not None:
+            # The charger's record is read back before the first calculation, its plan not armed yet: the calculation
+            # then reconciles with the plan and the charge as they were before the restart (the same plan is kept, a
+            # window charging now is not cut short), and a plan it installs never saves over a record not read yet.
+            await controller.async_initialize(arm=False)
             await _async_setup_auto_preview(hass, entry, data, settings_store, price_manager)
 
     # Before the webhook, whose `push_register` writes it.
@@ -451,14 +455,17 @@ async def _async_setup_charger_entry(hass: HomeAssistant, entry: ChargerConfigEn
 async def async_restore_execution(
     controller: ChargingController, executor: AutoExecutor | None, preview: AutoPlannerController | None
 ) -> None:
-    """Bring a charger's saved state back, after the preview's first calculation, and decide the restored plan against
-    that calculation's answer before anything else can start it.
+    """Bring a charger's saved state back and arm its plan, after the preview's first calculation, and decide the
+    restored plan against that calculation's answer before anything else can start it.
 
-    The restore re-arms the plan; a window open now is started through its checks, which ask the execution boundary
-    whether the plan is superseded by a wait (`AutoExecutor.superseded_by_wait`, from the first calculation's answer):
-    such a plan starts nothing. The first calculation ran with no plan restored yet, so it could not clear one: the
-    restored plan is reconciled with a calculation of its own right after the restore, which clears a superseded plan
-    (and stops its own charge), and publishes the restored plan's execution facts (`applied_identity`)."""
+    The record itself is read before the first calculation (`async_initialize(arm=False)` in the setup), so the
+    calculation reconciles with the restored plan: the same plan is kept, and one it installs replaces it (armed by its
+    install). Here the plan is armed, unless an install armed it already; a window open now is started through its
+    checks, which ask the execution boundary whether the plan is superseded by a wait
+    (`AutoExecutor.superseded_by_wait`, from the first calculation's answer): such a plan starts nothing. A restored plan
+    is reconciled with a calculation of its own right after, which clears a superseded plan (and stops its own charge),
+    and publishes the restored plan's execution facts (`applied_identity`). A controller not restored yet (no preview)
+    is restored and armed here."""
     await controller.async_initialize()
     if executor is None:
         return
