@@ -1775,6 +1775,28 @@ export function entityEditorBody(
         entry.input.setAttribute("aria-describedby", entry.node.id);
       }
     }
+    revealFirstError();
+  }
+
+  /**
+   * After a refused Save: the first field with an error (in the order of the page) is scrolled into view
+   * inside the dialog's scrolling body and takes the focus, so the message is not left below the fold.
+   */
+  function revealFirstError(): void {
+    const shown = [...errorNodes.values()].filter((entry) => !entry.node.hidden);
+    shown.sort((a, b) => (a.node.compareDocumentPosition(b.node) & 4 ? -1 : 1));
+    const first = shown[0];
+    if (first === undefined) {
+      return;
+    }
+    const target =
+      first.input.matches("input, select, textarea, button, [tabindex]")
+        ? first.input
+        : (first.input.querySelector<HTMLElement>("input:checked:not(:disabled), input:not(:disabled), button:not(:disabled)") ??
+          first.input);
+    const block = first.node.parentElement ?? first.node;
+    block.scrollIntoView?.({ block: "nearest" });
+    target.focus({ preventScroll: true });
   }
 
   /** The draft as a save sends it: every field of an unchosen variant cleared. */
