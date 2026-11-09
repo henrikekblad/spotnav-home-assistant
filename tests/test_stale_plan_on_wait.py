@@ -632,6 +632,42 @@ async def test_a_charge_the_charger_begins_by_itself_is_not_claimed_for_a_supers
     assert session.controller.charge_origin != "plan_window", "not claimed as the superseded plan's"
 
 
+async def test_a_refused_claim_tells_the_core_a_plain_not_sent_outcome(
+    session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The last plan start was held back for room and is still remembered; a charge then begins by itself in the
+    superseded plan's window. The refused claim reports a plain not-sent outcome, never a plan charge paused by
+    balancing."""
+    _publish(session)
+    await session.set_auto(departure=time(8, 0), requested_kwh=10.0)
+    installed = session.executor.applied
+    assert installed is not None
+    waiting = await _waiting_answer(session)
+    await session.store.async_update(session.entry_id, mutate=lambda settings: replace(settings, requested_kwh=5.0))
+    session.executor._live_snapshot = lambda: replace(  # noqa: SLF001 - the answer for the stored settings
+        waiting, settings_revision=session.settings().revision
+    )
+    session.clock.now = installed.plan.windows[0][0] + timedelta(minutes=5)
+    await _fire_due(session)
+
+    controller = session.controller
+    controller._start_held_back = True  # noqa: SLF001 - a start held back for room, never reset
+    outcomes: list[Any] = []
+    real_end = controller._core_end_event  # noqa: SLF001
+
+    def spy(token: Any, facts: Any, build: Any, *, outcome: Any = None) -> None:
+        outcomes.append(outcome)
+        real_end(token, facts, build, outcome=outcome)
+
+    monkeypatch.setattr(controller, "_core_end_event", spy)
+    session.hass.states.async_set(session.charge_control, "on")
+    await session.hass.async_block_till_done()
+
+    claims = [outcome for outcome in outcomes if outcome is not None]
+    assert claims, "the refused claim was decided and reported"
+    assert all(not outcome.executed and not outcome.balancing_held for outcome in claims)
+
+
 @pytest.mark.usefixtures("both_restarts")
 async def test_a_plan_confirmed_by_newer_settings_is_still_theirs_after_a_restart(
     session: Session, both_restarts: str
