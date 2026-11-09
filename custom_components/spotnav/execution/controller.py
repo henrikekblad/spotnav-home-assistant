@@ -2782,7 +2782,9 @@ class ChargingController:
         async with self._automatic(AUTOMATIC_START) as allowed:
             # Refused by the boundary (a plan superseded by a wait): nothing is claimed, and the core hears the claim did
             # not go out.
-            await self._recheck(core_events.RECHECK_CLAIM, self._claim_locked if allowed else self._claim_refused)
+            await self._recheck(
+                core_events.RECHECK_CLAIM, self._claim_locked if allowed else self._claim_refused, refused=not allowed
+            )
 
     async def _claim_refused(self) -> bool:
         """The claim the execution boundary's gate refused: nothing is claimed."""
@@ -6725,10 +6727,11 @@ class ChargingController:
     def _core_start_outcome(self, executed: bool) -> CommandOutcome:
         return CommandOutcome(executed, balancing_held=not executed and self._start_held_back)
 
-    async def _recheck(self, what: str, act: Callable[[], Awaitable[bool]]) -> bool:
+    async def _recheck(self, what: str, act: Callable[[], Awaitable[bool]], *, refused: bool = False) -> bool:
         """A background task's decision taken again under the boundary's lock and the operation lock: the core
         decides on its session now (`core_events.Recheck`), and its verdict sends the command (`act`), or nothing.
-        What the command did comes back to the core as its `CommandResult`. Returns whether it went out."""
+        What the command did comes back to the core as its `CommandResult`. Returns whether it went out.
+        A refused command (`refused`) is a plain not-sent outcome: no balancing hold is read into it."""
         token = self._runner.begin()
         facts = self._core_facts(
             lambda: self._recheck_facts(what), core_events.Recheck.kind, token=token
@@ -6741,7 +6744,10 @@ class ChargingController:
                 return False
             outcome = CommandOutcome(False)
             executed = await act()
-            outcome = self._core_start_outcome(executed) if command == "start" else self._core_stop_outcome(executed)
+            if refused:
+                outcome = CommandOutcome(False)
+            else:
+                outcome = self._core_start_outcome(executed) if command == "start" else self._core_stop_outcome(executed)
             return executed
         finally:
             self._core_end_event(token, facts, lambda: core_events.Recheck(what=what, **facts), outcome=outcome)

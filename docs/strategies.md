@@ -106,6 +106,7 @@ charger, OCPP's Unavailable and a Wallbox's Ready (shown with or without a car) 
 the need is met before the plan has run out (the target is reached, or the requested energy has been
 delivered, also by **Charge now** or by the sun) the periods still ahead are cleared and the charge a
 period started is stopped; a charge you started yourself goes on.
+A period's start the charger acknowledges only after 30 seconds, while a new answer to wait lands, drops the plan once the start reads unanswered and off; the charge that then arrives is the charger's own, which SpotNav does not stop.
 
 **Counting the requested energy.** With a departure, energy delivered since that departure's
 previous occurrence counts toward the request, also across unplugging and plugging in again. With no
