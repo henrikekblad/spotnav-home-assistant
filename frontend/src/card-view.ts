@@ -551,8 +551,11 @@ export function bannerSeverity(model: CardModel): "blocking" | "notice" | null {
 const ACT_ON_CODES: ReadonlySet<string> = new Set(["charger_own_mode", "charger_disabled"]);
 
 /**
- * A neutral banner whose issues are all already worded in the status headline adds nothing: the
- * headline says it. A blocking banner is always kept, and so is one with a charger setting to act on.
+ * A neutral banner whose issues are all lines of the status headline adds nothing: the headline says it.
+ * Judged by the lines' codes, not by their words: an issue is worded from the same line, but a headline joins
+ * its lines with " · " (and some sentences have one inside), so the words cannot be matched back reliably.
+ * A blocking banner is always kept, and so is one with a charger setting to act on, or an issue that is no
+ * line of the headline (the list of missing settings).
  */
 export function bannerRepeatsStatus(model: CardModel, severity: "blocking" | "notice"): boolean {
   if (severity !== "notice" || model.status === null || model.issues.length === 0) {
@@ -562,9 +565,7 @@ export function bannerRepeatsStatus(model: CardModel, severity: "blocking" | "no
     // A press to act on (a charger setting, or the import target set aside): the banner opens it.
     return false;
   }
-  const strip = (text: string): string => text.trim().replace(/[.。]$/u, "");
-  const shown = model.status.split(" \u00b7 ").map(strip);
-  return model.issues.every((issue) => shown.includes(strip(issueText(model.language, issue))));
+  return model.issues.every((issue) => model.statusCodes.includes(issue.code));
 }
 
 /** The strategy rows whose availability hangs on the site's solar setup. */
