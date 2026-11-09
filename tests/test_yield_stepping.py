@@ -211,7 +211,8 @@ def test_a_step_not_absorbed_is_reverted_only_over_the_limit(limit: float, kept:
 
 def test_a_raise_with_no_battery_charging_is_no_failed_yield() -> None:
     """The night of 2026-11-09: the battery idle, a raise the grid carries within its limit. Nothing could give way,
-    so no backoff: a battery that starts later gets its first step without waiting for doubled backoffs."""
+    so no backoff: a battery that starts later gets its first step without waiting for doubled backoffs. Only on a fresh
+    reading that shows it idle: no reading is no proof."""
     cfg = _config()
     stepper = YieldStepper(cfg)
 
@@ -222,6 +223,9 @@ def test_a_raise_with_no_battery_charging_is_no_failed_yield() -> None:
             delivered_current_a={"L2": delivered},
             phases=("L2",),
             limit_a={"L2": 20.0},
+            battery_power_w=0.0,
+            battery_fresh=True,
+            credit_allowed=True,
         )
 
     stepper.observe(10.0, 16.0, 10.0, obs(0.0, 12.0, 8.9))

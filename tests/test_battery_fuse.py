@@ -1298,7 +1298,8 @@ async def test_the_night_car_steps_back_when_the_battery_does_not_give_way(hass:
     yield_clock.advance(5.0)
     await controller._async_apply_active_control()
     await _step_once(controller, yield_clock, damper_clock)
-    assert _values(calls) == ["1.7,2.10"]
+    # Taken back, to the overload's own lowering where that is lower than the step's start (6 A for 22.2 A).
+    assert _values(calls) == ["1.6,2.10"]
     assert controller._yield_stepping_last[charger.entry_id]["state"] == "backoff"
     calls.clear()
 

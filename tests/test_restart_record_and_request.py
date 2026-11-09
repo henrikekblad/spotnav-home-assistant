@@ -62,6 +62,22 @@ async def test_a_plans_current_is_the_request_when_no_current_is_set(
     await world.shutdown()
 
 
+async def test_every_reckoned_current_is_capped_by_what_the_charger_takes(
+    hass: HomeAssistant, timers: FakeScheduler, monkeypatch
+) -> None:
+    """The person's setting, the plan's current and the assumed one alike: never above the current limit's maximum."""
+    world = await pause_world(hass, timers, charging=True)
+    controller = world.controller
+    controller._requested_current_a = None  # noqa: SLF001 - nothing on record
+    hass.states.async_set("number.cap_limit", "10", {"min": 6, "max": 10})
+    monkeypatch.setattr(controller, "current_limit", "number.cap_limit")
+
+    assert controller.balancing_current().amps == 10, "the assumed 16 A"
+    await world.store.async_update("entry_a", mutate=lambda settings: replace(settings, amps=13))
+    assert controller.balancing_current().amps == 10, "the person's 13 A"
+    await world.shutdown()
+
+
 # ------------------------------------------------------------------------------- the real async_setup_entry
 
 

@@ -303,6 +303,10 @@ class YieldStepper:
         # The battery's per-phase charge current, kept like the stable/baseline site current.
         self._stable_battery: float | None = None
         self._baseline_battery: float | None = None
+        # Whether a fresh battery reading showed it not charging (below `battery_charging_w`), kept the same way: only
+        # then is a step nothing gave way to no failed yield (`None`, no fresh reading, is not "idle").
+        self._stable_battery_idle = False
+        self._baseline_battery_idle = False
         self._battery_verified = False
         # The site's battery probe saw the battery give way to this car's minimum (`note_battery_yielded`).
         self._probe_verified = False
@@ -470,6 +474,11 @@ class YieldStepper:
                 self._stable_delivered = dict(delivered_a)
                 self._stable_assigned = assigned_a
                 self._stable_battery = observation.battery_charge_a
+                self._stable_battery_idle = (
+                    observation.battery_fresh
+                    and observation.battery_power_w is not None
+                    and observation.battery_power_w < cfg.battery_charging_w
+                )
 
             if self._stable_delivered is not None and any(
                 delivered_a[phase] - self._stable_delivered[phase] >= cfg.min_delta_a for phase in phases
@@ -482,6 +491,7 @@ class YieldStepper:
                 self._baseline_delivered = dict(self._stable_delivered)
                 self._baseline_assigned = self._stable_assigned
                 self._baseline_battery = self._stable_battery
+                self._baseline_battery_idle = self._stable_battery_idle
                 probe = self._battery_probe
                 if (
                     probe is not None
@@ -496,6 +506,7 @@ class YieldStepper:
                     self._baseline_delivered = dict(probe.delivered_before)
                     self._baseline_assigned = probe.from_a
                     self._baseline_battery = probe.battery_before_a
+                    self._baseline_battery_idle = False
                 # The car's reading shows the step: settling measures it from here.
                 self._battery_probe = None
 
@@ -575,8 +586,8 @@ class YieldStepper:
                     within_limit = limit_a is not None and all(
                         site_a[phase] <= limit_a[phase] for phase in phases
                     )
-                    if within_limit and self._baseline_battery is None and not self._over_limit_steps:
-                        # No battery charged when the step began, so nothing could give way: an ordinary
+                    if within_limit and self._baseline_battery_idle and not self._over_limit_steps:
+                        # A fresh reading showed the battery idle when the step began, so nothing could give way: an ordinary
                         # raise the grid carries, not a failed yield. No backoff, or a later battery's
                         # first step would wait for every such raise doubled (the night of 2026-11-09:
                         # two raises with the battery idle held the car at 7 A for 24 minutes).
@@ -876,6 +887,7 @@ class YieldStepper:
                 self._baseline_delivered = dict(probe.delivered_before)
                 self._baseline_assigned = probe.from_a
                 self._baseline_battery = probe.battery_before_a
+                self._baseline_battery_idle = False
                 return self._verdict(now, "hold", None, "settling_hold", False)
             # Shown: the ordinary rules from here.
             return None
@@ -1063,6 +1075,8 @@ class YieldStepper:
         self._reference = None
         self._stable_battery = None
         self._baseline_battery = None
+        self._stable_battery_idle = False
+        self._baseline_battery_idle = False
         self._battery_verified = False
         self._probe_verified = False
         self._last_obs = None
