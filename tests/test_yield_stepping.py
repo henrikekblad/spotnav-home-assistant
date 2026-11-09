@@ -184,8 +184,8 @@ def test_step_not_absorbed_is_reverted_urgently() -> None:
 
 @pytest.mark.parametrize(("limit", "kept"), [(22.0, True), (21.5, False)])
 def test_a_step_not_absorbed_is_reverted_only_over_the_limit(limit: float, kept: bool) -> None:
-    """The same unabsorbed step, the site at 21.9 A after it: within a 22 A limit the grid carries it and it stays
-    (no write, backoff); over a 21.5 A limit it is taken back at once."""
+    """The same unabsorbed step with a battery charging, the site at 21.9 A after it: within a 22 A limit the grid
+    carries it and it stays (no write, backoff); over a 21.5 A limit it is taken back at once."""
     cfg = _config()
     stepper = YieldStepper(cfg)
 
@@ -196,6 +196,7 @@ def test_a_step_not_absorbed_is_reverted_only_over_the_limit(limit: float, kept:
             delivered_current_a={"L2": delivered},
             phases=("L2",),
             limit_a={"L2": limit},
+            battery_charge_a=4.0,
         )
 
     stepper.observe(10.0, 16.0, 10.0, obs(0.0, 20.0, 8.9))
@@ -206,6 +207,27 @@ def test_a_step_not_absorbed_is_reverted_only_over_the_limit(limit: float, kept:
         assert (v.action, v.current_a, v.reason) == ("passthrough", None, "kept_not_absorbed_within_limit")
     else:
         assert (v.action, v.current_a, v.reason, v.urgent) == ("write", 10.0, "revert_not_absorbed", True)
+
+
+def test_a_raise_with_no_battery_charging_is_no_failed_yield() -> None:
+    """The night of 2026-11-09: the battery idle, a raise the grid carries within its limit. Nothing could give way,
+    so no backoff: a battery that starts later gets its first step without waiting for doubled backoffs."""
+    cfg = _config()
+    stepper = YieldStepper(cfg)
+
+    def obs(now: float, site: float, delivered: float) -> YieldObservation:
+        return YieldObservation(
+            now=now,
+            site_current_a={"L2": site},
+            delivered_current_a={"L2": delivered},
+            phases=("L2",),
+            limit_a={"L2": 20.0},
+        )
+
+    stepper.observe(10.0, 16.0, 10.0, obs(0.0, 12.0, 8.9))
+    assert stepper.observe(14.0, 16.0, 14.0, obs(1.0, 15.9, 12.9)).state == "settling"
+    v = stepper.observe(14.0, 16.0, 14.0, obs(1.0 + cfg.settle_s, 15.9, 12.9))
+    assert (v.action, v.reason, v.state) == ("passthrough", "kept_not_absorbed_within_limit", "unknown")
 
 
 def test_backoff_doubles_and_caps_and_a_later_confirm_resets_it() -> None:
