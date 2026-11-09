@@ -34,6 +34,7 @@ import { chargeBarFor, type ChargeBarFacts } from "./charge-bar";
 import {
   issuesOf,
   statusForCharger,
+  statusLineCodes,
   statusNeedsSiteSettings,
   statusNote,
   statusText,
@@ -250,6 +251,8 @@ export interface CardModel {
   today: string | null;
   dashboardFiscal: Fiscal | null;
   status: string | null;
+  /** The codes of the lines the status headline is made of: what `issues` can be told to repeat. */
+  statusCodes: string[];
   /** The "suggested from your location and charger" note: its own muted line under the status. */
   statusNote: string | null;
   /** The status line sends the reader to the site's settings (the charger's own current is not set). */
@@ -951,6 +954,7 @@ export function buildModel(input: BuildInput): CardModel {
     today: zone ? localDayKey(input.nowMs, format.timeZone) : null,
     dashboardFiscal: dashboard.fiscal,
     status: statusText(status, format, input.nowMs, dashboard.planning?.publication_at ?? null),
+    statusCodes: statusLineCodes(status),
     statusNote: statusNote(status, format, input.nowMs),
     statusNeedsSiteSettings: statusNeedsSiteSettings(status),
     chargeBar: chargeBarFor(dashboard.progress, format, input.nowMs),

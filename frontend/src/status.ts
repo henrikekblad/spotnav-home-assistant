@@ -922,6 +922,11 @@ export function statusText(
     .join(" · ");
 }
 
+/** The codes of the lines `statusText` joins into the headline, in its order. */
+export function statusLineCodes(status: Status | null): string[] {
+  return status === null ? [] : status.lines.filter((line) => line.code !== NOTE_CODE).map((line) => line.code);
+}
+
 /** The block's own "suggested from your location" note, or `null`. */
 export function statusNote(status: Status | null, format: FormatContext, nowMs: number): string | null {
   const line = status?.lines.find((entry) => entry.code === NOTE_CODE);

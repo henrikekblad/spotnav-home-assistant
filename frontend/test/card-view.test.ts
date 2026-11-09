@@ -195,7 +195,7 @@ describe("the banner and the issue dialog", () => {
     expect(notice.severity).toBe("notice");
     expect(notice.issues.map((issue) => [issue.code, issue.severity])).toEqual([["held_by_charger", "notice"]]);
     // The headline does not word the notice, so the banner is not a repeat of it.
-    const shown = view({ ...notice, status: "Charging is scheduled from 06:00." }, {}, "notice");
+    const shown = view({ ...notice, status: "Charging is scheduled from 06:00.", statusCodes: ["charging_scheduled"] }, {}, "notice");
     const banner = shown.root.querySelector<HTMLElement>(`.${VISUAL_CLASSES.banner}`);
     expect(banner?.classList.contains(VISUAL_CLASSES.bannerNotice)).toBe(true);
     expect(banner?.classList.contains(VISUAL_CLASSES.bannerBlocking)).toBe(false);
