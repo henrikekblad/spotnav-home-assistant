@@ -1183,16 +1183,19 @@ class AutoExecutor:
             if self._shutdown or not self.current(attempt):
                 # A newer calculation decides.
                 self._clear_waiting = None
+                self._unwatch_unseen_charge()
                 return self.applied
             applied = self.applied
             if applied is None:
                 # Its last window ended it: the plan is over, not complete for what the person now wants.
                 self._clear_waiting = None
+                self._unwatch_unseen_charge()
                 self._applied = None
                 await self._notify_change()
                 return None
             if not self._superseded_by_settings(applied):
                 self._clear_waiting = None
+                self._unwatch_unseen_charge()
                 return applied
             if self._superseded_runs_to_end():
                 return applied

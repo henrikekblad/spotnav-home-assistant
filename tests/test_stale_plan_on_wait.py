@@ -668,6 +668,26 @@ async def test_a_refused_claim_tells_the_core_a_plain_not_sent_outcome(
     assert all(not outcome.executed and not outcome.balancing_held for outcome in claims)
 
 
+@pytest.mark.parametrize("exit_", ["newer_attempt", "plan_gone"])
+async def test_a_waiting_clear_that_ends_stops_listening_to_the_charge_control(session: Session, exit_: str) -> None:
+    """A superseded plan kept for a charge nobody can see listens to the control's reports. Whichever way the wait
+    ends without a clear (a newer calculation, the plan's last window over), the
+    listener is removed there, not at the next report."""
+    executor = session.executor
+    removed: list[bool] = []
+    executor._clear_waiting = executor._attempt  # noqa: SLF001
+    executor._cancel_unseen_listener = lambda: removed.append(True)  # noqa: SLF001
+    if exit_ == "newer_attempt":
+        executor._attempt += 1  # noqa: SLF001
+    else:
+        executor._applied = None  # noqa: SLF001
+
+    await executor.async_clear_superseded_plan()
+
+    assert executor._clear_waiting is None  # noqa: SLF001
+    assert removed == [True] and executor._cancel_unseen_listener is None  # noqa: SLF001
+
+
 @pytest.mark.usefixtures("both_restarts")
 async def test_a_plan_confirmed_by_newer_settings_is_still_theirs_after_a_restart(
     session: Session, both_restarts: str
