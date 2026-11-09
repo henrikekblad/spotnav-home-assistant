@@ -2310,6 +2310,50 @@ class ChargingController:
             if self.plan is not None:
                 await self._reschedule_locked()
 
+    async def async_stop_stray_without_plan(self) -> bool:
+        """A person's Resume handed their charge to the plan, and the calculation after it installed no plan (prices
+        missing, the need already met): the plan's charge has no plan to run it. It is decided as a re-arm past the
+        plan's last window decides it (`Rearm`, `past_last`): a charge the plan owns strays and is stopped, with no
+        notice; the car's minimum level, the sun's charge, a guest's, a Charge-now start and load balancing's pause go
+        on, as do a pause and the hybrid hand-off. A plan in force decides through its own re-arm, and a charger not
+        charging needs nothing. Returns whether a stop went out."""
+        async with self._automatic(AUTOMATIC_STOP) as allowed:
+            if not allowed or self.plan is not None or not self.charging:
+                return False
+            token = self._runner.begin()
+            facts = self._core_facts(
+                lambda: {
+                    "control_on": self._control_observation is True,
+                    "handed_off": self._core_handed_off(),
+                    **self._core_hold_facts(),
+                },
+                core_events.Rearm.kind,
+                token=token,
+            )
+            outcome: CommandOutcome | None = None
+            try:
+                verdict = (
+                    None
+                    if facts is None
+                    else self._runner.verdict(core_events.Rearm(past_last=True, top_off_resumes=False, **facts), token)
+                )
+                if verdict is None or ("stop", "stray") not in verdict:
+                    return False
+                _LOGGER.info(
+                    "SpotNav charger %s: resumed with no plan to run the charge; stopping it", self.entry_id
+                )
+                outcome = CommandOutcome(False)
+                stopped = await self._automatic_stop_locked("the stop of a resumed charge with no plan to run it")
+                outcome = self._core_stop_outcome(stopped)
+                return stopped
+            finally:
+                self._core_end_event(
+                    token,
+                    facts,
+                    lambda: core_events.Rearm(past_last=True, top_off_resumes=False, **facts),
+                    outcome=outcome,
+                )
+
     async def async_save_record(self) -> None:
         """Save this charger's record as it stands (a key an older release stored is dropped by it)."""
         async with self._lock:

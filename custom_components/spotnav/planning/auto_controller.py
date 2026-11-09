@@ -1024,7 +1024,23 @@ class AutoPlannerController:
         """Resume execution: recalculate, and let the boundary apply the latest proposal."""
         if self._executor is not None:
             await self._executor.async_resume()
-        return await self.async_recalculate()
+        return await self._recalculate_after_resume()
+
+    async def _recalculate_after_resume(self) -> AutoSnapshot:
+        """A person's Resume: recalculate, then settle a charge the Resume handed to the plan while no plan came of
+        the calculation (prices missing, the need already met). With no plan in force, the plan's charge is stopped
+        as the plan's stray (`ChargingController.async_stop_stray_without_plan`), with no notice. Logged, never
+        raised: the resume is committed either way."""
+        snapshot = await self.async_recalculate()
+        if self._executor is None or self._shutdown:
+            return snapshot
+        try:
+            await self._executor.controller.async_stop_stray_without_plan()
+        except Exception as err:  # noqa: BLE001 - the resume is committed; the stop is the plan's next decision
+            _LOGGER.warning(
+                "Stopping a resumed charge with no plan to run it failed: %s", type(err).__name__
+            )
+        return snapshot
 
     async def async_manual_action(
         self, action: str, choice: PauseChoice | None = None
@@ -1047,7 +1063,7 @@ class AutoPlannerController:
                 snapshot = await self._calculate(self._store.settings(self._entry_id))
                 self._publish(snapshot, force=True)
             elif action == ACTION_RESUME:
-                await self.async_recalculate()
+                await self._recalculate_after_resume()
         except AutoControlError:
             raise
         except Exception as err:  # noqa: BLE001 - the effect is committed; report it, never undo it
