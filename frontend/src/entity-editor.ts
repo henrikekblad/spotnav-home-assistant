@@ -196,13 +196,25 @@ function siteNotes(language: Language, site: EntitySite, includeEstimate = true)
     });
 }
 
-/** The site's warnings (not the estimate notice), most important first, one worded row each. */
+/**
+ * The site's warnings (not the estimate notice), most important first, one worded row each, grouped under
+ * the same "To check" heading as the entity dialogs' notes. The heading stays for a single note too: a lone
+ * warning right after the settings rows would otherwise read as one more setting. Nothing when there are none.
+ */
 export function siteWarningRows(doc: Document, language: Language, site: EntitySite): HTMLElement[] {
-  return siteNotes(language, site, false).map((note) => {
+  const notes = siteNotes(language, site, false);
+  if (notes.length === 0) {
+    return [];
+  }
+  const group = element(doc, "div", C.siteFieldset);
+  group.dataset["warnings"] = "site";
+  group.append(element(doc, "p", C.siteLegend, translate(language, "entity.checks.title")));
+  for (const note of notes) {
     const row = element(doc, "p", C.entityWarning, note.text);
     row.dataset["warning"] = note.code;
-    return row;
-  });
+    group.append(row);
+  }
+  return [group];
 }
 
 /** The one note that makes the measurement unusable: it stays on top, as a warning. */
