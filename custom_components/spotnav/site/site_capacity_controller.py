@@ -4339,13 +4339,18 @@ class SiteCapacityController:
             return None
         return dt_util.utcnow().timestamp() - min(ages)
 
-    @classmethod
-    def _phase_read_at(cls, fresh: SiteCapacityResult, phase: PhaseName | None) -> float | None:
-        """When this phase's own reading was taken (epoch seconds): its signed power's where the site has one, else
-        its measured current's (a direct site whose currents carry no sign has no signed power); `None` unknown.
-        Without a phase, the site's newest reading (`_site_read_at`)."""
+    def _phase_read_at(self, fresh: SiteCapacityResult, phase: PhaseName | None) -> float | None:
+        """When this phase's own reading was taken (epoch seconds): the `last_reported` of the entity it is read from
+        (`_active_power_last_reported`: a direct site's current entity, a derived site's power entity), the one time
+        every pass agrees on, so one reading is known again as the same one (`StepGuard.cut_on_reading`); else
+        reckoned back from its age, its signed power's where the site has one, else its measured current's (a direct
+        site whose currents carry no sign has no signed power); `None` unknown. Without a phase, the site's newest
+        reading (`_site_read_at`)."""
         if phase is None:
-            return cls._site_read_at(fresh)
+            return self._site_read_at(fresh)
+        reported = self._active_power_last_reported(phase)
+        if reported is not None:
+            return reported.timestamp()
         age = fresh.phase_signed_active_power_age_s.get(phase)
         if age is None:
             age = fresh.phase_age_s.get(phase)

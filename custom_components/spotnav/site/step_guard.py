@@ -65,15 +65,11 @@ CATCH_UP_S = 10.0
 # How long (s) a level that overshot is not tried again.
 OVERSHOOT_BACKOFF_S = 600.0
 
-# A site reading within this (s) of the one the last cut was made on is that reading: a reading's time is reckoned
-# back from its age at the moment it is asked for, not to the microsecond, and no meter load balancing reads reports
-# faster than once a second.
-SAME_READING_S = 0.5
-
 # A charger reading taken within this (s) of a write is from before it: a charger writes its phases in the instant
-# the site's write goes out as often as not, and a reading's time is reckoned back from its age, not to the
-# microsecond. No car follows a write within the second.
-CUT_SHOWN_AFTER_S = 1.0
+# the site's write goes out as often as not, and a reading's time is reckoned back from an age the site calculated
+# up to a second earlier (`CALCULATION_REUSE_S`), which makes the reading look later than it was. No car follows a
+# write within two seconds.
+CUT_SHOWN_AFTER_S = 2.0
 
 GuardRule = Literal[
     "up_margin",
@@ -177,12 +173,12 @@ class StepGuard:
         return GuardResult(target, rule)
 
     def cut_on_reading(self, site_read_at: float | None) -> bool:
-        """Whether the last cut was made on this site reading (taken at `site_read_at`, epoch seconds, within
-        `SAME_READING_S` of the cut's) or a later one: one reading, one cut. Never with an unknown time."""
+        """Whether the last cut was made on this site reading (taken at `site_read_at`, epoch seconds) or a later
+        one: one reading, one cut. Never with an unknown time."""
         return (
             site_read_at is not None
             and self._last_cut_reading_at is not None
-            and site_read_at <= self._last_cut_reading_at + SAME_READING_S
+            and site_read_at <= self._last_cut_reading_at
         )
 
     def cut_took_on_reading(
@@ -200,14 +196,15 @@ class StepGuard:
         `UP_MARGIN_A`; one read before the cut went out, or within `CUT_SHOWN_AFTER_S` of it, shows nothing of it (a
         charger writes its phases one at a time, and the site decides on each). Held when every phase read since
         the cut shows it took, and at least one was: a phase that still reads above what was written was not lowered
-        by the cut, and is cut again at once. Never with an unknown time or value. Epoch seconds."""
-        if not self.cut_on_reading(site_read_at) or written_a is None:
+        by the cut, and is cut again at once. Never with an unknown time or value: the proof needs the cut's time.
+        Epoch seconds."""
+        if not self.cut_on_reading(site_read_at) or written_a is None or written_at is None:
             return False
         shown = False
         for measured_a, read_at in readings:
             if measured_a is None or read_at is None:
                 return False
-            if written_at is not None and read_at < written_at + CUT_SHOWN_AFTER_S:
+            if read_at < written_at + CUT_SHOWN_AFTER_S:
                 continue
             if measured_a > written_a + UP_MARGIN_A:
                 return False
@@ -228,13 +225,15 @@ class StepGuard:
         written_a: float,
         site_read_at: float | None,
     ) -> None:
-        """Remember a write that went out: a step up starts its flight, a cut marks its reading, and a
-        cut made while a step was in flight marks the stepped level as one that overshot."""
+        """Remember a write that went out: a step up starts its flight (and a cut after it is a first cut on its
+        reading, whatever was cut on that reading before the step), a cut marks its reading, and a cut made while a
+        step was in flight marks the stepped level as one that overshot."""
         if previous_a is None or written_a == previous_a:
             return
         self._last_write_at = now
         if written_a > previous_a:
             self._last_up_at = now
+            self._last_cut_reading_at = None
             return
         if written_a < previous_a:
             self._last_cut_reading_at = site_read_at

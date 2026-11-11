@@ -34,7 +34,7 @@ from custom_components.spotnav.const import (
     CURRENT_CONTROL_CHANGE_CONFIGURATION,
 )
 from custom_components.spotnav.site.regulator import MEASUREMENT_LOST_GRACE_S
-from custom_components.spotnav.site.step_guard import CUT_SHOWN_AFTER_S, SAME_READING_S, StepGuard, UP_MARGIN_A
+from custom_components.spotnav.site.step_guard import CUT_SHOWN_AFTER_S, StepGuard, UP_MARGIN_A
 
 from .charger_helpers import mock_ocpp_assigned_current
 from .helpers import make_entry, make_site_entry, set_current_sensor
@@ -270,20 +270,26 @@ def test_the_guard_holds_a_cut_again_only_where_the_charger_shows_the_cut_took()
     # A phase read since the cut above it: the cut did not take, cut again.
     assert not guard.cut_took_on_reading(readings=[(9.0 + UP_MARGIN_A + 0.1, 104.0)], **took)
     assert not guard.cut_took_on_reading(readings=[(8.77, 104.0), (15.0, 104.0)], **took)
-    # A phase read before the cut went out, or within the second after, shows nothing of it: the phases read since
-    # decide.
+    # A phase read before the cut went out, or within `CUT_SHOWN_AFTER_S` after, shows nothing of it: the phases read
+    # since decide.
     assert guard.cut_took_on_reading(readings=[(8.77, 104.0), (15.09, 99.5), (13.96, 100.0)], **took)
     assert guard.cut_took_on_reading(readings=[(8.77, 104.0), (15.09, 100.0 + CUT_SHOWN_AFTER_S - 0.1)], **took)
     assert not guard.cut_took_on_reading(readings=[(8.77, 104.0), (15.09, 100.0 + CUT_SHOWN_AFTER_S)], **took)
     assert not guard.cut_took_on_reading(readings=[(8.0, 99.5), (8.0, 100.5)], **took)
-    # A newer site reading decides on its own; one within `SAME_READING_S` is the same reading, reckoned back from
-    # its age a moment later.
+    # A newer site reading decides on its own.
     assert not guard.cut_took_on_reading(**{**took, "site_read_at": 105.0}, readings=[(8.0, 104.0)])
-    assert not guard.cut_took_on_reading(**{**took, "site_read_at": 99.0 + SAME_READING_S + 0.1}, readings=[(8.0, 104.0)])
-    assert guard.cut_took_on_reading(**{**took, "site_read_at": 99.0 + SAME_READING_S - 0.1}, readings=[(8.0, 104.0)])
+    assert not guard.cut_took_on_reading(**{**took, "site_read_at": 99.001}, readings=[(8.0, 104.0)])
     # No cut on record, or nothing to compare with: never held.
     assert not StepGuard().cut_took_on_reading(readings=[(8.0, 104.0)], **took)
     assert not guard.cut_took_on_reading(**{**took, "written_a": None}, readings=[(8.0, 104.0)])
+    assert not guard.cut_took_on_reading(**{**took, "written_at": None}, readings=[(8.0, 104.0)])
+    # A raise after the cut makes the next cut on the reading a first one: the raise is what is cut then.
+    raised = StepGuard()
+    raised.note_write(now=100.0, previous_a=18.0, written_a=9.0, site_read_at=99.0)
+    raised.note_write(now=110.0, previous_a=9.0, written_a=16.0, site_read_at=None)
+    assert not raised.cut_took_on_reading(
+        site_read_at=99.0, written_a=16.0, written_at=110.0, readings=[(15.5, 114.0)]
+    )
     assert not guard.cut_took_on_reading(readings=[(8.0, None)], **took)
     assert not guard.cut_took_on_reading(readings=[(None, 104.0)], **took)
     assert not guard.cut_took_on_reading(readings=[], **took)
