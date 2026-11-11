@@ -121,6 +121,12 @@ class _Guard:
     def note_write(self, **_: Any) -> None:
         return None
 
+    def cut_took_on_reading(self, **_: Any) -> bool:
+        return False
+
+    def note_cut_reading(self, site_read_at: float | None) -> None:
+        return None
+
 
 def _verdict(state: dict[str, Any]) -> YieldVerdict | None:
     if state["yield"] is None:

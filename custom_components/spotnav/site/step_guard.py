@@ -23,6 +23,14 @@ So, per charger, between the regulator and the damper:
 3. A second lowering on the same site reading as the last one is held: one reading, one cut.
 4. An overload of more than `TRIM_MAX_OVER_A` always goes through at the regulator's own value,
    at once: none of the above holds back a real overload.
+5. One reading, one cut, for an overload too, with one proof asked (`cut_took_on_reading`): after a cut
+   (a lowering or a pause) on a site reading, a cut again on that same reading is held while the
+   charger's own reading, taken since the cut went out, shows the cut took (the charger draws at most
+   what was written plus `UP_MARGIN_A`). A site reading taken while the charger drew its old current,
+   reckoned against the charger's new one, is the house load counted too high by the whole cut (the
+   night of 2026-11-11: 18 -> 9 A at 03:00:06 on a reading of 26.35 A, and on that same reading with
+   the charger at 8.8 A a pause four seconds later). A charger still above what was written is cut
+   again at once, and the next reading of the phase decides as it would have, cut or pause included.
 
 What was written last is what the site was told, by the regulator and by every other path that writes
 a current (a start, a resend after a status blip, the deferred session write, the sun's own write). As
@@ -37,6 +45,7 @@ The limit is the regulator's (`main fuse - the site's safety margin`, whatever t
 from __future__ import annotations
 
 import math
+from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Literal
 
@@ -55,6 +64,16 @@ CATCH_UP_S = 10.0
 
 # How long (s) a level that overshot is not tried again.
 OVERSHOOT_BACKOFF_S = 600.0
+
+# A site reading within this (s) of the one the last cut was made on is that reading: a reading's time is reckoned
+# back from its age at the moment it is asked for, not to the microsecond, and no meter load balancing reads reports
+# faster than once a second.
+SAME_READING_S = 0.5
+
+# A charger reading taken within this (s) of a write is from before it: a charger writes its phases in the instant
+# the site's write goes out as often as not, and a reading's time is reckoned back from its age, not to the
+# microsecond. No car follows a write within the second.
+CUT_SHOWN_AFTER_S = 1.0
 
 GuardRule = Literal[
     "up_margin",
@@ -158,13 +177,42 @@ class StepGuard:
         return GuardResult(target, rule)
 
     def cut_on_reading(self, site_read_at: float | None) -> bool:
-        """Whether the last cut was made on this site reading (taken at `site_read_at`, epoch seconds) or a later
-        one: one reading, one cut. Never with an unknown time."""
+        """Whether the last cut was made on this site reading (taken at `site_read_at`, epoch seconds, within
+        `SAME_READING_S` of the cut's) or a later one: one reading, one cut. Never with an unknown time."""
         return (
             site_read_at is not None
             and self._last_cut_reading_at is not None
-            and site_read_at <= self._last_cut_reading_at
+            and site_read_at <= self._last_cut_reading_at + SAME_READING_S
         )
+
+    def cut_took_on_reading(
+        self,
+        *,
+        site_read_at: float | None,
+        written_a: float | None,
+        readings: Iterable[tuple[float | None, float | None]],
+        written_at: float | None,
+    ) -> bool:
+        """Whether a cut on this site reading (taken at `site_read_at`) would be a cut again on the reading the last
+        cut was made on (`cut_on_reading`) while the charger's own reading shows that cut took. `readings` are the
+        charger's phases, each what it draws and when that was read; the cut went out at `written_at` and wrote
+        `written_a`. A phase read since the cut shows it took when it draws at or below `written_a` plus
+        `UP_MARGIN_A`; one read before the cut went out, or within `CUT_SHOWN_AFTER_S` of it, shows nothing of it (a
+        charger writes its phases one at a time, and the site decides on each). Held when every phase read since
+        the cut shows it took, and at least one was: a phase that still reads above what was written was not lowered
+        by the cut, and is cut again at once. Never with an unknown time or value. Epoch seconds."""
+        if not self.cut_on_reading(site_read_at) or written_a is None:
+            return False
+        shown = False
+        for measured_a, read_at in readings:
+            if measured_a is None or read_at is None:
+                return False
+            if written_at is not None and read_at < written_at + CUT_SHOWN_AFTER_S:
+                continue
+            if measured_a > written_a + UP_MARGIN_A:
+                return False
+            shown = True
+        return shown
 
     def note_cut_reading(self, site_read_at: float | None) -> None:
         """Remember the site reading a cut was made on where `note_write` cannot tell it was one: the first write
