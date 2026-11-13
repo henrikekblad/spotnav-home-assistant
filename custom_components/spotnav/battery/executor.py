@@ -1,0 +1,866 @@
+"""The battery's write path: turns a slot's planned action into the brand's commands, safely. Built, not reachable.
+
+Nothing calls this in production: `shadow.ON_REACHABLE` is off, no service or setting starts it, and the shell
+(`control.py`) refuses to write while it is off. Tests drive it against fake entities. A later, explicit opt-in will
+use it.
+
+How it acts (`step`, one look every few seconds; pure, the shell does the writes it returns):
+
+* **Edge-triggered.** It writes only when the wanted state changes (a new action, a new rate past the hysteresis,
+  a brand's watchdog to renew) and only the roles whose reading differs from it, one at a time in the brand's order
+  (`commands.py`). Each write goes through the confirmed-write ledger (`ledger.py`): it counts only when the entity
+  reads it back within `READBACK_DEADLINE_S`; the next role is written only after that. A write that does not read
+  back (a read-only integration drops it silently, an entity went away) hands the battery back and blocks the
+  control until it is reset: SpotNav never repeats a write the device did not take.
+* **The monitor judges the effect** (`monitor.py`): after its grace, three readings that show no effect hand the
+  battery back and block the control (a hold that does not hold, a charge that does not charge).
+* **Restore first, on every exit path.** Before the first write the value of every role it may write is kept
+  (`snapshot`) and the shell persists it before it writes. The battery is handed back (every role to its snapshot,
+  in the brand's restore order, each read back) when: the part is stopped or unloaded; the plan wants plain
+  self-consumption, has no slot now or names an action the brand cannot do; a reading is stale or the site's
+  measurement is lost; the plant leaves the grid; the fuse headroom falls under `RESTORE_HEADROOM_A` (or a grid
+  charge cannot keep `MIN_RATE_KW` within it); the battery's management changes (its own optimiser, another planner,
+  an app taking Remote EMS back) or the site's battery is no longer that brand; someone else changes a control
+  SpotNav owns (that control is given up and not written back over the other system, as the ledger says); a write
+  is not taken; the monitor sees no effect; the day's write cap is reached. After a restart a stored snapshot is
+  restored before anything else. A restore write that does not read back is retried with backoff
+  (`RESTORE_RETRY_S`), up to `RESTORE_ATTEMPTS` times each; a role still not restored then is left with its
+  snapshot kept (the control blocks, and the next start tries again), while the other roles are handed back.
+* **Fuse safety.** A grid charge is clamped by the site's live headroom: what the battery already draws from the
+  grid (at most its charge, the commanded rate and the site's import) plus the headroom less `HEADROOM_MARGIN_A`.
+  Unlike evcc, the battery's charge counts against the main fuse. With the site's solar priority "car first" a
+  charger held below what it asked makes the battery yield (`YIELD_STEP_KW` per review); with "battery first" the
+  battery keeps its rate and the site's load balancing backs the car off (the battery is house load to it).
+  The rate goes down at once and up only by `RATE_STEP_KW` after `RATE_UP_DWELL_S`.
+
+Pure: no Home Assistant import; times are aware datetimes from the caller. State survives a restart
+(`ExecState.as_dict`, `from_dict`); the ledger and the monitor keep their own.
+"""
+
+from __future__ import annotations
+
+import math
+from collections.abc import Mapping
+from dataclasses import dataclass, field, replace
+from datetime import datetime, timedelta
+from typing import Any, Final, Literal
+
+from .commands import (
+    NORMAL,
+    SNAPSHOT,
+    WATCHDOG_RENEW_S,
+    WATCHDOG_S,
+    BrandControl,
+    Native,
+    Role,
+    reading,
+)
+from .facts import BatteryFacts
+from .ledger import Ledger, same
+from .monitor import Capability, Command, Monitor, Reading
+from .plan_model import (
+    ACTION_DISCHARGE_HOUSE,
+    ACTION_EXPORT_DISCHARGE,
+    ACTION_GRID_CHARGE,
+    ACTION_HOLD,
+    ACTION_SELF_CONSUME,
+)
+from .shadow import parse_aware_datetime
+
+#: A battery reading older than this is stale (s).
+BATTERY_MAX_AGE_S: Final = 120.0
+#: The headroom kept under the fuse when a grid charge is sized (A per phase).
+HEADROOM_MARGIN_A: Final = 2.0
+#: Below this headroom (A) any action that adds import is handed back at once.
+RESTORE_HEADROOM_A: Final = 1.0
+#: A grid charge below this is not worth running (kW).
+MIN_RATE_KW: Final = 0.5
+#: The rate goes up only by this much (kW), after this long since its last change (s).
+RATE_STEP_KW: Final = 0.5
+RATE_UP_DWELL_S: Final = 60.0
+#: A rate is lowered when the clamp is under it by more than this (kW).
+RATE_TOLERANCE_KW: Final = 0.1
+#: With "car first", how much the battery's grid charge gives up per review while a car is held (kW).
+YIELD_STEP_KW: Final = 1.0
+#: After a hand-back, no new action for this long (s).
+REARM_S: Final = 120.0
+#: A management reading may be unknown this long (Sigenergy's Remote EMS entities blink, issue #427) (s).
+MANAGEMENT_GRACE_S: Final = 60.0
+#: Writes a day outside restores (flash wear is unknown for most brands).
+DAILY_WRITE_CAP: Final = 96
+#: A restore write that does not read back is retried after these delays (s), then given up.
+RESTORE_RETRY_S: Final = (30.0, 60.0, 120.0, 300.0, 600.0)
+RESTORE_ATTEMPTS: Final = len(RESTORE_RETRY_S)
+
+Phase = Literal["idle", "active", "restoring", "blocked"]
+_PHASES: Final = frozenset({"idle", "active", "restoring", "blocked"})
+#: Hand-back reasons that block the control until it is reset (or, for the cap, until the next day).
+_BLOCKING_PREFIXES: Final = ("write_not_taken", "changed_outside_spotnav", "no_effect", "management_changed")
+_RAISES_IMPORT: Final = frozenset({ACTION_HOLD, ACTION_GRID_CHARGE})
+_MONITORED: Final = {ACTION_HOLD: "hold", ACTION_GRID_CHARGE: "charge", ACTION_DISCHARGE_HOUSE: "discharge",
+                     ACTION_EXPORT_DISCHARGE: "discharge"}
+
+
+@dataclass(frozen=True, slots=True)
+class RoleRead:
+    """A role's entity as found now."""
+
+    entity_id: str | None = None
+    state: str | None = None
+    found: bool = False
+    enabled: bool = False
+    #: The entity's step (number entities), for the read-back.
+    step: float | None = None
+    #: The device a service is called for (Huawei's battery).
+    device_id: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ExecInputs:
+    now: datetime
+    facts: BatteryFacts
+    reads: Mapping[str, RoleRead]
+    #: The plan's action for the running slot (`None`: no plan now), its battery power (kW, magnitude) and end.
+    action: str | None = None
+    rate_kw: float = 0.0
+    slot_end: datetime | None = None
+    battery_age_s: float | None = None
+    measurement_ok: bool = True
+    #: The least headroom on any phase now (A), `None` when unknown.
+    headroom_a: float | None = None
+    volts_between_phases: float = 400.0
+    #: The site's grid import now (kW, + import), `None` when unknown.
+    grid_import_kw: float | None = None
+    #: The site's solar priority: `True` for "car first" (the battery yields to a held car).
+    car_first: bool = True
+    #: A SpotNav charger is held below what it asked by the site's load balancing.
+    car_held: bool = False
+    #: The house's own deficit (kW) for judging a discharge; `None`: a discharge is not judged.
+    house_deficit_kw: float | None = None
+    #: Hand the battery back now (`stop`, `unload`, ...).
+    stopping: str | None = None
+    #: Roles whose last write raised (the shell's service call failed).
+    failed: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class Op:
+    """One write for the shell to make."""
+
+    role: str
+    method: str
+    entity_id: str | None
+    value: Native
+    device_id: str | None = None
+    restore: bool = False
+
+    def as_dict(self) -> dict[str, Any]:
+        return {"role": self.role, "method": self.method, "entity_id": self.entity_id, "value": self.value,
+                "restore": self.restore}
+
+
+@dataclass(frozen=True, slots=True)
+class ExecState:
+    """What the executor remembers; persisted (the snapshot first of all)."""
+
+    phase: Phase = "idle"
+    brand: str | None = None
+    #: The action being run and its rate (kW), and the wanted value per role (native, snapshot resolved).
+    action: str | None = None
+    rate_kw: float = 0.0
+    target: dict[str, Native] = field(default_factory=dict)
+    #: The value per role found before the first write (as read), the native value a restore writes, and where.
+    snapshot: dict[str, str] = field(default_factory=dict)
+    restore_values: dict[str, Native] = field(default_factory=dict)
+    entities: dict[str, str] = field(default_factory=dict)
+    device_id: str | None = None
+    snapshot_at: datetime | None = None
+    #: The role written and not yet read back.
+    pending: str | None = None
+    #: Buttons pressed and roles renewed for the current target.
+    sent: tuple[str, ...] = ()
+    renew: tuple[str, ...] = ()
+    reason: str | None = None
+    blocked: str | None = None
+    given_up: tuple[str, ...] = ()
+    entered_at: datetime | None = None
+    rate_changed_at: datetime | None = None
+    watchdog_at: datetime | None = None
+    released_at: datetime | None = None
+    management_unknown_since: datetime | None = None
+    #: Restore writes not read back: per role, the attempts made and when to try again.
+    retries: dict[str, tuple[int, datetime]] = field(default_factory=dict)
+    #: Roles whose restore was given up after every attempt (the snapshot is kept for them).
+    unrestored: tuple[str, ...] = ()
+    day: str | None = None
+    writes_today: int = 0
+
+    @property
+    def holds_snapshot(self) -> bool:
+        return bool(self.snapshot) or bool(self.entities)
+
+    def as_dict(self) -> dict[str, Any]:
+        def iso(moment: datetime | None) -> str | None:
+            return None if moment is None else moment.isoformat()
+
+        return {
+            "phase": self.phase,
+            "brand": self.brand,
+            "action": self.action,
+            "rate_kw": self.rate_kw,
+            "target": dict(self.target),
+            "snapshot": dict(self.snapshot),
+            "restore_values": dict(self.restore_values),
+            "entities": dict(self.entities),
+            "device_id": self.device_id,
+            "snapshot_at": iso(self.snapshot_at),
+            "pending": self.pending,
+            "sent": list(self.sent),
+            "renew": list(self.renew),
+            "reason": self.reason,
+            "blocked": self.blocked,
+            "given_up": list(self.given_up),
+            "entered_at": iso(self.entered_at),
+            "rate_changed_at": iso(self.rate_changed_at),
+            "watchdog_at": iso(self.watchdog_at),
+            "released_at": iso(self.released_at),
+            "management_unknown_since": iso(self.management_unknown_since),
+            "retries": {name: [count, at.isoformat()] for name, (count, at) in self.retries.items()},
+            "unrestored": list(self.unrestored),
+            "day": self.day,
+            "writes_today": self.writes_today,
+        }
+
+    @classmethod
+    def from_dict(cls, data: Any) -> ExecState:
+        """A stored state; anything broken loads as idle, but a stored snapshot is always kept so it is restored."""
+        if not isinstance(data, Mapping):
+            return cls()
+
+        def text(key: str) -> str | None:
+            value = data.get(key)
+            return value if isinstance(value, str) else None
+
+        def natives(key: str) -> dict[str, Native]:
+            raw = data.get(key)
+            if not isinstance(raw, Mapping):
+                return {}
+            return {
+                str(name): value for name, value in raw.items()
+                if isinstance(value, (str, bool)) or (isinstance(value, (int, float)) and math.isfinite(value))
+            }
+
+        def texts(key: str) -> dict[str, str]:
+            raw = data.get(key)
+            return {str(k): v for k, v in raw.items() if isinstance(v, str)} if isinstance(raw, Mapping) else {}
+
+        def names(key: str) -> tuple[str, ...]:
+            raw = data.get(key)
+            return tuple(item for item in raw if isinstance(item, str)) if isinstance(raw, list) else ()
+
+        phase = data.get("phase")
+        rate = data.get("rate_kw")
+        writes = data.get("writes_today")
+        retries: dict[str, tuple[int, datetime]] = {}
+        raw_retries = data.get("retries")
+        if isinstance(raw_retries, Mapping):
+            for name, row in raw_retries.items():
+                if isinstance(row, list) and len(row) == 2 and isinstance(row[0], int) and not isinstance(row[0], bool):
+                    at = parse_aware_datetime(row[1])
+                    if at is not None and row[0] >= 0:
+                        retries[str(name)] = (row[0], at)
+        return cls(
+            phase=phase if phase in _PHASES else "idle",
+            brand=text("brand"),
+            action=text("action"),
+            rate_kw=float(rate) if isinstance(rate, (int, float)) and not isinstance(rate, bool) and math.isfinite(rate) else 0.0,
+            target=natives("target"),
+            snapshot=texts("snapshot"),
+            restore_values=natives("restore_values"),
+            entities=texts("entities"),
+            device_id=text("device_id"),
+            snapshot_at=parse_aware_datetime(data.get("snapshot_at")),
+            pending=text("pending"),
+            sent=names("sent"),
+            renew=names("renew"),
+            reason=text("reason"),
+            blocked=text("blocked"),
+            given_up=names("given_up"),
+            entered_at=parse_aware_datetime(data.get("entered_at")),
+            rate_changed_at=parse_aware_datetime(data.get("rate_changed_at")),
+            watchdog_at=parse_aware_datetime(data.get("watchdog_at")),
+            released_at=parse_aware_datetime(data.get("released_at")),
+            management_unknown_since=parse_aware_datetime(data.get("management_unknown_since")),
+            retries=retries,
+            unrestored=names("unrestored"),
+            day=text("day"),
+            writes_today=writes if isinstance(writes, int) and not isinstance(writes, bool) and writes >= 0 else 0,
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class StepResult:
+    state: ExecState
+    ops: tuple[Op, ...] = ()
+    #: Log rows: what happened and why.
+    events: tuple[dict[str, Any], ...] = ()
+    #: The state must be stored before the ops are made (a new snapshot).
+    persist_first: bool = False
+
+
+# --- fuse ----------------------------------------------------------------------------------------------------------
+
+
+def _kw(amps: float, volts: float) -> float:
+    """Amps per phase over three phases as kW (signed)."""
+    return amps * math.sqrt(3.0) * volts / 1000.0
+
+
+def grid_charge_cap_kw(inputs: ExecInputs, commanded_kw: float) -> float | None:
+    """The most the battery may charge from the grid now (kW), `None` when the headroom is unknown.
+
+    What the battery already takes from the grid is counted back (it is in the measured import): at most its own
+    charge, the rate commanded and the site's import, and nothing when the import is unknown, so the figure is never
+    above the truth. The headroom keeps `HEADROOM_MARGIN_A` under the fuse."""
+    if inputs.headroom_a is None or inputs.volts_between_phases <= 0:
+        return None
+    battery = inputs.facts.power_kw
+    own = 0.0
+    if inputs.grid_import_kw is not None and battery is not None:
+        own = max(min(commanded_kw, battery, inputs.grid_import_kw), 0.0)
+    cap = own + _kw(inputs.headroom_a - HEADROOM_MARGIN_A, inputs.volts_between_phases)
+    if inputs.car_first and inputs.car_held:
+        cap = min(cap, own - YIELD_STEP_KW)
+    return cap
+
+
+# --- helpers -------------------------------------------------------------------------------------------------------
+
+
+def _fresh(inputs: ExecInputs) -> bool:
+    age = inputs.battery_age_s
+    return inputs.facts.power_kw is not None and age is not None and age <= BATTERY_MAX_AGE_S
+
+
+def _rating(facts: BatteryFacts, kind: str | None) -> float | None:
+    if kind == "charge":
+        return facts.rated_charge_kw
+    if kind == "discharge":
+        return facts.rated_discharge_kw
+    return None
+
+
+def _unset(role: Role, state: str | None) -> bool:
+    """Whether a number reads the register's "never set" value (Sigenergy's all-ones U32, shown as `unknown` by
+    2.0.1 and as 4294967.295 before): it cannot be written back, so the rating is (research §1.4). A real value, even
+    at or above the rating, is written back exactly."""
+    if role.unset_as_rating is None:
+        return False
+    if state is not None and state.strip().lower() == "unknown":
+        return role.unknown_is_unset
+    try:
+        value = float(state) / role.scale if state is not None else None
+    except ValueError:
+        return False
+    return value is not None and value >= 4_000_000.0
+
+
+def _restore_value(role: Role, state: str | None, facts: BatteryFacts) -> Native | None:
+    """What a restore writes back for a role found reading `state`; `None` when that cannot be known."""
+    if role.method == "number":
+        if _unset(role, state):
+            rating = _rating(facts, role.unset_as_rating)
+            return None if rating is None else round(rating * role.scale, 6)
+        text = reading(role, state)
+        try:
+            return None if text is None else float(text)
+        except ValueError:
+            return None
+    return reading(role, state)
+
+
+def _management_problem(facts: BatteryFacts, control: BrandControl, active: bool) -> str | None:
+    """Why the battery is not SpotNav's to run now; `unknown` when a setting cannot be read."""
+    management = facts.management
+    if management.state == "free":
+        return None
+    if management.reason.startswith("planner:") or not active:
+        return f"{management.state}:{management.reason}"
+    for rule in control.adapter.modes:
+        if rule.label not in management.settings:
+            continue
+        state = management.settings[rule.label]
+        if state is None or state.strip().lower() in ("unavailable", "unknown", ""):
+            return "unknown"
+        if state in rule.free or state in control.own_states.get(rule.label, frozenset()):
+            continue
+        return f"self_managed:{rule.label}:{state}"
+    return None if management.settings else f"{management.state}:{management.reason}"
+
+
+def _event(now: datetime, kind: str, reason: str, **detail: Any) -> dict[str, Any]:
+    return {"at": now.isoformat(), "kind": kind, "reason": reason} | detail
+
+
+def _blocking(reason: str) -> bool:
+    return reason.startswith(_BLOCKING_PREFIXES)
+
+
+class Executor:
+    """One battery's write path: the brand's control, the ledger and the monitor, and the state."""
+
+    def __init__(
+        self, control: BrandControl, ledger: Ledger | None = None, monitor: Monitor | None = None,
+        state: ExecState | None = None, *, watchdog_s: int = WATCHDOG_S,
+    ) -> None:
+        self.control = control
+        self.ledger = ledger or Ledger()
+        self.monitor = monitor or Monitor()
+        self.state = state or ExecState()
+        self.watchdog_s = watchdog_s
+
+    # --- life ---
+
+    def restart(self, now: datetime) -> list[dict[str, Any]]:
+        """After a restart: a stored snapshot is restored before anything else."""
+        state = self.state
+        if not state.holds_snapshot:
+            if state.phase in ("active", "restoring"):
+                self.state = replace(state, phase="idle", pending=None)
+            return []
+        # A write in flight when HA stopped is no longer awaited: the restore reads every role afresh.
+        self.state = replace(state, pending=None, retries={}, unrestored=())
+        return self._begin_restore(now, "restart")
+
+    def reset(self) -> None:
+        """Lift a block (the part's next explicit decision); never while a snapshot waits to be restored."""
+        if self.state.phase == "blocked" and not self.state.holds_snapshot:
+            self.state = replace(self.state, phase="idle", blocked=None, reason=None, given_up=())
+
+    # --- one look ---
+
+    def step(self, inputs: ExecInputs) -> StepResult:
+        now = inputs.now
+        events: list[dict[str, Any]] = []
+        today = now.date().isoformat()
+        if self.state.day != today:
+            self.state = replace(self.state, day=today, writes_today=0)
+            if self.state.phase == "blocked" and self.state.blocked == "daily_write_cap" and not self.state.holds_snapshot:
+                self.state = replace(self.state, phase="idle", blocked=None)
+
+        events += self._observe(inputs)
+        if self.state.phase == "active":
+            reason = self._exit_reason(inputs)
+            if reason is not None:
+                events += self._begin_restore(now, reason)
+        persist_first = False
+        if self.state.phase == "idle" and inputs.stopping is None:
+            started, start_events = self._try_start(inputs)
+            events += start_events
+            persist_first = started
+        elif self.state.phase == "active":
+            events += self._retarget(inputs)
+        ops = self._progress(inputs)
+        events += [_event(now, "write", op.role, entity_id=op.entity_id, value=op.value, restore=op.restore)
+                   for op in ops]
+        if not ops:
+            events += self._finish(inputs)
+        return StepResult(self.state, tuple(ops), tuple(events), persist_first)
+
+    # --- observing ---
+
+    def _observe(self, inputs: ExecInputs) -> list[dict[str, Any]]:
+        now = inputs.now
+        events: list[dict[str, Any]] = []
+        for role_name in inputs.failed:
+            if self.state.pending == role_name:
+                entity_id = self.state.entities.get(role_name)
+                if entity_id is not None:
+                    self.ledger.release(entity_id)
+                self.state = replace(self.state, pending=None)
+                events += self._not_taken(now, role_name, "service_failed")
+        for role in self.control.roles:
+            entity_id = self.state.entities.get(role.name)
+            if entity_id is None or self.ledger.claim(entity_id) is None:
+                continue
+            read = inputs.reads.get(role.name)
+            event = self.ledger.observe(entity_id, reading(role, None if read is None else read.state), now)
+            if event is None:
+                continue
+            if event.kind == "confirmed":
+                if self.state.pending == role.name:
+                    retries = {name: row for name, row in self.state.retries.items() if name != role.name}
+                    self.state = replace(self.state, pending=None, retries=retries)
+                events.append(_event(now, "confirmed", role.name, entity_id=entity_id, read=event.read))
+            elif event.kind == "unconfirmed":
+                if self.state.pending == role.name:
+                    self.state = replace(self.state, pending=None)
+                events += self._not_taken(now, role.name, "no_read_back", read=event.read)
+            else:
+                self.state = replace(
+                    self.state, given_up=(*self.state.given_up, role.name),
+                    pending=None if self.state.pending == role.name else self.state.pending,
+                )
+                events.append(_event(now, "external", role.name, entity_id=entity_id, read=event.read))
+                if self.state.phase == "active":
+                    events += self._begin_restore(now, f"changed_outside_spotnav:{role.name}")
+        if self.state.phase == "active":
+            facts = inputs.facts
+            capability = Capability(
+                rated_charge_kw=facts.max_charge_kw,
+                rated_discharge_kw=facts.max_discharge_kw,
+                soc_min_pct=facts.reserve_soc_pct or 0.0,
+                site_cap_kw=inputs.house_deficit_kw if self.state.action == ACTION_DISCHARGE_HOUSE else None,
+            )
+            judged = self.monitor.observe(Reading(facts.power_kw, inputs.battery_age_s, facts.soc_pct), capability, now)
+            if judged is not None and judged.kind == "failure":
+                events.append(_event(now, "monitor", judged.outcome, detail=judged.as_dict()))
+                if judged.outcome == "no_effect":
+                    events += self._begin_restore(now, f"no_effect:{self.state.action}")
+        return events
+
+    def _not_taken(self, now: datetime, role: str, why: str, **detail: Any) -> list[dict[str, Any]]:
+        events = [_event(now, "not_taken", role, why=why, **detail)]
+        state = self.state
+        if state.phase == "restoring":
+            attempts = state.retries.get(role, (0, now))[0] + 1
+            if attempts > RESTORE_ATTEMPTS:
+                # Every retry spent: the role is left; its snapshot stays and is tried again after a restart.
+                retries = {name: row for name, row in state.retries.items() if name != role}
+                self.state = replace(state, retries=retries, unrestored=(*state.unrestored, role))
+                events.append(_event(now, "restore_failed", role))
+            else:
+                at = now + timedelta(seconds=RESTORE_RETRY_S[attempts - 1])
+                self.state = replace(state, retries=state.retries | {role: (attempts, at)})
+        elif state.phase == "active":
+            events += self._begin_restore(now, f"write_not_taken:{role}:{why}")
+        return events
+
+    # --- leaving ---
+
+    def _action_problem(self, inputs: ExecInputs, action: str) -> str | None:
+        """Why the brand cannot run this action now (an AC charge policy that forbids grid charging)."""
+        if not self.control.supports(action):
+            return f"action_not_supported:{action}"
+        for act, name, forbidden, why in self.control.action_requires:
+            read = inputs.reads.get(name)
+            if act == action and (read is None or read.state is None or read.state in forbidden):
+                return why
+        return None
+
+    def _exit_reason(self, inputs: ExecInputs) -> str | None:
+        facts = inputs.facts
+        action = inputs.action
+        if inputs.stopping is not None:
+            return inputs.stopping
+        if action is None:
+            return "no_plan_now"
+        if action == ACTION_SELF_CONSUME:
+            return "plan_self_consume"
+        if facts.brand != self.control.brand:
+            return "battery_changed"
+        problem = self._action_problem(inputs, action)
+        if problem is not None:
+            return problem
+        if facts.on_grid is False:
+            return "off_grid"
+        if not inputs.measurement_ok or not _fresh(inputs):
+            return "stale_data"
+        if inputs.headroom_a is None:
+            return "headroom_unknown"
+        if (action in _RAISES_IMPORT or self.state.action in _RAISES_IMPORT) and inputs.headroom_a < RESTORE_HEADROOM_A:
+            return "fuse_headroom"
+        management = _management_problem(facts, self.control, active=True)
+        if management == "unknown":
+            since = self.state.management_unknown_since or inputs.now
+            self.state = replace(self.state, management_unknown_since=since)
+            if (inputs.now - since).total_seconds() >= MANAGEMENT_GRACE_S:
+                return "management_changed:unknown"
+        elif management is not None:
+            return f"management_changed:{management}"
+        else:
+            self.state = replace(self.state, management_unknown_since=None)
+        if self.state.writes_today >= DAILY_WRITE_CAP:
+            return "daily_write_cap"
+        return None
+
+    def _begin_restore(self, now: datetime, reason: str) -> list[dict[str, Any]]:
+        state = self.state
+        if state.phase == "restoring" or (state.phase != "active" and not state.holds_snapshot):
+            return []
+        self.monitor.stop(now)
+        target: dict[str, Native] = {}
+        normal = NORMAL.get(self.control.brand, {})
+        for role in self.control.roles:
+            if role.name in state.given_up:
+                continue
+            if role.restored and role.name in state.restore_values:
+                target[role.name] = state.restore_values[role.name]
+            elif role.name in normal and role.name in state.entities:
+                target[role.name] = normal[role.name]
+        blocked = reason if _blocking(reason) else state.blocked
+        self.state = replace(
+            state, phase="restoring", target=target, reason=reason, blocked=blocked, sent=(), renew=(),
+            retries={}, unrestored=(), management_unknown_since=None,
+        )
+        return [_event(now, "hand_back", reason)]
+
+    def _finish(self, inputs: ExecInputs) -> list[dict[str, Any]]:
+        """A restore with nothing left to write ends: claims released, the snapshot dropped (kept for a role whose
+        restore was given up)."""
+        state = self.state
+        if state.phase != "restoring" or state.pending is not None or state.retries:
+            return []
+        if self._next_role(state, inputs) is not None:
+            return []
+        now = inputs.now
+        for name, entity_id in state.entities.items():
+            if name not in state.unrestored:
+                self.ledger.release(entity_id)
+        if state.unrestored:
+            kept = set(state.unrestored)
+            self.state = replace(
+                state, phase="blocked", blocked=f"restore_failed:{','.join(state.unrestored)}", target={},
+                snapshot={k: v for k, v in state.snapshot.items() if k in kept},
+                restore_values={k: v for k, v in state.restore_values.items() if k in kept},
+                entities={k: v for k, v in state.entities.items() if k in kept},
+                sent=(), renew=(), released_at=now,
+            )
+            return [_event(now, "restore_failed", ",".join(state.unrestored))]
+        blocked = state.blocked
+        if blocked is not None and blocked.startswith("restore_failed"):
+            blocked = None
+        if state.reason == "daily_write_cap":
+            blocked = "daily_write_cap"
+        self.state = replace(
+            state, phase="blocked" if blocked else "idle", blocked=blocked, action=None, rate_kw=0.0, target={},
+            snapshot={}, restore_values={}, entities={}, device_id=None, snapshot_at=None, sent=(), renew=(),
+            released_at=now, given_up=state.given_up if blocked else (),
+        )
+        return [_event(now, "handed_back", state.reason or "")]
+
+    # --- entering ---
+
+    def _wanted(self, action: str, rate_kw: float, restore_values: Mapping[str, Native]) -> dict[str, Native]:
+        wanted = self.control.wanted(action, rate_kw, self.watchdog_s)
+        return {
+            name: (restore_values[name] if value == SNAPSHOT else value)
+            for name, value in wanted.items()
+            if not (value == SNAPSHOT and name not in restore_values)
+        }
+
+    def _rate(self, inputs: ExecInputs, commanded_kw: float) -> tuple[float, str | None]:
+        """The rate to run the planned action at, and why it cannot run."""
+        facts = inputs.facts
+        action = inputs.action
+        rate = abs(inputs.rate_kw)
+        if action == ACTION_GRID_CHARGE:
+            limit = facts.max_charge_kw
+            if limit is not None:
+                rate = min(rate, limit)
+            cap = grid_charge_cap_kw(inputs, commanded_kw)
+            if cap is None:
+                return 0.0, "headroom_unknown"
+            rate = min(rate, cap)
+            if rate < MIN_RATE_KW:
+                return 0.0, "fuse_headroom"
+        elif action == ACTION_EXPORT_DISCHARGE:
+            limit = facts.max_discharge_kw
+            if limit is not None:
+                rate = min(rate, limit)
+            if rate < MIN_RATE_KW:
+                return 0.0, "rate_too_small"
+        return round(rate, 3), None
+
+    def _blocker(self, inputs: ExecInputs) -> str | None:
+        facts = inputs.facts
+        action = inputs.action
+        state = self.state
+        if action is None or action == ACTION_SELF_CONSUME:
+            return "nothing_to_do"
+        problem = self._action_problem(inputs, action)
+        if problem is not None:
+            return problem
+        if facts.brand != self.control.brand:
+            return "brand_mismatch"
+        management = _management_problem(facts, self.control, active=False)
+        if management is not None:
+            return management
+        if facts.on_grid is False:
+            return "off_grid"
+        if not inputs.measurement_ok or not _fresh(inputs):
+            return "stale_data"
+        if inputs.headroom_a is None:
+            return "headroom_unknown"
+        if action in _RAISES_IMPORT:
+            extra_a = 0.0
+            if action == ACTION_HOLD and facts.power_kw is not None and facts.power_kw < 0:
+                extra_a = -facts.power_kw * 1000.0 / (math.sqrt(3.0) * inputs.volts_between_phases)
+            if inputs.headroom_a - extra_a < HEADROOM_MARGIN_A:
+                return "headroom_too_small"
+        if state.writes_today >= DAILY_WRITE_CAP:
+            return "daily_write_cap"
+        if state.released_at is not None and (inputs.now - state.released_at).total_seconds() < REARM_S:
+            return "rearm"
+        needed = set(self.control.wanted(action, 1.0, self.watchdog_s)) | {name for name, _ok, _why in self.control.requires}
+        for name in sorted(needed):
+            read = inputs.reads.get(name)
+            role = self.control.role(name)
+            if read is None or not read.found or read.entity_id is None:
+                return f"control_not_found:{name}"
+            if role.method != "service" and not read.enabled:
+                return f"control_disabled:{name}"
+        for name, allowed, why in self.control.requires:
+            if reading(self.control.role(name), inputs.reads[name].state) not in allowed:
+                return why
+        return None
+
+    def _try_start(self, inputs: ExecInputs) -> tuple[bool, list[dict[str, Any]]]:
+        now = inputs.now
+        blocker = self._blocker(inputs)
+        if blocker is not None:
+            return False, ([] if blocker in ("nothing_to_do", "rearm") else [_event(now, "not_started", blocker)])
+        rate, why = self._rate(inputs, 0.0)
+        if why is not None:
+            return False, [_event(now, "not_started", why)]
+        snapshot: dict[str, str] = {}
+        restore_values: dict[str, Native] = {}
+        entities: dict[str, str] = {}
+        device_id: str | None = None
+        for role in self.control.roles:
+            read = inputs.reads.get(role.name)
+            if read is None or read.entity_id is None:
+                continue
+            entities[role.name] = read.entity_id
+            device_id = device_id or read.device_id
+            if not role.restored:
+                continue
+            value = _restore_value(role, read.state, inputs.facts)
+            if value is None:
+                return False, [_event(now, "not_started", f"no_restore_value:{role.name}", read=read.state)]
+            snapshot[role.name] = read.state or ""
+            restore_values[role.name] = value
+        action = inputs.action
+        assert action is not None
+        self.state = replace(
+            self.state, phase="active", brand=self.control.brand, action=action, rate_kw=rate,
+            target=self._wanted(action, rate, restore_values), snapshot=snapshot, restore_values=restore_values,
+            entities=entities, device_id=device_id, snapshot_at=now, entered_at=now, rate_changed_at=now,
+            watchdog_at=now, sent=(), renew=(), reason=None, given_up=(), management_unknown_since=None,
+        )
+        self._watch(inputs, action, rate)
+        return True, [_event(now, "enter", action, rate_kw=rate, snapshot=snapshot)]
+
+    def _watch(self, inputs: ExecInputs, action: str, rate: float) -> None:
+        """The monitor watches the new command; a discharge for the house only when the house's deficit is known."""
+        kind = _MONITORED.get(action)
+        if kind is None or (action == ACTION_DISCHARGE_HOUSE and inputs.house_deficit_kw is None):
+            self.monitor.stop(inputs.now)
+            return
+        if action == ACTION_DISCHARGE_HOUSE:
+            rate = max(inputs.house_deficit_kw or 0.0, 0.0)
+        self.monitor.start(Command(kind, inputs.now, rate, before_kw=inputs.facts.power_kw, written=True))
+
+    def _retarget(self, inputs: ExecInputs) -> list[dict[str, Any]]:
+        """A new action, a new rate past the hysteresis, or a watchdog to renew."""
+        now = inputs.now
+        state = self.state
+        action = inputs.action
+        assert action is not None
+        rate, why = self._rate(inputs, state.rate_kw)
+        if why is not None:
+            return self._begin_restore(now, why)
+        events: list[dict[str, Any]] = []
+        if action != state.action:
+            self.state = replace(
+                state, action=action, rate_kw=rate, target=self._wanted(action, rate, state.restore_values),
+                sent=(), renew=(), rate_changed_at=now, watchdog_at=now,
+            )
+            self._watch(inputs, action, rate)
+            return [_event(now, "change", action, rate_kw=rate)]
+        if action in (ACTION_GRID_CHARGE, ACTION_EXPORT_DISCHARGE):
+            since = (now - (state.rate_changed_at or now)).total_seconds()
+            down = rate < state.rate_kw - RATE_TOLERANCE_KW
+            up = rate >= state.rate_kw + RATE_STEP_KW and since >= RATE_UP_DWELL_S
+            if down or up:
+                self.state = replace(
+                    state, rate_kw=rate, target=self._wanted(action, rate, state.restore_values), sent=(),
+                    rate_changed_at=now,
+                )
+                self._watch(inputs, action, rate)
+                events.append(_event(now, "rate", action, rate_kw=rate, was_kw=state.rate_kw))
+        state = self.state
+        if (
+            self.control.watchdog_roles and state.watchdog_at is not None and state.pending is None
+            and (now - state.watchdog_at).total_seconds() >= WATCHDOG_RENEW_S
+        ):
+            self.state = replace(state, renew=self.control.watchdog_roles, watchdog_at=now)
+            events.append(_event(now, "renew", ",".join(self.control.watchdog_roles)))
+        return events
+
+    # --- writing ---
+
+    def _satisfied(self, role: Role, wanted: Native, read: RoleRead | None, *, restoring: bool) -> bool:
+        if role.method == "button":
+            return role.name in self.state.sent
+        state = None if read is None else read.state
+        if restoring and role.idle_when and state in role.idle_when:
+            return True
+        snapshot = self.state.snapshot.get(role.name)
+        if snapshot is not None and state == snapshot and wanted == self.state.restore_values.get(role.name):
+            # Still as found (a never-set limit reads "unknown"): nothing to write back.
+            return True
+        return bool(same(wanted, reading(role, state), None if read is None else (read.step or role.step)))
+
+    def _next_role(self, state: ExecState, inputs: ExecInputs) -> str | None:
+        """The first role, in the brand's order, that does not read what it should (or must be renewed)."""
+        restoring = state.phase == "restoring"
+        order = self.control.restore_order if restoring else self.control.enter_order
+        for name in order:
+            if name not in state.target or name in state.given_up or name in state.unrestored:
+                continue
+            retry = state.retries.get(name)
+            if retry is not None and inputs.now < retry[1]:
+                continue
+            if name in state.renew:
+                return name
+            entity_id = state.entities.get(name)
+            claim = None if entity_id is None else self.ledger.claim(entity_id)
+            if claim is not None and claim.owned is not None and claim.intended == state.target[name]:
+                # Written and read back: a later difference is the ledger's to judge (another system, or a
+                # gap), never a reason to write it again.
+                continue
+            if not self._satisfied(self.control.role(name), state.target[name], inputs.reads.get(name), restoring=restoring):
+                return name
+        return None
+
+    def _progress(self, inputs: ExecInputs) -> list[Op]:
+        state = self.state
+        if state.phase not in ("active", "restoring") or state.pending is not None:
+            return []
+        restoring = state.phase == "restoring"
+        if not restoring and state.writes_today >= DAILY_WRITE_CAP:
+            return []
+        name = self._next_role(state, inputs)
+        if name is None:
+            return []
+        role = self.control.role(name)
+        value = state.target[name]
+        entity_id = state.entities.get(name)
+        read = inputs.reads.get(name)
+        renew = tuple(item for item in state.renew if item != name)
+        sent = state.sent if name in state.sent else (*state.sent, name)
+        writes = state.writes_today + (0 if restoring else 1)
+        if role.method == "button":
+            # A button has no read-back: pressed once per target; the monitor judges what it did.
+            self.state = replace(state, sent=sent, renew=renew, writes_today=writes)
+        else:
+            if entity_id is not None:
+                self.ledger.intend(entity_id, value, inputs.now, step=None if read is None else (read.step or role.step))
+            self.state = replace(state, pending=name, sent=sent, renew=renew, writes_today=writes)
+        return [Op(name, role.method, entity_id, value, device_id=state.device_id, restore=restoring)]
+
+    # --- what it shows ---
+
+    def as_dict(self) -> dict[str, Any]:
+        return {"state": self.state.as_dict(), "ledger": self.ledger.as_dict(), "monitor": self.monitor.as_dict()}
