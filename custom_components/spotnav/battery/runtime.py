@@ -2,7 +2,8 @@
 
 One per site, owned by its `SiteCapacityController`. Every `TICK_S` it reads the battery's facts (`facts.py`), the
 site's chargers charging from the grid (`execution/grid_charge.py`) and the site's own measurement, steps each part
-(`hold.py`) and logs the decisions in the shadow book (`shadow.py`), which is kept in the site's store.
+(`hold.py`) and logs the decisions in the shadow book (`shadow.py`), which is kept in the site's store. The house
+battery plan runs beside them as a shadow and a benchmark (`plan_runtime.py`).
 
 Nothing here writes to a battery, an inverter or any other device: no service is called. The results are shown in
 the site's diagnostics (and so in the debug bundle) only.
@@ -26,6 +27,7 @@ from ..planning.grid_voltage import stored_voltage_between_phases_v
 from ..site.measurement_problem import UNHEALTHY_STATES
 from .facts import BatteryFacts, EntityFact, battery_facts
 from .hold import HoldInputs, HoldMemory, restart, step
+from .plan_runtime import BatteryPlanShadow
 from .shadow import PART_HOLD_FOR_CAR, ShadowBook, ShadowEntry
 
 if TYPE_CHECKING:
@@ -103,6 +105,7 @@ class BatteryShadow:
         self.facts: BatteryFacts = BatteryFacts()
         self._timer_cancel: Callable[[], None] | None = None
         self._loaded = False
+        self.plan = BatteryPlanShadow(hass, site)
 
     @property
     def _hold(self) -> HoldMemory:
@@ -121,6 +124,7 @@ class BatteryShadow:
         self.facts = self._read_facts()
         memory, decision = restart(self._hold, self.facts, now)
         self._apply(PART_HOLD_FOR_CAR, memory, decision, now)
+        await self.plan.async_start(now)
         self._timer_cancel = async_track_time_interval(self.hass, self._async_tick, timedelta(seconds=TICK_S))
 
     async def async_shutdown(self) -> None:
@@ -129,10 +133,12 @@ class BatteryShadow:
             self._timer_cancel = None
         if self._loaded:
             await self._store.async_save(self.book.as_dict())
+        await self.plan.async_shutdown()
 
     @staticmethod
     async def async_remove_stored(hass: HomeAssistant, entry_id: str) -> None:
         await Store(hass, STORE_VERSION, store_key(entry_id)).async_remove()
+        await BatteryPlanShadow.async_remove_stored(hass, entry_id)
 
     def _battery_power(self) -> tuple[float | None, float | None]:
         """The site's signed battery reading (kW, + charging) and how old the last word on it is (s)."""
@@ -195,6 +201,7 @@ class BatteryShadow:
         self.facts = inputs.facts
         memory, decision = step(self._hold, inputs)
         self._apply(PART_HOLD_FOR_CAR, memory, decision, now)
+        self.plan.tick(now, inputs.facts)
 
     def _apply(self, part: str, memory: HoldMemory, decision: Any, now: datetime) -> None:
         changed = memory.as_dict() != self.book.memory(part)
@@ -232,4 +239,5 @@ class BatteryShadow:
                 "battery_gave_car_kwh": {day: round(kwh, 3) for day, kwh in sorted(hold.gave_car_kwh.items())},
             },
             "log": [entry.as_dict() for entry in self.book.entries],
+            "plan": self.plan.snapshot(),
         }
