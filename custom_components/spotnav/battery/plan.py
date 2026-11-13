@@ -17,7 +17,10 @@ Pure: no `hass`, no clock, no storage. A shadow: it plans and prices, it writes 
   `over_cap` (the house breaks the cap there, never the plan). An export above its cap is cut back the same way; sun
   that still does not fit is curtailed.
 * **Money.** Import at `buy`, export at `sell`. The cycle cost (`cycle_cost` per kWh charged or discharged) steers the
-  search against churn but is reported apart (`wear`), never as money.
+  search against churn but is reported apart (`wear`), never as money; so does the spread gate's margin
+  (`export_hurdle` per kWh the battery sells, reported as `hurdle`).
+* **Modes** (`plan_model.MODE_DEFS`, `plan_mode`): a mode sets the floor, the wear, and whether and how the battery
+  may sell; Self-consumption does not plan at all (its plan is the baseline).
 * **The horizon's end.** A kWh still stored at the end is worth `end_value` (default: the horizon's median buy price
   times the round trip), so the plan neither empties the battery nor fills it for nothing at the horizon.
 * **Baseline.** The same slots with self-consumption only; `BatteryPlan.savings` is the difference with the end
@@ -28,6 +31,7 @@ from __future__ import annotations
 
 import statistics
 from collections.abc import Sequence
+from dataclasses import replace
 from datetime import datetime
 from typing import NamedTuple
 
@@ -38,6 +42,8 @@ from .plan_model import (
     ACTION_GRID_CHARGE,
     ACTION_HOLD,
     ACTION_SELF_CONSUME,
+    EXPORT_OFF,
+    BatteryMode,
     BatteryParams,
     BatteryPlan,
     PlanRequest,
@@ -61,6 +67,7 @@ class _Outcome(NamedTuple):
     wear: float
     over_cap: bool
     curtailed_kwh: float
+    hurdle: float = 0.0
 
 
 def buy_prices(spot_major_per_kwh: Sequence[float], starts: Sequence[datetime], fiscal: FiscalChoice) -> list[float]:
@@ -135,7 +142,13 @@ def _candidates(
 
 
 def _apply(
-    slot: PlanSlot, battery: BatteryParams, soc_kwh: float, action: str, power: float, cycle_cost: float
+    slot: PlanSlot,
+    battery: BatteryParams,
+    soc_kwh: float,
+    action: str,
+    power: float,
+    cycle_cost: float,
+    export_hurdle: float = 0.0,
 ) -> _Outcome:
     """Run [action] at [power] for one slot, with the grid's caps enforced, and price it."""
     hours = slot.hours
@@ -167,7 +180,9 @@ def _apply(
     else:
         cost = grid * hours * slot.sell
     wear = abs(power) * hours * cycle_cost
-    return _Outcome(action, power, grid, soc_end, cost, wear, over_cap, curtailed)
+    # What the battery itself sold: its discharge beyond the site's own deficit.
+    sold = max(0.0, min(-power, -grid)) * hours
+    return _Outcome(action, power, grid, soc_end, cost, wear, over_cap, curtailed, sold * export_hurdle)
 
 
 def run_slot(
@@ -210,8 +225,8 @@ def _best(
     best: _Outcome | None = None
     best_total = 0.0
     for action, power in _candidates(slot, battery, soc_kwh, request):
-        outcome = _apply(slot, battery, soc_kwh, action, power, request.cycle_cost)
-        total = outcome.cost + outcome.wear + grid.value(after, outcome.soc_end_kwh)
+        outcome = _apply(slot, battery, soc_kwh, action, power, request.cycle_cost, request.export_hurdle)
+        total = outcome.cost + outcome.wear + outcome.hurdle + grid.value(after, outcome.soc_end_kwh)
         if best is None or total < best_total - _TIE:
             best, best_total = outcome, total
     assert best is not None  # self-consumption is always open
@@ -238,6 +253,7 @@ def _run(decisions: list[SlotDecision], outcomes: list[_Outcome], battery: Batte
         cost=sum(o.cost for o in outcomes),
         wear=sum(o.wear for o in outcomes),
         end_soc_pct=soc_kwh / battery.usable_kwh * 100,
+        hurdle=sum(o.hurdle for o in outcomes),
     )
 
 
@@ -258,12 +274,17 @@ def self_consumption(request: PlanRequest) -> PlanRun:
 
 
 def objective(run: PlanRun, battery: BatteryParams, end_value: float) -> float:
-    """What the search minimises over a run: its money and wear, less the stored energy it leaves at `end_value`."""
-    return run.cost + run.wear - run.end_kwh(battery) * end_value
+    """What the search minimises over a run: its money, wear and gate margin, less the stored energy it leaves at
+    `end_value`."""
+    return run.cost + run.wear + run.hurdle - run.end_kwh(battery) * end_value
 
 
 def plan_battery(
-    request: PlanRequest, *, keep: tuple[str, float] | None = None, keep_min_gain: float = 0.0
+    request: PlanRequest,
+    *,
+    keep: tuple[str, float] | None = None,
+    keep_min_gain: float = 0.0,
+    baseline: PlanRun | None = None,
 ) -> BatteryPlan:
     """The cheapest way through the horizon, and the baseline it is measured against.
 
@@ -271,6 +292,8 @@ def plan_battery(
     now. The new plan replaces it only when it is better by more than `keep_min_gain` (minor units, on the
     objective): a running action does not flip for a few öre (Predbat's `metric_min_improvement`). The plan then
     says whether it kept the action (`kept`) and what the new one would have gained (`keep_gain`).
+    `baseline` is the self-consumption run to measure against (a mode's plan is measured against the battery's own
+    floor, not the mode's); by default the request's own.
     """
     request.validate()
     battery = request.battery
@@ -295,7 +318,7 @@ def plan_battery(
             best, kept = held, True
     return BatteryPlan(
         plan=best,
-        baseline=self_consumption(request),
+        baseline=self_consumption(request) if baseline is None else baseline,
         end_value=end_value,
         battery=battery,
         kept=kept,
@@ -316,10 +339,50 @@ def _forward(
         if index == 0 and first is not None:
             action, charge_kw = first
             power = action_power(slot, battery, soc, action, charge_kw)
-            outcome = _apply(slot, battery, soc, action, power, request.cycle_cost)
+            outcome = _apply(slot, battery, soc, action, power, request.cycle_cost, request.export_hurdle)
         else:
             outcome, _total = _best(slot, request, soc, values[index + 1], grid)
         decisions.append(_decision(slot, battery, outcome))
         outcomes.append(outcome)
         soc = outcome.soc_end_kwh
     return _run(decisions, outcomes, battery, soc)
+
+
+def mode_battery(battery: BatteryParams, mode: BatteryMode) -> BatteryParams:
+    """[battery] as [mode] plans it: the floor raised to the mode's least floor (the battery's own when higher)."""
+    floor = min(max(battery.min_soc_pct, mode.floor_pct), battery.max_soc_pct - 1.0)
+    return battery if floor <= battery.min_soc_pct else replace(battery, min_soc_pct=floor)
+
+
+def mode_request(request: PlanRequest, mode: BatteryMode, wear: float) -> PlanRequest:
+    """[request] as [mode] plans it with [wear] (minor per kWh each way, the currency's): its floor, its multiple of
+    the wear, and whether and how the battery may sell."""
+    return replace(
+        request,
+        battery=mode_battery(request.battery, mode),
+        cycle_cost=mode.wear(wear),
+        allow_export_discharge=mode.export != EXPORT_OFF,
+        export_hurdle=mode.hurdle(wear),
+    )
+
+
+def plan_mode(
+    request: PlanRequest,
+    mode: BatteryMode,
+    wear: float,
+    *,
+    keep: tuple[str, float] | None = None,
+    keep_min_gain: float = 0.0,
+    baseline: PlanRun | None = None,
+) -> BatteryPlan:
+    """[mode]'s plan on [request] (the battery at its own floor), measured against self-consumption at that floor.
+
+    A mode that does not plan (Self-consumption) gives the baseline as its plan, so its saving is nil."""
+    request.validate()
+    base = self_consumption(request) if baseline is None else baseline
+    if not mode.plans:
+        end_value = (
+            request.end_value if request.end_value is not None else default_end_value(request.slots, request.battery)
+        )
+        return BatteryPlan(plan=base, baseline=base, end_value=end_value, battery=request.battery)
+    return plan_battery(mode_request(request, mode, wear), keep=keep, keep_min_gain=keep_min_gain, baseline=base)
