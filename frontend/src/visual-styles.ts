@@ -49,6 +49,16 @@ export const VISUAL_CLASSES = {
   connectionLine: "spotnav-connection-line",
   connectionError: "spotnav-connection-error",
   vehicleLineAge: "spotnav-vehicle-line-age",
+  vehicleLineTail: "spotnav-vehicle-line-tail",
+  vehicleLineHead: "spotnav-vehicle-line-head",
+  vehicleLineMethod: "spotnav-vehicle-line-method",
+  nameRow: "spotnav-name-row",
+  connectionWord: "spotnav-connection-word",
+  connectionIcon: "spotnav-connection-icon",
+  vehicleLinePart: "spotnav-vehicle-line-part",
+  vehicleLineClip: "spotnav-vehicle-line-clip",
+  vehicleLineInner: "spotnav-vehicle-line-inner",
+  vehicleLineSeparator: "spotnav-vehicle-line-separator",
   vehicleChoices: "spotnav-vehicle-choices",
   vehicleChoice: "spotnav-vehicle-choice",
   vehicleChoiceName: "spotnav-vehicle-choice-name",
@@ -1201,6 +1211,48 @@ export const VISUAL_STYLES = `
     flex: 0 0 auto;
     max-width: 100%;
   }
+  /* The charger's name and its status after it; the status wraps under the name as a whole when the name is long. */
+  .${VISUAL_CLASSES.nameRow} {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    column-gap: 4px;
+    max-width: 100%;
+    min-width: 0;
+  }
+  .${VISUAL_CLASSES.nameRow} > .${VISUAL_CLASSES.name} {
+    margin: 0;
+    line-height: 1.25;
+    flex: 0 1 auto;
+    max-width: 100%;
+    min-width: 0;
+  }
+  /* The status as its word, or (too narrow for the word) as its symbol right after the name. The hidden word
+     keeps its width, so the card measures the same whichever form shows. */
+  .${VISUAL_CLASSES.nameRow} {
+    position: relative;
+  }
+  .${VISUAL_CLASSES.nameRow}[data-status-fit="icon"] {
+    flex-wrap: nowrap;
+    align-items: center;
+  }
+  .${VISUAL_CLASSES.connectionIcon} {
+    display: none;
+  }
+  .${VISUAL_CLASSES.nameRow}[data-status-fit="icon"] .${VISUAL_CLASSES.connectionIcon} {
+    display: inline-flex;
+  }
+  .${VISUAL_CLASSES.connectionIcon} > svg {
+    width: 1.1em;
+    height: 1.1em;
+  }
+  .${VISUAL_CLASSES.connectionWord} {
+    white-space: nowrap;
+  }
+  .${VISUAL_CLASSES.nameRow}[data-status-fit="icon"] .${VISUAL_CLASSES.connectionWord} {
+    position: absolute;
+    visibility: hidden;
+  }
   /* The planned vehicle: a quiet text button under the name; the header's 44 px icon buttons keep the row tall enough to tap. */
   .${VISUAL_CLASSES.vehicleLine} {
     display: inline-flex;
@@ -1246,7 +1298,77 @@ export const VISUAL_STYLES = `
   .${VISUAL_CLASSES.vehicleLineAge} {
     opacity: 0.8;
   }
-  /* The charger's status, after the charge (or alone, with no vehicle); an error in the warning colour. */
+  /* The line's parts wrap inside a clipped box whose inner row starts one separator to the left: a part that
+     starts a row has its leading "·" in the clipped strip, so no row starts with a lone dot. */
+  .${VISUAL_CLASSES.vehicleLineClip} {
+    display: block;
+    min-width: 0;
+    max-width: 100%;
+    overflow: hidden;
+  }
+  .${VISUAL_CLASSES.vehicleLineInner} {
+    --spotnav-line-separator: 0.9em;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    column-gap: 2px;
+    margin-inline-start: calc(-1 * var(--spotnav-line-separator, 0.9em));
+  }
+  .${VISUAL_CLASSES.vehicleLineHead},
+  .${VISUAL_CLASSES.vehicleLinePart} {
+    display: inline-flex;
+    align-items: center;
+    white-space: nowrap;
+  }
+  .${VISUAL_CLASSES.vehicleLineHead} {
+    flex: 0 1 auto;
+    gap: 4px;
+    min-width: 0;
+    max-width: calc(100% - var(--spotnav-line-separator, 0.9em));
+    margin-inline-start: var(--spotnav-line-separator, 0.9em);
+  }
+  .${VISUAL_CLASSES.vehicleLinePart} {
+    flex: none;
+  }
+  .${VISUAL_CLASSES.vehicleLineSeparator} {
+    display: inline-block;
+    flex: none;
+    width: var(--spotnav-line-separator, 0.9em);
+    text-align: center;
+  }
+  .${VISUAL_CLASSES.vehicleLineHead} > svg {
+    flex: none;
+  }
+  .${VISUAL_CLASSES.vehicleLineHead} > .${VISUAL_CLASSES.vehicleLineName} {
+    flex: 0 1 auto;
+  }
+  .${VISUAL_CLASSES.vehicleLineMethod} {
+    display: inline-flex;
+    flex: none;
+    opacity: 0.8;
+  }
+  .${VISUAL_CLASSES.vehicleLineMethod} > svg {
+    width: 1.1em;
+    height: 1.1em;
+  }
+  /* Identifying: the arrows turn slowly (the reduced-motion rule below stops them). */
+  .${VISUAL_CLASSES.vehicleLineMethod}[data-method="identifying"] > svg {
+    animation: spotnav-method-turn 2.4s linear infinite;
+  }
+  @keyframes spotnav-method-turn {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+  /* The last part of the line and the swap icon: if the line wraps, they wrap together, never the icon alone. */
+  .${VISUAL_CLASSES.vehicleLineTail} {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    gap: 4px;
+    white-space: nowrap;
+  }
+  /* The charger's status, after its name; an error in the warning colour. */
   .${VISUAL_CLASSES.connectionLine} {
     margin: 0;
     font-size: 0.85rem;

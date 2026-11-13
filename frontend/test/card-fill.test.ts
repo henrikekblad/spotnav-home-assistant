@@ -2,7 +2,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { planFill, type FillReading } from "../src/card-fill";
+import { FILL_MIN_CHART_PX, planFill, type FillReading } from "../src/card-fill";
 import { createCardView, type CardView, type CardViewInput } from "../src/card-view";
 import type { ChartObserverLike } from "../src/chart-interaction";
 import { chartHeightForWidth } from "../src/chart-render";
@@ -12,7 +12,7 @@ import { baseModel, mountPoint } from "./visual-fixtures";
 
 const WIDTH = 470;
 const BASIS = chartHeightForWidth(WIDTH);
-const MIN = CHART_DENSITY.normal.minHeight;
+const MIN = FILL_MIN_CHART_PX;
 const LINE = 20;
 
 describe("planFill", () => {
@@ -197,14 +197,28 @@ describe("the card in a box", () => {
     view.destroy();
   });
 
+  it("lets the chart shrink to 100 px before a two-line status gives up a line, and clamps at the limit", () => {
+    // Others 260, two status lines (40): natural 260 + 140 + 40 = 440.
+    const natural = 440;
+    const chart = { basis: 140, min: FILL_MIN_CHART_PX };
+    const lines2 = (box: number): FillReading => ({ box, natural, statusHeight: 2 * LINE, lineHeight: LINE });
+    expect(FILL_MIN_CHART_PX).toBe(100);
+    // 400 - 260 - 40 = 100 for the chart: both lines stay.
+    expect(planFill(lines2(400), chart)).toEqual({ chartHeight: 100, statusLines: null, spare: 0 });
+    // One pixel less would leave the chart under 100: a line goes and the chart takes its room back.
+    expect(planFill(lines2(399), chart)).toEqual({ chartHeight: 119, statusLines: 1, spare: 0 });
+    // The chart never goes below the limit.
+    expect(planFill(lines2(300), chart)?.chartHeight).toBe(100);
+  });
+
   it("keeps the lines that fit and lets the chart take what the clamp freed", () => {
     const sim = layout({ box: 450, statusLines: 5 });
     const { view, root, fire } = fillView(sim.read);
     const { viewport, status } = parts(root);
     fire();
-    // 450 - 260 = 190 for chart and status: 120 for the chart leaves 70, three lines (60); the chart gets 130.
-    expect(status?.dataset["lines"]).toBe("3");
-    expect(viewport?.style.height).toBe("130px");
+    // 450 - 260 = 190 for chart and status: 100 for the chart leaves 90, four lines (80); the chart gets 110.
+    expect(status?.dataset["lines"]).toBe("4");
+    expect(viewport?.style.height).toBe("110px");
     view.destroy();
   });
 
@@ -251,9 +265,9 @@ describe("the card in a box", () => {
     expect(viewport?.style.height).toBe(`${520 - others - 3 * LINE}px`);
     box = 400;
     fire();
-    // 400 - 320 = 80 for the chart, 40 short of its minimum: two of the three lines go.
+    // 400 - 320 = 80 for the chart, 20 short of its minimum: one of the three lines goes.
     expect(viewport?.style.height).toBe(`${MIN}px`);
-    expect(status?.dataset["lines"]).toBe("1");
+    expect(status?.dataset["lines"]).toBe("2");
     box = null;
     fire();
     expect(card?.hasAttribute("data-fill")).toBe(false);

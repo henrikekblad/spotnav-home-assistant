@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { SETTINGS_API_VERSION, type SettingsRecord } from "../src/types";
+import { VISUAL_STYLES } from "../src/visual-styles";
 import { FakeHass, mountCard } from "./helpers";
 
 const FIXTURES = join(__dirname, "..", "..", "tests", "fixtures", "dashboard");
@@ -84,12 +85,14 @@ describe("the vehicle line", () => {
       withSoc({ value: 92, vehicle_name: "e-Outback" }, { driver: "manual_kwh", vehicle_ids: ["vehicle_ev6"] }),
     );
     const button = line(element)!;
-    expect(button.textContent).toBe("e-Outback· 92 %");
+    expect(button.textContent).toBe("e-Outback·92 %");
     expect(button.querySelector("svg")).not.toBeNull();
     expect(button.title).toBe("");
     expect(button.getAttribute("aria-label")).toBe("e-Outback, 92 %");
     const name = shadow(element).querySelector(".spotnav-header .spotnav-name")!;
-    expect(name.nextElementSibling).toBe(button);
+    // The name (with the charger's status after it) on one row, the vehicle line under it.
+    expect(name.parentElement?.classList.contains("spotnav-name-row")).toBe(true);
+    expect(name.parentElement?.nextElementSibling).toBe(button);
   });
 
   it("joins only the parts that exist, never with a leading or doubled separator", async () => {
@@ -99,7 +102,8 @@ describe("the vehicle line", () => {
         payload["connection"] = { state: "unknown" };
       }
       const { element } = await mounted(payload);
-      const spans = Array.from(line(element)!.querySelectorAll("span")).map((span) => span.textContent ?? "");
+      const leaves = ".spotnav-vehicle-line-name, .spotnav-vehicle-line-charge, .spotnav-vehicle-line-age, .spotnav-vehicle-line-separator";
+      const spans = Array.from(line(element)!.querySelectorAll(leaves)).map((span) => span.textContent ?? "");
       return spans.join(" ").replace(/\s+/g, " ").trim();
     };
     for (const name of [null, "", "  "]) {
@@ -154,7 +158,7 @@ describe("the vehicle line", () => {
 
   it("adds the age of a stale reading, but not of a fresh one or of an estimate", async () => {
     const stale = await mounted(withSoc({ value: 62, age_s: 3 * 3600 + 120 }, { driver: "manual_kwh" }));
-    expect(line(stale.element)!.querySelector(".spotnav-vehicle-line-age")?.textContent).toBe("· 3 h ago");
+    expect(line(stale.element)!.querySelector(".spotnav-vehicle-line-age")?.textContent).toBe("3 h ago");
     const fresh = await mounted(withSoc({ value: 62, age_s: 3600 }, { driver: "manual_kwh" }));
     expect(line(fresh.element)!.querySelector(".spotnav-vehicle-line-age")).toBeNull();
   });
@@ -210,10 +214,43 @@ describe("the charger status in the header line", () => {
     ["connected", "da", "Tilsluttet"],
     ["connected", "nb", "Tilkoblet"],
     ["connected", "fi", "Kytketty"],
-  ])("appends the %s status after the charge in %s", async (state, language, words) => {
+  ])("puts the %s status after the charger's name in %s, not on the vehicle line", async (state, language, words) => {
     const { element } = await mounted(withConnection(state), language as "en");
-    expect(line(element)!.textContent).toBe(`EV6· 96 %· ${words}`);
+    expect(line(element)!.textContent).toBe("EV6·96 %");
     expect(status(element)!.textContent).toBe(`· ${words}`);
+    const row = status(element)!.parentElement!;
+    expect(row.classList.contains("spotnav-name-row")).toBe(true);
+    expect(row.firstElementChild?.textContent).toBe("Wallbox");
+    expect(row.textContent).toBe(`Wallbox· ${words}`);
+    expect(line(element)!.contains(status(element))).toBe(false);
+    expect(line(element)!.getAttribute("aria-label")).not.toContain(words);
+  });
+
+  it.each<[string, string]>([
+    ["en", "Waiting"],
+    ["sv", "Väntar"],
+    ["da", "Venter"],
+    ["de", "Wartet"],
+    ["es", "En espera"],
+    ["fi", "Odottaa"],
+    ["fr", "En attente"],
+    ["nb", "Venter"],
+    ["nl", "Wacht"],
+  ])("says waiting in %s when the backend shows a finished charger as waiting for the plan", async (language, words) => {
+    const payload = withConnection("finished");
+    payload["connection"]["shown"] = "waiting";
+    const { element } = await mounted(payload, language as "en");
+    expect(status(element)!.textContent).toBe(`· ${words}`);
+    expect(status(element)!.getAttribute("data-connection")).toBe("waiting");
+  });
+
+  it("shows what the backend shows: finished only when the backend says finished", async () => {
+    const finished = withConnection("finished");
+    finished["connection"]["shown"] = "finished";
+    expect(status((await mounted(finished, "sv")).element)!.textContent).toBe("· Klar");
+    document.body.innerHTML = "";
+    // An older backend without `shown`: the charger's own word.
+    expect(status((await mounted(withConnection("finished"), "sv")).element)!.textContent).toBe("· Klar");
   });
 
   it("marks an error in the warning colour only", async () => {
@@ -226,22 +263,53 @@ describe("the charger status in the header line", () => {
   it("shows nothing for an unknown state, a missing block or an unreadable one", async () => {
     const unknown = await mounted(withConnection("unknown"));
     expect(status(unknown.element)).toBeNull();
-    expect(line(unknown.element)!.textContent).toBe("EV6· 96 %");
+    expect(line(unknown.element)!.textContent).toBe("EV6·96 %");
     const missing = withConnection("charging");
     delete missing["connection"];
     expect(status((await mounted(missing)).element)).toBeNull();
     const bad = withConnection("charging");
     bad["connection"] = { state: "levitating", source: null };
     expect(status((await mounted(bad)).element)).toBeNull();
+    const badShown = withConnection("finished");
+    badShown["connection"]["shown"] = "levitating";
+    expect(status((await mounted(badShown)).element)).toBeNull();
+    const extra = withConnection("finished");
+    extra["connection"]["other"] = 1;
+    expect(status((await mounted(extra)).element)).toBeNull();
   });
 
-  it("shows only the status, under the name, when there is no vehicle", async () => {
+  it("shows the status after the name when there is no vehicle", async () => {
     const { element } = await mounted(withConnection("disconnected", { vehicle_id: null, vehicle_name: null, value: null }));
     expect(line(element)).toBeNull();
     const block = shadow(element).querySelector(".spotnav-name-block")!;
     expect(block.querySelector(".spotnav-name")?.textContent).toBe("Wallbox");
-    expect(status(element)!.textContent).toBe("Not connected");
-    expect(block.lastElementChild).toBe(status(element));
+    expect(status(element)!.textContent).toBe("· Not connected");
+    expect(status(element)!.previousElementSibling).toBe(block.querySelector(".spotnav-name"));
+  });
+});
+
+describe("the vehicle line at a narrow width", () => {
+  it("leads each later part with its own dot, so a wrapped row clips it, and keeps the charge with the swap icon", async () => {
+    const { element } = await mounted(withSoc({ value: 45, vehicle_name: "EV6" }));
+    const inner = line(element)!.querySelector(".spotnav-vehicle-line-inner")!;
+    expect(inner.parentElement?.classList.contains("spotnav-vehicle-line-clip")).toBe(true);
+    for (const separator of Array.from(inner.querySelectorAll(".spotnav-vehicle-line-separator"))) {
+      expect(separator.parentElement?.classList.contains("spotnav-vehicle-line-part")).toBe(true);
+      expect(separator.parentElement?.firstElementChild).toBe(separator);
+    }
+    const tail = inner.lastElementChild!;
+    expect(tail.classList.contains("spotnav-vehicle-line-tail")).toBe(true);
+    expect(tail.querySelector(".spotnav-vehicle-line-charge")?.textContent).toContain("45 %");
+    expect(tail.lastElementChild?.getAttribute("data-icon")).toBe("swap");
+  });
+
+  it("clips the strip a row's leading dot sits in", () => {
+    expect(VISUAL_STYLES).toMatch(/\.spotnav-vehicle-line-clip \{[^}]*overflow: hidden;/);
+    expect(VISUAL_STYLES).toMatch(
+      /\.spotnav-vehicle-line-inner \{[^}]*margin-inline-start: calc\(-1 \* var\(--spotnav-line-separator, 0\.9em\)\);/,
+    );
+    expect(VISUAL_STYLES).toMatch(/\.spotnav-vehicle-line-head \{[^}]*margin-inline-start: var\(--spotnav-line-separator, 0\.9em\);/);
+    expect(VISUAL_STYLES).toMatch(/\.spotnav-vehicle-line-separator \{[^}]*width: var\(--spotnav-line-separator, 0\.9em\);/);
   });
 });
 

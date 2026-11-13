@@ -106,10 +106,10 @@ export function guestLineFor(language: Language, settings: SettingsRecord | null
 
 /** The words for a connection state, or `null` for `unknown` or none: then the header says nothing. */
 export function connectionLabel(language: Language, connection: ConnectionState | null): string | null {
-  if (connection === null || connection.state === "unknown") {
+  if (connection === null || connection.shown === "unknown") {
     return null;
   }
-  return translate(language, `connection.${connection.state}`);
+  return translate(language, `connection.${connection.shown}`);
 }
 
 export function vehicleChoicesFor(

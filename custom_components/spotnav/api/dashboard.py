@@ -67,7 +67,12 @@ from ..execution.charger_entities import (
     FixableConflict,
 )
 from ..startup import NOT_STARTING, StartupState, startup_state
-from ..execution.charger_connection import CONNECTION_STATES, UNKNOWN as CONNECTION_UNKNOWN
+from ..execution.charger_connection import (
+    CONNECTED,
+    CONNECTION_STATES,
+    FINISHED as CONNECTION_FINISHED,
+    UNKNOWN as CONNECTION_UNKNOWN,
+)
 from ..execution.charge_progress import (
     ChargeProgress,
     NOT_OBSERVED,
@@ -2076,7 +2081,7 @@ def serialize_dashboard(
         "status": serialize_status(capture),
         "summary": serialize_summary(capture.summary),
         "sessions_summary": capture.sessions_summary,
-        "connection": serialize_connection(capture.connection),
+        "connection": serialize_connection(capture.connection, shown=shown_connection(capture)),
         "starting_up": serialize_starting_up(capture.starting_up),
         "charger_priority": serialize_charger_priority(capture.charger_priority, can_act=can_act),
         "identification": capture.identification,
@@ -2184,15 +2189,70 @@ def serialize_starting_up(state: StartupState) -> dict[str, Any]:
     }
 
 
-def serialize_connection(connection: tuple[str, str | None]) -> dict[str, Any]:
+#: The `connection` block's `shown` value for a charger that says its session is finished while the car is not done
+#: and SpotNav holds the charge for the plan (or a pause): the card says "Waiting", not "Finished".
+#: Not done and not held, the card says "Connected": finished is shown only with proof.
+CONNECTION_SHOWN_WAITING: Final = "waiting"
+
+
+def serialize_connection(connection: tuple[str, str | None], *, shown: str | None = None) -> dict[str, Any]:
     """The `connection` block: `state` (`disconnected`, `connected`, `charging`, `paused`, `finished`,
-    `error` or `unknown`) and `source`, the entity the state was read from (`null` when none was).
+    `error` or `unknown`), the charger's own word; `source`, the entity the state was read from (`null` when
+    none was); and `shown` (additive), the state the card shows: `state`, except `waiting` or `connected` for a
+    `finished` that is not the car's (`shown_connection`).
     """
     state, source = connection
+    state = state if state in CONNECTION_STATES else CONNECTION_UNKNOWN
     return {
-        "state": state if state in CONNECTION_STATES else CONNECTION_UNKNOWN,
+        "state": state,
         "source": _text(source),
+        "shown": state if shown is None else shown,
     }
+
+
+def shown_connection(capture: CapturedDashboard) -> str:
+    """The connection state the card shows. The charger's word, except one case: a charger that says its session
+    is finished (OCPP `Finishing` once SpotNav stopped the transaction to wait for the plan) while the car is not
+    done and SpotNav holds the charge -- an installed or proposed window still to come, a hold until a window, or
+    a pause -- reads `waiting`; with nothing held either it reads `connected`: finished is shown only with proof.
+    The car is done when it stopped taking current, ended the charge by itself, was stopped at its target, its
+    guest charge or the plan's need is met, or its level is at the target."""
+    state = capture.connection[0]
+    if state != CONNECTION_FINISHED or _car_done(capture):
+        return state if state in CONNECTION_STATES else CONNECTION_UNKNOWN
+    return CONNECTION_SHOWN_WAITING if _spotnav_holds(capture) else CONNECTED
+
+
+def _car_done(capture: CapturedDashboard) -> bool:
+    """Whether the car itself is done with this plug-in's charge, by any fact SpotNav has."""
+    if capture.charge_progress.state == STATE_VEHICLE_NOT_REQUESTING_CURRENT:
+        return True
+    if capture.live.car_ended_wait is not None or capture.guest_done:
+        return True
+    if capture.target is not None and capture.target.stopped_at is not None:
+        return True
+    snapshot = capture.snapshot
+    if snapshot is not None and snapshot.state == "nothing_to_charge":
+        return True
+    soc = capture.soc
+    if soc is None:
+        return False
+    need = finite_number(soc.need_kwh)
+    if need is not None and need <= 0:
+        return True
+    value = finite_number(soc.value)
+    target = finite_number(soc.target_percent)
+    if value is None or target is None:
+        return False
+    return value >= min(round(target), _charge_ceiling(soc))
+
+
+def _spotnav_holds(capture: CapturedDashboard) -> bool:
+    """Whether SpotNav keeps the car waiting: a pause, a hold until a window, or a window still to come."""
+    now = capture.generated_at
+    if capture.execution.paused is True or capture.live.hold_until is not None:
+        return True
+    return any(end > now for _, end in (*_installed_spans(capture), *_proposal_spans(capture)))
 
 
 def serialize_summary(summary: CapturedSummary | None) -> dict[str, Any] | None:

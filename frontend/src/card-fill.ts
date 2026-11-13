@@ -16,11 +16,18 @@ export interface FillReading {
   lineHeight: number;
 }
 
+/**
+ * The least the chart is drawn at in a box of fixed height, for both densities. It is lower than the chart's
+ * own minimum for its width (`density.minHeight`, which applies outside a box): in a box the chart gives up
+ * height down to this before the status sentence gives up lines.
+ */
+export const FILL_MIN_CHART_PX = 100;
+
 /** What the card needs besides the reading: the chart's usual height and the least it may shrink to. */
 export interface FillChart {
   /** The chart's height in the natural layout (its width rule); 0 while the chart is collapsed. */
   basis: number;
-  /** The least height the chart is drawn at in a box; 0 while the chart is collapsed. */
+  /** The least height the chart is drawn at in a box (`FILL_MIN_CHART_PX`); 0 while the chart is collapsed. */
   min: number;
 }
 

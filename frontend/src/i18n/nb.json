@@ -853,6 +853,7 @@
   "connection.charging": "Lader",
   "connection.paused": "Pauset",
   "connection.finished": "Ferdig",
+  "connection.waiting": "Venter",
   "connection.error": "Feil",
   "chargeBar.done": "{percent} % ferdig",
   "chargeBar.ofTarget": "{percent} % av målet",

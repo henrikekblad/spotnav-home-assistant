@@ -66,16 +66,27 @@ const METHOD_WORDS = {
   camera: "vehicleLine.method.camera",
 } as const;
 
-/** How the car on the car line was decided, in words, or `null` when nothing was identified. */
-export function methodWords(language: Language, block: Identification | null): string | null {
+/** How the car on the car line was decided: a known method, `identifying` while it is not decided yet. */
+export type MethodName = keyof typeof METHOD_WORDS | "identifying";
+
+/** How the car on the car line was decided, or `null` when nothing was identified (or by a method not known here). */
+export function methodOf(block: Identification | null): MethodName | null {
   if (block === null) {
     return null;
   }
   if (block.state !== "decided") {
-    return translate(language, "vehicleLine.method.identifying");
+    return "identifying";
   }
-  const key = block.method === null ? undefined : METHOD_WORDS[block.method as keyof typeof METHOD_WORDS];
-  return key === undefined ? null : translate(language, key);
+  return block.method !== null && block.method in METHOD_WORDS ? (block.method as keyof typeof METHOD_WORDS) : null;
+}
+
+/** How the car on the car line was decided, in words, or `null` when nothing was identified. */
+export function methodWords(language: Language, block: Identification | null): string | null {
+  const method = methodOf(block);
+  if (method === null) {
+    return null;
+  }
+  return translate(language, method === "identifying" ? "vehicleLine.method.identifying" : METHOD_WORDS[method]);
 }
 
 const HINT_KEYS = {
