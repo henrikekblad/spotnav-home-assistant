@@ -31,6 +31,7 @@ from ..site.house_view import (
     SunInputs,
     house_view,
 )
+from ..site.house_forecast import BASIS_GROSS
 from ..site.solar_correction_shadow import STATUS_NO_FORECAST
 from ..battery.shadow import parse_aware_datetime
 from .common import send_unsupported_version
@@ -81,6 +82,9 @@ def _battery(controller: Any) -> BatteryInputs | None:
         mode_views=dict(plan.mode_views),
         reviews=tuple(plan.reviews),
         estimates=tuple(inputs.get("estimates") or ()),
+        quarters=tuple(plan.actuals.buckets.values()),
+        prices=tuple(plan._prices),  # noqa: SLF001 - the slots the plan read, held between its runs
+        production=dict(plan._production),  # noqa: SLF001
     )
 
 
@@ -92,11 +96,17 @@ def house_answer(hass: HomeAssistant, site: Any) -> dict[str, Any]:
     demand = controller.demand
     tracker = demand.tracker
     forecast = controller.house_forecast
-    actual = {
-        hour.start: hour.house_kw
-        for hour in (*tracker.previous, *tracker.hours)
-        if hour.house_kw is not None and not hour.imported
-    }
+    # The house figure the forecast is on: the whole load once it has its hours (a battery or a solar site), else
+    # the import less the chargers.
+    basis = forecast.basis
+    if basis == BASIS_GROSS:
+        actual = {hour.start: hour.house_kw for hour in forecast.history.gross_hours() if hour.house_kw is not None}
+    else:
+        actual = {
+            hour.start: hour.house_kw
+            for hour in (*tracker.previous, *tracker.hours)
+            if hour.house_kw is not None and not hour.imported
+        }
     source = site_price_source(hass, site.entry_id)
     area = None if source is None else source.area
     return house_view(
@@ -107,6 +117,7 @@ def house_answer(hass: HomeAssistant, site: Any) -> dict[str, Any]:
             log=forecast.log,
             forecast=forecast.forecast,
             house_actual=actual,
+            basis=basis,
             sources=HouseSources(
                 weather_entity=forecast.weather_entity_id,
                 weather=forecast.weather_status,
