@@ -6,19 +6,24 @@ counts on it under the import target (`plan_kw_by_hour`, `plan_kw_at`), while th
 measurements; it is shown on the site's state sensor (`forecast`), in the diagnostics and in the debug bundle.
 
 * **What the house is** (`basis`): the import less the chargers (`net`), as the hour tracker measures it, on a site
-  without a home battery. On a site with a battery's power reading that figure counts what the battery charged and
-  discharged (the owner's read ~0 kW while the battery covered the house), so there the house is its whole load
-  (`gross`): `grid - car - battery` per hour plus the sun's production from the Energy dashboard's statistics
-  (`site/house_history.py`), once `MIN_GROSS_HOURS` such hours are kept. The battery plan's own rows of before are
-  taken over once (`async_take_rows`). The shown forecast, the log's house kinds and the battery plan's input
-  (`battery_house_by_hour`, the median without the in-day adjustment) are then the whole load.
+  with neither a home battery nor the sun's production in the Energy dashboard. On a site with a battery's power
+  reading that figure counts what the battery charged and discharged (the owner's read ~0 kW while the battery
+  covered the house), and on a site with solar production it is the house less the sun, so there the house is its
+  whole load (`gross`): `grid - car - battery` per hour (the battery term 0 without one) plus the sun's production
+  from the Energy dashboard's statistics (`site/house_history.py`), once `MIN_GROSS_HOURS` such hours are kept. On a
+  site without a battery an hour is filed only with its production (never as the house less the sun). The battery
+  plan's own rows of before are taken over once (`async_take_rows`). The shown forecast, the log's house kinds and the
+  battery plan's input (`battery_house_by_hour`, the median without the in-day adjustment) are then the whole load.
+* **The expected solar surplus** (`surplus_house_by_hour`): the sun less the house's whole load, so it reads the
+  whole load's median without the in-day adjustment, and nothing (with a reason) while there is no whole load with
+  the sun in every hour: the import less the chargers already has the sun taken off.
 * **The import target keeps the net figure** (`plan_kw_by_hour`): the target is about the hour's net import, and the
   import less the chargers as measured already holds what the battery and the sun really did in each hour (a battery
   in its own AI mode that grid-charges at night, the sun at noon). The whole load less an expected battery and sun
   would rest on a battery plan the battery does not follow (shadow) and on a sun forecast that runs optimistic, and
-  a p75 house less a p50 sun is no p75 of the import: a car would be planned too much room. So on a battery site a
-  second forecast runs on the net rows for the target (`import_forecast`, logged as `import_kw`); on a site without a
-  battery it is the shown forecast itself.
+  a p75 house less a p50 sun is no p75 of the import: a car would be planned too much room. So on a site whose house
+  figure is the whole load a second forecast runs on the net rows for the target (`import_forecast`, logged as
+  `import_kw`); elsewhere it is the shown forecast itself. The hold and fuse protection stay on measurements.
 
 * **Weather** (no setting): `weather.forecast_home` (the core Met.no default), else the only weather entity, else
   none. Its `temperature` is read on every reading of the site into the running hour (`HourMean.outdoor_c`); its
@@ -38,8 +43,8 @@ measurements; it is shown on the site's state sensor (`forecast`), in the diagno
 * **Log**: each hour's first forecast, as used and before the in-day adjustment (`house_kw_raw`), the next day's as
   made once the day-ahead prices are out (`house_day_ahead`, 13:00 local, what that day's plans count on), and the
   outcome (the hour's measured house figure), reviewed per local day the night after; kept with the history in the
-  site's own store (`spotnav.load_forecast.<entry>`). On a battery site the import target's forecast is logged beside
-  them (`import_kw`), and when the house figure changes what it is, the house kinds' days not yet reviewed are
+  site's own store (`spotnav.load_forecast.<entry>`). On a whole-load site the import target's forecast is logged
+  beside them (`import_kw`), and when the house figure changes what it is, the house kinds' days not yet reviewed are
   dropped. The log is the site's one forecast log: the battery plan and the solar correction log their kinds in it
   too (`log_changed`).
 """
@@ -105,6 +110,12 @@ HOUSE_KINDS: Final = (KIND_HOUSE, KIND_HOUSE_RAW, KIND_HOUSE_DAY_AHEAD)
 PRODUCTION_OK: Final = "ok"
 PRODUCTION_NONE: Final = "no_solar_statistics"
 PRODUCTION_FAILED: Final = "unreadable"
+#: Why the expected solar surplus has no house figure (`surplus_house_by_hour`), shown in the diagnostics.
+SURPLUS_OK: Final = "ok"
+SURPLUS_NO_FORECAST: Final = "no_house_forecast"
+SURPLUS_NO_SOLAR_STATISTICS: Final = "no_solar_statistics"
+SURPLUS_COLLECTING: Final = "whole_load_collecting"
+SURPLUS_WITHOUT_SUN: Final = "whole_load_without_sun"
 
 WEATHER_NONE: Final = "no_weather_entity"
 WEATHER_OK: Final = "ok"
@@ -277,8 +288,9 @@ class SiteHouseForecast:
         self._listeners: set[Callable[[], None]] = set()
         self.log = ForecastLog(tz=demand.tracker.tz)
         self.history = HouseHistory()
-        #: The house figure's forecast (shown, logged), its median (the battery plan's) and, on a battery site whose
-        #: house figure is the whole load, the import less the chargers for the import target (else `None`).
+        #: The house figure's forecast (shown, logged), its median (the battery plan's and the expected surplus's)
+        #: and, on a site whose house figure is the whole load, the import less the chargers for the import target
+        #: (else `None`).
         self.forecast: LoadForecast | None = None
         self.median: LoadForecast | None = None
         self.import_forecast: LoadForecast | None = None
@@ -479,9 +491,11 @@ class SiteHouseForecast:
             tracked = (*tracker.previous, *tracker.hours)
             self.history.merge(tracked, now)
             battery = self._has_battery()
-            if battery:
-                await self._async_merge_gross(tracked, now)
-            basis = BASIS_GROSS if battery and self.history.gross_ready(now) else BASIS_NET
+            solar = await self._async_has_solar_statistics()
+            whole = battery or solar
+            if whole:
+                await self._async_merge_gross(tracked, now, sun_needed=not battery)
+            basis = BASIS_GROSS if whole and self.history.gross_ready(now) else BASIS_NET
             net_hours = self.history.hours()
             hours = self.history.gross_hours() if basis == BASIS_GROSS else net_hours
             temperatures = dict(self._temperatures)
@@ -547,14 +561,28 @@ class SiteHouseForecast:
         self.production_status = PRODUCTION_OK
         return True, production
 
-    async def _async_merge_gross(self, tracked: Iterable[Any], now: datetime) -> None:
-        """File the tracker's hours of the whole load that wait for their production (`HouseHistory.merge_gross`)."""
+    async def _async_has_solar_statistics(self) -> bool:
+        """Whether the Energy dashboard has solar production statistics (a site without a battery has a whole load
+        only with them); when they cannot be read, what the last read found."""
+        try:
+            ids, _export = await async_energy_ids(self.hass)
+        except Exception:  # noqa: BLE001 - the last read stands until the next refresh
+            _LOGGER.debug("SpotNav house forecast: the Energy dashboard could not be read", exc_info=True)
+            return bool(self.solar_statistics)
+        self.solar_statistics = ids
+        if not ids:
+            self.production_status = PRODUCTION_NONE
+        return bool(ids)
+
+    async def _async_merge_gross(self, tracked: Iterable[Any], now: datetime, *, sun_needed: bool = False) -> None:
+        """File the tracker's hours of the whole load that wait for their production (`HouseHistory.merge_gross`);
+        with `sun_needed` (a site without a battery) never without it."""
         tracked = list(tracked)
         waiting = self.history.waiting(tracked, now)
         if not waiting:
             return
         read, production = await self._async_production(waiting[0].start.astimezone(timezone.utc), now)
-        if read:
+        if read and (production is not None or not sun_needed):
             self.history.merge_gross(tracked, production, now)
 
     async def async_take_rows(self, rows: list[tuple[datetime, float]], now: datetime) -> int:
@@ -615,7 +643,8 @@ class SiteHouseForecast:
 
     def plan_kw_by_hour(self, now: datetime) -> dict[datetime, float]:
         """The import less the chargers expected per hour from the running hour on (`{hour_start (UTC): kW}`): the
-        house's load on a site without a battery, the net figure on one with (see the module); the hours the profile
+        shown forecast on a site whose house figure is the net one, `import_forecast` where it is the whole load (see
+        the module); the hours the profile
         knows only (`LoadForecast.known_by_hour`); empty without a forecast made in the last `PLAN_MAX_AGE_S`. An hour
         left out is reckoned at the site's flat figure, as before the forecast."""
         forecast = self._fresh(now)
@@ -636,6 +665,21 @@ class SiteHouseForecast:
         forecast = self.median if self.median is not None else self.forecast
         by_hour = {} if forecast is None else forecast.by_hour()
         return by_hour, self.basis, self.basis == BASIS_GROSS and self.history.gross_with_sun()
+
+    def surplus_house_by_hour(self, now: datetime) -> tuple[dict[datetime, float], str]:
+        """The expected solar surplus's house: the whole load's median per hour without the in-day adjustment, from
+        the running hour on, the hours the profile knows only, with `SURPLUS_OK`; empty with the reason when there is
+        no whole load with the sun in every hour (the import less the chargers has the sun taken off already) or no
+        median made in the last `PLAN_MAX_AGE_S`."""
+        median = self.median
+        if median is None or (now - median.made_at).total_seconds() > PLAN_MAX_AGE_S:
+            return {}, SURPLUS_NO_FORECAST
+        if self.basis != BASIS_GROSS:
+            return {}, SURPLUS_COLLECTING if self.solar_statistics else SURPLUS_NO_SOLAR_STATISTICS
+        if not self.history.gross_with_sun():
+            return {}, SURPLUS_WITHOUT_SUN if self.solar_statistics else SURPLUS_NO_SOLAR_STATISTICS
+        current = hour_start(now, self._demand.tracker.tz)
+        return {start: kw for start, kw in median.known_by_hour().items() if start >= current}, SURPLUS_OK
 
     # ---- what is shown
 
@@ -670,7 +714,7 @@ class SiteHouseForecast:
             "forecast": None if self.forecast is None else self.forecast.as_dict(),
             # The battery plan's: the median without the in-day adjustment.
             "median": None if self.median is None else self.median.as_dict(),
-            # On a battery site whose house figure is the whole load: the import target's (the net figure).
+            # On a site whose house figure is the whole load: the import target's (the net figure).
             "import_forecast": None if self.import_forecast is None else self.import_forecast.as_dict(),
             "history": self.history.diagnostics(),
             "log": self.log.diagnostics(),
