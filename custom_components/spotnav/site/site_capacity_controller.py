@@ -5381,8 +5381,9 @@ class SiteCapacityController:
         (`departure_shortfall_kwh`, negative: to spare), or `None` for a charge with no plan and departure ahead.
 
         This hour and later ones are reckoned at the target less the house's typical load (`_typical_house_kw`, the
-        estimate the plan counts on too, `import_target_plan_kw`), never its load this instant: a kettle's half minute
-        must not say the car will not be ready. What it still needs is what the plan expects of its windows' time
+        estimate the plan counts on too, `import_target_plan_kw`), a later hour the house load forecast knows at the
+        target less its expected load there (`import_target_plan_kw_by_hour`), never its load this instant: a
+        kettle's half minute must not say the car will not be ready. What it still needs is what the plan expects of its windows' time
         left, plus what the running window is already behind (`PlanWatch.shortfall_kwh`): a window the target held
         is planned again at its end, so earlier windows' shortfalls are in the plan already
         (`planning/plan_watch.py`)."""
@@ -5416,10 +5417,18 @@ class SiteCapacityController:
         # Later hours at the target as set, less its margin as the hold keeps it: the month's free level lifts the
         # running hour only.
         set_kw = held_level_kw(budget.target_kw if self._target_effective is None else self._target_effective.set_kw)
-        later_kw = min(ceiling_kw, max(0.0, set_kw - max(0.0, house_kw)))
         minimum_kw = member_w(member.phases, member.min_a) / 1000.0
+
+        def later(house: float) -> float:
+            kw = min(ceiling_kw, max(0.0, set_kw - max(0.0, house)))
+            return 0.0 if kw < minimum_kw else kw
+
+        later_kw = later(house_kw)
+        # A later hour the house load forecast knows at the target less its own expected load (`site/load_forecast.py`).
+        later_by_hour = {
+            start: later(kw) for start, kw in self.house_forecast.plan_kw_by_hour(now).items() if start >= budget.hour_end
+        }
         held_kw = 0.0 if held_kw < minimum_kw else held_kw
-        later_kw = 0.0 if later_kw < minimum_kw else later_kw
         shortfall = departure_shortfall_kwh(
             need_kwh=need_kwh,
             now=now,
@@ -5427,6 +5436,7 @@ class SiteCapacityController:
             hour_end=budget.hour_end,
             held_kw=held_kw,
             later_kw=later_kw,
+            later_kw_by_hour=later_by_hour,
         )
         return None if shortfall is None else (plan.departure, shortfall)
 
@@ -6183,6 +6193,31 @@ class SiteCapacityController:
         charger (no current of its own, `_target_inert`) or held it only part of the way (`_target_floor_limited`), or
         the house's load is not known: the plan then counts on the car's
         own power, and a window the hold keeps short is planned again at its end (`planning/plan_watch.py`)."""
+        level = self._target_plan_level(charger_entry_id)
+        house_kw = None if level is None else self._typical_house_kw()
+        if level is None or house_kw is None:
+            return None
+        held_kw, minimum_kw = level
+        return max(minimum_kw, held_kw - house_kw)
+
+    def import_target_plan_kw_by_hour(self, charger_entry_id: str) -> dict[datetime, float] | None:
+        """Per hour (`{hour_start (UTC): kW}`), what `import_target_plan_kw` is with the house's expected load in that
+        hour (`site/house_forecast.py`'s `plan_kw_by_hour`) in place of its typical load: the target less it, never below
+        the charger's minimum. Only the hours the forecast knows; the plan takes `import_target_plan_kw` for the rest
+        (`PlanRequest.power_cap_kw_by_hour`). `None` whenever `import_target_plan_kw` holds nothing for the charger, or
+        there is no forecast: the plan is then the one with the flat figure."""
+        level = self._target_plan_level(charger_entry_id)
+        if level is None:
+            return None
+        by_hour = self.house_forecast.plan_kw_by_hour(self.demand.now())
+        if not by_hour:
+            return None
+        held_kw, minimum_kw = level
+        return {start: max(minimum_kw, held_kw - house_kw) for start, house_kw in by_hour.items()}
+
+    def _target_plan_level(self, charger_entry_id: str) -> tuple[float, float] | None:
+        """`(held level, the charger's minimum)` in kW for a plan under the import target (`import_target_plan_kw`), or
+        `None` when the target holds nothing for this charger's plan."""
         target_kw = self._import_target_kw()
         if target_kw is None or not self._active_control_allowed():
             return None
@@ -6199,14 +6234,11 @@ class SiteCapacityController:
             # The hold cannot act on this charger (no current of its own to judge a lowering on, or a phase that cannot
             # be judged now): the plan counts on the car's own power, not on a hold that does not come.
             return None
-        house_kw = self._typical_house_kw()
-        if house_kw is None:
-            return None
         # The target as set, less its margin as the hold keeps it (`held_level_kw`): the month's free level lifts the
         # running hour's hold only, and a plan's later hours may be counted by no part, a new day or a new month.
         phases, _phase = self.reckoned_phases(charger_entry_id)
         minimum_kw = member_w(phases, float(wiring.get("min_current_a", DEFAULT_MIN_CURRENT_A))) / 1000.0
-        return max(minimum_kw, held_level_kw(target_kw) - house_kw)
+        return held_level_kw(target_kw), minimum_kw
 
     def _target_start_cap(self, charger_entry_id: str) -> float | None:
         """The most a resume or a probe may give this charger for the import target: `0.0` while the target pauses
@@ -6232,8 +6264,9 @@ class SiteCapacityController:
         return None if departure is None or departure <= dt_util.utcnow() else plan.departure
 
     def _release_peak_kw(self, charger_entry_id: str, charger_controller: Any, budget: HourBudget) -> float | None:
-        """The hour's import a release may reach (kW, whole): the house's typical load (its load now while none is
-        measured) and the charge's full power at the current it is set to."""
+        """The hour's import a release may reach (kW, whole): the house's expected load in the running hour (the house
+        load forecast's, else its typical load, else its load now while none is measured) and the charge's full power
+        at the current it is set to."""
         amps = getattr(charger_controller, "requested_current_a", None)
         plan = getattr(charger_controller, "plan", None)
         if not amps and plan is not None:
@@ -6241,7 +6274,9 @@ class SiteCapacityController:
         if not amps:
             return None
         phases, _phase = self.reckoned_phases(charger_entry_id)
-        house_kw = self._typical_house_kw()
+        house_kw = self.house_forecast.plan_kw_at(self.demand.now())
+        if house_kw is None:
+            house_kw = self._typical_house_kw()
         if house_kw is None:
             house_kw = max(0.0, budget.house_w) / 1000.0
         return float(round(max(0.0, house_kw) + member_w(phases, float(amps)) / 1000.0))

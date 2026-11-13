@@ -3,7 +3,8 @@
 Pure: the site's hour rows, the clock, and optionally an outdoor temperature forecast and the holiday dates go in;
 `{hour_start: kW}` comes out. No Home Assistant state (the shell is `site/house_forecast.py`). It decides nothing a
 charger is told: fuse protection and the import target's hold stay on measurements; a forecast only changes what a
-plan expects (a later release).
+plan expects (`SiteCapacityController.import_target_plan_kw_by_hour`, the target's departure shortfall and its
+release reach).
 
 * **History**: the measured hours' `house_kw` (the site's import less the chargers', `site/demand_tracker.py`) of the
   last `WINDOW_DAYS`, never an hour read from Home Assistant's statistics (`imported`) and never an hour without the
@@ -168,6 +169,15 @@ class LoadForecast:
         """`{hour_start: kW}` before the in-day adjustment (the flat rung as it is), the hours with a figure only."""
         return {
             hour.start: hour.kw if hour.raw_kw is None else hour.raw_kw for hour in self.hours if hour.kw is not None
+        }
+
+    def known_by_hour(self) -> dict[datetime, float]:
+        """`{hour_start: kW}` of the hours the profile knows (the flat rung and the unknown left out): what a plan
+        counts on per hour, the flat figure staying the caller's own, live one."""
+        return {
+            hour.start: hour.kw
+            for hour in self.hours
+            if hour.kw is not None and hour.source not in (SOURCE_FLAT, SOURCE_NONE)
         }
 
     def kw_at(self, moment: datetime) -> float | None:

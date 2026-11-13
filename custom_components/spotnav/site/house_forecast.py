@@ -1,9 +1,9 @@
 """The site's house load forecast in Home Assistant: its sources, its hourly refresh and its log.
 
 The model is pure (`site/load_forecast.py`), and so is the log with its nightly review (`site/forecast_log.py`); this
-is the thin shell around them. Nothing here is a setting, and nothing here decides what a charger is told (a plan
-uses the forecast in a later release); it is shown on the site's state sensor (`forecast`), in the diagnostics and
-in the debug bundle.
+is the thin shell around them. Nothing here is a setting, and nothing here decides what a charger is told: a plan
+counts on it under the import target (`plan_kw_by_hour`, `plan_kw_at`), while the hold and fuse protection stay on
+measurements; it is shown on the site's state sensor (`forecast`), in the diagnostics and in the debug bundle.
 
 * **Weather** (no setting): `weather.forecast_home` (the core Met.no default), else the only weather entity, else
   none. Its `temperature` is read on every reading of the site into the running hour (`HourMean.outdoor_c`); its
@@ -51,6 +51,8 @@ RETRY_S: Final = 600.0
 ATTRIBUTE_HOURS: Final = 24
 #: The log's store waits this long before it is written (it changes once an hour).
 SAVE_DELAY_S: Final = 30.0
+#: A forecast older than this (a refresh that keeps failing) is not counted on by a plan: the flat figure is.
+PLAN_MAX_AGE_S: Final = 3 * 3600.0
 
 WEATHER_NONE: Final = "no_weather_entity"
 WEATHER_OK: Final = "ok"
@@ -356,6 +358,29 @@ class SiteHouseForecast:
         log.review(now)
         if self._store is not None:
             self._store.changed()
+
+    # ---- what plans count on
+
+    def _fresh(self, now: datetime) -> LoadForecast | None:
+        forecast = self.forecast
+        if forecast is None or (now - forecast.made_at).total_seconds() > PLAN_MAX_AGE_S:
+            return None
+        return forecast
+
+    def plan_kw_by_hour(self, now: datetime) -> dict[datetime, float]:
+        """The house's expected load per hour from the running hour on (`{hour_start (UTC): kW}`), the hours the
+        profile knows only (`LoadForecast.known_by_hour`); empty without a forecast made in the last `PLAN_MAX_AGE_S`.
+        An hour left out is reckoned at the site's flat figure, as before the forecast."""
+        forecast = self._fresh(now)
+        if forecast is None:
+            return {}
+        current = hour_start(now, self._demand.tracker.tz)
+        return {start: kw for start, kw in forecast.known_by_hour().items() if start >= current}
+
+    def plan_kw_at(self, now: datetime) -> float | None:
+        """The house's expected load in the running hour, `None` when the profile does not know it (see
+        `plan_kw_by_hour`)."""
+        return self.plan_kw_by_hour(now).get(hour_start(now, self._demand.tracker.tz))
 
     # ---- what is shown
 
