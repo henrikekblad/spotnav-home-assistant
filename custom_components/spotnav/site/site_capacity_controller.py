@@ -691,9 +691,7 @@ class SiteCapacityController:
         self.demand = SiteDemand(hass, entry_id, _home_zone(hass))
         # The house's expected load hour by hour (`site/house_forecast.py`), refreshed when an hour completes. Shown
         # only (the site state sensor's `forecast`, the diagnostics): nothing a charger is told reads it yet.
-        self.house_forecast = SiteHouseForecast(
-            hass, entry_id, self.demand, flat_kw=self._typical_house_kw, notify=self._notify
-        )
+        self.house_forecast = SiteHouseForecast(hass, entry_id, self.demand, flat_kw=self._typical_house_kw)
         self._demand_zone: tuple[float, str] | None = None
         # The import target (`_hold_to_import_target`), as of the last recompute: the hour's budget (`None` while not
         # applied, and why), what it does to each charger, and which chargers' decisions it lowered. Per charger the

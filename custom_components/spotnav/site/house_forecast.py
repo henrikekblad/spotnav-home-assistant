@@ -155,12 +155,13 @@ class SiteHouseForecast:
         demand: SiteDemand,
         *,
         flat_kw: Callable[[], float | None],
-        notify: Callable[[], None],
     ) -> None:
         self.hass = hass
         self._demand = demand
         self._flat_kw = flat_kw
-        self._notify = notify
+        # Only what shows the forecast listens (the site state sensor): a refresh is no new reading, so nothing
+        # that decides (a charger's solar evaluation) is woken by it.
+        self._listeners: set[Callable[[], None]] = set()
         self.log = ForecastLog(tz=demand.tracker.tz)
         self.forecast: LoadForecast | None = None
         self.weather_entity_id: str | None = None
@@ -335,7 +336,8 @@ class SiteHouseForecast:
             ]
             self._log(forecast, hours, now, tz)
             self.refreshes += 1
-            self._notify()
+            for listener in list(self._listeners):
+                listener()
         except Exception:  # noqa: BLE001 - a forecast must never disturb the site
             _LOGGER.debug("SpotNav house forecast: the refresh failed", exc_info=True)
         finally:
@@ -356,6 +358,12 @@ class SiteHouseForecast:
             self._store.changed()
 
     # ---- what is shown
+
+    @callback
+    def add_listener(self, listener: Callable[[], None]) -> Callable[[], None]:
+        """Call `listener` after each refresh; returns its removal."""
+        self._listeners.add(listener)
+        return lambda: self._listeners.discard(listener)
 
     @property
     def attribute(self) -> list[dict[str, Any]]:
