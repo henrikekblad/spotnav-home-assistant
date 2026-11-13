@@ -1,4 +1,4 @@
-"""The site options' switched load page: a switch, its rated power, its runtime per 24 hours and an optional comfort
+"""The site options' switched load page: a switch, its rated power, its runtime within any 28 hours and an optional comfort
 floor (a temperature sensor and the lowest temperature). Empty switch: no load. Stored under the site entry's
 `CONF_SWITCH_LOAD` (`loads/switch_load.SwitchLoadConfig`)."""
 

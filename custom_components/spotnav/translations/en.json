@@ -382,14 +382,14 @@
         "data": {
           "switch_entity": "Switch",
           "rated_kw": "Rated power",
-          "runtime_h": "Runtime per 24 hours",
+          "runtime_h": "Runtime within any 28 hours",
           "temperature_entity": "Temperature sensor (optional)",
           "floor_c": "Lowest temperature (optional)"
         },
         "data_description": {
           "switch_entity": "The switch that turns the load on and off. Empty: no load.",
           "rated_kw": "What the load draws when it is on, as on its rating plate.",
-          "runtime_h": "How long it must run in every 24 hours. SpotNav picks the cheapest hours for it.",
+          "runtime_h": "How long it must run within any 28 hours. SpotNav picks the cheapest hours for it, so a run may move a few hours later from one day to the next when the prices do.",
           "temperature_entity": "For example the water heater's tank temperature. With a lowest temperature, the load runs whatever the price when it is colder.",
           "floor_c": "Below this the load runs at once, until it is 2 °C warmer. Needs the temperature sensor."
         }

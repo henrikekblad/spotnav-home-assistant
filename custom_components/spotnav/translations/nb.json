@@ -382,14 +382,14 @@
         "data": {
           "switch_entity": "Bryter",
           "rated_kw": "Merkeeffekt",
-          "runtime_h": "Driftstid per 24 timer",
+          "runtime_h": "Driftstid innen hver periode på 28 timer",
           "temperature_entity": "Temperaturføler (valgfri)",
           "floor_c": "Laveste temperatur (valgfri)"
         },
         "data_description": {
           "switch_entity": "Bryteren som slår lasten av og på. Tom: ingen last.",
           "rated_kw": "Hva lasten trekker når den er på, som på merkeskiltet.",
-          "runtime_h": "Hvor lenge den må gå i hver periode på 24 timer. SpotNav velger de billigste timene til det.",
+          "runtime_h": "Hvor lenge den må gå innen hver periode på 28 timer. SpotNav velger de billigste timene til det, så en kjøring kan flytte seg noen timer senere fra én dag til den neste når prisene gjør det.",
           "temperature_entity": "For eksempel tanktemperaturen i varmtvannsberederen. Med en laveste temperatur går lasten uansett pris når det er kaldere.",
           "floor_c": "Under denne temperaturen går lasten med en gang, til den er 2 °C varmere. Krever temperaturføleren."
         }

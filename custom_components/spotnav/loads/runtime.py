@@ -4,7 +4,7 @@ One per site, owned by its `SiteCapacityController`; idle unless the site's opti
 Every `TICK_S` it reads the switch, the temperature sensor and the site's headroom, plans again when the quarter hour
 turns or the prices change (`switch_load.plan_switch`, in the executor: a long runtime takes up to a second), decides on or off (`switch_load.decide`)
 and logs each change in its shadow book (`battery/shadow.py`, part `switch_load`). The time it would have run is its
-own history for the rolling runtime; beside it each day keeps what the switch really did, priced the same way, so the
+own history for the rolling runtime (any 28 hours, `switch_load.WINDOW`); beside it each day keeps what the switch really did, priced the same way, so the
 two can be compared.
 
 * **Prices**: the site's electricity price entry (`pricing/price_source.site_price_source`), today and tomorrow, with
@@ -403,7 +403,8 @@ class SwitchLoadShadow:
         return {
             "config": {
                 **config.as_dict(),
-                "daily_kwh": round(config.daily_kwh, 3),
+                "need_kwh": round(config.need_kwh, 3),
+                "window_h": WINDOW.total_seconds() / 3600.0,
                 "assumed_phases": config.phases,
             },
             "part": self.book.state(PART_SWITCH_LOAD),
@@ -427,7 +428,7 @@ class SwitchLoadShadow:
                 "tracked_since": None
                 if self.history.tracked_since is None
                 else self.history.tracked_since.isoformat(),
-                "ran_last_24h_h": round(self.history.on_seconds(now - WINDOW, now) / 3600.0, 3),
+                "ran_last_window_h": round(self.history.on_seconds(now - WINDOW, now) / 3600.0, 3),
                 "runs": self.history.as_dict()["runs"],
             },
             "days": {day: tally.as_dict() for day, tally in sorted(self.days.items())},

@@ -382,14 +382,14 @@
         "data": {
           "switch_entity": "Schalter",
           "rated_kw": "Nennleistung",
-          "runtime_h": "Laufzeit je 24 Stunden",
+          "runtime_h": "Laufzeit innerhalb von je 28 Stunden",
           "temperature_entity": "Temperatursensor (optional)",
           "floor_c": "Mindesttemperatur (optional)"
         },
         "data_description": {
           "switch_entity": "Der Schalter, der die Last ein- und ausschaltet. Leer: keine Last.",
           "rated_kw": "Was die Last eingeschaltet bezieht, laut Typenschild.",
-          "runtime_h": "Wie lange sie in jeweils 24 Stunden laufen muss. SpotNav wählt dafür die günstigsten Stunden.",
+          "runtime_h": "Wie lange sie innerhalb von jeweils 28 Stunden laufen muss. SpotNav wählt dafür die günstigsten Stunden, sodass sich ein Lauf von einem Tag zum nächsten um einige Stunden nach hinten verschieben kann, wenn die Preise es tun.",
           "temperature_entity": "Zum Beispiel die Speichertemperatur des Warmwasserspeichers. Mit einer Mindesttemperatur läuft die Last unabhängig vom Preis, wenn es kälter ist.",
           "floor_c": "Darunter läuft die Last sofort, bis es 2 °C wärmer ist. Braucht den Temperatursensor."
         }

@@ -382,14 +382,14 @@
         "data": {
           "switch_entity": "Brytare",
           "rated_kw": "Märkeffekt",
-          "runtime_h": "Drifttid per 24 timmar",
+          "runtime_h": "Drifttid inom varje 28 timmar",
           "temperature_entity": "Temperaturgivare (valfri)",
           "floor_c": "Lägsta temperatur (valfri)"
         },
         "data_description": {
           "switch_entity": "Brytaren som slår på och av lasten. Tom: ingen last.",
           "rated_kw": "Vad lasten drar när den är på, enligt märkskylten.",
-          "runtime_h": "Hur länge den måste gå under varje 24-timmarsperiod. SpotNav väljer de billigaste timmarna för det.",
+          "runtime_h": "Hur länge den måste gå inom varje period på 28 timmar. SpotNav väljer de billigaste timmarna för det, så en körning kan flytta några timmar senare från en dag till nästa när priserna gör det.",
           "temperature_entity": "Till exempel varmvattenberedarens tanktemperatur. Med en lägsta temperatur går lasten oavsett pris när det är kallare.",
           "floor_c": "Under den här temperaturen går lasten direkt, tills det är 2 °C varmare. Kräver temperaturgivaren."
         }

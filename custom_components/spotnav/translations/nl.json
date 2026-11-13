@@ -382,14 +382,14 @@
         "data": {
           "switch_entity": "Schakelaar",
           "rated_kw": "Nominaal vermogen",
-          "runtime_h": "Looptijd per 24 uur",
+          "runtime_h": "Looptijd binnen elke 28 uur",
           "temperature_entity": "Temperatuursensor (optioneel)",
           "floor_c": "Laagste temperatuur (optioneel)"
         },
         "data_description": {
           "switch_entity": "De schakelaar die de last aan- en uitzet. Leeg: geen last.",
           "rated_kw": "Wat de last trekt als hij aan staat, volgens het typeplaatje.",
-          "runtime_h": "Hoe lang hij in elke 24 uur moet draaien. SpotNav kiest daarvoor de goedkoopste uren.",
+          "runtime_h": "Hoe lang hij binnen elke 28 uur moet draaien. SpotNav kiest daarvoor de goedkoopste uren, zodat een run van de ene dag op de andere een paar uur later kan vallen als de prijzen dat doen.",
           "temperature_entity": "Bijvoorbeeld de tanktemperatuur van de boiler. Met een laagste temperatuur draait de last ongeacht de prijs als het kouder is.",
           "floor_c": "Hieronder draait de last meteen, tot het 2 °C warmer is. Vereist de temperatuursensor."
         }

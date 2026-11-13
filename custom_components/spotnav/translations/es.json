@@ -382,14 +382,14 @@
         "data": {
           "switch_entity": "Interruptor",
           "rated_kw": "Potencia nominal",
-          "runtime_h": "Tiempo de funcionamiento por 24 horas",
+          "runtime_h": "Tiempo de funcionamiento en cada 28 horas",
           "temperature_entity": "Sensor de temperatura (opcional)",
           "floor_c": "Temperatura mínima (opcional)"
         },
         "data_description": {
           "switch_entity": "El interruptor que enciende y apaga la carga. Vacío: sin carga.",
           "rated_kw": "Lo que consume la carga cuando está encendida, según su placa de características.",
-          "runtime_h": "Cuánto tiempo debe funcionar en cada periodo de 24 horas. SpotNav elige para ello las horas más baratas.",
+          "runtime_h": "Cuánto tiempo debe funcionar dentro de cada periodo de 28 horas. SpotNav elige para ello las horas más baratas, así que un ciclo puede retrasarse unas horas de un día al siguiente cuando lo hacen los precios.",
           "temperature_entity": "Por ejemplo la temperatura del depósito del termo. Con una temperatura mínima, la carga funciona sea cual sea el precio cuando hace más frío.",
           "floor_c": "Por debajo de ella la carga funciona enseguida, hasta estar 2 °C más caliente. Necesita el sensor de temperatura."
         }

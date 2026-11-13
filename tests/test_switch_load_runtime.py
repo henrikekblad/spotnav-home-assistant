@@ -89,7 +89,7 @@ async def test_the_cheap_hour_would_switch_it_on_and_nothing_is_written(
 
     diagnostics = (await async_get_config_entry_diagnostics(hass, site))["switch_load"]
     assert diagnostics["part"] == "shadow" and diagnostics["writes"] is False
-    assert diagnostics["status"] == "planned" and diagnostics["config"]["daily_kwh"] == 3.0
+    assert diagnostics["status"] == "planned" and diagnostics["config"]["need_kwh"] == 3.0
     assert diagnostics["plan"]["periods"] == [[now.isoformat(), (now + timedelta(hours=1)).isoformat()]]
     assert diagnostics["now"]["reason"] == REASON_CHEAP
     bundle = await async_build_debug_bundle(hass)

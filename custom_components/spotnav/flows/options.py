@@ -493,7 +493,7 @@ class SiteCapacityOptionsFlow(ChargerWiringSteps, config_entries.OptionsFlow):
         return await self.async_step_site_details()
 
     async def async_step_site_switch_load(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
-        """The switched load: a switch, its rated power, its runtime per 24 hours and an optional comfort floor
+        """The switched load: a switch, its rated power, its runtime within any 28 hours and an optional comfort floor
         (`flows/switch_load_form.py`). In shadow only: SpotNav shows when it would switch it and never does."""
         schema = switch_load_schema(self._entry.data.get(CONF_SWITCH_LOAD))
         if user_input is not None:
