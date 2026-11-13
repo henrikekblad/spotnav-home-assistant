@@ -208,3 +208,69 @@ def _with_headroom(inputs):
         return replace(inputs(self, now), headroom_a=20.0, measurement_ok=True)
 
     return wrapped
+
+
+# --- something else drives the battery (`outside_control.py`) ----------------------------------------------------
+
+
+def _issue(hass: HomeAssistant, site_id: str):
+    from homeassistant.helpers import issue_registry as ir  # noqa: PLC0415
+
+    return ir.async_get(hass).async_get_issue("spotnav", f"battery_outside_control_{site_id}")
+
+
+async def test_a_set_up_checkwatt_makes_the_battery_watch_only_without_a_notice(hass: HomeAssistant) -> None:
+    MockConfigEntry(domain="checkwatt", entry_id="CW").add_to_hass(hass)
+    site, controller = await _site(hass, **{"sensor.sigen_plant_ems_work_mode": "max_self_consumption"})
+    shadow = controller.battery_shadow
+
+    shadow.tick(dt_util.now())
+    await hass.async_block_till_done()
+
+    assert shadow.facts.management.state == "externally_controlled"
+    assert shadow.facts.management.reason == "integration:checkwatt"
+    battery = (await async_get_config_entry_diagnostics(hass, site))["battery"]
+    assert battery["outside_control"]["verdict"]["source"] == "CheckWatt"
+    assert battery["plan"]["benchmark"] is True
+    assert _issue(hass, site.entry_id) is None
+
+
+async def test_settings_changed_three_times_are_told_once_and_the_notice_goes_by_itself(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from custom_components.spotnav.battery.outside_control import CLEAR_AFTER  # noqa: PLC0415
+    from custom_components.spotnav.repairs import async_sync_resolution_repairs  # noqa: PLC0415
+
+    site, controller = await _site(hass, **{"sensor.sigen_plant_ems_work_mode": "max_self_consumption"})
+    shadow = controller.battery_shadow
+    calls = _service_calls(hass)
+    limit = "number.sigen_plant_ess_max_discharging_limit"
+    now = dt_util.now()
+
+    for minute, value in enumerate(("23.04", "5.0", "23.04", "0.0")):
+        _set(hass, limit, value, "kW")
+        shadow.tick(now + timedelta(minutes=minute))
+    await hass.async_block_till_done()
+
+    assert shadow.facts.management.state == "externally_controlled"
+    assert shadow.facts.management.reason == "settings_changed"
+    issue = _issue(hass, site.entry_id)
+    assert issue is not None and issue.translation_key == "battery_outside_control"
+    assert issue.translation_placeholders == {"site": site.title}
+    # The setup sync leaves the site's own notice alone.
+    await async_sync_resolution_repairs(hass)
+    assert _issue(hass, site.entry_id) is not None
+
+    # A reload keeps the occurrence: it is not told again, and the battery stays watch-only.
+    assert await hass.config_entries.async_reload(site.entry_id)
+    await hass.async_block_till_done()
+    reloaded = site_controller_for(hass, site.entry_id)
+    assert reloaded is not None
+    assert reloaded.battery_shadow.facts.management.state == "externally_controlled"
+    assert reloaded.battery_shadow.outside.counts == {"settings_changed": 1}
+
+    reloaded.battery_shadow.tick(now + timedelta(minutes=3) + CLEAR_AFTER)
+    await hass.async_block_till_done()
+    assert reloaded.battery_shadow.facts.management.state == "free"
+    assert _issue(hass, site.entry_id) is None
+    assert [call for call in calls if call.data.get("domain") in ("number", "select", "switch", "sigen")] == []

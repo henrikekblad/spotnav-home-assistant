@@ -957,6 +957,10 @@
     "price_source_missing": {
       "title": "Alueella {area} ei ole sähkön hintoja",
       "description": "Kohteella **{price}** ei ole hintoja: alueelle {area} ei ole määritetty lähdettä. Avaa SpotNav-kortin asetukset, Sähkön hinta: siellä kerrotaan, mitä lisätä (Home Assistantin Nord Pool -integraatio, oma ENTSO-E-avaimesi, PVPC-, Octopus Energy- tai Zonneplan-integraatio). Ilmoitus poistuu itsestään, kun hinnat palaavat."
+    },
+    "battery_outside_control": {
+      "title": "Kotiakkua ohjaa jokin muu",
+      "description": "SpotNav on huomannut, että kohteen **{site}** kotiakkua ohjaa jokin muu kuin SpotNav: sen asetukset ovat muuttuneet useita kertoja, tai se on ladannut sähköverkosta tai purkanut vientiin, mitä sen oma omakäyttö ei tee. Usein kyse on palvelusta kuten CheckWatt, Greenely tai Tibber, asentajan asetuksesta tai automaatiosta. Siksi SpotNav vain seuraa akkua eikä kirjoita siihen koskaan; akkusuunnitelma näytetään vertailuna. Sinun ei tarvitse tehdä mitään. Jos haluat SpotNavin suunnittelevan akun myöhemmin, poista ensin toisen järjestelmän ohjaus käytöstä. Ilmoitus poistuu itsestään kaksi vuorokautta sen jälkeen, kun akku viimeksi osoitti tätä."
     }
   },
   "exceptions": {

@@ -118,3 +118,26 @@ site's entry as the forecast integration. It answers only once the correction is
 dashboard shows nothing from SpotNav, not an unchecked figure), as Wh per hour from the running hour, and
 SpotNav never uses it as a source itself. The picker lists every SpotNav entry; only a site that has a solar
 forecast chosen gives anything.
+
+## When another system runs your battery
+
+Many home batteries are run by something else: the maker's own optimiser (Sigen AI mode, FusionSolar
+time-of-use, SEMS), a service that sells the battery's flexibility (CheckWatt, Greenely, Tibber Grid
+Rewards), a planner (Predbat, EMHASS) or an automation of yours. One controller per battery: SpotNav
+notices the others and only watches.
+
+* **A planner or CheckWatt set up in Home Assistant**: the battery is watch-only while it is there.
+  Nothing is told: you set it up yourself.
+* **The battery's settings change several times a day, or it charges from the grid or discharges into
+  export in plain self-consumption** (and its level moves the same way, for ten minutes): something
+  outside SpotNav drives it. SpotNav marks it watch-only and tells you once, in Settings → Repairs. The
+  notice goes away by itself two days after the battery last showed it. Tibber or Greenely set up in
+  Home Assistant is named as the likely source but never marks the battery by itself.
+
+A watch-only battery still gets SpotNav's battery plan as a comparison, and SpotNav never writes to it.
+The site's diagnostics show what was seen (`battery.outside_control`) and, under `detected`, what
+SpotNav found for the site, the battery included, with what usually runs that brand.
+
+For chargers, a short pause from such a service (Tibber Grid Rewards pauses a charge up to five times, about
+ten minutes each) is expected: SpotNav keeps its plan and does not tell you (see
+[notifications](notifications.md)).

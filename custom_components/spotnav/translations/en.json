@@ -957,6 +957,10 @@
     "price_source_missing": {
       "title": "No electricity prices for {area}",
       "description": "**{price}** has no prices: no source is set up for {area}. Open the SpotNav card's settings, Electricity price: it says what to add (Home Assistant's Nord Pool integration, your own ENTSO-E key, the PVPC, the Octopus Energy or the Zonneplan integration). This message goes away by itself once prices are back."
+    },
+    "battery_outside_control": {
+      "title": "Something else drives the home battery",
+      "description": "SpotNav has noticed that something other than SpotNav drives the home battery of **{site}**: its settings changed several times, or it charged from the grid or discharged into export, which its own self-consumption does not do. This is often a service such as CheckWatt, Greenely or Tibber, an installer's setting, or an automation. SpotNav therefore only watches this battery and never writes to it; its battery plan is shown as a comparison. Nothing needs to be done. If you want SpotNav to plan the battery later, turn off the other system's control first. This notice goes away by itself two days after the battery last showed it."
     }
   },
   "exceptions": {

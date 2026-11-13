@@ -92,6 +92,12 @@ car), and a car that takes no current because it sits at its own charge limit, b
 is not a fault.
 It is told once while it lasts; if the charge recovers and stops again, it is told again.
 
+A charge that already ran in the window and then stops or is held by the charger, with the charger still there
+and enabled, may be a short pause from a service such as Tibber Grid Rewards (up to five pauses a session of about
+ten minutes each). Such a stop is told only after **twenty** minutes instead of three. A shorter pause tells
+nothing, SpotNav keeps its plan, and the pause is logged and counted in the charger's diagnostics
+(`outside_pauses`).
+
 A window's start that does not take (a cloud error, an Easee left at *awaiting start*) is sent again
 by itself, 90 seconds, 5 minutes and 10 minutes after it (once only for a Webasto, whose start presses
 its stop first). Those retries tell nothing of their own: "did not start" is still told after three

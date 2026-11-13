@@ -228,6 +228,12 @@ def test_an_unavailable_reading_never_counts_as_a_change_by_someone_else() -> No
         ({"headroom_a": 0.5}, "fuse_headroom", False),
         ({"headroom_a": None}, "headroom_unknown", False),
         ({"management": Management("self_managed", "planner:predbat")}, "management_changed:self_managed:planner:predbat", True),
+        # Another system drives it, whatever its own mode reads (`outside_control.py`).
+        (
+            {"management": Management("externally_controlled", "settings_changed", {"EMS work mode": "max_self_consumption"})},
+            "management_changed:externally_controlled:settings_changed",
+            True,
+        ),
     ],
 )
 def test_every_exit_path_hands_the_battery_back(overrides, reason, blocked) -> None:
@@ -238,6 +244,14 @@ def test_every_exit_path_hands_the_battery_back(overrides, reason, blocked) -> N
     assert battery.states == {**SIGENERGY_STATES, "charge_limit": "unknown"} | {"discharge_limit": "23.04"}
     assert executor.state.phase == ("blocked" if blocked else "idle")
     assert not executor.state.holds_snapshot
+
+
+def test_a_battery_another_system_drives_is_never_taken() -> None:
+    executor, battery = _sigenergy()
+    outside = Management("externally_controlled", "integration:checkwatt", {"EMS work mode": "max_self_consumption"})
+    _now, results = run(executor, battery, T0, 6, "hold", management=outside)
+    assert executor.state.phase == "idle" and not [op for result in results for op in result.ops]
+    assert events(results, "not_started")[0]["reason"] == "externally_controlled:integration:checkwatt"
 
 
 def test_no_plan_now_or_an_action_the_brand_cannot_do_hands_back() -> None:

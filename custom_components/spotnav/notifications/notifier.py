@@ -403,6 +403,11 @@ class ChargerNotifier:
         await Store(hass, _STORE_VERSION, f"{_STORE_KEY_PREFIX}.{entry_id}").async_remove()
 
     @property
+    def outside_pauses(self) -> dict[str, Any]:
+        """The pauses of the plan's charge SpotNav did not command (`outside_pause.py`), for the diagnostics."""
+        return self._stops.pauses.as_dict(dt_util.utcnow())
+
+    @property
     def plan_notice(self) -> dict[str, Any]:
         """How many plans were told (`seq`, 0 before the first) and when the last was (`at`, ISO, or `None`)."""
         at = self._notice_at
@@ -525,6 +530,14 @@ class ChargerNotifier:
                 events.append((EVENT_PLAN_AT_RISK, owed))
         self._held_before = held
         reason = self._stops.observe(self._expectation(now))
+        for pause in self._stops.take_pause_ends():
+            # Not told: an outside pause ends by itself and the plan is kept; the log and the diagnostics say it.
+            _LOGGER.log(
+                logging.INFO if pause.outcome in ("resumed", "plan_moved_on") else logging.DEBUG,
+                "SpotNav charger %s: the charge was paused by something outside SpotNav for %.1f min (%s, %s);"
+                " the plan is kept",
+                self._entry_id, pause.seconds / 60.0, pause.how, pause.outcome,
+            )
         stop_state = self._stops.window_state
         if stop_state != self._stop_state or self._at_risk_told != at_risk_told:
             self._stop_state = stop_state

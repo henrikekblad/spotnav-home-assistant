@@ -200,7 +200,7 @@ def test_an_external_planner_runs_the_battery_whatever_its_mode() -> None:
 
     facts = battery_facts(battery, entities, external_planner="predbat")
 
-    assert facts.management.state == "self_managed" and facts.management.reason == "planner:predbat"
+    assert facts.management.state == "externally_controlled" and facts.management.reason == "planner:predbat"
 
 
 def test_an_unknown_brand_reads_its_level_by_device_class_and_has_no_controls() -> None:

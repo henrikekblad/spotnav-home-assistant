@@ -384,7 +384,8 @@ def _management_problem(facts: BatteryFacts, control: BrandControl, active: bool
     management = facts.management
     if management.state == "free":
         return None
-    if management.reason.startswith("planner:") or not active:
+    if management.state == "externally_controlled" or management.reason.startswith("planner:") or not active:
+        # Another system drives it (`outside_control.py`): SpotNav only watches, whatever the modes read.
         return f"{management.state}:{management.reason}"
     for rule in control.adapter.modes:
         if rule.label not in management.settings:

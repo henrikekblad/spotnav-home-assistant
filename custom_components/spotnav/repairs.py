@@ -8,7 +8,8 @@ same `valid_*_entity_id` and records through the same store calls as the service
 
 One more, not a decision: a charger whose charging decisions keep failing (`CoreFailureRepairs`), raised
 only when they repeat and gone after a day without one. An electricity price whose area has no source and whose
-prices have stopped raises and deletes its own (`price_device.py`); the sync here leaves it alone.
+prices have stopped raises and deletes its own (`price_device.py`), and so does a site whose battery another system
+drives (`battery/runtime.py`); the sync here leaves both alone.
 """
 
 from __future__ import annotations
@@ -31,7 +32,14 @@ from homeassistant.helpers import (
 from homeassistant.helpers.event import async_call_later
 from homeassistant.util import dt as dt_util
 
-from .const import CONF_CHARGER_ENTRY_IDS, CONF_ENTRY_TYPE, DOMAIN, ENTRY_TYPE_SITE, PRICE_SOURCE_MISSING_ISSUE
+from .const import (
+    BATTERY_OUTSIDE_CONTROL_ISSUE,
+    CONF_CHARGER_ENTRY_IDS,
+    CONF_ENTRY_TYPE,
+    DOMAIN,
+    ENTRY_TYPE_SITE,
+    PRICE_SOURCE_MISSING_ISSUE,
+)
 from .vehicles.duplicate_chargers import charger_entries_except, duplicate_pairs
 from .vehicles.choices import (
     DISMISS_VEHICLE_CHOICE,
@@ -163,6 +171,9 @@ async def async_sync_resolution_repairs(
             continue
         if issue_id.startswith(f"{PRICE_SOURCE_MISSING_ISSUE}_"):
             # An electricity price's own (`price_device.py`): raised and deleted by its device.
+            continue
+        if issue_id.startswith(f"{BATTERY_OUTSIDE_CONTROL_ISSUE}_"):
+            # A site battery's outside-control notice (`battery/runtime.py`): raised and deleted by its site.
             continue
         if issue_id not in wanted:
             ir.async_delete_issue(hass, DOMAIN, issue_id)

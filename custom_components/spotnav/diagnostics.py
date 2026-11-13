@@ -58,11 +58,25 @@ async def async_get_config_entry_diagnostics(
     support questions in one file.
     """
     diagnostics = entry_diagnostics(hass, entry)
+    if entry.data.get(CONF_ENTRY_TYPE) == ENTRY_TYPE_SITE:
+        # What SpotNav detected for the site (`site/detected.py`): per kind the entity chosen, why, and the
+        # near-misses with why they were not.
+        diagnostics["detected"] = await _async_detected(hass, entry)
     if entry.entry_id == _bundle_carrier_id(hass):
         from .debug_bundle import async_build_debug_bundle
 
         diagnostics["debug_bundle"] = await async_build_debug_bundle(hass)
     return diagnostics
+
+
+async def _async_detected(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, Any] | None:
+    from .site.detected_hass import async_detected  # noqa: PLC0415 - reads the API's detection helpers
+
+    try:
+        return await async_detected(hass, entry)
+    except Exception:  # noqa: BLE001 - diagnostics must never fail on one block
+        _LOGGER.debug("SpotNav: what was detected could not be read", exc_info=True)
+        return None
 
 
 def entry_diagnostics(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, Any]:
@@ -120,6 +134,12 @@ def _push(hass: HomeAssistant, entry_id: str) -> dict[str, Any] | None:
     return None if push is None else push.diagnostics()
 
 
+def _outside_pauses(hass: HomeAssistant, entry_id: str) -> dict[str, Any] | None:
+    data = charger_data(hass, entry_id)
+    notifier = None if data is None else data.notifier
+    return None if notifier is None else notifier.outside_pauses
+
+
 def _price_source(hass: HomeAssistant, entry_id: str) -> dict[str, Any] | None:
     source = price_source_for(hass, entry_id)
     return None if source is None else source.diagnostics()
@@ -142,6 +162,10 @@ def _charger_diagnostics(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, A
         # The paired app's instant notifications: registered or not, the events, the last wake-up's
         # result and time. Never the relay ref.
         "push": _push(hass, entry.entry_id),
+        # Pauses of the plan's charge SpotNav did not command, such as an aggregator's (Tibber Grid Rewards): kept
+        # quiet, the plan kept (`notifications/outside_pause.py`). The open one, today's and the total since the
+        # start, those that lasted too long (then told as trouble) and the last ten.
+        "outside_pauses": _outside_pauses(hass, entry.entry_id),
         "vehicle_identification": _identification(hass, entry.entry_id),
         # Each car's last wake for a reading (`vehicles/vehicle_wake.py`): when, through which integration, for which
         # charge end and its result, with whether the car has it turned on and its integration offers a wake now.

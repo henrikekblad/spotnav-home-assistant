@@ -1,0 +1,102 @@
+"""Who else usually runs a home battery: the per-brand coexistence table and the integrations that run batteries.
+
+SpotNav is one controller among several. In Sweden most home batteries are steered from a cloud: the maker's own
+optimiser (Sigen AI mode, FusionSolar time-of-use, iSolarCloud, SEMS, Enlighten), or an aggregator that sells the
+battery's flexibility (CheckWatt, Greenely, Tibber Grid Rewards, Ferroamp with Ntricity). Two writers on one battery
+fight each other, so SpotNav's battery parts default to **watch-only** for every brand: they plan in shadow as a
+benchmark and write nothing (`shadow.ON_REACHABLE`). A later opt-in can lift that for one battery at a time; this
+table says what usually runs each brand, so a reason or a notice can name it.
+
+Sources (read 2026-11-14, `plans/research_integrations/commercial_energy_gap_2026-11-14.md` sections 1-2, its own
+markers kept: [V] verified on the vendor's or the aggregator's page, [F] forum or third party, [U] unverified):
+
+* CheckWatt takes "most common brands" through its own CM10 gateway [F]; Greenely's partner pilot (June 2025) names
+  Huawei, Sungrow, GoodWe and Sigenergy, Pixii first [V]; Tibber Grid Rewards runs Homevolt first and "all
+  batteries supported by Tibber" (Huawei, KOSTAL, SAJ, Solis, SolaX per a LinkedIn post [U]); sonnen joins Tibber's
+  VPP [V]; Ferroamp pools with Ntricity and Varberg Energi for FCR-D [V]; a Sigenergy plant "can be taken over by a
+  VPP operator" instead of AI mode [F].
+* The integration domains were read from each integration's `manifest.json` on 2026-11-14: core `tibber`,
+  `homevolt`, `goodwe`, `enphase_envoy`, `powerwall`, `victron_gx`; custom `checkwatt` (faanskit/ha-checkwatt
+  0.3.0), `greenely` (linsvensson/sensor.greenely 2.1.3), `ferroamp` (henricm/ha-ferroamp 1.18.0),
+  `sonnenbatterie` (weltmeyer/ha_sonnenbatterie 2026.11.1), and the adapters' own (`adapters.py`). No Home
+  Assistant integration was found for Pixii; Sungrow is mostly read through YAML Modbus (no config entry).
+
+Pure: no Home Assistant import.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Final, Literal
+
+
+@dataclass(frozen=True, slots=True)
+class Coexistence:
+    """One brand: its integrations, what usually runs it besides SpotNav, and SpotNav's default."""
+
+    brand: str
+    label: str
+    #: The Home Assistant integration domains the brand is read through (empty: none found).
+    platforms: tuple[str, ...]
+    #: Its own optimiser, as the maker's app names it.
+    own_optimiser: str
+    #: Aggregators known to run this brand in Sweden, with the research's marker.
+    aggregators: tuple[str, ...] = ()
+    #: SpotNav only watches it unless a later opt-in says otherwise (every brand in this release).
+    watch_only: bool = True
+
+
+COEXISTENCE: Final[tuple[Coexistence, ...]] = (
+    Coexistence("sigenergy", "Sigenergy", ("sigen",), "Sigen app: AI mode, time-of-use",
+                ("Greenely (pilot) [V]", "a VPP operator [F]")),
+    Coexistence("huawei", "Huawei", ("huawei_solar",), "FusionSolar: time-of-use",
+                ("CheckWatt [F]", "Greenely (pilot) [V]", "Tibber [U]")),
+    Coexistence("sungrow", "Sungrow", (), "iSolarCloud", ("CheckWatt [F]", "Greenely (pilot) [V]")),
+    Coexistence("goodwe", "GoodWe", ("goodwe",), "SEMS: eco modes", ("CheckWatt [F]", "Greenely (pilot) [V]")),
+    Coexistence("pixii", "Pixii", (), "Pixii Home", ("Greenely [V]",)),
+    Coexistence("ferroamp", "Ferroamp", ("ferroamp",), "EnergyHub", ("Ntricity / Varberg Energi, FCR-D [V]",)),
+    Coexistence("homevolt", "Homevolt", ("homevolt",), "Tibber app: Smart Control", ("Tibber Grid Rewards [V]",)),
+    Coexistence("sonnen", "sonnen", ("sonnenbatterie",), "sonnen app", ("Tibber VPP [V]",)),
+    Coexistence("solax", "SolaX", ("solax_modbus",), "SolaX Cloud", ("Tibber [U]",)),
+    Coexistence("solaredge", "SolarEdge", ("solaredge_modbus_multi",), "mySolarEdge: storage profiles"),
+    Coexistence("victron", "Victron", ("victron_gx",), "VRM: Dynamic ESS"),
+    Coexistence("enphase", "Enphase", ("enphase_envoy",), "Enlighten: storage modes"),
+    Coexistence("tesla", "Tesla Powerwall", ("powerwall",), "Tesla app: time-based control, Storm Watch"),
+)
+
+
+def coexistence_for(brand: str | None = None, platform: str | None = None) -> Coexistence | None:
+    """The row of a brand (`facts.BatteryFacts.brand`) or, failing that, of an integration domain."""
+    for row in COEXISTENCE:
+        if brand is not None and row.brand == brand:
+            return row
+    for row in COEXISTENCE:
+        if platform is not None and platform in row.platforms:
+            return row
+    return None
+
+
+#: How much an integration's presence says. `runs`: it exists for a service that drives the battery, so its
+#: presence alone makes the battery watch-only. `hint`: it is set up by many who use it for prices or readings
+#: only, so it never marks a battery by itself; it is named as the likely source when the battery's own settings
+#: or behaviour mark it.
+Strength = Literal["runs", "hint"]
+
+
+@dataclass(frozen=True, slots=True)
+class OutsideIntegration:
+    domain: str
+    label: str
+    strength: Strength
+
+
+OUTSIDE_INTEGRATIONS: Final[tuple[OutsideIntegration, ...]] = (
+    OutsideIntegration("checkwatt", "CheckWatt", "runs"),
+    OutsideIntegration("tibber", "Tibber", "hint"),
+    OutsideIntegration("greenely", "Greenely", "hint"),
+)
+
+
+def outside_integrations(domains: frozenset[str] | set[str]) -> tuple[OutsideIntegration, ...]:
+    """The integrations of the table among the set-up config entries' `domains`, in the table's order."""
+    return tuple(row for row in OUTSIDE_INTEGRATIONS if row.domain in domains)
