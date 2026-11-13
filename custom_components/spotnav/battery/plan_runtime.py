@@ -204,6 +204,63 @@ def limited_params(
     return params, reason, estimates
 
 
+def site_price_source_of(hass: HomeAssistant, site: SiteCapacityController) -> Any:
+    """The site's electricity price entry (`pricing/price_source.site_price_source`), or `None`."""
+    from ..pricing.price_source import site_price_source  # noqa: PLC0415 - it imports the planner
+
+    return site_price_source(hass, site.entry_id)
+
+
+def price_days(hass: HomeAssistant, source: Any, now: datetime, days: int = PRICE_DAYS) -> list[Any]:
+    """The price documents of today and the next `days - 1` days in the source's area zone, as held now (nothing is
+    fetched); none without a source or an area."""
+    from ..runtime import domain_data  # noqa: PLC0415
+
+    repository = domain_data(hass).price_repository
+    if repository is None or source is None or source.area is None:
+        return []
+    today = now.astimezone(time_zones.require_zone(source.area.tz)).date()
+    documents = []
+    for offset in range(days):
+        document = repository.day_snapshot(source.area_id, today + timedelta(days=offset)).document
+        if document is not None:
+            documents.append(document)
+    return documents
+
+
+def site_car_windows(hass: HomeAssistant, site: SiteCapacityController) -> list[tuple[datetime, datetime, float]]:
+    """The site's chargers' installed plans: `(start, end, kW)` per window."""
+    from ..runtime import controller_for  # noqa: PLC0415 - the charger side imports the site
+
+    windows: list[tuple[datetime, datetime, float]] = []
+    for charger_entry_id in site.config.get(CONF_CHARGER_ENTRY_IDS) or []:
+        charger = controller_for(hass, charger_entry_id)
+        plan = None if charger is None else getattr(charger, "plan", None)
+        if plan is None:
+            continue
+        kw = plan.power_kw if plan.power_kw else plan.amps * plan.phases * 230.0 / 1000.0
+        try:
+            windows.extend((start, end, float(kw)) for start, end in plan.windows)
+        except (TypeError, ValueError):
+            continue
+    return windows
+
+
+def site_import_cap_kw(hass: HomeAssistant, site: SiteCapacityController) -> float | None:
+    """The most the site may import (kW, `plan_shadow.import_cap_kw`): the main fuse less its margin, and the import
+    target's held level where one is set."""
+    from ..api.entity_fields import stored_import_target_kw  # noqa: PLC0415 - the API imports the site
+
+    entry = hass.config_entries.async_get_entry(site.entry_id)
+    config = site.config
+    return import_cap_kw(
+        config.get(CONF_MAIN_FUSE_A),
+        config.get(CONF_SAFETY_MARGIN_A),
+        stored_voltage_between_phases_v(config),
+        stored_import_target_kw(config if entry is None else entry.data),
+    )
+
+
 class _NoPlan(Exception):
     def __init__(self, reason: str) -> None:
         super().__init__(reason)
@@ -439,24 +496,11 @@ class BatteryPlanShadow:
     # ---- the triggers
 
     def _price_source(self) -> Any:
-        from ..pricing.price_source import site_price_source  # noqa: PLC0415 - it imports the planner
-
-        return site_price_source(self.hass, self.site.entry_id)
+        return site_price_source_of(self.hass, self.site)
 
     def _price_days(self, source: Any, now: datetime) -> list[Any]:
         """The documents of today and the next day in the area's zone, as held now (nothing is fetched)."""
-        from ..runtime import domain_data  # noqa: PLC0415
-
-        repository = domain_data(self.hass).price_repository
-        if repository is None or source is None or source.area is None:
-            return []
-        today = now.astimezone(time_zones.require_zone(source.area.tz)).date()
-        documents = []
-        for offset in range(PRICE_DAYS):
-            document = repository.day_snapshot(source.area_id, today + timedelta(days=offset)).document
-            if document is not None:
-                documents.append(document)
-        return documents
+        return price_days(self.hass, source, now)
 
     def _prices_key(self, now: datetime) -> Any:
         """What changes when the prices or the fees do: the source's area and fees, and the documents held."""
@@ -512,33 +556,10 @@ class BatteryPlanShadow:
         return (DEFAULT_CYCLE_COST, True) if wear is None else (wear, False)
 
     def _car_windows(self) -> list[tuple[datetime, datetime, float]]:
-        """The site's chargers' installed plans: `(start, end, kW)` per window."""
-        from ..runtime import controller_for  # noqa: PLC0415 - the charger side imports the site
-
-        windows: list[tuple[datetime, datetime, float]] = []
-        for charger_entry_id in self.site.config.get(CONF_CHARGER_ENTRY_IDS) or []:
-            charger = controller_for(self.hass, charger_entry_id)
-            plan = None if charger is None else getattr(charger, "plan", None)
-            if plan is None:
-                continue
-            kw = plan.power_kw if plan.power_kw else plan.amps * plan.phases * 230.0 / 1000.0
-            try:
-                windows.extend((start, end, float(kw)) for start, end in plan.windows)
-            except (TypeError, ValueError):
-                continue
-        return windows
+        return site_car_windows(self.hass, self.site)
 
     def _cap(self) -> float | None:
-        from ..api.entity_fields import stored_import_target_kw  # noqa: PLC0415 - the API imports the site
-
-        entry = self.hass.config_entries.async_get_entry(self.site.entry_id)
-        config = self.site.config
-        return import_cap_kw(
-            config.get(CONF_MAIN_FUSE_A),
-            config.get(CONF_SAFETY_MARGIN_A),
-            stored_voltage_between_phases_v(config),
-            stored_import_target_kw(config if entry is None else entry.data),
-        )
+        return site_import_cap_kw(self.hass, self.site)
 
     def _keys(self, now: datetime, facts: BatteryFacts) -> dict[str, Any]:
         windows = self._car_windows()
