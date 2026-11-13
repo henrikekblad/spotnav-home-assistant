@@ -35,6 +35,7 @@ import logging
 import math
 import time
 from collections.abc import Sequence
+from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from functools import partial
 from typing import TYPE_CHECKING, Any, Final
