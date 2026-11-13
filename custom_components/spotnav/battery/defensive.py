@@ -11,8 +11,13 @@ planned on the same prices, battery and cars, with:
 
 The band is the site's own (`site/forecast_band.py`); a side whose band is still learning keeps its point forecast,
 and with neither band there is no defensive plan. It is a shadow: planned beside the modes, reviewed the night after
-on the measured load and sun, never in force and never written to any device. The backtest behind it
-(`scripts/forecast_gap_backtest.py --runs ...,band=...`) is told in `plans/battery_plan_backtest/README.md`.
+on the measured load and sun, never in force and never written to any device.
+
+The backtest behind it (`scripts/forecast_gap_backtest.py --runs ...,band=hd50+sun`, the owner's site, 2026-08-31 to
+11-13, planned every hour): it cost 107 kr with Max profit and 145 kr with Balanced over 73 days against the plan on
+the median, and was level on Solcast's month. The house side alone is nearly free (13-28 kr), the sun side costs most
+(a plan on 0.53 x the sun buys at night what the sun then gives). An hourly replan mends a miss within the hour, so a
+margin planned ahead is paid every day. It runs in shadow so the nightly review can tell whether a winter changes that.
 """
 
 from __future__ import annotations
