@@ -16,7 +16,13 @@ from homeassistant.core import HomeAssistant
 from homeassistant.util import dt as dt_util
 
 from custom_components.spotnav.battery import plan_runtime
-from custom_components.spotnav.battery.plan_model import ACTION_SELF_CONSUME
+from custom_components.spotnav.battery.plan_model import (
+    ACTION_SELF_CONSUME,
+    MODE_BALANCED,
+    MODE_MAX_PROFIT,
+    MODE_SELF_CONSUMPTION,
+    MODES,
+)
 from custom_components.spotnav.battery.plan_runtime import CHECK_S, BatteryPlanShadow
 from custom_components.spotnav.battery.plan_shadow import (
     BUCKET,
@@ -100,8 +106,13 @@ async def test_the_plan_runs_in_shadow_as_a_benchmark_beside_a_battery_in_its_ow
     slots = plan["plan"]["slots"]
     assert all(reason["code"] in REASON_CODES for slot in slots for reason in slot["reasons"])
     assert plan["plan"]["savings"] >= 0
-    # The variant that may sell from the battery ran on the same inputs.
-    assert plan["plan_export"] is not None and len(plan["plan_export"]["slots"]) == len(slots)
+    # Balanced is the plan in force; every mode ran on the same inputs, Self-consumption as the baseline.
+    assert plan["mode"] == inputs["mode"] == MODE_BALANCED and plan["modes_skipped"] == []
+    assert set(plan["modes"]) == set(MODES) and plan["modes"][MODE_BALANCED] == plan["plan"]
+    assert len(plan["modes"][MODE_MAX_PROFIT]["slots"]) == len(slots)
+    assert plan["modes"][MODE_SELF_CONSUMPTION]["baseline"] is True
+    assert plan["plan"]["min_soc_pct"] == 20.0 and plan["modes"][MODE_MAX_PROFIT]["min_soc_pct"] == 10.0
+    assert inputs["wear"] > 0
     assert plan["review_totals"]["days"] == 0
     # The first quarter hour knows what the plan said about it.
     assert plan["quarters"][-1]["first_planned"] is None
@@ -194,13 +205,42 @@ async def test_the_plan_is_solved_in_the_executor(hass: HomeAssistant, monkeypat
     assert plan_runtime._solve in jobs
 
 
-async def test_the_export_variant_is_skipped_when_the_first_plan_took_too_long(
+async def test_the_other_modes_are_skipped_when_the_first_plan_took_too_long(
     hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(plan_runtime, "EXPORT_BUDGET_S", -1.0)
+    monkeypatch.setattr(plan_runtime, "MODES_BUDGET_S", -1.0)
     _site_entry, controller, _now = await _planned(hass, monkeypatch)
     plan = controller.battery_shadow.snapshot()["plan"]
-    assert plan["status"] == "planned" and plan["plan_export"] is None
+    assert plan["status"] == "planned" and plan["modes_skipped"] == [MODE_MAX_PROFIT]
+    assert plan["modes"][MODE_MAX_PROFIT] is None and plan["modes"][MODE_SELF_CONSUMPTION] is not None
+
+
+async def test_the_site_mode_is_read_from_its_key(hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch) -> None:
+    site, controller = await _site(hass)
+    shadow = controller.battery_shadow.plan
+    assert shadow._site_mode() == (MODE_BALANCED, False)
+    hass.config_entries.async_update_entry(site, data={**site.data, plan_runtime.MODE_KEY: MODE_MAX_PROFIT})
+    assert shadow._site_mode() == (MODE_MAX_PROFIT, False)
+    hass.config_entries.async_update_entry(site, data={**site.data, plan_runtime.MODE_KEY: "export"})
+    assert shadow._site_mode() == (MODE_BALANCED, True)
+
+
+async def test_max_profit_as_the_site_mode_is_the_plan_in_force(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    site, controller = await _site(hass)
+    hass.config_entries.async_update_entry(site, data={**site.data, plan_runtime.MODE_KEY: MODE_MAX_PROFIT})
+    now = dt_util.now()
+    _give_prices(monkeypatch, _prices(now))
+    _house_forecast(controller, now)
+    controller.battery_shadow.tick(now)
+    await hass.async_block_till_done()
+    plan = controller.battery_shadow.snapshot()["plan"]
+    assert plan["mode"] == MODE_MAX_PROFIT and plan["plan"] == plan["modes"][MODE_MAX_PROFIT]
+    assert plan["plan"]["min_soc_pct"] == 10.0
+    shadow = controller.battery_shadow.plan
+    assert set(shadow.mode_plans) == {MODE_BALANCED, MODE_MAX_PROFIT}
+    assert [slot.action for slot in shadow.plan] == [slot.action for slot in shadow.mode_plans[MODE_MAX_PROFIT]]
 
 
 async def test_the_quarter_hours_record_what_the_battery_did_and_the_day_is_reviewed(
@@ -230,7 +270,7 @@ async def test_the_quarter_hours_record_what_the_battery_did_and_the_day_is_revi
     [review] = snapshot["reviews"]
     assert review["date"] == yesterday.isoformat()
     assert review["actual"]["cost"] == pytest.approx(review["covered"] * 25.0)
-    assert set(review) >= {"actual", "plan", "plan_export", "self_consumption", "saving", "actual_saving"}
+    assert set(review) >= {"actual", "plan", "modes", "self_consumption", "saving", "mode_savings", "actual_saving"}
     assert snapshot["review_totals"]["days"] == 1
     assert len(plan.actuals.rows) >= 23
 
@@ -250,13 +290,16 @@ async def test_the_record_and_the_running_slot_survive_a_reload(
     assert [(s.start, s.end, s.action) for s in plan.plan] == [(s.start, s.end, s.action) for s in kept]
     assert plan.soc_at_plan == 44.6
     assert plan.actuals.buckets
+    assert plan.mode == MODE_BALANCED and set(plan.mode_plans) == {MODE_BALANCED, MODE_MAX_PROFIT}
+    kept_profit = controller.battery_shadow.plan.mode_plans[MODE_MAX_PROFIT]
+    assert [s.action for s in plan.mode_plans[MODE_MAX_PROFIT]] == [s.action for s in kept_profit]
 
     _house_forecast(reloaded, now)
     reloaded.battery_shadow.tick(now + timedelta(seconds=5))
     await hass.async_block_till_done()
-    view = reloaded.battery_shadow.snapshot()["plan"]["plan"]
-    # The first plan after the reload weighed the running slot's action against the one before.
-    assert "kept" in view
+    snapshot = reloaded.battery_shadow.snapshot()["plan"]
+    # The first plan after the reload weighed each mode's running slot against the one before.
+    assert "kept" in snapshot["plan"] and "kept" in snapshot["modes"][MODE_MAX_PROFIT]
 
 
 async def test_own_house_rows_replace_the_sites_forecast_once_there_are_enough(

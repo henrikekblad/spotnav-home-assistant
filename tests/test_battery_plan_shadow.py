@@ -12,12 +12,15 @@ from datetime import date, datetime, timedelta, timezone
 import pytest
 
 from custom_components.spotnav.battery.facts import BatteryFacts
-from custom_components.spotnav.battery.plan import plan_battery
+from custom_components.spotnav.battery.plan import mode_battery, plan_battery
 from custom_components.spotnav.battery.plan_model import (
     ACTION_EXPORT_DISCHARGE,
     ACTION_GRID_CHARGE,
     ACTION_HOLD,
     ACTION_SELF_CONSUME,
+    MODE_BALANCED,
+    MODE_DEFS,
+    MODE_MAX_PROFIT,
     BatteryParams,
     PlanRequest,
     PlanSlot,
@@ -484,7 +487,7 @@ def test_a_day_with_an_idle_battery_scores_the_plan_against_self_consumption() -
     assert review.actual_saving == pytest.approx(0.0, abs=1e-6)
     assert review.plan.cost < review.actual.cost - 1000  # it pays for the night's charge and saves in the dear hours
     assert review.saving > 1000
-    assert review.plan_export is None and review.export_saving is None
+    assert review.modes == {} and review.mode_savings == {}
     assert review.soc_mae == pytest.approx(0.0)
     as_dict = review.as_dict()
     assert as_dict["plan"]["net"] == pytest.approx(review.net(review.plan), abs=0.01)
@@ -535,34 +538,81 @@ def test_planned_slots_round_trip_the_plan() -> None:
     assert isinstance(slots[0], PlanSlot)
 
 
-def test_the_export_variant_is_reviewed_beside_the_plan_and_summed() -> None:
-    # A dear evening with a high sell price: the variant that may sell from a full battery earns more.
+def _mode_batteries() -> dict:
+    return {name: mode_battery(BATTERY, MODE_DEFS[name]) for name in (MODE_BALANCED, MODE_MAX_PROFIT)}
+
+
+def test_the_modes_are_reviewed_beside_the_plan_and_summed() -> None:
+    # A dear evening with a high sell price: the mode that may sell from a full battery earns more.
     buy = [20.0] * 6 + [100.0] * 12 + [400.0] * 6
     ran = [(ACTION_GRID_CHARGE, 5.0)] * 6 + [(ACTION_HOLD, 0.0)] * 12 + [(ACTION_SELF_CONSUME, 0.0)] * 6
     buckets = _day(buy=buy, house=0.5, battery=[0.0] * 24, soc=[10.0] * 25, ran=ran)
     for bucket in buckets:
-        bucket.ran_export_action, bucket.ran_export_kw = bucket.ran_action, bucket.ran_kw
         hour = (bucket.start - MIDNIGHT).total_seconds() // 3600
-        if hour >= 18:
-            bucket.ran_export_action = ACTION_EXPORT_DISCHARGE
-    review = review_day(date(2026, 11, 13), buckets, BATTERY, TZ, MIDNIGHT + timedelta(days=1, hours=1))
-    assert review is not None and review.plan_export is not None
-    assert review.export_saving is not None and review.export_saving > review.saving
+        bucket.ran_modes[MODE_BALANCED] = (bucket.ran_action, bucket.ran_kw)
+        sells = hour >= 18
+        bucket.ran_modes[MODE_MAX_PROFIT] = (ACTION_EXPORT_DISCHARGE, 0.0) if sells else (bucket.ran_action, bucket.ran_kw)
+    review = review_day(
+        date(2026, 11, 13), buckets, BATTERY, TZ, MIDNIGHT + timedelta(days=1, hours=1), _mode_batteries(), MODE_BALANCED
+    )
+    assert review is not None and set(review.modes) == {MODE_BALANCED, MODE_MAX_PROFIT}
+    assert review.mode == MODE_BALANCED
+    # The plan is the site's mode: the same actions and floor give the same run.
+    assert review.mode_savings[MODE_BALANCED] == pytest.approx(review.saving)
+    assert review.mode_savings[MODE_MAX_PROFIT] > review.saving
+    # Balanced keeps its reserve; Max profit sells down to the battery's own floor.
+    assert review.modes[MODE_MAX_PROFIT].end_soc_pct < review.modes[MODE_BALANCED].end_soc_pct
     totals = review_totals([review, review])
-    assert totals["days"] == 2 and totals["export_days"] == 2
+    assert totals["days"] == 2 and totals["modes"][MODE_MAX_PROFIT]["days"] == 2
     assert totals["saving"] == pytest.approx(2 * review.saving, abs=0.02)
-    assert totals["export_saving"] == pytest.approx(2 * review.export_saving, abs=0.02)
+    assert totals["modes"][MODE_MAX_PROFIT]["saving"] == pytest.approx(2 * review.mode_savings[MODE_MAX_PROFIT], abs=0.02)
+    assert totals["modes"][MODE_MAX_PROFIT]["saving_same_days_plan"] == pytest.approx(2 * review.saving, abs=0.02)
     assert totals["actual_saving"] == pytest.approx(0.0, abs=0.02)
     assert DayReview.from_dict(review.as_dict()).as_dict() == review.as_dict()
-    assert review_totals([])["days"] == 0
+    assert review_totals([])["days"] == 0 and review_totals([])["modes"] == {}
 
 
-def test_a_day_where_the_export_variant_did_not_run_has_no_export_figure() -> None:
+def test_the_plan_keeps_the_site_modes_floor_in_the_review() -> None:
+    # Discharge into the house all day from 50 %: Balanced's run stops at its reserve, self-consumption at the floor.
+    ran = [(ACTION_SELF_CONSUME, 0.0)] * 24
+    buckets = _day(buy=[300.0] * 24, house=1.0, battery=[0.0] * 24, soc=[50.0] * 25, ran=ran)
+    review = review_day(date(2026, 11, 13), buckets, BATTERY, TZ, MIDNIGHT + timedelta(days=1), _mode_batteries(),
+                        MODE_BALANCED)
+    assert review is not None
+    assert review.plan.end_soc_pct == pytest.approx(MODE_DEFS[MODE_BALANCED].floor_pct)
+    assert review.self_consumption.end_soc_pct == pytest.approx(BATTERY.min_soc_pct)
+
+
+def test_a_day_where_a_mode_did_not_run_has_no_figure_for_it() -> None:
     ran = [(ACTION_SELF_CONSUME, 0.0)] * 24
     buckets = _day(buy=[100.0] * 24, house=1.0, battery=[0.0] * 24, soc=[50.0] * 25, ran=ran)
-    buckets[10].ran_export_action = ACTION_SELF_CONSUME
-    review = review_day(date(2026, 11, 13), buckets, BATTERY, TZ, MIDNIGHT + timedelta(days=1))
-    assert review is not None and review.plan_export is None
+    buckets[10].ran_modes[MODE_MAX_PROFIT] = (ACTION_SELF_CONSUME, 0.0)
+    review = review_day(date(2026, 11, 13), buckets, BATTERY, TZ, MIDNIGHT + timedelta(days=1), _mode_batteries())
+    assert review is not None and review.modes == {}
+
+
+def test_rows_and_reviews_from_before_the_modes_still_load() -> None:
+    bucket = Bucket(MIDNIGHT, buy=100.0, sell=40.0, covered_s=900, ran_action=ACTION_HOLD, ran_kw=0.0)
+    bucket.ran_modes[MODE_MAX_PROFIT] = (ACTION_EXPORT_DISCHARGE, -5.0)
+    row = bucket.as_row()
+    assert len(row) == 17 and Bucket.from_row(row) == bucket
+    old = [*row[:16], ACTION_EXPORT_DISCHARGE, -5.0]
+    loaded = Bucket.from_row(old)
+    assert loaded is not None and loaded.ran_modes == {} and loaded.ran_action == ACTION_HOLD
+    assert Bucket.from_row([*row[:16], {"export": [ACTION_HOLD, 0.0]}]) is None
+    review = review_day(
+        date(2026, 11, 13),
+        _day(buy=[100.0] * 24, house=1.0, battery=[0.0] * 24, soc=[50.0] * 25, ran=None),
+        BATTERY,
+        TZ,
+        MIDNIGHT + timedelta(days=1),
+    )
+    assert review is not None
+    raw = review.as_dict()
+    raw.pop("modes")
+    raw["plan_export"] = raw["plan"]
+    again = DayReview.from_dict(raw)
+    assert again is not None and again.modes == {}
 
 
 def test_a_sell_credit_is_added_to_every_exported_kwh() -> None:

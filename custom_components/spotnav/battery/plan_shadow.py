@@ -27,14 +27,14 @@ or there writes to a device: the plan is a shadow and a benchmark (wave 2 of 3.0
   the slot's prices and cap, the first action planned for it and the action the plan had when it began. A battery
   that runs its own optimiser is planned all the same, as a benchmark: its quarter hours show what it really did
   (`actual_action`) beside what the plan would have done.
-* **Two variants** of the plan run on the same inputs: without and with export discharge (selling from the battery),
-  so both figures are seen before the modes to come (self-consumption, balanced, max profit) are chosen. The second
-  is skipped when the first took too long.
+* **The modes side by side** (`plan_model.MODE_DEFS`): the site's mode (`battery_mode`, Balanced by default) is
+  the plan in force; the others are planned on the same inputs as long as the CPU budget allows, so their figures
+  are seen before a mode is ever chosen for real. Self-consumption does not plan: it is the baseline.
 * **Review** (`review_day`), the night after, side by side over the same measured load and sun from the same
-  measured SoC: what really happened, each plan variant's actions run against it (`plan.run_slot`), and plain
-  self-consumption; `review_totals` sums the days kept (30). Each run is charged the change of its stored energy at
-  the day's end value, so one that empties the battery does not look cheap. `saving` (plan against
-  self-consumption) is the one figure to show, `export_saving` the same with export discharge; `actual_saving` says
+  measured SoC: what really happened, each mode's actions run against it (`plan.run_slot`, with that mode's floor),
+  and plain self-consumption; `review_totals` sums the days kept (30). Each run is charged the change of its stored
+  energy at the day's end value, so one that empties the battery does not look cheap. `saving` (the site's mode
+  against self-consumption) is the one figure to show, `mode_savings` the same per mode; `actual_saving` says
   what the battery's own way earned against the same baseline: the figure a battery in its own AI mode is judged
   by before SpotNav is ever given the battery.
 
@@ -66,6 +66,7 @@ from .plan_model import (
     ACTIONS,
     DEFAULT_ROUND_TRIP_EFFICIENCY,
     MAX_SLOTS,
+    MODES,
     BatteryParams,
     BatteryPlan,
     PlanSlot,
@@ -511,9 +512,8 @@ class Bucket:
     ran_action: str | None = None
     ran_kw: float | None = None
     ran_soc: float | None = None
-    #: The same for the variant that may sell from the battery (`allow_export_discharge`).
-    ran_export_action: str | None = None
-    ran_export_kw: float | None = None
+    #: The same per mode planned beside it: `{mode: (action, kW)}`.
+    ran_modes: dict[str, tuple[str, float]] = field(default_factory=dict)
 
     @property
     def end(self) -> datetime:
@@ -570,26 +570,36 @@ class Bucket:
             self.ran_action,
             r(self.ran_kw, 3),
             r(self.ran_soc, 2),
-            self.ran_export_action,
-            r(self.ran_export_kw, 3),
+            {mode: [action, round(kw, 3)] for mode, (action, kw) in sorted(self.ran_modes.items())} or None,
         ]
 
     @classmethod
     def from_row(cls, raw: Any) -> Bucket | None:
-        if not isinstance(raw, list) or len(raw) != 18:
+        # 18 fields: a row from before the modes, whose export variant is dropped.
+        if not isinstance(raw, list) or len(raw) not in (17, 18):
             return None
         start = parse_aware_datetime(raw[0])
         if start is None:
             return None
-        numbers = [raw[i] for i in (1, 2, 3, 9, 10, 12, 14, 15, 17)]
+        numbers = [raw[i] for i in (1, 2, 3, 9, 10, 12, 14, 15)]
         if any(value is not None and not _finite(value) for value in numbers):
             return None
         energies = [raw[i] for i in (4, 5, 6, 7, 8)]
         if not all(_finite(value) for value in energies) or raw[8] < 0:
             return None
-        actions = (raw[11], raw[13], raw[16])
+        actions = (raw[11], raw[13])
         if any(action is not None and action not in ACTIONS for action in actions):
             return None
+        ran_modes: dict[str, tuple[str, float]] = {}
+        if len(raw) == 17 and raw[16] is not None:
+            if not isinstance(raw[16], Mapping):
+                return None
+            for mode, pair in raw[16].items():
+                if mode not in MODES or not isinstance(pair, list) or len(pair) != 2:
+                    return None
+                if pair[0] not in ACTIONS or not _finite(pair[1]):
+                    return None
+                ran_modes[mode] = (pair[0], float(pair[1]))
         return cls(
             start=start.astimezone(timezone.utc),
             buy=raw[1],
@@ -607,8 +617,7 @@ class Bucket:
             ran_action=raw[13],
             ran_kw=raw[14],
             ran_soc=raw[15],
-            ran_export_action=raw[16],
-            ran_export_kw=raw[17],
+            ran_modes=ran_modes,
         )
 
     def view(self) -> dict[str, Any]:
@@ -617,7 +626,7 @@ class Bucket:
         return {
             "start": self.start.isoformat(),
             "planned": self.ran_action,
-            "planned_with_export": self.ran_export_action,
+            "planned_by_mode": {mode: action for mode, (action, _kw) in sorted(self.ran_modes.items())},
             "planned_soc_pct": None if self.ran_soc is None else round(self.ran_soc, 1),
             "first_planned": self.first_action,
             "actual": self.actual_action(),
@@ -666,7 +675,7 @@ class PlanActuals:
         price: PriceSlot | None,
         cap_kw: float | None,
         ran: PlannedSlot | None,
-        ran_export: PlannedSlot | None = None,
+        ran_modes: Mapping[str, PlannedSlot | None] | None = None,
     ) -> Bucket:
         """The quarter hour starting at `start`, opened with the prices and the plan in force when it began."""
         bucket = self.buckets.get(start)
@@ -682,9 +691,9 @@ class PlanActuals:
             bucket.ran_action = ran.action
             bucket.ran_kw = ran.battery_kw
             bucket.ran_soc = ran.soc_end_pct
-        if ran_export is not None:
-            bucket.ran_export_action = ran_export.action
-            bucket.ran_export_kw = ran_export.battery_kw
+        for mode, slot in (ran_modes or {}).items():
+            if slot is not None:
+                bucket.ran_modes[mode] = (slot.action, slot.battery_kw)
         self.buckets[start] = bucket
         return bucket
 
@@ -798,10 +807,10 @@ class Run:
 
 @dataclass(frozen=True, slots=True)
 class DayReview:
-    """One local day side by side (see the module): what really happened, the plan's actions on the same measured
-    load and sun, the same with export discharge allowed (`plan_export`, `None` while that variant did not run), and
-    plain self-consumption. Each run's `net` charges it the change of its stored energy at `end_value`; the savings
-    are against self-consumption's net, so a positive figure is money saved."""
+    """One local day side by side (see the module): what really happened, the plan's actions (the site's mode) on the
+    same measured load and sun, each mode planned beside it that ran the whole day (`modes`), and plain
+    self-consumption. Each run's `net` charges it the change of its stored energy at `end_value`; the savings are
+    against self-consumption's net, so a positive figure is money saved."""
 
     day: date
     reviewed_at: datetime
@@ -814,8 +823,10 @@ class DayReview:
     actual: Run
     plan: Run
     self_consumption: Run
-    plan_export: Run | None = None
+    modes: dict[str, Run] = field(default_factory=dict)
     soc_mae: float | None = None
+    #: The site's mode the day was planned in (the last one in force).
+    mode: str | None = None
 
     def net(self, run: Run) -> float:
         return run.cost - (run.end_soc_pct - self.start_soc_pct) / 100 * self.usable_kwh * self.end_value
@@ -826,9 +837,10 @@ class DayReview:
         return self.net(self.self_consumption) - self.net(self.plan)
 
     @property
-    def export_saving(self) -> float | None:
-        """The plan that may sell from the battery, against self-consumption."""
-        return None if self.plan_export is None else self.net(self.self_consumption) - self.net(self.plan_export)
+    def mode_savings(self) -> dict[str, float]:
+        """Each mode planned beside the plan, against self-consumption."""
+        base = self.net(self.self_consumption)
+        return {mode: base - self.net(run) for mode, run in self.modes.items()}
 
     @property
     def actual_saving(self) -> float:
@@ -841,7 +853,6 @@ class DayReview:
                 return None
             return {"cost": round(item.cost, 3), "end_soc_pct": round(item.end_soc_pct, 4), "net": round(self.net(item), 2)}
 
-        export_saving = self.export_saving
         return {
             "date": self.day.isoformat(),
             "reviewed_at": self.reviewed_at.isoformat(),
@@ -852,11 +863,12 @@ class DayReview:
             "end_value": round(self.end_value, 2),
             "usable_kwh": self.usable_kwh,
             "actual": run(self.actual),
+            "mode": self.mode,
             "plan": run(self.plan),
-            "plan_export": run(self.plan_export),
+            "modes": {mode: run(item) for mode, item in sorted(self.modes.items())},
             "self_consumption": run(self.self_consumption),
             "saving": round(self.saving, 2),
-            "export_saving": None if export_saving is None else round(export_saving, 2),
+            "mode_savings": {mode: round(value, 2) for mode, value in sorted(self.mode_savings.items())},
             "actual_saving": round(self.actual_saving, 2),
             "soc_mae": None if self.soc_mae is None else round(self.soc_mae, 2),
         }
@@ -885,8 +897,10 @@ class DayReview:
                 actual=run(raw["actual"]),
                 plan=run(raw["plan"]),
                 self_consumption=run(raw["self_consumption"]),
-                plan_export=None if raw.get("plan_export") is None else run(raw["plan_export"]),
+                # A review from before the modes kept an export variant (`plan_export`): not a mode, dropped.
+                modes={mode: run(item) for mode, item in (raw.get("modes") or {}).items() if mode in MODES},
                 soc_mae=None if raw.get("soc_mae") is None else float(raw["soc_mae"]),
+                mode=raw.get("mode") if raw.get("mode") in MODES else None,
             )
         except (KeyError, TypeError, ValueError):
             return None
@@ -894,8 +908,17 @@ class DayReview:
 
 def review_totals(reviews: Sequence[DayReview]) -> dict[str, Any]:
     """The reviewed days summed (the running total over what is kept, `REVIEW_DAYS`): the nets of each run and the
-    savings against self-consumption. `export_saving` sums only the days its variant ran (`export_days`)."""
-    exported = [review for review in reviews if review.plan_export is not None]
+    savings against self-consumption. Each mode's saving sums only the days it ran (`days`), beside the plan's on
+    those same days (`saving_same_days_plan`)."""
+    modes: dict[str, dict[str, Any]] = {}
+    for mode in MODES:
+        ran = [review for review in reviews if mode in review.modes]
+        if ran:
+            modes[mode] = {
+                "days": len(ran),
+                "saving": round(sum(review.mode_savings[mode] for review in ran), 2),
+                "saving_same_days_plan": round(sum(review.saving for review in ran), 2),
+            }
     return {
         "days": len(reviews),
         "first": None if not reviews else reviews[0].day.isoformat(),
@@ -905,9 +928,7 @@ def review_totals(reviews: Sequence[DayReview]) -> dict[str, Any]:
         "self_consumption_net": round(sum(review.net(review.self_consumption) for review in reviews), 2),
         "saving": round(sum(review.saving for review in reviews), 2),
         "actual_saving": round(sum(review.actual_saving for review in reviews), 2),
-        "export_days": len(exported),
-        "export_saving": round(sum(review.export_saving or 0.0 for review in exported), 2),
-        "export_saving_same_days_plan": round(sum(review.saving for review in exported), 2),
+        "modes": modes,
     }
 
 
@@ -944,10 +965,18 @@ class _Sim:
 
 
 def review_day(
-    day: date, buckets: Iterable[Bucket], battery: BatteryParams, tz: str, now: datetime
+    day: date,
+    buckets: Iterable[Bucket],
+    battery: BatteryParams,
+    tz: str,
+    now: datetime,
+    mode_batteries: Mapping[str, BatteryParams] | None = None,
+    mode: str | None = None,
 ) -> DayReview | None:
     """The day's runs over its measured quarter hours (see the module); `None` when no quarter hour was measured
-    with its prices or no SoC was read. The export variant is reviewed when it ran in every planned quarter hour."""
+    with its prices or no SoC was read. [battery] is the battery at its own floor (self-consumption's);
+    [mode_batteries] the same as each planning mode plans it (`plan.mode_battery`), and [mode] the site's, whose
+    floor the plan's own run keeps. A mode is reviewed when it ran in every planned quarter hour."""
     zone = time_zones.require_zone(tz)
     rows = sorted(
         (bucket for bucket in buckets if bucket.start.astimezone(zone).date() == day), key=lambda bucket: bucket.start
@@ -960,12 +989,18 @@ def review_day(
     end_soc = float(next(b.soc_end for b in reversed(rows) if b.soc_end is not None))  # type: ignore[arg-type]
     end_value = statistics.median(float(b.buy) for b in usable) * battery.round_trip_efficiency  # type: ignore[arg-type]
     start_kwh = min(battery.max_kwh, max(battery.min_kwh, battery.usable_kwh * start_soc / 100))
-    with_export = all(b.ran_export_action is not None for b in usable if b.ran_action is not None) and any(
-        b.ran_export_action is not None for b in usable
-    )
+    batteries = dict(mode_batteries or {})
+    planned = [b for b in usable if b.ran_action is not None]
+    reviewed = [
+        name
+        for name in batteries
+        if planned and all(name in b.ran_modes for b in planned)
+    ]
 
     actual_cost = 0.0
-    plan, export, base = _Sim(battery, start_kwh), _Sim(battery, start_kwh), _Sim(battery, start_kwh)
+    plan = _Sim(batteries.get(mode or "", battery), start_kwh)
+    base = _Sim(battery, start_kwh)
+    sims = {name: _Sim(batteries[name], start_kwh) for name in reviewed}
     unplanned = 0
     errors: list[float] = []
     for bucket in usable:  # no run counts a quarter hour the meters lost; the sims' battery idles through it
@@ -974,8 +1009,9 @@ def review_day(
         if bucket.ran_action is None:
             unplanned += 1
         plan.step(slot, bucket.ran_action or ACTION_SELF_CONSUME, bucket.ran_kw or 0.0)
-        if with_export:
-            export.step(slot, bucket.ran_export_action or ACTION_SELF_CONSUME, bucket.ran_export_kw or 0.0)
+        for name, sim in sims.items():
+            action, kw = bucket.ran_modes.get(name, (ACTION_SELF_CONSUME, 0.0))
+            sim.step(slot, action, kw)
         base.step(slot, ACTION_SELF_CONSUME, 0.0)
         if bucket.ran_soc is not None and bucket.soc_end is not None:
             errors.append(abs(bucket.soc_end - bucket.ran_soc))
@@ -991,8 +1027,9 @@ def review_day(
         actual=Run(actual_cost, end_soc),
         plan=plan.run(),
         self_consumption=base.run(),
-        plan_export=export.run() if with_export else None,
+        modes={name: sim.run() for name, sim in sims.items()},
         soc_mae=sum(errors) / len(errors) if errors else None,
+        mode=mode,
     )
 
 
