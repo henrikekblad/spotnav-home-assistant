@@ -120,6 +120,12 @@ def _push(hass: HomeAssistant, entry_id: str) -> dict[str, Any] | None:
     return None if push is None else push.diagnostics()
 
 
+def _outside_pauses(hass: HomeAssistant, entry_id: str) -> dict[str, Any] | None:
+    data = charger_data(hass, entry_id)
+    notifier = None if data is None else data.notifier
+    return None if notifier is None else notifier.outside_pauses
+
+
 def _price_source(hass: HomeAssistant, entry_id: str) -> dict[str, Any] | None:
     source = price_source_for(hass, entry_id)
     return None if source is None else source.diagnostics()
@@ -142,6 +148,10 @@ def _charger_diagnostics(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, A
         # The paired app's instant notifications: registered or not, the events, the last wake-up's
         # result and time. Never the relay ref.
         "push": _push(hass, entry.entry_id),
+        # Pauses of the plan's charge SpotNav did not command, such as an aggregator's (Tibber Grid Rewards): kept
+        # quiet, the plan kept (`notifications/outside_pause.py`). The open one, today's and the total since the
+        # start, those that lasted too long (then told as trouble) and the last ten.
+        "outside_pauses": _outside_pauses(hass, entry.entry_id),
         "vehicle_identification": _identification(hass, entry.entry_id),
         # Each car's last wake for a reading (`vehicles/vehicle_wake.py`): when, through which integration, for which
         # charge end and its result, with whether the car has it turned on and its integration offers a wake now.
