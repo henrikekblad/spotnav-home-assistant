@@ -33,6 +33,7 @@ import math
 from dataclasses import dataclass, replace
 from typing import Literal, Mapping
 
+from ..site.battery_probe import held_band_extra_a
 from ..site.site_capacity import PhaseName
 
 
@@ -162,14 +163,17 @@ class YieldConfig:
     # Stepping into the battery's share: with the site at its limit and the battery charging from
     # the grid by at least a step's worth (`step_a` x 230 V x phases, on a fresh reading), one step
     # may take the site over its limit (fuse less safety margin) by at most `battery_probe_over_a`
-    # (the held band's 0.5 A plus one 2 A step, and never past `ceiling_a`) while it is measured.
+    # (the held band's 0.5 A plus one 2 A step, and never past `ceiling_a`) while it is measured; on a phase whose
+    # measured voltage is low by the band's widening too (`held_band_extra_a`), so the step starts where the battery
+    # holds the grid there.
     # A step the car's reading has not shown within `battery_probe_detect_s` (an OCPP charger
     # reports about once a minute) is taken back.
     battery_probe_over_a: float = 2.5
     battery_probe_detect_s: float = 90.0
     # A battery that holds the grid at the limit reads a few hundredths over it (`site/battery_probe.py`'s
     # `HELD_BAND_A`): within this band above the limit the unverified ceiling (the fuse) does not stop a step into
-    # the battery's share, which is bound by its own allowance instead.
+    # the battery's share, which is bound by its own allowance instead. On a phase whose measured voltage is low the
+    # band, and `real_excess_a` with it, is wider by `held_band_extra_a` (`YieldObservation.voltage_v`).
     held_band_a: float = 0.5
     ceiling_a: float
     unverified_ceiling_a: float | None = None
@@ -200,6 +204,10 @@ class YieldObservation:
     # Whether `battery_power_w` is a fresh reading (within the site's maximum age); only a fresh
     # one licenses a step into the battery's share.
     battery_fresh: bool = False
+    # Each phase's voltage where the site measures it and reads it fresh, `None` or missing otherwise: a battery
+    # that limits the grid by power holds more amps at a low voltage, so the held band and the real excess are that
+    # much wider there (`site/battery_probe.py`'s `held_band_extra_a`).
+    voltage_v: Mapping[PhaseName, float | None] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -332,6 +340,9 @@ class YieldStepper:
         self._battery_probe: _BatteryProbe | None = None
         self._over_limit_steps = False
 
+        # This observation's widening of the held band per phase (`held_band_extra_a`); empty with no limit.
+        self._band_extra_a: dict[PhaseName, float] = {}
+
         self._backoff_until: float | None = None
         # Duration of the next backoff: doubles on each consecutive failure up to
         # `backoff_max_s`, reset by a confirm.
@@ -383,7 +394,10 @@ class YieldStepper:
             return cfg.ceiling_a
         if (
             self._state == "unknown"
-            and all(site_a[phase] <= limit_a[phase] + cfg.held_band_a for phase in site_a)
+            and all(
+                site_a[phase] <= limit_a[phase] + cfg.held_band_a + self._band_extra_a.get(phase, 0.0)
+                for phase in site_a
+            )
             and self._battery_room(observation, site_a, limit_a)
         ):
             return cfg.ceiling_a
@@ -425,6 +439,12 @@ class YieldStepper:
             and observation.battery_power_w >= cfg.battery_charging_w
         )
         limit_a = self._limit(observation)
+        voltage_v = observation.voltage_v or {}
+        self._band_extra_a = (
+            {}
+            if limit_a is None
+            else {phase: held_band_extra_a(limit_a[phase], voltage_v.get(phase)) for phase in limit_a}
+        )
         self._note_lowering(assigned_a, site_a, delivered_a, battery_charging, limit_a, now)
         if not battery_charging:
             self._battery_absorbs = False
@@ -786,15 +806,19 @@ class YieldStepper:
     def _over_allowance(
         self, site_a: Mapping[PhaseName, float], limit_a: Mapping[PhaseName, float] | None
     ) -> bool:
-        """Whether a phase is (or would be) over its limit by more than `battery_probe_over_a`, or
-        over `ceiling_a`. An unknown limit counts as over. The allowance is a step into the battery's share's own
-        bound, so the unverified ceiling (the fuse) does not cut it: the step is what verifies the yield."""
-        cfg = self._config
+        """Whether a phase is (or would be) over its allowance (`_allowance_a`). An unknown limit counts as over. The
+        allowance is a step into the battery's share's own bound, so the unverified ceiling (the fuse) does not cut it:
+        the step is what verifies the yield."""
         if limit_a is None:
             return True
-        return any(
-            site_a[phase] > min(cfg.ceiling_a, limit_a[phase] + cfg.battery_probe_over_a)
-            for phase in site_a
+        return any(site_a[phase] > self._allowance_a(phase, limit_a) for phase in site_a)
+
+    def _allowance_a(self, phase: PhaseName, limit_a: Mapping[PhaseName, float]) -> float:
+        """The most a step into the battery's share may take `phase` to: its limit plus `battery_probe_over_a` and the
+        band's widening for a low voltage, and never past `ceiling_a`."""
+        cfg = self._config
+        return min(
+            cfg.ceiling_a, limit_a[phase] + cfg.battery_probe_over_a + self._band_extra_a.get(phase, 0.0)
         )
 
     def _allowance_room(
@@ -802,16 +826,9 @@ class YieldStepper:
     ) -> float:
         """How far (A) the most loaded phase is below the allowance over its limit (and the
         ceiling); 0 when the limit is unknown."""
-        cfg = self._config
         if limit_a is None:
             return 0.0
-        return max(
-            0.0,
-            min(
-                min(cfg.ceiling_a, limit_a[phase] + cfg.battery_probe_over_a) - site_a[phase]
-                for phase in site_a
-            ),
-        )
+        return max(0.0, min(self._allowance_a(phase, limit_a) - site_a[phase] for phase in site_a))
 
     def _battery_room(
         self,
@@ -916,11 +933,14 @@ class YieldStepper:
     def _real_excess(
         self, site_a: Mapping[PhaseName, float], limit_a: Mapping[PhaseName, float] | None
     ) -> bool:
-        """Whether the site genuinely exceeds its limit, beyond the hysteresis. An unknown limit
-        counts as excess, so nothing is held on a guess."""
+        """Whether the site genuinely exceeds its limit, beyond the hysteresis and the band's widening for a low
+        voltage (`_band_extra_a`). An unknown limit counts as excess, so nothing is held on a guess."""
         if limit_a is None:
             return True
-        return any(site_a[phase] > limit_a[phase] + self._config.real_excess_a for phase in site_a)
+        return any(
+            site_a[phase] > limit_a[phase] + self._config.real_excess_a + self._band_extra_a.get(phase, 0.0)
+            for phase in site_a
+        )
 
     def _note_lowering(
         self,
