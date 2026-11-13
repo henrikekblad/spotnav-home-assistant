@@ -76,3 +76,22 @@ async def test_refusals(hass: HomeAssistant, freezer) -> None:
     assert await hass.config_entries.async_unload(site.entry_id)
     answer = ask(hass, 99, api_version=1, site_id=site.entry_id)
     assert not answer["success"] and answer["error"]["code"] == "spotnav_no_site"
+
+
+def test_the_suns_production_comes_from_the_sun_forecasts_log() -> None:
+    """The battery's day flow takes the sun's production from the outcomes the sun forecast's log holds (a field
+    case: the answer read a production map the battery plan no longer keeps, and every battery site failed)."""
+    from datetime import datetime, timezone
+    from types import SimpleNamespace
+
+    from custom_components.spotnav.api.house import _production
+    from custom_components.spotnav.site.forecast_log import KIND_SUN, LoggedHour
+
+    made = datetime(2026, 11, 13, 12, tzinfo=timezone.utc)
+    measured = datetime(2026, 11, 13, 10, tzinfo=timezone.utc)
+    waiting = datetime(2026, 11, 13, 11, tzinfo=timezone.utc)
+    hours = {measured: LoggedHour(1.5, made, 1.2), waiting: LoggedHour(0.8, made)}
+    log = SimpleNamespace(hours=lambda kind: hours if kind == KIND_SUN else {})
+    controller = SimpleNamespace(house_forecast=SimpleNamespace(log=log))
+
+    assert _production(controller) == {measured: 1.2}

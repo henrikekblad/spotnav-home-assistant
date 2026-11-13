@@ -31,6 +31,7 @@ from ..site.house_view import (
     SunInputs,
     house_view,
 )
+from ..site.forecast_log import KIND_SUN
 from ..site.house_forecast import BASIS_GROSS
 from ..site.solar_correction_shadow import STATUS_NO_FORECAST
 from ..battery.shadow import parse_aware_datetime
@@ -56,6 +57,16 @@ def _sun(hass: HomeAssistant, controller: Any) -> SunInputs | None:
         if entry is not None:
             names.append(entry.title)
     return SunInputs(status=correction.status, raw=raw, corrected=corrected, forecast_names=tuple(names))
+
+
+def _production(controller: Any) -> dict[Any, float]:
+    """The sun's production per hour (kWh, UTC hour starts): the outcomes the sun forecast's log holds (filled from
+    the Energy dashboard's statistics); empty without a solar forecast."""
+    return {
+        start: hour.actual
+        for start, hour in controller.house_forecast.log.hours(KIND_SUN).items()
+        if hour.actual is not None
+    }
 
 
 def _battery(controller: Any) -> BatteryInputs | None:
@@ -84,7 +95,7 @@ def _battery(controller: Any) -> BatteryInputs | None:
         estimates=tuple(inputs.get("estimates") or ()),
         quarters=tuple(plan.actuals.buckets.values()),
         prices=tuple(plan._prices),  # noqa: SLF001 - the slots the plan read, held between its runs
-        production=dict(plan._production),  # noqa: SLF001
+        production=_production(controller),
         stored=plan.stored,
     )
 
