@@ -31,7 +31,6 @@ from custom_components.spotnav.battery.plan_shadow import (
     EST_MIN_SOC,
     EST_NO_SOLAR,
     KIND_BATTERY,
-    MIN_OWN_HOURS,
     NO_CAPACITY,
     NO_HOUSE_FORECAST,
     NO_PRICES,
@@ -46,6 +45,8 @@ from custom_components.spotnav.debug_bundle import async_build_debug_bundle
 from custom_components.spotnav.diagnostics import async_get_config_entry_diagnostics
 from custom_components.spotnav.planning.demand_charge import hour_start
 from custom_components.spotnav.runtime import site_controller_for
+from custom_components.spotnav.site import house_forecast
+from custom_components.spotnav.site.house_history import MIN_GROSS_HOURS
 from custom_components.spotnav.site.load_forecast import NO_TEMPERATURE, ForecastHour, LoadForecast
 
 from tests.test_battery_runtime import _service_calls, _site
@@ -304,22 +305,96 @@ async def test_the_record_and_the_running_slot_survive_a_reload(
     assert "kept" in snapshot["plan"] and "kept" in snapshot["modes"][MODE_MAX_PROFIT]
 
 
-async def test_own_house_rows_replace_the_sites_forecast_once_there_are_enough(
-    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def _statistics(monkeypatch: pytest.MonkeyPatch, now: datetime, production: dict[datetime, float] | None) -> None:
+    """The Energy dashboard's solar statistics as the site reads them: `production` kWh per hour, `None` none."""
+
+    async def ids(hass: Any) -> tuple[tuple[str, ...], tuple[str, ...]]:
+        return (("sensor.pv",), ()) if production is not None else ((), ())
+
+    async def statistics(hass: Any, wanted: Any, start: datetime, end: datetime, period: str) -> dict[str, Any]:
+        assert period == "hour" and end <= now
+        rows = [{"start": moment.timestamp(), "change": kwh} for moment, kwh in (production or {}).items()]
+        return {"sensor.pv": rows}
+
+    monkeypatch.setattr(house_forecast, "async_energy_ids", ids)
+    monkeypatch.setattr(house_forecast, "async_statistics", statistics)
+
+
+async def _own_rows_handed_over(
+    hass: HomeAssistant,
+    monkeypatch: pytest.MonkeyPatch,
+    production: dict[datetime, float] | None,
+    *,
+    sun: bool = False,
+) -> tuple[Any, dict[str, Any]]:
+    """The plan with its own rows of 0.8 kW (`grid - car - battery`) from before the site kept the whole load: the
+    first plan hands them to the site, the site refreshes on them, and the next plan counts on its median.
+    `production` `{}` gives 0.5 kWh in every hour but the last, `None` no solar statistics at all."""
     _site_entry, controller, now = await _planned(hass, monkeypatch)
     plan = controller.battery_shadow.plan
-    tz = controller.demand.tracker.tz
-    current = hour_start(now, tz)
-    for index in range(1, MIN_OWN_HOURS + 1):
-        plan.actuals.rows[current - timedelta(hours=index)] = 0.8
-    _house_forecast(controller, now)
+    current = hour_start(now, controller.demand.tracker.tz)
+    hours = [current - timedelta(hours=index) for index in range(1, MIN_GROSS_HOURS + 3)]
+    for start in hours:
+        plan.actuals.rows[start] = 0.8
+    if sun:
+        _with_sun(monkeypatch, controller, now)
+    if production == {}:
+        production.update({start: 0.5 for start in hours[1:]})  # the last hour is not compiled yet
+    _statistics(monkeypatch, now, production)
+    _house_forecast(controller, now)  # a refresh: the plan runs again, and hands its rows over
     controller.battery_shadow.tick(now + timedelta(seconds=CHECK_S + 1))
     await hass.async_block_till_done()
-    inputs = controller.battery_shadow.snapshot()["plan"]["inputs"]
-    assert inputs["house"] == "own_rows" and inputs["own_hours"] == MIN_OWN_HOURS
+    await controller.house_forecast.async_refresh()
+    controller.battery_shadow.tick(now + timedelta(seconds=2 * CHECK_S + 2))
+    await hass.async_block_till_done()
+    return controller, controller.battery_shadow.snapshot()["plan"]
+
+
+async def test_the_plans_own_rows_are_handed_to_the_site_once_and_its_whole_load_is_planned_on(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    controller, shown = await _own_rows_handed_over(hass, monkeypatch, None)
+    history = controller.house_forecast.history
+    assert history.gross_migrated_at is not None and len(history.gross) == MIN_GROSS_HOURS + 2
+    assert controller.house_forecast.basis == house_forecast.BASIS_GROSS
+    inputs = shown["inputs"]
+    assert inputs["house"] == plan_runtime.HOUSE_GROSS and inputs["gross_hours"] == MIN_GROSS_HOURS + 2
+    # No solar statistics and no solar forecast: the rows are the house less a sun it does not have.
+    assert inputs["house_rows"] == plan_runtime.ROWS_NET
     assert EST_HOUSE_COUNTS_BATTERY not in inputs["estimates"]
-    assert controller.battery_shadow.snapshot()["plan"]["plan"]["slots"][1]["house_kw"] == pytest.approx(0.8)
+    assert shown["plan"]["slots"][1]["house_kw"] == pytest.approx(0.8)
+    # Once only: rows the plan keeps later are not taken again.
+    plan = controller.battery_shadow.plan
+    plan.actuals.rows[min(history.gross) - timedelta(hours=1)] = 5.0
+    assert await controller.house_forecast.async_take_rows(sorted(plan.actuals.rows.items()), dt_util.now()) == 0
+    assert len(history.gross) == MIN_GROSS_HOURS + 2
+
+
+async def test_the_handed_over_rows_get_the_suns_production_back_before_the_forecast_is_added(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from custom_components.spotnav.battery.plan_shadow import EST_SOLAR_IN_HOUSE  # noqa: PLC0415
+
+    controller, shown = await _own_rows_handed_over(hass, monkeypatch, {}, sun=True)
+    inputs = shown["inputs"]
+    assert inputs["house"] == plan_runtime.HOUSE_GROSS and inputs["house_rows"] == plan_runtime.ROWS_GROSS
+    assert inputs["solar_statistics"] == ["sensor.pv"]
+    # The hour without a production figure yet is left out, never counted net of the sun.
+    assert inputs["gross_hours"] == MIN_GROSS_HOURS + 1
+    assert EST_SOLAR_IN_HOUSE not in inputs["estimates"]
+    assert shown["plan"]["slots"][1]["house_kw"] == pytest.approx(1.3)
+
+
+async def test_without_production_statistics_the_whole_load_is_net_of_the_sun_and_it_is_said(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from custom_components.spotnav.battery.plan_shadow import EST_SOLAR_IN_HOUSE  # noqa: PLC0415
+
+    _controller, shown = await _own_rows_handed_over(hass, monkeypatch, None, sun=True)
+    inputs = shown["inputs"]
+    assert inputs["house"] == plan_runtime.HOUSE_GROSS and inputs["house_rows"] == plan_runtime.ROWS_NET
+    assert inputs["gross_hours"] == MIN_GROSS_HOURS + 2
+    assert EST_SOLAR_IN_HOUSE in inputs["estimates"]
 
 
 def _with_sun(monkeypatch: pytest.MonkeyPatch, controller: Any, now: datetime) -> None:
@@ -335,71 +410,6 @@ def _with_sun(monkeypatch: pytest.MonkeyPatch, controller: Any, now: datetime) -
 
     monkeypatch.setattr(hybrid_forecast, "async_read_forecast_wh", read)
     monkeypatch.setattr(controller, "config", {**controller.config, CONF_SOLAR_FORECAST_ENTRIES: ["forecast_solar_1"]})
-
-
-async def _own_rows_with_sun(
-    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, production: dict[datetime, float] | None
-) -> dict[str, Any]:
-    """The plan with own rows of 0.8 kW net of the sun and a solar forecast; `production` `{}` gives 0.5 kWh in
-    every hour but the last, `None` no solar statistics at all."""
-    _site_entry, controller, now = await _planned(hass, monkeypatch)
-    plan = controller.battery_shadow.plan
-    current = hour_start(now, controller.demand.tracker.tz)
-    hours = [current - timedelta(hours=index) for index in range(1, MIN_OWN_HOURS + 3)]
-    for start in hours:
-        plan.actuals.rows[start] = 0.8
-    _with_sun(monkeypatch, controller, now)
-
-    async def ids(hass: Any) -> tuple[tuple[str, ...], tuple[str, ...]]:
-        return (("sensor.pv",), ()) if production is not None else ((), ())
-
-    async def statistics(hass: Any, wanted: Any, start: datetime, end: datetime, period: str) -> dict[str, Any]:
-        assert period == "hour" and end <= now
-        rows = [{"start": moment.timestamp(), "change": kwh} for moment, kwh in (production or {}).items()]
-        return {"sensor.pv": rows}
-
-    monkeypatch.setattr(plan_runtime, "async_energy_ids", ids)
-    monkeypatch.setattr(plan_runtime, "async_statistics", statistics)
-    if production == {}:
-        production.update({start: 0.5 for start in hours[1:]})  # the last hour is not compiled yet
-    _house_forecast(controller, now)
-    controller.battery_shadow.tick(now + timedelta(seconds=CHECK_S + 1))
-    await hass.async_block_till_done()
-    return controller.battery_shadow.snapshot()["plan"]
-
-
-async def test_own_house_rows_get_the_suns_production_back_before_the_forecast_is_added(
-    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    from custom_components.spotnav.battery.plan_shadow import EST_SOLAR_IN_HOUSE  # noqa: PLC0415
-
-    shown = await _own_rows_with_sun(hass, monkeypatch, {})
-    inputs = shown["inputs"]
-    assert inputs["house"] == "own_rows" and inputs["house_rows"] == plan_runtime.ROWS_GROSS
-    assert inputs["solar_statistics"] == ["sensor.pv"]
-    # The hour without a production figure yet is left out, never counted net of the sun.
-    assert inputs["own_hours"] == MIN_OWN_HOURS + 1
-    assert EST_SOLAR_IN_HOUSE not in inputs["estimates"]
-    assert shown["plan"]["slots"][1]["house_kw"] == pytest.approx(1.3)
-
-
-async def test_without_production_statistics_the_rows_stay_net_and_it_is_said(
-    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    from custom_components.spotnav.battery.plan_shadow import EST_SOLAR_IN_HOUSE  # noqa: PLC0415
-
-    inputs = (await _own_rows_with_sun(hass, monkeypatch, None))["inputs"]
-    assert inputs["house"] == "own_rows" and inputs["house_rows"] == plan_runtime.ROWS_NET
-    assert inputs["own_hours"] == MIN_OWN_HOURS + 2
-    assert EST_SOLAR_IN_HOUSE in inputs["estimates"]
-
-
-def test_gross_rows_need_enough_hours_with_a_production_figure() -> None:
-    start = datetime(2026, 11, 1, tzinfo=dt_util.UTC)
-    rows = [(start + timedelta(hours=index), 1.0) for index in range(MIN_OWN_HOURS + 1)]
-    every = {moment: 0.25 for moment, _kw in rows}
-    assert plan_runtime.gross_house_rows(rows, every) == [(moment, 1.25) for moment, _kw in rows]
-    assert plan_runtime.gross_house_rows(rows, dict(list(every.items())[: MIN_OWN_HOURS - 1])) is None
 
 
 async def test_the_plan_takes_the_plants_maximum_and_the_batterys_own_reserve(
@@ -485,7 +495,7 @@ async def test_the_plan_counts_on_the_corrected_sun_and_says_so(
     assert shown["plan"]["slots"][1]["solar_kw"] == pytest.approx(0.5)
 
 
-async def test_the_plans_own_house_forecast_is_the_median_without_the_inday_adjustment(
+async def test_the_plans_house_forecast_is_the_sites_median_without_the_inday_adjustment(
     hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     from custom_components.spotnav.site import load_forecast  # noqa: PLC0415
@@ -496,13 +506,9 @@ async def test_the_plans_own_house_forecast_is_the_median_without_the_inday_adju
         seen.append(kwargs)
         return load_forecast.forecast_house_load(*args, **kwargs)
 
-    monkeypatch.setattr(plan_runtime, "forecast_house_load", spy)
-    _site_entry, controller, now = await _planned(hass, monkeypatch)
-    current = hour_start(now, controller.demand.tracker.tz)
-    for index in range(1, MIN_OWN_HOURS + 1):
-        controller.battery_shadow.plan.actuals.rows[current - timedelta(hours=index)] = 0.8
-    _house_forecast(controller, now)
-    controller.battery_shadow.tick(now + timedelta(seconds=CHECK_S + 1))
-    await hass.async_block_till_done()
-    assert controller.battery_shadow.snapshot()["plan"]["inputs"]["house"] == "own_rows"
-    assert seen and seen[-1]["inday"] is False and seen[-1]["quantile"] == plan_runtime.HOUSE_QUANTILE == 0.5
+    monkeypatch.setattr(house_forecast, "forecast_house_load", spy)
+    controller, shown = await _own_rows_handed_over(hass, monkeypatch, None)
+    assert shown["inputs"]["house"] == plan_runtime.HOUSE_GROSS
+    assert controller.house_forecast.median is not None
+    medians = [kwargs for kwargs in seen if kwargs.get("quantile") == plan_runtime.HOUSE_QUANTILE == 0.5]
+    assert medians and all(kwargs["inday"] is False for kwargs in medians)

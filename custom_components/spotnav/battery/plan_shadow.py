@@ -9,11 +9,11 @@ or there writes to a device: the plan is a shadow and a benchmark (wave 2 of 3.0
   (Wh, the Hybrid strategy's source); the cars' installed plans as a fixed load; the import cap (the main fuse less
   the safety margin as three-phase power, and the import target's held level where one is set). The first slot is
   cut to start now. The horizon ends where the prices or the house forecast end, at most `plan_model.MAX_SLOTS`.
-* **House load.** The site's own forecast (`site/house_forecast.py`) learns from the import less the chargers, which
-  on a site with a battery includes what the battery charged and discharged: Sigenergy's AI mode grid-charging at
-  night would read as a heavy house. So the plan keeps its own hour rows of the site **net of the battery**
-  (`grid - car - battery`, which is the house less the sun) and runs the same model (`load_forecast`) on them; until
-  it has `MIN_OWN_HOURS` hours it takes the site's forecast and says so (`house_counts_battery`).
+* **House load.** The site's own forecast (`site/house_forecast.py`): on a battery site the house's whole load
+  (`grid - car - battery` plus the sun's production), since the import less the chargers counts what the battery
+  charged and discharged (Sigenergy's AI mode grid-charging at night would read as a heavy house). Until the site has
+  enough hours of it, the plan takes the import less the chargers and says so (`house_counts_battery`). The plan's
+  own hour rows of `grid - car - battery` (`PlanActuals.rows`) are kept only to hand them to the site once.
 * **Battery** (`battery_params`): usable kWh, SoC and rated powers from `battery/facts.py`; without any of them there
   is no plan, and the reason is logged. The floor (`ASSUMED_MIN_SOC_PCT`) and the round trip are assumed, and said to be.
 * **Plan again** (`replan_trigger`): at the start, when the prices change (the next day's at 13:00), when the house
@@ -83,8 +83,7 @@ SOC_REPLAN_MIN_S: Final = 900.0
 #: A running slot's action changes only for a gain above the larger of these (minor units; share of a day's cost).
 KEEP_MIN_MINOR: Final = 5.0
 KEEP_DAY_SHARE: Final = 0.02
-#: The plan's own house rows: this many hours before they replace the site's forecast, kept this many days.
-MIN_OWN_HOURS: Final = 72
+#: The plan's own house rows (handed to the site's whole load once) are kept this many days.
 ROWS_DAYS: Final = 42
 #: Actuals are kept per quarter hour for this many days; reviews for this many.
 BUCKET: Final = timedelta(minutes=15)
