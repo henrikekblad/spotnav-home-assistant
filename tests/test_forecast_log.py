@@ -12,6 +12,8 @@ from custom_components.spotnav.site.forecast_log import (
     KEEP_HOURS_DAYS,
     KEEP_REVIEW_DAYS,
     KIND_HOUSE,
+    KIND_SUN,
+    KIND_SUN_CORRECTED,
     MAX_HOURS,
     MAX_KINDS,
 )
@@ -170,3 +172,52 @@ def test_the_next_day_has_its_own_number_of_hours_across_a_clock_change() -> Non
     assert len(next_day_hours(by_hour, local(2026, 10, 24, 14), TZ)) == 25
     by_hour = {start: 1.0 for start in hours_of(local(2026, 3, 28, 13), 48)}
     assert len(next_day_hours(by_hour, local(2026, 3, 28, 14), TZ)) == 23
+
+
+def test_a_log_kept_apart_is_taken_in_once_without_touching_what_is_there() -> None:
+    """The sun's log of wave 2 (its own store, the same shape) moves into the site's log once."""
+    day = local(2026, 11, 16)
+    made = day - timedelta(hours=1)
+    old = {
+        "version": 1,
+        "tz": TZ,
+        "kinds": {
+            KIND_SUN: {
+                "hours": [[(day + timedelta(hours=9)).isoformat(), 2.0, made.isoformat(), 1.5]],
+                "reviews": [
+                    {
+                        "date": "2026-11-15",
+                        "reviewed_at": day.isoformat(),
+                        "all": {"hours": 8, "mae": 0.4, "under_share": 0.5, "big_under_share": 0.0},
+                        "night": None,
+                        "evening": None,
+                    }
+                ],
+            },
+            KIND_SUN_CORRECTED: {"hours": [], "reviews": []},
+            KIND_HOUSE: {"hours": [[(day + timedelta(hours=9)).isoformat(), 9.0, made.isoformat(), None]]},
+        },
+    }
+    log = ForecastLog(tz=TZ)
+    log.record_forecast(KIND_HOUSE, {day + timedelta(hours=9): 1.0}, made)
+
+    assert log.take_kinds(old, (KIND_SUN, KIND_SUN_CORRECTED)) == [KIND_SUN, KIND_SUN_CORRECTED]
+    assert log.hours(KIND_SUN)[day + timedelta(hours=9)].actual == 1.5
+    assert log.kinds[KIND_SUN].reviews[0].night is None
+    # A kind it was not asked for, or one it has, is left as it is.
+    assert log.hours(KIND_HOUSE)[day + timedelta(hours=9)].forecast == 1.0
+    assert log.take_kinds(old, (KIND_SUN,)) == []
+    assert log.take_kinds("garbage", (KIND_SUN,)) == []
+    shown = log.diagnostics((KIND_SUN, KIND_SUN_CORRECTED))
+    assert set(shown["kinds"]) == set(shown["last_week"]) == {KIND_SUN, KIND_SUN_CORRECTED}
+    assert set(log.diagnostics()["kinds"]) == {KIND_HOUSE, KIND_SUN, KIND_SUN_CORRECTED}
+
+
+def test_the_kinds_in_use_fit_under_the_cap() -> None:
+    from custom_components.spotnav.battery.plan_shadow import KIND_BATTERY  # noqa: PLC0415
+    from custom_components.spotnav.site.forecast_log import KIND_HOUSE_DAY_AHEAD, KIND_HOUSE_RAW  # noqa: PLC0415
+
+    in_use = {KIND_HOUSE, KIND_HOUSE_RAW, KIND_HOUSE_DAY_AHEAD, KIND_BATTERY, KIND_SUN, KIND_SUN_CORRECTED}
+    assert len(in_use) == 6
+    # Room for the battery plan's three modes beside them.
+    assert len(in_use) + 3 <= MAX_KINDS

@@ -1,8 +1,10 @@
 """The forecast log and its nightly review (SpotNav 3.0): how well each forecast hit, kept short and bounded.
 
-Pure: the clock is passed in. One log per site, any number of *kinds* (today `house_kw`, the house load forecast,
-`house_kw_raw`, the same before its in-day adjustment, and `house_day_ahead`, the next day's as made at the day-ahead
-price publication; later the sun's and the battery plan's), each kept the same way:
+Pure: the clock is passed in. One log per site (kept in the house forecast's store, `site/house_forecast.py`), any
+number of *kinds*, each kept the same way. Today: `house_kw`, the house load forecast; `house_kw_raw`, the same before
+its in-day adjustment; `house_day_ahead`, the next day's as made at the day-ahead price publication; `battery`, the
+SoC the battery plan expects at each hour's end (`battery/plan_shadow.py`); `sun_kwh`, the solar forecast as SpotNav
+reads it, and `sun_kwh_corrected`, the same after the shadow correction (`site/solar_correction_shadow.py`).
 
 * **The first forecast** made for each hour is logged (`record_forecast`), with when it was made, so its lead is
   known. A later forecast for the same hour never replaces it: the review scores what was known first. Only hours
@@ -20,7 +22,7 @@ It decides nothing: it is shown in the diagnostics and the debug bundle (later t
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
 import math
@@ -34,6 +36,10 @@ KIND_HOUSE_RAW: Final = "house_kw_raw"
 #: The next day's forecast as made at the day-ahead price publication (`next_day_hours`): the figure that day's plans
 #: count on, reviewed beside the first-made one (`house_kw`, up to 48 hours ahead).
 KIND_HOUSE_DAY_AHEAD: Final = "house_day_ahead"
+#: The sun's forecast as SpotNav reads and uses it (kWh in the hour, the sources summed, never corrected).
+KIND_SUN: Final = "sun_kwh"
+#: The same forecast after the shadow correction (`site/solar_correction.py`), logged beside it for the review.
+KIND_SUN_CORRECTED: Final = "sun_kwh_corrected"
 #: The local hour from which the next day's prices are out (the day-ahead auction's results, ~12:45 CET).
 DAY_AHEAD_HOUR: Final = 13
 
@@ -43,8 +49,9 @@ KEEP_HOURS_DAYS: Final = 14
 MAX_HOURS: Final = (KEEP_HOURS_DAYS + 3) * 24
 #: The daily reviews of the last this many days are kept.
 KEEP_REVIEW_DAYS: Final = 30
-#: At most this many kinds are kept (a store that grew kinds by mistake stays small).
-MAX_KINDS: Final = 8
+#: At most this many kinds are kept (a store that grew kinds by mistake stays small). Six are in use (the three
+#: house kinds, `battery` and the two sun kinds); the rest is room for the battery plan's per-mode kinds.
+MAX_KINDS: Final = 12
 #: An under-forecast by more than this (in the kind's unit) is a large one.
 BIG_UNDER: Final = 0.5
 STORE_VERSION: Final = 1
@@ -221,6 +228,28 @@ class ForecastLog:
         hour.actual = float(value)
         return True
 
+    def hours(self, kind: str) -> dict[datetime, LoggedHour]:
+        """The kind's logged hours by start (UTC); empty for a kind never logged."""
+        log = self.kinds.get(kind)
+        return {} if log is None else dict(log.hours)
+
+    def take_kinds(self, raw: Any, kinds: Iterable[str]) -> list[str]:
+        """Take `kinds` from another log's store (`as_dict`'s shape), each only when this log holds nothing of it
+        (no hour, no review): a log kept apart before is moved in once. The kinds taken."""
+        other = ForecastLog(tz=self.tz)
+        other.restore(raw)
+        taken: list[str] = []
+        for kind in kinds:
+            body = other.kinds.get(kind)
+            mine = self.kinds.get(kind)
+            if body is None or (mine is not None and (mine.hours or mine.reviews)):
+                continue
+            if mine is None and len(self.kinds) >= MAX_KINDS:
+                continue
+            self.kinds[kind] = body
+            taken.append(kind)
+        return taken
+
     def review(self, now: datetime) -> list[tuple[str, DayReview]]:
         """Review every local day that has ended, has a scored hour and has no review yet (see the module); the new
         reviews. Old hours and reviews are dropped."""
@@ -317,12 +346,16 @@ class ForecastLog:
             kinds[kind] = log
         self.kinds = kinds
 
-    def diagnostics(self) -> dict[str, Any]:
-        """The log as kept, and per kind the last week's combined score."""
+    def diagnostics(self, kinds: Iterable[str] | None = None) -> dict[str, Any]:
+        """The log as kept, and per kind the last week's combined score; only `kinds` when given."""
+        shown = self.as_dict()
+        if kinds is not None:
+            wanted = set(kinds)
+            shown["kinds"] = {kind: body for kind, body in shown["kinds"].items() if kind in wanted}
         return {
-            **self.as_dict(),
+            **shown,
             "last_week": {
-                kind: None if (week := self.last_week(kind)) is None else week.as_dict() for kind in self.kinds
+                kind: None if (week := self.last_week(kind)) is None else week.as_dict() for kind in shown["kinds"]
             },
         }
 

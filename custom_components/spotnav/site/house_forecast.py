@@ -18,7 +18,8 @@ measurements; it is shown on the site's state sensor (`forecast`), in the diagno
 * **Log**: each hour's first forecast, as used and before the in-day adjustment (`house_kw_raw`), the next day's as
   made once the day-ahead prices are out (`house_day_ahead`, 13:00 local, what that day's plans count on), and the
   outcome (the hour's measured `house_kw`), reviewed per local day the night after; kept with the history in the
-  site's own store (`spotnav.load_forecast.<entry>`).
+  site's own store (`spotnav.load_forecast.<entry>`). The log is the site's one forecast log: the battery plan and
+  the solar correction log their kinds in it too (`log_changed`).
 """
 
 from __future__ import annotations
@@ -211,6 +212,11 @@ class SiteHouseForecast:
             except Exception:  # noqa: BLE001 - a history that cannot be read is taken from the tracker again
                 _LOGGER.debug("SpotNav house forecast: the kept history could not be read", exc_info=True)
         self._loaded = True
+
+    def log_changed(self) -> None:
+        """Another part logged into the site's forecast log (`log`, shared): save it with the next write."""
+        if self._store is not None:
+            self._store.changed()
 
     async def async_close(self) -> None:
         self._closed = True
