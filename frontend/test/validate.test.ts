@@ -1159,3 +1159,27 @@ describe("the status block", () => {
     expect((withStatus({ tone: "normal", lines: [] }) as { ok: boolean }).ok).toBe(true);
   });
 });
+
+describe("the connection block's shown state", () => {
+  const connection = (value: Record<string, unknown>) => {
+    const result = decode(withSection("connection", value));
+    return result.ok ? result.value.connection : "failed";
+  };
+
+  it("keeps the block and falls back to the charger's own state for a shown value it does not know", () => {
+    expect(connection({ state: "finished", source: null, shown: "hibernating" })).toEqual({
+      state: "finished",
+      source: null,
+      shown: "finished",
+    });
+  });
+
+  it("reads a known shown value, and the state when shown is missing", () => {
+    expect(connection({ state: "finished", source: null, shown: "waiting" })).toMatchObject({ shown: "waiting" });
+    expect(connection({ state: "connected", source: null })).toMatchObject({ shown: "connected" });
+  });
+
+  it("still drops a block with an unknown state", () => {
+    expect(connection({ state: "hibernating", source: null, shown: "waiting" })).toBeNull();
+  });
+});
