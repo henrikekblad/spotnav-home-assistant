@@ -126,6 +126,7 @@ from .measurement_problem import measurement_problem, MeasurementProblem, UNHEAL
 from .meter_cadence import ReportCadence, solar_liveness
 from .site_detection import UPDATE_BEHAVIOUR
 from .solar_capability import solar_capability
+from .solar_correction_shadow import SiteSolarCorrection
 from .measurement_source import (
     combine_power_pair,
     grid_power_source_from_dict,
@@ -779,6 +780,9 @@ class SiteCapacityController:
         # The site's home battery in shadow (`battery/runtime.py`): its facts and what SpotNav would do with it,
         # logged and never written.
         self.battery_shadow = BatteryShadow(hass, self)
+        # The sun's forecast corrected per site in shadow (`site/solar_correction_shadow.py`): logged and reviewed
+        # beside the raw one, read by nothing that plans.
+        self.solar_correction = SiteSolarCorrection(hass, self)
         self.result: SiteCapacityResult = self._calculate()
         self._update_direction_history()
         # One regulator decision per associated charger (`site/regulator.py`); acting on them is
@@ -833,6 +837,7 @@ class SiteCapacityController:
         await self._async_load_released()
         await self._async_load_grid_sign()
         await self.battery_shadow.async_start()
+        await self.solar_correction.async_start()
         await self._history.async_load()
         self._history_cancel = async_track_time_interval(
             self.hass, self._async_sample_history, timedelta(seconds=HISTORY_SAMPLE_INTERVAL_S)
@@ -857,6 +862,7 @@ class SiteCapacityController:
         await self._history.async_close()
         await self.demand.async_close()
         await self.battery_shadow.async_shutdown()
+        await self.solar_correction.async_shutdown()
         if self._grid_sign_unsaved:
             self._grid_sign_unsaved = False
             await self._grid_sign_store.async_save(self._grid_sign.as_dict())

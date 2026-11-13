@@ -286,6 +286,10 @@ def _site_diagnostics(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, Any]
         # shadow part's decisions (what it would have written, or why not) and the kWh the battery gave the car.
         # Nothing is written to the battery.
         "battery": None if controller is None else controller.battery_shadow.snapshot(),
+        # The sun's forecast corrected in shadow (`site/solar_correction_shadow.py`): status, sources, what the guard
+        # rails found, the factors, the next hours raw and corrected, and the log with its nightly reviews. The
+        # Hybrid strategy reads the raw forecast.
+        "solar_correction": None if controller is None else controller.solar_correction.snapshot(),
         # Per member charger, the phase load balancing reckons it on and how that was decided: `chosen` in the
         # wiring, `measured` (an "Automatic" single-phase charger followed by its own measured current) or
         # `worst_case` (the phase with the least headroom).
