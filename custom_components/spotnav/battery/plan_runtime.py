@@ -106,6 +106,7 @@ from .plan_shadow import (
     slot_at,
     soc_by_hour_end,
 )
+from .stored_value import StoredValue
 
 if TYPE_CHECKING:
     from ..site.site_capacity_controller import SiteCapacityController
@@ -270,6 +271,8 @@ class BatteryPlanShadow:
         self._store: Store[dict[str, Any]] = Store(hass, STORE_VERSION, store_key(site.entry_id))
         self.actuals = PlanActuals()
         self.reviews: list[DayReview] = []
+        #: The value of the energy in the battery and each day's money split (`stored_value.py`).
+        self.stored = StoredValue()
         self.memory = TriggerMemory()
         #: The plan in force: its slots and the SoC it started from.
         self.plan: tuple[PlannedSlot, ...] = ()
@@ -322,6 +325,7 @@ class BatteryPlanShadow:
         return {
             "actuals": self.actuals.as_dict(),
             "reviews": [review.as_dict() for review in self.reviews],
+            "stored_value": self.stored.as_dict(),
             "plan": {
                 "soc_at_plan": self.soc_at_plan,
                 "slots": [slot.as_row() for slot in self.plan],
@@ -334,6 +338,7 @@ class BatteryPlanShadow:
         if not isinstance(raw, dict):
             return
         self.actuals = PlanActuals.from_dict(raw.get("actuals"), now)
+        self.stored = StoredValue.from_dict(raw.get("stored_value"))
         reviews = [DayReview.from_dict(item) for item in raw.get("reviews") or []]
         self.reviews = sorted((r for r in reviews if r is not None), key=lambda r: r.money.day)[-REVIEW_DAYS:]
         plan = raw.get("plan") if isinstance(raw.get("plan"), dict) else {}
@@ -409,6 +414,16 @@ class BatteryPlanShadow:
         for hour in self.actuals.close_hours(now, tz):
             log.record_actual(KIND_BATTERY, hour, self.actuals.soc_at_hour_end(hour, tz))
         params, _reason, _estimates = limited_params(*battery_params(self._facts), self._facts)
+        # The stored energy's value and each day's money (`stored_value.py`), from the quarter hours completed.
+        usable = params.usable_kwh if params is not None else self._facts.capacity_kwh
+        today = now.astimezone(time_zones.require_zone(tz)).date()
+        buys = [p.buy for p in self._prices if p.start.astimezone(time_zones.require_zone(tz)).date() == today]
+        self.stored.run(
+            [bucket for bucket in self.actuals.buckets.values() if bucket.end <= now],
+            tz,
+            usable,
+            sum(buys) / len(buys) if buys else None,
+        )
         if params is not None:
             reviewed = [review.money.day for review in self.reviews]
             planning = [name for name in MODES if MODE_DEFS[name].plans]

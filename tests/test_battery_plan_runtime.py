@@ -41,6 +41,7 @@ from custom_components.spotnav.battery.plan_shadow import (
     PriceSlot,
     bucket_start,
 )
+from custom_components.spotnav.battery.stored_value import StoredValue
 from custom_components.spotnav.debug_bundle import async_build_debug_bundle
 from custom_components.spotnav.diagnostics import async_get_config_entry_diagnostics
 from custom_components.spotnav.planning.demand_charge import hour_start
@@ -291,6 +292,9 @@ async def test_the_record_and_the_running_slot_survive_a_reload(
     site, controller, now = await _planned(hass, monkeypatch)
     kept = controller.battery_shadow.plan.plan
     assert kept
+    # The stored energy's running value is kept across the restart.
+    stored = StoredValue(kwh=12.0, cost=1234.5, estimated=True, last=now + timedelta(days=1), estimate_left=3.0)
+    controller.battery_shadow.plan.stored = stored
 
     assert await hass.config_entries.async_reload(site.entry_id)
     await hass.async_block_till_done()
@@ -300,6 +304,7 @@ async def test_the_record_and_the_running_slot_survive_a_reload(
     assert [(s.start, s.end, s.action) for s in plan.plan] == [(s.start, s.end, s.action) for s in kept]
     assert plan.soc_at_plan == 44.6
     assert plan.actuals.buckets
+    assert plan.stored == stored
     assert plan.mode == MODE_BALANCED and set(plan.mode_plans) == {MODE_BALANCED, MODE_MAX_PROFIT}
     kept_profit = controller.battery_shadow.plan.mode_plans[MODE_MAX_PROFIT]
     assert [s.action for s in plan.mode_plans[MODE_MAX_PROFIT]] == [s.action for s in kept_profit]
