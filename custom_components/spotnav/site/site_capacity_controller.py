@@ -691,9 +691,12 @@ class SiteCapacityController:
         # clock is the electricity price's area's (`_demand_zone`), resolved again at most every
         # `_DEMAND_ZONE_TTL_S`. Only the import target reads it for a decision (`_hold_to_import_target`).
         self.demand = SiteDemand(hass, entry_id, _home_zone(hass))
-        # The house's expected load hour by hour (`site/house_forecast.py`), refreshed when an hour completes. Shown
-        # only (the site state sensor's `forecast`, the diagnostics): nothing a charger is told reads it yet.
-        self.house_forecast = SiteHouseForecast(hass, entry_id, self.demand, flat_kw=self._typical_house_kw)
+        # The house's expected load hour by hour (`site/house_forecast.py`), refreshed when an hour completes: shown
+        # (the site state sensor's `forecast`, the diagnostics), counted on by a plan under the import target (its net
+        # import forecast, `plan_kw_by_hour`) and by the battery plan (the house's whole load on a battery site).
+        self.house_forecast = SiteHouseForecast(
+            hass, entry_id, self.demand, flat_kw=self._typical_house_kw, has_battery=self.has_battery_reading
+        )
         self._demand_zone: tuple[float, str] | None = None
         # The import target (`_hold_to_import_target`), as of the last recompute: the hour's budget (`None` while not
         # applied, and why), what it does to each charger, and which chargers' decisions it lowered. Per charger the
@@ -6223,8 +6226,9 @@ class SiteCapacityController:
 
     def import_target_plan_kw_by_hour(self, charger_entry_id: str) -> dict[datetime, float] | None:
         """Per hour (`{hour_start (UTC): kW}`), what `import_target_plan_kw` is with the house's expected load in that
-        hour (`site/house_forecast.py`'s `plan_kw_by_hour`) in place of its typical load: the target less it, never below
-        the charger's minimum. Only the hours the forecast knows; the plan takes `import_target_plan_kw` for the rest
+        hour (`site/house_forecast.py`'s `plan_kw_by_hour`: the import less the chargers, also on a battery site whose
+        house figure is the whole load) in place of its typical load: the target less it, never below the charger's
+        minimum. Only the hours the forecast knows; the plan takes `import_target_plan_kw` for the rest
         (`PlanRequest.power_cap_kw_by_hour`). `None` whenever `import_target_plan_kw` holds nothing for the charger, or
         there is no forecast: the plan is then the one with the flat figure."""
         level = self._target_plan_level(charger_entry_id)

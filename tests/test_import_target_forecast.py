@@ -112,6 +112,31 @@ async def test_a_plan_counts_on_the_target_less_the_forecast_per_hour(hass: Home
         assert controller.import_target_plan_kw(charger) == pytest.approx(4.88, abs=0.01)
 
 
+async def test_on_a_battery_site_a_plan_counts_on_the_net_import_not_the_houses_whole_load(
+    hass: HomeAssistant, monkeypatch
+) -> None:
+    """The import target is about the hour's net import: where the house figure is the whole load (a battery site),
+    a plan, the shortfall and the release reach count on the import less the chargers (`import_forecast`)."""
+    with freeze_time(_HOUR + timedelta(seconds=5)) as frozen:
+        world = await _world(hass, monkeypatch, frozen, "fcgross")
+        charger = world.halo.charger.entry_id
+        controller = world.halo.controller
+        await world.step()
+        now = dt_util.utcnow()
+        _use(world, _forecast(now, {}, default=3.0), monkeypatch)  # the whole load: the battery covers most of it
+        house = controller.house_forecast
+        house.import_forecast = _forecast(now, {}, default=0.4)  # what the meter will see
+        first = now.replace(minute=0, second=0, microsecond=0)
+        by_hour = controller.import_target_plan_kw_by_hour(charger)
+        assert by_hour is not None and by_hour[first + timedelta(hours=1)] == pytest.approx(5.88 - 0.4)
+        assert house.plan_kw_at(now) == pytest.approx(0.4)
+        # Without the second forecast (a site without a battery) the one forecast is the import's.
+        house.import_forecast = None
+        assert controller.import_target_plan_kw_by_hour(charger)[first + timedelta(hours=1)] == pytest.approx(
+            MINIMUM_KW if 5.88 - 3.0 < MINIMUM_KW else 5.88 - 3.0
+        )
+
+
 async def test_a_stale_forecast_or_no_target_gives_nothing_per_hour(hass: HomeAssistant, monkeypatch) -> None:
     with freeze_time(_HOUR + timedelta(seconds=5)) as frozen:
         world = await _world(hass, monkeypatch, frozen, "fcstale")
