@@ -14,7 +14,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Any, Final, Literal
 
-from .adapters import Adapter, ControlSpec, FactRole, Match, adapter_for
+from .adapters import Adapter, ControlSpec, FactRole, Match, ReserveSource, adapter_for
 
 ManagementState = Literal["free", "self_managed", "unknown"]
 
@@ -121,12 +121,27 @@ class BatteryFacts:
     rated_charge_kw: float | None = None
     rated_discharge_kw: float | None = None
     firmware: str | None = None
+    #: The whole plant's maximum output (kW) where the adapter reads one: the battery charges and discharges
+    #: through it (`max_charge_kw`, `max_discharge_kw`).
+    plant_max_kw: float | None = None
+    #: The battery's own floor (%), the highest of the reserves its adapter can read; `None` when none can be read.
+    reserve_soc_pct: float | None = None
     #: `True` on the grid, `False` off it (backup), `None` when the brand does not say.
     on_grid: bool | None = None
     management: Management = field(default_factory=lambda: Management("unknown", "no_battery"))
     hold: ControlStatus | None = None
     grid_charge: ControlStatus | None = None
     sources: dict[str, str] = field(default_factory=dict)
+
+    @property
+    def max_charge_kw(self) -> float | None:
+        """The most the battery can charge with: its rating, or the plant's maximum when that is lower."""
+        return _lower(self.rated_charge_kw, self.plant_max_kw)
+
+    @property
+    def max_discharge_kw(self) -> float | None:
+        """The most the battery can discharge with: its rating, or the plant's maximum when that is lower."""
+        return _lower(self.rated_discharge_kw, self.plant_max_kw)
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -139,6 +154,8 @@ class BatteryFacts:
             "capacity_kwh": self.capacity_kwh,
             "rated_charge_kw": self.rated_charge_kw,
             "rated_discharge_kw": self.rated_discharge_kw,
+            "plant_max_kw": self.plant_max_kw,
+            "reserve_soc_pct": self.reserve_soc_pct,
             "firmware": self.firmware,
             "on_grid": self.on_grid,
             "management": {
@@ -152,6 +169,12 @@ class BatteryFacts:
             },
             "sources": dict(self.sources),
         }
+
+
+def _lower(rating: float | None, plant_max: float | None) -> float | None:
+    if rating is None or plant_max is None or plant_max <= 0:
+        return rating
+    return min(rating, plant_max)
 
 
 def _number(state: str | None) -> float | None:
@@ -208,6 +231,22 @@ def _fact(adapter: Adapter, role: FactRole, entities: Sequence[EntityFact], batt
         return None
     entity = find_entity(match, entities, battery)
     return entity if entity is not None and entity.available else None
+
+
+def _reserve(
+    reserves: Sequence[ReserveSource], entities: Sequence[EntityFact], battery: EntityFact
+) -> tuple[float | None, list[str]]:
+    """The highest floor (%) the reserves read, with the entities read; `None` when none can be read."""
+    floors: list[float] = []
+    read: list[str] = []
+    for source in reserves:
+        entity = find_entity(source.match, entities, battery)
+        value = None if entity is None or not entity.available else _percent(entity.state)
+        if value is None:
+            continue
+        floors.append(100.0 - value if source.depth else value)
+        read.append(entity.entity_id)  # type: ignore[union-attr]
+    return (max(floors) if floors else None), read
 
 
 def _management(
@@ -322,6 +361,18 @@ def battery_facts(
 
     soc_entity, capacity_entity, firmware_entity = found.get("soc"), found.get("capacity"), found.get("firmware")
     rated_discharge_kw = kw("rated_discharge")
+    plant_max_kw: float | None = None
+    if adapter.plant_max is not None:
+        plant = find_entity(adapter.plant_max, entities, battery)
+        if plant is not None and plant.available:
+            plant_max_kw = to_kw(plant.state, plant.unit)
+            if plant_max_kw is not None and plant_max_kw > 0:
+                sources["plant_max"] = plant.entity_id
+            else:
+                plant_max_kw = None
+    reserve_soc_pct, reserve_read = _reserve(adapter.reserves, entities, battery)
+    if reserve_read:
+        sources["reserve"] = ", ".join(reserve_read)
     on_grid: bool | None = None
     if adapter.grid_status is not None:
         status = find_entity(adapter.grid_status[0], entities, battery)
@@ -338,6 +389,8 @@ def battery_facts(
         capacity_kwh=None if capacity_entity is None else to_kwh(capacity_entity.state, capacity_entity.unit),
         rated_charge_kw=kw("rated_charge"),
         rated_discharge_kw=rated_discharge_kw,
+        plant_max_kw=plant_max_kw,
+        reserve_soc_pct=reserve_soc_pct,
         firmware=None if firmware_entity is None else firmware_entity.state,
         on_grid=on_grid,
         management=management,

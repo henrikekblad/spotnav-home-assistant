@@ -10,6 +10,9 @@ Owned by the site's `BatteryShadow` (`runtime.py`), which calls `tick` every `ru
 * **Every `CHECK_S`**: whether to plan again (`plan_shadow.replan_trigger`). A plan reads the prices, the solar
   forecast and the cars' plans here, then builds and solves the plan in the executor. At most one runs at a time; a
   trigger while one runs is skipped (`skipped_busy`) and seen again at the next check.
+* **Battery limits** (`limited_params`): the plant's maximum output where its adapter reads one and it is below the
+  battery's rating (the owner's Sigenergy: 13.2 kW beside 20.6/23.04 kW), and the battery's own reserve as the floor
+  where one can be read; otherwise the assumed floor, said to be (`min_soc_assumed`).
 * **House rows and the sun**: the plan's own house rows are measured net of the sun (`grid - car - battery`). When
   the plan adds the solar forecast, the rows are made gross again with the hour's production from the Energy
   dashboard's solar statistics (`site/energy_statistics.py`), so the sun is not counted twice; an hour without a
@@ -54,6 +57,7 @@ from .plan import plan_battery, self_consumption
 from .plan_model import BatteryParams, PlanInputError, PlanRequest, PlanSlot
 from .plan_shadow import (
     EST_HOUSE_COUNTS_BATTERY,
+    EST_MIN_SOC,
     EST_SOLAR_IN_HOUSE,
     FAILED,
     KIND_BATTERY,
@@ -126,6 +130,29 @@ def gross_house_rows(
     when fewer than `MIN_OWN_HOURS` hours have one (the rows then stay as they are)."""
     gross = [(start, kw + production_kwh[start]) for start, kw in rows if start in production_kwh]
     return gross if len(gross) >= MIN_OWN_HOURS else None
+
+
+def limited_params(
+    params: BatteryParams | None, reason: str | None, estimates: tuple[str, ...], facts: BatteryFacts
+) -> tuple[BatteryParams | None, str | None, tuple[str, ...]]:
+    """`plan_shadow.battery_params`' answer with what the battery's adapter reads of its limits: the plant's
+    maximum when it is below the rating (`BatteryFacts.max_charge_kw`), and the battery's own reserve as the floor in
+    place of the assumed one (which is then no estimate). A reserve at or above the ceiling is left out."""
+    if params is None:
+        return params, reason, estimates
+    charge, discharge = facts.max_charge_kw, facts.max_discharge_kw
+    params = replace(
+        params,
+        max_charge_kw=params.max_charge_kw if charge is None else max(0.0, min(params.max_charge_kw, charge)),
+        max_discharge_kw=(
+            params.max_discharge_kw if discharge is None else max(0.0, min(params.max_discharge_kw, discharge))
+        ),
+    )
+    reserve = facts.reserve_soc_pct
+    if reserve is not None and 0.0 <= reserve < params.max_soc_pct:
+        params = replace(params, min_soc_pct=reserve)
+        estimates = tuple(code for code in estimates if code != EST_MIN_SOC)
+    return params, reason, estimates
 
 
 class _NoPlan(Exception):
@@ -314,7 +341,7 @@ class BatteryPlanShadow:
         log = self.site.house_forecast.log
         for hour in self.actuals.close_hours(now, tz):
             log.record_actual(KIND_BATTERY, hour, self.actuals.soc_at_hour_end(hour, tz))
-        params, _reason, _estimates = battery_params(self._facts)
+        params, _reason, _estimates = limited_params(*battery_params(self._facts), self._facts)
         if params is not None:
             reviewed = [review.money.day for review in self.reviews]
             for day in days_to_review(self.actuals.buckets.values(), reviewed, now, tz):
@@ -492,7 +519,7 @@ class BatteryPlanShadow:
 
         facts = self._facts
         tz = self._tz
-        params, reason, estimates = battery_params(facts)
+        params, reason, estimates = limited_params(*battery_params(facts), facts)
         if params is None or facts.soc_pct is None:
             raise _NoPlan(reason or "no_soc")
         area_id, prices = self._read_prices(now)
@@ -555,6 +582,8 @@ class BatteryPlanShadow:
         self.inputs = {
             "soc_pct": facts.soc_pct,
             "battery": {
+                "plant_max_kw": facts.plant_max_kw,
+                "reserve_soc_pct": facts.reserve_soc_pct,
                 "usable_kwh": params.usable_kwh,
                 "max_charge_kw": params.max_charge_kw,
                 "max_discharge_kw": params.max_discharge_kw,

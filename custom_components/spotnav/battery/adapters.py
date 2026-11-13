@@ -16,6 +16,15 @@ Sources, read 2026-11-13 (`plans/research_integrations/battery_control_2026-10-0
 * GoodWe, core `goodwe` (goodwe 0.4.10): `goodwe-<key>-<serial>`, the key in the middle.
 * Enphase, core `enphase_envoy`: `<serial>_<key>`.
 
+Beside the facts, an adapter may know two limits (read 2026-11-13; the Sigenergy keys on the owner's plant's registry):
+
+* **The plant's maximum** (`plant_max`): the most the whole plant puts out (Sigenergy `plant_max_active_power`,
+  13.2 kW beside a battery rated 23.04 kW): the battery charges and discharges through it, so the plan takes the lower.
+* **The reserve** (`reserves`): the SoC the battery itself does not discharge below (its discharge cut-off or backup
+  reserve). Several may be read; the highest that can be read counts. Sigenergy's are disabled by default; Huawei's
+  need the installer password; GoodWe states the depth of discharge (the floor is 100 less it). SolaX and Victron:
+  none mapped yet.
+
 A control is what SpotNav *could* write; nothing in this release writes it.
 """
 
@@ -78,6 +87,15 @@ class ControlSpec:
 
 
 @dataclass(frozen=True, slots=True)
+class ReserveSource:
+    """An entity that holds the battery's own floor (%)."""
+
+    match: Match
+    #: It holds the depth of discharge: the floor is 100 less it (GoodWe).
+    depth: bool = False
+
+
+@dataclass(frozen=True, slots=True)
 class Adapter:
     brand: str
     label: str
@@ -90,6 +108,10 @@ class Adapter:
     grid_charge: ControlSpec | None = None
     #: As `site_detection.BatteryRow.device_manufacturer`: for an integration that speaks for several makers.
     manufacturer: str | None = None
+    #: The plant's maximum output (kW), when it can be lower than the battery's rating.
+    plant_max: Match | None = None
+    #: Where the battery's own floor is kept (see the module).
+    reserves: tuple[ReserveSource, ...] = ()
 
 
 def _key(key: str, *domains: str, reject: str | None = None) -> Match:
@@ -117,6 +139,12 @@ SIGENERGY: Final = Adapter(
         ModeRule(_key("plant_ems_work_mode"), frozenset({"max_self_consumption"}), "EMS work mode"),
     ),
     grid_status=(_key("plant_on_off_grid_status"), "on_grid"),
+    plant_max=_key("plant_max_active_power"),
+    reserves=(
+        ReserveSource(_key("plant_ess_discharge_cut_off_soc")),
+        ReserveSource(_key("plant_discharge_cut_off_soc", "number")),
+        ReserveSource(_key("plant_backup_soc", "number")),
+    ),
     hold=ControlSpec(
         "number",
         0.0,
@@ -152,6 +180,10 @@ HUAWEI: Final = Adapter(
             "working mode",
         ),
     ),
+    reserves=(
+        ReserveSource(_key("storage_discharging_cutoff_capacity", "number")),
+        ReserveSource(_key("storage_backup_power_state_of_charge", "number")),
+    ),
     hold=ControlSpec(
         "number",
         0.0,
@@ -179,6 +211,7 @@ SOLAREDGE: Final = Adapter(
     modes=(
         ModeRule(_key("storage_control_mode", "select"), frozenset({"Remote Control"}), "storage control mode"),
     ),
+    reserves=(ReserveSource(_key("storage_backup_reserve", "number")),),
     hold=ControlSpec(
         "number",
         0.0,
@@ -248,6 +281,7 @@ GOODWE: Final = Adapter(
     platforms=("goodwe",),
     facts={"soc": _goodwe("battery_soc")},
     modes=(ModeRule(_goodwe("operation_mode", "select"), frozenset({"general"}), "operating mode"),),
+    reserves=(ReserveSource(_goodwe("battery_discharge_depth", "number"), depth=True),),
     # No discharge cap: the depth-of-discharge trick has the cut-off-above-SoC grid-charge risk.
     grid_charge=ControlSpec(
         "select",
@@ -264,6 +298,7 @@ ENPHASE: Final = Adapter(
     platforms=("enphase_envoy",),
     facts={"soc": _key("battery_level"), "capacity": _key("max_capacity")},
     modes=(ModeRule(_key("storage_mode", "select"), frozenset({"self_consumption"}), "storage mode"),),
+    reserves=(ReserveSource(_key("reserve_soc", "number")),),
     # No discharge cap: only "Full backup" or a reserve at the current level, both coarse.
     grid_charge=ControlSpec(
         "switch",

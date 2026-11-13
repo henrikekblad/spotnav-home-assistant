@@ -8,6 +8,7 @@ The prices are given directly (`_read_prices`); the rest is the real site with t
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -355,3 +356,38 @@ def test_gross_rows_need_enough_hours_with_a_production_figure() -> None:
     every = {moment: 0.25 for moment, _kw in rows}
     assert plan_runtime.gross_house_rows(rows, every) == [(moment, 1.25) for moment, _kw in rows]
     assert plan_runtime.gross_house_rows(rows, dict(list(every.items())[: MIN_OWN_HOURS - 1])) is None
+
+
+async def test_the_plan_takes_the_plants_maximum_and_the_batterys_own_reserve(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _site_entry, controller, _now = await _planned(hass, monkeypatch)
+    battery = controller.battery_shadow.snapshot()["plan"]["inputs"]["battery"]
+    # The real plant: 13.2 kW out of the whole plant beside a battery rated 20.6/23.04 kW; no reserve readable.
+    assert battery["plant_max_kw"] == 13.2
+    assert battery["max_charge_kw"] == 13.2 and battery["max_discharge_kw"] == 13.2
+    assert battery["reserve_soc_pct"] is None and battery["min_soc_pct"] == 10.0
+
+
+def test_a_readable_reserve_replaces_the_assumed_floor() -> None:
+    from custom_components.spotnav.battery.facts import BatteryFacts  # noqa: PLC0415
+    from custom_components.spotnav.battery.plan_shadow import battery_params  # noqa: PLC0415
+
+    facts = BatteryFacts(
+        battery_entity_id="sensor.battery",
+        soc_pct=50.0,
+        capacity_kwh=10.0,
+        rated_charge_kw=5.0,
+        rated_discharge_kw=5.0,
+        plant_max_kw=8.0,
+        reserve_soc_pct=20.0,
+    )
+    params, reason, estimates = plan_runtime.limited_params(*battery_params(facts), facts)
+    assert reason is None and params is not None
+    assert (params.max_charge_kw, params.max_discharge_kw, params.min_soc_pct) == (5.0, 5.0, 20.0)
+    assert EST_MIN_SOC not in estimates
+    # A reserve at the ceiling cannot be a floor: the assumed one stays, and says so.
+    params, _reason, estimates = plan_runtime.limited_params(
+        *battery_params(facts), replace(facts, reserve_soc_pct=100.0)
+    )
+    assert params is not None and params.min_soc_pct == 10.0 and EST_MIN_SOC in estimates
