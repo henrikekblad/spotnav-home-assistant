@@ -435,3 +435,74 @@ def test_a_readable_reserve_replaces_the_assumed_floor() -> None:
         *battery_params(facts), replace(facts, reserve_soc_pct=100.0)
     )
     assert params is not None and params.min_soc_pct == 10.0 and EST_MIN_SOC in estimates
+
+
+def test_the_plans_sun_is_corrected_only_once_the_correction_has_learnt() -> None:
+    from custom_components.spotnav.site.solar_correction import (  # noqa: PLC0415
+        KIND_CLEAR,
+        KIND_CLOUDY,
+        MIN_DAYS,
+        SolarCorrection,
+    )
+
+    start = datetime(2026, 11, 1, 10, tzinfo=dt_util.UTC)
+    raw = {start: 2000.0, start + timedelta(hours=1): 4000.0}
+    learning = SolarCorrection(factors={KIND_CLEAR: 0.5, KIND_CLOUDY: 0.5})
+    assert plan_runtime.corrected_solar_wh(raw, learning, observed_max_kwh=None, array_kwp=None) == (
+        raw,
+        plan_runtime.SOLAR_RAW,
+    )
+    learnt = SolarCorrection(factors={KIND_CLEAR: 0.5, KIND_CLOUDY: 0.5}, days={KIND_CLEAR: MIN_DAYS, KIND_CLOUDY: 0})
+    sun, basis = plan_runtime.corrected_solar_wh(raw, learnt, observed_max_kwh=3.0, array_kwp=None)
+    assert basis == plan_runtime.SOLAR_CORRECTED
+    assert sun == {start: pytest.approx(1000.0), start + timedelta(hours=1): pytest.approx(2000.0)}
+    # A factor above 1 is capped by the highest hour observed (and the array's size), as the correction caps it.
+    high = SolarCorrection(factors={KIND_CLEAR: 2.0, KIND_CLOUDY: 2.0}, days={KIND_CLEAR: MIN_DAYS, KIND_CLOUDY: 0})
+    sun, _basis = plan_runtime.corrected_solar_wh(raw, high, observed_max_kwh=3.0, array_kwp=None)
+    assert sun == {start: pytest.approx(3000.0), start + timedelta(hours=1): pytest.approx(4000.0)}
+    # Off on a curtailed site: the forecast as read.
+    curtailed = SolarCorrection(
+        factors={KIND_CLEAR: 0.5, KIND_CLOUDY: 0.5}, days={KIND_CLEAR: MIN_DAYS, KIND_CLOUDY: 0}, curtailed="export_limit"
+    )
+    assert plan_runtime.corrected_solar_wh(raw, curtailed, observed_max_kwh=None, array_kwp=None)[1] == "raw"
+
+
+async def test_the_plan_counts_on_the_corrected_sun_and_says_so(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from custom_components.spotnav.site.solar_correction import KIND_CLEAR, KIND_CLOUDY, MIN_DAYS  # noqa: PLC0415
+
+    _site_entry, controller, now = await _planned(hass, monkeypatch)
+    _with_sun(monkeypatch, controller, now)
+    state = controller.solar_correction.state
+    state.factors = {KIND_CLEAR: 0.5, KIND_CLOUDY: 0.5}
+    state.days = {KIND_CLEAR: MIN_DAYS, KIND_CLOUDY: MIN_DAYS}
+    _house_forecast(controller, now)
+    controller.battery_shadow.tick(now + timedelta(seconds=CHECK_S + 1))
+    await hass.async_block_till_done()
+    shown = controller.battery_shadow.snapshot()["plan"]
+    assert shown["inputs"]["solar"] == plan_runtime.SOLAR_CORRECTED
+    assert shown["plan"]["slots"][1]["solar_kw"] == pytest.approx(0.5)
+
+
+async def test_the_plans_own_house_forecast_is_the_median_without_the_inday_adjustment(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from custom_components.spotnav.site import load_forecast  # noqa: PLC0415
+
+    seen: list[dict[str, Any]] = []
+
+    def spy(*args: Any, **kwargs: Any) -> Any:
+        seen.append(kwargs)
+        return load_forecast.forecast_house_load(*args, **kwargs)
+
+    monkeypatch.setattr(plan_runtime, "forecast_house_load", spy)
+    _site_entry, controller, now = await _planned(hass, monkeypatch)
+    current = hour_start(now, controller.demand.tracker.tz)
+    for index in range(1, MIN_OWN_HOURS + 1):
+        controller.battery_shadow.plan.actuals.rows[current - timedelta(hours=index)] = 0.8
+    _house_forecast(controller, now)
+    controller.battery_shadow.tick(now + timedelta(seconds=CHECK_S + 1))
+    await hass.async_block_till_done()
+    assert controller.battery_shadow.snapshot()["plan"]["inputs"]["house"] == "own_rows"
+    assert seen and seen[-1]["inday"] is False and seen[-1]["quantile"] == plan_runtime.HOUSE_QUANTILE == 0.5

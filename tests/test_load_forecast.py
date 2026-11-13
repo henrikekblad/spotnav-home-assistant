@@ -110,6 +110,21 @@ def test_the_profile_takes_the_weighted_upper_quantile_not_the_mean() -> None:
     assert weighted_quantile([1.0, 4.0], [2.9, 1.0], QUANTILE) == 4.0
 
 
+def test_a_plan_may_ask_for_another_quantile() -> None:
+    # One evening in three draws 4 kW, the others 1 kW: the median counts on 1 kW, p90 on 4 kW, p75 between.
+    def load(moment: datetime) -> float:
+        day = moment.astimezone(UTC).toordinal()
+        return 4.0 if local_hour(moment) == 18 and day % 3 == 0 else 1.0
+
+    rows = history(NOW - timedelta(days=28), NOW, load)
+    at = local(2026, 11, 16, 18)
+    upper = hour_of(forecast_house_load(rows, NOW, TZ, inday=False), at).kw
+    median = hour_of(forecast_house_load(rows, NOW, TZ, inday=False, quantile=0.5), at).kw
+    high = hour_of(forecast_house_load(rows, NOW, TZ, inday=False, quantile=0.9), at).kw
+    assert median == pytest.approx(1.0) and high == pytest.approx(4.0)
+    assert median <= upper <= high
+
+
 def test_a_changed_habit_shows_within_two_weeks() -> None:
     def since(days: float, before: float, after: float) -> list[HourMean]:
         switch = NOW - timedelta(days=days)

@@ -445,14 +445,16 @@ def replay(
     site: Site,
     first: datetime,
     last: datetime,
-    foresight: str,
+    foresight: str | Callable[[History, datetime, int, int], tuple[Sequence[float], Sequence[float]]],
     end_value: float,
     mode: BatteryMode = MODE_DEFS[MODE_BALANCED],
     wear: float = 15.0,
     every: int = 96,
 ) -> tuple:
     """Day by day from 13:00 local on [first] to 13:00 on [last] as [mode] with [wear]; [foresight] is `self`
-    (no plan), `perfect` or `forecast`. Returns (tally, start kWh, end kWh)."""
+    (no plan), `perfect`, `forecast`, or a function `(history, at, i, n) -> (house, sun)` giving the plan's kW per
+    quarter hour for the `n` quarters from index `i` (`scripts/forecast_gap_backtest.py`). Returns (tally, start kWh,
+    end kWh)."""
     battery = site.battery
     if foresight == "self" or not mode.plans:
         foresight = "self"
@@ -474,7 +476,9 @@ def replay(
         if foresight == "self":
             actions = None
         else:
-            if foresight == "perfect":
+            if callable(foresight):
+                house, sun = foresight(history, at, i, n)
+            elif foresight == "perfect":
                 pairs = [_real(history, i + k) for k in range(n)]
                 house, sun = [p[0] for p in pairs], [p[1] for p in pairs]
             else:

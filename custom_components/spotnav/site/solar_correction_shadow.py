@@ -3,7 +3,8 @@
 The policy is pure (`site/solar_correction.py`), and so is the log (`site/forecast_log.py`, the site's one forecast
 log, kept by the house forecast, kinds `sun_kwh` and `sun_kwh_corrected`); this is the thin shell around them. One per site, owned by its `SiteCapacityController`, and only busy on a site that names a solar
 forecast (`CONF_SOLAR_FORECAST_ENTRIES`, the Hybrid strategy's). Nothing here is a setting, and nothing here decides
-what a charger is told: the Hybrid strategy keeps reading the raw forecast. The corrected forecast is logged beside
+what a charger is told: the Hybrid strategy keeps reading the raw forecast (the battery plan, in shadow, reads
+the corrected one: `battery/plan_runtime.py`). The corrected forecast is logged beside
 the raw one, both are reviewed each night, and all of it is shown in the site's diagnostics (and so in the debug
 bundle).
 
@@ -417,7 +418,8 @@ class SiteSolarCorrection:
         state = self.state.as_dict()
         state.pop("meta", None)
         return {
-            # Shadow only: the Hybrid strategy reads the raw forecast; this is logged and reviewed beside it.
+            # The Hybrid strategy reads the raw forecast; this is logged and reviewed beside it, and the battery plan
+            # (itself shadow) counts on it once learnt.
             "status": self.status,
             "curtailed": self.state.curtailed,
             "sources": self.sources,
