@@ -262,8 +262,11 @@ def test_a_search_too_large_plans_with_the_flat_figure() -> None:
     flat = calculate_plan(replace(big, power_cap_kw_by_hour=None))
     # (20 kWh in steps of a quarter of 0.25 kWh) x (8 runs + 1) x 2 x 96 candidates is above the limit.
     assert 321 * 18 * 96 > ENERGY_SEARCH_LIMIT
-    assert flat.has_plan
-    assert calculate_plan(big) == flat
+    assert flat.has_plan and not flat.per_hour_caps_dropped
+    dropped = calculate_plan(big)
+    # The same plan as the flat figure's, and it says the caps were set aside (shown in the diagnostics).
+    assert dropped.per_hour_caps_dropped
+    assert replace(dropped, per_hour_caps_dropped=False) == flat
 
 
 @pytest.mark.parametrize(

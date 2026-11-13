@@ -1177,6 +1177,8 @@ async def test_diagnostics_describe_every_auto_state(
     proposal = ready["proposal"]
     assert proposal["historical"] is False and proposal["in_process"] is True
     assert proposal["applied"] is False and len(proposal["periods"]) >= 1
+    # No site and so no house forecast: the plan had no per-hour caps to count on.
+    assert proposal["per_hour_caps"] is None
 
     # 4. Prices whose next attempt failed: the same proposal, a different state.
     await today_fails(harness)

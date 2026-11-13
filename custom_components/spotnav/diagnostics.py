@@ -611,6 +611,14 @@ def _proposal_summary(
         "periods": [
             [_iso(start), _iso(end)] for start, end in proposal.periods
         ],
+        # Whether the plan counted on the house's expected load per hour (`used`: its slots deliver different
+        # energy), set it aside because the search would have been too large (`dropped_too_large`, the flat cap in
+        # every hour), or had none to count on (null).
+        "per_hour_caps": (
+            "dropped_too_large"
+            if getattr(proposal, "per_hour_caps_dropped", False)
+            else "used" if getattr(proposal, "slot_kwh", ()) else None
+        ),
     }
 
 
