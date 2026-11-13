@@ -27,7 +27,12 @@ from .relay import AREA_TZ, SE4, StubTransport, TODAY, TOMORROW, day_body, index
 from .test_import_target_hold import _world
 from .world import go_auto
 
-pytestmark = pytest.mark.usefixtures("offline_relay")
+pytestmark = [
+    pytest.mark.usefixtures("offline_relay"),
+    # A whole night through the real chain takes ~30 s alone and near the default 60 s under `-n 8`; three times
+    # the loaded figure keeps a real hang failing while a busy machine does not.
+    pytest.mark.timeout(180),
+]
 
 REQUESTED_KWH = 30.0
 DEPARTURE = time(9, 0)
