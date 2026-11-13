@@ -965,7 +965,7 @@ class VehicleIdentifier:
         """Re-read the cars' plug and tracker entities (cheap, never a wake-up), at most once a minute each. Answers
         the re-reads started (none when the limiter skipped every car)."""
         limiter = limiter_for(self._hass)
-        started = []
+        started: list[asyncio.Task[None]] = []
         for car in cars:
             entities = [entity for entity in self._sources(car) if entity is not None]
             if not entities or limiter.retry_after_s(car) is not None:
