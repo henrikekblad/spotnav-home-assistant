@@ -4,7 +4,10 @@ Pure: the clock is passed in. One log per site (kept in the house forecast's sto
 number of *kinds*, each kept the same way. Today: `house_kw`, the house load forecast; `house_kw_raw`, the same before
 its in-day adjustment; `house_day_ahead`, the next day's as made at the day-ahead price publication; `battery`, the
 SoC the battery plan expects at each hour's end (`battery/plan_shadow.py`); `sun_kwh`, the solar forecast as SpotNav
-reads it, and `sun_kwh_corrected`, the same after the shadow correction (`site/solar_correction_shadow.py`).
+reads it, and `sun_kwh_corrected`, the same after the shadow correction (`site/solar_correction_shadow.py`);
+`sun_kwh_p10`, `sun_kwh_p50` and `sun_kwh_p90`, the Solcast integration's three estimates as it states them
+(`site/solcast_detail.py`), logged beside the others so a later backtest has the real forecast as it was. Their
+`under_share` is the coverage reading: about 0.9 for a p10 and 0.1 for a p90 when the band is honest.
 
 * **The first forecast** made for each hour is logged (`record_forecast`), with when it was made, so its lead is
   known. A later forecast for the same hour never replaces it: the review scores what was known first. Only hours
@@ -40,6 +43,10 @@ KIND_HOUSE_DAY_AHEAD: Final = "house_day_ahead"
 KIND_SUN: Final = "sun_kwh"
 #: The same forecast after the shadow correction (`site/solar_correction.py`), logged beside it for the review.
 KIND_SUN_CORRECTED: Final = "sun_kwh_corrected"
+#: Solcast's own p10, p50 and p90 for the hour (kWh, the installation's day sensors; only on a site that reads Solcast).
+KIND_SUN_P10: Final = "sun_kwh_p10"
+KIND_SUN_P50: Final = "sun_kwh_p50"
+KIND_SUN_P90: Final = "sun_kwh_p90"
 #: The local hour from which the next day's prices are out (the day-ahead auction's results, ~12:45 CET).
 DAY_AHEAD_HOUR: Final = 13
 
@@ -49,8 +56,8 @@ KEEP_HOURS_DAYS: Final = 14
 MAX_HOURS: Final = (KEEP_HOURS_DAYS + 3) * 24
 #: The daily reviews of the last this many days are kept.
 KEEP_REVIEW_DAYS: Final = 30
-#: At most this many kinds are kept (a store that grew kinds by mistake stays small). Six are in use (the three
-#: house kinds, `battery` and the two sun kinds); the rest is room for the battery plan's per-mode kinds.
+#: At most this many kinds are kept (a store that grew kinds by mistake stays small). Nine are in use (the three
+#: house kinds, `battery`, the two sun kinds and Solcast's three); the rest is room for the battery plan's per-mode kinds.
 MAX_KINDS: Final = 12
 #: An under-forecast by more than this (in the kind's unit) is a large one.
 BIG_UNDER: Final = 0.5

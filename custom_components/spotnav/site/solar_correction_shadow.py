@@ -11,6 +11,9 @@ bundle).
 Sources, all found without a setting:
 
 * **The forecast**: what the Hybrid strategy reads (`planning/hybrid_forecast.py`), in kWh per UTC hour.
+* **Solcast's own estimates**: when a forecast entry is the Solcast integration, its p10, p50 and p90 per hour from
+  its forecast sensors' attributes (`site/solcast_detail.py`), logged as `sun_kwh_p10/p50/p90` and scored beside the
+  others. Nothing plans on them.
 * **Production**: the Energy dashboard's solar sources (`stat_energy_from`), read from the recorder's statistics:
   hourly for the outcome, 5-minute for the inverter's ceiling (clipping). An hour is counted only when every solar
   source has it.
@@ -57,7 +60,25 @@ from .solar_correction import (
     samples_from_log,
 )
 from .energy_statistics import async_energy_ids, async_statistics, summed
-from .forecast_log import KIND_SUN, KIND_SUN_CORRECTED, ForecastLog
+from .forecast_log import (
+    KIND_SUN,
+    KIND_SUN_CORRECTED,
+    KIND_SUN_P10,
+    KIND_SUN_P50,
+    KIND_SUN_P90,
+    ForecastLog,
+)
+from .solar_correction import STATUS_SHADOW as CORRECTION_LEARNT
+from .solcast_detail import read_detail
+from .surplus_forecast import (
+    MAX_AGE,
+    NEAR_HOURS,
+    STATE_HOURS,
+    SurplusHour,
+    expected_surplus,
+    remaining_today_kwh,
+    window_kwh,
+)
 
 if TYPE_CHECKING:
     from .site_capacity_controller import SiteCapacityController
@@ -78,6 +99,8 @@ STORE_VERSION: Final = 1
 SAVE_DELAY_S: Final = 30.0
 DEFAULT_WEATHER: Final = "weather.forecast_home"
 
+#: Solcast's quantiles and the log kind each is kept under.
+DETAIL_KINDS: Final = {"p10": KIND_SUN_P10, "p50": KIND_SUN_P50, "p90": KIND_SUN_P90}
 STATUS_NO_FORECAST: Final = "no_forecast_source"
 STATUS_NO_PRODUCTION: Final = "no_solar_statistics"
 
@@ -174,6 +197,11 @@ class SiteSolarCorrection:
         self.clipped: set[datetime] = set()
         self.evidence: list[dict[str, Any]] = []
         self.next_hours: list[dict[str, Any]] = []
+        #: The sun the expected surplus counts on (`surplus`): the last refresh's forecast from the running hour on
+        #: (kWh per UTC hour), corrected once the correction has learnt (the battery plan's rule), else as read.
+        self.sun_kwh: dict[datetime, float] = {}
+        self.sun_basis: str | None = None
+        self.detail_hours: int = 0
 
     @property
     def log(self) -> ForecastLog:
@@ -351,6 +379,8 @@ class SiteSolarCorrection:
         for start, kwh in hourly.items():
             self.log.record_actual(KIND_SUN, start, kwh)
             self.log.record_actual(KIND_SUN_CORRECTED, start, kwh)
+            for kind in DETAIL_KINDS.values():
+                self.log.record_actual(kind, start, kwh)
         logged_actuals = [h.actual for h in self.log.hours(KIND_SUN).values() if h.actual is not None]
         observed = [*hourly.values(), *logged_actuals]
         self.observed_max_kwh = max(observed) if observed else None
@@ -392,6 +422,21 @@ class SiteSolarCorrection:
         )
         self.log.record_forecast(KIND_SUN, future, now)
         self.log.record_forecast(KIND_SUN_CORRECTED, corrected, now)
+        running = {start: kwh for start, kwh in raw.items() if start >= hour}
+        learnt = self.state.status == CORRECTION_LEARNT
+        self.sun_kwh = (
+            self.state.correct(
+                running, observed_max_kwh=self.observed_max_kwh, array_kwp=self.array_kwp, cloud_pct=clouds
+            )
+            if learnt
+            else running
+        )
+        self.sun_basis = "corrected" if learnt else "raw"
+        detail = read_detail(self.hass, entries)
+        self.detail_hours = 0 if detail is None else len(detail["p50"])
+        for quantile, kind in DETAIL_KINDS.items():
+            if detail is not None:
+                self.log.record_forecast(kind, {s: k for s, k in detail[quantile].items() if s > now}, now)
         self.log.review(now)
         self.site.house_forecast.log_changed()
         self.state.prune(now)
@@ -410,6 +455,46 @@ class SiteSolarCorrection:
         self.refreshes += 1
         self.last_refresh = now
         self._store.changed()
+
+    # ---- the expected surplus
+
+    def surplus(self, now: datetime) -> list[SurplusHour] | None:
+        """The hours of expected solar surplus (`site/surplus_forecast.py`): the sun of the last refresh less the
+        house forecast's median. `None` without a sun forecast read in the last `MAX_AGE`, or without a house
+        forecast. The house figure is the site's one (`SiteHouseForecast.plan_kw_by_hour`)."""
+        if not self.sun_kwh or self.last_refresh is None or now - self.last_refresh > MAX_AGE:
+            return None
+        house = self.site.house_forecast.plan_kw_by_hour(now)
+        shown = expected_surplus(self.sun_kwh, house, now)
+        return shown or None
+
+    def surplus_snapshot(self, now: datetime) -> dict[str, Any] | None:
+        """The state and attributes of the expected surplus sensor, also shown in the diagnostics; `None` when unknown."""
+        shown = self.surplus(now)
+        if shown is None:
+            return None
+        state = window_kwh(shown, now, timedelta(hours=STATE_HOURS))
+        if state is None:
+            return None
+        today = remaining_today_kwh(shown, now, self.site.demand.tracker.tz)
+        return {
+            "kwh": round(state, 1),
+            "attributes": {
+                f"next_{NEAR_HOURS}h_kwh": round(window_kwh(shown, now, timedelta(hours=NEAR_HOURS)) or 0.0, 1),
+                "remaining_today_kwh": None if today is None else round(today, 1),
+                "window_hours": STATE_HOURS,
+                "sun": self.sun_basis,
+                "hours": [
+                    {
+                        "start": hour.start.isoformat(),
+                        "sun_kwh": round(hour.sun_kwh, 2),
+                        "house_kwh": round(hour.house_kwh, 2),
+                        "surplus_kwh": round(hour.surplus_kwh, 2),
+                    }
+                    for hour in shown
+                ],
+            },
+        }
 
     # ---- what is shown
 
@@ -434,5 +519,8 @@ class SiteSolarCorrection:
             "refreshes": self.refreshes,
             "last_refresh": None if self.last_refresh is None else self.last_refresh.isoformat(),
             "retry_at": None if self._retry_at is None else self._retry_at.isoformat(),
-            "log": self.log.diagnostics((KIND_SUN, KIND_SUN_CORRECTED)),
+            "solcast_hours": self.detail_hours,
+            "expected_surplus": self.surplus_snapshot(dt_util.utcnow()),
+            "sun_basis": self.sun_basis,
+            "log": self.log.diagnostics((KIND_SUN, KIND_SUN_CORRECTED, *DETAIL_KINDS.values())),
         }

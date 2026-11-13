@@ -635,6 +635,9 @@
       "solar_surplus": {
         "name": "Soloverskudd"
       },
+      "expected_solar_surplus": {
+        "name": "Forventet soloverskudd"
+      },
       "charger_proposed_current": {
         "name": "Foreslått strøm – {charger}",
         "state_attributes": {

@@ -635,6 +635,9 @@
       "solar_surplus": {
         "name": "Aurinkoylijäämä"
       },
+      "expected_solar_surplus": {
+        "name": "Odotettu aurinkoylijäämä"
+      },
       "charger_proposed_current": {
         "name": "Ehdotettu virta – {charger}",
         "state_attributes": {

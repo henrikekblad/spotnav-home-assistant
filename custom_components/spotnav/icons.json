@@ -61,6 +61,9 @@
       "solar_surplus": {
         "default": "mdi:solar-power-variant"
       },
+      "expected_solar_surplus": {
+        "default": "mdi:weather-sunny-alert"
+      },
       "charger_proposed_current": {
         "default": "mdi:current-ac"
       },

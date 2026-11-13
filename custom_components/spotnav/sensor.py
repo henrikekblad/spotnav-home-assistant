@@ -27,6 +27,7 @@ from .pricing.price_source import SIGNAL_PRICE_SOURCES, site_demand_components
 from .const import (
     CONF_CHARGER_ENTRY_IDS,
     CONF_ENTRY_TYPE,
+    CONF_SOLAR_FORECAST_ENTRIES,
     CONF_SOLAR_PRIORITY,
     DEFAULT_MAX_AGE_S,
     DEFAULT_SOLAR_PRIORITY,
@@ -67,6 +68,7 @@ async def async_setup_entry(
             entities.append(
                 ChargerProposedCurrentEntity(entry, site_controller, charger_entry_id, charger_title)
             )
+        _expected_surplus_sensor(hass, entry, site_controller, entities)
         async_add_entities(entities)
         _keep_demand_peak_sensor(hass, entry, site_controller, async_add_entities)
         return
@@ -80,6 +82,21 @@ async def async_setup_entry(
     entities.extend(session_entities(hass, entry, controller))
     entities.extend(auto_entities(entry, controller, AutoSurface.resolve(hass, entry.entry_id)))
     async_add_entities(entities)
+
+
+@callback
+def _expected_surplus_sensor(
+    hass: HomeAssistant, entry: ConfigEntry, controller: SiteCapacityController, entities: list[Any]
+) -> None:
+    """Add the expected solar surplus sensor on a site that names a solar forecast; remove it otherwise (a reload
+    follows each change of the site's options)."""
+    if controller.config.get(CONF_SOLAR_FORECAST_ENTRIES):
+        entities.append(SiteExpectedSurplusEntity(entry, controller))
+        return
+    registry = er.async_get(hass)
+    entity_id = registry.async_get_entity_id("sensor", DOMAIN, f"{entry.entry_id}_expected_solar_surplus")
+    if entity_id is not None:
+        registry.async_remove(entity_id)
 
 
 #: The unique-id suffixes of the "App connection" and "App pairing" sensors of releases up to 1.17.0.
@@ -516,6 +533,60 @@ class SiteSolarSurplusEntity(SpotNavSiteEntity, SensorEntity):
         self._shown = new
         self._written_at = now
         self.async_write_ha_state()
+
+
+#: How often the expected surplus is looked at again between the hourly forecasts (the window moves with the clock).
+EXPECTED_SURPLUS_TICK = timedelta(minutes=5)
+
+
+class SiteExpectedSurplusEntity(SpotNavSiteEntity, SensorEntity):
+    """The solar surplus the site is expected to have in the next hours (`site/surplus_forecast.py`): the sun
+    forecast (corrected once learnt) less the house load forecast, in kWh over the next four hours; its attributes
+    carry the next two hours, the rest of today and one row per hour, for blueprints and automations. A prediction,
+    read-only; `unknown` while either forecast is missing. Written only when the shown figures change."""
+
+    _attr_translation_key = "expected_solar_surplus"
+    # One row per hour: kept out of the recorder like the forecast's own attributes.
+    _unrecorded_attributes = frozenset({"hours"})
+    _attr_device_class = SensorDeviceClass.ENERGY
+    _attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
+    _attr_suggested_display_precision = 1
+
+    def __init__(self, entry: ConfigEntry, controller: SiteCapacityController) -> None:
+        super().__init__(entry, controller)
+        self._attr_unique_id = f"{entry.entry_id}_expected_solar_surplus"
+        self._shown: dict[str, Any] | None = None
+
+    async def async_added_to_hass(self) -> None:
+        self._refresh()
+        self.async_on_remove(self.controller.house_forecast.add_listener(self._on_change))
+        self.async_on_remove(
+            async_track_time_interval(self.hass, self._on_tick, EXPECTED_SURPLUS_TICK)
+        )
+
+    @property
+    def native_value(self) -> float | None:
+        return None if self._shown is None else self._shown["kwh"]
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        return None if self._shown is None else self._shown["attributes"]
+
+    def _refresh(self) -> bool:
+        shown = self.controller.solar_correction.surplus_snapshot(dt_util.utcnow())
+        if shown == self._shown:
+            return False
+        self._shown = shown
+        return True
+
+    @callback
+    def _on_change(self) -> None:
+        if self._refresh():
+            self.async_write_ha_state()
+
+    @callback
+    def _on_tick(self, _now: datetime) -> None:
+        self._on_change()
 
 
 def _keep_demand_peak_sensor(
