@@ -315,6 +315,7 @@ class SiteHouseForecast:
         self._running = False
         self._closed = False
         self._attribute: list[dict[str, Any]] = []
+        self._rows: list[tuple[datetime, float]] = []
         self.refreshes = 0
         self._loaded = entry_id is None
         self._store: DayStore | None = None
@@ -527,11 +528,10 @@ class SiteHouseForecast:
                 self.basis = basis
             self.forecast, self.median, self.import_forecast = forecast, median, import_forecast
             # Hours without a figure are left out: a site that knows nothing yet shows an empty list.
-            self._attribute = [
-                {"start": hour.start.isoformat(), "kw": round(hour.kw, 2)}
-                for hour in forecast.hours[:ATTRIBUTE_HOURS]
-                if hour.kw is not None
+            self._rows = [
+                (hour.start, hour.kw) for hour in forecast.hours[:ATTRIBUTE_HOURS] if hour.kw is not None
             ]
+            self._attribute = [{"start": start.isoformat(), "kw": round(kw, 2)} for start, kw in self._rows]
             if import_forecast is not None:
                 self._log_import(import_forecast, net_hours, now)
             self._log(forecast, hours, now, tz)
@@ -693,6 +693,11 @@ class SiteHouseForecast:
     def attribute(self) -> list[dict[str, Any]]:
         """The site state sensor's `forecast`: the next `ATTRIBUTE_HOURS` hours that have a figure, `[{start, kw}]`."""
         return self._attribute
+
+    @property
+    def rows(self) -> list[tuple[datetime, float]]:
+        """What `attribute` shows as `(hour start, kW)`, for the House load forecast sensor."""
+        return self._rows
 
     def diagnostics(self) -> dict[str, Any]:
         """The sources, the last forecast and the log with its reviews."""

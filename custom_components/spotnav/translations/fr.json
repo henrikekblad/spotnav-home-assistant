@@ -638,6 +638,12 @@
       "expected_solar_surplus": {
         "name": "Surplus solaire attendu"
       },
+      "house_load_forecast": {
+        "name": "Prévision de la consommation de la maison"
+      },
+      "solar_forecast": {
+        "name": "Prévision solaire"
+      },
       "charger_proposed_current": {
         "name": "Courant proposé – {charger}",
         "state_attributes": {

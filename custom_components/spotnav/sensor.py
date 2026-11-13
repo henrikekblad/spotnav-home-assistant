@@ -42,9 +42,11 @@ from .execution.power_energy import fresh_power_w, integrated_energy_unique_id, 
 from .runtime import controller_for, price_data
 from .sessions.sensors import session_entities
 from .vehicles.choices import flow_language
+from .site.forecast_shape import standard_forecast
 from .site.site_capacity import site_activity
 from .site.site_capacity_controller import SiteCapacityController
 from .site.solar_surplus import SiteSurplus
+from .site.surplus_forecast import MAX_AGE
 
 
 #: How often the integrated power is sampled between its sensor's own reports.
@@ -61,7 +63,11 @@ async def async_setup_entry(
     remove_pairing_sensors(hass, entry)
     if entry.data.get(CONF_ENTRY_TYPE) == ENTRY_TYPE_SITE:
         site_controller = entry.runtime_data.controller
-        entities: list[Any] = [SiteStateEntity(entry, site_controller), SiteSolarSurplusEntity(entry, site_controller)]
+        entities: list[Any] = [
+            SiteStateEntity(entry, site_controller),
+            SiteSolarSurplusEntity(entry, site_controller),
+            SiteHouseForecastEntity(entry, site_controller),
+        ]
         for charger_entry_id in site_controller.config.get(CONF_CHARGER_ENTRY_IDS) or []:
             charger_entry = hass.config_entries.async_get_entry(charger_entry_id)
             charger_title = charger_entry.title if charger_entry else charger_entry_id
@@ -88,15 +94,16 @@ async def async_setup_entry(
 def _expected_surplus_sensor(
     hass: HomeAssistant, entry: ConfigEntry, controller: SiteCapacityController, entities: list[Any]
 ) -> None:
-    """Add the expected solar surplus sensor on a site that names a solar forecast; remove it otherwise (a reload
-    follows each change of the site's options)."""
-    if controller.config.get(CONF_SOLAR_FORECAST_ENTRIES):
-        entities.append(SiteExpectedSurplusEntity(entry, controller))
-        return
+    """Add the expected solar surplus and the solar forecast sensors on a site that names a solar forecast; remove
+    them otherwise (a reload follows each change of the site's options)."""
     registry = er.async_get(hass)
-    entity_id = registry.async_get_entity_id("sensor", DOMAIN, f"{entry.entry_id}_expected_solar_surplus")
-    if entity_id is not None:
-        registry.async_remove(entity_id)
+    if controller.config.get(CONF_SOLAR_FORECAST_ENTRIES):
+        entities.extend((SiteExpectedSurplusEntity(entry, controller), SiteSolarForecastEntity(entry, controller)))
+        return
+    for key in ("expected_solar_surplus", "solar_forecast"):
+        entity_id = registry.async_get_entity_id("sensor", DOMAIN, f"{entry.entry_id}_{key}")
+        if entity_id is not None:
+            registry.async_remove(entity_id)
 
 
 #: The unique-id suffixes of the "App connection" and "App pairing" sensors of releases up to 1.17.0.
@@ -588,6 +595,97 @@ class SiteExpectedSurplusEntity(SpotNavSiteEntity, SensorEntity):
     @callback
     def _on_tick(self, _now: datetime) -> None:
         self._on_change()
+
+
+class _SiteForecastEntity(SpotNavSiteEntity, SensorEntity):
+    """A site forecast in the shape the energy optimisers read (`site/forecast_shape.py`): the state is the running
+    hour's figure (kW) and `forecast` holds `[{time, value}]` from that hour on, in kW, never recorded. Written only
+    when the shown figures change; `unknown` while there is no row for the running hour."""
+
+    _attr_device_class = SensorDeviceClass.POWER
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_native_unit_of_measurement = UnitOfPower.KILO_WATT
+    _attr_suggested_display_precision = 2
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    # One row per hour: kept out of the recorder, whose history holds the state only.
+    _unrecorded_attributes = frozenset({"forecast", "basis"})
+
+    def __init__(self, entry: ConfigEntry, controller: SiteCapacityController, key: str) -> None:
+        super().__init__(entry, controller)
+        self._attr_unique_id = f"{entry.entry_id}_{key}"
+        self._shown: tuple[float | None, dict[str, Any]] = (None, {})
+
+    def _rows(self, now: datetime) -> tuple[list[tuple[datetime, float]], dict[str, Any]]:
+        """The `(hour start, kW)` rows still to come or running and what else to say."""
+        raise NotImplementedError
+
+    async def async_added_to_hass(self) -> None:
+        self._refresh()
+        self.async_on_remove(self.controller.house_forecast.add_listener(self._on_change))
+        self.async_on_remove(async_track_time_interval(self.hass, self._on_tick, EXPECTED_SURPLUS_TICK))
+
+    @property
+    def native_value(self) -> float | None:
+        return self._shown[0]
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        return self._shown[1]
+
+    def _refresh(self) -> bool:
+        now = dt_util.utcnow()
+        rows, extra = self._rows(now)
+        running = [row for row in rows if row[0] <= now < row[0] + timedelta(hours=1)]
+        shown = (
+            None if not running else round(running[0][1], 3),
+            {**extra, "forecast": standard_forecast(rows)} if running else {},
+        )
+        if shown == self._shown:
+            return False
+        self._shown = shown
+        return True
+
+    @callback
+    def _on_change(self) -> None:
+        if self._refresh():
+            self.async_write_ha_state()
+
+    @callback
+    def _on_tick(self, _now: datetime) -> None:
+        self._on_change()
+
+
+class SiteHouseForecastEntity(_SiteForecastEntity):
+    """The house's expected load (kW) per hour for the next day (`site/house_forecast.py`); `basis` says whether it
+    is the whole load or the import less the chargers. A prediction, read-only."""
+
+    _attr_translation_key = "house_load_forecast"
+
+    def __init__(self, entry: ConfigEntry, controller: SiteCapacityController) -> None:
+        super().__init__(entry, controller, "house_load_forecast")
+
+    def _rows(self, now: datetime) -> tuple[list[tuple[datetime, float]], dict[str, Any]]:
+        forecast = self.controller.house_forecast
+        return [row for row in forecast.rows if row[0] + timedelta(hours=1) > now], {"basis": forecast.basis}
+
+
+class SiteSolarForecastEntity(_SiteForecastEntity):
+    """The sun's expected power (kW, an hour's kWh is its mean kW) per hour at a site that names a solar forecast:
+    the correction's figure once it is learnt (`basis`: `corrected`), else the source's own (`raw`). Unknown while
+    the forecast was last read longer ago than `MAX_AGE`. A prediction, read-only; the Energy dashboard's offer
+    of the same figure is `energy.py`."""
+
+    _attr_translation_key = "solar_forecast"
+
+    def __init__(self, entry: ConfigEntry, controller: SiteCapacityController) -> None:
+        super().__init__(entry, controller, "solar_forecast")
+
+    def _rows(self, now: datetime) -> tuple[list[tuple[datetime, float]], dict[str, Any]]:
+        correction = self.controller.solar_correction
+        if correction.last_refresh is None or now - correction.last_refresh > MAX_AGE:
+            return [], {}
+        rows = [(start, kwh) for start, kwh in sorted(correction.sun_kwh.items()) if start + timedelta(hours=1) > now]
+        return rows, {"basis": correction.sun_basis}
 
 
 def _keep_demand_peak_sensor(

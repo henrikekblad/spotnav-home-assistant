@@ -64,6 +64,12 @@
       "expected_solar_surplus": {
         "default": "mdi:weather-sunny-alert"
       },
+      "house_load_forecast": {
+        "default": "mdi:home-lightning-bolt-outline"
+      },
+      "solar_forecast": {
+        "default": "mdi:solar-power"
+      },
       "charger_proposed_current": {
         "default": "mdi:current-ac"
       },
