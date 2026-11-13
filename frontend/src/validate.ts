@@ -297,6 +297,8 @@ export interface Dashboard {
    * Assistant offers no camera and AI Task entity, from an older backend, or unreadable.
    */
   camera_identification: CameraIdentification | null;
+  /** The departure calendar: what to choose from and what the plan made of it; `null` without one, or unreadable. */
+  departure_calendar: DepartureCalendarBlock | null;
   /**
    * The electricity price entry the charger uses, where its area and fees live. `null` while the charger prices
    * with its own settings, from an older backend, or unreadable.
@@ -478,6 +480,29 @@ export function referencePictures(list: readonly unknown[]): ReferencePicture[] 
     }
     return [{ kind: entry.kind, taken_at: entry.taken_at, colour: entry.colour === true }];
   });
+}
+
+/** What the plan made of the departure calendar (`state`); see `DepartureCalendarBlock`. */
+export const DEPARTURE_CALENDAR_STATES = ["used", "daily", "date", "unavailable", "off"] as const;
+export type DepartureCalendarState = (typeof DEPARTURE_CALENDAR_STATES)[number];
+
+/**
+ * The `departure_calendar` block: the calendars Home Assistant has, and what the last calculation made of the chosen
+ * one. `state` `null`: none chosen, or not calculated yet.
+ */
+export interface DepartureCalendarBlock {
+  calendars: Array<{ entity_id: string; name: string }>;
+  entity_id: string | null;
+  state: DepartureCalendarState | null;
+  /** The departure the calendar made the plan's (an instant), while `used`. */
+  departure: string | null;
+  /** The event's title, or `null` when an event only moved the daily departure to its next day. */
+  summary: string | null;
+  all_day: boolean;
+  target_percent: number | null;
+  target_kwh: number | null;
+  /** Which of the event's targets the plan uses. */
+  target_used: "percent" | "kwh" | null;
 }
 
 export interface CameraIdentification {
@@ -1888,6 +1913,7 @@ export function decodeDashboard(raw: unknown): DecodeResult {
         vehicle_choices: vehicleChoicesOf(root),
         progress: chargeBarOrNull(root),
         camera_identification: cameraIdentificationOrNull(root),
+        departure_calendar: departureCalendarOrNull(root.departure_calendar),
         price_source: priceSourceOrNull(root),
         grid_tariff: gridTariffOrNull(root),
         setup: setupOrNull(root),
@@ -1945,6 +1971,7 @@ const OPTIONAL_DASHBOARD_KEYS = [
   "identification",
   "vehicle_choices",
   "camera_identification",
+  "departure_calendar",
   // The notifier's count of the plans it told, for the app's background check: accepted and never read.
   "plan_notice",
   "price_source",
@@ -2176,6 +2203,52 @@ function gridTariffOrNull(root: Record<string, unknown>): GridTariffBlock | null
   }
   try {
     return decodeGridTariff(root.grid_tariff);
+  } catch {
+    return null;
+  }
+}
+
+/** The `departure_calendar` block, or `null` when it is missing or unreadable: the Plan dialog offers no calendar. */
+export function departureCalendarOrNull(value: unknown): DepartureCalendarBlock | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+  try {
+    exactKeys(value, [
+      "calendars",
+      "entity_id",
+      "state",
+      "departure",
+      "summary",
+      "all_day",
+      "target_percent",
+      "target_kwh",
+      "target_used",
+    ]);
+    const calendars = arrayValue(value, "calendars").map((entry) => {
+      const item = record(entry);
+      exactKeys(item, ["entity_id", "name"]);
+      return { entity_id: text(item, "entity_id"), name: text(item, "name") };
+    });
+    const state = value.state;
+    if (state !== null && !(DEPARTURE_CALENDAR_STATES as readonly unknown[]).includes(state)) {
+      return bad();
+    }
+    const used = value.target_used;
+    if (used !== null && used !== "percent" && used !== "kwh") {
+      return bad();
+    }
+    return {
+      calendars,
+      entity_id: textOrNull(value, "entity_id"),
+      state: state as DepartureCalendarState | null,
+      departure: textOrNull(value, "departure"),
+      summary: textOrNull(value, "summary"),
+      all_day: booleanValue(value, "all_day"),
+      target_percent: numberOrNull(value, "target_percent"),
+      target_kwh: numberOrNull(value, "target_kwh"),
+      target_used: used,
+    };
   } catch {
     return null;
   }

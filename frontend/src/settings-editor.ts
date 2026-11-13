@@ -4,7 +4,7 @@
 // card own every judgement and request.
 
 import { ageSentence as sharedAgeSentence } from "./vehicle-line";
-import { energyAmount, formatFixed, formatNumber, percentAmount } from "./format";
+import { departureDayLabel, energyAmount, formatFixed, formatNumber, percentAmount } from "./format";
 import { pluralForm, translate, type Language, type TranslationKey } from "./i18n";
 import {
   CURRENT_SLIDER_STEP_A,
@@ -24,7 +24,7 @@ import { VISUAL_CLASSES as C, summaryValueClass } from "./visual-styles";
 import { settingRow } from "./value-editors";
 import { floorSegment, placeMarks, targetTicks } from "./percent-slider";
 import { chargeCeiling, effectiveTarget, targetNeedKwh } from "./target-need";
-import type { Soc, Vehicle } from "./validate";
+import type { DepartureCalendarBlock, Soc, Vehicle } from "./validate";
 
 export interface SettingsEditorForm {
   kind: SettingsEditorKind;
@@ -67,6 +67,13 @@ export interface SettingsEditorForm {
   days?: DepartureDays | null;
   /** The charger's site has an import target: the Plan dialog asks what it does when the car cannot be ready. */
   importTarget?: boolean;
+  /**
+   * The departure calendar (`departure_calendar`): the calendars to choose from and what the plan made of the chosen
+   * one. Absent or `null`: no calendar is offered.
+   */
+  calendar?: DepartureCalendarBlock | null;
+  /** The departure the calendar made the plan's, as a local date and wall time in the market's zone, or `null`. */
+  calendarDeparture?: { date: string; time: string } | null;
 }
 
 export interface SettingsEditorHandlers {
@@ -497,8 +504,96 @@ export function settingsEditorBody(
     paint();
   };
 
+  /**
+   * The departure calendar: one optional picker below the day. An event in it is that day's departure, and a target in
+   * its text is the plan's; what the last plan made of it is said under the picker. Only where the backend has the
+   * field and Home Assistant has a calendar (or one is chosen).
+   */
+  const appendCalendar = (into: HTMLElement): void => {
+    const block = form.calendar ?? null;
+    if (block === null || form.values.departureCalendar === undefined) {
+      return;
+    }
+    const chosen = form.values.departureCalendar;
+    const group = element(doc, "div");
+    group.dataset["part"] = "departure-calendar";
+    calendarSelect = doc.createElement("select") as HTMLSelectElement;
+    const select = calendarSelect;
+    select.className = C.settingsInput;
+    select.disabled = form.readOnly;
+    const option = (value: string, label: string): void => {
+      const item = doc.createElement("option") as HTMLOptionElement;
+      item.value = value;
+      item.textContent = label;
+      select.append(item);
+    };
+    option("", translate(language, "settings.deadline.calendarNone"));
+    for (const calendar of block.calendars) {
+      option(calendar.entity_id, calendar.name);
+    }
+    if (chosen !== "" && !block.calendars.some((calendar) => calendar.entity_id === chosen)) {
+      // A calendar that is gone stays chosen until the reader picks another: named by its id.
+      option(chosen, chosen);
+    }
+    select.value = chosen;
+    const note = element(doc, "p", C.settingsNote);
+    note.dataset["note"] = "departure-calendar";
+    note.setAttribute("aria-live", "polite");
+    const help = element(doc, "p", C.settingsNote, translate(language, "settings.deadline.calendarHelp"));
+    help.dataset["note"] = "departure-calendar-help";
+    const paint = (): void => {
+      const text = select.value !== "" && select.value === block.entity_id ? calendarNote(block) : "";
+      note.textContent = text;
+      note.hidden = text === "";
+      help.hidden = select.value === "";
+    };
+    select.addEventListener("change", paint);
+    group.append(field(doc, `${idPrefix}-deadline-calendar`, translate(language, "settings.deadline.calendar"), select), note, help);
+    into.append(group);
+    paint();
+  };
+
+  /** What the last plan made of the chosen calendar, in a sentence, or `""` when there is nothing to say. */
+  const calendarNote = (block: DepartureCalendarBlock): string => {
+    switch (block.state) {
+      case "used": {
+        const at = form.calendarDeparture ?? null;
+        if (at === null) {
+          return "";
+        }
+        const day =
+          departureDayLabel(language, at.date, form.days?.today ?? null, {
+            today: translate(language, "settings.deadline.today"),
+            tomorrow: translate(language, "settings.deadline.tomorrow"),
+          }) ?? at.date;
+        const when = `${day} ${at.time}`;
+        const target =
+          block.target_used === "percent" && block.target_percent !== null
+            ? percentAmount(language, block.target_percent)
+            : block.target_used === "kwh" && block.target_kwh !== null
+              ? energyAmount(language, block.target_kwh)
+              : null;
+        const ignored = block.target_used === null && (block.target_percent !== null || block.target_kwh !== null);
+        const line =
+          target === null
+            ? translate(language, "settings.deadline.calendarUsed", { when })
+            : translate(language, "settings.deadline.calendarUsedTarget", { when, target });
+        return ignored ? `${line} ${translate(language, "settings.deadline.calendarTargetIgnored")}` : line;
+      }
+      case "daily":
+        return translate(language, "settings.deadline.calendarDaily");
+      case "date":
+        return translate(language, "settings.deadline.calendarDate");
+      case "unavailable":
+        return translate(language, "settings.deadline.calendarUnavailable");
+      default:
+        return "";
+    }
+  };
+
   /** The weekdays a daily departure applies on: one toggle per day, Monday first, named in the card's language. */
   const weekdayChecks: HTMLInputElement[] = [];
+  let calendarSelect: HTMLSelectElement | null = null;
   const weekdayGroup = (): HTMLElement => {
     const group = element(doc, "fieldset", C.siteFieldset);
     group.dataset["part"] = "departure-weekdays";
@@ -533,8 +628,9 @@ export function settingsEditorBody(
     departure.dataset["part"] = "departure";
     departure.append(field(doc, `${idPrefix}-deadline-time`, translate(language, "settings.deadline.time"), timeInput));
     if (form.guest !== true) {
-      // A guest leaves at the next occurrence of the time: the household's date and weekdays are not shown.
+      // A guest leaves at the next occurrence of the time: the household's date, weekdays and calendar are not shown.
       appendDate(departure);
+      appendCalendar(departure);
     }
     departure.hidden = !enabledInput.checked;
     enabledInput.addEventListener("change", () => {
@@ -1054,6 +1150,9 @@ export function settingsEditorBody(
         .join("");
     }
     values.current = currentValue;
+    if (calendarSelect !== null) {
+      values.departureCalendar = calendarSelect.value;
+    }
     const chosenIfNotReady = ifNotReadyRadios.find((radio) => radio.checked);
     if (chosenIfNotReady !== undefined) {
       values.ifNotReady = chosenIfNotReady.value;
