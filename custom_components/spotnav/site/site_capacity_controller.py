@@ -121,6 +121,7 @@ from ..planning.auto_settings import (
 )
 from ..runtime import charger_data, controller_for, domain_data, preview_for
 from ..vehicles.capability import build_capability_snapshot, SiteCapabilitySnapshot
+from ..battery.runtime import BatteryShadow
 from .measurement_problem import measurement_problem, MeasurementProblem, UNHEALTHY_STATES
 from .meter_cadence import ReportCadence, solar_liveness
 from .site_detection import UPDATE_BEHAVIOUR
@@ -775,6 +776,9 @@ class SiteCapacityController:
         self._grid_sign_store: Store[dict[str, Any]] = Store(hass, 1, f"{DOMAIN}.grid_sign.{entry_id}")
         # A changed tally not yet written: written at the latest when the site shuts down (a reload, a restart).
         self._grid_sign_unsaved = False
+        # The site's home battery in shadow (`battery/runtime.py`): its facts and what SpotNav would do with it,
+        # logged and never written.
+        self.battery_shadow = BatteryShadow(hass, self)
         self.result: SiteCapacityResult = self._calculate()
         self._update_direction_history()
         # One regulator decision per associated charger (`site/regulator.py`); acting on them is
@@ -828,6 +832,7 @@ class SiteCapacityController:
         await self.demand.async_load()
         await self._async_load_released()
         await self._async_load_grid_sign()
+        await self.battery_shadow.async_start()
         await self._history.async_load()
         self._history_cancel = async_track_time_interval(
             self.hass, self._async_sample_history, timedelta(seconds=HISTORY_SAMPLE_INTERVAL_S)
@@ -851,6 +856,7 @@ class SiteCapacityController:
             self._history_cancel = None
         await self._history.async_close()
         await self.demand.async_close()
+        await self.battery_shadow.async_shutdown()
         if self._grid_sign_unsaved:
             self._grid_sign_unsaved = False
             await self._grid_sign_store.async_save(self._grid_sign.as_dict())
