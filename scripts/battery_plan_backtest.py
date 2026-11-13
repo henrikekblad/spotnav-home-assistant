@@ -23,6 +23,12 @@ Replay
 * `self-consumption`: the same battery left to itself. `actual`: the grid meter as it was, under the site's own
   battery control (Sigenergy AI mode on the owner's site).
 * Costs are compared with the energy each ends with valued at the period's median buy price x the round trip.
+* `--house balance` takes the house as grid + sun - battery - car (Sigenergy's own daily load, inverter losses of
+  about 0.2 kW included) in place of the total-load sensor; `--revenue CSV` then prints each run's daily "revenue"
+  as Sigenergy's Revenue Calendar counts it (see `revenue_by_day`) beside the calendar's CSV.
+* The buy price is `(spot x (1 + fee%) + fee) x VAT`, the sell price `spot x (1 + sell%) + credit`. The owner's
+  Sigenergy tariff (buy 1.3185 x spot + 74.5, sell 1.05 x spot + 6.6) is `--fee 59.6 --fee-percent 5.48
+  --sell-percent 5 --sell-credit 6.6`.
 
 Modes and wear (3.0 wave 3)
 * `--mode` plans as one battery mode (`plan_model.MODE_DEFS`): `balanced` weighs twice the wear and sells from the
@@ -213,18 +219,30 @@ class History:
     soc: list[float | None]
     car: list[float]
     spot: list[float | None] = field(default_factory=list)  # SEK/kWh
+    balance: bool = False
 
     def at(self, when: datetime) -> int:
         return (when - self.t0) // SLOT
 
-    def house(self, i: int) -> float | None:
-        """The house without the car: Sigenergy's total load where it exists, else grid + pv - battery."""
-        total = self.load[i]
+    def total(self, i: int) -> float | None:
+        """The site's load, car included: Sigenergy's total load where it exists (not with `balance`), else grid + pv
+        - battery."""
+        total = None if self.balance else self.load[i]
+        bias = 0.0 if self.balance else DERIVED_BIAS_KW
         if total is None and None not in (self.grid[i], self.pv[i], self.batt[i]):
-            total = self.grid[i] + self.pv[i] - self.batt[i] - DERIVED_BIAS_KW
-        if total is None:
-            return None
-        return max(0.0, total - self.car[i])
+            total = self.grid[i] + self.pv[i] - self.batt[i] - bias
+        return total
+
+    def car_kw(self, i: int) -> float:
+        """The car as part of the load. With `balance` it is cut to the site's load: on some days the car sensor
+        reads more than Sigenergy's meters saw (2026-10-13, 10-22, 11-01..03, 11-07, 11-09)."""
+        total = self.total(i)
+        return min(self.car[i], max(0.0, total)) if self.balance and total is not None else self.car[i]
+
+    def house(self, i: int) -> float | None:
+        """The house without the car."""
+        total = self.total(i)
+        return None if total is None else max(0.0, total - self.car_kw(i))
 
 
 def load_history(start: datetime, end: datetime, cache: Path) -> History:
@@ -312,13 +330,14 @@ class Site:
     fee_percent: float  # the grid fee's part that is a share of the spot price, before VAT
     vat_percent: float
     sell_credit_minor: float
+    sell_percent: float = 0.0
 
     def buy(self, spot_sek: float) -> float:
         spot = spot_sek * 100
         return (spot + spot * self.fee_percent / 100 + self.fee_minor) * (1 + self.vat_percent / 100)
 
     def sell(self, spot_sek: float) -> float:
-        return spot_sek * 100 + self.sell_credit_minor
+        return spot_sek * 100 * (1 + self.sell_percent / 100) + self.sell_credit_minor
 
 
 def _slots(history: History, site: Site, start: int, n: int, house: Sequence[float], sun: Sequence[float]) -> tuple:
@@ -330,7 +349,7 @@ def _slots(history: History, site: Site, start: int, n: int, house: Sequence[flo
             sell=site.sell(history.spot[start + k]),
             house_kw=max(0.0, house[k]),
             solar_kw=max(0.0, sun[k]),
-            car_kw=history.car[start + k],
+            car_kw=history.car_kw(start + k),
             import_cap_kw=site.import_cap_kw,
             export_cap_kw=site.export_cap_kw,
         )
@@ -354,6 +373,8 @@ class Tally:
     discharge_kwh: float = 0.0
     battery_export_kwh: float = 0.0
     min_soc_pct: float = 100.0
+    #: The cost (öre) per local day, of the quarter hours with a meter reading.
+    daily: dict[str, float] = field(default_factory=dict)
 
 
 def replay(
@@ -416,6 +437,8 @@ def replay(
             if history.grid[i + k] is None:
                 continue  # no meter reading: left out of every run, as of the actual one
             tally.cost += outcome.cost
+            day = slot.start.astimezone(TZ).date().isoformat()
+            tally.daily[day] = tally.daily.get(day, 0.0) + outcome.cost
             hours = slot.hours
             tally.import_kwh += max(0.0, outcome.grid_kw) * hours
             tally.export_kwh += max(0.0, -outcome.grid_kw) * hours
@@ -439,6 +462,9 @@ def actual(history: History, site: Site, first: datetime, last: datetime) -> tup
         if grid is None or spot is None:
             continue
         hours = 0.25
+        day = (history.t0 + SLOT * i).astimezone(TZ).date().isoformat()
+        cost = grid * hours * (site.buy(spot) if grid >= 0 else site.sell(spot))
+        tally.daily[day] = tally.daily.get(day, 0.0) + cost
         if grid >= 0:
             tally.cost += grid * hours * site.buy(spot)
             tally.import_kwh += grid * hours
@@ -449,6 +475,20 @@ def actual(history: History, site: Site, first: datetime, last: datetime) -> tup
     soc0 = next(history.soc[i] for i in range(i0, i1) if history.soc[i] is not None)
     soc1 = next(history.soc[i] for i in range(i1 - 1, i0, -1) if history.soc[i] is not None)
     return tally, usable * soc0 / 100, usable * soc1 / 100
+
+
+def revenue_by_day(history: History, site: Site, first: datetime, last: datetime) -> dict[str, float]:
+    """The cost (öre) per local day of the site's whole load (house + car) bought from the grid, no sun and no
+    battery, over the quarter hours with a meter reading. Sigenergy's daily "revenue" is this less the day's cost
+    (`Tally.daily`); fitted on the owner's calendar, 2026-09-01..11-12, with `--house balance`."""
+    out: dict[str, float] = {}
+    for i in range(history.at(first), history.at(last)):
+        house, spot = history.house(i), history.spot[i]
+        if history.grid[i] is None or house is None or spot is None:
+            continue
+        day = (history.t0 + SLOT * i).astimezone(TZ).date().isoformat()
+        out[day] = out.get(day, 0.0) + (house + history.car_kw(i)) * 0.25 * site.buy(spot)
+    return out
 
 
 def _gate(factor: str | None) -> BatteryMode:
@@ -512,6 +552,10 @@ def main() -> None:
     parser.add_argument("--fee-percent", type=float, default=2.8, help="grid fee as %% of spot, before VAT")
     parser.add_argument("--vat", type=float, default=25.0)
     parser.add_argument("--sell-credit", type=float, default=0.0, help="öre/kWh on top of spot for export")
+    parser.add_argument("--sell-percent", type=float, default=0.0, help="%% of spot on top of spot for export")
+    parser.add_argument("--house", choices=("load", "balance"), default="load",
+                        help="the house: the total-load sensor, or grid + sun - battery (Sigenergy's daily load)")
+    parser.add_argument("--revenue", type=Path, help="Sigenergy's Revenue Calendar CSV (date,revenue_kr)")
     parser.add_argument("--mode", choices=(*MODE_DEFS, "all"), default="all")
     parser.add_argument("--wear", type=float, default=15.0, help="öre per kWh through the battery, each way")
     parser.add_argument("--gate-factor", default=None, help="Balanced's gate margin x wear, or 'off'")
@@ -527,6 +571,7 @@ def main() -> None:
     history_end = (last + timedelta(days=2)).astimezone(timezone.utc).replace(hour=0, minute=0)
     args.cache.mkdir(parents=True, exist_ok=True)
     history = load_history(history_start, history_end, args.cache)
+    history.balance = args.house == "balance"
 
     site = Site(
         battery=BatteryParams(
@@ -543,6 +588,7 @@ def main() -> None:
         fee_percent=args.fee_percent,
         vat_percent=args.vat,
         sell_credit_minor=args.sell_credit,
+        sell_percent=args.sell_percent,
     )
     i0, i1 = history.at(first), history.at(last)
     buys = [site.buy(history.spot[i]) for i in range(i0, i1) if history.spot[i] is not None]
@@ -607,8 +653,49 @@ def main() -> None:
             {"end_value": end_value, "rows": [{"run": k[0], "foresight": k[1], "wear": k[2], **v} for k, v in rows.items()]},
             indent=2,
         ))
+    if args.revenue:
+        _print_revenue(args.revenue, revenue_by_day(history, site, first, last), actual(history, site, first, last),
+                       {key: results[key] for key, _f, _m, _w in jobs})
     if any(math.isnan(r["cost"]) for r in rows.values()):
         raise SystemExit("a cost came out NaN")
+
+
+def _print_revenue(path: Path, baseline: dict[str, float], real: tuple, runs: dict) -> None:
+    """Each run's daily revenue (kr) on Sigenergy's definition, by month and in total, beside the calendar; then the
+    day-level fit of the actual run and how often each plan beat the actual day."""
+    import csv  # noqa: PLC0415
+
+    with path.open() as handle:
+        calendar = {row["date"]: float(row["revenue_kr"]) for row in csv.DictReader(handle)}
+    days = sorted(d for d in calendar if d in baseline)
+    names = {("actual", "-", "-"): real, **runs}
+    revenue = {key: {d: (baseline[d] - result[0].daily.get(d, 0.0)) / 100 for d in days} for key, result in names.items()}
+    months = sorted({d[:7] for d in days})
+    print(f"\nRevenue as Sigenergy counts it, {days[0]}..{days[-1]} ({len(days)} days), kr")
+    print("| Run | Foresight | " + " | ".join(months) + " | Total | Mean/day | Days above actual |")
+    print("|---|---|" + "---|" * (len(months) + 3))
+    cal_row = [sum(calendar[d] for d in days if d[:7] == m) for m in months]
+    print("| Calendar (Sigenergy app) | | " + " | ".join(f"{v:.0f}" for v in cal_row)
+          + f" | {sum(cal_row):.0f} | {sum(cal_row) / len(days):.1f} | |")
+    for (name, foresight, _wear), by_day in revenue.items():
+        per_month = [sum(v for d, v in by_day.items() if d[:7] == m) for m in months]
+        above = "" if name == "actual" else str(sum(by_day[d] > revenue["actual", "-", "-"][d] for d in days))
+        label = {"perfect": "perfect", "forecast": "p75", "-": ""}[foresight]
+        print(f"| {name} | {label} | " + " | ".join(f"{v:.0f}" for v in per_month)
+              + f" | {sum(per_month):.0f} | {sum(per_month) / len(days):.1f} | {above} |")
+    actual_days = revenue["actual", "-", "-"]
+    diffs = [actual_days[d] - calendar[d] for d in days]
+    mean_a = sum(actual_days.values()) / len(days)
+    mean_c = sum(calendar[d] for d in days) / len(days)
+    cov = sum((actual_days[d] - mean_a) * (calendar[d] - mean_c) for d in days)
+    var_a = sum((actual_days[d] - mean_a) ** 2 for d in days)
+    var_c = sum((calendar[d] - mean_c) ** 2 for d in days)
+    print(f"Actual against the calendar: r = {cov / math.sqrt(var_a * var_c):.4f}, "
+          f"mean |diff| = {sum(abs(x) for x in diffs) / len(days):.1f} kr, mean diff = {sum(diffs) / len(days):+.1f} kr")
+    print("\n| Day | Calendar | " + " | ".join(f"{k[0]} {k[1]}".replace(" -", "") for k in revenue) + " |")
+    print("|---|---|" + "---|" * len(revenue))
+    for d in days:
+        print(f"| {d} | {calendar[d]:.1f} | " + " | ".join(f"{revenue[k][d]:.1f}" for k in revenue) + " |")
 
 
 if __name__ == "__main__":
