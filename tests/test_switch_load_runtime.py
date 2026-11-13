@@ -74,6 +74,7 @@ async def test_the_cheap_hour_would_switch_it_on_and_nothing_is_written(
     # A history begun 20 hours ago: the hour is due within 4 hours.
     load.history.tracked_since = now - timedelta(hours=20)
     load._plan_key = None
+    await load.async_replan(now + timedelta(seconds=5))
 
     load.tick(now + timedelta(seconds=5))
     await hass.async_block_till_done()
@@ -104,6 +105,7 @@ async def test_the_time_it_would_run_is_its_history_and_each_day_is_tallied(
     load = controller.switch_load
     load.history.tracked_since = now - timedelta(days=2)
     load._plan_key = None
+    await load.async_replan(now)
 
     for seconds in range(0, 61, 10):
         load.tick(now + timedelta(seconds=seconds))
@@ -201,3 +203,29 @@ async def test_the_room_is_the_import_cap_less_the_house_and_the_cars(
 
     assert room == {hour: pytest.approx(4.0)}
     assert load.room_unknown_hours == 1 and load.import_cap_kw == 10.0
+
+
+async def test_a_new_load_is_not_overdue_and_plans_in_the_executor(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    now = quarter_start(dt_util.now())
+    _prices(monkeypatch, now, cheap_hour=5)
+    _site_entry, controller = await _site(hass)
+    load = controller.switch_load
+    jobs: list[Any] = []
+    real = hass.async_add_executor_job
+
+    def spy(target: Any, *args: Any) -> Any:
+        jobs.append(target)
+        return real(target, *args)
+
+    monkeypatch.setattr(hass, "async_add_executor_job", spy)
+
+    assert load.history.tracked_since is not None
+    # Due within a day, so the cheap hour five hours on, not at once.
+    assert load.plan is not None and min(load.plan.starts) == now + timedelta(hours=5)
+    assert load.decision is not None and not load.decision.on
+    load._plan_key = None
+    load.tick(dt_util.now())
+    await hass.async_block_till_done(wait_background_tasks=True)
+    assert jobs and load._planning is False

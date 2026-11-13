@@ -2,7 +2,7 @@
 
 One per site, owned by its `SiteCapacityController`; idle unless the site's options name a load (`CONF_SWITCH_LOAD`).
 Every `TICK_S` it reads the switch, the temperature sensor and the site's headroom, plans again when the quarter hour
-turns or the prices change (`switch_load.plan_switch`, a few milliseconds), decides on or off (`switch_load.decide`)
+turns or the prices change (`switch_load.plan_switch`, in the executor: a long runtime takes up to a second), decides on or off (`switch_load.decide`)
 and logs each change in its shadow book (`battery/shadow.py`, part `switch_load`). The time it would have run is its
 own history for the rolling runtime; beside it each day keeps what the switch really did, priced the same way, so the
 two can be compared.
@@ -21,9 +21,11 @@ in the debug bundle) only.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections.abc import Callable
 from datetime import datetime, timedelta
+from functools import partial
 from typing import TYPE_CHECKING, Any, Final
 
 from homeassistant.const import UnitOfTemperature
@@ -113,6 +115,9 @@ class SwitchLoadShadow:
         self._last_actual = False
         self._timer_cancel: Callable[[], None] | None = None
         self._loaded = False
+        self._planning = False
+        self._closed = False
+        self._plan_task: asyncio.Task[None] | None = None
 
     # ---- life cycle
 
@@ -137,10 +142,16 @@ class SwitchLoadShadow:
             }
         # Another switch (or none before): its history says nothing about this one.
         self._loaded = True
+        if self.history.tracked_since is None:
+            self.history.tracked_since = now
+        await self.async_replan(now)
         self.tick(now)
         self._timer_cancel = async_track_time_interval(self.hass, self._async_tick, timedelta(seconds=TICK_S))
 
     async def async_shutdown(self) -> None:
+        self._closed = True
+        if self._plan_task is not None and not self._plan_task.done():
+            self._plan_task.cancel()
         if self._timer_cancel is not None:
             self._timer_cancel()
             self._timer_cancel = None
@@ -222,14 +233,16 @@ class SwitchLoadShadow:
 
     # ---- the plan
 
-    def _replan(self, now: datetime) -> None:
+    def _plan_job(self, now: datetime) -> Callable[[], SwitchPlan] | None:
+        """The plan to make, its inputs read here on the loop, or `None` when nothing it depends on changed since the
+        last one (the prices, the quarter hour, the settings)."""
         config = self.config
         if config is None:
-            return
+            return None
         key, slots, fiscal, flags = self._read_prices(now)
         plan_key = (key, quarter_start(now), config)
         if plan_key == self._plan_key:
-            return
+            return None
         self._plan_key = plan_key
         tz = self._tz()
 
@@ -241,11 +254,47 @@ class SwitchLoadShadow:
         self._prices = {
             slot.start: effective_minor_per_kwh(slot.local_major_per_kwh, fiscal, slot.start) for slot in slots
         }
-        self.plan = plan_switch(
-            now=now, config=config, history=self.history, slots=slots, fiscal=fiscal,
+        # A copy: the history goes on growing on the loop while the plan is made.
+        history = RunHistory(self.history.tracked_since, list(self.history.runs))
+        return partial(
+            plan_switch, now=now, config=config, history=history, slots=slots, fiscal=fiscal,
             room_kw_by_hour=room, hour_of=hour_of,
         )
-        self.status = STATUS_PLANNED if self.plan.priced_until is not None else STATUS_NO_PRICES
+
+    async def async_replan(self, now: datetime) -> None:
+        """Plan again now, when something changed and no plan is being made."""
+        if self._planning:
+            return
+        job = self._plan_job(now)
+        if job is not None:
+            self._planning = True
+            await self._async_run(job)
+
+    async def _async_run(self, job: Callable[[], SwitchPlan]) -> None:
+        """Make the plan in the executor (a long runtime takes up to a second); a failure leaves the last one and is
+        tried again at the next look."""
+        try:
+            plan = await self.hass.async_add_executor_job(job)
+        except Exception:  # noqa: BLE001
+            _LOGGER.exception("The switched load's plan failed")
+            self._plan_key = None
+            return
+        finally:
+            self._planning = False
+        self.plan = plan
+        self.status = STATUS_PLANNED if plan.priced_until is not None else STATUS_NO_PRICES
+
+    def _schedule_replan(self, now: datetime) -> None:
+        """At most one plan at a time: a change seen while one is made is planned at the next look."""
+        if self._planning or self._closed:
+            return
+        job = self._plan_job(now)
+        if job is None:
+            return
+        self._planning = True
+        self._plan_task = self.hass.async_create_background_task(
+            self._async_run(job), name=f"{DOMAIN} switched load plan {self.site.entry_id}"
+        )
 
     # ---- each look
 
@@ -283,7 +332,7 @@ class SwitchLoadShadow:
         self.history.prune(now)
         if self.history.tracked_since is None:
             self.history.tracked_since = now
-        self._replan(now)
+        self._schedule_replan(now)
         memory = self.book.memory(PART_SWITCH_LOAD)
         decision = self.decision = decide(
             SwitchInputs(
