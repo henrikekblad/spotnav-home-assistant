@@ -212,3 +212,44 @@ async def test_a_shortfall_from_load_balancing_is_planned_again_at_the_window_en
     assert all(check.window_end <= check.at <= check.window_end + STEP for check in window_ends), "just after it"
     after_end = dict(ends)[window_ends[0].at]
     assert after_end is not None and after_end > first_end, "and more is bought than the first plan had"
+
+
+#: `NOW` (UTC) on its hour.
+_FIRST_HOUR = datetime.fromisoformat(NOW).replace(tzinfo=dt_util.UTC, minute=0, second=0)
+
+
+class _ForecastSite(_HoldingSite):
+    """A site whose import target leaves 4 kW on the flat figure and, by the house load forecast, 2 kW in even hours
+    and 6 kW in odd ones; load balancing holds nothing."""
+
+    def load_balancing_limit(self, _charger_entry_id: str) -> tuple[float | None, str | None]:
+        return None, None
+
+    def import_target_plan_kw(self, _charger_entry_id: str) -> float | None:
+        return 4.0
+
+    def import_target_plan_kw_by_hour(self, _charger_entry_id: str) -> dict | None:
+        first = _FIRST_HOUR
+        return {first + timedelta(hours=index): 2.0 if index % 2 == 0 else 6.0 for index in range(48)}
+
+
+async def test_the_plan_counts_on_the_import_targets_figure_per_hour(
+    hass: HomeAssistant, transport: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    serve(transport, rising=True)
+    _record_starts_and_stops(hass)
+    monkeypatch.setattr(
+        "custom_components.spotnav.planning.auto_controller.site_controller_for_charger",
+        lambda _hass, _entry_id: _ForecastSite(),
+    )
+    with freeze_time(NOW):
+        charger, _, _ = await charger_and_car(hass, soc_percent="70", amps=16, phases=3)
+        preview = preview_for(hass, charger.entry_id)
+        proposal = preview._snapshot.proposal  # noqa: SLF001
+    assert proposal is not None and proposal.has_plan
+    assert proposal.slot_kwh, "the slots deliver what each hour's figure leaves"
+    first = _FIRST_HOUR
+    for slot, kwh in zip(proposal.slots, proposal.slot_kwh, strict=True):
+        index = int((slot.start - first).total_seconds() // 3600)
+        assert kwh == pytest.approx((2.0 if index % 2 == 0 else 6.0) / 4)
+    assert proposal.delivered_kwh >= proposal.requested_kwh - 1e-9
