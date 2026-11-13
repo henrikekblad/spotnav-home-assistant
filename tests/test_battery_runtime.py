@@ -15,8 +15,9 @@ from homeassistant.util import dt as dt_util
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.spotnav.battery.hold import ARM_S, HoldMemory
+from custom_components.spotnav.battery.monitor import GRACE_S, READING_GAP_S
 from custom_components.spotnav.battery.runtime import BatteryShadow
-from custom_components.spotnav.battery.shadow import PART_HOLD_FOR_CAR, ShadowEntry
+from custom_components.spotnav.battery.shadow import MIN_DIVERGENCE_S, PART_HOLD_FOR_CAR, ShadowEntry
 from custom_components.spotnav.debug_bundle import async_build_debug_bundle
 from custom_components.spotnav.diagnostics import async_get_config_entry_diagnostics
 from custom_components.spotnav.runtime import site_controller_for
@@ -146,3 +147,64 @@ async def test_a_site_without_a_battery_has_no_facts(hass: HomeAssistant) -> Non
     battery = (await async_get_config_entry_diagnostics(hass, site))["battery"]
 
     assert battery["facts"]["battery_entity_id"] is None and battery["log"] == []
+
+
+def _set(hass: HomeAssistant, entity_id: str, state: str, unit: str) -> None:
+    hass.states.async_set(entity_id, state, {"unit_of_measurement": unit}, force_update=True)
+
+
+async def test_the_ledger_and_monitor_run_dry_beside_a_shadow_hold_and_survive_a_reload(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _grid_charge(monkeypatch)
+    site, controller = await _site(
+        hass,
+        **{"sensor.sigen_plant_battery_power": "-4.6", "sensor.sigen_plant_ems_work_mode": "max_self_consumption"},
+    )
+    calls = _service_calls(hass)
+    shadow = controller.battery_shadow
+    monkeypatch.setattr(BatteryShadow, "_battery_power", lambda self: (-4.6, 5.0))
+    monkeypatch.setattr(BatteryShadow, "inputs", _with_headroom(BatteryShadow.inputs))
+    now = dt_util.now()
+
+    for seconds in (0, ARM_S):
+        shadow.tick(now + timedelta(seconds=seconds))
+    write = next(entry for entry in shadow.book.entries if entry.action == "would_write")
+    assert write.detail["read_back"] == "possible"
+
+    # The battery keeps discharging, as nothing was written: the monitor shows that baseline once.
+    for index in range(4):
+        shadow.tick(now + timedelta(seconds=ARM_S + GRACE_S + index * READING_GAP_S))
+    judged = [entry for entry in shadow.book.entries if entry.action == "would_judge"]
+    assert [entry.reason for entry in judged] == ["baseline_no_effect"]
+
+    # Something else sets the limit while nothing writes it.
+    limit = "number.sigen_plant_ess_max_discharging_limit"
+    later = now + timedelta(seconds=ARM_S + GRACE_S + 400)
+    _set(hass, limit, "5.0", "kW")
+    shadow.tick(later)
+    shadow.tick(later + timedelta(seconds=MIN_DIVERGENCE_S))
+    assert [entry.action for entry in shadow.book.entries].count("changed_outside") == 1
+
+    dry = shadow.snapshot()["dry_run"]
+    assert dry["ledger"]["claims"][limit]["given_up"] is True
+    assert dry["monitor"]["today"] == {"writes": 0, "no_effect": 0, "partial": 0}
+
+    assert await hass.config_entries.async_reload(site.entry_id)
+    await hass.async_block_till_done()
+    reloaded = site_controller_for(hass, site.entry_id)
+    assert reloaded is not None
+    entries = reloaded.battery_shadow.book.entries
+    # The restart restores the hold first and, the limit having been changed outside SpotNav, would not write it.
+    assert entries[-1].action == "would_restore" and entries[-1].detail["restore"] == "skipped:changed_outside_spotnav"
+    assert reloaded.battery_shadow.snapshot()["dry_run"]["ledger"]["claims"] == {}
+    assert [call for call in calls if call.data.get("domain") in ("number", "select", "switch", "sigen")] == []
+
+
+def _with_headroom(inputs):
+    def wrapped(self, now):
+        from dataclasses import replace  # noqa: PLC0415
+
+        return replace(inputs(self, now), headroom_a=20.0, measurement_ok=True)
+
+    return wrapped

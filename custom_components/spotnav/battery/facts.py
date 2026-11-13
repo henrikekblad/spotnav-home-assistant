@@ -35,6 +35,8 @@ class EntityFact:
     device_class: str | None = None
     state: str | None = None
     unit: str | None = None
+    #: A number entity's step (its `step` attribute), `None` when it names none.
+    step: float | None = None
 
     @property
     def domain(self) -> str:
@@ -69,6 +71,9 @@ class ControlStatus:
     current_kw: float | None = None
     #: The value now holds no limit (a "never set" register, Victron's -1); `None` when not a number control.
     unset: bool | None = None
+    #: The entity's unit and step, for reading a write back (`ledger.py`).
+    unit: str | None = None
+    step: float | None = None
 
     @property
     def usable(self) -> bool:
@@ -97,6 +102,8 @@ class ControlStatus:
             "available": self.available,
             "current": self.current,
             "unset": self.unset,
+            "unit": self.unit,
+            "step": self.step,
             "changes_mode": self.spec.changes_mode,
             "note": self.spec.note,
         }
@@ -262,6 +269,8 @@ def _control(
         current=entity.state,
         current_kw=current_kw,
         unset=unset,
+        unit=entity.unit,
+        step=entity.step,
     )
 
 

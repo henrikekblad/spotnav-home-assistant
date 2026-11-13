@@ -11,7 +11,8 @@ Each entry is shaped for the confirmed-write ledger that comes with the first re
 the entity read when the decision was made, and `written`/`read_back` stay `False`/`None` in shadow. Once a part
 writes, the value it owns is the value read back after the write, never the value sent; an `unavailable` read never
 contradicts it, and a difference counts as someone else's change only after `MIN_DIVERGENCE_S`. The control-failure
-monitor (a hold that does not hold) adds its verdicts as entries of the same shape.
+monitor (a hold that does not hold) adds its verdicts as entries of the same shape. Both keep their own state in
+named sections of the book (`section`, `set_section`), stored with it.
 Pure: no Home Assistant import; times are aware datetimes from the caller.
 """
 
@@ -24,7 +25,9 @@ from datetime import datetime, timedelta
 from typing import Any, Final, Literal
 
 PartState = Literal["shadow", "on"]
-ShadowAction = Literal["would_write", "would_restore", "left_alone", "not_possible"]
+#: `changed_outside` is the ledger's dry run (the control changed while nothing wrote it); `would_judge` is the
+#: control-failure monitor's dry run (what it could have judged).
+ShadowAction = Literal["would_write", "would_restore", "left_alone", "not_possible", "changed_outside", "would_judge"]
 
 PART_HOLD_FOR_CAR: Final = "hold_for_car"
 #: Every part, in the order they were added.
@@ -39,7 +42,9 @@ LOG_MAX_AGE: Final = timedelta(days=7)
 #: How long a read must differ from the owned value before it counts as another system's change (for the ledger).
 MIN_DIVERGENCE_S: Final = 240.0
 
-_ACTIONS: Final = frozenset({"would_write", "would_restore", "left_alone", "not_possible"})
+_ACTIONS: Final = frozenset(
+    {"would_write", "would_restore", "left_alone", "not_possible", "changed_outside", "would_judge"}
+)
 
 
 def parse_aware_datetime(value: Any) -> datetime | None:
@@ -119,6 +124,7 @@ class ShadowBook:
         self._states: dict[str, PartState] = {part: "shadow" for part in PARTS}
         self._memory: dict[str, dict[str, Any]] = {}
         self._log: deque[ShadowEntry] = deque()
+        self._sections: dict[str, dict[str, Any]] = {}
 
     def state(self, part: str) -> PartState:
         return self._states[part]
@@ -147,6 +153,13 @@ class ShadowBook:
     def set_memory(self, part: str, memory: Mapping[str, Any]) -> None:
         self._memory[part] = dict(memory)
 
+    def section(self, name: str) -> dict[str, Any]:
+        """A named piece of state kept with the book (the ledger's, the monitor's)."""
+        return dict(self._sections.get(name, {}))
+
+    def set_section(self, name: str, data: Mapping[str, Any]) -> None:
+        self._sections[name] = dict(data)
+
     def record(self, entry: ShadowEntry) -> None:
         self._log.append(entry)
         self._prune(entry.at)
@@ -165,6 +178,7 @@ class ShadowBook:
             "parts": dict(self._states),
             "memory": {part: dict(memory) for part, memory in self._memory.items()},
             "log": [entry.as_dict() for entry in self._log],
+            "sections": {name: dict(data) for name, data in self._sections.items()},
         }
 
     @classmethod
@@ -184,6 +198,11 @@ class ShadowBook:
             for part, value in memory.items():
                 if part in book._states and isinstance(value, Mapping):
                     book._memory[part] = dict(value)
+        sections = data.get("sections")
+        if isinstance(sections, Mapping):
+            for name, value in sections.items():
+                if isinstance(name, str) and isinstance(value, Mapping):
+                    book._sections[name] = dict(value)
         log = data.get("log")
         rows: Iterable[Any] = log if isinstance(log, list) else ()
         entries = sorted(

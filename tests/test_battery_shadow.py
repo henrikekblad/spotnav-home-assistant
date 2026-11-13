@@ -77,6 +77,7 @@ def test_the_log_forgets_what_is_older_than_its_age() -> None:
 def test_the_book_survives_a_round_trip_through_json() -> None:
     book = ShadowBook()
     book.set_memory(PART_HOLD_FOR_CAR, {"held": True, "snapshot": "23.04"})
+    book.set_section("ledger", {"claims": {}, "counters": {"2026-11-13": {"external": 1}}})
     book.record(_entry(NOW - timedelta(minutes=2), "first"))
     book.record(_entry(NOW, "second"))
 
@@ -85,6 +86,8 @@ def test_the_book_survives_a_round_trip_through_json() -> None:
 
     assert loaded.as_dict() == book.as_dict()
     assert loaded.memory(PART_HOLD_FOR_CAR) == {"held": True, "snapshot": "23.04"}
+    assert loaded.section("ledger")["counters"] == {"2026-11-13": {"external": 1}}
+    assert loaded.section("monitor") == {}
 
 
 def test_a_restart_prunes_what_aged_out_while_it_was_down() -> None:

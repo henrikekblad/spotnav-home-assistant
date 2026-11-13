@@ -35,6 +35,7 @@ def _entities(brand: dict[str, Any], **changes: dict[str, Any]) -> list[EntityFa
                 device_class=row["device_class"],
                 state=row["state"],
                 unit=row["unit"],
+                step=row.get("step"),
             )
         )
     return entities
@@ -90,6 +91,13 @@ def test_sigenergy_in_ai_mode_is_its_own_and_says_why() -> None:
     assert facts.management.reason == "EMS work mode:ai_mode"
     assert facts.firmware == "V100R001C21SPC117"
     assert facts.sources["soc"] == "sensor.sigen_plant_battery_state_of_charge"
+
+
+def test_the_hold_control_carries_its_unit_and_step_for_reading_a_write_back() -> None:
+    facts = _facts("sigenergy", **{"number.sigen_plant_ess_max_discharging_limit": {"step": 0.01}})
+
+    assert facts.hold is not None and facts.hold.unit == "kW" and facts.hold.step == 0.01
+    assert facts.as_dict()["controls"]["hold"]["step"] == 0.01
 
 
 def test_sigenergy_in_max_self_consumption_is_free() -> None:
