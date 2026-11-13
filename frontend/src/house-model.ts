@@ -23,6 +23,9 @@ export interface HouseHour {
   /** The SoC the plan expected (past: the first plan) or expects (ahead) at the hour's end. */
   soc_plan_pct: number | null;
   battery_action: BatteryAction | null;
+  /** The hour's mean buy price with every fee and sell price (minor unit per kWh), where the battery plan priced it. */
+  buy: number | null;
+  sell: number | null;
 }
 
 export interface Score {
@@ -75,6 +78,30 @@ export interface ReviewDay {
   own_saving: number | null;
 }
 
+export interface TodayMoney {
+  date: string;
+  sold: number;
+  arbitrage: number;
+  bought: number;
+  net: number;
+  mode: string;
+}
+
+export interface DayFlow {
+  date: string;
+  sources: { solar: number | null; battery: number; grid: number };
+  uses: { battery: number; load: number; grid: number };
+  sun_hours: number;
+  hours: number;
+}
+
+export interface CalendarDay {
+  date: string;
+  plan_saving: number;
+  own_saving: number;
+  mode: string | null;
+}
+
 export interface HouseAnswer {
   site_id: string;
   time_zone: string;
@@ -85,11 +112,15 @@ export interface HouseAnswer {
     made_at: string | null;
     samples: number;
     temperature: { active: boolean; reason: string } | null;
+    basis: string;
     counts_battery: boolean;
     review: Score | null;
   };
   sun: { status: string; review: Score | null; review_corrected: Score | null } | null;
   battery: BatteryView | null;
+  today: TodayMoney | null;
+  flow: DayFlow | null;
+  calendar: { month: string; days: CalendarDay[] } | null;
   days: ReviewDay[];
   sources: {
     weather_entity: string | null;
@@ -130,6 +161,11 @@ function number(value: unknown): number {
 
 function numberOrNull(value: unknown): number | null {
   return value === null ? null : number(value);
+}
+
+/** A field an older answer did not have: absent reads as `fallback`, present must be its shape. */
+function additive<T>(source: Record<string, unknown>, key: string, read: (value: unknown) => T, fallback: T): T {
+  return key in source ? read(source[key]) : fallback;
 }
 
 function count(value: unknown): number {
@@ -186,6 +222,8 @@ function hour(value: unknown): HouseHour {
     soc_plan_pct: numberOrNull(source.soc_plan_pct),
     // An action a newer backend names is drawn as none.
     battery_action: BATTERY_ACTIONS.includes(action as BatteryAction) ? (action as BatteryAction) : action === null || typeof action === "string" ? null : bad(),
+    buy: additive(source, "buy", numberOrNull, null),
+    sell: additive(source, "sell", numberOrNull, null),
   };
 }
 
@@ -253,6 +291,56 @@ function reviewDay(value: unknown): ReviewDay {
   };
 }
 
+function today(value: unknown): TodayMoney | null {
+  if (value === null) {
+    return null;
+  }
+  const source = record(value);
+  return {
+    date: day(source.date),
+    sold: number(source.sold),
+    arbitrage: number(source.arbitrage),
+    bought: number(source.bought),
+    net: number(source.net),
+    mode: text(source.mode),
+  };
+}
+
+function flow(value: unknown): DayFlow | null {
+  if (value === null) {
+    return null;
+  }
+  const source = record(value);
+  const from = record(source.sources);
+  const to = record(source.uses);
+  const kwh = (raw: unknown): number => (typeof raw === "number" && Number.isFinite(raw) && raw >= 0 ? raw : bad());
+  return {
+    date: day(source.date),
+    sources: { solar: from.solar === null ? null : kwh(from.solar), battery: kwh(from.battery), grid: kwh(from.grid) },
+    uses: { battery: kwh(to.battery), load: kwh(to.load), grid: kwh(to.grid) },
+    sun_hours: count(source.sun_hours),
+    hours: count(source.hours),
+  };
+}
+
+function calendar(value: unknown): { month: string; days: CalendarDay[] } | null {
+  if (value === null) {
+    return null;
+  }
+  const source = record(value);
+  const month = text(source.month);
+  if (!/^\d{4}-\d{2}$/.test(month)) {
+    bad();
+  }
+  return {
+    month,
+    days: list(source.days).map((entry) => {
+      const item = record(entry);
+      return { date: day(item.date), plan_saving: number(item.plan_saving), own_saving: number(item.own_saving), mode: textOrNull(item.mode) };
+    }),
+  };
+}
+
 export function decodeHouse(raw: unknown): HouseDecodeResult {
   try {
     const source = record(raw);
@@ -288,11 +376,15 @@ export function decodeHouse(raw: unknown): HouseDecodeResult {
           made_at: instantOrNull(house.made_at),
           samples: count(house.samples),
           temperature: temperature === null ? null : { active: flag(temperature.active), reason: text(temperature.reason) },
+          basis: additive(house, "basis", text, "net"),
           counts_battery: flag(house.counts_battery),
           review: score(house.review),
         },
         sun: sun === null ? null : { status: text(sun.status), review: score(sun.review), review_corrected: score(sun.review_corrected) },
         battery: battery(source.battery),
+        today: additive(source, "today", today, null),
+        flow: additive(source, "flow", flow, null),
+        calendar: additive(source, "calendar", calendar, null),
         days: list(source.days).map(reviewDay),
         sources: {
           weather_entity: textOrNull(sources.weather_entity),
