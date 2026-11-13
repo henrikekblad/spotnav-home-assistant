@@ -86,7 +86,11 @@ raw kW, in-day factor]`, the temperature fit and the in-day adjustment), how muc
 keeps (`history`: hours, first, last, with a temperature, when the tracker's hours were taken over), and the forecast
 log: each hour's first forecast as used (`house_kw`) and before the in-day adjustment (`house_kw_raw`), the next day's
 as made at the day-ahead publication (`house_day_ahead`), with its outcome (`[start, forecast, made_at, actual]`, 14
-days), and each day's review (30 days) (`site/house_forecast.py`).
+days), and each day's review (30 days) (`site/house_forecast.py`). On a site with a home battery's power reading
+`demand` also carries `ex_battery_kw` (each hour's `grid - car - battery` by its start) and `load_forecast` says what
+the house figure is (`basis`: `net`, or `gross`, the house's whole load), how the sun's production was read
+(`production`), the battery plan's median (`median`), the import target's net forecast (`import_forecast`), the
+whole load's hours in `history` (`gross_*`) and its log kind `import_kw`.
 """
 
 from __future__ import annotations

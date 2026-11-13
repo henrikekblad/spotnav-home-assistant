@@ -691,9 +691,12 @@ class SiteCapacityController:
         # clock is the electricity price's area's (`_demand_zone`), resolved again at most every
         # `_DEMAND_ZONE_TTL_S`. Only the import target reads it for a decision (`_hold_to_import_target`).
         self.demand = SiteDemand(hass, entry_id, _home_zone(hass))
-        # The house's expected load hour by hour (`site/house_forecast.py`), refreshed when an hour completes. Shown
-        # only (the site state sensor's `forecast`, the diagnostics): nothing a charger is told reads it yet.
-        self.house_forecast = SiteHouseForecast(hass, entry_id, self.demand, flat_kw=self._typical_house_kw)
+        # The house's expected load hour by hour (`site/house_forecast.py`), refreshed when an hour completes: shown
+        # (the site state sensor's `forecast`, the diagnostics), counted on by a plan under the import target (its net
+        # import forecast, `plan_kw_by_hour`) and by the battery plan (the house's whole load on a battery site).
+        self.house_forecast = SiteHouseForecast(
+            hass, entry_id, self.demand, flat_kw=self._typical_house_kw, has_battery=self.has_battery_reading
+        )
         self._demand_zone: tuple[float, str] | None = None
         # The import target (`_hold_to_import_target`), as of the last recompute: the hour's budget (`None` while not
         # applied, and why), what it does to each charger, and which chargers' decisions it lowered. Per charger the
@@ -1194,7 +1197,8 @@ class SiteCapacityController:
 
             grid_w = site_net_grid_w(self)
             car_w = None if grid_w is None else site_car_w(self.hass, self)
-            # A battery's discharge is kept beside the hour for an import target under `battery_first` only.
+            # A battery's discharge is kept beside the hour for an import target under `battery_first` only; its
+            # signed power on every site that reads one, for the house's whole load (`site/house_forecast.py`).
             discharge_w = self._battery_first_discharge()[1]
             self.demand.observe(
                 grid_w,
@@ -1204,6 +1208,7 @@ class SiteCapacityController:
                 target=self._target_mark(),
                 components=lambda: site_demand_components(self.hass, self.entry_id),
                 outdoor_c=self.house_forecast.outdoor_c(),
+                battery_w=self._battery_live_w()[1],
             )
             self.house_forecast.tick()
         except Exception:  # noqa: BLE001 - a measurement must never disturb the site
@@ -5227,17 +5232,30 @@ class SiteCapacityController:
         levels = [component_month(component, hours, tracker.tz, now).free_kw for component in components]
         return effective_target(set_kw, levels), key
 
-    def _battery_first_discharge(self) -> tuple[bool, float | None]:
-        """Whether a home battery's discharge counts as import for the target (`battery_first` with a battery set),
-        and its discharge now (W, positive while it discharges), `None` when it cannot be read live."""
-        if self.config.get(CONF_SOLAR_PRIORITY, DEFAULT_SOLAR_PRIORITY) != SOLAR_PRIORITY_BATTERY_FIRST:
-            return False, None
+    def _battery_live_w(self) -> tuple[bool, float | None]:
+        """Whether the site reads a home battery's power, and its signed power now (W, positive while it charges),
+        `None` when it cannot be read live."""
         battery = self.battery_aggregate_power()
         if battery is None:
             return False, None
         if battery.value is None or not self.solar_accepts(battery, self.battery_entity_ids()):
             return True, None
-        return True, max(0.0, -float(battery.value))
+        return True, float(battery.value)
+
+    def has_battery_reading(self) -> bool:
+        """Whether the site is set up with a home battery's power reading: its house load is then the house's whole
+        load (`site/house_forecast.py`)."""
+        return bool(self.config.get(CONF_BATTERY_AGGREGATE_POWER_ENTITY))
+
+    def _battery_first_discharge(self) -> tuple[bool, float | None]:
+        """Whether a home battery's discharge counts as import for the target (`battery_first` with a battery set),
+        and its discharge now (W, positive while it discharges), `None` when it cannot be read live."""
+        if self.config.get(CONF_SOLAR_PRIORITY, DEFAULT_SOLAR_PRIORITY) != SOLAR_PRIORITY_BATTERY_FIRST:
+            return False, None
+        configured, battery_w = self._battery_live_w()
+        if not configured:
+            return False, None
+        return True, None if battery_w is None else max(0.0, -battery_w)
 
     def _import_target_budget(self, target_kw: float, now: datetime) -> tuple[HourBudget | None, str | None]:
         """The running hour's budget (`hour_budget`) on this recompute's readings, or why it is not applied."""
@@ -6208,8 +6226,9 @@ class SiteCapacityController:
 
     def import_target_plan_kw_by_hour(self, charger_entry_id: str) -> dict[datetime, float] | None:
         """Per hour (`{hour_start (UTC): kW}`), what `import_target_plan_kw` is with the house's expected load in that
-        hour (`site/house_forecast.py`'s `plan_kw_by_hour`) in place of its typical load: the target less it, never below
-        the charger's minimum. Only the hours the forecast knows; the plan takes `import_target_plan_kw` for the rest
+        hour (`site/house_forecast.py`'s `plan_kw_by_hour`: the import less the chargers, also on a battery site whose
+        house figure is the whole load) in place of its typical load: the target less it, never below the charger's
+        minimum. Only the hours the forecast knows; the plan takes `import_target_plan_kw` for the rest
         (`PlanRequest.power_cap_kw_by_hour`). `None` whenever `import_target_plan_kw` holds nothing for the charger, or
         there is no forecast: the plan is then the one with the flat figure."""
         level = self._target_plan_level(charger_entry_id)
