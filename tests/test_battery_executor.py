@@ -4,6 +4,7 @@ a change by someone else, no effect, a restart)."""
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import timedelta
 
 import pytest
@@ -245,6 +246,14 @@ def test_no_plan_now_or_an_action_the_brand_cannot_do_hands_back() -> None:
     _now, results = run(executor, battery, now, 6, None)
     assert events(results, "hand_back")[0]["reason"] == "no_plan_now"
     assert executor.state.phase == "idle"
+
+
+def test_a_site_battery_that_is_no_longer_that_brand_hands_back() -> None:
+    executor, battery = _sigenergy()
+    now = _held(executor, battery)
+    probe = inputs(battery, now, "hold")
+    result = executor.step(replace(probe, facts=replace(probe.facts, brand=None)))
+    assert [event["reason"] for event in result.events if event["kind"] == "hand_back"] == ["battery_changed"]
 
 
 def test_the_app_taking_remote_ems_back_hands_back_at_once_without_fighting() -> None:

@@ -20,10 +20,12 @@ How it acts (`step`, one look every few seconds; pure, the shell does the writes
   self-consumption, has no slot now or names an action the brand cannot do; a reading is stale or the site's
   measurement is lost; the plant leaves the grid; the fuse headroom falls under `RESTORE_HEADROOM_A` (or a grid
   charge cannot keep `MIN_RATE_KW` within it); the battery's management changes (its own optimiser, another planner,
-  an app taking Remote EMS back); someone else changes a control SpotNav owns (that control is given up and not
-  written back over the other system, as the ledger says); a write is not taken; the monitor sees no effect; the
-  day's write cap is reached. After a restart a stored snapshot is restored before anything else. A restore write
-  that does not read back is retried with backoff (`RESTORE_RETRY_S`), up to `RESTORE_ATTEMPTS` times.
+  an app taking Remote EMS back) or the site's battery is no longer that brand; someone else changes a control
+  SpotNav owns (that control is given up and not written back over the other system, as the ledger says); a write
+  is not taken; the monitor sees no effect; the day's write cap is reached. After a restart a stored snapshot is
+  restored before anything else. A restore write that does not read back is retried with backoff
+  (`RESTORE_RETRY_S`), up to `RESTORE_ATTEMPTS` times each; a role still not restored then is left with its
+  snapshot kept (the control blocks, and the next start tries again), while the other roles are handed back.
 * **Fuse safety.** A grid charge is clamped by the site's live headroom: what the battery already draws from the
   grid (at most its charge, the commanded rate and the site's import) plus the headroom less `HEADROOM_MARGIN_A`.
   Unlike evcc, the battery's charge counts against the main fuse. With the site's solar priority "car first" a
@@ -555,6 +557,8 @@ class Executor:
             return "no_plan_now"
         if action == ACTION_SELF_CONSUME:
             return "plan_self_consume"
+        if facts.brand != self.control.brand:
+            return "battery_changed"
         problem = self._action_problem(inputs, action)
         if problem is not None:
             return problem
