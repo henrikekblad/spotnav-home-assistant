@@ -38,6 +38,7 @@ from custom_components.spotnav.battery.plan_shadow import (
     TRIGGER_FORECAST,
     TRIGGER_PRICES,
     TRIGGER_START,
+    VARIANT_DEFENSIVE,
     PriceSlot,
     bucket_start,
 )
@@ -47,6 +48,7 @@ from custom_components.spotnav.diagnostics import async_get_config_entry_diagnos
 from custom_components.spotnav.planning.demand_charge import hour_start
 from custom_components.spotnav.runtime import site_controller_for
 from custom_components.spotnav.site import house_forecast
+from custom_components.spotnav.site.forecast_log import KIND_HOUSE_MEDIAN, KIND_SUN
 from custom_components.spotnav.site.house_history import MIN_GROSS_HOURS
 from custom_components.spotnav.site.load_forecast import NO_TEMPERATURE, ForecastHour, LoadForecast
 
@@ -524,3 +526,91 @@ async def test_the_plans_house_forecast_is_the_sites_median_without_the_inday_ad
     assert controller.house_forecast.median is not None
     medians = [kwargs for kwargs in seen if kwargs.get("quantile") == plan_runtime.HOUSE_QUANTILE == 0.5]
     assert medians and all(kwargs["inday"] is False for kwargs in medians)
+
+
+def _misses(controller: Any, now: datetime, kind: str, forecast: float, outcomes: tuple[float, ...]) -> None:
+    """The site's forecast log with [kind]'s misses for every hour of the last 14 days: [forecast] against
+    [outcomes] in turn."""
+    log = controller.house_forecast.log
+    current = hour_start(now, controller.demand.tracker.tz)
+    for index in range(14 * 24, 0, -1):
+        start = current - timedelta(hours=index)
+        log.record_forecast(kind, {start: forecast}, start - timedelta(hours=1))
+        log.record_actual(kind, start, outcomes[index % len(outcomes)])
+
+
+async def test_the_band_is_learning_at_first_and_there_is_no_defensive_plan(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _site_entry, controller, _now = await _planned(hass, monkeypatch)
+    plan = controller.battery_shadow.snapshot()["plan"]
+    assert plan["band"]["house"]["status"] == plan["band"]["sun"]["status"] == "learning"
+    assert plan["defensive"] == {"status": "band_learning", "inputs": None, "plan": None}
+    assert VARIANT_DEFENSIVE not in controller.battery_shadow.plan.mode_plans
+
+
+async def test_a_learnt_band_is_shown_and_the_defensive_variant_is_planned_beside_the_modes(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls = _service_calls(hass)
+    _site_entry, controller, now = await _planned(hass, monkeypatch)
+    # The house's median missed by -0.5 to +1.0 kW; the raw sun came in at 40-100 % of its forecast.
+    _misses(controller, now, KIND_HOUSE_MEDIAN, 1.5, (1.0, 1.5, 2.0, 2.5))
+    _misses(controller, now, KIND_SUN, 1.0, (0.4, 0.7, 1.0))
+    _with_sun(monkeypatch, controller, now)
+    _house_forecast(controller, now)
+    controller.battery_shadow.tick(now + timedelta(seconds=CHECK_S + 1))
+    await hass.async_block_till_done()
+    shadow = controller.battery_shadow.plan
+    plan = shadow.snapshot()
+    house, sun = plan["band"]["house"], plan["band"]["sun"]
+    assert house["status"] == sun["status"] == "learnt"
+    first = house["hours"][0]
+    assert first[1] < first[2] == 1.5 < first[3]
+    assert sun["hours"][1][1] == pytest.approx(0.4) and sun["hours"][1][2] == 1.0
+    defensive = plan["defensive"]
+    assert defensive["status"] == "planned" and defensive["inputs"]["house_band"] and defensive["inputs"]["sun_band"]
+    assert defensive["inputs"]["dear_hours"] > 0 and defensive["inputs"]["house_kwh_added"] > 0
+    assert defensive["inputs"]["sun_kwh_removed"] > 0
+    assert defensive["plan"]["slots"] and plan["plan"] != defensive["plan"]
+    # The plan in force is the site's mode on the median; the variant is kept beside the modes, and never in force.
+    assert plan["mode"] == MODE_BALANCED and set(plan["modes"]) == set(MODES)
+    assert VARIANT_DEFENSIVE in shadow.mode_plans
+    assert shadow.plan is not shadow.mode_plans[VARIANT_DEFENSIVE]
+    # The next quarter hour records what the variant planned for it.
+    later = bucket_start(now) + BUCKET + timedelta(seconds=1)
+    controller.battery_shadow.tick(later)
+    await hass.async_block_till_done()
+    assert VARIANT_DEFENSIVE in shadow.actuals.buckets[bucket_start(later)].ran_modes
+    assert [call for call in calls if call.data.get("domain") not in ("system_log", "logger")] == []
+
+
+async def test_the_defensive_variant_is_skipped_when_the_modes_took_too_long(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _site_entry, controller, now = await _planned(hass, monkeypatch)
+    _misses(controller, now, KIND_HOUSE_MEDIAN, 1.5, (1.0, 2.5))
+    # The solve's start and Max profit's check read 0; the defensive variant's check reads past the budget.
+    ticks = iter([0.0] * 2 + [plan_runtime.MODES_BUDGET_S + 1.0] * 10)
+    monkeypatch.setattr(plan_runtime, "budget_clock", lambda: next(ticks))
+    _house_forecast(controller, now)
+    controller.battery_shadow.tick(now + timedelta(seconds=CHECK_S + 1))
+    await hass.async_block_till_done()
+    plan = controller.battery_shadow.snapshot()["plan"]
+    assert plan["modes_skipped"] == [VARIANT_DEFENSIVE] and plan["defensive"]["status"] == "skipped"
+    assert plan["defensive"]["inputs"] is not None and plan["defensive"]["plan"] is None
+    assert VARIANT_DEFENSIVE not in controller.battery_shadow.plan.mode_plans
+
+
+async def test_the_defensive_variant_survives_a_reload(hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch) -> None:
+    site, controller, now = await _planned(hass, monkeypatch)
+    _misses(controller, now, KIND_HOUSE_MEDIAN, 1.5, (1.0, 2.5))
+    _house_forecast(controller, now)
+    controller.battery_shadow.tick(now + timedelta(seconds=CHECK_S + 1))
+    await hass.async_block_till_done()
+    kept = controller.battery_shadow.plan.mode_plans[VARIANT_DEFENSIVE]
+    assert await hass.config_entries.async_reload(site.entry_id)
+    await hass.async_block_till_done()
+    reloaded = site_controller_for(hass, site.entry_id)
+    assert reloaded is not None
+    assert [s.action for s in reloaded.battery_shadow.plan.mode_plans[VARIANT_DEFENSIVE]] == [s.action for s in kept]

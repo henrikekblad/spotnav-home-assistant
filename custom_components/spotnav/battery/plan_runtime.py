@@ -26,6 +26,12 @@ Owned by the site's `BatteryShadow` (`runtime.py`), which calls `tick` every `ru
 * **The sun's correction**: the plan counts on the solar forecast as the site's correction corrects it
   (`site/solar_correction_shadow.py`) once that has learnt; the raw forecast while it learns or is off
   (`corrected_solar_wh`, shown as `inputs.solar`). The plan is itself shadow, so no charger reads it.
+* **The error band and the defensive variant** (`site/forecast_band.py`, `defensive.py`): at each plan the house's
+  and the sun's bands are learnt from the site's forecast log (the misses of the median the plan counts on,
+  `house_kw_median`, and of the sun as the plan counts on it, corrected or raw), shown as p10/median/p90 per hour
+  (`band`), and the site's mode is planned once more on the pessimistic side (the house's p90 in the dear hours, the
+  sun's p10) as `defensive`: kept per quarter hour and reviewed each night beside the modes, within the same CPU
+  budget, never in force. Nothing changes for the car.
 * **Storage**: the quarter hours, the first planned actions, the house rows, the reviews and the plan in force (so a
   restart keeps the running slot's action stable) in `spotnav.battery_plan.<entry>`. The forecast log is the site's
   (`site/house_forecast.py`), saved with its hourly refresh.
@@ -41,9 +47,9 @@ import math
 import time
 from collections.abc import Sequence
 from dataclasses import replace
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from functools import partial
-from typing import TYPE_CHECKING, Any, Final
+from typing import TYPE_CHECKING, Any, Final, NamedTuple
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.storage import Store
@@ -58,8 +64,11 @@ from ..const import (
 )
 from ..planning.demand_charge import hour_start
 from ..planning.grid_voltage import stored_voltage_between_phases_v
+from ..site.forecast_band import FORM_ADDITIVE, FORM_RATIO, BandView, ErrorBand, learn, pairs_from_log, view
+from ..site.forecast_log import KIND_HOUSE_MEDIAN, KIND_SUN, KIND_SUN_CORRECTED
 from ..site.house_forecast import BASIS_GROSS, MEDIAN_QUANTILE
 from ..site.solar_correction import STATUS_SHADOW as CORRECTION_LEARNT, SolarCorrection
+from .defensive import NO_BAND, DefensiveInputs, defensive_inputs
 from .facts import BatteryFacts
 from .plan import plan_mode, self_consumption
 from .plan_model import (
@@ -84,7 +93,9 @@ from .plan_shadow import (
     NO_HOUSE_FORECAST,
     NO_PRICES,
     REVIEW_DAYS,
+    REVIEWED,
     TRIGGER_SOC,
+    VARIANT_DEFENSIVE,
     DayReview,
     PlanActuals,
     PlannedSlot,
@@ -140,6 +151,8 @@ EST_WEAR_CURRENCY: Final = "wear_currency_unknown"
 STATUS_WAITING: Final = "waiting"
 STATUS_PLANNED: Final = "planned"
 STATUS_NO_PLAN: Final = "no_plan"
+#: The defensive variant left out for the CPU budget.
+DEFENSIVE_SKIPPED: Final = "skipped"
 #: The plan's house: the site's forecast of the house's whole load, or (until the site has enough of its hours) of the
 #: import less the chargers, which counts the battery.
 HOUSE_GROSS: Final = "site_gross"
@@ -210,6 +223,35 @@ class _NoPlan(Exception):
         self.reason = reason
 
 
+def learn_bands(
+    now: datetime,
+    tz: str,
+    house_pairs: list[tuple[datetime, float, float]],
+    sun_pairs: list[tuple[datetime, float, float]],
+    holidays: frozenset[date] | None,
+) -> tuple[ErrorBand | None, ErrorBand | None]:
+    """The house's and the sun's error bands from their logged misses (`site/forecast_band.py`)."""
+    return (
+        learn(house_pairs, now, tz, FORM_ADDITIVE, holidays=holidays),
+        learn(sun_pairs, now, tz, FORM_RATIO),
+    )
+
+
+class Solved(NamedTuple):
+    """The executor's answer: each mode's plan, the modes skipped, the slots, what was assumed, the bands and the
+    defensive variant (its inputs, slots and plan; `None` when not planned)."""
+
+    plans: dict[str, Any]
+    skipped: tuple[str, ...]
+    slots: tuple[PlanSlot, ...]
+    estimates: tuple[str, ...]
+    house_band: ErrorBand | None = None
+    sun_band: ErrorBand | None = None
+    defensive_inputs: DefensiveInputs | None = None
+    defensive_slots: tuple[PlanSlot, ...] = ()
+    defensive: Any = None
+
+
 def _solve(
     now: datetime,
     tz: str,
@@ -223,9 +265,12 @@ def _solve(
     mode: str,
     wear: float,
     keeps: dict[str, tuple[str, float] | None],
-) -> tuple[dict[str, Any], tuple[str, ...], tuple[PlanSlot, ...], tuple[str, ...]]:
-    """The executor's part: the slots, and each mode's plan, the site's [mode] first; the modes left when the solve
-    took longer than `MODES_BUDGET_S` are skipped."""
+    misses: tuple[list[tuple[datetime, float, float]], list[tuple[datetime, float, float]], frozenset[date] | None]
+    | None = None,
+) -> Solved:
+    """The executor's part: the slots, and each mode's plan, the site's [mode] first; then, from the logged
+    [misses] (house, sun, holidays), the error bands and the defensive variant. What is left when the solve took
+    longer than `MODES_BUDGET_S` is skipped and named."""
     started = budget_clock()
     if not house:
         raise _NoPlan(NO_HOUSE_FORECAST)
@@ -246,7 +291,28 @@ def _solve(
         plans[name] = plan_mode(
             request, MODE_DEFS[name], wear, keep=keeps.get(name), keep_min_gain=threshold, baseline=baseline
         )
-    return plans, tuple(skipped), slots, estimates
+    if misses is None:
+        return Solved(plans, tuple(skipped), slots, estimates)
+    house_band, sun_band = learn_bands(now, tz, *misses)
+    inputs = defensive_inputs(house, solar_wh, house_band, sun_band, prices, now, tz)
+    if inputs is None:
+        return Solved(plans, tuple(skipped), slots, estimates, house_band, sun_band)
+    if budget_clock() - started > MODES_BUDGET_S:
+        return Solved(plans, (*skipped, VARIANT_DEFENSIVE), slots, estimates, house_band, sun_band, inputs)
+    guarded, _more = build_slots(now, prices, inputs.house_by_hour, inputs.solar_wh_by_hour, car_windows, cap_kw, tz)
+    if not guarded:
+        return Solved(plans, tuple(skipped), slots, estimates, house_band, sun_band, inputs)
+    request = PlanRequest(slots=guarded, battery=params, soc_now_pct=min(100.0, max(0.0, soc_pct)))
+    baseline = self_consumption(request)
+    defensive = plan_mode(
+        request,
+        MODE_DEFS[mode],
+        wear,
+        keep=keeps.get(VARIANT_DEFENSIVE),
+        keep_min_gain=keep_min_gain(baseline.cost, sum(slot.hours for slot in guarded)),
+        baseline=baseline,
+    )
+    return Solved(plans, tuple(skipped), slots, estimates, house_band, sun_band, inputs, guarded, defensive)
 
 
 def _mode_view(plan: Any, slots: Sequence[PlanSlot]) -> dict[str, Any]:
@@ -284,6 +350,10 @@ class BatteryPlanShadow:
         self.mode_plans: dict[str, tuple[PlannedSlot, ...]] = {}
         self.mode_views: dict[str, dict[str, Any]] = {}
         self.modes_skipped: tuple[str, ...] = ()
+        #: The learnt error bands over the plan's hours, and the defensive variant's inputs and view.
+        self.bands: dict[str, BandView] = {}
+        self.defensive_inputs: DefensiveInputs | None = None
+        self.defensive_view: dict[str, Any] | None = None
         self.status = STATUS_WAITING
         self.reason: str | None = None
         self.trigger: str | None = None
@@ -347,7 +417,7 @@ class BatteryPlanShadow:
         mode_slots = plan.get("mode_slots") if isinstance(plan.get("mode_slots"), dict) else {}
         for mode, rows in mode_slots.items():
             kept = [PlannedSlot.from_row(row) for row in rows or []] if isinstance(rows, list) else [None]
-            if mode in MODES and all(slot is not None for slot in kept):
+            if mode in REVIEWED and all(slot is not None for slot in kept):
                 self.mode_plans[mode] = tuple(slot for slot in kept if slot is not None)
         if mode_named(plan.get("mode")) is not None:
             self.mode = plan["mode"]
@@ -426,7 +496,7 @@ class BatteryPlanShadow:
         )
         if params is not None:
             reviewed = [review.money.day for review in self.reviews]
-            planning = [name for name in MODES if MODE_DEFS[name].plans]
+            planning = [*(name for name in MODES if MODE_DEFS[name].plans), VARIANT_DEFENSIVE]
             for day in days_to_review(self.actuals.buckets.values(), reviewed, now, tz):
                 review = review_day(day, self.actuals.buckets.values(), params, tz, now, planning, self.mode)
                 if review is not None:
@@ -642,15 +712,25 @@ class BatteryPlanShadow:
         if wear_unknown:
             estimates = (*estimates, EST_WEAR_CURRENCY)
         keeps: dict[str, tuple[str, float] | None] = {}
-        for name in MODES:
+        for name in REVIEWED:
             running = slot_at(self.plan if name == self.mode else self.mode_plans.get(name, ()), now)
             keeps[name] = None if running is None else (running.action, running.battery_kw)
         windows = self._car_windows()
-        plans, skipped, slots, more = await self.hass.async_add_executor_job(
-            partial(_solve, now, tz, prices, house, solar, windows, cap, params, facts.soc_pct, mode, wear, keeps)
+        log = site_house.log
+        sun_kind = KIND_SUN_CORRECTED if solar_basis == SOLAR_CORRECTED else KIND_SUN
+        misses = (
+            pairs_from_log(log.hours(KIND_HOUSE_MEDIAN)),
+            pairs_from_log(log.hours(sun_kind)) if solar is not None else [],
+            site_house.holidays,
+        )
+        solved = await self.hass.async_add_executor_job(
+            partial(
+                _solve, now, tz, prices, house, solar, windows, cap, params, facts.soc_pct, mode, wear, keeps, misses
+            )
         )
         if self._closed:
             return
+        plans, skipped, slots, more = solved.plans, solved.skipped, solved.slots, solved.estimates
         result = plans[mode]
         decisions = result.plan.decisions
         self.mode = mode
@@ -665,6 +745,16 @@ class BatteryPlanShadow:
         self.mode_plans = {
             name: planned_slots(item.plan.decisions) for name, item in plans.items() if MODE_DEFS[name].plans
         }
+        current = now.astimezone(timezone.utc).replace(minute=0, second=0, microsecond=0)
+        self.bands = {
+            "house": view(solved.house_band, {start: kw for start, kw in house.items() if start >= current}),
+            "sun": view(solved.sun_band, {start: wh / 1000.0 for start, wh in (solar or {}).items() if start >= current}),
+        }
+        self.defensive_inputs = solved.defensive_inputs
+        self.defensive_view = None
+        if solved.defensive is not None:
+            self.mode_plans[VARIANT_DEFENSIVE] = planned_slots(solved.defensive.plan.decisions)
+            self.defensive_view = plan_view(solved.defensive, solved.defensive_slots)
         self.modes_skipped = skipped
         self.status, self.reason, self.made_at = STATUS_PLANNED, None, now
         self.inputs = {
@@ -698,6 +788,13 @@ class BatteryPlanShadow:
 
     # ---- what is shown
 
+    def _defensive_status(self) -> str:
+        if self.defensive_view is not None:
+            return STATUS_PLANNED
+        if VARIANT_DEFENSIVE in self.modes_skipped:
+            return DEFENSIVE_SKIPPED
+        return NO_BAND if self.defensive_inputs is None else STATUS_NO_PLAN
+
     def snapshot(self) -> dict[str, Any]:
         """`battery.plan` in the diagnostics: the plan, its inputs, the quarter hours beside it and the reviews."""
         management = self._facts.management.state
@@ -721,6 +818,15 @@ class BatteryPlanShadow:
             # Every mode planned on the same inputs (the site's among them); those the CPU budget left out are named.
             "modes": {name: self.mode_views.get(name) for name in MODES},
             "modes_skipped": list(self.modes_skipped),
+            # The learnt error bands: per hour [p10, the median the plan counts on, p90] (house kW, sun kWh).
+            "band": {name: band.as_dict() for name, band in self.bands.items()},
+            # The site's mode planned on the band's pessimistic side (the house's p90 in the dear hours, the sun's
+            # p10): a shadow beside the modes, reviewed with them, never in force.
+            "defensive": {
+                "status": self._defensive_status(),
+                "inputs": None if self.defensive_inputs is None else self.defensive_inputs.as_dict(),
+                "plan": self.defensive_view,
+            },
             "quarters": [bucket.view() for bucket in quarters],
             # Per day, side by side: what the battery really did, each mode's plan on the same measured load and
             # sun, and self-consumption; and the days kept summed.
