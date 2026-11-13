@@ -1237,7 +1237,12 @@ class VehicleIdentifier:
         waiting = self._hass.async_create_background_task(
             self._async_deadline_after(session, rereads), f"spotnav identification deadline {self._entry_id}"
         )
-        session.unsubscribe.append(waiting.cancel)
+
+        @callback
+        def cancel_waiting() -> None:
+            waiting.cancel()
+
+        session.unsubscribe.append(cancel_waiting)
 
     async def _async_deadline_after(self, session: _Session, rereads: list[asyncio.Task[None]]) -> None:
         await asyncio.wait(rereads, timeout=REREAD_WAIT_S)
