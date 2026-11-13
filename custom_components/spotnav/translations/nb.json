@@ -951,6 +951,10 @@
     "price_source_missing": {
       "title": "Ingen strømpriser for {area}",
       "description": "**{price}** har ingen priser: ingen kilde er satt opp for {area}. Åpne SpotNav-kortets innstillinger, Strømpris: der står det hva som må legges til (Home Assistants Nord Pool-integrasjon, din egen ENTSO-E-nøkkel, PVPC-, Octopus Energy- eller Zonneplan-integrasjonen). Meldingen forsvinner av seg selv når prisene er tilbake."
+    },
+    "battery_outside_control": {
+      "title": "Noe annet styrer hjemmebatteriet",
+      "description": "SpotNav har lagt merke til at noe annet enn SpotNav styrer hjemmebatteriet på **{site}**: innstillingene er endret flere ganger, eller det har ladet fra strømnettet eller utladet mot eksport, noe dets eget egenforbruk ikke gjør. Ofte er det en tjeneste som CheckWatt, Greenely eller Tibber, en innstilling fra installatøren eller en automasjon. SpotNav overvåker derfor bare batteriet og skriver aldri til det; batteriplanen vises som en sammenligning. Du trenger ikke gjøre noe. Vil du at SpotNav skal planlegge batteriet senere, slår du først av det andre systemets styring. Meldingen forsvinner av seg selv to døgn etter at batteriet sist viste det."
     }
   },
   "exceptions": {

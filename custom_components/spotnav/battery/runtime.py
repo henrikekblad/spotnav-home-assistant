@@ -5,7 +5,10 @@ site's chargers charging from the grid (`execution/grid_charge.py`) and the site
 (`hold.py`) and logs the decisions in the shadow book (`shadow.py`), which is kept in the site's store. The
 confirmed-write ledger and the control-failure monitor run beside the hold as dry runs (`dry_run.py` says what they
 can and cannot tell in shadow); their state is kept in the book's sections. The house battery plan runs beside them
-as a shadow and a benchmark (`plan_runtime.py`).
+as a shadow and a benchmark (`plan_runtime.py`). The outside-control watch (`outside_control.py`) looks at the same
+readings: a battery another system drives is marked `externally_controlled` for every part (the plan stays a
+benchmark), and an occurrence found by the battery's settings or behaviour is told once, as a Repairs notice that
+goes away by itself when the occurrence ends.
 
 Nothing here writes to a battery, an inverter or any other device: no service is called. The results are shown in
 the site's diagnostics (and so in the debug bundle) only.
@@ -16,23 +19,30 @@ from __future__ import annotations
 import logging
 import math
 from collections.abc import Callable
+from dataclasses import replace
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any, Final
 
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers import device_registry as dr, entity_registry as er
+from homeassistant.helpers import device_registry as dr, entity_registry as er, issue_registry as ir
 from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
-from ..const import CONF_BATTERY_AGGREGATE_POWER_ENTITY, CONF_CHARGER_ENTRY_IDS, DOMAIN
+from ..const import (
+    BATTERY_OUTSIDE_CONTROL_ISSUE,
+    CONF_BATTERY_AGGREGATE_POWER_ENTITY,
+    CONF_CHARGER_ENTRY_IDS,
+    DOMAIN,
+)
 from ..planning.grid_voltage import stored_voltage_between_phases_v
 from ..site.measurement_problem import UNHEALTHY_STATES
 from .dry_run import SECTION_LEDGER, SECTION_MONITOR, HoldDryRun
-from .facts import BatteryFacts, EntityFact, battery_facts
+from .facts import BatteryFacts, EntityFact, battery_facts, with_outside_control
 from .hold import HoldDecision, HoldInputs, HoldMemory, restart, step
 from .ledger import Ledger
 from .monitor import Monitor
+from .outside_control import Observation, OutsideControlWatch
 from .plan_runtime import BatteryPlanShadow
 from .shadow import PART_HOLD_FOR_CAR, ShadowBook, ShadowEntry
 
@@ -42,12 +52,20 @@ if TYPE_CHECKING:
 _LOGGER = logging.getLogger(__name__)
 
 TICK_S: Final = 10.0
+#: The book's section that keeps the outside-control watch.
+SECTION_OUTSIDE: Final = "outside_control"
+#: The Repairs notice of an occurrence (translation key under `issues`, issue-id prefix).
+OUTSIDE_CONTROL_ISSUE: Final = BATTERY_OUTSIDE_CONTROL_ISSUE
 STORE_VERSION: Final = 1
 _SAVE_DELAY_S: Final = 30.0
 
 
 def store_key(entry_id: str) -> str:
     return f"{DOMAIN}.battery_shadow.{entry_id}"
+
+
+def outside_control_issue_id(entry_id: str) -> str:
+    return f"{OUTSIDE_CONTROL_ISSUE}_{entry_id}"
 
 
 def _entity_fact(entry: er.RegistryEntry, hass: HomeAssistant) -> EntityFact:
@@ -118,6 +136,9 @@ class BatteryShadow:
         self.book = ShadowBook()
         self.facts: BatteryFacts = BatteryFacts()
         self.dry_run = HoldDryRun(Ledger(), Monitor())
+        self.outside = OutsideControlWatch()
+        #: Whether SpotNav's own write path acts on the battery now (none can in this release).
+        self.spotnav_acting: Callable[[], bool] = lambda: False
         self._timer_cancel: Callable[[], None] | None = None
         self._loaded = False
         self.plan = BatteryPlanShadow(hass, site)
@@ -138,7 +159,9 @@ class BatteryShadow:
         self.dry_run = HoldDryRun(
             Ledger.from_dict(self.book.section(SECTION_LEDGER)), Monitor.from_dict(self.book.section(SECTION_MONITOR))
         )
+        self.outside = OutsideControlWatch.from_dict(self.book.section(SECTION_OUTSIDE))
         self._loaded = True
+        self._sync_notice()
         self.facts = self._read_facts()
         memory, decision = restart(self._hold, self.facts, now)
         self._apply(PART_HOLD_FOR_CAR, memory, decision, now)
@@ -157,6 +180,7 @@ class BatteryShadow:
     async def async_remove_stored(hass: HomeAssistant, entry_id: str) -> None:
         await Store(hass, STORE_VERSION, store_key(entry_id)).async_remove()
         await BatteryPlanShadow.async_remove_stored(hass, entry_id)
+        ir.async_delete_issue(hass, DOMAIN, outside_control_issue_id(entry_id))
 
     def _battery_power(self) -> tuple[float | None, float | None]:
         """The site's signed battery reading (kW, + charging) and how old the last word on it is (s)."""
@@ -168,7 +192,74 @@ class BatteryShadow:
 
     def _read_facts(self) -> BatteryFacts:
         power_kw, _age = self._battery_power()
-        return read_battery_facts(self.hass, self.site.config, power_kw)
+        return self.with_outside(read_battery_facts(self.hass, self.site.config, power_kw))
+
+    def with_outside(self, facts: BatteryFacts) -> BatteryFacts:
+        """The facts with the outside-control verdict applied (`facts.with_outside_control`)."""
+        verdict = self.outside.verdict
+        return with_outside_control(facts, verdict.active, verdict.reason)
+
+    def _grid_kw(self) -> float | None:
+        """The site's grid power (kW, + import) from its signed phase powers, `None` when one is not known."""
+        signed = list(self.site.result.phase_signed_active_power_w.values())
+        if not signed or not all(value is not None and math.isfinite(value) for value in signed):
+            return None
+        return sum(signed) / 1000.0  # type: ignore[arg-type]
+
+    def _observe_outside(self, inputs: HoldInputs) -> HoldInputs:
+        """One look of the outside-control watch on the raw facts; the inputs with its verdict applied."""
+        facts = inputs.facts
+        controls = {
+            control.entity_id: control.current
+            for control in (facts.hold, facts.grid_charge)
+            if control is not None and control.entity_id is not None
+        }
+        events = self.outside.observe(
+            Observation(
+                now=inputs.now,
+                management=facts.management.state,
+                modes=dict(facts.management.settings),
+                controls=controls,
+                power_kw=facts.power_kw,
+                grid_kw=self._grid_kw(),
+                soc_pct=facts.soc_pct,
+                reserve_soc_pct=facts.reserve_soc_pct,
+                battery_age_s=inputs.battery_age_s,
+                on_grid=facts.on_grid,
+                measurement_ok=inputs.measurement_ok,
+                integrations=frozenset(self.hass.config_entries.async_domains()),
+                planner=external_planner(self.hass),
+                spotnav_acting=self.spotnav_acting(),
+            )
+        )
+        for event in events:
+            _LOGGER.info(
+                "SpotNav battery: something outside SpotNav %s the battery (%s%s); SpotNav only watches it",
+                "drives" if event["kind"] == "started" else "no longer drives",
+                event.get("reason"),
+                "" if event.get("source") is None else f", likely {event['source']}",
+            )
+        if events:
+            self._sync_notice()
+        return replace(inputs, facts=self.with_outside(facts))
+
+    def _sync_notice(self) -> None:
+        """The Repairs notice mirrors a told occurrence: raised once while it lasts, gone when it ends."""
+        verdict = self.outside.verdict
+        issue_id = outside_control_issue_id(self.site.entry_id)
+        if not (verdict.active and verdict.told):
+            ir.async_delete_issue(self.hass, DOMAIN, issue_id)
+            return
+        entry = self.hass.config_entries.async_get_entry(self.site.entry_id)
+        ir.async_create_issue(
+            self.hass,
+            DOMAIN,
+            issue_id,
+            is_fixable=False,
+            severity=ir.IssueSeverity.WARNING,
+            translation_key=OUTSIDE_CONTROL_ISSUE,
+            translation_placeholders={"site": entry.title if entry is not None else self.site.entry_id},
+        )
 
     def _grid_charging(self) -> tuple[tuple[str, ...], float | None]:
         """The site's chargers charging from the grid, and what they draw together (kW, `None` when unknown)."""
@@ -215,7 +306,7 @@ class BatteryShadow:
         self.tick(dt_util.now())
 
     def tick(self, now: datetime) -> None:
-        inputs = self.inputs(now)
+        inputs = self._observe_outside(self.inputs(now))
         self.facts = inputs.facts
         memory, decision = step(self._hold, inputs)
         self._apply(
@@ -253,7 +344,11 @@ class BatteryShadow:
         for entry in entries:
             self.book.record(entry)
             _LOGGER.debug("Battery %s in shadow: %s (%s)", entry.part, entry.action, entry.reason)
-        sections = {SECTION_LEDGER: self.dry_run.ledger.as_dict(), SECTION_MONITOR: self.dry_run.monitor.as_dict()}
+        sections = {
+            SECTION_LEDGER: self.dry_run.ledger.as_dict(),
+            SECTION_MONITOR: self.dry_run.monitor.as_dict(),
+            SECTION_OUTSIDE: self.outside.as_dict(),
+        }
         for name, data in sections.items():
             if data != self.book.section(name):
                 self.book.set_section(name, data)
@@ -289,6 +384,9 @@ class BatteryShadow:
                 "battery_gave_car_kwh": {day: round(kwh, 3) for day, kwh in sorted(hold.gave_car_kwh.items())},
             },
             "dry_run": self._dry_run_snapshot(),
+            # Another system driving the battery (`outside_control.py`): the verdict now, the signals counted, the
+            # setting changes within the day and the last occurrences.
+            "outside_control": self.outside.as_dict(),
             "log": [entry.as_dict() for entry in self.book.entries],
             "plan": self.plan.snapshot(),
         }

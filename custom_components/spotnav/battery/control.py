@@ -128,6 +128,10 @@ class BatteryControl:
         self.verification: Verification | None = None
         self._failed: tuple[str, ...] = ()
         self._stored: dict[str, Any] = {}
+        battery_shadow = getattr(site, "battery_shadow", None)
+        if battery_shadow is not None:
+            # The outside-control watch does not count SpotNav's own writes as someone else's.
+            battery_shadow.spotnav_acting = self.acting
 
     # ---- life
 
@@ -261,7 +265,17 @@ class BatteryControl:
 
     def _read_facts(self) -> BatteryFacts:
         power_kw, _age = self._battery_power()
-        return read_battery_facts(self.hass, self.site.config, power_kw)
+        return self._with_outside(read_battery_facts(self.hass, self.site.config, power_kw))
+
+    def _with_outside(self, facts: BatteryFacts) -> BatteryFacts:
+        """A battery the site's outside-control watch marks is another system's: every look refuses it."""
+        battery_shadow = getattr(self.site, "battery_shadow", None)
+        return facts if battery_shadow is None else battery_shadow.with_outside(facts)
+
+    def acting(self) -> bool:
+        """Whether this path acts on the battery now (its writes are no one else's)."""
+        executor = self.executor
+        return executor is not None and executor.state.phase in ("active", "restoring")
 
     def _reads(self, control: BrandControl) -> dict[str, RoleRead]:
         reads = _registry_reads(self.hass, self.site.config, control)
@@ -285,7 +299,7 @@ class BatteryControl:
 
     def inputs(self, now: datetime, control: BrandControl, *, stopping: str | None = None) -> ExecInputs:
         power_kw, age_s = self._battery_power()
-        self.facts = facts = read_battery_facts(self.hass, self.site.config, power_kw)
+        self.facts = facts = self._with_outside(read_battery_facts(self.hass, self.site.config, power_kw))
         result = self.site.result
         headrooms = [value for value in result.phase_headroom_a.values() if value is not None]
         signed = list(result.phase_signed_active_power_w.values())
