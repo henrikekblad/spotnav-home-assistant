@@ -355,3 +355,12 @@ def test_meta_is_pruned_with_the_log() -> None:
     state.prune(datetime(2026, 6, 20, tzinfo=UTC))
 
     assert state.meta == {}
+
+
+def test_the_latest_cloud_forecast_picks_the_factor_when_given() -> None:
+    start = datetime(2026, 6, 21, 12, tzinfo=UTC)
+    state = SolarCorrection(factors={KIND_CLEAR: 1.0, KIND_CLOUDY: 0.5})
+    state.note_hour(start, cloud_pct=10, negative_price=None)
+
+    assert state.correct({start: 2.0}, observed_max_kwh=None, array_kwp=None)[start] == 2.0
+    assert state.correct({start: 2.0}, observed_max_kwh=None, array_kwp=None, cloud_pct={start: 95})[start] == 1.0

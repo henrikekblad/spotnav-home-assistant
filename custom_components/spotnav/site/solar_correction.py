@@ -417,14 +417,21 @@ class SolarCorrection:
         *,
         observed_max_kwh: float | None,
         array_kwp: float | None,
+        cloud_pct: Mapping[datetime, float] | None = None,
     ) -> dict[datetime, float]:
-        """The corrected forecast (kWh per hour) for `raw`, each hour's kind from its kept cloud cover. Off while
-        curtailed: `raw` as it is (still capped by the array's size, which no forecast may exceed)."""
+        """The corrected forecast (kWh per hour) for `raw`. Each hour's kind is from `cloud_pct` (the latest cloud
+        forecast) when it has the hour, else from its kept cloud cover. Off while curtailed: `raw` as it is (still
+        capped by the array's size, which no forecast may exceed)."""
         corrected: dict[datetime, float] = {}
         for start, value in raw.items():
             if not _number(value):
                 continue
-            factor = 1.0 if self.curtailed is not None else self.factors.get(self._kind(start), 1.0)
+            if self.curtailed is not None:
+                factor = 1.0
+            elif cloud_pct is not None and start in cloud_pct:
+                factor = self.factors.get(kind_of(cloud_pct[start]), 1.0)
+            else:
+                factor = self.factors.get(self._kind(start), 1.0)
             corrected[start] = min(
                 max(0.0, value) * factor,
                 cap_kwh(max(0.0, value), observed_max_kwh=observed_max_kwh, array_kwp=array_kwp),
