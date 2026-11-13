@@ -226,6 +226,13 @@ describe("the charger status in the header line", () => {
     expect(line(element)!.getAttribute("aria-label")).not.toContain(words);
   });
 
+  it("reads the status word without its leading dot", async () => {
+    const { element } = await mounted(withConnection("connected"), "en");
+    const dot = status(element)!.querySelector(".spotnav-connection-word > span")!;
+    expect(dot.textContent).toBe("\u00b7");
+    expect(dot.getAttribute("aria-hidden")).toBe("true");
+  });
+
   it.each<[string, string]>([
     ["en", "Waiting"],
     ["sv", "Väntar"],

@@ -1222,12 +1222,15 @@ export function createCardView(input: CardViewInput): CardView {
         shown === "error" ? `${C.connectionLine} ${C.connectionError}` : C.connectionLine,
       );
       status.dataset["connection"] = shown;
-      const word = element(
-        doc,
-        "span",
-        C.connectionWord,
-        model.chargerName === null ? connectionText : `\u00b7 ${connectionText}`,
-      );
+      // The leading dot only separates the word from the name: a screen reader skips it, as on the car line.
+      const word = element(doc, "span", C.connectionWord);
+      if (model.chargerName !== null) {
+        const dot = element(doc, "span", undefined, "\u00b7");
+        dot.setAttribute("aria-hidden", "true");
+        word.append(dot, doc.createTextNode(` ${connectionText}`));
+      } else {
+        word.append(doc.createTextNode(connectionText));
+      }
       status.append(word, connectionIcon(doc, shown, connectionText));
       row.append(status);
       row.dataset["statusFit"] = "word";
