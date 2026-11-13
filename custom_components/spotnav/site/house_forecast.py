@@ -40,7 +40,8 @@ measurements; it is shown on the site's state sensor (`forecast`), in the diagno
   in the executor. A refresh that could not read a source it found is tried again after `RETRY_S`.
 * **History**: the measured hours of the last eight weeks (`site/house_history.py`), merged from the demand tracker on
   each refresh (its two months taken over on the first), so early in a month the forecast still reads six weeks.
-* **Log**: each hour's first forecast, as used and before the in-day adjustment (`house_kw_raw`), the next day's as
+* **Log**: each hour's first forecast, as used and before the in-day adjustment (`house_kw_raw`), the battery plan's
+  median (`house_kw_median`, whose misses are its error band, `site/forecast_band.py`), the next day's as
   made once the day-ahead prices are out (`house_day_ahead`, 13:00 local, what that day's plans count on), and the
   outcome (the hour's measured house figure), reviewed per local day the night after; kept with the history in the
   site's own store (`spotnav.load_forecast.<entry>`). On a whole-load site the import target's forecast is logged
@@ -74,10 +75,12 @@ from .forecast_log import (
     KEEP_HOURS_DAYS,
     KIND_HOUSE,
     KIND_HOUSE_DAY_AHEAD,
+    KIND_HOUSE_MEDIAN,
     KIND_HOUSE_RAW,
     KIND_IMPORT,
     next_day_hours,
 )
+from .forecast_band import FORM_ADDITIVE, learn as learn_band, pairs_from_log, view as band_view
 from .house_history import HouseHistory
 from .load_forecast import forecast_house_load, LoadForecast, WINDOW_DAYS
 
@@ -106,7 +109,7 @@ MEDIAN_QUANTILE: Final = 0.5
 BASIS_NET: Final = "net"
 BASIS_GROSS: Final = "gross"
 #: The house kinds of the log: they log the house figure, whichever it is.
-HOUSE_KINDS: Final = (KIND_HOUSE, KIND_HOUSE_RAW, KIND_HOUSE_DAY_AHEAD)
+HOUSE_KINDS: Final = (KIND_HOUSE, KIND_HOUSE_RAW, KIND_HOUSE_DAY_AHEAD, KIND_HOUSE_MEDIAN)
 PRODUCTION_OK: Final = "ok"
 PRODUCTION_NONE: Final = "no_solar_statistics"
 PRODUCTION_FAILED: Final = "unreadable"
@@ -534,7 +537,7 @@ class SiteHouseForecast:
             ]
             if import_forecast is not None:
                 self._log_import(import_forecast, net_hours, now)
-            self._log(forecast, hours, now, tz)
+            self._log(forecast, median, hours, now, tz)
             self.refreshes += 1
             for listener in list(self._listeners):
                 listener()
@@ -612,17 +615,21 @@ class SiteHouseForecast:
                 self.log.record_actual(KIND_IMPORT, hour.start, hour.house_kw)
         self.log.record_forecast(KIND_IMPORT, forecast.by_hour(), now)
 
-    def _log(self, forecast: LoadForecast, hours: Iterable[Any], now: datetime, tz: str) -> None:
+    def _log(
+        self, forecast: LoadForecast, median: LoadForecast | None, hours: Iterable[Any], now: datetime, tz: str
+    ) -> None:
         log = self.log
         log.tz = tz
         oldest = now - timedelta(days=KEEP_HOURS_DAYS)
         for hour in hours:
             if hour.start >= oldest and not hour.imported and hour.house_kw is not None:
-                log.record_actual(KIND_HOUSE, hour.start, hour.house_kw)
-                log.record_actual(KIND_HOUSE_RAW, hour.start, hour.house_kw)
-                log.record_actual(KIND_HOUSE_DAY_AHEAD, hour.start, hour.house_kw)
+                for kind in HOUSE_KINDS:
+                    log.record_actual(kind, hour.start, hour.house_kw)
         log.record_forecast(KIND_HOUSE, forecast.by_hour(), now)
         log.record_forecast(KIND_HOUSE_RAW, forecast.raw_by_hour(), now)
+        if median is not None:
+            # The battery plan's figure: its misses are the error band (`site/forecast_band.py`).
+            log.record_forecast(KIND_HOUSE_MEDIAN, median.by_hour(), now)
         # The next day as forecast once its prices are out: what that day's plans count on.
         next_day = next_day_hours(forecast.by_hour(), now, tz)
         if next_day:
@@ -683,6 +690,15 @@ class SiteHouseForecast:
 
     # ---- what is shown
 
+    def band_view(self, now: datetime) -> dict[str, Any]:
+        """The median's learnt error band over its hours from the running one on, from the log's misses."""
+        band = learn_band(
+            pairs_from_log(self.log.hours(KIND_HOUSE_MEDIAN)), now, self.log.tz, FORM_ADDITIVE, holidays=self.holidays
+        )
+        current = now.astimezone(timezone.utc).replace(minute=0, second=0, microsecond=0)
+        hours = {} if self.median is None else self.median.by_hour()
+        return band_view(band, {start: kw for start, kw in hours.items() if start >= current}).as_dict()
+
     @callback
     def add_listener(self, listener: Callable[[], None]) -> Callable[[], None]:
         """Call `listener` after each refresh; returns its removal."""
@@ -714,6 +730,8 @@ class SiteHouseForecast:
             "forecast": None if self.forecast is None else self.forecast.as_dict(),
             # The battery plan's: the median without the in-day adjustment.
             "median": None if self.median is None else self.median.as_dict(),
+            # Its learnt error band (`site/forecast_band.py`): per hour [p10, median, p90].
+            "band": self.band_view(dt_util.utcnow()),
             # On a site whose house figure is the whole load: the import target's (the net figure).
             "import_forecast": None if self.import_forecast is None else self.import_forecast.as_dict(),
             "history": self.history.diagnostics(),
