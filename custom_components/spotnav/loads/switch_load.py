@@ -1,13 +1,20 @@
 """A simple switched load (a water heater first) run in the cheapest hours, in shadow: the policy.
 
-The load is one switch on the site with a rated power. The need is a minimum runtime in every rolling 24 hours (Power
-Saver's "N hours within every 24 hours", `plans/research_integrations/ha_ecosystem_gap_2026-11-14.md` item 5). Runtime
-and not energy, since a water heater's own thermostat cuts it off when the tank is hot: the switch decides when it
-may run, not what it draws. Its daily energy is shown as runtime times the rated power.
+The load is one switch on the site with a rated power. The need is a minimum runtime within any 28 hours (`WINDOW`,
+Power Saver's "4 hours within every 28 hours", `plans/research_integrations/ha_ecosystem_gap_2026-11-14.md` item 5).
+Runtime and not energy, since a water heater's own thermostat cuts it off when the tank is hot: the switch decides
+when it may run, not what it draws. Its energy per window is shown as runtime times the rated power.
 
-* **The deadlines** (`deadlines`): from what the load ran in the last 24 hours (`RunHistory`, the shadow's own runs),
-  the quarter hours it must have run by each coming moment so that no 24-hour window falls short. Before the history
-  starts the need counts as met just then (`RunHistory.tracked_since`), so the first day is planned within 24 hours,
+Why 28 hours and not 24: with a strict 24-hour window a run must come back no later than the same clock time the next
+day, so it can never follow the cheap hours when they move later (Tuesday's cheapest hours at 03:00, Wednesday's at
+05:00: Wednesday would have to run by 03:00 again). Four hours of slack let a run drift a few hours later from one day
+to the next, following the prices. The need still holds in every rolling 28-hour window, so the load never goes more
+than 28 hours less its runtime without running; the price is that the runtime is a floor per 28 hours (on average at
+least 24/28 of it per day), not per calendar day.
+
+* **The deadlines** (`deadlines`): from what the load ran in the last 28 hours (`RunHistory`, the shadow's own runs),
+  the quarter hours it must have run by each coming moment so that no 28-hour window falls short. Before the history
+  starts the need counts as met just then (`RunHistory.tracked_since`), so the first run is planned within 28 hours,
   not at once.
 * **The hours** (`plan_switch`): for each deadline in turn, the cheapest quarter hours still free before it, by the car
   planner's own search (`planning/planner.cheapest_slots`, automatic periods: a start cost per run and runs of at
@@ -60,8 +67,8 @@ RUNTIME_H_MAX: Final = 24.0
 FLOOR_C_MIN: Final = 5.0
 FLOOR_C_MAX: Final = 85.0
 
-#: The rolling window the runtime is due in.
-WINDOW: Final = timedelta(hours=24)
+#: The rolling window the runtime is due in: any 28 hours, so runs may drift later following the prices (module).
+WINDOW: Final = timedelta(hours=28)
 QUARTER: Final = timedelta(minutes=STEP_MINUTES)
 QUARTER_S: Final = QUARTER.total_seconds()
 #: Below the floor the load runs until the temperature is this much above it.
@@ -106,8 +113,8 @@ class SwitchLoadConfig:
         return max(1, math.ceil(self.runtime_h * 3600.0 / QUARTER_S - 1e-9))
 
     @property
-    def daily_kwh(self) -> float:
-        """What the runtime is as energy at the rated power: the most the load can draw in 24 hours of its need."""
+    def need_kwh(self) -> float:
+        """What the runtime is as energy at the rated power: the most the load draws for its need in one `WINDOW`."""
         return self.rated_kw * self.runtime_h
 
     @property
@@ -149,7 +156,7 @@ class RunHistory:
     """When the load ran (in shadow: when the shadow would have run it), kept for the rolling window.
 
     `tracked_since` is when the history began: the window before it counts as having had the whole need just before
-    then, so a new load (or a new history) is planned within a day instead of at once."""
+    then, so a new load (or a new history) is planned within one `WINDOW` instead of at once."""
 
     tracked_since: datetime | None = None
     runs: list[tuple[datetime, datetime]] = field(default_factory=list)
@@ -219,7 +226,7 @@ def _aware(value: Any) -> datetime | None:
 
 def deadlines(history: RunHistory, now: datetime, runtime_h: float) -> tuple[tuple[datetime, int], ...]:
     """`(moment, quarter hours)`: how many quarter hours the load must run from the running quarter hour on, by each
-    moment, for every 24-hour window to hold the runtime; only the moments where that number grows. The last is at
+    moment, for every `WINDOW` (28 hours) to hold the runtime; only the moments where that number grows. The last is at
     most one window ahead, needing the whole runtime."""
     need_s = runtime_h * 3600.0
     first = quarter_start(now)

@@ -15,7 +15,11 @@ const FIXTURE = join(__dirname, "..", "..", "tests", "fixtures", "settings", "v1
 
 /** The fixture's record as a backend without the calendar sends it, with `changes`. */
 function olderSettings(): Record<string, unknown> {
-  const { departure_calendar: _left, ...settings } = JSON.parse(readFileSync(FIXTURE, "utf8")).settings;
+  const {
+    departure_calendar: _left,
+    departure_calendar_only: _alone,
+    ...settings
+  } = JSON.parse(readFileSync(FIXTURE, "utf8")).settings;
   return settings;
 }
 
@@ -84,6 +88,27 @@ describe("the settings record's departure calendar", () => {
     const back = storedRecord({ departure_calendar: "calendar.trips" });
     const cleared = replacementFor("plan", back, { ...formFromRecord(back), departureCalendar: "" });
     expect(cleared.ok && cleared.body.departure_calendar).toBeNull();
+  });
+});
+
+describe("the settings record's calendar-only switch", () => {
+  it("is read when present and refused when it is not a boolean", () => {
+    expect(storedRecord().departure_calendar_only).toBeUndefined();
+    expect(storedRecord({ departure_calendar_only: true }).departure_calendar_only).toBe(true);
+    expect(() => storedRecord({ departure_calendar_only: "yes" })).toThrow();
+  });
+
+  it("is sent only to a backend that has it, and only when the reader moved it", () => {
+    const older = storedRecord();
+    const unsent = replacementFor("plan", older, { ...formFromRecord(older), departureCalendarOnly: true });
+    expect(unsent.ok && "departure_calendar_only" in unsent.body).toBe(false);
+    const record = storedRecord({ departure_calendar: "calendar.trips", departure_calendar_only: false });
+    const kept = replacementFor("plan", record, formFromRecord(record));
+    expect(kept.ok && kept.body.departure_calendar_only).toBe(false);
+    expect(kept.ok && kept.changed).toBe(false);
+    const ticked = replacementFor("plan", record, { ...formFromRecord(record), departureCalendarOnly: true });
+    expect(ticked.ok && ticked.body.departure_calendar_only).toBe(true);
+    expect(ticked.ok && ticked.changed).toBe(true);
   });
 });
 
@@ -183,6 +208,36 @@ describe("the Plan dialog's calendar", () => {
       "guest",
     );
     expect(guest.body.querySelector("[data-part='departure-calendar']")).toBeNull();
+  });
+
+  it("offers 'only the calendar decides' under the picker once a calendar is chosen, and writes it on Save", () => {
+    const { built } = dialog("sv", block(), { departure_calendar_only: false });
+    const row = built.body.querySelector<HTMLElement>("[data-part='departure-calendar-only']")!;
+    expect(row).not.toBeNull();
+    expect(row.textContent).toBe("Styr bara med kalendern");
+    expect(row.hidden).toBe(false);
+    const check = row.querySelector<HTMLInputElement>("input[type='checkbox']")!;
+    expect(check.checked).toBe(false);
+    check.checked = true;
+    expect(built.values().departureCalendarOnly).toBe(true);
+    const select = built.body.querySelector<HTMLSelectElement>("[data-part='departure-calendar'] select")!;
+    select.value = "";
+    select.dispatchEvent(new Event("change"));
+    expect(row.hidden).toBe(true);
+    expect(built.body.querySelector<HTMLElement>("[data-note='departure-calendar-only-help']")!.hidden).toBe(true);
+  });
+
+  it("is not offered against a backend without the switch", () => {
+    const { built } = dialog("en", block());
+    expect(built.body.querySelector("[data-part='departure-calendar-only']")).toBeNull();
+  });
+
+  it("says when the calendar alone decides and has no event ahead", () => {
+    const { built } = dialog("en", block({ state: "no_event", departure: null }), { departure_calendar_only: true });
+    expect(built.body.querySelector("[data-note='departure-calendar']")?.textContent).toBe(
+      "No event in the next 7 days: there is no departure, so the plan uses the cheapest hours known.",
+    );
+    expect(built.body.querySelector<HTMLInputElement>("[data-part='departure-calendar-only'] input")!.checked).toBe(true);
   });
 
   it("keeps a chosen calendar that is gone, named by its id", () => {

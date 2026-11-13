@@ -3,12 +3,16 @@
 A charger may name one calendar (`AutoSettings.departure_calendar`). Its events within the next
 `MAX_DEPARTURE_DAYS_AHEAD` days are departures:
 
-* **An event replaces the daily departure on its day.** Each event's start is a departure; a day with at least
-  one event has no daily departure of its own (earlier or later, the calendar says when the car leaves that day).
-  A day without an event keeps the daily departure, on the chosen weekdays as before. The plan is for the
-  earliest of these that is still ahead.
+* **The first event of a day is that day's departure.** It replaces the daily departure on its day (earlier or
+  later, the calendar says when the car leaves that day); later events that day are not departures (a car leaves
+  once a day: the evening's appointment is a trip from wherever it is then). Once the first has gone, that day has
+  no departure left. A day without an event keeps the daily departure, on the chosen weekdays as before, unless
+  the calendar alone decides (`calendar_only`): then a day without an event has no departure at all. The plan is
+  for the earliest of these that is still ahead.
 * **An all-day event** is a departure at the daily departure time on its first day (so it adds a departure on a
-  weekday that is left out, and keeps the time on one that is in, where its target still counts).
+  weekday that is left out, and keeps the time on one that is in, where its target still counts). It is that
+  day's first unless a timed event that day starts earlier; at the same minute the timed event is the first (its
+  text is the more particular one).
 * **A multi-day event** is a departure at its start only; the days it covers after that are ordinary days.
 * An event that has begun (or begins before the first planning slot) is gone; an event that began before today is
   not on any day here.
@@ -20,7 +24,9 @@ A charger may name one calendar (`AutoSettings.departure_calendar`). Its events 
 
 What this module does not decide (the controller does, `auto_controller.py`): the departure switch off or a guest
 car (the calendar is not read); a one-off date the person chose (it wins while it is ahead); a calendar that cannot
-be read (the daily departure, and the dialog says so).
+be read (the daily departure, also when the calendar alone decides: a car that must leave is safer charged by the
+daily time than not at all, and the dialog says so); the calendar alone deciding and no event ahead (no departure:
+the charger plans as with the departure switched off).
 """
 
 from __future__ import annotations
@@ -29,7 +35,7 @@ import re
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta, timezone
-from typing import Any, Final, Literal
+from typing import Any, Final
 
 from .. import time_zones
 from .planner import MAX_DEPARTURE_DAYS_AHEAD, STEP_MINUTES, local_instant
@@ -50,7 +56,6 @@ _LABELLED: Final = re.compile(
 _PERCENT: Final = re.compile(rf"(?<![\d.,]){_NUMBER}\s*%", re.IGNORECASE)
 _KWH: Final = re.compile(rf"(?<![\d.,]){_NUMBER}\s*kwh\b", re.IGNORECASE)
 
-CalendarState = Literal["used", "no_event", "unavailable"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -169,6 +174,11 @@ def _start(value: Any) -> datetime | date | None:
     return parsed if parsed.tzinfo is not None else None
 
 
+def _first_key(item: tuple[datetime, int, int, CalendarEvent]) -> tuple[datetime, int, int]:
+    instant, all_day, order, _event = item
+    return instant.astimezone(timezone.utc), all_day, order
+
+
 def first_slot(now: datetime, zone: Any) -> datetime:
     """`now` rounded up to the planning grid: a departure must lie after it to be planned for."""
     local_now = now.astimezone(zone)
@@ -185,11 +195,14 @@ def calendar_departure(
     tz: str,
     daily: time,
     weekdays: Iterable[int],
+    calendar_only: bool = False,
 ) -> CalendarDeparture | None:
     """The departure the calendar makes the plan's, or `None` when it changes nothing (no event within
-    `CALENDAR_DAYS_AHEAD` days moves the next daily departure).
+    `CALENDAR_DAYS_AHEAD` days moves the next daily departure) or, with `calendar_only`, when no event ahead is a
+    departure (there is none).
 
-    The rules are the module's. `weekdays` are the daily departure's (ISO numbers); `daily` its wall time.
+    The rules are the module's. `weekdays` are the daily departure's (ISO numbers); `daily` its wall time, also an
+    all-day event's. `calendar_only`: a day without an event has no daily departure.
     """
     zone = time_zones.zone(tz)
     if zone is None:
@@ -199,8 +212,8 @@ def calendar_departure(
     last = today + timedelta(days=CALENDAR_DAYS_AHEAD)
     allowed = frozenset(weekdays)
 
-    event_days: set[date] = set()
-    candidates: list[tuple[datetime, int, CalendarEvent]] = []
+    # Each day's first event: (instant, timed before all-day at the same minute, order read, event).
+    firsts: dict[date, tuple[datetime, int, int, CalendarEvent]] = {}
     for order, event in enumerate(events):
         if event.all_day:
             day = event.start if isinstance(event.start, date) else None
@@ -214,13 +227,21 @@ def calendar_departure(
             instant = local_instant(day, time(local.hour, local.minute), zone)
         if not today <= day <= last:
             continue
-        event_days.add(day)
-        if instant.astimezone(timezone.utc) > after:
-            candidates.append((instant, order, event))
+        item = (instant, 1 if event.all_day else 0, order, event)
+        known = firsts.get(day)
+        if known is None or _first_key(item) < _first_key(known):
+            firsts[day] = item
+    event_days = set(firsts)
+    # A day's first event that has gone leaves that day without a departure: its later events are not ones.
+    candidates = [
+        (instant, order, event)
+        for instant, _all_day, order, event in firsts.values()
+        if instant.astimezone(timezone.utc) > after
+    ]
 
     daily_next: datetime | None = None  # the next daily departure as the planner sees it without a calendar
     daily_kept: datetime | None = None  # the next one on a day without an event
-    for offset in range(CALENDAR_DAYS_AHEAD + 1):
+    for offset in range(0 if calendar_only else CALENDAR_DAYS_AHEAD + 1):
         day = today + timedelta(days=offset)
         if day.isoweekday() not in allowed:
             continue
@@ -247,8 +268,8 @@ def calendar_departure(
             event=event,
             target=parse_target(text),
         )
-    if daily_kept is None or daily_kept == daily_next:
-        # The calendar moves nothing: the daily departure stands as the planner already finds it.
+    if calendar_only or daily_kept is None or daily_kept == daily_next:
+        # The calendar moves nothing (or, deciding alone, has no departure ahead): the daily departure stands as the planner already finds it.
         return None
     local = daily_kept.astimezone(zone)
     return CalendarDeparture(day=local.date(), at=daily, instant=daily_kept, event=None, target=None)

@@ -81,6 +81,21 @@ def test_a_replacement_without_the_calendar_keeps_it_and_null_clears_it() -> Non
     assert cleared.departure_calendar is None
 
 
+def test_calendar_only_is_stored_only_when_set_and_kept_when_left_out() -> None:
+    assert "departure_calendar_only" not in AutoSettings().as_dict()
+    chosen = AutoSettings(departure_calendar=CALENDAR, departure_calendar_only=True).validated()
+    assert chosen.as_dict()["departure_calendar_only"] is True
+    assert AutoSettings.from_stored(chosen.as_dict()).departure_calendar_only is True
+    assert decode_settings(body(departure_calendar_only=True)).departure_calendar_only is True
+    assert encode_settings(AutoSettings())["departure_calendar_only"] is False
+    with pytest.raises(AutoSettingsError):
+        decode_settings(body(departure_calendar_only="yes"))
+    left_out = {key: value for key, value in body().items() if key != "departure_calendar_only"}
+    kept = replacement_mutator(decode_settings(left_out), keep_departure_calendar_only=True)(chosen)
+    assert kept.departure_calendar_only is True
+    assert "departure_calendar_only" in APP_UNREAD_SETTINGS
+
+
 def test_the_app_reads_neither_the_field_nor_the_block_until_it_asks() -> None:
     assert "departure_calendar" in APP_UNREAD_SETTINGS
     assert APP_DASHBOARD_BLOCK_READS["departure_calendar"] == "departure_calendar"
@@ -280,6 +295,56 @@ async def test_an_event_on_a_day_outside_the_weekdays_is_the_departure(harness: 
     )
     assert _departure(controller) == datetime(2026, 10, 3, 6, 0, tzinfo=timezone.utc)
     assert controller.calendar_status()["all_day"] is True
+
+
+# ------------------------------------------------------------------------------- the calendar alone decides
+
+
+async def test_alone_the_calendar_skips_a_day_without_an_event(harness: Harness, calendar: Calendar) -> None:
+    """Friday has no event: no daily departure Friday; Saturday's event is the plan's."""
+    _publish(harness)
+    calendar.add("2026-10-03T09:00:00+02:00")
+    only = await harness.auto(
+        departure=time(8, 0), requested_kwh=10.0, departure_calendar=CALENDAR, departure_calendar_only=True
+    )
+    assert _departure(only) == datetime(2026, 10, 3, 7, 0, tzinfo=timezone.utc)
+    assert only.calendar_status()["state"] == "used"
+
+
+async def test_alone_without_an_event_ahead_there_is_no_departure(harness: Harness, calendar: Calendar) -> None:
+    _publish(harness)
+    only = await harness.auto(
+        departure=time(8, 0), requested_kwh=10.0, departure_calendar=CALENDAR, departure_calendar_only=True
+    )
+    assert _departure(only) is None
+    assert only.calendar_status()["state"] == "no_event"
+    # Stored as chosen: only the plan goes without a departure.
+    assert harness.store.settings("entry-a").departure_enabled is True
+
+
+async def test_alone_a_chosen_date_still_wins(harness: Harness, calendar: Calendar) -> None:
+    _publish(harness)
+    chosen = await harness.auto(
+        departure=time(8, 0),
+        requested_kwh=10.0,
+        departure_date=SATURDAY,
+        departure_calendar=CALENDAR,
+        departure_calendar_only=True,
+    )
+    assert _departure(chosen) == datetime(2026, 10, 3, 6, 0, tzinfo=timezone.utc)
+    assert chosen.calendar_status()["state"] == "date"
+
+
+async def test_alone_a_calendar_that_cannot_be_read_falls_back_to_the_daily_departure(
+    harness: Harness, calendar: Calendar
+) -> None:
+    _publish(harness)
+    harness.hass.states.async_set(CALENDAR, "unavailable")
+    unread = await harness.auto(
+        departure=time(8, 0), requested_kwh=10.0, departure_calendar=CALENDAR, departure_calendar_only=True
+    )
+    assert _departure(unread) == datetime(2026, 10, 2, 6, 0, tzinfo=timezone.utc)
+    assert unread.calendar_status()["state"] == "unavailable"
 
 
 # ------------------------------------------------------------------------------- the dashboard block

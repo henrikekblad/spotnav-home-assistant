@@ -4,6 +4,7 @@ and the book across a reload. Nothing is ever written to the battery."""
 from __future__ import annotations
 
 import json
+import logging
 from datetime import timedelta
 from pathlib import Path
 from typing import Any
@@ -235,42 +236,63 @@ async def test_a_set_up_checkwatt_makes_the_battery_watch_only_without_a_notice(
     assert _issue(hass, site.entry_id) is None
 
 
-async def test_settings_changed_three_times_are_told_once_and_the_notice_goes_by_itself(
-    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch
+async def test_settings_changed_three_times_are_logged_once_without_a_notice_and_end_by_themselves(
+    hass: HomeAssistant, caplog: pytest.LogCaptureFixture
 ) -> None:
     from custom_components.spotnav.battery.outside_control import CLEAR_AFTER  # noqa: PLC0415
-    from custom_components.spotnav.repairs import async_sync_resolution_repairs  # noqa: PLC0415
 
     site, controller = await _site(hass, **{"sensor.sigen_plant_ems_work_mode": "max_self_consumption"})
     shadow = controller.battery_shadow
     calls = _service_calls(hass)
     limit = "number.sigen_plant_ess_max_discharging_limit"
     now = dt_util.now()
+    caplog.set_level(logging.INFO, logger="custom_components.spotnav.battery.runtime")
 
-    for minute, value in enumerate(("23.04", "5.0", "23.04", "0.0")):
+    for minute, value in enumerate(("23.04", "5.0", "23.04", "0.0", "5.0", "23.04")):
         _set(hass, limit, value, "kW")
         shadow.tick(now + timedelta(minutes=minute))
     await hass.async_block_till_done()
 
     assert shadow.facts.management.state == "externally_controlled"
     assert shadow.facts.management.reason == "settings_changed"
-    issue = _issue(hass, site.entry_id)
-    assert issue is not None and issue.translation_key == "battery_outside_control"
-    assert issue.translation_placeholders == {"site": site.title}
-    # The setup sync leaves the site's own notice alone.
-    await async_sync_resolution_repairs(hass)
-    assert _issue(hass, site.entry_id) is not None
+    battery = (await async_get_config_entry_diagnostics(hass, site))["battery"]
+    assert battery["outside_control"]["verdict"]["reason"] == "settings_changed"
+    # Logged once for the start, however long it lasts; no Repairs notice.
+    started = [r for r in caplog.records if "outside SpotNav drives the battery" in r.getMessage()]
+    assert len(started) == 1 and started[0].levelno == logging.INFO
+    assert _issue(hass, site.entry_id) is None
 
-    # A reload keeps the occurrence: it is not told again, and the battery stays watch-only.
+    # A reload keeps the occurrence: it is not logged again, and the battery stays watch-only.
+    caplog.clear()
     assert await hass.config_entries.async_reload(site.entry_id)
     await hass.async_block_till_done()
     reloaded = site_controller_for(hass, site.entry_id)
     assert reloaded is not None
     assert reloaded.battery_shadow.facts.management.state == "externally_controlled"
-    assert reloaded.battery_shadow.outside.counts == {"settings_changed": 1}
+    assert not [r for r in caplog.records if "outside SpotNav" in r.getMessage()]
 
-    reloaded.battery_shadow.tick(now + timedelta(minutes=3) + CLEAR_AFTER)
+    reloaded.battery_shadow.tick(now + timedelta(minutes=6) + CLEAR_AFTER)
     await hass.async_block_till_done()
     assert reloaded.battery_shadow.facts.management.state == "free"
+    ended = [r for r in caplog.records if "no longer drives the battery" in r.getMessage()]
+    assert len(ended) == 1 and ended[0].levelno == logging.INFO
     assert _issue(hass, site.entry_id) is None
     assert [call for call in calls if call.data.get("domain") in ("number", "select", "switch", "sigen")] == []
+
+
+async def test_a_left_over_outside_control_notice_is_deleted_at_start(hass: HomeAssistant) -> None:
+    """An earlier version raised a Repairs notice for an occurrence; it is retired, so one left over goes."""
+    from homeassistant.helpers import issue_registry as ir  # noqa: PLC0415
+
+    site, controller = await _site(hass, **{"sensor.sigen_plant_ems_work_mode": "max_self_consumption"})
+    ir.async_create_issue(
+        hass,
+        "spotnav",
+        f"battery_outside_control_{site.entry_id}",
+        is_fixable=False,
+        severity=ir.IssueSeverity.WARNING,
+        translation_key="battery_outside_control",
+    )
+    assert await hass.config_entries.async_reload(site.entry_id)
+    await hass.async_block_till_done()
+    assert _issue(hass, site.entry_id) is None

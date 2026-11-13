@@ -805,9 +805,11 @@ class AutoPlannerController:
         (`planning/calendar_departure.py`); unchanged when it makes none.
 
         Precedence: the departure switch off or a guest car, nothing (the calendar is not read); a one-off date the
-        person chose that is still ahead wins; else the calendar's departure (an event replaces the daily departure
-        on its day) as a dated departure, with the event's target where it fits the charger's driver; a calendar
-        that cannot be read leaves the daily departure. `record` keeps what was made of it for `calendar_status`.
+        person chose that is still ahead wins; else the calendar's departure (a day's first event replaces the daily
+        departure on its day) as a dated departure, with the event's target where it fits the charger's driver; a
+        calendar that cannot be read leaves the daily departure, also when the calendar alone decides (safer than
+        none). With `departure_calendar_only` and no event ahead there is no departure: the plan is made as with the
+        departure switched off (`no_event`). `record` keeps what was made of it for `calendar_status`.
         """
         entity_id = settings.departure_calendar
         if entity_id is None:
@@ -829,10 +831,19 @@ class AutoPlannerController:
             if events is None:
                 status["state"] = "unavailable"
             else:
+                only = settings.departure_calendar_only
                 found = calendar_departure(
-                    events, now=now, tz=entry.tz, daily=settings.departure, weekdays=settings.departure_weekdays
+                    events,
+                    now=now,
+                    tz=entry.tz,
+                    daily=settings.departure,
+                    weekdays=settings.departure_weekdays,
+                    calendar_only=only,
                 )
-                if found is None:
+                if found is None and only:
+                    status["state"] = "no_event"
+                    updated = replace(settings, departure_enabled=False, departure_date=None)
+                elif found is None:
                     status["state"] = "daily"
                 else:
                     updated, applied = self._calendar_overlay(settings, found)
@@ -856,7 +867,8 @@ class AutoPlannerController:
 
     def calendar_status(self) -> dict[str, Any] | None:
         """What the last calculation made of the departure calendar, for the dashboard (`api/dashboard.py`), or
-        `None` without one: `entity_id`, `state` (`used`, `daily`, `date`, `unavailable` or `off`) and, when `used`,
+        `None` without one: `entity_id`, `state` (`used`, `daily`, `date`, `unavailable`, `no_event` or `off`) and,
+        when `used`,
         `departure` (the instant), `summary`, `all_day`, `target_percent`, `target_kwh` and `target_used`."""
         return None if self._calendar_status is None else dict(self._calendar_status)
 

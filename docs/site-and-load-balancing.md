@@ -714,6 +714,19 @@ charger draws on would turn from import to export (so the current the fuse carri
   charger (held, paused, kept at the hour's end, or why it could not hold it), the hour each was paused in, the
   departures at risk and those set aside, and its recent holds, pauses and releases.
 
+## A switched load (water heater), in shadow
+
+In the site's options (**Next: switched load (water heater)**) you can name one load on a switch, its rated
+power, how long it must run and, optionally, a temperature sensor and the lowest temperature it may fall to. In
+this version SpotNav only works out when it would switch it, in the cheapest hours under the main fuse and the
+import target, and shows that in the site's diagnostics; it never switches it.
+
+The runtime is due **within any 28 hours**, not every 24. With a strict 24 hours a run would have to come back by
+the same clock time each day and could never follow the cheap hours when they move later (cheapest at 03:00 one
+night, at 05:00 the next). Within 28 hours a run may drift a few hours later from one day to the next, and the need
+is still met in every 28-hour stretch, so the load never goes more than 28 hours less its runtime without running.
+Below the lowest temperature it runs at any price; the fuse always comes first.
+
 ## Meter detection, signs and estimated current
 
 SpotNav scans the entity registry (including entities an integration ships disabled) for grid meters and home batteries and offers them in the site editor and the create flow (the recognised integrations are listed under [supported hardware](supported.md)); nothing is applied until confirmed, and applying enables only entities the integration disabled, never ones a person disabled. Each integration carries its sign conventions:

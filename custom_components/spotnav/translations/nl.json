@@ -382,14 +382,14 @@
         "data": {
           "switch_entity": "Schakelaar",
           "rated_kw": "Nominaal vermogen",
-          "runtime_h": "Looptijd per 24 uur",
+          "runtime_h": "Looptijd binnen elke 28 uur",
           "temperature_entity": "Temperatuursensor (optioneel)",
           "floor_c": "Laagste temperatuur (optioneel)"
         },
         "data_description": {
           "switch_entity": "De schakelaar die de last aan- en uitzet. Leeg: geen last.",
           "rated_kw": "Wat de last trekt als hij aan staat, volgens het typeplaatje.",
-          "runtime_h": "Hoe lang hij in elke 24 uur moet draaien. SpotNav kiest daarvoor de goedkoopste uren.",
+          "runtime_h": "Hoe lang hij binnen elke 28 uur moet draaien. SpotNav kiest daarvoor de goedkoopste uren, zodat een run van de ene dag op de andere een paar uur later kan vallen als de prijzen dat doen.",
           "temperature_entity": "Bijvoorbeeld de tanktemperatuur van de boiler. Met een laagste temperatuur draait de last ongeacht de prijs als het kouder is.",
           "floor_c": "Hieronder draait de last meteen, tot het 2 °C warmer is. Vereist de temperatuursensor."
         }
@@ -979,10 +979,6 @@
     "price_source_missing": {
       "title": "Geen stroomprijzen voor {area}",
       "description": "**{price}** heeft geen prijzen: er is geen bron ingesteld voor {area}. Open de instellingen van de SpotNav-kaart, Stroomprijs: daar staat wat je moet toevoegen (de Nord Pool-integratie van Home Assistant, je eigen ENTSO-E-sleutel, de PVPC-, de Octopus Energy- of de Zonneplan-integratie). Deze melding verdwijnt vanzelf zodra er weer prijzen zijn."
-    },
-    "battery_outside_control": {
-      "title": "Iets anders stuurt de thuisbatterij",
-      "description": "SpotNav heeft gemerkt dat iets anders dan SpotNav de thuisbatterij van **{site}** stuurt: de instellingen zijn meerdere keren gewijzigd, of hij laadde uit het net of ontlaadde naar teruglevering, wat zijn eigen eigenverbruik niet doet. Vaak is dat een dienst zoals CheckWatt, Greenely of Tibber, een instelling van de installateur of een automatisering. SpotNav kijkt daarom alleen mee en schrijft nooit naar deze batterij; het batterijplan wordt als vergelijking getoond. Je hoeft niets te doen. Wil je dat SpotNav de batterij later plant, zet dan eerst de sturing van het andere systeem uit. Deze melding verdwijnt vanzelf twee dagen nadat de batterij het voor het laatst liet zien."
     }
   },
   "exceptions": {

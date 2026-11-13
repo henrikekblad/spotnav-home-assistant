@@ -382,14 +382,14 @@
         "data": {
           "switch_entity": "Kontakt",
           "rated_kw": "Mærkeeffekt",
-          "runtime_h": "Driftstid pr. 24 timer",
+          "runtime_h": "Driftstid inden for hver 28 timer",
           "temperature_entity": "Temperaturføler (valgfri)",
           "floor_c": "Laveste temperatur (valgfri)"
         },
         "data_description": {
           "switch_entity": "Kontakten, der slår belastningen til og fra. Tom: ingen belastning.",
           "rated_kw": "Hvad belastningen trækker, når den er tændt, som på mærkepladen.",
-          "runtime_h": "Hvor længe den skal køre i hver periode på 24 timer. SpotNav vælger de billigste timer til det.",
+          "runtime_h": "Hvor længe den skal køre inden for hver periode på 28 timer. SpotNav vælger de billigste timer til det, så en kørsel kan flytte nogle timer senere fra den ene dag til den næste, når priserne gør det.",
           "temperature_entity": "For eksempel vandvarmerens tanktemperatur. Med en laveste temperatur kører belastningen uanset prisen, når det er koldere.",
           "floor_c": "Under denne temperatur kører belastningen straks, indtil den er 2 °C varmere. Kræver temperaturføleren."
         }
@@ -979,10 +979,6 @@
     "price_source_missing": {
       "title": "Ingen elpriser for {area}",
       "description": "**{price}** har ingen priser: der er ingen kilde sat op for {area}. Åbn SpotNav-kortets indstillinger, Elpris: der står, hvad der skal tilføjes (Home Assistants Nord Pool-integration, din egen ENTSO-E-nøgle, PVPC-, Octopus Energy- eller Zonneplan-integrationen). Beskeden forsvinder af sig selv, når priserne er tilbage."
-    },
-    "battery_outside_control": {
-      "title": "Noget andet styrer husbatteriet",
-      "description": "SpotNav har bemærket, at noget andet end SpotNav styrer husbatteriet på **{site}**: dets indstillinger er ændret flere gange, eller det har ladet fra nettet eller afladet til eksport, hvilket dets eget egetforbrug ikke gør. Ofte er det en tjeneste som CheckWatt, Greenely eller Tibber, en indstilling fra installatøren eller en automatisering. SpotNav overvåger derfor kun batteriet og skriver aldrig til det; batteriplanen vises som en sammenligning. Du behøver ikke gøre noget. Vil du have SpotNav til at planlægge batteriet senere, så slå først det andet systems styring fra. Meddelelsen forsvinder af sig selv to døgn efter, at batteriet sidst viste det."
     }
   },
   "exceptions": {

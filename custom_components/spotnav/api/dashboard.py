@@ -1438,7 +1438,8 @@ def departure_calendar_block(hass: HomeAssistant, entry_id: str, settings: AutoS
     the last calculation made of the chosen one (`AutoController.calendar_status`): `state` is `used` (its departure
     is the plan's: `departure`, the event's `summary`, `all_day`, the target its text gives and `target_used`,
     `percent`, `kwh` or `null`), `daily` (no event moves the daily departure), `date` (a chosen date wins),
-    `unavailable` (it cannot be read: the daily departure is used), `off` (no departure, or a guest car) or `null`
+    `unavailable` (it cannot be read: the daily departure is used), `no_event` (the calendar alone decides and has no
+    event ahead: no departure), `off` (no departure, or a guest car) or `null`
     (not calculated yet, or none chosen). `None` when there is no calendar and none is chosen."""
     calendars = sorted(
         ({"entity_id": state.entity_id, "name": state.name} for state in hass.states.async_all("calendar")),

@@ -74,7 +74,7 @@ def test_the_settings_round_trip_and_broken_ones_are_no_load() -> None:
     config = SwitchLoadConfig("switch.vvb", 2.0, 4.0, "sensor.tank", 45.0)
 
     assert SwitchLoadConfig.from_data(config.as_dict()) == config
-    assert config.needed_quarters == 16 and config.daily_kwh == 8.0
+    assert config.needed_quarters == 16 and config.need_kwh == 8.0
     assert CONF_SWITCH_LOAD == "switch_load"
     for broken in (None, {}, {"entity_id": "light.x", "rated_kw": 2, "runtime_h": 2},
                    {"entity_id": "switch.x", "rated_kw": 0, "runtime_h": 2},
@@ -98,7 +98,7 @@ def test_the_load_is_single_phase_up_to_16_a_and_three_phase_above() -> None:
 # ---- the rolling runtime
 
 
-def test_a_new_history_is_due_within_a_day_not_at_once() -> None:
+def test_a_new_history_is_due_within_one_window_not_at_once() -> None:
     steps = deadlines(_met(), NOW, 3.0)
 
     assert steps[0] == (NOW + WINDOW - timedelta(hours=3) + QUARTER, 1)
@@ -106,21 +106,38 @@ def test_a_new_history_is_due_within_a_day_not_at_once() -> None:
     assert not no_slack(steps, NOW)
 
 
-def test_yesterdays_run_sets_todays_deadlines() -> None:
+def test_this_mornings_run_is_due_again_28_hours_on() -> None:
     history = RunHistory(tracked_since=NOW - timedelta(days=3))
     history.note(NOW - timedelta(hours=11), NOW - timedelta(hours=8))  # 02:00-05:00
 
     steps = deadlines(history, NOW, 3.0)
 
-    assert steps[0] == (NOW + timedelta(hours=13, minutes=15), 1)  # 02:15 tomorrow
-    assert steps[-1] == (NOW + timedelta(hours=16), 12)  # 05:00 tomorrow
+    assert WINDOW == timedelta(hours=28)
+    assert steps[0] == (NOW + timedelta(hours=17, minutes=15), 1)  # 06:15 tomorrow
+    assert steps[-1] == (NOW + timedelta(hours=20), 12)  # 09:00 tomorrow
+
+
+def test_a_run_may_drift_later_to_follow_the_cheap_hours() -> None:
+    """Ran 02:00-05:00 today; tomorrow's cheapest hours are 05:00-08:00. A strict 24 hours would have to run again by
+    05:00; within any 28 hours the run follows the prices, and every window still holds the runtime."""
+    history = RunHistory(tracked_since=NOW - timedelta(days=3))
+    history.note(NOW - timedelta(hours=11), NOW - timedelta(hours=8))
+    prices = [1.0] * 28
+    prices[16:19] = [0.1, 0.1, 0.1]  # 05:00-08:00 tomorrow
+
+    plan = _plan(prices, history=history)
+
+    assert periods(plan.starts) == [(NOW + timedelta(hours=16), NOW + timedelta(hours=19))]
+    assert plan.short == 0 and plan.deferred == 0
+    for moment, need in plan.steps:
+        assert sum(1 for start in plan.starts if start + QUARTER <= moment) >= need
 
 
 def test_a_need_already_run_has_no_deadline() -> None:
     history = RunHistory(tracked_since=NOW - timedelta(days=3))
     history.note(NOW - timedelta(hours=1), NOW)
 
-    assert deadlines(history, NOW, 1.0)[0] == (NOW + timedelta(hours=23, minutes=15), 1)
+    assert deadlines(history, NOW, 1.0)[0] == (NOW + timedelta(hours=27, minutes=15), 1)
 
 
 def test_the_history_keeps_one_window_and_joins_touching_runs() -> None:
@@ -141,9 +158,9 @@ def test_the_history_keeps_one_window_and_joins_touching_runs() -> None:
 
 
 def test_the_cheapest_hours_before_the_deadline_in_one_run() -> None:
-    prices = [1.0] * 26
+    prices = [1.0] * 30
     prices[14:17] = [0.2, 0.1, 0.2]  # 03:00-06:00 tomorrow
-    prices[25] = 0.05  # 14:00 tomorrow: after the last deadline (13:00)
+    prices[29] = 0.05  # 18:00 tomorrow: after the last deadline (17:00)
 
     plan = _plan(prices)
 
@@ -154,9 +171,9 @@ def test_the_cheapest_hours_before_the_deadline_in_one_run() -> None:
 
 def test_an_earlier_deadline_is_kept_when_the_cheap_hours_come_after_it() -> None:
     history = RunHistory(tracked_since=NOW - timedelta(days=3))
-    history.note(NOW - timedelta(hours=11), NOW - timedelta(hours=8))  # 02:00-05:00 today: due again from 02:15
+    history.note(NOW - timedelta(hours=11), NOW - timedelta(hours=8))  # 02:00-05:00 today: due again from 06:15
     prices = [1.0] * 24
-    prices[15:18] = [0.1, 0.1, 0.1]  # 04:00-07:00 tomorrow: the last of it too late
+    prices[18:21] = [0.1, 0.1, 0.1]  # 07:00-10:00 tomorrow: the last of it too late
 
     plan = _plan(prices, history=history)
 
@@ -166,7 +183,7 @@ def test_an_earlier_deadline_is_kept_when_the_cheap_hours_come_after_it() -> Non
 
 
 def test_an_hour_without_room_under_the_import_cap_is_never_chosen() -> None:
-    prices = [1.0] * 24
+    prices = [1.0] * 28
     prices[14:17] = [0.1, 0.1, 0.1]
     room = {NOW + timedelta(hours=15): 2.0, NOW + timedelta(hours=14): 3.5}
 
@@ -184,9 +201,9 @@ def test_a_deadline_after_the_prices_waits_for_them_and_says_so() -> None:
 
 
 def test_too_few_free_quarters_before_a_deadline_are_short() -> None:
-    room = {NOW + timedelta(hours=hour): 0.0 for hour in range(24)}
+    room = {NOW + timedelta(hours=hour): 0.0 for hour in range(28)}
 
-    plan = _plan([1.0] * 24, room=room)
+    plan = _plan([1.0] * 28, room=room)
 
     assert plan.starts == frozenset() and plan.short == 12
 
@@ -218,7 +235,7 @@ def test_priced_slots_stop_at_a_gap_and_need_the_running_quarter() -> None:
 
 
 def test_on_in_a_chosen_quarter_and_off_between() -> None:
-    prices = [1.0] * 24
+    prices = [1.0] * 28
     prices[0] = 0.0
     plan = _plan(prices, config=SwitchLoadConfig("switch.x", 3.0, 1.0))
 
@@ -258,7 +275,7 @@ def test_a_met_need_says_so() -> None:
 
     config = SwitchLoadConfig("switch.x", 3.0, 0.5)
     steps = deadlines(history, NOW, 0.5)
-    assert steps == ((NOW + timedelta(hours=23, minutes=45), 1), (NOW + timedelta(hours=24), 2))
+    assert steps == ((NOW + timedelta(hours=27, minutes=45), 1), (NOW + timedelta(hours=28), 2))
     plan = _plan([1.0] * 11, history=history, config=config)
     assert plan.starts == frozenset() and plan.deferred == 2
     assert decide(SwitchInputs(NOW, config, plan, history)).reason == REASON_MET

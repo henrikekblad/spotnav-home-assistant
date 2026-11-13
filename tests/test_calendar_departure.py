@@ -1,7 +1,8 @@
 """The departure from a calendar, as pure rules (`planning/calendar_departure.py`).
 
-* An event replaces the daily departure on its day; a day without one keeps the daily departure on its weekdays;
-  the plan is for the earliest that is still ahead.
+* A day's first event replaces the daily departure on its day (later ones that day are not departures); a day
+  without one keeps the daily departure on its weekdays, unless the calendar alone decides; the plan is for the
+  earliest that is still ahead.
 * All-day: a departure at the daily time on its first day. Multi-day: its start only. Begun: gone.
 * Time zones: an event's instant is read in the area's zone.
 * The target in an event's text: a level or an amount, never a number that is part of something else.
@@ -67,11 +68,33 @@ def test_an_event_on_a_day_outside_the_weekdays_is_a_departure() -> None:
     assert found is not None and (found.day, found.at) == (date(2026, 10, 3), time(10, 0))
 
 
-def test_two_events_on_a_day_are_two_departures() -> None:
-    """At 11:00 on Friday, the 08:00 event has gone: the 17:00 one is next."""
+def test_only_the_first_event_of_a_day_is_its_departure() -> None:
+    """Friday has events at 17:00 and 08:00 (read in that order): 08:00 is Friday's departure."""
+    found = plan(timed(2, 17, summary="Gym"), timed(2, 8, summary="Work"))
+    assert found is not None and found.at == time(8, 0) and found.event is not None
+    assert found.event.summary == "Work"
+
+
+def test_a_later_event_on_a_day_whose_first_has_gone_is_no_departure() -> None:
+    """At 11:00 on Friday the 08:00 event has gone; the 17:00 one is not a departure, so Saturday's daily 08:00 is
+    next, which the planner finds by itself."""
     now = datetime(2026, 10, 2, 9, 0, tzinfo=timezone.utc)
-    found = plan(timed(2, 8), timed(2, 17), now=now)
-    assert found is not None and found.at == time(17, 0)
+    assert plan(timed(2, 8), timed(2, 17), now=now) is None
+
+
+def test_a_timed_event_earlier_than_an_all_day_one_is_the_days_first() -> None:
+    found = plan(CalendarEvent(start=date(2026, 10, 2), summary="Trip 100%"), timed(2, 6, summary="Early"))
+    assert found is not None and found.at == time(6, 0) and found.target is None
+
+
+def test_an_all_day_event_is_the_first_before_a_later_timed_one() -> None:
+    found = plan(timed(2, 12, summary="Lunch 50%"), CalendarEvent(start=date(2026, 10, 2), summary="Trip 100%"))
+    assert found is not None and found.at == time(8, 0) and found.target == EventTarget(percent=100.0)
+
+
+def test_at_the_same_minute_the_timed_event_is_the_first() -> None:
+    found = plan(CalendarEvent(start=date(2026, 10, 2), summary="Trip 100%"), timed(2, 8, summary="Work 60%"))
+    assert found is not None and found.target == EventTarget(percent=60.0)
 
 
 def test_a_day_whose_event_has_gone_has_no_daily_departure_left() -> None:
@@ -183,3 +206,28 @@ def test_the_answer_is_read_leniently() -> None:
 @pytest.mark.parametrize("raw", [None, "events", {"events": None}, {"events": "x"}, 42])
 def test_an_answer_that_is_not_one_reads_as_no_events(raw: object) -> None:
     assert events_from_response(raw) == ()
+
+
+# ------------------------------------------------------------------------------- the calendar alone decides
+
+
+def only(*events: CalendarEvent, now: datetime = THURSDAY_EVENING, weekdays=EVERY_DAY):
+    return calendar_departure(events, now=now, tz=TZ, daily=time(8, 0), weekdays=weekdays, calendar_only=True)
+
+
+def test_alone_the_calendar_skips_days_without_an_event() -> None:
+    """Friday has no event: no departure Friday; Sunday's event is the next."""
+    found = only(timed(4, 9, summary="Mormor"))
+    assert found is not None and (found.day, found.at) == (date(2026, 10, 4), time(9, 0))
+
+
+def test_alone_the_calendar_has_no_departure_without_an_event_ahead() -> None:
+    assert only() is None
+    # The first event of a day that has gone leaves nothing either.
+    now = datetime(2026, 10, 2, 9, 0, tzinfo=timezone.utc)
+    assert only(timed(2, 8), timed(2, 17), now=now) is None
+
+
+def test_alone_the_calendar_still_takes_an_all_day_event_at_the_daily_time() -> None:
+    found = only(CalendarEvent(start=date(2026, 10, 3)), weekdays=(1,))
+    assert found is not None and (found.day, found.at) == (date(2026, 10, 3), time(8, 0))

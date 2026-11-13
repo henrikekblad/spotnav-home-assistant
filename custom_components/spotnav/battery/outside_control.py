@@ -1,4 +1,4 @@
-"""Something other than SpotNav drives the home battery: notice it, say so once, and only watch.
+"""Something other than SpotNav drives the home battery: notice it, log it, and only watch.
 
 A battery under an aggregator (CheckWatt, Greenely, Tibber Grid Rewards) or another planner changes its mode, its
 limits and its level without the person touching anything, usually from a cloud that tells Home Assistant nothing
@@ -26,12 +26,14 @@ The signals, each judged on what the shell hands over (`Observation`):
   activations do not mark: they are too short.
 
 The verdict (`verdict`) holds from the first signal; it ends `CLEAR_AFTER` after the last one (an integration's at
-once when it is gone). Each stretch is one **occurrence**: it is told once (`notice`), and only when found by the
-battery's settings or behaviour; an integration or a planner the person set up is shown (diagnostics, what SpotNav
-detected) but not told, as nothing about it is news. While SpotNav itself acts on the battery (`spotnav_acting`, the
-write path's executor active or handing back) the settings and behaviour signals are not judged.
+once when it is gone). Each stretch is one **occurrence**: its start and its end are each an event (`observe`),
+which the shell logs once at INFO; nothing is raised in Repairs, as nothing there is for the person to do. `told`
+marks an occurrence found by the battery's settings or behaviour (news); one from an integration or a planner the
+person set up is not. Both are kept in the diagnostics and shown in what SpotNav detected. While SpotNav itself acts
+on the battery (`spotnav_acting`, the write path's executor active or handing back) the settings and behaviour
+signals are not judged.
 
-State survives a restart (`as_dict`, `from_dict`), so a restart neither tells an occurrence again nor forgets it.
+State survives a restart (`as_dict`, `from_dict`), so a restart neither logs an occurrence again nor forgets it.
 Pure: no Home Assistant import; times are aware datetimes from the caller.
 """
 
@@ -66,7 +68,7 @@ HISTORY_MAX: Final = 10
 REASON_SETTINGS: Final = "settings_changed"
 REASON_GRID_CHARGE: Final = "grid_charge_behaviour"
 REASON_EXPORT_DISCHARGE: Final = "export_discharge_behaviour"
-#: The reasons that are told (the others are set up by the person).
+#: The reasons that are news, `Verdict.told` (the others are set up by the person).
 TOLD_REASONS: Final = frozenset({REASON_SETTINGS, REASON_GRID_CHARGE, REASON_EXPORT_DISCHARGE})
 
 _NO_READING: Final = frozenset({"", "unavailable", "unknown", "none"})
@@ -105,7 +107,7 @@ class Verdict:
     since: datetime | None = None
     #: The likely source's name (an integration's label), `None` when nothing names one.
     source: str | None = None
-    #: This occurrence is told (found by settings or behaviour).
+    #: This occurrence is news (found by settings or behaviour), not an integration the person set up.
     told: bool = False
 
     def as_dict(self) -> dict[str, Any]:

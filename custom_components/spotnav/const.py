@@ -5,7 +5,8 @@ DOMAIN = "spotnav"
 #: The Repairs issue of an electricity price whose area has no price source and whose prices have stopped (translation
 #: key under `issues`, and the issue id's prefix before the price entry's id; `price_device.py`).
 PRICE_SOURCE_MISSING_ISSUE = "price_source_missing"
-#: A site whose home battery another system drives (`battery/runtime.py`): its Repairs notice's key and id prefix.
+#: The id prefix of the Repairs notice an earlier version raised for a home battery another system drives (retired:
+#: `battery/runtime.py` and the setup sync delete a left-over one).
 BATTERY_OUTSIDE_CONTROL_ISSUE = "battery_outside_control"
 
 CONF_MODE = "mode"

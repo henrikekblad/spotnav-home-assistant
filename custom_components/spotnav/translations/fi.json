@@ -382,14 +382,14 @@
         "data": {
           "switch_entity": "Kytkin",
           "rated_kw": "Nimellisteho",
-          "runtime_h": "Käyntiaika 24 tunnissa",
+          "runtime_h": "Käyntiaika jokaisen 28 tunnin aikana",
           "temperature_entity": "Lämpötila-anturi (valinnainen)",
           "floor_c": "Alin lämpötila (valinnainen)"
         },
         "data_description": {
           "switch_entity": "Kytkin, joka kytkee kuorman päälle ja pois. Tyhjä: ei kuormaa.",
           "rated_kw": "Mitä kuorma ottaa päällä ollessaan, arvokilven mukaan.",
-          "runtime_h": "Kuinka kauan sen on käytävä jokaisen 24 tunnin aikana. SpotNav valitsee siihen halvimmat tunnit.",
+          "runtime_h": "Kuinka kauan sen on käytävä jokaisen 28 tunnin jakson aikana. SpotNav valitsee siihen halvimmat tunnit, joten käynti voi siirtyä päivästä toiseen muutaman tunnin myöhemmäksi, kun hinnat siirtyvät.",
           "temperature_entity": "Esimerkiksi lämminvesivaraajan säiliön lämpötila. Kun alin lämpötila on annettu, kuorma käy hinnasta riippumatta, kun on kylmempää.",
           "floor_c": "Tämän alapuolella kuorma käy heti, kunnes lämpötila on 2 °C korkeampi. Vaatii lämpötila-anturin."
         }
@@ -979,10 +979,6 @@
     "price_source_missing": {
       "title": "Alueella {area} ei ole sähkön hintoja",
       "description": "Kohteella **{price}** ei ole hintoja: alueelle {area} ei ole määritetty lähdettä. Avaa SpotNav-kortin asetukset, Sähkön hinta: siellä kerrotaan, mitä lisätä (Home Assistantin Nord Pool -integraatio, oma ENTSO-E-avaimesi, PVPC-, Octopus Energy- tai Zonneplan-integraatio). Ilmoitus poistuu itsestään, kun hinnat palaavat."
-    },
-    "battery_outside_control": {
-      "title": "Kotiakkua ohjaa jokin muu",
-      "description": "SpotNav on huomannut, että kohteen **{site}** kotiakkua ohjaa jokin muu kuin SpotNav: sen asetukset ovat muuttuneet useita kertoja, tai se on ladannut sähköverkosta tai purkanut vientiin, mitä sen oma omakäyttö ei tee. Usein kyse on palvelusta kuten CheckWatt, Greenely tai Tibber, asentajan asetuksesta tai automaatiosta. Siksi SpotNav vain seuraa akkua eikä kirjoita siihen koskaan; akkusuunnitelma näytetään vertailuna. Sinun ei tarvitse tehdä mitään. Jos haluat SpotNavin suunnittelevan akun myöhemmin, poista ensin toisen järjestelmän ohjaus käytöstä. Ilmoitus poistuu itsestään kaksi vuorokautta sen jälkeen, kun akku viimeksi osoitti tätä."
     }
   },
   "exceptions": {

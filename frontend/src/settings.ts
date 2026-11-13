@@ -195,6 +195,7 @@ const OPTIONAL_RECORD_KEYS = [
   "users_change_plan",
   "if_not_ready",
   "departure_calendar",
+  "departure_calendar_only",
 ] as const;
 /** Every weekday, Monday (1) to Sunday (7): what a record without `departure_weekdays` means. */
 export const ALL_WEEKDAYS: readonly number[] = [1, 2, 3, 4, 5, 6, 7];
@@ -372,6 +373,9 @@ export function decodeSettingsRecord(raw: unknown): SettingsRecord {
       : {}),
     ...(present.includes("if_not_ready") ? { if_not_ready: oneOf(source, "if_not_ready", IF_NOT_READY) } : {}),
     ...(present.includes("departure_calendar") ? { departure_calendar: calendarOrNull(source) } : {}),
+    ...(present.includes("departure_calendar_only")
+      ? { departure_calendar_only: booleanValue(source, "departure_calendar_only") }
+      : {}),
   };
 }
 
@@ -524,6 +528,7 @@ export function encodeBody(record: SettingsRecord): SettingsBody {
     ...(record.users_change_plan === undefined ? {} : { users_change_plan: record.users_change_plan }),
     ...(record.if_not_ready === undefined ? {} : { if_not_ready: record.if_not_ready }),
     ...(record.departure_calendar === undefined ? {} : { departure_calendar: record.departure_calendar }),
+    ...(record.departure_calendar_only === undefined ? {} : { departure_calendar_only: record.departure_calendar_only }),
   };
 }
 
@@ -679,6 +684,8 @@ export interface SettingsFormValues {
   ifNotReady?: string;
   /** The departure calendar's entity id, `""` for none; absent against a backend without it. */
   departureCalendar?: string;
+  /** The calendar alone decides; absent against a backend without it. */
+  departureCalendarOnly?: boolean;
 }
 
 export function formFromRecord(record: SettingsRecord): SettingsFormValues {
@@ -696,6 +703,7 @@ export function formFromRecord(record: SettingsRecord): SettingsFormValues {
     vehicleId: record.target.vehicle_id ?? "",
     ...(record.if_not_ready === undefined ? {} : { ifNotReady: record.if_not_ready }),
     ...(record.departure_calendar === undefined ? {} : { departureCalendar: record.departure_calendar ?? "" }),
+    ...(record.departure_calendar_only === undefined ? {} : { departureCalendarOnly: record.departure_calendar_only }),
   };
 }
 
@@ -1110,6 +1118,19 @@ export function replacementFor(
     if (chosen !== shown) {
       next.departure_calendar = chosen;
       changed = changed || chosen !== record.departure_calendar;
+    }
+  }
+  // Whether the calendar alone decides: likewise only to a backend that has it, and only when the reader moved it.
+  if (
+    (kind === "deadline" || kind === "plan") &&
+    record.departure_calendar_only !== undefined &&
+    values.departureCalendarOnly !== undefined
+  ) {
+    const chosen = values.departureCalendarOnly;
+    const shown = opened === null ? record.departure_calendar_only : (opened.departure_calendar_only ?? false);
+    if (chosen !== shown) {
+      next.departure_calendar_only = chosen;
+      changed = changed || chosen !== record.departure_calendar_only;
     }
   }
   return { ok: true, body: next, changed };

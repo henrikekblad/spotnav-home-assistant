@@ -9,7 +9,8 @@ public face, so nothing here serializes `as_dict()` or accepts `from_stored()` p
   older client), and then the stored value is kept; `departure_date: null` clears the date. Every other key is
   still required.
 * And `departure_calendar` (`null`, or a `calendar.*` entity whose events are departures,
-  `planning/calendar_departure.py`): left out, the stored value is kept. A plan field, as the departure is.
+  `planning/calendar_departure.py`): left out, the stored value is kept. A plan field, as the departure is. So is
+  `departure_calendar_only` (a boolean: the calendar alone decides, and a day without an event has no departure).
 * A third, `notifications` (which phones hear about which events, `notifications/settings.py`): left
   out, the stored choice is kept. Its `available` list (the notify services that exist now, with the
   phones' names) is read-only: a body may echo it and it is ignored.
@@ -120,6 +121,7 @@ SETTINGS_KEYS: Final = frozenset(
         "departure_date",
         "departure_weekdays",
         "departure_calendar",
+        "departure_calendar_only",
         "driver",
         "target",
         "notifications",
@@ -135,8 +137,8 @@ SETTINGS_KEYS: Final = frozenset(
 #: what is stored": a client that does not know the field must not clear what another one set. `null` clears.
 OPTIONAL_SETTINGS_KEYS: Final = frozenset(
     {
-        "departure_date", "departure_weekdays", "departure_calendar", "phases", "notifications", "fill_to_limit",
-        "vehicle_ids", "identify_mode", "identify_camera", "users_change_plan", "if_not_ready",
+        "departure_date", "departure_weekdays", "departure_calendar", "departure_calendar_only", "phases", "notifications",
+        "fill_to_limit", "vehicle_ids", "identify_mode", "identify_camera", "users_change_plan", "if_not_ready",
     }
 )
 
@@ -157,6 +159,7 @@ NON_ADMIN_FIELDS: Final = frozenset(
         "departure_date",
         "departure_weekdays",
         "departure_calendar",
+        "departure_calendar_only",
         "amps",
         "if_not_ready",
     }
@@ -422,6 +425,7 @@ def encode_settings(
         "departure_date": departure_date_to_wire(settings.departure_date),
         "departure_weekdays": list(settings.departure_weekdays),
         "departure_calendar": settings.departure_calendar,
+        "departure_calendar_only": settings.departure_calendar_only,
         "driver": settings.driver,
         "target": encoded_target(settings.target),
         "fiscal_included": list(included),
@@ -502,6 +506,11 @@ def decode_settings(raw: Any) -> AutoSettings:
             else ALL_WEEKDAYS
         ),
         departure_calendar=departure_calendar_from_wire(stored.get("departure_calendar")),
+        departure_calendar_only=(
+            _boolean(stored["departure_calendar_only"], "departure_calendar_only", "invalid_departure")
+            if "departure_calendar_only" in stored
+            else False
+        ),
         driver=_enum(stored["driver"], ("manual_kwh", "target_soc"), "invalid_driver"),
         target=_target(stored["target"]),
         notifications=(
@@ -533,6 +542,7 @@ def replacement_mutator(
     keep_departure_date: bool = False,
     keep_departure_weekdays: bool = False,
     keep_departure_calendar: bool = False,
+    keep_departure_calendar_only: bool = False,
     keep_notifications: bool = False,
     keep_fill_to_limit: bool = False,
     keep_vehicle_ids: bool = False,
@@ -572,6 +582,8 @@ def replacement_mutator(
             kept["departure_weekdays"] = current.departure_weekdays
         if keep_departure_calendar:
             kept["departure_calendar"] = current.departure_calendar
+        if keep_departure_calendar_only:
+            kept["departure_calendar_only"] = current.departure_calendar_only
         if keep_notifications:
             kept["notifications"] = current.notifications
         if keep_fill_to_limit:
@@ -911,6 +923,7 @@ def body_mutator(
         keep_departure_date=left_out("departure_date"),
         keep_departure_weekdays=left_out("departure_weekdays"),
         keep_departure_calendar=left_out("departure_calendar"),
+        keep_departure_calendar_only=left_out("departure_calendar_only"),
         keep_notifications=left_out("notifications"),
         keep_fill_to_limit=left_out("fill_to_limit"),
         keep_vehicle_ids=left_out("vehicle_ids"),
