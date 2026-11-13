@@ -17,7 +17,10 @@ from custom_components.spotnav.site.forecast_log import KIND_HOUSE, KIND_HOUSE_D
 from custom_components.spotnav.site.house_forecast import (
     holiday_dates,
     hourly_temperatures,
+    OUTDOOR_SENSOR,
+    OUTDOOR_WEATHER,
     pick_holiday_calendar,
+    pick_outdoor_sensor,
     pick_weather_entity,
     to_celsius,
     WEATHER_NO_FORECAST,
@@ -41,6 +44,24 @@ def test_the_weather_entity_is_forecast_home_else_the_only_one() -> None:
     assert pick_weather_entity(["weather.smhi", "sensor.x"]) == "weather.smhi"
     assert pick_weather_entity(["weather.a", "weather.b"]) is None
     assert pick_weather_entity([]) is None
+
+
+def test_a_heat_pumps_outdoor_sensor_is_taken_only_when_it_is_the_one() -> None:
+    nibe = ("sensor.bt1_outdoor_temperature", "nibe_heatpump", "ABC123-40004")
+    nibe_s = ("sensor.current_outdoor_temperature_bt1", "nibe_heatpump", "entry-30002")
+    uplink = ("sensor.current_outd_temp_bt1", "myuplink", "robin-r-1234-aa-bb-40004")
+    melcloud = ("sensor.ecodan_outside_temperature", "melcloud", "123-aa:bb-outside_temperature")
+    assert pick_outdoor_sensor([nibe]) == nibe[0]
+    assert pick_outdoor_sensor([nibe_s]) == nibe_s[0]
+    assert pick_outdoor_sensor([uplink]) == uplink[0]
+    assert pick_outdoor_sensor([melcloud]) == melcloud[0]
+    # Two heat pumps, or the same one through two integrations: which is meant cannot be told.
+    assert pick_outdoor_sensor([nibe, uplink]) is None
+    # Another coil, another integration, a name that says outdoor, or no sensor at all: none.
+    assert pick_outdoor_sensor([("sensor.bt2", "nibe_heatpump", "ABC123-40008")]) is None
+    assert pick_outdoor_sensor([("sensor.utomhus_temperatur", "template", "outdoor-40004")]) is None
+    assert pick_outdoor_sensor([("number.x", "myuplink", "dev-40004")]) is None
+    assert pick_outdoor_sensor([]) is None
 
 
 def test_temperatures_are_read_in_celsius_and_bad_ones_skipped() -> None:
@@ -267,3 +288,28 @@ async def test_the_next_day_is_logged_as_forecast_at_the_day_ahead_publication(h
     freezer.move_to(publication + timedelta(hours=1))
     await house.async_refresh()
     assert all(hour.made_at == publication.astimezone(UTC) for hour in house.log.kinds[KIND_HOUSE_DAY_AHEAD].hours.values())
+
+
+async def test_a_heat_pumps_outdoor_sensor_is_preferred_over_the_weather_and_shown(hass: HomeAssistant, freezer) -> None:
+    weather(hass, 4.0)
+    er.async_get(hass).async_get_or_create(
+        "sensor", "myuplink", "dev-40004", suggested_object_id="current_outd_temp_bt1"
+    )
+    hass.states.async_set("sensor.current_outd_temp_bt1", "-3.5", {"unit_of_measurement": "°C"})
+    entry = await pilot_site(hass, freezer)
+    controller = site_controller_for(hass, entry.entry_id)
+    await run(hass, freezer, 65, 1500.0)
+    await hass.async_block_till_done()
+
+    forecast = controller.house_forecast
+    assert forecast.outdoor_c() == -3.5
+    block = (await async_get_config_entry_diagnostics(hass, entry))["load_forecast"]
+    assert block["outdoor"] == {"source": OUTDOOR_SENSOR, "sensor": "sensor.current_outd_temp_bt1"}
+    assert [hour.outdoor_c for hour in controller.demand.tracker.hours] == [-3.5]
+    # The forecast ahead stays the weather entity's.
+    assert block["forecast_temperatures"] == 48
+
+    # A sensor that does not read: the weather entity's temperature, and it says so.
+    hass.states.async_set("sensor.current_outd_temp_bt1", "unavailable")
+    assert forecast.outdoor_c() == 4.0
+    assert forecast.diagnostics()["outdoor"]["source"] == OUTDOOR_WEATHER

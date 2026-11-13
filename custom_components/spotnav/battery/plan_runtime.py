@@ -13,6 +13,14 @@ Owned by the site's `BatteryShadow` (`runtime.py`), which calls `tick` every `ru
 * **Modes**: the site's mode (entry key `MODE_KEY`, Balanced when unset; no setting yet) is planned first and is the
   plan in force; the other modes are planned on the same inputs while the solve stays within `MODES_BUDGET_S`, and
   are reviewed beside it each night. The wear is the area currency's constant (`plan_model.WEAR_MINOR_PER_KWH`).
+* **Battery limits** (`limited_params`): the plant's maximum output where its adapter reads one and it is below the
+  battery's rating (the owner's Sigenergy: 13.2 kW beside 20.6/23.04 kW), and the battery's own reserve as the floor
+  where one can be read; otherwise the assumed floor, said to be (`min_soc_assumed`).
+* **House rows and the sun**: the plan's own house rows are measured net of the sun (`grid - car - battery`). When
+  the plan adds the solar forecast, the rows are made gross again with the hour's production from the Energy
+  dashboard's solar statistics (`site/energy_statistics.py`), so the sun is not counted twice; an hour without a
+  production figure is left out. Without production statistics (or too few hours with one) the rows stay net and the
+  plan says so (`solar_in_house_history`).
 * **Storage**: the quarter hours, the first planned actions, the house rows, the reviews and the plan in force (so a
   restart keeps the running slot's action stable) in `spotnav.battery_plan.<entry>`. The forecast log is the site's
   (`site/house_forecast.py`), saved with its hourly refresh.
@@ -27,7 +35,7 @@ import logging
 import math
 import time
 from collections.abc import Sequence
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from functools import partial
 from typing import TYPE_CHECKING, Any, Final
 
@@ -44,6 +52,7 @@ from ..const import (
 )
 from ..planning.demand_charge import HourMean, hour_start
 from ..planning.grid_voltage import stored_voltage_between_phases_v
+from ..site.energy_statistics import async_energy_ids, async_statistics, summed
 from ..site.load_forecast import forecast_house_load
 from .facts import BatteryFacts
 from .plan import mode_battery, plan_mode, self_consumption
@@ -61,6 +70,7 @@ from .plan_model import (
 )
 from .plan_shadow import (
     EST_HOUSE_COUNTS_BATTERY,
+    EST_MIN_SOC,
     EST_SOLAR_IN_HOUSE,
     FAILED,
     KIND_BATTERY,
@@ -124,10 +134,46 @@ STATUS_PLANNED: Final = "planned"
 STATUS_NO_PLAN: Final = "no_plan"
 HOUSE_OWN: Final = "own_rows"
 HOUSE_SITE: Final = "site_forecast"
+#: What the plan's own house rows are: the house's whole load (the sun's production added back), or net of the sun.
+ROWS_GROSS: Final = "gross"
+ROWS_NET: Final = "net_of_sun"
 
 
 def store_key(entry_id: str) -> str:
     return f"{DOMAIN}.battery_plan.{entry_id}"
+
+
+def gross_house_rows(
+    rows: Sequence[tuple[datetime, float]], production_kwh: dict[datetime, float]
+) -> list[tuple[datetime, float]] | None:
+    """The plan's own house rows (`(hour start, mean kW net of the sun)`) with each hour's solar production (kWh,
+    the hour's mean kW) added back: the house's whole load. An hour without a production figure is left out; `None`
+    when fewer than `MIN_OWN_HOURS` hours have one (the rows then stay as they are)."""
+    gross = [(start, kw + production_kwh[start]) for start, kw in rows if start in production_kwh]
+    return gross if len(gross) >= MIN_OWN_HOURS else None
+
+
+def limited_params(
+    params: BatteryParams | None, reason: str | None, estimates: tuple[str, ...], facts: BatteryFacts
+) -> tuple[BatteryParams | None, str | None, tuple[str, ...]]:
+    """`plan_shadow.battery_params`' answer with what the battery's adapter reads of its limits: the plant's
+    maximum when it is below the rating (`BatteryFacts.max_charge_kw`), and the battery's own reserve as the floor in
+    place of the assumed one (which is then no estimate). A reserve at or above the ceiling is left out."""
+    if params is None:
+        return params, reason, estimates
+    charge, discharge = facts.max_charge_kw, facts.max_discharge_kw
+    params = replace(
+        params,
+        max_charge_kw=params.max_charge_kw if charge is None else max(0.0, min(params.max_charge_kw, charge)),
+        max_discharge_kw=(
+            params.max_discharge_kw if discharge is None else max(0.0, min(params.max_discharge_kw, discharge))
+        ),
+    )
+    reserve = facts.reserve_soc_pct
+    if reserve is not None and 0.0 <= reserve < params.max_soc_pct:
+        params = replace(params, min_soc_pct=reserve)
+        estimates = tuple(code for code in estimates if code != EST_MIN_SOC)
+    return params, reason, estimates
 
 
 class _NoPlan(Exception):
@@ -222,6 +268,10 @@ class BatteryPlanShadow:
         self.skipped_busy = 0
         self.last_duration_s: float | None = None
         self._prices: list[PriceSlot] = []
+        #: The solar production per hour (kWh, UTC hour starts) and the hour it was read in.
+        self._production: dict[datetime, float] = {}
+        self._production_hour: datetime | None = None
+        self.solar_statistics: tuple[str, ...] = ()
         self._cap_kw: float | None = None
         self._facts = BatteryFacts()
         self._quarter: datetime | None = None
@@ -340,7 +390,7 @@ class BatteryPlanShadow:
         log = self.site.house_forecast.log
         for hour in self.actuals.close_hours(now, tz):
             log.record_actual(KIND_BATTERY, hour, self.actuals.soc_at_hour_end(hour, tz))
-        params, _reason, _estimates = battery_params(self._facts)
+        params, _reason, _estimates = limited_params(*battery_params(self._facts), self._facts)
         if params is not None:
             reviewed = [review.money.day for review in self.reviews]
             batteries = {name: mode_battery(params, MODE_DEFS[name]) for name in MODES if MODE_DEFS[name].plans}
@@ -492,6 +542,22 @@ class BatteryPlanShadow:
         self._running = True
         self.hass.async_create_task(self.async_plan(now, trigger), "spotnav_battery_plan", eager_start=False)
 
+    async def _async_production(self, first: datetime, now: datetime) -> dict[datetime, float]:
+        """The Energy dashboard's solar production per completed hour from `first` on (kWh), read once an hour;
+        empty without solar statistics or when they cannot be read."""
+        current = now.astimezone(timezone.utc).replace(minute=0, second=0, microsecond=0)
+        if self._production_hour == current:
+            return self._production
+        try:
+            ids, _export = await async_energy_ids(self.hass)
+            self.solar_statistics = ids
+            production = summed(await async_statistics(self.hass, ids, first, current, "hour"), ids) if ids else {}
+        except Exception:  # noqa: BLE001 - no production figures: the rows stay net of the sun, and it is said
+            _LOGGER.debug("SpotNav battery plan: the solar statistics could not be read", exc_info=True)
+            return {}
+        self._production, self._production_hour = production, current
+        return production
+
     # ---- the plan
 
     async def async_plan(self, now: datetime, trigger: str) -> None:
@@ -520,7 +586,7 @@ class BatteryPlanShadow:
 
         facts = self._facts
         tz = self._tz
-        params, reason, estimates = battery_params(facts)
+        params, reason, estimates = limited_params(*battery_params(facts), facts)
         if params is None or facts.soc_pct is None:
             raise _NoPlan(reason or "no_soc")
         area_id, prices = self._read_prices(now)
@@ -535,6 +601,10 @@ class BatteryPlanShadow:
             solar, solar_sources = read.wh_hours, read.sources_read
 
         own_rows = sorted(self.actuals.rows.items())
+        rows_basis: str | None = None
+        if solar is not None and len(own_rows) >= MIN_OWN_HOURS:
+            gross = gross_house_rows(own_rows, await self._async_production(own_rows[0][0], now))
+            own_rows, rows_basis = (own_rows, ROWS_NET) if gross is None else (gross, ROWS_GROSS)
         house_source = HOUSE_OWN if len(own_rows) >= MIN_OWN_HOURS else HOUSE_SITE
         house: dict[datetime, float] | None = None
         own = None
@@ -554,7 +624,7 @@ class BatteryPlanShadow:
         else:
             estimates = (*estimates, EST_HOUSE_COUNTS_BATTERY)
             house = None if site_forecast is None else site_forecast.by_hour()
-        if solar is not None:
+        if solar is not None and not (house_source == HOUSE_OWN and rows_basis == ROWS_GROSS):
             estimates = (*estimates, EST_SOLAR_IN_HOUSE)
 
         mode, mode_unknown = self._site_mode()
@@ -592,6 +662,8 @@ class BatteryPlanShadow:
         self.inputs = {
             "soc_pct": facts.soc_pct,
             "battery": {
+                "plant_max_kw": facts.plant_max_kw,
+                "reserve_soc_pct": facts.reserve_soc_pct,
                 "usable_kwh": params.usable_kwh,
                 "max_charge_kw": params.max_charge_kw,
                 "max_discharge_kw": params.max_discharge_kw,
@@ -602,6 +674,8 @@ class BatteryPlanShadow:
             "import_cap_kw": None if cap is None else round(cap, 3),
             "house": house_source,
             "own_hours": len(own_rows),
+            "house_rows": rows_basis if house_source == HOUSE_OWN else None,
+            "solar_statistics": list(self.solar_statistics),
             "solar_sources": list(solar_sources),
             "car_windows": len(windows),
             "slots": len(slots),

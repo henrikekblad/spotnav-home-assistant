@@ -660,6 +660,9 @@ class PlanResult:
     #: With `slot_kwh`: the cost of charging now (`now_cost`) when the charge stops at its need, for
     #: `ending_at_need` (the run from the first usable slot need not have as many slots as the plan).
     now_cost_at_need: float | None = None
+    #: The per-hour caps were set aside because their search would have been too large (`ENERGY_SEARCH_LIMIT`):
+    #: the plan counts on `power_cap_kw` in every hour, as before them. Shown in the diagnostics.
+    per_hour_caps_dropped: bool = False
 
     @property
     def has_plan(self) -> bool:
@@ -1243,8 +1246,9 @@ def calculate_plan(request: PlanRequest) -> PlanResult:
             latest_end,
         )
         if found is _TOO_LARGE:
-            # A search this large would hold the event loop up: the plan as it is without the per-hour caps.
-            return calculate_plan(replace(request, power_cap_kw_by_hour=None))
+            # A search this large would hold the event loop up: the plan as it is without the per-hour caps, and
+            # said so (the diagnostics' `per_hour_caps_dropped`).
+            return replace(calculate_plan(replace(request, power_cap_kw_by_hour=None)), per_hour_caps_dropped=True)
         chosen = found
     else:
         # A short window takes every slot it has (one run), whatever each delivers.

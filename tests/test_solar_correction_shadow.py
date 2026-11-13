@@ -9,6 +9,7 @@ from typing import Any
 
 import pytest
 from homeassistant.core import HomeAssistant
+from homeassistant.util import dt as dt_util
 
 from custom_components.spotnav.const import CONF_SOLAR_FORECAST_ENTRIES
 from custom_components.spotnav.diagnostics import async_get_config_entry_diagnostics
@@ -25,13 +26,12 @@ from custom_components.spotnav.site.solar_correction_shadow import (
     STATUS_NO_FORECAST,
     array_kwp,
     as_power,
-    energy_statistic_ids,
     hourly_cloud,
     negative_hours,
     pick_weather_entity,
-    summed,
 )
-from custom_components.spotnav.site.sun_forecast_log import KIND_SUN, KIND_SUN_CORRECTED
+from custom_components.spotnav.site.energy_statistics import energy_statistic_ids, summed
+from custom_components.spotnav.site.forecast_log import KIND_SUN, KIND_SUN_CORRECTED
 
 from .test_demand_site import pilot_site
 
@@ -248,3 +248,40 @@ async def test_the_factors_and_the_log_survive_a_restart(
     assert again is not controller
     assert again.solar_correction.state.as_dict()["factors"] == kept["factors"]
     assert again.solar_correction.log.as_dict()["kinds"] == logged["kinds"]
+
+
+async def test_the_sun_log_kept_apart_before_moves_into_the_sites_log_once(
+    hass: HomeAssistant, freezer, hass_storage: dict[str, Any]
+) -> None:
+    entry = await pilot_site(hass, freezer, **{CONF_SOLAR_FORECAST_ENTRIES: ["forecast_solar_1"]})
+    controller = site_controller_for(hass, entry.entry_id)
+    await controller.solar_correction.async_shutdown()
+    made = dt_util.utcnow()
+    start = made.replace(minute=0, second=0, microsecond=0) - timedelta(hours=3)
+    # What wave 2 kept in the correction's own store: its state and its own log.
+    hass_storage[shell.store_key(entry.entry_id)] = {
+        "version": 1,
+        "key": shell.store_key(entry.entry_id),
+        "data": {
+            "version": 1,
+            "log": {
+                "version": 1,
+                "tz": "Europe/Stockholm",
+                "kinds": {
+                    KIND_SUN: {"hours": [[start.isoformat(), 2.0, made.isoformat(), 1.5]], "reviews": []},
+                    KIND_SUN_CORRECTED: {"hours": [[start.isoformat(), 1.6, made.isoformat(), 1.5]], "reviews": []},
+                },
+            },
+            "correction": controller.solar_correction.state.as_dict(),
+        },
+    }
+    moved = shell.SiteSolarCorrection(hass, controller)
+    await moved.async_start()
+    await moved.async_shutdown()
+
+    log = controller.house_forecast.log
+    assert log.hours(KIND_SUN)[start].actual == 1.5
+    assert log.hours(KIND_SUN_CORRECTED)[start].forecast == 1.6
+    assert moved.log is log
+    # The correction's store keeps its state only from now on.
+    assert "log" not in hass_storage[shell.store_key(entry.entry_id)]["data"]

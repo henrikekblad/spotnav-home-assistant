@@ -231,3 +231,45 @@ def test_power_units(state: str, unit: str | None, kw: float | None) -> None:
 
 def test_an_amp_hour_capacity_is_no_energy() -> None:
     assert to_kwh("200", "Ah") is None and to_kwh("9700", "Wh") == pytest.approx(9.7)
+
+
+def test_sigenergy_reads_the_plants_maximum_below_the_battery_rating() -> None:
+    facts = _facts("sigenergy")
+
+    assert facts.plant_max_kw == 13.2 and facts.rated_discharge_kw == 23.04
+    assert facts.max_discharge_kw == 13.2 and facts.max_charge_kw == 13.2
+    assert facts.sources["plant_max"] == "sensor.sigen_plant_max_active_power"
+    # Its reserves are disabled by default, as on the real plant: none is read, the plan keeps its estimate.
+    assert facts.reserve_soc_pct is None and "reserve" not in facts.sources
+    assert facts.as_dict()["plant_max_kw"] == 13.2
+
+
+def test_the_highest_reserve_that_can_be_read_is_the_floor() -> None:
+    facts = _facts(
+        "sigenergy",
+        **{
+            "sensor.sigen_plant_discharge_cut_off_soc": {"disabled": False, "state": "5.0", "unit": "%"},
+            "number.sigen_plant_ess_backup_state_of_charge": {"disabled": False, "state": "15.0", "unit": "%"},
+            "number.sigen_plant_ess_discharge_cut_off_state_of_charge": {"disabled": False, "state": "unavailable"},
+        },
+    )
+
+    assert facts.reserve_soc_pct == 15.0
+    assert facts.sources["reserve"] == "sensor.sigen_plant_discharge_cut_off_soc, number.sigen_plant_ess_backup_state_of_charge"
+
+
+def test_a_plant_maximum_that_cannot_be_read_leaves_the_rating() -> None:
+    facts = _facts("sigenergy", **{"sensor.sigen_plant_max_active_power": {"state": "unavailable"}})
+
+    assert facts.plant_max_kw is None and facts.max_discharge_kw == 23.04 and facts.max_charge_kw == 20.6
+
+
+def test_goodwe_states_the_depth_of_discharge() -> None:
+    from custom_components.spotnav.battery.facts import _reserve  # noqa: PLC0415
+    from custom_components.spotnav.battery.adapters import GOODWE  # noqa: PLC0415
+
+    battery = EntityFact("sensor.battery", "goodwe", "goodwe-battery_soc-SN1", device_id="d")
+    depth = EntityFact(
+        "number.depth", "goodwe", "goodwe-battery_discharge_depth-SN1", device_id="d", state="85", unit="%"
+    )
+    assert _reserve(GOODWE.reserves, [battery, depth], battery) == (15.0, ["number.depth"])

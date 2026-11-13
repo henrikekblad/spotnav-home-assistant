@@ -27,7 +27,7 @@ from custom_components.spotnav.site.solar_correction import (
     samples_from_log,
     window_targets,
 )
-from custom_components.spotnav.site.sun_forecast_log import KIND_SUN, KIND_SUN_CORRECTED, SunForecastLog
+from custom_components.spotnav.site.forecast_log import KIND_SUN, KIND_SUN_CORRECTED, ForecastLog
 
 TZ = "UTC"
 TODAY = date(2026, 6, 20)
@@ -292,7 +292,7 @@ def test_a_curtailed_site_keeps_its_factors_and_passes_the_raw_forecast() -> Non
 
 
 def test_it_never_learns_from_its_own_corrected_series() -> None:
-    log = SunForecastLog(tz=TZ)
+    log = ForecastLog(tz=TZ)
     made = datetime(2026, 6, 12, 0, tzinfo=UTC)
     hours = {datetime(2026, 6, d, h, tzinfo=UTC): 2.0 for d in range(13, 20) for h in range(9, 16)}
     log.record_forecast(KIND_SUN, hours, made)
@@ -310,7 +310,7 @@ def test_it_never_learns_from_its_own_corrected_series() -> None:
 
 
 def test_samples_carry_the_kept_facts() -> None:
-    log = SunForecastLog(tz=TZ)
+    log = ForecastLog(tz=TZ)
     start = datetime(2026, 6, 19, 12, tzinfo=UTC)
     log.record_forecast(KIND_SUN, {start: 2.0}, start - timedelta(hours=10))
     log.record_actual(KIND_SUN, start, 1.0)

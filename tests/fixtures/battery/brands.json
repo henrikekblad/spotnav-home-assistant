@@ -1,6 +1,6 @@
 {
  "sigenergy": {
-  "_source": "A real plant's registry and states on 2026-11-13 (config entry id replaced), firmware SPC117, AI mode.",
+  "_source": "A real plant's registry and states on 2026-11-13 (config entry id replaced), firmware SPC117, AI mode; the plant maximum and the three reserve entities added from the same registry later that day (the reserves disabled, as there).",
   "platform": "sigen",
   "manufacturer": "Sigenergy",
   "battery": "sensor.sigen_plant_battery_power",
@@ -49,6 +49,42 @@
     "unit": "kWh",
     "device_class": "energy",
     "disabled": false
+   },
+   {
+    "entity_id": "sensor.sigen_plant_max_active_power",
+    "unique_id": "ENTRY_sigen_plant_plant_max_active_power",
+    "device": "battery",
+    "state": "13.2",
+    "unit": "kW",
+    "device_class": "power",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.sigen_plant_discharge_cut_off_soc",
+    "unique_id": "ENTRY_sigen_plant_plant_ess_discharge_cut_off_soc",
+    "device": "battery",
+    "state": null,
+    "unit": null,
+    "device_class": null,
+    "disabled": true
+   },
+   {
+    "entity_id": "number.sigen_plant_ess_discharge_cut_off_state_of_charge",
+    "unique_id": "ENTRY_sigen_plant_plant_discharge_cut_off_soc",
+    "device": "battery",
+    "state": null,
+    "unit": null,
+    "device_class": null,
+    "disabled": true
+   },
+   {
+    "entity_id": "number.sigen_plant_ess_backup_state_of_charge",
+    "unique_id": "ENTRY_sigen_plant_plant_backup_soc",
+    "device": "battery",
+    "state": null,
+    "unit": null,
+    "device_class": null,
+    "disabled": true
    },
    {
     "entity_id": "sensor.sigen_plant_ems_work_mode",

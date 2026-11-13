@@ -1,7 +1,7 @@
 """The solar forecast correction in Home Assistant, in shadow: its sources, its hourly refresh and its log.
 
-The policy is pure (`site/solar_correction.py`), and so is the log (`site/sun_forecast_log.py`); this is the thin
-shell around them. One per site, owned by its `SiteCapacityController`, and only busy on a site that names a solar
+The policy is pure (`site/solar_correction.py`), and so is the log (`site/forecast_log.py`, the site's one forecast
+log, kept by the house forecast, kinds `sun_kwh` and `sun_kwh_corrected`); this is the thin shell around them. One per site, owned by its `SiteCapacityController`, and only busy on a site that names a solar
 forecast (`CONF_SOLAR_FORECAST_ENTRIES`, the Hybrid strategy's). Nothing here is a setting, and nothing here decides
 what a charger is told: the Hybrid strategy keeps reading the raw forecast. The corrected forecast is logged beside
 the raw one, both are reviewed each night, and all of it is shown in the site's diagnostics (and so in the debug
@@ -22,6 +22,9 @@ Sources, all found without a setting:
 It refreshes when the UTC hour changes (checked every `TICK_S`), and again after `RETRY_S` when a source it found
 could not be read. The nightly update runs on the first refresh of a local day from `NIGHTLY_HOUR` on, when the
 previous day's statistics are in.
+
+Its own store keeps the correction's state. A log kept there by the release before (`log`) is moved into the site's
+forecast log once, at the start, and is no longer written there.
 """
 
 from __future__ import annotations
@@ -52,7 +55,8 @@ from .solar_correction import (
     plateau_ceiling,
     samples_from_log,
 )
-from .sun_forecast_log import KIND_SUN, KIND_SUN_CORRECTED, SunForecastLog
+from .energy_statistics import async_energy_ids, async_statistics, summed
+from .forecast_log import KIND_SUN, KIND_SUN_CORRECTED, ForecastLog
 
 if TYPE_CHECKING:
     from .site_capacity_controller import SiteCapacityController
@@ -86,50 +90,6 @@ def store_key(entry_id: str) -> str:
 
 def _number(value: Any) -> bool:
     return not isinstance(value, bool) and isinstance(value, (int, float)) and math.isfinite(value)
-
-
-def energy_statistic_ids(prefs: Any) -> tuple[tuple[str, ...], tuple[str, ...]]:
-    """The Energy dashboard's solar production and grid export statistic ids, from its preferences."""
-    solar: list[str] = []
-    export: list[str] = []
-    sources = prefs.get("energy_sources") if isinstance(prefs, Mapping) else None
-    for source in sources if isinstance(sources, list) else []:
-        if not isinstance(source, Mapping):
-            continue
-        if source.get("type") == "solar" and isinstance(source.get("stat_energy_from"), str):
-            solar.append(source["stat_energy_from"])
-        elif source.get("type") == "grid":
-            if isinstance(source.get("stat_energy_to"), str):
-                export.append(source["stat_energy_to"])
-            # The format before Home Assistant 2025.12: a list of export meters.
-            for flow in source.get("flow_to") or []:
-                if isinstance(flow, Mapping) and isinstance(flow.get("stat_energy_to"), str):
-                    export.append(flow["stat_energy_to"])
-    return tuple(dict.fromkeys(solar)), tuple(dict.fromkeys(export))
-
-
-def summed(rows_by_id: Mapping[str, Sequence[Mapping[str, Any]]], ids: Sequence[str]) -> dict[datetime, float]:
-    """The statistics' `change` per period start (UTC), summed over `ids`; a period is kept only when every id has
-    it (a missing source would undercount)."""
-    if not ids:
-        return {}
-    per_id: list[dict[datetime, float]] = []
-    for statistic_id in ids:
-        values: dict[datetime, float] = {}
-        for row in rows_by_id.get(statistic_id) or []:
-            start, change = row.get("start"), row.get("change")
-            if not _number(change):
-                continue
-            if isinstance(start, datetime):
-                moment = start.astimezone(timezone.utc)
-            elif _number(start):
-                moment = datetime.fromtimestamp(float(start), timezone.utc)
-            else:
-                continue
-            values[moment] = max(0.0, float(change))
-        per_id.append(values)
-    common = set(per_id[0]).intersection(*per_id[1:])
-    return {start: sum(values[start] for values in per_id) for start in sorted(common)}
 
 
 def as_power(slots_kwh: Mapping[datetime, float], minutes: float = 5.0) -> dict[datetime, float]:
@@ -195,7 +155,6 @@ class SiteSolarCorrection:
     def __init__(self, hass: HomeAssistant, site: SiteCapacityController) -> None:
         self.hass = hass
         self.site = site
-        self.log = SunForecastLog(tz=site.demand.tracker.tz)
         self.state = SolarCorrection()
         self._store = DayStore(hass, store_key(site.entry_id), self._stored, save_delay_s=SAVE_DELAY_S)
         self._timer_cancel: Callable[[], None] | None = None
@@ -215,17 +174,30 @@ class SiteSolarCorrection:
         self.evidence: list[dict[str, Any]] = []
         self.next_hours: list[dict[str, Any]] = []
 
+    @property
+    def log(self) -> ForecastLog:
+        """The site's forecast log (the house forecast's), where the sun's kinds are kept."""
+        return self.site.house_forecast.log
+
     def _stored(self) -> dict[str, Any]:
-        return {"version": STORE_VERSION, "log": self.log.as_dict(), "correction": self.state.as_dict()}
+        return {"version": STORE_VERSION, "correction": self.state.as_dict()}
 
     async def async_start(self) -> None:
         raw = await self._store.async_load()
         try:
             if isinstance(raw, dict):
-                self.log.restore(raw.get("log"))
                 self.state = SolarCorrection.from_dict(raw.get("correction"))
         except Exception:  # noqa: BLE001 - a store that cannot be read starts again
             _LOGGER.debug("SpotNav solar correction: the kept state could not be read", exc_info=True)
+        try:
+            # The log the release before kept here: moved into the site's forecast log once, then dropped from
+            # this store at its next write.
+            if isinstance(raw, dict) and raw.get("log") is not None:
+                if self.log.take_kinds(raw.get("log"), (KIND_SUN, KIND_SUN_CORRECTED)):
+                    self.site.house_forecast.log_changed()
+                self._store.changed()
+        except Exception:  # noqa: BLE001 - a log that cannot be moved starts again
+            _LOGGER.debug("SpotNav solar correction: the kept log could not be moved", exc_info=True)
         self._loaded = True
         self._timer_cancel = async_track_time_interval(self.hass, self._async_tick, timedelta(seconds=TICK_S))
         self.tick(dt_util.utcnow())
@@ -267,24 +239,12 @@ class SiteSolarCorrection:
         return list(self.site.config.get(CONF_SOLAR_FORECAST_ENTRIES) or [])
 
     async def _async_energy_ids(self) -> tuple[tuple[str, ...], tuple[str, ...]]:
-        if "energy" not in self.hass.config.components:
-            return (), ()
-        from homeassistant.components.energy.data import async_get_manager  # noqa: PLC0415 - only when loaded
-
-        manager = await async_get_manager(self.hass)
-        return energy_statistic_ids(manager.data)
+        return await async_energy_ids(self.hass)
 
     async def _async_statistics(
         self, ids: Sequence[str], start: datetime, end: datetime, period: str
     ) -> dict[str, list[dict[str, Any]]]:
-        if not ids:
-            return {}
-        from homeassistant.components.recorder import get_instance  # noqa: PLC0415 - only when loaded
-        from homeassistant.components.recorder.statistics import statistics_during_period  # noqa: PLC0415
-
-        return await get_instance(self.hass).async_add_executor_job(
-            statistics_during_period, self.hass, start, end, set(ids), period, {"energy": "kWh"}, {"change"}
-        )
+        return await async_statistics(self.hass, ids, start, end, period)
 
     async def _async_clouds(self) -> tuple[str | None, dict[datetime, float], bool]:
         """The weather entity, its hourly cloud cover, and whether it was read as far as it exists."""
@@ -432,6 +392,7 @@ class SiteSolarCorrection:
         self.log.record_forecast(KIND_SUN, future, now)
         self.log.record_forecast(KIND_SUN_CORRECTED, corrected, now)
         self.log.review(now)
+        self.site.house_forecast.log_changed()
         self.state.prune(now)
         self.next_hours = [
             {
@@ -471,5 +432,5 @@ class SiteSolarCorrection:
             "refreshes": self.refreshes,
             "last_refresh": None if self.last_refresh is None else self.last_refresh.isoformat(),
             "retry_at": None if self._retry_at is None else self._retry_at.isoformat(),
-            "log": self.log.diagnostics(),
+            "log": self.log.diagnostics((KIND_SUN, KIND_SUN_CORRECTED)),
         }

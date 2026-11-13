@@ -8,6 +8,11 @@ measurements; it is shown on the site's state sensor (`forecast`), in the diagno
 * **Weather** (no setting): `weather.forecast_home` (the core Met.no default), else the only weather entity, else
   none. Its `temperature` is read on every reading of the site into the running hour (`HourMean.outdoor_c`); its
   hourly forecast is fetched once an hour (`weather.get_forecasts`). Fahrenheit is turned into Celsius.
+* **Outdoor temperature now** (no setting): a heat pump's own outdoor sensor when exactly one is found
+  (`OUTDOOR_SENSORS`: NIBE's BT1 through `nibe_heatpump` or `myuplink`, MELCloud's outside temperature, matched by
+  the integration and the key in the unique id), else the weather entity's. A sensor found by its name or area is not
+  counted: too often a sensor in the sun or indoors. Looked for at each refresh; the source is in the diagnostics
+  (`outdoor`). The hourly forecast ahead is always the weather entity's.
 * **Holidays** (no setting): a calendar of Home Assistant's core Holiday integration, the one for Home Assistant's
   country when there are several, else the only one; its dates are read once a day (`calendar.get_events`). Without
   one: weekday/weekend only, nothing guessed.
@@ -18,7 +23,8 @@ measurements; it is shown on the site's state sensor (`forecast`), in the diagno
 * **Log**: each hour's first forecast, as used and before the in-day adjustment (`house_kw_raw`), the next day's as
   made once the day-ahead prices are out (`house_day_ahead`, 13:00 local, what that day's plans count on), and the
   outcome (the hour's measured `house_kw`), reviewed per local day the night after; kept with the history in the
-  site's own store (`spotnav.load_forecast.<entry>`).
+  site's own store (`spotnav.load_forecast.<entry>`). The log is the site's one forecast log: the battery plan and
+  the solar correction log their kinds in it too (`log_changed`).
 """
 
 from __future__ import annotations
@@ -27,6 +33,7 @@ from collections.abc import Callable, Iterable, Mapping
 from datetime import date, datetime, time as dt_time, timedelta, timezone
 from functools import partial
 import logging
+import re
 from typing import Any, Final
 
 from homeassistant.const import UnitOfTemperature
@@ -69,6 +76,17 @@ WEATHER_NONE: Final = "no_weather_entity"
 WEATHER_OK: Final = "ok"
 WEATHER_NO_FORECAST: Final = "no_hourly_forecast"
 HOLIDAYS_NONE: Final = "weekday_weekend_only"
+OUTDOOR_SENSOR: Final = "sensor"
+OUTDOOR_WEATHER: Final = "weather"
+
+#: A heat pump integration's outdoor temperature sensor, by the key at the end of its unique id: NIBE's BT1 (40004
+#: on the F series, VVM and SMO, 30002 on the S series, `nibe_heatpump` `<entry>-<coil>`; myUplink's parameter
+#: 40004, `<device>-<parameter>`) and MELCloud's `<serial>-<mac>-outside_temperature` (read 2026-11-13).
+OUTDOOR_SENSORS: Final[dict[str, re.Pattern[str]]] = {
+    "nibe_heatpump": re.compile(r"-(?:40004|30002)$"),
+    "myuplink": re.compile(r"-40004$"),
+    "melcloud": re.compile(r"-outside_temperature$"),
+}
 
 
 def store_key(entry_id: str) -> str:
@@ -84,6 +102,21 @@ def pick_weather_entity(entity_ids: Iterable[str]) -> str | None:
     if DEFAULT_WEATHER in weather:
         return DEFAULT_WEATHER
     return weather[0] if len(weather) == 1 else None
+
+
+def pick_outdoor_sensor(candidates: Iterable[tuple[str, str, str]]) -> str | None:
+    """The one heat pump outdoor sensor among `(entity_id, platform, unique_id)` (`OUTDOOR_SENSORS`), `None` when
+    there is none or more than one (two heat pumps, or two ways to the same one: which is meant cannot be told)."""
+    found = sorted(
+        {
+            entity_id
+            for entity_id, platform, unique_id in candidates
+            if entity_id.startswith("sensor.")
+            and (pattern := OUTDOOR_SENSORS.get(platform)) is not None
+            and pattern.search(unique_id or "")
+        }
+    )
+    return found[0] if len(found) == 1 else None
 
 
 def to_celsius(value: Any, unit: Any) -> float | None:
@@ -180,6 +213,11 @@ class SiteHouseForecast:
         self.forecast: LoadForecast | None = None
         self.weather_entity_id: str | None = None
         self.weather_status: str = WEATHER_NONE
+        #: The heat pump's outdoor sensor when exactly one is found (looked for at each refresh).
+        self.outdoor_entity_id: str | None = None
+        #: Where the last outdoor reading came from: `OUTDOOR_SENSOR`, `OUTDOOR_WEATHER` or `None` (no reading).
+        self.outdoor_source: str | None = None
+        self._outdoor_looked = False
         self.holiday_entity_id: str | None = None
         self.holidays: frozenset[date] | None = None
         self._holidays_day: date | None = None
@@ -212,6 +250,11 @@ class SiteHouseForecast:
                 _LOGGER.debug("SpotNav house forecast: the kept history could not be read", exc_info=True)
         self._loaded = True
 
+    def log_changed(self) -> None:
+        """Another part logged into the site's forecast log (`log`, shared): save it with the next write."""
+        if self._store is not None:
+            self._store.changed()
+
     async def async_close(self) -> None:
         self._closed = True
         if self._store is not None:
@@ -227,13 +270,36 @@ class SiteHouseForecast:
     def _weather_entity(self) -> str | None:
         return pick_weather_entity(self.hass.states.async_entity_ids("weather"))
 
+    def _outdoor_sensor(self) -> str | None:
+        registry = er.async_get(self.hass)
+        return pick_outdoor_sensor(
+            (entry.entity_id, entry.platform, entry.unique_id)
+            for entry in registry.entities.values()
+            if entry.platform in OUTDOOR_SENSORS and entry.disabled_by is None
+        )
+
+    def _look_for_outdoor_sensor(self) -> None:
+        self.outdoor_entity_id = self._outdoor_sensor()
+        self._outdoor_looked = True
+
     def outdoor_c(self) -> float | None:
-        """The weather entity's temperature now (°C), `None` without one."""
+        """The outdoor temperature now (°C): the heat pump's outdoor sensor when one was found and reads, else the
+        weather entity's; `None` without either."""
+        if not self._outdoor_looked:
+            self._look_for_outdoor_sensor()
+        if self.outdoor_entity_id is not None:
+            state = self.hass.states.get(self.outdoor_entity_id)
+            celsius = None if state is None else to_celsius(state.state, state.attributes.get("unit_of_measurement"))
+            if celsius is not None:
+                self.outdoor_source = OUTDOOR_SENSOR
+                return celsius
         entity_id = self._weather_entity()
         state = None if entity_id is None else self.hass.states.get(entity_id)
-        if state is None:
-            return None
-        return to_celsius(state.attributes.get("temperature"), state.attributes.get("temperature_unit"))
+        celsius = None
+        if state is not None:
+            celsius = to_celsius(state.attributes.get("temperature"), state.attributes.get("temperature_unit"))
+        self.outdoor_source = None if celsius is None else OUTDOOR_WEATHER
+        return celsius
 
     def _holiday_entity(self) -> str | None:
         registry = er.async_get(self.hass)
@@ -327,6 +393,7 @@ class SiteHouseForecast:
             now = self._demand.now()
             tracker = self._demand.tracker
             tz = tracker.tz
+            self._look_for_outdoor_sensor()
             complete = await self._async_temperatures(tz)
             complete &= await self._async_holidays(now, tz)
             self._retry_at = None if complete else now + timedelta(seconds=RETRY_S)
@@ -427,6 +494,8 @@ class SiteHouseForecast:
         return {
             "weather_entity": self.weather_entity_id,
             "weather": self.weather_status,
+            # The outdoor temperature now, recorded per hour: from the heat pump's sensor or the weather entity.
+            "outdoor": {"source": self.outdoor_source, "sensor": self.outdoor_entity_id},
             "forecast_temperatures": len(self._temperatures),
             "holidays": self.holiday_entity_id or HOLIDAYS_NONE,
             "holiday_dates": None if self.holidays is None else sorted(day.isoformat() for day in self.holidays),
