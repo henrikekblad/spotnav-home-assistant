@@ -38,13 +38,11 @@ from __future__ import annotations
 
 import argparse
 import concurrent.futures
-import gzip
 import json
 import math
 import statistics
 import sys
 import urllib.request
-from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
