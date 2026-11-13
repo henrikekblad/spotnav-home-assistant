@@ -26,9 +26,9 @@ import target; this module only measures and never decides anything a charger is
   (`HourMean.outdoor_c`), for the house load forecast's temperature term (`site/load_forecast.py`). It is kept beside
   the rows (`outdoor_c` in the month's document, keyed by the hour's start), never in them, so a release that knows the
   rows only still reads every row.
-* **The house without the battery** (a site with a battery power reading): each hour also carries the mean of
-  `grid - car - battery` (`HourMean.ex_battery_kw`, signed, the battery positive while it charges), integrated over
-  the time all three were read, with the same gap rule as the house's share. It is the house's whole load less the
+* **The house without the battery**: each hour also carries the mean of `grid - car - battery`
+  (`HourMean.ex_battery_kw`, signed, the battery positive while it charges; the site passes 0 when it has no battery
+  power reading), integrated over the time all three were read, with the same gap rule as the house's share. It is the house's whole load less the
   sun: the house load forecast adds the hour's solar production to it (`site/house_forecast.py`), so a battery that
   covers the house, or charges from the grid, never reads as the house. Kept beside the rows (`ex_battery_kw` in the
   month's document, keyed by the hour's start), never in them, so older builds still read every row.
@@ -335,7 +335,7 @@ class HourTracker:
         `HOLD_MAX_S`), completed hours are kept, and from now on `grid_w`/`car_w`/`discharge_w`/`battery_w` are held.
         `target` marks the running hour when it is the hour the import target held or paused a charger in;
         `outdoor_c` (°C) is one reading of the outdoor temperature in it; `battery_w` is a home battery's signed power
-        (W, positive while it charges), `None` without one read live. Returns whether the month's hours changed (an
+        (W, positive while it charges; 0 on a site without one), `None` when it cannot be read live. Returns whether the month's hours changed (an
         hour completed, or the month rolled)."""
         now = now.astimezone(timezone.utc)
         changed = False
