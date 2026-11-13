@@ -112,7 +112,8 @@ async def test_the_plan_runs_in_shadow_as_a_benchmark_beside_a_battery_in_its_ow
     assert set(plan["modes"]) == set(MODES) and plan["modes"][MODE_BALANCED] == plan["plan"]
     assert len(plan["modes"][MODE_MAX_PROFIT]["slots"]) == len(slots)
     assert plan["modes"][MODE_SELF_CONSUMPTION]["baseline"] is True
-    assert plan["plan"]["min_soc_pct"] == 20.0 and plan["modes"][MODE_MAX_PROFIT]["min_soc_pct"] == 10.0
+    # The modes differ in arbitrage, not in floor: each keeps the battery's own.
+    assert plan["plan"]["min_soc_pct"] == 10.0 and plan["modes"][MODE_MAX_PROFIT]["min_soc_pct"] == 10.0
     assert inputs["wear"] > 0
     assert plan["review_totals"]["days"] == 0
     # The first quarter hour knows what the plan said about it.

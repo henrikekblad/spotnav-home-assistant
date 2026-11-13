@@ -65,8 +65,9 @@ MAX_SLOTS: Final = 2 * 25 * 4
 
 #: The battery modes (one per site; `plans/v3_0_wave3.md` W3-M). Self-consumption: SpotNav never plans the battery,
 #: only its guards act (the fuse, the hold while a car charges from the grid). Balanced: the battery may buy cheap
-#: and spend in the house, keeps a reserve, cycles less, and sells stored energy only through the spread gate. Max
-#: profit: every action, the true wear, the inverter's own floor.
+#: and spend in the house, cycles less (double wear), and sells stored energy only through the spread gate. Max
+#: profit: every action, the true wear. The modes differ only in how much arbitrage they do: every mode keeps the
+#: battery's own floor (a reserve for backup is the battery's setting, which the facts read).
 MODE_SELF_CONSUMPTION: Final = "self_consumption"
 MODE_BALANCED: Final = "balanced"
 MODE_MAX_PROFIT: Final = "max_profit"
@@ -83,8 +84,7 @@ EXPORT_FREE: Final = "free"
 class BatteryMode:
     """A mode as a row of the plan's parameters, no code path of its own.
 
-    `wear_factor` multiplies the currency's wear (`WEAR_MINOR_PER_KWH`); `floor_pct` is the least floor the mode
-    keeps (the battery's own when that is higher). With `export` at `EXPORT_GATE`, a kWh sold from the battery is
+    `wear_factor` multiplies the currency's wear (`WEAR_MINOR_PER_KWH`). Every mode keeps the battery's own floor. With `export` at `EXPORT_GATE`, a kWh sold from the battery is
     weighed `gate_factor` x the wear below its sell price: the spread gate's margin `H`, so a sale must clear the
     stored kWh's value, both ways' wear and `H` together. It falls out of the search, never a filter after it.
     """
@@ -93,7 +93,6 @@ class BatteryMode:
     plans: bool
     export: str
     wear_factor: float
-    floor_pct: float
     gate_factor: float = 0.0
 
     def wear(self, base: float) -> float:
@@ -103,23 +102,21 @@ class BatteryMode:
         return base * self.gate_factor if self.export == EXPORT_GATE else 0.0
 
 
-#: Balanced's reserve and its multiples of the wear (the research's proposal; the backtest in
-#: `plans/battery_plan_backtest/README.md` weighs them).
-BALANCED_FLOOR_PCT: Final = 20.0
+#: Balanced's multiples of the wear (the backtest in `plans/battery_plan_backtest/README.md` weighs them). No reserve
+#: of its own (owner 2026-11-13: the modes differ in arbitrage, not in reserve).
 BALANCED_WEAR_FACTOR: Final = 2.0
 BALANCED_GATE_FACTOR: Final = 1.0
 
 MODE_DEFS: Final[dict[str, BatteryMode]] = {
-    MODE_SELF_CONSUMPTION: BatteryMode(MODE_SELF_CONSUMPTION, plans=False, export=EXPORT_OFF, wear_factor=0.0, floor_pct=0.0),
+    MODE_SELF_CONSUMPTION: BatteryMode(MODE_SELF_CONSUMPTION, plans=False, export=EXPORT_OFF, wear_factor=0.0),
     MODE_BALANCED: BatteryMode(
         MODE_BALANCED,
         plans=True,
         export=EXPORT_GATE,
         wear_factor=BALANCED_WEAR_FACTOR,
-        floor_pct=BALANCED_FLOOR_PCT,
         gate_factor=BALANCED_GATE_FACTOR,
     ),
-    MODE_MAX_PROFIT: BatteryMode(MODE_MAX_PROFIT, plans=True, export=EXPORT_FREE, wear_factor=1.0, floor_pct=0.0),
+    MODE_MAX_PROFIT: BatteryMode(MODE_MAX_PROFIT, plans=True, export=EXPORT_FREE, wear_factor=1.0),
 }
 
 

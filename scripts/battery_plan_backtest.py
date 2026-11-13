@@ -25,9 +25,9 @@ Replay
 * Costs are compared with the energy each ends with valued at the period's median buy price x the round trip.
 
 Modes and wear (3.0 wave 3)
-* `--mode` plans as one battery mode (`plan_model.MODE_DEFS`): `balanced` keeps its reserve, weighs twice the wear
-  and sells from the battery only through the spread gate; `max_profit` may sell freely at the true wear;
-  `self_consumption` does not plan. The plan's actions run with the mode's floor. `--wear` is the wear per kWh each
+* `--mode` plans as one battery mode (`plan_model.MODE_DEFS`): `balanced` weighs twice the wear and sells from the
+  battery only through the spread gate; `max_profit` may sell freely at the true wear; `self_consumption` does not
+  plan. Every mode keeps the battery's own floor. `--wear` is the wear per kWh each
   way (öre); `--gate-factor` overrides Balanced's gate margin in multiples of the wear (`off`: no sale at all).
 * `--matrix` runs every mode x wear {0, 5, 15, 25, 40} x {perfect, p75}, and Balanced's gate at 15 öre, in parallel,
   and prints one table: cost, saving against self-consumption, the same with every run's throughput charged at
@@ -60,7 +60,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from custom_components.spotnav.battery.plan import (  # noqa: E402
     action_power,
-    mode_battery,
     plan_mode,
     run_slot,
 )
@@ -373,7 +372,6 @@ def replay(
     battery = site.battery
     if foresight == "self" or not mode.plans:
         foresight = "self"
-    run_battery = mode_battery(battery, mode) if foresight != "self" else battery
     i = history.at(first)
     soc_start = history.soc[i] if history.soc[i] is not None else 50.0
     soc_kwh = battery.usable_kwh * soc_start / 100
@@ -411,8 +409,8 @@ def replay(
         for k, slot in enumerate(slots):
             action = ACTION_SELF_CONSUME if actions is None else actions[k].action
             planned_kw = 0.0 if actions is None else actions[k].battery_kw
-            power = action_power(slot, run_battery, soc_kwh, action, planned_kw)
-            outcome = run_slot(slot, run_battery, soc_kwh, action, power)
+            power = action_power(slot, battery, soc_kwh, action, planned_kw)
+            outcome = run_slot(slot, battery, soc_kwh, action, power)
             soc_kwh = battery.usable_kwh * outcome.soc_end_pct / 100
             tally.min_soc_pct = min(tally.min_soc_pct, outcome.soc_end_pct)
             if history.grid[i + k] is None:

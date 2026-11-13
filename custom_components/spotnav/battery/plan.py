@@ -348,18 +348,11 @@ def _forward(
     return _run(decisions, outcomes, battery, soc)
 
 
-def mode_battery(battery: BatteryParams, mode: BatteryMode) -> BatteryParams:
-    """[battery] as [mode] plans it: the floor raised to the mode's least floor (the battery's own when higher)."""
-    floor = min(max(battery.min_soc_pct, mode.floor_pct), battery.max_soc_pct - 1.0)
-    return battery if floor <= battery.min_soc_pct else replace(battery, min_soc_pct=floor)
-
-
 def mode_request(request: PlanRequest, mode: BatteryMode, wear: float) -> PlanRequest:
-    """[request] as [mode] plans it with [wear] (minor per kWh each way, the currency's): its floor, its multiple of
-    the wear, and whether and how the battery may sell."""
+    """[request] as [mode] plans it with [wear] (minor per kWh each way, the currency's): its multiple of the wear,
+    and whether and how the battery may sell."""
     return replace(
         request,
-        battery=mode_battery(request.battery, mode),
         cycle_cost=mode.wear(wear),
         allow_export_discharge=mode.export != EXPORT_OFF,
         export_hurdle=mode.hurdle(wear),

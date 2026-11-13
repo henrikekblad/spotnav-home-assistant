@@ -11,7 +11,6 @@ import pytest
 from custom_components.spotnav.battery.plan import mode_request, plan_battery, plan_mode, self_consumption
 from custom_components.spotnav.battery.plan_model import (
     ACTION_EXPORT_DISCHARGE,
-    BALANCED_FLOOR_PCT,
     DEFAULT_CYCLE_COST,
     DEFAULT_MODE,
     EXPORT_GATE,
@@ -72,19 +71,18 @@ def test_the_modes_are_three_and_balanced_is_the_default() -> None:
     assert mode_named("export") is None and mode_named(None) is None
 
 
-def test_a_mode_request_sets_floor_wear_and_export() -> None:
+def test_a_mode_request_sets_wear_and_export_and_keeps_the_batterys_floor() -> None:
     request = _request(_slots([100], [50]))
     balanced = mode_request(request, MODE_DEFS[MODE_BALANCED], 15.0)
-    assert balanced.battery.min_soc_pct == BALANCED_FLOOR_PCT
     assert balanced.cycle_cost == 30.0
     assert balanced.allow_export_discharge and balanced.export_hurdle == 15.0
     profit = mode_request(request, MODE_DEFS[MODE_MAX_PROFIT], 15.0)
-    assert profit.battery.min_soc_pct == BATTERY.min_soc_pct
     assert profit.cycle_cost == 15.0 and profit.allow_export_discharge and profit.export_hurdle == 0.0
-    # The battery's own floor wins when it is higher than the mode's.
-    high = mode_request(_request(_slots([100], [50]), battery=BatteryParams(10, 5, 5, min_soc_pct=30)),
-                        MODE_DEFS[MODE_BALANCED], 15.0)
-    assert high.battery.min_soc_pct == 30
+    # The modes differ in arbitrage only: every mode plans the battery as it is, its own floor included.
+    high = _request(_slots([100], [50]), battery=BatteryParams(10, 5, 5, min_soc_pct=30))
+    for mode in MODE_DEFS.values():
+        assert mode_request(request, mode, 15.0).battery is BATTERY
+        assert mode_request(high, mode, 15.0).battery.min_soc_pct == 30
 
 
 def test_a_negative_hurdle_is_refused() -> None:
@@ -102,14 +100,21 @@ def test_self_consumption_does_not_plan() -> None:
     assert result.plan is result.baseline and result.savings == 0
 
 
-def test_balanced_keeps_its_reserve_and_is_measured_against_the_battery_floor() -> None:
-    # Dear all day: self-consumption runs the battery to its own floor; Balanced stops at 20 %.
+def test_every_mode_spends_down_to_the_batterys_own_floor_and_no_further() -> None:
+    # Dear all day: Balanced, like self-consumption, runs the battery to its own floor; a higher floor read from the
+    # battery holds for every mode.
     request = _request(_slots([300] * 6, [10] * 6, house=2.0), soc_now_pct=60)
     result = plan_mode(request, MODE_DEFS[MODE_BALANCED], 15.0)
-    assert min(d.soc_end_pct for d in result.plan.decisions) >= BALANCED_FLOOR_PCT - 1e-6
+    assert result.plan.end_soc_pct == pytest.approx(BATTERY.min_soc_pct)
     assert result.baseline.end_soc_pct == pytest.approx(BATTERY.min_soc_pct)
     assert result.baseline == self_consumption(request)
-    assert result.battery.min_soc_pct == BALANCED_FLOOR_PCT
+    assert result.battery == BATTERY
+    high = _request(_slots([300] * 6, [10] * 6, house=2.0), soc_now_pct=60,
+                    battery=BatteryParams(10, 5, 5, min_soc_pct=30))
+    for mode in MODE_DEFS.values():
+        ran = plan_mode(high, mode, 15.0)
+        assert min(d.soc_end_pct for d in ran.plan.decisions) >= 30 - 1e-6
+        assert ran.plan.end_soc_pct == pytest.approx(30)
 
 
 def test_the_gate_lets_only_a_clear_spread_sell() -> None:
@@ -118,13 +123,13 @@ def test_the_gate_lets_only_a_clear_spread_sell() -> None:
     narrow = _request(_slots([100] * 3, [40] * 3, house=0.0))
     assert _sold_kwh(plan_mode(narrow, MODE_DEFS[MODE_MAX_PROFIT], 15.0)) > 1
     assert _sold_kwh(plan_mode(narrow, MODE_DEFS[MODE_BALANCED], 15.0)) == pytest.approx(0, abs=1e-6)
-    # At 200 öre both sell, and Balanced still stops at its reserve.
+    # At 200 öre the spread clears the gate: both sell the battery down to its own floor.
     wide = _request(_slots([300] * 3, [200] * 3, house=0.0))
     profit = plan_mode(wide, MODE_DEFS[MODE_MAX_PROFIT], 15.0)
     balanced = plan_mode(wide, MODE_DEFS[MODE_BALANCED], 15.0)
     assert ACTION_EXPORT_DISCHARGE in {d.action for d in balanced.plan.decisions}
-    assert _sold_kwh(balanced) > 1 and _sold_kwh(profit) > _sold_kwh(balanced)
-    assert balanced.plan.end_soc_pct == pytest.approx(BALANCED_FLOOR_PCT, abs=0.5)
+    assert _sold_kwh(balanced) > 1 and _sold_kwh(balanced) == pytest.approx(_sold_kwh(profit))
+    assert balanced.plan.end_soc_pct == pytest.approx(BATTERY.min_soc_pct, abs=0.5)
 
 
 def test_the_gate_margin_is_weighed_never_paid() -> None:

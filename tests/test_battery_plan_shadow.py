@@ -12,14 +12,13 @@ from datetime import date, datetime, timedelta, timezone
 import pytest
 
 from custom_components.spotnav.battery.facts import BatteryFacts
-from custom_components.spotnav.battery.plan import mode_battery, plan_battery
+from custom_components.spotnav.battery.plan import plan_battery
 from custom_components.spotnav.battery.plan_model import (
     ACTION_EXPORT_DISCHARGE,
     ACTION_GRID_CHARGE,
     ACTION_HOLD,
     ACTION_SELF_CONSUME,
     MODE_BALANCED,
-    MODE_DEFS,
     MODE_MAX_PROFIT,
     BatteryParams,
     PlanRequest,
@@ -538,8 +537,7 @@ def test_planned_slots_round_trip_the_plan() -> None:
     assert isinstance(slots[0], PlanSlot)
 
 
-def _mode_batteries() -> dict:
-    return {name: mode_battery(BATTERY, MODE_DEFS[name]) for name in (MODE_BALANCED, MODE_MAX_PROFIT)}
+PLANNING = (MODE_BALANCED, MODE_MAX_PROFIT)
 
 
 def test_the_modes_are_reviewed_beside_the_plan_and_summed() -> None:
@@ -553,14 +551,14 @@ def test_the_modes_are_reviewed_beside_the_plan_and_summed() -> None:
         sells = hour >= 18
         bucket.ran_modes[MODE_MAX_PROFIT] = (ACTION_EXPORT_DISCHARGE, 0.0) if sells else (bucket.ran_action, bucket.ran_kw)
     review = review_day(
-        date(2026, 11, 13), buckets, BATTERY, TZ, MIDNIGHT + timedelta(days=1, hours=1), _mode_batteries(), MODE_BALANCED
+        date(2026, 11, 13), buckets, BATTERY, TZ, MIDNIGHT + timedelta(days=1, hours=1), PLANNING, MODE_BALANCED
     )
     assert review is not None and set(review.modes) == {MODE_BALANCED, MODE_MAX_PROFIT}
     assert review.mode == MODE_BALANCED
-    # The plan is the site's mode: the same actions and floor give the same run.
+    # The plan is the site's mode: the same actions give the same run.
     assert review.mode_savings[MODE_BALANCED] == pytest.approx(review.saving)
     assert review.mode_savings[MODE_MAX_PROFIT] > review.saving
-    # Balanced keeps its reserve; Max profit sells down to the battery's own floor.
+    # Balanced did not sell; Max profit sells down to the battery's own floor.
     assert review.modes[MODE_MAX_PROFIT].end_soc_pct < review.modes[MODE_BALANCED].end_soc_pct
     totals = review_totals([review, review])
     assert totals["days"] == 2 and totals["modes"][MODE_MAX_PROFIT]["days"] == 2
@@ -572,22 +570,26 @@ def test_the_modes_are_reviewed_beside_the_plan_and_summed() -> None:
     assert review_totals([])["days"] == 0 and review_totals([])["modes"] == {}
 
 
-def test_the_plan_keeps_the_site_modes_floor_in_the_review() -> None:
-    # Discharge into the house all day from 50 %: Balanced's run stops at its reserve, self-consumption at the floor.
+def test_every_run_in_the_review_keeps_the_batterys_own_floor() -> None:
+    # Discharge into the house all day from 50 %: the plan's run, each mode's and self-consumption all stop at the
+    # battery's own floor, the only floor there is.
     ran = [(ACTION_SELF_CONSUME, 0.0)] * 24
     buckets = _day(buy=[300.0] * 24, house=1.0, battery=[0.0] * 24, soc=[50.0] * 25, ran=ran)
-    review = review_day(date(2026, 11, 13), buckets, BATTERY, TZ, MIDNIGHT + timedelta(days=1), _mode_batteries(),
+    for bucket in buckets:
+        bucket.ran_modes.update({name: (ACTION_SELF_CONSUME, 0.0) for name in PLANNING})
+    review = review_day(date(2026, 11, 13), buckets, BATTERY, TZ, MIDNIGHT + timedelta(days=1), PLANNING,
                         MODE_BALANCED)
-    assert review is not None
-    assert review.plan.end_soc_pct == pytest.approx(MODE_DEFS[MODE_BALANCED].floor_pct)
+    assert review is not None and set(review.modes) == set(PLANNING)
+    assert review.plan.end_soc_pct == pytest.approx(BATTERY.min_soc_pct)
     assert review.self_consumption.end_soc_pct == pytest.approx(BATTERY.min_soc_pct)
+    assert all(run.end_soc_pct == pytest.approx(BATTERY.min_soc_pct) for run in review.modes.values())
 
 
 def test_a_day_where_a_mode_did_not_run_has_no_figure_for_it() -> None:
     ran = [(ACTION_SELF_CONSUME, 0.0)] * 24
     buckets = _day(buy=[100.0] * 24, house=1.0, battery=[0.0] * 24, soc=[50.0] * 25, ran=ran)
     buckets[10].ran_modes[MODE_MAX_PROFIT] = (ACTION_SELF_CONSUME, 0.0)
-    review = review_day(date(2026, 11, 13), buckets, BATTERY, TZ, MIDNIGHT + timedelta(days=1), _mode_batteries())
+    review = review_day(date(2026, 11, 13), buckets, BATTERY, TZ, MIDNIGHT + timedelta(days=1), PLANNING)
     assert review is not None and review.modes == {}
 
 

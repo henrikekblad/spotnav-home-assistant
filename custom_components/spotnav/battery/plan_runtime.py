@@ -56,7 +56,7 @@ from ..planning.grid_voltage import stored_voltage_between_phases_v
 from ..site.energy_statistics import async_energy_ids, async_statistics, summed
 from ..site.load_forecast import forecast_house_load
 from .facts import BatteryFacts
-from .plan import mode_battery, plan_mode, self_consumption
+from .plan import plan_mode, self_consumption
 from .plan_model import (
     DEFAULT_CYCLE_COST,
     DEFAULT_MODE,
@@ -394,9 +394,9 @@ class BatteryPlanShadow:
         params, _reason, _estimates = limited_params(*battery_params(self._facts), self._facts)
         if params is not None:
             reviewed = [review.money.day for review in self.reviews]
-            batteries = {name: mode_battery(params, MODE_DEFS[name]) for name in MODES if MODE_DEFS[name].plans}
+            planning = [name for name in MODES if MODE_DEFS[name].plans]
             for day in days_to_review(self.actuals.buckets.values(), reviewed, now, tz):
-                review = review_day(day, self.actuals.buckets.values(), params, tz, now, batteries, self.mode)
+                review = review_day(day, self.actuals.buckets.values(), params, tz, now, planning, self.mode)
                 if review is not None:
                     self.reviews.append(review)
                     _LOGGER.debug("SpotNav battery plan: %s reviewed, saving %.0f", day, review.saving)

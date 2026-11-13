@@ -970,13 +970,13 @@ def review_day(
     battery: BatteryParams,
     tz: str,
     now: datetime,
-    mode_batteries: Mapping[str, BatteryParams] | None = None,
+    modes: Iterable[str] = (),
     mode: str | None = None,
 ) -> DayReview | None:
     """The day's runs over its measured quarter hours (see the module); `None` when no quarter hour was measured
-    with its prices or no SoC was read. [battery] is the battery at its own floor (self-consumption's);
-    [mode_batteries] the same as each planning mode plans it (`plan.mode_battery`), and [mode] the site's, whose
-    floor the plan's own run keeps. A mode is reviewed when it ran in every planned quarter hour."""
+    with its prices or no SoC was read. [battery] is the battery at its own floor, which every run keeps; [modes] the
+    planning modes to review beside the plan, and [mode] the site's. A mode is reviewed when it ran in every planned
+    quarter hour."""
     zone = time_zones.require_zone(tz)
     rows = sorted(
         (bucket for bucket in buckets if bucket.start.astimezone(zone).date() == day), key=lambda bucket: bucket.start
@@ -989,18 +989,13 @@ def review_day(
     end_soc = float(next(b.soc_end for b in reversed(rows) if b.soc_end is not None))  # type: ignore[arg-type]
     end_value = statistics.median(float(b.buy) for b in usable) * battery.round_trip_efficiency  # type: ignore[arg-type]
     start_kwh = min(battery.max_kwh, max(battery.min_kwh, battery.usable_kwh * start_soc / 100))
-    batteries = dict(mode_batteries or {})
     planned = [b for b in usable if b.ran_action is not None]
-    reviewed = [
-        name
-        for name in batteries
-        if planned and all(name in b.ran_modes for b in planned)
-    ]
+    reviewed = [name for name in modes if planned and all(name in b.ran_modes for b in planned)]
 
     actual_cost = 0.0
-    plan = _Sim(batteries.get(mode or "", battery), start_kwh)
+    plan = _Sim(battery, start_kwh)
     base = _Sim(battery, start_kwh)
-    sims = {name: _Sim(batteries[name], start_kwh) for name in reviewed}
+    sims = {name: _Sim(battery, start_kwh) for name in reviewed}
     unplanned = 0
     errors: list[float] = []
     for bucket in usable:  # no run counts a quarter hour the meters lost; the sims' battery idles through it
