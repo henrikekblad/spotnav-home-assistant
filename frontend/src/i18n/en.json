@@ -1240,5 +1240,9 @@
   "house.flow.sunLater": "The sun counts the hours whose production Home Assistant has already compiled.",
   "house.calendar.heading": "Saved per day in {month}",
   "house.calendar.day": "{date}: SpotNav's plan {plan}, the battery itself {own}",
-  "house.calendar.total": "Upper figure: SpotNav's plan, lower: the battery itself ({unit}), against self-consumption. Green: the plan did better. {days} days: plan {plan} · battery {own}."
+  "house.calendar.total": "Upper figure: SpotNav's plan, lower: the battery itself ({unit}), against self-consumption. Green: the plan did better. {days} days: plan {plan} · battery {own}.",
+  "house.calendar.arbitrage": "arbitrage {amount}",
+  "house.calendar.arbitrageTotal": "The battery's arbitrage, {days} days: {amount} (each kWh given back, less what it cost to store).",
+  "house.sources.stored": "Stored now: {kwh} at {cost} on average",
+  "house.sources.storedEstimated": "Stored now: {kwh} at {cost} on average (estimated from the start until that energy has been used)"
 }

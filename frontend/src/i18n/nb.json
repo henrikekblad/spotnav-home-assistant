@@ -1240,5 +1240,9 @@
   "house.flow.sunLater": "Solen telles for timene Home Assistant allerede har satt sammen produksjonen for.",
   "house.calendar.heading": "Spart per døgn i {month}",
   "house.calendar.day": "{date}: SpotNavs plan {plan}, batteriet selv {own}",
-  "house.calendar.total": "Øvre tall: SpotNavs plan, nedre: batteriet selv ({unit}), mot egenforbruk. Grønt: planen var bedre. {days} døgn: plan {plan} · batteriet {own}."
+  "house.calendar.total": "Øvre tall: SpotNavs plan, nedre: batteriet selv ({unit}), mot egenforbruk. Grønt: planen var bedre. {days} døgn: plan {plan} · batteriet {own}.",
+  "house.calendar.arbitrage": "arbitrasje {amount}",
+  "house.calendar.arbitrageTotal": "Batteriets arbitrasje, {days} døgn: {amount} (hver kWh som ble gitt tilbake, minus hva den kostet å lagre).",
+  "house.sources.stored": "Lagret nå: {kwh} à {cost} i snitt",
+  "house.sources.storedEstimated": "Lagret nå: {kwh} à {cost} i snitt (anslått fra start til den energien er brukt)"
 }

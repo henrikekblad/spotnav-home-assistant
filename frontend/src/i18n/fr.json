@@ -1240,5 +1240,9 @@
   "house.flow.sunLater": "Le soleil compte pour les heures dont Home Assistant a déjà compilé la production.",
   "house.calendar.heading": "Économisé par jour en {month}",
   "house.calendar.day": "{date} : plan de SpotNav {plan}, la batterie seule {own}",
-  "house.calendar.total": "Chiffre du haut : plan de SpotNav, du bas : la batterie seule ({unit}), face à l'autoconsommation. Vert : le plan a fait mieux. {days} jours : plan {plan} · batterie {own}."
+  "house.calendar.total": "Chiffre du haut : plan de SpotNav, du bas : la batterie seule ({unit}), face à l'autoconsommation. Vert : le plan a fait mieux. {days} jours : plan {plan} · batterie {own}.",
+  "house.calendar.arbitrage": "arbitrage {amount}",
+  "house.calendar.arbitrageTotal": "Arbitrage de la batterie, {days} jours : {amount} (chaque kWh restitué, moins son coût de stockage).",
+  "house.sources.stored": "Stocké maintenant : {kwh} à {cost} en moyenne",
+  "house.sources.storedEstimated": "Stocké maintenant : {kwh} à {cost} en moyenne (estimé au départ jusqu'à ce que cette énergie soit utilisée)"
 }

@@ -1240,5 +1240,9 @@
   "house.flow.sunLater": "Aurinko lasketaan tunneilta, joiden tuotannon Home Assistant on jo koonnut.",
   "house.calendar.heading": "Säästö vuorokaudessa, {month}",
   "house.calendar.day": "{date}: SpotNavin suunnitelma {plan}, akku itse {own}",
-  "house.calendar.total": "Ylempi luku: SpotNavin suunnitelma, alempi: akku itse ({unit}), omaan käyttöön verrattuna. Vihreä: suunnitelma oli parempi. {days} vrk: suunnitelma {plan} · akku {own}."
+  "house.calendar.total": "Ylempi luku: SpotNavin suunnitelma, alempi: akku itse ({unit}), omaan käyttöön verrattuna. Vihreä: suunnitelma oli parempi. {days} vrk: suunnitelma {plan} · akku {own}.",
+  "house.calendar.arbitrage": "arbitraasi {amount}",
+  "house.calendar.arbitrageTotal": "Akun arbitraasi, {days} vrk: {amount} (jokainen takaisin annettu kWh miinus sen varastointikustannus).",
+  "house.sources.stored": "Varastossa nyt: {kwh}, keskimäärin {cost}",
+  "house.sources.storedEstimated": "Varastossa nyt: {kwh}, keskimäärin {cost} (arvio alusta, kunnes se energia on käytetty)"
 }

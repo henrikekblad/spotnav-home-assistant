@@ -1240,5 +1240,9 @@
   "house.flow.sunLater": "De zon telt voor de uren waarvan Home Assistant de productie al heeft verzameld.",
   "house.calendar.heading": "Bespaard per dag in {month}",
   "house.calendar.day": "{date}: plan van SpotNav {plan}, de batterij zelf {own}",
-  "house.calendar.total": "Bovenste getal: plan van SpotNav, onderste: de batterij zelf ({unit}), tegenover eigen verbruik. Groen: het plan deed het beter. {days} dagen: plan {plan} · batterij {own}."
+  "house.calendar.total": "Bovenste getal: plan van SpotNav, onderste: de batterij zelf ({unit}), tegenover eigen verbruik. Groen: het plan deed het beter. {days} dagen: plan {plan} · batterij {own}.",
+  "house.calendar.arbitrage": "arbitrage {amount}",
+  "house.calendar.arbitrageTotal": "Arbitrage van de batterij, {days} dagen: {amount} (elke teruggegeven kWh, min wat de opslag kostte).",
+  "house.sources.stored": "Nu opgeslagen: {kwh} à gemiddeld {cost}",
+  "house.sources.storedEstimated": "Nu opgeslagen: {kwh} à gemiddeld {cost} (geschat vanaf de start tot die energie is gebruikt)"
 }
