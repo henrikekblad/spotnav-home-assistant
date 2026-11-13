@@ -60,6 +60,10 @@ class HourMean:
     #: was measured (`site/house_forecast.py`), `None` when none was read. The house load forecast's temperature term
     #: only (`site/load_forecast.py`); it never enters a peak.
     outdoor_c: float | None = None
+    #: On a site with a home battery's power read live: the hour's mean of `grid - car - battery` (kW, signed, the
+    #: battery positive while it charges), the house's whole load less the sun (`site/demand_tracker.py`); `None`
+    #: without a battery reading for most of the hour. The gross house load's source only; it never enters a peak.
+    ex_battery_kw: float | None = None
 
 
 @dataclass(frozen=True, slots=True)
