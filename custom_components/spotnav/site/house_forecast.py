@@ -392,6 +392,10 @@ class SiteHouseForecast:
         return celsius
 
     def _holiday_entity(self) -> str | None:
+        return pick_holiday_calendar(self.holiday_candidates(), self.hass.config.country)
+
+    def holiday_candidates(self) -> dict[str, str | None]:
+        """The Holiday integration's enabled calendars, `{entity_id: its country}`."""
         registry = er.async_get(self.hass)
         candidates: dict[str, str | None] = {}
         for entry in registry.entities.values():
@@ -402,7 +406,7 @@ class SiteHouseForecast:
                 config = self.hass.config_entries.async_get_entry(entry.config_entry_id)
             country = None if config is None else config.data.get("country")
             candidates[entry.entity_id] = country if isinstance(country, str) else None
-        return pick_holiday_calendar(candidates, self.hass.config.country)
+        return candidates
 
     async def _async_temperatures(self, tz: str) -> bool:
         """Fetch the weather entity's hourly forecast; whether the sources were read as far as they exist."""
