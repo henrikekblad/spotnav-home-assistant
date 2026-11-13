@@ -257,8 +257,21 @@ def self_consumption(request: PlanRequest) -> PlanRun:
     return _run(decisions, outcomes, battery, soc)
 
 
-def plan_battery(request: PlanRequest) -> BatteryPlan:
-    """The cheapest way through the horizon, and the baseline it is measured against."""
+def objective(run: PlanRun, battery: BatteryParams, end_value: float) -> float:
+    """What the search minimises over a run: its money and wear, less the stored energy it leaves at `end_value`."""
+    return run.cost + run.wear - run.end_kwh(battery) * end_value
+
+
+def plan_battery(
+    request: PlanRequest, *, keep: tuple[str, float] | None = None, keep_min_gain: float = 0.0
+) -> BatteryPlan:
+    """The cheapest way through the horizon, and the baseline it is measured against.
+
+    `keep` is the action (and, for a grid charge, its kW) a plan made before has for the first slot, the one running
+    now. The new plan replaces it only when it is better by more than `keep_min_gain` (minor units, on the
+    objective): a running action does not flip for a few öre (Predbat's `metric_min_improvement`). The plan then
+    says whether it kept the action (`kept`) and what the new one would have gained (`keep_gain`).
+    """
     request.validate()
     battery = request.battery
     end_value = request.end_value if request.end_value is not None else default_end_value(request.slots, battery)
@@ -272,18 +285,41 @@ def plan_battery(request: PlanRequest) -> BatteryPlan:
         after = values[index + 1]
         values[index] = [_best(slot, request, point, after, grid)[1] for point in grid.points]
 
-    # Forwards: the exact energy from now, each slot's best action against the value-to-go.
+    best = _forward(request, values, grid)
+    kept = False
+    keep_gain: float | None = None
+    if keep is not None:
+        held = _forward(request, values, grid, first=keep)
+        keep_gain = objective(held, battery, end_value) - objective(best, battery, end_value)
+        if keep_gain <= keep_min_gain:
+            best, kept = held, True
+    return BatteryPlan(
+        plan=best,
+        baseline=self_consumption(request),
+        end_value=end_value,
+        battery=battery,
+        kept=kept,
+        keep_gain=keep_gain,
+    )
+
+
+def _forward(
+    request: PlanRequest, values: list[list[float]], grid: _Grid, first: tuple[str, float] | None = None
+) -> PlanRun:
+    """Forwards: the exact energy from now, each slot's best action against the value-to-go; with `first`, the first
+    slot runs that action (at its kW, for a grid charge) instead of its best."""
+    battery = request.battery
     soc = battery.usable_kwh * request.soc_now_pct / 100
     decisions: list[SlotDecision] = []
     outcomes: list[_Outcome] = []
     for index, slot in enumerate(request.slots):
-        outcome, _total = _best(slot, request, soc, values[index + 1], grid)
+        if index == 0 and first is not None:
+            action, charge_kw = first
+            power = action_power(slot, battery, soc, action, charge_kw)
+            outcome = _apply(slot, battery, soc, action, power, request.cycle_cost)
+        else:
+            outcome, _total = _best(slot, request, soc, values[index + 1], grid)
         decisions.append(_decision(slot, battery, outcome))
         outcomes.append(outcome)
         soc = outcome.soc_end_kwh
-    return BatteryPlan(
-        plan=_run(decisions, outcomes, battery, soc),
-        baseline=self_consumption(request),
-        end_value=end_value,
-        battery=battery,
-    )
+    return _run(decisions, outcomes, battery, soc)
