@@ -173,6 +173,11 @@ export interface SettingsBody {
    * Added after the first release of the contract: a record without it reads as all seven.
    */
   departure_weekdays: number[];
+  /**
+   * A Home Assistant calendar whose events are departures (added in 3.0: absent on an older backend, and then never
+   * sent): `null` for none.
+   */
+  departure_calendar?: string | null;
   strategy: string;
   driver: string;
   target: SettingsTarget;
