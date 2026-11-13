@@ -2555,6 +2555,7 @@ class SiteCapacityController:
         # site reading (`site/step_guard.py`). A real overload passes through untouched, but it too is cut once per
         # reading of the phase that limits it (`_async_apply_must_lower`), so that reading's own time is the one kept.
         site_read_at = self._phase_read_at(fresh, decision.limiting_phase)
+        phases_read_at = self._phases_read_at(fresh)
         guarded = self._step_guard_for(charger_entry_id).guard(
             now=dt_util.utcnow().timestamp(),
             proposed_a=proposed,
@@ -2658,6 +2659,8 @@ class SiteCapacityController:
                 yield_verdict,
                 site_read_at,
                 written_a=written_a,
+                fresh=fresh,
+                phases_read_at=phases_read_at,
             )
 
         if yield_verdict is not None and yield_verdict.action == "hold":
@@ -2906,6 +2909,8 @@ class SiteCapacityController:
         site_read_at: float | None,
         *,
         written_a: float | None = None,
+        fresh: SiteCapacityResult,
+        phases_read_at: Mapping[PhaseName, float | None],
     ) -> bool:
         """The end of an import overload's step (`is_import_overload`; a pause below the minimum stops the charge): `target_a` goes out at once, whole amps
         rounded down, past the damper's deadband, dwell and an unusable margin, as a must-lower write (a charger
@@ -2919,7 +2924,9 @@ class SiteCapacityController:
         written then): the site's meter has not reported since the cut, and reckoned against the charger's new current
         its old reading counts the house too high by the whole cut (a pause on a site 6 A over after a 9 A cut, the
         night of 2026-11-11). Held, `held_same_reading`, until the next reading of the phase, which decides as ever;
-        a charger still reading above what was written is cut again at once."""
+        a charger still reading above what was written is cut again at once, and so is a cut asked for while another
+        phase over the limit has reported since the cut (`_cut_took_on_reading`). `phases_read_at` is when each
+        phase's reading was taken, as this pass found them before anything was written."""
         setpoint = math.floor(target_a + 1e-9)
         if previous_setpoint is not None and setpoint >= previous_setpoint:
             self._log_active_control_outcome(
@@ -2931,7 +2938,7 @@ class SiteCapacityController:
                 yield_verdict=yield_verdict,
             )
             return True
-        if self._cut_took_on_reading(charger_entry_id, decision, written_a, site_read_at):
+        if self._cut_took_on_reading(charger_entry_id, decision, written_a, site_read_at, fresh, phases_read_at):
             self._log_active_control_outcome(
                 charger_entry_id,
                 decision,
@@ -2962,7 +2969,7 @@ class SiteCapacityController:
         if write.written or write.outcome == REGULATED_STOPPED:
             # A cut, a pause included, whatever was on the charger before (a first write knows no previous value):
             # this reading made it.
-            self._step_guard_for(charger_entry_id).note_cut_reading(site_read_at)
+            self._step_guard_for(charger_entry_id).note_cut_reading(site_read_at, phases_read_at)
         return True
 
     def _cut_took_on_reading(
@@ -2971,11 +2978,24 @@ class SiteCapacityController:
         decision: RegulatorDecision,
         written_a: float | None,
         site_read_at: float | None,
+        fresh: SiteCapacityResult,
+        phases_read_at: Mapping[PhaseName, float | None],
     ) -> bool:
         """Whether a cut on `site_read_at` would be a cut again on the reading the last cut was made on while the
         charger's own readings, the decision's basis phase by phase, show that cut took (`StepGuard.
-        cut_took_on_reading`): `written_a` is what was written then, the write's time the record of writes has."""
+        cut_took_on_reading`): `written_a` is what was written then, the write's time the record of writes has.
+
+        Never while a phase the charger draws on is over the limit (by the site's reading, or on the headroom the
+        decision was made on, `RegulatorDecision.overloaded_phases`) on a reading newer than the cut's: the limiting
+        phase is the one with the least room, which a stale reading inflated by the charger's old current can stay,
+        and another phase's newer overload is not left to stand until that phase reports."""
         now = dt_util.utcnow().timestamp()
+        over = [
+            phase
+            for phase in decision.basis
+            if phase in decision.overloaded_phases
+            or ((margin := fresh.measured_margin_a.get(phase)) is not None and margin < 0.0)
+        ]
         return self._step_guard_for(charger_entry_id).cut_took_on_reading(
             site_read_at=site_read_at,
             written_a=written_a,
@@ -2987,6 +3007,7 @@ class SiteCapacityController:
                 for basis in decision.basis.values()
             ],
             written_at=self._written_at.get(charger_entry_id),
+            over_read_at=[(phase, phases_read_at.get(phase)) for phase in over],
         )
 
     @staticmethod
@@ -3081,6 +3102,7 @@ class SiteCapacityController:
             self._log_active_control_outcome(charger_entry_id, decision, outcome="held", detail="overload_over")
             return
         site_read_at = self._phase_read_at(fresh, again.limiting_phase)
+        phases_read_at = self._phases_read_at(fresh)
         damper = self._damper_for(charger_entry_id)
         setpoint = min(decision.proposed_current_a, again.proposed_current_a)
         # A pause remembered while the charger charges again (a person restarted it) is a first write, as for an
@@ -3110,7 +3132,7 @@ class SiteCapacityController:
             self._log_active_control_outcome(charger_entry_id, decision, outcome="held", detail="not_a_lowering")
             return
         guard = self._step_guard_for(charger_entry_id)
-        if self._cut_took_on_reading(charger_entry_id, decision, written_a, site_read_at):
+        if self._cut_took_on_reading(charger_entry_id, decision, written_a, site_read_at, fresh, phases_read_at):
             self._log_active_control_outcome(charger_entry_id, decision, outcome="held", detail="held_same_reading")
             return
         damping = damper.consider(
@@ -3138,7 +3160,7 @@ class SiteCapacityController:
         )
         if write.written or write.outcome == REGULATED_STOPPED:
             # A cut, whatever was on the charger before (a first write knows no previous value): this reading made it.
-            guard.note_cut_reading(site_read_at)
+            guard.note_cut_reading(site_read_at, phases_read_at)
 
     async def _async_apply_magnitude_raise(
         self,
@@ -4395,6 +4417,10 @@ class SiteCapacityController:
         if age is None:
             return None
         return dt_util.utcnow().timestamp() - age
+
+    def _phases_read_at(self, fresh: SiteCapacityResult) -> dict[PhaseName, float | None]:
+        """When each phase's own reading was taken (`_phase_read_at`), epoch seconds."""
+        return {phase: self._phase_read_at(fresh, phase) for phase in PHASES}
 
     @staticmethod
     def _charger_read_at(decision: RegulatorDecision) -> float | None:

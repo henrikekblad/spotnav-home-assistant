@@ -180,6 +180,9 @@ class RegulatorDecision:
     # Held at its minimum, not paused, in an import overload because a switch-only charger on a phase it shares is
     # paused for the rest (`allocate_regulator_decisions`): paused after all if that pause cannot be sent.
     pause_if_switched_pause_fails: bool = False
+    # The phases over the limit on the headroom this decision was made on (the site's, or what the chargers decided
+    # before it left): each of them asks for the cut on its own reckoning, not only the limiting one.
+    overloaded_phases: frozenset[PhaseName] = frozenset()
 
 
 def is_import_overload(decision: RegulatorDecision) -> bool:
@@ -603,7 +606,14 @@ def decide_charging_current(
             voltage_by_phase=voltage_by_phase,
         ):
             return RegulatorDecision(None, "active_overload_direction_unclear_no_reliable_action", limiting_phase, basis)
-        return RegulatorDecision(proposed, reason, limiting_phase, basis, overload=proposed is not None)
+        return RegulatorDecision(
+            proposed,
+            reason,
+            limiting_phase,
+            basis,
+            overload=proposed is not None,
+            overloaded_phases=frozenset(overloaded_phases),
+        )
 
     first_measured = request.measured_current_a.get(phases[0]).value or 0.0
     is_increase = request.requested_current_a > first_measured
@@ -698,7 +708,14 @@ def decide_switched_load(
             voltage_by_phase=voltage_by_phase,
         ):
             return RegulatorDecision(None, "active_overload_direction_unclear_no_reliable_action", limiting_phase, basis)
-        return RegulatorDecision(0.0, "switched_load_paused_for_import_overload", limiting_phase, basis, overload=True)
+        return RegulatorDecision(
+            0.0,
+            "switched_load_paused_for_import_overload",
+            limiting_phase,
+            basis,
+            overload=True,
+            overloaded_phases=frozenset(overloaded),
+        )
     if drawing or not request.requested_current_a:
         return RegulatorDecision(draws, "no_change_requested", None, basis)
     # On, and not drawing yet: its whole switched current where every phase has room for it.
@@ -766,7 +783,9 @@ def magnitude_overload_lowering(
         # A pause, but kept under this reason: only its own apply path writes it (it needs no signed power). A
         # charger that can only be switched cannot be lowered: any lowering the overload calls for is its pause.
         proposed = 0.0
-    return RegulatorDecision(proposed, MAGNITUDE_LOWERING_REASON, limiting_phase, basis)
+    return RegulatorDecision(
+        proposed, MAGNITUDE_LOWERING_REASON, limiting_phase, basis, overloaded_phases=frozenset(ceilings)
+    )
 
 
 def magnitude_decision(

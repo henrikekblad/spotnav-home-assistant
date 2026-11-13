@@ -421,6 +421,8 @@ class YieldStepper:
         phases = observation.phases
         site = observation.site_current_a
         delivered = observation.delivered_current_a
+        # This observation's widening only: an observation with no basis leaves none of an earlier one's behind.
+        self._band_extra_a = {}
 
         # 1. No basis: never act on data the raw decision could not use.
         if (

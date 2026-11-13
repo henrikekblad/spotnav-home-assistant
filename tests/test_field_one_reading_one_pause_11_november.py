@@ -232,6 +232,48 @@ async def test_the_next_site_reading_that_still_shows_the_overload_pauses_as_bef
     assert [call.data.get("entity_id") for call in turn_off] == ["switch.next_charger"]
 
 
+async def test_a_newer_overload_on_another_phase_is_cut_at_once(hass: HomeAssistant, freezer) -> None:
+    """The hold is on, L1 has not reported since the cut, and L2 reports a new overload of its own: 24 A, 4 A over
+    with the car at 8.45 A, 4.45 A left on it, below the minimum. L1's stale reading, reckoned against the car's new
+    current, stays the limiting phase (2.4 A left); the cut is not held on it, and the pause goes out at once."""
+    charger, configure_calls, turn_off, site = await _night(hass, freezer, "newer")
+    freezer.tick(timedelta(seconds=4))
+    _charger_reads(hass, "newer_charger", _CAR_AFTER_CUT)
+    await _tick(hass)
+    assert site.regulator_decision_log[-1]["detail"] == "held_same_reading"
+    assert turn_off == []
+
+    freezer.tick(timedelta(seconds=2))
+    set_current_sensor(hass, "sensor.newer_site_l2", 24.0)
+    await _tick(hass)
+    decision = site.regulator_decisions[charger.entry_id]
+    assert (decision.proposed_current_a, decision.reason, decision.limiting_phase) == (
+        0.0,
+        "paused_safe_current_below_charger_minimum",
+        "L1",
+    )
+    assert decision.overloaded_phases == {"L1", "L2"}
+    assert [call.data.get("entity_id") for call in turn_off] == ["switch.newer_charger"]
+
+
+async def test_a_newer_reading_of_a_phase_under_the_limit_keeps_the_hold(hass: HomeAssistant, freezer) -> None:
+    """L2 reports again, now under the limit: nothing new is over, and the cut on L1's reading stays held."""
+    charger, configure_calls, turn_off, site = await _night(hass, freezer, "under")
+    freezer.tick(timedelta(seconds=4))
+    _charger_reads(hass, "under_charger", _CAR_AFTER_CUT)
+    await _tick(hass)
+    assert turn_off == []
+
+    freezer.tick(timedelta(seconds=2))
+    set_current_sensor(hass, "sensor.under_site_l2", 19.0)
+    await _tick(hass)
+    decision = site.regulator_decisions[charger.entry_id]
+    assert (decision.proposed_current_a, decision.reason) == (0.0, "paused_safe_current_below_charger_minimum")
+    assert site.regulator_decision_log[-1]["detail"] == "held_same_reading"
+    assert _assigned(configure_calls)[-2:] == [18, 9]
+    assert turn_off == []
+
+
 async def test_a_reading_older_than_the_maximum_age_is_left_to_the_stale_handling(hass: HomeAssistant, freezer) -> None:
     """The hold never outlives the site reading: once it is older than `max_age_s` the stale handling decides as
     before, nothing on an unusable reading, then the charger stepped to its minimum when the measurement has been
@@ -263,7 +305,7 @@ async def test_a_reading_older_than_the_maximum_age_is_left_to_the_stale_handlin
 def test_the_guard_holds_a_cut_again_only_where_the_charger_shows_the_cut_took() -> None:
     guard = StepGuard()
     guard.note_write(now=100.0, previous_a=18.0, written_a=9.0, site_read_at=99.0)
-    took = dict(site_read_at=99.0, written_a=9.0, written_at=100.0)
+    took = dict(site_read_at=99.0, written_a=9.0, written_at=100.0, over_read_at=[("L1", 99.0)])
     # Every phase read since the cut at or below what was written plus the step: held.
     assert guard.cut_took_on_reading(readings=[(8.77, 104.0), (8.45, 104.0), (7.86, 104.0)], **took)
     assert guard.cut_took_on_reading(readings=[(9.0 + UP_MARGIN_A, 104.0)], **took)
@@ -288,8 +330,34 @@ def test_the_guard_holds_a_cut_again_only_where_the_charger_shows_the_cut_took()
     raised.note_write(now=100.0, previous_a=18.0, written_a=9.0, site_read_at=99.0)
     raised.note_write(now=110.0, previous_a=9.0, written_a=16.0, site_read_at=None)
     assert not raised.cut_took_on_reading(
-        site_read_at=99.0, written_a=16.0, written_at=110.0, readings=[(15.5, 114.0)]
+        site_read_at=99.0, written_a=16.0, written_at=110.0, readings=[(15.5, 114.0)], over_read_at=[]
     )
     assert not guard.cut_took_on_reading(readings=[(8.0, None)], **took)
     assert not guard.cut_took_on_reading(readings=[(None, 104.0)], **took)
     assert not guard.cut_took_on_reading(readings=[], **took)
+
+
+def test_the_guard_never_holds_a_cut_while_a_phase_over_the_limit_has_a_newer_reading() -> None:
+    guard = StepGuard()
+    guard.note_write(now=100.0, previous_a=18.0, written_a=9.0, site_read_at=99.0)
+    took = dict(site_read_at=99.0, written_a=9.0, written_at=100.0, readings=[(8.77, 104.0)])
+    # The phases over the limit read no later than the cut's reading: held.
+    assert guard.cut_took_on_reading(**took, over_read_at=[("L1", 99.0), ("L2", 98.0)])
+    # One of them read since: its overload is new, cut at once. An unknown time is taken as newer.
+    assert not guard.cut_took_on_reading(**took, over_read_at=[("L1", 99.0), ("L2", 103.0)])
+    assert not guard.cut_took_on_reading(**took, over_read_at=[("L1", 99.0), ("L2", None)])
+    # Each phase's own reading the cut was decided on is the one compared: a phase that read later than the limiting
+    # one before the cut went out shows nothing new on that same reading, and something new on its next one.
+    snapshot = StepGuard()
+    snapshot.note_write(now=100.0, previous_a=18.0, written_a=9.0, site_read_at=99.0)
+    snapshot.note_cut_reading(99.0, {"L1": 99.0, "L2": 99.6, "L3": None})
+    assert snapshot.cut_took_on_reading(**took, over_read_at=[("L1", 99.0), ("L2", 99.6)])
+    assert not snapshot.cut_took_on_reading(**took, over_read_at=[("L1", 99.0), ("L2", 103.0)])
+    assert snapshot.cut_took_on_reading(**took, over_read_at=[("L3", 98.0)])
+    assert not snapshot.cut_took_on_reading(**took, over_read_at=[("L3", 99.5)])
+    # A cut that `note_write` alone records compares with the cut's own reading again.
+    snapshot.note_write(now=120.0, previous_a=9.0, written_a=8.0, site_read_at=110.0)
+    assert not snapshot.cut_took_on_reading(
+        **{**took, "site_read_at": 110.0, "written_a": 8.0, "written_at": 120.0, "readings": [(7.9, 124.0)]},
+        over_read_at=[("L2", 110.5)],
+    )
