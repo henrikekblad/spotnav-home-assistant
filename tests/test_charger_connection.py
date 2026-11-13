@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
 from homeassistant.core import HomeAssistant
 
-from custom_components.spotnav.api.dashboard import serialize_connection
+from custom_components.spotnav.api.dashboard import serialize_connection, shown_connection
 from custom_components.spotnav.const import (
     CONF_CHARGE_CONTROL,
     CONF_CHARGER_PLATFORM,
@@ -238,6 +240,62 @@ async def test_an_ocpp_connector_status_is_read_from_the_connector(hass: HomeAss
 
 
 def test_the_dashboard_field() -> None:
-    assert serialize_connection((CHARGING, "sensor.s")) == {"state": "charging", "source": "sensor.s"}
-    assert serialize_connection((UNKNOWN, None)) == {"state": "unknown", "source": None}
-    assert serialize_connection(("bogus", "")) == {"state": "unknown", "source": None}
+    assert serialize_connection((CHARGING, "sensor.s")) == {"state": "charging", "source": "sensor.s", "shown": "charging"}
+    assert serialize_connection((UNKNOWN, None)) == {"state": "unknown", "source": None, "shown": "unknown"}
+    assert serialize_connection(("bogus", "")) == {"state": "unknown", "source": None, "shown": "unknown"}
+    assert serialize_connection((FINISHED, None), shown="waiting") == {"state": "finished", "source": None, "shown": "waiting"}
+
+
+_NOW = datetime(2026, 11, 13, 19, 0, tzinfo=timezone.utc)
+_LATER = (_NOW + timedelta(hours=2), _NOW + timedelta(hours=3))
+
+
+def _capture(state: str = FINISHED, **changes: Any) -> SimpleNamespace:
+    """The facts `shown_connection` reads: a finished charger, a 45 % car planned to 95 %, a window at 21:00."""
+    facts: dict[str, Any] = {
+        "connection": (state, None),
+        "generated_at": _NOW,
+        "charge_progress": SimpleNamespace(state="normal"),
+        "live": SimpleNamespace(car_ended_wait=None, hold_until=None),
+        "guest_done": False,
+        "target": None,
+        "snapshot": None,
+        "soc": SimpleNamespace(value=45.0, need_kwh=40.0, target_percent=95.0, vehicle_max_percent=None),
+        "execution": SimpleNamespace(paused=False),
+        "plan": SimpleNamespace(windows=[_LATER]),
+    }
+    facts.update(changes)
+    return SimpleNamespace(**facts)
+
+
+def test_a_finished_charger_waiting_for_the_plan_is_shown_waiting() -> None:
+    """The field case: HALO says Finishing after SpotNav stopped the transaction to wait for 21:15."""
+    assert shown_connection(_capture()) == "waiting"
+    # A pause holds the car too, with no window ahead.
+    assert shown_connection(_capture(plan=None, execution=SimpleNamespace(paused=True))) == "waiting"
+    assert shown_connection(_capture(plan=None, live=SimpleNamespace(car_ended_wait=None, hold_until=_LATER[0]))) == "waiting"
+
+
+def test_finished_is_shown_when_the_car_is_done() -> None:
+    assert shown_connection(_capture(charge_progress=SimpleNamespace(state="vehicle_not_requesting_current"))) == "finished"
+    assert shown_connection(_capture(live=SimpleNamespace(car_ended_wait={"soc_percent": 80}, hold_until=None))) == "finished"
+    assert shown_connection(_capture(guest_done=True)) == "finished"
+    assert shown_connection(_capture(target=SimpleNamespace(stopped_at=_NOW))) == "finished"
+    assert shown_connection(_capture(snapshot=SimpleNamespace(state="nothing_to_charge", proposal=None))) == "finished"
+    assert shown_connection(
+        _capture(soc=SimpleNamespace(value=95.0, need_kwh=None, target_percent=95.0, vehicle_max_percent=None))
+    ) == "finished"
+    assert shown_connection(
+        _capture(soc=SimpleNamespace(value=50.0, need_kwh=0.0, target_percent=95.0, vehicle_max_percent=None))
+    ) == "finished"
+
+
+def test_finished_with_nothing_held_is_the_chargers_word() -> None:
+    """Not done, but SpotNav holds nothing (a past window, no pause): the charger's own finish stands."""
+    past = (_NOW - timedelta(hours=2), _NOW - timedelta(hours=1))
+    assert shown_connection(_capture(plan=SimpleNamespace(windows=[past]))) == "finished"
+
+
+@pytest.mark.parametrize("state", [CHARGING, CONNECTED, PAUSED, DISCONNECTED, ERROR, UNKNOWN])
+def test_other_states_are_shown_as_they_are(state: str) -> None:
+    assert shown_connection(_capture(state)) == state

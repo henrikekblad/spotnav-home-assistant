@@ -71,6 +71,7 @@
     "vehicle": null
   },
   "connection": {
+    "shown": "unknown",
     "source": null,
     "state": "unknown"
   },

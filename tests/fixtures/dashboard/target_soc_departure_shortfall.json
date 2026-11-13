@@ -43,6 +43,7 @@
     "vehicle": 3
   },
   "connection": {
+    "shown": "unknown",
     "source": null,
     "state": "unknown"
   },

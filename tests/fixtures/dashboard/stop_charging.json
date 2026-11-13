@@ -43,6 +43,7 @@
     "vehicle": null
   },
   "connection": {
+    "shown": "charging",
     "source": null,
     "state": "charging"
   },
