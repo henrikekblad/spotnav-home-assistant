@@ -10,6 +10,7 @@ import {
   chartSeries,
   DEFAULT_CHART_AXIS,
   localDayKey,
+  msOfDay,
   plannedBands,
   type ChartAxisMode,
   type ChartSeries,
@@ -249,6 +250,11 @@ export interface CardModel {
   dashboardSettings: SettingsRecord | null;
   /** Today's local date in the market's zone (`YYYY-MM-DD`), or `null` while the zone is unknown. */
   today: string | null;
+  /**
+   * The departure the charger's calendar made the plan's, as its local date and wall time in the market's zone;
+   * `null` when no calendar moved it (or the zone is unknown). The Plan cell shows it in place of the stored time.
+   */
+  calendarDeparture: { date: string; time: string } | null;
   dashboardFiscal: Fiscal | null;
   status: string | null;
   /** The codes of the lines the status headline is made of: what `issues` can be told to repeat. */
@@ -952,6 +958,7 @@ export function buildModel(input: BuildInput): CardModel {
     chargerName,
     dashboardSettings: dashboard.settings,
     today: zone ? localDayKey(input.nowMs, format.timeZone) : null,
+    calendarDeparture: zone ? calendarDepartureOf(dashboard, format.timeZone) : null,
     dashboardFiscal: dashboard.fiscal,
     status: statusText(status, format, input.nowMs, dashboard.planning?.publication_at ?? null),
     statusCodes: statusLineCodes(status),
@@ -1013,4 +1020,19 @@ export function buildModel(input: BuildInput): CardModel {
     setup: setupRowsOf(dashboard.setup),
     technicalCodes,
   };
+}
+
+/** The departure the charger's calendar made the plan's, in the market's zone, or `null`. */
+export function calendarDepartureOf(dashboard: Dashboard, timeZone: string): { date: string; time: string } | null {
+  const block = dashboard.departure_calendar;
+  if (block === null || block.state !== "used" || block.departure === null || dashboard.settings?.departure_enabled !== true) {
+    return null;
+  }
+  const instant = Date.parse(block.departure);
+  if (!Number.isFinite(instant)) {
+    return null;
+  }
+  const minutes = Math.floor(msOfDay(instant, timeZone) / 60_000);
+  const time = `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
+  return { date: localDayKey(instant, timeZone), time };
 }

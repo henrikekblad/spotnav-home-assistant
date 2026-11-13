@@ -71,6 +71,7 @@ from .auto_settings import (
     AutoSettingsError,
     AutoSettingsStore,
     DEFAULT_CONSUMPTION_KWH_PER_10KM,
+    DRIVER_MANUAL_KWH,
     DRIVER_TARGET_SOC,
     GridTariff,
     EnergyBaseline,
@@ -80,6 +81,8 @@ from .auto_settings import (
     STRATEGY_HYBRID,
     STRATEGY_SOLAR,
 )
+from .calendar_departure import calendar_departure, CalendarDeparture
+from .calendar_reader import CalendarReader, REFRESH_S as CALENDAR_REFRESH_S
 from .grid_voltage import voltage_between_phases_v
 from .learned_energy import (
     EnergySampler,
@@ -120,6 +123,21 @@ _LOGGER = logging.getLogger(__name__)
 
 #: Stands in for a request's `now` when telling whether a preview failure repeats: the clock moves every call.
 _FAILURE_CLOCK: Final = datetime(2000, 1, 1, tzinfo=timezone.utc)
+
+
+def _calendar_used(found: CalendarDeparture, applied: str | None) -> dict[str, Any]:
+    """`calendar_status`'s fields for a departure the calendar makes the plan's."""
+    event = found.event
+    target = found.target
+    return {
+        "state": "used",
+        "departure": found.instant.astimezone(timezone.utc).isoformat(),
+        "summary": None if event is None else (event.summary or None),
+        "all_day": bool(event is not None and event.all_day),
+        "target_percent": None if target is None else target.percent,
+        "target_kwh": None if target is None else target.kwh,
+        "target_used": applied,
+    }
 
 
 #: A guest car with no departure is charged within this long of the calculation (`vehicles/guest.py`).
@@ -754,6 +772,11 @@ class AutoPlannerController:
         self._energy_sampler = None if learned_energy is None else EnergySampler(learned_energy)
         self._watch_cancel: Callable[[], None] | None = None
         self._watch_due: datetime | None = None
+        # The departure calendar (`planning/calendar_departure.py`), read here; the appointment to read it again,
+        # and what the last calculation made of it (`calendar_status`).
+        self._calendar = CalendarReader(hass, self._now)
+        self._calendar_cancel: Callable[[], None] | None = None
+        self._calendar_status: dict[str, Any] | None = None
 
     async def async_start(self) -> AutoSnapshot:
         """Bring the controller in line with the stored settings, once."""
@@ -773,8 +796,112 @@ class AutoPlannerController:
         return entry_source_for(self._hass, self._entry_id)
 
     def _effective(self, settings: AutoSettings) -> AutoSettings:
-        """[settings] with the price source's area and fees: what every price reading here plans with."""
-        return with_source(settings, self._source())
+        """[settings] with the price source's area and fees, and the departure calendar's departure: what every
+        price reading here plans with. Takes the stored record (applying the calendar twice is not the same)."""
+        return self._with_calendar(with_source(settings, self._source()))
+
+    def _with_calendar(self, settings: AutoSettings, *, record: bool = False) -> AutoSettings:
+        """[settings] with the departure the calendar makes the plan's, from the events last read
+        (`planning/calendar_departure.py`); unchanged when it makes none.
+
+        Precedence: the departure switch off or a guest car, nothing (the calendar is not read); a one-off date the
+        person chose that is still ahead wins; else the calendar's departure (an event replaces the daily departure
+        on its day) as a dated departure, with the event's target where it fits the charger's driver; a calendar
+        that cannot be read leaves the daily departure. `record` keeps what was made of it for `calendar_status`.
+        """
+        entity_id = settings.departure_calendar
+        if entity_id is None:
+            if record:
+                self._calendar_status = None
+            return settings
+        status: dict[str, Any] = {"entity_id": entity_id, "state": "off"}
+        updated = settings
+        entry = None if not settings.area_id else self._manager.catalogue_snapshot().area(settings.area_id)
+        now = self._now()
+        if not settings.departure_enabled or is_guest(settings) or entry is None:
+            pass
+        elif settings.departure_date is not None and self._effective_departure_date(settings, entry, now) == (
+            settings.departure_date
+        ):
+            status["state"] = "date"
+        else:
+            events = self._calendar.events(entity_id)
+            if events is None:
+                status["state"] = "unavailable"
+            else:
+                found = calendar_departure(
+                    events, now=now, tz=entry.tz, daily=settings.departure, weekdays=settings.departure_weekdays
+                )
+                if found is None:
+                    status["state"] = "daily"
+                else:
+                    updated, applied = self._calendar_overlay(settings, found)
+                    status.update(_calendar_used(found, applied))
+        if record:
+            self._calendar_status = status
+        return updated
+
+    @staticmethod
+    def _calendar_overlay(settings: AutoSettings, found: CalendarDeparture) -> tuple[AutoSettings, str | None]:
+        """[settings] planning for `found`, and which of its target was used (`percent`, `kwh`, `None`)."""
+        updated = replace(settings, departure=found.at, departure_date=found.day)
+        target = found.target
+        if target is None:
+            return updated, None
+        if settings.driver == DRIVER_TARGET_SOC and target.percent is not None:
+            return replace(updated, target=replace(updated.target, target_percent=target.percent)), "percent"
+        if settings.driver == DRIVER_MANUAL_KWH and target.kwh is not None:
+            return replace(updated, requested_kwh=target.kwh, fill_to_limit=False), "kwh"
+        return updated, None
+
+    def calendar_status(self) -> dict[str, Any] | None:
+        """What the last calculation made of the departure calendar, for the dashboard (`api/dashboard.py`), or
+        `None` without one: `entity_id`, `state` (`used`, `daily`, `date`, `unavailable` or `off`) and, when `used`,
+        `departure` (the instant), `summary`, `all_day`, `target_percent`, `target_kwh` and `target_used`."""
+        return None if self._calendar_status is None else dict(self._calendar_status)
+
+    async def _async_read_calendar(self, settings: AutoSettings, *, force: bool = False) -> bool:
+        """Read the chosen calendar when due; whether its events changed. Nothing without one, with the
+        departure off or for a guest car."""
+        entity_id = settings.departure_calendar
+        if entity_id is None or not settings.departure_enabled or is_guest(settings):
+            return False
+        return await self._calendar.async_refresh(entity_id, force=force)
+
+    def _arm_calendar(self, settings: AutoSettings) -> None:
+        """One appointment to read the calendar again (`CALENDAR_REFRESH_S`), and plan again when what it makes the
+        departure changed."""
+        self._cancel_calendar()
+        if self._shutdown or settings.departure_calendar is None or not settings.departure_enabled:
+            return
+        generation = self._generation
+        target = self._now() + timedelta(seconds=CALENDAR_REFRESH_S)
+
+        @callback
+        def due(_now: datetime) -> None:
+            self._calendar_cancel = None
+            if self._shutdown or generation != self._generation:
+                return
+            self._hass.async_create_task(self._async_calendar_due(generation))
+
+        self._calendar_cancel = self._manager.schedule_at(target, due)
+
+    async def _async_calendar_due(self, generation: int) -> None:
+        if self._shutdown or generation != self._generation:
+            return
+        stored = self._store.settings(self._entry_id)
+        before = self._calendar_status
+        await self._async_read_calendar(stored, force=True)
+        self._with_calendar(with_source(stored, self._source()), record=True)
+        if self._calendar_status != before:
+            await self._on_area_changed(generation)
+        else:
+            self._arm_calendar(stored)
+
+    def _cancel_calendar(self) -> None:
+        if self._calendar_cancel is not None:
+            self._calendar_cancel()
+            self._calendar_cancel = None
 
     @staticmethod
     def _key_of(source: PriceSource | None) -> tuple[str | None, str, str] | None:
@@ -811,6 +938,7 @@ class AutoPlannerController:
         self._drop_subscription()
         self._cancel_wake()
         self._cancel_departure()
+        self._cancel_calendar()
         self._cancel_connection()
         self._drop_energy_watch()
         self._cancel_unread_notice()
@@ -916,6 +1044,7 @@ class AutoPlannerController:
         armed or applied, no listener hears of it and the charger and the car are asked nothing. So a person can
         see what a Save would plan before saving it (`api/plan_preview.py`).
         """
+        await self._async_read_calendar(settings)
         settings = self._effective(settings)
         if self._shutdown:
             return self._fresh_snapshot(settings, "planning_unavailable", "shutdown", self._now())
@@ -1204,7 +1333,8 @@ class AutoPlannerController:
         attempt = self._attempt
         # The price source's area and fees, read once per calculation: everything below plans with them.
         source = self._source()
-        settings = with_source(settings, source)
+        await self._async_read_calendar(settings)
+        settings = self._with_calendar(with_source(settings, source), record=True)
         self._price_revision = None if source is None else source.plan_revision
         self._lapse_target_stop(settings)
         snapshot = await self._compute(settings, attempt)
@@ -1237,6 +1367,7 @@ class AutoPlannerController:
         self._arm_energy_watch(settings)
         snapshot = await self._compute_plan(settings, attempt, energy)
         self._arm_departure(settings)
+        self._arm_calendar(settings)
         self._arm_charge_watch()
         return replace(snapshot, **energy) if energy else snapshot
 
@@ -2678,7 +2809,8 @@ class AutoPlannerController:
         """
         if self._shutdown or self._executor is None:
             return
-        settings = self._store.settings(self._entry_id)
+        # The amount the plan is for: an event's own amount where the calendar gives one.
+        settings = self._effective(self._store.settings(self._entry_id))
         if settings.driver == DRIVER_TARGET_SOC:
             return
         stored = self._baseline()
@@ -2814,7 +2946,7 @@ class AutoPlannerController:
             met = replace(
                 baseline,
                 met_at=self._now(),
-                met_requested_kwh=self._store.settings(self._entry_id).requested_kwh,
+                met_requested_kwh=self._effective(self._store.settings(self._entry_id)).requested_kwh,
             )
             self._live_baseline = met
             await self._save_baseline(met)

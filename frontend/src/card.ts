@@ -149,6 +149,7 @@ import {
   actionErrorKey,
   admittedAction,
   buildModel,
+  calendarDepartureOf,
   currentRangeFor,
   socFor,
   plannedCarNameFor,
@@ -171,7 +172,15 @@ import {
   type SettingsBody,
   type SettingsRecord,
 } from "./types";
-import { decodeDashboard, decodePlanPreview, referencePictures, type Dashboard, type Soc, type Vehicle } from "./validate";
+import {
+  decodeDashboard,
+  decodePlanPreview,
+  referencePictures,
+  type Dashboard,
+  type DepartureCalendarBlock,
+  type Soc,
+  type Vehicle,
+} from "./validate";
 import { PreviewScheduler } from "./plan-preview";
 import { OUTCOME_POLL_MS, outcomeSettled, outcomeWatchFor, type OutcomeWatch } from "./charge-bar";
 import { parseCardConfig, type CardConfig } from "./view";
@@ -877,6 +886,8 @@ export class SpotnavCard extends HTMLElement {
         guest: this.guestPlanned(),
         days: this.departureDays(),
         importTarget: this.siteHasImportTarget(),
+        calendar: this.departureCalendar(),
+        calendarDeparture: this.calendarDeparture(),
       });
     } catch (error) {
       if (!this.editorIsCurrent(generation, operation)) {
@@ -1187,6 +1198,20 @@ export class SpotnavCard extends HTMLElement {
     return this.cardState.kind === "ready" && (this.cardState.dashboard.grid_tariff?.demand?.import_target_kw ?? null) !== null;
   }
 
+  /** The departure calendar block, for the Plan dialog's picker; `null` without one. */
+  private departureCalendar(): DepartureCalendarBlock | null {
+    return this.cardState.kind === "ready" ? this.cardState.dashboard.departure_calendar : null;
+  }
+
+  /** The departure the calendar made the plan's, in the market's zone; `null` when none or the zone is unknown. */
+  private calendarDeparture(): { date: string; time: string } | null {
+    if (this.cardState.kind !== "ready") {
+      return null;
+    }
+    const zone = this.cardState.dashboard.market?.timezone ?? "";
+    return zone === "" ? null : calendarDepartureOf(this.cardState.dashboard, zone);
+  }
+
   private departureDays(): DepartureDays | null {
     return this.cardState.kind === "ready"
       ? departureDays(this.cardState.dashboard.market?.timezone ?? "", Date.now())
@@ -1426,6 +1451,8 @@ export class SpotnavCard extends HTMLElement {
         guest: this.guestPlanned(),
         days: this.departureDays(),
         importTarget: this.siteHasImportTarget(),
+        calendar: this.departureCalendar(),
+        calendarDeparture: this.calendarDeparture(),
       });
     } catch (error) {
       if (!this.editorIsCurrent(generation, operation)) {

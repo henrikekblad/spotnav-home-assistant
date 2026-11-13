@@ -194,6 +194,7 @@ const OPTIONAL_RECORD_KEYS = [
   "identify_camera",
   "users_change_plan",
   "if_not_ready",
+  "departure_calendar",
 ] as const;
 /** Every weekday, Monday (1) to Sunday (7): what a record without `departure_weekdays` means. */
 export const ALL_WEEKDAYS: readonly number[] = [1, 2, 3, 4, 5, 6, 7];
@@ -370,7 +371,17 @@ export function decodeSettingsRecord(raw: unknown): SettingsRecord {
       ? { users_change_plan: booleanValue(source, "users_change_plan") }
       : {}),
     ...(present.includes("if_not_ready") ? { if_not_ready: oneOf(source, "if_not_ready", IF_NOT_READY) } : {}),
+    ...(present.includes("departure_calendar") ? { departure_calendar: calendarOrNull(source) } : {}),
   };
+}
+
+/** `departure_calendar`: `null`, or a calendar entity id. */
+function calendarOrNull(source: Record<string, unknown>): string | null {
+  const value = source["departure_calendar"];
+  if (value === null) {
+    return null;
+  }
+  return typeof value === "string" && /^calendar\.\S+$/.test(value) ? value : bad();
 }
 
 /**
@@ -512,6 +523,7 @@ export function encodeBody(record: SettingsRecord): SettingsBody {
     ...(record.identify_camera === undefined ? {} : { identify_camera: copyCamera(record.identify_camera) }),
     ...(record.users_change_plan === undefined ? {} : { users_change_plan: record.users_change_plan }),
     ...(record.if_not_ready === undefined ? {} : { if_not_ready: record.if_not_ready }),
+    ...(record.departure_calendar === undefined ? {} : { departure_calendar: record.departure_calendar }),
   };
 }
 
@@ -665,6 +677,8 @@ export interface SettingsFormValues {
   vehicleId: string;
   /** The plan's `if_not_ready`, `""` (or absent) against a backend without it. */
   ifNotReady?: string;
+  /** The departure calendar's entity id, `""` for none; absent against a backend without it. */
+  departureCalendar?: string;
 }
 
 export function formFromRecord(record: SettingsRecord): SettingsFormValues {
@@ -681,6 +695,7 @@ export function formFromRecord(record: SettingsRecord): SettingsFormValues {
       record.target.target_percent === null ? "" : String(record.target.target_percent),
     vehicleId: record.target.vehicle_id ?? "",
     ...(record.if_not_ready === undefined ? {} : { ifNotReady: record.if_not_ready }),
+    ...(record.departure_calendar === undefined ? {} : { departureCalendar: record.departure_calendar ?? "" }),
   };
 }
 
@@ -1084,6 +1099,19 @@ export function replacementFor(
       changed = changed || values.ifNotReady !== record.if_not_ready;
     }
   }
+  // The departure calendar goes only to a backend that has it, and only when the reader moved it.
+  if (
+    (kind === "deadline" || kind === "plan") &&
+    record.departure_calendar !== undefined &&
+    values.departureCalendar !== undefined
+  ) {
+    const chosen = values.departureCalendar === "" ? null : values.departureCalendar;
+    const shown = opened === null ? record.departure_calendar : (opened.departure_calendar ?? null);
+    if (chosen !== shown) {
+      next.departure_calendar = chosen;
+      changed = changed || chosen !== record.departure_calendar;
+    }
+  }
   return { ok: true, body: next, changed };
 }
 
@@ -1125,6 +1153,8 @@ export function settingsSummaries(
   settings: SettingsRecord | null,
   /** Today's local date in the market's zone, when known: names the day as today/tomorrow and drops a past one. */
   today: string | null = null,
+  /** The departure the charger's calendar made the plan's (`model.calendarDeparture`), shown in place of the time. */
+  calendar: { date: string; time: string } | null = null,
 ): SettingsSummaries {
   const energy = settings?.requested_kwh ?? null;
   const amps = settings?.amps ?? null;
@@ -1136,7 +1166,9 @@ export function settingsSummaries(
         : energyAmount(language, energy),
     deadline:
       settings?.departure_enabled === true && time !== null && WALL_TIME.test(time)
-        ? departureText(language, settings.departure_date, time, today)
+        ? calendar !== null
+          ? departureText(language, calendar.date, calendar.time, today)
+          : departureText(language, settings.departure_date, time, today)
         : translate(language, "settings.deadline.none"),
     current:
       amps === null || !Number.isFinite(amps)
@@ -1165,8 +1197,9 @@ export function planSummaryParts(
   language: Language,
   settings: SettingsRecord | null,
   today: string | null = null,
+  calendar: { date: string; time: string } | null = null,
 ): string[] {
-  const summaries = settingsSummaries(language, settings, today);
+  const summaries = settingsSummaries(language, settings, today, calendar);
   // A target-SoC charger leads with the target (`80 %`), a manual one with its energy (`20 kWh`).
   const first =
     settings?.driver === SETTINGS_DRIVER_TARGET_SOC

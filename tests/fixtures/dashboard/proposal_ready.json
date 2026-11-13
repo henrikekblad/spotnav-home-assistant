@@ -47,6 +47,7 @@
       6,
       7
     ],
+    "departure_calendar": null,
     "driver": "manual_kwh",
     "target": {
       "vehicle_id": null,

@@ -657,6 +657,17 @@ def _stored_instant(value: Any, what: str) -> datetime | None:
     return parsed
 
 
+def is_calendar_entity(value: Any) -> bool:
+    """Whether `value` is shaped as a calendar entity id (`calendar.<object id>`); whether it exists is not asked."""
+    return (
+        isinstance(value, str)
+        and value.startswith("calendar.")
+        and len(value) > len("calendar.")
+        and value == value.strip()
+        and " " not in value
+    )
+
+
 #: Every day of the week, as ISO weekday numbers (Monday is 1, Sunday is 7): the daily departure's default.
 ALL_WEEKDAYS: tuple[int, ...] = (1, 2, 3, 4, 5, 6, 7)
 
@@ -693,6 +704,9 @@ class AutoSettings:
     #: day there is no departure and the plan runs to the next day in the set. A `departure_date` the person
     #: chose overrides it. Everything is the default, every day.
     departure_weekdays: tuple[int, ...] = ALL_WEEKDAYS
+    #: A Home Assistant calendar (`calendar.*`) whose events are departures (`planning/calendar_departure.py`): an
+    #: event replaces the daily departure on its day, and a target in its text is the plan's for it. `None`: none.
+    departure_calendar: str | None = None
     #: Suspends automatic execution; a paused charger keeps calculating. Whether it is
     #: still in force is answered by `pause.is_active_at(now)`.
     pause: PauseIntent = field(default_factory=PauseIntent)
@@ -801,6 +815,8 @@ class AutoSettings:
             or len(set(self.departure_weekdays)) != len(self.departure_weekdays)
         ):
             _refuse("invalid_departure", "departure_weekdays must be one or more different weekdays, 1 (Monday) to 7 (Sunday)")
+        if self.departure_calendar is not None and not is_calendar_entity(self.departure_calendar):
+            _refuse("invalid_departure", "departure_calendar must be a calendar entity id or absent")
         if not isinstance(self.execution_paused, bool):
             _refuse("invalid_pause", "execution_paused must be a boolean")
         seen: set[str] = set()
@@ -882,6 +898,9 @@ class AutoSettings:
         if self.departure_weekdays != ALL_WEEKDAYS:
             # Additive too: written only when some weekday is left out.
             stored["departure_weekdays"] = list(self.departure_weekdays)
+        if self.departure_calendar is not None:
+            # Additive: written only once chosen.
+            stored["departure_calendar"] = self.departure_calendar
         if not self.notifications.is_default:
             # Additive as well: written only once a person chose something.
             stored["notifications"] = self.notifications.as_stored()
@@ -917,7 +936,7 @@ class AutoSettings:
             "a stored settings record",
             optional=frozenset(
                 {
-                    "departure_date", "departure_weekdays", "notifications", "fill_to_limit", "vehicle_ids",
+                    "departure_date", "departure_weekdays", "departure_calendar", "notifications", "fill_to_limit", "vehicle_ids",
                     "identify_mode", "identify_camera", "periods", "max_periods", "users_change_plan", "if_not_ready",
                 }
             ),
@@ -979,6 +998,7 @@ class AutoSettings:
             departure=departure,
             departure_date=departure_date,
             departure_weekdays=tuple(weekdays),
+            departure_calendar=stored.get("departure_calendar"),
             pause=PauseIntent.from_stored(stored["pause"]),
             driver=stored["driver"],
             target=TargetSocIntent.from_stored(stored["target"]),

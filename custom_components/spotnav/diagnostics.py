@@ -575,12 +575,16 @@ def _auto_price_section(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, An
             # The last look at an open window (expected and delivered kWh, and what was decided) and the power
             # the car is learned to draw (`planning/plan_watch.py`, `planning/learned_power.py`).
             plan_watch=controller.plan_watch_facts(),
+            # What the last calculation made of the departure calendar (`planning/calendar_departure.py`), without
+            # the event's title (it is the household's own text).
+            departure_calendar=_calendar_diagnostics(controller.calendar_status()),
         )
     if store is not None:
         stored = store.proposal(entry.entry_id)
         departure_date = store.settings(entry.entry_id).departure_date
         data["departure_date"] = None if departure_date is None else departure_date.isoformat()
         data["departure_weekdays"] = ",".join(str(day) for day in store.settings(entry.entry_id).departure_weekdays)
+        data["departure_calendar_chosen"] = store.settings(entry.entry_id).departure_calendar is not None
         if controller is None or data.get("proposal") is None:
             data["settings_revision"] = store.settings(entry.entry_id).revision
             data["proposal"] = (
@@ -684,3 +688,10 @@ def _capability_to_dict(snapshot: SiteCapabilitySnapshot) -> dict[str, Any]:
         "solar_capable": snapshot.solar.capable,
         "solar_reason": snapshot.solar.reason,
     }
+
+
+def _calendar_diagnostics(status: dict[str, Any] | None) -> dict[str, Any] | None:
+    """The departure calendar's status with the event's title left out, and the calendar named only by its kind."""
+    if status is None:
+        return None
+    return {key: value for key, value in status.items() if key not in ("summary", "entity_id")}
