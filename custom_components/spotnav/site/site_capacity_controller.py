@@ -136,6 +136,7 @@ from .measurement_source import (
 from .battery_probe import (
     BatteryProbe,
     car_minimum_power_w,
+    held_band_a,
     PROBE_IDLE_BELOW_A,
     PROBE_MAX_FUSE_FACTOR,
     within_held_band,
@@ -1381,6 +1382,8 @@ class SiteCapacityController:
             "limiting_phase": detail_phase or decision.limiting_phase,
             "battery_power_w": None if battery is None else battery.value,
             "site_current_a": dict(self.result.measured_phase_current_a),
+            # The battery's held band per phase on that reading, wider on a low measured voltage (`_held_bands_a`).
+            "held_band_a": {phase: round(band, 3) for phase, band in self._held_bands_a(self.result).items()},
             "charger_current_a": (
                 None
                 if delivered is None
@@ -3548,6 +3551,38 @@ class SiteCapacityController:
             self.config.get(CONF_SOLAR_PRIORITY, DEFAULT_SOLAR_PRIORITY) == SOLAR_PRIORITY_CAR_FIRST
         )
 
+    def _held_band_voltages_v(self, fresh: SiteCapacityResult) -> dict[PhaseName, float | None]:
+        """Each phase's voltage the held band may widen on (`battery_probe.held_band_extra_a`): only one the site
+        measures itself (derived mode, the phase's own voltage entity, never the nominal voltage that stands in for a
+        missing one), on a phase whose current, derived with it, is read as it must be for headroom (fresh, or
+        confirmed unchanged at a known age). `None` everywhere else, which leaves the band as it was."""
+        voltages: dict[PhaseName, float | None] = {phase: None for phase in PHASES}
+        if fresh.measurement_mode != MEASUREMENT_MODE_DERIVED:
+            return voltages
+        entities: dict[str, dict[str, str]] = self.config.get(CONF_DERIVED_ENTITIES) or {}
+        for phase in PHASES:
+            liveness = fresh.phase_liveness.get(phase)
+            if not (entities.get(phase) or {}).get("voltage") or not (
+                liveness == "fresh"
+                or (liveness == "confirmed_unchanged" and fresh.phase_age_s.get(phase) is not None)
+            ):
+                continue
+            voltages[phase] = fresh.phase_voltage_v.get(phase)
+        return voltages
+
+    def _held_bands_a(self, fresh: SiteCapacityResult) -> dict[PhaseName, float]:
+        """The held band per phase on this reading (`battery_probe.held_band_a`): the limit is what is measured plus
+        the uncredited margin (fuse less safety margin), the voltage `_held_band_voltages_v`'s."""
+        voltages = self._held_band_voltages_v(fresh)
+        bands: dict[PhaseName, float] = {}
+        for phase in PHASES:
+            measured = fresh.measured_phase_current_a.get(phase)
+            margin = fresh.measured_margin_a.get(phase)
+            bands[phase] = held_band_a(
+                None if measured is None or margin is None else measured + margin, voltages[phase]
+            )
+        return bands
+
     def _battery_covers_car(
         self,
         fresh: SiteCapacityResult,
@@ -3602,7 +3637,7 @@ class SiteCapacityController:
         ) or {}
         min_current_a = float(wiring.get("min_current_a", DEFAULT_MIN_CURRENT_A))
         phases = tuple(decision.basis.keys())
-        if not phases or not within_held_band(fresh.measured_margin_a, phases):
+        if not phases or not within_held_band(fresh.measured_margin_a, phases, self._held_bands_a(fresh)):
             return False
         return self._battery_covers_car(fresh, phases, min_current_a)
 
@@ -3618,7 +3653,7 @@ class SiteCapacityController:
         """Whether a lowering (an import overload's included) is only a grid-charging battery holding the grid at the
         limit, so the running car keeps its current: the band (`_battery_holds_grid_at_limit`) for an overload and for
         a grid read at the unverified ceiling. `car_first` with yield stepping,
-        the car charging at its minimum or above, every phase within `HELD_BAND_A` above the limit, and the battery
+        the car charging at its minimum or above, every phase within its band above the limit, and the battery
         charging, on a fresh reading, at least as hard as the cut would free (all of the car's minimum for a pause):
         it can take back what the car would give up, so lowering the car only fills the battery (the night of
         2026-11-01: 16 A to a pause in three and a half minutes, the battery growing to 12.5 kW). Nothing is verified
@@ -3639,7 +3674,7 @@ class SiteCapacityController:
             or requested < previous_setpoint - 1e-9
             or fresh.state != "observing"
             or charger_controller.charging is not True
-            or not within_held_band(fresh.measured_margin_a, phases)
+            or not within_held_band(fresh.measured_margin_a, phases, self._held_bands_a(fresh))
         ):
             return False
         # What the battery must be able to give up, on a fresh reading: the cut, all of the car's minimum for a pause.
@@ -3991,7 +4026,7 @@ class SiteCapacityController:
         if any(value is None or value >= PROBE_IDLE_BELOW_A for value in delivered_a):
             return False
         margins = fresh.measured_margin_a
-        if not within_held_band(margins, phases):
+        if not within_held_band(margins, phases, self._held_bands_a(fresh)):
             return False
         if min(margins[phase] for phase in phases if margins[phase] is not None) >= min_current_a:
             return False  # there is headroom for the minimum: the ordinary path restarts the car
@@ -4093,6 +4128,9 @@ class SiteCapacityController:
                 main_fuse_a=float(main_fuse_a) if main_fuse_a is not None else 0.0,
                 charger_charging=self._charger_reports_charging(charger_controller),
                 connector_status=self._connector_status(charger_controller),
+                voltage_v=(
+                    self._held_band_voltages_v(fresh) if observing else {phase: None for phase in PHASES}
+                ),
             )
             if verdict.state == "verifying":
                 if verdict.reason != "verifying":
@@ -4456,6 +4494,7 @@ class SiteCapacityController:
             battery_power_w=battery_power_w,
             battery_fresh=self._fresh_battery_w() is not None,
             limit_a=limit_a,
+            voltage_v=self._held_band_voltages_v(fresh),
             credit_allowed=(
                 self.config.get(CONF_SOLAR_PRIORITY, DEFAULT_SOLAR_PRIORITY)
                 == SOLAR_PRIORITY_CAR_FIRST
