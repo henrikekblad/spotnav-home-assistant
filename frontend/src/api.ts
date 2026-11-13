@@ -25,6 +25,7 @@ import type { EntityRequest, VehicleSocRequest } from "./entity-config";
 import type { SiteSettingsRequest } from "./site-settings";
 import type { GridTariffBody } from "./grid-tariff";
 import { SUGGEST_IMPORT_TARGET_API_VERSION } from "./target-suggestion";
+import { HOUSE_API_VERSION } from "./house-model";
 
 export const UNSUPPORTED_API_VERSION = "spotnav_unsupported_api_version";
 
@@ -651,5 +652,17 @@ export async function getSessionsCsv(
     charger_id: chargerId,
     format: "csv",
     month,
+  });
+}
+
+/**
+ * The house card's view of a site (`spotnav/get_house`), by the site's id or a charger's in it; `unknown` until
+ * `decodeHouse()` decodes it. Read-only; any signed-in user may read it.
+ */
+export async function getHouse(hass: HomeAssistantLike, target: { site: string } | { charger: string }): Promise<unknown> {
+  return await call<unknown>(hass, {
+    type: "spotnav/get_house",
+    api_version: HOUSE_API_VERSION,
+    ...("site" in target ? { site_id: target.site } : { charger_id: target.charger }),
   });
 }
