@@ -99,7 +99,7 @@ describe("the vehicle line", () => {
         payload["connection"] = { state: "unknown" };
       }
       const { element } = await mounted(payload);
-      const spans = Array.from(line(element)!.querySelectorAll("span")).map((span) => span.textContent ?? "");
+      const spans = Array.from(line(element)!.querySelectorAll("span:not(.spotnav-vehicle-line-tail)")).map((span) => span.textContent ?? "");
       return spans.join(" ").replace(/\s+/g, " ").trim();
     };
     for (const name of [null, "", "  "]) {

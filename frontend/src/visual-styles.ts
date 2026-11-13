@@ -49,6 +49,7 @@ export const VISUAL_CLASSES = {
   connectionLine: "spotnav-connection-line",
   connectionError: "spotnav-connection-error",
   vehicleLineAge: "spotnav-vehicle-line-age",
+  vehicleLineTail: "spotnav-vehicle-line-tail",
   vehicleChoices: "spotnav-vehicle-choices",
   vehicleChoice: "spotnav-vehicle-choice",
   vehicleChoiceName: "spotnav-vehicle-choice-name",
@@ -1245,6 +1246,14 @@ export const VISUAL_STYLES = `
   }
   .${VISUAL_CLASSES.vehicleLineAge} {
     opacity: 0.8;
+  }
+  /* The last part of the line and the swap icon: if the line wraps, they wrap together, never the icon alone. */
+  .${VISUAL_CLASSES.vehicleLineTail} {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    gap: 4px;
+    white-space: nowrap;
   }
   /* The charger's status, after the charge (or alone, with no vehicle); an error in the warning colour. */
   .${VISUAL_CLASSES.connectionLine} {

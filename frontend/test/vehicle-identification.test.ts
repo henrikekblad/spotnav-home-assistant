@@ -421,7 +421,12 @@ describe("Byt bil", () => {
     const { hass, element } = await mounted(decided("plug_sensor", evidence), "sv", false);
     expect(changeCar(element)?.getAttribute("aria-label")).toBe("Byt bil – EV6");
     expect(changeCar(element)?.querySelector("[data-icon='swap']")).not.toBeNull();
-    expect(changeCar(element)?.lastElementChild?.getAttribute("data-icon")).toBe("swap");
+    // The icon sits in the same nowrap group as the last text part, so a wrap never leaves it alone.
+    const tail = changeCar(element)?.lastElementChild;
+    expect(tail?.classList.contains("spotnav-vehicle-line-tail")).toBe(true);
+    expect(tail?.lastElementChild?.getAttribute("data-icon")).toBe("swap");
+    expect(tail?.firstElementChild?.tagName).toBe("SPAN");
+    expect(tail?.childElementCount).toBe(2);
     expect(shadow(element).querySelector("[data-change-car]")).toBeNull();
     changeCar(element)!.click();
     await settle();

@@ -19,7 +19,7 @@ import {
   type ChartObserverLike,
   type ChartSize,
 } from "./chart-interaction";
-import { planFill, type FillReading } from "./card-fill";
+import { FILL_MIN_CHART_PX, planFill, type FillReading } from "./card-fill";
 import { applyFocus, chartHeightForWidth, renderChart, type ChartLabels } from "./chart-render";
 import { stripBarPlacement, stripBars, stripNowPosition, stripTicks } from "./chart-strip";
 import { createDialog, takeActions, type DialogHandle } from "./dialog";
@@ -1143,10 +1143,16 @@ export function createCardView(input: CardViewInput): CardView {
           vehicleButton?.setAttribute("aria-label", `${vehicleLine.ariaLabel}, ${connectionText}`);
         }
       }
-      vehicleButton?.append(span);
+      if (changeable && index === parts.length - 1) {
+        // The icon travels with the last part of the line, so a wrap never leaves it alone on a row.
+        const tail = element(doc, "span", C.vehicleLineTail);
+        tail.append(span, swapIcon(doc));
+        vehicleButton?.append(tail);
+      } else {
+        vehicleButton?.append(span);
+      }
     });
     if (changeable) {
-      vehicleButton.append(swapIcon(doc));
       const opener = vehicleButton;
       vehicleButton.addEventListener("click", () => {
         openChangeCar(opener);
@@ -2124,7 +2130,7 @@ export function createCardView(input: CardViewInput): CardView {
     const basis = collapsed ? 0 : chartHeightForWidth(size.width, density);
     const plan = planFill((input.readFill ?? readFillFromLayout)(card), {
       basis,
-      min: collapsed ? 0 : density.minHeight,
+      min: collapsed ? 0 : FILL_MIN_CHART_PX,
     });
     fillHeight = plan === null || collapsed ? null : plan.chartHeight;
     if (plan !== null) {
