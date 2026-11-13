@@ -2301,7 +2301,8 @@
   },
   "connection": {
     "state": "unknown",
-    "source": null
+    "source": null,
+    "shown": "unknown"
   },
   "starting_up": {
     "active": false,

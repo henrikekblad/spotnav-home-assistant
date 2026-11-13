@@ -27,7 +27,9 @@ import {
   changeCarBody,
   identificationBanner,
   identificationSummary,
+  methodOf,
   methodWords,
+  type MethodName,
   sourceChoice,
   sourceOption,
   sourceReadingText,
@@ -114,7 +116,7 @@ import {
   type NumberEditorInput,
 } from "./value-editors";
 import type { FiscalComponentName, ValueWrite } from "./value-writes";
-import type { IdentifyMode, SettingsRecord } from "./types";
+import type { ConnectionShownName, IdentifyMode, SettingsRecord } from "./types";
 import {
   entityLabels,
   frameEditor,
@@ -193,6 +195,13 @@ export interface CardViewInput {
    * `undefined` means the platform's own, `null` means none.
    */
   observeBox?: (box: HTMLElement, onResize: () => void) => ChartObserverLike | null;
+  /**
+   * The observer of the header's name block, which decides whether the charger's status shows as its word or its
+   * symbol (`statusFits`); `undefined` means the platform's own, `null` means none.
+   */
+  observeHeader?: (block: HTMLElement, onResize: () => void) => ChartObserverLike | null;
+  /** Reads the header for `statusFits`; injectable for tests, since a test DOM has no layout. */
+  readStatusFit?: (row: HTMLElement) => StatusFitReading;
   /** Reads the card's natural layout for the fit; injectable for tests, since a test DOM has no layout. */
   readFill?: (card: HTMLElement) => FillReading;
   setTimer?: (callback: () => void, delayMs: number) => number;
@@ -800,6 +809,114 @@ function swapIcon(doc: Document): SVGElement {
   return svg;
 }
 
+/** MDI `power-plug`: the car's cable for the method, a plugged-in car for the status. */
+const METHOD_PLUG_PATH = "M16,7V3H14V7H10V3H8V7H8C7,7 6,8 6,9V14.5L9.5,18V21H14.5V18L18,14.5V9C18,8 17,7 16,7Z";
+
+/**
+ * How the car on the car line was decided, as one small icon: MDI path data (`@mdi/js`, Apache License 2.0) for
+ * camera, power-plug, map-marker, account, help-circle-outline and sync. Answered and manual share the account.
+ */
+const METHOD_ICON_PATHS: Readonly<Record<MethodName, string>> = {
+  camera:
+    "M4,4H7L9,2H15L17,4H20A2,2 0 0,1 22,6V18A2,2 0 0,1 20,20H4A2,2 0 0,1 2,18V6A2,2 0 0,1 4,4M12,7A5,5 0 0,0 7,12A5,5 0 0,0 12,17A5,5 0 0,0 17,12A5,5 0 0,0 12,7M12,9A3,3 0 0,1 15,12A3,3 0 0,1 12,15A3,3 0 0,1 9,12A3,3 0 0,1 12,9Z",
+  plug_sensor: METHOD_PLUG_PATH,
+  location:
+    "M12,11.5A2.5,2.5 0 0,1 9.5,9A2.5,2.5 0 0,1 12,6.5A2.5,2.5 0 0,1 14.5,9A2.5,2.5 0 0,1 12,11.5M12,2A7,7 0 0,0 5,9C5,14.25 12,22 12,22C12,22 19,14.25 19,9A7,7 0 0,0 12,2Z",
+  answered:
+    "M12,4A4,4 0 0,1 16,8A4,4 0 0,1 12,12A4,4 0 0,1 8,8A4,4 0 0,1 12,4M12,14C16.42,14 20,15.79 20,18V20H4V18C4,15.79 7.58,14 12,14Z",
+  manual:
+    "M12,4A4,4 0 0,1 16,8A4,4 0 0,1 12,12A4,4 0 0,1 8,8A4,4 0 0,1 12,4M12,14C16.42,14 20,15.79 20,18V20H4V18C4,15.79 7.58,14 12,14Z",
+  assumed:
+    "M11,18H13V16H11V18M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M12,20C7.59,20 4,16.41 4,12C4,7.59 7.59,4 12,4C16.41,4 20,7.59 20,12C20,16.41 16.41,20 12,20M12,6A4,4 0 0,0 8,10H10A2,2 0 0,1 12,8A2,2 0 0,1 14,10C14,12 11,11.75 11,15H13C13,12.75 16,12.5 16,10A4,4 0 0,0 12,6Z",
+  identifying:
+    "M12,18A6,6 0 0,1 6,12C6,11 6.25,10.03 6.7,9.2L5.24,7.74C4.46,8.97 4,10.43 4,12A8,8 0 0,0 12,20V23L16,19L12,15M12,4V1L8,5L12,9V6A6,6 0 0,1 18,12C18,13 17.75,13.97 17.3,14.8L18.76,16.26C19.54,15.03 20,13.57 20,12A8,8 0 0,0 12,4Z",
+};
+
+/**
+ * The charger's status as a symbol, for a header too narrow for the word: MDI path data (`@mdi/js`, Apache License
+ * 2.0) for power-plug-off, power-plug, lightning-bolt, pause, clock-outline, check-circle-outline and
+ * alert-circle-outline.
+ */
+const CONNECTION_ICON_PATHS: Readonly<Record<Exclude<ConnectionShownName, "unknown">, string>> = {
+  disconnected:
+    "M13,3V7H15V3H17V7C18,7 19,8 19,9V14.5L17.88,15.63L8.25,6H11V3H13M3.28,4L2,5.27L5.5,8.77C5.18,9.04 5,9.5 5,10V15.5L8.5,19V22H13.5V19L14.5,18L18.73,22.27L20,21L3.28,4Z",
+  connected: METHOD_PLUG_PATH,
+  charging: "M11 15H6L13 1V9H18L11 23V15Z",
+  paused: "M14,19H18V5H14M6,19H10V5H6V19Z",
+  waiting:
+    "M12,20A8,8 0 0,0 20,12A8,8 0 0,0 12,4A8,8 0 0,0 4,12A8,8 0 0,0 12,20M12,2A10,10 0 0,1 22,12A10,10 0 0,1 12,22C6.47,22 2,17.5 2,12A10,10 0 0,1 12,2M12.5,7V12.25L17,14.92L16.25,16.15L11,13V7H12.5Z",
+  finished:
+    "M12 2C6.5 2 2 6.5 2 12S6.5 22 12 22 22 17.5 22 12 17.5 2 12 2M12 20C7.59 20 4 16.41 4 12S7.59 4 12 4 20 7.59 20 12 16.41 20 12 20M16.59 7.58L10 14.17L7.41 11.59L6 13L10 17L18 9L16.59 7.58Z",
+  error:
+    "M11,15H13V17H11V15M11,7H13V13H11V7M12,2C6.47,2 2,6.5 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M12,20A8,8 0 0,1 4,12A8,8 0 0,1 12,4A8,8 0 0,1 20,12A8,8 0 0,1 12,20Z",
+};
+
+/** The status symbol: an image named by the status word, shown only while the word does not fit. */
+function connectionIcon(doc: Document, shown: Exclude<ConnectionShownName, "unknown">, words: string): HTMLElement {
+  const holder = element(doc, "span", C.connectionIcon);
+  holder.setAttribute("role", "img");
+  holder.setAttribute("aria-label", words);
+  holder.title = words;
+  holder.append(
+    icon(doc, (svg, ns) => {
+      svg.append(fillPath(ns, doc, CONNECTION_ICON_PATHS[shown]));
+    }),
+  );
+  return holder;
+}
+
+/** What `fitStatus` reads from the header, in CSS pixels; injectable for tests, since a test DOM has no layout. */
+export interface StatusFitReading {
+  /** The width the name block has beside the header's buttons. */
+  available: number;
+  /** The charger name's width as laid out (at most `available`). */
+  name: number;
+  /** The status word's own width, separator included, on one line. */
+  word: number;
+}
+
+/** The gap between the name and its status (`column-gap` of the name row). */
+export const STATUS_GAP_PX = 4;
+
+/**
+ * Whether the name and " · <status word>" fit on one row. The reading never depends on which form is shown (the
+ * word keeps its width while hidden, and a name that would push the word off the row takes the row either way),
+ * so measuring again gives the same answer: no resize loop.
+ */
+export function statusFits(reading: StatusFitReading): boolean {
+  if (reading.available <= 0) {
+    return true;
+  }
+  const name = reading.name > 0 ? reading.name + STATUS_GAP_PX : 0;
+  return name + reading.word <= reading.available + 0.5;
+}
+
+function readStatusFit(row: HTMLElement): StatusFitReading {
+  const block = row.parentElement ?? row;
+  const name = row.querySelector<HTMLElement>(`.${C.name}`);
+  const word = row.querySelector<HTMLElement>(`.${C.connectionWord}`);
+  return {
+    available: block.clientWidth,
+    name: name === null ? 0 : name.getBoundingClientRect().width,
+    word: word === null ? 0 : word.getBoundingClientRect().width,
+  };
+}
+
+/** The method icon: an image named by the full words (its title shows them on hover); `identifying` turns slowly. */
+function methodIcon(doc: Document, method: MethodName, words: string): HTMLElement {
+  const holder = element(doc, "span", C.vehicleLineMethod);
+  holder.setAttribute("role", "img");
+  holder.setAttribute("aria-label", words);
+  holder.title = words;
+  holder.dataset["method"] = method;
+  holder.append(
+    icon(doc, (svg, ns) => {
+      svg.append(fillPath(ns, doc, METHOD_ICON_PATHS[method]));
+    }),
+  );
+  return holder;
+}
+
 function batteryIcon(doc: Document): SVGElement {
   return icon(doc, (svg, ns) => {
     const body = doc.createElementNS(ns, "path");
@@ -1087,16 +1204,41 @@ export function createCardView(input: CardViewInput): CardView {
       ? guestLineFor(model.language, model.dashboardSettings)
       : vehicleLineFor(model.language, model.soc, model.dashboardSettings);
   let vehicleButton: HTMLElement | null = null;
-  // While the charge bar shows, it already says the charge runs: the connection line steps aside.
+  // While the charge bar shows, it already says the charge runs: the connection status steps aside.
   const connectionText = model.chargeBar === null ? connectionLabel(model.language, model.connection) : null;
-  const connectionClass = (): string =>
-    model.connection?.state === "error" ? `${C.connectionLine} ${C.connectionError}` : C.connectionLine;
+  // The charger's name with its status after it ("HALO Charger · Waiting"): the status is the charger's, not the car's.
+  // The status as a word, and as a symbol for when the word does not fit beside the name (`fitStatus`).
+  let statusRow: HTMLElement | null = null;
+  const nameRow = (): HTMLElement => {
+    const row = element(doc, "div", C.nameRow);
+    if (model.chargerName !== null) {
+      row.append(element(doc, "h3", C.name, model.chargerName));
+    }
+    const shown = model.connection?.shown;
+    if (connectionText !== null && shown !== undefined && shown !== "unknown") {
+      const status = element(
+        doc,
+        "span",
+        shown === "error" ? `${C.connectionLine} ${C.connectionError}` : C.connectionLine,
+      );
+      status.dataset["connection"] = shown;
+      const word = element(
+        doc,
+        "span",
+        C.connectionWord,
+        model.chargerName === null ? connectionText : `\u00b7 ${connectionText}`,
+      );
+      status.append(word, connectionIcon(doc, shown, connectionText));
+      row.append(status);
+      row.dataset["statusFit"] = "word";
+      statusRow = row;
+    }
+    return row;
+  };
   if (vehicleLine !== null) {
     // The name and the planned vehicle stack in one block, so the line sits under the name.
     const identity = element(doc, "div", C.nameBlock);
-    if (model.chargerName !== null) {
-      identity.append(element(doc, "h3", C.name, model.chargerName));
-    }
+    identity.append(nameRow());
     // The car line is Byt bil wherever the car can be changed (more than one car can charge here): for every
     // user while a car is plugged in, since any user may answer which car it is. With no car plugged in the
     // choice is the plan's car, a plan setting (`mayPlan`), so a reader who may not change the plan gets the plain line.
@@ -1106,20 +1248,27 @@ export function createCardView(input: CardViewInput): CardView {
       guestOffered(model);
     const lineName = vehicleLine.name ?? translate(model.language, "settings.vehicle.unnamed");
     const changeLabel = translate(model.language, "identify.changeCarAria", { name: lineName });
+    // How the car was decided at this plug-in: an icon after the name, its words as its title and accessible name.
+    const method = methodOf(model.identification);
+    const decidedBy = methodWords(model.language, model.identification);
     vehicleButton = element(doc, changeable ? "button" : "div", C.vehicleLine);
     if (changeable) {
       (vehicleButton as HTMLButtonElement).type = "button";
       vehicleButton.setAttribute("aria-haspopup", "dialog");
     }
     vehicleButton.dataset["vehicleLine"] = vehicleLine.vehicleId;
-    vehicleButton.setAttribute("aria-label", changeable ? changeLabel : vehicleLine.ariaLabel);
+    vehicleButton.setAttribute(
+      "aria-label",
+      changeable ? changeLabel : decidedBy === null ? vehicleLine.ariaLabel : `${vehicleLine.ariaLabel}, ${decidedBy}`,
+    );
     if (vehicleLine.estimateTitle !== null) {
       vehicleButton.title = vehicleLine.estimateTitle;
       vehicleButton.dataset["estimated"] = "true";
     }
-    vehicleButton.append(batteryIcon(doc));
-    // Only the parts that exist, each after the first behind a " · ": never a leading or doubled separator.
-    const parts: { cls: string; text: string; connection?: boolean }[] = [];
+    // Only the parts that exist, each after the first behind a "·": never a leading or doubled separator. Each
+    // separator leads its own part, and a part that starts a wrapped row has its separator in the clipped margin
+    // (`vehicleLineClip`), so no row starts with a lone "·" and the charge stays with the swap icon.
+    const parts: { cls: string; text: string }[] = [];
     if (vehicleLine.name !== null) {
       parts.push({ cls: C.vehicleLineName, text: vehicleLine.name });
     }
@@ -1127,29 +1276,35 @@ export function createCardView(input: CardViewInput): CardView {
     if (vehicleLine.age !== null) {
       parts.push({ cls: C.vehicleLineAge, text: vehicleLine.age });
     }
-    // How the car was decided at this plug-in: "identified by the car's charging cable", "your answer" ...
-    const decidedBy = methodWords(model.language, model.identification);
-    if (decidedBy !== null) {
-      parts.push({ cls: C.vehicleLineAge, text: decidedBy });
-    }
-    if (connectionText !== null) {
-      parts.push({ cls: connectionClass(), text: connectionText, connection: true });
-    }
+    const clip = element(doc, "span", C.vehicleLineClip);
+    const inner = element(doc, "span", C.vehicleLineInner);
+    clip.append(inner);
+    vehicleButton.append(clip);
     parts.forEach((part, index) => {
-      const span = element(doc, "span", part.cls, index === 0 ? part.text : `\u00b7 ${part.text}`);
-      if (part.connection === true) {
-        span.dataset["connection"] = model.connection?.state ?? "";
-        if (!changeable) {
-          vehicleButton?.setAttribute("aria-label", `${vehicleLine.ariaLabel}, ${connectionText}`);
+      const last = index === parts.length - 1;
+      const span = element(doc, "span", part.cls, part.text);
+      let piece: HTMLElement;
+      if (index === 0) {
+        // The battery, the name and how the car was decided stay together: the icon belongs to the name (or to the
+        // charge, for a car with no name), with no separator between them.
+        piece = element(doc, "span", C.vehicleLineHead);
+        piece.append(batteryIcon(doc), span);
+        if (method !== null && decidedBy !== null) {
+          piece.append(methodIcon(doc, method, decidedBy));
         }
+      } else {
+        piece = element(doc, "span", C.vehicleLinePart);
+        const separator = element(doc, "span", C.vehicleLineSeparator, "\u00b7");
+        separator.setAttribute("aria-hidden", "true");
+        piece.append(separator, span);
       }
-      if (changeable && index === parts.length - 1) {
+      if (changeable && last) {
         // The icon travels with the last part of the line, so a wrap never leaves it alone on a row.
         const tail = element(doc, "span", C.vehicleLineTail);
-        tail.append(span, swapIcon(doc));
-        vehicleButton?.append(tail);
+        tail.append(piece, swapIcon(doc));
+        inner.append(tail);
       } else {
-        vehicleButton?.append(span);
+        inner.append(piece);
       }
     });
     if (changeable) {
@@ -1161,14 +1316,9 @@ export function createCardView(input: CardViewInput): CardView {
     identity.append(vehicleButton);
     header.append(identity);
   } else if (connectionText !== null) {
-    // No vehicle: the status alone under the name.
+    // No vehicle: the status after the name, as with a vehicle.
     const identity = element(doc, "div", C.nameBlock);
-    if (model.chargerName !== null) {
-      identity.append(element(doc, "h3", C.name, model.chargerName));
-    }
-    const status = element(doc, "p", connectionClass(), connectionText);
-    status.dataset["connection"] = model.connection?.state ?? "";
-    identity.append(status);
+    identity.append(nameRow());
     header.append(identity);
   } else if (model.chargerName !== null) {
     header.append(element(doc, "h3", C.name, model.chargerName));
@@ -2149,6 +2299,19 @@ export function createCardView(input: CardViewInput): CardView {
       interaction?.remeasure();
     }
   }
+
+  /** The status as its word when the word fits beside the name, else as its symbol (`statusFits`). */
+  function fitStatus(): void {
+    if (destroyed || statusRow === null) {
+      return;
+    }
+    const fits = statusFits((input.readStatusFit ?? readStatusFit)(statusRow));
+    statusRow.dataset["statusFit"] = fits ? "word" : "icon";
+  }
+  const headerBlock = (statusRow as HTMLElement | null)?.parentElement ?? null;
+  const headerObserver: ChartObserverLike | null =
+    headerBlock === null ? null : (input.observeHeader ?? defaultBoxObserver)(headerBlock, fitStatus);
+  headerObserver?.observe?.(headerBlock as HTMLElement);
 
   const boxObserver: ChartObserverLike | null =
     fillBox === null
@@ -5335,6 +5498,7 @@ export function createCardView(input: CardViewInput): CardView {
       // would belong to a view that no longer exists.
       cancelBoundary();
       boxObserver?.disconnect();
+      headerObserver?.disconnect();
       interaction?.destroy();
       issuesDialog.destroy();
       releaseDialog.destroy();

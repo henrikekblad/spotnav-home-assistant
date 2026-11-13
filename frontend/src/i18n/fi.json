@@ -853,6 +853,7 @@
   "connection.charging": "Lataa",
   "connection.paused": "Tauolla",
   "connection.finished": "Valmis",
+  "connection.waiting": "Odottaa",
   "connection.error": "Virhe",
   "chargeBar.done": "{percent} % valmis",
   "chargeBar.ofTarget": "{percent} % tavoitteesta",

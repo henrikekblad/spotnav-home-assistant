@@ -853,6 +853,7 @@
   "connection.charging": "Lädt",
   "connection.paused": "Pausiert",
   "connection.finished": "Fertig",
+  "connection.waiting": "Wartet",
   "connection.error": "Fehler",
   "chargeBar.done": "{percent} % fertig",
   "chargeBar.ofTarget": "{percent} % des Ladeziels",

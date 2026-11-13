@@ -853,6 +853,7 @@
   "connection.charging": "Laadt",
   "connection.paused": "Gepauzeerd",
   "connection.finished": "Klaar",
+  "connection.waiting": "Wacht",
   "connection.error": "Fout",
   "chargeBar.done": "{percent} % klaar",
   "chargeBar.ofTarget": "{percent} % van doel",

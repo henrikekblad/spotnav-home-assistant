@@ -68,10 +68,19 @@ export const CONNECTION_STATES = [
 ] as const;
 export type ConnectionStateName = (typeof CONNECTION_STATES)[number];
 
-/** The `connection` block: the state and the entity it was read from (`null` when none). */
+/**
+ * What the card shows for the connection (`connection.shown`): the charger's own state, except `waiting` for a
+ * charger that says finished while SpotNav still holds the car for the plan (`dashboard.shown_connection`).
+ */
+export const CONNECTION_SHOWN_STATES = [...CONNECTION_STATES, "waiting"] as const;
+export type ConnectionShownName = (typeof CONNECTION_SHOWN_STATES)[number];
+
+/** The `connection` block: the charger's state, the entity it was read from (`null` when none) and what is shown. */
 export interface ConnectionState {
   state: ConnectionStateName;
   source: string | null;
+  /** The state the header shows; the charger's own `state` when an older backend leaves it out. */
+  shown: ConnectionShownName;
 }
 
 /**
