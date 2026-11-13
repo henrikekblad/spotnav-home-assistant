@@ -217,6 +217,13 @@ def _demand_diagnostics(hass: HomeAssistant, entry: ConfigEntry, controller: Any
         return None
 
 
+def _load_forecast_diagnostics(controller: Any) -> dict[str, Any] | None:
+    try:
+        return controller.house_forecast.diagnostics()
+    except Exception:  # noqa: BLE001 - diagnostics must never fail on one block
+        return None
+
+
 def _site_diagnostics(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, Any]:
     controller = site_controller_for(hass, entry.entry_id)
     return {
@@ -237,6 +244,9 @@ def _site_diagnostics(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, Any]
         # Each clock hour's mean import this month, what each demand-charge component bills so far, the running hour
         # with its gaps, and the import target (`site/demand_tracker.py`).
         "demand": None if controller is None else _demand_diagnostics(hass, entry, controller),
+        # The house load forecast (`site/house_forecast.py`): its sources (weather entity, holiday calendar), the last
+        # forecast for the next 48 hours, and the log of each hour's first forecast with the daily reviews.
+        "load_forecast": None if controller is None else _load_forecast_diagnostics(controller),
         # What the import target does this hour (`SiteCapacityController.import_target_snapshot`): the hour's budget or
         # why it is not applied, per charger held, paused or free, and each hold, pause and release it made.
         "import_target": None if controller is None else controller.import_target_snapshot(),

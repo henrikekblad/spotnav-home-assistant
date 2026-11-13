@@ -71,6 +71,7 @@ from ..const import (
 )
 from .site_history import SAMPLE_INTERVAL_S as HISTORY_SAMPLE_INTERVAL_S, SiteHistory
 from .demand_tracker import HOUR_S, SiteDemand, TargetMark
+from .house_forecast import SiteHouseForecast
 from .import_target import (
     ACTION_HELD,
     ACTION_PAUSED,
@@ -689,6 +690,9 @@ class SiteCapacityController:
         # clock is the electricity price's area's (`_demand_zone`), resolved again at most every
         # `_DEMAND_ZONE_TTL_S`. Only the import target reads it for a decision (`_hold_to_import_target`).
         self.demand = SiteDemand(hass, entry_id, _home_zone(hass))
+        # The house's expected load hour by hour (`site/house_forecast.py`), refreshed when an hour completes. Shown
+        # only (the site state sensor's `forecast`, the diagnostics): nothing a charger is told reads it yet.
+        self.house_forecast = SiteHouseForecast(hass, entry_id, self.demand, flat_kw=self._typical_house_kw)
         self._demand_zone: tuple[float, str] | None = None
         # The import target (`_hold_to_import_target`), as of the last recompute: the hour's budget (`None` while not
         # applied, and why), what it does to each charger, and which chargers' decisions it lowered. Per charger the
@@ -830,6 +834,7 @@ class SiteCapacityController:
             )
         self._register_controller_listeners()
         await self.demand.async_load()
+        await self.house_forecast.async_load()
         await self._async_load_released()
         await self._async_load_grid_sign()
         await self.battery_shadow.async_start()
@@ -857,6 +862,7 @@ class SiteCapacityController:
         await self._history.async_close()
         await self.demand.async_close()
         await self.battery_shadow.async_shutdown()
+        await self.house_forecast.async_close()
         if self._grid_sign_unsaved:
             self._grid_sign_unsaved = False
             await self._grid_sign_store.async_save(self._grid_sign.as_dict())
@@ -1191,7 +1197,9 @@ class SiteCapacityController:
                 discharge_w,
                 target=self._target_mark(),
                 components=lambda: site_demand_components(self.hass, self.entry_id),
+                outdoor_c=self.house_forecast.outdoor_c(),
             )
+            self.house_forecast.tick()
         except Exception:  # noqa: BLE001 - a measurement must never disturb the site
             _LOGGER.debug("SpotNav site %s: the hour's import could not be measured", self.entry_id, exc_info=True)
         if self.demand.backfill_due():

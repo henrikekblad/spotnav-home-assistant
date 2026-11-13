@@ -325,3 +325,50 @@ def test_storage_is_untrusted() -> None:
 
 def test_a_gap_hour_limit_is_ten_minutes() -> None:
     assert GAP_MAX_S == 600.0
+
+
+# ---------------------------------------------------------------------------------------------- outdoor temperature
+
+
+def test_an_hour_carries_the_mean_outdoor_temperature_read_in_it_and_none_without_a_reading() -> None:
+    tracker = HourTracker(tz=TZ)
+    start = cet(2026, 11, 2, 18)
+    tracker.observe(start, 1000.0, 0.0, outdoor_c=2.0)
+    tracker.observe(start + timedelta(minutes=20), 1000.0, 0.0, outdoor_c=4.0)
+    tracker.observe(start + timedelta(minutes=40), 1000.0, 0.0, outdoor_c=float("nan"))  # not a reading
+    tracker.observe(start + timedelta(minutes=50), 1000.0, 0.0, outdoor_c=999.0)  # not a reading either
+    tracker.observe(start + timedelta(minutes=60, seconds=1), 1000.0, 0.0)
+    tracker.observe(start + timedelta(minutes=121), 1000.0, 0.0)
+    assert [hour.outdoor_c for hour in tracker.hours] == [3.0, None]
+
+
+def test_the_outdoor_temperature_is_kept_beside_the_rows_and_survives_a_restart() -> None:
+    tracker = HourTracker(tz=TZ)
+    start = cet(2026, 11, 2, 18)
+    tracker.observe(start, 1000.0, 0.0, outdoor_c=-3.5)
+    tracker.observe(start + timedelta(minutes=30), 1000.0, 0.0, outdoor_c=-4.5)
+    tracker.observe(start + timedelta(minutes=60, seconds=1), 1000.0, 0.0, outdoor_c=-6.0)
+    document = tracker.month_dict()
+    # The rows keep their length: a release that knows rows only still reads every one.
+    assert all(len(row) == 7 for row in document["hours"])
+    assert document["outdoor_c"] == {start.isoformat(): -4.0}
+    running = tracker.running.as_dict()  # type: ignore[union-attr]
+    restored = HourTracker(tz=TZ)
+    restored.restore(document, running)
+    assert restored.hours[0].outdoor_c == -4.0
+    assert restored.running is not None and restored.running.outdoor_n == 1
+    assert restored.running.outdoor_sum == -6.0
+
+
+def test_a_kept_month_without_outdoor_temperatures_or_with_bad_ones_reads_as_none() -> None:
+    start = cet(2026, 11, 2, 18)
+    row = [start.isoformat(), 3.0, 1.0, 0, 0, 0, 3.0]
+    for outdoor in (None, "junk", {start.isoformat(): "cold"}, {"nonsense": 3.0}, {start.isoformat(): 400.0}):
+        tracker = HourTracker(tz=TZ)
+        tracker.restore({"month": "2026-11", "hours": [row], "outdoor_c": outdoor}, None)
+        assert [hour.outdoor_c for hour in tracker.hours] == [None], outdoor
+    running = RunningHour.from_dict(
+        {"start": start.isoformat(), "import_wh": 1, "covered_s": 1, "house_wh": 1, "house_covered_s": 1,
+         "outdoor_sum": "x", "outdoor_n": True}
+    )
+    assert running is not None and (running.outdoor_sum, running.outdoor_n) == (0.0, 0)
