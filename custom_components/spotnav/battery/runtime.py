@@ -2,7 +2,9 @@
 
 One per site, owned by its `SiteCapacityController`. Every `TICK_S` it reads the battery's facts (`facts.py`), the
 site's chargers charging from the grid (`execution/grid_charge.py`) and the site's own measurement, steps each part
-(`hold.py`) and logs the decisions in the shadow book (`shadow.py`), which is kept in the site's store.
+(`hold.py`) and logs the decisions in the shadow book (`shadow.py`), which is kept in the site's store. The
+confirmed-write ledger and the control-failure monitor run beside the hold as dry runs (`dry_run.py` says what they
+can and cannot tell in shadow); their state is kept in the book's sections.
 
 Nothing here writes to a battery, an inverter or any other device: no service is called. The results are shown in
 the site's diagnostics (and so in the debug bundle) only.
@@ -25,8 +27,11 @@ from homeassistant.util import dt as dt_util
 from ..const import CONF_BATTERY_AGGREGATE_POWER_ENTITY, CONF_CHARGER_ENTRY_IDS, DOMAIN
 from ..planning.grid_voltage import stored_voltage_between_phases_v
 from ..site.measurement_problem import UNHEALTHY_STATES
+from .dry_run import SECTION_LEDGER, SECTION_MONITOR, HoldDryRun
 from .facts import BatteryFacts, EntityFact, battery_facts
-from .hold import HoldInputs, HoldMemory, restart, step
+from .hold import HoldDecision, HoldInputs, HoldMemory, restart, step
+from .ledger import Ledger
+from .monitor import Monitor
 from .shadow import PART_HOLD_FOR_CAR, ShadowBook, ShadowEntry
 
 if TYPE_CHECKING:
@@ -110,6 +115,7 @@ class BatteryShadow:
         self._store: Store[dict[str, Any]] = Store(hass, STORE_VERSION, store_key(site.entry_id))
         self.book = ShadowBook()
         self.facts: BatteryFacts = BatteryFacts()
+        self.dry_run = HoldDryRun(Ledger(), Monitor())
         self._timer_cancel: Callable[[], None] | None = None
         self._loaded = False
 
@@ -126,6 +132,9 @@ class BatteryShadow:
             _LOGGER.warning("The battery shadow log could not be read; starting a new one")
             stored = None
         self.book = ShadowBook.from_dict(stored, now)
+        self.dry_run = HoldDryRun(
+            Ledger.from_dict(self.book.section(SECTION_LEDGER)), Monitor.from_dict(self.book.section(SECTION_MONITOR))
+        )
         self._loaded = True
         self.facts = self._read_facts()
         memory, decision = restart(self._hold, self.facts, now)
@@ -203,14 +212,22 @@ class BatteryShadow:
         inputs = self.inputs(now)
         self.facts = inputs.facts
         memory, decision = step(self._hold, inputs)
-        self._apply(PART_HOLD_FOR_CAR, memory, decision, now)
+        self._apply(
+            PART_HOLD_FOR_CAR, memory, decision, now,
+            age_s=inputs.battery_age_s, headroom_a=inputs.headroom_a, volts=inputs.volts_between_phases,
+        )
 
-    def _apply(self, part: str, memory: HoldMemory, decision: Any, now: datetime) -> None:
+    def _apply(
+        self, part: str, memory: HoldMemory, decision: HoldDecision | None, now: datetime, *,
+        age_s: float | None = None, headroom_a: float | None = None, volts: float = 400.0,
+    ) -> None:
         changed = memory.as_dict() != self.book.memory(part)
         self.book.set_memory(part, memory.as_dict())
+        entries: list[ShadowEntry] = []
         if decision is not None:
+            decision, judged = self.dry_run.decided(decision, self.facts, now)
             # Shadow only: the decision is logged, never written (`ShadowBook.writes` is off in this release).
-            self.book.record(
+            entries += [
                 ShadowEntry(
                     at=now,
                     part=part,
@@ -220,11 +237,35 @@ class BatteryShadow:
                     value=decision.value,
                     detail=decision.detail,
                     read=decision.read,
-                )
-            )
-            _LOGGER.debug("Battery %s in shadow: %s (%s)", part, decision.action, decision.reason)
-        if changed or decision is not None:
+                ),
+                *judged,
+            ]
+        entries += self.dry_run.observe(
+            self.facts, memory.held, now, age_s=age_s, headroom_a=headroom_a, volts_between_phases=volts
+        )
+        for entry in entries:
+            self.book.record(entry)
+            _LOGGER.debug("Battery %s in shadow: %s (%s)", entry.part, entry.action, entry.reason)
+        sections = {SECTION_LEDGER: self.dry_run.ledger.as_dict(), SECTION_MONITOR: self.dry_run.monitor.as_dict()}
+        for name, data in sections.items():
+            if data != self.book.section(name):
+                self.book.set_section(name, data)
+                changed = True
+        if changed or entries:
             self._store.async_delay_save(self.book.as_dict, _SAVE_DELAY_S)
+
+    def _dry_run_snapshot(self) -> dict[str, Any]:
+        """The ledger's and the monitor's state and today's counters; in shadow nothing is written, so their real
+        counters stay at zero and only the dry-run ones move."""
+        today = dt_util.now().date().isoformat()
+        ledger, monitor = self.dry_run.ledger, self.dry_run.monitor
+        return {
+            "ledger": {"claims": ledger.as_dict()["claims"], "today": ledger.counters(today)},
+            "monitor": {
+                "watch": None if monitor.watch is None else monitor.watch.as_dict(),
+                "today": monitor.counters(today),
+            },
+        }
 
     def snapshot(self) -> dict[str, Any]:
         """The battery's facts, the parts' states, the hold's memory, the kWh it gave the car and the log."""
@@ -240,5 +281,6 @@ class BatteryShadow:
                 "writes_today": hold.writes_today,
                 "battery_gave_car_kwh": {day: round(kwh, 3) for day, kwh in sorted(hold.gave_car_kwh.items())},
             },
+            "dry_run": self._dry_run_snapshot(),
             "log": [entry.as_dict() for entry in self.book.entries],
         }
