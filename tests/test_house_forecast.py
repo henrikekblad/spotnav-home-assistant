@@ -13,8 +13,15 @@ from homeassistant.helpers import entity_registry as er
 from custom_components.spotnav.planning.demand_charge import HourMean
 from custom_components.spotnav.diagnostics import async_get_config_entry_diagnostics
 from custom_components.spotnav.runtime import site_controller_for
-from custom_components.spotnav.site.forecast_log import KIND_HOUSE, KIND_HOUSE_DAY_AHEAD, KIND_HOUSE_RAW
+from custom_components.spotnav.site import house_forecast as house_forecast_module
+from custom_components.spotnav.site.house_history import MIN_GROSS_HOURS
+from custom_components.spotnav.site.forecast_log import KIND_HOUSE, KIND_HOUSE_DAY_AHEAD, KIND_HOUSE_RAW, KIND_IMPORT
 from custom_components.spotnav.site.house_forecast import (
+    BASIS_GROSS,
+    BASIS_NET,
+    SURPLUS_COLLECTING,
+    SURPLUS_NO_SOLAR_STATISTICS,
+    SURPLUS_OK,
     holiday_dates,
     hourly_temperatures,
     OUTDOOR_SENSOR,
@@ -189,6 +196,8 @@ async def test_a_site_records_the_temperature_refreshes_hourly_and_shows_the_for
     assert block["forecast"]["day_types"] == "weekday_weekend_holiday"
     assert len(block["forecast"]["hours"]) == 48
     assert {KIND_HOUSE, KIND_HOUSE_RAW} <= set(block["log"]["kinds"]) <= {KIND_HOUSE, KIND_HOUSE_RAW, KIND_HOUSE_DAY_AHEAD}
+    # A site without a battery: the house is the import less the chargers, and the import target reads the same.
+    assert block["basis"] == BASIS_NET and block["battery"] is False and block["import_forecast"] is None
     assert diagnostics["demand"]["outdoor_c"]
     # Two weeks at 1.2 kW: the profile, shown for the next 24 hours.
     assert {row[2] for row in block["forecast"]["hours"]} == {"profile"}
@@ -313,3 +322,226 @@ async def test_a_heat_pumps_outdoor_sensor_is_preferred_over_the_weather_and_sho
     hass.states.async_set("sensor.current_outd_temp_bt1", "unavailable")
     assert forecast.outdoor_c() == 4.0
     assert forecast.diagnostics()["outdoor"]["source"] == OUTDOOR_WEATHER
+
+
+# ---------------------------------------------------------------------------------------------- a battery site
+
+
+async def test_on_a_battery_site_the_house_is_its_whole_load_and_the_import_target_keeps_the_net_figure(
+    hass: HomeAssistant, freezer, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The owner's case: the battery covers the house, so the import less the chargers reads 0.2 kW; the house draws
+    1.4 kW (0.9 kW of `grid - car - battery` and 0.5 kWh of sun per hour). The shown forecast, the log and the battery
+    plan's median take 1.4; a plan under the import target keeps the net 0.2."""
+    weather(hass, 4.0)
+    hass.states.async_set("sensor.battery_power", "0", {"unit_of_measurement": "W"})
+    entry = await pilot_site(hass, freezer, battery_aggregate_power_entity="sensor.battery_power")
+    controller = site_controller_for(hass, entry.entry_id)
+    house = controller.house_forecast
+    seed(controller, kw=0.2)
+    now = controller.demand.now()
+    tracker = controller.demand.tracker
+    recent = now - timedelta(hours=12)
+    tracker.hours = [
+        HourMean(**{**{slot: getattr(hour, slot) for slot in HourMean.__slots__}, "ex_battery_kw": 0.9})
+        if hour.start >= recent
+        else hour
+        for hour in tracker.hours
+    ]
+    reads: list[datetime] = []
+
+    async def ids(hass: Any) -> tuple[tuple[str, ...], tuple[str, ...]]:
+        return ("sensor.pv",), ()
+
+    async def statistics(hass: Any, wanted: Any, start: datetime, end: datetime, period: str) -> dict[str, Any]:
+        reads.append(start)
+        moment, rows = start, []
+        while moment < end:
+            rows.append({"start": moment.timestamp(), "change": 0.5})
+            moment += timedelta(hours=1)
+        return {"sensor.pv": rows}
+
+    monkeypatch.setattr(house_forecast_module, "async_energy_ids", ids)
+    monkeypatch.setattr(house_forecast_module, "async_statistics", statistics)
+    # A forecast made on the net figure, logged before: its days not yet reviewed go when the figure changes.
+    await house.async_refresh()
+    assert house.basis == BASIS_NET  # twelve hours of the whole load are not enough yet
+    assert len(house.history.gross) == 12 and reads
+    before = house.log.hours(KIND_HOUSE)
+    assert before and all(hour.forecast == pytest.approx(0.2) for hour in before.values())
+
+    # The battery plan's own rows of the two weeks before: taken over once, with the sun's production.
+    old = [(start, 0.9) for start in sorted(house.history.rows) if start < min(house.history.gross)]
+    assert await house.async_take_rows(old, now) == len(old)
+    assert await house.async_take_rows(old, now) == 0
+    await house.async_refresh()
+
+    assert house.basis == BASIS_GROSS
+    assert {round(hour.kw, 3) for hour in house.forecast.hours} == {1.4}
+    assert {round(hour.kw, 3) for hour in house.median.hours} == {1.4}
+    assert {round(hour.kw, 3) for hour in house.import_forecast.hours} == {0.2}
+    assert all(item["kw"] == 1.4 for item in house.attribute)
+    by_hour, basis, with_sun = house.battery_house_by_hour()
+    assert basis == BASIS_GROSS and with_sun and {round(kw, 3) for kw in by_hour.values()} == {1.4}
+    # The expected surplus: the whole load's median too, never the net figure.
+    surplus_house, status = house.surplus_house_by_hour(now)
+    assert status == SURPLUS_OK and {round(kw, 3) for kw in surplus_house.values()} == {1.4}
+    # What a plan under the import target counts on: the net figure.
+    assert {round(kw, 3) for kw in house.plan_kw_by_hour(now).values()} == {0.2}
+    assert house.plan_kw_at(now) == pytest.approx(0.2)
+    # The log: the house kinds on the whole load from now on, the import target's beside them.
+    assert all(hour.forecast == pytest.approx(1.4) for hour in house.log.hours(KIND_HOUSE).values())
+    assert all(hour.forecast == pytest.approx(0.2) for hour in house.log.hours(KIND_IMPORT).values())
+    block = (await async_get_config_entry_diagnostics(hass, entry))["load_forecast"]
+    assert block["basis"] == BASIS_GROSS and block["battery"] is True and block["production"] == "ok"
+    assert block["history"]["gross_hours"] == len(house.history.gross) and block["import_forecast"]["hours"]
+
+    # Kept across a restart: the whole load, when it was taken over, and the figure the log is on.
+    gross = dict(house.history.gross)
+    assert await hass.config_entries.async_reload(entry.entry_id)
+    await hass.async_block_till_done()
+    again = site_controller_for(hass, entry.entry_id).house_forecast
+    assert again.history.gross == gross and again.history.gross_migrated_at is not None
+    assert again.basis == BASIS_GROSS
+
+    # The battery taken out of the site, the solar statistics kept: still the whole load.
+    monkeypatch.setattr(again, "_has_battery", lambda: False)
+    await again.async_refresh()
+    assert again.basis == BASIS_GROSS and again.import_forecast is not None
+
+    # And the solar statistics too: back to the net figure, one forecast for both.
+    monkeypatch.setattr(house_forecast_module, "async_energy_ids", no_ids)
+    await again.async_refresh()
+    assert again.basis == BASIS_NET and again.import_forecast is None
+    assert {round(hour.kw, 3) for hour in again.forecast.hours} == {0.2}
+    assert again.surplus_house_by_hour(controller.demand.now()) == ({}, SURPLUS_NO_SOLAR_STATISTICS)
+
+
+async def no_ids(hass: Any) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    return (), ()
+
+
+def with_ex_battery(controller: Any, kw: float, hours: int) -> None:
+    """The tracker's last `hours` hours carry `grid - car - battery` at `kw`."""
+    tracker = controller.demand.tracker
+    recent = controller.demand.now() - timedelta(hours=hours)
+    tracker.hours = [
+        HourMean(**{**{slot: getattr(hour, slot) for slot in HourMean.__slots__}, "ex_battery_kw": kw})
+        if hour.start >= recent
+        else hour
+        for hour in tracker.hours
+    ]
+
+
+def solar_statistics(monkeypatch: pytest.MonkeyPatch, kwh: float) -> None:
+    """The Energy dashboard has `sensor.pv`, producing `kwh` in every hour."""
+
+    async def ids(hass: Any) -> tuple[tuple[str, ...], tuple[str, ...]]:
+        return ("sensor.pv",), ()
+
+    async def statistics(hass: Any, wanted: Any, start: datetime, end: datetime, period: str) -> dict[str, Any]:
+        moment, rows = start, []
+        while moment < end:
+            rows.append({"start": moment.timestamp(), "change": kwh})
+            moment += timedelta(hours=1)
+        return {"sensor.pv": rows}
+
+    monkeypatch.setattr(house_forecast_module, "async_energy_ids", ids)
+    monkeypatch.setattr(house_forecast_module, "async_statistics", statistics)
+
+
+# ---------------------------------------------------------------------------------------------- a solar site
+
+
+async def test_on_a_solar_site_without_a_battery_the_house_is_its_whole_load_after_three_days(
+    hass: HomeAssistant, freezer, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """No battery, the sun in the Energy dashboard: the import less the chargers (0.3 kW) is the house less the sun;
+    `grid - car` (the battery term 0) is 0.3 kW and the sun adds 1.2 kWh per hour, so the house draws 1.5 kW. The
+    whole load counts from `MIN_GROSS_HOURS` hours on; the import target keeps the net figure."""
+    weather(hass, 4.0)
+    entry = await pilot_site(hass, freezer)
+    controller = site_controller_for(hass, entry.entry_id)
+    house = controller.house_forecast
+    assert not controller.has_battery_reading()
+    seed(controller, kw=0.3)
+    solar_statistics(monkeypatch, 1.2)
+    now = controller.demand.now()
+
+    with_ex_battery(controller, 0.3, 12)
+    await house.async_refresh()
+    assert house.basis == BASIS_NET and len(house.history.gross) == 12
+    assert all(sun for _kw, sun in house.history.gross.values())
+    # Collecting: no surplus rather than one with the sun taken off twice.
+    assert house.surplus_house_by_hour(now) == ({}, SURPLUS_COLLECTING)
+
+    # Three days of hours filed (as the hourly refreshes do, `PRODUCTION_WAIT_H` back each).
+    for hour in sorted(house.history.rows)[-MIN_GROSS_HOURS:]:
+        house.history.gross[hour] = (1.5, True)
+    await house.async_refresh()
+    assert house.basis == BASIS_GROSS
+    assert {round(hour.kw, 3) for hour in house.median.hours if hour.kw is not None} == {1.5}
+    assert {round(kw, 3) for kw in house.plan_kw_by_hour(now).values()} == {0.3}
+    by_hour, status = house.surplus_house_by_hour(now)
+    assert status == SURPLUS_OK and by_hour and {round(kw, 3) for kw in by_hour.values()} == {1.5}
+    assert min(by_hour) >= now.replace(minute=0, second=0, microsecond=0)
+    block = (await async_get_config_entry_diagnostics(hass, entry))["load_forecast"]
+    assert block["basis"] == BASIS_GROSS and block["battery"] is False and block["production"] == "ok"
+
+
+async def test_a_solar_site_without_a_battery_files_no_hour_without_its_production(
+    hass: HomeAssistant, freezer, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The statistics there but not yet compiled for the hours: they wait, never filed as the house less the sun."""
+    weather(hass, 4.0)
+    entry = await pilot_site(hass, freezer)
+    controller = site_controller_for(hass, entry.entry_id)
+    house = controller.house_forecast
+    seed(controller, kw=0.3)
+    with_ex_battery(controller, 0.3, 12)
+
+    async def ids(hass: Any) -> tuple[tuple[str, ...], tuple[str, ...]]:
+        return ("sensor.pv",), ()
+
+    async def nothing(hass: Any, wanted: Any, start: datetime, end: datetime, period: str) -> dict[str, Any]:
+        return {"sensor.pv": []}
+
+    monkeypatch.setattr(house_forecast_module, "async_energy_ids", ids)
+    monkeypatch.setattr(house_forecast_module, "async_statistics", nothing)
+    await house.async_refresh()
+    assert house.history.gross == {} and house.basis == BASIS_NET
+
+
+async def test_a_site_without_solar_statistics_keeps_the_net_figure_and_has_no_surplus(
+    hass: HomeAssistant, freezer, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    weather(hass, 4.0)
+    entry = await pilot_site(hass, freezer)
+    controller = site_controller_for(hass, entry.entry_id)
+    house = controller.house_forecast
+    seed(controller, kw=0.3)
+    with_ex_battery(controller, 0.3, 12)
+    monkeypatch.setattr(house_forecast_module, "async_energy_ids", no_ids)
+    await house.async_refresh()
+    now = controller.demand.now()
+    assert house.basis == BASIS_NET and house.history.gross == {} and house.import_forecast is None
+    assert {round(kw, 3) for kw in house.plan_kw_by_hour(now).values()} == {0.3}
+    assert house.surplus_house_by_hour(now) == ({}, SURPLUS_NO_SOLAR_STATISTICS)
+    assert house.diagnostics()["production"] == "no_solar_statistics"
+
+
+async def test_a_site_without_a_battery_records_grid_less_car(
+    hass: HomeAssistant, freezer, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The hour tracker is given a battery term of 0 on a site without a battery, a live reading on one with."""
+    seen: list[Any] = []
+    entry = await pilot_site(hass, freezer)
+    controller = site_controller_for(hass, entry.entry_id)
+    monkeypatch.setattr(controller.demand, "due", lambda: True)
+    monkeypatch.setattr(controller.demand, "observe", lambda *args, **kwargs: seen.append(kwargs["battery_w"]))
+    controller._observe_demand()
+    monkeypatch.setattr(controller, "_battery_live_w", lambda: (True, None))
+    controller._observe_demand()
+    monkeypatch.setattr(controller, "_battery_live_w", lambda: (True, -800.0))
+    controller._observe_demand()
+    assert seen == [0.0, None, -800.0]

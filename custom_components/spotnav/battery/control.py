@@ -1,0 +1,366 @@
+"""The shell of the battery's write path (`executor.py`): reads the brand's control entities, makes the writes the
+executor returns, persists its state. **Unreachable in this release.**
+
+Nothing constructs `BatteryControl` in production: no service, no setting and no other module refers to it (a test
+keeps it so), and every write goes through `_async_write`, which refuses while `shadow.ON_REACHABLE` is off. Tests
+drive it against fake entities with `ON_REACHABLE` patched on. A later, explicit opt-in will own one per site.
+
+The order on every path:
+
+* **Start:** load the stored state; if it holds a snapshot (SpotNav wrote and HA stopped before handing back),
+  restore it before anything else (`async_start` runs the hand-back to its end or its deadline).
+* **Each look** (`async_tick`): read the battery's facts and the brand's control entities, the site's measurement,
+  headroom, import and load balancing, and the plan's running slot; step the executor; **persist the state before
+  the writes when it took a new snapshot**; make the writes (a raised service call is reported back as not taken);
+  store the state.
+* **Stop / unload** (`async_stop`): the executor hands back with that reason; the shell keeps stepping until it is
+  done or `HAND_BACK_DEADLINE_S` passes (the state is stored either way, so a restart finishes the restore).
+* **Verification** (`async_verify_step`, `verify.py`): the same looks with the routine choosing the action.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import logging
+import math
+from collections import deque
+from collections.abc import Callable
+from dataclasses import replace
+from datetime import datetime
+from typing import TYPE_CHECKING, Any, Final
+
+from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers.storage import Store
+from homeassistant.util import dt as dt_util
+
+from ..const import (
+    CONF_BATTERY_AGGREGATE_POWER_ENTITY,
+    CONF_CHARGER_ENTRY_IDS,
+    CONF_SOLAR_PRIORITY,
+    DEFAULT_SOLAR_PRIORITY,
+    DOMAIN,
+    SOLAR_PRIORITY_CAR_FIRST,
+)
+from ..planning.grid_voltage import stored_voltage_between_phases_v
+from ..site.measurement_problem import UNHEALTHY_STATES
+from . import shadow
+from .commands import WATCHDOG_S, BrandControl, control_for, service_call
+from .executor import ExecInputs, ExecState, Executor, Op, RoleRead, StepResult
+from .facts import BatteryFacts, EntityFact, find_entity
+from .ledger import Ledger
+from .monitor import Capability, Monitor
+from .plan_shadow import slot_at
+from .runtime import _entity_fact, read_battery_facts
+from .verify import Sample, Verification, keep_report
+
+if TYPE_CHECKING:
+    from ..site.site_capacity_controller import SiteCapacityController
+
+_LOGGER = logging.getLogger(__name__)
+
+STORE_VERSION: Final = 1
+#: How long a stop or unload keeps stepping the hand-back before it leaves the rest to the next start (s).
+HAND_BACK_DEADLINE_S: Final = 30.0
+#: How long the shell waits for an entity to change after a write, between looks during a hand-back (s).
+HAND_BACK_LOOK_S: Final = 2.0
+LOG_MAX: Final = 200
+
+#: `(action, battery kW magnitude, slot end)` of the running slot, or `None`.
+PlanSource = Callable[[datetime], tuple[str, float, datetime | None] | None]
+
+
+def store_key(entry_id: str) -> str:
+    return f"{DOMAIN}.battery_control.{entry_id}"
+
+
+class ControlNotReachable(RuntimeError):
+    """A look or a write was asked for while `shadow.ON_REACHABLE` is off."""
+
+
+def _reachable() -> None:
+    """Refuse before anything is read, decided or written while no part may write (`shadow.ON_REACHABLE`)."""
+    if not shadow.ON_REACHABLE:
+        raise ControlNotReachable("no battery control can write in this release")
+
+
+def _registry_reads(hass: HomeAssistant, config: dict[str, Any], control: BrandControl) -> dict[str, RoleRead]:
+    """Each role's entity in the battery's config entry, found by the integration's unique-id key."""
+    registry = er.async_get(hass)
+    entity_id = config.get(CONF_BATTERY_AGGREGATE_POWER_ENTITY)
+    battery_entry = registry.async_get(entity_id) if isinstance(entity_id, str) and entity_id else None
+    if battery_entry is None or battery_entry.config_entry_id is None:
+        return {}
+    entries = er.async_entries_for_config_entry(registry, battery_entry.config_entry_id)
+    entities: list[EntityFact] = [
+        _entity_fact(entry, hass) for entry in entries if entry.platform == battery_entry.platform
+    ]
+    battery = _entity_fact(battery_entry, hass)
+    reads: dict[str, RoleRead] = {}
+    for role in control.roles:
+        found = find_entity(role.match, entities, battery)
+        if found is None:
+            continue
+        reads[role.name] = RoleRead(
+            entity_id=found.entity_id, state=found.state, found=True, enabled=not found.disabled, step=found.step,
+            device_id=found.device_id,
+        )
+    return reads
+
+
+class BatteryControl:
+    """One site's battery write path (see the module). Never constructed in production."""
+
+    def __init__(
+        self, hass: HomeAssistant, site: SiteCapacityController, *, plan_source: PlanSource | None = None,
+        watchdog_s: int = WATCHDOG_S,
+    ) -> None:
+        self.hass = hass
+        self.site = site
+        self._store: Store[dict[str, Any]] = Store(hass, STORE_VERSION, store_key(site.entry_id))
+        self._plan_source = plan_source
+        self._watchdog_s = watchdog_s
+        self.executor: Executor | None = None
+        self.facts = BatteryFacts()
+        self.log: deque[dict[str, Any]] = deque(maxlen=LOG_MAX)
+        self.reports: dict[str, Any] = {}
+        self.verification: Verification | None = None
+        self._failed: tuple[str, ...] = ()
+        self._stored: dict[str, Any] = {}
+
+    # ---- life
+
+    async def async_start(self) -> None:
+        """Load the state; a stored snapshot is handed back before anything else."""
+        try:
+            stored = await self._store.async_load()
+        except Exception:  # noqa: BLE001 - a broken store is an empty one; nothing was written by it
+            _LOGGER.warning("The battery control state could not be read")
+            stored = None
+        self._stored = dict(stored) if isinstance(stored, dict) else {}
+        reports = self._stored.get("reports")
+        self.reports = dict(reports) if isinstance(reports, dict) else {}
+        state = ExecState.from_dict(self._stored.get("state"))
+        self.facts = self._read_facts()
+        control = control_for(state.brand) or control_for(self.facts.brand)
+        if control is None:
+            return
+        self.executor = Executor(
+            control, Ledger.from_dict(self._stored.get("ledger")), Monitor.from_dict(self._stored.get("monitor")),
+            state, watchdog_s=self._watchdog_s,
+        )
+        if not shadow.ON_REACHABLE:
+            # Nothing writes in such a release; a snapshot here came from a release that did, and is kept for it.
+            if state.holds_snapshot:
+                _LOGGER.warning("A battery control snapshot is stored but this release cannot write it back")
+            return
+        now = dt_util.now()
+        self._log(self.executor.restart(now))
+        if self.executor.state.phase == "restoring":
+            await self._async_until_handed_back("restart")
+
+    async def async_stop(self, reason: str = "stop") -> None:
+        """Hand the battery back now (the part is stopped, the entry unloads)."""
+        if self.executor is None or not shadow.ON_REACHABLE:
+            return
+        await self._async_until_handed_back(reason)
+
+    async def async_shutdown(self) -> None:
+        await self.async_stop("unload")
+        await self._async_save()
+
+    @staticmethod
+    async def async_remove_stored(hass: HomeAssistant, entry_id: str) -> None:
+        await Store(hass, STORE_VERSION, store_key(entry_id)).async_remove()
+
+    # ---- one look
+
+    async def async_tick(self, now: datetime | None = None, *, stopping: str | None = None) -> StepResult | None:
+        _reachable()
+        now = now or dt_util.now()
+        executor = self._executor()
+        if executor is None:
+            return None
+        inputs = self.inputs(now, executor.control, stopping=stopping)
+        return await self._async_step(executor, inputs)
+
+    async def async_verify_step(self, now: datetime | None = None) -> StepResult | None:
+        """One look of the verification routine; it starts one when none runs. Built, not callable from HA."""
+        _reachable()
+        now = now or dt_util.now()
+        executor = self._executor()
+        if executor is None:
+            return None
+        if self.verification is None or self.verification.done:
+            self.verification = Verification(executor, now, firmware=self.facts.firmware)
+        verification = self.verification
+        inputs = self.inputs(now, executor.control)
+        sample = Sample(
+            inputs.facts.power_kw, inputs.battery_age_s, inputs.facts.soc_pct, inputs.house_deficit_kw
+        )
+        action, rate = verification.command(now, sample, inputs.facts.max_charge_kw)
+        inputs = replace(inputs, action=action, rate_kw=rate, slot_end=None)
+        result = await self._async_step(executor, inputs)
+        capability = Capability(
+            rated_charge_kw=inputs.facts.max_charge_kw,
+            rated_discharge_kw=inputs.facts.max_discharge_kw,
+            soc_min_pct=inputs.facts.reserve_soc_pct or 0.0,
+        )
+        verification.after(now, result, sample, capability)
+        if verification.done:
+            self.reports = keep_report(self.reports, verification.report())
+            await self._async_save()
+        return result
+
+    async def _async_step(self, executor: Executor, inputs: ExecInputs) -> StepResult:
+        result = executor.step(inputs)
+        self._failed = ()
+        self._log(result.events)
+        if result.persist_first:
+            # The snapshot is on disk before the first write, so a crash in between still restores it.
+            await self._async_save()
+        failed: list[str] = []
+        for op in result.ops:
+            if not await self._async_write(op):
+                failed.append(op.role)
+        self._failed = tuple(failed)
+        await self._async_save()
+        return result
+
+    async def _async_until_handed_back(self, reason: str) -> None:
+        executor = self.executor
+        assert executor is not None
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + HAND_BACK_DEADLINE_S
+        stopping: str | None = reason
+        while True:
+            result = await self.async_tick(stopping=stopping)
+            stopping = None if executor.state.phase == "restoring" else stopping
+            if result is None or executor.state.phase in ("idle", "blocked") or loop.time() >= deadline:
+                return
+            await asyncio.sleep(0 if result.ops else HAND_BACK_LOOK_S)
+
+    # ---- reads
+
+    def _executor(self) -> Executor | None:
+        if self.executor is None:
+            self.facts = self._read_facts()
+            control = control_for(self.facts.brand)
+            if control is None:
+                return None
+            self.executor = Executor(control, watchdog_s=self._watchdog_s)
+        return self.executor
+
+    def _battery_power(self) -> tuple[float | None, float | None]:
+        reading = self.site.battery_aggregate_power()
+        if reading is None or reading.value is None:
+            return None, None
+        ages = [age for age in (reading.age_s, reading.report_age_s) if age is not None]
+        return reading.value / 1000.0, min(ages) if ages else None
+
+    def _read_facts(self) -> BatteryFacts:
+        power_kw, _age = self._battery_power()
+        return read_battery_facts(self.hass, self.site.config, power_kw)
+
+    def _reads(self, control: BrandControl) -> dict[str, RoleRead]:
+        reads = _registry_reads(self.hass, self.site.config, control)
+        executor = self.executor
+        if executor is not None:
+            # After a restart the stored entities are read even if the registry lookup fails.
+            for name, entity_id in executor.state.entities.items():
+                if name not in reads:
+                    state = self.hass.states.get(entity_id)
+                    reads[name] = RoleRead(entity_id=entity_id, state=None if state is None else state.state,
+                                           found=state is not None, enabled=state is not None,
+                                           device_id=executor.state.device_id)
+        return reads
+
+    def _plan_now(self, now: datetime) -> tuple[str, float, datetime | None] | None:
+        if self._plan_source is not None:
+            return self._plan_source(now)
+        plan = self.site.battery_shadow.plan
+        slot = slot_at(plan.plan, now)
+        return None if slot is None else (slot.action, abs(slot.battery_kw), slot.end)
+
+    def inputs(self, now: datetime, control: BrandControl, *, stopping: str | None = None) -> ExecInputs:
+        power_kw, age_s = self._battery_power()
+        self.facts = facts = read_battery_facts(self.hass, self.site.config, power_kw)
+        result = self.site.result
+        headrooms = [value for value in result.phase_headroom_a.values() if value is not None]
+        signed = list(result.phase_signed_active_power_w.values())
+        grid_import_kw = (
+            sum(value for value in signed if value is not None) / 1000.0
+            if signed and all(value is not None and math.isfinite(value) for value in signed) else None
+        )
+        config = self.site.config
+        car_held = any(
+            self.site.load_balancing_limit(charger)[0] is not None for charger in config.get(CONF_CHARGER_ENTRY_IDS) or []
+        )
+        plan = self._plan_now(now)
+        return ExecInputs(
+            now=now,
+            facts=facts,
+            reads=self._reads(control),
+            action=None if plan is None else plan[0],
+            rate_kw=0.0 if plan is None else plan[1],
+            slot_end=None if plan is None else plan[2],
+            battery_age_s=age_s,
+            measurement_ok=result.state not in UNHEALTHY_STATES and result.state != "not_configured",
+            headroom_a=min(headrooms) if headrooms else None,
+            volts_between_phases=stored_voltage_between_phases_v(config),
+            grid_import_kw=grid_import_kw,
+            car_first=config.get(CONF_SOLAR_PRIORITY, DEFAULT_SOLAR_PRIORITY) == SOLAR_PRIORITY_CAR_FIRST,
+            car_held=car_held,
+            stopping=stopping,
+            failed=self._failed,
+        )
+
+    # ---- writes
+
+    async def _async_write(self, op: Op) -> bool:
+        """One write; `False` when the service call raised (the executor counts it as not taken)."""
+        _reachable()
+        executor = self.executor
+        assert executor is not None
+        domain, service, data = service_call(
+            op.method, op.entity_id, op.value, device_id=op.device_id,  # type: ignore[arg-type]
+            services=executor.control.role(op.role).services, watchdog_s=self._watchdog_s,
+        )
+        try:
+            await self.hass.services.async_call(domain, service, data, blocking=True)
+        except (HomeAssistantError, ValueError) as err:
+            _LOGGER.warning("Battery control: %s.%s for %s failed: %s", domain, service, op.role, err)
+            self._log([{"at": dt_util.now().isoformat(), "kind": "service_failed", "reason": op.role,
+                        "error": str(err)}])
+            return False
+        return True
+
+    # ---- storage and what it shows
+
+    def _log(self, events: Any) -> None:
+        for event in events:
+            self.log.append(dict(event))
+            _LOGGER.debug("Battery control: %s %s", event.get("kind"), event.get("reason"))
+
+    async def _async_save(self) -> None:
+        executor = self.executor
+        data: dict[str, Any] = {"reports": dict(self.reports)}
+        if executor is not None:
+            data |= {
+                "state": executor.state.as_dict(),
+                "ledger": executor.ledger.as_dict(),
+                "monitor": executor.monitor.as_dict(),
+            }
+        await self._store.async_save(data)
+
+    def snapshot(self) -> dict[str, Any]:
+        executor = self.executor
+        return {
+            "reachable": shadow.ON_REACHABLE,
+            "brand": None if executor is None else executor.control.brand,
+            "executor": None if executor is None else executor.as_dict(),
+            "verification": None if self.verification is None else self.verification.report(),
+            "reports": dict(self.reports),
+            "log": list(self.log),
+        }

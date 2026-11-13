@@ -372,3 +372,66 @@ def test_a_kept_month_without_outdoor_temperatures_or_with_bad_ones_reads_as_non
          "outdoor_sum": "x", "outdoor_n": True}
     )
     assert running is not None and (running.outdoor_sum, running.outdoor_n) == (0.0, 0)
+
+
+# ---------------------------------------------------------------------------------------------- the house without the battery
+
+
+def test_an_hour_carries_grid_less_car_less_battery_signed_on_a_site_that_reads_a_battery() -> None:
+    tracker = HourTracker(tz=TZ)
+    start = cet(2026, 11, 2, 12)
+    moment = start
+    # Half an hour of sun: 1 kW exported while the battery charges at 3 kW and the car draws nothing.
+    while moment < start + timedelta(minutes=30):
+        tracker.observe(moment, -1000.0, 0.0, battery_w=3000.0)
+        moment += timedelta(seconds=30)
+    # Half an hour of the battery covering the house (1.5 kW) and the car's 4 kW from the grid.
+    while moment < start + timedelta(minutes=60):
+        tracker.observe(moment, 4000.0, 4000.0, battery_w=-1500.0)
+        moment += timedelta(seconds=30)
+    tracker.observe(moment + timedelta(seconds=1), 0.0, 0.0, battery_w=0.0)
+    [completed] = tracker.hours
+    # (-4 kW + 1.5 kW) / 2: the house less the sun, never clipped; the net figure stays as it was.
+    assert completed.ex_battery_kw == pytest.approx(-1.25, abs=0.01)
+    assert completed.house_kw == pytest.approx(0.0, abs=0.01)
+
+
+def test_without_a_battery_reading_for_most_of_the_hour_there_is_no_figure() -> None:
+    tracker = HourTracker(tz=TZ)
+    start = cet(2026, 11, 2, 12)
+    moment = run(tracker, start, 60, 2000.0, car_w=0.0)
+    tracker.observe(moment, 2000.0, 0.0)
+    [completed] = tracker.hours
+    assert completed.house_kw == pytest.approx(2.0) and completed.ex_battery_kw is None
+    # Read for 45 minutes only: more than the gap allowance without it.
+    tracker = HourTracker(tz=TZ)
+    moment = start
+    while moment < start + timedelta(minutes=60):
+        battery = 500.0 if moment < start + timedelta(minutes=45) else None
+        tracker.observe(moment, 2000.0, 0.0, battery_w=battery)
+        moment += timedelta(seconds=30)
+    tracker.observe(moment, 2000.0, 0.0)
+    assert tracker.hours[0].ex_battery_kw is None and tracker.hours[0].house_kw == pytest.approx(2.0)
+
+
+def test_the_figure_is_kept_beside_the_rows_and_survives_a_restart() -> None:
+    tracker = HourTracker(tz=TZ)
+    start = cet(2026, 11, 2, 12)
+    moment = start
+    while moment < start + timedelta(minutes=90):
+        tracker.observe(moment, 1000.0, 0.0, battery_w=-500.0)
+        moment += timedelta(seconds=30)
+    month, running = tracker.month_dict(), tracker.running.as_dict()  # type: ignore[union-attr]
+    # Beside the rows: each row keeps its length, so a build before the figure reads every row.
+    assert all(len(row) == 7 for row in month["hours"])
+    assert month["ex_battery_kw"] == {start.isoformat(): pytest.approx(1.5)}
+    restored = HourTracker(tz=TZ)
+    restored.restore(month, running)
+    assert restored.hours[0].ex_battery_kw == pytest.approx(1.5)
+    assert restored.running is not None and restored.running.ex_battery_covered_s == pytest.approx(1770.0)
+    # A store from before the figure, and a malformed one: no figure, every row read.
+    older = {key: value for key, value in month.items() if key != "ex_battery_kw"}
+    again = HourTracker(tz=TZ)
+    again.restore({**older, "ex_battery_kw": {"bad": 1.0, start.isoformat(): "x"}}, {**running, "ex_battery_wh": "x"})
+    assert again.hours[0].ex_battery_kw is None and again.hours[0].kw == pytest.approx(1.0)
+    assert again.running is not None and again.running.ex_battery_wh == 0.0

@@ -635,6 +635,9 @@
       "solar_surplus": {
         "name": "Zonne-overschot"
       },
+      "expected_solar_surplus": {
+        "name": "Verwacht zonne-overschot"
+      },
       "charger_proposed_current": {
         "name": "Voorgestelde stroom – {charger}",
         "state_attributes": {

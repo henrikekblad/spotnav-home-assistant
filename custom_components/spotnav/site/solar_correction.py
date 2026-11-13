@@ -27,8 +27,9 @@ Guard rails (Predbat's, which it learned the hard way):
   correction is off (the raw forecast is passed through) and the factors do not move. Negative-price hours are
   never learned from either way.
 
-In this release the result is shadow only: it is logged beside the raw forecast and both are scored by the nightly
-review; nothing that plans or controls reads it.
+The result is logged beside the raw forecast and both are scored by the nightly review. The house battery plan,
+itself in shadow, counts on the corrected forecast once the factors have learnt (`battery/plan_runtime.py`
+`corrected_solar_wh`); nothing that controls a charger reads it.
 """
 
 from __future__ import annotations

@@ -4,7 +4,12 @@ Pure: the clock is passed in. One log per site (kept in the house forecast's sto
 number of *kinds*, each kept the same way. Today: `house_kw`, the house load forecast; `house_kw_raw`, the same before
 its in-day adjustment; `house_day_ahead`, the next day's as made at the day-ahead price publication; `battery`, the
 SoC the battery plan expects at each hour's end (`battery/plan_shadow.py`); `sun_kwh`, the solar forecast as SpotNav
-reads it, and `sun_kwh_corrected`, the same after the shadow correction (`site/solar_correction_shadow.py`).
+reads it, and `sun_kwh_corrected`, the same after the shadow correction (`site/solar_correction_shadow.py`);
+`sun_kwh_p10`, `sun_kwh_p50` and `sun_kwh_p90`, the Solcast integration's three estimates as it states them
+(`site/solcast_detail.py`), logged beside the others so a later backtest has the real forecast as it was. Their
+`under_share` is the coverage reading: about 0.9 for a p10 and 0.1 for a p90 when the band is honest. On a site
+whose house figure is the house's whole load (a battery site, `site/house_forecast.py`), the house kinds log that, and
+`import_kw` the import less the chargers that the import target's plans count on.
 
 * **The first forecast** made for each hour is logged (`record_forecast`), with when it was made, so its lead is
   known. A later forecast for the same hour never replaces it: the review scores what was known first. Only hours
@@ -40,6 +45,13 @@ KIND_HOUSE_DAY_AHEAD: Final = "house_day_ahead"
 KIND_SUN: Final = "sun_kwh"
 #: The same forecast after the shadow correction (`site/solar_correction.py`), logged beside it for the review.
 KIND_SUN_CORRECTED: Final = "sun_kwh_corrected"
+#: Solcast's own p10, p50 and p90 for the hour (kWh, the installation's day sensors; only on a site that reads Solcast).
+KIND_SUN_P10: Final = "sun_kwh_p10"
+KIND_SUN_P50: Final = "sun_kwh_p50"
+KIND_SUN_P90: Final = "sun_kwh_p90"
+#: On a battery site: the import less the chargers as forecast for a plan under the import target, beside the house
+#: kinds (then the house's whole load).
+KIND_IMPORT: Final = "import_kw"
 #: The local hour from which the next day's prices are out (the day-ahead auction's results, ~12:45 CET).
 DAY_AHEAD_HOUR: Final = 13
 
@@ -49,8 +61,8 @@ KEEP_HOURS_DAYS: Final = 14
 MAX_HOURS: Final = (KEEP_HOURS_DAYS + 3) * 24
 #: The daily reviews of the last this many days are kept.
 KEEP_REVIEW_DAYS: Final = 30
-#: At most this many kinds are kept (a store that grew kinds by mistake stays small). Six are in use (the three
-#: house kinds, `battery` and the two sun kinds); the rest is room for the battery plan's per-mode kinds.
+#: At most this many kinds are kept (a store that grew kinds by mistake stays small). Ten are in use (the three
+#: house kinds, `import_kw`, `battery`, the two sun kinds and Solcast's three); the rest is room for more.
 MAX_KINDS: Final = 12
 #: An under-forecast by more than this (in the kind's unit) is a large one.
 BIG_UNDER: Final = 0.5
@@ -232,6 +244,19 @@ class ForecastLog:
         """The kind's logged hours by start (UTC); empty for a kind never logged."""
         log = self.kinds.get(kind)
         return {} if log is None else dict(log.hours)
+
+    def drop_unreviewed(self, kind: str) -> int:
+        """Drop the kind's hours of every day not reviewed yet (its reviews stay): the forecast changed what it
+        measures, and a day must not be scored half on one figure and half on another. How many were dropped."""
+        log = self.kinds.get(kind)
+        if log is None:
+            return 0
+        zone = time_zones.require_zone(self.tz)
+        reviewed = {review.day for review in log.reviews}
+        kept = {start: hour for start, hour in log.hours.items() if start.astimezone(zone).date() in reviewed}
+        dropped = len(log.hours) - len(kept)
+        log.hours = kept
+        return dropped
 
     def take_kinds(self, raw: Any, kinds: Iterable[str]) -> list[str]:
         """Take `kinds` from another log's store (`as_dict`'s shape), each only when this log holds nothing of it

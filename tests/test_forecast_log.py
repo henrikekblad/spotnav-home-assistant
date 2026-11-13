@@ -221,3 +221,19 @@ def test_the_kinds_in_use_fit_under_the_cap() -> None:
     assert len(in_use) == 6
     # Room for the battery plan's three modes beside them.
     assert len(in_use) + 3 <= MAX_KINDS
+
+
+def test_a_kind_that_changes_what_it_measures_drops_the_days_not_reviewed_and_keeps_its_reviews() -> None:
+    log = ForecastLog(tz=TZ)
+    day = local(2026, 11, 16)
+    log.record_forecast(KIND_HOUSE, {start: 1.0 for start in hours_of(day)}, day - timedelta(hours=1))
+    for start in hours_of(day):
+        log.record_actual(KIND_HOUSE, start, 1.5)
+    assert len(log.review(local(2026, 11, 17, 1))) == 1
+    tomorrow = hours_of(local(2026, 11, 17), 6)
+    log.record_forecast(KIND_HOUSE, {start: 0.2 for start in tomorrow}, local(2026, 11, 17, 0, 30) - timedelta(hours=1))
+    assert log.drop_unreviewed(KIND_HOUSE) == 6
+    assert set(log.hours(KIND_HOUSE)) == set(hours_of(day)) and len(log.kinds[KIND_HOUSE].reviews) == 1
+    # The same hours are logged again on the new figure; a kind never logged drops nothing.
+    assert log.record_forecast(KIND_HOUSE, {start: 1.4 for start in tomorrow}, local(2026, 11, 16, 23)) == 6
+    assert log.drop_unreviewed(KIND_SUN) == 0

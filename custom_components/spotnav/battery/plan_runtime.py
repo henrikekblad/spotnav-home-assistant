@@ -4,9 +4,8 @@ really did and reviews each day the night after. The policy is pure (`plan_shado
 Owned by the site's `BatteryShadow` (`runtime.py`), which calls `tick` every `runtime.TICK_S` with the battery's facts.
 
 * **Each tick**: the quarter hour's meters (the site's net grid, the chargers' draw, the battery's power and SoC) go
-  into its row (`PlanActuals`). When a quarter hour turns, completed hours become the plan's own house rows and the
-  SoC read at their end goes into the site's forecast log (kind `battery`, beside the SoC the first plan expected);
-  days that ended are reviewed.
+  into its row (`PlanActuals`). When a quarter hour turns, the SoC read at the end of each completed hour goes into
+  the site's forecast log (kind `battery`, beside the SoC the first plan expected); days that ended are reviewed.
 * **Every `CHECK_S`**: whether to plan again (`plan_shadow.replan_trigger`). A plan reads the prices, the solar
   forecast and the cars' plans here, then builds and solves the plan in the executor. At most one runs at a time; a
   trigger while one runs is skipped (`skipped_busy`) and seen again at the next check.
@@ -16,11 +15,17 @@ Owned by the site's `BatteryShadow` (`runtime.py`), which calls `tick` every `ru
 * **Battery limits** (`limited_params`): the plant's maximum output where its adapter reads one and it is below the
   battery's rating (the owner's Sigenergy: 13.2 kW beside 20.6/23.04 kW), and the battery's own reserve as the floor
   where one can be read; otherwise the assumed floor, said to be (`min_soc_assumed`).
-* **House rows and the sun**: the plan's own house rows are measured net of the sun (`grid - car - battery`). When
-  the plan adds the solar forecast, the rows are made gross again with the hour's production from the Energy
-  dashboard's solar statistics (`site/energy_statistics.py`), so the sun is not counted twice; an hour without a
-  production figure is left out. Without production statistics (or too few hours with one) the rows stay net and the
-  plan says so (`solar_in_house_history`).
+* **The house**: the site's own forecast (`site/house_forecast.py`), whose house figure on a battery site is the
+  house's whole load (`grid - car - battery` plus the sun's production from the Energy dashboard's statistics), so
+  neither the battery nor the sun is counted twice; the plan takes its median without the in-day adjustment
+  (`battery_house_by_hour`, `house_forecast.MEDIAN_QUANTILE`). Until the site has enough hours of the whole load the
+  figure is the import less the chargers, which counts the battery, and the plan says so (`house_counts_battery`);
+  a whole load without the sun's production (no solar statistics) beside a solar forecast says so too
+  (`solar_in_house_history`). The plan kept its own rows of `grid - car - battery` before the site did: they are
+  handed to the site once (`SiteHouseForecast.async_take_rows`) and are no forecast of their own any more.
+* **The sun's correction**: the plan counts on the solar forecast as the site's correction corrects it
+  (`site/solar_correction_shadow.py`) once that has learnt; the raw forecast while it learns or is off
+  (`corrected_solar_wh`, shown as `inputs.solar`). The plan is itself shadow, so no charger reads it.
 * **Storage**: the quarter hours, the first planned actions, the house rows, the reviews and the plan in force (so a
   restart keeps the running slot's action stable) in `spotnav.battery_plan.<entry>`. The forecast log is the site's
   (`site/house_forecast.py`), saved with its hourly refresh.
@@ -36,7 +41,7 @@ import math
 import time
 from collections.abc import Sequence
 from dataclasses import replace
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from functools import partial
 from typing import TYPE_CHECKING, Any, Final
 
@@ -51,10 +56,10 @@ from ..const import (
     CONF_SOLAR_FORECAST_ENTRIES,
     DOMAIN,
 )
-from ..planning.demand_charge import HourMean, hour_start
+from ..planning.demand_charge import hour_start
 from ..planning.grid_voltage import stored_voltage_between_phases_v
-from ..site.energy_statistics import async_energy_ids, async_statistics, summed
-from ..site.load_forecast import forecast_house_load
+from ..site.house_forecast import BASIS_GROSS, MEDIAN_QUANTILE
+from ..site.solar_correction import STATUS_SHADOW as CORRECTION_LEARNT, SolarCorrection
 from .facts import BatteryFacts
 from .plan import plan_mode, self_consumption
 from .plan_model import (
@@ -75,7 +80,6 @@ from .plan_shadow import (
     EST_SOLAR_IN_HOUSE,
     FAILED,
     KIND_BATTERY,
-    MIN_OWN_HOURS,
     NO_FEES,
     NO_HOUSE_FORECAST,
     NO_PRICES,
@@ -119,6 +123,8 @@ PRICE_DAYS: Final = 2
 #: The modes beside the site's own are planned only while the solve has taken at most this long (s); the ones left
 #: are skipped and named (`modes_skipped`).
 MODES_BUDGET_S: Final = 5.0
+# The clock the modes budget is read from: wall-clock in production, replaced by tests so they do not depend on load.
+budget_clock = time.monotonic
 #: The hook for a credit per exported kWh (minor units, the grid operator's "nätnytta", a few öre in Sweden): read
 #: from the site's entry under this key, none by default; added to the spot price of every kWh sold, by the sun or
 #: by the battery. No setting offers it yet.
@@ -133,25 +139,45 @@ EST_WEAR_CURRENCY: Final = "wear_currency_unknown"
 STATUS_WAITING: Final = "waiting"
 STATUS_PLANNED: Final = "planned"
 STATUS_NO_PLAN: Final = "no_plan"
-HOUSE_OWN: Final = "own_rows"
+#: The plan's house: the site's forecast of the house's whole load, or (until the site has enough of its hours) of the
+#: import less the chargers, which counts the battery.
+HOUSE_GROSS: Final = "site_gross"
 HOUSE_SITE: Final = "site_forecast"
-#: What the plan's own house rows are: the house's whole load (the sun's production added back), or net of the sun.
+#: What the whole load's hours are: with the sun's production added back, or net of the sun (no solar statistics).
 ROWS_GROSS: Final = "gross"
 ROWS_NET: Final = "net_of_sun"
+#: What the plan's sun is: the forecast as the site's solar correction corrects it, or the forecast as read (the
+#: correction still learning, off on a curtailed site, or no forecast).
+SOLAR_CORRECTED: Final = "corrected"
+SOLAR_RAW: Final = "raw"
+#: The plan's house forecast: the profile's median without the in-day adjustment, made by the site
+#: (`site/house_forecast.py`, where the backtest behind it is told).
+HOUSE_QUANTILE: Final = MEDIAN_QUANTILE
 
 
 def store_key(entry_id: str) -> str:
     return f"{DOMAIN}.battery_plan.{entry_id}"
 
 
-def gross_house_rows(
-    rows: Sequence[tuple[datetime, float]], production_kwh: dict[datetime, float]
-) -> list[tuple[datetime, float]] | None:
-    """The plan's own house rows (`(hour start, mean kW net of the sun)`) with each hour's solar production (kWh,
-    the hour's mean kW) added back: the house's whole load. An hour without a production figure is left out; `None`
-    when fewer than `MIN_OWN_HOURS` hours have one (the rows then stay as they are)."""
-    gross = [(start, kw + production_kwh[start]) for start, kw in rows if start in production_kwh]
-    return gross if len(gross) >= MIN_OWN_HOURS else None
+def corrected_solar_wh(
+    raw_wh: dict[datetime, float],
+    correction: SolarCorrection,
+    *,
+    observed_max_kwh: float | None,
+    array_kwp: float | None,
+) -> tuple[dict[datetime, float], str]:
+    """The solar forecast the plan counts on (Wh per UTC hour): [raw_wh] corrected by the site's correction
+    (`site/solar_correction.py`) once it has learnt (`STATUS_SHADOW`), with its caps; as read while it learns or is
+    off on a curtailed site. With which of the two it is.
+
+    The backtest (`scripts/forecast_gap_backtest.py`, 2026-11-13): on the owner's site the raw Solcast p50 was
+    optimistic, and the corrected forecast brought the plan within a few kronor a month of perfect sun."""
+    if correction.status != CORRECTION_LEARNT:
+        return raw_wh, SOLAR_RAW
+    kwh = correction.correct(
+        {start: wh / 1000.0 for start, wh in raw_wh.items()}, observed_max_kwh=observed_max_kwh, array_kwp=array_kwp
+    )
+    return {start: value * 1000.0 for start, value in kwh.items()}, SOLAR_CORRECTED
 
 
 def limited_params(
@@ -187,8 +213,7 @@ def _solve(
     now: datetime,
     tz: str,
     prices: Sequence[PriceSlot],
-    house: dict[datetime, float] | None,
-    own: tuple[list[HourMean], float | None, dict[datetime, float], frozenset[Any] | None] | None,
+    house: dict[datetime, float],
     solar_wh: dict[datetime, float] | None,
     car_windows: list[tuple[datetime, datetime, float]],
     cap_kw: float | None,
@@ -198,13 +223,9 @@ def _solve(
     wear: float,
     keeps: dict[str, tuple[str, float] | None],
 ) -> tuple[dict[str, Any], tuple[str, ...], tuple[PlanSlot, ...], tuple[str, ...]]:
-    """The executor's part: the plan's own house forecast (when it has its rows), the slots, and each mode's plan,
-    the site's [mode] first; the modes left when the solve took longer than `MODES_BUDGET_S` are skipped."""
-    started = time.monotonic()
-    if own is not None:
-        rows, flat_kw, temperatures, holidays = own
-        forecast = forecast_house_load(rows, now, tz, flat_kw=flat_kw, temperatures=temperatures, holidays=holidays)
-        house = forecast.by_hour()
+    """The executor's part: the slots, and each mode's plan, the site's [mode] first; the modes left when the solve
+    took longer than `MODES_BUDGET_S` are skipped."""
+    started = budget_clock()
     if not house:
         raise _NoPlan(NO_HOUSE_FORECAST)
     slots, estimates = build_slots(now, prices, house, solar_wh, car_windows, cap_kw, tz)
@@ -218,7 +239,7 @@ def _solve(
     skipped: list[str] = []
     for name in (mode, *(other for other in MODES if other != mode)):
         # Self-consumption costs nothing (it is the baseline): never skipped.
-        if plans and MODE_DEFS[name].plans and time.monotonic() - started > MODES_BUDGET_S:
+        if plans and MODE_DEFS[name].plans and budget_clock() - started > MODES_BUDGET_S:
             skipped.append(name)
             continue
         plans[name] = plan_mode(
@@ -269,10 +290,6 @@ class BatteryPlanShadow:
         self.skipped_busy = 0
         self.last_duration_s: float | None = None
         self._prices: list[PriceSlot] = []
-        #: The solar production per hour (kWh, UTC hour starts) and the hour it was read in.
-        self._production: dict[datetime, float] = {}
-        self._production_hour: datetime | None = None
-        self.solar_statistics: tuple[str, ...] = ()
         self._cap_kw: float | None = None
         self._facts = BatteryFacts()
         self._quarter: datetime | None = None
@@ -543,22 +560,6 @@ class BatteryPlanShadow:
         self._running = True
         self.hass.async_create_task(self.async_plan(now, trigger), "spotnav_battery_plan", eager_start=False)
 
-    async def _async_production(self, first: datetime, now: datetime) -> dict[datetime, float]:
-        """The Energy dashboard's solar production per completed hour from `first` on (kWh), read once an hour;
-        empty without solar statistics or when they cannot be read."""
-        current = now.astimezone(timezone.utc).replace(minute=0, second=0, microsecond=0)
-        if self._production_hour == current:
-            return self._production
-        try:
-            ids, _export = await async_energy_ids(self.hass)
-            self.solar_statistics = ids
-            production = summed(await async_statistics(self.hass, ids, first, current, "hour"), ids) if ids else {}
-        except Exception:  # noqa: BLE001 - no production figures: the rows stay net of the sun, and it is said
-            _LOGGER.debug("SpotNav battery plan: the solar statistics could not be read", exc_info=True)
-            return {}
-        self._production, self._production_hour = production, current
-        return production
-
     # ---- the plan
 
     async def async_plan(self, now: datetime, trigger: str) -> None:
@@ -597,35 +598,26 @@ class BatteryPlanShadow:
         entries = list(self.site.config.get(CONF_SOLAR_FORECAST_ENTRIES) or [])
         solar = None
         solar_sources: tuple[str, ...] = ()
+        solar_basis: str | None = None
         if entries:
             read = await async_read_forecast_wh(self.hass, entries, now=now)
             solar, solar_sources = read.wh_hours, read.sources_read
+        if solar is not None:
+            sun = self.site.solar_correction
+            solar, solar_basis = corrected_solar_wh(
+                solar, sun.state, observed_max_kwh=sun.observed_max_kwh, array_kwp=sun.array_kwp
+            )
 
-        own_rows = sorted(self.actuals.rows.items())
-        rows_basis: str | None = None
-        if solar is not None and len(own_rows) >= MIN_OWN_HOURS:
-            gross = gross_house_rows(own_rows, await self._async_production(own_rows[0][0], now))
-            own_rows, rows_basis = (own_rows, ROWS_NET) if gross is None else (gross, ROWS_GROSS)
-        house_source = HOUSE_OWN if len(own_rows) >= MIN_OWN_HOURS else HOUSE_SITE
-        house: dict[datetime, float] | None = None
-        own = None
-        site_forecast = self.site.house_forecast.forecast
-        if house_source == HOUSE_OWN:
-            tracker = self.site.demand.tracker
-            outdoor = {hour.start: hour.outdoor_c for hour in (*tracker.previous, *tracker.hours)}
-            rows = [
-                HourMean(start=start, kw=kw, house_kw=max(0.0, kw), outdoor_c=outdoor.get(start))
-                for start, kw in own_rows
-            ]
-            recent = [kw for _start, kw in own_rows[-24:]]
-            temperatures = {}
-            if site_forecast is not None:
-                temperatures = {h.start: h.outdoor_c for h in site_forecast.hours if h.outdoor_c is not None}
-            own = (rows, max(0.0, sum(recent) / len(recent)), temperatures, self.site.house_forecast.holidays)
-        else:
+        site_house = self.site.house_forecast
+        if self.actuals.rows and site_house.history.gross_migrated_at is None:
+            # The plan's own rows of before, handed to the site once: its whole load starts with them.
+            await site_house.async_take_rows(sorted(self.actuals.rows.items()), now)
+        house, basis, with_sun = site_house.battery_house_by_hour()
+        house_source = HOUSE_GROSS if basis == BASIS_GROSS else HOUSE_SITE
+        rows_basis = (ROWS_GROSS if with_sun else ROWS_NET) if house_source == HOUSE_GROSS else None
+        if house_source == HOUSE_SITE:
             estimates = (*estimates, EST_HOUSE_COUNTS_BATTERY)
-            house = None if site_forecast is None else site_forecast.by_hour()
-        if solar is not None and not (house_source == HOUSE_OWN and rows_basis == ROWS_GROSS):
+        if solar is not None and rows_basis != ROWS_GROSS:
             estimates = (*estimates, EST_SOLAR_IN_HOUSE)
 
         mode, mode_unknown = self._site_mode()
@@ -640,7 +632,7 @@ class BatteryPlanShadow:
             keeps[name] = None if running is None else (running.action, running.battery_kw)
         windows = self._car_windows()
         plans, skipped, slots, more = await self.hass.async_add_executor_job(
-            partial(_solve, now, tz, prices, house, own, solar, windows, cap, params, facts.soc_pct, mode, wear, keeps)
+            partial(_solve, now, tz, prices, house, solar, windows, cap, params, facts.soc_pct, mode, wear, keeps)
         )
         if self._closed:
             return
@@ -674,10 +666,11 @@ class BatteryPlanShadow:
             "price_area": area_id,
             "import_cap_kw": None if cap is None else round(cap, 3),
             "house": house_source,
-            "own_hours": len(own_rows),
-            "house_rows": rows_basis if house_source == HOUSE_OWN else None,
-            "solar_statistics": list(self.solar_statistics),
+            "gross_hours": site_house.history.gross_in_window(now),
+            "house_rows": rows_basis,
+            "solar_statistics": list(site_house.solar_statistics),
             "solar_sources": list(solar_sources),
+            "solar": solar_basis,
             "car_windows": len(windows),
             "slots": len(slots),
             "sell_credit": self._sell_credit(),

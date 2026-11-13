@@ -5,6 +5,8 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
+import pytest
+
 from custom_components.spotnav.planning.demand_charge import HourMean
 from custom_components.spotnav.site.house_history import HouseHistory, KEEP_DAYS, MAX_ROWS
 from custom_components.spotnav.site.load_forecast import forecast_house_load, WINDOW_DAYS
@@ -108,3 +110,88 @@ def test_the_diagnostics_count_rather_than_list() -> None:
     block = history.diagnostics()
     assert block["hours"] == 24 and block["with_temperature"] == 24
     assert block["first"] < block["last"]
+
+
+# ---------------------------------------------------------------------------------------------- the whole load
+
+
+from custom_components.spotnav.site.house_history import MIN_GROSS_HOURS, PRODUCTION_WAIT_H  # noqa: E402
+
+
+def tracked(count: int, *, ex_battery: float = 0.5, end: datetime = NOW) -> list[HourMean]:
+    first = end.replace(minute=0, second=0, microsecond=0)
+    return [
+        HourMean(start=first - timedelta(hours=index), kw=0.1, house_kw=0.1, ex_battery_kw=ex_battery, outdoor_c=2.0)
+        for index in range(count, 0, -1)
+    ]
+
+
+def test_an_hour_of_the_whole_load_waits_for_its_production_and_never_counts_net_of_the_sun() -> None:
+    history = HouseHistory()
+    rows = tracked(3, ex_battery=-1.0)
+    history.merge(rows, NOW)
+    # The last hour is not compiled yet: it waits; the others have the sun added back.
+    production = {rows[0].start: 2.5, rows[1].start: 1.25}
+    assert history.merge_gross(rows, production, NOW) == 2
+    assert history.gross == {rows[0].start: (1.5, True), rows[1].start: (0.25, True)}
+    assert [hour.start for hour in history.waiting(rows, NOW)] == [rows[2].start]
+    # A refresh later the statistics have it; a negative sum is no load.
+    assert history.merge_gross(rows, {rows[2].start: 0.5}, NOW + timedelta(hours=1)) == 1
+    assert history.gross[rows[2].start] == (0.0, True)
+    # The whole load keeps the temperature the measured hour recorded.
+    assert {hour.outdoor_c for hour in history.gross_hours()} == {2.0}
+    # An hour older than the wait is left out for good.
+    late = NOW + timedelta(hours=PRODUCTION_WAIT_H + 2)
+    assert history.waiting(tracked(1, end=NOW), late) == []
+
+
+def test_without_solar_statistics_the_hours_are_filed_as_they_are_and_marked() -> None:
+    history = HouseHistory()
+    rows = tracked(2, ex_battery=0.7)
+    assert history.merge_gross(rows, None, NOW) == 2
+    assert all(row == (0.7, False) for row in history.gross.values())
+    assert history.gross_with_sun() is False
+    # Imported hours and hours without the figure are never the whole load.
+    history = HouseHistory()
+    assert history.merge_gross([HourMean(start=NOW - timedelta(hours=1), kw=1.0, imported=True, ex_battery_kw=1.0)], {}, NOW) == 0
+    assert history.merge_gross([HourMean(start=NOW - timedelta(hours=1), kw=1.0)], {}, NOW) == 0
+
+
+def test_the_battery_plans_rows_are_taken_over_once_and_only_before_the_first_hour_filed() -> None:
+    history = HouseHistory()
+    rows = tracked(2, ex_battery=1.0)
+    history.merge_gross(rows, {hour.start: 0.0 for hour in rows}, NOW)
+    first = min(history.gross)
+    plan_rows = [(first - timedelta(hours=index), 0.8) for index in range(MIN_GROSS_HOURS, -2, -1)]
+    production = {start: 0.25 for start, _kw in plan_rows[1:]}
+    taken = history.take_rows(plan_rows, production, NOW)
+    # The oldest has no production figure; those at or after the first filed hour stay the tracker's.
+    assert taken == MIN_GROSS_HOURS - 1
+    assert history.gross[first] == (1.0, True)
+    assert history.gross[first - timedelta(hours=1)] == (1.05, True)
+    assert history.gross_migrated_at == NOW
+    assert history.gross_ready(NOW) is True
+    assert history.gross_flat_kw() == pytest.approx((22 * 1.05 + 2 * 1.0) / 24)
+
+
+def test_the_whole_load_is_the_house_figure_only_from_enough_hours_in_the_window() -> None:
+    history = HouseHistory()
+    history.take_rows([(NOW - timedelta(hours=index), 1.0) for index in range(1, MIN_GROSS_HOURS)], None, NOW)
+    assert history.gross_in_window(NOW) == MIN_GROSS_HOURS - 1 and not history.gross_ready(NOW)
+    history.gross[NOW - timedelta(hours=MIN_GROSS_HOURS)] = (1.0, False)
+    assert history.gross_ready(NOW)
+    # Six weeks later the same hours are out of the forecast's window.
+    assert not history.gross_ready(NOW + timedelta(days=WINDOW_DAYS + 1))
+
+
+def test_the_whole_load_round_trips_in_the_store_beside_the_hours() -> None:
+    history = HouseHistory()
+    history.merge(hours(1), NOW)
+    history.take_rows([(NOW - timedelta(hours=index), 1.0) for index in range(1, 5)], None, NOW)
+    stored = history.as_dict()
+    # Beside the hours: a build before the whole load reads the rest as it was.
+    assert all(len(row) == 3 for row in stored["hours"]) and len(stored["gross"]) == 4
+    again = HouseHistory()
+    again.restore({**stored, "gross": [*stored["gross"], ["bad", 1.0, 1], [NOW.isoformat(), -1.0, 1], [NOW.isoformat(), 1.0, True]]})
+    assert again.gross == history.gross and again.gross_migrated_at == history.gross_migrated_at
+    assert again.hours() == history.hours()
