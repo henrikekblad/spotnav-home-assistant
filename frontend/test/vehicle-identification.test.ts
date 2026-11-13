@@ -408,9 +408,15 @@ describe("the car line", () => {
     // Glued to the name with no separator; the separator comes after.
     const head = icon.parentElement!;
     expect(head.classList.contains("spotnav-vehicle-line-head")).toBe(true);
-    expect(head.firstElementChild?.textContent).toBe("EV6");
+    // The battery, the name and its icon stay together; the "·" leads the next part, where a wrapped row clips it.
+    expect(head.firstElementChild?.tagName.toLowerCase()).toBe("svg");
+    expect(head.querySelector(".spotnav-vehicle-line-name")?.nextElementSibling).toBe(icon);
     expect(head.textContent).toBe("EV6");
-    expect((head.nextElementSibling?.textContent ?? "").startsWith("\u00b7 ")).toBe(true);
+    const next = head.nextElementSibling as HTMLElement;
+    const part = next.classList.contains("spotnav-vehicle-line-tail") ? next.firstElementChild! : next;
+    expect(part.classList.contains("spotnav-vehicle-line-part")).toBe(true);
+    expect(part.firstElementChild?.classList.contains("spotnav-vehicle-line-separator")).toBe(true);
+    expect(part.firstElementChild?.getAttribute("aria-hidden")).toBe("true");
   });
 
   it("gives each method its own icon, answered and manual sharing the person", async () => {
@@ -461,7 +467,7 @@ describe("Byt bil", () => {
     expect(changeCar(element)?.getAttribute("aria-label")).toBe("Byt bil – EV6");
     expect(changeCar(element)?.querySelector("[data-icon='swap']")).not.toBeNull();
     // The icon sits in the same nowrap group as the last text part, so a wrap never leaves it alone.
-    const tail = changeCar(element)?.lastElementChild;
+    const tail = changeCar(element)?.querySelector(".spotnav-vehicle-line-inner")?.lastElementChild;
     expect(tail?.classList.contains("spotnav-vehicle-line-tail")).toBe(true);
     expect(tail?.lastElementChild?.getAttribute("data-icon")).toBe("swap");
     expect(tail?.firstElementChild?.tagName).toBe("SPAN");

@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { SETTINGS_API_VERSION, type SettingsRecord } from "../src/types";
+import { VISUAL_STYLES } from "../src/visual-styles";
 import { FakeHass, mountCard } from "./helpers";
 
 const FIXTURES = join(__dirname, "..", "..", "tests", "fixtures", "dashboard");
@@ -84,7 +85,7 @@ describe("the vehicle line", () => {
       withSoc({ value: 92, vehicle_name: "e-Outback" }, { driver: "manual_kwh", vehicle_ids: ["vehicle_ev6"] }),
     );
     const button = line(element)!;
-    expect(button.textContent).toBe("e-Outback· 92 %");
+    expect(button.textContent).toBe("e-Outback·92 %");
     expect(button.querySelector("svg")).not.toBeNull();
     expect(button.title).toBe("");
     expect(button.getAttribute("aria-label")).toBe("e-Outback, 92 %");
@@ -101,7 +102,8 @@ describe("the vehicle line", () => {
         payload["connection"] = { state: "unknown" };
       }
       const { element } = await mounted(payload);
-      const spans = Array.from(line(element)!.querySelectorAll("span:not(.spotnav-vehicle-line-tail)")).map((span) => span.textContent ?? "");
+      const leaves = ".spotnav-vehicle-line-name, .spotnav-vehicle-line-charge, .spotnav-vehicle-line-age, .spotnav-vehicle-line-separator";
+      const spans = Array.from(line(element)!.querySelectorAll(leaves)).map((span) => span.textContent ?? "");
       return spans.join(" ").replace(/\s+/g, " ").trim();
     };
     for (const name of [null, "", "  "]) {
@@ -156,7 +158,7 @@ describe("the vehicle line", () => {
 
   it("adds the age of a stale reading, but not of a fresh one or of an estimate", async () => {
     const stale = await mounted(withSoc({ value: 62, age_s: 3 * 3600 + 120 }, { driver: "manual_kwh" }));
-    expect(line(stale.element)!.querySelector(".spotnav-vehicle-line-age")?.textContent).toBe("· 3 h ago");
+    expect(line(stale.element)!.querySelector(".spotnav-vehicle-line-age")?.textContent).toBe("3 h ago");
     const fresh = await mounted(withSoc({ value: 62, age_s: 3600 }, { driver: "manual_kwh" }));
     expect(line(fresh.element)!.querySelector(".spotnav-vehicle-line-age")).toBeNull();
   });
@@ -214,7 +216,7 @@ describe("the charger status in the header line", () => {
     ["connected", "fi", "Kytketty"],
   ])("puts the %s status after the charger's name in %s, not on the vehicle line", async (state, language, words) => {
     const { element } = await mounted(withConnection(state), language as "en");
-    expect(line(element)!.textContent).toBe("EV6· 96 %");
+    expect(line(element)!.textContent).toBe("EV6·96 %");
     expect(status(element)!.textContent).toBe(`· ${words}`);
     const row = status(element)!.parentElement!;
     expect(row.classList.contains("spotnav-name-row")).toBe(true);
@@ -261,7 +263,7 @@ describe("the charger status in the header line", () => {
   it("shows nothing for an unknown state, a missing block or an unreadable one", async () => {
     const unknown = await mounted(withConnection("unknown"));
     expect(status(unknown.element)).toBeNull();
-    expect(line(unknown.element)!.textContent).toBe("EV6· 96 %");
+    expect(line(unknown.element)!.textContent).toBe("EV6·96 %");
     const missing = withConnection("charging");
     delete missing["connection"];
     expect(status((await mounted(missing)).element)).toBeNull();
@@ -283,6 +285,31 @@ describe("the charger status in the header line", () => {
     expect(block.querySelector(".spotnav-name")?.textContent).toBe("Wallbox");
     expect(status(element)!.textContent).toBe("· Not connected");
     expect(status(element)!.previousElementSibling).toBe(block.querySelector(".spotnav-name"));
+  });
+});
+
+describe("the vehicle line at a narrow width", () => {
+  it("leads each later part with its own dot, so a wrapped row clips it, and keeps the charge with the swap icon", async () => {
+    const { element } = await mounted(withSoc({ value: 45, vehicle_name: "EV6" }));
+    const inner = line(element)!.querySelector(".spotnav-vehicle-line-inner")!;
+    expect(inner.parentElement?.classList.contains("spotnav-vehicle-line-clip")).toBe(true);
+    for (const separator of Array.from(inner.querySelectorAll(".spotnav-vehicle-line-separator"))) {
+      expect(separator.parentElement?.classList.contains("spotnav-vehicle-line-part")).toBe(true);
+      expect(separator.parentElement?.firstElementChild).toBe(separator);
+    }
+    const tail = inner.lastElementChild!;
+    expect(tail.classList.contains("spotnav-vehicle-line-tail")).toBe(true);
+    expect(tail.querySelector(".spotnav-vehicle-line-charge")?.textContent).toContain("45 %");
+    expect(tail.lastElementChild?.getAttribute("data-icon")).toBe("swap");
+  });
+
+  it("clips the strip a row's leading dot sits in", () => {
+    expect(VISUAL_STYLES).toMatch(/\.spotnav-vehicle-line-clip \{[^}]*overflow: hidden;/);
+    expect(VISUAL_STYLES).toMatch(
+      /\.spotnav-vehicle-line-inner \{[^}]*margin-inline-start: calc\(-1 \* var\(--spotnav-line-separator, 0\.9em\)\);/,
+    );
+    expect(VISUAL_STYLES).toMatch(/\.spotnav-vehicle-line-head \{[^}]*margin-inline-start: var\(--spotnav-line-separator, 0\.9em\);/);
+    expect(VISUAL_STYLES).toMatch(/\.spotnav-vehicle-line-separator \{[^}]*width: var\(--spotnav-line-separator, 0\.9em\);/);
   });
 });
 
