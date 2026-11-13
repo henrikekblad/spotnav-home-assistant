@@ -34,7 +34,8 @@ or there writes to a device: the plan is a shadow and a benchmark (wave 2 of 3.0
   measured SoC: what really happened, each mode's actions run against it (`plan.run_slot`, with that mode's floor),
   and plain self-consumption; `review_totals` sums the days kept (30). Each run is charged the change of its stored
   energy at the day's end value, so one that empties the battery does not look cheap. `saving` (the site's mode
-  against self-consumption) is the one figure to show, `mode_savings` the same per mode; `actual_saving` says
+  against self-consumption) is the one figure to show, `mode_savings` the same per mode (and for the defensive
+  variant, `VARIANT_DEFENSIVE`: the site's mode planned on the learnt error band's pessimistic side); `actual_saving` says
   what the battery's own way earned against the same baseline: the figure a battery in its own AI mode is judged
   by before SpotNav is ever given the battery.
 
@@ -123,6 +124,12 @@ EST_HOUSE_COUNTS_BATTERY: Final = "house_counts_battery"
 EST_NO_SOLAR: Final = "no_solar_forecast"
 EST_SOLAR_IN_HOUSE: Final = "solar_in_house_history"
 EST_HORIZON_CUT: Final = "horizon_cut_by_forecast"
+
+#: The defensive variant (`battery/defensive.py`): the site's mode planned on the learnt error band's pessimistic side
+#: (the house's p90 in the dear hours, the sun's p10). Planned and reviewed beside the modes, never in force.
+VARIANT_DEFENSIVE: Final = "defensive"
+#: Every plan kept per quarter hour and reviewed beside the plan in force: the modes and the defensive variant.
+REVIEWED: Final = (*MODES, VARIANT_DEFENSIVE)
 
 # Each slot's reasons: stable codes, params in fixed units (minor per kWh, kW, kWh, %).
 REASON_CHARGE_FOR_LATER: Final = "charge_for_later"
@@ -594,7 +601,7 @@ class Bucket:
             if not isinstance(raw[16], Mapping):
                 return None
             for mode, pair in raw[16].items():
-                if mode not in MODES or not isinstance(pair, list) or len(pair) != 2:
+                if mode not in REVIEWED or not isinstance(pair, list) or len(pair) != 2:
                     return None
                 if pair[0] not in ACTIONS or not _finite(pair[1]):
                     return None
@@ -897,7 +904,7 @@ class DayReview:
                 plan=run(raw["plan"]),
                 self_consumption=run(raw["self_consumption"]),
                 # A review from before the modes kept an export variant (`plan_export`): not a mode, dropped.
-                modes={mode: run(item) for mode, item in (raw.get("modes") or {}).items() if mode in MODES},
+                modes={mode: run(item) for mode, item in (raw.get("modes") or {}).items() if mode in REVIEWED},
                 soc_mae=None if raw.get("soc_mae") is None else float(raw["soc_mae"]),
                 mode=raw.get("mode") if raw.get("mode") in MODES else None,
             )
@@ -910,7 +917,7 @@ def review_totals(reviews: Sequence[DayReview]) -> dict[str, Any]:
     savings against self-consumption. Each mode's saving sums only the days it ran (`days`), beside the plan's on
     those same days (`saving_same_days_plan`)."""
     modes: dict[str, dict[str, Any]] = {}
-    for mode in MODES:
+    for mode in REVIEWED:
         ran = [review for review in reviews if mode in review.modes]
         if ran:
             modes[mode] = {

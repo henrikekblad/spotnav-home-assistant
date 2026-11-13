@@ -32,6 +32,11 @@ Plan (`every=`, `reserve=`)
 * `every=4` plans again every hour, as the shadow plan does; 96 plans once a day at 13:00.
 * `reserve=H`: the plan keeps back, at each slot, the energy the next H hours would need beyond the house forecast
   if the house drew its p90 (a soft floor: falling below it costs the dearest buy price of those hours).
+
+Error band (`band=`, 3.0 wave 6, W6-C): the plan counts on a pessimistic figure from the learnt band
+(`site/forecast_band.py`), learnt each plan from the last 14 days' misses of the same forecasts as made at 13:00 the
+day before. Parts joined by `+`: `hd50`/`hd33` the house's p90 in the dearest half/third of the horizon's hours
+(`battery/defensive.py`'s rule), `ha` the house's p90 in every hour, `sun` the sun's p10.
 """
 
 from __future__ import annotations
@@ -54,6 +59,7 @@ import battery_plan_backtest as bt  # noqa: E402
 from custom_components.spotnav.battery import plan as plan_module  # noqa: E402
 from custom_components.spotnav.battery.plan_model import MODE_DEFS, BatteryParams  # noqa: E402
 from custom_components.spotnav.planning.demand_charge import HourMean  # noqa: E402
+from custom_components.spotnav.site import forecast_band as fb  # noqa: E402
 from custom_components.spotnav.site import load_forecast as lf  # noqa: E402
 from custom_components.spotnav.site import solar_correction as sc  # noqa: E402
 
@@ -353,6 +359,7 @@ class Variant:
     sun: str = "perfect"
     every: int = 96
     reserve_h: int = 0
+    band: str = ""
 
     @staticmethod
     def parse(text: str) -> Variant:
@@ -364,27 +371,111 @@ class Variant:
             sun=fields.get("sun", "perfect"),
             every=int(fields.get("every", 96)),
             reserve_h=int(fields.get("reserve", 0)),
+            band=fields.get("band", ""),
         )
 
 
-def make_forecaster(ctx: Context, variant: Variant):
-    """The replay's forecaster for [variant]; also arms the reserve (`_RESERVE`) per plan."""
-    sun_parts = variant.sun.split("+")
-    source, extras = sun_parts[0], sun_parts[1:]
+def _sun_spec(spec: str) -> tuple[str, list[str], float]:
+    parts = spec.split("+")
+    source, extras = parts[0], parts[1:]
     scale = 1.0
     for extra in list(extras):
         if extra.startswith("x"):
             scale = float(extra[1:])
             extras.remove(extra)
+    return source, extras, scale
+
+
+def sun_forecast(ctx: Context, spec: str, at: datetime, i: int, n: int) -> list[float]:
+    source, extras, scale = _sun_spec(spec)
+    sun = raw_sun(ctx, source, at, i, n)
+    if "corr" in extras:
+        sun = corrected(ctx, source, at, i, sun)
+    if "inday" in extras:
+        sun = sun_inday(ctx, source, at, i, sun, "corr" in extras)
+    return [max(0.0, v * scale) for v in sun]
+
+
+#: Per (house spec, sun spec, local day): the day's hours as the 13:00 forecast of the day before had them, beside the
+#: outcome: `(start, house kW, house kW measured, sun kWh, sun kWh measured)`. Per process.
+_DAY_PAIRS: dict[tuple[str, str, date], list[tuple[datetime, float, float, float, float]]] = {}
+
+
+def day_pairs(ctx: Context, variant: Variant, day: date) -> list[tuple[datetime, float, float, float, float]]:
+    key = (variant.house, variant.sun, day)
+    if key in _DAY_PAIRS:
+        return _DAY_PAIRS[key]
+    history = ctx.history
+    made = datetime.combine(day - timedelta(days=1), datetime.min.time(), TZ).replace(hour=13)
+    start = datetime.combine(day, datetime.min.time(), TZ)
+    i_made, i0, i1 = history.at(made), history.at(start), history.at(start + timedelta(days=1))
+    out: list[tuple[datetime, float, float, float, float]] = []
+    if i_made >= 0 and i1 <= len(history.pv):
+        n = i1 - i_made
+        house = house_forecast(ctx, variant.house, made, i_made, n)[i0 - i_made:]
+        sun = sun_forecast(ctx, variant.sun.replace("+inday", ""), made, i_made, n)[i0 - i_made:]
+        for h in range(0, i1 - i0 - 3, 4):
+            houses = [history.house(i0 + h + k) for k in range(4)]
+            pvs = [history.pv[i0 + h + k] for k in range(4)]
+            if any(v is None for v in houses) or any(v is None for v in pvs):
+                continue
+            out.append((
+                ctx.quarter(i0 + h).astimezone(timezone.utc),
+                sum(house[h:h + 4]) / 4, sum(houses) / 4,  # type: ignore[arg-type]
+                sum(sun[h:h + 4]) / 4, max(0.0, sum(pvs) / 4),  # type: ignore[arg-type]
+            ))
+    _DAY_PAIRS[key] = out
+    return out
+
+
+def learnt_bands(ctx: Context, variant: Variant, at: datetime) -> tuple[fb.ErrorBand | None, fb.ErrorBand | None]:
+    """The house's and the sun's bands as the log would hold them at [at]: the misses of the days before today."""
+    today = at.astimezone(TZ).date()
+    rows = [row for k in range(fb.WINDOW_DAYS, 0, -1) for row in day_pairs(ctx, variant, today - timedelta(days=k))]
+    house = fb.learn([(t, f, a) for t, f, a, _fs, _as in rows], at, "Europe/Stockholm", fb.FORM_ADDITIVE)
+    sun = fb.learn([(t, fs, a_s) for t, _f, _a, fs, a_s in rows], at, "Europe/Stockholm", fb.FORM_RATIO)
+    return house, sun
+
+
+#: Counts per process of what the band did: plans made with it, and without one (learning).
+BAND_STATS = {"plans": 0, "house_learning": 0, "sun_learning": 0}
+
+
+def apply_band(ctx: Context, variant: Variant, at: datetime, i: int, house: list[float], sun: list[float]):
+    parts = set(variant.band.split("+"))
+    house_band, sun_band = learnt_bands(ctx, variant, at)
+    BAND_STATS["plans"] += 1
+    BAND_STATS["house_learning"] += house_band is None
+    BAND_STATS["sun_learning"] += sun_band is None
+    n = len(house)
+    times = [ctx.quarter(i + k) for k in range(n)]
+    if house_band is not None and parts & {"ha", "hd50", "hd33"}:
+        dear = set(range(n))
+        if "ha" not in parts:
+            share = 0.5 if "hd50" in parts else 1 / 3
+            # The hours' mean buy price; the dearest [share] of the horizon's hours.
+            hours: dict[datetime, list[float]] = {}
+            for k in range(n):
+                spot = ctx.history.spot[i + k]
+                if spot is not None:
+                    hours.setdefault(_hour(times[k]), []).append(bt_site().buy(spot))
+            means = {h: sum(v) / len(v) for h, v in hours.items() if v}
+            cut = fb.quantile(list(means.values()), 1 - share)
+            dear = {k for k in range(n) if means.get(_hour(times[k]), cut - 1) >= cut}
+        house = [house_band.bounds(v, times[k])[1] if k in dear else v for k, v in enumerate(house)]
+    if sun_band is not None and "sun" in parts:
+        sun = [sun_band.bounds(v, times[k])[0] for k, v in enumerate(sun)]
+    return house, sun
+
+
+def make_forecaster(ctx: Context, variant: Variant):
+    """The replay's forecaster for [variant]; also arms the reserve (`_RESERVE`) per plan."""
 
     def forecaster(history: bt.History, at: datetime, i: int, n: int) -> tuple[list[float], list[float]]:
         house = house_forecast(ctx, variant.house, at, i, n)
-        sun = raw_sun(ctx, source, at, i, n)
-        if "corr" in extras:
-            sun = corrected(ctx, source, at, i, sun)
-        if "inday" in extras:
-            sun = sun_inday(ctx, source, at, i, sun, "corr" in extras)
-        sun = [max(0.0, v * scale) for v in sun]
+        sun = sun_forecast(ctx, variant.sun, at, i, n)
+        if variant.band:
+            house, sun = apply_band(ctx, variant, at, i, house, sun)
         _RESERVE.clear()
         if variant.reserve_h:
             high = house_forecast(ctx, variant.house.replace("q50", "q90").replace("q75", "q90"), at, i, n,
@@ -448,6 +539,8 @@ def _job(variant: Variant) -> tuple[Variant, tuple]:
     foresight = "self" if variant.name == "self" else make_forecaster(ctx, variant)
     result = bt.replay(ctx.history, s["site"], s["first"], s["last"], foresight, s["end_value"],
                        MODE_DEFS[s["mode"]], s["wear"], variant.every)
+    if variant.band:
+        print(f"{variant.name}: {BAND_STATS}", file=sys.stderr)
     return variant, result
 
 
@@ -498,7 +591,12 @@ def main() -> None:
     ctx = Context(history, om, solcast, kw_per_ghi, house_rows(history, om), {}, observed)
     variants = [Variant("self") if run == "self" else Variant.parse(run) for run in args.runs]
     for source in {v.sun.split("+")[0] for v in variants if "+corr" in v.sun}:
-        ctx.corrections[source] = correction_factors(ctx, source, first.date(), last.date())
+        factors = correction_factors(ctx, source, first.date(), last.date())
+        if any(v.band for v in variants):
+            # The band learns from the days before the window too; the window's own factors stay as without it.
+            early = first.date() - timedelta(days=fb.WINDOW_DAYS + 2)
+            factors = {**correction_factors(ctx, source, early, first.date()), **factors}
+        ctx.corrections[source] = factors
 
     results: dict[str, tuple] = {}
     with concurrent.futures.ProcessPoolExecutor(

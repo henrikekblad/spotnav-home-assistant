@@ -15,7 +15,13 @@ from custom_components.spotnav.diagnostics import async_get_config_entry_diagnos
 from custom_components.spotnav.runtime import site_controller_for
 from custom_components.spotnav.site import house_forecast as house_forecast_module
 from custom_components.spotnav.site.house_history import MIN_GROSS_HOURS
-from custom_components.spotnav.site.forecast_log import KIND_HOUSE, KIND_HOUSE_DAY_AHEAD, KIND_HOUSE_RAW, KIND_IMPORT
+from custom_components.spotnav.site.forecast_log import (
+    KIND_HOUSE,
+    KIND_HOUSE_DAY_AHEAD,
+    KIND_HOUSE_MEDIAN,
+    KIND_HOUSE_RAW,
+    KIND_IMPORT,
+)
 from custom_components.spotnav.site.house_forecast import (
     BASIS_GROSS,
     BASIS_NET,
@@ -195,7 +201,14 @@ async def test_a_site_records_the_temperature_refreshes_hourly_and_shows_the_for
     assert block["holiday_dates"] == ["2026-12-24"]
     assert block["forecast"]["day_types"] == "weekday_weekend_holiday"
     assert len(block["forecast"]["hours"]) == 48
-    assert {KIND_HOUSE, KIND_HOUSE_RAW} <= set(block["log"]["kinds"]) <= {KIND_HOUSE, KIND_HOUSE_RAW, KIND_HOUSE_DAY_AHEAD}
+    assert {KIND_HOUSE, KIND_HOUSE_RAW, KIND_HOUSE_MEDIAN} <= set(block["log"]["kinds"]) <= {
+        KIND_HOUSE,
+        KIND_HOUSE_RAW,
+        KIND_HOUSE_DAY_AHEAD,
+        KIND_HOUSE_MEDIAN,
+    }
+    # The median's error band waits for a week of its own misses.
+    assert block["band"]["status"] == "learning" and block["band"]["hours"] == []
     # A site without a battery: the house is the import less the chargers, and the import target reads the same.
     assert block["basis"] == BASIS_NET and block["battery"] is False and block["import_forecast"] is None
     assert diagnostics["demand"]["outdoor_c"]

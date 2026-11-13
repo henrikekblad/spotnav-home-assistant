@@ -2,7 +2,8 @@
 
 Pure: the clock is passed in. One log per site (kept in the house forecast's store, `site/house_forecast.py`), any
 number of *kinds*, each kept the same way. Today: `house_kw`, the house load forecast; `house_kw_raw`, the same before
-its in-day adjustment; `house_day_ahead`, the next day's as made at the day-ahead price publication; `battery`, the
+its in-day adjustment; `house_kw_median`, the median without the in-day adjustment that the battery plan counts on
+(whose misses are its error band, `site/forecast_band.py`); `house_day_ahead`, the next day's as made at the day-ahead price publication; `battery`, the
 SoC the battery plan expects at each hour's end (`battery/plan_shadow.py`); `sun_kwh`, the solar forecast as SpotNav
 reads it, and `sun_kwh_corrected`, the same after the shadow correction (`site/solar_correction_shadow.py`);
 `sun_kwh_p10`, `sun_kwh_p50` and `sun_kwh_p90`, the Solcast integration's three estimates as it states them
@@ -38,6 +39,8 @@ from .. import time_zones
 KIND_HOUSE: Final = "house_kw"
 #: The same forecast before its in-day adjustment, logged beside it so the review shows what the adjustment earns.
 KIND_HOUSE_RAW: Final = "house_kw_raw"
+#: The median without the in-day adjustment (the battery plan's house), logged so its misses give the error band.
+KIND_HOUSE_MEDIAN: Final = "house_kw_median"
 #: The next day's forecast as made at the day-ahead price publication (`next_day_hours`): the figure that day's plans
 #: count on, reviewed beside the first-made one (`house_kw`, up to 48 hours ahead).
 KIND_HOUSE_DAY_AHEAD: Final = "house_day_ahead"
@@ -61,7 +64,7 @@ KEEP_HOURS_DAYS: Final = 14
 MAX_HOURS: Final = (KEEP_HOURS_DAYS + 3) * 24
 #: The daily reviews of the last this many days are kept.
 KEEP_REVIEW_DAYS: Final = 30
-#: At most this many kinds are kept (a store that grew kinds by mistake stays small). Ten are in use (the three
+#: At most this many kinds are kept (a store that grew kinds by mistake stays small). Eleven are in use (the four
 #: house kinds, `import_kw`, `battery`, the two sun kinds and Solcast's three); the rest is room for more.
 MAX_KINDS: Final = 12
 #: An under-forecast by more than this (in the kind's unit) is a large one.

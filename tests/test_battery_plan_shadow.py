@@ -56,6 +56,7 @@ from custom_components.spotnav.battery.plan_shadow import (
     TRIGGER_PRICES,
     TRIGGER_SOC,
     TRIGGER_START,
+    VARIANT_DEFENSIVE,
     Bucket,
     DayReview,
     PlanActuals,
@@ -591,6 +592,33 @@ def test_a_day_where_a_mode_did_not_run_has_no_figure_for_it() -> None:
     buckets[10].ran_modes[MODE_MAX_PROFIT] = (ACTION_SELF_CONSUME, 0.0)
     review = review_day(date(2026, 11, 13), buckets, BATTERY, TZ, MIDNIGHT + timedelta(days=1), PLANNING)
     assert review is not None and review.modes == {}
+
+
+def test_the_defensive_variant_is_kept_reviewed_and_summed_like_a_mode() -> None:
+    # The defensive plan held the battery through the cheap morning for a dear evening the house's p90 expected.
+    buy = [50.0] * 18 + [400.0] * 6
+    ran = [(ACTION_SELF_CONSUME, 0.0)] * 24
+    buckets = _day(buy=buy, house=1.0, battery=[0.0] * 24, soc=[50.0] * 25, ran=ran)
+    for bucket in buckets:
+        hour = (bucket.start - MIDNIGHT).total_seconds() // 3600
+        bucket.ran_modes[MODE_BALANCED] = (ACTION_SELF_CONSUME, 0.0)
+        bucket.ran_modes[VARIANT_DEFENSIVE] = (ACTION_HOLD, 0.0) if hour < 18 else (ACTION_SELF_CONSUME, 0.0)
+    review = review_day(
+        date(2026, 11, 13),
+        buckets,
+        BATTERY,
+        TZ,
+        MIDNIGHT + timedelta(days=1),
+        (*PLANNING, VARIANT_DEFENSIVE),
+        MODE_BALANCED,
+    )
+    assert review is not None and VARIANT_DEFENSIVE in review.modes
+    assert review.mode_savings[VARIANT_DEFENSIVE] > review.mode_savings[MODE_BALANCED]
+    assert DayReview.from_dict(review.as_dict()).as_dict() == review.as_dict()
+    totals = review_totals([review])
+    assert totals["modes"][VARIANT_DEFENSIVE]["days"] == 1
+    row = buckets[0].as_row()
+    assert Bucket.from_row(row) == buckets[0]
 
 
 def test_rows_and_reviews_from_before_the_modes_still_load() -> None:
