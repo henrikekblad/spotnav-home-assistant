@@ -1087,16 +1087,30 @@ export function createCardView(input: CardViewInput): CardView {
       ? guestLineFor(model.language, model.dashboardSettings)
       : vehicleLineFor(model.language, model.soc, model.dashboardSettings);
   let vehicleButton: HTMLElement | null = null;
-  // While the charge bar shows, it already says the charge runs: the connection line steps aside.
+  // While the charge bar shows, it already says the charge runs: the connection status steps aside.
   const connectionText = model.chargeBar === null ? connectionLabel(model.language, model.connection) : null;
-  const connectionClass = (): string =>
-    model.connection?.state === "error" ? `${C.connectionLine} ${C.connectionError}` : C.connectionLine;
+  // The charger's name with its status after it ("HALO Charger · Waiting"): the status is the charger's, not the car's.
+  const nameRow = (): HTMLElement => {
+    const row = element(doc, "div", C.nameRow);
+    if (model.chargerName !== null) {
+      row.append(element(doc, "h3", C.name, model.chargerName));
+    }
+    if (connectionText !== null) {
+      const status = element(
+        doc,
+        "span",
+        model.connection?.shown === "error" ? `${C.connectionLine} ${C.connectionError}` : C.connectionLine,
+        model.chargerName === null ? connectionText : `\u00b7 ${connectionText}`,
+      );
+      status.dataset["connection"] = model.connection?.shown ?? "";
+      row.append(status);
+    }
+    return row;
+  };
   if (vehicleLine !== null) {
     // The name and the planned vehicle stack in one block, so the line sits under the name.
     const identity = element(doc, "div", C.nameBlock);
-    if (model.chargerName !== null) {
-      identity.append(element(doc, "h3", C.name, model.chargerName));
-    }
+    identity.append(nameRow());
     // The car line is Byt bil wherever the car can be changed (more than one car can charge here): for every
     // user while a car is plugged in, since any user may answer which car it is. With no car plugged in the
     // choice is the plan's car, a plan setting (`mayPlan`), so a reader who may not change the plan gets the plain line.
@@ -1119,7 +1133,7 @@ export function createCardView(input: CardViewInput): CardView {
     }
     vehicleButton.append(batteryIcon(doc));
     // Only the parts that exist, each after the first behind a " · ": never a leading or doubled separator.
-    const parts: { cls: string; text: string; connection?: boolean }[] = [];
+    const parts: { cls: string; text: string }[] = [];
     if (vehicleLine.name !== null) {
       parts.push({ cls: C.vehicleLineName, text: vehicleLine.name });
     }
@@ -1132,24 +1146,16 @@ export function createCardView(input: CardViewInput): CardView {
     if (decidedBy !== null) {
       parts.push({ cls: C.vehicleLineAge, text: decidedBy });
     }
-    if (connectionText !== null) {
-      parts.push({ cls: connectionClass(), text: connectionText, connection: true });
-    }
     parts.forEach((part, index) => {
       const span = element(doc, "span", part.cls, index === 0 ? part.text : `\u00b7 ${part.text}`);
-      if (part.connection === true) {
-        span.dataset["connection"] = model.connection?.state ?? "";
-        if (!changeable) {
-          vehicleButton?.setAttribute("aria-label", `${vehicleLine.ariaLabel}, ${connectionText}`);
-        }
-      }
+      const piece: HTMLElement = span;
       if (changeable && index === parts.length - 1) {
         // The icon travels with the last part of the line, so a wrap never leaves it alone on a row.
         const tail = element(doc, "span", C.vehicleLineTail);
-        tail.append(span, swapIcon(doc));
+        tail.append(piece, swapIcon(doc));
         vehicleButton?.append(tail);
       } else {
-        vehicleButton?.append(span);
+        vehicleButton?.append(piece);
       }
     });
     if (changeable) {
@@ -1161,14 +1167,9 @@ export function createCardView(input: CardViewInput): CardView {
     identity.append(vehicleButton);
     header.append(identity);
   } else if (connectionText !== null) {
-    // No vehicle: the status alone under the name.
+    // No vehicle: the status after the name, as with a vehicle.
     const identity = element(doc, "div", C.nameBlock);
-    if (model.chargerName !== null) {
-      identity.append(element(doc, "h3", C.name, model.chargerName));
-    }
-    const status = element(doc, "p", connectionClass(), connectionText);
-    status.dataset["connection"] = model.connection?.state ?? "";
-    identity.append(status);
+    identity.append(nameRow());
     header.append(identity);
   } else if (model.chargerName !== null) {
     header.append(element(doc, "h3", C.name, model.chargerName));

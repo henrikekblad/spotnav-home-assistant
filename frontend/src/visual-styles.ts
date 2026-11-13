@@ -50,6 +50,7 @@ export const VISUAL_CLASSES = {
   connectionError: "spotnav-connection-error",
   vehicleLineAge: "spotnav-vehicle-line-age",
   vehicleLineTail: "spotnav-vehicle-line-tail",
+  nameRow: "spotnav-name-row",
   vehicleChoices: "spotnav-vehicle-choices",
   vehicleChoice: "spotnav-vehicle-choice",
   vehicleChoiceName: "spotnav-vehicle-choice-name",
@@ -1202,6 +1203,21 @@ export const VISUAL_STYLES = `
     flex: 0 0 auto;
     max-width: 100%;
   }
+  /* The charger's name and its status after it; the status wraps under the name as a whole when the name is long. */
+  .${VISUAL_CLASSES.nameRow} {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    column-gap: 4px;
+    max-width: 100%;
+    min-width: 0;
+  }
+  .${VISUAL_CLASSES.nameRow} > .${VISUAL_CLASSES.name} {
+    margin: 0;
+    line-height: 1.25;
+    flex: 0 1 auto;
+    max-width: 100%;
+  }
   /* The planned vehicle: a quiet text button under the name; the header's 44 px icon buttons keep the row tall enough to tap. */
   .${VISUAL_CLASSES.vehicleLine} {
     display: inline-flex;
@@ -1255,7 +1271,7 @@ export const VISUAL_STYLES = `
     gap: 4px;
     white-space: nowrap;
   }
-  /* The charger's status, after the charge (or alone, with no vehicle); an error in the warning colour. */
+  /* The charger's status, after its name; an error in the warning colour. */
   .${VISUAL_CLASSES.connectionLine} {
     margin: 0;
     font-size: 0.85rem;

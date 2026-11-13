@@ -18,8 +18,10 @@ import {
   API_VERSION,
   SETTINGS_API_VERSION,
   CHARGE_PROGRESS_STATES,
+  CONNECTION_SHOWN_STATES,
   CONNECTION_STATES,
   type ConnectionState,
+  type ConnectionShownName,
   type ConnectionStateName,
   type ChargeProgressState,
   type ChargeProgress,
@@ -2365,12 +2367,21 @@ function connectionOrNull(root: Record<string, unknown>): ConnectionState | null
     return null;
   }
   try {
-    exactKeys(value, ["state", "source"]);
+    // `shown` is additive (2.5.2): a backend without it shows the charger's own state.
+    exactKeys(value, "shown" in value ? ["state", "source", "shown"] : ["state", "source"]);
     const state = text(value, "state");
     if (!(CONNECTION_STATES as readonly string[]).includes(state)) {
       return null;
     }
-    return { state: state as ConnectionStateName, source: textOrNull(value, "source") };
+    const shown = "shown" in value ? text(value, "shown") : state;
+    if (!(CONNECTION_SHOWN_STATES as readonly string[]).includes(shown)) {
+      return null;
+    }
+    return {
+      state: state as ConnectionStateName,
+      source: textOrNull(value, "source"),
+      shown: shown as ConnectionShownName,
+    };
   } catch {
     return null;
   }

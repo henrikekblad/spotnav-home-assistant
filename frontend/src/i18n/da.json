@@ -853,6 +853,7 @@
   "connection.charging": "Oplader",
   "connection.paused": "På pause",
   "connection.finished": "Færdig",
+  "connection.waiting": "Venter",
   "connection.error": "Fejl",
   "chargeBar.done": "{percent} % færdig",
   "chargeBar.ofTarget": "{percent} % af målet",
