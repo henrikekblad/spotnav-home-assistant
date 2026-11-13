@@ -253,6 +253,10 @@ class BatteryPlan:
     baseline: PlanRun
     end_value: float
     battery: BatteryParams = field(repr=False)
+    #: The first slot keeps the action a plan before had for it, as the new one gained too little (`keep_gain`, on
+    #: the objective, minor units; `None` when there was none to keep).
+    kept: bool = False
+    keep_gain: float | None = None
 
     @property
     def savings(self) -> float:
@@ -263,7 +267,7 @@ class BatteryPlan:
 
     def as_dict(self) -> dict[str, Any]:
         """For diagnostics and the debug bundle: money in minor units, two decimals."""
-        return {
+        out: dict[str, Any] = {
             "cost": round(self.plan.cost, 2),
             "baseline_cost": round(self.baseline.cost, 2),
             "savings": round(self.savings, 2),
@@ -273,3 +277,7 @@ class BatteryPlan:
             "wear": round(self.plan.wear, 2),
             "slots": [decision.as_dict() for decision in self.plan.decisions],
         }
+        if self.keep_gain is not None:
+            out["kept"] = self.kept
+            out["keep_gain"] = round(self.keep_gain, 2)
+        return out

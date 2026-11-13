@@ -16,6 +16,7 @@ from custom_components.spotnav.battery.plan import (
     action_power,
     buy_prices,
     default_end_value,
+    objective,
     plan_battery,
     run_slot,
     self_consumption,
@@ -396,3 +397,51 @@ def test_run_slot_prices_one_slot() -> None:
     assert decision.curtailed_kwh == pytest.approx(2.0)
     assert decision.cost == pytest.approx(-80.0)
     assert decision.soc_end_pct == pytest.approx(BATTERY.max_soc_pct)
+
+
+# ----------------------------------------------------------------- stability (Predbat item 6)
+
+
+def test_a_running_action_is_kept_when_the_new_plan_gains_too_little() -> None:
+    # Charging now at 100 vs 101 later is nearly a tie: the running charge stays.
+    buy = [100, 101, 300, 300]
+    slots = _slots(buy, house=2.0)
+    fresh = plan_battery(_request(slots, soc_now_pct=10, end_value=0))
+    first = fresh.plan.decisions[0].action
+    other = ACTION_HOLD if first != ACTION_HOLD else ACTION_SELF_CONSUME
+    held = plan_battery(_request(slots, soc_now_pct=10, end_value=0), keep=(other, 0.0), keep_min_gain=10_000)
+    assert held.kept is True
+    assert held.plan.decisions[0].action == other
+    assert held.keep_gain is not None and 0 <= held.keep_gain <= 10_000
+    # The rest of the plan is still the cheapest from where the kept slot leaves the battery.
+    assert held.as_dict()["kept"] is True
+
+
+def test_a_running_action_is_replaced_when_the_new_plan_gains_enough() -> None:
+    slots = _slots([20, 300, 300, 300], house=2.0)
+    request = _request(slots, soc_now_pct=10, end_value=0)
+    fresh = plan_battery(request)
+    assert fresh.plan.decisions[0].action == ACTION_GRID_CHARGE
+    moved = plan_battery(request, keep=(ACTION_SELF_CONSUME, 0.0), keep_min_gain=5.0)
+    assert moved.kept is False
+    assert moved.plan.decisions[0].action == ACTION_GRID_CHARGE
+    assert moved.keep_gain is not None and moved.keep_gain > 5.0
+    assert objective(moved.plan, BATTERY, moved.end_value) == pytest.approx(
+        objective(fresh.plan, BATTERY, fresh.end_value)
+    )
+
+
+def test_a_kept_grid_charge_keeps_its_power() -> None:
+    slots = _slots([20, 21, 300, 300], house=2.0)
+    held = plan_battery(
+        _request(slots, soc_now_pct=10, end_value=0), keep=(ACTION_GRID_CHARGE, 2.5), keep_min_gain=1e9
+    )
+    assert held.kept is True
+    assert held.plan.decisions[0].action == ACTION_GRID_CHARGE
+    assert held.plan.decisions[0].battery_kw == pytest.approx(2.5)
+
+
+def test_without_a_kept_action_the_diagnostics_shape_is_unchanged() -> None:
+    result = plan_battery(_request(_slots([20, 300], house=2.0)))
+    assert result.kept is False and result.keep_gain is None
+    assert "kept" not in result.as_dict()
