@@ -13,9 +13,12 @@ measurements; it is shown on the site's state sensor (`forecast`), in the diagno
   one: weekday/weekend only, nothing guessed.
 * **Refresh**: when the running hour changes (an hour completed, or after a start), in the background; the model runs
   in the executor. A refresh that could not read a source it found is tried again after `RETRY_S`.
-* **Log**: each hour's first forecast, as used and before the in-day adjustment (`house_kw_raw`), and its outcome
-  (the hour's measured `house_kw`), reviewed per local day the night after; kept in the site's own store
-  (`spotnav.load_forecast.<entry>`).
+* **History**: the measured hours of the last eight weeks (`site/house_history.py`), merged from the demand tracker on
+  each refresh (its two months taken over on the first), so early in a month the forecast still reads six weeks.
+* **Log**: each hour's first forecast, as used and before the in-day adjustment (`house_kw_raw`), the next day's as
+  made once the day-ahead prices are out (`house_day_ahead`, 13:00 local, what that day's plans count on), and the
+  outcome (the hour's measured `house_kw`), reviewed per local day the night after; kept with the history in the
+  site's own store (`spotnav.load_forecast.<entry>`).
 """
 
 from __future__ import annotations
@@ -36,7 +39,15 @@ from ..const import DOMAIN
 from ..debug_day import DayStore
 from ..planning.demand_charge import hour_start
 from .demand_tracker import outdoor_reading, SiteDemand
-from .forecast_log import ForecastLog, KEEP_HOURS_DAYS, KIND_HOUSE, KIND_HOUSE_RAW
+from .forecast_log import (
+    ForecastLog,
+    KEEP_HOURS_DAYS,
+    KIND_HOUSE,
+    KIND_HOUSE_DAY_AHEAD,
+    KIND_HOUSE_RAW,
+    next_day_hours,
+)
+from .house_history import HouseHistory
 from .load_forecast import forecast_house_load, LoadForecast, WINDOW_DAYS
 
 _LOGGER = logging.getLogger(__name__)
@@ -165,6 +176,7 @@ class SiteHouseForecast:
         # that decides (a charger's solar evaluation) is woken by it.
         self._listeners: set[Callable[[], None]] = set()
         self.log = ForecastLog(tz=demand.tracker.tz)
+        self.history = HouseHistory()
         self.forecast: LoadForecast | None = None
         self.weather_entity_id: str | None = None
         self.weather_status: str = WEATHER_NONE
@@ -181,7 +193,11 @@ class SiteHouseForecast:
         self._loaded = entry_id is None
         self._store: DayStore | None = None
         if entry_id is not None:
-            self._store = DayStore(hass, store_key(entry_id), self.log.as_dict, save_delay_s=SAVE_DELAY_S)
+            self._store = DayStore(hass, store_key(entry_id), self._stored, save_delay_s=SAVE_DELAY_S)
+
+    def _stored(self) -> dict[str, Any]:
+        """What the store keeps: the log, and the forecast's own history beside it."""
+        return {**self.log.as_dict(), "history": self.history.as_dict()}
 
     async def async_load(self) -> None:
         if self._store is not None:
@@ -190,6 +206,10 @@ class SiteHouseForecast:
                 self.log.restore(raw)
             except Exception:  # noqa: BLE001 - a log that cannot be read starts again
                 _LOGGER.debug("SpotNav house forecast: the kept log could not be read", exc_info=True)
+            try:
+                self.history.restore(raw.get("history") if isinstance(raw, dict) else None)
+            except Exception:  # noqa: BLE001 - a history that cannot be read is taken from the tracker again
+                _LOGGER.debug("SpotNav house forecast: the kept history could not be read", exc_info=True)
         self._loaded = True
 
     async def async_close(self) -> None:
@@ -310,7 +330,9 @@ class SiteHouseForecast:
             complete = await self._async_temperatures(tz)
             complete &= await self._async_holidays(now, tz)
             self._retry_at = None if complete else now + timedelta(seconds=RETRY_S)
-            hours = (*tracker.previous, *tracker.hours)
+            # The tracker's two months merged into the forecast's own eight weeks (`site/house_history.py`).
+            self.history.merge((*tracker.previous, *tracker.hours), now)
+            hours = self.history.hours()
             temperatures = dict(self._temperatures)
             running_outdoor = self.outdoor_c()
             current = hour_start(now, tz)
@@ -353,8 +375,13 @@ class SiteHouseForecast:
             if hour.start >= oldest and not hour.imported and hour.house_kw is not None:
                 log.record_actual(KIND_HOUSE, hour.start, hour.house_kw)
                 log.record_actual(KIND_HOUSE_RAW, hour.start, hour.house_kw)
+                log.record_actual(KIND_HOUSE_DAY_AHEAD, hour.start, hour.house_kw)
         log.record_forecast(KIND_HOUSE, forecast.by_hour(), now)
         log.record_forecast(KIND_HOUSE_RAW, forecast.raw_by_hour(), now)
+        # The next day as forecast once its prices are out: what that day's plans count on.
+        next_day = next_day_hours(forecast.by_hour(), now, tz)
+        if next_day:
+            log.record_forecast(KIND_HOUSE_DAY_AHEAD, next_day, now)
         log.review(now)
         if self._store is not None:
             self._store.changed()
@@ -406,5 +433,6 @@ class SiteHouseForecast:
             "refreshes": self.refreshes,
             "retry_at": None if self._retry_at is None else self._retry_at.isoformat(),
             "forecast": None if self.forecast is None else self.forecast.as_dict(),
+            "history": self.history.diagnostics(),
             "log": self.log.diagnostics(),
         }

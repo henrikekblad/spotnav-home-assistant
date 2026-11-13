@@ -13,7 +13,7 @@ from homeassistant.helpers import entity_registry as er
 from custom_components.spotnav.planning.demand_charge import HourMean
 from custom_components.spotnav.diagnostics import async_get_config_entry_diagnostics
 from custom_components.spotnav.runtime import site_controller_for
-from custom_components.spotnav.site.forecast_log import KIND_HOUSE, KIND_HOUSE_RAW
+from custom_components.spotnav.site.forecast_log import KIND_HOUSE, KIND_HOUSE_DAY_AHEAD, KIND_HOUSE_RAW
 from custom_components.spotnav.site.house_forecast import (
     holiday_dates,
     hourly_temperatures,
@@ -167,7 +167,7 @@ async def test_a_site_records_the_temperature_refreshes_hourly_and_shows_the_for
     assert block["holiday_dates"] == ["2026-12-24"]
     assert block["forecast"]["day_types"] == "weekday_weekend_holiday"
     assert len(block["forecast"]["hours"]) == 48
-    assert set(block["log"]["kinds"]) == {KIND_HOUSE, KIND_HOUSE_RAW}
+    assert {KIND_HOUSE, KIND_HOUSE_RAW} <= set(block["log"]["kinds"]) <= {KIND_HOUSE, KIND_HOUSE_RAW, KIND_HOUSE_DAY_AHEAD}
     assert diagnostics["demand"]["outdoor_c"]
     # Two weeks at 1.2 kW: the profile, shown for the next 24 hours.
     assert {row[2] for row in block["forecast"]["hours"]} == {"profile"}
@@ -212,3 +212,58 @@ async def test_the_log_survives_a_restart(hass: HomeAssistant, freezer) -> None:
     again = site_controller_for(hass, entry.entry_id)
     assert again is not controller
     assert again.house_forecast.log.as_dict()["kinds"] == logged["kinds"]
+
+
+async def test_the_history_takes_the_tracker_over_and_outlives_its_months(hass: HomeAssistant, freezer) -> None:
+    """The first refresh takes the tracker's hours over; when the tracker drops a month the forecast still reads them,
+    and the history comes back after a restart."""
+    weather(hass, 4.0)
+    entry = await pilot_site(hass, freezer)
+    controller = site_controller_for(hass, entry.entry_id)
+    seed(controller, days=30)
+    await run(hass, freezer, 65, 1500.0)
+    await hass.async_block_till_done()
+    house = controller.house_forecast
+    assert house.history.diagnostics()["hours"] >= 30 * 24
+    assert house.history.migrated_at is not None
+    samples = house.forecast.samples
+    # A month turns: the tracker forgets the month before; the forecast does not.
+    controller.demand.tracker.previous = []
+    controller.demand.tracker.hours = []
+    await run(hass, freezer, 60, 1500.0)
+    await hass.async_block_till_done()
+    assert house.forecast.samples >= samples
+    diagnostics = await async_get_config_entry_diagnostics(hass, entry)
+    assert diagnostics["load_forecast"]["history"]["hours"] >= 30 * 24
+    kept = house.history.as_dict()["hours"]
+    assert await hass.config_entries.async_reload(entry.entry_id)
+    await hass.async_block_till_done()
+    again = site_controller_for(hass, entry.entry_id).house_forecast
+    assert again.history.as_dict()["hours"][: len(kept)] == kept
+
+
+async def test_the_next_day_is_logged_as_forecast_at_the_day_ahead_publication(hass: HomeAssistant, freezer) -> None:
+    from zoneinfo import ZoneInfo
+
+    weather(hass, 4.0)
+    entry = await pilot_site(hass, freezer)
+    controller = site_controller_for(hass, entry.entry_id)
+    seed(controller)
+    house = controller.house_forecast
+    await run(hass, freezer, 5, 1500.0)
+    await hass.async_block_till_done()
+    # 08:00 local: the next day's prices are not out, nothing is logged for it.
+    assert KIND_HOUSE_DAY_AHEAD not in house.log.kinds
+    zone = ZoneInfo(TZ)
+    now = controller.demand.now()
+    publication = now.astimezone(zone).replace(hour=13, minute=0, second=10)
+    freezer.move_to(publication)
+    await house.async_refresh()
+    logged = house.log.kinds[KIND_HOUSE_DAY_AHEAD].hours
+    tomorrow = publication.date() + timedelta(days=1)
+    assert logged and {start.astimezone(zone).date() for start in logged} == {tomorrow}
+    assert all(hour.made_at == publication.astimezone(UTC) for hour in logged.values())
+    # The hour after, the same hours keep the figures made at the publication.
+    freezer.move_to(publication + timedelta(hours=1))
+    await house.async_refresh()
+    assert all(hour.made_at == publication.astimezone(UTC) for hour in house.log.kinds[KIND_HOUSE_DAY_AHEAD].hours.values())
