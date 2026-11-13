@@ -13,9 +13,11 @@ import pytest
 from custom_components.spotnav.battery.plan import (
     _apply,
     _candidates,
+    action_power,
     buy_prices,
     default_end_value,
     plan_battery,
+    run_slot,
     self_consumption,
     sell_prices,
 )
@@ -358,3 +360,39 @@ def test_refuses_a_bad_slot() -> None:
     with pytest.raises(PlanInputError):
         plan_battery(_request((naive,)))
 
+
+
+# ----------------------------------------------------------------- running a plan against what happened
+
+
+def test_action_power_follows_the_slots_own_load() -> None:
+    deficit = _slots([100], house=3.0)[0]
+    surplus = _slots([100], house=1.0, solar=4.0)[0]
+    soc = 5.0
+    assert action_power(deficit, BATTERY, soc, ACTION_SELF_CONSUME) == pytest.approx(-3.0)
+    assert action_power(surplus, BATTERY, soc, ACTION_SELF_CONSUME) == pytest.approx(3.0)
+    assert action_power(deficit, BATTERY, soc, ACTION_HOLD) == 0.0
+    assert action_power(surplus, BATTERY, soc, ACTION_HOLD) == pytest.approx(3.0)
+    assert action_power(deficit, BATTERY, soc, ACTION_DISCHARGE_HOUSE) == pytest.approx(-3.0)
+    assert action_power(surplus, BATTERY, soc, ACTION_DISCHARGE_HOUSE) == 0.0
+    assert action_power(deficit, BATTERY, soc, ACTION_GRID_CHARGE, 2.0) == pytest.approx(2.0)
+    assert action_power(surplus, BATTERY, soc, ACTION_GRID_CHARGE, 2.0) == pytest.approx(3.0)
+    assert action_power(deficit, BATTERY, 9.0, ACTION_EXPORT_DISCHARGE) == pytest.approx(-5.0)
+    with pytest.raises(ValueError):
+        action_power(deficit, BATTERY, soc, "boost")
+
+
+def test_action_power_stays_within_the_energy_left() -> None:
+    slot = _slots([100], house=8.0)[0]
+    floor = BATTERY.min_kwh
+    assert action_power(slot, BATTERY, floor, ACTION_SELF_CONSUME) == 0.0
+    assert action_power(slot, BATTERY, BATTERY.max_kwh, ACTION_GRID_CHARGE, 5.0) == 0.0
+
+
+def test_run_slot_prices_one_slot() -> None:
+    slot = _slots([100], sell=[40], house=1.0, solar=5.0, export_cap=2.0)[0]
+    decision = run_slot(slot, BATTERY, BATTERY.max_kwh, ACTION_SELF_CONSUME, 0.0)
+    assert decision.grid_kw == pytest.approx(-2.0)
+    assert decision.curtailed_kwh == pytest.approx(2.0)
+    assert decision.cost == pytest.approx(-80.0)
+    assert decision.soc_end_pct == pytest.approx(BATTERY.max_soc_pct)

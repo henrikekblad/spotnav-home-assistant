@@ -78,27 +78,54 @@ def default_end_value(slots: Sequence[PlanSlot], battery: BatteryParams) -> floa
     return statistics.median(slot.buy for slot in slots) * battery.round_trip_efficiency
 
 
-def _candidates(
-    slot: PlanSlot, battery: BatteryParams, soc_kwh: float, request: PlanRequest
-) -> list[tuple[str, float]]:
-    """The actions open in [slot] at [soc_kwh], as (action, wanted AC battery power), duplicates dropped."""
+def _limits(slot: PlanSlot, battery: BatteryParams, soc_kwh: float) -> tuple[float, float]:
+    """The AC charge and discharge power open in [slot] at [soc_kwh]: rated power, bounded by the energy left."""
     hours = slot.hours
     eff = battery.one_way_efficiency
     charge_lim = max(0.0, min(battery.max_charge_kw, (battery.max_kwh - soc_kwh) / (eff * hours)))
     discharge_lim = max(0.0, min(battery.max_discharge_kw, (soc_kwh - battery.min_kwh) * eff / hours))
+    return charge_lim, discharge_lim
+
+
+def action_power(
+    slot: PlanSlot, battery: BatteryParams, soc_kwh: float, action: str, charge_kw: float = 0.0
+) -> float:
+    """The AC battery power [action] asks for in [slot] at [soc_kwh], before the grid's caps.
+
+    Every action but a grid charge follows the slot's load and sun, so a plan made on a forecast is run against
+    what really happens by calling this with the real slot. A grid charge asks for [charge_kw] (or the sun's whole
+    surplus, if more).
+    """
+    charge_lim, discharge_lim = _limits(slot, battery, soc_kwh)
     net = slot.net_kw
     surplus = max(0.0, -net)
     deficit = max(0.0, net)
+    if action == ACTION_SELF_CONSUME:
+        return min(surplus, charge_lim) if net <= 0 else -min(deficit, discharge_lim)
+    if action == ACTION_HOLD:
+        return min(surplus, charge_lim)
+    if action == ACTION_DISCHARGE_HOUSE:
+        return -min(deficit, discharge_lim)
+    if action == ACTION_GRID_CHARGE:
+        return min(charge_lim, max(charge_kw, surplus))
+    if action == ACTION_EXPORT_DISCHARGE:
+        return -discharge_lim
+    raise ValueError(f"unknown action {action!r}")
 
-    wanted: list[tuple[str, float]] = [
-        (ACTION_SELF_CONSUME, min(surplus, charge_lim) if net <= 0 else -min(deficit, discharge_lim)),
-        (ACTION_HOLD, min(surplus, charge_lim)),
-        (ACTION_DISCHARGE_HOUSE, -min(deficit, discharge_lim)),
+
+def _candidates(
+    slot: PlanSlot, battery: BatteryParams, soc_kwh: float, request: PlanRequest
+) -> list[tuple[str, float]]:
+    """The actions open in [slot] at [soc_kwh], as (action, wanted AC battery power), duplicates dropped."""
+    wanted = [
+        (action, action_power(slot, battery, soc_kwh, action))
+        for action in (ACTION_SELF_CONSUME, ACTION_HOLD, ACTION_DISCHARGE_HOUSE)
     ]
     for share in request.charge_shares:
-        wanted.append((ACTION_GRID_CHARGE, min(charge_lim, max(share * battery.max_charge_kw, surplus))))
+        power = action_power(slot, battery, soc_kwh, ACTION_GRID_CHARGE, share * battery.max_charge_kw)
+        wanted.append((ACTION_GRID_CHARGE, power))
     if request.allow_export_discharge:
-        wanted.append((ACTION_EXPORT_DISCHARGE, -discharge_lim))
+        wanted.append((ACTION_EXPORT_DISCHARGE, action_power(slot, battery, soc_kwh, ACTION_EXPORT_DISCHARGE)))
 
     out: list[tuple[str, float]] = []
     for action, power in wanted:
@@ -113,7 +140,7 @@ def _apply(
     """Run [action] at [power] for one slot, with the grid's caps enforced, and price it."""
     hours = slot.hours
     eff = battery.one_way_efficiency
-    discharge_lim = max(0.0, min(battery.max_discharge_kw, (soc_kwh - battery.min_kwh) * eff / hours))
+    _charge_lim, discharge_lim = _limits(slot, battery, soc_kwh)
     net = slot.net_kw
     over_cap = False
     curtailed = 0.0
@@ -141,6 +168,14 @@ def _apply(
         cost = grid * hours * slot.sell
     wear = abs(power) * hours * cycle_cost
     return _Outcome(action, power, grid, soc_end, cost, wear, over_cap, curtailed)
+
+
+def run_slot(
+    slot: PlanSlot, battery: BatteryParams, soc_kwh: float, action: str, power_kw: float, cycle_cost: float = 0.0
+) -> SlotDecision:
+    """[action] at [power_kw] run for one slot from [soc_kwh], with the grid's caps enforced: what it costs and
+    where it leaves the battery (`soc_end_pct`). For replaying a plan against what really happened."""
+    return _decision(slot, battery, _apply(slot, battery, soc_kwh, action, power_kw, cycle_cost))
 
 
 class _Grid:
