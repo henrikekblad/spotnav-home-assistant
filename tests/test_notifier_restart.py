@@ -293,6 +293,9 @@ async def test_a_charge_that_stopped_before_a_restart_is_told_as_stopped(world: 
     await world.restart()
     for minutes in (11, 13, 15, 20):
         await _go_to(world, FIRST[0] + timedelta(minutes=minutes))
+    assert world.told() == [], "perhaps an aggregator's short pause: looked at afresh from the restart"
+    for minutes in (25, 31):
+        await _go_to(world, FIRST[0] + timedelta(minutes=minutes))
     assert world.told() == [STOPPED], "it had charged in this window"
 
 

@@ -29,6 +29,7 @@ from custom_components.spotnav.notifications.settings import (
     NotificationSettingsError,
 )
 from custom_components.spotnav.notifications.targets import available_targets
+from custom_components.spotnav.notifications.outside_pause import MAX_S as OUTSIDE_PAUSE_MAX_S
 from custom_components.spotnav.notifications.unexpected_stop import (
     ExpectationFacts,
     GRACE_S,
@@ -154,13 +155,17 @@ def test_a_window_that_does_not_start_is_told_once_after_the_grace_period() -> N
 
 
 def test_a_charge_that_stops_inside_its_window_is_told_and_told_again_after_it_recovers() -> None:
+    # A stop after the charge ran is perhaps an aggregator's short pause: told only once it outlasts one.
     detector = UnexpectedStopDetector()
     detector.observe(at(0, charging=True))
     assert detector.observe(at(10)) is None
-    assert detector.observe(at(10 + GRACE_S)) == "stopped"
-    detector.observe(at(400, charging=True))
-    detector.observe(at(500))
-    assert detector.observe(at(500 + GRACE_S)) == "stopped"
+    assert detector.observe(at(10 + GRACE_S)) is None
+    assert detector.observe(at(10 + OUTSIDE_PAUSE_MAX_S)) == "stopped"
+    start = 10 + OUTSIDE_PAUSE_MAX_S + 100
+    detector.observe(at(start, charging=True))
+    detector.observe(at(start + 100))
+    assert detector.observe(at(start + 100 + OUTSIDE_PAUSE_MAX_S)) == "stopped"
+    assert detector.pauses.too_long == 2 and detector.pauses.total == 0
 
 
 @pytest.mark.parametrize(
@@ -367,7 +372,10 @@ async def test_a_charge_stopped_by_something_else_inside_the_window_is_told(hass
     await hass.async_block_till_done()
     hass.states.async_set("switch.charger_a", "off")
     await hass.async_block_till_done()
+    # Not told within an aggregator's short pause; told once it outlasts one.
     await _later(hass, freezer, GRACE_S + 5)
+    assert calls == []
+    await _later(hass, freezer, OUTSIDE_PAUSE_MAX_S)
     assert [call.data["message"] for call in calls] == ["Charging stopped during a planned window."]
 
 

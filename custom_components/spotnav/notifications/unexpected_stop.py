@@ -21,6 +21,9 @@ told once while it lasts, whatever its reason turns into: a charge that recovers
 told again, after the notifier's own rate limit. The notifier keeps the open window's judgement across a restart
 (`window_state`, `restore`), so a restart neither tells it twice nor loses that the window had charged.
 
+A pause SpotNav did not command after the charge ran in the window (an aggregator's, `outside_pause.py`) is given
+`outside_pause.MAX_S` instead of `GRACE_S`: it is counted, and told only if it lasts longer than that.
+
 Reasons, first match:
 
 * `charger_unavailable`: the charge control cannot be read or reached;
@@ -36,6 +39,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any, Final
+
+from .outside_pause import MAX_S as OUTSIDE_PAUSE_MAX_S, OutsidePauses, PauseEnd
 
 #: How long trouble must last before it is told: past an unanswered Start (30 s) and a charger's slow
 #: report, and short enough to matter for a window of an hour.
@@ -80,8 +85,15 @@ class ExpectationFacts:
 class UnexpectedStopDetector:
     """Turns successive `ExpectationFacts` into at most one reason per stretch of trouble."""
 
-    def __init__(self, grace_s: float = GRACE_S) -> None:
+    def __init__(self, grace_s: float = GRACE_S, pause_grace_s: float = OUTSIDE_PAUSE_MAX_S) -> None:
         self._grace_s = grace_s
+        self._pause_grace_s = pause_grace_s
+        # The grace of the trouble now: `pause_grace_s` while it is an outside pause.
+        self._current_grace_s = grace_s
+        self.pauses = OutsidePauses()
+        self._pause_ends: list[PauseEnd] = []
+        # This stretch of trouble outlasted an outside pause's grace: it is plain trouble until the charge recovers.
+        self._pause_spent = False
         self._window: str | None = None
         self._charged_in_window = False
         self._trouble_since: datetime | None = None
@@ -110,15 +122,30 @@ class UnexpectedStopDetector:
         """When trouble seen now would be told, so a caller can look again then; `None` without one."""
         if self._trouble_since is None:
             return None
-        return self._trouble_since + timedelta(seconds=self._grace_s)
+        return self._trouble_since + timedelta(seconds=self._current_grace_s)
+
+    def take_pause_ends(self) -> list[PauseEnd]:
+        """The outside pauses that ended since the last call (for the log)."""
+        ends, self._pause_ends = self._pause_ends, []
+        return ends
+
+    def _end_pause(self, now: datetime, outcome: str) -> None:
+        ended = self.pauses.end(now, outcome)  # type: ignore[arg-type]
+        if ended is not None:
+            self._pause_ends.append(ended)
 
     def observe(self, facts: ExpectationFacts) -> str | None:
+        self._current_grace_s = self._grace_s
         if facts.window != self._window:
+            self._end_pause(facts.now, "plan_moved_on")
+            self._pause_spent = False
             self._window = facts.window
             self._charged_in_window = False
             self._trouble_since = None
             self._told = False
         if not facts.expected or facts.window is None:
+            self._end_pause(facts.now, "plan_moved_on")
+            self._pause_spent = False
             self._trouble_since = None
             return None
         not_requesting = facts.vehicle_not_requesting and not facts.at_vehicle_limit
@@ -128,6 +155,8 @@ class UnexpectedStopDetector:
             self._trouble_since = None
             return None
         if healthy:
+            self._end_pause(facts.now, "resumed")
+            self._pause_spent = False
             self._charged_in_window = True
             self._trouble_since = None
             # Told once per trouble: a recovery lets the next one be told.
@@ -135,11 +164,27 @@ class UnexpectedStopDetector:
             return None
         if self._trouble_since is None:
             self._trouble_since = facts.now
+        outside_pause = (
+            self._charged_in_window
+            and facts.available
+            and not facts.charger_disabled
+            and (facts.held_by_charger or not not_requesting)
+            and not self._pause_spent
+        )
+        if outside_pause:
+            self.pauses.begin(self._trouble_since, "charger_held" if facts.held_by_charger else "stopped")
+            self._current_grace_s = self._pause_grace_s
+        elif not self._pause_spent:
+            # Other trouble (the charger went away, the car declines): no aggregator's pause any more.
+            self._end_pause(facts.now, "other_trouble")
         if facts.start_pending and facts.available:
             # The clock runs (the grace period is longer than an unanswered Start lasts), nothing is told.
             return None
-        if (facts.now - self._trouble_since).total_seconds() < self._grace_s:
+        if (facts.now - self._trouble_since).total_seconds() < self._current_grace_s:
             return None
+        if outside_pause:
+            self._end_pause(facts.now, "too_long")
+            self._pause_spent = True
         if self._told:
             return None
         self._told = True

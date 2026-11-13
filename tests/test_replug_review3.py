@@ -16,6 +16,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.util import dt as dt_util
 from pytest_homeassistant_custom_component.common import async_fire_time_changed
 
+from custom_components.spotnav.notifications.outside_pause import MAX_S as OUTSIDE_PAUSE_MAX_S
 from custom_components.spotnav.notifications.unexpected_stop import (
     ExpectationFacts,
     GRACE_S,
@@ -198,7 +199,7 @@ def test_no_car_maybe_is_not_a_start_that_failed() -> None:
     # Once it charged in the window, a stop is still a stop.
     assert detector.observe(_at(GRACE_S + 120, charging=True)) is None
     assert detector.observe(_at(GRACE_S + 130, vehicle_unknown=True)) is None
-    assert detector.observe(_at(2 * GRACE_S + 140, vehicle_unknown=True)) == "stopped"
+    assert detector.observe(_at(GRACE_S + 130 + OUTSIDE_PAUSE_MAX_S, vehicle_unknown=True)) == "stopped"
 
 
 def test_a_car_at_its_own_limit_is_not_a_car_that_takes_no_current() -> None:
