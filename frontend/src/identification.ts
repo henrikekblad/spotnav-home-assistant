@@ -102,6 +102,8 @@ export interface ChangeCarInput {
   currentId: string | null;
   /** "Guest car" is offered at the end of the list (a car is plugged in and the backend knows the guest). */
   guest?: boolean;
+  /** How the current car was decided, in words (`methodWords`); shown as a note, as the line's icon has no tooltip on touch. */
+  decidedBy?: string | null;
   chargerName: string | null;
   idPrefix: string;
   onChoose: (vehicleId: string) => void;
@@ -116,6 +118,9 @@ export function changeCarBody(doc: Document, language: Language, input: ChangeCa
   form.append(
     element(doc, "p", C.settingsNote, translate(language, "identify.changeCarPrompt", { charger: input.chargerName ?? "" })),
   );
+  if (input.decidedBy !== undefined && input.decidedBy !== null) {
+    form.append(element(doc, "p", C.settingsNote, input.decidedBy));
+  }
   const cars =
     input.block !== null && input.block.candidates.length > 0
       ? input.block.candidates.map((item) => ({ id: item.vehicle_id, name: item.name }))

@@ -1260,10 +1260,14 @@ export function createCardView(input: CardViewInput): CardView {
       vehicleButton.setAttribute("aria-haspopup", "dialog");
     }
     vehicleButton.dataset["vehicleLine"] = vehicleLine.vehicleId;
-    vehicleButton.setAttribute(
-      "aria-label",
-      changeable ? changeLabel : decidedBy === null ? vehicleLine.ariaLabel : `${vehicleLine.ariaLabel}, ${decidedBy}`,
-    );
+    // The button hides its children from a screen reader, so its name carries how the car was decided too. The plain
+    // line is a group named by the line only: the method icon inside is read once, as itself.
+    if (changeable) {
+      vehicleButton.setAttribute("aria-label", decidedBy === null ? changeLabel : `${changeLabel}, ${decidedBy}`);
+    } else {
+      vehicleButton.setAttribute("role", "group");
+      vehicleButton.setAttribute("aria-label", vehicleLine.ariaLabel);
+    }
     if (vehicleLine.estimateTitle !== null) {
       vehicleButton.title = vehicleLine.estimateTitle;
       vehicleButton.dataset["estimated"] = "true";
@@ -2531,6 +2535,7 @@ export function createCardView(input: CardViewInput): CardView {
           : (model.identification?.vehicle_id ?? model.soc?.vehicle_id ?? model.targetVehicleId),
       // The guest is an answer about the car plugged in: never the plan's car for a next plug-in.
       guest: guestOffered(model),
+      decidedBy: methodWords(model.language, model.identification),
       chargerName: model.chargerName,
       idPrefix,
       onChoose: (vehicleId) => {
