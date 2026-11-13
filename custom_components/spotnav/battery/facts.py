@@ -155,6 +155,8 @@ class BatteryFacts:
             "rated_charge_kw": self.rated_charge_kw,
             "rated_discharge_kw": self.rated_discharge_kw,
             "plant_max_kw": self.plant_max_kw,
+            "max_charge_kw": self.max_charge_kw,
+            "max_discharge_kw": self.max_discharge_kw,
             "reserve_soc_pct": self.reserve_soc_pct,
             "firmware": self.firmware,
             "on_grid": self.on_grid,

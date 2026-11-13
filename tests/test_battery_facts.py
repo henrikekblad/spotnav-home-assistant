@@ -242,6 +242,8 @@ def test_sigenergy_reads_the_plants_maximum_below_the_battery_rating() -> None:
     # Its reserves are disabled by default, as on the real plant: none is read, the plan keeps its estimate.
     assert facts.reserve_soc_pct is None and "reserve" not in facts.sources
     assert facts.as_dict()["plant_max_kw"] == 13.2
+    # The effective limits the plan uses are in the diagnostics too, not only the raw rating and the plant maximum.
+    assert facts.as_dict()["max_charge_kw"] == 13.2 and facts.as_dict()["max_discharge_kw"] == 13.2
 
 
 def test_the_highest_reserve_that_can_be_read_is_the_floor() -> None:
