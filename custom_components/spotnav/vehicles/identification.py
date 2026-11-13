@@ -22,7 +22,10 @@ ask deadline, at most once a minute per car (the refresh limiter `vehicle_refres
 is a conflict and asks at once; otherwise it asks after `ASK_AFTER_S`, once the re-read made then has answered
 (`REREAD_WAIT_S` at most; at once when the limiter skipped it), and keeps listening until
 `LISTEN_FOR_S` after the plug-in, switching on decisive evidence unless a person answered. At most one
-automatic decision per plug-in.
+automatic decision per plug-in, but for a correction: a car decided by position (the others away) or by the camera is
+corrected until `LISTEN_FOR_S` by a car's own report (`_correct`): another car's own plug sensor going on switches to
+it (for the camera, any decisive evidence), recorded as a correction, and the decided car reporting itself unplugged
+or away with no other car decided brings the question back. A person's answer ends this.
 
 **The camera** (optional, `camera_rule.py`, `camera_identification.py`): while nothing has decided and two or
 more cars are left (one at a one-car charger), the charger's camera is asked once (one retry after an error) before
@@ -150,6 +153,8 @@ METHODS: Final = (
     METHOD_MANUAL, METHOD_ANSWERED, METHOD_PLUG_SENSOR, METHOD_LOCATION, METHOD_ONLY_CANDIDATE, METHOD_ASSUMED,
     METHOD_CAMERA,
 )
+#: Automatic decisions a car's own report still corrects while the plug-in is listened to (`_correct`).
+_CORRECTED: Final = (METHOD_LOCATION, METHOD_CAMERA)
 #: Methods that say which car it is, so another charger may exclude it.
 _CONFIRMING: Final = (
     METHOD_MANUAL, METHOD_ANSWERED, METHOD_PLUG_SENSOR, METHOD_LOCATION, METHOD_ONLY_CANDIDATE, METHOD_CAMERA,
@@ -1028,8 +1033,8 @@ class VehicleIdentifier:
         ):
             self._recheck()
             return
-        if session.state == STATE_DECIDED and session.listening and self._method == METHOD_CAMERA:
-            self._correct_camera(session)
+        if session.state == STATE_DECIDED and session.listening and self._method in _CORRECTED:
+            self._correct(session)
             return
         if not session.listening or session.state == STATE_DECIDED:
             return
@@ -1049,6 +1054,10 @@ class VehicleIdentifier:
         car, method, conflict = decide(evidence)
         if car is not None and method is not None:
             self._settle(car, method, "recognised")
+            if method == METHOD_LOCATION:
+                # Only the other cars said anything: a car's own report still outranks this while the plug-in is
+                # listened to (`_correct`).
+                session.listening = True
         elif conflict:
             self._ask()
         else:
@@ -1072,17 +1081,20 @@ class VehicleIdentifier:
     # ------------------------------------------------------------------ the camera
 
     @callback
-    def _correct_camera(self, session: _Session) -> None:
-        """After the camera decided: a car's own decisive report corrects it (the same plug-in's switch, recorded
-        by that report), and the decided car reporting itself unplugged or away with no other car decided brings
-        the question back. A person's answer ends this: it outranks both."""
+    def _correct(self, session: _Session) -> None:
+        """After the camera or the position decided (`_CORRECTED`): a car's own decisive report corrects it (the same
+        plug-in's switch, recorded by that report; after a position only another car's own plug sensor, since the
+        cars' positions already had their say), and the decided car reporting itself unplugged or away with no other
+        car decided brings the question back. A person's answer ends this: it outranks both."""
         evidence = self._evidence(session, dt_util.utcnow())
         car, method, conflict = decide(evidence)
         decided = self._planned_vehicle()
         if car is not None and method is not None:
-            if car != decided:
+            if car == decided:
+                return
+            if self._method == METHOD_CAMERA or method == METHOD_PLUG_SENSOR:
                 self._settle(car, method, "recognised")
-            return
+                return
         if any(item.vehicle_id == decided and item.negative is not None for item in evidence) or conflict:
             session.state = STATE_WAITING
             session.order = ordered(evidence, self._current_vehicle())
@@ -1205,7 +1217,7 @@ class VehicleIdentifier:
         record["used"] = True
         if verdict.decides is not None:
             self._settle(verdict.decides, METHOD_CAMERA, "recognised")
-            # A car's own report still outranks the camera while the plug-in is listened to (`_correct_camera`).
+            # A car's own report still outranks the camera while the plug-in is listened to (`_correct`).
             session.listening = True
             return
         session.camera_pick = verdict.prefers
