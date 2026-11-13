@@ -1398,6 +1398,7 @@ class AutoPlannerController:
             departure_date=self._effective_departure_date(settings, entry, calculated_at),
             voltage_between_phases_v=voltage_between_phases_v(self._hass, self._entry_id),
             power_cap_kw=self._plan_power_cap_kw(settings),
+            power_cap_kw_by_hour=self._plan_power_caps_by_hour(settings),
             # A guest car with no departure is charged within `GUEST_WITHIN`, not the whole horizon.
             window_end=(
                 calculated_at + GUEST_WITHIN if is_guest(settings) and not settings.departure_enabled else None
@@ -1738,6 +1739,18 @@ class AutoPlannerController:
             return learned
         return target if learned is None else min(learned, target)
 
+    def _plan_power_caps_by_hour(self, settings: AutoSettings) -> dict[datetime, float] | None:
+        """Per hour, what `_plan_power_cap_kw` is with the house's expected load in that hour
+        (`SiteCapacityController.import_target_plan_kw_by_hour`): the import target's per hour, and no more than what is
+        learned of the car. `None` without a forecast or a target that holds this charger's plan: the plan then counts
+        on `_plan_power_cap_kw` in every hour, as before."""
+        site = site_controller_for_charger(self._hass, self._entry_id)
+        by_hour = None if site is None else site.import_target_plan_kw_by_hour(self._entry_id)
+        if not by_hour:
+            return None
+        learned = self._learned_power(settings).cap_kw
+        return {start: kw if learned is None else min(learned, kw) for start, kw in by_hour.items()}
+
     def plan_watch_facts(self) -> dict[str, Any]:
         """The diagnostics' view: the last behind-plan check and the learned power the plan counts on."""
         settings = self._effective(self._store.settings(self._entry_id))
@@ -1878,7 +1891,8 @@ class AutoPlannerController:
         need_met_at = None
         proposal = None if self._snapshot is None else self._snapshot.proposal
         if proposal is not None and proposal.has_plan and proposal.power_kw > 0:
-            power = proposal.power_kw
+            # The window's own power when the plan counts on a power per hour (`PlanResult.window_power_kw`).
+            power = proposal.power_kw if window is None else proposal.window_power_kw(*window)
             need_met_at = proposal.need_met_at
         decision = self._watch.check(
             now,

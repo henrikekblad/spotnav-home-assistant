@@ -180,6 +180,9 @@ class _HoldingSite:
     def import_target_plan_kw(self, _charger_entry_id: str) -> float | None:
         return None  # no import target: the plan counts on the car's own power
 
+    def import_target_plan_kw_by_hour(self, _charger_entry_id: str) -> dict | None:
+        return None
+
     def import_target_holds(self, _charger_entry_id: str) -> bool:
         return False
 
