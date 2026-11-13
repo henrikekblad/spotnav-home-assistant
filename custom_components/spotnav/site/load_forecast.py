@@ -8,8 +8,8 @@ release reach).
 
 * **History**: the measured hours' `house_kw` (the site's import less the chargers', `site/demand_tracker.py`) of the
   last `WINDOW_DAYS`, never an hour read from Home Assistant's statistics (`imported`) and never an hour without the
-  house's share (skipped, not counted as 0). The tracker keeps the running month and the month before, so the window
-  holds between four and six weeks.
+  house's share (skipped, not counted as 0). The shell reads them from the forecast's own eight-week history
+  (`site/house_history.py`), so the window holds six weeks also early in a month.
 * **Weight**: an hour `age` days old weighs `0.5 ** (age / HALF_LIFE_DAYS)`, so a changed habit shows within ~2 weeks.
 * **Profile**: per day type (weekday, weekend) x local hour, the weighted upper quantile `QUANTILE` (p75, owner
   2026-11-04): counting on too little room costs a late car, counting on too much a slightly dearer plan. A public
@@ -48,7 +48,7 @@ from typing import Any, Final
 from .. import time_zones
 from ..planning.demand_charge import hour_start, HourMean
 
-#: How far back the profile reads (the tracker keeps at least the month before, so four weeks at the least).
+#: How far back the profile reads (`site/house_history.py` keeps eight weeks).
 WINDOW_DAYS: Final = 42
 #: An hour this many days old weighs half as much as one just completed.
 HALF_LIFE_DAYS: Final = 14.0
