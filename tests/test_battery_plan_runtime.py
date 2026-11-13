@@ -50,6 +50,12 @@ from custom_components.spotnav.site.load_forecast import NO_TEMPERATURE, Forecas
 
 from tests.test_battery_runtime import _service_calls, _site
 
+
+@pytest.fixture(autouse=True)
+def _frozen_budget_clock(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The modes budget reads a frozen clock: how long the solve took on this machine never skips a mode."""
+    monkeypatch.setattr(plan_runtime, "budget_clock", lambda: 0.0)
+
 pytestmark = pytest.mark.usefixtures("offline_relay")
 
 
@@ -210,7 +216,8 @@ async def test_the_plan_is_solved_in_the_executor(hass: HomeAssistant, monkeypat
 async def test_the_other_modes_are_skipped_when_the_first_plan_took_too_long(
     hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(plan_runtime, "MODES_BUDGET_S", -1.0)
+    ticks = iter(range(0, 1000, 10))
+    monkeypatch.setattr(plan_runtime, "budget_clock", lambda: float(next(ticks)))
     _site_entry, controller, _now = await _planned(hass, monkeypatch)
     plan = controller.battery_shadow.snapshot()["plan"]
     assert plan["status"] == "planned" and plan["modes_skipped"] == [MODE_MAX_PROFIT]
