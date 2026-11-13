@@ -11,6 +11,7 @@ the site's diagnostics (and so in the debug bundle) only.
 from __future__ import annotations
 
 import logging
+import math
 from collections.abc import Callable
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any, Final
@@ -56,7 +57,15 @@ def _entity_fact(entry: er.RegistryEntry, hass: HomeAssistant) -> EntityFact:
         or entry.original_device_class,
         state=None if state is None else state.state,
         unit=None if state is None else state.attributes.get("unit_of_measurement"),
+        step=_step(None if state is None else state.attributes.get("step")),
     )
+
+
+def _step(value: Any) -> float | None:
+    """A number entity's `step` attribute, when it is a positive number."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    return float(value) if math.isfinite(value) and value > 0 else None
 
 
 def external_planner(hass: HomeAssistant) -> str | None:
