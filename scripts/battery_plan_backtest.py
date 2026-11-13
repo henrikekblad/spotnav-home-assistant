@@ -23,12 +23,23 @@ Replay
 * `self-consumption`: the same battery left to itself. `actual`: the grid meter as it was, under the site's own
   battery control (Sigenergy AI mode on the owner's site).
 * Costs are compared with the energy each ends with valued at the period's median buy price x the round trip.
+
+Modes and wear (3.0 wave 3)
+* `--mode` plans as one battery mode (`plan_model.MODE_DEFS`): `balanced` keeps its reserve, weighs twice the wear
+  and sells from the battery only through the spread gate; `max_profit` may sell freely at the true wear;
+  `self_consumption` does not plan. The plan's actions run with the mode's floor. `--wear` is the wear per kWh each
+  way (öre); `--gate-factor` overrides Balanced's gate margin in multiples of the wear (`off`: no sale at all).
+* `--matrix` runs every mode x wear {0, 5, 15, 25, 40} x {perfect, p75}, and Balanced's gate at 15 öre, in parallel,
+  and prints one table: cost, saving against self-consumption, the same with every run's throughput charged at
+  `--wear` (the wear really paid, if that figure is right), full cycles a day, sold from the battery, the lowest SoC
+  reached.
 """
 
 from __future__ import annotations
 
 import argparse
 import bisect
+import concurrent.futures
 import gzip
 import json
 import math
@@ -40,16 +51,28 @@ import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ElementTree
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from custom_components.spotnav.battery.plan import action_power, plan_battery, run_slot  # noqa: E402
+from custom_components.spotnav.battery.plan import (  # noqa: E402
+    action_power,
+    mode_battery,
+    plan_mode,
+    run_slot,
+)
 from custom_components.spotnav.battery.plan_model import (  # noqa: E402
     ACTION_SELF_CONSUME,
+    EXPORT_GATE,
+    EXPORT_OFF,
+    MODE_BALANCED,
+    MODE_DEFS,
+    MODE_MAX_PROFIT,
+    MODE_SELF_CONSUMPTION,
+    BatteryMode,
     BatteryParams,
     PlanRequest,
     PlanSlot,
@@ -290,7 +313,6 @@ class Site:
     fee_percent: float  # the grid fee's part that is a share of the spot price, before VAT
     vat_percent: float
     sell_credit_minor: float
-    cycle_cost: float
 
     def buy(self, spot_sek: float) -> float:
         spot = spot_sek * 100
@@ -328,6 +350,11 @@ class Tally:
     import_kwh: float = 0.0
     export_kwh: float = 0.0
     grid_charge_kwh: float = 0.0
+    #: AC energy discharged by the battery, and the part of it sold (beyond the site's own deficit).
+    charge_kwh: float = 0.0
+    discharge_kwh: float = 0.0
+    battery_export_kwh: float = 0.0
+    min_soc_pct: float = 100.0
 
 
 def replay(
@@ -335,13 +362,18 @@ def replay(
     site: Site,
     first: datetime,
     last: datetime,
-    mode: str,
+    foresight: str,
     end_value: float,
-    export: bool = False,
+    mode: BatteryMode = MODE_DEFS[MODE_BALANCED],
+    wear: float = 15.0,
     every: int = 96,
 ) -> tuple:
-    """Day by day from 13:00 local on [first] to 13:00 on [last]; returns (tally, start kWh, end kWh)."""
+    """Day by day from 13:00 local on [first] to 13:00 on [last] as [mode] with [wear]; [foresight] is `self`
+    (no plan), `perfect` or `forecast`. Returns (tally, start kWh, end kWh)."""
     battery = site.battery
+    if foresight == "self" or not mode.plans:
+        foresight = "self"
+    run_battery = mode_battery(battery, mode) if foresight != "self" else battery
     i = history.at(first)
     soc_start = history.soc[i] if history.soc[i] is not None else 50.0
     soc_kwh = battery.usable_kwh * soc_start / 100
@@ -357,10 +389,10 @@ def replay(
         while n > 0 and history.spot[i + n - 1] is None:
             n -= 1
         run = min(every, n, history.at(last) - i)
-        if mode == "self":
+        if foresight == "self":
             actions = None
         else:
-            if mode == "perfect":
+            if foresight == "perfect":
                 pairs = [_real(history, i + k) for k in range(n)]
                 house, sun = [p[0] for p in pairs], [p[1] for p in pairs]
             else:
@@ -370,10 +402,8 @@ def replay(
                 battery=battery,
                 soc_now_pct=min(100.0, max(0.0, soc_kwh / battery.usable_kwh * 100)),
                 end_value=end_value,
-                cycle_cost=site.cycle_cost,
-                allow_export_discharge=export,
             )
-            actions = plan_battery(request).plan.decisions
+            actions = plan_mode(request, mode, wear).plan.decisions
         real_house_sun = [_real(history, i + k) for k in range(run)]
         slots = _slots(
             history, site, i, run, [h for h, _ in real_house_sun], [s for _, s in real_house_sun]
@@ -381,9 +411,10 @@ def replay(
         for k, slot in enumerate(slots):
             action = ACTION_SELF_CONSUME if actions is None else actions[k].action
             planned_kw = 0.0 if actions is None else actions[k].battery_kw
-            power = action_power(slot, battery, soc_kwh, action, planned_kw)
-            outcome = run_slot(slot, battery, soc_kwh, action, power, site.cycle_cost)
+            power = action_power(slot, run_battery, soc_kwh, action, planned_kw)
+            outcome = run_slot(slot, run_battery, soc_kwh, action, power)
             soc_kwh = battery.usable_kwh * outcome.soc_end_pct / 100
+            tally.min_soc_pct = min(tally.min_soc_pct, outcome.soc_end_pct)
             if history.grid[i + k] is None:
                 continue  # no meter reading: left out of every run, as of the actual one
             tally.cost += outcome.cost
@@ -392,6 +423,11 @@ def replay(
             tally.export_kwh += max(0.0, -outcome.grid_kw) * hours
             if outcome.battery_kw > 0 and outcome.grid_kw > 0:
                 tally.grid_charge_kwh += min(outcome.battery_kw, outcome.grid_kw) * hours
+            if outcome.battery_kw > 0:
+                tally.charge_kwh += outcome.battery_kw * hours
+            if outcome.battery_kw < 0:
+                tally.discharge_kwh += -outcome.battery_kw * hours
+                tally.battery_export_kwh += max(0.0, min(-outcome.battery_kw, -outcome.grid_kw)) * hours
         i += run
         at += SLOT * run
     return tally, start_kwh, soc_kwh
@@ -417,6 +453,52 @@ def actual(history: History, site: Site, first: datetime, last: datetime) -> tup
     return tally, usable * soc0 / 100, usable * soc1 / 100
 
 
+def _gate(factor: str | None) -> BatteryMode:
+    """Balanced with its gate margin overridden: `off` sells nothing, a number is the margin in multiples of the wear."""
+    balanced = MODE_DEFS[MODE_BALANCED]
+    if factor is None:
+        return balanced
+    if factor == "off":
+        return replace(balanced, export=EXPORT_OFF, gate_factor=0.0)
+    return replace(balanced, export=EXPORT_GATE, gate_factor=float(factor))
+
+
+def _row(result: tuple, end_value: float, usable_kwh: float, days: float) -> dict:
+    tally, start_kwh, end_kwh = result
+    return {
+        "cost": tally.cost / 100,
+        "adjusted": (tally.cost - (end_kwh - start_kwh) * end_value) / 100,
+        "start_kwh": start_kwh,
+        "end_kwh": end_kwh,
+        "import_kwh": tally.import_kwh,
+        "export_kwh": tally.export_kwh,
+        "grid_charge_kwh": tally.grid_charge_kwh,
+        "battery_export_kwh": tally.battery_export_kwh,
+        "fce_per_day": tally.discharge_kwh / usable_kwh / days,
+        "throughput_kwh": tally.charge_kwh + tally.discharge_kwh,
+        "min_soc_pct": tally.min_soc_pct,
+    }
+
+
+#: The worker processes' shared inputs (set once per process by `_init`).
+_SHARED: dict = {}
+
+
+def _init(history: History, site: Site, first: datetime, last: datetime, end_value: float, every: int) -> None:
+    _SHARED.update(history=history, site=site, first=first, last=last, end_value=end_value, every=every)
+
+
+def _job(job: tuple) -> tuple:
+    key, foresight, mode, wear = job
+    s = _SHARED
+    result = replay(s["history"], s["site"], s["first"], s["last"], foresight, s["end_value"], mode, wear, s["every"])
+    return key, result
+
+
+WEARS = (0.0, 5.0, 15.0, 25.0, 40.0)
+GATES = ("off", "0", "1", "2", "3")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--cache", type=Path, default=Path("."))
@@ -432,7 +514,11 @@ def main() -> None:
     parser.add_argument("--fee-percent", type=float, default=2.8, help="grid fee as %% of spot, before VAT")
     parser.add_argument("--vat", type=float, default=25.0)
     parser.add_argument("--sell-credit", type=float, default=0.0, help="öre/kWh on top of spot for export")
-    parser.add_argument("--cycle-cost", type=float, default=5.0)
+    parser.add_argument("--mode", choices=(*MODE_DEFS, "all"), default="all")
+    parser.add_argument("--wear", type=float, default=15.0, help="öre per kWh through the battery, each way")
+    parser.add_argument("--gate-factor", default=None, help="Balanced's gate margin x wear, or 'off'")
+    parser.add_argument("--matrix", action="store_true", help="every mode x wear x foresight, and the gate")
+    parser.add_argument("--workers", type=int, default=os.cpu_count() or 1)
     parser.add_argument("--every", type=int, default=96, help="quarter hours between plans (96: day by day)")
     parser.add_argument("--json", type=Path, help="also write the table's numbers here")
     args = parser.parse_args()
@@ -459,47 +545,71 @@ def main() -> None:
         fee_percent=args.fee_percent,
         vat_percent=args.vat,
         sell_credit_minor=args.sell_credit,
-        cycle_cost=args.cycle_cost,
     )
     i0, i1 = history.at(first), history.at(last)
     buys = [site.buy(history.spot[i]) for i in range(i0, i1) if history.spot[i] is not None]
     end_value = statistics.median(buys) * args.efficiency
+    days = (last - first).total_seconds() / 86400
 
-    rows = {"actual": actual(history, site, first, last)}
-    for mode in ("self", "perfect", "forecast"):
-        rows[mode] = replay(history, site, first, last, mode, end_value, every=args.every)
-    for mode in ("perfect", "forecast"):
-        rows[f"{mode}_export"] = replay(history, site, first, last, mode, end_value, export=True, every=args.every)
+    jobs: list[tuple] = [(("self_consumption", "-", "-"), "self", MODE_DEFS[MODE_SELF_CONSUMPTION], 0.0)]
+    if args.matrix:
+        for foresight in ("perfect", "forecast"):
+            for name in (MODE_BALANCED, MODE_MAX_PROFIT):
+                for wear in WEARS:
+                    jobs.append(((name, foresight, wear), foresight, MODE_DEFS[name], wear))
+            for gate in GATES:
+                jobs.append(((f"balanced gate {gate}", foresight, args.wear), foresight, _gate(gate), args.wear))
+    else:
+        names = [m for m in MODE_DEFS if m != MODE_SELF_CONSUMPTION] if args.mode == "all" else [args.mode]
+        for foresight in ("perfect", "forecast"):
+            for name in names:
+                mode = _gate(args.gate_factor) if name == MODE_BALANCED else MODE_DEFS[name]
+                jobs.append(((name, foresight, args.wear), foresight, mode, args.wear))
+    jobs = list(dict.fromkeys(jobs))
 
-    labels = {
-        "actual": "Actual (Sigenergy AI mode)",
-        "self": "Self-consumption (simulated)",
-        "perfect": "Plan, perfect foresight",
-        "forecast": "Plan, p75 load + persistence sun",
-        "perfect_export": "Plan with export discharge, perfect foresight",
-        "forecast_export": "Plan with export discharge, p75 load + persistence sun",
-    }
-    out = {}
+    results: dict = {}
+    with concurrent.futures.ProcessPoolExecutor(
+        max_workers=args.workers, initializer=_init, initargs=(history, site, first, last, end_value, args.every)
+    ) as pool:
+        for key, result in pool.map(_job, jobs):
+            results[key] = result
+
+    usable = site.battery.usable_kwh
+    rows = {("actual", "-", "-"): _row(actual(history, site, first, last), end_value, usable, days)}
+    rows["actual", "-", "-"]["fce_per_day"] = None
+    rows["actual", "-", "-"]["throughput_kwh"] = None
+    rows["actual", "-", "-"]["battery_export_kwh"] = None
+    rows["actual", "-", "-"]["min_soc_pct"] = min(s for s in history.soc[i0:i1] if s is not None)
+    for key, _f, _m, _w in jobs:
+        rows[key] = _row(results[key], end_value, usable, days)
+    base = rows["self_consumption", "-", "-"]["adjusted"]
+    base_worn = base + rows["self_consumption", "-", "-"]["throughput_kwh"] * args.wear / 100
+
     print(f"Period {first:%Y-%m-%d %H:%M} to {last:%Y-%m-%d %H:%M} local, end value {end_value:.1f} öre/kWh")
-    print("| Run | Cost kr | Start kWh | End kWh | Cost kr, end energy valued | vs self-consumption kr | "
-          "Import kWh | Export kWh | Grid charge kWh |")
-    print("|---|---|---|---|---|---|---|---|---|")
-    base = None
-    for mode, (tally, start_kwh, end_kwh) in rows.items():
-        adjusted = (tally.cost - (end_kwh - start_kwh) * end_value) / 100
-        if mode == "self":
-            base = adjusted
-        out[mode] = {"cost": tally.cost / 100, "adjusted": adjusted, "start_kwh": start_kwh, "end_kwh": end_kwh,
-                     "import_kwh": tally.import_kwh, "export_kwh": tally.export_kwh,
-                     "grid_charge_kwh": tally.grid_charge_kwh}
-    for mode, row in out.items():
-        delta = "" if base is None else f"{row['adjusted'] - base:+.0f}"
-        grid_charge = "" if mode == "actual" else f"{row['grid_charge_kwh']:.0f}"
-        print(f"| {labels[mode]} | {row['cost']:.0f} | {row['start_kwh']:.1f} | {row['end_kwh']:.1f} | "
-              f"{row['adjusted']:.0f} | {delta} | {row['import_kwh']:.0f} | {row['export_kwh']:.0f} | {grid_charge} |")
+    print("| Run | Foresight | Wear öre | Cost kr, end energy valued | vs self-consumption kr | "
+          f"same, wear at {args.wear:g} öre paid kr | FCE/day | "
+          "Import kWh | Export kWh | Sold from battery kWh | Grid charge kWh | Min SoC % |")
+    print("|---|---|---|---|---|---|---|---|---|---|---|---|")
+
+    def fmt(value, spec: str) -> str:
+        return "" if value is None else format(value, spec)
+
+    for (name, foresight, wear), row in rows.items():
+        foresight_label = {"perfect": "perfect", "forecast": "p75", "-": ""}[foresight]
+        wear_label = "" if wear == "-" else f"{wear:g}"
+        grid_charge = "" if name == "actual" else f"{row['grid_charge_kwh']:.0f}"
+        worn = None
+        if row["throughput_kwh"] is not None:
+            worn = row["adjusted"] + row["throughput_kwh"] * args.wear / 100 - base_worn
+        print(f"| {name} | {foresight_label} | {wear_label} | {row['adjusted']:.0f} | {row['adjusted'] - base:+.0f} | "
+              f"{fmt(worn, '+.0f')} | {fmt(row['fce_per_day'], '.2f')} | {row['import_kwh']:.0f} | {row['export_kwh']:.0f} | "
+              f"{fmt(row['battery_export_kwh'], '.0f')} | {grid_charge} | {fmt(row['min_soc_pct'], '.0f')} |")
     if args.json:
-        args.json.write_text(json.dumps({"end_value": end_value, "rows": out}, indent=2))
-    if any(math.isnan(r["cost"]) for r in out.values()):
+        args.json.write_text(json.dumps(
+            {"end_value": end_value, "rows": [{"run": k[0], "foresight": k[1], "wear": k[2], **v} for k, v in rows.items()]},
+            indent=2,
+        ))
+    if any(math.isnan(r["cost"]) for r in rows.values()):
         raise SystemExit("a cost came out NaN")
 
 

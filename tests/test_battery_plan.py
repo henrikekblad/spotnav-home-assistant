@@ -80,7 +80,8 @@ def _request(slots: tuple[PlanSlot, ...], **kwargs) -> PlanRequest:
 
 
 def test_flat_prices_leave_the_battery_to_itself() -> None:
-    result = plan_battery(_request(_slots([100] * 24), end_value=90))
+    # A stored kWh worth well below the flat price (with the round trip and both ways' wear): spending it pays.
+    result = plan_battery(_request(_slots([100] * 24), end_value=60))
     assert {d.action for d in result.plan.decisions} == {ACTION_SELF_CONSUME}
     assert result.plan.cost == pytest.approx(result.baseline.cost)
     assert result.savings == pytest.approx(0, abs=1e-6)
@@ -315,7 +316,8 @@ def test_as_dict_for_diagnostics() -> None:
     result = plan_battery(_request(_slots([20, 300], house=2.0), soc_now_pct=10, end_value=0))
     out = result.as_dict()
     assert set(out) == {
-        "cost", "baseline_cost", "savings", "end_value", "end_soc_pct", "baseline_end_soc_pct", "wear", "slots",
+        "cost", "baseline_cost", "savings", "end_value", "end_soc_pct", "baseline_end_soc_pct", "wear", "min_soc_pct",
+        "slots",
     }
     assert out["slots"][0]["start"] == T0.isoformat()
     assert set(out["slots"][0]) >= {"start", "end", "action", "battery_kw", "grid_kw", "soc_end_pct", "cost"}

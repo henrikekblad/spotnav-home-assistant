@@ -10,6 +10,9 @@ Owned by the site's `BatteryShadow` (`runtime.py`), which calls `tick` every `ru
 * **Every `CHECK_S`**: whether to plan again (`plan_shadow.replan_trigger`). A plan reads the prices, the solar
   forecast and the cars' plans here, then builds and solves the plan in the executor. At most one runs at a time; a
   trigger while one runs is skipped (`skipped_busy`) and seen again at the next check.
+* **Modes**: the site's mode (entry key `MODE_KEY`, Balanced when unset; no setting yet) is planned first and is the
+  plan in force; the other modes are planned on the same inputs while the solve stays within `MODES_BUDGET_S`, and
+  are reviewed beside it each night. The wear is the area currency's constant (`plan_model.WEAR_MINOR_PER_KWH`).
 * **Storage**: the quarter hours, the first planned actions, the house rows, the reviews and the plan in force (so a
   restart keeps the running slot's action stable) in `spotnav.battery_plan.<entry>`. The forecast log is the site's
   (`site/house_forecast.py`), saved with its hourly refresh.
@@ -23,7 +26,6 @@ from __future__ import annotations
 import logging
 import math
 import time
-from dataclasses import replace
 from collections.abc import Sequence
 from datetime import datetime, timedelta
 from functools import partial
@@ -44,8 +46,19 @@ from ..planning.demand_charge import HourMean, hour_start
 from ..planning.grid_voltage import stored_voltage_between_phases_v
 from ..site.load_forecast import forecast_house_load
 from .facts import BatteryFacts
-from .plan import plan_battery, self_consumption
-from .plan_model import BatteryParams, PlanInputError, PlanRequest, PlanSlot
+from .plan import mode_battery, plan_mode, self_consumption
+from .plan_model import (
+    DEFAULT_CYCLE_COST,
+    DEFAULT_MODE,
+    MODE_DEFS,
+    MODES,
+    BatteryParams,
+    PlanInputError,
+    PlanRequest,
+    PlanSlot,
+    mode_named,
+    wear_minor_per_kwh,
+)
 from .plan_shadow import (
     EST_HOUSE_COUNTS_BATTERY,
     EST_SOLAR_IN_HOUSE,
@@ -92,11 +105,19 @@ CHECK_S: Final = 60.0
 SHOWN_QUARTERS: Final = 96
 #: Days of prices read: today and the next (the horizon ends with the last published one).
 PRICE_DAYS: Final = 2
-#: The variant that may sell from the battery runs only when the first plan took at most this long (s).
-EXPORT_BUDGET_S: Final = 5.0
-#: The hook for a credit per exported kWh (minor units, the grid operator's "nätnytta"): read from the site's entry
-#: under this key, none by default. No setting offers it yet.
+#: The modes beside the site's own are planned only while the solve has taken at most this long (s); the ones left
+#: are skipped and named (`modes_skipped`).
+MODES_BUDGET_S: Final = 5.0
+#: The hook for a credit per exported kWh (minor units, the grid operator's "nätnytta", a few öre in Sweden): read
+#: from the site's entry under this key, none by default; added to the spot price of every kWh sold, by the sun or
+#: by the battery. No setting offers it yet.
 SELL_CREDIT_KEY: Final = "sell_credit_minor_per_kwh"
+#: The site's battery mode (`plan_model.MODES`), read from the site's entry under this key; Balanced when unset or
+#: unknown. No setting offers it yet.
+MODE_KEY: Final = "battery_mode"
+#: Estimate markers of the modes: the mode key held something unknown; the currency has no wear figure.
+EST_MODE_UNKNOWN: Final = "battery_mode_unknown"
+EST_WEAR_CURRENCY: Final = "wear_currency_unknown"
 
 STATUS_WAITING: Final = "waiting"
 STATUS_PLANNED: Final = "planned"
@@ -126,11 +147,12 @@ def _solve(
     cap_kw: float | None,
     params: BatteryParams,
     soc_pct: float,
-    keep: tuple[str, float] | None,
-    keep_export: tuple[str, float] | None,
-) -> tuple[Any, Any, tuple[PlanSlot, ...], tuple[str, ...]]:
-    """The executor's part: the plan's own house forecast (when it has its rows), the slots, the plan, and the same
-    plan allowed to sell from the battery (`None` when the first took longer than `EXPORT_BUDGET_S`)."""
+    mode: str,
+    wear: float,
+    keeps: dict[str, tuple[str, float] | None],
+) -> tuple[dict[str, Any], tuple[str, ...], tuple[PlanSlot, ...], tuple[str, ...]]:
+    """The executor's part: the plan's own house forecast (when it has its rows), the slots, and each mode's plan,
+    the site's [mode] first; the modes left when the solve took longer than `MODES_BUDGET_S` are skipped."""
     started = time.monotonic()
     if own is not None:
         rows, flat_kw, temperatures, holidays = own
@@ -143,14 +165,32 @@ def _solve(
         raise _NoPlan(NO_HOUSE_FORECAST if prices else NO_PRICES)
     request = PlanRequest(slots=slots, battery=params, soc_now_pct=min(100.0, max(0.0, soc_pct)))
     hours = sum(slot.hours for slot in slots)
-    threshold = keep_min_gain(self_consumption(request).cost, hours)
-    plan = plan_battery(request, keep=keep, keep_min_gain=threshold)
-    export = None
-    if time.monotonic() - started <= EXPORT_BUDGET_S:
-        export = plan_battery(
-            replace(request, allow_export_discharge=True), keep=keep_export, keep_min_gain=threshold
+    baseline = self_consumption(request)
+    threshold = keep_min_gain(baseline.cost, hours)
+    plans: dict[str, Any] = {}
+    skipped: list[str] = []
+    for name in (mode, *(other for other in MODES if other != mode)):
+        # Self-consumption costs nothing (it is the baseline): never skipped.
+        if plans and MODE_DEFS[name].plans and time.monotonic() - started > MODES_BUDGET_S:
+            skipped.append(name)
+            continue
+        plans[name] = plan_mode(
+            request, MODE_DEFS[name], wear, keep=keeps.get(name), keep_min_gain=threshold, baseline=baseline
         )
-    return plan, export, slots, estimates
+    return plans, tuple(skipped), slots, estimates
+
+
+def _mode_view(plan: Any, slots: Sequence[PlanSlot]) -> dict[str, Any]:
+    """A mode beside the site's in the diagnostics: the whole view for a mode that plans, the totals alone for
+    Self-consumption (its slots are every view's baseline already)."""
+    if plan.plan is not plan.baseline:
+        return plan_view(plan, slots)
+    return {
+        "cost": round(plan.baseline.cost, 2),
+        "end_soc_pct": round(plan.baseline.end_soc_pct, 1),
+        "savings": 0.0,
+        "baseline": True,
+    }
 
 
 class BatteryPlanShadow:
@@ -167,9 +207,12 @@ class BatteryPlanShadow:
         self.plan: tuple[PlannedSlot, ...] = ()
         self.soc_at_plan: float | None = None
         self.view: dict[str, Any] | None = None
-        #: The same for the variant that may sell from the battery (`None` while it did not run).
-        self.plan_export: tuple[PlannedSlot, ...] = ()
-        self.view_export: dict[str, Any] | None = None
+        #: The site's mode (the plan in force), and every mode's plan and view as last planned (a mode skipped for
+        #: the CPU budget has none).
+        self.mode: str = DEFAULT_MODE
+        self.mode_plans: dict[str, tuple[PlannedSlot, ...]] = {}
+        self.mode_views: dict[str, dict[str, Any]] = {}
+        self.modes_skipped: tuple[str, ...] = ()
         self.status = STATUS_WAITING
         self.reason: str | None = None
         self.trigger: str | None = None
@@ -214,7 +257,8 @@ class BatteryPlanShadow:
             "plan": {
                 "soc_at_plan": self.soc_at_plan,
                 "slots": [slot.as_row() for slot in self.plan],
-                "export_slots": [slot.as_row() for slot in self.plan_export],
+                "mode": self.mode,
+                "mode_slots": {mode: [slot.as_row() for slot in slots] for mode, slots in self.mode_plans.items()},
             },
         }
 
@@ -226,9 +270,14 @@ class BatteryPlanShadow:
         self.reviews = sorted((r for r in reviews if r is not None), key=lambda r: r.money.day)[-REVIEW_DAYS:]
         plan = raw.get("plan") if isinstance(raw.get("plan"), dict) else {}
         slots = [PlannedSlot.from_row(row) for row in plan.get("slots") or []]
-        exported = [PlannedSlot.from_row(row) for row in plan.get("export_slots") or []]
-        if all(slot is not None for slot in exported):
-            self.plan_export = tuple(slot for slot in exported if slot is not None)
+        # A record from before the modes kept an export variant (`export_slots`): not a mode, dropped.
+        mode_slots = plan.get("mode_slots") if isinstance(plan.get("mode_slots"), dict) else {}
+        for mode, rows in mode_slots.items():
+            kept = [PlannedSlot.from_row(row) for row in rows or []] if isinstance(rows, list) else [None]
+            if mode in MODES and all(slot is not None for slot in kept):
+                self.mode_plans[mode] = tuple(slot for slot in kept if slot is not None)
+        if mode_named(plan.get("mode")) is not None:
+            self.mode = plan["mode"]
         soc = plan.get("soc_at_plan")
         if all(slot is not None for slot in slots) and isinstance(soc, (int, float)) and not isinstance(soc, bool):
             # Kept for the running slot's stability only; a new plan is made at the first check.
@@ -273,7 +322,7 @@ class BatteryPlanShadow:
                 price=price,
                 cap_kw=self._cap_kw,
                 ran=slot_at(self.plan, quarter),
-                ran_export=slot_at(self.plan_export, quarter),
+                ran_modes={mode: slot_at(slots, quarter) for mode, slots in self.mode_plans.items()},
             )
         grid_w = site_net_grid_w(self.site)
         car_w = None if grid_w is None else site_car_w(self.hass, self.site)
@@ -294,8 +343,9 @@ class BatteryPlanShadow:
         params, _reason, _estimates = battery_params(self._facts)
         if params is not None:
             reviewed = [review.money.day for review in self.reviews]
+            batteries = {name: mode_battery(params, MODE_DEFS[name]) for name in MODES if MODE_DEFS[name].plans}
             for day in days_to_review(self.actuals.buckets.values(), reviewed, now, tz):
-                review = review_day(day, self.actuals.buckets.values(), params, tz, now)
+                review = review_day(day, self.actuals.buckets.values(), params, tz, now, batteries, self.mode)
                 if review is not None:
                     self.reviews.append(review)
                     _LOGGER.debug("SpotNav battery plan: %s reviewed, saving %.0f", day, review.saving)
@@ -362,6 +412,22 @@ class BatteryPlanShadow:
             return 0.0
         return float(value)
 
+    def _site_mode(self) -> tuple[str, bool]:
+        """The site's mode (`MODE_KEY`) and whether the key held something unknown (then Balanced)."""
+        entry = self.hass.config_entries.async_get_entry(self.site.entry_id)
+        value = (self.site.config if entry is None else entry.data).get(MODE_KEY)
+        if value is None:
+            return DEFAULT_MODE, False
+        mode = mode_named(value)
+        return (DEFAULT_MODE, True) if mode is None else (mode.name, False)
+
+    def _wear(self) -> tuple[float, bool]:
+        """The wear per kWh each way in the area's currency, and whether the currency has none (then the default)."""
+        source = self._price_source()
+        currency = None if source is None or source.area is None else source.area.currency
+        wear = wear_minor_per_kwh(currency)
+        return (DEFAULT_CYCLE_COST, True) if wear is None else (wear, False)
+
     def _car_windows(self) -> list[tuple[datetime, datetime, float]]:
         """The site's chargers' installed plans: `(start, end, kW)` per window."""
         from ..runtime import controller_for  # noqa: PLC0415 - the charger side imports the site
@@ -404,6 +470,7 @@ class BatteryPlanShadow:
                 facts.rated_discharge_kw,
                 tuple(windows),
                 self._cap(),
+                self._site_mode(),
             ),
         }
 
@@ -490,24 +557,37 @@ class BatteryPlanShadow:
         if solar is not None:
             estimates = (*estimates, EST_SOLAR_IN_HOUSE)
 
-        running = slot_at(self.plan, now)
-        keep = None if running is None else (running.action, running.battery_kw)
-        running_export = slot_at(self.plan_export, now)
-        keep_export = None if running_export is None else (running_export.action, running_export.battery_kw)
+        mode, mode_unknown = self._site_mode()
+        wear, wear_unknown = self._wear()
+        if mode_unknown:
+            estimates = (*estimates, EST_MODE_UNKNOWN)
+        if wear_unknown:
+            estimates = (*estimates, EST_WEAR_CURRENCY)
+        keeps: dict[str, tuple[str, float] | None] = {}
+        for name in MODES:
+            running = slot_at(self.plan if name == self.mode else self.mode_plans.get(name, ()), now)
+            keeps[name] = None if running is None else (running.action, running.battery_kw)
         windows = self._car_windows()
-        result, export, slots, more = await self.hass.async_add_executor_job(
-            partial(_solve, now, tz, prices, house, own, solar, windows, cap, params, facts.soc_pct, keep, keep_export)
+        plans, skipped, slots, more = await self.hass.async_add_executor_job(
+            partial(_solve, now, tz, prices, house, own, solar, windows, cap, params, facts.soc_pct, mode, wear, keeps)
         )
         if self._closed:
             return
+        result = plans[mode]
         decisions = result.plan.decisions
+        self.mode = mode
         self.plan = planned_slots(decisions)
         self.soc_at_plan = float(facts.soc_pct)
         self.actuals.note_first(self.plan, self.soc_at_plan)
         self.site.house_forecast.log.record_forecast(KIND_BATTERY, soc_by_hour_end(decisions, tz), now)
         self.view = plan_view(result, slots)
-        self.plan_export = () if export is None else planned_slots(export.plan.decisions)
-        self.view_export = None if export is None else plan_view(export, slots)
+        self.mode_views = {name: _mode_view(item, slots) for name, item in plans.items() if name != mode}
+        self.mode_views[mode] = self.view
+        # Self-consumption does not plan: its "plan" is the baseline, which needs no slot of its own in the actuals.
+        self.mode_plans = {
+            name: planned_slots(item.plan.decisions) for name, item in plans.items() if MODE_DEFS[name].plans
+        }
+        self.modes_skipped = skipped
         self.status, self.reason, self.made_at = STATUS_PLANNED, None, now
         self.inputs = {
             "soc_pct": facts.soc_pct,
@@ -526,6 +606,8 @@ class BatteryPlanShadow:
             "car_windows": len(windows),
             "slots": len(slots),
             "sell_credit": self._sell_credit(),
+            "mode": mode,
+            "wear": wear,
             "horizon_end": slots[-1].end.isoformat(),
             "estimates": sorted(set(estimates) | set(more)),
         }
@@ -550,12 +632,15 @@ class BatteryPlanShadow:
             "skipped_busy": self.skipped_busy,
             "last_duration_s": self.last_duration_s,
             "inputs": dict(self.inputs),
+            # The plan in force: the site's mode's.
+            "mode": self.mode,
             "plan": self.view,
-            # The same plan allowed to sell from the battery (export discharge), on the same inputs.
-            "plan_export": self.view_export,
+            # Every mode planned on the same inputs (the site's among them); those the CPU budget left out are named.
+            "modes": {name: self.mode_views.get(name) for name in MODES},
+            "modes_skipped": list(self.modes_skipped),
             "quarters": [bucket.view() for bucket in quarters],
-            # Per day, side by side: what the battery really did, the plan and its export variant on the same
-            # measured load and sun, and self-consumption; and the days kept summed.
+            # Per day, side by side: what the battery really did, each mode's plan on the same measured load and
+            # sun, and self-consumption; and the days kept summed.
             "reviews": [review.as_dict() for review in self.reviews],
             "review_totals": review_totals(self.reviews),
         }

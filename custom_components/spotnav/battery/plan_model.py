@@ -34,9 +34,25 @@ ACTIONS: Final = (
     ACTION_EXPORT_DISCHARGE,
 )
 
-#: A battery's wear, in minor per kWh through it (charged plus discharged, AC side): enough to keep the plan from
-#: churning for a few öre, small next to a real price spread.
-DEFAULT_CYCLE_COST: Final = 5.0
+#: A battery's wear per kWh through it, each way (charged, and again discharged; AC side), in the area's minor unit:
+#: one constant, not a setting (`plans/research_integrations/battery_cycle_cost_and_modes_2026-11-13.md` part 1).
+#: 15 öre is about 60 % of a 2 500 kr/kWh LFP bank's replacement cost over 6 000 cycles to 70 %; the other
+#: currencies are the same money at the rates of November 2026, rounded. Every currency the area catalogue holds is
+#: here (a test keeps it so).
+WEAR_MINOR_PER_KWH: Final[dict[str, float]] = {
+    "SEK": 15.0,
+    "NOK": 16.0,
+    "DKK": 10.0,
+    "EUR": 1.4,
+    "GBP": 1.2,
+    "CHF": 1.3,
+    "PLN": 6.0,
+    "CZK": 35.0,
+    "RON": 7.0,
+    "HUF": 540.0,
+}
+#: The wear a request weighs when it is not told (the SEK figure; the shell passes the area's, `wear_minor_per_kwh`).
+DEFAULT_CYCLE_COST: Final = WEAR_MINOR_PER_KWH["SEK"]
 #: The round trip when a battery does not state its own.
 DEFAULT_ROUND_TRIP_EFFICIENCY: Final = 0.90
 #: The grid of stored energy the plan searches, as steps from the lowest to the highest allowed charge.
@@ -45,6 +61,78 @@ DEFAULT_SOC_STEPS: Final = 100
 DEFAULT_CHARGE_SHARES: Final = (0.25, 0.5, 0.75, 1.0)
 #: Slots the plan accepts at most: two days of quarter hours with room for a long day.
 MAX_SLOTS: Final = 2 * 25 * 4
+
+
+#: The battery modes (one per site; `plans/v3_0_wave3.md` W3-M). Self-consumption: SpotNav never plans the battery,
+#: only its guards act (the fuse, the hold while a car charges from the grid). Balanced: the battery may buy cheap
+#: and spend in the house, keeps a reserve, cycles less, and sells stored energy only through the spread gate. Max
+#: profit: every action, the true wear, the inverter's own floor.
+MODE_SELF_CONSUMPTION: Final = "self_consumption"
+MODE_BALANCED: Final = "balanced"
+MODE_MAX_PROFIT: Final = "max_profit"
+MODES: Final = (MODE_SELF_CONSUMPTION, MODE_BALANCED, MODE_MAX_PROFIT)
+DEFAULT_MODE: Final = MODE_BALANCED
+
+#: How a mode may sell from the battery: never, only through the spread gate, or wherever the plan finds it pays.
+EXPORT_OFF: Final = "off"
+EXPORT_GATE: Final = "gate"
+EXPORT_FREE: Final = "free"
+
+
+@dataclass(frozen=True, slots=True)
+class BatteryMode:
+    """A mode as a row of the plan's parameters, no code path of its own.
+
+    `wear_factor` multiplies the currency's wear (`WEAR_MINOR_PER_KWH`); `floor_pct` is the least floor the mode
+    keeps (the battery's own when that is higher). With `export` at `EXPORT_GATE`, a kWh sold from the battery is
+    weighed `gate_factor` x the wear below its sell price: the spread gate's margin `H`, so a sale must clear the
+    stored kWh's value, both ways' wear and `H` together. It falls out of the search, never a filter after it.
+    """
+
+    name: str
+    plans: bool
+    export: str
+    wear_factor: float
+    floor_pct: float
+    gate_factor: float = 0.0
+
+    def wear(self, base: float) -> float:
+        return base * self.wear_factor
+
+    def hurdle(self, base: float) -> float:
+        return base * self.gate_factor if self.export == EXPORT_GATE else 0.0
+
+
+#: Balanced's reserve and its multiples of the wear (the research's proposal; the backtest in
+#: `plans/battery_plan_backtest/README.md` weighs them).
+BALANCED_FLOOR_PCT: Final = 20.0
+BALANCED_WEAR_FACTOR: Final = 2.0
+BALANCED_GATE_FACTOR: Final = 1.0
+
+MODE_DEFS: Final[dict[str, BatteryMode]] = {
+    MODE_SELF_CONSUMPTION: BatteryMode(MODE_SELF_CONSUMPTION, plans=False, export=EXPORT_OFF, wear_factor=0.0, floor_pct=0.0),
+    MODE_BALANCED: BatteryMode(
+        MODE_BALANCED,
+        plans=True,
+        export=EXPORT_GATE,
+        wear_factor=BALANCED_WEAR_FACTOR,
+        floor_pct=BALANCED_FLOOR_PCT,
+        gate_factor=BALANCED_GATE_FACTOR,
+    ),
+    MODE_MAX_PROFIT: BatteryMode(MODE_MAX_PROFIT, plans=True, export=EXPORT_FREE, wear_factor=1.0, floor_pct=0.0),
+}
+
+
+def wear_minor_per_kwh(currency: str | None) -> float | None:
+    """The wear per kWh each way in [currency]'s minor unit; `None` for a currency the table does not hold."""
+    if not currency:
+        return None
+    return WEAR_MINOR_PER_KWH.get(currency.upper())
+
+
+def mode_named(name: object) -> BatteryMode | None:
+    """The mode called [name] (a site entry's `battery_mode`), or `None` for anything else."""
+    return MODE_DEFS.get(name) if isinstance(name, str) else None
 
 
 class PlanInputError(ValueError):
@@ -153,7 +241,8 @@ class PlanRequest:
 
     `end_value` is what a kWh still stored at the horizon is worth, in minor per kWh; `None` takes the median buy
     price of the horizon times the round trip (`plan.default_end_value`). `cycle_cost` is the wear per kWh through
-    the battery. `allow_export_discharge` lets the plan sell from the battery; off by default.
+    the battery. `allow_export_discharge` lets the plan sell from the battery; off by default. `export_hurdle`
+    (minor per kWh) is weighed against every kWh the battery sells: the spread gate's margin (`BatteryMode`).
     """
 
     slots: tuple[PlanSlot, ...]
@@ -162,6 +251,7 @@ class PlanRequest:
     end_value: float | None = None
     cycle_cost: float = DEFAULT_CYCLE_COST
     allow_export_discharge: bool = False
+    export_hurdle: float = 0.0
     soc_steps: int = DEFAULT_SOC_STEPS
     charge_shares: tuple[float, ...] = DEFAULT_CHARGE_SHARES
 
@@ -183,6 +273,8 @@ class PlanRequest:
             raise PlanInputError("invalid_end_value", "end_value must be a number")
         if not _finite(self.cycle_cost) or self.cycle_cost < 0:
             raise PlanInputError("invalid_cycle_cost", "cycle_cost must be zero or more")
+        if not _finite(self.export_hurdle) or self.export_hurdle < 0:
+            raise PlanInputError("invalid_export_hurdle", "export_hurdle must be zero or more")
         if self.soc_steps < 2:
             raise PlanInputError("invalid_steps", "soc_steps must be at least 2")
         if any(not _finite(share) or not 0 < share <= 1 for share in self.charge_shares):
@@ -228,14 +320,16 @@ class SlotDecision:
 class PlanRun:
     """One way through the horizon: the plan's, or the baseline's (self-consumption only).
 
-    `cost` is money only (imports less exports); `wear` is the cycle cost the plan weighed but nobody pays;
-    `end_soc_pct` is where the battery ends.
+    `cost` is money only (imports less exports); `wear` is the cycle cost the plan weighed but nobody pays, and
+    `hurdle` the spread gate's margin on what the battery sold (weighed, never paid); `end_soc_pct` is where the
+    battery ends.
     """
 
     decisions: tuple[SlotDecision, ...]
     cost: float
     wear: float
     end_soc_pct: float
+    hurdle: float = 0.0
 
     def end_kwh(self, battery: BatteryParams) -> float:
         return battery.usable_kwh * self.end_soc_pct / 100
@@ -275,8 +369,11 @@ class BatteryPlan:
             "end_soc_pct": round(self.plan.end_soc_pct, 1),
             "baseline_end_soc_pct": round(self.baseline.end_soc_pct, 1),
             "wear": round(self.plan.wear, 2),
+            "min_soc_pct": round(self.battery.min_soc_pct, 1),
             "slots": [decision.as_dict() for decision in self.plan.decisions],
         }
+        if self.plan.hurdle > 0:
+            out["export_hurdle"] = round(self.plan.hurdle, 2)
         if self.keep_gain is not None:
             out["kept"] = self.kept
             out["keep_gain"] = round(self.keep_gain, 2)
