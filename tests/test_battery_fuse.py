@@ -22,6 +22,9 @@ from custom_components.spotnav.const import (
 from custom_components.spotnav.site.battery_probe import (
     BatteryProbe,
     car_minimum_power_w,
+    HELD_BAND_A,
+    held_band_a,
+    held_band_extra_a,
     PROBE_BACKOFF_INITIAL_S,
     PROBE_BACKOFF_MAX_S,
     PROBE_EXTENDED_WINDOW_S,
@@ -129,6 +132,82 @@ def test_the_held_band_is_half_an_amp_above_the_limit() -> None:
     assert not within_held_band({"L1": 0.0, "L2": None, "L3": 0.0}, phases)
     assert within_held_band({"L1": 0.0, "L2": None, "L3": None}, ("L1",))
     assert not within_held_band({"L1": 0.0}, ())
+
+
+@pytest.mark.parametrize(
+    ("voltage", "band"),
+    [
+        # 20 A held as 4.6 kW at 224.9 V is 20.454 A.
+        (224.9, 0.5 + 20.0 * (230.0 / 224.9 - 1.0)),
+        # At or above nominal the band is as it was.
+        (230.0, 0.5),
+        (235.0, 0.5),
+        # Far below nominal it is capped at 5 % of the limit.
+        (200.0, 1.5),
+        (220.0, 0.5 + 20.0 * (230.0 / 220.0 - 1.0)),
+        # Unknown or implausible: as it was.
+        (None, 0.5),
+        (150.0, 0.5),
+        (189.9, 0.5),
+        (400.0, 0.5),
+        (0.0, 0.5),
+        (-224.9, 0.5),
+        (float("nan"), 0.5),
+    ],
+)
+def test_the_held_band_widens_by_what_a_power_limited_battery_draws_at_a_low_voltage(voltage, band) -> None:
+    assert held_band_a(20.0, voltage) == pytest.approx(band)
+    assert held_band_a(20.0, voltage) - HELD_BAND_A == pytest.approx(held_band_extra_a(20.0, voltage))
+    assert held_band_a(20.0, 224.9) == pytest.approx(0.954, abs=0.001)
+
+
+def test_the_held_band_needs_a_limit_to_widen() -> None:
+    assert held_band_a(None, 224.9) == HELD_BAND_A
+    assert held_band_a(0.0, 200.0) == HELD_BAND_A
+    assert held_band_a(-20.0, 200.0) == HELD_BAND_A
+    assert held_band_a(float("inf"), 200.0) == HELD_BAND_A
+    # The cap scales with the limit: 5 % of 25 A.
+    assert held_band_extra_a(25.0, 200.0) == pytest.approx(1.25)
+
+
+def test_each_phase_is_judged_against_its_own_band() -> None:
+    phases = ("L1", "L2", "L3")
+    bands = {"L1": held_band_a(20.0, 224.9), "L2": 0.5, "L3": 0.5}
+    assert within_held_band({"L1": -0.66, "L2": -0.2, "L3": -0.2}, phases, bands)
+    assert not within_held_band({"L1": -0.96, "L2": -0.2, "L3": -0.2}, phases, bands)
+    # The widening belongs to the phase whose voltage is low, not to the others.
+    assert not within_held_band({"L1": -0.2, "L2": -0.66, "L3": -0.2}, phases, bands)
+    # A phase the bands do not name has today's band.
+    assert not within_held_band({"L1": -0.2, "L2": -0.2, "L3": -0.51}, phases, {"L1": 1.5})
+
+
+def test_a_probe_judges_the_grid_against_the_band_at_the_phase_voltage() -> None:
+    sites = {"L1": 20.60, "L2": 20.2, "L3": 20.2}
+    low = {"L1": 224.9, "L2": 227.0, "L3": 227.0}
+    for voltage_v, state in ((low, "succeeded"), (None, "failed"), ({"L1": None, "L2": 227.0, "L3": 227.0}, "failed")):
+        probe = BatteryProbe()
+        _started(probe)
+        verdict = probe.evaluate(
+            30.0,
+            site_current_a=sites,
+            limit_a={p: 20.0 for p in ("L1", "L2", "L3")},
+            delivered_a={p: 5.9 for p in ("L1", "L2", "L3")},
+            main_fuse_a=20.0,
+            voltage_v=voltage_v,
+        )
+        assert verdict.state == state, voltage_v
+    # Beyond the widened band it is the battery that did not yield, as ever.
+    probe = BatteryProbe()
+    _started(probe)
+    verdict = probe.evaluate(
+        30.0,
+        site_current_a={"L1": 21.5, "L2": 20.2, "L3": 20.2},
+        limit_a={p: 20.0 for p in ("L1", "L2", "L3")},
+        delivered_a={p: 5.9 for p in ("L1", "L2", "L3")},
+        main_fuse_a=20.0,
+        voltage_v=low,
+    )
+    assert (verdict.state, verdict.reason) == ("failed", "battery_did_not_yield")
 
 
 def _started(probe: BatteryProbe, now: float = 0.0) -> None:

@@ -8,7 +8,10 @@ up the amps the car takes. Two things follow, both only under `car_first` with y
 * The *band*: while the battery charges at least as hard as the car's minimum power and every phase is
   within `HELD_BAND_A` above the limit (fuse less margin), the grid sitting at the limit is the
   battery's own regulation, not an overload, and the car is not stepped down for it. A phase above the
-  band is a real excess and is dealt with exactly as before.
+  band is a real excess and is dealt with exactly as before. A battery that limits the grid by power
+  (the limit at `NOMINAL_VOLTAGE_V`) holds more amps on a phase whose voltage is low: there the band
+  is wider by what that power draws at the phase's own voltage (`held_band_extra_a`, at most
+  `HELD_BAND_MAX_EXTRA_FRACTION` of the limit), on a voltage the site measures itself and reads fresh.
 * The *probe*: with the car held at 0 A while the plan wants it charging, the car is started at its
   minimum current and the grid is watched for a short window. If every phase is back within the band
   by the end of it the battery gave way; otherwise the car is stopped again and the probe is not
@@ -34,15 +37,25 @@ from the caller's clock. It decides nothing about writing; `SiteCapacityControll
 
 from __future__ import annotations
 
+import math
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Final, Literal
 
+from .grid_sign import NOMINAL_VOLTAGE_V
 from .site_capacity import PhaseName
 
 #: How far above the limit (amperes per phase) a battery-held grid may read before it is a real
 #: excess. A battery regulating the grid to its setpoint reads a few hundredths over.
 HELD_BAND_A: Final = 0.5
+
+#: A battery that limits the grid by power holds `limit x NOMINAL_VOLTAGE_V` watts per phase, which at a low
+#: phase voltage is more amps than the limit (the morning of 2026-11-13: 20 A at 224-225 V read 20.3-20.66 A). The
+#: band widens by those amps only on a plausible voltage, and by no more than this fraction of the limit (230/219 V:
+#: 1 A at a 20 A limit).
+HELD_BAND_MIN_VOLTAGE_V: Final = 190.0
+HELD_BAND_MAX_VOLTAGE_V: Final = 260.0
+HELD_BAND_MAX_EXTRA_FRACTION: Final = 0.05
 
 #: The longest a probe waits for the battery to give way; the regulator's dwell shortens it.
 PROBE_WINDOW_S: Final = 30.0
@@ -69,7 +82,7 @@ PROBE_IDLE_BELOW_A: Final = 1.0
 #: yet deliver `PROBE_FOLLOW_RATIO` of the probe current when the window ends: a car ramps up over tens of
 #: seconds after a start and an OCPP charger's reading lags behind the draw. The same bound as a start's
 #: credit (`site_capacity_controller.START_CREDIT_S`), which covers the same lag on the regulator's side.
-#: The wait is granted pass by pass, only while every phase is within `HELD_BAND_A` of its limit (what a
+#: The wait is granted pass by pass, only while every phase is within its band (`held_band_a`) of its limit (what a
 #: probe that succeeded may hold indefinitely), so it never keeps the site above the band past the window.
 PROBE_EXTENDED_WINDOW_S: Final = 90.0
 
@@ -111,11 +124,37 @@ def car_minimum_power_w(
     return total if voltages_v else None
 
 
+def held_band_extra_a(limit_a: float | None, voltage_v: float | None) -> float:
+    """How much wider (A) the held band is on a phase whose voltage is below `NOMINAL_VOLTAGE_V`: the amps a
+    battery holding `limit_a x NOMINAL_VOLTAGE_V` watts draws above `limit_a` at `voltage_v`, capped at
+    `HELD_BAND_MAX_EXTRA_FRACTION` of the limit. 0 with no voltage (the caller passes one only where the site
+    measures it and reads it fresh), an implausible one, one at or above nominal, or no limit."""
+    if (
+        limit_a is None
+        or voltage_v is None
+        or not math.isfinite(limit_a)
+        or limit_a <= 0.0
+        or not HELD_BAND_MIN_VOLTAGE_V <= voltage_v <= HELD_BAND_MAX_VOLTAGE_V
+        or voltage_v >= NOMINAL_VOLTAGE_V
+    ):
+        return 0.0
+    extra = limit_a * (NOMINAL_VOLTAGE_V / voltage_v - 1.0)
+    return max(0.0, min(extra, HELD_BAND_MAX_EXTRA_FRACTION * limit_a))
+
+
+def held_band_a(limit_a: float | None, voltage_v: float | None) -> float:
+    """The held band (A above the limit) on one phase: `HELD_BAND_A` and its voltage's `held_band_extra_a`."""
+    return HELD_BAND_A + held_band_extra_a(limit_a, voltage_v)
+
+
 def within_held_band(
-    margins_a: Mapping[PhaseName, float | None], required: Sequence[PhaseName]
+    margins_a: Mapping[PhaseName, float | None],
+    required: Sequence[PhaseName],
+    bands_a: Mapping[PhaseName, float] | None = None,
 ) -> bool:
-    """Whether every phase the car uses has a margin and no phase with one is more than
-    `HELD_BAND_A` over its limit (margin = limit less measured, so over the limit is negative).
+    """Whether every phase the car uses has a margin and no phase with one is more than its band
+    over its limit (margin = limit less measured, so over the limit is negative). `bands_a` is each
+    phase's band (`held_band_a`); a phase it does not name has `HELD_BAND_A`.
 
     A phase with an unknown margin that the car does not use is ignored; one the car uses refuses.
     """
@@ -124,7 +163,12 @@ def within_held_band(
     for phase in required:
         if margins_a.get(phase) is None:
             return False
-    return all(margin >= -HELD_BAND_A for margin in margins_a.values() if margin is not None)
+    bands = bands_a or {}
+    return all(
+        margin >= -bands.get(phase, HELD_BAND_A)
+        for phase, margin in margins_a.items()
+        if margin is not None
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -227,6 +271,7 @@ class BatteryProbe:
         main_fuse_a: float,
         charger_charging: bool | None = None,
         connector_status: str | None = None,
+        voltage_v: Mapping[PhaseName, float | None] | None = None,
     ) -> ProbeVerdict:
         """Judge a running probe on fresh readings. Any doubt ends it as a failure: the window is a
         bounded exception to the overload rules, never a reason to look away from a bad reading.
@@ -239,6 +284,9 @@ class BatteryProbe:
         `connector_status`: the charger's connector status in `charge_progress`'s vocabulary (`None`: none
         readable). With the charger's reading it decides whether a `car_not_drawing` is the car's refusal
         (`car_refused`), never whether the probe goes on.
+
+        `voltage_v`: each phase's voltage where the site measures it and reads it fresh (`None` otherwise), which
+        widens that phase's band past the window (`held_band_a`); nothing else is judged on it.
         """
         if self._started_at is None:
             return ProbeVerdict("failed", "not_started")
@@ -280,7 +328,8 @@ class BatteryProbe:
             limit = limit_a.get(phase)
             if limit is None:
                 return ProbeVerdict("failed", "measurement_unusable")
-            if site_current_a[phase] > limit + HELD_BAND_A:  # type: ignore[operator]
+            band = held_band_a(limit, None if voltage_v is None else voltage_v.get(phase))
+            if site_current_a[phase] > limit + band:  # type: ignore[operator]
                 return ProbeVerdict("failed", "battery_did_not_yield")
         if evidence is not None:
             first = not self._extended
