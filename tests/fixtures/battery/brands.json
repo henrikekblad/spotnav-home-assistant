@@ -1,0 +1,573 @@
+{
+ "sigenergy": {
+  "_source": "A real plant's registry and states on 2026-11-13 (config entry id replaced), firmware SPC117, AI mode.",
+  "platform": "sigen",
+  "manufacturer": "Sigenergy",
+  "battery": "sensor.sigen_plant_battery_power",
+  "entities": [
+   {
+    "entity_id": "sensor.sigen_plant_battery_power",
+    "unique_id": "ENTRY_sigen_plant_plant_ess_power",
+    "device": "battery",
+    "state": "4.603",
+    "unit": "kW",
+    "device_class": "power",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.sigen_plant_battery_state_of_charge",
+    "unique_id": "ENTRY_sigen_plant_plant_ess_soc",
+    "device": "battery",
+    "state": "44.6",
+    "unit": "%",
+    "device_class": "battery",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.sigen_plant_ess_rated_charging_power",
+    "unique_id": "ENTRY_sigen_plant_plant_ess_rated_charging_power",
+    "device": "battery",
+    "state": "20.6",
+    "unit": "kW",
+    "device_class": "power",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.sigen_plant_ess_rated_discharging_power",
+    "unique_id": "ENTRY_sigen_plant_plant_ess_rated_discharging_power",
+    "device": "battery",
+    "state": "23.04",
+    "unit": "kW",
+    "device_class": "power",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.sigen_plant_rated_energy_capacity",
+    "unique_id": "ENTRY_sigen_plant_plant_ess_rated_energy_capacity",
+    "device": "battery",
+    "state": "40.3",
+    "unit": "kWh",
+    "device_class": "energy",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.sigen_plant_ems_work_mode",
+    "unique_id": "ENTRY_sigen_plant_plant_ems_work_mode",
+    "device": "battery",
+    "state": "ai_mode",
+    "unit": null,
+    "device_class": "enum",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.sigen_plant_grid_connection_status",
+    "unique_id": "ENTRY_sigen_plant_plant_on_off_grid_status",
+    "device": "battery",
+    "state": "on_grid",
+    "unit": null,
+    "device_class": "enum",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.sigen_inverter_firmware_version",
+    "unique_id": "ENTRY_sigen_inverter_inverter_machine_firmware_version",
+    "device": "inverter",
+    "state": "V100R001C21SPC117",
+    "unit": null,
+    "device_class": null,
+    "disabled": false
+   },
+   {
+    "entity_id": "number.sigen_plant_ess_max_discharging_limit",
+    "unique_id": "ENTRY_sigen_plant_plant_ess_max_discharging_limit",
+    "device": "battery",
+    "state": "23.04",
+    "unit": "kW",
+    "device_class": "power",
+    "disabled": false
+   },
+   {
+    "entity_id": "select.sigen_plant_remote_ems_control_mode",
+    "unique_id": "ENTRY_sigen_plant_plant_remote_ems_control_mode",
+    "device": "battery",
+    "state": null,
+    "unit": null,
+    "device_class": null,
+    "disabled": true
+   },
+   {
+    "entity_id": "switch.sigen_plant_remote_ems_controlled_by_home_assistant",
+    "unique_id": "ENTRY_sigen_plant_plant_remote_ems_enable",
+    "device": "battery",
+    "state": null,
+    "unit": null,
+    "device_class": null,
+    "disabled": true
+   },
+   {
+    "entity_id": "number.sigen_plant_grid_import_limitation",
+    "unique_id": "ENTRY_sigen_plant_plant_grid_maximum_import_limitation",
+    "device": "battery",
+    "state": null,
+    "unit": null,
+    "device_class": null,
+    "disabled": true
+   }
+  ],
+  "expected": {
+   "brand": "sigenergy",
+   "soc_pct": 44.6,
+   "capacity_kwh": 40.3,
+   "rated_charge_kw": 20.6,
+   "rated_discharge_kw": 23.04,
+   "firmware": "V100R001C21SPC117",
+   "on_grid": true,
+   "management": "self_managed",
+   "hold_entity": "number.sigen_plant_ess_max_discharging_limit",
+   "hold_usable": true,
+   "hold_unset": true,
+   "grid_charge_usable": false
+  }
+ },
+ "huawei": {
+  "_source": "Unique ids from wlcrs/huawei_solar c754df5 and huawei-solar 3.1.0 register names.",
+  "platform": "huawei_solar",
+  "manufacturer": "Huawei",
+  "battery": "sensor.batteries_charge_discharge_power",
+  "entities": [
+   {
+    "entity_id": "sensor.batteries_charge_discharge_power",
+    "unique_id": "HV2140123_storage_charge_discharge_power",
+    "device": "battery",
+    "state": "-1500",
+    "unit": "W",
+    "device_class": "power",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.batteries_state_of_capacity",
+    "unique_id": "HV2140123_storage_state_of_capacity",
+    "device": "battery",
+    "state": "71",
+    "unit": "%",
+    "device_class": "battery",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.batteries_rated_capacity",
+    "unique_id": "HV2140123_storage_rated_capacity",
+    "device": "battery",
+    "state": "10000",
+    "unit": "Wh",
+    "device_class": "energy_storage",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.batteries_maximum_charge_power",
+    "unique_id": "HV2140123_storage_maximum_charge_power",
+    "device": "battery",
+    "state": "5000",
+    "unit": "W",
+    "device_class": "power",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.batteries_maximum_discharge_power",
+    "unique_id": "HV2140123_storage_maximum_discharge_power",
+    "device": "battery",
+    "state": "5000",
+    "unit": "W",
+    "device_class": "power",
+    "disabled": false
+   },
+   {
+    "entity_id": "select.batteries_working_mode",
+    "unique_id": "HV2140123_storage_working_mode_settings",
+    "device": "battery",
+    "state": "maximise_self_consumption",
+    "unit": null,
+    "device_class": null,
+    "disabled": false
+   },
+   {
+    "entity_id": "number.batteries_maximum_discharging_power",
+    "unique_id": "HV2140123_storage_maximum_discharging_power",
+    "device": "battery",
+    "state": "2500",
+    "unit": "W",
+    "device_class": null,
+    "disabled": false
+   }
+  ],
+  "expected": {
+   "brand": "huawei",
+   "soc_pct": 71.0,
+   "capacity_kwh": 10.0,
+   "rated_charge_kw": 5.0,
+   "rated_discharge_kw": 5.0,
+   "on_grid": null,
+   "management": "free",
+   "hold_entity": "number.batteries_maximum_discharging_power",
+   "hold_usable": true,
+   "hold_unset": false,
+   "grid_charge_usable": true
+  }
+ },
+ "solaredge": {
+  "_source": "Unique ids from WillCodeForCats/solaredge-modbus-multi 0ab6569: battery facts on the B1 device, controls on the inverter.",
+  "platform": "solaredge_modbus_multi",
+  "manufacturer": "SolarEdge",
+  "battery": "sensor.solaredge_b1_dc_power",
+  "entities": [
+   {
+    "entity_id": "sensor.solaredge_b1_dc_power",
+    "unique_id": "SE10K_7E1234_B1_dc_power",
+    "device": "battery",
+    "state": "-800",
+    "unit": "W",
+    "device_class": "power",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.solaredge_b1_state_of_energy",
+    "unique_id": "SE10K_7E1234_B1_battery_soe",
+    "device": "battery",
+    "state": "55",
+    "unit": "%",
+    "device_class": "battery",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.solaredge_b1_maximum_energy",
+    "unique_id": "SE10K_7E1234_B1_max_energy",
+    "device": "battery",
+    "state": "9700",
+    "unit": "Wh",
+    "device_class": "energy_storage",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.solaredge_b1_max_charge_power",
+    "unique_id": "SE10K_7E1234_B1_max_charge_power",
+    "device": "battery",
+    "state": "5000",
+    "unit": "W",
+    "device_class": "power",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.solaredge_b1_max_discharge_power",
+    "unique_id": "SE10K_7E1234_B1_max_discharge_power",
+    "device": "battery",
+    "state": "5000",
+    "unit": "W",
+    "device_class": "power",
+    "disabled": false
+   },
+   {
+    "entity_id": "select.solaredge_i1_storage_control_mode",
+    "unique_id": "SE10K_7E1234_storage_control_mode",
+    "device": "inverter",
+    "state": "Maximize Self Consumption",
+    "unit": null,
+    "device_class": null,
+    "disabled": false
+   },
+   {
+    "entity_id": "number.solaredge_i1_storage_discharge_limit",
+    "unique_id": "SE10K_7E1234_storage_discharge_limit",
+    "device": "inverter",
+    "state": "unavailable",
+    "unit": "W",
+    "device_class": null,
+    "disabled": false
+   },
+   {
+    "entity_id": "select.solaredge_i1_storage_command_mode",
+    "unique_id": "SE10K_7E1234_storage_command_mode",
+    "device": "inverter",
+    "state": "unavailable",
+    "unit": null,
+    "device_class": null,
+    "disabled": false
+   }
+  ],
+  "expected": {
+   "brand": "solaredge",
+   "soc_pct": 55.0,
+   "capacity_kwh": 9.7,
+   "rated_charge_kw": 5.0,
+   "rated_discharge_kw": 5.0,
+   "on_grid": null,
+   "management": "self_managed",
+   "hold_entity": "number.solaredge_i1_storage_discharge_limit",
+   "hold_usable": false,
+   "hold_unset": null,
+   "grid_charge_usable": false
+  }
+ },
+ "solax": {
+  "_source": "Unique ids from wills106/homeassistant-solax-modbus 8a1f3fc (`<hub name>_<key>`).",
+  "platform": "solax_modbus",
+  "manufacturer": "SolaX Power",
+  "battery": "sensor.solax_battery_power_charge",
+  "entities": [
+   {
+    "entity_id": "sensor.solax_battery_power_charge",
+    "unique_id": "SolaX_battery_power_charge",
+    "device": "battery",
+    "state": "-1243",
+    "unit": "W",
+    "device_class": "power",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.solax_battery_capacity",
+    "unique_id": "SolaX_battery_capacity",
+    "device": "battery",
+    "state": "64",
+    "unit": "%",
+    "device_class": "battery",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.solax_bms_battery_capacity",
+    "unique_id": "SolaX_bms_battery_capacity",
+    "device": "battery",
+    "state": "5800",
+    "unit": "Wh",
+    "device_class": "energy",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.solax_battery_install_capacity",
+    "unique_id": "SolaX_battery_install_capacity",
+    "device": "battery",
+    "state": "11.6",
+    "unit": "kWh",
+    "device_class": "energy",
+    "disabled": true
+   },
+   {
+    "entity_id": "select.solax_charger_use_mode",
+    "unique_id": "SolaX_charger_use_mode",
+    "device": "battery",
+    "state": "Self Use Mode",
+    "unit": null,
+    "device_class": null,
+    "disabled": false
+   },
+   {
+    "entity_id": "select.solax_remotecontrol_power_control",
+    "unique_id": "SolaX_remotecontrol_power_control",
+    "device": "battery",
+    "state": "Disabled",
+    "unit": null,
+    "device_class": null,
+    "disabled": false
+   }
+  ],
+  "expected": {
+   "brand": "solax",
+   "soc_pct": 64.0,
+   "capacity_kwh": null,
+   "rated_charge_kw": null,
+   "rated_discharge_kw": null,
+   "on_grid": null,
+   "management": "free",
+   "hold_entity": "select.solax_remotecontrol_power_control",
+   "hold_usable": true,
+   "hold_unset": null,
+   "grid_charge_usable": true
+  }
+ },
+ "victron": {
+  "_source": "Unique ids from core victron_gx with victron-mqtt 2026.11.1 (`<installation>_<device type>_<id>_<short id>`).",
+  "platform": "victron_gx",
+  "manufacturer": "Victron Energy",
+  "battery": "sensor.victron_system_battery_power",
+  "entities": [
+   {
+    "entity_id": "sensor.victron_system_battery_power",
+    "unique_id": "c0619ab1_system_0_system_dc_battery_power",
+    "device": "battery",
+    "state": "-2100",
+    "unit": "W",
+    "device_class": "power",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.victron_system_battery_soc",
+    "unique_id": "c0619ab1_system_0_system_dc_battery_soc",
+    "device": "battery",
+    "state": "83.5",
+    "unit": "%",
+    "device_class": "battery",
+    "disabled": false
+   },
+   {
+    "entity_id": "select.victron_settings_ess_mode",
+    "unique_id": "c0619ab1_settings_0_system_ess_batterylife_state",
+    "device": "settings",
+    "state": "optimized_no_battery_life",
+    "unit": null,
+    "device_class": null,
+    "disabled": false
+   },
+   {
+    "entity_id": "select.victron_settings_dess_mode",
+    "unique_id": "c0619ab1_settings_0_system_settings_dess_mode",
+    "device": "settings",
+    "state": "auto_vrm",
+    "unit": null,
+    "device_class": null,
+    "disabled": false
+   },
+   {
+    "entity_id": "number.victron_settings_ess_max_inverter_power_limit",
+    "unique_id": "c0619ab1_settings_0_system_ess_max_inverter_power_limit",
+    "device": "settings",
+    "state": "-1",
+    "unit": "W",
+    "device_class": null,
+    "disabled": false
+   }
+  ],
+  "expected": {
+   "brand": "victron",
+   "soc_pct": 83.5,
+   "capacity_kwh": null,
+   "rated_charge_kw": null,
+   "rated_discharge_kw": null,
+   "on_grid": null,
+   "management": "self_managed",
+   "hold_entity": "number.victron_settings_ess_max_inverter_power_limit",
+   "hold_usable": true,
+   "hold_unset": true,
+   "grid_charge_usable": null
+  }
+ },
+ "goodwe": {
+  "_source": "Unique ids from core goodwe (`goodwe-<key>-<serial>`) with goodwe 0.4.10.",
+  "platform": "goodwe",
+  "manufacturer": "GoodWe",
+  "battery": "sensor.goodwe_battery_power",
+  "entities": [
+   {
+    "entity_id": "sensor.goodwe_battery_power",
+    "unique_id": "goodwe-pbattery1-9010KETU000W0000",
+    "device": "battery",
+    "state": "1500",
+    "unit": "W",
+    "device_class": "power",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.goodwe_battery_state_of_charge",
+    "unique_id": "goodwe-battery_soc-9010KETU000W0000",
+    "device": "battery",
+    "state": "38",
+    "unit": "%",
+    "device_class": "battery",
+    "disabled": false
+   },
+   {
+    "entity_id": "select.goodwe_inverter_operation_mode",
+    "unique_id": "goodwe-operation_mode-9010KETU000W0000",
+    "device": "battery",
+    "state": "eco",
+    "unit": null,
+    "device_class": null,
+    "disabled": false
+   }
+  ],
+  "expected": {
+   "brand": "goodwe",
+   "soc_pct": 38.0,
+   "capacity_kwh": null,
+   "rated_charge_kw": null,
+   "rated_discharge_kw": null,
+   "on_grid": null,
+   "management": "self_managed",
+   "hold_entity": null,
+   "hold_usable": null,
+   "hold_unset": null,
+   "grid_charge_usable": true
+  }
+ },
+ "enphase": {
+  "_source": "Unique ids from core enphase_envoy (`<serial>_<key>`).",
+  "platform": "enphase_envoy",
+  "manufacturer": "Enphase",
+  "battery": "sensor.envoy_battery_discharge",
+  "entities": [
+   {
+    "entity_id": "sensor.envoy_battery_discharge",
+    "unique_id": "122233445566_battery_discharge",
+    "device": "envoy",
+    "state": "0.4",
+    "unit": "kW",
+    "device_class": "power",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.envoy_battery",
+    "unique_id": "122233445566_battery_level",
+    "device": "envoy",
+    "state": "90",
+    "unit": "%",
+    "device_class": "battery",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.envoy_battery_capacity",
+    "unique_id": "122233445566_max_capacity",
+    "device": "envoy",
+    "state": "10080",
+    "unit": "Wh",
+    "device_class": "energy_storage",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.envoy_aggregated_capacity",
+    "unique_id": "122233445566_aggregated_max_battery_capacity",
+    "device": "envoy",
+    "state": "13440",
+    "unit": "Wh",
+    "device_class": "energy_storage",
+    "disabled": false
+   },
+   {
+    "entity_id": "select.enpower_storage_mode",
+    "unique_id": "482211_storage_mode",
+    "device": "enpower",
+    "state": "self_consumption",
+    "unit": null,
+    "device_class": null,
+    "disabled": false
+   },
+   {
+    "entity_id": "switch.enpower_charge_from_grid",
+    "unique_id": "482211_charge_from_grid",
+    "device": "enpower",
+    "state": "off",
+    "unit": null,
+    "device_class": null,
+    "disabled": false
+   }
+  ],
+  "expected": {
+   "brand": "enphase",
+   "soc_pct": 90.0,
+   "capacity_kwh": 10.08,
+   "rated_charge_kw": null,
+   "rated_discharge_kw": null,
+   "on_grid": null,
+   "management": "free",
+   "hold_entity": null,
+   "hold_usable": null,
+   "hold_unset": null,
+   "grid_charge_usable": true
+  }
+ }
+}
