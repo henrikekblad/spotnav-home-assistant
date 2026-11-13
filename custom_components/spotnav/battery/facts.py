@@ -11,12 +11,12 @@ from __future__ import annotations
 
 import math
 from collections.abc import Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any, Final, Literal
 
 from .adapters import Adapter, ControlSpec, FactRole, Match, ReserveSource, adapter_for
 
-ManagementState = Literal["free", "self_managed", "unknown"]
+ManagementState = Literal["free", "self_managed", "unknown", "externally_controlled"]
 
 #: A state that is no reading.
 _NO_READING: Final = frozenset({"", "unavailable", "unknown", "none"})
@@ -50,8 +50,9 @@ class EntityFact:
 @dataclass(frozen=True, slots=True)
 class Management:
     """Who runs the battery: `free` (its plain self-consumption, SpotNav may act), `self_managed` (its own
-    optimiser, a schedule or another system: SpotNav leaves it alone) or `unknown` (SpotNav cannot tell, so it
-    leaves it alone as well)."""
+    optimiser or a schedule: SpotNav leaves it alone), `externally_controlled` (another system drives it: a battery
+    planner, an aggregator, or settings and behaviour SpotNav did not cause, `outside_control.py`; SpotNav only
+    watches) or `unknown` (SpotNav cannot tell, so it leaves it alone as well)."""
 
     state: ManagementState
     reason: str
@@ -255,7 +256,7 @@ def _management(
     adapter: Adapter | None, entities: Sequence[EntityFact], battery: EntityFact, external_planner: str | None
 ) -> Management:
     if external_planner is not None:
-        return Management("self_managed", f"planner:{external_planner}")
+        return Management("externally_controlled", f"planner:{external_planner}")
     if adapter is None:
         return Management("unknown", "no_adapter")
     settings: dict[str, str | None] = {}
@@ -327,6 +328,16 @@ def _unknown_brand_soc(entities: Sequence[EntityFact], battery: EntityFact) -> E
         ):
             return entity
     return None
+
+
+def with_outside_control(facts: BatteryFacts, active: bool, reason: str | None) -> BatteryFacts:
+    """The facts with the outside-control verdict (`outside_control.Verdict`) applied: a battery another system
+    drives is `externally_controlled`, whatever its own mode says (its settings are kept for the reader)."""
+    if not active or facts.battery_entity_id is None or facts.management.state == "externally_controlled":
+        return facts
+    return replace(
+        facts, management=Management("externally_controlled", reason or "outside", dict(facts.management.settings))
+    )
 
 
 def battery_facts(
