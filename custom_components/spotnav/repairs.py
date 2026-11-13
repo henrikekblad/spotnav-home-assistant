@@ -33,7 +33,6 @@ from homeassistant.helpers.event import async_call_later
 from homeassistant.util import dt as dt_util
 
 from .const import (
-    BATTERY_OUTSIDE_CONTROL_ISSUE,
     CONF_CHARGER_ENTRY_IDS,
     CONF_ENTRY_TYPE,
     DOMAIN,
@@ -171,9 +170,6 @@ async def async_sync_resolution_repairs(
             continue
         if issue_id.startswith(f"{PRICE_SOURCE_MISSING_ISSUE}_"):
             # An electricity price's own (`price_device.py`): raised and deleted by its device.
-            continue
-        if issue_id.startswith(f"{BATTERY_OUTSIDE_CONTROL_ISSUE}_"):
-            # A site battery's outside-control notice (`battery/runtime.py`): raised and deleted by its site.
             continue
         if issue_id not in wanted:
             ir.async_delete_issue(hass, DOMAIN, issue_id)

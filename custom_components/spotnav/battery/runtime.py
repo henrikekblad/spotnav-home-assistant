@@ -7,8 +7,9 @@ confirmed-write ledger and the control-failure monitor run beside the hold as dr
 can and cannot tell in shadow); their state is kept in the book's sections. The house battery plan runs beside them
 as a shadow and a benchmark (`plan_runtime.py`). The outside-control watch (`outside_control.py`) looks at the same
 readings: a battery another system drives is marked `externally_controlled` for every part (the plan stays a
-benchmark), and an occurrence found by the battery's settings or behaviour is told once, as a Repairs notice that
-goes away by itself when the occurrence ends.
+benchmark). Each occurrence is logged once at INFO when it starts and once when it ends, and kept in the diagnostics
+and in what SpotNav detected; nothing is raised in Repairs (nothing there is for the person to do). The Repairs
+notice an earlier version raised is deleted at start.
 
 Nothing here writes to a battery, an inverter or any other device: no service is called. The results are shown in
 the site's diagnostics (and so in the debug bundle) only.
@@ -54,7 +55,7 @@ _LOGGER = logging.getLogger(__name__)
 TICK_S: Final = 10.0
 #: The book's section that keeps the outside-control watch.
 SECTION_OUTSIDE: Final = "outside_control"
-#: The Repairs notice of an occurrence (translation key under `issues`, issue-id prefix).
+#: The issue-id prefix of the Repairs notice an earlier version raised (retired: deleted at start).
 OUTSIDE_CONTROL_ISSUE: Final = BATTERY_OUTSIDE_CONTROL_ISSUE
 STORE_VERSION: Final = 1
 _SAVE_DELAY_S: Final = 30.0
@@ -161,7 +162,8 @@ class BatteryShadow:
         )
         self.outside = OutsideControlWatch.from_dict(self.book.section(SECTION_OUTSIDE))
         self._loaded = True
-        self._sync_notice()
+        # An earlier version raised a Repairs notice for an occurrence: it is retired, so a left-over one goes.
+        ir.async_delete_issue(self.hass, DOMAIN, outside_control_issue_id(self.site.entry_id))
         self.facts = self._read_facts()
         memory, decision = restart(self._hold, self.facts, now)
         self._apply(PART_HOLD_FOR_CAR, memory, decision, now)
@@ -239,27 +241,7 @@ class BatteryShadow:
                 event.get("reason"),
                 "" if event.get("source") is None else f", likely {event['source']}",
             )
-        if events:
-            self._sync_notice()
         return replace(inputs, facts=self.with_outside(facts))
-
-    def _sync_notice(self) -> None:
-        """The Repairs notice mirrors a told occurrence: raised once while it lasts, gone when it ends."""
-        verdict = self.outside.verdict
-        issue_id = outside_control_issue_id(self.site.entry_id)
-        if not (verdict.active and verdict.told):
-            ir.async_delete_issue(self.hass, DOMAIN, issue_id)
-            return
-        entry = self.hass.config_entries.async_get_entry(self.site.entry_id)
-        ir.async_create_issue(
-            self.hass,
-            DOMAIN,
-            issue_id,
-            is_fixable=False,
-            severity=ir.IssueSeverity.WARNING,
-            translation_key=OUTSIDE_CONTROL_ISSUE,
-            translation_placeholders={"site": entry.title if entry is not None else self.site.entry_id},
-        )
 
     def _grid_charging(self) -> tuple[tuple[str, ...], float | None]:
         """The site's chargers charging from the grid, and what they draw together (kW, `None` when unknown)."""

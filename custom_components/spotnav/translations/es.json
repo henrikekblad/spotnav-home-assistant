@@ -979,10 +979,6 @@
     "price_source_missing": {
       "title": "No hay precios de la electricidad para {area}",
       "description": "**{price}** no tiene precios: no hay ninguna fuente configurada para {area}. Abre los ajustes de la tarjeta SpotNav, Precio de la electricidad: ahí se indica qué añadir (la integración Nord Pool de Home Assistant, tu propia clave de ENTSO-E, la integración PVPC, Octopus Energy o Zonneplan). Este aviso desaparece solo cuando vuelvan los precios."
-    },
-    "battery_outside_control": {
-      "title": "Otra cosa controla la batería doméstica",
-      "description": "SpotNav ha notado que algo distinto de SpotNav controla la batería doméstica de **{site}**: sus ajustes cambiaron varias veces, o se cargó desde la red o se descargó hacia la exportación, algo que su propio autoconsumo no hace. Suele ser un servicio como CheckWatt, Greenely o Tibber, un ajuste del instalador o una automatización. Por eso SpotNav solo observa esta batería y nunca escribe en ella; su plan de batería se muestra como comparación. No tienes que hacer nada. Si quieres que SpotNav planifique la batería más adelante, desactiva primero el control del otro sistema. Este aviso desaparece por sí solo dos días después de la última vez que la batería lo mostró."
     }
   },
   "exceptions": {
