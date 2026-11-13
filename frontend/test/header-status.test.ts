@@ -151,6 +151,21 @@ describe("the status in the header", () => {
   it("hides the symbol unless the word does not fit, and keeps the hidden word's width", () => {
     expect(VISUAL_STYLES).toMatch(/\.spotnav-connection-icon \{\s*display: none;/);
     expect(VISUAL_STYLES).toMatch(/\[data-status-fit="icon"\] \.spotnav-connection-icon \{\s*display: inline-flex;/);
-    expect(VISUAL_STYLES).toMatch(/\[data-status-fit="icon"\] \.spotnav-connection-word \{\s*position: absolute;\s*visibility: hidden;/);
+    expect(VISUAL_STYLES).toMatch(/\[data-status-fit="icon"\] \.spotnav-connection-word \{\s*position: absolute;\s*inset-inline-start: 0;\s*top: 0;\s*visibility: hidden;/);
+  });
+
+  it("pins the hidden word inside the row, so it cannot stick out and scroll the card sideways", () => {
+    const rule = VISUAL_STYLES.match(/\[data-status-fit="icon"\] \.spotnav-connection-word \{([^}]*)\}/)![1]!;
+    expect(rule).toMatch(/position: absolute;/);
+    expect(rule).toMatch(/inset-inline-start: 0;/);
+    expect(rule).toMatch(/top: 0;/);
+    // Its width still counts for the reading: it is hidden, not removed or collapsed.
+    expect(rule).not.toMatch(/display: none|width: 0|clip/);
+    expect(VISUAL_STYLES).toMatch(/\.spotnav-name-row \{\s*position: relative;/);
+  });
+
+  it("keeps the gap the fit adds for in step with the name row's column-gap", () => {
+    const rule = VISUAL_STYLES.match(/\.spotnav-name-row \{\s*display: flex;([^}]*)\}/)![1]!;
+    expect(rule).toContain(`column-gap: ${STATUS_GAP_PX}px;`);
   });
 });

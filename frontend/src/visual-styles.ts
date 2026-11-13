@@ -1251,6 +1251,8 @@ export const VISUAL_STYLES = `
   }
   .${VISUAL_CLASSES.nameRow}[data-status-fit="icon"] .${VISUAL_CLASSES.connectionWord} {
     position: absolute;
+    inset-inline-start: 0;
+    top: 0;
     visibility: hidden;
   }
   /* The planned vehicle: a quiet text button under the name; the header's 44 px icon buttons keep the row tall enough to tap. */
