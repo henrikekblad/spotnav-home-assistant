@@ -272,3 +272,12 @@ def test_a_day_tally_round_trips() -> None:
 
     assert tally.as_dict() == {"shadow_h": 0.5, "shadow_cost_minor": 150.0, "actual_h": 0.25, "actual_cost_minor": 0.0}
     assert DayTally.from_dict(tally.as_dict()).as_dict() == tally.as_dict()
+
+
+def test_an_overdue_need_runs_now() -> None:
+    history = RunHistory(tracked_since=NOW - timedelta(days=2))
+
+    steps = deadlines(history, NOW, 1.0)
+
+    assert steps == ((NOW + QUARTER, 4),) and no_slack(steps, NOW)
+    assert decide(SwitchInputs(NOW, SwitchLoadConfig("switch.x", 3.0, 1.0), None, history)).reason == REASON_DEADLINE

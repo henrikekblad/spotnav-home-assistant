@@ -296,6 +296,10 @@ def _site_diagnostics(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, Any]
         # shadow part's decisions (what it would have written, or why not) and the kWh the battery gave the car.
         # Nothing is written to the battery.
         "battery": None if controller is None else controller.battery_shadow.snapshot(),
+        # The site's switched load in shadow (`loads/runtime.py`): its settings, the cheapest quarter hours it would run
+        # in and the deadlines of its rolling runtime, what it would do now and why, each day's runtime and cost beside
+        # what the switch really did, and the log. `None` without a load. Nothing is switched.
+        "switch_load": None if controller is None else controller.switch_load.snapshot(),
         # The sun's forecast corrected in shadow (`site/solar_correction_shadow.py`): status, sources, what the guard
         # rails found, the factors, the next hours raw and corrected, and the log with its nightly reviews. The
         # Hybrid strategy reads the raw forecast.

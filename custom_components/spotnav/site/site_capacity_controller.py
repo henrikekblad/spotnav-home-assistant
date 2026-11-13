@@ -123,6 +123,7 @@ from ..planning.auto_settings import (
 from ..runtime import charger_data, controller_for, domain_data, preview_for
 from ..vehicles.capability import build_capability_snapshot, SiteCapabilitySnapshot
 from ..battery.runtime import BatteryShadow
+from ..loads.runtime import SwitchLoadShadow
 from .measurement_problem import measurement_problem, MeasurementProblem, UNHEALTHY_STATES
 from .meter_cadence import ReportCadence, solar_liveness
 from .site_detection import UPDATE_BEHAVIOUR
@@ -787,6 +788,9 @@ class SiteCapacityController:
         # The site's home battery in shadow (`battery/runtime.py`): its facts and what SpotNav would do with it,
         # logged and never written.
         self.battery_shadow = BatteryShadow(hass, self)
+        # A switched load on the site (a water heater) run in the cheapest hours, in shadow (`loads/runtime.py`):
+        # logged and never switched. Idle unless the site's options name one.
+        self.switch_load = SwitchLoadShadow(hass, self)
         # The sun's forecast corrected per site in shadow (`site/solar_correction_shadow.py`): logged and reviewed
         # beside the raw one, read by nothing that plans.
         self.solar_correction = SiteSolarCorrection(hass, self)
@@ -845,6 +849,7 @@ class SiteCapacityController:
         await self._async_load_released()
         await self._async_load_grid_sign()
         await self.battery_shadow.async_start()
+        await self.switch_load.async_start()
         await self.solar_correction.async_start()
         await self._history.async_load()
         self._history_cancel = async_track_time_interval(
@@ -870,6 +875,7 @@ class SiteCapacityController:
         await self._history.async_close()
         await self.demand.async_close()
         await self.battery_shadow.async_shutdown()
+        await self.switch_load.async_shutdown()
         await self.house_forecast.async_close()
         await self.solar_correction.async_shutdown()
         if self._grid_sign_unsaved:
