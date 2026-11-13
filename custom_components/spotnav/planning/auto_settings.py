@@ -705,7 +705,7 @@ class AutoSettings:
     #: chose overrides it. Everything is the default, every day.
     departure_weekdays: tuple[int, ...] = ALL_WEEKDAYS
     #: A Home Assistant calendar (`calendar.*`) whose events are departures (`planning/calendar_departure.py`): an
-    #: event replaces the daily departure on its day, and a target in its text is the plan's for it. `None`: none.
+    #: day's first event replaces the daily departure on its day, and a target in its text is the plan's for it. `None`: none.
     departure_calendar: str | None = None
     #: The calendar alone decides (`calendar_departure.calendar_only`): a day without an event has no departure, and
     #: the daily departure is used only while the calendar cannot be read. A chosen date still wins.
