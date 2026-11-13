@@ -130,6 +130,7 @@ from .const import (
 )
 from .debug_day import history_block
 from .diagnostics import _price_data, entry_diagnostics, TO_REDACT
+from .site.detected_hass import async_detected
 from .execution.other_controllers import CONTROLLERS
 from .planning.hybrid_forecast import async_forecast_capable_domains
 from .runtime import domain_data, entry_kind, site_controller_for
@@ -544,6 +545,11 @@ async def async_build_debug_bundle(hass: HomeAssistant) -> dict[str, Any]:
         except Exception as err:  # noqa: BLE001 - the registry scan must not cost the whole bundle
             _LOGGER.warning("The debug bundle could not read a site's detection: %s", type(err).__name__)
             detection = {"available": False, "reason": "read_failed"}
+        try:
+            detected: Any = await async_detected(hass, entry)
+        except Exception as err:  # noqa: BLE001 - what was detected must not cost the whole bundle
+            _LOGGER.warning("The debug bundle could not read what a site detected: %s", type(err).__name__)
+            detected = {"available": False, "reason": "read_failed"}
         controller = site_controller_for(hass, entry.entry_id)
         site_sections.append(
             {
@@ -552,6 +558,8 @@ async def async_build_debug_bundle(hass: HomeAssistant) -> dict[str, Any]:
                 "diagnostics": _site_diagnostics(hass, entry),
                 "measurement_entities": measurement_entities,
                 "detection": detection,
+                # What SpotNav detected, with the near-misses (`site/detected.py`).
+                "detected": detected,
                 "history_24h": None if controller is None else controller.history_samples,
             }
         )

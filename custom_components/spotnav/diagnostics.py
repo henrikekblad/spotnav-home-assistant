@@ -58,11 +58,25 @@ async def async_get_config_entry_diagnostics(
     support questions in one file.
     """
     diagnostics = entry_diagnostics(hass, entry)
+    if entry.data.get(CONF_ENTRY_TYPE) == ENTRY_TYPE_SITE:
+        # What SpotNav detected for the site (`site/detected.py`): per kind the entity chosen, why, and the
+        # near-misses with why they were not.
+        diagnostics["detected"] = await _async_detected(hass, entry)
     if entry.entry_id == _bundle_carrier_id(hass):
         from .debug_bundle import async_build_debug_bundle
 
         diagnostics["debug_bundle"] = await async_build_debug_bundle(hass)
     return diagnostics
+
+
+async def _async_detected(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, Any] | None:
+    from .site.detected_hass import async_detected  # noqa: PLC0415 - reads the API's detection helpers
+
+    try:
+        return await async_detected(hass, entry)
+    except Exception:  # noqa: BLE001 - diagnostics must never fail on one block
+        _LOGGER.debug("SpotNav: what was detected could not be read", exc_info=True)
+        return None
 
 
 def entry_diagnostics(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, Any]:
