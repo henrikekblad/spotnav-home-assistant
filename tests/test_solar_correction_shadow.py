@@ -26,12 +26,11 @@ from custom_components.spotnav.site.solar_correction_shadow import (
     STATUS_NO_FORECAST,
     array_kwp,
     as_power,
-    energy_statistic_ids,
     hourly_cloud,
     negative_hours,
     pick_weather_entity,
-    summed,
 )
+from custom_components.spotnav.site.energy_statistics import energy_statistic_ids, summed
 from custom_components.spotnav.site.forecast_log import KIND_SUN, KIND_SUN_CORRECTED
 
 from .test_demand_site import pilot_site
