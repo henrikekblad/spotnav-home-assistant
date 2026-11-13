@@ -356,6 +356,7 @@
           "solar_priority": "Auto of thuisbatterij eerst",
           "battery_aggregate_power_entity": "Vermogen van de thuisbatterij (optioneel)",
           "solar_forecast_entries": "Zonneprognose (optioneel)",
+          "change_switch_load": "Volgende: geschakelde last (boiler)",
           "change_measurement": "Volgende: meter en fasen wijzigen"
         },
         "data_description": {
@@ -371,7 +372,26 @@
           "solar_priority": "Wie voorgaat als de auto en de thuisbatterij dezelfde stroom willen.\n\n• Auto eerst: De auto krijgt het zonneoverschot vóór de batterij. Als de batterij van het net laadt, maakt ze bij de hoofdzekering plaats voor de auto (met “Auto mag het deel van de thuisbatterij nemen” aan). Het vermogensdoel telt alleen stroom van het net.\n• Batterij eerst: De batterij krijgt het zonneoverschot eerst, en de auto laadt met wat overblijft. Bij de hoofdzekering gaat de auto terug voor de batterij. Het vermogensdoel telt ook de ontlading van de batterij als import, zodat de batterij de auto niet betaalt.",
           "battery_aggregate_power_entity": "De vermogenssensor van de thuisbatterij, positief tijdens het laden. Zonneladen en het deel van de thuisbatterij hierboven zien daaraan wanneer de batterij laadt.",
           "solar_forecast_entries": "Waar de hybride strategie haar zonneprognose vandaan haalt. Leeg: hybride laadt alleen in de goedkoopste uren.",
+          "change_switch_load": "Een boiler of een andere last op een schakelaar, die in de goedkoopste uren draait. In deze versie laat SpotNav alleen zien wanneer het hem zou schakelen; het doet dat nooit.",
           "change_measurement": "Laat uit om alleen deze pagina op te slaan."
+        }
+      },
+      "site_switch_load": {
+        "title": "Geschakelde last",
+        "description": "Een last op een schakelaar, bijvoorbeeld een boiler, die in de goedkoopste uren draait binnen de hoofdzekering en het vermogensdoel. SpotNav laat alleen zien wanneer het hem aan of uit zou zetten (in de diagnose van de locatie); in deze versie schakelt het hem nooit. Laat de schakelaar leeg om de last te verwijderen.",
+        "data": {
+          "switch_entity": "Schakelaar",
+          "rated_kw": "Nominaal vermogen",
+          "runtime_h": "Looptijd per 24 uur",
+          "temperature_entity": "Temperatuursensor (optioneel)",
+          "floor_c": "Laagste temperatuur (optioneel)"
+        },
+        "data_description": {
+          "switch_entity": "De schakelaar die de last aan- en uitzet. Leeg: geen last.",
+          "rated_kw": "Wat de last trekt als hij aan staat, volgens het typeplaatje.",
+          "runtime_h": "Hoe lang hij in elke 24 uur moet draaien. SpotNav kiest daarvoor de goedkoopste uren.",
+          "temperature_entity": "Bijvoorbeeld de tanktemperatuur van de boiler. Met een laagste temperatuur draait de last ongeacht de prijs als het kouder is.",
+          "floor_c": "Hieronder draait de last meteen, tot het 2 °C warmer is. Vereist de temperatuursensor."
         }
       },
       "site_current_suggestions": {
@@ -503,7 +523,9 @@
       "manual_entities_duplicate": "Elke fase heeft een eigen entiteit nodig.",
       "fee_value_required": "Vul een eigen bedrag in, of kies het voorstel.",
       "fee_no_suggestion": "Dit prijsgebied heeft er geen voorstel voor: vul een eigen bedrag in of kies niets.",
-      "entsoe_key_rejected": "ENTSO-E heeft deze sleutel niet geaccepteerd. Controleer hem, of maak een nieuwe aan op transparency.entsoe.eu."
+      "entsoe_key_rejected": "ENTSO-E heeft deze sleutel niet geaccepteerd. Controleer hem, of maak een nieuwe aan op transparency.entsoe.eu.",
+      "switch_load_incomplete": "Geef het nominale vermogen en de looptijd van de last op.",
+      "switch_load_floor_pair": "De temperatuursensor en de laagste temperatuur horen bij elkaar: geef beide of geen van beide op."
     }
   },
   "selector": {

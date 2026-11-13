@@ -356,6 +356,7 @@
           "solar_priority": "Car or home battery first",
           "battery_aggregate_power_entity": "Home battery power (optional)",
           "solar_forecast_entries": "Solar forecast (optional)",
+          "change_switch_load": "Next: switched load (water heater)",
           "change_measurement": "Next: change meter and phases"
         },
         "data_description": {
@@ -371,7 +372,26 @@
           "solar_priority": "Who goes first when the car and the home battery want the same power.\n\n• Car first: The car gets the sun's surplus before the battery. When the battery charges from the grid it gives way to the car at the main fuse (with “Car may take the home battery's share” on). The import target counts only grid power.\n• Battery first: The battery gets the sun's surplus first, and the car charges on what is left. At the main fuse the car backs off for the battery. The import target also counts the battery's discharge as import, so the battery does not pay for the car.",
           "battery_aggregate_power_entity": "The home battery's power sensor, positive while it charges. Solar and the home battery's share above use it to see when the battery charges.",
           "solar_forecast_entries": "Where the hybrid strategy gets its solar forecast. Empty: hybrid charges on the cheapest hours only.",
+          "change_switch_load": "A water heater or another load on a switch, run in the cheapest hours. In this version SpotNav only shows when it would switch it; it never does.",
           "change_measurement": "Leave off to save only what is on this page."
+        }
+      },
+      "site_switch_load": {
+        "title": "Switched load",
+        "description": "A load on a switch, such as a water heater, run in the cheapest hours within the main fuse and the import target. SpotNav only shows when it would switch it on or off (in the site's diagnostics); in this version it never switches it. Leave the switch empty to remove the load.",
+        "data": {
+          "switch_entity": "Switch",
+          "rated_kw": "Rated power",
+          "runtime_h": "Runtime per 24 hours",
+          "temperature_entity": "Temperature sensor (optional)",
+          "floor_c": "Lowest temperature (optional)"
+        },
+        "data_description": {
+          "switch_entity": "The switch that turns the load on and off. Empty: no load.",
+          "rated_kw": "What the load draws when it is on, as on its rating plate.",
+          "runtime_h": "How long it must run in every 24 hours. SpotNav picks the cheapest hours for it.",
+          "temperature_entity": "For example the water heater's tank temperature. With a lowest temperature, the load runs whatever the price when it is colder.",
+          "floor_c": "Below this the load runs at once, until it is 2 °C warmer. Needs the temperature sensor."
         }
       },
       "site_current_suggestions": {
@@ -503,7 +523,9 @@
       "manual_entities_duplicate": "Each phase needs its own entity.",
       "fee_value_required": "Enter your own figure, or choose the suggestion.",
       "fee_no_suggestion": "This area has no suggestion for it: enter your own figure or choose nothing.",
-      "entsoe_key_rejected": "ENTSO-E did not accept this key. Check it, or generate a new one on transparency.entsoe.eu."
+      "entsoe_key_rejected": "ENTSO-E did not accept this key. Check it, or generate a new one on transparency.entsoe.eu.",
+      "switch_load_incomplete": "Give the load's rated power and its runtime.",
+      "switch_load_floor_pair": "The temperature sensor and the lowest temperature go together: give both or neither."
     }
   },
   "selector": {

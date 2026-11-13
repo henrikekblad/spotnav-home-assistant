@@ -356,6 +356,7 @@
           "solar_priority": "Bil eller hjemmebatteri først",
           "battery_aggregate_power_entity": "Hjemmebatteriets effekt (valgfrit)",
           "solar_forecast_entries": "Solprognose (valgfrit)",
+          "change_switch_load": "Næste: belastning på kontakt (vandvarmer)",
           "change_measurement": "Næste: ændr måler og faser"
         },
         "data_description": {
@@ -371,7 +372,26 @@
           "solar_priority": "Hvem der får lov at gå først, når bilen og hjemmebatteriet vil have den samme strøm.\n\n• Bilen først: Bilen får soloverskuddet før batteriet. Når batteriet lader fra nettet, giver det plads til bilen ved hovedsikringen (med »Bilen må tage hjemmebatteriets andel« slået til). Effektmålet tæller kun strøm fra nettet.\n• Batteriet først: Batteriet får soloverskuddet først, og bilen lader på det, der er til overs. Ved hovedsikringen bakker bilen for batteriet. Effektmålet tæller også batteriets afladning som import, så batteriet ikke betaler for bilen.",
           "battery_aggregate_power_entity": "Hjemmebatteriets effektsensor, positiv når det lader. Solopladningen og hjemmebatteriets andel ovenfor bruger den til at se, hvornår batteriet lader.",
           "solar_forecast_entries": "Hvor hybridstrategien henter sin solprognose. Tom: hybrid lader kun i de billigste timer.",
+          "change_switch_load": "En vandvarmer eller en anden belastning på en kontakt, der kører i de billigste timer. I denne version viser SpotNav kun, hvornår den ville slå den til eller fra; den gør det aldrig.",
           "change_measurement": "Lad den være fra for kun at gemme det, der står på denne side."
+        }
+      },
+      "site_switch_load": {
+        "title": "Belastning på kontakt",
+        "description": "En belastning på en kontakt, for eksempel en vandvarmer, der kører i de billigste timer inden for hovedsikringen og effektmålet. SpotNav viser kun, hvornår den ville slå den til eller fra (i anlæggets diagnostik); i denne version slår den den aldrig om. Lad kontakten være tom for at fjerne belastningen.",
+        "data": {
+          "switch_entity": "Kontakt",
+          "rated_kw": "Mærkeeffekt",
+          "runtime_h": "Driftstid pr. 24 timer",
+          "temperature_entity": "Temperaturføler (valgfri)",
+          "floor_c": "Laveste temperatur (valgfri)"
+        },
+        "data_description": {
+          "switch_entity": "Kontakten, der slår belastningen til og fra. Tom: ingen belastning.",
+          "rated_kw": "Hvad belastningen trækker, når den er tændt, som på mærkepladen.",
+          "runtime_h": "Hvor længe den skal køre i hver periode på 24 timer. SpotNav vælger de billigste timer til det.",
+          "temperature_entity": "For eksempel vandvarmerens tanktemperatur. Med en laveste temperatur kører belastningen uanset prisen, når det er koldere.",
+          "floor_c": "Under denne temperatur kører belastningen straks, indtil den er 2 °C varmere. Kræver temperaturføleren."
         }
       },
       "site_current_suggestions": {
@@ -503,7 +523,9 @@
       "manual_entities_duplicate": "Hver fase skal have sin egen entitet.",
       "fee_value_required": "Indtast dit eget tal, eller vælg forslaget.",
       "fee_no_suggestion": "Prisområdet har intet forslag til den: indtast dit eget tal eller vælg intet.",
-      "entsoe_key_rejected": "ENTSO-E godtog ikke nøglen. Tjek den, eller opret en ny på transparency.entsoe.eu."
+      "entsoe_key_rejected": "ENTSO-E godtog ikke nøglen. Tjek den, eller opret en ny på transparency.entsoe.eu.",
+      "switch_load_incomplete": "Angiv belastningens mærkeeffekt og driftstid.",
+      "switch_load_floor_pair": "Temperaturføleren og den laveste temperatur hører sammen: angiv begge eller ingen."
     }
   },
   "selector": {
