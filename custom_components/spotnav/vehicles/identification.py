@@ -14,14 +14,18 @@ ask deadline, at most once a minute per car (the refresh limiter `vehicle_refres
 * weak +: it is on but went on earlier, or the tracker says home;
 * strong -: the car's plug sensor went to "not plugged" around or after the plug-in (one that only says it again
   says nothing: a cloud cache is re-written on every poll), a position away from home reported after the plug-in
-  or at most two minutes before it and not the echo of SpotNav's own re-read (an older one may be the drive
-  home), or the car identified at another SpotNav charger that is connected (a car just decided there counts at
-  once).
+  or at most two minutes before it and not the echo of any of SpotNav's own re-reads at this plug-in (an older one
+  may be the drive home; a slow cloud's echo stays an echo after a later re-read), or the car identified at another
+  SpotNav charger that is connected (a car just decided there counts at once).
 
 **Automatic** (`decide`): exactly one strong + is the car; else the only one not excluded is; two strong +
-is a conflict and asks at once; otherwise it asks after `ASK_AFTER_S` and keeps listening until
+is a conflict and asks at once; otherwise it asks after `ASK_AFTER_S`, once the re-read made then has answered
+(`REREAD_WAIT_S` at most; at once when the limiter skipped it), and keeps listening until
 `LISTEN_FOR_S` after the plug-in, switching on decisive evidence unless a person answered. At most one
-automatic decision per plug-in.
+automatic decision per plug-in, but for a correction: a car decided by position (the others away) or by the camera is
+corrected until `LISTEN_FOR_S` by a car's own report (`_correct`): another car's own plug sensor going on switches to
+it (for the camera, any decisive evidence), recorded as a correction, and the decided car reporting itself unplugged
+or away with no other car decided brings the question back. A person's answer ends this.
 
 **The camera** (optional, `camera_rule.py`, `camera_identification.py`): while nothing has decided and two or
 more cars are left (one at a one-car charger), the charger's camera is asked once (one retry after an error) before
@@ -119,6 +123,8 @@ PLUG_WINDOW_BEFORE_S: Final = 300.0
 #: A position written this soon after SpotNav asked Home Assistant to re-read the car is the echo of that re-read
 #: (a cloud cache written again), not a report from the car.
 REFRESH_ECHO_S: Final = 120.0
+#: The ask deadline decides once its re-read has answered, or failed, but waits no longer than this for it.
+REREAD_WAIT_S: Final = 15.0
 #: A position reported this long before the plug-in, or after it, is fresh. An older one may be the car's last
 #: report on its way home (a cloud poll every half hour), so it excludes nothing and the question is asked.
 POSITION_MARGIN_BEFORE_S: Final = 120.0
@@ -147,6 +153,8 @@ METHODS: Final = (
     METHOD_MANUAL, METHOD_ANSWERED, METHOD_PLUG_SENSOR, METHOD_LOCATION, METHOD_ONLY_CANDIDATE, METHOD_ASSUMED,
     METHOD_CAMERA,
 )
+#: Automatic decisions a car's own report still corrects while the plug-in is listened to (`_correct`).
+_CORRECTED: Final = (METHOD_LOCATION, METHOD_CAMERA)
 #: Methods that say which car it is, so another charger may exclude it.
 _CONFIRMING: Final = (
     METHOD_MANUAL, METHOD_ANSWERED, METHOD_PLUG_SENSOR, METHOD_LOCATION, METHOD_ONLY_CANDIDATE, METHOD_CAMERA,
@@ -207,8 +215,8 @@ class Candidate:
     location_reported: datetime | None = None
     #: The car is identified at another SpotNav charger that is connected.
     elsewhere: bool = False
-    #: When SpotNav last asked Home Assistant to re-read this car's entities (`REFRESH_ECHO_S`).
-    refreshed_at: datetime | None = None
+    #: Every time SpotNav asked Home Assistant to re-read this car's entities at this plug-in (`REFRESH_ECHO_S`).
+    refreshed_at: tuple[datetime, ...] = ()
     #: The plug entity is a charging-state enum, read by its own rule (`plug_reading`).
     plug_charging_state: bool = False
 
@@ -224,12 +232,12 @@ class Evidence:
 
 def _fresh(candidate: Candidate, t0: datetime) -> bool:
     """The position was reported after the plug-in, or just before it (never a report from the drive home), and
-    not as the echo of SpotNav's own re-read: a cloud cache written again is reported without the car saying
-    anything."""
-    reported, changed, refreshed_at = candidate.location_reported, candidate.location_changed, candidate.refreshed_at
+    not as the echo of one of SpotNav's own re-reads: a cloud cache written again is reported without the car saying
+    anything. Any re-read counts, not only the last: a slow cloud's echo stays an echo after a later re-read."""
+    reported, changed = candidate.location_reported, candidate.location_changed
     if reported is None or reported < t0 - timedelta(seconds=POSITION_MARGIN_BEFORE_S):
         return False
-    echo = refreshed_at is not None and refreshed_at <= reported <= refreshed_at + timedelta(seconds=REFRESH_ECHO_S)
+    echo = any(at <= reported <= at + timedelta(seconds=REFRESH_ECHO_S) for at in candidate.refreshed_at)
     return not echo or (changed is not None and changed >= t0 - timedelta(seconds=POSITION_MARGIN_BEFORE_S))
 
 
@@ -418,8 +426,8 @@ class VehicleIdentifier:
         self._switches = 0
         self._switch_lock = asyncio.Lock()
         self._unplug_cancel: CALLBACK_TYPE | None = None
-        # When SpotNav last asked Home Assistant to re-read each car (its echo is no report).
-        self._refreshed_at: dict[str, datetime] = {}
+        # When SpotNav asked Home Assistant to re-read each car at this plug-in (each one's echo is no report).
+        self._refreshed_at: dict[str, list[datetime]] = {}
         # When the candidate cars' plug and position entities really changed or reported, seen live: a state
         # written at Home Assistant's start, or re-created, is no report (`identification_changes`).
         self._changes = SourceChanges(hass)
@@ -851,6 +859,12 @@ class VehicleIdentifier:
         session.unsubscribe.append(
             async_track_point_in_utc_time(self._hass, self._question_end, now + timedelta(seconds=QUESTION_FOR_S))
         )
+        # The re-reads of an earlier plug-in are forgotten, all but one whose echo may still come after this one's
+        # start (the limiter may skip this plug-in's own re-read for it).
+        since = now - timedelta(seconds=REFRESH_ECHO_S)
+        self._refreshed_at = {
+            car: kept for car, times in self._refreshed_at.items() if (kept := [at for at in times if at >= since])
+        }
         self._refresh(ids)
         self._evaluate()
         if session.mode == IDENTIFY_ASK and self._session is session and not single:
@@ -947,16 +961,19 @@ class VehicleIdentifier:
         plug, location = identification_sources(self._hass, car)
         return plug.entity_id, location.entity_id
 
-    def _refresh(self, cars: Iterable[str]) -> None:
-        """Re-read the cars' plug and tracker entities (cheap, never a wake-up), at most once a minute each."""
+    def _refresh(self, cars: Iterable[str]) -> list[asyncio.Task[None]]:
+        """Re-read the cars' plug and tracker entities (cheap, never a wake-up), at most once a minute each. Answers
+        the re-reads started (none when the limiter skipped every car)."""
         limiter = limiter_for(self._hass)
+        started = []
         for car in cars:
             entities = [entity for entity in self._sources(car) if entity is not None]
             if not entities or limiter.retry_after_s(car) is not None:
                 continue
             limiter.note_refresh(car)
-            self._refreshed_at[car] = dt_util.utcnow()
-            self._hass.async_create_task(self._async_update(entities), eager_start=False)
+            self._refreshed_at.setdefault(car, []).append(dt_util.utcnow())
+            started.append(self._hass.async_create_task(self._async_update(entities), eager_start=False))
+        return started
 
     async def _async_update(self, entities: list[str]) -> None:
         try:
@@ -983,7 +1000,7 @@ class VehicleIdentifier:
                 location_changed=self._changes.changed(location),
                 location_reported=self._changes.reported(location),
                 elsewhere=self._elsewhere(car),
-                refreshed_at=self._refreshed_at.get(car),
+                refreshed_at=tuple(self._refreshed_at.get(car, ())),
                 plug_charging_state=plug_id is not None and is_charging_state_source(self._hass, plug_id),
             )
             evidence = judge(candidate, session.t0, now)
@@ -1016,8 +1033,8 @@ class VehicleIdentifier:
         ):
             self._recheck()
             return
-        if session.state == STATE_DECIDED and session.listening and self._method == METHOD_CAMERA:
-            self._correct_camera(session)
+        if session.state == STATE_DECIDED and session.listening and self._method in _CORRECTED:
+            self._correct(session)
             return
         if not session.listening or session.state == STATE_DECIDED:
             return
@@ -1037,6 +1054,10 @@ class VehicleIdentifier:
         car, method, conflict = decide(evidence)
         if car is not None and method is not None:
             self._settle(car, method, "recognised")
+            if method == METHOD_LOCATION:
+                # Only the other cars said anything: a car's own report still outranks this while the plug-in is
+                # listened to (`_correct`).
+                session.listening = True
         elif conflict:
             self._ask()
         else:
@@ -1060,17 +1081,20 @@ class VehicleIdentifier:
     # ------------------------------------------------------------------ the camera
 
     @callback
-    def _correct_camera(self, session: _Session) -> None:
-        """After the camera decided: a car's own decisive report corrects it (the same plug-in's switch, recorded
-        by that report), and the decided car reporting itself unplugged or away with no other car decided brings
-        the question back. A person's answer ends this: it outranks both."""
+    def _correct(self, session: _Session) -> None:
+        """After the camera or the position decided (`_CORRECTED`): a car's own decisive report corrects it (the same
+        plug-in's switch, recorded by that report; after a position only another car's own plug sensor, since the
+        cars' positions already had their say), and the decided car reporting itself unplugged or away with no other
+        car decided brings the question back. A person's answer ends this: it outranks both."""
         evidence = self._evidence(session, dt_util.utcnow())
         car, method, conflict = decide(evidence)
         decided = self._planned_vehicle()
         if car is not None and method is not None:
-            if car != decided:
+            if car == decided:
+                return
+            if self._method == METHOD_CAMERA or method == METHOD_PLUG_SENSOR:
                 self._settle(car, method, "recognised")
-            return
+                return
         if any(item.vehicle_id == decided and item.negative is not None for item in evidence) or conflict:
             session.state = STATE_WAITING
             session.order = ordered(evidence, self._current_vehicle())
@@ -1193,7 +1217,7 @@ class VehicleIdentifier:
         record["used"] = True
         if verdict.decides is not None:
             self._settle(verdict.decides, METHOD_CAMERA, "recognised")
-            # A car's own report still outranks the camera while the plug-in is listened to (`_correct_camera`).
+            # A car's own report still outranks the camera while the plug-in is listened to (`_correct`).
             session.listening = True
             return
         session.camera_pick = verdict.prefers
@@ -1201,7 +1225,30 @@ class VehicleIdentifier:
 
     @callback
     def _ask_deadline(self, _now: datetime) -> None:
-        self._refresh(() if self._session is None else self._session.cars)
+        """Re-read the cars, and decide or ask once they have answered (`REREAD_WAIT_S` at most): a cloud that answers
+        a few seconds later is heard before the question. A re-read the limiter skipped decides at once."""
+        session = self._session
+        if session is None:
+            return
+        rereads = self._refresh(session.cars)
+        if not rereads:
+            self._deadline_decides(session)
+            return
+        waiting = self._hass.async_create_background_task(
+            self._async_deadline_after(session, rereads), f"spotnav identification deadline {self._entry_id}"
+        )
+        session.unsubscribe.append(waiting.cancel)
+
+    async def _async_deadline_after(self, session: _Session, rereads: list[asyncio.Task[None]]) -> None:
+        await asyncio.wait(rereads, timeout=REREAD_WAIT_S)
+        self._deadline_decides(session)
+
+    @callback
+    def _deadline_decides(self, session: _Session) -> None:
+        # Only the plug-in that set the deadline, still undecided: an unplug, an answer or a new plug-in meanwhile
+        # has its own course.
+        if self._session is not session or session.state != STATE_WAITING:
+            return
         self._evaluate()
         self._ask()
 
