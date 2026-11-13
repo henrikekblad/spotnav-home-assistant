@@ -13,6 +13,10 @@ with `ok` and `action` beside it (`webhook/get_power_month_*.json`).
 (`imported`) and an evening on the 8th when the house alone set the month's day peak, after which the hours carry the
 level it lifted the target to (`month_peak_kw`).
 
+`house/*` are `spotnav/get_house`'s answers, written by the pure view (`tests/test_house_view.py`): `villa_battery_sun.json`
+a villa on 13 November 2026 at 17:20 with a week of reviewed forecasts, a small array and a 40 kWh battery running its
+own optimiser, planned beside it in shadow; `house_learning.json` a house alone whose forecast is two days old.
+
 `target_suggestion/pilot.json` is `spotnav/suggest_import_target`'s answer for the pilot's site from a month of fake
 statistics (`tests/test_target_suggestion_api.py`); `webhook/suggest_import_target_success.json` the webhook's.
 

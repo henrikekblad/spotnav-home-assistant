@@ -124,7 +124,7 @@ def battery_plan(now: datetime) -> tuple[PlannedSlot, ...]:
     slots = []
     start = now.replace(minute=15, second=0, microsecond=0)
     end_of_plan = hour_start(now, TZ) + timedelta(hours=30)
-    soc = 62.0
+    soc = 48.3
     while start < end_of_plan:
         hour = local_hour(start)
         if 2 <= hour < 5:
@@ -198,7 +198,7 @@ def full_inputs(now: datetime = NOW) -> HouseInputs:
         battery=BatteryInputs(
             brand="sigenergy",
             label="Sigenergy SigenStor",
-            soc_pct=61.5,
+            soc_pct=48.3,
             usable_kwh=40.3,
             management="self_managed",
             status="planned",
