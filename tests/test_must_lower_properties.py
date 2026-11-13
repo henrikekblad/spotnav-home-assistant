@@ -124,7 +124,7 @@ class _Guard:
     def cut_took_on_reading(self, **_: Any) -> bool:
         return False
 
-    def note_cut_reading(self, site_read_at: float | None) -> None:
+    def note_cut_reading(self, site_read_at: float | None, phases_read_at: Any = None) -> None:
         return None
 
 

@@ -30,7 +30,9 @@ So, per charger, between the regulator and the damper:
    reckoned against the charger's new one, is the house load counted too high by the whole cut (the
    night of 2026-11-11: 18 -> 9 A at 03:00:06 on a reading of 26.35 A, and on that same reading with
    the charger at 8.8 A a pause four seconds later). A charger still above what was written is cut
-   again at once, and the next reading of the phase decides as it would have, cut or pause included.
+   again at once, and the next reading of the phase decides as it would have, cut or pause included. Nor while
+   a phase over the limit has a reading newer than the one of it the cut was made on: the limiting phase's
+   reading is not the only one an overload shows on, and a newer overload on another phase is cut at once.
 
 What was written last is what the site was told, by the regulator and by every other path that writes
 a current (a start, a resend after a status blip, the deferred session write, the sun's own write). As
@@ -45,7 +47,7 @@ The limit is the regulator's (`main fuse - the site's safety margin`, whatever t
 from __future__ import annotations
 
 import math
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from typing import Literal
 
@@ -95,6 +97,8 @@ class StepGuard:
         self._last_up_at: float | None = None
         self._last_write_at: float | None = None
         self._last_cut_reading_at: float | None = None
+        # Each phase's reading the last cut was made on (when it was taken), where the cut's caller told it.
+        self._cut_phase_read_at: dict[str, float | None] = {}
         self._overshot_a: float | None = None
         self._overshot_until: float | None = None
 
@@ -188,6 +192,7 @@ class StepGuard:
         written_a: float | None,
         readings: Iterable[tuple[float | None, float | None]],
         written_at: float | None,
+        over_read_at: Iterable[tuple[str, float | None]],
     ) -> bool:
         """Whether a cut on this site reading (taken at `site_read_at`) would be a cut again on the reading the last
         cut was made on (`cut_on_reading`) while the charger's own reading shows that cut took. `readings` are the
@@ -197,8 +202,12 @@ class StepGuard:
         charger writes its phases one at a time, and the site decides on each). Held when every phase read since
         the cut shows it took, and at least one was: a phase that still reads above what was written was not lowered
         by the cut, and is cut again at once. Never with an unknown time or value: the proof needs the cut's time.
+        Never either while a phase over the limit (`over_read_at`, each phase with the time its reading was taken)
+        has a reading newer than the cut's (`_newer_than_cut`): that reading shows an overload no cut was made on.
         Epoch seconds."""
         if not self.cut_on_reading(site_read_at) or written_a is None or written_at is None:
+            return False
+        if any(self._newer_than_cut(phase, read_at) for phase, read_at in over_read_at):
             return False
         shown = False
         for measured_a, read_at in readings:
@@ -211,11 +220,26 @@ class StepGuard:
             shown = True
         return shown
 
-    def note_cut_reading(self, site_read_at: float | None) -> None:
+    def _newer_than_cut(self, phase: str, read_at: float | None) -> bool:
+        """Whether this phase's reading (taken at `read_at`) is newer than the one of it the last cut was made on;
+        where that one is not known, than the cut's own reading. An unknown time is taken as newer."""
+        if read_at is None:
+            return True
+        cut_at = self._cut_phase_read_at.get(phase)
+        if cut_at is None:
+            cut_at = self._last_cut_reading_at
+        return cut_at is None or read_at > cut_at
+
+    def note_cut_reading(
+        self, site_read_at: float | None, phases_read_at: Mapping[str, float | None] | None = None
+    ) -> None:
         """Remember the site reading a cut was made on where `note_write` cannot tell it was one: the first write
-        of a session (nothing written before to compare with), a lowering its caller knows to be one."""
+        of a session (nothing written before to compare with), a lowering its caller knows to be one.
+        `phases_read_at` is when each phase's reading the cut was decided on was taken, read before the write went
+        out (a phase that reported while it was on its way has a reading the cut never saw)."""
         if site_read_at is not None:
             self._last_cut_reading_at = site_read_at
+            self._cut_phase_read_at = dict(phases_read_at or {})
 
     def note_write(
         self,
@@ -234,9 +258,11 @@ class StepGuard:
         if written_a > previous_a:
             self._last_up_at = now
             self._last_cut_reading_at = None
+            self._cut_phase_read_at = {}
             return
         if written_a < previous_a:
             self._last_cut_reading_at = site_read_at
+            self._cut_phase_read_at = {}
             if self._last_up_at is not None and now - self._last_up_at <= IN_FLIGHT_S:
                 self._overshot_a = previous_a
                 self._overshot_until = now + OVERSHOOT_BACKOFF_S
