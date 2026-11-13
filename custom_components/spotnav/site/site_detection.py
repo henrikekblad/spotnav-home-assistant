@@ -640,7 +640,13 @@ BATTERY_ROWS: Final[tuple[BatteryRow, ...]] = (
     BatteryRow(("sungrow",), _re(r"battery_charge_power$"), discharge_regex=_re(r"battery_discharge_power$")),
     BatteryRow(("solis_modbus",), _re(r"battery_power_net$"), inverted=True),
     # Charge and discharge as two non-negative entities.
-    BatteryRow(("sma",), _re(r"battery_power_charge$"), discharge_regex=_re(r"battery_power_discharge$")),
+    # Core `sma`: `<entry>-<key>_<idx>` with the keys `battery_power_charge_total` / `_discharge_total` (the
+    # per-phase `_a`/`_b`/`_c` ones are not matched); older releases had no `_total` and no index.
+    BatteryRow(
+        ("sma",),
+        _re(r"battery_power_charge(?:_total)?(?:_\d+)?$"),
+        discharge_regex=_re(r"battery_power_discharge(?:_total)?(?:_\d+)?$"),
+    ),
     # Ferroamp EnergyHub (henricm, `aad7f8f`): `<slug>_ehub-pbat`, the hub's battery power passed on unchanged
     # (`sensor.py` L737-L744). Discharge-positive: in the hub message the integration's tests replay
     # (`tests/test_sensor.py` L95-L133) the solar's 10.1 kW goes 6.7 kW to the inverter (`pinv` -6722 W over the

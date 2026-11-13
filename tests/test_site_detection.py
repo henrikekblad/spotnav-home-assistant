@@ -288,8 +288,12 @@ def sma_with_inverter() -> Registry:
         # The inverter's own output: per-phase reactive power is not the grid's.
         r.add("sma", f"sma_inv_grid_reactive_power_l{n}", f"sma_1_grid_reactive_power_l{n}", device_class="reactive_power", unit="var", entry="sma")
     r.add("sma", "sma_inv_grid_power", "sma_1_grid_power", device_class="power", unit="W", entry="sma")
-    r.add("sma", "sma_battery_charge", "sma_1_battery_power_charge", device_class="power", unit="W", entry="sma")
-    r.add("sma", "sma_battery_discharge", "sma_1_battery_power_discharge", device_class="power", unit="W", entry="sma")
+    r.add("sma", "sma_battery_charge", "sma_1-battery_power_charge_total_0", device_class="power", unit="W", entry="sma")
+    r.add("sma", "sma_battery_discharge", "sma_1-battery_power_discharge_total_0", device_class="power", unit="W", entry="sma")
+    # The per-phase values are not the battery's total.
+    for ph in "abc":
+        r.add("sma", f"sma_battery_charge_{ph}", f"sma_1-battery_power_charge_{ph}_0", device_class="power", unit="W", entry="sma", disabled=True)
+        r.add("sma", f"sma_battery_discharge_{ph}", f"sma_1-battery_power_discharge_{ph}_0", device_class="power", unit="W", entry="sma", disabled=True)
     return r
 
 
@@ -1245,6 +1249,17 @@ def test_sma_charge_and_discharge_are_a_pair() -> None:
     assert data["battery_aggregate_power_entity"] == "sensor.sma_battery_charge"
     assert data["battery_discharge_power_entity"] == "sensor.sma_battery_discharge"
     assert data["battery_power_inverted"] is False
+
+
+def test_sma_battery_with_the_older_unique_ids_is_still_a_pair() -> None:
+    r = Registry()
+    r.add("sma", "sma_battery_charge", "sma_1_battery_power_charge", device_class="power", unit="W", entry="sma")
+    r.add("sma", "sma_battery_discharge", "sma_1_battery_power_discharge", device_class="power", unit="W", entry="sma")
+
+    battery = r.detect().batteries[0]
+
+    assert battery.entity_id == "sensor.sma_battery_charge"
+    assert battery.discharge_entity_id == "sensor.sma_battery_discharge"
 
 
 def test_a_disabled_battery_entity_is_offered_for_enabling() -> None:
