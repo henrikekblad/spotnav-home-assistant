@@ -1,6 +1,6 @@
 // The charger's status after its name: the word when it fits beside the name, else its symbol.
 
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createCardView, statusFits, STATUS_GAP_PX, type CardViewInput, type StatusFitReading } from "../src/card-view";
 import type { ChartObserverLike } from "../src/chart-interaction";
@@ -8,6 +8,30 @@ import type { CardModel } from "../src/model";
 import type { ConnectionShownName } from "../src/types";
 import { VISUAL_CLASSES as C, VISUAL_STYLES } from "../src/visual-styles";
 import { baseModel, mountPoint } from "./visual-fixtures";
+
+// The header's fit is written in an animation frame: a manual queue stands in for the browser's.
+let frames = new Map<number, () => void>();
+let nextFrame = 1;
+const flushFrames = (): void => {
+  const queued = Array.from(frames.values());
+  frames = new Map();
+  queued.forEach((callback) => callback());
+};
+beforeEach(() => {
+  frames = new Map();
+  nextFrame = 1;
+  vi.stubGlobal("requestAnimationFrame", (callback: () => void) => {
+    const handle = nextFrame++;
+    frames.set(handle, callback);
+    return handle;
+  });
+  vi.stubGlobal("cancelAnimationFrame", (handle: number) => {
+    frames.delete(handle);
+  });
+});
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 function model(shown: ConnectionShownName, language: CardModel["language"] = "en"): CardModel {
   return {
@@ -66,7 +90,20 @@ function headerView(
     ...overrides,
   });
   const row = () => mount.root.querySelector<HTMLElement>(`.${C.nameRow}`);
-  return { view, root: mount.root, row, fire: () => onResize?.(), observed: () => observed, readings: () => readings };
+  return {
+    view,
+    root: mount.root,
+    row,
+    /** The observer's callback only. */
+    resize: () => onResize?.(),
+    /** A resize and the frame that follows it. */
+    fire: () => {
+      onResize?.();
+      flushFrames();
+    },
+    observed: () => observed,
+    readings: () => readings,
+  };
 }
 
 describe("statusFits", () => {
@@ -107,13 +144,50 @@ describe("the status in the header", () => {
     expect(row.dataset["statusFit"]).toBe("word");
   });
 
-  it("measures the same whichever form shows, so a second reading changes nothing", () => {
+  it("measures the same whichever form shows, as the real layout does, so a second reading changes nothing", () => {
+    const ICON = 16;
+    const WORD = 60;
+    // The word is hidden but keeps its width; the name shrinks by the icon and the gap when the icon shows.
+    const layout = (natural: number, available: number) => (row: HTMLElement): StatusFitReading => ({
+      available,
+      name: row.dataset["statusFit"] === "icon" ? Math.min(natural, available - ICON - STATUS_GAP_PX) : Math.min(natural, available),
+      word: WORD,
+    });
+    for (const [natural, available] of [
+      [120, 400],
+      [120, 150],
+      [138, 200],
+      [130, 200],
+      [150, 150],
+    ] as const) {
+      const header = headerView(model("waiting"), layout(natural, available));
+      header.fire();
+      const first = header.row()!.dataset["statusFit"];
+      for (let again = 0; again < 3; again += 1) {
+        header.fire();
+        expect(header.row()!.dataset["statusFit"], `${natural} in ${available}`).toBe(first);
+      }
+      expect(first).toBe(natural + STATUS_GAP_PX + WORD <= available + 0.5 ? "word" : "icon");
+    }
+  });
+
+  it("writes the fit in the next frame, once for several resizes, and not after destroy", () => {
     const header = headerView(model("waiting"), () => ({ available: 150, name: 120, word: 60 }));
-    header.fire();
-    const first = header.row()!.dataset["statusFit"];
-    header.fire();
-    expect(header.row()!.dataset["statusFit"]).toBe(first);
-    expect(header.readings()).toBe(2);
+    const row = header.row()!;
+    header.resize();
+    header.resize();
+    // Nothing is written inside the observer's callback.
+    expect(row.dataset["statusFit"]).toBe("word");
+    expect(header.readings()).toBe(0);
+    expect(frames.size).toBe(1);
+    flushFrames();
+    expect(row.dataset["statusFit"]).toBe("icon");
+    expect(header.readings()).toBe(1);
+    header.resize();
+    header.view.destroy();
+    expect(frames.size).toBe(0);
+    flushFrames();
+    expect(header.readings()).toBe(1);
   });
 
   it("gives every shown state its own symbol", () => {
@@ -151,6 +225,21 @@ describe("the status in the header", () => {
   it("hides the symbol unless the word does not fit, and keeps the hidden word's width", () => {
     expect(VISUAL_STYLES).toMatch(/\.spotnav-connection-icon \{\s*display: none;/);
     expect(VISUAL_STYLES).toMatch(/\[data-status-fit="icon"\] \.spotnav-connection-icon \{\s*display: inline-flex;/);
-    expect(VISUAL_STYLES).toMatch(/\[data-status-fit="icon"\] \.spotnav-connection-word \{\s*position: absolute;\s*visibility: hidden;/);
+    expect(VISUAL_STYLES).toMatch(/\[data-status-fit="icon"\] \.spotnav-connection-word \{\s*position: absolute;\s*inset-inline-start: 0;\s*top: 0;\s*visibility: hidden;/);
+  });
+
+  it("pins the hidden word inside the row, so it cannot stick out and scroll the card sideways", () => {
+    const rule = VISUAL_STYLES.match(/\[data-status-fit="icon"\] \.spotnav-connection-word \{([^}]*)\}/)![1]!;
+    expect(rule).toMatch(/position: absolute;/);
+    expect(rule).toMatch(/inset-inline-start: 0;/);
+    expect(rule).toMatch(/top: 0;/);
+    // Its width still counts for the reading: it is hidden, not removed or collapsed.
+    expect(rule).not.toMatch(/display: none|width: 0|clip/);
+    expect(VISUAL_STYLES).toMatch(/\.spotnav-name-row \{\s*position: relative;/);
+  });
+
+  it("keeps the gap the fit adds for in step with the name row's column-gap", () => {
+    const rule = VISUAL_STYLES.match(/\.spotnav-name-row \{\s*display: flex;([^}]*)\}/)![1]!;
+    expect(rule).toContain(`column-gap: ${STATUS_GAP_PX}px;`);
   });
 });

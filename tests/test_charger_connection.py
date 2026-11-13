@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from typing import Any
@@ -9,7 +10,12 @@ from typing import Any
 import pytest
 from homeassistant.core import HomeAssistant
 
-from custom_components.spotnav.api.dashboard import serialize_connection, shown_connection
+from custom_components.spotnav.api.dashboard import (
+    capture_dashboard,
+    serialize_connection,
+    serialize_dashboard,
+    shown_connection,
+)
 from custom_components.spotnav.const import (
     CONF_CHARGE_CONTROL,
     CONF_CHARGER_PLATFORM,
@@ -34,6 +40,8 @@ from custom_components.spotnav.execution.charger_connection import (
 from custom_components.spotnav.execution.charger_profiles import PROFILES
 from custom_components.spotnav.execution.chargers.adapter import build_adapter
 from custom_components.spotnav.vehicles.ocpp_identity import OcppConnectorTarget
+
+from .world import setup_charger_and_site
 
 #: The mapping each adapter implements, spelled out so a change of one is a visible change here.
 EXPECTED: dict[str, dict[str, str]] = {
@@ -274,6 +282,32 @@ def test_a_finished_charger_waiting_for_the_plan_is_shown_waiting() -> None:
     # A pause holds the car too, with no window ahead.
     assert shown_connection(_capture(plan=None, execution=SimpleNamespace(paused=True))) == "waiting"
     assert shown_connection(_capture(plan=None, live=SimpleNamespace(car_ended_wait=None, hold_until=_LATER[0]))) == "waiting"
+
+
+def test_a_proposed_window_still_to_come_counts_as_holding() -> None:
+    """A window only proposed (not installed yet) holds the car too: it is what the person is told is coming."""
+    proposal = SimpleNamespace(reason=None, periods=[_LATER])
+    snapshot = SimpleNamespace(state="proposed", proposal=proposal, applied=False)
+    assert shown_connection(_capture(plan=None, snapshot=snapshot)) == "waiting"
+    # A refusal has no periods to wait for, and a window already past holds nothing.
+    refused = SimpleNamespace(reason="no_prices", periods=[_LATER])
+    assert shown_connection(_capture(plan=None, snapshot=SimpleNamespace(state="refused", proposal=refused))) == "connected"
+    past = SimpleNamespace(reason=None, periods=[(_NOW - timedelta(hours=2), _NOW - timedelta(hours=1))])
+    assert shown_connection(_capture(plan=None, snapshot=SimpleNamespace(state="proposed", proposal=past))) == "connected"
+
+
+async def test_the_serialized_dashboard_carries_the_shown_word(hass: HomeAssistant) -> None:
+    """From a real capture through `serialize_dashboard`: finished held by a pause reads waiting, else connected."""
+    charger, _ = await setup_charger_and_site(hass)
+    capture = capture_dashboard(hass, charger)
+    finished = replace(capture, connection=(FINISHED, None), plan=None, snapshot=None, soc=None, target=None)
+    held = replace(finished, execution=replace(finished.execution, paused=True))
+    assert serialize_dashboard(held, can_act=True)["connection"] == {"state": "finished", "source": None, "shown": "waiting"}
+    assert serialize_dashboard(finished, can_act=True)["connection"] == {
+        "state": "finished",
+        "source": None,
+        "shown": "connected",
+    }
 
 
 def test_finished_is_shown_when_the_car_is_done() -> None:
