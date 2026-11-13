@@ -14,8 +14,8 @@ It shows what the site diagnostics already carry, cut to what a card draws:
   forecast was below the outcome), and the battery plan's money side by side: the plan (the site's mode), the
   battery's own way (its optimiser, or whatever it did) and plain self-consumption, over the reviewed days. `sun` is
   `None` on a site without a solar forecast, `battery` on a site without a battery.
-* **`today`**: today so far from the quarter hours measured, split as the battery's own app splits a day (sold,
-  arbitrage, bought) with the mode in force; **`flow`**: today's energy from sources (sun, battery, grid) to uses
+* **`today`**: today so far, split as the battery's own app splits a day (sold, arbitrage, bought) with the mode in
+  force, from the stored energy's running value (`battery/stored_value.py`); **`flow`**: today's energy from sources (sun, battery, grid) to uses
   (battery, load, grid); **`calendar`**: the running month's reviewed days, the plan beside the battery's own way.
   All three are `None` without a battery. Each hour also has its mean buy and sell price (`buy`, `sell`, minor per
   kWh) where the battery plan priced it.
@@ -42,6 +42,7 @@ from ..battery.plan_model import (
 )
 from .. import time_zones
 from ..battery.plan_shadow import KIND_BATTERY, Bucket, DayReview, PlannedSlot, PriceSlot, soc_by_hour_end
+from ..battery.stored_value import StoredValue
 from ..planning.demand_charge import hour_start
 from .forecast_log import KIND_HOUSE, KIND_SUN, KIND_SUN_CORRECTED, ForecastLog, LoggedHour, Score
 from .load_forecast import LoadForecast
@@ -136,6 +137,8 @@ class BatteryInputs:
     prices: Sequence[PriceSlot] = ()
     #: The sun's production per hour (kWh, UTC hour starts) from the Energy dashboard's statistics; empty without.
     production: Mapping[datetime, float] = field(default_factory=dict)
+    #: The stored energy's running value and each day's money split (`battery/stored_value.py`).
+    stored: StoredValue | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -214,45 +217,30 @@ def _today(quarters: Iterable[Bucket], now: datetime, tz: str) -> tuple[date, li
 
 
 def today_money(battery: BatteryInputs, now: datetime, tz: str) -> dict[str, Any] | None:
-    """Today so far, from the quarter hours measured (minor units), the way the battery's own app splits a day:
-
-    * `sold`: the export at the sell price;
-    * `bought`: the import at the buy price;
-    * `arbitrage`: what the battery's moves earned on the energy it gave back: each kWh it gave the house at the buy
-      price (a kWh it sent to the grid is in `sold` already), less what that kWh cost to store, at today's mean cost
-      of a stored kWh (from the grid at the buy price, from the sun at the sell price it would have fetched). Energy
-      still stored is not counted until it is given back, so the figure does not dip while the battery fills.
-
-    `None` before a priced quarter hour of today."""
-    day, quarters = _today(battery.quarters, now, tz)
-    priced = [bucket for bucket in quarters if bucket.buy is not None and bucket.sell is not None]
-    if not priced:
+    """Today so far (minor units), the way the battery's own app splits a day, from the stored energy's running value
+    (`battery/stored_value.py`): `sold` is the sun's surplus exported, `bought` the import, `arbitrage` what each kWh
+    the battery gave back earned over its average cost (its exports included). `average_cost` is a stored kWh's cost
+    now and `estimated` says it still rests on the starting estimate. `None` before a counted quarter hour today."""
+    stored = battery.stored
+    if stored is None:
         return None
-    sold = bought = given_value = given = stored_cost = stored = 0.0
-    for bucket in priced:
-        buy, sell = float(bucket.buy), float(bucket.sell)  # type: ignore[arg-type]
-        imported, exported = bucket.scaled(bucket.import_kwh), bucket.scaled(bucket.export_kwh)
-        moved = bucket.scaled(bucket.battery_kwh)
-        bought += imported * buy
-        sold += exported * sell
-        if moved < 0:
-            to_house = max(0.0, -moved - exported)
-            given_value += to_house * buy
-            given += to_house
-        else:
-            from_grid = min(moved, imported)
-            stored_cost += from_grid * buy + (moved - from_grid) * sell
-            stored += moved
-    mean_cost = stored_cost / stored if stored > 0 else 0.0
-    arbitrage = given_value - given * mean_cost
+    day = now.astimezone(time_zones.require_zone(tz)).date()
+    money = stored.days.get(day)
+    if money is None:
+        return None
+    average = stored.average
     return {
         "date": day.isoformat(),
-        "quarters": len(priced),
-        "sold": _money(sold),
-        "arbitrage": _money(arbitrage),
-        "bought": _money(bought),
-        "net": _money(sold - bought),
+        "quarters": money.quarters,
+        "sold": _money(money.sold),
+        "arbitrage": _money(money.arbitrage),
+        "bought": _money(money.bought),
+        "net": _money(money.sold + money.arbitrage - money.bought),
         "mode": battery.mode,
+        "battery_export_kwh": round(money.battery_export_kwh, 2),
+        "stored_kwh": None if stored.kwh is None else round(stored.kwh, 2),
+        "average_cost": None if average is None else round(average, 2),
+        "estimated": stored.estimated,
     }
 
 
@@ -285,12 +273,14 @@ def month_calendar(battery: BatteryInputs, now: datetime, tz: str) -> dict[str, 
     """The running month's reviewed days: the plan's saving and the battery's own against self-consumption."""
     today = now.astimezone(time_zones.require_zone(tz)).date()
     month = today.strftime("%Y-%m")
+    tallies = {} if battery.stored is None else battery.stored.days
     days = [
         {
             "date": review.day.isoformat(),
             "plan_saving": _money(review.saving),
             "own_saving": _money(review.actual_saving),
             "mode": review.mode,
+            "arbitrage": _money(tallies[review.day].arbitrage) if review.day in tallies else None,
         }
         for review in battery.reviews
         if review.day.strftime("%Y-%m") == month
@@ -453,7 +443,7 @@ def days_view(inputs: HouseInputs) -> list[dict[str, Any]]:
 
     def day_row(day: str) -> dict[str, Any]:
         return by_day.setdefault(
-            day, {"date": day, **{key: None for key in kinds}, "plan_saving": None, "own_saving": None}
+            day, {"date": day, **{key: None for key in kinds}, "plan_saving": None, "own_saving": None, "arbitrage": None}
         )
 
     for key, kind in kinds.items():
@@ -465,6 +455,11 @@ def days_view(inputs: HouseInputs) -> list[dict[str, Any]]:
         row = day_row(item.day.isoformat())
         row["plan_saving"] = _money(item.saving)
         row["own_saving"] = _money(item.actual_saving)
+    if battery is not None and battery.stored is not None:
+        today = inputs.now.astimezone(time_zones.require_zone(inputs.tz)).date()
+        for day, money in battery.stored.days.items():
+            if day < today:
+                day_row(day.isoformat())["arbitrage"] = _money(money.arbitrage)
     if inputs.sun is None:
         for row in by_day.values():
             row["sun_mae"] = row["sun_corrected_mae"] = None

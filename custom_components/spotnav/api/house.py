@@ -85,6 +85,7 @@ def _battery(controller: Any) -> BatteryInputs | None:
         quarters=tuple(plan.actuals.buckets.values()),
         prices=tuple(plan._prices),  # noqa: SLF001 - the slots the plan read, held between its runs
         production=dict(plan._production),  # noqa: SLF001
+        stored=plan.stored,
     )
 
 

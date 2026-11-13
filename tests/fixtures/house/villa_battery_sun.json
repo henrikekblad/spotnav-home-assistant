@@ -49,72 +49,84 @@
   "calendar": {
     "days": [
       {
+        "arbitrage": 850.0,
         "date": "2026-11-01",
         "mode": "balanced",
         "own_saving": 850.0,
         "plan_saving": 810.0
       },
       {
+        "arbitrage": 875.0,
         "date": "2026-11-02",
         "mode": "balanced",
         "own_saving": 830.0,
         "plan_saving": 800.0
       },
       {
+        "arbitrage": 900.0,
         "date": "2026-11-03",
         "mode": "balanced",
         "own_saving": 810.0,
         "plan_saving": 790.0
       },
       {
+        "arbitrage": 800.0,
         "date": "2026-11-04",
         "mode": "balanced",
         "own_saving": 490.0,
         "plan_saving": 780.0
       },
       {
+        "arbitrage": 825.0,
         "date": "2026-11-05",
         "mode": "balanced",
         "own_saving": 770.0,
         "plan_saving": 770.0
       },
       {
+        "arbitrage": 850.0,
         "date": "2026-11-06",
         "mode": "balanced",
         "own_saving": 750.0,
         "plan_saving": 760.0
       },
       {
+        "arbitrage": 875.0,
         "date": "2026-11-07",
         "mode": "balanced",
         "own_saving": 730.0,
         "plan_saving": 750.0
       },
       {
+        "arbitrage": 900.0,
         "date": "2026-11-08",
         "mode": "balanced",
         "own_saving": 710.0,
         "plan_saving": 740.0
       },
       {
+        "arbitrage": 800.0,
         "date": "2026-11-09",
         "mode": "balanced",
         "own_saving": 390.0,
         "plan_saving": 730.0
       },
       {
+        "arbitrage": 825.0,
         "date": "2026-11-10",
         "mode": "balanced",
         "own_saving": 670.0,
         "plan_saving": 720.0
       },
       {
+        "arbitrage": 850.0,
         "date": "2026-11-11",
         "mode": "balanced",
         "own_saving": 650.0,
         "plan_saving": 710.0
       },
       {
+        "arbitrage": 875.0,
         "date": "2026-11-12",
         "mode": "balanced",
         "own_saving": 630.0,
@@ -125,6 +137,7 @@
   },
   "days": [
     {
+      "arbitrage": 875.0,
       "date": "2026-11-12",
       "house_mae": 0.086,
       "own_saving": 630.0,
@@ -134,6 +147,7 @@
       "sun_mae": 0.056
     },
     {
+      "arbitrage": 850.0,
       "date": "2026-11-11",
       "house_mae": 0.093,
       "own_saving": 650.0,
@@ -143,6 +157,7 @@
       "sun_mae": 0.084
     },
     {
+      "arbitrage": 825.0,
       "date": "2026-11-10",
       "house_mae": 0.088,
       "own_saving": 670.0,
@@ -152,6 +167,7 @@
       "sun_mae": 0.075
     },
     {
+      "arbitrage": 800.0,
       "date": "2026-11-09",
       "house_mae": 0.087,
       "own_saving": 390.0,
@@ -161,6 +177,7 @@
       "sun_mae": 0.065
     },
     {
+      "arbitrage": 900.0,
       "date": "2026-11-08",
       "house_mae": 0.092,
       "own_saving": 710.0,
@@ -170,6 +187,7 @@
       "sun_mae": 0.056
     },
     {
+      "arbitrage": 875.0,
       "date": "2026-11-07",
       "house_mae": 0.09,
       "own_saving": 730.0,
@@ -179,6 +197,7 @@
       "sun_mae": 0.084
     },
     {
+      "arbitrage": 850.0,
       "date": "2026-11-06",
       "house_mae": 0.086,
       "own_saving": 750.0,
@@ -726,12 +745,16 @@
   },
   "time_zone": "Europe/Stockholm",
   "today": {
-    "arbitrage": 1200.27,
+    "arbitrage": 1089.88,
+    "average_cost": 120.55,
+    "battery_export_kwh": 0.28,
     "bought": 3845.2,
     "date": "2026-11-13",
+    "estimated": false,
     "mode": "balanced",
-    "net": -3814.18,
+    "net": -2750.95,
     "quarters": 69,
-    "sold": 31.02
+    "sold": 4.37,
+    "stored_kwh": 32.29
   }
 }

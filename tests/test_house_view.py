@@ -30,6 +30,7 @@ from custom_components.spotnav.battery.plan_shadow import (
     PriceSlot,
     Run,
 )
+from custom_components.spotnav.battery.stored_value import DayMoney, StoredValue
 from custom_components.spotnav.planning.demand_charge import HourMean, hour_start
 from custom_components.spotnav.site.forecast_log import (
     KIND_HOUSE,
@@ -237,6 +238,19 @@ def quarters_today(now: datetime) -> list[Bucket]:
     return out
 
 
+def stored_value(now: datetime) -> StoredValue:
+    """The battery's stored value carried in from yesterday (15 kWh at 1,40 kr), today's quarter hours counted, and
+    the month's earlier days' money."""
+    stored = StoredValue(kwh=15.0, cost=15.0 * 140.0, last=quarters_today(now)[0].start - timedelta(minutes=15))
+    for back in range(12, 0, -1):
+        day = (now + CET).date() - timedelta(days=back)
+        stored.days[day] = DayMoney(
+            sold=20.0 + back, bought=4100.0 - 40 * back, arbitrage=900.0 - 25 * (back % 5), quarters=96
+        )
+    stored.run(quarters_today(now), TZ, None)
+    return stored
+
+
 def full_inputs(now: datetime = NOW) -> HouseInputs:
     rows = history(now)
     forecast = forecast_house_load(rows, now, TZ, flat_kw=1.2)
@@ -284,6 +298,7 @@ def full_inputs(now: datetime = NOW) -> HouseInputs:
             quarters=quarters_today(now),
             prices=price_slots(now),
             production={start: sun_kwh(start) for start in (current - timedelta(hours=h) for h in range(1, 20))},
+            stored=stored_value(now),
         ),
         money=("SEK", "kr", "öre"),
     )
@@ -330,6 +345,8 @@ def test_the_full_site_and_its_fixture() -> None:
     today = view["today"]
     assert today["date"] == "2026-11-13" and today["mode"] == "balanced"
     assert today["bought"] > 0 and today["arbitrage"] > 0 and today["sold"] >= 0
+    assert today["average_cost"] is not None and today["estimated"] is False
+    assert view["calendar"]["days"][0]["arbitrage"] is not None and view["days"][0]["arbitrage"] is not None
     flow = view["flow"]
     sources, uses = flow["sources"], flow["uses"]
     assert sum(sources.values()) == pytest.approx(sum(uses.values()), abs=0.05)
