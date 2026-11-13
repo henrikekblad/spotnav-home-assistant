@@ -178,6 +178,10 @@ export interface SettingsBody {
    * sent): `null` for none.
    */
   departure_calendar?: string | null;
+  /**
+   * The calendar alone decides (added in 3.0, absent on an older backend): a day without an event has no departure.
+   */
+  departure_calendar_only?: boolean;
   strategy: string;
   driver: string;
   target: SettingsTarget;

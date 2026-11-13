@@ -483,7 +483,7 @@ export function referencePictures(list: readonly unknown[]): ReferencePicture[] 
 }
 
 /** What the plan made of the departure calendar (`state`); see `DepartureCalendarBlock`. */
-export const DEPARTURE_CALENDAR_STATES = ["used", "daily", "date", "unavailable", "off"] as const;
+export const DEPARTURE_CALENDAR_STATES = ["used", "daily", "date", "unavailable", "no_event", "off"] as const;
 export type DepartureCalendarState = (typeof DEPARTURE_CALENDAR_STATES)[number];
 
 /**

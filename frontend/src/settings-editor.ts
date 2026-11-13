@@ -541,14 +541,41 @@ export function settingsEditorBody(
     note.setAttribute("aria-live", "polite");
     const help = element(doc, "p", C.settingsNote, translate(language, "settings.deadline.calendarHelp"));
     help.dataset["note"] = "departure-calendar-help";
+    // Whether the calendar alone decides: only where the backend has the field, and shown once a calendar is chosen.
+    let onlyRow: HTMLElement | null = null;
+    let onlyHelp: HTMLElement | null = null;
+    if (form.values.departureCalendarOnly !== undefined) {
+      calendarOnlyInput = doc.createElement("input") as HTMLInputElement;
+      calendarOnlyInput.type = "checkbox";
+      calendarOnlyInput.className = C.settingsInput;
+      calendarOnlyInput.checked = form.values.departureCalendarOnly;
+      calendarOnlyInput.disabled = form.readOnly;
+      onlyRow = checkboxField(
+        doc,
+        `${idPrefix}-deadline-calendar-only`,
+        translate(language, "settings.deadline.calendarOnly"),
+        calendarOnlyInput,
+      );
+      onlyRow.dataset["part"] = "departure-calendar-only";
+      onlyHelp = element(doc, "p", C.settingsNote, translate(language, "settings.deadline.calendarOnlyHelp"));
+      onlyHelp.dataset["note"] = "departure-calendar-only-help";
+    }
     const paint = (): void => {
       const text = select.value !== "" && select.value === block.entity_id ? calendarNote(block) : "";
       note.textContent = text;
       note.hidden = text === "";
       help.hidden = select.value === "";
+      if (onlyRow !== null && onlyHelp !== null) {
+        onlyRow.hidden = select.value === "";
+        onlyHelp.hidden = select.value === "";
+      }
     };
     select.addEventListener("change", paint);
-    group.append(field(doc, `${idPrefix}-deadline-calendar`, translate(language, "settings.deadline.calendar"), select), note, help);
+    group.append(field(doc, `${idPrefix}-deadline-calendar`, translate(language, "settings.deadline.calendar"), select));
+    if (onlyRow !== null && onlyHelp !== null) {
+      group.append(onlyRow, onlyHelp);
+    }
+    group.append(note, help);
     into.append(group);
     paint();
   };
@@ -586,6 +613,8 @@ export function settingsEditorBody(
         return translate(language, "settings.deadline.calendarDate");
       case "unavailable":
         return translate(language, "settings.deadline.calendarUnavailable");
+      case "no_event":
+        return translate(language, "settings.deadline.calendarNoEvent");
       default:
         return "";
     }
@@ -594,6 +623,7 @@ export function settingsEditorBody(
   /** The weekdays a daily departure applies on: one toggle per day, Monday first, named in the card's language. */
   const weekdayChecks: HTMLInputElement[] = [];
   let calendarSelect: HTMLSelectElement | null = null;
+  let calendarOnlyInput: HTMLInputElement | null = null;
   const weekdayGroup = (): HTMLElement => {
     const group = element(doc, "fieldset", C.siteFieldset);
     group.dataset["part"] = "departure-weekdays";
@@ -1152,6 +1182,9 @@ export function settingsEditorBody(
     values.current = currentValue;
     if (calendarSelect !== null) {
       values.departureCalendar = calendarSelect.value;
+    }
+    if (calendarOnlyInput !== null) {
+      values.departureCalendarOnly = calendarOnlyInput.checked;
     }
     const chosenIfNotReady = ifNotReadyRadios.find((radio) => radio.checked);
     if (chosenIfNotReady !== undefined) {
