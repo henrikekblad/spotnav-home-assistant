@@ -29,11 +29,11 @@ TZ = "Europe/Stockholm"
 UTC = timezone.utc
 
 
-def local(year: int, month: int, day: int, hour: int = 0) -> datetime:
+def local(year: int, month: int, day: int, hour: int = 0, minute: int = 0) -> datetime:
     """A wall-clock time in Stockholm as UTC (CET, outside the DST changes the tests pick on purpose)."""
     from zoneinfo import ZoneInfo  # noqa: PLC0415
 
-    return datetime(year, month, day, hour, tzinfo=ZoneInfo(TZ)).astimezone(UTC)
+    return datetime(year, month, day, hour, minute, tzinfo=ZoneInfo(TZ)).astimezone(UTC)
 
 
 def history(
@@ -102,7 +102,7 @@ def test_the_profile_takes_the_weighted_upper_quantile_not_the_mean() -> None:
         return 4.0 if local_hour(moment) == 18 and day % 2 == 0 else 1.0
 
     rows = history(NOW - timedelta(days=28), NOW, load)
-    figure = hour_of(forecast_house_load(rows, NOW, TZ), local(2026, 11, 16, 18)).kw
+    figure = hour_of(forecast_house_load(rows, NOW, TZ, inday=False), local(2026, 11, 16, 18)).kw
     assert figure == pytest.approx(4.0)
     assert weighted_quantile([1.0, 1.0, 1.0, 4.0], [1, 1, 1, 1], QUANTILE) == 1.0
     assert weighted_quantile([1.0, 1.0, 4.0, 4.0], [1, 1, 1, 1], QUANTILE) == 4.0
@@ -116,7 +116,7 @@ def test_a_changed_habit_shows_within_two_weeks() -> None:
         return history(NOW - timedelta(days=42), NOW, lambda moment: after if moment >= switch else before)
 
     def figures(rows: list[HourMean]) -> set[float]:
-        return {round(hour.kw, 3) for hour in forecast_house_load(rows, NOW, TZ).hours}  # type: ignore[arg-type]
+        return {round(hour.kw, 3) for hour in forecast_house_load(rows, NOW, TZ, inday=False).hours}  # type: ignore[arg-type]
 
     # A higher load shows once it holds more than a quarter of the weight: within a week, not after three days.
     assert figures(since(3, 1.0, 3.0)) == {1.0}
@@ -334,3 +334,64 @@ def test_the_backtest_ordering_holds_p75_with_temperature_beats_the_flat_figure(
     assert big_under("p75T", night) <= big_under("flat", night)
     assert under("p75T") < under("p75") < under("flat")
     assert mae("p75T") < mae("p75")
+
+
+# ---------------------------------------------------------------------------------------------- in-day adjustment
+
+
+def busy_today(today_kw: float, until_hour: int, *, day: tuple[int, int, int] = (2026, 11, 18)) -> list[HourMean]:
+    """Four weeks at 1 kW, then today (a Wednesday) at `today_kw` from midnight until `until_hour`."""
+    midnight = local(*day)
+    rows = history(midnight - timedelta(days=28), midnight, lambda _moment: 1.0)
+    return rows + history(midnight, midnight + timedelta(hours=until_hour), lambda _moment: today_kw)
+
+
+def test_a_busy_day_scales_the_rest_of_today_and_fades_out_over_tomorrow() -> None:
+    rows = busy_today(2.0, 6)
+    now = local(2026, 11, 18, 6, 5)
+    forecast = forecast_house_load(rows, now, TZ)
+    factor = 1 + 0.95 * (2.0 - 1.0)
+    assert forecast.inday.today_ratio == pytest.approx(2.0)
+    assert forecast.inday.today_hours == 6
+    noon = hour_of(forecast, local(2026, 11, 18, 12))
+    assert (noon.raw_kw, noon.kw, noon.inday_factor) == (1.0, pytest.approx(factor), pytest.approx(factor))
+    # Tomorrow starts at today's factor and falls linearly to none by its end.
+    assert hour_of(forecast, local(2026, 11, 19, 0)).kw == pytest.approx(factor)
+    assert hour_of(forecast, local(2026, 11, 19, 12)).kw == pytest.approx(1 + (factor - 1) / 2)
+    assert hour_of(forecast, local(2026, 11, 19, 23)).kw == pytest.approx(1 + (factor - 1) / 24)
+    assert hour_of(forecast, local(2026, 11, 20, 3)).kw == pytest.approx(1.0)
+    # The raw figures are kept apart for the log.
+    assert set(forecast.raw_by_hour().values()) == {1.0}
+
+
+def test_the_adjustment_waits_for_three_hours_and_carries_yesterdays_factor_meanwhile() -> None:
+    early = forecast_house_load(busy_today(2.0, 2), local(2026, 11, 18, 2, 5), TZ)
+    assert early.inday.today_ratio is None
+    assert {round(hour.kw, 6) for hour in early.hours} == {1.0}  # type: ignore[arg-type]
+    # Yesterday ran at 2 kW all day: its factor is carried into today from full weight at midnight to none at its end.
+    rows = busy_today(2.0, 24, day=(2026, 11, 17)) + history(local(2026, 11, 18), local(2026, 11, 18, 1), lambda _m: 1.0)
+    carried = forecast_house_load(rows, local(2026, 11, 18, 1, 5), TZ)
+    factor = carried.inday.yesterday_factor
+    assert factor == pytest.approx(1.95)
+    assert hour_of(carried, local(2026, 11, 18, 12)).inday_factor == pytest.approx(1 + (factor - 1) / 2)
+    assert hour_of(carried, local(2026, 11, 19, 1)).inday_factor == 1.0
+
+
+def test_the_factor_is_clamped_and_off_on_request() -> None:
+    now = local(2026, 11, 18, 6, 5)
+    assert forecast_house_load(busy_today(10.0, 6), now, TZ).inday.today_factor == 2.0
+    assert forecast_house_load(busy_today(0.05, 6), now, TZ).inday.today_factor == 0.5
+    off = forecast_house_load(busy_today(10.0, 6), now, TZ, inday=False)
+    assert {hour.inday_factor for hour in off.hours} == {1.0}
+
+
+def test_the_flat_rung_is_never_scaled_and_the_dst_day_fades_over_its_25_hours() -> None:
+    few = history(local(2026, 11, 18), local(2026, 11, 18, 2), lambda _m: 5.0)
+    flat = forecast_house_load(few, local(2026, 11, 18, 2, 5), TZ, flat_kw=0.7)
+    assert {(hour.source, hour.kw) for hour in flat.hours} == {(SOURCE_FLAT, 0.7)}
+    # 24 October 2026 busy from midnight; tomorrow is the 25-hour day.
+    rows = busy_today(2.0, 8, day=(2026, 10, 24))
+    forecast = forecast_house_load(rows, local(2026, 10, 24, 8, 5), TZ)
+    factor = forecast.inday.today_factor
+    last = local(2026, 10, 26) - timedelta(hours=1)
+    assert hour_of(forecast, last).inday_factor == pytest.approx(1 + (factor - 1) / 25)

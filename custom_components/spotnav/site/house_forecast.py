@@ -13,8 +13,9 @@ in the debug bundle.
   one: weekday/weekend only, nothing guessed.
 * **Refresh**: when the running hour changes (an hour completed, or after a start), in the background; the model runs
   in the executor. A refresh that could not read a source it found is tried again after `RETRY_S`.
-* **Log**: each hour's first forecast and its outcome (the hour's measured `house_kw`), reviewed per local day the
-  night after; kept in the site's own store (`spotnav.load_forecast.<entry>`).
+* **Log**: each hour's first forecast, as used and before the in-day adjustment (`house_kw_raw`), and its outcome
+  (the hour's measured `house_kw`), reviewed per local day the night after; kept in the site's own store
+  (`spotnav.load_forecast.<entry>`).
 """
 
 from __future__ import annotations
@@ -35,7 +36,7 @@ from ..const import DOMAIN
 from ..debug_day import DayStore
 from ..planning.demand_charge import hour_start
 from .demand_tracker import outdoor_reading, SiteDemand
-from .forecast_log import ForecastLog, KEEP_HOURS_DAYS, KIND_HOUSE
+from .forecast_log import ForecastLog, KEEP_HOURS_DAYS, KIND_HOUSE, KIND_HOUSE_RAW
 from .load_forecast import forecast_house_load, LoadForecast, WINDOW_DAYS
 
 _LOGGER = logging.getLogger(__name__)
@@ -346,7 +347,9 @@ class SiteHouseForecast:
         for hour in hours:
             if hour.start >= oldest and not hour.imported and hour.house_kw is not None:
                 log.record_actual(KIND_HOUSE, hour.start, hour.house_kw)
+                log.record_actual(KIND_HOUSE_RAW, hour.start, hour.house_kw)
         log.record_forecast(KIND_HOUSE, forecast.by_hour(), now)
+        log.record_forecast(KIND_HOUSE_RAW, forecast.raw_by_hour(), now)
         log.review(now)
         if self._store is not None:
             self._store.changed()

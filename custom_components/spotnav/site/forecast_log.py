@@ -1,7 +1,8 @@
 """The forecast log and its nightly review (SpotNav 3.0): how well each forecast hit, kept short and bounded.
 
-Pure: the clock is passed in. One log per site, any number of *kinds* (today `house_kw`, the house load forecast;
-later the sun's and the battery plan's), each kept the same way:
+Pure: the clock is passed in. One log per site, any number of *kinds* (today `house_kw`, the house load forecast,
+and `house_kw_raw`, the same before its in-day adjustment; later the sun's and the battery plan's), each kept the
+same way:
 
 * **The first forecast** made for each hour is logged (`record_forecast`), with when it was made, so its lead is
   known. A later forecast for the same hour never replaces it: the review scores what was known first. Only hours
@@ -28,6 +29,8 @@ from typing import Any, Final
 from .. import time_zones
 
 KIND_HOUSE: Final = "house_kw"
+#: The same forecast before its in-day adjustment, logged beside it so the review shows what the adjustment earns.
+KIND_HOUSE_RAW: Final = "house_kw_raw"
 
 #: The hours of the last this many days are kept (the outcome is compared once the hour has completed).
 KEEP_HOURS_DAYS: Final = 14
