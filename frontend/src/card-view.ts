@@ -2315,9 +2315,25 @@ export function createCardView(input: CardViewInput): CardView {
     const fits = statusFits((input.readStatusFit ?? readStatusFit)(statusRow));
     statusRow.dataset["statusFit"] = fits ? "word" : "icon";
   }
+  // The fit changes what the header shows, so it is written in the next frame, not inside the observer's own
+  // callback: a write there can resize the block again and the browser reports "ResizeObserver loop completed".
+  let statusFrame: number | null = null;
+  function scheduleFitStatus(): void {
+    const request = (globalThis as { requestAnimationFrame?: (callback: () => void) => number }).requestAnimationFrame;
+    if (typeof request !== "function") {
+      fitStatus();
+      return;
+    }
+    if (statusFrame === null) {
+      statusFrame = request(() => {
+        statusFrame = null;
+        fitStatus();
+      });
+    }
+  }
   const headerBlock = (statusRow as HTMLElement | null)?.parentElement ?? null;
   const headerObserver: ChartObserverLike | null =
-    headerBlock === null ? null : (input.observeHeader ?? defaultBoxObserver)(headerBlock, fitStatus);
+    headerBlock === null ? null : (input.observeHeader ?? defaultBoxObserver)(headerBlock, scheduleFitStatus);
   headerObserver?.observe?.(headerBlock as HTMLElement);
 
   const boxObserver: ChartObserverLike | null =
@@ -5507,6 +5523,10 @@ export function createCardView(input: CardViewInput): CardView {
       cancelBoundary();
       boxObserver?.disconnect();
       headerObserver?.disconnect();
+      if (statusFrame !== null) {
+        (globalThis as { cancelAnimationFrame?: (handle: number) => void }).cancelAnimationFrame?.(statusFrame);
+        statusFrame = null;
+      }
       interaction?.destroy();
       issuesDialog.destroy();
       releaseDialog.destroy();
