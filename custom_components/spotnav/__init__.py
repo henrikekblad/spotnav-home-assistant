@@ -122,6 +122,7 @@ from .site.site_join import (
     backfill_profile_measured_sources,
     prune_missing_members,
 )
+from .battery.runtime import BatteryShadow
 from .site.site_capacity_controller import async_release_held_charges, SiteCapacityController
 from .site.site_history import charger_alone_values, SiteHistory
 from .site.demand_tracker import SiteDemand
@@ -882,6 +883,7 @@ async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
         await SiteHistory.async_remove_stored(hass, entry.entry_id)
         await SiteDemand.async_remove_stored(hass, entry.entry_id)
         await SiteCapacityController.async_remove_released(hass, entry.entry_id)
+        await BatteryShadow.async_remove_stored(hass, entry.entry_id)
         return
     # The charger is given back as SpotNav found it, as far as SpotNav knows: the current it had before SpotNav,
     # and a stop of SpotNav's own undone. Read before the stores below go (it is kept in the controller's).
