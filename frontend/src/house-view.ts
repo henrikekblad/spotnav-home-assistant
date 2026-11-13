@@ -3,8 +3,8 @@
 // sources and what was assumed). Built fresh for each state with `textContent` only; every figure is the backend's.
 
 import { clock, dateLabel, dayCue, formatFixed, formatNumber, hourLabel, type EntityWords, type FormatContext } from "./format";
-import { houseChartHeight, houseShown, renderHouseChart, sunShown, type HouseChart } from "./house-chart";
-import { MODES, type BatteryMode, type HouseAnswer, type HouseHour } from "./house-model";
+import { houseChartHeight, houseShown, renderHouseChart, sunShown, type HouseChart, type HouseChartView } from "./house-chart";
+import { MODES, type BatteryMode, type DayFlow, type HouseAnswer, type HouseHour } from "./house-model";
 import { HOUSE_CLASSES as H } from "./house-styles";
 import { pluralForm, translate, type Language, type TranslationKey } from "./i18n";
 import { VISUAL_CLASSES as C } from "./visual-styles";
@@ -19,12 +19,15 @@ export type HouseState =
 
 export interface HouseUi {
   detailsOpen: boolean;
+  /** The chart's view: the energy (default) or the price with the battery. */
+  view?: HouseChartView;
   /** The hour shown in the readout (an index into `hours`), `null` for the hint. */
   selected: number | null;
 }
 
 export interface HouseHandlers {
   onDetails(open: boolean): void;
+  onView?(view: HouseChartView): void;
   onSelect(index: number | null): void;
 }
 
@@ -80,6 +83,25 @@ export function amount(language: Language, minor: number, money: HouseAnswer["mo
   return `${formatFixed(language, major, Math.abs(major) >= 10 ? 0 : 2)} ${money.major_unit}`;
 }
 
+/** The price's unit per kWh, the area's minor unit ("öre/kWh"). */
+function priceUnit(answer: HouseAnswer): string {
+  return `${answer.money?.minor_unit ?? ""}/kWh`.replace(/^\//, "");
+}
+
+/** Today's money so far in one line, as the battery's app splits it, with the mode in force. */
+export function todayLine(language: Language, answer: HouseAnswer): string | null {
+  const today = answer.today;
+  if (today === null) {
+    return null;
+  }
+  return translate(language, "house.today", {
+    sold: amount(language, today.sold, answer.money),
+    arbitrage: amount(language, today.arbitrage, answer.money),
+    bought: amount(language, today.bought, answer.money),
+    mode: modeName(language, today.mode),
+  });
+}
+
 function context(language: Language, answer: HouseAnswer): FormatContext {
   return { language, timeZone: answer.time_zone, unit: "kWh", currency: answer.money?.currency ?? null, majorUnit: answer.money?.major_unit ?? null };
 }
@@ -93,11 +115,20 @@ function entityName(words: EntityWords | undefined, entityId: string): string {
 }
 
 /** One hour's figures in words, for the readout and the hour's accessible name. */
-export function hourFigures(language: Language, answer: HouseAnswer, hour: HouseHour, nowMs: number): string {
+export function hourFigures(language: Language, answer: HouseAnswer, hour: HouseHour, nowMs: number, view: HouseChartView = "energy"): string {
   const ctx = context(language, answer);
   const parts = [`${clock(ctx, hour.startMs)}–${clock(ctx, hour.startMs + HOUR_MS)}`];
   const house = houseShown(hour);
-  if (house.kw !== null) {
+  if (view === "price" && hour.buy !== null && hour.sell !== null) {
+    const unit = priceUnit(answer);
+    parts.push(
+      translate(language, "house.readout.price", {
+        buy: `${formatNumber(language, hour.buy, 0)} ${unit}`,
+        sell: `${formatNumber(language, hour.sell, 0)} ${unit}`,
+      }),
+    );
+  }
+  if (view === "energy" && house.kw !== null) {
     if (house.measured && hour.house_forecast_kw !== null) {
       parts.push(translate(language, "house.readout.houseBoth", { kw: kw(language, house.kw), forecast: kw(language, hour.house_forecast_kw) }));
     } else {
@@ -106,7 +137,7 @@ export function hourFigures(language: Language, answer: HouseAnswer, hour: House
   }
   const sun = sunShown(hour, nowMs);
   const past = hour.startMs + HOUR_MS <= nowMs;
-  if (sun !== null && (sun > 0 || (hour.sun_forecast_kwh ?? 0) > 0)) {
+  if (view === "energy" && sun !== null && (sun > 0 || (hour.sun_forecast_kwh ?? 0) > 0)) {
     parts.push(translate(language, past ? "house.readout.sun" : "house.readout.sunForecast", { kwh: kwh(language, sun) }));
   }
   if (hour.soc_pct !== null) {
@@ -184,13 +215,21 @@ function header(doc: Document, language: Language, answer: HouseAnswer | null): 
     if (battery.soc_pct !== null) {
       words.push(translate(language, "house.sub.soc", { pct: pct(language, battery.soc_pct) }));
     }
-    words.push(translate(language, "house.sub.mode", { mode: modeName(language, battery.mode) }));
+    if (answer?.today === null) {
+      words.push(translate(language, "house.sub.mode", { mode: modeName(language, battery.mode) }));
+    }
     wrap.append(element(doc, "p", `${C.muted} ${H.sub}`, words.join(" · ")));
+    const today = answer === null ? null : todayLine(language, answer);
+    if (today !== null) {
+      const line = element(doc, "p", H.today, today);
+      line.dataset["line"] = "today";
+      wrap.append(line);
+    }
   }
   return wrap;
 }
 
-function legend(doc: Document, language: Language, answer: HouseAnswer): HTMLElement {
+function legend(doc: Document, language: Language, answer: HouseAnswer, view: HouseChartView): HTMLElement {
   const list = element(doc, "ul", H.legend);
   list.setAttribute("aria-label", translate(language, "house.legend"));
   const item = (series: string, key: TranslationKey): void => {
@@ -201,17 +240,25 @@ function legend(doc: Document, language: Language, answer: HouseAnswer): HTMLEle
     entry.append(swatch, element(doc, "span", undefined, translate(language, key)));
     list.append(entry);
   };
-  item("house", "house.legend.house");
-  if (answer.hours.some((hour) => hour.house_kw !== null && hour.house_forecast_kw !== null)) {
-    item("forecast", "house.legend.forecast");
-  }
-  if (answer.sun !== null) {
-    item("sun", "house.legend.sun");
+  if (view === "price") {
+    item("buy", "house.legend.buy");
+    item("sellPrice", "house.legend.sellPrice");
+  } else {
+    item("house", "house.legend.house");
+    if (answer.hours.some((hour) => hour.house_kw !== null && hour.house_forecast_kw !== null)) {
+      item("forecast", "house.legend.forecast");
+    }
+    if (answer.sun !== null) {
+      item("sun", "house.legend.sun");
+    }
   }
   if (answer.battery !== null) {
     item("battery", "house.legend.battery");
     if (answer.hours.some((hour) => hour.battery_action === "grid_charge")) {
       item("charge", "house.legend.charge");
+    }
+    if (answer.hours.some((hour) => hour.battery_action === "export_discharge")) {
+      item("sell", "house.legend.sell");
     }
   }
   return list;
@@ -225,19 +272,25 @@ function chartBlock(input: HouseRenderInput, answer: HouseAnswer): HTMLElement {
   const readout = element(doc, "p", `${C.muted} ${C.readout}`);
   readout.setAttribute("aria-live", "polite");
   const width = Math.max(200, Math.round(input.width));
+  const priced = answer.hours.some((hour) => hour.buy !== null);
+  const view: HouseChartView = priced ? (ui.view ?? "energy") : "energy";
   const chart: HouseChart = renderHouseChart({
     hours: answer.hours,
+    view,
     timeZone: answer.time_zone,
     nowMs,
     width,
     height: houseChartHeight(width),
     labels: {
       kw: (value) => formatNumber(language, value, 1),
+      price: (value) => formatNumber(language, value, 0),
+      priceUnit: answer.money?.minor_unit ?? "",
+      now: translate(language, "house.now"),
       hour: (instantMs) => hourLabel(ctx, instantMs),
       day: (instantMs) => dayCue(ctx, instantMs),
     },
-    title: translate(language, "house.chart.label"),
-    description: translate(language, "house.chart.description"),
+    title: translate(language, view === "price" ? "house.chart.priceLabel" : "house.chart.label"),
+    description: translate(language, view === "price" ? "house.chart.priceDescription" : "house.chart.description"),
     ids: { title: `${input.idPrefix}-title`, description: `${input.idPrefix}-desc` },
   });
   surface.style.height = `${chart.scale.height}px`;
@@ -249,7 +302,7 @@ function chartBlock(input: HouseRenderInput, answer: HouseAnswer): HTMLElement {
     selected = index;
     chart.select(index);
     const hour = index === null ? undefined : answer.hours[index];
-    readout.textContent = hour === undefined ? translate(language, "house.hint") : hourFigures(language, answer, hour, nowMs);
+    readout.textContent = hour === undefined ? translate(language, "house.hint") : hourFigures(language, answer, hour, nowMs, view);
   };
   const indexAt = (event: PointerEvent | MouseEvent): number | null => {
     const box = chart.element.getBoundingClientRect();
@@ -294,8 +347,156 @@ function chartBlock(input: HouseRenderInput, answer: HouseAnswer): HTMLElement {
   });
   show(selected);
   const block = element(doc, "div");
-  block.append(surface, legend(doc, language, answer), readout);
+  if (priced) {
+    const views = element(doc, "div", H.views);
+    views.setAttribute("role", "group");
+    views.setAttribute("aria-label", translate(language, "house.views"));
+    for (const [name, key] of [
+      ["energy", "house.view.energy"],
+      ["price", "house.view.price"],
+    ] as const) {
+      const button = element(doc, "button", C.historyToggleButton, translate(language, key));
+      button.type = "button";
+      button.dataset["view"] = name;
+      button.setAttribute("aria-pressed", String(view === name));
+      button.addEventListener("click", () => handlers.onView?.(name));
+      views.append(button);
+    }
+    block.append(views);
+  }
+  block.append(surface, legend(doc, language, answer, view), readout);
   return block;
+}
+
+function pctOf(language: Language, part: number, whole: number): string {
+  return whole > 0 ? `${formatNumber(language, (part / whole) * 100, 0)} %` : "–";
+}
+
+function flowBlock(doc: Document, language: Language, flow: DayFlow | null): HTMLElement | null {
+  if (flow === null) {
+    return null;
+  }
+  const section = element(doc, "section", `${H.section} ${H.flow}`);
+  section.append(element(doc, "h3", H.heading, translate(language, "house.flow.heading")));
+  const rows: Array<[TranslationKey, Array<[string, TranslationKey, number | null]>]> = [
+    [
+      "house.flow.from",
+      [
+        ["solar", "house.flow.solar", flow.sources.solar],
+        ["battery", "house.flow.battery", flow.sources.battery],
+        ["grid", "house.flow.grid", flow.sources.grid],
+      ],
+    ],
+    [
+      "house.flow.to",
+      [
+        ["battery", "house.flow.battery", flow.uses.battery],
+        ["load", "house.flow.load", flow.uses.load],
+        ["grid", "house.flow.grid", flow.uses.grid],
+      ],
+    ],
+  ];
+  for (const [label, parts] of rows) {
+    const shown = parts.filter((part): part is [string, TranslationKey, number] => part[2] !== null);
+    const whole = shown.reduce((sum, part) => sum + part[2], 0);
+    const row = element(doc, "div", H.flowRow);
+    const bar = element(doc, "div", H.flowBar);
+    bar.setAttribute("aria-hidden", "true");
+    for (const [name, , value] of shown) {
+      if (value <= 0) {
+        continue;
+      }
+      const piece = element(doc, "span", H.flowPart);
+      piece.dataset["part"] = name;
+      piece.style.flexGrow = String(value);
+      bar.append(piece);
+    }
+    row.append(element(doc, "span", H.flowLabel, translate(language, label)), bar);
+    const key = element(
+      doc,
+      "p",
+      H.flowKey,
+      shown.map(([, word, value]) => `${translate(language, word)} ${kwh(language, value)} (${pctOf(language, value, whole)})`).join(" · "),
+    );
+    section.append(row, key);
+  }
+  if (flow.sources.solar !== null && flow.sun_hours < flow.hours) {
+    section.append(element(doc, "p", `${C.muted} ${H.note}`, translate(language, "house.flow.sunLater")));
+  }
+  return section;
+}
+
+function calendarBlock(doc: Document, language: Language, answer: HouseAnswer, nowMs: number): HTMLElement | null {
+  const calendar = answer.calendar;
+  if (calendar === null || calendar.days.length === 0) {
+    return null;
+  }
+  const section = element(doc, "section", H.section);
+  const [year, month] = calendar.month.split("-").map(Number) as [number, number];
+  const first = new Date(Date.UTC(year, month - 1, 1, 12));
+  const monthName = new Intl.DateTimeFormat(language, { month: "long", timeZone: "UTC" }).format(first);
+  section.append(element(doc, "h3", H.heading, translate(language, "house.calendar.heading", { month: monthName })));
+  const grid = element(doc, "div", H.calendar);
+  const weekday = new Intl.DateTimeFormat(language, { weekday: "narrow", timeZone: "UTC" });
+  for (let index = 0; index < 7; index += 1) {
+    // 2024-01-01 was a Monday.
+    const head = element(doc, "span", H.calendarHead, weekday.format(new Date(Date.UTC(2024, 0, 1 + index, 12))));
+    head.setAttribute("aria-hidden", "true");
+    grid.append(head);
+  }
+  const offset = (first.getUTCDay() + 6) % 7;
+  for (let index = 0; index < offset; index += 1) {
+    const blank = element(doc, "span", H.calendarDay);
+    blank.dataset["empty"] = "true";
+    grid.append(blank);
+  }
+  const byDate = new Map(calendar.days.map((day) => [day.date, day]));
+  const length = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  const todayKey = new Intl.DateTimeFormat("en-CA", { timeZone: answer.time_zone }).format(new Date(nowMs));
+  const short = (minor: number): string => formatFixed(language, minor / 100, Math.abs(minor) >= 1000 ? 0 : 1);
+  let plan = 0;
+  let own = 0;
+  for (let number = 1; number <= length; number += 1) {
+    const date = `${calendar.month}-${String(number).padStart(2, "0")}`;
+    const cell = element(doc, "span", H.calendarDay);
+    cell.dataset["date"] = date;
+    if (date === todayKey) {
+      cell.dataset["today"] = "true";
+    }
+    cell.append(element(doc, "span", H.calendarDate, String(number)));
+    const day = byDate.get(date);
+    if (day !== undefined) {
+      plan += day.plan_saving;
+      own += day.own_saving;
+      cell.dataset["result"] = day.plan_saving >= day.own_saving ? "plan" : "own";
+      cell.append(element(doc, "span", H.calendarFigure, short(day.plan_saving)), element(doc, "span", H.calendarDate, short(day.own_saving)));
+      cell.setAttribute(
+        "aria-label",
+        translate(language, "house.calendar.day", {
+          date: dateLabel(language, date),
+          plan: amount(language, day.plan_saving, answer.money),
+          own: amount(language, day.own_saving, answer.money),
+        }),
+      );
+      cell.setAttribute("role", "img");
+    }
+    grid.append(cell);
+  }
+  section.append(grid);
+  section.append(
+    element(
+      doc,
+      "p",
+      `${C.muted} ${H.note}`,
+      translate(language, "house.calendar.total", {
+        plan: amount(language, plan, answer.money),
+        own: amount(language, own, answer.money),
+        days: String(calendar.days.length),
+        unit: answer.money?.major_unit ?? "",
+      }),
+    ),
+  );
+  return section;
 }
 
 function modesTable(doc: Document, language: Language, answer: HouseAnswer): HTMLElement | null {
@@ -498,7 +699,13 @@ export function houseBody(input: HouseRenderInput): HTMLElement {
   if (input.ui.detailsOpen) {
     const details = element(doc, "div", H.details);
     details.id = detailsId;
-    for (const part of [modesTable(doc, language, answer), daysTable(doc, language, answer), sourcesBlock(doc, language, answer, input.entityWords)]) {
+    for (const part of [
+      flowBlock(doc, language, answer.flow),
+      calendarBlock(doc, language, answer, input.nowMs),
+      modesTable(doc, language, answer),
+      daysTable(doc, language, answer),
+      sourcesBlock(doc, language, answer, input.entityWords),
+    ]) {
       if (part !== null) {
         details.append(part);
       }

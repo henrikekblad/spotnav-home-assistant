@@ -56,7 +56,7 @@ export class SpotnavHouseCard extends HTMLElement {
   private hassObject: HomeAssistantLike | null = null;
   private config: HouseCardConfig | null = null;
   private state: HouseState = { kind: "unconfigured" };
-  private ui: HouseUi = { detailsOpen: false, selected: null };
+  private ui: HouseUi = { detailsOpen: false, selected: null, view: "energy" };
   private language: Language | null = null;
   private wantedLanguage: Language | null = null;
   private timer: number | null = null;
@@ -76,7 +76,7 @@ export class SpotnavHouseCard extends HTMLElement {
   setConfig(config: unknown): void {
     this.config = parseHouseConfig(config);
     this.generation += 1;
-    this.ui = { detailsOpen: false, selected: null };
+    this.ui = { detailsOpen: false, selected: null, view: "energy" };
     this.state = this.target() === null ? { kind: "unconfigured" } : { kind: "loading" };
     this.render();
     this.start();
@@ -243,9 +243,20 @@ export class SpotnavHouseCard extends HTMLElement {
         ui: this.ui,
         handlers: {
           onDetails: (open) => {
+            const focused = this.root.activeElement !== null;
             this.ui = { ...this.ui, detailsOpen: open };
             this.render();
-            (this.root.querySelector("[aria-expanded]") as HTMLElement | null)?.focus();
+            if (focused) {
+              (this.root.querySelector("[aria-expanded]") as HTMLElement | null)?.focus();
+            }
+          },
+          onView: (view) => {
+            const focused = this.root.activeElement !== null;
+            this.ui = { ...this.ui, view };
+            this.render();
+            if (focused) {
+              (this.root.querySelector(`button[data-view="${view}"]`) as HTMLElement | null)?.focus();
+            }
           },
           onSelect: (index) => {
             this.ui = { ...this.ui, selected: index };

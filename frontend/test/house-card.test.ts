@@ -10,7 +10,7 @@ import { LANGUAGES, translate } from "../src/i18n";
 import { HOUSE_CARD_ELEMENT, parseHouseConfig, SpotnavHouseCard } from "../src/house-card";
 import { houseChartHeight, renderHouseChart } from "../src/house-chart";
 import { decodeHouse, type HouseAnswer } from "../src/house-model";
-import { amount, hourFigures, houseBody, reviewLine, savingLine, type HouseState, type HouseUi } from "../src/house-view";
+import { amount, hourFigures, houseBody, reviewLine, savingLine, todayLine, type HouseState, type HouseUi } from "../src/house-view";
 import { apiFailure, FakeHass } from "./helpers";
 
 const FIXTURES = join(__dirname, "..", "..", "tests", "fixtures");
@@ -81,8 +81,8 @@ describe("decoding the backend's own answer", () => {
 describe("the lines", () => {
   it("say the reviewed money side by side, in the area's major unit", () => {
     const value = answer();
-    expect(savingLine("en", value)).toBe("Last 7 days: SpotNav's plan 51 kr · the battery itself 48 kr, against plain self-consumption");
-    expect(savingLine("sv", value)).toBe("Senaste 7 dygnen: SpotNavs plan 51 kr · batteriet självt 48 kr, mot ren egenförbrukning");
+    expect(savingLine("en", value)).toBe("Last 7 days: SpotNav's plan 51 kr · the battery itself 45 kr, against plain self-consumption");
+    expect(savingLine("sv", value)).toBe("Senaste 7 dygnen: SpotNavs plan 51 kr · batteriet självt 45 kr, mot ren egenförbrukning");
     expect(amount("sv", 812.4, value.money)).toBe("8,12 kr");
   });
 
@@ -156,7 +156,7 @@ describe("the body", () => {
       ["Egenförbrukning", "0,00 kr", "–"],
       ["Balanserad (gäller)", "8,12 kr", "51 kr"],
       ["Max vinst", "9,05 kr", "51 kr"],
-      ["Batteriets egen optimerare", "–", "48 kr"],
+      ["Batteriets egen optimerare", "–", "45 kr"],
     ]);
     expect(tables[1]!.querySelectorAll("tbody tr")).toHaveLength(7);
     const sources = Array.from(open.querySelectorAll(".spotnav-house-facts li")).map((item) => item.textContent);
@@ -209,6 +209,53 @@ describe("the body", () => {
   });
 });
 
+describe("the battery app's views, calm", () => {
+  it("say today's money in one line, split as the battery's app does, with the mode in force", () => {
+    expect(todayLine("sv", answer())).toBe("I dag: sålt 0,31 kr · arbitrage 12 kr · köpt 38 kr · läge Balanserad");
+    expect(todayLine("sv", answer("house/house_learning.json"))).toBeNull();
+    const card = body(answer(), {}, "sv");
+    expect(card.querySelector("[data-line='today']")?.textContent).toContain("arbitrage");
+    expect(card.querySelector(".spotnav-house-sub")?.textContent).toBe("Batteri 48 %");
+  });
+
+  it("switch the chart between energy and price with the battery, the price view drawing both prices and no bars", () => {
+    const onView = vi.fn();
+    const energy = body(answer(), {}, "en", { onDetails: vi.fn(), onSelect: vi.fn(), onView } as never);
+    const buttons = energy.querySelectorAll<HTMLButtonElement>("button[data-view]");
+    expect(Array.from(buttons).map((button) => button.getAttribute("aria-pressed"))).toEqual(["true", "false"]);
+    buttons[1]!.click();
+    expect(onView).toHaveBeenCalledWith("price");
+    const price = body(answer(), { view: "price" }, "en");
+    const svg = price.querySelector("svg")!;
+    expect(svg.querySelector(".spotnav-house-bar")).toBeNull();
+    expect(svg.querySelector(".spotnav-house-price-buy")?.getAttribute("d")).toMatch(/^M/);
+    expect(svg.querySelector(".spotnav-house-price-sell")).not.toBeNull();
+    expect(Array.from(svg.querySelectorAll("text")).map((text) => text.textContent)).toEqual(expect.arrayContaining(["100 %", "Now"]));
+    expect(svg.querySelectorAll(".spotnav-house-band[data-action='export_discharge']").length).toBeGreaterThan(0);
+    const surface = price.querySelector<HTMLElement>(".spotnav-house-surface")!;
+    document.body.append(price);
+    surface.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
+    expect(price.querySelector(".spotnav-readout")?.textContent).toMatch(/^17:00–18:00 · buy 3\d\d öre\/kWh · sell \d+ öre\/kWh · battery/);
+  });
+
+  it("offer no price view where nothing is priced", () => {
+    expect(body(answer("house/house_learning.json")).querySelector("button[data-view]")).toBeNull();
+  });
+
+  it("show today's energy from sources to uses and the month's days in the details", () => {
+    const card = body(answer(), { detailsOpen: true }, "sv");
+    const keys = Array.from(card.querySelectorAll(".spotnav-house-flow-key")).map((item) => item.textContent);
+    expect(keys[0]).toMatch(/^Sol 4,5 kWh \(\d+ %\) · Batteri 9,8 kWh \(\d+ %\) · Nät 34,3 kWh \(\d+ %\)$/);
+    expect(keys[1]).toMatch(/^Batteri 27,1 kWh/);
+    const days = card.querySelectorAll(".spotnav-house-calendar-day[data-date]");
+    expect(days).toHaveLength(30);
+    expect(card.querySelectorAll(".spotnav-house-calendar-day[data-result='plan']")).toHaveLength(9);
+    expect(card.querySelectorAll(".spotnav-house-calendar-day[data-result='own']")).toHaveLength(3);
+    expect(card.querySelector(".spotnav-house-calendar-day[data-today]")?.getAttribute("data-date")).toBe("2026-11-13");
+    expect(card.querySelector(".spotnav-house-calendar-day[data-date='2026-11-04']")?.getAttribute("aria-label")).toMatch(/^ons 4 nov\.?: SpotNavs plan/);
+  });
+});
+
 describe("the chart's geometry", () => {
   it("is as tall as the width asks, bounded, and maps a point to its hour", () => {
     expect(houseChartHeight(340)).toBe(150);
@@ -221,7 +268,7 @@ describe("the chart's geometry", () => {
       nowMs: NOW,
       width: 340,
       height: 150,
-      labels: { kw: String, hour: () => "", day: () => "" },
+      labels: { kw: String, price: String, priceUnit: "öre", now: "Now", hour: () => "", day: () => "" },
       title: "t",
       description: "d",
       ids: { title: "a", description: "b" },
