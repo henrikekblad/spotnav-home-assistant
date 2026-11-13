@@ -4,6 +4,8 @@ Not part of the integration: a research tool, run by hand with the repository's 
 (`.venv/bin/python scripts/battery_plan_backtest.py --cache DIR`). It reads, never writes, anything outside DIR.
 
 Data
+* The car's energy is the HALO charger's energy register steps (not forward-filled power, which overcounts over write
+  gaps); the power sensor only where the register has no data.
 * Minute means from InfluxDB 3 (database `ha`, written by `influx3_writer`), forward-filled within up-time (no grid
   sample for 10 min is down-time, as in the load-forecast backtest), then quarter-hour means.
 * The day-ahead spot price from ENTSO-E (EUR/MWh) at the ECB's EUR rate of the day before delivery.
@@ -98,7 +100,12 @@ SERIES = {
     "load_kw": ("kW", "sensor.sigen_plant_total_load_power"),
     "soc": ("%", "sensor.sigen_plant_battery_state_of_charge"),
     "car_w": ("W", "sensor.billaddning_effekt"),
+    "car_reg": ("kWh", "sensor.halo_charger_connector_1_energy_active_import_register"),
 }
+#: A register step over a gap up to this long is spread over the gap; a longer gap with energy in it is missing.
+REGISTER_GAP = timedelta(minutes=10)
+#: The car power sensor is held over a write gap for at most this many minutes.
+CAR_POWER_FILL = 3
 #: Sigenergy's total load reads 0.23 kW below grid + pv - battery (load-forecast backtest); used before it existed.
 DERIVED_BIAS_KW = 0.23
 
@@ -130,14 +137,18 @@ def _cached(path: Path, fetch: Callable[[], object]) -> object:
 # ----------------------------------------------------------------------------- data
 
 
-def _influx_minutes(table: str, entity: str, start: datetime, end: datetime) -> list[list]:
+def _influx_minutes(table: str, entity: str, start: datetime, end: datetime, raw: bool = False) -> list[list]:
     token = _token("influx-ha-token")
     rows: list[list] = []
     month = start
     while month < end:
         upto = min(end, month + timedelta(days=31))
         sql = (
-            f"SELECT date_bin(interval '1 minute', time) AS t, AVG(value) AS v FROM \"{table}\" "
+            f"SELECT time AS t, value AS v FROM \"{table}\" "
+            f"WHERE entity_id = '{entity}' AND time >= '{month:%Y-%m-%dT%H:%M:%S}' "
+            f"AND time < '{upto:%Y-%m-%dT%H:%M:%S}' ORDER BY t"
+            if raw
+            else f"SELECT date_bin(interval '1 minute', time) AS t, AVG(value) AS v FROM \"{table}\" "
             f"WHERE entity_id = '{entity}' AND time >= '{month:%Y-%m-%dT%H:%M:%S}' "
             f"AND time < '{upto:%Y-%m-%dT%H:%M:%S}' GROUP BY t ORDER BY t"
         )
@@ -193,20 +204,63 @@ def _ecb_sek() -> dict[str, float]:
     return out
 
 
-def _quarter_means(rows: list[list], up: list[bool], t0: datetime, minutes: int) -> list[float | None]:
-    """Forward-filled minute values, blanked in down-time, as quarter-hour means."""
+def _quarter_means(
+    rows: list[list], up: list[bool], t0: datetime, minutes: int, max_fill: int | None = None
+) -> list[float | None]:
+    """Forward-filled minute values, blanked in down-time, as quarter-hour means. `max_fill`: hold a value at most
+    this many minutes past its last sample."""
     filled: list[float | None] = [None] * minutes
     index = {(datetime.fromisoformat(t).replace(tzinfo=timezone.utc) - t0) // timedelta(minutes=1): v for t, v in rows}
     value = None
+    last = None
     for minute in range(minutes):
         if minute in index and index[minute] is not None:
             value = index[minute]
-        filled[minute] = value if up[minute] else None
+            last = minute
+        held = max_fill is None or (last is not None and minute - last <= max_fill)
+        filled[minute] = value if up[minute] and held else None
     out: list[float | None] = []
     for q in range(minutes // 15):
-        chunk = [v for v in filled[q * 15:(q + 1) * 15] if v is not None]
-        out.append(sum(chunk) / len(chunk) if len(chunk) >= 10 else None)
+        block = filled[q * 15:(q + 1) * 15]
+        chunk = [v for v in block if v is not None]
+        if max_fill is not None:  # a held-only value: minutes without a sample count as zero, never as the last value
+            out.append(sum(chunk) / 15 if sum(up[q * 15:(q + 1) * 15]) >= 10 else None)
+        else:
+            out.append(sum(chunk) / len(chunk) if len(chunk) >= 10 else None)
     return out
+
+
+def _register_quarters(points: list[list], t0: datetime, quarters: int) -> tuple[list[float | None], int]:
+    """The car's energy per quarter hour (kWh) from an energy register's samples, None where the register says
+    nothing: before its first sample, after its last, over a reset, and over a gap longer than REGISTER_GAP with
+    energy in it (no energy is invented there). Returns the quarters and the number of missing steps."""
+    energy: list[float | None] = [None] * quarters
+    missing = 0
+    stamps = [(datetime.fromisoformat(t).replace(tzinfo=timezone.utc), v) for t, v in points if v is not None]
+
+    def spread(a: datetime, b: datetime, kwh: float) -> None:
+        span = (b - a).total_seconds()
+        first, last = max(0, (a - t0) // SLOT), min(quarters - 1, (b - t0) // SLOT)
+        for q in range(first, last + 1):
+            lo, hi = max(a, t0 + SLOT * q), min(b, t0 + SLOT * (q + 1))
+            if hi > lo:
+                energy[q] = (energy[q] or 0.0) + (kwh * (hi - lo).total_seconds() / span if span > 0 else 0.0)
+
+    def idle(a: datetime, b: datetime) -> None:
+        for q in range(max(0, (a - t0) // SLOT), min(quarters - 1, (b - t0) // SLOT) + 1):
+            energy[q] = energy[q] or 0.0
+
+    for (a, va), (b, vb) in zip(stamps, stamps[1:]):
+        delta = vb - va
+        if delta < -0.0005:
+            missing += 1
+        elif b - a <= REGISTER_GAP:
+            spread(a, b, delta)
+        elif delta <= 0.005:
+            idle(a, b)
+        else:
+            missing += 1
+    return energy, missing
 
 
 @dataclass
@@ -234,8 +288,8 @@ class History:
         return total
 
     def car_kw(self, i: int) -> float:
-        """The car as part of the load. With `balance` it is cut to the site's load: on some days the car sensor
-        reads more than Sigenergy's meters saw (2026-10-13, 10-22, 11-01..03, 11-07, 11-09)."""
+        """The car as part of the load. With `balance` it is cut to the site's load (a guard; the register-based car no
+        longer exceeds it)."""
         total = self.total(i)
         return min(self.car[i], max(0.0, total)) if self.balance and total is not None else self.car[i]
 
@@ -249,7 +303,10 @@ def load_history(start: datetime, end: datetime, cache: Path) -> History:
     minutes = int((end - start) / timedelta(minutes=1))
     tag = f"{start:%Y%m%d}_{end:%Y%m%d}"
     raw = {
-        name: _cached(cache / f"{name}_{tag}.json.gz", lambda t=table, e=entity: _influx_minutes(t, e, start, end))
+        name: _cached(
+            cache / f"{name}_{tag}.json.gz",
+            lambda t=table, e=entity, r=(name == "car_reg"): _influx_minutes(t, e, start, end, r),
+        )
         for name, (table, entity) in SERIES.items()
     }
     seen = [False] * minutes
@@ -258,8 +315,14 @@ def load_history(start: datetime, end: datetime, cache: Path) -> History:
         if 0 <= m < minutes:
             seen[m] = True
     up = [any(seen[max(0, m - 9):m + 1]) for m in range(minutes)]
-    q = {name: _quarter_means(rows, up, start, minutes) for name, rows in raw.items()}
-    car = [(v or 0.0) / 1000 for v in q["car_w"]]
+    q = {
+        name: _quarter_means(rows, up, start, minutes, CAR_POWER_FILL if name == "car_w" else None)
+        for name, rows in raw.items()
+        if name != "car_reg"
+    }
+    # The car's energy: the HALO register's steps where it has them, else the power sensor (held over short gaps only).
+    register, _missing = _register_quarters(raw["car_reg"], start, minutes // 15)
+    car = [4 * e if e is not None else (v or 0.0) / 1000 for e, v in zip(register, q["car_w"])]
     history = History(start, q["grid_kw"], q["pv_kw"], q["batt_kw"], q["load_kw"], q["soc"], car)
 
     prices = _cached(cache / f"entsoe_{tag}.json.gz", lambda: _entsoe_prices(start - timedelta(days=1), end))
