@@ -859,8 +859,8 @@ class VehicleIdentifier:
         session.unsubscribe.append(
             async_track_point_in_utc_time(self._hass, self._question_end, now + timedelta(seconds=QUESTION_FOR_S))
         )
-        # The re-reads of an earlier plug-in are forgotten, all but one whose echo may still come after this one's
-        # start (the limiter may skip this plug-in's own re-read for it).
+        # The re-reads of an earlier plug-in are forgotten, all but those of the last `REFRESH_ECHO_S`, whose echo may
+        # still come after this one's start (the limiter may skip this plug-in's own re-read for it).
         since = now - timedelta(seconds=REFRESH_ECHO_S)
         self._refreshed_at = {
             car: kept for car, times in self._refreshed_at.items() if (kept := [at for at in times if at >= since])
