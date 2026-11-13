@@ -171,11 +171,14 @@ class RunHistory:
         self.runs = [(start, end) for start, end in self.runs if end > oldest]
 
     def on_seconds(self, start: datetime, end: datetime, *, assumed_s: float = 0.0) -> float:
-        """How long the load ran within `[start, end)`, with `assumed_s` counted as run just before `tracked_since`."""
+        """How long the load ran within `[start, end)`, with `assumed_s` counted as run just before the quarter hour
+        `tracked_since` falls in."""
         total = 0.0
         runs: list[tuple[datetime, datetime]] = list(self.runs)
         if assumed_s > 0 and self.tracked_since is not None:
-            runs.append((self.tracked_since - timedelta(seconds=assumed_s), self.tracked_since))
+            # Ending at the start of its quarter hour, so a plan made in that quarter hour counts all of it.
+            anchor = quarter_start(self.tracked_since)
+            runs.append((anchor - timedelta(seconds=assumed_s), anchor))
         for first, last in runs:
             overlap = (min(end, last) - max(start, first)).total_seconds()
             if overlap > 0:
@@ -220,6 +223,9 @@ def deadlines(history: RunHistory, now: datetime, runtime_h: float) -> tuple[tup
     most one window ahead, needing the whole runtime."""
     need_s = runtime_h * 3600.0
     first = quarter_start(now)
+    if history.tracked_since is None:
+        # No history yet: it begins now.
+        history = RunHistory(now, list(history.runs))
     steps: list[tuple[datetime, int]] = []
     last = 0
     for index in range(1, int(WINDOW / QUARTER) + 1):
