@@ -1,8 +1,8 @@
 """The forecast log and its nightly review (SpotNav 3.0): how well each forecast hit, kept short and bounded.
 
 Pure: the clock is passed in. One log per site, any number of *kinds* (today `house_kw`, the house load forecast,
-and `house_kw_raw`, the same before its in-day adjustment; later the sun's and the battery plan's), each kept the
-same way:
+`house_kw_raw`, the same before its in-day adjustment, and `house_day_ahead`, the next day's as made at the day-ahead
+price publication; later the sun's and the battery plan's), each kept the same way:
 
 * **The first forecast** made for each hour is logged (`record_forecast`), with when it was made, so its lead is
   known. A later forecast for the same hour never replaces it: the review scores what was known first. Only hours
@@ -31,6 +31,11 @@ from .. import time_zones
 KIND_HOUSE: Final = "house_kw"
 #: The same forecast before its in-day adjustment, logged beside it so the review shows what the adjustment earns.
 KIND_HOUSE_RAW: Final = "house_kw_raw"
+#: The next day's forecast as made at the day-ahead price publication (`next_day_hours`): the figure that day's plans
+#: count on, reviewed beside the first-made one (`house_kw`, up to 48 hours ahead).
+KIND_HOUSE_DAY_AHEAD: Final = "house_day_ahead"
+#: The local hour from which the next day's prices are out (the day-ahead auction's results, ~12:45 CET).
+DAY_AHEAD_HOUR: Final = 13
 
 #: The hours of the last this many days are kept (the outcome is compared once the hour has completed).
 KEEP_HOURS_DAYS: Final = 14
@@ -47,6 +52,18 @@ STORE_VERSION: Final = 1
 #: The local hours of the charging night and of the evening, as the backtest reports them.
 NIGHT_HOURS: Final = frozenset((22, 23, 0, 1, 2, 3, 4, 5, 6))
 EVENING_HOURS: Final = frozenset((16, 17, 18, 19))
+
+
+def next_day_hours(by_hour: Mapping[datetime, float], now: datetime, tz: str) -> dict[datetime, float]:
+    """The hours of the next local day in a forecast, from `DAY_AHEAD_HOUR` local on (empty before it): logged as
+    `KIND_HOUSE_DAY_AHEAD`, whose first forecast per hour is then the one made at (or, after a restart, soonest after)
+    the publication."""
+    zone = time_zones.require_zone(tz)
+    local = now.astimezone(zone)
+    if local.hour < DAY_AHEAD_HOUR:
+        return {}
+    tomorrow = local.date() + timedelta(days=1)
+    return {start: kw for start, kw in by_hour.items() if start.astimezone(zone).date() == tomorrow}
 
 
 def _number(value: Any) -> bool:
