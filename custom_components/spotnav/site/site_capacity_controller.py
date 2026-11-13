@@ -1198,8 +1198,10 @@ class SiteCapacityController:
             grid_w = site_net_grid_w(self)
             car_w = None if grid_w is None else site_car_w(self.hass, self)
             # A battery's discharge is kept beside the hour for an import target under `battery_first` only; its
-            # signed power on every site that reads one, for the house's whole load (`site/house_forecast.py`).
+            # signed power on every site that reads one, for the house's whole load (`site/house_forecast.py`), and
+            # 0 on a site without one (`grid - car` is then the house less the sun).
             discharge_w = self._battery_first_discharge()[1]
+            battery_set, battery_w = self._battery_live_w()
             self.demand.observe(
                 grid_w,
                 car_w,
@@ -1208,7 +1210,7 @@ class SiteCapacityController:
                 target=self._target_mark(),
                 components=lambda: site_demand_components(self.hass, self.entry_id),
                 outdoor_c=self.house_forecast.outdoor_c(),
-                battery_w=self._battery_live_w()[1],
+                battery_w=battery_w if battery_set else 0.0,
             )
             self.house_forecast.tick()
         except Exception:  # noqa: BLE001 - a measurement must never disturb the site
