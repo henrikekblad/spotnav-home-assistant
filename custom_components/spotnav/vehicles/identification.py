@@ -14,9 +14,9 @@ ask deadline, at most once a minute per car (the refresh limiter `vehicle_refres
 * weak +: it is on but went on earlier, or the tracker says home;
 * strong -: the car's plug sensor went to "not plugged" around or after the plug-in (one that only says it again
   says nothing: a cloud cache is re-written on every poll), a position away from home reported after the plug-in
-  or at most two minutes before it and not the echo of SpotNav's own re-read (an older one may be the drive
-  home), or the car identified at another SpotNav charger that is connected (a car just decided there counts at
-  once).
+  or at most two minutes before it and not the echo of any of SpotNav's own re-reads at this plug-in (an older one
+  may be the drive home; a slow cloud's echo stays an echo after a later re-read), or the car identified at another
+  SpotNav charger that is connected (a car just decided there counts at once).
 
 **Automatic** (`decide`): exactly one strong + is the car; else the only one not excluded is; two strong +
 is a conflict and asks at once; otherwise it asks after `ASK_AFTER_S` and keeps listening until
@@ -207,8 +207,8 @@ class Candidate:
     location_reported: datetime | None = None
     #: The car is identified at another SpotNav charger that is connected.
     elsewhere: bool = False
-    #: When SpotNav last asked Home Assistant to re-read this car's entities (`REFRESH_ECHO_S`).
-    refreshed_at: datetime | None = None
+    #: Every time SpotNav asked Home Assistant to re-read this car's entities at this plug-in (`REFRESH_ECHO_S`).
+    refreshed_at: tuple[datetime, ...] = ()
     #: The plug entity is a charging-state enum, read by its own rule (`plug_reading`).
     plug_charging_state: bool = False
 
@@ -224,12 +224,12 @@ class Evidence:
 
 def _fresh(candidate: Candidate, t0: datetime) -> bool:
     """The position was reported after the plug-in, or just before it (never a report from the drive home), and
-    not as the echo of SpotNav's own re-read: a cloud cache written again is reported without the car saying
-    anything."""
-    reported, changed, refreshed_at = candidate.location_reported, candidate.location_changed, candidate.refreshed_at
+    not as the echo of one of SpotNav's own re-reads: a cloud cache written again is reported without the car saying
+    anything. Any re-read counts, not only the last: a slow cloud's echo stays an echo after a later re-read."""
+    reported, changed = candidate.location_reported, candidate.location_changed
     if reported is None or reported < t0 - timedelta(seconds=POSITION_MARGIN_BEFORE_S):
         return False
-    echo = refreshed_at is not None and refreshed_at <= reported <= refreshed_at + timedelta(seconds=REFRESH_ECHO_S)
+    echo = any(at <= reported <= at + timedelta(seconds=REFRESH_ECHO_S) for at in candidate.refreshed_at)
     return not echo or (changed is not None and changed >= t0 - timedelta(seconds=POSITION_MARGIN_BEFORE_S))
 
 
@@ -418,8 +418,8 @@ class VehicleIdentifier:
         self._switches = 0
         self._switch_lock = asyncio.Lock()
         self._unplug_cancel: CALLBACK_TYPE | None = None
-        # When SpotNav last asked Home Assistant to re-read each car (its echo is no report).
-        self._refreshed_at: dict[str, datetime] = {}
+        # When SpotNav asked Home Assistant to re-read each car at this plug-in (each one's echo is no report).
+        self._refreshed_at: dict[str, list[datetime]] = {}
         # When the candidate cars' plug and position entities really changed or reported, seen live: a state
         # written at Home Assistant's start, or re-created, is no report (`identification_changes`).
         self._changes = SourceChanges(hass)
@@ -851,6 +851,12 @@ class VehicleIdentifier:
         session.unsubscribe.append(
             async_track_point_in_utc_time(self._hass, self._question_end, now + timedelta(seconds=QUESTION_FOR_S))
         )
+        # The re-reads of an earlier plug-in are forgotten, all but one whose echo may still come after this one's
+        # start (the limiter may skip this plug-in's own re-read for it).
+        since = now - timedelta(seconds=REFRESH_ECHO_S)
+        self._refreshed_at = {
+            car: kept for car, times in self._refreshed_at.items() if (kept := [at for at in times if at >= since])
+        }
         self._refresh(ids)
         self._evaluate()
         if session.mode == IDENTIFY_ASK and self._session is session and not single:
@@ -955,7 +961,7 @@ class VehicleIdentifier:
             if not entities or limiter.retry_after_s(car) is not None:
                 continue
             limiter.note_refresh(car)
-            self._refreshed_at[car] = dt_util.utcnow()
+            self._refreshed_at.setdefault(car, []).append(dt_util.utcnow())
             self._hass.async_create_task(self._async_update(entities), eager_start=False)
 
     async def _async_update(self, entities: list[str]) -> None:
@@ -983,7 +989,7 @@ class VehicleIdentifier:
                 location_changed=self._changes.changed(location),
                 location_reported=self._changes.reported(location),
                 elsewhere=self._elsewhere(car),
-                refreshed_at=self._refreshed_at.get(car),
+                refreshed_at=tuple(self._refreshed_at.get(car, ())),
                 plug_charging_state=plug_id is not None and is_charging_state_source(self._hass, plug_id),
             )
             evidence = judge(candidate, session.t0, now)
