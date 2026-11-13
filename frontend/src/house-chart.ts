@@ -1,5 +1,7 @@
-// The house card's one chart, as SVG: the house's load per hour, the sun, and the battery's charge level, from 12
-// hours back to 24 hours ahead on one real-time axis.
+// The house card's one chart, as SVG, from 12 hours back to 24 hours ahead on one real-time axis, in one of two
+// views (like the battery app's two charts): "energy", the house's load per hour, the sun and the battery's level;
+// "price", the buy and sell price per hour (left axis, minor unit per kWh) with the battery's level (right axis).
+// Both tint the hours the plan charges from the grid (violet) and sells to the grid (teal), and mark now ("Nu").
 //
 // * The house: a bar per hour, the measured load in the past and the forecast ahead (lighter); over a past bar a short
 //   line stands at what was forecast for that hour first, so a miss shows at a glance.
@@ -29,9 +31,16 @@ export function houseChartHeight(width: number): number {
   return Math.round(Math.min(HOUSE_DENSITY.maxHeight, Math.max(HOUSE_DENSITY.minHeight, bounded * HOUSE_DENSITY.heightRatio)));
 }
 
+export type HouseChartView = "energy" | "price";
+
 export interface HouseChartLabels {
   /** A kW axis label. */
   kw(value: number): string;
+  /** A price axis label (minor unit per kWh), and the unit's name for the top label. */
+  price(value: number): string;
+  priceUnit: string;
+  /** The word on the now line. */
+  now: string;
   /** The hour label under a gridline ("06"), or the day's cue at midnight ("lör 14"). */
   hour(instantMs: number): string;
   day(instantMs: number): string;
@@ -39,6 +48,7 @@ export interface HouseChartLabels {
 
 export interface HouseChartInput {
   hours: readonly HouseHour[];
+  view?: HouseChartView;
   timeZone: string;
   nowMs: number;
   width: number;
@@ -113,19 +123,23 @@ function pathOf(points: Array<{ x: number; y: number } | null>, area: boolean, b
 
 export function renderHouseChart(input: HouseChartInput): HouseChart {
   const { hours, nowMs, labels } = input;
+  const view = input.view ?? "energy";
   const count = hours.length;
   const startMs = hours[0]!.startMs;
   const endMs = hours[count - 1]!.startMs + HOUR_MS;
   const axis = rangeAxis(startMs, endMs);
   const values: number[] = [];
   for (const hour of hours) {
-    for (const value of [hour.house_kw, hour.house_forecast_kw, sunShown(hour, nowMs), hour.sun_forecast_kwh]) {
+    const shown = view === "price" ? [hour.buy, hour.sell] : [hour.house_kw, hour.house_forecast_kw, sunShown(hour, nowMs), hour.sun_forecast_kwh];
+    for (const value of shown) {
       if (value !== null) {
         values.push(value);
       }
     }
   }
-  const scale = chartScale(input.width, input.height, values, HOUSE_DENSITY);
+  const base_ = chartScale(input.width, input.height, values, HOUSE_DENSITY);
+  // The price view keeps a gutter on the right for the battery's 0-100 % axis.
+  const scale: ChartScale = view === "price" ? { ...base_, right: base_.right - base_.axisTextSize * 2.6 } : base_;
   const x = (instantMs: number): number => xForWallClock(scale, axis.position(instantMs));
   const centre = (hour: HouseHour): number => x(hour.startMs + HOUR_MS / 2);
   const socY = (pct: number): number => scale.bottom - (Math.min(100, Math.max(0, pct)) / 100) * (scale.bottom - scale.top);
@@ -165,7 +179,11 @@ export function renderHouseChart(input: HouseChartInput): HouseChart {
   root.append(bands);
 
   const grid = svg("g", { class: C.axis });
-  for (const label of gutterLabels(scale, (value) => (value === scale.maxValue ? `${labels.kw(value)} kW` : labels.kw(value)))) {
+  const axisLabel = (value: number): string => {
+    const text = view === "price" ? labels.price(value) : labels.kw(value);
+    return value === scale.maxValue ? `${text} ${view === "price" ? labels.priceUnit : "kW"}` : text;
+  };
+  for (const label of gutterLabels(scale, axisLabel)) {
     grid.append(svg("line", { class: C.gridline, x1: scale.left, x2: scale.right, y1: label.y, y2: label.y }));
     const tick = svg("text", { class: C.axisLabel, x: scale.pad, y: label.y + scale.axisTextSize * 0.35, "text-anchor": "start" });
     tick.textContent = label.label;
@@ -200,13 +218,42 @@ export function renderHouseChart(input: HouseChartInput): HouseChart {
   }
   root.append(grid);
 
+  if (view === "price") {
+    for (const pct of [0, 50, 100]) {
+      const tick = svg("text", {
+        class: C.axisLabel,
+        x: scale.width - scale.pad * 0.4,
+        y: socY(pct) + scale.axisTextSize * 0.35,
+        "text-anchor": "end",
+      });
+      tick.textContent = `${pct} %`;
+      grid.append(tick);
+    }
+  }
+
   // The sun: the area, then the raw forecast dotted over it.
   const base = yAt(scale, 0);
+  if (view === "price") {
+    for (const [key, className] of [
+      ["sell", H.priceSell],
+      ["buy", H.priceBuy],
+    ] as const) {
+      const points = hours.flatMap((hour) => {
+        const value = hour[key];
+        if (value === null) {
+          return [null];
+        }
+        const y = yAt(scale, value);
+        return [{ x: x(hour.startMs), y }, { x: x(hour.startMs + HOUR_MS), y }];
+      });
+      root.append(svg("path", { class: className, d: pathOf(points, false, base) }));
+    }
+  }
   const sunPoints = hours.map((hour) => {
     const value = sunShown(hour, nowMs);
     return value === null ? null : { x: centre(hour), y: yAt(scale, value) };
   });
-  if (sunPoints.some((point) => point !== null && point.y < base - 0.5)) {
+  if (view === "energy" && sunPoints.some((point) => point !== null && point.y < base - 0.5)) {
     root.append(svg("path", { class: H.sunArea, d: pathOf(sunPoints, true, base) }));
     // Only where the sun is up (and the hour either side, so the line starts and ends on the baseline).
     const up = (index: number): boolean => (hours[index]?.sun_forecast_kwh ?? 0) > 0;
@@ -220,7 +267,7 @@ export function renderHouseChart(input: HouseChartInput): HouseChart {
 
   // The house: a bar per hour, and over a measured bar the first forecast as a short line.
   const bars = svg("g", { class: H.bars });
-  for (const hour of hours) {
+  for (const hour of view === "energy" ? hours : []) {
     const shown = houseShown(hour);
     const left = x(hour.startMs);
     const width = x(hour.startMs + HOUR_MS) - left;
@@ -270,11 +317,14 @@ export function renderHouseChart(input: HouseChartInput): HouseChart {
   }
 
   const now = svg("line", { class: C.now, x1: x(nowMs), x2: x(nowMs), y1: scale.top, y2: scale.bottom });
+  const nowLabel = svg("text", { class: `${C.tickLabel} ${H.nowLabel}`, x: x(nowMs) + 3, y: scale.top + scale.axisTextSize * 0.9, "text-anchor": "start" });
+  nowLabel.textContent = labels.now;
   if (nowMs < startMs || nowMs > endMs) {
     now.setAttribute("display", "none");
+    nowLabel.setAttribute("display", "none");
   }
   const selection = svg("line", { class: C.selection, x1: 0, x2: 0, y1: scale.top, y2: scale.bottom, display: "none" });
-  root.append(now, selection);
+  root.append(now, nowLabel, selection);
 
   return {
     element: root,
