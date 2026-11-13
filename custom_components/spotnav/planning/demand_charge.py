@@ -56,6 +56,10 @@ class HourMean:
     #: all twelve rows of it for every grid entity, and `kw` is their mean. Counts for the free level like a
     #: measured hour. Always `False` for a measured hour.
     complete: bool = False
+    #: The outdoor temperature (°C) over the hour: the mean of the site's weather entity's readings while the hour
+    #: was measured (`site/house_forecast.py`), `None` when none was read. The house load forecast's temperature term
+    #: only (`site/load_forecast.py`); it never enters a peak.
+    outdoor_c: float | None = None
 
 
 @dataclass(frozen=True, slots=True)

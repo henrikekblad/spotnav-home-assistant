@@ -22,6 +22,10 @@ import target; this module only measures and never decides anything a charger is
 
 * **Import target**: each hour carries whether the site's import target held a charger's current down or paused a
   charger in it (`TargetMark`, from the site's last decision), for the power view only.
+* **Outdoor temperature**: each hour carries the mean of the site's weather entity's readings while it was measured
+  (`HourMean.outdoor_c`), for the house load forecast's temperature term (`site/load_forecast.py`). It is kept beside
+  the rows (`outdoor_c` in the month's document, keyed by the hour's start), never in them, so a release that knows the
+  rows only still reads every row.
 * **Two years of days**: beside the hours, a summary per day of each month is kept for two years
   (`site/power_history.py`), refiled from the hours when an hour completes.
 * **Back-fill** (`SiteDemand.async_backfill`): once, when the site first measures (or when the power view finds no
@@ -120,6 +124,9 @@ class RunningHour:
     #: The site's import target held a charger's current down, or paused a charger, at some point in this hour.
     held: bool = False
     paused: bool = False
+    #: The outdoor temperature's readings this hour (°C): their sum and how many (`HourMean.outdoor_c` is the mean).
+    outdoor_sum: float = 0.0
+    outdoor_n: int = 0
 
     @property
     def gap_s(self) -> float:
@@ -144,6 +151,8 @@ class RunningHour:
             "last_at": None if self.last_at is None else self.last_at.isoformat(),
             "held": self.held,
             "paused": self.paused,
+            "outdoor_sum": round(self.outdoor_sum, 3),
+            "outdoor_n": self.outdoor_n,
         }
 
     @classmethod
@@ -162,6 +171,10 @@ class RunningHour:
         discharge = [raw.get(key, 0.0) for key in ("discharge_wh", "discharge_covered_s")]
         if not all(_number(value) and value >= 0 for value in discharge) or discharge[1] > HOUR_S:
             discharge = [0.0, 0.0]
+        # Kept since the house load forecast: a record without them (or with a bad one) has no temperature.
+        outdoor_sum, outdoor_n = raw.get("outdoor_sum", 0.0), raw.get("outdoor_n", 0)
+        if not _number(outdoor_sum) or isinstance(outdoor_n, bool) or not isinstance(outdoor_n, int) or outdoor_n < 0:
+            outdoor_sum, outdoor_n = 0.0, 0
         return cls(
             start=start,
             import_wh=float(numbers[0]),
@@ -173,11 +186,23 @@ class RunningHour:
             last_at=last_at,
             held=raw.get("held") is True,
             paused=raw.get("paused") is True,
+            outdoor_sum=float(outdoor_sum),
+            outdoor_n=outdoor_n,
         )
 
 
 def _number(value: Any) -> bool:
     return not isinstance(value, bool) and isinstance(value, (int, float)) and math.isfinite(value)
+
+
+#: An outdoor temperature outside this range (°C) is not a reading: it is not recorded.
+OUTDOOR_MIN_C: Final = -70.0
+OUTDOOR_MAX_C: Final = 60.0
+
+
+def outdoor_reading(value: Any) -> float | None:
+    """`value` as an outdoor temperature (°C), or `None` when it is not a plausible one."""
+    return float(value) if _number(value) and OUTDOOR_MIN_C <= value <= OUTDOOR_MAX_C else None
 
 
 def _instant(raw: Any) -> datetime | None:
@@ -285,11 +310,13 @@ class HourTracker:
         car_w: float | None,
         discharge_w: float | None = None,
         target: TargetMark | None = None,
+        outdoor_c: float | None = None,
     ) -> bool:
         """Take a reading at `now`: the time since the last one is integrated at the last reading (held at most
         `HOLD_MAX_S`), completed hours are kept, and from now on `grid_w`/`car_w`/`discharge_w` are held. `target`
-        marks the running hour when it is the hour the import target held or paused a charger in. Returns whether
-        the month's hours changed (an hour completed, or the month rolled)."""
+        marks the running hour when it is the hour the import target held or paused a charger in; `outdoor_c` (°C) is
+        one reading of the outdoor temperature in it. Returns whether the month's hours changed (an hour completed,
+        or the month rolled)."""
         now = now.astimezone(timezone.utc)
         changed = False
         running = self.running
@@ -324,6 +351,10 @@ class HourTracker:
         if target is not None and target.hour_start == running.start:
             running.held |= target.held
             running.paused |= target.paused
+        outdoor = outdoor_reading(outdoor_c)
+        if outdoor is not None:
+            running.outdoor_sum += outdoor
+            running.outdoor_n += 1
         self.running = running
         changed |= self._roll_to(month_of(running.start, self.tz))
         return changed
@@ -362,6 +393,7 @@ class HourTracker:
             held=running.held,
             paused=running.paused,
             floor_kw=running.import_wh / HOUR_S * 3.6,
+            outdoor_c=round(running.outdoor_sum / running.outdoor_n, 2) if running.outdoor_n > 0 else None,
         )
         month = month_of(hour.start, self.tz)
         changed = self._roll_to(month)
@@ -406,6 +438,7 @@ class HourTracker:
             "previous_month": _month_text(self.previous_month),
             "previous": [hour_row(hour) for hour in self.previous],
             "complete": [hour.start.isoformat() for hour in (*self.previous, *self.hours) if hour.complete],
+            "outdoor_c": outdoor_by_start((*self.previous, *self.hours)),
         }
 
     def restore(self, month_data: Any, running_data: Any) -> bool:
@@ -417,13 +450,16 @@ class HourTracker:
             month = _month_from(month_data.get("month"))
             if month is not None:
                 complete = _complete_starts(month_data.get("complete"))
+                outdoor = _outdoor_from(month_data.get("outdoor_c"))
                 migrate = _has_ninth(month_data.get("hours")) or _has_ninth(month_data.get("previous"))
                 self.month = month
-                self.hours = _with_complete(_rows(month_data.get("hours")), complete)
+                self.hours = _with_outdoor(_with_complete(_rows(month_data.get("hours")), complete), outdoor)
                 previous = _month_from(month_data.get("previous_month"))
                 if previous is not None:
                     self.previous_month = previous
-                    self.previous = _with_complete(_rows(month_data.get("previous")), complete)
+                    self.previous = _with_outdoor(
+                        _with_complete(_rows(month_data.get("previous")), complete), outdoor
+                    )
         running = RunningHour.from_dict(running_data)
         if running is not None:
             self.running = running
@@ -446,6 +482,29 @@ def _with_complete(hours: list[HourMean], complete: set[datetime]) -> list[HourM
         replace(hour, complete=True) if hour.imported and not hour.complete and hour.start in complete else hour
         for hour in hours
     ]
+
+
+def outdoor_by_start(hours: Sequence[HourMean]) -> dict[str, float]:
+    """The hours' outdoor temperatures by start (ISO), those with one only: kept and shown beside the rows."""
+    return {hour.start.isoformat(): hour.outdoor_c for hour in hours if hour.outdoor_c is not None}
+
+
+def _outdoor_from(raw: Any) -> dict[datetime, float]:
+    if not isinstance(raw, dict):
+        return {}
+    kept: dict[datetime, float] = {}
+    for key, value in raw.items():
+        start, reading = _instant(key), outdoor_reading(value)
+        if start is not None and reading is not None:
+            kept[start] = reading
+    return kept
+
+
+def _with_outdoor(hours: list[HourMean], outdoor: dict[datetime, float]) -> list[HourMean]:
+    """`hours`, each with its outdoor temperature where one is kept for its start."""
+    if not outdoor:
+        return hours
+    return [replace(hour, outdoor_c=outdoor[hour.start]) if hour.start in outdoor else hour for hour in hours]
 
 
 def _rows(raw: Any) -> list[HourMean]:
@@ -549,10 +608,11 @@ class SiteDemand:
         *,
         target: TargetMark | None = None,
         components: Callable[[], Sequence[DemandComponent]] | None = None,
+        outdoor_c: float | None = None,
     ) -> None:
         """One reading of the site (at most every `OBSERVE_MIN_S`). `target` marks the hour the import target held or
         paused a charger in; `components` gives the demand charge's components when an hour completes (its month's
-        days are filed against them). Never raises."""
+        days are filed against them); `outdoor_c` is the outdoor temperature now (°C). Never raises."""
         if not self.due():
             return
         try:
@@ -561,7 +621,7 @@ class SiteDemand:
             self.readings += 1
             if tz is not None and tz != self.tracker.tz:
                 self.tracker.tz = tz
-            changed = self.tracker.observe(now, grid_w, car_w, discharge_w, target)
+            changed = self.tracker.observe(now, grid_w, car_w, discharge_w, target, outdoor_c)
             if changed:
                 if self._month_store is not None:
                     self._month_store.changed()
@@ -796,6 +856,8 @@ class SiteDemand:
             "incomplete_hours": snapshot.incomplete_hours,
             "hours": [hour_row(hour) for hour in self.tracker.month_hours(now)],
             "complete_hours": [hour.start.isoformat() for hour in self.tracker.month_hours(now) if hour.complete],
+            # The outdoor temperature (°C) of each hour that has one, by its start.
+            "outdoor_c": outdoor_by_start(self.tracker.month_hours(now)),
             "months_with_days": len(self.archive.months),
             "backfill": self.archive.backfill,
         }
