@@ -638,6 +638,12 @@
       "expected_solar_surplus": {
         "name": "Odotettu aurinkoylijäämä"
       },
+      "house_load_forecast": {
+        "name": "Talon kuormaennuste"
+      },
+      "solar_forecast": {
+        "name": "Aurinkoennuste"
+      },
       "charger_proposed_current": {
         "name": "Ehdotettu virta – {charger}",
         "state_attributes": {

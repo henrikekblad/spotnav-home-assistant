@@ -130,3 +130,57 @@ async def test_no_sensor_on_a_site_without_a_solar_forecast(hass: HomeAssistant,
 
     registry = er.async_get(hass)
     assert registry.async_get_entity_id("sensor", DOMAIN, f"{entry.entry_id}_expected_solar_surplus") is None
+
+
+async def test_the_house_and_solar_forecast_sensors_carry_time_and_value_rows_out_of_the_recorder(
+    hass: HomeAssistant, freezer
+) -> None:
+    entry = await pilot_site(hass, freezer, **{CONF_SOLAR_FORECAST_ENTRIES: ["solcast1"]})
+    controller = site_controller_for(hass, entry.entry_id)
+    registry = er.async_get(hass)
+    house_id = registry.async_get_entity_id("sensor", DOMAIN, f"{entry.entry_id}_house_load_forecast")
+    solar_id = registry.async_get_entity_id("sensor", DOMAIN, f"{entry.entry_id}_solar_forecast")
+    assert house_id is not None and solar_id is not None
+    assert hass.states.get(house_id).state == "unknown"
+    assert hass.states.get(solar_id).state == "unknown"
+
+    now = datetime.now(UTC)
+    hour = now.replace(minute=0, second=0, microsecond=0)
+    controller.house_forecast._rows = [(hour + timedelta(hours=i), 1.0 + i) for i in range(3)]
+    controller.house_forecast.basis = "gross"
+    correction = controller.solar_correction
+    correction.sun_kwh = {hour + timedelta(hours=i): 2.5 for i in range(4)}
+    correction.sun_basis = "corrected"
+    correction.last_refresh = now
+    for listener in list(controller.house_forecast._listeners):
+        listener()
+    await hass.async_block_till_done()
+
+    house = hass.states.get(house_id)
+    assert float(house.state) == 1.0
+    assert house.attributes["unit_of_measurement"] == "kW"
+    assert house.attributes["basis"] == "gross"
+    assert [row["value"] for row in house.attributes["forecast"]] == [1.0, 2.0, 3.0]
+    assert set(house.attributes["forecast"][0]) == {"time", "value"}
+    solar = hass.states.get(solar_id)
+    assert float(solar.state) == 2.5
+    assert solar.attributes["basis"] == "corrected"
+    assert len(solar.attributes["forecast"]) == 4
+    for entity in (house_id, solar_id):
+        assert "forecast" in hass.data["sensor"].get_entity(entity)._unrecorded_attributes
+
+    # The sun forecast read too long ago says nothing; the house keeps its own.
+    correction.last_refresh = now - timedelta(hours=4)
+    for listener in list(controller.house_forecast._listeners):
+        listener()
+    await hass.async_block_till_done()
+    assert hass.states.get(solar_id).state == "unknown"
+    assert float(hass.states.get(house_id).state) == 1.0
+
+
+async def test_no_solar_forecast_sensor_without_a_solar_forecast(hass: HomeAssistant, freezer) -> None:
+    entry = await pilot_site(hass, freezer)
+
+    registry = er.async_get(hass)
+    assert registry.async_get_entity_id("sensor", DOMAIN, f"{entry.entry_id}_solar_forecast") is None
+    assert registry.async_get_entity_id("sensor", DOMAIN, f"{entry.entry_id}_house_load_forecast") is not None

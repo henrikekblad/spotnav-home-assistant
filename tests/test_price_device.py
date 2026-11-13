@@ -193,8 +193,26 @@ async def test_price_now_is_this_quarters_price_with_fees_and_small_unrecorded_a
     assert state.attributes["spot_price"] == round(today_prices()[32] * FX, 4)
     assert dt_util.parse_datetime(state.attributes["next_change"]) == NOW + timedelta(minutes=15)
     sensor = hass.data["sensor"].get_entity(state.entity_id)
-    assert sensor._unrecorded_attributes >= {"spot_price", "next_change", "area", "tomorrow_published"}
-    assert not any(isinstance(value, (list, dict)) for value in state.attributes.values())
+    assert sensor._unrecorded_attributes >= {"spot_price", "next_change", "area", "tomorrow_published", "forecast"}
+    # The only list is the forecast, and it is out of the recorder.
+    assert [key for key, value in state.attributes.items() if isinstance(value, (list, dict))] == ["forecast"]
+
+
+async def test_price_now_carries_the_coming_prices_as_time_and_value(hass: HomeAssistant, freezer) -> None:
+    freezer.move_to(NOW)
+    entry = await add_price(hass)
+
+    state = hass.states.get(entity(hass, entry.entry_id, "price_now", "sensor"))
+    rows = state.attributes["forecast"]
+
+    # The running interval first, at the state's own price, then every later one in order, with a time zone.
+    assert set(rows[0]) == {"time", "value"}
+    assert dt_util.parse_datetime(rows[0]["time"]) == NOW
+    assert rows[0]["value"] == pytest.approx(float(state.state), abs=1e-3)
+    times = [dt_util.parse_datetime(row["time"]) for row in rows]
+    assert times == sorted(times) and all(t.tzinfo is not None for t in times)
+    assert times[1] - times[0] == timedelta(minutes=15)
+    assert len(rows) > 24
 
 
 async def test_price_now_moves_on_exactly_at_the_quarters_boundary(hass: HomeAssistant, freezer) -> None:

@@ -86,10 +86,16 @@ follow the device's name, which you can change).
 | No entity: the demand charge's parts | A [demand charge](prices.md#a-demand-charge) is a list of up to three parts, which no number or select can hold; the card and the app set it. Each site using this electricity price measures it and has a **Demand-charge peak** sensor while a part exists ([Demand charge and import target](site-and-load-balancing.md#demand-charge-and-import-target)). |
 | Hidden by default: the two grid fee policies (selects, off or manual), **High-load hours start** and **High-load hours end** (numbers, whole hours; a start after the end runs over midnight), **High-load days** (every day, weekdays or Monday to Saturday), **High-load hours first month** and **High-load hours last month** (selects, both months included, wrapping over the new year) | The rest of the grid tariff, for automations. The card and the app set it; enable these under the device's entities when you want it in Home Assistant. A window part set while none is stored starts from the usual window, weekdays 07-19, November to March, with that part changed. |
 
-Price now's attributes are small on purpose: the area, the currency, the resolution in minutes, the
-spot price without fees, when the price next changes and whether tomorrow's prices are published.
-The two binary sensors carry the day's threshold price and when they next turn on or off. None of
-the attributes are recorded in the history; only the states are.
+Price now's attributes are the area, the currency, the resolution in minutes, the spot price without
+fees, when the price next changes, whether tomorrow's prices are published and `forecast`. The two
+binary sensors carry the day's threshold price and when they next turn on or off. None of the
+attributes are recorded in the history; only the states are.
+
+`forecast` is a list of `{time, value}`, one row per interval from the running one on (up to two days),
+with `time` as an ISO 8601 time with its time zone and `value` as the price with fees and VAT in the
+sensor's own unit (for example kr/kWh). It is the shape energy optimisers such as HAEO read from a
+sensor's `forecast` attribute, and ApexCharts and templates can use it as it is. The `spotnav.get_prices`
+action below stays the way to get the prices with their fees broken down.
 
 ### How the hours are chosen
 

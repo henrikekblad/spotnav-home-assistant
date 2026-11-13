@@ -638,6 +638,12 @@
       "expected_solar_surplus": {
         "name": "Forventet soloverskud"
       },
+      "house_load_forecast": {
+        "name": "Husets belastningsprognose"
+      },
+      "solar_forecast": {
+        "name": "Solprognose"
+      },
       "charger_proposed_current": {
         "name": "Foreslået strøm – {charger}",
         "state_attributes": {

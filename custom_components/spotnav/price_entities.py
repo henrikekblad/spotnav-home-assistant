@@ -2,8 +2,9 @@
 the area and fees the device prices with.
 
 Each reads its entry's `PriceDevice` and is told by it when anything it shows may have changed (a new
-interval, new prices, other hours, other fees); none polls. Attributes are a handful of small values and none of
-them is recorded, so the history holds the states only.
+interval, new prices, other hours, other fees); none polls. None of the attributes is recorded, so the history
+holds the states only; Price now carries the coming prices as `forecast: [{time, value}]` (`site/forecast_shape.py`)
+for the optimisers that read that shape.
 
 The area select, the three fee policy selects and the three fee numbers write the entry's area and fees in place
 (`pricing/price_source.py:async_write_price_entry`): every charger that prices with the entry follows. They were a
@@ -51,6 +52,7 @@ from .entity import (
 from .planning.auto_settings import AreaAutoSettings, AutoSettingsError, FiscalOverride, GridTariff
 from .planning.planner import HIGH_LOAD_DAYS, HighLoadWindow
 from .price_device import PriceDevice
+from .site.forecast_shape import standard_forecast
 from .pricing.price_points import (
     CHEAP,
     default_fee_mode,
@@ -102,7 +104,16 @@ class PriceNowSensor(SpotNavPriceEntity, SensorEntity):
 
     _attr_state_class = SensorStateClass.MEASUREMENT
     _unrecorded_attributes = frozenset(
-        {"area", "currency", "resolution_minutes", "spot_price", "next_change", "tomorrow_published", "source"}
+        {
+            "area",
+            "currency",
+            "resolution_minutes",
+            "spot_price",
+            "next_change",
+            "tomorrow_published",
+            "source",
+            "forecast",
+        }
     )
 
     def __init__(self, entry: ConfigEntry, device: PriceDevice) -> None:
@@ -144,6 +155,12 @@ class PriceNowSensor(SpotNavPriceEntity, SensorEntity):
             # Where the prices come from: `nordpool`, `entsoe`, `pvpc`, `octopus`, `zonneplan`, or `None` with no
             # source.
             "source": device.source,
+            # The price of each interval from the running one on, in the sensor's unit: the shape HAEO reads.
+            "forecast": standard_forecast(
+                (candidate.start, rounded(candidate.price))
+                for candidate in device.points
+                if candidate.end > device.now()
+            ),
         }
 
 

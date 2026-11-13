@@ -18,6 +18,7 @@ cross-integration contract: a module-level
 * A source whose integration was never set up (Open-Meteo raises `KeyError`) or raises anything else is
   skipped. Nothing is ever fetched: the read returns the integration's cached estimate.
 
+* SpotNav's own `energy` platform is never a source (`energy.py`).
 * Discovery uses `async_process_integration_platforms` for the `"energy"`
   platform; it also picks up integrations that load later. It appends
   bookkeeping to `hass.data` per call, so it runs once per `hass`.
@@ -37,6 +38,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.integration_platform import async_process_integration_platforms
 from homeassistant.util import dt as dt_util
 
+from ..const import DOMAIN
 from ..runtime import domain_data
 
 
@@ -68,6 +70,10 @@ async def _async_forecast_platforms(hass: HomeAssistant) -> dict[str, GetSolarFo
     data.forecast_platforms = platforms
 
     def _collect(_hass: HomeAssistant, domain: str, platform: Any) -> None:
+        # SpotNav offers its own corrected forecast to the Energy dashboard (`energy.py`); reading it back would
+        # correct it twice and plan on a view.
+        if domain == DOMAIN:
+            return
         get_forecast = getattr(platform, "async_get_solar_forecast", None)
         if get_forecast is not None:
             platforms[domain] = get_forecast
