@@ -125,6 +125,7 @@ from .site.site_join import (
 from .site.site_capacity_controller import async_release_held_charges, SiteCapacityController
 from .site.site_history import charger_alone_values, SiteHistory
 from .site.demand_tracker import SiteDemand
+from .site.house_forecast import SiteHouseForecast
 from .texts import async_load as async_load_texts
 from .vehicles.discovery_decisions import async_setup_decisions
 from .vehicles.soc_estimate import SocReader
@@ -881,6 +882,7 @@ async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
         await async_release_held_charges(hass, entry.data.get(CONF_CHARGER_ENTRY_IDS) or [])
         await SiteHistory.async_remove_stored(hass, entry.entry_id)
         await SiteDemand.async_remove_stored(hass, entry.entry_id)
+        await SiteHouseForecast.async_remove_stored(hass, entry.entry_id)
         await SiteCapacityController.async_remove_released(hass, entry.entry_id)
         return
     # The charger is given back as SpotNav found it, as far as SpotNav knows: the current it had before SpotNav,

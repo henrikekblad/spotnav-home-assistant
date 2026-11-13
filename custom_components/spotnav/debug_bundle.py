@@ -78,7 +78,12 @@ and `matches_config`, the id of the one that equals what the site stores, if any
 
 Since 2.3 a site's `diagnostics` also carry `demand` (additive, no new version): the month's hourly means of net
 import (`[start, kW, house kW, incomplete, held, paused]`), what each demand-charge component bills so far with its peaks, the
-running hour with its gaps, and the import target (`site/demand_tracker.py`).
+running hour with its gaps, and the import target (`site/demand_tracker.py`). Since 3.0 `demand` also carries
+`outdoor_c` (each hour's outdoor temperature by its start), and the site's `diagnostics` carry `load_forecast`
+(additive, no new version): the house load forecast's sources (weather entity, holiday calendar or
+`weekday_weekend_only`), the last forecast for the next 48 hours (`[start, kW, source, forecast °C, temperature kW]`,
+the temperature fit), and the forecast log: each hour's first forecast with its outcome (`[start, forecast,
+made_at, actual]`, 14 days) and each day's review (30 days) (`site/house_forecast.py`).
 """
 
 from __future__ import annotations

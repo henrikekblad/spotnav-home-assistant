@@ -330,6 +330,7 @@ class SiteStateEntity(_BuiltOnChangeSiteSensor):
             "solar_capable",
             "solar_reason",
             "solar_priority",
+            "forecast",
         }
     )
 
@@ -387,6 +388,9 @@ class SiteStateEntity(_BuiltOnChangeSiteSensor):
             "solar_priority": self.controller.config.get(
                 CONF_SOLAR_PRIORITY, DEFAULT_SOLAR_PRIORITY
             ),
+            # The house's expected load (kW) for the next 24 hours, `[{start, kw}]` (`site/house_forecast.py`), for
+            # blueprints; built once an hour, kept out of the recorder.
+            "forecast": self.controller.house_forecast.attribute,
         }
 
 
