@@ -275,3 +275,83 @@ async def test_own_house_rows_replace_the_sites_forecast_once_there_are_enough(
     assert inputs["house"] == "own_rows" and inputs["own_hours"] == MIN_OWN_HOURS
     assert EST_HOUSE_COUNTS_BATTERY not in inputs["estimates"]
     assert controller.battery_shadow.snapshot()["plan"]["plan"]["slots"][1]["house_kw"] == pytest.approx(0.8)
+
+
+def _with_sun(monkeypatch: pytest.MonkeyPatch, controller: Any, now: datetime) -> None:
+    """A solar forecast for the plan: 1 kWh in each of the next 30 hours."""
+    from custom_components.spotnav.const import CONF_SOLAR_FORECAST_ENTRIES  # noqa: PLC0415
+    from custom_components.spotnav.planning import hybrid_forecast  # noqa: PLC0415
+    from custom_components.spotnav.planning.hybrid_forecast import ForecastReadResult  # noqa: PLC0415
+
+    first = hour_start(now, controller.demand.tracker.tz)
+
+    async def read(hass: Any, entries: Any, *, now: datetime) -> ForecastReadResult:
+        return ForecastReadResult({first + timedelta(hours=i): 1000.0 for i in range(30)}, ("forecast_solar_1",))
+
+    monkeypatch.setattr(hybrid_forecast, "async_read_forecast_wh", read)
+    monkeypatch.setattr(controller, "config", {**controller.config, CONF_SOLAR_FORECAST_ENTRIES: ["forecast_solar_1"]})
+
+
+async def _own_rows_with_sun(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, production: dict[datetime, float] | None
+) -> dict[str, Any]:
+    """The plan with own rows of 0.8 kW net of the sun and a solar forecast; `production` `{}` gives 0.5 kWh in
+    every hour but the last, `None` no solar statistics at all."""
+    _site_entry, controller, now = await _planned(hass, monkeypatch)
+    plan = controller.battery_shadow.plan
+    current = hour_start(now, controller.demand.tracker.tz)
+    hours = [current - timedelta(hours=index) for index in range(1, MIN_OWN_HOURS + 3)]
+    for start in hours:
+        plan.actuals.rows[start] = 0.8
+    _with_sun(monkeypatch, controller, now)
+
+    async def ids(hass: Any) -> tuple[tuple[str, ...], tuple[str, ...]]:
+        return (("sensor.pv",), ()) if production is not None else ((), ())
+
+    async def statistics(hass: Any, wanted: Any, start: datetime, end: datetime, period: str) -> dict[str, Any]:
+        assert period == "hour" and end <= now
+        rows = [{"start": moment.timestamp(), "change": kwh} for moment, kwh in (production or {}).items()]
+        return {"sensor.pv": rows}
+
+    monkeypatch.setattr(plan_runtime, "async_energy_ids", ids)
+    monkeypatch.setattr(plan_runtime, "async_statistics", statistics)
+    if production == {}:
+        production.update({start: 0.5 for start in hours[1:]})  # the last hour is not compiled yet
+    _house_forecast(controller, now)
+    controller.battery_shadow.tick(now + timedelta(seconds=CHECK_S + 1))
+    await hass.async_block_till_done()
+    return controller.battery_shadow.snapshot()["plan"]
+
+
+async def test_own_house_rows_get_the_suns_production_back_before_the_forecast_is_added(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from custom_components.spotnav.battery.plan_shadow import EST_SOLAR_IN_HOUSE  # noqa: PLC0415
+
+    shown = await _own_rows_with_sun(hass, monkeypatch, {})
+    inputs = shown["inputs"]
+    assert inputs["house"] == "own_rows" and inputs["house_rows"] == plan_runtime.ROWS_GROSS
+    assert inputs["solar_statistics"] == ["sensor.pv"]
+    # The hour without a production figure yet is left out, never counted net of the sun.
+    assert inputs["own_hours"] == MIN_OWN_HOURS + 1
+    assert EST_SOLAR_IN_HOUSE not in inputs["estimates"]
+    assert shown["plan"]["slots"][1]["house_kw"] == pytest.approx(1.3)
+
+
+async def test_without_production_statistics_the_rows_stay_net_and_it_is_said(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from custom_components.spotnav.battery.plan_shadow import EST_SOLAR_IN_HOUSE  # noqa: PLC0415
+
+    inputs = (await _own_rows_with_sun(hass, monkeypatch, None))["inputs"]
+    assert inputs["house"] == "own_rows" and inputs["house_rows"] == plan_runtime.ROWS_NET
+    assert inputs["own_hours"] == MIN_OWN_HOURS + 2
+    assert EST_SOLAR_IN_HOUSE in inputs["estimates"]
+
+
+def test_gross_rows_need_enough_hours_with_a_production_figure() -> None:
+    start = datetime(2026, 11, 1, tzinfo=dt_util.UTC)
+    rows = [(start + timedelta(hours=index), 1.0) for index in range(MIN_OWN_HOURS + 1)]
+    every = {moment: 0.25 for moment, _kw in rows}
+    assert plan_runtime.gross_house_rows(rows, every) == [(moment, 1.25) for moment, _kw in rows]
+    assert plan_runtime.gross_house_rows(rows, dict(list(every.items())[: MIN_OWN_HOURS - 1])) is None
