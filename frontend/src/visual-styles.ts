@@ -50,6 +50,8 @@ export const VISUAL_CLASSES = {
   connectionError: "spotnav-connection-error",
   vehicleLineAge: "spotnav-vehicle-line-age",
   vehicleLineTail: "spotnav-vehicle-line-tail",
+  vehicleLineHead: "spotnav-vehicle-line-head",
+  vehicleLineMethod: "spotnav-vehicle-line-method",
   nameRow: "spotnav-name-row",
   vehicleChoices: "spotnav-vehicle-choices",
   vehicleChoice: "spotnav-vehicle-choice",
@@ -1262,6 +1264,36 @@ export const VISUAL_STYLES = `
   }
   .${VISUAL_CLASSES.vehicleLineAge} {
     opacity: 0.8;
+  }
+  /* The car's name and how it was decided: the icon stays beside the name, the name alone is cut when too long. */
+  .${VISUAL_CLASSES.vehicleLineHead} {
+    display: inline-flex;
+    flex: 0 1 auto;
+    align-items: center;
+    gap: 3px;
+    max-width: 100%;
+    min-width: 0;
+  }
+  .${VISUAL_CLASSES.vehicleLineHead} > .${VISUAL_CLASSES.vehicleLineName} {
+    flex: 0 1 auto;
+  }
+  .${VISUAL_CLASSES.vehicleLineMethod} {
+    display: inline-flex;
+    flex: none;
+    opacity: 0.8;
+  }
+  .${VISUAL_CLASSES.vehicleLineMethod} > svg {
+    width: 1.1em;
+    height: 1.1em;
+  }
+  /* Identifying: the arrows turn slowly (the reduced-motion rule below stops them). */
+  .${VISUAL_CLASSES.vehicleLineMethod}[data-method="identifying"] > svg {
+    animation: spotnav-method-turn 2.4s linear infinite;
+  }
+  @keyframes spotnav-method-turn {
+    to {
+      transform: rotate(360deg);
+    }
   }
   /* The last part of the line and the swap icon: if the line wraps, they wrap together, never the icon alone. */
   .${VISUAL_CLASSES.vehicleLineTail} {

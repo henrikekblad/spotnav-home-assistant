@@ -12,6 +12,7 @@ import { decodeSettingsRecord, encodeBody, identificationReplacement, NOTIFICATI
 import { SETTINGS_API_VERSION, type SettingsRecord } from "../src/types";
 import { decodeDashboard } from "../src/validate";
 import { FakeHass, mountCard } from "./helpers";
+import { VISUAL_STYLES } from "../src/visual-styles";
 
 const FIXTURES = join(__dirname, "..", "..", "tests", "fixtures");
 const CONFIG = { type: "custom:spotnav-card", charger: "soc_charger" };
@@ -388,20 +389,58 @@ describe("the car line", () => {
   });
 
   it.each([
+    ["camera", "identifierad via kamera"],
     ["plug_sensor", "identifierad via bilens laddkabel"],
     ["location", "identifierad via position"],
     ["answered", "vald manuellt"],
     ["manual", "vald manuellt"],
     ["assumed", "antagen"],
-  ])("says how the car was decided (%s)", async (method, words) => {
+  ])("shows how the car was decided (%s) as an icon after the name, its words as title and accessible name", async (method, words) => {
     const { element } = await mounted(decided(method), "sv");
-    expect(carLine(element)?.textContent).toContain(words);
+    const line = carLine(element)!;
+    // No words on the line: the icon says it.
+    expect(line.textContent).not.toContain(words);
+    const icon = line.querySelector<HTMLElement>(`[data-method='${method}']`)!;
+    expect(icon.getAttribute("role")).toBe("img");
+    expect(icon.title).toBe(words);
+    expect(icon.getAttribute("aria-label")).toBe(words);
+    expect(icon.querySelector("svg path")?.getAttribute("d")).toMatch(/^M/);
+    // Glued to the name with no separator; the separator comes after.
+    const head = icon.parentElement!;
+    expect(head.classList.contains("spotnav-vehicle-line-head")).toBe(true);
+    expect(head.firstElementChild?.textContent).toBe("EV6");
+    expect(head.textContent).toBe("EV6");
+    expect((head.nextElementSibling?.textContent ?? "").startsWith("\u00b7 ")).toBe(true);
   });
 
-  it("says it is identifying while the question is open, and nothing without identification", async () => {
-    expect(carLine((await mounted(dashboard(true), "sv")).element)?.textContent).toContain("identifierar…");
+  it("gives each method its own icon, answered and manual sharing the person", async () => {
+    const paths: Record<string, string> = {};
+    for (const method of ["camera", "plug_sensor", "location", "answered", "manual", "assumed"]) {
+      document.body.innerHTML = "";
+      const line = carLine((await mounted(decided(method), "sv")).element)!;
+      paths[method] = line.querySelector(`[data-method='${method}'] path`)!.getAttribute("d")!;
+    }
+    expect(paths["answered"]).toBe(paths["manual"]);
+    const distinct = new Set(Object.entries(paths).filter(([key]) => key !== "manual").map(([, d]) => d));
+    expect(distinct.size).toBe(5);
+  });
+
+  it("shows a turning icon while identifying, and nothing without identification", async () => {
+    const line = carLine((await mounted(dashboard(true), "sv")).element)!;
+    const icon = line.querySelector<HTMLElement>("[data-method='identifying']")!;
+    expect(icon.title).toBe("identifierar…");
+    expect(icon.getAttribute("aria-label")).toBe("identifierar…");
+    expect(line.textContent).not.toContain("identifierar");
     document.body.innerHTML = "";
-    expect(carLine((await mounted(dashboard(false), "sv")).element)?.textContent).not.toContain("identifier");
+    const plain = carLine((await mounted(dashboard(false), "sv")).element)!;
+    expect(plain.querySelector("[data-method]")).toBeNull();
+    expect(plain.textContent).not.toContain("identifier");
+  });
+
+  it("turns the identifying icon slowly, and not at all when the system asks for less motion", () => {
+    const css = VISUAL_STYLES;
+    expect(css).toMatch(/\[data-method="identifying"\] > svg \{\s*animation: spotnav-method-turn/);
+    expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\)[\s\S]*animation: none !important/);
   });
 });
 

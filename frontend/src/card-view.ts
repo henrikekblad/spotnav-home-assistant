@@ -27,7 +27,9 @@ import {
   changeCarBody,
   identificationBanner,
   identificationSummary,
+  methodOf,
   methodWords,
+  type MethodName,
   sourceChoice,
   sourceOption,
   sourceReadingText,
@@ -800,6 +802,41 @@ function swapIcon(doc: Document): SVGElement {
   return svg;
 }
 
+/**
+ * How the car on the car line was decided, as one small icon: MDI path data (`@mdi/js`, Apache License 2.0) for
+ * camera, power-plug, map-marker, account, help-circle-outline and sync. Answered and manual share the account.
+ */
+const METHOD_ICON_PATHS: Readonly<Record<MethodName, string>> = {
+  camera:
+    "M4,4H7L9,2H15L17,4H20A2,2 0 0,1 22,6V18A2,2 0 0,1 20,20H4A2,2 0 0,1 2,18V6A2,2 0 0,1 4,4M12,7A5,5 0 0,0 7,12A5,5 0 0,0 12,17A5,5 0 0,0 17,12A5,5 0 0,0 12,7M12,9A3,3 0 0,1 15,12A3,3 0 0,1 12,15A3,3 0 0,1 9,12A3,3 0 0,1 12,9Z",
+  plug_sensor: "M16,7V3H14V7H10V3H8V7H8C7,7 6,8 6,9V14.5L9.5,18V21H14.5V18L18,14.5V9C18,8 17,7 16,7Z",
+  location:
+    "M12,11.5A2.5,2.5 0 0,1 9.5,9A2.5,2.5 0 0,1 12,6.5A2.5,2.5 0 0,1 14.5,9A2.5,2.5 0 0,1 12,11.5M12,2A7,7 0 0,0 5,9C5,14.25 12,22 12,22C12,22 19,14.25 19,9A7,7 0 0,0 12,2Z",
+  answered:
+    "M12,4A4,4 0 0,1 16,8A4,4 0 0,1 12,12A4,4 0 0,1 8,8A4,4 0 0,1 12,4M12,14C16.42,14 20,15.79 20,18V20H4V18C4,15.79 7.58,14 12,14Z",
+  manual:
+    "M12,4A4,4 0 0,1 16,8A4,4 0 0,1 12,12A4,4 0 0,1 8,8A4,4 0 0,1 12,4M12,14C16.42,14 20,15.79 20,18V20H4V18C4,15.79 7.58,14 12,14Z",
+  assumed:
+    "M11,18H13V16H11V18M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M12,20C7.59,20 4,16.41 4,12C4,7.59 7.59,4 12,4C16.41,4 20,7.59 20,12C20,16.41 16.41,20 12,20M12,6A4,4 0 0,0 8,10H10A2,2 0 0,1 12,8A2,2 0 0,1 14,10C14,12 11,11.75 11,15H13C13,12.75 16,12.5 16,10A4,4 0 0,0 12,6Z",
+  identifying:
+    "M12,18A6,6 0 0,1 6,12C6,11 6.25,10.03 6.7,9.2L5.24,7.74C4.46,8.97 4,10.43 4,12A8,8 0 0,0 12,20V23L16,19L12,15M12,4V1L8,5L12,9V6A6,6 0 0,1 18,12C18,13 17.75,13.97 17.3,14.8L18.76,16.26C19.54,15.03 20,13.57 20,12A8,8 0 0,0 12,4Z",
+};
+
+/** The method icon: an image named by the full words (its title shows them on hover); `identifying` turns slowly. */
+function methodIcon(doc: Document, method: MethodName, words: string): HTMLElement {
+  const holder = element(doc, "span", C.vehicleLineMethod);
+  holder.setAttribute("role", "img");
+  holder.setAttribute("aria-label", words);
+  holder.title = words;
+  holder.dataset["method"] = method;
+  holder.append(
+    icon(doc, (svg, ns) => {
+      svg.append(fillPath(ns, doc, METHOD_ICON_PATHS[method]));
+    }),
+  );
+  return holder;
+}
+
 function batteryIcon(doc: Document): SVGElement {
   return icon(doc, (svg, ns) => {
     const body = doc.createElementNS(ns, "path");
@@ -1120,13 +1157,19 @@ export function createCardView(input: CardViewInput): CardView {
       guestOffered(model);
     const lineName = vehicleLine.name ?? translate(model.language, "settings.vehicle.unnamed");
     const changeLabel = translate(model.language, "identify.changeCarAria", { name: lineName });
+    // How the car was decided at this plug-in: an icon after the name, its words as its title and accessible name.
+    const method = methodOf(model.identification);
+    const decidedBy = methodWords(model.language, model.identification);
     vehicleButton = element(doc, changeable ? "button" : "div", C.vehicleLine);
     if (changeable) {
       (vehicleButton as HTMLButtonElement).type = "button";
       vehicleButton.setAttribute("aria-haspopup", "dialog");
     }
     vehicleButton.dataset["vehicleLine"] = vehicleLine.vehicleId;
-    vehicleButton.setAttribute("aria-label", changeable ? changeLabel : vehicleLine.ariaLabel);
+    vehicleButton.setAttribute(
+      "aria-label",
+      changeable ? changeLabel : decidedBy === null ? vehicleLine.ariaLabel : `${vehicleLine.ariaLabel}, ${decidedBy}`,
+    );
     if (vehicleLine.estimateTitle !== null) {
       vehicleButton.title = vehicleLine.estimateTitle;
       vehicleButton.dataset["estimated"] = "true";
@@ -1141,14 +1184,14 @@ export function createCardView(input: CardViewInput): CardView {
     if (vehicleLine.age !== null) {
       parts.push({ cls: C.vehicleLineAge, text: vehicleLine.age });
     }
-    // How the car was decided at this plug-in: "identified by the car's charging cable", "your answer" ...
-    const decidedBy = methodWords(model.language, model.identification);
-    if (decidedBy !== null) {
-      parts.push({ cls: C.vehicleLineAge, text: decidedBy });
-    }
     parts.forEach((part, index) => {
       const span = element(doc, "span", part.cls, index === 0 ? part.text : `\u00b7 ${part.text}`);
-      const piece: HTMLElement = span;
+      let piece: HTMLElement = span;
+      if (index === 0 && method !== null && decidedBy !== null) {
+        // The icon belongs to the name (or to the charge, for a car with no name): no separator between them.
+        piece = element(doc, "span", C.vehicleLineHead);
+        piece.append(span, methodIcon(doc, method, decidedBy));
+      }
       if (changeable && index === parts.length - 1) {
         // The icon travels with the last part of the line, so a wrap never leaves it alone on a row.
         const tail = element(doc, "span", C.vehicleLineTail);
