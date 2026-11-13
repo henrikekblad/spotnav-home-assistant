@@ -464,7 +464,8 @@ describe("Byt bil", () => {
       { vehicle_id: NIRO, plug: null, location: null, verdict: null },
     ];
     const { hass, element } = await mounted(decided("plug_sensor", evidence), "sv", false);
-    expect(changeCar(element)?.getAttribute("aria-label")).toBe("Byt bil – EV6");
+    // The button hides its children from a screen reader: its name says how the car was decided too.
+    expect(changeCar(element)?.getAttribute("aria-label")).toBe("Byt bil – EV6, identifierad via bilens laddkabel");
     expect(changeCar(element)?.querySelector("[data-icon='swap']")).not.toBeNull();
     // The icon sits in the same nowrap group as the last text part, so a wrap never leaves it alone.
     const tail = changeCar(element)?.querySelector(".spotnav-vehicle-line-inner")?.lastElementChild;
@@ -477,6 +478,8 @@ describe("Byt bil", () => {
     await settle();
     const dialog = openDialog(element)!;
     expect(dialog.textContent).toContain("Laddkabeln säger inkopplad");
+    // How the car was decided is a note in the dialog, for touch where the icon has no tooltip.
+    expect(dialog.querySelector("form > p:nth-child(2)")?.textContent).toBe("identifierad via bilens laddkabel");
     const radios = Array.from(dialog.querySelectorAll<HTMLInputElement>("input[data-identify-choice]"));
     expect(radios.map((radio) => [radio.value, radio.checked])).toEqual([[EV6, true], [NIRO, false]]);
     radios[1]!.click();
@@ -491,6 +494,22 @@ describe("Byt bil", () => {
     const payload = dashboard(false);
     payload["settings"]["vehicle_ids"] = [EV6];
     expect(changeCar((await mounted(payload)).element)).toBeNull();
+  });
+
+  it("names a plain car line once: the group by the line, the method only by its own icon", async () => {
+    const payload = decided("plug_sensor");
+    payload["settings"]["vehicle_ids"] = [EV6];
+    const line = carLine((await mounted(payload, "sv")).element)!;
+    expect(line.getAttribute("role")).toBe("group");
+    expect(line.getAttribute("aria-label")).not.toContain("laddkabel");
+    expect(line.querySelector("[data-method]")?.getAttribute("aria-label")).toBe("identifierad via bilens laddkabel");
+  });
+
+  it("has no method note in the dialog when nothing identified the car", async () => {
+    const { element } = await mounted(dashboard(false), "sv");
+    changeCar(element)!.click();
+    await settle();
+    expect(openDialog(element)!.querySelectorAll("form > p")).toHaveLength(1);
   });
 
   it("is offered with two cars at the charger and no identification, and answers through it when a car is in", async () => {

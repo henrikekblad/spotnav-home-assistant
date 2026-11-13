@@ -2373,10 +2373,9 @@ function connectionOrNull(root: Record<string, unknown>): ConnectionState | null
     if (!(CONNECTION_STATES as readonly string[]).includes(state)) {
       return null;
     }
-    const shown = "shown" in value ? text(value, "shown") : state;
-    if (!(CONNECTION_SHOWN_STATES as readonly string[]).includes(shown)) {
-      return null;
-    }
+    // A word from a newer backend is not known here: show the charger's own state, as without `shown`.
+    const sent = "shown" in value ? text(value, "shown") : state;
+    const shown = (CONNECTION_SHOWN_STATES as readonly string[]).includes(sent) ? sent : state;
     return {
       state: state as ConnectionStateName,
       source: textOrNull(value, "source"),

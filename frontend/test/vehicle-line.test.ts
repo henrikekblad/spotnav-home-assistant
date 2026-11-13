@@ -226,6 +226,13 @@ describe("the charger status in the header line", () => {
     expect(line(element)!.getAttribute("aria-label")).not.toContain(words);
   });
 
+  it("reads the status word without its leading dot", async () => {
+    const { element } = await mounted(withConnection("connected"), "en");
+    const dot = status(element)!.querySelector(".spotnav-connection-word > span")!;
+    expect(dot.textContent).toBe("\u00b7");
+    expect(dot.getAttribute("aria-hidden")).toBe("true");
+  });
+
   it.each<[string, string]>([
     ["en", "Waiting"],
     ["sv", "Väntar"],
@@ -270,9 +277,10 @@ describe("the charger status in the header line", () => {
     const bad = withConnection("charging");
     bad["connection"] = { state: "levitating", source: null };
     expect(status((await mounted(bad)).element)).toBeNull();
+    // A shown word from a newer backend: the charger's own state is shown instead, not nothing.
     const badShown = withConnection("finished");
     badShown["connection"]["shown"] = "levitating";
-    expect(status((await mounted(badShown)).element)).toBeNull();
+    expect(status((await mounted(badShown)).element)?.getAttribute("data-connection")).toBe("finished");
     const extra = withConnection("finished");
     extra["connection"]["other"] = 1;
     expect(status((await mounted(extra)).element)).toBeNull();
