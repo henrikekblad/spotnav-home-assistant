@@ -194,25 +194,32 @@ class SwitchLoadShadow:
         values = [value for value in result.phase_headroom_a.values() if value is not None]
         return min(values) if values else None
 
-    def _read_prices(self, now: datetime) -> tuple[Any, list[PlanningSlot], FiscalChoice, tuple[str, ...]]:
-        """`(key, slots, fees, flags)`: the site's published quarter hours of today and tomorrow."""
+    def _read_prices(
+        self, now: datetime
+    ) -> tuple[Any, Callable[[], tuple[list[PlanningSlot], FiscalChoice, tuple[str, ...]]]]:
+        """`(key, read)`: what changes when the prices or the fees do, and how to read the site's published quarter
+        hours of today and tomorrow with the fees and their flags (only when the key changed)."""
         source = site_price_source_of(self.hass, self.site)
         documents = price_days(self.hass, source, now)
         key = (
             None if source is None else (source.area_id, source.revision),
             tuple((doc.day, doc.interval_count, doc.retrieved, doc.published) for doc in documents),
         )
-        if source is None or source.area is None or not documents:
-            return key, [], FiscalChoice(), ()
-        fiscal = source.fiscal
-        flags: tuple[str, ...] = ()
-        if fiscal is None:
-            fiscal, flags = FiscalChoice(), (FLAG_FEES_UNKNOWN,)
-        try:
-            slots = list(planning_slots(tuple(documents), currency=source.area.currency, timezone=source.area.tz))
-        except PlannerInputError:
-            return key, [], fiscal, flags
-        return key, slots, fiscal, flags
+
+        def read() -> tuple[list[PlanningSlot], FiscalChoice, tuple[str, ...]]:
+            if source is None or source.area is None or not documents:
+                return [], FiscalChoice(), ()
+            fiscal = source.fiscal
+            flags: tuple[str, ...] = ()
+            if fiscal is None:
+                fiscal, flags = FiscalChoice(), (FLAG_FEES_UNKNOWN,)
+            try:
+                slots = list(planning_slots(tuple(documents), currency=source.area.currency, timezone=source.area.tz))
+            except PlannerInputError:
+                return [], fiscal, flags
+            return slots, fiscal, flags
+
+        return key, read
 
     def _room_kw_by_hour(self, now: datetime, hours: set[datetime]) -> dict[datetime, float]:
         """The import cap less the house's expected load and the cars' plans, per clock hour the house forecast
@@ -239,11 +246,12 @@ class SwitchLoadShadow:
         config = self.config
         if config is None:
             return None
-        key, slots, fiscal, flags = self._read_prices(now)
+        key, read = self._read_prices(now)
         plan_key = (key, quarter_start(now), config)
         if plan_key == self._plan_key:
             return None
         self._plan_key = plan_key
+        slots, fiscal, flags = read()
         tz = self._tz()
 
         def hour_of(start: datetime) -> datetime:

@@ -35,7 +35,7 @@ def _prices(monkeypatch: pytest.MonkeyPatch, first: datetime, cheap_hour: int = 
         for quarter in range(4)
     ]
     monkeypatch.setattr(
-        SwitchLoadShadow, "_read_prices", lambda self, now: (("test", cheap_hour), slots, FiscalChoice(), ())
+        SwitchLoadShadow, "_read_prices", lambda self, now: (("test", cheap_hour), lambda: (slots, FiscalChoice(), ()))
     )
 
 
@@ -229,3 +229,13 @@ async def test_a_new_load_is_not_overdue_and_plans_in_the_executor(
     load.tick(dt_util.now())
     await hass.async_block_till_done(wait_background_tasks=True)
     assert jobs and load._planning is False
+
+
+async def test_without_prices_it_waits_for_them_and_says_so(hass: HomeAssistant) -> None:
+    site, controller = await _site(hass)
+
+    load = controller.switch_load
+    assert load.status == "no_prices" and load.decision is not None
+    assert load.decision.reason == "waiting_for_prices" and not load.decision.on
+    diagnostics = (await async_get_config_entry_diagnostics(hass, site))["switch_load"]
+    assert diagnostics["plan"]["priced_until"] is None and diagnostics["plan"]["deferred_quarters"] == 4
