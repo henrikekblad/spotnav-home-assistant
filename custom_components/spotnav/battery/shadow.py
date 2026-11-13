@@ -5,6 +5,13 @@ turned on: `ON_REACHABLE` is off, a stored `on` loads as `shadow`, and nothing o
 "All back to shadow" puts every part back in one step.
 
 The log is bounded by count and by age and survives a restart with the rest of the book (`as_dict`, `from_dict`).
+
+Each entry is shaped for the confirmed-write ledger that comes with the first real write (Predbat's
+`control_ledger.py`, `plans/research_integrations/predbat_lowhanging_2026-11-13.md` items 1 and 5): `read` is what
+the entity read when the decision was made, and `written`/`read_back` stay `False`/`None` in shadow. Once a part
+writes, the value it owns is the value read back after the write, never the value sent; an `unavailable` read never
+contradicts it, and a difference counts as someone else's change only after `MIN_DIVERGENCE_S`. The control-failure
+monitor (a hold that does not hold) adds its verdicts as entries of the same shape.
 Pure: no Home Assistant import; times are aware datetimes from the caller.
 """
 
@@ -28,6 +35,9 @@ ON_REACHABLE: Final = False
 
 LOG_MAX_ENTRIES: Final = 200
 LOG_MAX_AGE: Final = timedelta(days=7)
+
+#: How long a read must differ from the owned value before it counts as another system's change (for the ledger).
+MIN_DIVERGENCE_S: Final = 240.0
 
 _ACTIONS: Final = frozenset({"would_write", "would_restore", "left_alone", "not_possible"})
 
@@ -54,6 +64,11 @@ class ShadowEntry:
     entity_id: str | None = None
     value: Any = None
     detail: Mapping[str, Any] = field(default_factory=dict)
+    #: The entity's state when the decision was made.
+    read: str | None = None
+    #: Whether it was written, and what the entity read back afterwards: always `False` and `None` in shadow.
+    written: bool = False
+    read_back: str | None = None
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -64,6 +79,9 @@ class ShadowEntry:
             "entity_id": self.entity_id,
             "value": self.value,
             "detail": dict(self.detail),
+            "read": self.read,
+            "written": self.written,
+            "read_back": self.read_back,
         }
 
     @classmethod
@@ -84,7 +102,14 @@ class ShadowEntry:
             entity_id=entity_id if isinstance(entity_id, str) else None,
             value=data.get("value"),
             detail=dict(detail) if isinstance(detail, Mapping) else {},
+            read=_text(data.get("read")),
+            written=data.get("written") is True,
+            read_back=_text(data.get("read_back")),
         )
+
+
+def _text(value: Any) -> str | None:
+    return value if isinstance(value, str) else None
 
 
 class ShadowBook:

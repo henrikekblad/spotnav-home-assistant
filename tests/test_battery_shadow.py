@@ -21,7 +21,7 @@ NOW = datetime(2026, 11, 13, 12, 0, tzinfo=UTC)
 
 
 def _entry(at: datetime, reason: str = "test") -> ShadowEntry:
-    return ShadowEntry(at, PART_HOLD_FOR_CAR, "would_write", reason, "number.limit", 0.0, {"power_kw": -4.6})
+    return ShadowEntry(at, PART_HOLD_FOR_CAR, "would_write", reason, "number.limit", 0.0, {"power_kw": -4.6}, read="23.04")
 
 
 def test_every_part_starts_in_shadow_and_writes_nothing() -> None:
@@ -112,3 +112,9 @@ def test_broken_storage_loads_an_empty_book(data: object) -> None:
     book = ShadowBook.from_dict(data, NOW)
 
     assert book.entries == [] and book.state(PART_HOLD_FOR_CAR) == "shadow"
+
+
+def test_an_entry_in_shadow_is_never_written_and_keeps_what_the_entity_read() -> None:
+    entry = ShadowEntry.from_dict(_entry(NOW).as_dict())
+
+    assert entry is not None and entry.read == "23.04" and entry.written is False and entry.read_back is None
