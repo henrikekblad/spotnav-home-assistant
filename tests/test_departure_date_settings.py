@@ -91,10 +91,12 @@ def test_the_wire_names_the_date_and_marks_it_optional() -> None:
     # `phases` is optional too: it is no longer a setting, and a replacement may send it or leave it out.
     # `notifications` came later still, `fill_to_limit` after it, then the vehicle identification's, and its
     # camera, then whether users who are not administrators may change the strategy and plan, and last what the
-    # import target does when the plan cannot be ready in time, and the departure calendar.
+    # import target does when the plan cannot be ready in time, and the departure calendar and whether it alone
+    # decides.
     optional = {
         "departure_date", "departure_weekdays", "phases", "notifications", "fill_to_limit", "vehicle_ids",
         "identify_mode", "identify_camera", "users_change_plan", "if_not_ready", "departure_calendar",
+        "departure_calendar_only",
     }
     assert OPTIONAL_SETTINGS_KEYS == optional
     assert REQUIRED_SETTINGS_KEYS == SETTINGS_KEYS - optional

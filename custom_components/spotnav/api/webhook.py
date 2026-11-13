@@ -87,6 +87,7 @@ _last_rejected_warning: float | None = None
 APP_UNREAD_SETTINGS: Final = (
     "departure_date", "departure_weekdays", "fiscal_included", "notifications", "fill_to_limit", "vehicle_ids",
     "identify_mode", "identify_camera", "users_change_plan", "if_not_ready", "departure_calendar",
+    "departure_calendar_only",
 )
 
 

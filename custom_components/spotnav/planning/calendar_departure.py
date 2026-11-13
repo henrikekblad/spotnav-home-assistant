@@ -35,7 +35,7 @@ import re
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta, timezone
-from typing import Any, Final, Literal
+from typing import Any, Final
 
 from .. import time_zones
 from .planner import MAX_DEPARTURE_DAYS_AHEAD, STEP_MINUTES, local_instant
@@ -56,7 +56,6 @@ _LABELLED: Final = re.compile(
 _PERCENT: Final = re.compile(rf"(?<![\d.,]){_NUMBER}\s*%", re.IGNORECASE)
 _KWH: Final = re.compile(rf"(?<![\d.,]){_NUMBER}\s*kwh\b", re.IGNORECASE)
 
-CalendarState = Literal["used", "no_event", "unavailable"]
 
 
 @dataclass(frozen=True, slots=True)

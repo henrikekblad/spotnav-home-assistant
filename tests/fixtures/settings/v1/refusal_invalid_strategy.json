@@ -11,6 +11,7 @@
     "amps": null,
     "area_id": null,
     "departure_calendar": null,
+    "departure_calendar_only": false,
     "departure_date": null,
     "departure_enabled": true,
     "departure_time": "08:00",
