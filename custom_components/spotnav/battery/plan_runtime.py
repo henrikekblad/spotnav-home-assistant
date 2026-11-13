@@ -124,6 +124,8 @@ PRICE_DAYS: Final = 2
 #: The modes beside the site's own are planned only while the solve has taken at most this long (s); the ones left
 #: are skipped and named (`modes_skipped`).
 MODES_BUDGET_S: Final = 5.0
+# The clock the modes budget is read from: wall-clock in production, replaced by tests so they do not depend on load.
+budget_clock = time.monotonic
 #: The hook for a credit per exported kWh (minor units, the grid operator's "nätnytta", a few öre in Sweden): read
 #: from the site's entry under this key, none by default; added to the spot price of every kWh sold, by the sun or
 #: by the battery. No setting offers it yet.
@@ -235,7 +237,7 @@ def _solve(
 ) -> tuple[dict[str, Any], tuple[str, ...], tuple[PlanSlot, ...], tuple[str, ...]]:
     """The executor's part: the plan's own house forecast (when it has its rows), the slots, and each mode's plan,
     the site's [mode] first; the modes left when the solve took longer than `MODES_BUDGET_S` are skipped."""
-    started = time.monotonic()
+    started = budget_clock()
     if own is not None:
         rows, flat_kw, temperatures, holidays = own
         forecast = forecast_house_load(
@@ -262,7 +264,7 @@ def _solve(
     skipped: list[str] = []
     for name in (mode, *(other for other in MODES if other != mode)):
         # Self-consumption costs nothing (it is the baseline): never skipped.
-        if plans and MODE_DEFS[name].plans and time.monotonic() - started > MODES_BUDGET_S:
+        if plans and MODE_DEFS[name].plans and budget_clock() - started > MODES_BUDGET_S:
             skipped.append(name)
             continue
         plans[name] = plan_mode(
