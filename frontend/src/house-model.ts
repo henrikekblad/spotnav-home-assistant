@@ -85,6 +85,11 @@ export interface TodayMoney {
   bought: number;
   net: number;
   mode: string;
+  /** The battery's stored energy now (kWh) and its average cost (minor unit per kWh); `estimated` while the
+   * starting estimate is still in it. */
+  stored_kwh: number | null;
+  average_cost: number | null;
+  estimated: boolean;
 }
 
 export interface DayFlow {
@@ -100,6 +105,7 @@ export interface CalendarDay {
   plan_saving: number;
   own_saving: number;
   mode: string | null;
+  arbitrage: number | null;
 }
 
 export interface HouseAnswer {
@@ -303,6 +309,9 @@ function today(value: unknown): TodayMoney | null {
     bought: number(source.bought),
     net: number(source.net),
     mode: text(source.mode),
+    stored_kwh: additive(source, "stored_kwh", numberOrNull, null),
+    average_cost: additive(source, "average_cost", numberOrNull, null),
+    estimated: additive(source, "estimated", flag, false),
   };
 }
 
@@ -336,7 +345,13 @@ function calendar(value: unknown): { month: string; days: CalendarDay[] } | null
     month,
     days: list(source.days).map((entry) => {
       const item = record(entry);
-      return { date: day(item.date), plan_saving: number(item.plan_saving), own_saving: number(item.own_saving), mode: textOrNull(item.mode) };
+      return {
+        date: day(item.date),
+        plan_saving: number(item.plan_saving),
+        own_saving: number(item.own_saving),
+        mode: textOrNull(item.mode),
+        arbitrage: additive(item, "arbitrage", numberOrNull, null),
+      };
     }),
   };
 }
