@@ -1,6 +1,7 @@
 """The expected solar surplus (SpotNav 3.0, Predbat's "export triggers" idea): how much of the sun the house is not
 expected to use in the coming hours, from the sun forecast (corrected once its correction has learnt, else as read)
-less the house load forecast's median (`site/house_forecast.py`).
+less the house's whole load (the house load forecast's median of it, `site/house_forecast.py`: the import less the
+chargers has the sun taken off already, so the sensor is unknown where no whole load is kept).
 
 Pure. Per hour: `surplus = max(0, sun_kwh - house_kw * 1 h)`. Only hours where both figures are known are listed (an
 hour the house profile does not know is left out, never guessed), and the windows count each hour by the share of it

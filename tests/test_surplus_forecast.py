@@ -10,6 +10,8 @@ from homeassistant.helpers import entity_registry as er
 
 from custom_components.spotnav.const import CONF_SOLAR_FORECAST_ENTRIES, DOMAIN
 from custom_components.spotnav.runtime import site_controller_for
+from custom_components.spotnav.site.house_forecast import SURPLUS_NO_SOLAR_STATISTICS, SURPLUS_OK
+from custom_components.spotnav.site.solar_correction_shadow import SURPLUS_NO_SUN
 from custom_components.spotnav.site.surplus_forecast import (
     expected_surplus,
     remaining_today_kwh,
@@ -85,8 +87,14 @@ async def test_the_sensor_shows_the_next_hours_and_is_unknown_without_either_for
     correction.sun_kwh = {hour + timedelta(hours=i): 3.0 for i in range(6)}
     correction.sun_basis = "corrected"
     correction.last_refresh = now
+    # The import target's net figure is never the surplus's house: the sun is taken off it already.
     monkeypatch.setattr(
-        controller.house_forecast, "plan_kw_by_hour", lambda _now: {hour + timedelta(hours=i): 1.0 for i in range(6)}
+        controller.house_forecast, "plan_kw_by_hour", lambda _now: {hour + timedelta(hours=i): 0.0 for i in range(6)}
+    )
+    monkeypatch.setattr(
+        controller.house_forecast,
+        "surplus_house_by_hour",
+        lambda _now: ({hour + timedelta(hours=i): 1.0 for i in range(6)}, SURPLUS_OK),
     )
     for listener in list(controller.house_forecast._listeners):
         listener()
@@ -99,11 +107,22 @@ async def test_the_sensor_shows_the_next_hours_and_is_unknown_without_either_for
     assert len(state.attributes["hours"]) == 6
     assert state.attributes["hours"][0]["surplus_kwh"] == 2.0
 
+    # No whole load (no solar production in the Energy dashboard): unknown, with the reason in the diagnostics.
+    monkeypatch.setattr(
+        controller.house_forecast, "surplus_house_by_hour", lambda _now: ({}, SURPLUS_NO_SOLAR_STATISTICS)
+    )
+    for listener in list(controller.house_forecast._listeners):
+        listener()
+    await hass.async_block_till_done()
+    assert hass.states.get(entity_id).state == "unknown"
+    assert correction.snapshot()["expected_surplus_status"] == SURPLUS_NO_SOLAR_STATISTICS
+
     correction.last_refresh = now - timedelta(hours=4)
     for listener in list(controller.house_forecast._listeners):
         listener()
     await hass.async_block_till_done()
     assert hass.states.get(entity_id).state == "unknown"
+    assert correction.surplus_status(now) == SURPLUS_NO_SUN
 
 
 async def test_no_sensor_on_a_site_without_a_solar_forecast(hass: HomeAssistant, freezer) -> None:

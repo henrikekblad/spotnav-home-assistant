@@ -541,9 +541,10 @@ EXPECTED_SURPLUS_TICK = timedelta(minutes=5)
 
 class SiteExpectedSurplusEntity(SpotNavSiteEntity, SensorEntity):
     """The solar surplus the site is expected to have in the next hours (`site/surplus_forecast.py`): the sun
-    forecast (corrected once learnt) less the house load forecast, in kWh over the next four hours; its attributes
-    carry the next two hours, the rest of today and one row per hour, for blueprints and automations. A prediction,
-    read-only; `unknown` while either forecast is missing. Written only when the shown figures change."""
+    forecast (corrected once learnt) less the house's whole load forecast, in kWh over the next four hours; its
+    attributes carry the next two hours, the rest of today and one row per hour, for blueprints and automations. A
+    prediction, read-only; `unknown` while either forecast is missing (why: the site diagnostics'
+    `expected_surplus_status`). Written only when the shown figures change."""
 
     _attr_translation_key = "expected_solar_surplus"
     # One row per hour: kept out of the recorder like the forecast's own attributes.

@@ -69,6 +69,7 @@ from .forecast_log import (
     ForecastLog,
 )
 from .solar_correction import STATUS_SHADOW as CORRECTION_LEARNT
+from .house_forecast import SURPLUS_OK
 from .solcast_detail import read_detail
 from .surplus_forecast import (
     MAX_AGE,
@@ -102,6 +103,10 @@ DEFAULT_WEATHER: Final = "weather.forecast_home"
 #: Solcast's quantiles and the log kind each is kept under.
 DETAIL_KINDS: Final = {"p10": KIND_SUN_P10, "p50": KIND_SUN_P50, "p90": KIND_SUN_P90}
 STATUS_NO_FORECAST: Final = "no_forecast_source"
+#: Why the expected surplus is unknown, beside the house forecast's reasons (`house_forecast.SURPLUS_*`): no sun
+#: forecast read in the last `MAX_AGE`, or no hour both forecasts know.
+SURPLUS_NO_SUN: Final = "no_sun_forecast"
+SURPLUS_NO_HOURS: Final = "no_common_hours"
 STATUS_NO_PRODUCTION: Final = "no_solar_statistics"
 
 
@@ -460,13 +465,23 @@ class SiteSolarCorrection:
 
     def surplus(self, now: datetime) -> list[SurplusHour] | None:
         """The hours of expected solar surplus (`site/surplus_forecast.py`): the sun of the last refresh less the
-        house forecast's median. `None` without a sun forecast read in the last `MAX_AGE`, or without a house
-        forecast. The house figure is the site's one (`SiteHouseForecast.plan_kw_by_hour`)."""
+        house's whole load (its median, `SiteHouseForecast.surplus_house_by_hour`), never the import less the chargers,
+        which has the sun taken off already. `None` without a sun forecast read in the last `MAX_AGE` or without the
+        whole load; why is in `surplus_status`."""
+        return self._surplus(now)[0]
+
+    def surplus_status(self, now: datetime) -> str:
+        """Why the expected surplus is unknown (`SURPLUS_*`), `ok` when it is not."""
+        return self._surplus(now)[1]
+
+    def _surplus(self, now: datetime) -> tuple[list[SurplusHour] | None, str]:
         if not self.sun_kwh or self.last_refresh is None or now - self.last_refresh > MAX_AGE:
-            return None
-        house = self.site.house_forecast.plan_kw_by_hour(now)
+            return None, SURPLUS_NO_SUN
+        house, status = self.site.house_forecast.surplus_house_by_hour(now)
+        if status != SURPLUS_OK:
+            return None, status
         shown = expected_surplus(self.sun_kwh, house, now)
-        return shown or None
+        return (shown, SURPLUS_OK) if shown else (None, SURPLUS_NO_HOURS)
 
     def surplus_snapshot(self, now: datetime) -> dict[str, Any] | None:
         """The state and attributes of the expected surplus sensor, also shown in the diagnostics; `None` when unknown."""
@@ -521,6 +536,7 @@ class SiteSolarCorrection:
             "retry_at": None if self._retry_at is None else self._retry_at.isoformat(),
             "solcast_hours": self.detail_hours,
             "expected_surplus": self.surplus_snapshot(dt_util.utcnow()),
+            "expected_surplus_status": self.surplus_status(dt_util.utcnow()),
             "sun_basis": self.sun_basis,
             "log": self.log.diagnostics((KIND_SUN, KIND_SUN_CORRECTED, *DETAIL_KINDS.values())),
         }
