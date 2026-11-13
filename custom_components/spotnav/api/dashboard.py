@@ -540,6 +540,9 @@ class CapturedDashboard:
     #: The camera for identification: what to choose from and each car's reference pictures
     #: (`camera_identification.CameraIdentification.block`); `None` when nothing is offered or chosen.
     camera_identification: dict[str, Any] | None = None
+    #: The departure calendar (`departure_calendar_block`): the calendars to choose from and what the plan made of the
+    #: chosen one; `None` when there is no calendar to choose and none chosen.
+    departure_calendar: dict[str, Any] | None = None
     #: A smart plug's measured power now, in kW (`ChargingController.measured_power_w`).
     measured_power_kw: float | None = None
     #: The charger's voltage between phases (`grid_voltage.voltage_between_phases_v`).
@@ -1301,6 +1304,7 @@ def _capture_dashboard(
         own_current_sensors=_own_current_sensors(hass, entry_id, site),
         identification=_identification(hass, entry_id),
         camera_identification=_camera_identification(hass, entry_id, settings),
+        departure_calendar=departure_calendar_block(hass, entry_id, settings),
         guest=capture_guest(hass, entry_id, settings),
         guest_done=bool(controller is not None and is_guest(settings) and controller.guest_met),
         vehicle_choices=tuple((choice.id, choice.name) for choice in resolve_target_vehicle(hass, None)[1]),
@@ -1421,6 +1425,37 @@ def _camera_identification(hass: HomeAssistant, entry_id: str, settings: AutoSet
         return None
     _, choices = resolve_target_vehicle(hass, settings.target.vehicle_id, settings.vehicle_ids)
     return camera.block([choice.id for choice in choices])
+
+
+#: The departure calendar block's keys, every one always present.
+DEPARTURE_CALENDAR_KEYS: Final = (
+    "calendars", "entity_id", "state", "departure", "summary", "all_day", "target_percent", "target_kwh", "target_used",
+)
+
+
+def departure_calendar_block(hass: HomeAssistant, entry_id: str, settings: AutoSettings | None) -> dict[str, Any] | None:
+    """The dashboard's `departure_calendar`: the calendars Home Assistant has (`{entity_id, name}`, by name) and what
+    the last calculation made of the chosen one (`AutoController.calendar_status`): `state` is `used` (its departure
+    is the plan's: `departure`, the event's `summary`, `all_day`, the target its text gives and `target_used`,
+    `percent`, `kwh` or `null`), `daily` (no event moves the daily departure), `date` (a chosen date wins),
+    `unavailable` (it cannot be read: the daily departure is used), `off` (no departure, or a guest car) or `null`
+    (not calculated yet, or none chosen). `None` when there is no calendar and none is chosen."""
+    calendars = sorted(
+        ({"entity_id": state.entity_id, "name": state.name} for state in hass.states.async_all("calendar")),
+        key=lambda item: (item["name"].casefold(), item["entity_id"]),
+    )
+    chosen = None if settings is None else settings.departure_calendar
+    if not calendars and chosen is None:
+        return None
+    preview = preview_for(hass, entry_id)
+    status = None if preview is None or chosen is None else preview.calendar_status()
+    if status is not None and status.get("entity_id") != chosen:
+        status = None
+    block: dict[str, Any] = dict.fromkeys(DEPARTURE_CALENDAR_KEYS)
+    block.update(calendars=calendars, entity_id=chosen, all_day=False)
+    if status is not None:
+        block.update({key: status[key] for key in DEPARTURE_CALENDAR_KEYS if key in status and key != "entity_id"})
+    return block
 
 
 def _measured_power_kw(controller: ChargingController | None) -> float | None:
@@ -2112,6 +2147,9 @@ def serialize_dashboard(
         "setup": serialize_setup(capture.setup),
         # Additive: the guest car (`capture_guest`). An app reads it only with `reads: ["guest"]` (`api/webhook.py`).
         "guest": capture.guest,
+        # Additive, and only where there is a calendar to choose or one chosen. An app reads it only with
+        # `reads: ["departure_calendar"]` (`api/webhook.py`).
+        **({} if capture.departure_calendar is None else {"departure_calendar": capture.departure_calendar}),
     }
 
 

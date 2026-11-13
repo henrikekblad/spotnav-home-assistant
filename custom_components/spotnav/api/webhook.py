@@ -86,7 +86,7 @@ _last_rejected_warning: float | None = None
 #: replacement without one keeps the stored value (`fiscal_included` is read-only and never stored).
 APP_UNREAD_SETTINGS: Final = (
     "departure_date", "departure_weekdays", "fiscal_included", "notifications", "fill_to_limit", "vehicle_ids",
-    "identify_mode", "identify_camera", "users_change_plan", "if_not_ready",
+    "identify_mode", "identify_camera", "users_change_plan", "if_not_ready", "departure_calendar",
 )
 
 
@@ -165,6 +165,10 @@ APP_UNREAD_GUEST_CODES: Final = ("guest_planned", "guest_done")
 #: block's tone stays as it was.
 APP_UNREAD_STOP_UNPLUG_UNSEEN_CODES: Final = ("stop_unplug_unseen",)
 APP_READS_STOP_UNPLUG_UNSEEN: Final = "stop_unplug_unseen"
+#: The departure calendar (`planning/calendar_departure.py`): the dashboard's `departure_calendar` block is left out for
+#: an app that does not read `APP_READS_DEPARTURE_CALENDAR`, as is the settings field of the same name (a replacement
+#: without it keeps the stored calendar).
+APP_READS_DEPARTURE_CALENDAR: Final = "departure_calendar"
 #: Each optional top-level dashboard block an app released before it does not read, with the `reads` name that opts
 #: into it.
 APP_DASHBOARD_BLOCK_READS: Final = {
@@ -173,6 +177,7 @@ APP_DASHBOARD_BLOCK_READS: Final = {
     "setup": APP_READS_SETUP,
     "grid_tariff": APP_READS_GRID_TARIFF,
     "guest": APP_READS_GUEST,
+    "departure_calendar": APP_READS_DEPARTURE_CALENDAR,
 }
 #: Where the area's prices come from and what to do when it has no source of its own: the dashboard's
 #: `prices.provider` is left out for an app that does not read `APP_READS_PRICE_PROVIDER`.
@@ -321,7 +326,8 @@ def _for_app(body: dict[str, Any], payload: dict[str, Any]) -> dict[str, Any]:
     `charger_own_mode`; `sun_past_target` for the status line `sun_past_target`; `import_target_status` for the import
     target's five status lines; `effective_target` for `grid_tariff.demand.effective_target_kw`; `guest` for the guest
     car: the `guest` block, its status lines, a one-car charger's question and the guest standing as the vehicle;
-    `stop_unplug_unseen` for the status line of a person's Stop nothing can see end);
+    `stop_unplug_unseen` for the status line of a person's Stop nothing can see end; `departure_calendar` for the
+    dashboard's `departure_calendar` block and the settings field);
     anything else in it, or a `reads` that is not a list, is ignored.
     """
     opted_in = _opted_in(payload)
