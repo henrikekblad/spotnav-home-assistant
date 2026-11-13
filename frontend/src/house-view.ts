@@ -456,6 +456,8 @@ function calendarBlock(doc: Document, language: Language, answer: HouseAnswer, n
   const short = (minor: number): string => formatFixed(language, minor / 100, Math.abs(minor) >= 1000 ? 0 : 1);
   let plan = 0;
   let own = 0;
+  let arbitrage = 0;
+  let arbitrageDays = 0;
   for (let number = 1; number <= length; number += 1) {
     const date = `${calendar.month}-${String(number).padStart(2, "0")}`;
     const cell = element(doc, "span", H.calendarDay);
@@ -470,14 +472,19 @@ function calendarBlock(doc: Document, language: Language, answer: HouseAnswer, n
       own += day.own_saving;
       cell.dataset["result"] = day.plan_saving >= day.own_saving ? "plan" : "own";
       cell.append(element(doc, "span", H.calendarFigure, short(day.plan_saving)), element(doc, "span", H.calendarDate, short(day.own_saving)));
+      const label = translate(language, "house.calendar.day", {
+        date: dateLabel(language, date),
+        plan: amount(language, day.plan_saving, answer.money),
+        own: amount(language, day.own_saving, answer.money),
+      });
       cell.setAttribute(
         "aria-label",
-        translate(language, "house.calendar.day", {
-          date: dateLabel(language, date),
-          plan: amount(language, day.plan_saving, answer.money),
-          own: amount(language, day.own_saving, answer.money),
-        }),
+        day.arbitrage === null ? label : `${label} · ${translate(language, "house.calendar.arbitrage", { amount: amount(language, day.arbitrage, answer.money) })}`,
       );
+      if (day.arbitrage !== null) {
+        arbitrage += day.arbitrage;
+        arbitrageDays += 1;
+      }
       cell.setAttribute("role", "img");
     }
     grid.append(cell);
@@ -496,6 +503,16 @@ function calendarBlock(doc: Document, language: Language, answer: HouseAnswer, n
       }),
     ),
   );
+  if (arbitrageDays > 0) {
+    section.append(
+      element(
+        doc,
+        "p",
+        `${C.muted} ${H.note}`,
+        translate(language, "house.calendar.arbitrageTotal", { amount: amount(language, arbitrage, answer.money), days: String(arbitrageDays) }),
+      ),
+    );
+  }
   return section;
 }
 
@@ -637,6 +654,15 @@ function sourcesBlock(doc: Document, language: Language, answer: HouseAnswer, wo
     const name = battery.label ?? battery.brand ?? "";
     const size = battery.usable_kwh === null ? "" : ` · ${kwh(language, battery.usable_kwh)}`;
     add(translate(language, "house.sources.battery", { name: `${name}${size}` }));
+    const today = answer.today;
+    if (today !== null && today.stored_kwh !== null && today.average_cost !== null) {
+      add(
+        translate(language, today.estimated ? "house.sources.storedEstimated" : "house.sources.stored", {
+          kwh: kwh(language, today.stored_kwh),
+          cost: `${formatNumber(language, today.average_cost, 0)} ${priceUnit(answer)}`,
+        }),
+      );
+    }
   }
   section.append(list);
   const notes: string[] = [];

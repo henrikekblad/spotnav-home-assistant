@@ -211,7 +211,7 @@ describe("the body", () => {
 
 describe("the battery app's views, calm", () => {
   it("say today's money in one line, split as the battery's app does, with the mode in force", () => {
-    expect(todayLine("sv", answer())).toBe("I dag: sålt 0,31 kr · arbitrage 12 kr · köpt 38 kr · läge Balanserad");
+    expect(todayLine("sv", answer())).toBe("I dag: sålt 0,04 kr · arbitrage 11 kr · köpt 38 kr · läge Balanserad");
     expect(todayLine("sv", answer("house/house_learning.json"))).toBeNull();
     const card = body(answer(), {}, "sv");
     expect(card.querySelector("[data-line='today']")?.textContent).toContain("arbitrage");
@@ -253,6 +253,9 @@ describe("the battery app's views, calm", () => {
     expect(card.querySelectorAll(".spotnav-house-calendar-day[data-result='own']")).toHaveLength(3);
     expect(card.querySelector(".spotnav-house-calendar-day[data-today]")?.getAttribute("data-date")).toBe("2026-11-13");
     expect(card.querySelector(".spotnav-house-calendar-day[data-date='2026-11-04']")?.getAttribute("aria-label")).toMatch(/^ons 4 nov\.?: SpotNavs plan/);
+    expect(card.querySelector(".spotnav-house-calendar-day[data-date='2026-11-04']")?.getAttribute("aria-label")).toMatch(/ · arbitrage 8,00 kr$/);
+    expect(card.textContent).toContain("Batteriets arbitrage, 12 dygn:");
+    expect(card.textContent).toContain("Lagrat nu: 32,3 kWh à 121 öre/kWh i snitt");
   });
 });
 
