@@ -127,12 +127,15 @@ Rewards), a planner (Predbat, EMHASS) or an automation of yours. One controller 
 notices the others and only watches.
 
 * **A planner or CheckWatt set up in Home Assistant**: the battery is watch-only while it is there.
-  Nothing is told: you set it up yourself.
 * **The battery's settings change several times a day, or it charges from the grid or discharges into
   export in plain self-consumption** (and its level moves the same way, for ten minutes): something
-  outside SpotNav drives it. SpotNav marks it watch-only and tells you once, in Settings → Repairs. The
-  notice goes away by itself two days after the battery last showed it. Tibber or Greenely set up in
-  Home Assistant is named as the likely source but never marks the battery by itself.
+  outside SpotNav drives it, and SpotNav marks it watch-only. This ends by itself two days after the
+  battery last showed it. Tibber or Greenely set up in Home Assistant is named as the likely source but
+  never marks the battery by itself.
+
+SpotNav does not raise a notice for this in Settings → Repairs: there is nothing you need to do. It
+writes one line to the log (at INFO) when it starts watching only and one when it stops, and keeps it
+in the diagnostics and in what SpotNav detected.
 
 A watch-only battery still gets SpotNav's battery plan as a comparison, and SpotNav never writes to it.
 The site's diagnostics show what was seen (`battery.outside_control`) and, under `detected`, what
