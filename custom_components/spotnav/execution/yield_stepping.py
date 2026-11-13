@@ -163,7 +163,9 @@ class YieldConfig:
     # Stepping into the battery's share: with the site at its limit and the battery charging from
     # the grid by at least a step's worth (`step_a` x 230 V x phases, on a fresh reading), one step
     # may take the site over its limit (fuse less safety margin) by at most `battery_probe_over_a`
-    # (the held band's 0.5 A plus one 2 A step, and never past `ceiling_a`) while it is measured.
+    # (the held band's 0.5 A plus one 2 A step, and never past `ceiling_a`) while it is measured; on a phase whose
+    # measured voltage is low by the band's widening too (`held_band_extra_a`), so the step starts where the battery
+    # holds the grid there.
     # A step the car's reading has not shown within `battery_probe_detect_s` (an OCPP charger
     # reports about once a minute) is taken back.
     battery_probe_over_a: float = 2.5
@@ -804,15 +806,19 @@ class YieldStepper:
     def _over_allowance(
         self, site_a: Mapping[PhaseName, float], limit_a: Mapping[PhaseName, float] | None
     ) -> bool:
-        """Whether a phase is (or would be) over its limit by more than `battery_probe_over_a`, or
-        over `ceiling_a`. An unknown limit counts as over. The allowance is a step into the battery's share's own
-        bound, so the unverified ceiling (the fuse) does not cut it: the step is what verifies the yield."""
-        cfg = self._config
+        """Whether a phase is (or would be) over its allowance (`_allowance_a`). An unknown limit counts as over. The
+        allowance is a step into the battery's share's own bound, so the unverified ceiling (the fuse) does not cut it:
+        the step is what verifies the yield."""
         if limit_a is None:
             return True
-        return any(
-            site_a[phase] > min(cfg.ceiling_a, limit_a[phase] + cfg.battery_probe_over_a)
-            for phase in site_a
+        return any(site_a[phase] > self._allowance_a(phase, limit_a) for phase in site_a)
+
+    def _allowance_a(self, phase: PhaseName, limit_a: Mapping[PhaseName, float]) -> float:
+        """The most a step into the battery's share may take `phase` to: its limit plus `battery_probe_over_a` and the
+        band's widening for a low voltage, and never past `ceiling_a`."""
+        cfg = self._config
+        return min(
+            cfg.ceiling_a, limit_a[phase] + cfg.battery_probe_over_a + self._band_extra_a.get(phase, 0.0)
         )
 
     def _allowance_room(
@@ -820,16 +826,9 @@ class YieldStepper:
     ) -> float:
         """How far (A) the most loaded phase is below the allowance over its limit (and the
         ceiling); 0 when the limit is unknown."""
-        cfg = self._config
         if limit_a is None:
             return 0.0
-        return max(
-            0.0,
-            min(
-                min(cfg.ceiling_a, limit_a[phase] + cfg.battery_probe_over_a) - site_a[phase]
-                for phase in site_a
-            ),
-        )
+        return max(0.0, min(self._allowance_a(phase, limit_a) - site_a[phase] for phase in site_a))
 
     def _battery_room(
         self,
