@@ -1,4 +1,5 @@
-// Bundle entry point: defines the two elements and publishes one picker entry. Evaluating
+// Bundle entry point: defines the three elements (the charging card, its editor and the house card) and publishes
+// a picker entry for each card. Evaluating
 // the asset twice must be harmless (`customElements.define` throws on a duplicate and
 // `customCards.push` would list the card twice), so both are guarded; `defineCard()` is
 // exported for tests.
@@ -10,14 +11,24 @@
 
 import { SpotnavCard } from "./card";
 import { SpotnavCardEditor } from "./editor";
+import { HOUSE_CARD_ELEMENT, HOUSE_CARD_TYPE, SpotnavHouseCard } from "./house-card";
 import { CARD_EDITOR_ELEMENT, CARD_ELEMENT, CARD_TYPE } from "./types";
 
-export { SpotnavCard, SpotnavCardEditor };
+export { SpotnavCard, SpotnavCardEditor, SpotnavHouseCard };
 
 export const CARD_PICKER_ENTRY = {
   type: CARD_TYPE,
   name: "SpotNav",
   description: "Charging plan and electricity prices from SpotNav.",
+  preview: true,
+  documentationURL: "https://github.com/henrikekblad/spotnav-home-assistant",
+} as const;
+
+/** The house card's entry (SpotNav 3.0 preview): the house's load, the sun and the battery plan, in shadow. */
+export const HOUSE_PICKER_ENTRY = {
+  type: HOUSE_CARD_TYPE,
+  name: "SpotNav house (preview)",
+  description: "The house's load forecast, the sun and the battery plan from SpotNav, in shadow.",
   preview: true,
   documentationURL: "https://github.com/henrikekblad/spotnav-home-assistant",
 } as const;
@@ -29,9 +40,14 @@ export function defineCard(): void {
   if (customElements.get(CARD_EDITOR_ELEMENT) === undefined) {
     customElements.define(CARD_EDITOR_ELEMENT, SpotnavCardEditor);
   }
+  if (customElements.get(HOUSE_CARD_ELEMENT) === undefined) {
+    customElements.define(HOUSE_CARD_ELEMENT, SpotnavHouseCard);
+  }
   const cards = window.customCards ?? [];
-  if (!cards.some((entry) => entry.type === CARD_TYPE)) {
-    cards.push({ ...CARD_PICKER_ENTRY });
+  for (const entry of [CARD_PICKER_ENTRY, HOUSE_PICKER_ENTRY]) {
+    if (!cards.some((listed) => listed.type === entry.type)) {
+      cards.push({ ...entry });
+    }
   }
   window.customCards = cards;
 }
