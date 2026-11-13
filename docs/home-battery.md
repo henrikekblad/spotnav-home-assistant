@@ -97,3 +97,24 @@ Always restore the battery on every path. Trigger the release on `from: "on"` (a
 runs when the sensor becomes unavailable), and also on Home Assistant start, because a restart while
 the battery is held would otherwise leave it held. Check that your battery integration really obeys
 the setting you write: some firmware ignores it in some modes.
+
+## Forecasts for other energy tools
+
+SpotNav shows its forecasts in the shape energy optimisers such as HAEO and EMHASS read, and offers the
+corrected solar forecast to the Energy dashboard. Nothing here is a setting and nothing here is planned
+on: it is a view of figures SpotNav already makes.
+
+| Where | State | Attribute `forecast` (`[{time, value}]`, never recorded) |
+|---|---|---|
+| **Price now** (the electricity price device) | The running interval's price, currency per kWh | The price of each interval from now on, in the sensor's unit |
+| **House load forecast** (the site, diagnostic) | The running hour's expected load, kW | One row per hour for the next day, kW. `basis` says whether it is the whole load (`gross`) or the import less the chargers (`net`) |
+| **Solar forecast** (the site, diagnostic; only where a solar forecast is chosen) | The running hour's expected sun, kW | One row per hour, kW (an hour's kWh is its mean kW). `basis` is `corrected` once the correction is learnt, else `raw` |
+
+`time` is an ISO 8601 time with its time zone, `value` is in the sensor's unit. The house load also stays
+on the site state sensor as `forecast: [{start, kw}]`.
+
+The Energy dashboard can take SpotNav's corrected solar forecast as a solar source's forecast: choose the
+site's entry as the forecast integration. It answers only once the correction is learnt (before that the
+dashboard shows nothing from SpotNav, not an unchecked figure), as Wh per hour from the running hour, and
+SpotNav never uses it as a source itself. The picker lists every SpotNav entry; only a site that has a solar
+forecast chosen gives anything.
