@@ -290,10 +290,11 @@ def test_finished_is_shown_when_the_car_is_done() -> None:
     ) == "finished"
 
 
-def test_finished_with_nothing_held_is_the_chargers_word() -> None:
-    """Not done, but SpotNav holds nothing (a past window, no pause): the charger's own finish stands."""
+def test_finished_without_proof_and_nothing_held_is_shown_connected() -> None:
+    """Not done, and SpotNav holds nothing (a past window, no pause): finished needs proof, so connected."""
     past = (_NOW - timedelta(hours=2), _NOW - timedelta(hours=1))
-    assert shown_connection(_capture(plan=SimpleNamespace(windows=[past]))) == "finished"
+    assert shown_connection(_capture(plan=SimpleNamespace(windows=[past]))) == "connected"
+    assert shown_connection(_capture(plan=None, soc=None)) == "connected"
 
 
 @pytest.mark.parametrize("state", [CHARGING, CONNECTED, PAUSED, DISCONNECTED, ERROR, UNKNOWN])

@@ -68,6 +68,7 @@ from ..execution.charger_entities import (
 )
 from ..startup import NOT_STARTING, StartupState, startup_state
 from ..execution.charger_connection import (
+    CONNECTED,
     CONNECTION_STATES,
     FINISHED as CONNECTION_FINISHED,
     UNKNOWN as CONNECTION_UNKNOWN,
@@ -2190,14 +2191,15 @@ def serialize_starting_up(state: StartupState) -> dict[str, Any]:
 
 #: The `connection` block's `shown` value for a charger that says its session is finished while the car is not done
 #: and SpotNav holds the charge for the plan (or a pause): the card says "Waiting", not "Finished".
+#: Not done and not held, the card says "Connected": finished is shown only with proof.
 CONNECTION_SHOWN_WAITING: Final = "waiting"
 
 
 def serialize_connection(connection: tuple[str, str | None], *, shown: str | None = None) -> dict[str, Any]:
     """The `connection` block: `state` (`disconnected`, `connected`, `charging`, `paused`, `finished`,
     `error` or `unknown`), the charger's own word; `source`, the entity the state was read from (`null` when
-    none was); and `shown` (additive), the state the card shows: `state`, except `waiting` for a `finished`
-    that is not the car's (`shown_connection`).
+    none was); and `shown` (additive), the state the card shows: `state`, except `waiting` or `connected` for a
+    `finished` that is not the car's (`shown_connection`).
     """
     state, source = connection
     state = state if state in CONNECTION_STATES else CONNECTION_UNKNOWN
@@ -2212,12 +2214,13 @@ def shown_connection(capture: CapturedDashboard) -> str:
     """The connection state the card shows. The charger's word, except one case: a charger that says its session
     is finished (OCPP `Finishing` once SpotNav stopped the transaction to wait for the plan) while the car is not
     done and SpotNav holds the charge -- an installed or proposed window still to come, a hold until a window, or
-    a pause -- reads `waiting`. The car is done when it stopped taking current, ended the charge by itself, was
-    stopped at its target, its guest charge or the plan's need is met, or its level is at the target."""
+    a pause -- reads `waiting`; with nothing held either it reads `connected`: finished is shown only with proof.
+    The car is done when it stopped taking current, ended the charge by itself, was stopped at its target, its
+    guest charge or the plan's need is met, or its level is at the target."""
     state = capture.connection[0]
-    if state != CONNECTION_FINISHED or _car_done(capture) or not _spotnav_holds(capture):
+    if state != CONNECTION_FINISHED or _car_done(capture):
         return state if state in CONNECTION_STATES else CONNECTION_UNKNOWN
-    return CONNECTION_SHOWN_WAITING
+    return CONNECTION_SHOWN_WAITING if _spotnav_holds(capture) else CONNECTED
 
 
 def _car_done(capture: CapturedDashboard) -> bool:
