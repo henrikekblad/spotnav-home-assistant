@@ -356,6 +356,7 @@
           "solar_priority": "Coche o batería doméstica primero",
           "battery_aggregate_power_entity": "Potencia de la batería doméstica (opcional)",
           "solar_forecast_entries": "Previsión solar (opcional)",
+          "change_switch_load": "Siguiente: carga conmutada (termo)",
           "change_measurement": "Siguiente: cambiar contador y fases"
         },
         "data_description": {
@@ -371,7 +372,26 @@
           "solar_priority": "Quién va primero cuando el coche y la batería doméstica quieren la misma energía.\n\n• Primero el coche: El coche recibe el excedente solar antes que la batería. Cuando la batería carga desde la red, cede el paso al coche en el fusible principal (con «El coche puede tomar la parte de la batería doméstica» activado). El objetivo de potencia solo cuenta la energía de la red.\n• Primero la batería: La batería recibe primero el excedente solar y el coche carga con lo que sobra. En el fusible principal el coche cede ante la batería. El objetivo de potencia cuenta también la descarga de la batería como importación, para que la batería no pague el coche.",
           "battery_aggregate_power_entity": "El sensor de potencia de la batería doméstica, positivo mientras carga. La carga solar y la parte de la batería doméstica de arriba lo usan para ver cuándo carga la batería.",
           "solar_forecast_entries": "De dónde toma la estrategia híbrida su previsión solar. Vacío: el modo híbrido carga solo en las horas más baratas.",
+          "change_switch_load": "Un termo u otra carga en un interruptor, que funciona en las horas más baratas. En esta versión SpotNav solo muestra cuándo la conmutaría; nunca lo hace.",
           "change_measurement": "Déjelo desactivado para guardar solo lo que hay en esta página."
+        }
+      },
+      "site_switch_load": {
+        "title": "Carga conmutada",
+        "description": "Una carga en un interruptor, por ejemplo un termo, que funciona en las horas más baratas dentro del fusible general y del objetivo de potencia. SpotNav solo muestra cuándo la encendería o la apagaría (en el diagnóstico de la instalación); en esta versión nunca la conmuta. Deja el interruptor vacío para quitar la carga.",
+        "data": {
+          "switch_entity": "Interruptor",
+          "rated_kw": "Potencia nominal",
+          "runtime_h": "Tiempo de funcionamiento por 24 horas",
+          "temperature_entity": "Sensor de temperatura (opcional)",
+          "floor_c": "Temperatura mínima (opcional)"
+        },
+        "data_description": {
+          "switch_entity": "El interruptor que enciende y apaga la carga. Vacío: sin carga.",
+          "rated_kw": "Lo que consume la carga cuando está encendida, según su placa de características.",
+          "runtime_h": "Cuánto tiempo debe funcionar en cada periodo de 24 horas. SpotNav elige para ello las horas más baratas.",
+          "temperature_entity": "Por ejemplo la temperatura del depósito del termo. Con una temperatura mínima, la carga funciona sea cual sea el precio cuando hace más frío.",
+          "floor_c": "Por debajo de ella la carga funciona enseguida, hasta estar 2 °C más caliente. Necesita el sensor de temperatura."
         }
       },
       "site_current_suggestions": {
@@ -503,7 +523,9 @@
       "manual_entities_duplicate": "Cada fase necesita su propia entidad.",
       "fee_value_required": "Introduce tu propia cifra, o elige la sugerencia.",
       "fee_no_suggestion": "Esta zona no tiene sugerencia para esto: introduce tu propia cifra o elige nada.",
-      "entsoe_key_rejected": "ENTSO-E no aceptó esta clave. Compruébala o genera una nueva en transparency.entsoe.eu."
+      "entsoe_key_rejected": "ENTSO-E no aceptó esta clave. Compruébala o genera una nueva en transparency.entsoe.eu.",
+      "switch_load_incomplete": "Indica la potencia nominal y el tiempo de funcionamiento de la carga.",
+      "switch_load_floor_pair": "El sensor de temperatura y la temperatura mínima van juntos: indica los dos o ninguno."
     }
   },
   "selector": {

@@ -356,6 +356,7 @@
           "solar_priority": "Auto vai kotiakku ensin",
           "battery_aggregate_power_entity": "Kotiakun teho (valinnainen)",
           "solar_forecast_entries": "Aurinkoennuste (valinnainen)",
+          "change_switch_load": "Seuraavaksi: kytkimellä ohjattu kuorma (lämminvesivaraaja)",
           "change_measurement": "Seuraavaksi: muuta mittaria ja vaiheita"
         },
         "data_description": {
@@ -371,7 +372,26 @@
           "solar_priority": "Kumpi saa mennä ensin, kun auto ja kotiakku haluavat saman sähkön.\n\n• Auto ensin: Auto saa aurinkoylijäämän ennen akkua. Kun akku lataa verkosta, se väistää autoa pääsulakkeella (kun ”Auto saa ottaa kotiakun osuuden” on päällä). Tehotavoite laskee vain verkosta otetun sähkön.\n• Akku ensin: Akku saa aurinkoylijäämän ensin, ja auto lataa sillä, mikä jää yli. Pääsulakkeella auto väistää akkua. Tehotavoite laskee myös akun purkamisen tuonniksi, jotta akku ei maksa auton latausta.",
           "battery_aggregate_power_entity": "Kotiakun tehoanturi, positiivinen akun latautuessa. Aurinkolataus ja yllä oleva kotiakun osuus käyttävät sitä nähdäkseen, milloin akku latautuu.",
           "solar_forecast_entries": "Mistä hybridistrategia saa aurinkoennusteensa. Tyhjä: hybridi lataa vain halvimpina tunteina.",
+          "change_switch_load": "Lämminvesivaraaja tai muu kytkimellä ohjattu kuorma, joka käy halvimpina tunteina. Tässä versiossa SpotNav näyttää vain, milloin se kytkisi sen; se ei koskaan kytke sitä.",
           "change_measurement": "Jätä pois päältä, jos haluat tallentaa vain tämän sivun tiedot."
+        }
+      },
+      "site_switch_load": {
+        "title": "Kytkimellä ohjattu kuorma",
+        "description": "Kytkimellä ohjattu kuorma, esimerkiksi lämminvesivaraaja, joka käy halvimpina tunteina pääsulakkeen ja tehotavoitteen rajoissa. SpotNav näyttää vain, milloin se kytkisi sen päälle tai pois (kohteen diagnostiikassa); tässä versiossa se ei koskaan kytke sitä. Jätä kytkin tyhjäksi poistaaksesi kuorman.",
+        "data": {
+          "switch_entity": "Kytkin",
+          "rated_kw": "Nimellisteho",
+          "runtime_h": "Käyntiaika 24 tunnissa",
+          "temperature_entity": "Lämpötila-anturi (valinnainen)",
+          "floor_c": "Alin lämpötila (valinnainen)"
+        },
+        "data_description": {
+          "switch_entity": "Kytkin, joka kytkee kuorman päälle ja pois. Tyhjä: ei kuormaa.",
+          "rated_kw": "Mitä kuorma ottaa päällä ollessaan, arvokilven mukaan.",
+          "runtime_h": "Kuinka kauan sen on käytävä jokaisen 24 tunnin aikana. SpotNav valitsee siihen halvimmat tunnit.",
+          "temperature_entity": "Esimerkiksi lämminvesivaraajan säiliön lämpötila. Kun alin lämpötila on annettu, kuorma käy hinnasta riippumatta, kun on kylmempää.",
+          "floor_c": "Tämän alapuolella kuorma käy heti, kunnes lämpötila on 2 °C korkeampi. Vaatii lämpötila-anturin."
         }
       },
       "site_current_suggestions": {
@@ -503,7 +523,9 @@
       "manual_entities_duplicate": "Jokainen vaihe tarvitsee oman entiteettinsä.",
       "fee_value_required": "Anna oma luku tai valitse ehdotus.",
       "fee_no_suggestion": "Hinta-alueella ei ole tälle ehdotusta: anna oma luku tai valitse ei mitään.",
-      "entsoe_key_rejected": "ENTSO-E ei hyväksynyt avainta. Tarkista se tai luo uusi osoitteessa transparency.entsoe.eu."
+      "entsoe_key_rejected": "ENTSO-E ei hyväksynyt avainta. Tarkista se tai luo uusi osoitteessa transparency.entsoe.eu.",
+      "switch_load_incomplete": "Anna kuorman nimellisteho ja käyntiaika.",
+      "switch_load_floor_pair": "Lämpötila-anturi ja alin lämpötila kuuluvat yhteen: anna molemmat tai ei kumpaakaan."
     }
   },
   "selector": {

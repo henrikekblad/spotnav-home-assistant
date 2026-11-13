@@ -69,6 +69,8 @@ from ..vehicles.discovery import async_discover_site_current_sources, DiscoveryC
 from ..vehicles.ocpp_identity import apply_target, discover_controls, resolve_target
 from ..execution.charger_entities import control_path_for_entity
 from .charger_wiring import ChargerWiringSteps
+from .switch_load_form import parse_switch_load, switch_load_schema
+from ..loads.switch_load import CONF_SWITCH_LOAD
 from .labels import (
     current_control_selector,
     MANUAL_ATTRIBUTES_CHOICE,
@@ -283,6 +285,8 @@ class SpotNavChargingOptionsFlow(config_entries.OptionsFlow):
 
 
 CHANGE_MEASUREMENT = "change_measurement"
+#: Ticked on the site's page: the switched load's page comes next (`async_step_site_switch_load`).
+CHANGE_SWITCH_LOAD = "change_switch_load"
 
 class SiteCapacityOptionsFlow(ChargerWiringSteps, config_entries.OptionsFlow):
     """Edit every structural choice a site was created with.
@@ -313,6 +317,8 @@ class SiteCapacityOptionsFlow(ChargerWiringSteps, config_entries.OptionsFlow):
         # Config entries able to answer the Energy dashboard's solar-forecast platform, discovered
         # once per flow instance rather than on every render.
         self._forecast_entry_options: list[dict[str, str]] | None = None
+        # The switched load this run saves: `None` leaves the stored one, `{}` removes it (`async_step_site_switch_load`).
+        self._pending_switch_load: dict[str, Any] | None = None
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         """Home Assistant's fixed options-flow entry point; forwards to `async_step_site_init`.
@@ -421,6 +427,8 @@ class SiteCapacityOptionsFlow(ChargerWiringSteps, config_entries.OptionsFlow):
                         mode=selector.SelectSelectorMode.LIST,
                     )
                 ),
+                # The switched load's page next (a water heater run in the cheapest hours, in shadow).
+                vol.Optional(CHANGE_SWITCH_LOAD, default=False): bool,
                 # Last, right above the submit button: off saves this page and keeps the stored
                 # measurement and phase wiring; on goes on to the measurement steps.
                 vol.Optional(CHANGE_MEASUREMENT, default=False): bool,
@@ -468,15 +476,37 @@ class SiteCapacityOptionsFlow(ChargerWiringSteps, config_entries.OptionsFlow):
                     step_id="site_init", data_schema=self._site_init_schema(), errors=errors
                 )
             self._pending_basic = user_input
-            reason = self._measurement_change_reason(user_input)
-            if not user_input.get(CHANGE_MEASUREMENT) and reason is None:
-                return await self._save_basics_only()
-            self._details_reason = reason
-            if user_input[CONF_MEASUREMENT_MODE] == MEASUREMENT_MODE_DIRECT:
-                # As in the create flow: direct mode asks for the site's current source first.
-                return await self.async_step_site_current_suggestions()
-            return await self.async_step_site_details()
+            if user_input.get(CHANGE_SWITCH_LOAD):
+                return await self.async_step_site_switch_load()
+            return await self._after_basics()
         return self.async_show_form(step_id="site_init", data_schema=self._site_init_schema())
+
+    async def _after_basics(self) -> ConfigFlowResult:
+        """Save at once, or go on to the measurement steps when asked or when the basics need them."""
+        reason = self._measurement_change_reason(self._pending_basic)
+        if not self._pending_basic.get(CHANGE_MEASUREMENT) and reason is None:
+            return await self._save_basics_only()
+        self._details_reason = reason
+        if self._pending_basic[CONF_MEASUREMENT_MODE] == MEASUREMENT_MODE_DIRECT:
+            # As in the create flow: direct mode asks for the site's current source first.
+            return await self.async_step_site_current_suggestions()
+        return await self.async_step_site_details()
+
+    async def async_step_site_switch_load(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        """The switched load: a switch, its rated power, its runtime per 24 hours and an optional comfort floor
+        (`flows/switch_load_form.py`). In shadow only: SpotNav shows when it would switch it and never does."""
+        schema = switch_load_schema(self._entry.data.get(CONF_SWITCH_LOAD))
+        if user_input is not None:
+            load, errors = parse_switch_load(user_input)
+            if load is None:
+                return self.async_show_form(
+                    step_id="site_switch_load",
+                    data_schema=self.add_suggested_values_to_schema(schema, user_input),
+                    errors=errors,
+                )
+            self._pending_switch_load = load
+            return await self._after_basics()
+        return self.async_show_form(step_id="site_switch_load", data_schema=schema)
 
     async def async_step_site_current_suggestions(
         self, user_input: dict[str, Any] | None = None
@@ -777,6 +807,11 @@ class SiteCapacityOptionsFlow(ChargerWiringSteps, config_entries.OptionsFlow):
         # source replaces the stored one and "skip" removes it. Anything else ("manual" guided
         # pickers write their own keys, or the suggestions step never ran) leaves the value
         # carried in by `**self._entry.data` untouched.
+        # The switched load, when this run went through its page: saved, or removed when its switch was left empty.
+        if self._pending_switch_load:
+            updated_data[CONF_SWITCH_LOAD] = dict(self._pending_switch_load)
+        elif self._pending_switch_load is not None:
+            updated_data.pop(CONF_SWITCH_LOAD, None)
         resolved_site_source = self._site_current_source_for_save()
         if resolved_site_source is not None:
             updated_data[CONF_SITE_CURRENT_SOURCE] = resolved_site_source

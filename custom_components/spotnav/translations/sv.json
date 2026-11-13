@@ -356,6 +356,7 @@
           "solar_priority": "Bil eller husbatteri först",
           "battery_aggregate_power_entity": "Hembatteriets effekt (valfritt)",
           "solar_forecast_entries": "Solprognos (valfritt)",
+          "change_switch_load": "Nästa: last på brytare (varmvattenberedare)",
           "change_measurement": "Nästa: ändra mätare och faser"
         },
         "data_description": {
@@ -371,7 +372,26 @@
           "solar_priority": "Vem som får gå först när bilen och husbatteriet vill ha samma el.\n\n• Bil först: Bilen får solöverskottet före batteriet. När batteriet laddar från nätet ger det plats åt bilen vid huvudsäkringen (med ”Bilen får ta hembatteriets andel” på). Effektmålet räknar bara el från nätet.\n• Batteri först: Batteriet får solöverskottet först, och bilen laddar på det som blir över. Vid huvudsäkringen backar bilen för batteriet. Effektmålet räknar även batteriets urladdning som import, så att bilen inte betalas av batteriet.",
           "battery_aggregate_power_entity": "Hembatteriets effektsensor, positiv när det laddar. Solladdningen och hembatteriets andel ovan använder den för att se när batteriet laddar.",
           "solar_forecast_entries": "Var hybridstrategin hämtar sin solprognos. Tomt: hybrid laddar bara på de billigaste timmarna.",
+          "change_switch_load": "En varmvattenberedare eller annan last på en brytare, som körs under de billigaste timmarna. I den här versionen visar SpotNav bara när den skulle slå om den; den gör det aldrig.",
           "change_measurement": "Lämna av för att bara spara det som står på den här sidan."
+        }
+      },
+      "site_switch_load": {
+        "title": "Last på brytare",
+        "description": "En last på en brytare, till exempel en varmvattenberedare, som körs under de billigaste timmarna inom huvudsäkringen och effektmålet. SpotNav visar bara när den skulle slå på eller av den (i anläggningens diagnostik); i den här versionen slår den aldrig om den. Lämna brytaren tom för att ta bort lasten.",
+        "data": {
+          "switch_entity": "Brytare",
+          "rated_kw": "Märkeffekt",
+          "runtime_h": "Drifttid per 24 timmar",
+          "temperature_entity": "Temperaturgivare (valfri)",
+          "floor_c": "Lägsta temperatur (valfri)"
+        },
+        "data_description": {
+          "switch_entity": "Brytaren som slår på och av lasten. Tom: ingen last.",
+          "rated_kw": "Vad lasten drar när den är på, enligt märkskylten.",
+          "runtime_h": "Hur länge den måste gå under varje 24-timmarsperiod. SpotNav väljer de billigaste timmarna för det.",
+          "temperature_entity": "Till exempel varmvattenberedarens tanktemperatur. Med en lägsta temperatur går lasten oavsett pris när det är kallare.",
+          "floor_c": "Under den här temperaturen går lasten direkt, tills det är 2 °C varmare. Kräver temperaturgivaren."
         }
       },
       "site_current_suggestions": {
@@ -503,7 +523,9 @@
       "manual_entities_duplicate": "Varje fas behöver en egen entitet.",
       "fee_value_required": "Ange en egen siffra, eller välj förslaget.",
       "fee_no_suggestion": "Elområdet har inget förslag för den: ange en egen siffra eller välj inget.",
-      "entsoe_key_rejected": "ENTSO-E godtog inte nyckeln. Kontrollera den, eller skapa en ny på transparency.entsoe.eu."
+      "entsoe_key_rejected": "ENTSO-E godtog inte nyckeln. Kontrollera den, eller skapa en ny på transparency.entsoe.eu.",
+      "switch_load_incomplete": "Ange lastens märkeffekt och drifttid.",
+      "switch_load_floor_pair": "Temperaturgivaren och den lägsta temperaturen hör ihop: ange båda eller ingen."
     }
   },
   "selector": {

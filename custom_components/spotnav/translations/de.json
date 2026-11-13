@@ -356,6 +356,7 @@
           "solar_priority": "Auto oder Hausbatterie zuerst",
           "battery_aggregate_power_entity": "Leistung der Hausbatterie (optional)",
           "solar_forecast_entries": "Solarprognose (optional)",
+          "change_switch_load": "Weiter: geschaltete Last (Warmwasserspeicher)",
           "change_measurement": "Weiter: Zähler und Phasen ändern"
         },
         "data_description": {
@@ -371,7 +372,26 @@
           "solar_priority": "Wer zuerst darf, wenn Auto und Hausbatterie denselben Strom wollen.\n\n• Zuerst das Auto: Das Auto bekommt den Solarüberschuss vor der Batterie. Lädt die Batterie aus dem Netz, weicht sie an der Hauptsicherung dem Auto (bei eingeschaltetem „Auto darf den Anteil der Hausbatterie nehmen“). Das Leistungsziel zählt nur Strom aus dem Netz.\n• Zuerst die Batterie: Die Batterie bekommt den Solarüberschuss zuerst, das Auto lädt mit dem, was übrig bleibt. An der Hauptsicherung weicht das Auto der Batterie. Das Leistungsziel zählt auch die Entladung der Batterie als Bezug, damit die Batterie das Auto nicht bezahlt.",
           "battery_aggregate_power_entity": "Der Leistungssensor der Hausbatterie, positiv beim Laden. Solarladen und der Anteil der Hausbatterie oben lesen daraus, wann die Batterie lädt.",
           "solar_forecast_entries": "Woher die Hybrid-Strategie ihre Solarprognose nimmt. Leer: Hybrid lädt nur in den günstigsten Stunden.",
+          "change_switch_load": "Ein Warmwasserspeicher oder eine andere Last an einem Schalter, die in den günstigsten Stunden läuft. In dieser Version zeigt SpotNav nur, wann es sie schalten würde; es schaltet sie nie.",
           "change_measurement": "Aus lassen, um nur diese Seite zu speichern."
+        }
+      },
+      "site_switch_load": {
+        "title": "Geschaltete Last",
+        "description": "Eine Last an einem Schalter, zum Beispiel ein Warmwasserspeicher, die in den günstigsten Stunden innerhalb der Hauptsicherung und des Leistungsziels läuft. SpotNav zeigt nur, wann es sie ein- oder ausschalten würde (in der Diagnose des Standorts); in dieser Version schaltet es sie nie. Lass den Schalter leer, um die Last zu entfernen.",
+        "data": {
+          "switch_entity": "Schalter",
+          "rated_kw": "Nennleistung",
+          "runtime_h": "Laufzeit je 24 Stunden",
+          "temperature_entity": "Temperatursensor (optional)",
+          "floor_c": "Mindesttemperatur (optional)"
+        },
+        "data_description": {
+          "switch_entity": "Der Schalter, der die Last ein- und ausschaltet. Leer: keine Last.",
+          "rated_kw": "Was die Last eingeschaltet bezieht, laut Typenschild.",
+          "runtime_h": "Wie lange sie in jeweils 24 Stunden laufen muss. SpotNav wählt dafür die günstigsten Stunden.",
+          "temperature_entity": "Zum Beispiel die Speichertemperatur des Warmwasserspeichers. Mit einer Mindesttemperatur läuft die Last unabhängig vom Preis, wenn es kälter ist.",
+          "floor_c": "Darunter läuft die Last sofort, bis es 2 °C wärmer ist. Braucht den Temperatursensor."
         }
       },
       "site_current_suggestions": {
@@ -503,7 +523,9 @@
       "manual_entities_duplicate": "Jede Phase braucht eine eigene Entität.",
       "fee_value_required": "Gib einen eigenen Wert ein oder wähle den Vorschlag.",
       "fee_no_suggestion": "Diese Preiszone hat dafür keinen Vorschlag: gib einen eigenen Wert ein oder wähle nichts.",
-      "entsoe_key_rejected": "ENTSO-E hat diesen Schlüssel nicht akzeptiert. Prüfe ihn oder erzeuge einen neuen auf transparency.entsoe.eu."
+      "entsoe_key_rejected": "ENTSO-E hat diesen Schlüssel nicht akzeptiert. Prüfe ihn oder erzeuge einen neuen auf transparency.entsoe.eu.",
+      "switch_load_incomplete": "Gib die Nennleistung und die Laufzeit der Last an.",
+      "switch_load_floor_pair": "Temperatursensor und Mindesttemperatur gehören zusammen: gib beide oder keines an."
     }
   },
   "selector": {
