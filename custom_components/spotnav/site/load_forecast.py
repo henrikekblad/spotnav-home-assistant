@@ -401,12 +401,14 @@ def forecast_house_load(
     holidays: Collection[date] | None = None,
     horizon_h: int = HORIZON_H,
     inday: bool = True,
+    quantile: float = QUANTILE,
 ) -> LoadForecast:
     """The house's expected load for `horizon_h` hours from the running hour's start (see the module).
 
     `temperatures` maps an hour's start (UTC) to its forecast outdoor temperature (°C); `holidays` are the local dates
     of public holidays (`None`: no source, weekday/weekend only); `flat_kw` is the site's flat figure for the ladder's
-    third rung. `inday` applies the in-day adjustment (off only to compare)."""
+    third rung. `inday` applies the in-day adjustment; `quantile` is the profile's (the house battery's plan takes the
+median without the in-day adjustment, `battery/plan_runtime.py`)."""
     now = now.astimezone(timezone.utc)
     zone = time_zones.require_zone(tz)
     rows = list(hours)
@@ -424,7 +426,7 @@ def forecast_house_load(
     for index in range(horizon_h):
         start = first + timedelta(hours=index)
         outdoor = None if temperatures is None else temperatures.get(start)
-        kw, source, adjust = profile.figure(start, QUANTILE, outdoor)
+        kw, source, adjust = profile.figure(start, quantile, outdoor)
         if kw is None or source == SOURCE_FLAT:
             forecast.append(ForecastHour(start, kw, source))
             continue

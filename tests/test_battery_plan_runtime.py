@@ -483,3 +483,26 @@ async def test_the_plan_counts_on_the_corrected_sun_and_says_so(
     shown = controller.battery_shadow.snapshot()["plan"]
     assert shown["inputs"]["solar"] == plan_runtime.SOLAR_CORRECTED
     assert shown["plan"]["slots"][1]["solar_kw"] == pytest.approx(0.5)
+
+
+async def test_the_plans_own_house_forecast_is_the_median_without_the_inday_adjustment(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from custom_components.spotnav.site import load_forecast  # noqa: PLC0415
+
+    seen: list[dict[str, Any]] = []
+
+    def spy(*args: Any, **kwargs: Any) -> Any:
+        seen.append(kwargs)
+        return load_forecast.forecast_house_load(*args, **kwargs)
+
+    monkeypatch.setattr(plan_runtime, "forecast_house_load", spy)
+    _site_entry, controller, now = await _planned(hass, monkeypatch)
+    current = hour_start(now, controller.demand.tracker.tz)
+    for index in range(1, MIN_OWN_HOURS + 1):
+        controller.battery_shadow.plan.actuals.rows[current - timedelta(hours=index)] = 0.8
+    _house_forecast(controller, now)
+    controller.battery_shadow.tick(now + timedelta(seconds=CHECK_S + 1))
+    await hass.async_block_till_done()
+    assert controller.battery_shadow.snapshot()["plan"]["inputs"]["house"] == "own_rows"
+    assert seen and seen[-1]["inday"] is False and seen[-1]["quantile"] == plan_runtime.HOUSE_QUANTILE == 0.5

@@ -20,7 +20,8 @@ Owned by the site's `BatteryShadow` (`runtime.py`), which calls `tick` every `ru
   the plan adds the solar forecast, the rows are made gross again with the hour's production from the Energy
   dashboard's solar statistics (`site/energy_statistics.py`), so the sun is not counted twice; an hour without a
   production figure is left out. Without production statistics (or too few hours with one) the rows stay net and the
-  plan says so (`solar_in_house_history`).
+  plan says so (`solar_in_house_history`). The plan's house forecast from them is the median without the in-day
+  adjustment (`HOUSE_QUANTILE`).
 * **The sun's correction**: the plan counts on the solar forecast as the site's correction corrects it
   (`site/solar_correction_shadow.py`) once that has learnt; the raw forecast while it learns or is off
   (`corrected_solar_wh`, shown as `inputs.solar`). The plan is itself shadow, so no charger reads it.
@@ -146,6 +147,11 @@ ROWS_NET: Final = "net_of_sun"
 #: correction still learning, off on a curtailed site, or no forecast).
 SOLAR_CORRECTED: Final = "corrected"
 SOLAR_RAW: Final = "raw"
+#: The plan's own house forecast: the profile's median, without the in-day adjustment. Planned again every hour on
+#: the hours measured so far, the median cost the plan least (`scripts/forecast_gap_backtest.py`, 2026-11-13: about
+#: 25 kr against p75 and 35 kr against the in-day adjustment over 73 days); the car's planner keeps the p75 (a car
+#: short of room is worse than a dearer plan) and the in-day adjustment.
+HOUSE_QUANTILE: Final = 0.5
 
 
 def store_key(entry_id: str) -> str:
@@ -232,7 +238,16 @@ def _solve(
     started = time.monotonic()
     if own is not None:
         rows, flat_kw, temperatures, holidays = own
-        forecast = forecast_house_load(rows, now, tz, flat_kw=flat_kw, temperatures=temperatures, holidays=holidays)
+        forecast = forecast_house_load(
+            rows,
+            now,
+            tz,
+            flat_kw=flat_kw,
+            temperatures=temperatures,
+            holidays=holidays,
+            inday=False,
+            quantile=HOUSE_QUANTILE,
+        )
         house = forecast.by_hour()
     if not house:
         raise _NoPlan(NO_HOUSE_FORECAST)
