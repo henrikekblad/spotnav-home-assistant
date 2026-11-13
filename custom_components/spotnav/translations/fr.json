@@ -635,6 +635,9 @@
       "solar_surplus": {
         "name": "Surplus solaire"
       },
+      "expected_solar_surplus": {
+        "name": "Surplus solaire attendu"
+      },
       "charger_proposed_current": {
         "name": "Courant proposé – {charger}",
         "state_attributes": {
