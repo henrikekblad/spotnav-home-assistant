@@ -19,7 +19,8 @@ ask deadline, at most once a minute per car (the refresh limiter `vehicle_refres
   SpotNav charger that is connected (a car just decided there counts at once).
 
 **Automatic** (`decide`): exactly one strong + is the car; else the only one not excluded is; two strong +
-is a conflict and asks at once; otherwise it asks after `ASK_AFTER_S` and keeps listening until
+is a conflict and asks at once; otherwise it asks after `ASK_AFTER_S`, once the re-read made then has answered
+(`REREAD_WAIT_S` at most; at once when the limiter skipped it), and keeps listening until
 `LISTEN_FOR_S` after the plug-in, switching on decisive evidence unless a person answered. At most one
 automatic decision per plug-in.
 
@@ -119,6 +120,8 @@ PLUG_WINDOW_BEFORE_S: Final = 300.0
 #: A position written this soon after SpotNav asked Home Assistant to re-read the car is the echo of that re-read
 #: (a cloud cache written again), not a report from the car.
 REFRESH_ECHO_S: Final = 120.0
+#: The ask deadline decides once its re-read has answered, or failed, but waits no longer than this for it.
+REREAD_WAIT_S: Final = 15.0
 #: A position reported this long before the plug-in, or after it, is fresh. An older one may be the car's last
 #: report on its way home (a cloud poll every half hour), so it excludes nothing and the question is asked.
 POSITION_MARGIN_BEFORE_S: Final = 120.0
@@ -953,16 +956,19 @@ class VehicleIdentifier:
         plug, location = identification_sources(self._hass, car)
         return plug.entity_id, location.entity_id
 
-    def _refresh(self, cars: Iterable[str]) -> None:
-        """Re-read the cars' plug and tracker entities (cheap, never a wake-up), at most once a minute each."""
+    def _refresh(self, cars: Iterable[str]) -> list[asyncio.Task[None]]:
+        """Re-read the cars' plug and tracker entities (cheap, never a wake-up), at most once a minute each. Answers
+        the re-reads started (none when the limiter skipped every car)."""
         limiter = limiter_for(self._hass)
+        started = []
         for car in cars:
             entities = [entity for entity in self._sources(car) if entity is not None]
             if not entities or limiter.retry_after_s(car) is not None:
                 continue
             limiter.note_refresh(car)
             self._refreshed_at.setdefault(car, []).append(dt_util.utcnow())
-            self._hass.async_create_task(self._async_update(entities), eager_start=False)
+            started.append(self._hass.async_create_task(self._async_update(entities), eager_start=False))
+        return started
 
     async def _async_update(self, entities: list[str]) -> None:
         try:
@@ -1207,7 +1213,30 @@ class VehicleIdentifier:
 
     @callback
     def _ask_deadline(self, _now: datetime) -> None:
-        self._refresh(() if self._session is None else self._session.cars)
+        """Re-read the cars, and decide or ask once they have answered (`REREAD_WAIT_S` at most): a cloud that answers
+        a few seconds later is heard before the question. A re-read the limiter skipped decides at once."""
+        session = self._session
+        if session is None:
+            return
+        rereads = self._refresh(session.cars)
+        if not rereads:
+            self._deadline_decides(session)
+            return
+        waiting = self._hass.async_create_background_task(
+            self._async_deadline_after(session, rereads), f"spotnav identification deadline {self._entry_id}"
+        )
+        session.unsubscribe.append(waiting.cancel)
+
+    async def _async_deadline_after(self, session: _Session, rereads: list[asyncio.Task[None]]) -> None:
+        await asyncio.wait(rereads, timeout=REREAD_WAIT_S)
+        self._deadline_decides(session)
+
+    @callback
+    def _deadline_decides(self, session: _Session) -> None:
+        # Only the plug-in that set the deadline, still undecided: an unplug, an answer or a new plug-in meanwhile
+        # has its own course.
+        if self._session is not session or session.state != STATE_WAITING:
+            return
         self._evaluate()
         self._ask()
 
