@@ -13,6 +13,8 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
+import pytest
+
 from custom_components.spotnav.battery.plan_model import (
     ACTION_DISCHARGE_HOUSE,
     ACTION_EXPORT_DISCHARGE,
@@ -20,7 +22,14 @@ from custom_components.spotnav.battery.plan_model import (
     ACTION_HOLD,
     ACTION_SELF_CONSUME,
 )
-from custom_components.spotnav.battery.plan_shadow import KIND_BATTERY, DayReview, PlannedSlot, Run
+from custom_components.spotnav.battery.plan_shadow import (
+    KIND_BATTERY,
+    Bucket,
+    DayReview,
+    PlannedSlot,
+    PriceSlot,
+    Run,
+)
 from custom_components.spotnav.planning.demand_charge import HourMean, hour_start
 from custom_components.spotnav.site.forecast_log import (
     KIND_HOUSE,
@@ -146,7 +155,7 @@ def battery_plan(now: datetime) -> tuple[PlannedSlot, ...]:
 def battery_reviews(now: datetime) -> list[DayReview]:
     reviews = []
     today = (now + CET).date()
-    for back in range(7, 0, -1):
+    for back in range(12, 0, -1):
         day = today - timedelta(days=back)
         sc = 4200.0 + 150 * (back % 3)
         reviews.append(
@@ -159,7 +168,7 @@ def battery_reviews(now: datetime) -> list[DayReview]:
                 start_soc_pct=40.0,
                 end_value=120.0,
                 usable_kwh=40.3,
-                actual=Run(sc - 610.0 - 20 * back, 40.0),
+                actual=Run(sc - 610.0 - 20 * back + (300.0 if back in (9, 4) else 0.0), 40.0),
                 plan=Run(sc - 690.0 - 10 * back, 40.0),
                 self_consumption=Run(sc, 40.0),
                 modes={"balanced": Run(sc - 690.0 - 10 * back, 40.0), "max_profit": Run(sc - 735.0, 40.0)},
@@ -168,6 +177,64 @@ def battery_reviews(now: datetime) -> list[DayReview]:
             )
         )
     return reviews
+
+
+def buy_price(start: datetime) -> float:
+    """Öre per kWh with every fee: cheap at night, a morning bump and an evening peak."""
+    hour = local_hour(start)
+    if hour < 6:
+        return 95.0 + 5 * hour
+    if 7 <= hour <= 9:
+        return 210.0
+    if 16 <= hour <= 20:
+        return 330.0 - 10 * abs(hour - 18)
+    return 160.0
+
+
+def price_slots(now: datetime) -> list[PriceSlot]:
+    first = hour_start(now, TZ).replace(hour=23) - timedelta(days=1)
+    quarter = timedelta(minutes=15)
+    return [
+        PriceSlot(
+            first + i * quarter,
+            first + (i + 1) * quarter,
+            buy_price(first + i * quarter),
+            buy_price(first + i * quarter) * 0.62 - 35,
+        )
+        for i in range(48 * 4)
+    ]
+
+
+def quarters_today(now: datetime) -> list[Bucket]:
+    """Today's quarter hours so far: the battery charges from the grid 02-05, covers the morning and the evening,
+    and keeps the noon sun; a little is sold at noon."""
+    start = hour_start(now, TZ).replace(hour=23) - timedelta(days=1)
+    out = []
+    while start + timedelta(minutes=15) <= now:
+        hour = local_hour(start)
+        house = house_kw(start) / 4
+        sun = sun_kwh(start) / 4
+        battery = 0.0
+        if 2 <= hour < 5:
+            battery = 2.25
+        elif 6 <= hour <= 9 or hour >= 16:
+            battery = -house
+        elif 11 <= hour <= 13:
+            battery = max(0.0, sun - house) * 0.6
+        net = house - sun + battery
+        out.append(
+            Bucket(
+                start=start,
+                buy=buy_price(start),
+                sell=buy_price(start) * 0.62 - 35,
+                import_kwh=round(max(0.0, net), 4),
+                export_kwh=round(max(0.0, -net), 4),
+                battery_kwh=round(battery, 4),
+                covered_s=900.0,
+            )
+        )
+        start += timedelta(minutes=15)
+    return out
 
 
 def full_inputs(now: datetime = NOW) -> HouseInputs:
@@ -182,6 +249,7 @@ def full_inputs(now: datetime = NOW) -> HouseInputs:
         log=seeded_log(now, sun=True, battery=True),
         forecast=forecast,
         house_actual={row.start: row.house_kw for row in rows if row.house_kw is not None},
+        basis="gross",
         sources=HouseSources(
             weather_entity="weather.forecast_home",
             weather="ok",
@@ -212,7 +280,10 @@ def full_inputs(now: datetime = NOW) -> HouseInputs:
                 "max_profit": {"savings": 905.15},
             },
             reviews=battery_reviews(now),
-            estimates=("min_soc_assumed", "house_counts_battery"),
+            estimates=("min_soc_assumed",),
+            quarters=quarters_today(now),
+            prices=price_slots(now),
+            production={start: sun_kwh(start) for start in (current - timedelta(hours=h) for h in range(1, 20))},
         ),
         money=("SEK", "kr", "öre"),
     )
@@ -238,7 +309,8 @@ def test_the_full_site_and_its_fixture() -> None:
     actions = {row["battery_action"] for row in ahead}
     assert {ACTION_GRID_CHARGE, ACTION_EXPORT_DISCHARGE, ACTION_HOLD} <= actions
     assert view["money"] == {"currency": "SEK", "major_unit": "kr", "minor_unit": "öre"}
-    assert view["house"]["review"]["hours"] == 7 * 24 and view["house"]["counts_battery"] is True
+    assert view["house"]["review"]["hours"] == 7 * 24 and view["house"]["counts_battery"] is False
+    assert view["house"]["basis"] == "gross"
     sun = view["sun"]
     assert sun["review"]["mae"] > sun["review_corrected"]["mae"] > 0
     battery = view["battery"]
@@ -249,11 +321,25 @@ def test_the_full_site_and_its_fixture() -> None:
         and battery["modes"]["self_consumption"]["reviewed_saving"] is None
     )
     assert battery["modes"]["max_profit"]["planned_saving"] == 905.15
-    assert battery["estimates"] == ["house_counts_battery", "min_soc_assumed"]
+    assert battery["estimates"] == ["min_soc_assumed"]
     days = view["days"]
     assert len(days) == 7 and days[0]["date"] > days[-1]["date"]
     assert all(day["house_mae"] is not None and day["plan_saving"] is not None for day in days)
     assert view["sources"]["solar_forecasts"] == ["Forecast.Solar"]
+    # Today so far, split as the battery's own app does, and the day's energy from sources to uses.
+    today = view["today"]
+    assert today["date"] == "2026-11-13" and today["mode"] == "balanced"
+    assert today["bought"] > 0 and today["arbitrage"] > 0 and today["sold"] >= 0
+    flow = view["flow"]
+    sources, uses = flow["sources"], flow["uses"]
+    assert sum(sources.values()) == pytest.approx(sum(uses.values()), abs=0.05)
+    assert uses["battery"] == pytest.approx(3 * 4 * 2.25 + sum(0 for _ in ()), abs=1.0)
+    # The month's reviewed days, plan beside the battery's own.
+    calendar = view["calendar"]
+    assert calendar["month"] == "2026-11" and len(calendar["days"]) == 12
+    assert any(day["own_saving"] < 400 for day in calendar["days"])
+    # Prices on every hour the plan or the quarter hours priced.
+    assert all(row["buy"] is not None and row["sell"] is not None for row in hours)
     _fixture("villa_battery_sun.json", view)
 
 
@@ -318,6 +404,7 @@ def test_the_hours_follow_the_local_clock_over_the_autumn_change() -> None:
         "made_at": None,
         "samples": 0,
         "temperature": None,
+        "basis": "net",
         "counts_battery": False,
         "review": None,
     }
