@@ -8,6 +8,8 @@ public face, so nothing here serializes `as_dict()` or accepts `from_stored()` p
 * Two additive exceptions, `departure_date` and `departure_weekdays`: a replacement body may leave either out (an
   older client), and then the stored value is kept; `departure_date: null` clears the date. Every other key is
   still required.
+* And `departure_calendar` (`null`, or a `calendar.*` entity whose events are departures,
+  `planning/calendar_departure.py`): left out, the stored value is kept. A plan field, as the departure is.
 * A third, `notifications` (which phones hear about which events, `notifications/settings.py`): left
   out, the stored choice is kept. Its `available` list (the notify services that exist now, with the
   phones' names) is read-only: a body may echo it and it is ignored.
@@ -63,6 +65,7 @@ from homeassistant.util import dt as dt_util
 from ..planning.auto_controller import SettingsReconcileError
 from ..planning.auto_settings import (
     ALL_WEEKDAYS,
+    is_calendar_entity,
     AreaAutoSettings,
     AutoSettings,
     AutoSettingsError,
@@ -116,6 +119,7 @@ SETTINGS_KEYS: Final = frozenset(
         "departure_time",
         "departure_date",
         "departure_weekdays",
+        "departure_calendar",
         "driver",
         "target",
         "notifications",
@@ -131,8 +135,8 @@ SETTINGS_KEYS: Final = frozenset(
 #: what is stored": a client that does not know the field must not clear what another one set. `null` clears.
 OPTIONAL_SETTINGS_KEYS: Final = frozenset(
     {
-        "departure_date", "departure_weekdays", "phases", "notifications", "fill_to_limit", "vehicle_ids",
-        "identify_mode", "identify_camera", "users_change_plan", "if_not_ready",
+        "departure_date", "departure_weekdays", "departure_calendar", "phases", "notifications", "fill_to_limit",
+        "vehicle_ids", "identify_mode", "identify_camera", "users_change_plan", "if_not_ready",
     }
 )
 
@@ -152,6 +156,7 @@ NON_ADMIN_FIELDS: Final = frozenset(
         "departure",
         "departure_date",
         "departure_weekdays",
+        "departure_calendar",
         "amps",
         "if_not_ready",
     }
@@ -321,6 +326,16 @@ def departure_weekdays_from_wire(value: Any) -> tuple[int, ...]:
     return tuple(sorted(days))
 
 
+def departure_calendar_from_wire(value: Any) -> str | None:
+    """`null` (no calendar) or a calendar entity id, or a refusal. Whether the calendar exists is not judged: one that
+    is gone reads as unavailable, and the daily departure is used."""
+    if value is None:
+        return None
+    if not is_calendar_entity(value):
+        _refuse("invalid_departure", "departure_calendar must be null or a calendar entity id")
+    return value
+
+
 def departure_to_wire(departure: time) -> str:
     """A wall time as the dashboard already spells it."""
     return f"{departure.hour:02d}:{departure.minute:02d}"
@@ -406,6 +421,7 @@ def encode_settings(
         "departure_time": departure_to_wire(settings.departure),
         "departure_date": departure_date_to_wire(settings.departure_date),
         "departure_weekdays": list(settings.departure_weekdays),
+        "departure_calendar": settings.departure_calendar,
         "driver": settings.driver,
         "target": encoded_target(settings.target),
         "fiscal_included": list(included),
@@ -485,6 +501,7 @@ def decode_settings(raw: Any) -> AutoSettings:
             if "departure_weekdays" in stored
             else ALL_WEEKDAYS
         ),
+        departure_calendar=departure_calendar_from_wire(stored.get("departure_calendar")),
         driver=_enum(stored["driver"], ("manual_kwh", "target_soc"), "invalid_driver"),
         target=_target(stored["target"]),
         notifications=(
@@ -515,6 +532,7 @@ def replacement_mutator(
     *,
     keep_departure_date: bool = False,
     keep_departure_weekdays: bool = False,
+    keep_departure_calendar: bool = False,
     keep_notifications: bool = False,
     keep_fill_to_limit: bool = False,
     keep_vehicle_ids: bool = False,
@@ -552,6 +570,8 @@ def replacement_mutator(
             kept["departure_date"] = current.departure_date
         if keep_departure_weekdays:
             kept["departure_weekdays"] = current.departure_weekdays
+        if keep_departure_calendar:
+            kept["departure_calendar"] = current.departure_calendar
         if keep_notifications:
             kept["notifications"] = current.notifications
         if keep_fill_to_limit:
@@ -890,6 +910,7 @@ def body_mutator(
         decoded,
         keep_departure_date=left_out("departure_date"),
         keep_departure_weekdays=left_out("departure_weekdays"),
+        keep_departure_calendar=left_out("departure_calendar"),
         keep_notifications=left_out("notifications"),
         keep_fill_to_limit=left_out("fill_to_limit"),
         keep_vehicle_ids=left_out("vehicle_ids"),
