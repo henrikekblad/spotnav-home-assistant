@@ -95,6 +95,18 @@ departure and the plan runs to the next chosen day, with the same rules as a dep
 day: it charges in published prices and may wait for cheaper unpublished hours. A date you pick
 yourself overrides the weekdays.
 
+**Departures from a calendar.** In the Plan dialog, under the departure, you can choose one of Home
+Assistant's calendars (any calendar integration). The first event of a day is that day's departure, in
+place of the daily one; later events the same day are not departures (the car leaves once a day), also
+when the first has gone. An all-day event is a departure at the daily time, unless a timed event that
+day starts earlier. A target in the event's title or description (`mål: 80`, `80%`, `30 kWh`) is used
+for that departure. Days without an event keep the daily departure, unless you tick **Only the
+calendar decides**: then a day without an event has no departure and the plan runs to the next event
+(with no event in the next seven days there is no departure, and the plan uses the cheapest hours
+known). A date you choose still comes first. If the calendar cannot be read, the daily departure is used
+until it can, also when only the calendar decides: a car that must leave is better charged by the daily
+time than not at all. The dialog says which of these applies.
+
 **Plugging in and unplugging.** SpotNav plans again a few seconds after the car is plugged in or
 unplugged, and again the moment the departure passes, without waiting for the next price. A car
 plugged in while a planned period is running starts charging at once, unless Auto is paused (your own

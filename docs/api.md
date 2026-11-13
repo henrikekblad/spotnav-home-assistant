@@ -149,9 +149,11 @@ value is kept; any other value is refused with `invalid_departure`. It is withhe
 above (ask with `"reads": ["if_not_ready"]`), so an older app's full write keeps it.
 
 Since 3.0 the record carries `departure_calendar`: `null` (the default) or a Home Assistant calendar entity
-(`calendar.…`, any calendar integration) whose events are departures. An event replaces the daily departure on its
-day (each event's start is a departure; a day without one keeps the daily departure on its weekdays); an all-day
-event is a departure at the daily time on its first day; a multi-day event is one at its start. A target in the
+(`calendar.…`, any calendar integration) whose events are departures. The first event of a day replaces the daily
+departure on its day (its start is the departure; later events that day are not departures, also once the first has
+gone; a day without one keeps the daily departure on its weekdays); an all-day event is a departure at the daily
+time on its first day, and that day's first unless a timed event that day starts earlier (at the same minute the
+timed one is the first); a multi-day event is one at its start. A target in the
 event's title or description (`mål: 80`, `target: 80 %`, `80%`, `30 kWh`) is the plan's for that departure where it
 fits the driver (a level for a target, energy for an amount). A one-off `departure_date` still ahead wins over the
 calendar; the departure switch off or a guest car reads no calendar; a calendar that cannot be read leaves the
@@ -161,20 +163,30 @@ out, and then it is kept; anything that is not `null` or a calendar entity id is
 `invalid_departure`. It is withheld from the webhook like the fields above, and so is the dashboard's
 `departure_calendar` block (ask with `"reads": ["departure_calendar"]`).
 
+Since 3.0 the record also carries `departure_calendar_only` (a boolean, `false` by default; stored only when `true`):
+the calendar alone decides. A day without an event then has no departure, and the plan runs to the next event; with
+no event within the seven days there is no departure at all, and the charger plans as with the departure switched
+off (the block's `state` is `no_event`). A one-off `departure_date` still ahead still wins. A calendar that cannot be
+read falls back to the daily departure as without the switch (`unavailable`): a car that must leave is safer
+charged by the daily time than not at all. A plan field. A replacement may leave it out, and then it is kept; a
+value that is not a boolean is refused with `invalid_departure`. It is withheld from the webhook like the fields
+above (ask with `"reads": ["departure_calendar_only"]`).
+
 The additive root block `departure_calendar` is present where Home Assistant has a calendar or one is chosen:
 `{"calendars": [{"entity_id", "name"}], "entity_id", "state", "departure", "summary", "all_day", "target_percent",
 "target_kwh", "target_used"}`, every key always present. `state` is what the last calculation made of the chosen
 calendar: `used` (its departure is the plan's: `departure` the instant, `summary` the event's title or `null` when
 an event only moved the daily departure to its next day, `target_percent`/`target_kwh` what its text gives and
 `target_used` `percent`, `kwh` or `null`), `daily` (no event moves the daily departure), `date` (a chosen date
-wins), `unavailable` (it cannot be read: the daily departure is used), `off` (no departure, or a guest car), or
-`null` (none chosen, or not calculated yet).
+wins), `unavailable` (it cannot be read: the daily departure is used), `no_event` (the calendar alone decides and
+has no event ahead: no departure), `off` (no departure, or a guest car), or `null` (none chosen, or not calculated
+yet).
 
 **Who may replace the settings.** An administrator may change any field. A user who is not one is refused with
 `spotnav_not_admin` while the charger's `users_change_plan` is off; while it is on, a replacement from them is
 accepted only when every field it changes is one of the strategy and plan fields: `strategy`, `requested_kwh`,
 `fill_to_limit`, `driver`, `target`, `departure_enabled`, `departure_time`, `departure_date`,
-`departure_weekdays`, `departure_calendar`, `amps` and `if_not_ready` (`NON_ADMIN_FIELDS` in `custom_components/spotnav/api/settings.py`). One that
+`departure_weekdays`, `departure_calendar`, `departure_calendar_only`, `amps` and `if_not_ready` (`NON_ADMIN_FIELDS` in `custom_components/spotnav/api/settings.py`). One that
 also changes anything else (`area_id`, `overrides`, `max_periods`, `notifications`, `vehicle_ids`,
 `identify_mode`, `identify_camera`, `users_change_plan`) is refused whole with `spotnav_not_admin` and
 nothing is written. The check is made again inside the store's lock against the record being replaced.
