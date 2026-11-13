@@ -3,12 +3,13 @@
 Pure: the site's hour rows, the clock, and optionally an outdoor temperature forecast and the holiday dates go in;
 `{hour_start: kW}` comes out. No Home Assistant state (the shell is `site/house_forecast.py`). It decides nothing a
 charger is told: fuse protection and the import target's hold stay on measurements; a forecast only changes what a
-plan expects (a later release).
+plan expects (`SiteCapacityController.import_target_plan_kw_by_hour`, the target's departure shortfall and its
+release reach).
 
 * **History**: the measured hours' `house_kw` (the site's import less the chargers', `site/demand_tracker.py`) of the
   last `WINDOW_DAYS`, never an hour read from Home Assistant's statistics (`imported`) and never an hour without the
-  house's share (skipped, not counted as 0). The tracker keeps the running month and the month before, so the window
-  holds between four and six weeks.
+  house's share (skipped, not counted as 0). The shell reads them from the forecast's own eight-week history
+  (`site/house_history.py`), so the window holds six weeks also early in a month.
 * **Weight**: an hour `age` days old weighs `0.5 ** (age / HALF_LIFE_DAYS)`, so a changed habit shows within ~2 weeks.
 * **Profile**: per day type (weekday, weekend) x local hour, the weighted upper quantile `QUANTILE` (p75, owner
   2026-11-04): counting on too little room costs a late car, counting on too much a slightly dearer plan. A public
@@ -47,7 +48,7 @@ from typing import Any, Final
 from .. import time_zones
 from ..planning.demand_charge import hour_start, HourMean
 
-#: How far back the profile reads (the tracker keeps at least the month before, so four weeks at the least).
+#: How far back the profile reads (`site/house_history.py` keeps eight weeks).
 WINDOW_DAYS: Final = 42
 #: An hour this many days old weighs half as much as one just completed.
 HALF_LIFE_DAYS: Final = 14.0
@@ -168,6 +169,15 @@ class LoadForecast:
         """`{hour_start: kW}` before the in-day adjustment (the flat rung as it is), the hours with a figure only."""
         return {
             hour.start: hour.kw if hour.raw_kw is None else hour.raw_kw for hour in self.hours if hour.kw is not None
+        }
+
+    def known_by_hour(self) -> dict[datetime, float]:
+        """`{hour_start: kW}` of the hours the profile knows (the flat rung and the unknown left out): what a plan
+        counts on per hour, the flat figure staying the caller's own, live one."""
+        return {
+            hour.start: hour.kw
+            for hour in self.hours
+            if hour.kw is not None and hour.source not in (SOURCE_FLAT, SOURCE_NONE)
         }
 
     def kw_at(self, moment: datetime) -> float | None:

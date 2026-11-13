@@ -410,15 +410,29 @@ def departure_shortfall_kwh(
     hour_end: datetime,
     held_kw: float,
     later_kw: float,
+    later_kw_by_hour: Mapping[datetime, float] | None = None,
 ) -> float | None:
     """How much (kWh) a held charge misses its departure by: `need_kwh` less what `held_kw` for the rest of this hour
     and `later_kw` for every hour after it deliver by `departure` (negative: to spare). `None` once the departure has
-    passed or nothing is needed (see the module)."""
+    passed or nothing is needed (see the module).
+
+    `later_kw_by_hour` (by the hour's start, UTC): a later hour it names is reckoned at its own figure (the target
+    less the house's expected load in that hour, `site/load_forecast.py`), every other one at `later_kw`."""
     if departure <= now or need_kwh <= 0:
         return None
     this_hour_s = max(0.0, (min(hour_end, departure) - now).total_seconds())
-    later_s = max(0.0, (departure - max(hour_end, now)).total_seconds())
-    deliverable = max(0.0, held_kw) * this_hour_s / HOUR_S + max(0.0, later_kw) * later_s / HOUR_S
+    if not later_kw_by_hour:
+        later_s = max(0.0, (departure - max(hour_end, now)).total_seconds())
+        deliverable = max(0.0, held_kw) * this_hour_s / HOUR_S + max(0.0, later_kw) * later_s / HOUR_S
+        return need_kwh - deliverable
+    deliverable = max(0.0, held_kw) * this_hour_s / HOUR_S
+    start = hour_end
+    while start < departure:
+        end = start + timedelta(hours=1)
+        seconds = (min(end, departure) - max(start, now)).total_seconds()
+        if seconds > 0:
+            deliverable += max(0.0, later_kw_by_hour.get(start, later_kw)) * seconds / HOUR_S
+        start = end
     return need_kwh - deliverable
 
 

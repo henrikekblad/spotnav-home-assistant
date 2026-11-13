@@ -140,3 +140,33 @@ def test_it_survives_a_restart_and_storage_is_untrusted() -> None:
     junk.restore("nonsense")
     assert KIND_HOUSE in junk.kinds
     assert junk.diagnostics()["last_week"] == {KIND_HOUSE: None}
+
+
+# -- the next day as made at the day-ahead publication
+
+
+def test_the_next_day_is_taken_from_the_publication_hour_on() -> None:
+    from custom_components.spotnav.site.forecast_log import DAY_AHEAD_HOUR, KIND_HOUSE_DAY_AHEAD, next_day_hours
+
+    by_hour = {start: 1.0 for start in hours_of(local(2026, 11, 16, 10), 48)}
+    # Before 13:00 local nothing: the next day's prices are not out.
+    assert next_day_hours(by_hour, local(2026, 11, 16, DAY_AHEAD_HOUR - 1, 59), TZ) == {}
+    at_publication = next_day_hours(by_hour, local(2026, 11, 16, DAY_AHEAD_HOUR, 0), TZ)
+    assert sorted(at_publication) == hours_of(local(2026, 11, 17), 24)
+    # Logged once: the forecast made at the publication stays the one reviewed, a later refresh adds nothing.
+    log = ForecastLog(tz=TZ)
+    made = local(2026, 11, 16, 13, 0) + timedelta(seconds=5)
+    assert log.record_forecast(KIND_HOUSE_DAY_AHEAD, at_publication, made) == 24
+    later = next_day_hours({start: 5.0 for start in by_hour}, made + timedelta(hours=1), TZ)
+    assert log.record_forecast(KIND_HOUSE_DAY_AHEAD, later, made + timedelta(hours=1)) == 0
+    assert {hour.forecast for hour in log.kinds[KIND_HOUSE_DAY_AHEAD].hours.values()} == {1.0}
+
+
+def test_the_next_day_has_its_own_number_of_hours_across_a_clock_change() -> None:
+    from custom_components.spotnav.site.forecast_log import next_day_hours
+
+    # 2026-10-25 is 25 hours long in Stockholm.
+    by_hour = {start: 1.0 for start in hours_of(local(2026, 10, 24, 13), 48)}
+    assert len(next_day_hours(by_hour, local(2026, 10, 24, 14), TZ)) == 25
+    by_hour = {start: 1.0 for start in hours_of(local(2026, 3, 28, 13), 48)}
+    assert len(next_day_hours(by_hour, local(2026, 3, 28, 14), TZ)) == 23
