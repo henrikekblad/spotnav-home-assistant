@@ -293,7 +293,8 @@ class SiteHouseForecast:
             return
         self._running = True
         self._for_hour = current
-        self.hass.async_create_background_task(self.async_refresh(), "spotnav_house_forecast")
+        # Short (a cached forecast, a calendar read and a few milliseconds in the executor): a tracked task.
+        self.hass.async_create_task(self.async_refresh(), "spotnav_house_forecast", eager_start=False)
 
     async def async_refresh(self) -> None:
         """Read the sources, run the model in the executor, log the forecast and the hours' outcomes, review the
