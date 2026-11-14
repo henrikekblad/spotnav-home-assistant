@@ -142,3 +142,20 @@ def test_the_energy_dashboards_meters() -> None:
         battery_out=("sensor.discharged",),
     )
     assert energy_flow_ids(None) == FlowIds()
+
+
+def test_the_soc_at_each_hours_end_from_the_recorder() -> None:
+    from custom_components.spotnav.site.energy_statistics import soc_at_hour_ends
+
+    starts = [H0 + timedelta(hours=i) for i in range(4)]
+    short = [
+        {"start": (H0 + timedelta(minutes=50)).timestamp(), "mean": 40.0},
+        {"start": (H0 + timedelta(minutes=55)).timestamp(), "mean": 41.5},  # the last five minutes of hour 0
+        {"start": H0 + timedelta(hours=2, minutes=55), "mean": 130.0},  # not a level: left out
+    ]
+    hourly = [
+        {"start": (H0 + timedelta(hours=1)).timestamp(), "mean": 44.0},  # hour 1: no short row, its mean
+        {"start": (H0 + timedelta(hours=2)).timestamp(), "mean": 47.0},
+        {"start": (H0 + timedelta(hours=0)).timestamp(), "mean": 30.0},  # the short row wins
+    ]
+    assert soc_at_hour_ends(starts, short, hourly) == {starts[0]: 41.5, starts[1]: 44.0, starts[2]: 47.0}

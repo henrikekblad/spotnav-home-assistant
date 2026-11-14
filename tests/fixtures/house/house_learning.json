@@ -8,6 +8,7 @@
     "has_data": true,
     "today": true
   },
+  "day_review": null,
   "days": [],
   "energy_flow": null,
   "flow": null,

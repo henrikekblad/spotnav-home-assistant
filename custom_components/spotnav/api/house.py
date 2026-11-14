@@ -7,7 +7,9 @@ load forecast and the forecast log with its nightly reviews (`site/house_forecas
 corrected (`site/solar_correction_shadow.py`), and the battery's facts and plan in shadow (`battery/runtime.py`,
 `battery/plan_runtime.py`). Nothing is computed anew or written; the one thing fetched is today's energy flow
 (`energy_flow`, `site/energy_flow.py`): the Energy dashboard's hourly statistics and the chargers' energy registers,
-read from the recorder at most every `FLOW_REFRESH_S` per site and between hours kept in `hass.data`.
+read from the recorder at most every `FLOW_REFRESH_S` per site and between hours kept in `hass.data`; and, under the
+same rules, the battery's SoC at the end of each shown past hour its plan's log has no level for (the recorder's
+statistics of its SoC sensor, `async_recorded_soc`).
 
 Refusals (WebSocket errors): `spotnav_unsupported_api_version`, `spotnav_invalid_date` (not a date, in the future or
 before `day.first`), `spotnav_charger_required` (neither id), the charger
@@ -30,7 +32,14 @@ from .. import time_zones
 from ..const import CONF_CHARGER_ENTRY_IDS, CONF_SOLAR_FORECAST_ENTRIES, DOMAIN
 from ..planning.demand_charge import hour_start
 from ..site.energy_flow import energy_flow, energy_hours
-from ..site.energy_statistics import async_energy_prefs, async_statistics, energy_flow_ids, summed
+from ..site.energy_statistics import (
+    async_energy_prefs,
+    async_soc_statistics,
+    async_statistics,
+    energy_flow_ids,
+    soc_at_hour_ends,
+    summed,
+)
 from ..pricing.price_source import site_price_source
 from ..runtime import controller_for, site_controller_for
 from ..site.house_view import (
@@ -39,7 +48,9 @@ from ..site.house_view import (
     HouseInputs,
     HouseSources,
     SunInputs,
+    day_hour_starts,
     first_day,
+    hour_starts,
     house_view,
 )
 from ..site.forecast_log import KIND_SUN
@@ -62,7 +73,7 @@ ERROR_INVALID_DATE: Final = "spotnav_invalid_date"
 class _FlowCached:
     hour: datetime
     read_at: datetime
-    flow: dict[str, Any] | None
+    flow: Any
 
 
 def _sun(hass: HomeAssistant, controller: Any) -> SunInputs | None:
@@ -190,21 +201,56 @@ async def async_energy_flow(
     return energy_flow(hours, day=day, has_solar=bool(ids.solar), has_battery=has_battery, soc_pct=soc)
 
 
+async def async_recorded_soc(
+    hass: HomeAssistant, controller: Any, now: datetime, day: date | None = None
+) -> dict[datetime, float]:
+    """The battery's SoC at the end of each past hour the card shows (today's window, or the past day's hours) from
+    the recorder's statistics of the battery facts' SoC sensor (`energy_statistics.soc_at_hour_ends`); empty
+    without a battery or its SoC sensor."""
+    facts = controller.battery_shadow.facts
+    entity_id = facts.sources.get("soc") if facts.battery_entity_id is not None else None
+    if not entity_id:
+        return {}
+    tz = controller.demand.tracker.tz
+    current = hour_start(now, tz)
+    starts = [start for start in (hour_starts(now, tz) if day is None else day_hour_starts(day, tz)) if start < current]
+    if not starts:
+        return {}
+    short, hourly = await async_soc_statistics(hass, entity_id, starts[0], starts[-1] + timedelta(hours=1))
+    return soc_at_hour_ends(starts, short, hourly)
+
+
+async def _cached(hass: HomeAssistant, key: tuple[str, str, date | None], controller: Any, read: Any) -> Any:
+    """`read(now)`, kept per site, kind and day until a new hour or `FLOW_REFRESH_S`."""
+    now = controller.demand.now()
+    hour = hour_start(now, controller.demand.tracker.tz)
+    cache: dict[tuple[str, str, date | None], _FlowCached] = hass.data.setdefault(_FLOW_CACHE, {})
+    held = cache.get(key)
+    if held is not None and held.hour == hour and (now - held.read_at).total_seconds() < FLOW_REFRESH_S:
+        return held.flow
+    value = await read(now)
+    for stale in [stale for stale, cached in cache.items() if cached.hour != hour]:
+        del cache[stale]
+    cache[key] = _FlowCached(hour=hour, read_at=now, flow=value)
+    return value
+
+
 async def async_cached_energy_flow(
     hass: HomeAssistant, site_entry_id: str, controller: Any, day: date | None = None
 ) -> dict[str, Any] | None:
     """`async_energy_flow`, read again at a new hour or after `FLOW_REFRESH_S`; per site and day (a few days)."""
-    now = controller.demand.now()
-    hour = hour_start(now, controller.demand.tracker.tz)
-    cache: dict[tuple[str, date | None], _FlowCached] = hass.data.setdefault(_FLOW_CACHE, {})
-    held = cache.get((site_entry_id, day))
-    if held is not None and held.hour == hour and (now - held.read_at).total_seconds() < FLOW_REFRESH_S:
-        return held.flow
-    flow = await async_energy_flow(hass, controller, now, day)
-    for key in [key for key, value in cache.items() if value.hour != hour]:
-        del cache[key]
-    cache[(site_entry_id, day)] = _FlowCached(hour=hour, read_at=now, flow=flow)
-    return flow
+    return await _cached(
+        hass, (site_entry_id, "flow", day), controller, lambda now: async_energy_flow(hass, controller, now, day)
+    )
+
+
+async def async_cached_recorded_soc(
+    hass: HomeAssistant, site_entry_id: str, controller: Any, day: date | None = None
+) -> dict[datetime, float]:
+    """`async_recorded_soc` under the energy flow's cache rules."""
+    return await _cached(
+        hass, (site_entry_id, "soc", day), controller, lambda now: async_recorded_soc(hass, controller, now, day)
+    )
 
 
 def requested_day(raw: Any, now: datetime, tz: str) -> date | None:
@@ -222,7 +268,11 @@ def requested_day(raw: Any, now: datetime, tz: str) -> date | None:
 
 
 def house_answer(
-    hass: HomeAssistant, site: Any, flow: dict[str, Any] | None = None, day: date | None = None
+    hass: HomeAssistant,
+    site: Any,
+    flow: dict[str, Any] | None = None,
+    day: date | None = None,
+    soc: dict[datetime, float] | None = None,
 ) -> dict[str, Any]:
     """The answer for one site, or a `PowerMonthRefusal`."""
     controller = site_controller_for(hass, site.entry_id)
@@ -265,6 +315,7 @@ def house_answer(
             money=None if area is None else (area.currency, area.major_unit, area.minor_unit),
             energy_flow=flow,
             day=day,
+            soc_recorded=soc or {},
         )
     )
 
@@ -290,11 +341,12 @@ async def websocket_get_house(
     try:
         site = _site_of_request(hass, msg)
         controller = site_controller_for(hass, site.entry_id)
-        flow = day = None
+        flow = day = soc = None
         if site.state is ConfigEntryState.LOADED and controller is not None:
             day = requested_day(msg.get("date"), controller.demand.now(), controller.demand.tracker.tz)
             flow = await async_cached_energy_flow(hass, site.entry_id, controller, day)
-        answer = house_answer(hass, site, flow, day)
+            soc = await async_cached_recorded_soc(hass, site.entry_id, controller, day)
+        answer = house_answer(hass, site, flow, day, soc)
     except PowerMonthRefusal as refusal:
         connection.send_error(msg["id"], refusal.code, refusal.message)
         return

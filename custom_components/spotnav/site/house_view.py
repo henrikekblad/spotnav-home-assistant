@@ -4,7 +4,8 @@ Pure: the shell (`api/house.py`) hands over the parts as they are held; nothing 
 It shows what the site diagnostics already carry, cut to what a card draws:
 
 * **`hours`**: one row per local hour from `PAST_HOURS` before the running hour to `AHEAD_HOURS` after it. A past
-  hour has its outcome (the house's measured load, the sun's production, the battery's SoC at the hour's end) beside
+  hour has its outcome (the house's measured load, the sun's production, the battery's SoC at the hour's end: the
+  battery plan's log, else the recorder's statistics of the SoC sensor, `HouseInputs.soc_recorded`) beside
   the *first* forecast made for it (the forecast log's, the one the nightly review scores). The running hour and
   the hours ahead have the latest forecast: the house forecast, the sun as SpotNav reads it and as the shadow
   correction would make it, the SoC the battery plan in force expects at each hour's end and its strongest action
@@ -25,6 +26,9 @@ It shows what the site diagnostics already carry, cut to what a card draws:
   log keeps `KEEP_HOURS_DAYS` days of hours) and whether anything was measured on it (`has_data`). A past day
   (`HouseInputs.day`) shows its own local hours, all of them past (its outcomes beside its first forecasts), its money
   (`today`, from the stored energy's day) and its energy flow; the bars of `flow` are today's only.
+* **`day_review`**: on a past day, that day's own review side by side (each mode's saving and the battery's own way
+  against plain self-consumption, the mode in force); `None` on today (the week's sums are in `battery.modes`) and on a
+  day without a review.
 * **`days`**: the last reviewed days, one row each, for the card's details.
 * **`sources`**: where the forecasts come from (weather entity, outdoor sensor, holiday calendar, solar forecast).
 
@@ -76,6 +80,7 @@ HOUSE_KEYS: Final = (
     "flow",
     "energy_flow",
     "day",
+    "day_review",
     "calendar",
     "days",
     "sources",
@@ -169,6 +174,9 @@ class HouseInputs:
     energy_flow: Mapping[str, Any] | None = None
     #: A past local day to show instead of the hours around now (`None`: today).
     day: date | None = None
+    #: The battery's SoC (%) at each past hour's end from the recorder (the shell reads it), by UTC hour start: shown
+    #: where the battery plan's log has no level for the hour (it was not measuring yet); a logged level wins.
+    soc_recorded: Mapping[datetime, float] = field(default_factory=dict)
 
 
 def _round(value: float | None, digits: int = 3) -> float | None:
@@ -373,7 +381,10 @@ def hours_view(inputs: HouseInputs) -> list[dict[str, Any]]:
             row["sun_forecast_kwh"] = _round(_forecast_or_logged(start, current, sun.raw, sun_logged))
             row["sun_corrected_kwh"] = _round(_forecast_or_logged(start, current, sun.corrected, corrected_logged))
         if battery is not None:
-            row["soc_pct"] = _round(_actual(start, current, battery_logged), 1)
+            logged_soc = _actual(start, current, battery_logged)
+            if logged_soc is None and past:
+                logged_soc = inputs.soc_recorded.get(start)
+            row["soc_pct"] = _round(logged_soc, 1)
             if past:
                 first = battery_logged.get(start)
                 row["soc_plan_pct"] = None if first is None else round(first.forecast, 1)
@@ -498,6 +509,23 @@ def days_view(inputs: HouseInputs) -> list[dict[str, Any]]:
     return shown[:REVIEW_DAYS_SHOWN]
 
 
+def day_review_block(inputs: HouseInputs) -> dict[str, Any] | None:
+    """The `day_review` block (see the module)."""
+    battery = inputs.battery
+    if inputs.day is None or battery is None:
+        return None
+    review = next((item for item in battery.reviews if item.day == inputs.day), None)
+    if review is None:
+        return None
+    savings = review.mode_savings
+    return {
+        "date": review.day.isoformat(),
+        "mode": review.mode,
+        "modes": {mode: _money(savings[mode]) if mode in savings else None for mode in MODES},
+        "own_saving": _money(review.actual_saving),
+    }
+
+
 def day_block(inputs: HouseInputs, hours: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     """The `day` block (see the module)."""
     today = inputs.now.astimezone(time_zones.require_zone(inputs.tz)).date()
@@ -533,6 +561,7 @@ def house_view(inputs: HouseInputs) -> dict[str, Any]:
         else day_flow(inputs.battery, inputs.now, inputs.tz, inputs.sun is not None),
         "energy_flow": None if inputs.energy_flow is None else dict(inputs.energy_flow),
         "day": day_block(inputs, hours),
+        "day_review": day_review_block(inputs),
         "calendar": None if inputs.battery is None else month_calendar(inputs.battery, inputs.now, inputs.tz),
         "days": days_view(inputs),
         "sources": {
