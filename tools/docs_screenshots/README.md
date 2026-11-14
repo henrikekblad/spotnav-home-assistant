@@ -31,8 +31,9 @@ unplugged (see [Car identification](#car-identification)).
 Named like the real integrations so SpotNav's detection treats them as such, and reduced to the shapes
 the detection reads (device tree, entity ids, unique ids, translation keys):
 
-- `ocpp`: a central system with two charge points ("Garage charger", "Workshop charger"), each with a
-  connector device, charge control, session current limit, energy register, per-phase current; the
+- `ocpp`: a central system with two charge points, each with a connector device named short, as a person
+  would rename it ("Garage", "Workshop": SpotNav titles a charger after the device chosen, so the card's header reads
+  "Garage"), charge control, session current limit, energy register, per-phase current; the
   `ocpp.get_configuration` service answers `AssignedCurrent` with `1.16,2.10`.
 - `sigen`: a plant ("Grid meter") with per-phase power and an inverter with voltages; values move a little
   every few seconds.
