@@ -356,7 +356,7 @@ export const HOUSE_STYLES = `
   }
   .${H.sunArea} {
     fill: var(--spotnav-sun-colour);
-    opacity: 0.28;
+    opacity: 0.6;
   }
   .${H.sunRaw} {
     fill: none;
