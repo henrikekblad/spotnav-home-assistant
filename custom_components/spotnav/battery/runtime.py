@@ -1,8 +1,10 @@
 """The home battery's shell: reads the site's battery from Home Assistant and runs the shadow parts on it.
 
 One per site, owned by its `SiteCapacityController`. Every `TICK_S` it reads the battery's facts (`facts.py`), the
-site's chargers charging from the grid (`execution/grid_charge.py`) and the site's own measurement, steps each part
-(`hold.py`) and logs the decisions in the shadow book (`shadow.py`), which is kept in the site's store. The
+site's chargers charging from the grid (`execution/grid_charge.py`), the brand's control roles (`commands.py`, as the
+write path reads them) and the site's own measurement, steps each part (`hold.py`, whose would-be writes are the
+executor's own via `executor.preview`) and logs the decisions in the shadow book (`shadow.py`), which is kept in the
+site's store. The
 confirmed-write ledger and the control-failure monitor run beside the hold as dry runs (`dry_run.py` says what they
 can and cannot tell in shadow); their state is kept in the book's sections. The house battery plan runs beside them
 as a shadow and a benchmark (`plan_runtime.py`). The outside-control watch (`outside_control.py`) looks at the same

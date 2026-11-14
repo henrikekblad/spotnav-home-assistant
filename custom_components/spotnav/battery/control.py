@@ -3,7 +3,10 @@ executor returns, persists its state. **Unreachable in this release.**
 
 Nothing constructs `BatteryControl` in production: no service, no setting and no other module refers to it (a test
 keeps it so), and every write goes through `_async_write`, which refuses while `shadow.ON_REACHABLE` is off. Tests
-drive it against fake entities with `ON_REACHABLE` patched on. A later, explicit opt-in will own one per site.
+drive it against fake entities with `ON_REACHABLE` patched on. A later, explicit opt-in will own one per site and
+take its actions from the battery plan and from the hold for the car (`hold.requested_action`), the one route since
+wave 7. The shadow shell (`runtime.py`) shares the pure parts only: the role reads (`runtime.read_role_reads`) and the
+executor's `preview`; it never imports this module.
 
 The order on every path:
 

@@ -25,7 +25,8 @@ Beside the facts, an adapter may know two limits (read 2026-11-13; the Sigenergy
   need the installer password; GoodWe states the depth of discharge (the floor is 100 less it). SolaX and Victron:
   none mapped yet.
 
-A control is what SpotNav *could* write; nothing in this release writes it.
+A control here is read only: the outside-control watch and the diagnostics read it. What SpotNav would write is the
+executor's brand command (`commands.py`), the one write route; nothing in this release writes either.
 """
 
 from __future__ import annotations

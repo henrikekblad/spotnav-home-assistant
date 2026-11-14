@@ -1,8 +1,10 @@
 """The battery's write path: turns a slot's planned action into the brand's commands, safely. Built, not reachable.
 
-Nothing calls this in production: `shadow.ON_REACHABLE` is off, no service or setting starts it, and the shell
+Nothing runs it in production: `shadow.ON_REACHABLE` is off, no service or setting starts it, and the shell
 (`control.py`) refuses to write while it is off. Tests drive it against fake entities. A later, explicit opt-in will
-use it.
+use it. It is the one battery write route: since wave 7 the shadow hold for the car (`hold.py`) is a request for
+this executor's action `hold`, and what it logs comes from `preview`, which runs the executor's own start rules and
+commands on a throw-away instance and returns the writes and the hand-back without writing anything.
 
 How it acts (`step`, one look every few seconds; pure, the shell does the writes it returns):
 
@@ -23,7 +25,10 @@ How it acts (`step`, one look every few seconds; pure, the shell does the writes
   an app taking Remote EMS back) or the site's battery is no longer that brand; someone else changes a control
   SpotNav owns (that control is given up and not written back over the other system, as the ledger says); a write
   is not taken; the monitor sees no effect; the day's write cap is reached. After a restart a stored snapshot is
-  restored before anything else. A restore write that does not read back is retried with backoff
+  restored before anything else. A role SpotNav wrote is restored by writing its snapshot and reading it back even
+  when it reads as it was found (`ExecState.written`): Sigenergy 2.0.1 shows a never-set limit as `unknown`, which
+  after SpotNav's own write proves nothing; the snapshot is then written as the rating, never as `unknown`, and an
+  `unknown` read-back is never a confirmed write (the ledger waits for a real value until its deadline). A restore write that does not read back is retried with backoff
   (`RESTORE_RETRY_S`), up to `RESTORE_ATTEMPTS` times each; a role still not restored then is left with its
   snapshot kept (the control blocks, and the next start tries again), while the other roles are handed back.
 * **Fuse safety.** A grid charge is clamped by the site's live headroom: what the battery already draws from the
