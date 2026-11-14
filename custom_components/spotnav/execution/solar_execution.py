@@ -122,7 +122,7 @@ from ..planning.auto_settings import AutoSettingsStore, DRIVER_TARGET_SOC, STRAT
 from ..runtime import charger_data, controller_for, preview_for, site_controller_for
 from ..site.measurement_problem import UNHEALTHY_STATES
 from ..site.measurement_source import grid_power_source_from_dict, source_from_dict
-from ..site.site_capacity import PhaseName, PHASES, charger_order_key
+from ..site.site_capacity import PhaseName, PHASES, charger_order_key, classify_current
 from ..site.site_capacity_controller import SiteCapacityController
 from ..site.solar_capability import solar_capability
 from ..site.solar_surplus import (
@@ -140,8 +140,8 @@ from ..site.solar_surplus import (
     surplus_breakdown,
 )
 from .auto_execution import AutoExecutor, pause_blocks_execution
-from .charge_progress import SUSPENDED_EV
-from .charger_connection import CHARGING, DISCONNECTED, FINISHED
+from .charge_progress import SUSPENDED_EV, ZERO_CURRENT_A
+from .charger_connection import CHARGING, CONNECTED, DISCONNECTED, FINISHED, PAUSED
 from .chargers.base import IN_EFFECT_OUTCOMES
 from .controller import ABSOLUTE_MAX_AMPS, ChargingController
 
@@ -627,9 +627,50 @@ def _charger_idle(controller: ChargingController) -> bool:
     return controller.connection()[0] != CHARGING
 
 
-def site_car_w(hass: HomeAssistant, site: SiteCapacityController, *, unread_as_zero: bool = False) -> float | None:
+#: Connection states in which a charger draws nothing: no car, a car waiting, paused or done.
+NOT_DRAWING_CONNECTIONS: Final = frozenset({DISCONNECTED, CONNECTED, PAUSED, FINISHED})
+
+
+def _source_state_reads_zero(hass: HomeAssistant, site: SiteCapacityController, charger_entry_id: str) -> bool:
+    """Whether the entity that carries a charger's phases as attributes reads no current in its own state. An OCPP
+    charger reports its phases only while it charges: idle after a restart its current sensor reads 0 A with no
+    L1/L2/L3 attributes at all (the owner's HALO, 2026-11-13)."""
+    source = source_from_dict(_wiring(site, charger_entry_id).get(CONF_MEASURED_CURRENT_SOURCE))
+    if source is None or source.kind != "attributes" or not source.entity_id:
+        return False
+    state = hass.states.get(source.entity_id)
+    if state is None:
+        return False
+    value, _problem = classify_current(
+        state.state, state.attributes.get("unit_of_measurement"), signed=source.signed_current
+    )
+    return value is not None and value < ZERO_CURRENT_A
+
+
+def _evidently_not_drawing(hass: HomeAssistant, site: SiteCapacityController, charger_entry_id: str,
+                           controller: ChargingController) -> bool:
+    """Whether a charger whose phases cannot be read is plainly not drawing: no Start on its way, not charging by its
+    own status, and either its connection says no car, waiting, paused or done, or its current entity's own state
+    reads no current. A charger that may be drawing stays unknown."""
+    if not _charger_idle(controller):
+        return False
+    return controller.connection()[0] in NOT_DRAWING_CONNECTIONS or _source_state_reads_zero(
+        hass, site, charger_entry_id
+    )
+
+
+def site_car_w(
+    hass: HomeAssistant,
+    site: SiteCapacityController,
+    *,
+    unread_as_zero: bool = False,
+    idle_unread_as_zero: bool = True,
+) -> float | None:
     """What every member charger draws now (W), as solar reads it: an idle one nothing. A charger whose draw cannot
-    be read counts as nothing with `unread_as_zero`, else makes the sum unknown (`None`)."""
+    be read counts as nothing with `unread_as_zero`, else makes the sum unknown (`None`), unless it is plainly not
+    drawing (`_evidently_not_drawing`): that counts as nothing with `idle_unread_as_zero`, which is for what only
+    measures (the hour tracker, the house figure, the battery plan's actuals). The import target's house figure
+    passes `False`: it steers chargers, and keeps what it had for a charger it cannot read."""
     car_w = 0.0
     for charger_entry_id in site.config.get(CONF_CHARGER_ENTRY_IDS) or []:
         controller = controller_for(hass, charger_entry_id)
@@ -644,6 +685,8 @@ def site_car_w(hass: HomeAssistant, site: SiteCapacityController, *, unread_as_z
             forced_one_phase=controller.switched_phases == 1,
         )
         drawn = car_draw_w(observation)
+        if drawn is None and idle_unread_as_zero and _evidently_not_drawing(hass, site, charger_entry_id, controller):
+            drawn = 0.0
         if drawn is None and not unread_as_zero:
             return None
         car_w += drawn or 0.0
