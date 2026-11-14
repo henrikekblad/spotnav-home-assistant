@@ -242,6 +242,13 @@ await cardShot("card-hero", CARD, 0);
 // app picture (tools/social/). Not a docs picture, so it goes to tools/social/card-light.png. Only on request:
 // `run.sh social-card`.
 if (only.has("social-card")) {
+  // A fully set-up installation: every "Get started" row left is answered "Not needed", as a person would in the
+  // card's dialog, so the card shows no "Get started: N things left" line. Kept for this throwaway instance only.
+  const left = (await demo.dashboard(api, charger.entry_id)).setup?.items ?? [];
+  for (const item of left) {
+    if (!item.dismissible) throw new Error(`social-card: setup row ${item.id} cannot be answered "Not needed"`);
+    await api.ws({ type: "spotnav/dismiss_setup_item", item: item.id });
+  }
   const { identifier } = await b.send("Page.addScriptToEvaluateOnNewDocument", {
     source: `try { localStorage.setItem("selectedTheme", '{"dark":false}'); } catch (e) {}`,
   });
