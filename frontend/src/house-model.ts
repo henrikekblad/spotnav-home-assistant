@@ -134,6 +134,14 @@ export interface ShownDay {
   has_data: boolean;
 }
 
+/** A past day's own review: each mode's saving and the battery's own against plain self-consumption. */
+export interface DayReviewFigures {
+  date: string;
+  mode: string | null;
+  modes: Partial<Record<BatteryMode, number | null>>;
+  own_saving: number;
+}
+
 export interface CalendarDay {
   date: string;
   plan_saving: number;
@@ -163,6 +171,8 @@ export interface HouseAnswer {
   energy_flow: EnergyFlow | null;
   /** `null` from a backend before the date choice: today only. */
   day: ShownDay | null;
+  /** On a past day, that day's review; `null` on today, on a day without one and from an older backend. */
+  day_review: DayReviewFigures | null;
   calendar: { month: string; days: CalendarDay[] } | null;
   days: ReviewDay[];
   sources: {
@@ -404,6 +414,21 @@ function shownDay(value: unknown): ShownDay | null {
   return { date: day(source.date), today: flag(source.today), first: day(source.first), has_data: flag(source.has_data) };
 }
 
+function dayReview(value: unknown): DayReviewFigures | null {
+  if (value === null) {
+    return null;
+  }
+  const source = record(value);
+  const raw = record(source.modes);
+  const modes: Partial<Record<BatteryMode, number | null>> = {};
+  for (const mode of MODES) {
+    if (mode in raw) {
+      modes[mode] = numberOrNull(raw[mode]);
+    }
+  }
+  return { date: day(source.date), mode: textOrNull(source.mode), modes, own_saving: number(source.own_saving) };
+}
+
 function calendar(value: unknown): { month: string; days: CalendarDay[] } | null {
   if (value === null) {
     return null;
@@ -473,6 +498,7 @@ export function decodeHouse(raw: unknown): HouseDecodeResult {
         flow: additive(source, "flow", flow, null),
         energy_flow: additive(source, "energy_flow", energyFlow, null),
         day: additive(source, "day", shownDay, null),
+        day_review: additive(source, "day_review", dayReview, null),
         calendar: additive(source, "calendar", calendar, null),
         days: list(source.days).map(reviewDay),
         sources: {

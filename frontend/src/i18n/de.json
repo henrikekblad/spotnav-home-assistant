@@ -1268,6 +1268,7 @@
   "house.compare.heading.one": "Gegenüber reinem Eigenverbrauch, letzter Tag",
   "house.compare.heading.other": "Gegenüber reinem Eigenverbrauch, letzte {days} Tage",
   "house.compare.headingNone": "Gegenüber reinem Eigenverbrauch: noch kein voller Tag",
+  "house.compare.headingDay": "Gegenüber reinem Eigenverbrauch, {day}",
   "house.compare.inForce": "aktiv",
   "house.compare.none": "noch kein voller Tag",
   "house.compare.reference": "Referenz",

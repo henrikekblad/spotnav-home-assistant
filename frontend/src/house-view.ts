@@ -250,34 +250,36 @@ function compareBlock(doc: Document, language: Language, answer: HouseAnswer): H
     return null;
   }
   const rows: Array<{ key: string; name: string; value: number | null; days: number; inForce: boolean }> = [];
-  for (const mode of MODES) {
-    const figures = battery.modes[mode];
-    if (figures !== undefined) {
-      rows.push({ key: mode, name: modeName(language, mode), value: figures.reviewed_days > 0 ? figures.reviewed_saving : null, days: figures.reviewed_days, inForce: mode === battery.mode });
+  const ownName = translate(language, battery.management === "self_managed" ? "house.modes.ownOptimiser" : "house.modes.own");
+  let heading: string;
+  if (answer.day !== null && !answer.day.today) {
+    // A past day: its own review, or plainly none.
+    const review = answer.day_review;
+    for (const mode of MODES) {
+      const value = review?.modes[mode] ?? null;
+      rows.push({ key: mode, name: modeName(language, mode), value, days: value === null ? 0 : 1, inForce: review !== null && mode === review.mode });
     }
+    rows.push({ key: "own", name: ownName, value: review === null ? null : review.own_saving, days: review === null ? 0 : 1, inForce: false });
+    heading = review === null ? translate(language, "house.compare.headingNone") : translate(language, "house.compare.headingDay", { day: dateLabel(language, review.date) });
+  } else {
+    for (const mode of MODES) {
+      const figures = battery.modes[mode];
+      if (figures !== undefined) {
+        rows.push({ key: mode, name: modeName(language, mode), value: figures.reviewed_days > 0 ? figures.reviewed_saving : null, days: figures.reviewed_days, inForce: mode === battery.mode });
+      }
+    }
+    if (rows.length === 0) {
+      return null;
+    }
+    const review = battery.review;
+    rows.push({ key: "own", name: ownName, value: review === null ? null : review.own_saving, days: review === null ? 0 : review.days, inForce: false });
+    const most = Math.max(...rows.map((row) => row.days));
+    heading = most > 0 ? translate(language, `house.compare.heading.${pluralForm(language, most)}`, { days: String(most) }) : translate(language, "house.compare.headingNone");
   }
-  if (rows.length === 0) {
-    return null;
-  }
-  const review = battery.review;
-  rows.push({
-    key: "own",
-    name: translate(language, battery.management === "self_managed" ? "house.modes.ownOptimiser" : "house.modes.own"),
-    value: review === null ? null : review.own_saving,
-    days: review === null ? 0 : review.days,
-    inForce: false,
-  });
   const days = Math.max(...rows.map((row) => row.days));
   const section = element(doc, "section", H.compare);
   section.dataset["part"] = "modes";
-  section.append(
-    element(
-      doc,
-      "p",
-      `${C.muted} ${H.compareHead}`,
-      days > 0 ? translate(language, `house.compare.heading.${pluralForm(language, days)}`, { days: String(days) }) : translate(language, "house.compare.headingNone"),
-    ),
-  );
+  section.append(element(doc, "p", `${C.muted} ${H.compareHead}`, heading));
   const largest = Math.max(1, ...rows.map((row) => Math.abs(row.value ?? 0)));
   const grid = element(doc, "div", H.compareGrid);
   for (const row of rows) {

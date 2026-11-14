@@ -1268,6 +1268,7 @@
   "house.compare.heading.one": "Frente al autoconsumo simple, último día",
   "house.compare.heading.other": "Frente al autoconsumo simple, últimos {days} días",
   "house.compare.headingNone": "Frente al autoconsumo simple: aún ningún día completo",
+  "house.compare.headingDay": "Frente al autoconsumo simple, {day}",
   "house.compare.inForce": "en vigor",
   "house.compare.none": "ningún día completo",
   "house.compare.reference": "referencia",

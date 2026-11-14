@@ -1268,6 +1268,7 @@
   "house.compare.heading.one": "Tegenover puur eigen verbruik, laatste dag",
   "house.compare.heading.other": "Tegenover puur eigen verbruik, laatste {days} dagen",
   "house.compare.headingNone": "Tegenover puur eigen verbruik: nog geen volle dag",
+  "house.compare.headingDay": "Tegenover puur eigen verbruik, {day}",
   "house.compare.inForce": "actief",
   "house.compare.none": "nog geen volle dag",
   "house.compare.reference": "referentie",

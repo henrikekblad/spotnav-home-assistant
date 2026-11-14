@@ -1268,6 +1268,7 @@
   "house.compare.heading.one": "Mod ren egenforbrug, seneste døgn",
   "house.compare.heading.other": "Mod ren egenforbrug, seneste {days} døgn",
   "house.compare.headingNone": "Mod ren egenforbrug: intet helt døgn endnu",
+  "house.compare.headingDay": "Mod ren egenforbrug, {day}",
   "house.compare.inForce": "gælder",
   "house.compare.none": "intet helt døgn",
   "house.compare.reference": "reference",

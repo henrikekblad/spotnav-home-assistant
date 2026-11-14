@@ -290,6 +290,29 @@ describe("the modes side by side in the body", () => {
   });
 });
 
+describe("the modes on a past day", () => {
+  it("show that day's own review under its date, the day's mode marked", () => {
+    const past = answer("house/villa_past_day.json");
+    const card = body(past, {}, "sv", { onDetails: vi.fn(), onSelect: vi.fn(), onDay: vi.fn() } as never);
+    const part = card.querySelector("[data-part='modes']")!;
+    expect(part.querySelector(".spotnav-house-compare-head")?.textContent).toMatch(/^Mot ren egenförbrukning, tors 12 nov/);
+    const rows = Array.from(part.querySelectorAll<HTMLElement>(".spotnav-house-compare-row"));
+    expect(rows.find((row) => row.dataset["row"] === "balanced")?.textContent).toContain("7,00 kr");
+    expect(rows.find((row) => row.dataset["row"] === "own")?.textContent).toContain("6,30 kr");
+    expect(rows.find((row) => row.dataset["inForce"])?.dataset["row"]).toBe(past.day_review!.mode);
+    expect(part.textContent).not.toContain("dygn)");
+  });
+
+  it("say no full day on a past day without a review", () => {
+    const past = answer("house/villa_past_day.json");
+    const card = body({ ...past, day_review: null }, {}, "sv", { onDetails: vi.fn(), onSelect: vi.fn(), onDay: vi.fn() } as never);
+    const part = card.querySelector("[data-part='modes']")!;
+    expect(part.querySelector(".spotnav-house-compare-head")?.textContent).toBe("Mot ren egenförbrukning: inget fullt dygn än");
+    expect(part.querySelector("[data-row='balanced']")?.textContent).toContain("inget fullt dygn");
+    expect(translate("fi", "house.compare.headingDay", { day: "d" })).not.toBe("house.compare.headingDay");
+  });
+});
+
 describe("the day choice", () => {
   it("steps back a day from today, never forward past it", () => {
     const onDay = vi.fn();

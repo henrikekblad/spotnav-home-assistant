@@ -1268,6 +1268,7 @@
   "house.compare.heading.one": "Mot ren egenförbrukning, senaste dygnet",
   "house.compare.heading.other": "Mot ren egenförbrukning, senaste {days} dygnen",
   "house.compare.headingNone": "Mot ren egenförbrukning: inget fullt dygn än",
+  "house.compare.headingDay": "Mot ren egenförbrukning, {day}",
   "house.compare.inForce": "gäller",
   "house.compare.none": "inget fullt dygn",
   "house.compare.reference": "referens",
