@@ -6,7 +6,7 @@ import target; this module only measures and never decides anything a charger is
 
 * **Input**: the site's net grid power (W, positive = import) on solar's basis (`execution/solar_execution.py:
   site_net_grid_w`: a direct site's total grid power, a derived site's signed power summed over its phases, each
-  only while live), and what the site's chargers draw (W, `site_car_w`, `None` when one cannot be read).
+  only while live), and what the site's chargers draw (W, `site_car_w`, `None` when one that may be drawing cannot be read).
 * **Integration**: `import_wh += max(0, grid_w) x dt` over each local clock hour, keyed by its start as a UTC
   instant (`hour_start`), so the repeated autumn hour is two hours, as on the meter. Each reading is held until the
   next observation, at most `HOLD_MAX_S`; time without a usable reading is a gap. The house's share is integrated
