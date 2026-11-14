@@ -29,6 +29,11 @@ meter and your cars.
   [GitHub](https://github.com/henrikekblad/spotnav)) pairs with it. English, Swedish, Danish, Norwegian,
   Finnish, German, Dutch, Spanish and French, following Home Assistant's language.
 
+![The SpotNav card in Home Assistant beside the SpotNav Android app](docs/images/card-and-app.png)
+
+The card on your dashboard and the same charger in the SpotNav Android app
+([Google Play](https://play.google.com/store/apps/details?id=se.sensnology.spotnav)).
+
 ## Does my hardware work?
 
 You need Home Assistant 2026.9 or newer and a charger Home Assistant can switch on and off. SpotNav installs
