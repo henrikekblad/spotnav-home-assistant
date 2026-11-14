@@ -1148,6 +1148,7 @@
   "house.title": "Talo",
   "house.preview": "Esikatselu · varjo",
   "house.sub.soc": "Akku {pct}",
+  "house.sub.socDayEnd": "Akku {pct} päivän lopussa",
   "house.sub.mode": "suunnitelma: {mode}",
   "house.mode.self_consumption": "Oma käyttö",
   "house.mode.balanced": "Tasapainoinen",

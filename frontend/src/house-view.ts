@@ -219,7 +219,13 @@ function header(doc: Document, language: Language, answer: HouseAnswer | null): 
   const battery = answer?.battery ?? null;
   if (battery !== null) {
     const words = [];
-    if (battery.soc_pct !== null) {
+    if (answer !== null && answer.day !== null && !answer.day.today) {
+      // A past day: the level logged at its last hour's end, said to be that day's.
+      const logged = [...answer.hours].reverse().find((hour) => hour.soc_pct !== null)?.soc_pct ?? null;
+      if (logged !== null) {
+        words.push(translate(language, "house.sub.socDayEnd", { pct: pct(language, logged) }));
+      }
+    } else if (battery.soc_pct !== null) {
       words.push(translate(language, "house.sub.soc", { pct: pct(language, battery.soc_pct) }));
     }
     if (answer?.today === null) {

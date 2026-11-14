@@ -1148,6 +1148,7 @@
   "house.title": "Huis",
   "house.preview": "Voorbeeld · schaduw",
   "house.sub.soc": "Batterij {pct}",
+  "house.sub.socDayEnd": "Batterij {pct} aan het eind van de dag",
   "house.sub.mode": "plan: {mode}",
   "house.mode.self_consumption": "Eigen verbruik",
   "house.mode.balanced": "Gebalanceerd",

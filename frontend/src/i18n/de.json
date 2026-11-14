@@ -1148,6 +1148,7 @@
   "house.title": "Haus",
   "house.preview": "Vorschau · Schatten",
   "house.sub.soc": "Batterie {pct}",
+  "house.sub.socDayEnd": "Batterie {pct} am Ende des Tages",
   "house.sub.mode": "Plan: {mode}",
   "house.mode.self_consumption": "Eigenverbrauch",
   "house.mode.balanced": "Ausgewogen",

@@ -1148,6 +1148,7 @@
   "house.title": "Huset",
   "house.preview": "Forhåndsvisning · skygge",
   "house.sub.soc": "Batteri {pct}",
+  "house.sub.socDayEnd": "Batteri {pct} ved dagens slutning",
   "house.sub.mode": "plan: {mode}",
   "house.mode.self_consumption": "Egetforbrug",
   "house.mode.balanced": "Balanceret",
