@@ -1,7 +1,8 @@
 // The house card's own classes and styles, on top of the charging card's (`visual-styles.ts`), which the house card
 // loads too: the card's frame, the chart's gridlines, axis text and now line, the muted text and the toggle button
-// are the same. The three series have a colour each, as custom properties a theme may set: the house in the theme's
-// primary colour, the sun in amber, the battery in violet; each keeps 3:1 against a light and a dark card.
+// are the same. The series have a colour each, as custom properties a theme may set: the house in the theme's
+// primary colour, the sun in amber, the battery in teal and the grid in blue-violet (as in the energy flow), selling
+// in raspberry; each keeps 3:1 against a light and a dark card.
 
 import { CHART_DENSITY, PLAN_BAND_STYLE } from "./visual-styles";
 
@@ -71,9 +72,9 @@ export const HOUSE_STYLES = `
   .${H.card} {
     --spotnav-house-colour: var(--spotnav-house, var(--primary-color, #03a9f4));
     --spotnav-sun-colour: var(--spotnav-sun, #e8a200);
-    --spotnav-battery-colour: var(--spotnav-battery, #8e63ce);
-    --spotnav-sell-colour: var(--spotnav-sell, #00897b);
-    --spotnav-grid-colour: var(--spotnav-grid, #78909c);
+    --spotnav-battery-colour: var(--spotnav-battery, #129c90);
+    --spotnav-sell-colour: var(--spotnav-sell, #c2185b);
+    --spotnav-grid-colour: var(--spotnav-grid, #5c6bd6);
     --spotnav-flow-solar: var(--spotnav-flow-sun, #f2c94c);
     --spotnav-flow-battery: var(--spotnav-flow-battery-colour, #4fd1c5);
     --spotnav-flow-grid: var(--spotnav-flow-grid-colour, #8c9cf5);
@@ -217,7 +218,7 @@ export const HOUSE_STYLES = `
     outline-offset: 2px;
   }
   .${H.band} {
-    fill: var(--spotnav-battery-colour);
+    fill: var(--spotnav-grid-colour);
     opacity: ${PLAN_BAND_STYLE.installed.fillOpacity};
   }
   .${H.band}[data-action="export_discharge"] {
@@ -407,7 +408,7 @@ export const HOUSE_STYLES = `
     border-radius: 0;
   }
   .${H.swatch}[data-series="charge"] {
-    background: var(--spotnav-battery-colour);
+    background: var(--spotnav-grid-colour);
     opacity: 0.3;
   }
   .${H.swatch}[data-series="sell"] {
