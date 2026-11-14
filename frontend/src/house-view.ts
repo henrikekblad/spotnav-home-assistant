@@ -5,6 +5,7 @@
 import { clock, dateLabel, dayCue, formatFixed, formatNumber, hourLabel, type EntityWords, type FormatContext } from "./format";
 import { houseChartHeight, houseShown, renderHouseChart, sunShown, type HouseChart, type HouseChartView } from "./house-chart";
 import { MODES, type BatteryMode, type DayFlow, type HouseAnswer, type HouseHour } from "./house-model";
+import { renderFlow } from "./house-flow";
 import { HOUSE_CLASSES as H } from "./house-styles";
 import { pluralForm, translate, type Language, type TranslationKey } from "./i18n";
 import { VISUAL_CLASSES as C } from "./visual-styles";
@@ -23,12 +24,16 @@ export interface HouseUi {
   view?: HouseChartView;
   /** The hour shown in the readout (an index into `hours`), `null` for the hint. */
   selected: number | null;
+  /** The past day asked for (`YYYY-MM-DD`), `null` or absent for today. */
+  day?: string | null;
 }
 
 export interface HouseHandlers {
   onDetails(open: boolean): void;
   onView?(view: HouseChartView): void;
   onSelect(index: number | null): void;
+  /** Step to another day (`null`: today). */
+  onDay?(day: string | null): void;
 }
 
 export interface HouseRenderInput {
@@ -94,7 +99,9 @@ export function todayLine(language: Language, answer: HouseAnswer): string | nul
   if (today === null) {
     return null;
   }
-  return translate(language, "house.today", {
+  const past = answer.day !== null && !answer.day.today;
+  return translate(language, past ? "house.dayMoney" : "house.today", {
+    day: past ? dateLabel(language, answer.day!.date) : "",
     sold: amount(language, today.sold, answer.money),
     arbitrage: amount(language, today.arbitrage, answer.money),
     bought: amount(language, today.bought, answer.money),
@@ -212,7 +219,13 @@ function header(doc: Document, language: Language, answer: HouseAnswer | null): 
   const battery = answer?.battery ?? null;
   if (battery !== null) {
     const words = [];
-    if (battery.soc_pct !== null) {
+    if (answer !== null && answer.day !== null && !answer.day.today) {
+      // A past day: the level logged at its last hour's end, said to be that day's.
+      const logged = [...answer.hours].reverse().find((hour) => hour.soc_pct !== null)?.soc_pct ?? null;
+      if (logged !== null) {
+        words.push(translate(language, "house.sub.socDayEnd", { pct: pct(language, logged) }));
+      }
+    } else if (battery.soc_pct !== null) {
       words.push(translate(language, "house.sub.soc", { pct: pct(language, battery.soc_pct) }));
     }
     if (answer?.today === null) {
@@ -227,6 +240,112 @@ function header(doc: Document, language: Language, answer: HouseAnswer | null): 
     }
   }
   return wrap;
+}
+
+/** The battery's modes side by side in the main body: each mode's reviewed nights and the battery's own way, against
+ * plain self-consumption, the mode in force marked, a short bar each so the order shows at a glance. */
+function compareBlock(doc: Document, language: Language, answer: HouseAnswer): HTMLElement | null {
+  const battery = answer.battery;
+  if (battery === null) {
+    return null;
+  }
+  const rows: Array<{ key: string; name: string; value: number | null; days: number; inForce: boolean }> = [];
+  for (const mode of MODES) {
+    const figures = battery.modes[mode];
+    if (figures !== undefined) {
+      rows.push({ key: mode, name: modeName(language, mode), value: figures.reviewed_days > 0 ? figures.reviewed_saving : null, days: figures.reviewed_days, inForce: mode === battery.mode });
+    }
+  }
+  if (rows.length === 0) {
+    return null;
+  }
+  const review = battery.review;
+  rows.push({
+    key: "own",
+    name: translate(language, battery.management === "self_managed" ? "house.modes.ownOptimiser" : "house.modes.own"),
+    value: review === null ? null : review.own_saving,
+    days: review === null ? 0 : review.days,
+    inForce: false,
+  });
+  const days = Math.max(...rows.map((row) => row.days));
+  const section = element(doc, "section", H.compare);
+  section.dataset["part"] = "modes";
+  section.append(
+    element(
+      doc,
+      "p",
+      `${C.muted} ${H.compareHead}`,
+      days > 0 ? translate(language, `house.compare.heading.${pluralForm(language, days)}`, { days: String(days) }) : translate(language, "house.compare.headingNone"),
+    ),
+  );
+  const largest = Math.max(1, ...rows.map((row) => Math.abs(row.value ?? 0)));
+  const grid = element(doc, "div", H.compareGrid);
+  for (const row of rows) {
+    const name = element(doc, "span", H.compareName, row.name);
+    if (row.inForce) {
+      name.append(" ", element(doc, "span", H.chip, translate(language, "house.compare.inForce")));
+    }
+    // Plain self-consumption is what the others are measured against: its own figure is the reference.
+    const reference = row.key === "self_consumption";
+    const track = element(doc, "span", H.compareTrack);
+    track.setAttribute("aria-hidden", "true");
+    if (!reference && row.value !== null && row.value !== 0) {
+      const fill = element(doc, "span", H.compareFill);
+      fill.style.width = `${Math.round((Math.abs(row.value) / largest) * 100)}%`;
+      fill.dataset["sign"] = row.value < 0 ? "minus" : "plus";
+      track.append(fill);
+    }
+    let figure = reference ? translate(language, "house.compare.reference") : row.value === null ? translate(language, "house.compare.none") : amount(language, row.value, answer.money);
+    if (!reference && row.value !== null && row.days < days) {
+      figure += ` (${translate(language, `house.compare.days.${pluralForm(language, row.days)}`, { days: String(row.days) })})`;
+    }
+    const value = element(doc, "span", row.value === null || reference ? `${H.compareValue} ${C.muted}` : H.compareValue, figure);
+    const line = element(doc, "div", H.compareRow);
+    line.dataset["row"] = row.key;
+    if (row.inForce) {
+      line.dataset["inForce"] = "true";
+    }
+    line.append(name, track, value);
+    grid.append(line);
+  }
+  section.append(grid);
+  return section;
+}
+
+/** A `YYYY-MM-DD` day moved by `days`. */
+export function shiftDay(isoDate: string, days: number): string {
+  const [year, month, dayOfMonth] = isoDate.split("-").map(Number) as [number, number, number];
+  return new Date(Date.UTC(year, month - 1, dayOfMonth + days, 12)).toISOString().slice(0, 10);
+}
+
+/** ‹ day › : step a day back or forward, as the battery app's calendar; today is the default and the last. */
+function dayBar(doc: Document, language: Language, answer: HouseAnswer, handlers: HouseHandlers): HTMLElement | null {
+  const shown = answer.day;
+  if (shown === null || handlers.onDay === undefined) {
+    return null;
+  }
+  const bar = element(doc, "div", H.dayBar);
+  bar.setAttribute("role", "group");
+  bar.setAttribute("aria-label", translate(language, "house.day.choose"));
+  const step = (direction: "back" | "forward", glyph: string, labelKey: TranslationKey, disabled: boolean, target: string | null): HTMLButtonElement => {
+    const button = element(doc, "button", `${C.historyToggleButton} ${H.dayStep}`, glyph);
+    button.type = "button";
+    button.dataset["step"] = direction;
+    button.setAttribute("aria-label", translate(language, labelKey));
+    button.disabled = disabled;
+    button.addEventListener("click", () => handlers.onDay?.(target));
+    return button;
+  };
+  const before = shiftDay(shown.date, -1);
+  const after = shiftDay(shown.date, 1);
+  const label = element(doc, "span", H.dayLabel, shown.today ? translate(language, "house.day.today") : dateLabel(language, shown.date));
+  label.setAttribute("aria-live", "polite");
+  bar.append(
+    step("back", "‹", "house.day.back", shown.date <= shown.first, before),
+    label,
+    step("forward", "›", "house.day.forward", shown.today, shown.today ? null : after),
+  );
+  return bar;
 }
 
 function legend(doc: Document, language: Language, answer: HouseAnswer, view: HouseChartView): HTMLElement {
@@ -269,7 +388,7 @@ function chartBlock(input: HouseRenderInput, answer: HouseAnswer): HTMLElement {
   const ctx = context(language, answer);
   const surface = element(doc, "div", H.surface);
   surface.tabIndex = 0;
-  const readout = element(doc, "p", `${C.muted} ${C.readout}`);
+  const readout = element(doc, "p", `${C.muted} ${C.readout} ${H.readout}`);
   readout.setAttribute("aria-live", "polite");
   const width = Math.max(200, Math.round(input.width));
   const priced = answer.hours.some((hour) => hour.buy !== null);
@@ -364,7 +483,9 @@ function chartBlock(input: HouseRenderInput, answer: HouseAnswer): HTMLElement {
     }
     block.append(views);
   }
-  block.append(surface, legend(doc, language, answer, view), readout);
+  // The readout right under the chart, where the eye is when a finger or the pointer is on it; its lines are reserved
+  // so nothing below moves when an hour is chosen.
+  block.append(surface, readout, legend(doc, language, answer, view));
   return block;
 }
 
@@ -422,6 +543,37 @@ function flowBlock(doc: Document, language: Language, flow: DayFlow | null): HTM
   }
   if (flow.sources.solar !== null && flow.sun_hours < flow.hours) {
     section.append(element(doc, "p", `${C.muted} ${H.note}`, translate(language, "house.flow.sunLater")));
+  }
+  return section;
+}
+
+/** Today's energy flow as a Sankey diagram (`house-flow.ts`), under the chart; `null` without one. */
+function energyFlowBlock(input: HouseRenderInput, answer: HouseAnswer): HTMLElement | null {
+  const flow = answer.energy_flow;
+  if (flow === null) {
+    return null;
+  }
+  const { doc, language } = input;
+  const diagram = renderFlow(doc, language, flow, Math.max(260, Math.floor(input.width)), input.idPrefix, answer.day !== null && !answer.day.today);
+  if (diagram === null) {
+    return null;
+  }
+  const section = element(doc, "section", `${H.section} ${H.flow}`);
+  section.dataset["part"] = "energy-flow";
+  const past = answer.day !== null && !answer.day.today;
+  const through = clock(context(language, answer), Date.parse(flow.through));
+  section.append(
+    element(doc, "h3", H.heading, past ? translate(language, "house.flow.headingDay", { day: dateLabel(language, flow.date) }) : translate(language, "house.flow.heading")),
+  );
+  if (!past) {
+    section.append(element(doc, "p", `${C.muted} ${H.note}`, translate(language, "house.flow.through", { time: through })));
+  }
+  section.append(
+    diagram,
+    element(doc, "p", `${C.muted} ${H.note}`, translate(language, "house.flow.rule")),
+  );
+  if (flow.car_hours < flow.hours && flow.nodes.some((node) => node.role === "car")) {
+    section.append(element(doc, "p", `${C.muted} ${H.note}`, translate(language, "house.flow.carPart")));
   }
   return section;
 }
@@ -705,8 +857,25 @@ export function houseBody(input: HouseRenderInput): HTMLElement {
     return card;
   }
   const answer = state.answer;
-  card.append(header(doc, language, answer), chartBlock(input, answer));
-  const saving = savingLine(language, answer);
+  card.append(header(doc, language, answer));
+  const days = dayBar(doc, language, answer, input.handlers);
+  if (days !== null) {
+    card.append(days);
+  }
+  if (answer.day !== null && !answer.day.has_data) {
+    const none = element(doc, "p", `${C.muted} ${H.line}`, translate(language, "house.day.noData"));
+    none.setAttribute("role", "status");
+    none.dataset["line"] = "no-data";
+    card.append(none);
+    return card;
+  }
+  card.append(chartBlock(input, answer));
+  const comparison = compareBlock(doc, language, answer);
+  if (comparison !== null) {
+    card.append(comparison);
+  }
+  // The week's sentence is the comparison's own once a night was reviewed; before, the line says what is to come.
+  const saving = comparison !== null && answer.battery?.review !== null ? null : savingLine(language, answer);
   if (saving !== null) {
     const line = element(doc, "p", H.line, saving);
     line.dataset["line"] = "saving";
@@ -715,6 +884,10 @@ export function houseBody(input: HouseRenderInput): HTMLElement {
   const review = element(doc, "p", `${H.line} ${C.muted}`, reviewLine(language, answer));
   review.dataset["line"] = "review";
   card.append(review);
+  const energyFlow = energyFlowBlock(input, answer);
+  if (energyFlow !== null) {
+    card.append(energyFlow);
+  }
   const toggle = element(doc, "button", `${C.historyToggleButton} ${H.detailsToggle}`, translate(language, input.ui.detailsOpen ? "house.details.close" : "house.details.open"));
   toggle.type = "button";
   toggle.setAttribute("aria-expanded", String(input.ui.detailsOpen));
@@ -726,7 +899,7 @@ export function houseBody(input: HouseRenderInput): HTMLElement {
     const details = element(doc, "div", H.details);
     details.id = detailsId;
     for (const part of [
-      flowBlock(doc, language, answer.flow),
+      energyFlow === null ? flowBlock(doc, language, answer.flow) : null,
       calendarBlock(doc, language, answer, input.nowMs),
       modesTable(doc, language, answer),
       daysTable(doc, language, answer),

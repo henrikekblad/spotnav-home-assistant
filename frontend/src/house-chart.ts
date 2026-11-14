@@ -157,6 +157,27 @@ export function renderHouseChart(input: HouseChartInput): HouseChart {
   const description = svg("desc", { id: input.ids.description });
   description.textContent = input.description;
   root.append(title, description);
+  // Soft vertical gradients: the house's bars fade a little toward the base, the sun's area toward the axis.
+  const defs = svg("defs");
+  const gradient = (id: string, colour: string, stops: ReadonlyArray<readonly [string, string]>): string => {
+    const created = svg("linearGradient", { id, x1: 0, y1: 0, x2: 0, y2: 1 });
+    for (const [offset, opacity] of stops) {
+      const stop = svg("stop", { offset, "stop-opacity": opacity });
+      stop.style.setProperty("stop-color", colour);
+      created.append(stop);
+    }
+    defs.append(created);
+    return `url(#${id})`;
+  };
+  const barFill = gradient(`${input.ids.title}-bar`, "var(--spotnav-house-colour)", [
+    ["0", "1"],
+    ["1", "0.62"],
+  ]);
+  const sunFill = gradient(`${input.ids.title}-sun`, "var(--spotnav-sun-colour)", [
+    ["0", "0.55"],
+    ["1", "0.08"],
+  ]);
+  root.append(defs);
 
   // The plan's grid charging and selling, behind everything.
   const bands = svg("g", { class: H.bands });
@@ -254,7 +275,9 @@ export function renderHouseChart(input: HouseChartInput): HouseChart {
     return value === null ? null : { x: centre(hour), y: yAt(scale, value) };
   });
   if (view === "energy" && sunPoints.some((point) => point !== null && point.y < base - 0.5)) {
-    root.append(svg("path", { class: H.sunArea, d: pathOf(sunPoints, true, base) }));
+    const area = svg("path", { class: H.sunArea, d: pathOf(sunPoints, true, base) });
+    area.style.setProperty("fill", sunFill);
+    root.append(area);
     // Only where the sun is up (and the hour either side, so the line starts and ends on the baseline).
     const up = (index: number): boolean => (hours[index]?.sun_forecast_kwh ?? 0) > 0;
     const raw = hours.map((hour, index) =>
@@ -274,16 +297,16 @@ export function renderHouseChart(input: HouseChartInput): HouseChart {
     const inset = width * 0.18;
     if (shown.kw !== null && shown.kw > 0) {
       const top = yAt(scale, shown.kw);
-      bars.append(
-        svg("rect", {
-          class: shown.measured ? H.bar : `${H.bar} ${H.barForecast}`,
-          x: left + inset,
-          y: top,
-          width: Math.max(0.5, width - 2 * inset),
-          height: Math.max(0.5, base - top),
-          rx: Math.min(2, width / 6),
-        }),
-      );
+      const bar = svg("rect", {
+        class: shown.measured ? H.bar : `${H.bar} ${H.barForecast}`,
+        x: left + inset,
+        y: top,
+        width: Math.max(0.5, width - 2 * inset),
+        height: Math.max(0.5, base - top),
+        rx: Math.min(2, width / 6),
+      });
+      bar.style.setProperty("fill", barFill);
+      bars.append(bar);
     }
     if (shown.measured && hour.house_forecast_kw !== null) {
       const y = yAt(scale, hour.house_forecast_kw);

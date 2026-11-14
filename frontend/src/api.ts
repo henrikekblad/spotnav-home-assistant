@@ -659,10 +659,12 @@ export async function getSessionsCsv(
  * The house card's view of a site (`spotnav/get_house`), by the site's id or a charger's in it; `unknown` until
  * `decodeHouse()` decodes it. Read-only; any signed-in user may read it.
  */
-export async function getHouse(hass: HomeAssistantLike, target: { site: string } | { charger: string }): Promise<unknown> {
+export async function getHouse(hass: HomeAssistantLike, target: { site: string } | { charger: string }, date: string | null = null): Promise<unknown> {
   return await call<unknown>(hass, {
     type: "spotnav/get_house",
     api_version: HOUSE_API_VERSION,
     ...("site" in target ? { site_id: target.site } : { charger_id: target.charger }),
+    // A past local day (`YYYY-MM-DD`); left out for today, so an older backend is asked as before.
+    ...(date === null ? {} : { date }),
   });
 }

@@ -135,6 +135,12 @@
     ],
     "month": "2026-11"
   },
+  "day": {
+    "date": "2026-11-13",
+    "first": "2026-10-31",
+    "has_data": true,
+    "today": true
+  },
   "days": [
     {
       "arbitrage": 875.0,
@@ -207,6 +213,105 @@
       "sun_mae": 0.075
     }
   ],
+  "energy_flow": {
+    "car_hours": 17,
+    "date": "2026-11-13",
+    "hours": 17,
+    "links": [
+      {
+        "from": "source.solar",
+        "kwh": 7.25,
+        "to": "use.house"
+      },
+      {
+        "from": "source.solar",
+        "kwh": 0.25,
+        "to": "use.car"
+      },
+      {
+        "from": "source.battery",
+        "kwh": 8.45,
+        "to": "use.house"
+      },
+      {
+        "from": "source.battery",
+        "kwh": 0.01,
+        "to": "use.car"
+      },
+      {
+        "from": "source.battery",
+        "kwh": 0.12,
+        "to": "use.grid"
+      },
+      {
+        "from": "source.grid",
+        "kwh": 38.04,
+        "to": "use.battery"
+      },
+      {
+        "from": "source.grid",
+        "kwh": 13.65,
+        "to": "use.house"
+      },
+      {
+        "from": "source.grid",
+        "kwh": 25.2,
+        "to": "use.car"
+      }
+    ],
+    "nodes": [
+      {
+        "id": "source.solar",
+        "kwh": 7.5,
+        "role": "solar",
+        "side": "source",
+        "soc_pct": null
+      },
+      {
+        "id": "source.battery",
+        "kwh": 8.58,
+        "role": "battery",
+        "side": "source",
+        "soc_pct": null
+      },
+      {
+        "id": "source.grid",
+        "kwh": 76.89,
+        "role": "grid",
+        "side": "source",
+        "soc_pct": null
+      },
+      {
+        "id": "use.battery",
+        "kwh": 38.04,
+        "role": "battery",
+        "side": "use",
+        "soc_pct": 48.3
+      },
+      {
+        "id": "use.house",
+        "kwh": 29.35,
+        "role": "house",
+        "side": "use",
+        "soc_pct": null
+      },
+      {
+        "id": "use.car",
+        "kwh": 25.46,
+        "role": "car",
+        "side": "use",
+        "soc_pct": null
+      },
+      {
+        "id": "use.grid",
+        "kwh": 0.12,
+        "role": "grid",
+        "side": "use",
+        "soc_pct": null
+      }
+    ],
+    "through": "2026-11-13T16:00:00+00:00"
+  },
   "flow": {
     "date": "2026-11-13",
     "hours": 18,

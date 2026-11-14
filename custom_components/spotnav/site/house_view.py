@@ -16,9 +16,15 @@ It shows what the site diagnostics already carry, cut to what a card draws:
   `None` on a site without a solar forecast, `battery` on a site without a battery.
 * **`today`**: today so far, split as the battery's own app splits a day (sold, arbitrage, bought) with the mode in
   force, from the stored energy's running value (`battery/stored_value.py`); **`flow`**: today's energy from sources (sun, battery, grid) to uses
-  (battery, load, grid); **`calendar`**: the running month's reviewed days, the plan beside the battery's own way.
+  (battery, load, grid); **`energy_flow`**: today's completed hours as a Sankey diagram's nodes and links, from the
+  Energy dashboard's meters and the chargers' registers, the flows allocated hour by hour (`site/energy_flow.py`, its
+  docstring has the rule; `None` without the dashboard's grid meter, also on a site without a battery); **`calendar`**: the running month's reviewed days, the plan beside the battery's own way.
   All three are `None` without a battery. Each hour also has its mean buy and sell price (`buy`, `sell`, minor per
   kWh) where the battery plan priced it.
+* **`day`**: the day shown (`date`), whether it is today, the first day that may be asked for (`first`: the forecast
+  log keeps `KEEP_HOURS_DAYS` days of hours) and whether anything was measured on it (`has_data`). A past day
+  (`HouseInputs.day`) shows its own local hours, all of them past (its outcomes beside its first forecasts), its money
+  (`today`, from the stored energy's day) and its energy flow; the bars of `flow` are today's only.
 * **`days`**: the last reviewed days, one row each, for the card's details.
 * **`sources`**: where the forecasts come from (weather entity, outdoor sensor, holiday calendar, solar forecast).
 
@@ -30,7 +36,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from typing import Any, Final
 
 from ..battery.plan_model import (
@@ -44,7 +50,7 @@ from .. import time_zones
 from ..battery.plan_shadow import KIND_BATTERY, Bucket, DayReview, PlannedSlot, PriceSlot, soc_by_hour_end
 from ..battery.stored_value import StoredValue
 from ..planning.demand_charge import hour_start
-from .forecast_log import KIND_HOUSE, KIND_SUN, KIND_SUN_CORRECTED, ForecastLog, LoggedHour, Score
+from .forecast_log import KEEP_HOURS_DAYS, KIND_HOUSE, KIND_SUN, KIND_SUN_CORRECTED, ForecastLog, LoggedHour, Score
 from .load_forecast import LoadForecast
 
 HOUSE_API_VERSION: Final = 1
@@ -68,6 +74,8 @@ HOUSE_KEYS: Final = (
     "battery",
     "today",
     "flow",
+    "energy_flow",
+    "day",
     "calendar",
     "days",
     "sources",
@@ -157,6 +165,10 @@ class HouseInputs:
     money: tuple[str | None, str | None, str | None] | None = None
     #: What the house figure is: the import less the chargers (`net`) or the house's whole load (`gross`).
     basis: str = "net"
+    #: The day's energy flow as `site/energy_flow.energy_flow` built it (the shell reads the statistics); `None` without.
+    energy_flow: Mapping[str, Any] | None = None
+    #: A past local day to show instead of the hours around now (`None`: today).
+    day: date | None = None
 
 
 def _round(value: float | None, digits: int = 3) -> float | None:
@@ -171,6 +183,20 @@ def hour_starts(now: datetime, tz: str) -> list[datetime]:
     """The shown hours' starts (UTC): `PAST_HOURS` before the running hour to `AHEAD_HOURS` from it on."""
     current = hour_start(now, tz)
     return [current + timedelta(hours=offset) for offset in range(-PAST_HOURS, AHEAD_HOURS)]
+
+
+def day_hour_starts(day: date, tz: str) -> list[datetime]:
+    """A local day's hour starts (UTC): 23, 24 or 25 of them."""
+    zone = time_zones.require_zone(tz)
+    start = datetime(day.year, day.month, day.day, tzinfo=zone).astimezone(timezone.utc)
+    following = day + timedelta(days=1)
+    end = datetime(following.year, following.month, following.day, tzinfo=zone).astimezone(timezone.utc)
+    return [start + timedelta(hours=offset) for offset in range(int((end - start).total_seconds() // 3600))]
+
+
+def first_day(now: datetime, tz: str) -> date:
+    """The first day that may be asked for: the forecast log's hours reach this far back."""
+    return now.astimezone(time_zones.require_zone(tz)).date() - timedelta(days=KEEP_HOURS_DAYS - 1)
 
 
 def hour_actions(plan: Iterable[PlannedSlot], tz: str) -> dict[datetime, str]:
@@ -216,7 +242,7 @@ def _today(quarters: Iterable[Bucket], now: datetime, tz: str) -> tuple[date, li
     ]
 
 
-def today_money(battery: BatteryInputs, now: datetime, tz: str) -> dict[str, Any] | None:
+def today_money(battery: BatteryInputs, now: datetime, tz: str, day: date | None = None) -> dict[str, Any] | None:
     """Today so far (minor units), the way the battery's own app splits a day, from the stored energy's running value
     (`battery/stored_value.py`): `sold` is the sun's surplus exported, `bought` the import, `arbitrage` what each kWh
     the battery gave back earned over its average cost (its exports included). `average_cost` is a stored kWh's cost
@@ -224,7 +250,7 @@ def today_money(battery: BatteryInputs, now: datetime, tz: str) -> dict[str, Any
     stored = battery.stored
     if stored is None:
         return None
-    day = now.astimezone(time_zones.require_zone(tz)).date()
+    day = day or now.astimezone(time_zones.require_zone(tz)).date()
     money = stored.days.get(day)
     if money is None:
         return None
@@ -324,7 +350,7 @@ def hours_view(inputs: HouseInputs) -> list[dict[str, Any]]:
     actions = {} if battery is None else hour_actions(battery.plan, tz)
     prices = {} if battery is None else hour_prices(battery.prices, battery.quarters, tz)
     rows = []
-    for start in hour_starts(inputs.now, tz):
+    for start in hour_starts(inputs.now, tz) if inputs.day is None else day_hour_starts(inputs.day, tz):
         past = start < current
         house_actual = inputs.house_actual.get(start) if past else None
         row: dict[str, Any] = {
@@ -472,10 +498,24 @@ def days_view(inputs: HouseInputs) -> list[dict[str, Any]]:
     return shown[:REVIEW_DAYS_SHOWN]
 
 
+def day_block(inputs: HouseInputs, hours: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    """The `day` block (see the module)."""
+    today = inputs.now.astimezone(time_zones.require_zone(inputs.tz)).date()
+    shown = inputs.day or today
+    measured = ("house_kw", "sun_kwh", "soc_pct")
+    return {
+        "date": shown.isoformat(),
+        "today": shown == today,
+        "first": first_day(inputs.now, inputs.tz).isoformat(),
+        "has_data": inputs.energy_flow is not None or any(row[key] is not None for row in hours for key in measured),
+    }
+
+
 def house_view(inputs: HouseInputs) -> dict[str, Any]:
     """The whole answer (`HOUSE_KEYS`)."""
     sources = inputs.sources
     money = inputs.money
+    hours = hours_view(inputs)
     return {
         "api_version": HOUSE_API_VERSION,
         "site_id": inputs.site_id,
@@ -483,14 +523,16 @@ def house_view(inputs: HouseInputs) -> dict[str, Any]:
         "time_zone": inputs.tz,
         "generated_at": inputs.now.isoformat(),
         "money": None if money is None else {"currency": money[0], "major_unit": money[1], "minor_unit": money[2]},
-        "hours": hours_view(inputs),
+        "hours": hours,
         "house": _house_block(inputs),
         "sun": None if inputs.sun is None else _sun_block(inputs.sun, inputs.log),
         "battery": None if inputs.battery is None else _battery_block(inputs.battery, inputs.log),
-        "today": None if inputs.battery is None else today_money(inputs.battery, inputs.now, inputs.tz),
+        "today": None if inputs.battery is None else today_money(inputs.battery, inputs.now, inputs.tz, inputs.day),
         "flow": None
-        if inputs.battery is None
+        if inputs.battery is None or inputs.day is not None
         else day_flow(inputs.battery, inputs.now, inputs.tz, inputs.sun is not None),
+        "energy_flow": None if inputs.energy_flow is None else dict(inputs.energy_flow),
+        "day": day_block(inputs, hours),
         "calendar": None if inputs.battery is None else month_calendar(inputs.battery, inputs.now, inputs.tz),
         "days": days_view(inputs),
         "sources": {

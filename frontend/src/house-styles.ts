@@ -1,7 +1,8 @@
 // The house card's own classes and styles, on top of the charging card's (`visual-styles.ts`), which the house card
 // loads too: the card's frame, the chart's gridlines, axis text and now line, the muted text and the toggle button
-// are the same. The three series have a colour each, as custom properties a theme may set: the house in the theme's
-// primary colour, the sun in amber, the battery in violet; each keeps 3:1 against a light and a dark card.
+// are the same. The series have a colour each, as custom properties a theme may set: the house in the theme's
+// primary colour, the sun in amber, the battery in teal and the grid in blue-violet (as in the energy flow), selling
+// in raspberry; each keeps 3:1 against a light and a dark card.
 
 import { CHART_DENSITY, PLAN_BAND_STYLE } from "./visual-styles";
 
@@ -45,6 +46,19 @@ export const HOUSE_CLASSES = {
   flowBar: "spotnav-house-flow-bar",
   flowPart: "spotnav-house-flow-part",
   flowKey: "spotnav-house-flow-key",
+  flowChart: "spotnav-house-flow-chart",
+  readout: "spotnav-house-readout",
+  dayBar: "spotnav-house-day-bar",
+  compare: "spotnav-house-compare",
+  compareHead: "spotnav-house-compare-head",
+  compareGrid: "spotnav-house-compare-grid",
+  compareRow: "spotnav-house-compare-row",
+  compareName: "spotnav-house-compare-name",
+  compareTrack: "spotnav-house-compare-track",
+  compareFill: "spotnav-house-compare-fill",
+  compareValue: "spotnav-house-compare-value",
+  dayStep: "spotnav-house-day-step",
+  dayLabel: "spotnav-house-day-label",
   calendar: "spotnav-house-calendar",
   calendarHead: "spotnav-house-calendar-head",
   calendarDay: "spotnav-house-calendar-day",
@@ -58,9 +72,125 @@ export const HOUSE_STYLES = `
   .${H.card} {
     --spotnav-house-colour: var(--spotnav-house, var(--primary-color, #03a9f4));
     --spotnav-sun-colour: var(--spotnav-sun, #e8a200);
-    --spotnav-battery-colour: var(--spotnav-battery, #8e63ce);
-    --spotnav-sell-colour: var(--spotnav-sell, #00897b);
-    --spotnav-grid-colour: var(--spotnav-grid, #78909c);
+    --spotnav-battery-colour: var(--spotnav-battery, #129c90);
+    --spotnav-sell-colour: var(--spotnav-sell, #c2185b);
+    --spotnav-grid-colour: var(--spotnav-grid, #5c6bd6);
+    --spotnav-flow-solar: var(--spotnav-flow-sun, #f2c94c);
+    --spotnav-flow-battery: var(--spotnav-flow-battery-colour, #4fd1c5);
+    --spotnav-flow-grid: var(--spotnav-flow-grid-colour, #8c9cf5);
+    --spotnav-flow-house: var(--spotnav-flow-house-colour, #b98cf0);
+    --spotnav-flow-car: var(--spotnav-flow-car-colour, #ffa86b);
+    --spotnav-flow-other: #b0bec5;
+  }
+  .${H.compare} {
+    margin-top: 8px;
+  }
+  .${H.compareHead} {
+    margin: 0 0 2px;
+    font-size: 0.78rem;
+  }
+  .${H.compareRow} {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(40px, 22%) auto;
+    align-items: center;
+    gap: 8px;
+    padding: 2px 0;
+    font-size: 0.86rem;
+  }
+  .${H.compareRow}[data-in-force] .${H.compareName} {
+    font-weight: 600;
+  }
+  .${H.compareName} {
+    min-width: 0;
+    overflow-wrap: break-word;
+  }
+  .${H.compareTrack} {
+    height: 6px;
+    border-radius: 3px;
+    background: var(--divider-color, #e0e0e0);
+    overflow: hidden;
+  }
+  .${H.compareFill} {
+    display: block;
+    height: 100%;
+    border-radius: 3px;
+    background: linear-gradient(90deg, color-mix(in srgb, var(--spotnav-battery-colour) 60%, transparent), var(--spotnav-battery-colour));
+  }
+  .${H.compareFill}[data-sign="minus"] {
+    background: var(--warning-color, #ffa600);
+  }
+  .${H.compareValue} {
+    text-align: right;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+  .${H.dayBar} {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 8px 0 0;
+  }
+  .${H.dayStep} {
+    /* 28 px: above WCAG 2.2's 24 px minimum target, smaller than the card's toggles. */
+    box-sizing: border-box;
+    width: 28px;
+    min-width: 28px;
+    height: 28px;
+    min-height: 28px;
+    padding: 0;
+    border-radius: 14px;
+    font-size: 1rem;
+    line-height: 1;
+  }
+  .${H.dayStep}:disabled {
+    opacity: 0.35;
+    cursor: default;
+  }
+  .${H.dayLabel} {
+    min-width: 6.5em;
+    text-align: center;
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
+  }
+  .${H.readout} {
+    height: auto;
+    min-height: 2.8em;
+    margin: 4px 0 2px;
+    white-space: normal;
+    text-overflow: clip;
+  }
+  .${H.flow}[data-part="energy-flow"] {
+    margin-top: 12px;
+  }
+  .${H.flowChart} {
+    display: block;
+    max-width: 100%;
+    margin-top: 6px;
+  }
+  .${H.flowChart} .spotnav-house-flow-band {
+    opacity: 0.55;
+  }
+  .${H.flowChart} .spotnav-house-flow-block {
+    filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.28));
+  }
+  .${H.flowChart} .spotnav-house-flow-pill {
+    fill: #ffffff;
+    fill-opacity: 0.62;
+  }
+  .${H.flowChart} text {
+    fill: #15151c;
+    font-variant-numeric: tabular-nums;
+  }
+  .${H.flowChart} .spotnav-house-flow-name {
+    font-size: 11px;
+    font-weight: 600;
+  }
+  .${H.flowChart} .spotnav-house-flow-value {
+    font-size: 15px;
+    font-weight: 700;
+  }
+  .${H.flowChart} .spotnav-house-flow-share {
+    font-size: 11px;
   }
   .${H.head} {
     display: flex;
@@ -102,7 +232,7 @@ export const HOUSE_STYLES = `
     outline-offset: 2px;
   }
   .${H.band} {
-    fill: var(--spotnav-battery-colour);
+    fill: var(--spotnav-grid-colour);
     opacity: ${PLAN_BAND_STYLE.installed.fillOpacity};
   }
   .${H.band}[data-action="export_discharge"] {
@@ -233,7 +363,7 @@ export const HOUSE_STYLES = `
   }
   .${H.sunArea} {
     fill: var(--spotnav-sun-colour);
-    opacity: 0.28;
+    opacity: 0.6;
   }
   .${H.sunRaw} {
     fill: none;
@@ -292,7 +422,7 @@ export const HOUSE_STYLES = `
     border-radius: 0;
   }
   .${H.swatch}[data-series="charge"] {
-    background: var(--spotnav-battery-colour);
+    background: var(--spotnav-grid-colour);
     opacity: 0.3;
   }
   .${H.swatch}[data-series="sell"] {

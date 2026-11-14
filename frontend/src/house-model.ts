@@ -100,6 +100,40 @@ export interface DayFlow {
   hours: number;
 }
 
+/** A node of today's energy flow: a source (left) or a use (right). `role` is open: a newer backend may name one this
+ * card does not know (a car that gives energy back would be `car` on the `source` side), drawn in a neutral colour. */
+export interface FlowNode {
+  id: string;
+  side: "source" | "use";
+  role: string;
+  kwh: number;
+  soc_pct: number | null;
+}
+
+export interface FlowLink {
+  from: string;
+  to: string;
+  kwh: number;
+}
+
+/** Today's completed hours as a Sankey diagram (`site/energy_flow.py`). */
+export interface EnergyFlow {
+  date: string;
+  through: string;
+  hours: number;
+  car_hours: number;
+  nodes: FlowNode[];
+  links: FlowLink[];
+}
+
+/** The day shown: today or a past day asked for by date, how far back one may go, and whether it has data. */
+export interface ShownDay {
+  date: string;
+  today: boolean;
+  first: string;
+  has_data: boolean;
+}
+
 export interface CalendarDay {
   date: string;
   plan_saving: number;
@@ -126,6 +160,9 @@ export interface HouseAnswer {
   battery: BatteryView | null;
   today: TodayMoney | null;
   flow: DayFlow | null;
+  energy_flow: EnergyFlow | null;
+  /** `null` from a backend before the date choice: today only. */
+  day: ShownDay | null;
   calendar: { month: string; days: CalendarDay[] } | null;
   days: ReviewDay[];
   sources: {
@@ -332,6 +369,41 @@ function flow(value: unknown): DayFlow | null {
   };
 }
 
+function energyFlow(value: unknown): EnergyFlow | null {
+  if (value === null) {
+    return null;
+  }
+  const source = record(value);
+  const kwh = (raw: unknown): number => (typeof raw === "number" && Number.isFinite(raw) && raw >= 0 ? raw : bad());
+  const nodes = list(source.nodes).map((entry): FlowNode => {
+    const item = record(entry);
+    const side = item.side === "source" || item.side === "use" ? item.side : bad();
+    return { id: text(item.id), side, role: text(item.role), kwh: kwh(item.kwh), soc_pct: numberOrNull(item.soc_pct) };
+  });
+  const ids = new Set(nodes.map((node) => node.id));
+  const links = list(source.links).map((entry): FlowLink => {
+    const item = record(entry);
+    return { from: text(item.from), to: text(item.to), kwh: kwh(item.kwh) };
+  });
+  return {
+    date: day(source.date),
+    through: instant(source.through),
+    hours: count(source.hours),
+    car_hours: count(source.car_hours),
+    nodes,
+    // A link to a node the answer does not have is not drawn.
+    links: links.filter((link) => ids.has(link.from) && ids.has(link.to)),
+  };
+}
+
+function shownDay(value: unknown): ShownDay | null {
+  if (value === null) {
+    return null;
+  }
+  const source = record(value);
+  return { date: day(source.date), today: flag(source.today), first: day(source.first), has_data: flag(source.has_data) };
+}
+
 function calendar(value: unknown): { month: string; days: CalendarDay[] } | null {
   if (value === null) {
     return null;
@@ -399,6 +471,8 @@ export function decodeHouse(raw: unknown): HouseDecodeResult {
         battery: battery(source.battery),
         today: additive(source, "today", today, null),
         flow: additive(source, "flow", flow, null),
+        energy_flow: additive(source, "energy_flow", energyFlow, null),
+        day: additive(source, "day", shownDay, null),
         calendar: additive(source, "calendar", calendar, null),
         days: list(source.days).map(reviewDay),
         sources: {
