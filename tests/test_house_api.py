@@ -137,3 +137,24 @@ async def test_todays_energy_flow_comes_from_the_energy_dashboard(hass: HomeAssi
     # Asked again within the hour: read from the cache.
     await ask(hass, 3, api_version=1, site_id=site.entry_id)
     assert len(reads) == 1
+
+
+async def test_a_past_day_is_asked_for_by_date(hass: HomeAssistant, freezer) -> None:
+    """`date` asks for a past local day from `day.first` on; today is as without it; anything else is refused."""
+    from datetime import timedelta
+
+    site = await pilot_site(hass, freezer, import_target_kw=6.0)
+    await run(hass, freezer, 60, 4000.0)
+    now = site_controller_for(hass, site.entry_id).demand.now()  # type: ignore[union-attr]
+    today = now.astimezone(__import__("zoneinfo").ZoneInfo("Europe/Stockholm")).date()
+    plain = (await ask(hass, 1, api_version=1, site_id=site.entry_id))["result"]
+    assert plain["day"]["today"] is True and plain["day"]["date"] == today.isoformat()
+    same = (await ask(hass, 2, api_version=1, site_id=site.entry_id, date=today.isoformat()))["result"]
+    assert same["day"] == plain["day"]
+    yesterday = (today - timedelta(days=1)).isoformat()
+    past = (await ask(hass, 3, api_version=1, site_id=site.entry_id, date=yesterday))["result"]
+    assert past["day"]["date"] == yesterday and past["day"]["today"] is False
+    assert len(past["hours"]) in (23, 24, 25)
+    for index, bad in enumerate(["2026-13-01", 20261112, (today + timedelta(days=1)).isoformat(), plain["day"]["first"][:8] + "0x", (today - timedelta(days=30)).isoformat()]):
+        answer = await ask(hass, 10 + index, api_version=1, site_id=site.entry_id, date=bad)
+        assert not answer["success"] and answer["error"]["code"] == "spotnav_invalid_date", bad

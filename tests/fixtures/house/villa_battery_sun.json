@@ -135,6 +135,12 @@
     ],
     "month": "2026-11"
   },
+  "day": {
+    "date": "2026-11-13",
+    "first": "2026-10-31",
+    "has_data": true,
+    "today": true
+  },
   "days": [
     {
       "arbitrage": 875.0,

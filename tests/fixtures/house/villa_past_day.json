@@ -1,0 +1,695 @@
+{
+  "api_version": 1,
+  "battery": {
+    "brand": "sigenergy",
+    "estimates": [
+      "min_soc_assumed"
+    ],
+    "horizon_end": "2026-11-14T22:00:00+00:00",
+    "label": "Sigenergy SigenStor",
+    "made_at": "2026-11-13T16:00:00+00:00",
+    "management": "self_managed",
+    "mode": "balanced",
+    "modes": {
+      "balanced": {
+        "planned_saving": 812.4,
+        "reviewed_days": 7,
+        "reviewed_saving": 5110.0
+      },
+      "max_profit": {
+        "planned_saving": 905.15,
+        "reviewed_days": 7,
+        "reviewed_saving": 5145.0
+      },
+      "self_consumption": {
+        "planned_saving": 0.0,
+        "reviewed_days": 0,
+        "reviewed_saving": null
+      }
+    },
+    "reason": null,
+    "review": {
+      "days": 7,
+      "first": "2026-11-06",
+      "last": "2026-11-12",
+      "own_saving": 4530.0,
+      "plan_saving": 5110.0,
+      "self_consumption_net": 30450.0
+    },
+    "soc_pct": 48.3,
+    "soc_review": {
+      "big_under_share": 0.0,
+      "hours": 168,
+      "mae": 2.5,
+      "under_share": 0.0
+    },
+    "status": "planned",
+    "usable_kwh": 40.3
+  },
+  "calendar": {
+    "days": [
+      {
+        "arbitrage": 850.0,
+        "date": "2026-11-01",
+        "mode": "balanced",
+        "own_saving": 850.0,
+        "plan_saving": 810.0
+      },
+      {
+        "arbitrage": 875.0,
+        "date": "2026-11-02",
+        "mode": "balanced",
+        "own_saving": 830.0,
+        "plan_saving": 800.0
+      },
+      {
+        "arbitrage": 900.0,
+        "date": "2026-11-03",
+        "mode": "balanced",
+        "own_saving": 810.0,
+        "plan_saving": 790.0
+      },
+      {
+        "arbitrage": 800.0,
+        "date": "2026-11-04",
+        "mode": "balanced",
+        "own_saving": 490.0,
+        "plan_saving": 780.0
+      },
+      {
+        "arbitrage": 825.0,
+        "date": "2026-11-05",
+        "mode": "balanced",
+        "own_saving": 770.0,
+        "plan_saving": 770.0
+      },
+      {
+        "arbitrage": 850.0,
+        "date": "2026-11-06",
+        "mode": "balanced",
+        "own_saving": 750.0,
+        "plan_saving": 760.0
+      },
+      {
+        "arbitrage": 875.0,
+        "date": "2026-11-07",
+        "mode": "balanced",
+        "own_saving": 730.0,
+        "plan_saving": 750.0
+      },
+      {
+        "arbitrage": 900.0,
+        "date": "2026-11-08",
+        "mode": "balanced",
+        "own_saving": 710.0,
+        "plan_saving": 740.0
+      },
+      {
+        "arbitrage": 800.0,
+        "date": "2026-11-09",
+        "mode": "balanced",
+        "own_saving": 390.0,
+        "plan_saving": 730.0
+      },
+      {
+        "arbitrage": 825.0,
+        "date": "2026-11-10",
+        "mode": "balanced",
+        "own_saving": 670.0,
+        "plan_saving": 720.0
+      },
+      {
+        "arbitrage": 850.0,
+        "date": "2026-11-11",
+        "mode": "balanced",
+        "own_saving": 650.0,
+        "plan_saving": 710.0
+      },
+      {
+        "arbitrage": 875.0,
+        "date": "2026-11-12",
+        "mode": "balanced",
+        "own_saving": 630.0,
+        "plan_saving": 700.0
+      }
+    ],
+    "month": "2026-11"
+  },
+  "day": {
+    "date": "2026-11-12",
+    "first": "2026-10-31",
+    "has_data": true,
+    "today": false
+  },
+  "days": [
+    {
+      "arbitrage": 875.0,
+      "date": "2026-11-12",
+      "house_mae": 0.086,
+      "own_saving": 630.0,
+      "plan_saving": 700.0,
+      "soc_mae": 2.5,
+      "sun_corrected_mae": 0.013,
+      "sun_mae": 0.056
+    },
+    {
+      "arbitrage": 850.0,
+      "date": "2026-11-11",
+      "house_mae": 0.093,
+      "own_saving": 650.0,
+      "plan_saving": 710.0,
+      "soc_mae": 2.5,
+      "sun_corrected_mae": 0.019,
+      "sun_mae": 0.084
+    },
+    {
+      "arbitrage": 825.0,
+      "date": "2026-11-10",
+      "house_mae": 0.088,
+      "own_saving": 670.0,
+      "plan_saving": 720.0,
+      "soc_mae": 2.5,
+      "sun_corrected_mae": 0.017,
+      "sun_mae": 0.075
+    },
+    {
+      "arbitrage": 800.0,
+      "date": "2026-11-09",
+      "house_mae": 0.087,
+      "own_saving": 390.0,
+      "plan_saving": 730.0,
+      "soc_mae": 2.5,
+      "sun_corrected_mae": 0.015,
+      "sun_mae": 0.065
+    },
+    {
+      "arbitrage": 900.0,
+      "date": "2026-11-08",
+      "house_mae": 0.092,
+      "own_saving": 710.0,
+      "plan_saving": 740.0,
+      "soc_mae": 2.5,
+      "sun_corrected_mae": 0.013,
+      "sun_mae": 0.056
+    },
+    {
+      "arbitrage": 875.0,
+      "date": "2026-11-07",
+      "house_mae": 0.09,
+      "own_saving": 730.0,
+      "plan_saving": 750.0,
+      "soc_mae": 2.5,
+      "sun_corrected_mae": 0.019,
+      "sun_mae": 0.084
+    },
+    {
+      "arbitrage": 850.0,
+      "date": "2026-11-06",
+      "house_mae": 0.086,
+      "own_saving": 750.0,
+      "plan_saving": 760.0,
+      "soc_mae": 2.5,
+      "sun_corrected_mae": 0.017,
+      "sun_mae": 0.075
+    }
+  ],
+  "energy_flow": {
+    "car_hours": 17,
+    "date": "2026-11-12",
+    "hours": 17,
+    "links": [
+      {
+        "from": "source.solar",
+        "kwh": 7.25,
+        "to": "use.house"
+      },
+      {
+        "from": "source.solar",
+        "kwh": 0.25,
+        "to": "use.car"
+      },
+      {
+        "from": "source.battery",
+        "kwh": 8.45,
+        "to": "use.house"
+      },
+      {
+        "from": "source.battery",
+        "kwh": 0.01,
+        "to": "use.car"
+      },
+      {
+        "from": "source.battery",
+        "kwh": 0.12,
+        "to": "use.grid"
+      },
+      {
+        "from": "source.grid",
+        "kwh": 38.04,
+        "to": "use.battery"
+      },
+      {
+        "from": "source.grid",
+        "kwh": 13.65,
+        "to": "use.house"
+      },
+      {
+        "from": "source.grid",
+        "kwh": 25.2,
+        "to": "use.car"
+      }
+    ],
+    "nodes": [
+      {
+        "id": "source.solar",
+        "kwh": 7.5,
+        "role": "solar",
+        "side": "source",
+        "soc_pct": null
+      },
+      {
+        "id": "source.battery",
+        "kwh": 8.58,
+        "role": "battery",
+        "side": "source",
+        "soc_pct": null
+      },
+      {
+        "id": "source.grid",
+        "kwh": 76.89,
+        "role": "grid",
+        "side": "source",
+        "soc_pct": null
+      },
+      {
+        "id": "use.battery",
+        "kwh": 38.04,
+        "role": "battery",
+        "side": "use",
+        "soc_pct": 31.5
+      },
+      {
+        "id": "use.house",
+        "kwh": 29.35,
+        "role": "house",
+        "side": "use",
+        "soc_pct": null
+      },
+      {
+        "id": "use.car",
+        "kwh": 25.46,
+        "role": "car",
+        "side": "use",
+        "soc_pct": null
+      },
+      {
+        "id": "use.grid",
+        "kwh": 0.12,
+        "role": "grid",
+        "side": "use",
+        "soc_pct": null
+      }
+    ],
+    "through": "2026-11-12T16:00:00+00:00"
+  },
+  "flow": null,
+  "generated_at": "2026-11-13T16:20:00+00:00",
+  "hours": [
+    {
+      "battery_action": null,
+      "buy": null,
+      "house_forecast_kw": 0.94,
+      "house_kw": 1.0,
+      "sell": null,
+      "soc_pct": 30.7,
+      "soc_plan_pct": 33.2,
+      "start": "2026-11-11T23:00:00+00:00",
+      "sun_corrected_kwh": 0.0,
+      "sun_forecast_kwh": 0.0,
+      "sun_kwh": 0.0
+    },
+    {
+      "battery_action": null,
+      "buy": null,
+      "house_forecast_kw": 0.846,
+      "house_kw": 0.9,
+      "sell": null,
+      "soc_pct": 28.5,
+      "soc_plan_pct": 31.0,
+      "start": "2026-11-12T00:00:00+00:00",
+      "sun_corrected_kwh": 0.0,
+      "sun_forecast_kwh": 0.0,
+      "sun_kwh": 0.0
+    },
+    {
+      "battery_action": null,
+      "buy": null,
+      "house_forecast_kw": 0.846,
+      "house_kw": 0.9,
+      "sell": null,
+      "soc_pct": 26.3,
+      "soc_plan_pct": 28.8,
+      "start": "2026-11-12T01:00:00+00:00",
+      "sun_corrected_kwh": 0.0,
+      "sun_forecast_kwh": 0.0,
+      "sun_kwh": 0.0
+    },
+    {
+      "battery_action": null,
+      "buy": null,
+      "house_forecast_kw": 0.846,
+      "house_kw": 0.9,
+      "sell": null,
+      "soc_pct": 24.1,
+      "soc_plan_pct": 26.6,
+      "start": "2026-11-12T02:00:00+00:00",
+      "sun_corrected_kwh": 0.0,
+      "sun_forecast_kwh": 0.0,
+      "sun_kwh": 0.0
+    },
+    {
+      "battery_action": null,
+      "buy": null,
+      "house_forecast_kw": 0.846,
+      "house_kw": 0.9,
+      "sell": null,
+      "soc_pct": 21.9,
+      "soc_plan_pct": 24.4,
+      "start": "2026-11-12T03:00:00+00:00",
+      "sun_corrected_kwh": 0.0,
+      "sun_forecast_kwh": 0.0,
+      "sun_kwh": 0.0
+    },
+    {
+      "battery_action": null,
+      "buy": null,
+      "house_forecast_kw": 0.846,
+      "house_kw": 0.9,
+      "sell": null,
+      "soc_pct": 72.5,
+      "soc_plan_pct": 75.0,
+      "start": "2026-11-12T04:00:00+00:00",
+      "sun_corrected_kwh": 0.0,
+      "sun_forecast_kwh": 0.0,
+      "sun_kwh": 0.0
+    },
+    {
+      "battery_action": null,
+      "buy": null,
+      "house_forecast_kw": 1.692,
+      "house_kw": 1.8,
+      "sell": null,
+      "soc_pct": 70.3,
+      "soc_plan_pct": 72.8,
+      "start": "2026-11-12T05:00:00+00:00",
+      "sun_corrected_kwh": 0.0,
+      "sun_forecast_kwh": 0.0,
+      "sun_kwh": 0.0
+    },
+    {
+      "battery_action": null,
+      "buy": null,
+      "house_forecast_kw": 1.692,
+      "house_kw": 1.8,
+      "sell": null,
+      "soc_pct": 68.1,
+      "soc_plan_pct": 70.6,
+      "start": "2026-11-12T06:00:00+00:00",
+      "sun_corrected_kwh": 0.0,
+      "sun_forecast_kwh": 0.0,
+      "sun_kwh": 0.0
+    },
+    {
+      "battery_action": null,
+      "buy": null,
+      "house_forecast_kw": 1.692,
+      "house_kw": 1.8,
+      "sell": null,
+      "soc_pct": 65.9,
+      "soc_plan_pct": 68.4,
+      "start": "2026-11-12T07:00:00+00:00",
+      "sun_corrected_kwh": 0.0,
+      "sun_forecast_kwh": 0.0,
+      "sun_kwh": 0.0
+    },
+    {
+      "battery_action": null,
+      "buy": null,
+      "house_forecast_kw": 0.846,
+      "house_kw": 0.9,
+      "sell": null,
+      "soc_pct": 63.7,
+      "soc_plan_pct": 66.2,
+      "start": "2026-11-12T08:00:00+00:00",
+      "sun_corrected_kwh": 0.259,
+      "sun_forecast_kwh": 0.324,
+      "sun_kwh": 0.24
+    },
+    {
+      "battery_action": null,
+      "buy": null,
+      "house_forecast_kw": 0.846,
+      "house_kw": 0.9,
+      "sell": null,
+      "soc_pct": 61.5,
+      "soc_plan_pct": 64.0,
+      "start": "2026-11-12T09:00:00+00:00",
+      "sun_corrected_kwh": 0.518,
+      "sun_forecast_kwh": 0.648,
+      "sun_kwh": 0.48
+    },
+    {
+      "battery_action": null,
+      "buy": null,
+      "house_forecast_kw": 0.846,
+      "house_kw": 0.9,
+      "sell": null,
+      "soc_pct": 59.3,
+      "soc_plan_pct": 61.8,
+      "start": "2026-11-12T10:00:00+00:00",
+      "sun_corrected_kwh": 0.778,
+      "sun_forecast_kwh": 0.972,
+      "sun_kwh": 0.72
+    },
+    {
+      "battery_action": null,
+      "buy": null,
+      "house_forecast_kw": 0.846,
+      "house_kw": 0.9,
+      "sell": null,
+      "soc_pct": 57.1,
+      "soc_plan_pct": 59.6,
+      "start": "2026-11-12T11:00:00+00:00",
+      "sun_corrected_kwh": 1.037,
+      "sun_forecast_kwh": 1.296,
+      "sun_kwh": 0.96
+    },
+    {
+      "battery_action": null,
+      "buy": null,
+      "house_forecast_kw": 0.846,
+      "house_kw": 0.9,
+      "sell": null,
+      "soc_pct": 54.9,
+      "soc_plan_pct": 57.4,
+      "start": "2026-11-12T12:00:00+00:00",
+      "sun_corrected_kwh": 0.778,
+      "sun_forecast_kwh": 0.972,
+      "sun_kwh": 0.72
+    },
+    {
+      "battery_action": null,
+      "buy": null,
+      "house_forecast_kw": 0.846,
+      "house_kw": 0.9,
+      "sell": null,
+      "soc_pct": 52.7,
+      "soc_plan_pct": 55.2,
+      "start": "2026-11-12T13:00:00+00:00",
+      "sun_corrected_kwh": 0.518,
+      "sun_forecast_kwh": 0.648,
+      "sun_kwh": 0.48
+    },
+    {
+      "battery_action": null,
+      "buy": null,
+      "house_forecast_kw": 0.846,
+      "house_kw": 0.9,
+      "sell": null,
+      "soc_pct": 50.5,
+      "soc_plan_pct": 53.0,
+      "start": "2026-11-12T14:00:00+00:00",
+      "sun_corrected_kwh": 0.259,
+      "sun_forecast_kwh": 0.324,
+      "sun_kwh": 0.24
+    },
+    {
+      "battery_action": null,
+      "buy": null,
+      "house_forecast_kw": 2.35,
+      "house_kw": 2.5,
+      "sell": null,
+      "soc_pct": 48.3,
+      "soc_plan_pct": 50.8,
+      "start": "2026-11-12T15:00:00+00:00",
+      "sun_corrected_kwh": 0.0,
+      "sun_forecast_kwh": 0.0,
+      "sun_kwh": 0.0
+    },
+    {
+      "battery_action": null,
+      "buy": null,
+      "house_forecast_kw": 2.35,
+      "house_kw": 2.5,
+      "sell": null,
+      "soc_pct": 46.1,
+      "soc_plan_pct": 48.6,
+      "start": "2026-11-12T16:00:00+00:00",
+      "sun_corrected_kwh": 0.0,
+      "sun_forecast_kwh": 0.0,
+      "sun_kwh": 0.0
+    },
+    {
+      "battery_action": null,
+      "buy": null,
+      "house_forecast_kw": 2.35,
+      "house_kw": 2.5,
+      "sell": null,
+      "soc_pct": 43.9,
+      "soc_plan_pct": 46.4,
+      "start": "2026-11-12T17:00:00+00:00",
+      "sun_corrected_kwh": 0.0,
+      "sun_forecast_kwh": 0.0,
+      "sun_kwh": 0.0
+    },
+    {
+      "battery_action": null,
+      "buy": null,
+      "house_forecast_kw": 2.35,
+      "house_kw": 2.5,
+      "sell": null,
+      "soc_pct": 41.7,
+      "soc_plan_pct": 44.2,
+      "start": "2026-11-12T18:00:00+00:00",
+      "sun_corrected_kwh": 0.0,
+      "sun_forecast_kwh": 0.0,
+      "sun_kwh": 0.0
+    },
+    {
+      "battery_action": null,
+      "buy": null,
+      "house_forecast_kw": 2.35,
+      "house_kw": 2.5,
+      "sell": null,
+      "soc_pct": 39.5,
+      "soc_plan_pct": 42.0,
+      "start": "2026-11-12T19:00:00+00:00",
+      "sun_corrected_kwh": 0.0,
+      "sun_forecast_kwh": 0.0,
+      "sun_kwh": 0.0
+    },
+    {
+      "battery_action": null,
+      "buy": null,
+      "house_forecast_kw": 0.846,
+      "house_kw": 0.9,
+      "sell": null,
+      "soc_pct": 37.3,
+      "soc_plan_pct": 39.8,
+      "start": "2026-11-12T20:00:00+00:00",
+      "sun_corrected_kwh": 0.0,
+      "sun_forecast_kwh": 0.0,
+      "sun_kwh": 0.0
+    },
+    {
+      "battery_action": null,
+      "buy": null,
+      "house_forecast_kw": 1.008,
+      "house_kw": 0.9,
+      "sell": null,
+      "soc_pct": 35.1,
+      "soc_plan_pct": 37.6,
+      "start": "2026-11-12T21:00:00+00:00",
+      "sun_corrected_kwh": 0.0,
+      "sun_forecast_kwh": 0.0,
+      "sun_kwh": 0.0
+    },
+    {
+      "battery_action": null,
+      "buy": null,
+      "house_forecast_kw": 1.008,
+      "house_kw": 0.9,
+      "sell": null,
+      "soc_pct": 32.9,
+      "soc_plan_pct": 35.4,
+      "start": "2026-11-12T22:00:00+00:00",
+      "sun_corrected_kwh": 0.0,
+      "sun_forecast_kwh": 0.0,
+      "sun_kwh": 0.0
+    }
+  ],
+  "house": {
+    "basis": "gross",
+    "counts_battery": false,
+    "made_at": "2026-11-13T16:20:00+00:00",
+    "review": {
+      "big_under_share": 0.0,
+      "hours": 168,
+      "mae": 0.089,
+      "under_share": 0.917
+    },
+    "samples": 504,
+    "temperature": {
+      "active": false,
+      "reason": "too_few_hours"
+    }
+  },
+  "money": {
+    "currency": "SEK",
+    "major_unit": "kr",
+    "minor_unit": "öre"
+  },
+  "site_id": "site_villa",
+  "sources": {
+    "holiday_calendar": "calendar.sverige",
+    "outdoor": {
+      "sensor": "sensor.nibe_bt1_outdoor_temperature",
+      "source": "sensor"
+    },
+    "solar_forecasts": [
+      "Forecast.Solar"
+    ],
+    "weather": "ok",
+    "weather_entity": "weather.forecast_home"
+  },
+  "state": "shadow",
+  "sun": {
+    "review": {
+      "big_under_share": 0.0,
+      "hours": 168,
+      "mae": 0.071,
+      "under_share": 0.0
+    },
+    "review_corrected": {
+      "big_under_share": 0.0,
+      "hours": 168,
+      "mae": 0.016,
+      "under_share": 0.0
+    },
+    "status": "active"
+  },
+  "time_zone": "Europe/Stockholm",
+  "today": {
+    "arbitrage": 875.0,
+    "average_cost": 120.55,
+    "battery_export_kwh": 0.0,
+    "bought": 4060.0,
+    "date": "2026-11-12",
+    "estimated": false,
+    "mode": "balanced",
+    "net": -3164.0,
+    "quarters": 96,
+    "sold": 21.0,
+    "stored_kwh": 32.29
+  }
+}

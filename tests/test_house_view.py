@@ -396,6 +396,39 @@ def test_the_full_site_and_its_fixture() -> None:
     _fixture("villa_battery_sun.json", view)
 
 
+def test_a_past_day_shows_its_own_hours_money_and_flow() -> None:
+    """Yesterday, asked for: its 24 local hours, all measured beside their first forecasts, its money from the stored
+    energy's day, its own energy flow, no bars of today's quarters; the day block says which day and how far back."""
+    from dataclasses import replace
+
+    yesterday = date(2026, 11, 12)
+    midnight = datetime(2026, 11, 12, tzinfo=timezone.utc) - CET
+    flow = energy_flow(
+        [EnergyHour(midnight + timedelta(hours=i), *row) for i, row in enumerate(VILLA_HOURS)],
+        day=yesterday,
+        has_solar=True,
+        has_battery=True,
+        soc_pct=31.5,
+    )
+    view = house_view(replace(full_inputs(), day=yesterday, energy_flow=flow))
+    assert tuple(view) == HOUSE_KEYS
+    hours = view["hours"]
+    assert [row["start"] for row in hours] == [(midnight + timedelta(hours=i)).isoformat() for i in range(24)]
+    assert all(row["house_kw"] is not None and row["sun_kwh"] is not None and row["soc_pct"] is not None for row in hours)
+    assert all(row["battery_action"] is None for row in hours)
+    assert view["day"] == {"date": "2026-11-12", "today": False, "first": "2026-10-31", "has_data": True}
+    assert view["today"]["date"] == "2026-11-12"
+    assert view["flow"] is None and view["energy_flow"]["date"] == "2026-11-12"
+    _fixture("villa_past_day.json", view)
+    # A day nothing was measured on says so.
+    empty = house_view(replace(full_inputs(), day=date(2026, 11, 1), energy_flow=None, house_actual={}, log=ForecastLog(TZ)))
+    assert empty["day"]["has_data"] is False
+
+
+def test_the_day_block_on_today() -> None:
+    assert house_view(full_inputs())["day"] == {"date": "2026-11-13", "today": True, "first": "2026-10-31", "has_data": True}
+
+
 def test_a_house_alone_still_learning() -> None:
     """No sun, no battery, and the forecast only two days old: nothing reviewed yet, the hours ahead forecast."""
     rows = history(NOW, days=2)

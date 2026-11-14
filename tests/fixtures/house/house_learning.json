@@ -2,6 +2,12 @@
   "api_version": 1,
   "battery": null,
   "calendar": null,
+  "day": {
+    "date": "2026-11-13",
+    "first": "2026-10-31",
+    "has_data": true,
+    "today": true
+  },
   "days": [],
   "energy_flow": null,
   "flow": null,
