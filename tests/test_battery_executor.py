@@ -214,6 +214,45 @@ def test_an_unavailable_reading_never_counts_as_a_change_by_someone_else() -> No
     assert executor.state.phase == "active"
 
 
+def test_a_limit_spotnav_wrote_that_reads_unknown_is_still_restored_by_writing_its_rating() -> None:
+    """Sigenergy 2.0.1 shows a never-set limit as `unknown`. Once SpotNav wrote it, `unknown` is no proof that the
+    limit is back as found: the restore writes the rating and waits for it to read back."""
+    executor, battery = _sigenergy()
+    battery.states["discharge_limit"] = "unknown"
+    now = _held(executor, battery)
+    assert executor.state.restore_values["discharge_limit"] == 10.0
+    assert battery.states["discharge_limit"] == "0"
+    battery.states["discharge_limit"] = "unknown"  # a read that looks like the value found
+    _now, results = run(executor, battery, now, 8, "self_consume")
+    assert ("discharge_limit", 10.0) in written(results)
+    assert battery.states["discharge_limit"] == "10"
+    assert executor.state.phase == "idle" and not executor.state.holds_snapshot
+    # The charge limit was never written: still `unknown` as found, so nothing is written back to it.
+    assert all(role != "charge_limit" for role, _value in written(results))
+
+
+def test_a_write_that_reads_back_unknown_is_never_taken_and_unknown_is_never_written_back() -> None:
+    executor, battery = _sigenergy(read_only=True)
+    battery.states["discharge_limit"] = "unknown"
+    looks = int(READBACK_DEADLINE_S / TICK.total_seconds()) + 4
+    _now, results = run(executor, battery, T0, looks, "hold")
+    assert written(results)[0] == ("discharge_limit", 0.0)
+    assert events(results, "confirmed") == [] and events(results, "external") == []
+    assert events(results, "not_taken")[0]["reason"] == "discharge_limit"
+    # The hand-back writes the rating for the limit it wrote (never "unknown") and waits for its read-back.
+    assert ("discharge_limit", 10.0) in written(results)
+    assert all(value != "unknown" for _role, value in written(results))
+    assert executor.ledger.counters(T0.date().isoformat())["confirmed"] == 0
+
+
+def test_a_stored_unknown_is_no_value_to_write_back() -> None:
+    state = ExecState.from_dict(
+        {"phase": "active", "snapshot": {"discharge_limit": "unknown"},
+         "restore_values": {"discharge_limit": "unknown", "charge_limit": 10.0}, "written": ["discharge_limit"]}
+    )
+    assert state.restore_values == {"charge_limit": 10.0} and state.written == ("discharge_limit",)
+
+
 # --- exit paths ------------------------------------------------------------------------------------------------------
 
 

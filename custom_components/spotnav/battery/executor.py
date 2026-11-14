@@ -96,6 +96,8 @@ Phase = Literal["idle", "active", "restoring", "blocked"]
 _PHASES: Final = frozenset({"idle", "active", "restoring", "blocked"})
 #: Hand-back reasons that block the control until it is reset (or, for the cap, until the next day).
 _BLOCKING_PREFIXES: Final = ("write_not_taken", "changed_outside_spotnav", "no_effect", "management_changed")
+#: States that are no value: never a snapshot to write back.
+_NO_VALUE: Final = frozenset({"", "unavailable", "unknown", "none"})
 _RAISES_IMPORT: Final = frozenset({ACTION_HOLD, ACTION_GRID_CHARGE})
 _MONITORED: Final = {ACTION_HOLD: "hold", ACTION_GRID_CHARGE: "charge", ACTION_DISCHARGE_HOUSE: "discharge",
                      ACTION_EXPORT_DISCHARGE: "discharge"}
@@ -192,6 +194,9 @@ class ExecState:
     retries: dict[str, tuple[int, datetime]] = field(default_factory=dict)
     #: Roles whose restore was given up after every attempt (the snapshot is kept for them).
     unrestored: tuple[str, ...] = ()
+    #: Roles SpotNav wrote since the snapshot was taken: their restore always writes the snapshot back and waits
+    #: for its read-back (a read that only looks like the value found, Sigenergy's `unknown`, is not enough).
+    written: tuple[str, ...] = ()
     day: str | None = None
     writes_today: int = 0
 
@@ -227,6 +232,7 @@ class ExecState:
             "management_unknown_since": iso(self.management_unknown_since),
             "retries": {name: [count, at.isoformat()] for name, (count, at) in self.retries.items()},
             "unrestored": list(self.unrestored),
+            "written": list(self.written),
             "day": self.day,
             "writes_today": self.writes_today,
         }
@@ -245,9 +251,11 @@ class ExecState:
             raw = data.get(key)
             if not isinstance(raw, Mapping):
                 return {}
+            # A stored "unknown"/"unavailable" is no value: it is never written back.
             return {
                 str(name): value for name, value in raw.items()
-                if isinstance(value, (str, bool)) or (isinstance(value, (int, float)) and math.isfinite(value))
+                if (isinstance(value, str) and value.strip().lower() not in _NO_VALUE) or isinstance(value, bool)
+                or (isinstance(value, (int, float)) and math.isfinite(value))
             }
 
         def texts(key: str) -> dict[str, str]:
@@ -293,6 +301,7 @@ class ExecState:
             management_unknown_since=parse_aware_datetime(data.get("management_unknown_since")),
             retries=retries,
             unrestored=names("unrestored"),
+            written=names("written"),
             day=text("day"),
             writes_today=writes if isinstance(writes, int) and not isinstance(writes, bool) and writes >= 0 else 0,
         )
@@ -625,6 +634,7 @@ class Executor:
                 snapshot={k: v for k, v in state.snapshot.items() if k in kept},
                 restore_values={k: v for k, v in state.restore_values.items() if k in kept},
                 entities={k: v for k, v in state.entities.items() if k in kept},
+                written=tuple(name for name in state.written if name in kept),
                 sent=(), renew=(), released_at=now,
             )
             return [_event(now, "restore_failed", ",".join(state.unrestored))]
@@ -636,7 +646,7 @@ class Executor:
         self.state = replace(
             state, phase="blocked" if blocked else "idle", blocked=blocked, action=None, rate_kw=0.0, target={},
             snapshot={}, restore_values={}, entities={}, device_id=None, snapshot_at=None, sent=(), renew=(),
-            released_at=now, given_up=state.given_up if blocked else (),
+            released_at=now, given_up=state.given_up if blocked else (), written=(),
         )
         return [_event(now, "handed_back", state.reason or "")]
 
@@ -747,7 +757,7 @@ class Executor:
             self.state, phase="active", brand=self.control.brand, action=action, rate_kw=rate,
             target=self._wanted(action, rate, restore_values), snapshot=snapshot, restore_values=restore_values,
             entities=entities, device_id=device_id, snapshot_at=now, entered_at=now, rate_changed_at=now,
-            watchdog_at=now, sent=(), renew=(), reason=None, given_up=(), management_unknown_since=None,
+            watchdog_at=now, sent=(), renew=(), reason=None, given_up=(), management_unknown_since=None, written=(),
         )
         self._watch(inputs, action, rate)
         return True, [_event(now, "enter", action, rate_kw=rate, snapshot=snapshot)]
@@ -808,8 +818,12 @@ class Executor:
         if restoring and role.idle_when and state in role.idle_when:
             return True
         snapshot = self.state.snapshot.get(role.name)
-        if snapshot is not None and state == snapshot and wanted == self.state.restore_values.get(role.name):
-            # Still as found (a never-set limit reads "unknown"): nothing to write back.
+        if (
+            snapshot is not None and state == snapshot and wanted == self.state.restore_values.get(role.name)
+            and role.name not in self.state.written
+        ):
+            # Never written and still as found (a never-set limit reads "unknown"): nothing to write back. A role
+            # SpotNav wrote is restored by writing its snapshot and reading it back, whatever it reads now.
             return True
         return bool(same(wanted, reading(role, state), None if read is None else (read.step or role.step)))
 
@@ -852,13 +866,14 @@ class Executor:
         renew = tuple(item for item in state.renew if item != name)
         sent = state.sent if name in state.sent else (*state.sent, name)
         writes = state.writes_today + (0 if restoring else 1)
+        written = state.written if name in state.written else (*state.written, name)
         if role.method == "button":
             # A button has no read-back: pressed once per target; the monitor judges what it did.
-            self.state = replace(state, sent=sent, renew=renew, writes_today=writes)
+            self.state = replace(state, sent=sent, renew=renew, writes_today=writes, written=written)
         else:
             if entity_id is not None:
                 self.ledger.intend(entity_id, value, inputs.now, step=None if read is None else (read.step or role.step))
-            self.state = replace(state, pending=name, sent=sent, renew=renew, writes_today=writes)
+            self.state = replace(state, pending=name, sent=sent, renew=renew, writes_today=writes, written=written)
         return [Op(name, role.method, entity_id, value, device_id=state.device_id, restore=restoring)]
 
     # --- what it shows ---
