@@ -131,8 +131,15 @@ export const HOUSE_STYLES = `
     margin: 8px 0 0;
   }
   .${H.dayStep} {
-    min-width: 36px;
-    font-size: 1.1rem;
+    /* 28 px: above WCAG 2.2's 24 px minimum target, smaller than the card's toggles. */
+    box-sizing: border-box;
+    width: 28px;
+    min-width: 28px;
+    height: 28px;
+    min-height: 28px;
+    padding: 0;
+    border-radius: 14px;
+    font-size: 1rem;
     line-height: 1;
   }
   .${H.dayStep}:disabled {

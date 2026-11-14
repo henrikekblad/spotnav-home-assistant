@@ -10,6 +10,7 @@ import { LANGUAGES, translate } from "../src/i18n";
 import { HOUSE_CARD_ELEMENT, parseHouseConfig, SpotnavHouseCard } from "../src/house-card";
 import { houseChartHeight, renderHouseChart } from "../src/house-chart";
 import { blockHeights, flowHeight, MIN_NODE } from "../src/house-flow";
+import { HOUSE_STYLES } from "../src/house-styles";
 import { decodeHouse, type HouseAnswer } from "../src/house-model";
 import { amount, hourFigures, houseBody, reviewLine, savingLine, todayLine, type HouseState, type HouseUi } from "../src/house-view";
 import { apiFailure, FakeHass } from "./helpers";
@@ -323,6 +324,10 @@ describe("the day choice", () => {
     expect(card.querySelector("[data-line='no-data']")?.textContent).toBe("Inget mättes den här dagen.");
     expect(card.querySelector(".spotnav-house-surface")).toBeNull();
     expect(card.querySelectorAll<HTMLButtonElement>("button[data-step]")[0]!.disabled).toBe(true);
+  });
+
+  it("has step buttons of 28 px, above the 24 px minimum target", () => {
+    expect(HOUSE_STYLES).toMatch(/\.spotnav-house-day-step \{[^}]*height: 28px;[^}]*min-height: 28px;/);
   });
 
   it("is worded in every language", () => {
