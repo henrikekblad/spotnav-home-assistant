@@ -82,6 +82,9 @@ Every dialog is described in [Set up SpotNav](docs/setup.md), including pairing 
 **Hardware**
 - [Site and load balancing](docs/site-and-load-balancing.md): main fuse, measurement sources, active control.
 - [Home batteries](docs/home-battery.md): the "charging from the grid" signal for Predbat, EMHASS and automations.
+- [The battery plan](docs/battery-plan.md): the 3.0 shadow plan, its three modes, the stored value and the nightly review.
+- [The house card](docs/house-card.md): the 3.0 preview card for the house's load, the sun and the battery.
+- [Forecasts, the calendar and the switched load](docs/forecasts.md): the house load forecast, solar correction, departures from a calendar.
 - [OCPP chargers](docs/ocpp.md): entity model, current control, connectors.
 
 **Advanced**
