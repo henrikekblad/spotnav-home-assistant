@@ -1,0 +1,21 @@
+/* Shared by banner.html and card-and-app.html. */
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  position: relative; overflow: hidden;
+  font-family: "Noto Sans", "Roboto", sans-serif;
+  background: linear-gradient(160deg, #262c33 0%, #15191e 45%, #0d1014 100%);
+}
+.glow { position: absolute; border-radius: 50%; pointer-events: none; }
+.glow.one { left: -40px; top: -240px; width: 540px; height: 540px; background: rgba(255, 255, 255, .045); }
+.glow.two { right: -220px; bottom: -330px; width: 760px; height: 600px; background: rgba(255, 255, 255, .025); }
+
+/* The card as Home Assistant draws it, cut to its rounded corners. */
+.shot { display: block; border-radius: 14px; box-shadow: 0 22px 50px rgba(0, 0, 0, .55); }
+
+/* A plain phone: a dark body with a thin rim, the screenshot inside with rounded corners. */
+.frame {
+  padding: 9px; border-radius: 34px; background: #07080a;
+  box-shadow: 0 0 0 2px #3b4149, 0 26px 60px rgba(0, 0, 0, .65);
+}
+.frame img { display: block; width: 100%; border-radius: 26px; }
