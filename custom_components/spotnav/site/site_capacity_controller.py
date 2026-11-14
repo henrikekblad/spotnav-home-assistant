@@ -5275,7 +5275,8 @@ class SiteCapacityController:
         if battery_counts and discharge_w is None:
             return None, TARGET_NOT_APPLIED_BATTERY_UNKNOWN
         grid_w = site_net_grid_w(self)
-        car_w = None if grid_w is None else site_car_w(self.hass, self)
+        # Steers chargers: a charger it cannot read keeps the house unknown even when it looks idle.
+        car_w = None if grid_w is None else site_car_w(self.hass, self, idle_unread_as_zero=False)
         house_w = None if grid_w is None or car_w is None else grid_w + (discharge_w or 0.0) - car_w
         if house_w is not None and self._a_start_not_yet_drawing():
             # A charger just started (written at or above its minimum) still reads below its minimum while the meter,
