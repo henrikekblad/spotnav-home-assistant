@@ -1130,8 +1130,9 @@ export const VISUAL_STYLES = `
   .${VISUAL_CLASSES.headerActions} {
     display: flex;
     flex: none;
-    gap: 8px;
+    gap: 0;
     margin-left: auto;
+    margin-inline-end: -4px;
   }
   /*
    * The header's history and cog buttons: a flex container centres the icon on both axes, and
@@ -1168,6 +1169,45 @@ export const VISUAL_STYLES = `
   .${VISUAL_CLASSES.dialogClose}:focus-visible {
     outline: 2px solid var(--primary-color, #03a9f4);
     outline-offset: 2px;
+  }
+  /*
+   * In the header the two buttons are plain icons, as Home Assistant's own ha-icon-button: no frame and no fill,
+   * a 32 px round hover and focus mark around a 22 px glyph, and a 40 px tap target (the mark's 4 px of padding
+   * around it). The group sits 4 px into the card's padding so the glyph lines up with the content's edge,
+   * and the narrow pair leaves the charger's name its row.
+   */
+  .${VISUAL_CLASSES.headerActions} > .${VISUAL_CLASSES.iconButton} {
+    position: relative;
+    min-width: 40px;
+    min-height: 40px;
+    color: var(--secondary-text-color, #727272);
+    background: none;
+    border: 0;
+    border-radius: 50%;
+  }
+  .${VISUAL_CLASSES.headerActions} > .${VISUAL_CLASSES.iconButton}::before {
+    content: "";
+    position: absolute;
+    inset: 4px;
+    border-radius: 50%;
+    pointer-events: none;
+  }
+  .${VISUAL_CLASSES.headerActions} > .${VISUAL_CLASSES.iconButton}:hover {
+    color: var(--primary-text-color, #212121);
+  }
+  .${VISUAL_CLASSES.headerActions} > .${VISUAL_CLASSES.iconButton}:hover::before,
+  .${VISUAL_CLASSES.headerActions} > .${VISUAL_CLASSES.iconButton}:focus-visible::before {
+    background: color-mix(in srgb, currentColor 12%, transparent);
+  }
+  .${VISUAL_CLASSES.headerActions} > .${VISUAL_CLASSES.iconButton}:focus-visible {
+    outline: none;
+  }
+  .${VISUAL_CLASSES.headerActions} > .${VISUAL_CLASSES.iconButton}:focus-visible::before {
+    outline: 2px solid var(--primary-color, #03a9f4);
+  }
+  .${VISUAL_CLASSES.headerActions} > .${VISUAL_CLASSES.iconButton} > svg {
+    width: 1.375rem;
+    height: 1.375rem;
   }
   .${VISUAL_CLASSES.banner} {
     display: flex;
@@ -1255,7 +1295,7 @@ export const VISUAL_STYLES = `
     top: 0;
     visibility: hidden;
   }
-  /* The planned vehicle: a quiet text button under the name; the header's 44 px icon buttons keep the row tall enough to tap. */
+  /* The planned vehicle: a quiet text button under the name; the header's 40 px icon buttons keep the row tall enough to tap. */
   .${VISUAL_CLASSES.vehicleLine} {
     display: inline-flex;
     flex-wrap: wrap;
