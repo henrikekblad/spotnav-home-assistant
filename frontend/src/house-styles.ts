@@ -45,6 +45,7 @@ export const HOUSE_CLASSES = {
   flowBar: "spotnav-house-flow-bar",
   flowPart: "spotnav-house-flow-part",
   flowKey: "spotnav-house-flow-key",
+  flowChart: "spotnav-house-flow-chart",
   calendar: "spotnav-house-calendar",
   calendarHead: "spotnav-house-calendar-head",
   calendarDay: "spotnav-house-calendar-day",
@@ -61,6 +62,38 @@ export const HOUSE_STYLES = `
     --spotnav-battery-colour: var(--spotnav-battery, #8e63ce);
     --spotnav-sell-colour: var(--spotnav-sell, #00897b);
     --spotnav-grid-colour: var(--spotnav-grid, #78909c);
+    --spotnav-flow-solar: var(--spotnav-flow-sun, #f2c94c);
+    --spotnav-flow-battery: var(--spotnav-flow-battery-colour, #4fd1c5);
+    --spotnav-flow-grid: var(--spotnav-flow-grid-colour, #8c9cf5);
+    --spotnav-flow-house: var(--spotnav-flow-house-colour, #b98cf0);
+    --spotnav-flow-car: var(--spotnav-flow-car-colour, #ffa86b);
+    --spotnav-flow-other: #b0bec5;
+  }
+  .${H.flow}[data-part="energy-flow"] {
+    margin-top: 12px;
+  }
+  .${H.flowChart} {
+    display: block;
+    max-width: 100%;
+    margin-top: 6px;
+  }
+  .${H.flowChart} .spotnav-house-flow-band {
+    opacity: 0.55;
+  }
+  .${H.flowChart} text {
+    fill: #15151c;
+    font-variant-numeric: tabular-nums;
+  }
+  .${H.flowChart} .spotnav-house-flow-name {
+    font-size: 11px;
+    font-weight: 600;
+  }
+  .${H.flowChart} .spotnav-house-flow-value {
+    font-size: 15px;
+    font-weight: 700;
+  }
+  .${H.flowChart} .spotnav-house-flow-share {
+    font-size: 11px;
   }
   .${H.head} {
     display: flex;

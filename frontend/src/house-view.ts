@@ -5,6 +5,7 @@
 import { clock, dateLabel, dayCue, formatFixed, formatNumber, hourLabel, type EntityWords, type FormatContext } from "./format";
 import { houseChartHeight, houseShown, renderHouseChart, sunShown, type HouseChart, type HouseChartView } from "./house-chart";
 import { MODES, type BatteryMode, type DayFlow, type HouseAnswer, type HouseHour } from "./house-model";
+import { renderFlow } from "./house-flow";
 import { HOUSE_CLASSES as H } from "./house-styles";
 import { pluralForm, translate, type Language, type TranslationKey } from "./i18n";
 import { VISUAL_CLASSES as C } from "./visual-styles";
@@ -426,6 +427,32 @@ function flowBlock(doc: Document, language: Language, flow: DayFlow | null): HTM
   return section;
 }
 
+/** Today's energy flow as a Sankey diagram (`house-flow.ts`), under the chart; `null` without one. */
+function energyFlowBlock(input: HouseRenderInput, answer: HouseAnswer): HTMLElement | null {
+  const flow = answer.energy_flow;
+  if (flow === null) {
+    return null;
+  }
+  const { doc, language } = input;
+  const diagram = renderFlow(doc, language, flow, Math.max(260, Math.floor(input.width)), input.idPrefix);
+  if (diagram === null) {
+    return null;
+  }
+  const section = element(doc, "section", `${H.section} ${H.flow}`);
+  section.dataset["part"] = "energy-flow";
+  const through = clock(context(language, answer), Date.parse(flow.through));
+  section.append(
+    element(doc, "h3", H.heading, translate(language, "house.flow.heading")),
+    element(doc, "p", `${C.muted} ${H.note}`, translate(language, "house.flow.through", { time: through })),
+    diagram,
+    element(doc, "p", `${C.muted} ${H.note}`, translate(language, "house.flow.rule")),
+  );
+  if (flow.car_hours < flow.hours && flow.nodes.some((node) => node.role === "car")) {
+    section.append(element(doc, "p", `${C.muted} ${H.note}`, translate(language, "house.flow.carPart")));
+  }
+  return section;
+}
+
 function calendarBlock(doc: Document, language: Language, answer: HouseAnswer, nowMs: number): HTMLElement | null {
   const calendar = answer.calendar;
   if (calendar === null || calendar.days.length === 0) {
@@ -715,6 +742,10 @@ export function houseBody(input: HouseRenderInput): HTMLElement {
   const review = element(doc, "p", `${H.line} ${C.muted}`, reviewLine(language, answer));
   review.dataset["line"] = "review";
   card.append(review);
+  const energyFlow = energyFlowBlock(input, answer);
+  if (energyFlow !== null) {
+    card.append(energyFlow);
+  }
   const toggle = element(doc, "button", `${C.historyToggleButton} ${H.detailsToggle}`, translate(language, input.ui.detailsOpen ? "house.details.close" : "house.details.open"));
   toggle.type = "button";
   toggle.setAttribute("aria-expanded", String(input.ui.detailsOpen));
@@ -726,7 +757,7 @@ export function houseBody(input: HouseRenderInput): HTMLElement {
     const details = element(doc, "div", H.details);
     details.id = detailsId;
     for (const part of [
-      flowBlock(doc, language, answer.flow),
+      energyFlow === null ? flowBlock(doc, language, answer.flow) : null,
       calendarBlock(doc, language, answer, input.nowMs),
       modesTable(doc, language, answer),
       daysTable(doc, language, answer),

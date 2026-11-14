@@ -9,6 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { LANGUAGES, translate } from "../src/i18n";
 import { HOUSE_CARD_ELEMENT, parseHouseConfig, SpotnavHouseCard } from "../src/house-card";
 import { houseChartHeight, renderHouseChart } from "../src/house-chart";
+import { blockHeights, MIN_NODE } from "../src/house-flow";
 import { decodeHouse, type HouseAnswer } from "../src/house-model";
 import { amount, hourFigures, houseBody, reviewLine, savingLine, todayLine, type HouseState, type HouseUi } from "../src/house-view";
 import { apiFailure, FakeHass } from "./helpers";
@@ -243,7 +244,8 @@ describe("the battery app's views, calm", () => {
   });
 
   it("show today's energy from sources to uses and the month's days in the details", () => {
-    const card = body(answer(), { detailsOpen: true }, "sv");
+    // Without the energy flow (an older backend) the details keep the two bars.
+    const card = body({ ...answer(), energy_flow: null }, { detailsOpen: true }, "sv");
     const keys = Array.from(card.querySelectorAll(".spotnav-house-flow-key")).map((item) => item.textContent);
     expect(keys[0]).toMatch(/^Sol 4,5 kWh \(\d+ %\) · Batteri 9,8 kWh \(\d+ %\) · Nät 34,3 kWh \(\d+ %\)$/);
     expect(keys[1]).toMatch(/^Batteri 27,1 kWh/);
@@ -256,6 +258,68 @@ describe("the battery app's views, calm", () => {
     expect(card.querySelector(".spotnav-house-calendar-day[data-date='2026-11-04']")?.getAttribute("aria-label")).toMatch(/ · arbitrage 8,00 kr$/);
     expect(card.textContent).toContain("Batteriets arbitrage, 12 dygn:");
     expect(card.textContent).toContain("Lagrat nu: 32,3 kWh à 121 öre/kWh i snitt");
+  });
+});
+
+describe("today's energy flow", () => {
+  it("decodes the nodes and links, takes a role it does not know and drops a link to a missing node", () => {
+    const raw = read("house/villa_battery_sun.json");
+    const flow = raw["energy_flow"] as Record<string, unknown>;
+    const nodes = [...(flow["nodes"] as object[]), { id: "source.car", side: "source", role: "car", kwh: 1.2, soc_pct: null }, { id: "use.heat", side: "use", role: "heat_pump", kwh: 0.4, soc_pct: null }];
+    const links = [...(flow["links"] as object[]), { from: "source.car", to: "use.nowhere", kwh: 1 }];
+    const decoded = decodeHouse({ ...raw, energy_flow: { ...flow, nodes, links } });
+    expect(decoded.ok).toBe(true);
+    const value = decoded.ok ? decoded.value.energy_flow! : null;
+    expect(value?.nodes.map((node) => node.role)).toContain("heat_pump");
+    expect(value?.links.some((link) => link.to === "use.nowhere")).toBe(false);
+    expect(decodeHouse({ ...raw, energy_flow: { ...flow, nodes: [{ id: "x", side: "middle", role: "grid", kwh: 1, soc_pct: null }] } })).toEqual({ ok: false, failure: "malformed" });
+    expect(decodeHouse({ ...raw, energy_flow: { ...flow, links: [{ from: "source.grid", to: "use.house", kwh: -1 }] } })).toEqual({ ok: false, failure: "malformed" });
+    const { energy_flow: _flow, ...older } = raw;
+    expect(decodeHouse(older).ok && (decodeHouse(older) as { value: HouseAnswer }).value.energy_flow).toBeNull();
+  });
+
+  it("draws the sources left and the uses right, a band per flow, and words each block with its kWh and share", () => {
+    const card = body(answer(), {}, "sv");
+    const section = card.querySelector("[data-part='energy-flow']")!;
+    expect(section).not.toBeNull();
+    const svgRoot = section.querySelector("svg")!;
+    expect(Number(svgRoot.getAttribute("width"))).toBe(340);
+    const nodes = Array.from(svgRoot.querySelectorAll(".spotnav-house-flow-node")).map((node) => `${node.getAttribute("data-side")}:${node.getAttribute("data-role")}`);
+    expect(nodes).toEqual(["source:solar", "source:battery", "source:grid", "use:battery", "use:house", "use:car", "use:grid"]);
+    expect(svgRoot.querySelectorAll(".spotnav-house-flow-band")).toHaveLength(answer().energy_flow!.links.length);
+    const grid = svgRoot.querySelector(".spotnav-house-flow-node[data-role='grid'][data-side='source']")!;
+    expect(Array.from(grid.querySelectorAll("text")).map((text) => text.textContent)).toEqual(["Nät", "76,9 kWh", "83 %"]);
+    const battery = svgRoot.querySelector(".spotnav-house-flow-node[data-role='battery'][data-side='use']")!;
+    expect(battery.textContent).toContain("nu 48 %");
+    expect(svgRoot.getAttribute("aria-label")).toMatch(/^Sol 7,5 kWh \(8 %\), Batteri 8,6 kWh/);
+    expect(section.textContent).toContain("Hela timmar fram till 17:00.");
+    // The details do not repeat it as bars.
+    expect(body(answer(), { detailsOpen: true }, "sv").querySelector(".spotnav-house-flow-key")).toBeNull();
+  });
+
+  it("keeps every block tall enough for its words", () => {
+    const heights = blockHeights([7.5, 8.6, 76.9], 300);
+    expect(Math.min(...heights)).toBeGreaterThanOrEqual(MIN_NODE);
+    expect(heights.reduce((a, b) => a + b, 0) + 12).toBeCloseTo(300, 6);
+    expect(blockHeights([0, 0], 100)).toEqual([MIN_NODE, MIN_NODE]);
+  });
+
+  it("leaves out a use with no energy, and draws nothing without a source", () => {
+    const value = answer();
+    const flow = value.energy_flow!;
+    const noCar = { ...flow, nodes: flow.nodes.map((node) => (node.role === "car" ? { ...node, kwh: 0 } : node)), links: flow.links.filter((link) => link.to !== "use.car") };
+    const roles = Array.from(body({ ...value, energy_flow: noCar }).querySelectorAll(".spotnav-house-flow-node")).map((node) => node.getAttribute("data-role"));
+    expect(roles).not.toContain("car");
+    const empty = { ...flow, nodes: flow.nodes.filter((node) => node.side === "use") };
+    expect(body({ ...value, energy_flow: empty }).querySelector("[data-part='energy-flow']")).toBeNull();
+  });
+
+  it("is worded in every language", () => {
+    for (const language of LANGUAGES) {
+      for (const key of ["house.flow.house", "house.flow.car", "house.flow.socNow", "house.flow.through", "house.flow.rule", "house.flow.carPart"] as const) {
+        expect(translate(language, key, { pct: "1 %", time: "17:00" })).not.toBe(key);
+      }
+    }
   });
 });
 
