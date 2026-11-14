@@ -47,6 +47,17 @@ export const HOUSE_CLASSES = {
   flowKey: "spotnav-house-flow-key",
   flowChart: "spotnav-house-flow-chart",
   readout: "spotnav-house-readout",
+  dayBar: "spotnav-house-day-bar",
+  compare: "spotnav-house-compare",
+  compareHead: "spotnav-house-compare-head",
+  compareGrid: "spotnav-house-compare-grid",
+  compareRow: "spotnav-house-compare-row",
+  compareName: "spotnav-house-compare-name",
+  compareTrack: "spotnav-house-compare-track",
+  compareFill: "spotnav-house-compare-fill",
+  compareValue: "spotnav-house-compare-value",
+  dayStep: "spotnav-house-day-step",
+  dayLabel: "spotnav-house-day-label",
   calendar: "spotnav-house-calendar",
   calendarHead: "spotnav-house-calendar-head",
   calendarDay: "spotnav-house-calendar-day",
@@ -69,6 +80,69 @@ export const HOUSE_STYLES = `
     --spotnav-flow-house: var(--spotnav-flow-house-colour, #b98cf0);
     --spotnav-flow-car: var(--spotnav-flow-car-colour, #ffa86b);
     --spotnav-flow-other: #b0bec5;
+  }
+  .${H.compare} {
+    margin-top: 8px;
+  }
+  .${H.compareHead} {
+    margin: 0 0 2px;
+    font-size: 0.78rem;
+  }
+  .${H.compareRow} {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(40px, 22%) auto;
+    align-items: center;
+    gap: 8px;
+    padding: 2px 0;
+    font-size: 0.86rem;
+  }
+  .${H.compareRow}[data-in-force] .${H.compareName} {
+    font-weight: 600;
+  }
+  .${H.compareName} {
+    min-width: 0;
+    overflow-wrap: break-word;
+  }
+  .${H.compareTrack} {
+    height: 6px;
+    border-radius: 3px;
+    background: var(--divider-color, #e0e0e0);
+    overflow: hidden;
+  }
+  .${H.compareFill} {
+    display: block;
+    height: 100%;
+    border-radius: 3px;
+    background: linear-gradient(90deg, color-mix(in srgb, var(--spotnav-battery-colour) 60%, transparent), var(--spotnav-battery-colour));
+  }
+  .${H.compareFill}[data-sign="minus"] {
+    background: var(--warning-color, #ffa600);
+  }
+  .${H.compareValue} {
+    text-align: right;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+  .${H.dayBar} {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 8px 0 0;
+  }
+  .${H.dayStep} {
+    min-width: 36px;
+    font-size: 1.1rem;
+    line-height: 1;
+  }
+  .${H.dayStep}:disabled {
+    opacity: 0.35;
+    cursor: default;
+  }
+  .${H.dayLabel} {
+    min-width: 6.5em;
+    text-align: center;
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
   }
   .${H.readout} {
     height: auto;

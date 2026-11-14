@@ -126,6 +126,14 @@ export interface EnergyFlow {
   links: FlowLink[];
 }
 
+/** The day shown: today or a past day asked for by date, how far back one may go, and whether it has data. */
+export interface ShownDay {
+  date: string;
+  today: boolean;
+  first: string;
+  has_data: boolean;
+}
+
 export interface CalendarDay {
   date: string;
   plan_saving: number;
@@ -153,6 +161,8 @@ export interface HouseAnswer {
   today: TodayMoney | null;
   flow: DayFlow | null;
   energy_flow: EnergyFlow | null;
+  /** `null` from a backend before the date choice: today only. */
+  day: ShownDay | null;
   calendar: { month: string; days: CalendarDay[] } | null;
   days: ReviewDay[];
   sources: {
@@ -386,6 +396,14 @@ function energyFlow(value: unknown): EnergyFlow | null {
   };
 }
 
+function shownDay(value: unknown): ShownDay | null {
+  if (value === null) {
+    return null;
+  }
+  const source = record(value);
+  return { date: day(source.date), today: flag(source.today), first: day(source.first), has_data: flag(source.has_data) };
+}
+
 function calendar(value: unknown): { month: string; days: CalendarDay[] } | null {
   if (value === null) {
     return null;
@@ -454,6 +472,7 @@ export function decodeHouse(raw: unknown): HouseDecodeResult {
         today: additive(source, "today", today, null),
         flow: additive(source, "flow", flow, null),
         energy_flow: additive(source, "energy_flow", energyFlow, null),
+        day: additive(source, "day", shownDay, null),
         calendar: additive(source, "calendar", calendar, null),
         days: list(source.days).map(reviewDay),
         sources: {

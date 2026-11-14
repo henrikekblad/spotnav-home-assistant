@@ -205,7 +205,15 @@ export class SpotnavHouseCard extends HTMLElement {
     const generation = this.generation;
     let next: HouseState;
     try {
-      const decoded = decodeHouse(await getHouse(hass, target));
+      const day = this.ui.day ?? null;
+      const decoded = decodeHouse(await getHouse(hass, target, day));
+      if ((this.ui.day ?? null) !== day) {
+        return;
+      }
+      if (decoded.ok && decoded.value.day?.today === true && day !== null) {
+        // Stepped forward onto today: from now on asked for as today, so it follows midnight.
+        this.ui = { ...this.ui, day: null };
+      }
       next = decoded.ok
         ? { kind: "ready", answer: decoded.value }
         : { kind: "failed", sentenceKey: decoded.failure === "unsupported" ? "house.unsupported" : "house.failed", code: null };
@@ -260,6 +268,17 @@ export class SpotnavHouseCard extends HTMLElement {
           },
           onSelect: (index) => {
             this.ui = { ...this.ui, selected: index };
+          },
+          onDay: (day) => {
+            const focused = this.root.activeElement as HTMLElement | null;
+            const which = focused?.dataset["step"] ?? null;
+            this.ui = { ...this.ui, day, selected: null };
+            void this.refresh().then(() => {
+              if (which !== null) {
+                const again = this.root.querySelector<HTMLButtonElement>(`button[data-step="${which}"]`);
+                (again !== null && !again.disabled ? again : this.root.querySelector<HTMLElement>("button[data-step]"))?.focus();
+              }
+            });
           },
         },
         width: this.width,

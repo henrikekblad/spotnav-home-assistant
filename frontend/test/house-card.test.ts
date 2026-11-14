@@ -129,7 +129,8 @@ describe("the body", () => {
     expect(svg.querySelectorAll(".spotnav-house-soc")).toHaveLength(2);
     expect(svg.querySelectorAll(".spotnav-house-band[data-action='grid_charge']")).toHaveLength(3);
     expect(svg.querySelector(".spotnav-now")?.getAttribute("display")).toBeNull();
-    expect(card.querySelector("[data-line='saving']")?.textContent).toContain("51 kr");
+    expect(card.querySelector("[data-line='saving']")).toBeNull();
+    expect(card.querySelector("[data-part='modes']")?.textContent).toContain("51 kr");
     expect(card.querySelector("[data-line='review']")?.textContent).toContain("±0.09 kW");
     expect(card.querySelector(".spotnav-house-details")).toBeNull();
   });
@@ -258,6 +259,75 @@ describe("the battery app's views, calm", () => {
     expect(card.querySelector(".spotnav-house-calendar-day[data-date='2026-11-04']")?.getAttribute("aria-label")).toMatch(/ · arbitrage 8,00 kr$/);
     expect(card.textContent).toContain("Batteriets arbitrage, 12 dygn:");
     expect(card.textContent).toContain("Lagrat nu: 32,3 kWh à 121 öre/kWh i snitt");
+  });
+});
+
+describe("the modes side by side in the body", () => {
+  it("compare every mode and the battery itself against plain self-consumption, the mode in force marked", () => {
+    const value = answer();
+    const card = body(value, {}, "sv");
+    const part = card.querySelector("[data-part='modes']")!;
+    expect(part.querySelector(".spotnav-house-compare-head")?.textContent).toBe("Mot ren egenförbrukning, senaste 7 dygnen");
+    const rows = Array.from(part.querySelectorAll<HTMLElement>(".spotnav-house-compare-row"));
+    expect(rows.map((row) => row.dataset["row"])).toEqual(["self_consumption", "balanced", "max_profit", "own"]);
+    expect(rows.filter((row) => row.dataset["inForce"] === "true").map((row) => row.dataset["row"])).toEqual([value.battery!.mode]);
+    expect(rows.find((row) => row.dataset["inForce"])?.textContent).toContain("gäller");
+    expect(rows[3]!.textContent).toContain("45 kr");
+    expect(rows[0]!.textContent).toContain("referens");
+  });
+
+  it("say plainly when a mode has no reviewed nights yet", () => {
+    const value = answer();
+    const battery = value.battery!;
+    const modes = { ...battery.modes, max_profit: { planned_saving: 9, reviewed_saving: null, reviewed_days: 0 } };
+    const card = body({ ...value, battery: { ...battery, modes, review: null } }, {}, "sv");
+    const rows = Array.from(card.querySelectorAll<HTMLElement>(".spotnav-house-compare-row"));
+    expect(rows.find((row) => row.dataset["row"] === "max_profit")?.textContent).toContain("inga nätter än");
+    expect(rows.find((row) => row.dataset["row"] === "own")?.textContent).toContain("inga nätter än");
+    // Before any review the line still says what the plan expects.
+    expect(card.querySelector("[data-line='saving']")).not.toBeNull();
+  });
+});
+
+describe("the day choice", () => {
+  it("steps back a day from today, never forward past it", () => {
+    const onDay = vi.fn();
+    const card = body(answer(), {}, "sv", { onDetails: vi.fn(), onSelect: vi.fn(), onDay } as never);
+    const [back, forward] = Array.from(card.querySelectorAll<HTMLButtonElement>("button[data-step]"));
+    expect(card.querySelector(".spotnav-house-day-label")?.textContent).toBe("I dag");
+    expect(forward!.disabled).toBe(true);
+    back!.click();
+    expect(onDay).toHaveBeenCalledWith("2026-11-12");
+  });
+
+  it("shows a past day's 24 hours, its money and flow under its date, forward back toward today", () => {
+    const onDay = vi.fn();
+    const past = answer("house/villa_past_day.json");
+    expect(past.day).toEqual({ date: "2026-11-12", today: false, first: "2026-10-31", has_data: true });
+    expect(past.hours).toHaveLength(24);
+    const card = body(past, {}, "sv", { onDetails: vi.fn(), onSelect: vi.fn(), onDay } as never);
+    expect(card.querySelector(".spotnav-house-day-label")?.textContent).toMatch(/^tors 12 nov/);
+    expect(card.querySelector("[data-line='today']")?.textContent).toMatch(/^tors 12 nov\.?: sålt/);
+    expect(card.querySelector("[data-part='energy-flow'] h3")?.textContent).toMatch(/^Energi tors 12 nov/);
+    expect(card.textContent).not.toContain("Hela timmar fram till");
+    card.querySelectorAll<HTMLButtonElement>("button[data-step]")[1]!.click();
+    expect(onDay).toHaveBeenCalledWith("2026-11-13");
+  });
+
+  it("says so on a day without data, and stops at the first day", () => {
+    const past = answer("house/villa_past_day.json");
+    const card = body({ ...past, day: { ...past.day!, date: "2026-10-31", has_data: false } }, {}, "sv", { onDetails: vi.fn(), onSelect: vi.fn(), onDay: vi.fn() } as never);
+    expect(card.querySelector("[data-line='no-data']")?.textContent).toBe("Inget mättes den här dagen.");
+    expect(card.querySelector(".spotnav-house-surface")).toBeNull();
+    expect(card.querySelectorAll<HTMLButtonElement>("button[data-step]")[0]!.disabled).toBe(true);
+  });
+
+  it("is worded in every language", () => {
+    for (const language of LANGUAGES) {
+      for (const key of ["house.dayMoney", "house.day.choose", "house.day.today", "house.day.back", "house.day.forward", "house.day.noData", "house.flow.headingDay", "house.compare.heading.other", "house.compare.headingNone", "house.compare.inForce", "house.compare.none", "house.compare.reference", "house.compare.days.other"] as const) {
+        expect(translate(language, key, { day: "d", days: "2", sold: "", arbitrage: "", bought: "", mode: "" })).not.toBe(key);
+      }
+    }
   });
 });
 
@@ -412,6 +482,28 @@ describe("the element", () => {
     element.remove();
     await vi.advanceTimersByTimeAsync(600_000);
     expect(hass.messages).toHaveLength(2);
+  });
+
+  it("asks for a past day by date when stepped back, and for today without one when stepped forward onto it", async () => {
+    const hass = new FakeHass();
+    const element = mount({ type: "custom:spotnav-house-card", site: "site_villa" }, hass);
+    await vi.advanceTimersByTimeAsync(0);
+    hass.resolveNext(read("house/villa_battery_sun.json"));
+    await vi.advanceTimersByTimeAsync(0);
+    element.shadowRoot!.querySelector<HTMLButtonElement>("button[data-step='back']")!.click();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(hass.messages[1]).toEqual({ type: "spotnav/get_house", api_version: 1, site_id: "site_villa", date: "2026-11-12" });
+    hass.resolveNext(read("house/villa_past_day.json"));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(element.shadowRoot!.querySelector(".spotnav-house-day-label")?.textContent).toMatch(/12/);
+    element.shadowRoot!.querySelector<HTMLButtonElement>("button[data-step='forward']")!.click();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(hass.messages[2]).toMatchObject({ date: "2026-11-13" });
+    hass.resolveNext(read("house/villa_battery_sun.json"));
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(300_000);
+    expect(hass.messages[3]).not.toHaveProperty("date");
+    element.remove();
   });
 
   it("says a SpotNav without the command needs updating", async () => {
