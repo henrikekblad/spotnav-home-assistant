@@ -685,18 +685,26 @@ var Ci="start",gr="stop",To="resume",Ai="pause";var cy="normal",Za="vehicle_not_
   .${a.card}[data-fill] .${a.actionBarWrap} {
     margin-top: calc(8px + var(--spotnav-fill-spare, 0px));
   }
+  /* The header is a size container: what it shows follows the card's width, not the viewport. */
   .${a.header} {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
     gap: 8px;
     min-width: 0;
+    container-type: inline-size;
   }
   .${a.identity} {
     flex: 0 0 auto;
     font-weight: 600;
     letter-spacing: 0.01em;
     color: var(--primary-color, #03a9f4);
+  }
+  /* A narrow card (a phone, the card picker's preview) gives the mark's room to the charger's name. */
+  @container (max-width: 399px) {
+    .${a.identity} {
+      display: none;
+    }
   }
   /* A modest basis in rem (not em of the large title font): a phone-wide card keeps name, vehicle line and
      both buttons on one row, and only a very narrow card moves the button group to a row of its own. */
@@ -710,8 +718,9 @@ var Ci="start",gr="stop",To="resume",Ai="pause";var cy="normal",Za="vehicle_not_
   .${a.headerActions} {
     display: flex;
     flex: none;
-    gap: 8px;
+    gap: 0;
     margin-left: auto;
+    margin-inline-end: -4px;
   }
   /*
    * The header's history and cog buttons: a flex container centres the icon on both axes, and
@@ -748,6 +757,45 @@ var Ci="start",gr="stop",To="resume",Ai="pause";var cy="normal",Za="vehicle_not_
   .${a.dialogClose}:focus-visible {
     outline: 2px solid var(--primary-color, #03a9f4);
     outline-offset: 2px;
+  }
+  /*
+   * In the header the two buttons are plain icons, as Home Assistant's own ha-icon-button: no frame and no fill,
+   * a 32 px round hover and focus mark around a 22 px glyph, and a 40 px tap target (the mark's 4 px of padding
+   * around it). The group sits 4 px into the card's padding so the glyph lines up with the content's edge,
+   * and the narrow pair leaves the charger's name its row.
+   */
+  .${a.headerActions} > .${a.iconButton} {
+    position: relative;
+    min-width: 40px;
+    min-height: 40px;
+    color: var(--secondary-text-color, #727272);
+    background: none;
+    border: 0;
+    border-radius: 50%;
+  }
+  .${a.headerActions} > .${a.iconButton}::before {
+    content: "";
+    position: absolute;
+    inset: 4px;
+    border-radius: 50%;
+    pointer-events: none;
+  }
+  .${a.headerActions} > .${a.iconButton}:hover {
+    color: var(--primary-text-color, #212121);
+  }
+  .${a.headerActions} > .${a.iconButton}:hover::before,
+  .${a.headerActions} > .${a.iconButton}:focus-visible::before {
+    background: color-mix(in srgb, currentColor 12%, transparent);
+  }
+  .${a.headerActions} > .${a.iconButton}:focus-visible {
+    outline: none;
+  }
+  .${a.headerActions} > .${a.iconButton}:focus-visible::before {
+    outline: 2px solid var(--primary-color, #03a9f4);
+  }
+  .${a.headerActions} > .${a.iconButton} > svg {
+    width: 1.375rem;
+    height: 1.375rem;
   }
   .${a.banner} {
     display: flex;
@@ -835,7 +883,7 @@ var Ci="start",gr="stop",To="resume",Ai="pause";var cy="normal",Za="vehicle_not_
     top: 0;
     visibility: hidden;
   }
-  /* The planned vehicle: a quiet text button under the name; the header's 44 px icon buttons keep the row tall enough to tap. */
+  /* The planned vehicle: a quiet text button under the name; the header's 40 px icon buttons keep the row tall enough to tap. */
   .${a.vehicleLine} {
     display: inline-flex;
     flex-wrap: wrap;

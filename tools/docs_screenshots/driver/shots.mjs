@@ -114,7 +114,7 @@ await submit();
 await b.click("ha-select", "");
 await sleep(700);
 await shot("charger-device", DIALOG, 0, { blur: false });
-await b.click("ha-dropdown-item", "Garage charger");
+await b.click("ha-dropdown-item", "^Garage");
 await sleep(500);
 await submit();
 await shot("charger-found");
@@ -125,11 +125,11 @@ await cancelDialog();
 
 // The charger itself, added for real so that the site and the card have something to work with. The last answer
 // passes the first setup's step about where prices come from (shown while the area has no source of its own).
-const garage = await api.flow("spotnav", [{ entry_type: "charger" }, { mode: "detected" }, { device: deviceId("Garage charger Connector 1") }, {}, { charger_phases: "3" }, {}]);
+const garage = await api.flow("spotnav", [{ entry_type: "charger" }, { mode: "detected" }, { device: deviceId("Garage") }, {}, { charger_phases: "3" }, {}]);
 if (garage.type !== "create_entry") throw new Error("could not add the demo charger: " + JSON.stringify(garage).slice(0, 300));
 // Two cars can charge there: the camera with a reference picture of each, and "Family car" identified by its
 // charging cable at the plug-in SpotNav sees when the charger is added.
-const garageId = (await api.entries("spotnav")).find((e) => e.title.startsWith("Garage")).entry_id;
+const garageId = (await api.entries("spotnav")).find((e) => e.title === "Garage").entry_id;
 step("camera and the first car");
 await demo.setupCamera(api, garageId);
 await demo.decideFamilyCar(api, garageId);
@@ -156,7 +156,7 @@ await startSpotnavFlow();
 await submit();
 await submit();
 await b.click("ha-select", "");
-await b.click("ha-dropdown-item", "Workshop charger");
+await b.click("ha-dropdown-item", "^Workshop");
 await sleep(500);
 await submit();
 await submit();
@@ -190,7 +190,7 @@ await b.send("Input.dispatchKeyEvent", { type: "keyDown", key: "Escape", code: "
 // ------------------------------------------------------------------------------------------------ dashboard
 
 step("dashboard");
-const charger = (await api.entries("spotnav")).find((e) => e.title.startsWith("Garage"));
+const charger = (await api.entries("spotnav")).find((e) => e.title === "Garage");
 try {
   await api.ws({ type: "lovelace/dashboards/create", url_path: "spotnav-demo", mode: "storage", title: "Charging", icon: "mdi:ev-station", show_in_sidebar: true, require_admin: false });
 } catch {}

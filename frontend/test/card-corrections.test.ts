@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { LANGUAGES, translate } from "../src/i18n";
-import { VISUAL_STYLES } from "../src/visual-styles";
+import { HEADER_NARROW_PX, VISUAL_STYLES } from "../src/visual-styles";
 import { FakeHass, mountCard } from "./helpers";
 
 const DASHBOARD_DIR = join(__dirname, "..", "..", "tests", "fixtures", "dashboard");
@@ -206,6 +206,70 @@ describe("the header buttons centre their glyphs", () => {
     expect(rule).toContain("align-items: center");
     expect(rule).toContain("justify-content: center");
     expect(rule).toContain("padding: 0");
+  });
+});
+
+describe("the header buttons are plain icons", () => {
+  /** Every declaration block whose selector list ends with `selector`, joined. */
+  const rule = (selector: string): string => {
+    const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    return Array.from(VISUAL_STYLES.matchAll(new RegExp(`(?:^|\\n)\\s*${escaped} \\{([^}]*)\\}`, "g")))
+      .map((match) => match[1])
+      .join("\n");
+  };
+  const BUTTON = ".spotnav-header-actions > .spotnav-icon-button";
+
+  it("draws no frame and no fill, keeps a 40 px tap target and a 32 px round hover and focus mark", () => {
+    const button = rule(BUTTON);
+    expect(button).toContain("border: 0");
+    expect(button).toContain("background: none");
+    expect(button).toContain("min-width: 40px");
+    expect(button).toContain("min-height: 40px");
+    expect(button).toContain("border-radius: 50%");
+    // The mark sits 4 px inside the 40 px target: 32 px across.
+    expect(rule(`${BUTTON}::before`)).toContain("inset: 4px");
+    expect(VISUAL_STYLES).toMatch(
+      /\.spotnav-header-actions > \.spotnav-icon-button:hover::before,\s*\.spotnav-header-actions > \.spotnav-icon-button:focus-visible::before \{[^}]*background: color-mix/,
+    );
+    expect(rule(`${BUTTON}:focus-visible::before`)).toContain("outline: 2px solid var(--primary-color");
+    // The retry button elsewhere keeps its framed look: only the header's pair changes.
+    expect(rule(".spotnav-icon-button")).toContain("border: 1px solid");
+  });
+
+  it("keeps each button's accessible name and title, in History then Settings order, with nothing between", async () => {
+    const { element } = await mounted("sv");
+    const group = shadow(element).querySelector<HTMLElement>(".spotnav-header-actions");
+    const buttons = Array.from(group?.children ?? []) as HTMLButtonElement[];
+    expect(buttons.map((button) => button.tagName)).toEqual(["BUTTON", "BUTTON"]);
+    expect(buttons.map((button) => [button.getAttribute("aria-label"), button.title])).toEqual([
+      [translate("sv", "header.history"), translate("sv", "header.history")],
+      [translate("sv", "header.settings"), translate("sv", "header.settings")],
+    ]);
+    // Reached by Tab in document order: no tabindex reorders them.
+    expect(buttons.every((button) => !button.hasAttribute("tabindex") && button.type === "button")).toBe(true);
+  });
+});
+
+describe("the product mark on a narrow card", () => {
+  // The card's own padding (14 px each side): the header is this much narrower than the card.
+  const PADDING = 28;
+
+  it("hides the mark by the header's own width, so a narrow card gives the name the room and a wide one keeps it", async () => {
+    const { element } = await mounted();
+    const header = shadow(element).querySelector<HTMLElement>(".spotnav-header");
+    expect(header?.firstElementChild?.classList.contains("spotnav-identity")).toBe(true);
+    // The header is the size container, so the card's width decides, not the viewport.
+    expect(VISUAL_STYLES).toMatch(/\n\s*\.spotnav-header \{[^}]*container-type: inline-size/);
+    const query = new RegExp(
+      `@container \\(max-width: ${HEADER_NARROW_PX - 1}px\\) \\{\\s*\\.spotnav-identity \\{\\s*display: none;\\s*\\}\\s*\\}`,
+    );
+    expect(VISUAL_STYLES).toMatch(query);
+    // Outside that query the mark shows: no other rule hides it.
+    const unscoped = VISUAL_STYLES.replace(query, "");
+    expect(unscoped).not.toMatch(/\.spotnav-identity \{[^}]*display: none/);
+    // The card picker's preview (about 300 px) counts as narrow; a 500 px dashboard column as wide.
+    expect(300 - PADDING).toBeLessThan(HEADER_NARROW_PX);
+    expect(500 - PADDING).toBeGreaterThanOrEqual(HEADER_NARROW_PX);
   });
 });
 
