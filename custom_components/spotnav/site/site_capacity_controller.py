@@ -1202,7 +1202,7 @@ class SiteCapacityController:
             from ..pricing.price_source import site_demand_components  # noqa: PLC0415 - it imports the planner
 
             grid_w = site_net_grid_w(self)
-            car_w = None if grid_w is None else site_car_w(self.hass, self)
+            car_w = None if grid_w is None else site_car_w(self.hass, self, idle_unread_as_zero=True)
             # A battery's discharge is kept beside the hour for an import target under `battery_first` only; its
             # signed power on every site that reads one, for the house's whole load (`site/house_forecast.py`), and
             # 0 on a site without one (`grid - car` is then the house less the sun).
@@ -5276,7 +5276,7 @@ class SiteCapacityController:
             return None, TARGET_NOT_APPLIED_BATTERY_UNKNOWN
         grid_w = site_net_grid_w(self)
         # Steers chargers: a charger it cannot read keeps the house unknown even when it looks idle.
-        car_w = None if grid_w is None else site_car_w(self.hass, self, idle_unread_as_zero=False)
+        car_w = None if grid_w is None else site_car_w(self.hass, self)
         house_w = None if grid_w is None or car_w is None else grid_w + (discharge_w or 0.0) - car_w
         if house_w is not None and self._a_start_not_yet_drawing():
             # A charger just started (written at or above its minimum) still reads below its minimum while the meter,

@@ -650,13 +650,14 @@ def _source_state_reads_zero(hass: HomeAssistant, site: SiteCapacityController, 
 def _evidently_not_drawing(hass: HomeAssistant, site: SiteCapacityController, charger_entry_id: str,
                            controller: ChargingController) -> bool:
     """Whether a charger whose phases cannot be read is plainly not drawing: no Start on its way, not charging by its
-    own status, and either its connection says no car, waiting, paused or done, or its current entity's own state
-    reads no current. A charger that may be drawing stays unknown."""
+    own status, and either its connection says no car, waiting, paused or done, or (OCPP only) its current entity's
+    own state reads no current. Only OCPP is known to report a total over all phases in that state; another
+    integration's state may be one phase or the neutral. A charger that may be drawing stays unknown."""
     if not _charger_idle(controller):
         return False
-    return controller.connection()[0] in NOT_DRAWING_CONNECTIONS or _source_state_reads_zero(
-        hass, site, charger_entry_id
-    )
+    if controller.connection()[0] in NOT_DRAWING_CONNECTIONS:
+        return True
+    return controller.ocpp_target is not None and _source_state_reads_zero(hass, site, charger_entry_id)
 
 
 def site_car_w(
@@ -664,13 +665,13 @@ def site_car_w(
     site: SiteCapacityController,
     *,
     unread_as_zero: bool = False,
-    idle_unread_as_zero: bool = True,
+    idle_unread_as_zero: bool = False,
 ) -> float | None:
     """What every member charger draws now (W), as solar reads it: an idle one nothing. A charger whose draw cannot
     be read counts as nothing with `unread_as_zero`, else makes the sum unknown (`None`), unless it is plainly not
     drawing (`_evidently_not_drawing`): that counts as nothing with `idle_unread_as_zero`, which is for what only
-    measures (the hour tracker, the house figure, the battery plan's actuals). The import target's house figure
-    passes `False`: it steers chargers, and keeps what it had for a charger it cannot read."""
+    measures (the hour tracker and the house figure built on it). It is off by default, so a caller that steers
+    chargers, like the import target's house figure, keeps a charger it cannot read unknown."""
     car_w = 0.0
     for charger_entry_id in site.config.get(CONF_CHARGER_ENTRY_IDS) or []:
         controller = controller_for(hass, charger_entry_id)

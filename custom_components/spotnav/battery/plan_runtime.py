@@ -525,7 +525,7 @@ class BatteryPlanShadow:
                 ran_modes={mode: slot_at(slots, quarter) for mode, slots in self.mode_plans.items()},
             )
         grid_w = site_net_grid_w(self.site)
-        car_w = None if grid_w is None else site_car_w(self.hass, self.site)
+        car_w = None if grid_w is None else site_car_w(self.hass, self.site, idle_unread_as_zero=True)
         self.actuals.observe(
             now,
             None if grid_w is None else grid_w / 1000.0,
