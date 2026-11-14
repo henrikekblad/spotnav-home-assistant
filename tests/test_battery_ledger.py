@@ -206,3 +206,36 @@ def test_counters_keep_thirty_days() -> None:
         ledger.observe(LIMIT, "0", at(day * 86400 + 1))
 
     assert len(ledger.as_dict()["counters"]) == 30
+
+
+# --- Sigenergy 2.0.1 shows a never-set limit as `unknown` -------------------------------------------------------------
+
+
+def test_unknown_read_back_after_our_own_write_is_not_confirmed_yet_nor_someone_elses_change() -> None:
+    ledger = Ledger()
+    ledger.intend(LIMIT, 0.0, at(0), step=0.001)
+
+    for seconds in range(5, int(READBACK_DEADLINE_S), 5):
+        assert ledger.observe(LIMIT, "unknown", at(seconds)) is None
+        assert ledger.verdict(LIMIT) == "pending" and ledger.owned(LIMIT) is None
+    # Never a success: at the deadline it is a write not taken, and no change by someone else.
+    event = ledger.observe(LIMIT, "unknown", at(READBACK_DEADLINE_S))
+    assert event is not None and event.kind == "unconfirmed"
+    assert ledger.counters("2026-11-13") | {} == {"confirmed": 0, "unconfirmed": 1, "external": 0, "shadow_external": 0}
+
+
+def test_unknown_after_a_confirmed_write_is_a_gap_never_a_change_by_someone_else() -> None:
+    ledger = Ledger()
+    ledger.intend(LIMIT, 0.0, at(0), step=0.001)
+    ledger.observe(LIMIT, "0", at(5))
+
+    for seconds in range(10, 2000, 10):
+        assert ledger.observe(LIMIT, "unknown", at(seconds)) is None
+
+    assert ledger.verdict(LIMIT) == "unavailable" and not ledger.given_up(LIMIT) and ledger.owned(LIMIT) == "0"
+
+
+def test_unknown_is_never_adopted_as_a_baseline() -> None:
+    ledger = Ledger()
+
+    assert ledger.adopt(LIMIT, "unknown", at(0)) is False and ledger.claim(LIMIT) is None

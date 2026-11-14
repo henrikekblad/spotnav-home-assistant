@@ -15,7 +15,8 @@ The entity keys, options and services below were checked against each integratio
   `plant_ess_max_discharging_limit` (40032/40034, kW, 0-100, step 0.001, `number.py`). Every one is disabled by
   default; the integration is read-only by default and then drops a write with a log line and no error
   (`modbus.py` `async_write_parameter`), which is why every write is read back. A limit that holds the register's
-  all-ones "never set" value now reads `unknown` (`number.py` `_power_limit_value`); it is restored as the rating.
+  all-ones "never set" value now reads `unknown` (`number.py` `_power_limit_value`); it is restored as the rating
+  (`unknown_is_unset`), never written back as `unknown`, and an `unknown` read-back is never a confirmed write.
   Remote EMS: limits first, then the switch, then the control mode; back: the control mode to Maximum Self
   Consumption (so 40031 never keeps a command for the next one who turns Remote EMS on), the switch off, the limits
   back. Only a plant in Maximum Self Consumption is ever taken (`adapters.SIGENERGY`'s mode rule), and turning

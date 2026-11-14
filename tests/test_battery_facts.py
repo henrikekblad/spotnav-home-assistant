@@ -127,6 +127,23 @@ def test_sigenergy_unset_sentinel_and_a_real_limit() -> None:
     assert real.hold is not None and real.hold.unset is False and real.hold.current_kw == 4.8
 
 
+def test_sigenergy_2_0_1_shows_a_never_set_limit_as_unknown_which_is_no_limit_and_never_zero() -> None:
+    facts = _facts("sigenergy", **{"number.sigen_plant_ess_max_discharging_limit": {"state": "unknown"}})
+
+    hold = facts.hold
+    assert hold is not None and hold.unset is True and hold.current_kw is None
+    assert hold.usable and hold.current == "unknown"
+    # Unavailable stays no reading at all: not unset, not usable.
+    gone = _facts("sigenergy", **{"number.sigen_plant_ess_max_discharging_limit": {"state": "unavailable"}}).hold
+    assert gone is not None and gone.unset is None and gone.current_kw is None and not gone.usable
+
+
+def test_unknown_is_no_reading_for_a_brand_that_does_not_say_otherwise() -> None:
+    facts = _facts("solaredge", **{"number.solaredge_i1_storage_discharge_limit": {"state": "unknown"}})
+
+    assert facts.hold is not None and facts.hold.unset is None and facts.hold.current_kw is None
+
+
 def test_a_disabled_control_is_found_but_not_usable() -> None:
     facts = _facts("sigenergy", **{"number.sigen_plant_ess_max_discharging_limit": {"disabled": True}})
 

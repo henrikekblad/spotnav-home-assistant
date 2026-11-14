@@ -70,7 +70,8 @@ class ControlStatus:
     available: bool = False
     current: str | None = None
     current_kw: float | None = None
-    #: The value now holds no limit (a "never set" register, Victron's -1); `None` when not a number control.
+    #: The value now holds no limit (a "never set" register, Victron's -1, Sigenergy 2.0.1's `unknown`); `None` when
+    #: not a number control or not readable. `current_kw` is then `None`, never 0.
     unset: bool | None = None
     #: The entity's unit and step, for reading a write back (`ledger.py`).
     unit: str | None = None
@@ -294,7 +295,14 @@ def _control(
         return ControlStatus(spec)
     current_kw = to_kw(entity.state, entity.unit) if spec.method == "number" else None
     unset: bool | None = None
-    if spec.method == "number" and entity.available:
+    # Sigenergy 2.0.1 shows a never-set limit as `unknown`: that is a reading (no limit), never a limit of 0.
+    unset_unknown = (
+        spec.method == "number" and spec.unknown_is_unset and not entity.disabled
+        and (entity.state or "").strip().lower() == "unknown"
+    )
+    if unset_unknown:
+        unset, current_kw = True, None
+    elif spec.method == "number" and entity.available:
         unset = (entity.state or "") in spec.unset_states or (
             current_kw is not None
             and (
@@ -307,7 +315,7 @@ def _control(
         entity_id=entity.entity_id,
         found=True,
         enabled=not entity.disabled,
-        available=entity.available,
+        available=entity.available or unset_unknown,
         current=entity.state,
         current_kw=current_kw,
         unset=unset,

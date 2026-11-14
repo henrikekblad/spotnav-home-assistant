@@ -30,7 +30,18 @@ pytestmark = pytest.mark.usefixtures("offline_relay")
 SIGEN = json.loads((Path(__file__).parent / "fixtures" / "battery" / "brands.json").read_text(encoding="utf-8"))["sigenergy"]
 
 
-def _sigenergy(hass: HomeAssistant, **states: str) -> str:
+#: The plant's Remote EMS controls enabled, as the executor's hold needs them, and the charge limit 2.0.1 shows as
+#: `unknown` while never set.
+REMOTE_EMS = ("switch.sigen_plant_remote_ems_controlled_by_home_assistant", "select.sigen_plant_remote_ems_control_mode")
+CHARGE_LIMIT_ROW = {
+    "entity_id": "number.sigen_plant_ess_max_charging_limit", "unique_id": "ENTRY_sigen_plant_plant_ess_max_charging_limit",
+    "device": "battery", "state": "unknown", "unit": "kW", "device_class": "power", "disabled": False,
+}
+
+
+def _sigenergy(
+    hass: HomeAssistant, enable: tuple[str, ...] = (), extra: tuple[dict[str, Any], ...] = (), **states: str
+) -> str:
     """The real plant's entities (`brands.json`), registered under `sigen` on its devices."""
     owner = MockConfigEntry(domain="sigen", entry_id="ENTRY")
     owner.add_to_hass(hass)
@@ -42,7 +53,9 @@ def _sigenergy(hass: HomeAssistant, **states: str) -> str:
         for name in ("battery", "inverter")
     }
     registry = er.async_get(hass)
-    for row in SIGEN["entities"]:
+    for row in [*SIGEN["entities"], *extra]:
+        if row["entity_id"] in enable:
+            row = row | {"disabled": False, "state": {"switch": "off", "select": "unavailable"}[row["entity_id"].split(".")[0]]}
         domain, object_id = row["entity_id"].split(".", 1)
         entry = registry.async_get_or_create(
             domain, "sigen", row["unique_id"], device_id=device_ids[row["device"]], config_entry=owner,
@@ -57,8 +70,8 @@ def _sigenergy(hass: HomeAssistant, **states: str) -> str:
     return SIGEN["battery"]
 
 
-async def _site(hass: HomeAssistant, **states: str):
-    battery = _sigenergy(hass, **states)
+async def _site(hass: HomeAssistant, enable: tuple[str, ...] = (), extra: tuple[dict[str, Any], ...] = (), **states: str):
+    battery = _sigenergy(hass, enable, extra, **states)
     _charger, site = await setup_charger_and_site(hass, battery_aggregate_power_entity=battery)
     assert site is not None
     controller = site_controller_for(hass, site.entry_id)
@@ -120,8 +133,13 @@ async def test_the_book_survives_a_reload_and_a_hold_found_is_restored_first(
 ) -> None:
     site, controller = await _site(hass)
     now = dt_util.now()
+    restore = {"control_mode": "Maximum Self Consumption", "remote_ems": False, "discharge_limit": 4.8}
     controller.battery_shadow.book.set_memory(
-        PART_HOLD_FOR_CAR, HoldMemory(held=True, held_since=now, snapshot="4.8").as_dict()
+        PART_HOLD_FOR_CAR,
+        HoldMemory(
+            held=True, held_since=now, snapshot={"discharge_limit": "4.8"},
+            entities={"discharge_limit": "number.sigen_plant_ess_max_discharging_limit"}, restore=restore,
+        ).as_dict(),
     )
     controller.battery_shadow.book.record(
         ShadowEntry(now, PART_HOLD_FOR_CAR, "would_write", "battery_discharges_into_grid_charge", value=0.0)
@@ -137,7 +155,7 @@ async def test_the_book_survives_a_reload_and_a_hold_found_is_restored_first(
         ("would_write", "battery_discharges_into_grid_charge"),
         ("would_restore", "restart"),
     ]
-    assert entries[-1].value == 4.8
+    assert entries[-1].value == restore
     assert reloaded.battery_shadow.snapshot()["hold_for_car"]["held_in_shadow"] is False
 
 
@@ -159,7 +177,7 @@ async def test_the_ledger_and_monitor_run_dry_beside_a_shadow_hold_and_survive_a
 ) -> None:
     _grid_charge(monkeypatch)
     site, controller = await _site(
-        hass,
+        hass, REMOTE_EMS, (CHARGE_LIMIT_ROW,),
         **{"sensor.sigen_plant_battery_power": "-4.6", "sensor.sigen_plant_ems_work_mode": "max_self_consumption"},
     )
     calls = _service_calls(hass)
@@ -171,7 +189,14 @@ async def test_the_ledger_and_monitor_run_dry_beside_a_shadow_hold_and_survive_a
     for seconds in (0, ARM_S):
         shadow.tick(now + timedelta(seconds=seconds))
     write = next(entry for entry in shadow.book.entries if entry.action == "would_write")
+    # The executor's own hold: the limit, Remote EMS on, its mode; handed back with the never-set charge limit left.
+    assert write.value == {"discharge_limit": 0.0, "remote_ems": True, "control_mode": "Maximum Self Consumption"}
+    assert write.entity_id == "number.sigen_plant_ess_max_discharging_limit" and write.read == "23.04"
+    assert [(row["role"], row["value"]) for row in write.detail["restore"]] == [
+        ("control_mode", "Maximum Self Consumption"), ("remote_ems", False), ("discharge_limit", 23.04)
+    ]
     assert write.detail["read_back"] == "possible"
+    assert write.detail["read_back_roles"] == {"discharge_limit": "possible", "remote_ems": "possible", "control_mode": "idle"}
 
     # The battery keeps discharging, as nothing was written: the monitor shows that baseline once.
     for index in range(4):

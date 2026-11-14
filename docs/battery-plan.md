@@ -1,0 +1,109 @@
+# The battery plan (shadow)
+
+SpotNav 3.0 plans your home battery for the next day or two and compares that plan with what the battery really does. **It
+only watches.** Nothing in this page writes to a battery or an inverter: the plan is a benchmark you can read in the
+[house card](house-card.md) and in the site's diagnostics. If you want something that acts on a battery today, see
+[Home batteries](home-battery.md) (the "charging from the grid" signal).
+
+## What is shadow and what acts
+
+| Part | Today |
+| --- | --- |
+| The battery plan, the three modes, the nightly review, the stored value | Shadow: computed and shown, never sent to the battery |
+| Holding the battery while a car charges from the grid | Shadow: SpotNav logs when it would have held it and writes nothing |
+| Noticing that something else drives the battery | Only noticed and logged: the battery is marked watch-only in SpotNav's own view |
+| The "charging from the grid" signal, the chargers and load balancing | These act, as before, and never write to the battery |
+
+No part of SpotNav can be switched on to write to a battery in this version. Whether it ever will is not decided here.
+
+## What the plan needs
+
+The plan runs on a site whose battery SpotNav can read: its charge level, its usable size in kWh and its rated charge and
+discharge power. The Sigenergy, Huawei, SolarEdge, SolaX, Victron, GoodWe and Enphase integrations are read this way.
+Without any one of those figures there is no plan, and the diagnostics say which is missing.
+
+It also reads:
+
+* the prices with every fee SpotNav adds as the buying price, and the spot price as the selling price (no tax credit or
+  other compensation is added),
+* the house's expected load ([Forecasts](forecasts.md)),
+* the solar forecast as SpotNav corrects it, once the correction has learnt, else the raw forecast,
+* the charging plans already made for your cars, as a fixed load,
+* the import limit (the main fuse less its margin, or the import target where you set one).
+
+The battery's lowest level is the reserve its integration reports where SpotNav can read one; otherwise 10 % is assumed.
+The round trip is assumed to be 90 %. Both are said to be assumed in the card's details.
+
+The plan is made again when the prices change (the next day's at 13:00), every hour with the forecast, when the cars' plans
+or the battery's facts change and when the charge level is more than 10 points off the plan. The action of the slot that
+is running changes only if the new plan is clearly better, so the plan does not flip back and forth. The plan reaches as far
+as the prices do, at most two days.
+
+## The three modes
+
+A site has one mode: **Self-consumption**, **Balanced** or **Max profit**. They differ only in how much the battery trades
+on price. Every mode keeps the battery's own lowest level.
+
+* **Self-consumption**: no plan. The battery covers the house and stores a surplus, as the inverter does by itself. This is
+  the baseline every saving is measured against.
+* **Balanced** (the default): the battery may buy cheap and spend in the house. It counts twice the wear cost per kWh, so
+  it cycles less, and it sells stored energy to the grid only when the price is clearly above what that energy cost to store.
+* **Max profit**: every action, with the true wear cost, including selling to the grid where that pays.
+
+There is no setting for the mode yet: **Balanced is the mode in force**. The other two are planned beside it on the same
+figures, so you can see what each would have saved before any of them is ever used.
+
+### The wear cost
+
+Each kWh through a battery wears it a little. The plan counts that as **15 öre per kWh each way** (charged, and again
+discharged) in Sweden. It is one constant, not a setting; other currencies have the same sum at the rates of
+November 2026 (for example 16 øre in Norway, 10 øre in Denmark, 1.4 cent in euro areas). The wear steers the plan away
+from pointless cycling. It is reported separately and never counted as money you spent.
+
+## The stored value
+
+For the day's money SpotNav splits the day the way a battery's own app does: what was **sold**, what the battery's moves
+earned (**arbitrage**) and what was **bought**. For arbitrage it needs what the energy in the battery cost, so it keeps a
+running average cost of what is stored:
+
+* energy from the **grid** is valued at the buying price of that quarter hour, every fee included,
+* energy from the **sun** is valued at the **selling price**, what that kWh would have fetched on the grid,
+* each kWh the battery gives back earns the price of that quarter hour (the buying price for what the house used, the selling
+  price for what was exported) less that average cost.
+
+The battery's losses make the stored kWh fewer for the same money, which raises the average cost of the rest; they do not
+show as a loss of their own. The first day starts from the charge level and that day's mean buying price, and the card says
+the figure is estimated until that energy has been used. Only quarter hours that were measured for at least half their time
+and have prices count.
+
+## The nightly review
+
+The day after, SpotNav takes the day's measured load and sun and runs against them: what the battery really did, each mode's
+plan, and plain self-consumption, all from the same measured charge level. Each is charged the change in its stored energy
+at the day's end value, so a plan that empties the battery does not look cheap. The result is the saving of the plan against
+self-consumption, and what the battery's own way saved against the same baseline. The last 30 days are kept.
+
+What the review cannot tell: the simulated battery is ideal (no real losses or ramp limits), so a plan looks a few percent
+better than it would be, and a quarter hour where the meters were lost counts nowhere.
+
+If your battery runs its own optimiser (Sigen AI mode, for example), that is the point: the plan is a benchmark of what
+SpotNav would have done, and the review shows which way earned more.
+
+## When something else controls the battery
+
+SpotNav notices a planner (Predbat, EMHASS), an aggregator integration (such as CheckWatt) or a battery whose behaviour looks
+driven from outside:
+
+* its settings change three times within 24 hours without SpotNav having written any of them, or
+* in plain self-consumption it charges from the grid or discharges into export, by more than 1 kW, for ten minutes in a
+  row, with its level moving the same way.
+
+It then marks the battery **watch-only**. This ends by itself 48 hours after the last sign. SpotNav raises nothing in
+Settings → Repairs, because there is nothing for you to do. It writes one line to the log at INFO when it starts and one when
+it stops, and keeps the event in the diagnostics (`battery.outside_control`). The plan keeps running as a benchmark.
+
+## Where to see it
+
+* The [house card](house-card.md) draws the plan and the money.
+* The site's diagnostics (and the debug file) hold `battery.plan`: each slot's planned action, the charge level, the cost, the
+  baseline, the saving and the reason for each slot, and the reviewed days.

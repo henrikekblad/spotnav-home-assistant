@@ -29,6 +29,7 @@ from custom_components.spotnav.battery.executor import (
     ExecState,
     Executor,
     grid_charge_cap_kw,
+    preview,
 )
 from custom_components.spotnav.battery.facts import Management
 from custom_components.spotnav.battery.ledger import READBACK_DEADLINE_S, Ledger
@@ -212,6 +213,45 @@ def test_an_unavailable_reading_never_counts_as_a_change_by_someone_else() -> No
     _now, results = run(executor, battery, now, looks, "hold")
     assert events(results, "external") == []
     assert executor.state.phase == "active"
+
+
+def test_a_limit_spotnav_wrote_that_reads_unknown_is_still_restored_by_writing_its_rating() -> None:
+    """Sigenergy 2.0.1 shows a never-set limit as `unknown`. Once SpotNav wrote it, `unknown` is no proof that the
+    limit is back as found: the restore writes the rating and waits for it to read back."""
+    executor, battery = _sigenergy()
+    battery.states["discharge_limit"] = "unknown"
+    now = _held(executor, battery)
+    assert executor.state.restore_values["discharge_limit"] == 10.0
+    assert battery.states["discharge_limit"] == "0"
+    battery.states["discharge_limit"] = "unknown"  # a read that looks like the value found
+    _now, results = run(executor, battery, now, 8, "self_consume")
+    assert ("discharge_limit", 10.0) in written(results)
+    assert battery.states["discharge_limit"] == "10"
+    assert executor.state.phase == "idle" and not executor.state.holds_snapshot
+    # The charge limit was never written: still `unknown` as found, so nothing is written back to it.
+    assert all(role != "charge_limit" for role, _value in written(results))
+
+
+def test_a_write_that_reads_back_unknown_is_never_taken_and_unknown_is_never_written_back() -> None:
+    executor, battery = _sigenergy(read_only=True)
+    battery.states["discharge_limit"] = "unknown"
+    looks = int(READBACK_DEADLINE_S / TICK.total_seconds()) + 4
+    _now, results = run(executor, battery, T0, looks, "hold")
+    assert written(results)[0] == ("discharge_limit", 0.0)
+    assert events(results, "confirmed") == [] and events(results, "external") == []
+    assert events(results, "not_taken")[0]["reason"] == "discharge_limit"
+    # The hand-back writes the rating for the limit it wrote (never "unknown") and waits for its read-back.
+    assert ("discharge_limit", 10.0) in written(results)
+    assert all(value != "unknown" for _role, value in written(results))
+    assert executor.ledger.counters(T0.date().isoformat())["confirmed"] == 0
+
+
+def test_a_stored_unknown_is_no_value_to_write_back() -> None:
+    state = ExecState.from_dict(
+        {"phase": "active", "snapshot": {"discharge_limit": "unknown"},
+         "restore_values": {"discharge_limit": "unknown", "charge_limit": 10.0}, "written": ["discharge_limit"]}
+    )
+    assert state.restore_values == {"charge_limit": 10.0} and state.written == ("discharge_limit",)
 
 
 # --- exit paths ------------------------------------------------------------------------------------------------------
@@ -475,3 +515,34 @@ def test_solax_sends_its_remote_control_on_the_trigger_and_sends_disabled_on_the
     assert written(results)[:2] == [("power_control", "Disabled"), ("trigger", True)]
     assert battery.sent["power_control"] == "Disabled"
     assert battery.states == SOLAX_STATES
+
+
+# --- the dry run the shadow parts share ------------------------------------------------------------------------------
+
+
+def test_the_preview_is_the_executors_own_writes_and_hand_back_without_writing() -> None:
+    battery = FakeBattery(SIGENERGY_CONTROL, dict(SIGENERGY_STATES) | {"discharge_limit": "unknown"})
+
+    seen = preview(SIGENERGY_CONTROL, inputs(battery, T0, "hold"))
+
+    assert seen.blocker is None
+    assert [(op.role, op.value) for op in seen.writes] == [
+        ("discharge_limit", 0.0), ("remote_ems", True), ("control_mode", "Maximum Self Consumption")
+    ]
+    # Handing back: the mode, the switch, then the limit it wrote as the rating (it read unknown: never set).
+    assert [(op.role, op.value) for op in seen.restores] == [
+        ("control_mode", "Maximum Self Consumption"), ("remote_ems", False), ("discharge_limit", 10.0)
+    ]
+    assert all(op.restore for op in seen.restores)
+    assert seen.snapshot == {"charge_limit": "unknown", "discharge_limit": "unknown"}
+    assert battery.writes == [] and battery.states["discharge_limit"] == "unknown"
+
+
+def test_the_preview_refuses_as_the_executor_does() -> None:
+    battery = FakeBattery(SIGENERGY_CONTROL, dict(SIGENERGY_STATES), work_mode_override="ai_mode")
+    assert preview(SIGENERGY_CONTROL, inputs(battery, T0, "hold")).blocker.startswith("self_managed")
+    battery = FakeBattery(SIGENERGY_CONTROL, dict(SIGENERGY_STATES), missing={"remote_ems"})
+    assert preview(SIGENERGY_CONTROL, inputs(battery, T0, "hold")).blocker == "control_not_found:remote_ems"
+    battery = FakeBattery(SIGENERGY_CONTROL, dict(SIGENERGY_STATES))
+    assert preview(SIGENERGY_CONTROL, inputs(battery, T0, "hold"), writes_today=DAILY_WRITE_CAP).blocker == "daily_write_cap"
+    assert preview(SIGENERGY_CONTROL, inputs(battery, T0, "hold", headroom_a=None)).blocker == "headroom_unknown"

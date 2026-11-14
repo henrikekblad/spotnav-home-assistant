@@ -206,6 +206,10 @@ class Ledger:
     def claim(self, entity_id: str) -> Claim | None:
         return self._claims.get(entity_id)
 
+    def entity_ids(self) -> list[str]:
+        """The controls claimed now."""
+        return sorted(self._claims)
+
     def verdict(self, entity_id: str) -> Verdict | None:
         claim = self._claims.get(entity_id)
         return None if claim is None else claim.verdict
