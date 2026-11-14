@@ -228,9 +228,13 @@ describe("the header buttons are plain icons", () => {
     expect(button).toContain("border-radius: 50%");
     // The mark sits 4 px inside the 40 px target: 32 px across.
     expect(rule(`${BUTTON}::before`)).toContain("inset: 4px");
+    // Hover only on a device with one (a tapped button on a touch screen keeps no mark); focus everywhere.
     expect(VISUAL_STYLES).toMatch(
-      /\.spotnav-header-actions > \.spotnav-icon-button:hover::before,\s*\.spotnav-header-actions > \.spotnav-icon-button:focus-visible::before \{[^}]*background: color-mix/,
+      /@media \(hover: hover\) \{[^@]*\.spotnav-header-actions > \.spotnav-icon-button:hover::before \{[^}]*background: color-mix/,
     );
+    expect(rule(`${BUTTON}:focus-visible::before`)).toContain("background: color-mix");
+    // A hidden cog (a reader who may change nothing) is not drawn: the class's display would beat [hidden].
+    expect(rule(".spotnav-icon-button[hidden]")).toContain("display: none");
     expect(rule(`${BUTTON}:focus-visible::before`)).toContain("outline: 2px solid var(--primary-color");
     // The retry button elsewhere keeps its framed look: only the header's pair changes.
     expect(rule(".spotnav-icon-button")).toContain("border: 1px solid");
@@ -261,7 +265,7 @@ describe("the product mark on a narrow card", () => {
     // The header is the size container, so the card's width decides, not the viewport.
     expect(VISUAL_STYLES).toMatch(/\n\s*\.spotnav-header \{[^}]*container-type: inline-size/);
     const query = new RegExp(
-      `@container \\(max-width: ${HEADER_NARROW_PX - 1}px\\) \\{\\s*\\.spotnav-identity \\{\\s*display: none;\\s*\\}\\s*\\}`,
+      `@container \\(max-width: ${HEADER_NARROW_PX - 1}px\\) \\{\\s*\\.spotnav-identity:has\\(~ \\.spotnav-name\\) \\{\\s*display: none;\\s*\\}\\s*\\}`,
     );
     expect(VISUAL_STYLES).toMatch(query);
     // Outside that query the mark shows: no other rule hides it.

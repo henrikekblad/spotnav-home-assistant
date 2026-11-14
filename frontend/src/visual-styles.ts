@@ -1126,9 +1126,10 @@ export const VISUAL_STYLES = `
     letter-spacing: 0.01em;
     color: var(--primary-color, #03a9f4);
   }
-  /* A narrow card (a phone, the card picker's preview) gives the mark's room to the charger's name. */
+  /* A narrow card (a phone, the card picker's preview) gives the mark's room to the charger's name; a header with
+     no name (a card with no charger yet) keeps its mark. */
   @container (max-width: ${HEADER_NARROW_PX - 1}px) {
-    .${VISUAL_CLASSES.identity} {
+    .${VISUAL_CLASSES.identity}:has(~ .${VISUAL_CLASSES.name}) {
       display: none;
     }
   }
@@ -1144,14 +1145,18 @@ export const VISUAL_STYLES = `
   .${VISUAL_CLASSES.headerActions} {
     display: flex;
     flex: none;
-    gap: 0;
-    margin-left: auto;
+    gap: 4px;
+    margin-inline-start: auto;
     margin-inline-end: -4px;
   }
   /*
    * The header's history and cog buttons: a flex container centres the icon on both axes, and
    * line-height 0 stops the empty line box pushing it off centre. The retry button shares the class.
    */
+  /* An author display beats the browser's [hidden]; a reader who may change nothing gets no cog. */
+  .${VISUAL_CLASSES.iconButton}[hidden] {
+    display: none;
+  }
   .${VISUAL_CLASSES.iconButton} {
     display: inline-flex;
     align-items: center;
@@ -1206,10 +1211,15 @@ export const VISUAL_STYLES = `
     border-radius: 50%;
     pointer-events: none;
   }
-  .${VISUAL_CLASSES.headerActions} > .${VISUAL_CLASSES.iconButton}:hover {
-    color: var(--primary-text-color, #212121);
+  /* Hover only where there is one: on a touch screen a tapped button would keep its mark. */
+  @media (hover: hover) {
+    .${VISUAL_CLASSES.headerActions} > .${VISUAL_CLASSES.iconButton}:hover {
+      color: var(--primary-text-color, #212121);
+    }
+    .${VISUAL_CLASSES.headerActions} > .${VISUAL_CLASSES.iconButton}:hover::before {
+      background: color-mix(in srgb, currentColor 12%, transparent);
+    }
   }
-  .${VISUAL_CLASSES.headerActions} > .${VISUAL_CLASSES.iconButton}:hover::before,
   .${VISUAL_CLASSES.headerActions} > .${VISUAL_CLASSES.iconButton}:focus-visible::before {
     background: color-mix(in srgb, currentColor 12%, transparent);
   }
