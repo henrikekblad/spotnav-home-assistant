@@ -9,7 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { LANGUAGES, translate } from "../src/i18n";
 import { HOUSE_CARD_ELEMENT, parseHouseConfig, SpotnavHouseCard } from "../src/house-card";
 import { houseChartHeight, renderHouseChart } from "../src/house-chart";
-import { blockHeights, MIN_NODE } from "../src/house-flow";
+import { blockHeights, flowHeight, MIN_NODE } from "../src/house-flow";
 import { decodeHouse, type HouseAnswer } from "../src/house-model";
 import { amount, hourFigures, houseBody, reviewLine, savingLine, todayLine, type HouseState, type HouseUi } from "../src/house-view";
 import { apiFailure, FakeHass } from "./helpers";
@@ -388,6 +388,17 @@ describe("today's energy flow", () => {
     expect(section.textContent).toContain("Hela timmar fram till 17:00.");
     // The details do not repeat it as bars.
     expect(body(answer(), { detailsOpen: true }, "sv").querySelector(".spotnav-house-flow-key")).toBeNull();
+  });
+
+  it("grows with the number of blocks so the house and the car get the tall form", () => {
+    expect(flowHeight(328, 3)).toBe(250);
+    expect(flowHeight(328, 4)).toBe(320);
+    expect(flowHeight(328, 9)).toBe(440);
+    const card = body(answer(), {}, "sv");
+    for (const role of ["house", "car"]) {
+      const node = card.querySelector(`.spotnav-house-flow-node[data-side='use'][data-role='${role}']`)!;
+      expect(node.querySelector(".spotnav-house-flow-value")).not.toBeNull();
+    }
   });
 
   it("keeps every block tall enough for its words", () => {

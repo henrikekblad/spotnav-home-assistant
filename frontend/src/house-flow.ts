@@ -24,6 +24,8 @@ export const MIN_NODE = 44;
 const TALL_NODE = 64;
 const PAD = 6;
 const PILL_H = 17;
+/** The height each block of the fuller side asks of the diagram. */
+const BLOCK_ROOM = 80;
 /** Blocks with less energy (kWh) are not drawn. */
 export const MIN_SHOWN_KWH = 0.05;
 const GAP = 6;
@@ -36,9 +38,12 @@ const ROLE_WORDS: Record<string, TranslationKey> = {
   car: "house.flow.car",
 };
 
-export function flowHeight(width: number): number {
+/** The diagram's height: by the width, and tall enough that each block of the fuller side (most often the uses: battery,
+ * house, car, export) may get the tall form with the kWh big; bounded. */
+export function flowHeight(width: number, blocks = 3): number {
   const bounded = Number.isFinite(width) && width > 0 ? width : 340;
-  return Math.round(Math.min(340, Math.max(250, bounded * 0.72)));
+  const byWidth = Math.min(340, Math.max(250, bounded * 0.72));
+  return Math.round(Math.min(440, Math.max(byWidth, blocks * BLOCK_ROOM)));
 }
 
 function nodeWidth(width: number): number {
@@ -122,7 +127,7 @@ export function renderFlow(doc: Document, language: Language, flow: EnergyFlow, 
   if (sources.length === 0 || uses.length === 0) {
     return null;
   }
-  const height = flowHeight(width);
+  const height = flowHeight(width, Math.max(sources.length, uses.length));
   const nodeW = nodeWidth(width);
   const left = place(sources, height);
   const right = place(uses, height);
