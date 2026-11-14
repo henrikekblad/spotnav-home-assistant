@@ -18,8 +18,12 @@ import { translate, type Language, type TranslationKey } from "./i18n";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 
-/** The shortest block (px): two lines of words. */
-export const MIN_NODE = 34;
+/** The shortest block (px): the name's pill and one line. */
+export const MIN_NODE = 44;
+/** From this height a block has the kWh big and the share at its bottom. */
+const TALL_NODE = 64;
+const PAD = 6;
+const PILL_H = 17;
 /** Blocks with less energy (kWh) are not drawn. */
 export const MIN_SHOWN_KWH = 0.05;
 const GAP = 6;
@@ -130,6 +134,16 @@ export function renderFlow(doc: Document, language: Language, flow: EnergyFlow, 
     [...sources, ...uses].map((node) => `${roleWord(language, node.role)} ${labels.kwh(node.kwh)} (${labels.share(node.kwh)})`).join(", "),
   );
   const defs = svg(doc, "defs");
+  const sheenId = `${idPrefix}-flow-sheen`;
+  const sheen = svg(doc, "linearGradient", { id: sheenId, x1: 0, y1: 0, x2: 0, y2: 1 });
+  for (const [offset, opacity] of [
+    ["0", "0.32"],
+    ["0.55", "0"],
+    ["1", "0"],
+  ] as const) {
+    sheen.append(svg(doc, "stop", { offset, "stop-color": "#ffffff", "stop-opacity": opacity }));
+  }
+  defs.append(sheen);
   const bands = svg(doc, "g", { class: "spotnav-house-flow-bands" });
   root.append(defs, bands);
   const links = flow.links.filter((link) => left.has(link.from) && right.has(link.to) && link.kwh > 0);
@@ -192,26 +206,38 @@ export function renderFlow(doc: Document, language: Language, flow: EnergyFlow, 
   ] as const) {
     for (const { node, y, h } of placedMap.values()) {
       const group = svg(doc, "g", { class: "spotnav-house-flow-node", "data-role": node.role, "data-side": node.side });
-      const rect = svg(doc, "rect", { x, y: y.toFixed(1), width: nodeW, height: h.toFixed(1), rx: 6 });
+      const rect = svg(doc, "rect", { x, y: y.toFixed(1), width: nodeW, height: h.toFixed(1), rx: 6, class: "spotnav-house-flow-block" });
       rect.style.setProperty("fill", roleColour(node.role));
-      group.append(rect);
+      // A soft light from the top over the block's own colour.
+      const sheen = svg(doc, "rect", { x, y: y.toFixed(1), width: nodeW, height: h.toFixed(1), rx: 6, fill: `url(#${sheenId})`, "aria-hidden": "true" });
+      group.append(rect, sheen);
       const name = roleWord(language, node.role);
-      const lines: Array<[string, string]> = [];
-      if (h >= 52) {
-        lines.push(["name", name], ["value", labels.kwh(node.kwh)], ["share", labels.share(node.kwh)]);
-        if (node.soc_pct !== null && h >= 70) {
-          lines.push(["share", labels.soc(node.soc_pct)]);
-        }
+      const text = (kind: string, words: string, tx: number, ty: number, anchor = "start"): void => {
+        const created = svg(doc, "text", { x: tx.toFixed(1), y: ty.toFixed(1), class: `spotnav-house-flow-${kind}`, "text-anchor": anchor });
+        created.textContent = words;
+        group.append(created);
+      };
+      // The name in its own lighter pill at the top; in a short block the pill and one line (kWh · share) are
+      // centred, in a tall one the pill sits a margin from the top, the kWh big below it and the share a margin from
+      // the bottom.
+      const short = h < TALL_NODE;
+      const top = short ? y + (h - (PILL_H + 4 + 12)) / 2 : y + PAD;
+      const pill = svg(doc, "rect", { x: x + PAD, y: top.toFixed(1), width: nodeW - 2 * PAD, height: PILL_H, rx: PILL_H / 2, class: "spotnav-house-flow-pill" });
+      group.append(pill);
+      text("name", name, x + nodeW / 2, top + PILL_H - 5, "middle");
+      if (short) {
+        text("share", `${labels.kwh(node.kwh)} · ${labels.share(node.kwh)}`, x + PAD + 1, top + PILL_H + 4 + 10);
       } else {
-        lines.push(["name", name], ["share", `${labels.kwh(node.kwh)} · ${labels.share(node.kwh)}`]);
-      }
-      const size: Record<string, number> = { name: 11, value: 15, share: 11 };
-      let baseline = y + 6;
-      for (const [kind, words] of lines) {
-        baseline += size[kind]! + 2;
-        const text = svg(doc, "text", { x: x + 7, y: baseline.toFixed(1), class: `spotnav-house-flow-${kind}` });
-        text.textContent = words;
-        group.append(text);
+        text("value", labels.kwh(node.kwh), x + PAD + 1, top + PILL_H + 19);
+        const bottom = y + h - PAD - 1;
+        if (node.soc_pct === null) {
+          text("share", labels.share(node.kwh), x + PAD + 1, bottom);
+        } else if (h >= TALL_NODE + 18) {
+          text("share", labels.soc(node.soc_pct), x + PAD + 1, bottom - 14);
+          text("share", labels.share(node.kwh), x + PAD + 1, bottom);
+        } else {
+          text("share", `${labels.share(node.kwh)} · ${labels.soc(node.soc_pct)}`, x + PAD + 1, bottom);
+        }
       }
       const title = svg(doc, "title");
       title.textContent = `${name} ${labels.kwh(node.kwh)} (${labels.share(node.kwh)})`;

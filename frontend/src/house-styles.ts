@@ -163,6 +163,13 @@ export const HOUSE_STYLES = `
   .${H.flowChart} .spotnav-house-flow-band {
     opacity: 0.55;
   }
+  .${H.flowChart} .spotnav-house-flow-block {
+    filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.28));
+  }
+  .${H.flowChart} .spotnav-house-flow-pill {
+    fill: #ffffff;
+    fill-opacity: 0.62;
+  }
   .${H.flowChart} text {
     fill: #15151c;
     font-variant-numeric: tabular-nums;

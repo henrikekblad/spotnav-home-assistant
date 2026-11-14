@@ -376,6 +376,9 @@ describe("today's energy flow", () => {
     expect(svgRoot.querySelectorAll(".spotnav-house-flow-band")).toHaveLength(answer().energy_flow!.links.length);
     const grid = svgRoot.querySelector(".spotnav-house-flow-node[data-role='grid'][data-side='source']")!;
     expect(Array.from(grid.querySelectorAll("text")).map((text) => text.textContent)).toEqual(["Nät", "76,9 kWh", "83 %"]);
+    expect(grid.querySelector(".spotnav-house-flow-pill")).not.toBeNull();
+    const sun = svgRoot.querySelector(".spotnav-house-flow-node[data-role='solar']")!;
+    expect(Array.from(sun.querySelectorAll("text")).map((text) => text.textContent)).toEqual(["Sol", "7,5 kWh · 8 %"]);
     const battery = svgRoot.querySelector(".spotnav-house-flow-node[data-role='battery'][data-side='use']")!;
     expect(battery.textContent).toContain("nu 48 %");
     expect(svgRoot.getAttribute("aria-label")).toMatch(/^Sol 7,5 kWh \(8 %\), Batteri 8,6 kWh/);
