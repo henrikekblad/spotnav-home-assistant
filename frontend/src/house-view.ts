@@ -270,7 +270,7 @@ function chartBlock(input: HouseRenderInput, answer: HouseAnswer): HTMLElement {
   const ctx = context(language, answer);
   const surface = element(doc, "div", H.surface);
   surface.tabIndex = 0;
-  const readout = element(doc, "p", `${C.muted} ${C.readout}`);
+  const readout = element(doc, "p", `${C.muted} ${C.readout} ${H.readout}`);
   readout.setAttribute("aria-live", "polite");
   const width = Math.max(200, Math.round(input.width));
   const priced = answer.hours.some((hour) => hour.buy !== null);
@@ -365,7 +365,9 @@ function chartBlock(input: HouseRenderInput, answer: HouseAnswer): HTMLElement {
     }
     block.append(views);
   }
-  block.append(surface, legend(doc, language, answer, view), readout);
+  // The readout right under the chart, where the eye is when a finger or the pointer is on it; its lines are reserved
+  // so nothing below moves when an hour is chosen.
+  block.append(surface, readout, legend(doc, language, answer, view));
   return block;
 }
 

@@ -46,6 +46,7 @@ export const HOUSE_CLASSES = {
   flowPart: "spotnav-house-flow-part",
   flowKey: "spotnav-house-flow-key",
   flowChart: "spotnav-house-flow-chart",
+  readout: "spotnav-house-readout",
   calendar: "spotnav-house-calendar",
   calendarHead: "spotnav-house-calendar-head",
   calendarDay: "spotnav-house-calendar-day",
@@ -68,6 +69,13 @@ export const HOUSE_STYLES = `
     --spotnav-flow-house: var(--spotnav-flow-house-colour, #b98cf0);
     --spotnav-flow-car: var(--spotnav-flow-car-colour, #ffa86b);
     --spotnav-flow-other: #b0bec5;
+  }
+  .${H.readout} {
+    height: auto;
+    min-height: 2.8em;
+    margin: 4px 0 2px;
+    white-space: normal;
+    text-overflow: clip;
   }
   .${H.flow}[data-part="energy-flow"] {
     margin-top: 12px;

@@ -261,6 +261,23 @@ describe("the battery app's views, calm", () => {
   });
 });
 
+describe("the readout", () => {
+  it("stands right under the chart, above the legend, with its lines reserved, and follows a tap", () => {
+    const onSelect = vi.fn();
+    const card = body(answer(), {}, "en", { onDetails: vi.fn(), onSelect });
+    const surface = card.querySelector<HTMLElement>(".spotnav-house-surface")!;
+    const readout = card.querySelector(".spotnav-readout")!;
+    expect(surface.nextElementSibling).toBe(readout);
+    expect(readout.nextElementSibling?.className).toContain("legend");
+    expect(readout.classList.contains("spotnav-house-readout")).toBe(true);
+    expect(readout.getAttribute("aria-live")).toBe("polite");
+    document.body.append(card);
+    surface.dispatchEvent(new MouseEvent("click", { bubbles: true, clientX: 0 }));
+    expect(onSelect).toHaveBeenCalled();
+    card.remove();
+  });
+});
+
 describe("today's energy flow", () => {
   it("decodes the nodes and links, takes a role it does not know and drops a link to a missing node", () => {
     const raw = read("house/villa_battery_sun.json");
