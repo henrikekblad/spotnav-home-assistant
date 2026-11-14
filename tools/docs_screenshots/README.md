@@ -84,6 +84,9 @@ the Automations row), card-automations (the blueprints it lists, one used by an 
 editor), card-reference-picture, card-settings-plan, card-identifying, card-identified, card-identify-question,
 diagnostics.
 
+Only when named: `social-card`, the hero card in the light theme at twice the pixels, written to
+`tools/social/card-light.png` for the banner and the README's card and app picture (`tools/social/render.sh`).
+
 Not produced (they need real-world state): card-waiting (only before about 13:45 local with no tomorrow
 prices; `STUB_TOMORROW=0` removes tomorrow from the demo Nord Pool, but the integration decides by the real clock),
 card-charging (a running charge), card-solar (a sunny day and a forecast source), pairing-approve (a

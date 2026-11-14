@@ -238,6 +238,32 @@ await saveAmps(15);
 await saveAmps(16);
 await sleep(1500);
 await cardShot("card-hero", CARD, 0);
+// The same card in Home Assistant's light theme at twice the pixels, for the banner and the README's card and
+// app picture (tools/social/). Not a docs picture, so it goes to tools/social/card-light.png. Only on request:
+// `run.sh social-card`.
+if (only.has("social-card")) {
+  const { identifier } = await b.send("Page.addScriptToEvaluateOnNewDocument", {
+    source: `try { localStorage.setItem("selectedTheme", '{"dark":false}'); } catch (e) {}`,
+  });
+  await b.send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-color-scheme", value: "light" }] });
+  await b.send("Emulation.setDeviceMetricsOverride", { width: b.width, height: b.height, deviceScaleFactor: 2, mobile: false });
+  await openCard();
+  await sleep(1500);
+  try {
+    const file = path.join(REPO, "tools", "social", "card-light.png");
+    const clip = await b.shotElement(file, CARD, 0);
+    done.push("social-card");
+    console.log(`   social-card ${clip.width}x${clip.height} (twice the pixels)`);
+  } catch (err) {
+    failed.push(`social-card: ${err.message}`);
+  }
+  await b.send("Page.removeScriptToEvaluateOnNewDocument", { identifier });
+  await b.send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-color-scheme", value: "dark" }] });
+  await b.send("Emulation.setDeviceMetricsOverride", { width: b.width, height: b.height, deviceScaleFactor: 1, mobile: false });
+  await b.eval(`localStorage.setItem("selectedTheme", '{"dark":true}')`);
+  await openCard();
+  await sleep(1000);
+}
 // The same card on the From now axis. The axis is this browser's choice (Settings → Display), kept in its
 // storage: set it there for the one picture and clear it again, so every other picture is on Day.
 if (wanted("card-from-now")) {
