@@ -111,16 +111,16 @@ export interface FlowLabels {
   soc(value: number): string;
 }
 
-export function flowLabels(language: Language, total: number): FlowLabels {
+export function flowLabels(language: Language, total: number, past = false): FlowLabels {
   return {
     kwh: (value) => `${formatFixed(language, value, 1)} kWh`,
     share: (part) => (total > 0 ? `${formatNumber(language, (part / total) * 100, 0)} %` : "–"),
-    soc: (value) => translate(language, "house.flow.socNow", { pct: `${formatNumber(language, value, 0)} %` }),
+    soc: (value) => translate(language, past ? "house.flow.socEnd" : "house.flow.socNow", { pct: `${formatNumber(language, value, 0)} %` }),
   };
 }
 
 /** The diagram, `width` px wide; `null` when nothing is left to draw. */
-export function renderFlow(doc: Document, language: Language, flow: EnergyFlow, width: number, idPrefix: string): SVGSVGElement | null {
+export function renderFlow(doc: Document, language: Language, flow: EnergyFlow, width: number, idPrefix: string, past = false): SVGSVGElement | null {
   const shown = flow.nodes.filter((node) => node.kwh >= MIN_SHOWN_KWH);
   const sources = shown.filter((node) => node.side === "source");
   const uses = shown.filter((node) => node.side === "use");
@@ -132,7 +132,8 @@ export function renderFlow(doc: Document, language: Language, flow: EnergyFlow, 
   const left = place(sources, height);
   const right = place(uses, height);
   const total = sources.reduce((sum, node) => sum + node.kwh, 0);
-  const labels = flowLabels(language, total);
+  // A past day's battery level is the one at its end, not now.
+  const labels = flowLabels(language, total, past);
   const root = svg(doc, "svg", { viewBox: `0 0 ${width} ${height}`, width, height, role: "img", class: "spotnav-house-flow-chart" });
   root.setAttribute(
     "aria-label",

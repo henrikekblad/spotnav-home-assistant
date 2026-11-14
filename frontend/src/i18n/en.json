@@ -1254,6 +1254,7 @@
   "house.flow.house": "House",
   "house.flow.car": "Car",
   "house.flow.socNow": "now {pct}",
+  "house.flow.socEnd": "end {pct}",
   "house.flow.through": "Whole hours until {time}.",
   "house.flow.rule": "The meters do not say which source fed which use: each hour the sun goes to the house first, then the car, the battery and the grid; the battery covers the house before the grid does.",
   "house.flow.carPart": "The car could not be read every hour; those hours count it in the house.",

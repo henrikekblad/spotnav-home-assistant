@@ -1254,6 +1254,7 @@
   "house.flow.house": "Talo",
   "house.flow.car": "Auto",
   "house.flow.socNow": "nyt {pct}",
+  "house.flow.socEnd": "lopussa {pct}",
   "house.flow.through": "Täydet tunnit klo {time} asti.",
   "house.flow.rule": "Mittarit eivät kerro, mikä lähde meni mihin: joka tunti aurinko menee ensin taloon, sitten autoon, akkuun ja verkkoon; akku kattaa talon ennen verkkoa.",
   "house.flow.carPart": "Autoa ei voitu lukea joka tunti; niinä tunteina se lasketaan taloon.",

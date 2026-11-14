@@ -1254,6 +1254,7 @@
   "house.flow.house": "Huis",
   "house.flow.car": "Auto",
   "house.flow.socNow": "nu {pct}",
+  "house.flow.socEnd": "eind {pct}",
   "house.flow.through": "Hele uren tot {time}.",
   "house.flow.rule": "De meters zeggen niet welke bron wat voedde: elk uur gaat de zon eerst naar het huis, dan naar de auto, de batterij en het net; de batterij dekt het huis vóór het net.",
   "house.flow.carPart": "De auto kon niet elk uur gelezen worden; die uren telt hij mee in het huis.",

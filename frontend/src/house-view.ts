@@ -554,7 +554,7 @@ function energyFlowBlock(input: HouseRenderInput, answer: HouseAnswer): HTMLElem
     return null;
   }
   const { doc, language } = input;
-  const diagram = renderFlow(doc, language, flow, Math.max(260, Math.floor(input.width)), input.idPrefix);
+  const diagram = renderFlow(doc, language, flow, Math.max(260, Math.floor(input.width)), input.idPrefix, answer.day !== null && !answer.day.today);
   if (diagram === null) {
     return null;
   }

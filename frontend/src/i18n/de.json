@@ -1254,6 +1254,7 @@
   "house.flow.house": "Haus",
   "house.flow.car": "Auto",
   "house.flow.socNow": "jetzt {pct}",
+  "house.flow.socEnd": "Ende {pct}",
   "house.flow.through": "Volle Stunden bis {time}.",
   "house.flow.rule": "Die Zähler sagen nicht, welche Quelle was versorgt hat: Jede Stunde geht die Sonne zuerst ins Haus, dann ins Auto, in die Batterie und ins Netz; die Batterie versorgt das Haus vor dem Netz.",
   "house.flow.carPart": "Das Auto war nicht jede Stunde lesbar; in diesen Stunden zählt es zum Haus.",

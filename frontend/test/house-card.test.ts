@@ -311,6 +311,7 @@ describe("the day choice", () => {
     expect(card.querySelector("[data-line='today']")?.textContent).toMatch(/^tors 12 nov\.?: sålt/);
     expect(card.querySelector("[data-part='energy-flow'] h3")?.textContent).toMatch(/^Energi tors 12 nov/);
     expect(card.textContent).not.toContain("Hela timmar fram till");
+    expect(card.querySelector(".spotnav-house-flow-node[data-role='battery'][data-side='use']")?.textContent).toContain("slut 32 %");
     const endSoc = [...past.hours].reverse().find((hour) => hour.soc_pct !== null)!.soc_pct!;
     expect(card.querySelector(".spotnav-house-sub")?.textContent).toBe(`Batteri ${Math.round(endSoc)} % vid dagens slut`);
     expect(translate("en", "house.sub.socDayEnd", { pct: "41 %" })).toBe("Battery 41 % at the end of the day");

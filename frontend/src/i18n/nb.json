@@ -1254,6 +1254,7 @@
   "house.flow.house": "Hus",
   "house.flow.car": "Bil",
   "house.flow.socNow": "nå {pct}",
+  "house.flow.socEnd": "slutt {pct}",
   "house.flow.through": "Hele timer fram til {time}.",
   "house.flow.rule": "Målerne sier ikke hvilken kilde som gikk til hva: hver time går solen først til huset, så bilen, batteriet og nettet; batteriet dekker huset før nettet.",
   "house.flow.carPart": "Bilen kunne ikke leses hver time; de timene regnes den inn i huset.",
