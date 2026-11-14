@@ -425,6 +425,23 @@ def test_a_past_day_shows_its_own_hours_money_and_flow() -> None:
     assert empty["day"]["has_data"] is False
 
 
+def test_the_recorders_soc_fills_hours_the_log_has_no_level_for() -> None:
+    """The battery plan's log wins; a past hour without a logged level takes the recorder's; hours ahead never do."""
+    from dataclasses import replace
+
+    inputs = full_inputs()
+    current = hour_start(NOW, TZ)
+    body = inputs.log._kind(KIND_BATTERY)  # noqa: SLF001
+    gap = current - timedelta(hours=3)
+    del body.hours[gap]
+    logged = current - timedelta(hours=2)
+    recorded = {gap: 37.26, logged: 99.0, current: 12.0}
+    rows = {row["start"]: row for row in house_view(replace(inputs, soc_recorded=recorded))["hours"]}
+    assert rows[gap.isoformat()]["soc_pct"] == 37.3
+    assert rows[logged.isoformat()]["soc_pct"] != 99.0
+    assert rows[current.isoformat()]["soc_pct"] is None
+
+
 def test_the_day_block_on_today() -> None:
     assert house_view(full_inputs())["day"] == {"date": "2026-11-13", "today": True, "first": "2026-10-31", "has_data": True}
 

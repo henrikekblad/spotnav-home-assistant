@@ -1,7 +1,8 @@
 """The Energy dashboard's statistics as SpotNav reads them: which statistics hold the solar production and the grid
 export, and their energy per period from the recorder. Found without a setting.
 
-Read by the house card's energy flow (`site/energy_flow.py`: every meter of the dashboard, `energy_flow_ids`), the
+Read by the house card's battery SoC history (`soc_at_hour_ends`: the hours its plan's log has no level for), its
+energy flow (`site/energy_flow.py`: every meter of the dashboard, `energy_flow_ids`), the
 solar forecast correction (`site/solar_correction_shadow.py`: the outcome, the inverter's ceiling, an
 export limit) and the house battery plan (`battery/plan_runtime.py`: the production that its own house rows, measured
 net of the sun, leave out). The two pure helpers are kept apart from the two that read Home Assistant.
@@ -11,7 +12,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import math
 from typing import Any
 
@@ -112,6 +113,49 @@ def summed(rows_by_id: Mapping[str, Sequence[Mapping[str, Any]]], ids: Sequence[
         per_id.append(values)
     common = set(per_id[0]).intersection(*per_id[1:])
     return {start: sum(values[start] for values in per_id) for start in sorted(common)}
+
+
+def _row_start(row: Mapping[str, Any]) -> datetime | None:
+    start = row.get("start")
+    if isinstance(start, datetime):
+        return start.astimezone(timezone.utc)
+    if _number(start):
+        return datetime.fromtimestamp(float(start), timezone.utc)
+    return None
+
+
+def soc_at_hour_ends(
+    starts: Sequence[datetime], short_rows: Sequence[Mapping[str, Any]], hour_rows: Sequence[Mapping[str, Any]]
+) -> dict[datetime, float]:
+    """A battery's SoC (%) at each hour's end, by the hour's start (UTC), from the recorder's statistics of its SoC
+    sensor: the mean of the last 5-minute period before the hour's end (the level as the hour ends, as the battery
+    plan's log records it), else the hour's mean (5-minute statistics are kept 10 days by default, hourly ones for
+    good). Hours with neither, and figures outside 0-100, are left out."""
+    short = {_row_start(row): row.get("mean") for row in short_rows}
+    hourly = {_row_start(row): row.get("mean") for row in hour_rows}
+    out: dict[datetime, float] = {}
+    for start in starts:
+        start = start.astimezone(timezone.utc)  # noqa: PLW2901
+        for value in (short.get(start + timedelta(minutes=55)), hourly.get(start)):
+            if _number(value) and 0 <= value <= 100:
+                out[start] = float(value)
+                break
+    return out
+
+
+async def async_soc_statistics(
+    hass: HomeAssistant, entity_id: str, start: datetime, end: datetime
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """The SoC sensor's 5-minute and hourly means in `[start, end)`, in the recorder's executor."""
+    from homeassistant.components.recorder import get_instance  # noqa: PLC0415 - only when loaded
+    from homeassistant.components.recorder.statistics import statistics_during_period  # noqa: PLC0415
+
+    def read() -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        short = statistics_during_period(hass, start, end, {entity_id}, "5minute", None, {"mean"})
+        hourly = statistics_during_period(hass, start, end, {entity_id}, "hour", None, {"mean"})
+        return list(short.get(entity_id) or []), list(hourly.get(entity_id) or [])
+
+    return await get_instance(hass).async_add_executor_job(read)
 
 
 async def async_energy_prefs(hass: HomeAssistant) -> Any:

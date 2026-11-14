@@ -158,3 +158,34 @@ async def test_a_past_day_is_asked_for_by_date(hass: HomeAssistant, freezer) -> 
     for index, bad in enumerate(["2026-13-01", 20261112, (today + timedelta(days=1)).isoformat(), plain["day"]["first"][:8] + "0x", (today - timedelta(days=30)).isoformat()]):
         answer = await ask(hass, 10 + index, api_version=1, site_id=site.entry_id, date=bad)
         assert not answer["success"] and answer["error"]["code"] == "spotnav_invalid_date", bad
+
+
+async def test_the_recorded_soc_reads_the_shown_past_hours(hass: HomeAssistant, freezer, monkeypatch) -> None:
+    """The SoC history asks the recorder for the shown past hours of the battery facts' SoC sensor, and nothing
+    without a battery."""
+    from datetime import timedelta
+    from types import SimpleNamespace
+
+    from custom_components.spotnav.api import house as house_api
+    from custom_components.spotnav.planning.demand_charge import hour_start
+    from custom_components.spotnav.site.house_view import PAST_HOURS
+
+    site = await pilot_site(hass, freezer, import_target_kw=6.0)
+    controller = site_controller_for(hass, site.entry_id)
+    now = controller.demand.now()  # type: ignore[union-attr]
+    assert await house_api.async_recorded_soc(hass, controller, now) == {}  # no battery on the pilot's site
+    current = hour_start(now, controller.demand.tracker.tz)  # type: ignore[union-attr]
+    reads = []
+
+    async def fake(_hass, entity_id, start, end):
+        reads.append((entity_id, start, end))
+        return [{"start": current - timedelta(minutes=5), "mean": 55.0}], []
+
+    monkeypatch.setattr(house_api, "async_soc_statistics", fake)
+    with_battery = SimpleNamespace(
+        battery_shadow=SimpleNamespace(facts=SimpleNamespace(battery_entity_id="sensor.p", sources={"soc": "sensor.soc"})),
+        demand=controller.demand,  # type: ignore[union-attr]
+    )
+    soc = await house_api.async_recorded_soc(hass, with_battery, now)
+    assert reads == [("sensor.soc", current - timedelta(hours=PAST_HOURS), current)]
+    assert soc == {current - timedelta(hours=1): 55.0}

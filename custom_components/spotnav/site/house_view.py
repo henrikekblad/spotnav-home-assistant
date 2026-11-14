@@ -4,7 +4,8 @@ Pure: the shell (`api/house.py`) hands over the parts as they are held; nothing 
 It shows what the site diagnostics already carry, cut to what a card draws:
 
 * **`hours`**: one row per local hour from `PAST_HOURS` before the running hour to `AHEAD_HOURS` after it. A past
-  hour has its outcome (the house's measured load, the sun's production, the battery's SoC at the hour's end) beside
+  hour has its outcome (the house's measured load, the sun's production, the battery's SoC at the hour's end: the
+  battery plan's log, else the recorder's statistics of the SoC sensor, `HouseInputs.soc_recorded`) beside
   the *first* forecast made for it (the forecast log's, the one the nightly review scores). The running hour and
   the hours ahead have the latest forecast: the house forecast, the sun as SpotNav reads it and as the shadow
   correction would make it, the SoC the battery plan in force expects at each hour's end and its strongest action
@@ -169,6 +170,9 @@ class HouseInputs:
     energy_flow: Mapping[str, Any] | None = None
     #: A past local day to show instead of the hours around now (`None`: today).
     day: date | None = None
+    #: The battery's SoC (%) at each past hour's end from the recorder (the shell reads it), by UTC hour start: shown
+    #: where the battery plan's log has no level for the hour (it was not measuring yet); a logged level wins.
+    soc_recorded: Mapping[datetime, float] = field(default_factory=dict)
 
 
 def _round(value: float | None, digits: int = 3) -> float | None:
@@ -373,7 +377,10 @@ def hours_view(inputs: HouseInputs) -> list[dict[str, Any]]:
             row["sun_forecast_kwh"] = _round(_forecast_or_logged(start, current, sun.raw, sun_logged))
             row["sun_corrected_kwh"] = _round(_forecast_or_logged(start, current, sun.corrected, corrected_logged))
         if battery is not None:
-            row["soc_pct"] = _round(_actual(start, current, battery_logged), 1)
+            logged_soc = _actual(start, current, battery_logged)
+            if logged_soc is None and past:
+                logged_soc = inputs.soc_recorded.get(start)
+            row["soc_pct"] = _round(logged_soc, 1)
             if past:
                 first = battery_logged.get(start)
                 row["soc_plan_pct"] = None if first is None else round(first.forecast, 1)
