@@ -279,6 +279,8 @@ function compareBlock(doc: Document, language: Language, answer: HouseAnswer): H
     if (row.inForce) {
       name.append(" ", element(doc, "span", H.chip, translate(language, "house.compare.inForce")));
     }
+    // Plain self-consumption is what the others are measured against: its own figure is the reference.
+    const reference = row.key === "self_consumption";
     const track = element(doc, "span", H.compareTrack);
     track.setAttribute("aria-hidden", "true");
     if (!reference && row.value !== null && row.value !== 0) {
@@ -287,8 +289,6 @@ function compareBlock(doc: Document, language: Language, answer: HouseAnswer): H
       fill.dataset["sign"] = row.value < 0 ? "minus" : "plus";
       track.append(fill);
     }
-    // Plain self-consumption is what the others are measured against: its own figure is the reference.
-    const reference = row.key === "self_consumption";
     let figure = reference ? translate(language, "house.compare.reference") : row.value === null ? translate(language, "house.compare.none") : amount(language, row.value, answer.money);
     if (!reference && row.value !== null && row.days < days) {
       figure += ` (${translate(language, `house.compare.days.${pluralForm(language, row.days)}`, { days: String(row.days) })})`;
