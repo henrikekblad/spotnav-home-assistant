@@ -277,14 +277,14 @@ describe("the modes side by side in the body", () => {
     expect(rows[0]!.textContent).toContain("referens");
   });
 
-  it("say plainly when a mode has no reviewed nights yet", () => {
+  it("say plainly when a mode has no full day reviewed yet", () => {
     const value = answer();
     const battery = value.battery!;
     const modes = { ...battery.modes, max_profit: { planned_saving: 9, reviewed_saving: null, reviewed_days: 0 } };
     const card = body({ ...value, battery: { ...battery, modes, review: null } }, {}, "sv");
     const rows = Array.from(card.querySelectorAll<HTMLElement>(".spotnav-house-compare-row"));
-    expect(rows.find((row) => row.dataset["row"] === "max_profit")?.textContent).toContain("inga nätter än");
-    expect(rows.find((row) => row.dataset["row"] === "own")?.textContent).toContain("inga nätter än");
+    expect(rows.find((row) => row.dataset["row"] === "max_profit")?.textContent).toContain("inget fullt dygn");
+    expect(rows.find((row) => row.dataset["row"] === "own")?.textContent).toContain("inget fullt dygn");
     // Before any review the line still says what the plan expects.
     expect(card.querySelector("[data-line='saving']")).not.toBeNull();
   });
