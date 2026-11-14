@@ -141,6 +141,7 @@
     "has_data": true,
     "today": true
   },
+  "day_review": null,
   "days": [
     {
       "arbitrage": 875.0,

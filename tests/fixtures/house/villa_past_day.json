@@ -141,6 +141,16 @@
     "has_data": true,
     "today": false
   },
+  "day_review": {
+    "date": "2026-11-12",
+    "mode": "balanced",
+    "modes": {
+      "balanced": 700.0,
+      "max_profit": 735.0,
+      "self_consumption": null
+    },
+    "own_saving": 630.0
+  },
   "days": [
     {
       "arbitrage": 875.0,

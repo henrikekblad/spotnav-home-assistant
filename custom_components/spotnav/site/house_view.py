@@ -26,6 +26,9 @@ It shows what the site diagnostics already carry, cut to what a card draws:
   log keeps `KEEP_HOURS_DAYS` days of hours) and whether anything was measured on it (`has_data`). A past day
   (`HouseInputs.day`) shows its own local hours, all of them past (its outcomes beside its first forecasts), its money
   (`today`, from the stored energy's day) and its energy flow; the bars of `flow` are today's only.
+* **`day_review`**: on a past day, that day's own review side by side (each mode's saving and the battery's own way
+  against plain self-consumption, the mode in force); `None` on today (the week's sums are in `battery.modes`) and on a
+  day without a review.
 * **`days`**: the last reviewed days, one row each, for the card's details.
 * **`sources`**: where the forecasts come from (weather entity, outdoor sensor, holiday calendar, solar forecast).
 
@@ -77,6 +80,7 @@ HOUSE_KEYS: Final = (
     "flow",
     "energy_flow",
     "day",
+    "day_review",
     "calendar",
     "days",
     "sources",
@@ -505,6 +509,23 @@ def days_view(inputs: HouseInputs) -> list[dict[str, Any]]:
     return shown[:REVIEW_DAYS_SHOWN]
 
 
+def day_review_block(inputs: HouseInputs) -> dict[str, Any] | None:
+    """The `day_review` block (see the module)."""
+    battery = inputs.battery
+    if inputs.day is None or battery is None:
+        return None
+    review = next((item for item in battery.reviews if item.day == inputs.day), None)
+    if review is None:
+        return None
+    savings = review.mode_savings
+    return {
+        "date": review.day.isoformat(),
+        "mode": review.mode,
+        "modes": {mode: _money(savings[mode]) if mode in savings else None for mode in MODES},
+        "own_saving": _money(review.actual_saving),
+    }
+
+
 def day_block(inputs: HouseInputs, hours: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     """The `day` block (see the module)."""
     today = inputs.now.astimezone(time_zones.require_zone(inputs.tz)).date()
@@ -540,6 +561,7 @@ def house_view(inputs: HouseInputs) -> dict[str, Any]:
         else day_flow(inputs.battery, inputs.now, inputs.tz, inputs.sun is not None),
         "energy_flow": None if inputs.energy_flow is None else dict(inputs.energy_flow),
         "day": day_block(inputs, hours),
+        "day_review": day_review_block(inputs),
         "calendar": None if inputs.battery is None else month_calendar(inputs.battery, inputs.now, inputs.tz),
         "days": days_view(inputs),
         "sources": {

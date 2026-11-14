@@ -419,10 +419,19 @@ def test_a_past_day_shows_its_own_hours_money_and_flow() -> None:
     assert view["day"] == {"date": "2026-11-12", "today": False, "first": "2026-10-31", "has_data": True}
     assert view["today"]["date"] == "2026-11-12"
     assert view["flow"] is None and view["energy_flow"]["date"] == "2026-11-12"
+    review = next(item for item in full_inputs().battery.reviews if item.day == yesterday)
+    assert view["day_review"] == {
+        "date": "2026-11-12",
+        "mode": review.mode,
+        "modes": {mode: round(review.mode_savings[mode], 2) if mode in review.mode_savings else None for mode in ("self_consumption", "balanced", "max_profit")},
+        "own_saving": round(review.actual_saving, 2),
+    }
     _fixture("villa_past_day.json", view)
     # A day nothing was measured on says so.
     empty = house_view(replace(full_inputs(), day=date(2026, 11, 1), energy_flow=None, house_actual={}, log=ForecastLog(TZ)))
     assert empty["day"]["has_data"] is False
+    # A day without a review has none.
+    assert house_view(replace(full_inputs(), day=date(2026, 10, 31)))["day_review"] is None
 
 
 def test_the_recorders_soc_fills_hours_the_log_has_no_level_for() -> None:
@@ -443,6 +452,7 @@ def test_the_recorders_soc_fills_hours_the_log_has_no_level_for() -> None:
 
 
 def test_the_day_block_on_today() -> None:
+    assert house_view(full_inputs())["day_review"] is None
     assert house_view(full_inputs())["day"] == {"date": "2026-11-13", "today": True, "first": "2026-10-31", "has_data": True}
 
 
