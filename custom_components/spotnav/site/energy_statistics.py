@@ -1,7 +1,8 @@
 """The Energy dashboard's statistics as SpotNav reads them: which statistics hold the solar production and the grid
 export, and their energy per period from the recorder. Found without a setting.
 
-Read by the solar forecast correction (`site/solar_correction_shadow.py`: the outcome, the inverter's ceiling, an
+Read by the house card's energy flow (`site/energy_flow.py`: every meter of the dashboard, `energy_flow_ids`), the
+solar forecast correction (`site/solar_correction_shadow.py`: the outcome, the inverter's ceiling, an
 export limit) and the house battery plan (`battery/plan_runtime.py`: the production that its own house rows, measured
 net of the sun, leave out). The two pure helpers are kept apart from the two that read Home Assistant.
 """
@@ -9,6 +10,7 @@ net of the sun, leave out). The two pure helpers are kept apart from the two tha
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from datetime import datetime, timezone
 import math
 from typing import Any
@@ -40,6 +42,54 @@ def energy_statistic_ids(prefs: Any) -> tuple[tuple[str, ...], tuple[str, ...]]:
     return tuple(dict.fromkeys(solar)), tuple(dict.fromkeys(export))
 
 
+@dataclass(frozen=True, slots=True)
+class FlowIds:
+    """Every Energy dashboard meter the house card's energy flow reads: the grid's import and export, the sun's
+    production, the home battery's charge (`stat_energy_to`) and discharge (`stat_energy_from`)."""
+
+    grid_in: tuple[str, ...] = ()
+    grid_out: tuple[str, ...] = ()
+    solar: tuple[str, ...] = ()
+    battery_in: tuple[str, ...] = ()
+    battery_out: tuple[str, ...] = ()
+
+    def all(self) -> tuple[str, ...]:
+        return tuple(dict.fromkeys((*self.grid_in, *self.grid_out, *self.solar, *self.battery_in, *self.battery_out)))
+
+
+def energy_flow_ids(prefs: Any) -> FlowIds:
+    """The Energy dashboard's meters for the energy flow, from its preferences (both grid formats, as
+    `energy_statistic_ids`). A battery counts only with both its meters."""
+    solar, grid_out = energy_statistic_ids(prefs)
+    grid_in: list[str] = []
+    battery_in: list[str] = []
+    battery_out: list[str] = []
+    sources = prefs.get("energy_sources") if isinstance(prefs, Mapping) else None
+    for source in sources if isinstance(sources, list) else []:
+        if not isinstance(source, Mapping):
+            continue
+        if source.get("type") == "grid":
+            if isinstance(source.get("stat_energy_from"), str):
+                grid_in.append(source["stat_energy_from"])
+            for flow in source.get("flow_from") or []:
+                if isinstance(flow, Mapping) and isinstance(flow.get("stat_energy_from"), str):
+                    grid_in.append(flow["stat_energy_from"])
+        elif (
+            source.get("type") == "battery"
+            and isinstance(source.get("stat_energy_from"), str)
+            and isinstance(source.get("stat_energy_to"), str)
+        ):
+            battery_out.append(source["stat_energy_from"])
+            battery_in.append(source["stat_energy_to"])
+    return FlowIds(
+        grid_in=tuple(dict.fromkeys(grid_in)),
+        grid_out=grid_out,
+        solar=solar,
+        battery_in=tuple(dict.fromkeys(battery_in)),
+        battery_out=tuple(dict.fromkeys(battery_out)),
+    )
+
+
 def summed(rows_by_id: Mapping[str, Sequence[Mapping[str, Any]]], ids: Sequence[str]) -> dict[datetime, float]:
     """The statistics' `change` per period start (UTC), summed over `ids`; a period is kept only when every id has
     it (a missing source would undercount)."""
@@ -62,6 +112,16 @@ def summed(rows_by_id: Mapping[str, Sequence[Mapping[str, Any]]], ids: Sequence[
         per_id.append(values)
     common = set(per_id[0]).intersection(*per_id[1:])
     return {start: sum(values[start] for values in per_id) for start in sorted(common)}
+
+
+async def async_energy_prefs(hass: HomeAssistant) -> Any:
+    """The Energy dashboard's preferences; `None` while the Energy integration is not loaded."""
+    if "energy" not in hass.config.components:
+        return None
+    from homeassistant.components.energy.data import async_get_manager  # noqa: PLC0415 - only when loaded
+
+    manager = await async_get_manager(hass)
+    return manager.data
 
 
 async def async_energy_ids(hass: HomeAssistant) -> tuple[tuple[str, ...], tuple[str, ...]]:
