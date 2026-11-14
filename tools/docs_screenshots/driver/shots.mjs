@@ -171,7 +171,14 @@ await cancelDialog();
 
 step("site options");
 await b.goto(ha.BASE + "/config/integrations/integration/spotnav", 3000);
-await b.click("ha-icon-button", "^Configure$", 1);
+// The site's own Configure button: the one level with its title, whatever order the entries are listed in.
+await b.clickExpr(`(() => { const D = window.__docs; const mid = (e) => { const r = e.getBoundingClientRect(); return r.y + r.height / 2; };
+  const titles = D.deepAll("*").filter((e) => D.visible(e) && e.children.length === 0 && D.text(e) === "Home" && e.getBoundingClientRect().x > 300);
+  const buttons = D.deepAll("ha-icon-button").filter((e) => D.visible(e) && /^Configure$/i.test(e.label || e.getAttribute("aria-label") || D.text(e)));
+  if (!titles.length || !buttons.length) return null;
+  const off = (e) => Math.min(...titles.map((t) => Math.abs(mid(t) - mid(e))));
+  return buttons.reduce((a, e) => (off(e) < off(a) ? e : a)); })()`, "the site's Configure button");
+await b.waitFor(`!!${b.finder("*", "^Site settings$")}`, { what: "the site's settings dialog" });
 await sleep(1500);
 await shot("site-options");
 await cancelDialog();

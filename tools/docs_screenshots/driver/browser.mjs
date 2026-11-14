@@ -188,8 +188,12 @@ export class Browser {
 
   /** A real mouse click at the centre of the element. */
   async click(selector, textRe, nth = 0) {
-    const expr = this.finder(selector, textRe, nth);
-    await this.waitFor(`!!${expr}`, { what: `${selector} ${textRe ?? ""}` });
+    await this.clickExpr(this.finder(selector, textRe, nth), `${selector} ${textRe ?? ""}`);
+  }
+
+  /** A real mouse click at the centre of the element an expression (as from `finder`) returns. */
+  async clickExpr(expr, what = expr) {
+    await this.waitFor(`!!${expr}`, { what });
     await this.eval(`${expr}.scrollIntoView({block:"center"})`);
     await sleep(100);
     const r = await this.rectOf(expr);
