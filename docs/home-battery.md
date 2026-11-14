@@ -3,7 +3,9 @@
 For anyone with a home battery and a planner such as Predbat or EMHASS: how SpotNav signals a grid charge, and why it never controls the battery.
 
 SpotNav tells your home battery planner when the car is charging from the grid. It does not control
-the battery itself.
+the battery itself. SpotNav 3.0 also plans the battery in shadow, as a benchmark you can compare with what the battery really
+does; that part only watches and is described in [The battery plan](battery-plan.md) and the
+[house card](house-card.md).
 
 ## Why SpotNav does not write to batteries
 
@@ -127,9 +129,9 @@ Rewards), a planner (Predbat, EMHASS) or an automation of yours. One controller 
 notices the others and only watches.
 
 * **A planner or CheckWatt set up in Home Assistant**: the battery is watch-only while it is there.
-* **The battery's settings change several times a day, or it charges from the grid or discharges into
-  export in plain self-consumption** (and its level moves the same way, for ten minutes): something
-  outside SpotNav drives it, and SpotNav marks it watch-only. This ends by itself two days after the
+* **The battery's settings change three times within 24 hours without SpotNav writing them, or in plain
+  self-consumption it charges from the grid or discharges into export by more than 1 kW for ten minutes in a
+  row** (and its level moves the same way): something outside SpotNav drives it, and SpotNav marks it watch-only. This ends by itself 48 hours after the
   battery last showed it. Tibber or Greenely set up in Home Assistant is named as the likely source but
   never marks the battery by itself.
 
