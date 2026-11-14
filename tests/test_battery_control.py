@@ -136,15 +136,22 @@ def _hold(_now):
 
 
 def test_the_write_path_is_unreachable_in_this_release() -> None:
+    """The shadow parts share the executor's pure rules (`executor.preview`, `commands.py`), so they import those;
+    the shell that writes (`control.py`) and a live executor stay unreachable from the integration."""
     assert shadow.ON_REACHABLE is False
-    pattern = re.compile(r"battery\.(control|executor|verify|commands)\b|from \.(control|executor|verify|commands) import"
-                         r"|\bBatteryControl\b|\bExecutor\(")
-    allowed = {f"battery/{name}" for name in ("control.py", "executor.py", "verify.py", "commands.py")}
+    pattern = re.compile(r"battery\.(control|verify)\b|from \.(control|verify) import|\bBatteryControl\b|\bExecutor\(")
+    allowed = {f"battery/{name}" for name in ("control.py", "executor.py", "verify.py")}
     users = [
         str(path.relative_to(PACKAGE)) for path in PACKAGE.rglob("*.py")
         if str(path.relative_to(PACKAGE)) not in allowed and pattern.search(path.read_text(encoding="utf-8"))
     ]
     assert users == [], "nothing in the integration may construct or import the write path"
+    # Only the shell calls a service; the shared pure modules call none.
+    callers = [
+        str(path.relative_to(PACKAGE)) for path in (PACKAGE / "battery").glob("*.py")
+        if "async_call" in path.read_text(encoding="utf-8")
+    ]
+    assert callers == ["battery/control.py"]
     services = (PACKAGE / "services.yaml").read_text(encoding="utf-8") if (PACKAGE / "services.yaml").exists() else ""
     assert "battery_control" not in services and "verify" not in services
 

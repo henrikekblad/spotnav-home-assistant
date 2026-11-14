@@ -4,6 +4,10 @@ A part is `shadow` (it decides and logs, writes nothing) or `on` (it writes). In
 turned on: `ON_REACHABLE` is off, a stored `on` loads as `shadow`, and nothing offers a way to turn it on.
 "All back to shadow" puts every part back in one step.
 
+The hold for the car (`PART_HOLD_FOR_CAR`) decides when to hold; what it would write is the executor's action
+`hold` (`executor.preview`), the same write route a later opt-in will turn on, so the shadow log shows exactly the
+writes and hand-back that route would make.
+
 The log is bounded by count and by age and survives a restart with the rest of the book (`as_dict`, `from_dict`).
 
 Each entry is shaped for the confirmed-write ledger that comes with the first real write (Predbat's

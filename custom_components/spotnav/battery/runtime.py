@@ -1,8 +1,10 @@
 """The home battery's shell: reads the site's battery from Home Assistant and runs the shadow parts on it.
 
 One per site, owned by its `SiteCapacityController`. Every `TICK_S` it reads the battery's facts (`facts.py`), the
-site's chargers charging from the grid (`execution/grid_charge.py`) and the site's own measurement, steps each part
-(`hold.py`) and logs the decisions in the shadow book (`shadow.py`), which is kept in the site's store. The
+site's chargers charging from the grid (`execution/grid_charge.py`), the brand's control roles (`commands.py`, as the
+write path reads them) and the site's own measurement, steps each part (`hold.py`, whose would-be writes are the
+executor's own via `executor.preview`) and logs the decisions in the shadow book (`shadow.py`), which is kept in the
+site's store. The
 confirmed-write ledger and the control-failure monitor run beside the hold as dry runs (`dry_run.py` says what they
 can and cannot tell in shadow); their state is kept in the book's sections. The house battery plan runs beside them
 as a shadow and a benchmark (`plan_runtime.py`). The outside-control watch (`outside_control.py`) looks at the same
@@ -19,7 +21,7 @@ from __future__ import annotations
 
 import logging
 import math
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import replace
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any, Final
@@ -38,7 +40,9 @@ from ..const import (
 )
 from ..planning.grid_voltage import stored_voltage_between_phases_v
 from ..site.measurement_problem import UNHEALTHY_STATES
+from .commands import BrandControl, control_for
 from .dry_run import SECTION_LEDGER, SECTION_MONITOR, HoldDryRun
+from .executor import RoleRead, role_reads
 from .facts import BatteryFacts, EntityFact, battery_facts, with_outside_control
 from .hold import HoldDecision, HoldInputs, HoldMemory, restart, step
 from .ledger import Ledger
@@ -125,6 +129,20 @@ def read_battery_facts(hass: HomeAssistant, config: dict[str, Any], power_kw: fl
         power_kw=power_kw,
         external_planner=external_planner(hass),
     )
+
+
+def read_role_reads(hass: HomeAssistant, config: dict[str, Any], control: BrandControl | None) -> dict[str, RoleRead]:
+    """Each of the brand's control roles (`commands.py`) as found in the battery's config entry; none without one."""
+    if control is None:
+        return {}
+    registry = er.async_get(hass)
+    entity_id = config.get(CONF_BATTERY_AGGREGATE_POWER_ENTITY)
+    battery_entry = registry.async_get(entity_id) if isinstance(entity_id, str) and entity_id else None
+    if battery_entry is None or battery_entry.config_entry_id is None:
+        return {}
+    entries = er.async_entries_for_config_entry(registry, battery_entry.config_entry_id)
+    entities = [_entity_fact(entry, hass) for entry in entries if entry.platform == battery_entry.platform]
+    return role_reads(control, entities, _entity_fact(battery_entry, hass))
 
 
 class BatteryShadow:
@@ -281,6 +299,7 @@ class BatteryShadow:
             volts_between_phases=stored_voltage_between_phases_v(self.site.config),
             charger_ids=chargers,
             car_kw=car_kw,
+            reads=read_role_reads(self.hass, self.site.config, control_for(facts.brand)),
         )
 
     @callback
@@ -292,14 +311,15 @@ class BatteryShadow:
         self.facts = inputs.facts
         memory, decision = step(self._hold, inputs)
         self._apply(
-            PART_HOLD_FOR_CAR, memory, decision, now,
+            PART_HOLD_FOR_CAR, memory, decision, now, reads=inputs.reads,
             age_s=inputs.battery_age_s, headroom_a=inputs.headroom_a, volts=inputs.volts_between_phases,
         )
         self.plan.tick(now, inputs.facts)
 
     def _apply(
         self, part: str, memory: HoldMemory, decision: HoldDecision | None, now: datetime, *,
-        age_s: float | None = None, headroom_a: float | None = None, volts: float = 400.0,
+        reads: Mapping[str, RoleRead] | None = None, age_s: float | None = None, headroom_a: float | None = None,
+        volts: float = 400.0,
     ) -> None:
         changed = memory.as_dict() != self.book.memory(part)
         self.book.set_memory(part, memory.as_dict())
@@ -321,7 +341,7 @@ class BatteryShadow:
                 *judged,
             ]
         entries += self.dry_run.observe(
-            self.facts, memory.held, now, age_s=age_s, headroom_a=headroom_a, volts_between_phases=volts
+            self.facts, reads or {}, memory.held, now, age_s=age_s, headroom_a=headroom_a, volts_between_phases=volts
         )
         for entry in entries:
             self.book.record(entry)
@@ -360,8 +380,9 @@ class BatteryShadow:
             "hold_for_car": {
                 "held_in_shadow": hold.held,
                 "held_since": None if hold.held_since is None else hold.held_since.isoformat(),
-                "snapshot": hold.snapshot,
-                "snapshot_unset": hold.snapshot_unset,
+                # What the executor's hold would hand back, per role (it writes nothing in shadow).
+                "snapshot": dict(hold.snapshot),
+                "restore": dict(hold.restore),
                 "writes_today": hold.writes_today,
                 "battery_gave_car_kwh": {day: round(kwh, 3) for day, kwh in sorted(hold.gave_car_kwh.items())},
             },

@@ -1,8 +1,10 @@
 """The battery's write path: turns a slot's planned action into the brand's commands, safely. Built, not reachable.
 
-Nothing calls this in production: `shadow.ON_REACHABLE` is off, no service or setting starts it, and the shell
+Nothing runs it in production: `shadow.ON_REACHABLE` is off, no service or setting starts it, and the shell
 (`control.py`) refuses to write while it is off. Tests drive it against fake entities. A later, explicit opt-in will
-use it.
+use it. It is the one battery write route: since wave 7 the shadow hold for the car (`hold.py`) is a request for
+this executor's action `hold`, and what it logs comes from `preview`, which runs the executor's own start rules and
+commands on a throw-away instance and returns the writes and the hand-back without writing anything.
 
 How it acts (`step`, one look every few seconds; pure, the shell does the writes it returns):
 
@@ -23,7 +25,10 @@ How it acts (`step`, one look every few seconds; pure, the shell does the writes
   an app taking Remote EMS back) or the site's battery is no longer that brand; someone else changes a control
   SpotNav owns (that control is given up and not written back over the other system, as the ledger says); a write
   is not taken; the monitor sees no effect; the day's write cap is reached. After a restart a stored snapshot is
-  restored before anything else. A restore write that does not read back is retried with backoff
+  restored before anything else. A role SpotNav wrote is restored by writing its snapshot and reading it back even
+  when it reads as it was found (`ExecState.written`): Sigenergy 2.0.1 shows a never-set limit as `unknown`, which
+  after SpotNav's own write proves nothing; the snapshot is then written as the rating, never as `unknown`, and an
+  `unknown` read-back is never a confirmed write (the ledger waits for a real value until its deadline). A restore write that does not read back is retried with backoff
   (`RESTORE_RETRY_S`), up to `RESTORE_ATTEMPTS` times each; a role still not restored then is left with its
   snapshot kept (the control blocks, and the next start tries again), while the other roles are handed back.
 * **Fuse safety.** A grid charge is clamped by the site's live headroom: what the battery already draws from the
@@ -40,7 +45,7 @@ Pure: no Home Assistant import; times are aware datetimes from the caller. State
 from __future__ import annotations
 
 import math
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
 from typing import Any, Final, Literal
@@ -55,7 +60,7 @@ from .commands import (
     Role,
     reading,
 )
-from .facts import BatteryFacts
+from .facts import BatteryFacts, EntityFact, find_entity
 from .ledger import Ledger, same
 from .monitor import Capability, Command, Monitor, Reading
 from .plan_model import (
@@ -96,6 +101,8 @@ Phase = Literal["idle", "active", "restoring", "blocked"]
 _PHASES: Final = frozenset({"idle", "active", "restoring", "blocked"})
 #: Hand-back reasons that block the control until it is reset (or, for the cap, until the next day).
 _BLOCKING_PREFIXES: Final = ("write_not_taken", "changed_outside_spotnav", "no_effect", "management_changed")
+#: States that are no value: never a snapshot to write back.
+_NO_VALUE: Final = frozenset({"", "unavailable", "unknown", "none"})
 _RAISES_IMPORT: Final = frozenset({ACTION_HOLD, ACTION_GRID_CHARGE})
 _MONITORED: Final = {ACTION_HOLD: "hold", ACTION_GRID_CHARGE: "charge", ACTION_DISCHARGE_HOUSE: "discharge",
                      ACTION_EXPORT_DISCHARGE: "discharge"}
@@ -113,6 +120,20 @@ class RoleRead:
     step: float | None = None
     #: The device a service is called for (Huawei's battery).
     device_id: str | None = None
+
+
+def role_reads(control: BrandControl, entities: Sequence[EntityFact], battery: EntityFact) -> dict[str, RoleRead]:
+    """Each role's entity among the battery integration's entities, found by the integration's unique-id key."""
+    reads: dict[str, RoleRead] = {}
+    for role in control.roles:
+        found = find_entity(role.match, entities, battery)
+        if found is None:
+            continue
+        reads[role.name] = RoleRead(
+            entity_id=found.entity_id, state=found.state, found=True, enabled=not found.disabled, step=found.step,
+            device_id=found.device_id,
+        )
+    return reads
 
 
 @dataclass(frozen=True, slots=True)
@@ -192,6 +213,9 @@ class ExecState:
     retries: dict[str, tuple[int, datetime]] = field(default_factory=dict)
     #: Roles whose restore was given up after every attempt (the snapshot is kept for them).
     unrestored: tuple[str, ...] = ()
+    #: Roles SpotNav wrote since the snapshot was taken: their restore always writes the snapshot back and waits
+    #: for its read-back (a read that only looks like the value found, Sigenergy's `unknown`, is not enough).
+    written: tuple[str, ...] = ()
     day: str | None = None
     writes_today: int = 0
 
@@ -227,6 +251,7 @@ class ExecState:
             "management_unknown_since": iso(self.management_unknown_since),
             "retries": {name: [count, at.isoformat()] for name, (count, at) in self.retries.items()},
             "unrestored": list(self.unrestored),
+            "written": list(self.written),
             "day": self.day,
             "writes_today": self.writes_today,
         }
@@ -245,9 +270,11 @@ class ExecState:
             raw = data.get(key)
             if not isinstance(raw, Mapping):
                 return {}
+            # A stored "unknown"/"unavailable" is no value: it is never written back.
             return {
                 str(name): value for name, value in raw.items()
-                if isinstance(value, (str, bool)) or (isinstance(value, (int, float)) and math.isfinite(value))
+                if (isinstance(value, str) and value.strip().lower() not in _NO_VALUE) or isinstance(value, bool)
+                or (isinstance(value, (int, float)) and math.isfinite(value))
             }
 
         def texts(key: str) -> dict[str, str]:
@@ -293,6 +320,7 @@ class ExecState:
             management_unknown_since=parse_aware_datetime(data.get("management_unknown_since")),
             retries=retries,
             unrestored=names("unrestored"),
+            written=names("written"),
             day=text("day"),
             writes_today=writes if isinstance(writes, int) and not isinstance(writes, bool) and writes >= 0 else 0,
         )
@@ -625,6 +653,7 @@ class Executor:
                 snapshot={k: v for k, v in state.snapshot.items() if k in kept},
                 restore_values={k: v for k, v in state.restore_values.items() if k in kept},
                 entities={k: v for k, v in state.entities.items() if k in kept},
+                written=tuple(name for name in state.written if name in kept),
                 sent=(), renew=(), released_at=now,
             )
             return [_event(now, "restore_failed", ",".join(state.unrestored))]
@@ -636,7 +665,7 @@ class Executor:
         self.state = replace(
             state, phase="blocked" if blocked else "idle", blocked=blocked, action=None, rate_kw=0.0, target={},
             snapshot={}, restore_values={}, entities={}, device_id=None, snapshot_at=None, sent=(), renew=(),
-            released_at=now, given_up=state.given_up if blocked else (),
+            released_at=now, given_up=state.given_up if blocked else (), written=(),
         )
         return [_event(now, "handed_back", state.reason or "")]
 
@@ -747,7 +776,7 @@ class Executor:
             self.state, phase="active", brand=self.control.brand, action=action, rate_kw=rate,
             target=self._wanted(action, rate, restore_values), snapshot=snapshot, restore_values=restore_values,
             entities=entities, device_id=device_id, snapshot_at=now, entered_at=now, rate_changed_at=now,
-            watchdog_at=now, sent=(), renew=(), reason=None, given_up=(), management_unknown_since=None,
+            watchdog_at=now, sent=(), renew=(), reason=None, given_up=(), management_unknown_since=None, written=(),
         )
         self._watch(inputs, action, rate)
         return True, [_event(now, "enter", action, rate_kw=rate, snapshot=snapshot)]
@@ -808,8 +837,12 @@ class Executor:
         if restoring and role.idle_when and state in role.idle_when:
             return True
         snapshot = self.state.snapshot.get(role.name)
-        if snapshot is not None and state == snapshot and wanted == self.state.restore_values.get(role.name):
-            # Still as found (a never-set limit reads "unknown"): nothing to write back.
+        if (
+            snapshot is not None and state == snapshot and wanted == self.state.restore_values.get(role.name)
+            and role.name not in self.state.written
+        ):
+            # Never written and still as found (a never-set limit reads "unknown"): nothing to write back. A role
+            # SpotNav wrote is restored by writing its snapshot and reading it back, whatever it reads now.
             return True
         return bool(same(wanted, reading(role, state), None if read is None else (read.step or role.step)))
 
@@ -852,16 +885,67 @@ class Executor:
         renew = tuple(item for item in state.renew if item != name)
         sent = state.sent if name in state.sent else (*state.sent, name)
         writes = state.writes_today + (0 if restoring else 1)
+        written = state.written if name in state.written else (*state.written, name)
         if role.method == "button":
             # A button has no read-back: pressed once per target; the monitor judges what it did.
-            self.state = replace(state, sent=sent, renew=renew, writes_today=writes)
+            self.state = replace(state, sent=sent, renew=renew, writes_today=writes, written=written)
         else:
             if entity_id is not None:
                 self.ledger.intend(entity_id, value, inputs.now, step=None if read is None else (read.step or role.step))
-            self.state = replace(state, pending=name, sent=sent, renew=renew, writes_today=writes)
+            self.state = replace(state, pending=name, sent=sent, renew=renew, writes_today=writes, written=written)
         return [Op(name, role.method, entity_id, value, device_id=state.device_id, restore=restoring)]
 
     # --- what it shows ---
 
     def as_dict(self) -> dict[str, Any]:
         return {"state": self.state.as_dict(), "ledger": self.ledger.as_dict(), "monitor": self.monitor.as_dict()}
+
+
+# --- the dry run -----------------------------------------------------------------------------------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class Preview:
+    """What the executor would do if the action were asked for now, from a fresh state: why it would not start, or
+    the writes it would make (in the brand's order, each read back in turn) and what handing back would write."""
+
+    blocker: str | None
+    rate_kw: float = 0.0
+    writes: tuple[Op, ...] = ()
+    restores: tuple[Op, ...] = ()
+    #: The value found per restored role (as read) and the native value a restore would write.
+    snapshot: Mapping[str, str] = field(default_factory=dict)
+    restore_values: Mapping[str, Native] = field(default_factory=dict)
+
+
+def preview(
+    control: BrandControl, inputs: ExecInputs, *, writes_today: int = 0, watchdog_s: int = WATCHDOG_S
+) -> Preview:
+    """The executor's own start rules and commands for `inputs.action`, run on a throw-away executor: nothing is
+    written, nothing is kept. The shadow parts (`hold.py`) use it so that what they log as "would write" is exactly
+    what the write path would write, with the same refusals (management, controls found and enabled, fuse, stale
+    data, the day's cap) and the same snapshot rules (a never-set limit is restored as the rating)."""
+    executor = Executor(
+        control, state=ExecState(day=inputs.now.date().isoformat(), writes_today=writes_today), watchdog_s=watchdog_s
+    )
+    started, events = executor._try_start(inputs)
+    if not started:
+        return Preview(events[0]["reason"] if events else "nothing_to_do")
+    state = executor.state
+    writes: list[Op] = []
+    for name in control.enter_order:
+        if name not in state.target:
+            continue
+        role = control.role(name)
+        if not executor._satisfied(role, state.target[name], inputs.reads.get(name), restoring=False):
+            writes.append(Op(name, role.method, state.entities.get(name), state.target[name], device_id=state.device_id))
+    written = tuple(op.role for op in writes)
+    executor.state = replace(state, written=written)
+    executor._begin_restore(inputs.now, "preview")
+    back = executor.state.target
+    restores = tuple(
+        Op(name, control.role(name).method, state.entities.get(name), back[name], device_id=state.device_id, restore=True)
+        for name in control.restore_order
+        if name in back and name in written
+    )
+    return Preview(None, state.rate_kw, tuple(writes), restores, dict(state.snapshot), dict(state.restore_values))

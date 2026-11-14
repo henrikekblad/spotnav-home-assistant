@@ -25,7 +25,8 @@ Beside the facts, an adapter may know two limits (read 2026-11-13; the Sigenergy
   need the installer password; GoodWe states the depth of discharge (the floor is 100 less it). SolaX and Victron:
   none mapped yet.
 
-A control is what SpotNav *could* write; nothing in this release writes it.
+A control here is read only: the outside-control watch and the diagnostics read it. What SpotNav would write is the
+executor's brand command (`commands.py`), the one write route; nothing in this release writes either.
 """
 
 from __future__ import annotations
@@ -81,6 +82,9 @@ class ControlSpec:
     unset_at_or_above_kw: float | None = None
     #: States that mean "no limit" (Victron's -1).
     unset_states: frozenset[str] = frozenset()
+    #: `unknown` is the "never set" register, not a missing reading (Sigenergy 2.0.1 shows the all-ones value so):
+    #: the control is readable, holds no limit, and has no number (never 0).
+    unknown_is_unset: bool = False
     #: Writing it changes the battery's own operating mode, which a restore may not bring back.
     changes_mode: bool = False
     note: str = ""
@@ -150,6 +154,7 @@ SIGENERGY: Final = Adapter(
         0.0,
         _key("plant_ess_max_discharging_limit", "number"),
         unset_at_or_above_kw=4_000_000.0,
+        unknown_is_unset=True,
         note="Register 40034, disabled by default; read-only mode drops a write silently. Firmware SPC117 is"
         " reported to obey it only with Remote EMS on.",
     ),

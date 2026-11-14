@@ -1,22 +1,32 @@
 """Hold the house battery while the car charges from the grid (evcc's "discharge lock"), decided in shadow.
 
-When a SpotNav charger charges from the grid (`execution/grid_charge.py`) and the battery measurably discharges
-into it, the part would set the battery's discharge limit to 0 and later write the value it found back. The rules
-follow `plans/research_integrations/battery_control_2026-10-03.md` §3.2 and Predbat's field lessons
+This part decides **when** the battery should be held; **what** a hold writes, and how it is handed back, is the
+executor's action `hold` (`executor.py`, `commands.py`), the one write path a later opt-in will use. Until wave 7
+the part kept its own write: the adapter's discharge-limit number set to 0, with its own snapshot, "unset" rule,
+restore value, write cap and control checks. That duplicated the executor and differed from it (on Sigenergy the
+executor's hold also turns Remote EMS on in Maximum Self Consumption, which firmware SPC117 needs before it obeys the
+limit), so it was removed: at the moment the part would hold, it asks `executor.preview` for the action `hold`, and
+logs exactly the writes, refusals and hand-back the executor would make. A future opt-in turns the part's decision
+into the executor's action (`requested_action`) instead of writing anything itself. A brand without an executor
+control (Victron, GoodWe, Enphase) can no longer be held, even in shadow.
+
+The rules follow `plans/research_integrations/battery_control_2026-10-03.md` §3.2 and Predbat's field lessons
 (`predbat_lowhanging_2026-11-13.md` item 2):
 
-* Preconditions: the battery is free (its plain self-consumption: one that runs its own optimiser, a schedule or
-  another planner is left alone), the control is found, enabled and available, the battery reading is fresh, the
-  plant is on the grid, SpotNav's own measurement is healthy, and the fuse keeps `HOLD_MIN_HEADROOM_A` once the
-  battery stops covering the car. A battery that charges (from the grid or the sun) is not held: it is not feeding
-  the car, and a discharge cap can stop some inverters grid-charging (Predbat #5419, #3899).
+* Preconditions (the part's own): a SpotNav charger charges from the grid and the battery measurably discharges into
+  it, the battery is free (its plain self-consumption: one that runs its own optimiser, a schedule or another planner
+  is left alone) and its reading is fresh. A battery that charges (from the grid or the sun) is not held: it is not
+  feeding the car, and a discharge cap can stop some inverters grid-charging (Predbat #5419, #3899).
+* Preconditions (the executor's, via the preview): every control role found and enabled, the brand's own mode rules,
+  on the grid, SpotNav's measurement healthy, the fuse keeps `HEADROOM_MARGIN_A` once the battery stops covering the
+  car, the day's write cap (`executor.DAILY_WRITE_CAP`, counted from the previewed writes).
 * Edge-triggered with hysteresis: grid charge and discharge must last `ARM_S` before a hold, a new hold waits
-  `REARM_S` after a restore, and at most `DAILY_WRITE_CAP` writes a day (flash wear is unknown).
-* Snapshot first: the value found is kept (persisted) before the limit would be written; a value at or above the
-  rating, or the register's "never set", is "unset" and is restored as the rated discharge power.
+  `REARM_S` (the executor's) after a restore.
+* The snapshot and the hand-back are the executor's: every role it would write is kept as found and written back
+  (a never-set limit, Sigenergy's `unknown`, as the rating; never `unknown` itself).
 * Restore at once when the car stops charging from the grid, the battery charges, a reading goes stale, the plant
   leaves the grid, the measurement is lost, the headroom falls under `RESTORE_HEADROOM_A`, the battery stops being
-  free or the control goes away; and first of all after a restart that finds a hold.
+  free or a control role goes away; and first of all after a restart that finds a hold.
 
 Everything is a decision: nothing is written. While shadowed a "hold" does not stop the battery, so the part keeps
 judging from the battery's own readings. Each non-write outcome (left alone, not possible) is logged once per grid
@@ -34,22 +44,24 @@ from dataclasses import dataclass, field, replace
 from datetime import datetime
 from typing import Any, Final, Literal
 
-from .facts import BatteryFacts, ControlStatus
+from .commands import SNAPSHOT, Native, control_for
+from .executor import (
+    BATTERY_MAX_AGE_S,
+    REARM_S,
+    RESTORE_HEADROOM_A,
+    ExecInputs,
+    Preview,
+    RoleRead,
+    preview,
+)
+from .facts import BatteryFacts
+from .plan_model import ACTION_HOLD
 from .shadow import parse_aware_datetime
 
 #: Discharging means below minus this (kW); charging, above it.
 DISCHARGE_KW: Final = 0.2
 #: Grid charge and battery discharge must last this long before a hold.
 ARM_S: Final = 60.0
-#: After a restore, no new hold for this long.
-REARM_S: Final = 120.0
-DAILY_WRITE_CAP: Final = 20
-#: A battery reading older than this is stale.
-BATTERY_MAX_AGE_S: Final = 120.0
-#: The fuse headroom that must remain once the battery's discharge comes from the grid instead.
-HOLD_MIN_HEADROOM_A: Final = 2.0
-#: Below this headroom a hold is released.
-RESTORE_HEADROOM_A: Final = 1.0
 #: A reading gap longer than this adds nothing to the energy the battery gave the car.
 ENERGY_MAX_GAP_S: Final = 60.0
 #: Days of the "battery gave the car" figure kept.
@@ -71,6 +83,21 @@ class HoldInputs:
     charger_ids: tuple[str, ...] = ()
     #: What the chargers charging from the grid draw together (kW), `None` when unknown.
     car_kw: float | None = None
+    #: The brand's control roles as found now (`executor.role_reads`).
+    reads: Mapping[str, RoleRead] = field(default_factory=dict)
+
+
+def _natives(raw: Any) -> dict[str, Native]:
+    if not isinstance(raw, Mapping):
+        return {}
+    return {
+        str(name): value for name, value in raw.items()
+        if isinstance(value, (str, bool)) or (isinstance(value, (int, float)) and math.isfinite(value))
+    }
+
+
+def _texts(raw: Any) -> dict[str, str]:
+    return {str(k): v for k, v in raw.items() if isinstance(v, str)} if isinstance(raw, Mapping) else {}
 
 
 @dataclass(frozen=True, slots=True)
@@ -79,12 +106,14 @@ class HoldMemory:
 
     held: bool = False
     held_since: datetime | None = None
-    #: The control's value found before the hold, as its state text, and whether it held no limit.
-    snapshot: str | None = None
-    snapshot_unset: bool = False
+    #: Per role the executor would write: the value found (as read), the entity, and what handing back would write.
+    snapshot: dict[str, str] = field(default_factory=dict)
+    entities: dict[str, str] = field(default_factory=dict)
+    restore: dict[str, Native] = field(default_factory=dict)
     armed_since: datetime | None = None
     last_change: datetime | None = None
     day: str | None = None
+    #: The writes the executor would have made today (restores not counted, as the executor counts them).
     writes_today: int = 0
     #: The non-write outcomes already logged in this grid charge.
     noted: tuple[str, ...] = ()
@@ -99,8 +128,9 @@ class HoldMemory:
         return {
             "held": self.held,
             "held_since": iso(self.held_since),
-            "snapshot": self.snapshot,
-            "snapshot_unset": self.snapshot_unset,
+            "snapshot": dict(self.snapshot),
+            "entities": dict(self.entities),
+            "restore": dict(self.restore),
             "armed_since": iso(self.armed_since),
             "last_change": iso(self.last_change),
             "day": self.day,
@@ -112,17 +142,20 @@ class HoldMemory:
 
     @classmethod
     def from_dict(cls, data: Any) -> HoldMemory:
+        """A stored memory; an earlier version's single snapshot text (its own discharge-limit write) loads as no
+        snapshot: nothing was written either way."""
         if not isinstance(data, Mapping):
             return cls()
         gave = data.get("gave_car_kwh")
         writes = data.get("writes_today")
-        snapshot, day, noted = data.get("snapshot"), data.get("day"), data.get("noted")
+        day, noted = data.get("day"), data.get("noted")
         noted_reasons = tuple(item for item in noted if isinstance(item, str)) if isinstance(noted, list) else ()
         return cls(
             held=data.get("held") is True,
             held_since=parse_aware_datetime(data.get("held_since")),
-            snapshot=snapshot if isinstance(snapshot, str) else None,
-            snapshot_unset=data.get("snapshot_unset") is True,
+            snapshot=_texts(data.get("snapshot")),
+            entities=_texts(data.get("entities")),
+            restore=_natives(data.get("restore")),
             armed_since=parse_aware_datetime(data.get("armed_since")),
             last_change=parse_aware_datetime(data.get("last_change")),
             day=day if isinstance(day, str) else None,
@@ -142,11 +175,18 @@ class HoldMemory:
 class HoldDecision:
     action: HoldAction
     reason: str
+    #: The entity of the hold's main role (the discharge limit where the brand has one) and the writes as
+    #: `{role: value}`.
     entity_id: str | None = None
     value: Any = None
-    #: The control's state when the decision was made.
+    #: The main entity's state when the decision was made.
     read: str | None = None
     detail: dict[str, Any] = field(default_factory=dict)
+
+
+def requested_action(memory: HoldMemory) -> str | None:
+    """The executor action this part asks for now (`hold` while it holds), for the opt-in that will run it."""
+    return ACTION_HOLD if memory.held else None
 
 
 def _fresh(inputs: HoldInputs) -> bool:
@@ -154,27 +194,45 @@ def _fresh(inputs: HoldInputs) -> bool:
     return inputs.facts.power_kw is not None and age is not None and age <= BATTERY_MAX_AGE_S
 
 
-def discharge_a(power_kw: float | None, volts_between_phases: float) -> float:
-    """The amps per phase a discharge (`power_kw` < 0) covers, spread over three phases."""
-    if power_kw is None or power_kw >= 0 or volts_between_phases <= 0:
-        return 0.0
-    return -power_kw * 1000.0 / (math.sqrt(3.0) * volts_between_phases)
-
-
-def restore_value(memory: HoldMemory, control: ControlStatus | None, rated_discharge_kw: float | None) -> Any:
-    """What a restore would write: the value found, or for an unset one the rating (a "never set" register cannot
-    be written back), or the unset state itself where it is writable (Victron's -1)."""
-    snapshot = memory.snapshot
-    if control is None or control.spec.method != "number":
-        return snapshot
-    if snapshot is not None and snapshot in control.spec.unset_states:
-        return float(snapshot)
-    if memory.snapshot_unset or snapshot is None:
-        return rated_discharge_kw
-    try:
-        return float(snapshot)
-    except ValueError:
+def _main_role(brand: str | None, reads: Mapping[str, RoleRead]) -> str | None:
+    """The first role, in the brand's order, that the hold sets to a value of its own (Sigenergy: the discharge
+    limit), as found."""
+    control = control_for(brand)
+    if control is None:
         return None
+    wanted = control.wanted(ACTION_HOLD, 0.0)
+    return next(
+        (name for name in control.enter_order if wanted.get(name, SNAPSHOT) != SNAPSHOT and name in reads), None
+    )
+
+
+def _main(inputs: HoldInputs) -> tuple[str | None, str | None]:
+    """The main role's entity and state."""
+    name = _main_role(inputs.facts.brand, inputs.reads)
+    read = None if name is None else inputs.reads[name]
+    return (None, None) if read is None else (read.entity_id, read.state)
+
+
+def _exec_inputs(inputs: HoldInputs) -> ExecInputs:
+    return ExecInputs(
+        now=inputs.now,
+        facts=inputs.facts,
+        reads=inputs.reads,
+        action=ACTION_HOLD,
+        battery_age_s=inputs.battery_age_s,
+        measurement_ok=inputs.measurement_ok,
+        headroom_a=inputs.headroom_a,
+        volts_between_phases=inputs.volts_between_phases,
+    )
+
+
+def would_hold(inputs: HoldInputs, writes_today: int = 0) -> Preview:
+    """What the executor would write for a hold now (`executor.preview`); `no_brand_control` for a brand it has no
+    commands for."""
+    control = control_for(inputs.facts.brand)
+    if control is None:
+        return Preview("no_brand_control")
+    return preview(control, _exec_inputs(inputs), writes_today=writes_today)
 
 
 def _count_energy(memory: HoldMemory, inputs: HoldInputs) -> HoldMemory:
@@ -207,20 +265,21 @@ def _detail(inputs: HoldInputs) -> dict[str, Any]:
     }
 
 
+def _restore_decision(memory: HoldMemory, reason: str, read: str | None, detail: dict[str, Any]) -> HoldDecision:
+    """The hand-back the executor would make: every role it wrote back to its snapshot, in the brand's order."""
+    main = next(iter(memory.entities.values()), None)
+    return HoldDecision(
+        "would_restore", reason, main, dict(memory.restore), read,
+        detail | {"snapshot": dict(memory.snapshot), "entities": dict(memory.entities)},
+    )
+
+
 def restart(memory: HoldMemory, facts: BatteryFacts, now: datetime) -> tuple[HoldMemory, HoldDecision | None]:
     """After a restart a hold found in memory is restored before anything else."""
+    del facts  # the hand-back writes what was found before the hold, whatever the battery reads now
     if not memory.held:
         return memory, None
-    control = facts.hold
-    decision = HoldDecision(
-        "would_restore",
-        "restart",
-        None if control is None else control.entity_id,
-        restore_value(memory, control, facts.rated_discharge_kw),
-        None if control is None else control.current,
-        {"snapshot": memory.snapshot, "snapshot_unset": memory.snapshot_unset},
-    )
-    return _released(memory, now), decision
+    return _released(memory, now), _restore_decision(memory, "restart", None, {})
 
 
 def _released(memory: HoldMemory, now: datetime) -> HoldMemory:
@@ -228,17 +287,16 @@ def _released(memory: HoldMemory, now: datetime) -> HoldMemory:
         memory,
         held=False,
         held_since=None,
-        snapshot=None,
-        snapshot_unset=False,
+        snapshot={},
+        entities={},
+        restore={},
         armed_since=None,
         last_change=now,
-        writes_today=memory.writes_today + 1,
     )
 
 
-def _restore_reason(inputs: HoldInputs) -> str | None:
+def _restore_reason(inputs: HoldInputs, memory: HoldMemory) -> str | None:
     facts = inputs.facts
-    control = facts.hold
     power = facts.power_kw
     if not inputs.grid_charging:
         return "car_not_charging_from_grid"
@@ -254,30 +312,12 @@ def _restore_reason(inputs: HoldInputs) -> str | None:
         return "headroom_low"
     if facts.management.state != "free":
         return f"{facts.management.state}:{facts.management.reason}"
-    if control is None or not control.usable:
-        return "no_hold_control" if control is None else str(control.why_not)
-    return None
-
-
-def _blocker(inputs: HoldInputs, memory: HoldMemory) -> tuple[HoldAction, str] | None:
-    facts = inputs.facts
-    control = facts.hold
-    if facts.management.state != "free":
-        return "left_alone", f"{facts.management.state}:{facts.management.reason}"
-    if control is None:
-        return "not_possible", "no_hold_control"
-    if not control.usable:
-        return "not_possible", str(control.why_not)
-    if facts.on_grid is False:
-        return "not_possible", "off_grid"
-    if not inputs.measurement_ok:
-        return "not_possible", "measurement_lost"
-    if inputs.headroom_a is None:
-        return "not_possible", "headroom_unknown"
-    if inputs.headroom_a - discharge_a(facts.power_kw, inputs.volts_between_phases) < HOLD_MIN_HEADROOM_A:
-        return "not_possible", "headroom_too_small"
-    if memory.writes_today >= DAILY_WRITE_CAP:
-        return "not_possible", "daily_write_cap"
+    if control_for(facts.brand) is None:
+        return "no_brand_control"
+    for name in memory.entities:
+        read = inputs.reads.get(name)
+        if read is None or not read.found:
+            return f"control_not_found:{name}"
     return None
 
 
@@ -285,7 +325,6 @@ def step(memory: HoldMemory, inputs: HoldInputs) -> tuple[HoldMemory, HoldDecisi
     """One look: the new memory and the decision to log, if any."""
     now = inputs.now
     facts = inputs.facts
-    control = facts.hold
     today = now.date().isoformat()
     if memory.day != today:
         memory = replace(memory, day=today, writes_today=0)
@@ -294,18 +333,11 @@ def step(memory: HoldMemory, inputs: HoldInputs) -> tuple[HoldMemory, HoldDecisi
         memory = replace(memory, noted=())
 
     if memory.held:
-        reason = _restore_reason(inputs)
+        reason = _restore_reason(inputs, memory)
         if reason is None:
             return memory, None
-        decision = HoldDecision(
-            "would_restore",
-            reason,
-            None if control is None else control.entity_id,
-            restore_value(memory, control, facts.rated_discharge_kw),
-            None if control is None else control.current,
-            _detail(inputs) | {"snapshot": memory.snapshot, "snapshot_unset": memory.snapshot_unset},
-        )
-        return _released(memory, now), decision
+        _entity, read = _main(inputs)
+        return _released(memory, now), _restore_decision(memory, reason, read, _detail(inputs))
 
     power = facts.power_kw
     if not (inputs.grid_charging and _fresh(inputs) and power is not None):
@@ -319,44 +351,57 @@ def step(memory: HoldMemory, inputs: HoldInputs) -> tuple[HoldMemory, HoldDecisi
         return replace(memory, armed_since=now), None
     if (now - memory.armed_since).total_seconds() < ARM_S:
         return memory, None
-    blocker = _blocker(inputs, memory)
-    if blocker is not None:
-        return _note(memory, blocker[0], blocker[1], inputs)
+    if facts.management.state != "free":
+        return _note(memory, "left_alone", f"{facts.management.state}:{facts.management.reason}", inputs)
+    seen = would_hold(inputs, memory.writes_today)
+    if seen.blocker is not None:
+        return _note(memory, "not_possible", seen.blocker, inputs)
     if memory.last_change is not None and (now - memory.last_change).total_seconds() < REARM_S:
         return memory, None
-    assert control is not None
+    entity_id, read = _main(inputs)
+    restores = {op.role: op.value for op in seen.restores}
+    entities = {op.role: op.entity_id for op in seen.writes if op.entity_id is not None}
+    snapshot = {name: value for name, value in seen.snapshot.items() if name in restores}
     decision = HoldDecision(
         "would_write",
         "battery_discharges_into_grid_charge",
-        control.entity_id,
-        control.spec.value,
-        control.current,
-        _detail(inputs) | {"snapshot": control.current, "snapshot_unset": bool(control.unset)},
+        entity_id,
+        {op.role: op.value for op in seen.writes},
+        read,
+        _detail(inputs) | {
+            "writes": [op.as_dict() | {"read": _state(inputs, op.role)} for op in seen.writes],
+            "restore": [op.as_dict() for op in seen.restores],
+            "snapshot": snapshot,
+        },
     )
     held = replace(
         memory,
         held=True,
         held_since=now,
-        snapshot=control.current,
-        snapshot_unset=bool(control.unset),
+        snapshot=snapshot,
+        entities=entities,
+        restore=restores,
         armed_since=None,
         last_change=now,
-        writes_today=memory.writes_today + 1,
+        writes_today=memory.writes_today + len(seen.writes),
         noted=(),
     )
     return held, decision
 
 
+def _state(inputs: HoldInputs, role: str) -> str | None:
+    read = inputs.reads.get(role)
+    return None if read is None else read.state
+
+
 def _note(memory: HoldMemory, action: HoldAction, reason: str, inputs: HoldInputs) -> tuple[HoldMemory, HoldDecision | None]:
-    """A non-write outcome, logged once per grid charge; it says what would have been written."""
+    """A non-write outcome, logged once per grid charge; it says what the executor's hold would set."""
     if reason in memory.noted:
         return memory, None
-    control = inputs.facts.hold
     detail = _detail(inputs)
+    control = control_for(inputs.facts.brand)
     if control is not None:
-        detail["would_write"] = control.spec.value
-    decision = HoldDecision(
-        action, reason, None if control is None else control.entity_id, None,
-        None if control is None else control.current, detail,
-    )
+        detail["would_write"] = control.wanted(ACTION_HOLD, 0.0)
+    entity_id, read = _main(inputs)
+    decision = HoldDecision(action, reason, entity_id, None, read, detail)
     return replace(memory, noted=(*memory.noted, reason)), decision
