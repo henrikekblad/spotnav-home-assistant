@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { LANGUAGES, translate } from "../src/i18n";
-import { VISUAL_STYLES } from "../src/visual-styles";
+import { HEADER_NARROW_PX, VISUAL_STYLES } from "../src/visual-styles";
 import { FakeHass, mountCard } from "./helpers";
 
 const DASHBOARD_DIR = join(__dirname, "..", "..", "tests", "fixtures", "dashboard");
@@ -247,6 +247,29 @@ describe("the header buttons are plain icons", () => {
     ]);
     // Reached by Tab in document order: no tabindex reorders them.
     expect(buttons.every((button) => !button.hasAttribute("tabindex") && button.type === "button")).toBe(true);
+  });
+});
+
+describe("the product mark on a narrow card", () => {
+  // The card's own padding (14 px each side): the header is this much narrower than the card.
+  const PADDING = 28;
+
+  it("hides the mark by the header's own width, so a narrow card gives the name the room and a wide one keeps it", async () => {
+    const { element } = await mounted();
+    const header = shadow(element).querySelector<HTMLElement>(".spotnav-header");
+    expect(header?.firstElementChild?.classList.contains("spotnav-identity")).toBe(true);
+    // The header is the size container, so the card's width decides, not the viewport.
+    expect(VISUAL_STYLES).toMatch(/\n\s*\.spotnav-header \{[^}]*container-type: inline-size/);
+    const query = new RegExp(
+      `@container \\(max-width: ${HEADER_NARROW_PX - 1}px\\) \\{\\s*\\.spotnav-identity \\{\\s*display: none;\\s*\\}\\s*\\}`,
+    );
+    expect(VISUAL_STYLES).toMatch(query);
+    // Outside that query the mark shows: no other rule hides it.
+    const unscoped = VISUAL_STYLES.replace(query, "");
+    expect(unscoped).not.toMatch(/\.spotnav-identity \{[^}]*display: none/);
+    // The card picker's preview (about 300 px) counts as narrow; a 500 px dashboard column as wide.
+    expect(300 - PADDING).toBeLessThan(HEADER_NARROW_PX);
+    expect(500 - PADDING).toBeGreaterThanOrEqual(HEADER_NARROW_PX);
   });
 });
 

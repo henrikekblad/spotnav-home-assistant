@@ -4,6 +4,12 @@
 // Nothing external (no `@import`, `url(...)`, web font or image); dialogs are `position: fixed`
 // overlays, so opening one never changes the card's height.
 
+/**
+ * Below this width of the header (the card's width less its padding) the card counts as narrow and the header
+ * leaves out the product mark, so the charger's name keeps one row: a phone column, the card picker's preview.
+ */
+export const HEADER_NARROW_PX = 400;
+
 /** Values longer than this stack under their label (the Android app uses the same threshold). */
 export const LONG_VALUE_LENGTH = 18;
 
@@ -1105,18 +1111,26 @@ export const VISUAL_STYLES = `
   .${VISUAL_CLASSES.card}[data-fill] .${VISUAL_CLASSES.actionBarWrap} {
     margin-top: calc(8px + var(--spotnav-fill-spare, 0px));
   }
+  /* The header is a size container: what it shows follows the card's width, not the viewport. */
   .${VISUAL_CLASSES.header} {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
     gap: 8px;
     min-width: 0;
+    container-type: inline-size;
   }
   .${VISUAL_CLASSES.identity} {
     flex: 0 0 auto;
     font-weight: 600;
     letter-spacing: 0.01em;
     color: var(--primary-color, #03a9f4);
+  }
+  /* A narrow card (a phone, the card picker's preview) gives the mark's room to the charger's name. */
+  @container (max-width: ${HEADER_NARROW_PX - 1}px) {
+    .${VISUAL_CLASSES.identity} {
+      display: none;
+    }
   }
   /* A modest basis in rem (not em of the large title font): a phone-wide card keeps name, vehicle line and
      both buttons on one row, and only a very narrow card moves the button group to a row of its own. */
