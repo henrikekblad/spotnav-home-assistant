@@ -700,9 +700,10 @@ var Ci="start",gr="stop",To="resume",Ai="pause";var cy="normal",Za="vehicle_not_
     letter-spacing: 0.01em;
     color: var(--primary-color, #03a9f4);
   }
-  /* A narrow card (a phone, the card picker's preview) gives the mark's room to the charger's name. */
+  /* A narrow card (a phone, the card picker's preview) gives the mark's room to the charger's name; a header with
+     no name (a card with no charger yet) keeps its mark. */
   @container (max-width: 399px) {
-    .${a.identity} {
+    .${a.identity}:has(~ .${a.name}) {
       display: none;
     }
   }
@@ -718,14 +719,18 @@ var Ci="start",gr="stop",To="resume",Ai="pause";var cy="normal",Za="vehicle_not_
   .${a.headerActions} {
     display: flex;
     flex: none;
-    gap: 0;
-    margin-left: auto;
+    gap: 4px;
+    margin-inline-start: auto;
     margin-inline-end: -4px;
   }
   /*
    * The header's history and cog buttons: a flex container centres the icon on both axes, and
    * line-height 0 stops the empty line box pushing it off centre. The retry button shares the class.
    */
+  /* An author display beats the browser's [hidden]; a reader who may change nothing gets no cog. */
+  .${a.iconButton}[hidden] {
+    display: none;
+  }
   .${a.iconButton} {
     display: inline-flex;
     align-items: center;
@@ -780,10 +785,15 @@ var Ci="start",gr="stop",To="resume",Ai="pause";var cy="normal",Za="vehicle_not_
     border-radius: 50%;
     pointer-events: none;
   }
-  .${a.headerActions} > .${a.iconButton}:hover {
-    color: var(--primary-text-color, #212121);
+  /* Hover only where there is one: on a touch screen a tapped button would keep its mark. */
+  @media (hover: hover) {
+    .${a.headerActions} > .${a.iconButton}:hover {
+      color: var(--primary-text-color, #212121);
+    }
+    .${a.headerActions} > .${a.iconButton}:hover::before {
+      background: color-mix(in srgb, currentColor 12%, transparent);
+    }
   }
-  .${a.headerActions} > .${a.iconButton}:hover::before,
   .${a.headerActions} > .${a.iconButton}:focus-visible::before {
     background: color-mix(in srgb, currentColor 12%, transparent);
   }
