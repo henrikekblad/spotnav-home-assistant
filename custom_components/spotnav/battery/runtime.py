@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import logging
 import math
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import replace
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any, Final
@@ -38,7 +38,7 @@ from ..const import (
 )
 from ..planning.grid_voltage import stored_voltage_between_phases_v
 from ..site.measurement_problem import UNHEALTHY_STATES
-from .commands import BrandControl
+from .commands import BrandControl, control_for
 from .dry_run import SECTION_LEDGER, SECTION_MONITOR, HoldDryRun
 from .executor import RoleRead, role_reads
 from .facts import BatteryFacts, EntityFact, battery_facts, with_outside_control
@@ -297,6 +297,7 @@ class BatteryShadow:
             volts_between_phases=stored_voltage_between_phases_v(self.site.config),
             charger_ids=chargers,
             car_kw=car_kw,
+            reads=read_role_reads(self.hass, self.site.config, control_for(facts.brand)),
         )
 
     @callback
@@ -308,14 +309,15 @@ class BatteryShadow:
         self.facts = inputs.facts
         memory, decision = step(self._hold, inputs)
         self._apply(
-            PART_HOLD_FOR_CAR, memory, decision, now,
+            PART_HOLD_FOR_CAR, memory, decision, now, reads=inputs.reads,
             age_s=inputs.battery_age_s, headroom_a=inputs.headroom_a, volts=inputs.volts_between_phases,
         )
         self.plan.tick(now, inputs.facts)
 
     def _apply(
         self, part: str, memory: HoldMemory, decision: HoldDecision | None, now: datetime, *,
-        age_s: float | None = None, headroom_a: float | None = None, volts: float = 400.0,
+        reads: Mapping[str, RoleRead] | None = None, age_s: float | None = None, headroom_a: float | None = None,
+        volts: float = 400.0,
     ) -> None:
         changed = memory.as_dict() != self.book.memory(part)
         self.book.set_memory(part, memory.as_dict())
@@ -337,7 +339,7 @@ class BatteryShadow:
                 *judged,
             ]
         entries += self.dry_run.observe(
-            self.facts, memory.held, now, age_s=age_s, headroom_a=headroom_a, volts_between_phases=volts
+            self.facts, reads or {}, memory.held, now, age_s=age_s, headroom_a=headroom_a, volts_between_phases=volts
         )
         for entry in entries:
             self.book.record(entry)
@@ -376,8 +378,9 @@ class BatteryShadow:
             "hold_for_car": {
                 "held_in_shadow": hold.held,
                 "held_since": None if hold.held_since is None else hold.held_since.isoformat(),
-                "snapshot": hold.snapshot,
-                "snapshot_unset": hold.snapshot_unset,
+                # What the executor's hold would hand back, per role (it writes nothing in shadow).
+                "snapshot": dict(hold.snapshot),
+                "restore": dict(hold.restore),
                 "writes_today": hold.writes_today,
                 "battery_gave_car_kwh": {day: round(kwh, 3) for day, kwh in sorted(hold.gave_car_kwh.items())},
             },

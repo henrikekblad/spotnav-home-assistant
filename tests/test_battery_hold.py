@@ -1,4 +1,5 @@
-"""The shadow "hold the house battery while the car charges from the grid" policy: decisions only."""
+"""The shadow "hold the house battery while the car charges from the grid" policy: decisions only. What a hold
+would write and hand back is the executor's action `hold` (`executor.preview`), not a write of the part's own."""
 
 from __future__ import annotations
 
@@ -8,29 +9,26 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from custom_components.spotnav.battery.adapters import SIGENERGY, VICTRON, GOODWE
-from custom_components.spotnav.battery.facts import BatteryFacts, ControlStatus, Management
+from custom_components.spotnav.battery.commands import SIGENERGY_CONTROL
+from custom_components.spotnav.battery.executor import DAILY_WRITE_CAP, REARM_S, RoleRead
+from custom_components.spotnav.battery.facts import BatteryFacts, Management
 from custom_components.spotnav.battery.hold import (
     ARM_S,
-    DAILY_WRITE_CAP,
-    REARM_S,
     HoldInputs,
     HoldMemory,
+    requested_action,
     restart,
-    restore_value,
     step,
 )
+from tests.battery_control_fakes import SIGENERGY_STATES, FakeBattery
 
 T0 = datetime(2026, 11, 13, 12, 0, tzinfo=UTC)
-LIMIT = "number.sigen_plant_ess_max_discharging_limit"
+LIMIT = "number.sigenergy_discharge_limit"
+HOLD_WRITES = {"discharge_limit": 0.0, "remote_ems": True, "control_mode": "Maximum Self Consumption"}
 
 
-def _control(current: str = "23.04", *, unset: bool = True, enabled: bool = True) -> ControlStatus:
-    assert SIGENERGY.hold is not None
-    return ControlStatus(
-        SIGENERGY.hold, LIMIT, found=True, enabled=enabled, available=True, current=current,
-        current_kw=float(current), unset=unset,
-    )
+def _reads(**states: str) -> dict[str, RoleRead]:
+    return FakeBattery(SIGENERGY_CONTROL, dict(SIGENERGY_STATES) | states).reads()
 
 
 def _facts(power_kw: float | None = -4.6, *, management: str = "free", **changes) -> BatteryFacts:
@@ -39,10 +37,13 @@ def _facts(power_kw: float | None = -4.6, *, management: str = "free", **changes
         integration="sigen",
         brand="sigenergy",
         power_kw=power_kw,
+        rated_charge_kw=23.04,
         rated_discharge_kw=23.04,
         on_grid=True,
-        management=Management(management, "self_consumption" if management == "free" else "EMS work mode:ai_mode"),
-        hold=_control(),
+        management=(
+            Management("free", "self_consumption", {"EMS work mode": "max_self_consumption"}) if management == "free"
+            else Management(management, "EMS work mode:ai_mode", {"EMS work mode": "ai_mode"})
+        ),
     )
     return replace(facts, **changes)
 
@@ -50,7 +51,7 @@ def _facts(power_kw: float | None = -4.6, *, management: str = "free", **changes
 def _inputs(at: datetime, **changes) -> HoldInputs:
     base = HoldInputs(
         now=at, grid_charging=True, facts=_facts(), battery_age_s=5.0, measurement_ok=True, headroom_a=12.0,
-        charger_ids=("charger_a",), car_kw=7.0,
+        charger_ids=("charger_a",), car_kw=7.0, reads=_reads(),
     )
     return replace(base, **changes)
 
@@ -68,15 +69,19 @@ def _armed_hold() -> tuple[HoldMemory, list]:
     return _run(HoldMemory(), _inputs(T0), _inputs(T0 + timedelta(seconds=ARM_S)))
 
 
-def test_a_discharge_into_a_grid_charge_would_set_the_limit_to_zero_after_it_lasts() -> None:
+def test_a_discharge_into_a_grid_charge_would_run_the_executors_hold_after_it_lasts() -> None:
     memory, decisions = _run(HoldMemory(), _inputs(T0), _inputs(T0 + timedelta(seconds=30)))
-    assert decisions == [] and not memory.held
+    assert decisions == [] and not memory.held and requested_action(memory) is None
 
     memory, [decision] = _run(memory, _inputs(T0 + timedelta(seconds=ARM_S)))
 
-    assert decision.action == "would_write" and decision.entity_id == LIMIT and decision.value == 0.0
-    assert decision.read == "23.04" and decision.detail["snapshot_unset"] is True
-    assert memory.held and memory.snapshot == "23.04" and memory.writes_today == 1
+    assert decision.action == "would_write" and decision.entity_id == LIMIT and decision.value == HOLD_WRITES
+    assert decision.read == "23.04"
+    assert [(row["role"], row["value"]) for row in decision.detail["restore"]] == [
+        ("control_mode", "Maximum Self Consumption"), ("remote_ems", False), ("discharge_limit", 23.04)
+    ]
+    assert memory.held and memory.snapshot == {"discharge_limit": "23.04"} and memory.writes_today == 3
+    assert requested_action(memory) == "hold"
 
 
 def test_a_short_dip_does_not_arm() -> None:
@@ -90,30 +95,33 @@ def test_a_short_dip_does_not_arm() -> None:
     assert decisions == []
 
 
-def test_a_restore_writes_the_rating_for_an_unset_limit_when_the_car_stops() -> None:
+def test_a_restore_hands_back_what_the_executor_wrote_when_the_car_stops() -> None:
     memory, _ = _armed_hold()
 
     memory, [decision] = _run(memory, _inputs(T0 + timedelta(seconds=ARM_S + 10), grid_charging=False))
 
     assert decision.action == "would_restore" and decision.reason == "car_not_charging_from_grid"
-    assert decision.value == 23.04 and not memory.held and memory.writes_today == 2
+    assert decision.value == {"control_mode": "Maximum Self Consumption", "remote_ems": False, "discharge_limit": 23.04}
+    assert not memory.held and memory.writes_today == 3, "a restore is not counted, as the executor counts"
 
 
-def test_a_real_limit_is_restored_as_it_was() -> None:
-    facts = _facts(hold=_control("4.8", unset=False))
-    memory, _ = _run(HoldMemory(), _inputs(T0, facts=facts), _inputs(T0 + timedelta(seconds=ARM_S), facts=facts))
+def test_a_sigenergy_limit_that_reads_unknown_is_restored_as_the_rating_never_as_unknown() -> None:
+    reads = _reads(discharge_limit="unknown")
+    memory, [decision] = _run(HoldMemory(), _inputs(T0, reads=reads), _inputs(T0 + timedelta(seconds=ARM_S), reads=reads))
+    assert decision.action == "would_write" and decision.read == "unknown"
+    assert memory.restore["discharge_limit"] == 23.04 and memory.snapshot == {"discharge_limit": "unknown"}
 
-    _memory, [decision] = _run(memory, _inputs(T0 + timedelta(seconds=ARM_S + 5), grid_charging=False, facts=facts))
+    _memory, [back] = _run(memory, _inputs(T0 + timedelta(seconds=ARM_S + 5), grid_charging=False, reads=reads))
 
-    assert decision.value == 4.8
+    assert back.value["discharge_limit"] == 23.04
+    assert "unknown" not in back.value.values()
 
 
-def test_victron_no_limit_is_restored_as_minus_one() -> None:
-    assert VICTRON.hold is not None
-    control = ControlStatus(VICTRON.hold, "number.v", True, True, True, "-1", -0.001, True)
-    memory = HoldMemory(held=True, snapshot="-1", snapshot_unset=True)
+def test_a_brand_without_executor_commands_cannot_be_held_even_in_shadow() -> None:
+    facts = _facts(brand="victron", integration="victron_gx")
+    memory, decisions = _run(HoldMemory(), _inputs(T0, facts=facts, reads={}), _inputs(T0 + timedelta(seconds=ARM_S), facts=facts, reads={}))
 
-    assert restore_value(memory, control, None) == -1.0
+    assert [(d.action, d.reason) for d in decisions] == [("not_possible", "no_brand_control")] and not memory.held
 
 
 @pytest.mark.parametrize(
@@ -125,7 +133,7 @@ def test_victron_no_limit_is_restored_as_minus_one() -> None:
         ({"measurement_ok": False}, "measurement_lost"),
         ({"headroom_a": 0.5}, "headroom_low"),
         ({"facts": _facts(management="self_managed")}, "self_managed:EMS work mode:ai_mode"),
-        ({"facts": _facts(hold=_control(enabled=False))}, "control_disabled"),
+        ({"reads": {}}, "control_not_found:discharge_limit"),
     ],
 )
 def test_each_restore_trigger_releases_at_once(changes: dict, reason: str) -> None:
@@ -157,7 +165,7 @@ def test_a_battery_that_runs_itself_is_left_alone_once_per_grid_charge() -> None
 
     [decision] = decisions
     assert decision.action == "left_alone" and decision.reason == "self_managed:EMS work mode:ai_mode"
-    assert decision.detail["would_write"] == 0.0 and decision.entity_id == LIMIT
+    assert decision.detail["would_write"]["discharge_limit"] == 0.0 and decision.entity_id == LIMIT
     assert not memory.held and memory.writes_today == 0
 
     # The next grid charge says it again.
@@ -178,13 +186,20 @@ def test_a_charging_battery_is_never_held() -> None:
     assert not memory.held
 
 
+def _without(role: str) -> dict[str, RoleRead]:
+    return {name: read for name, read in _reads().items() if name != role}
+
+
 @pytest.mark.parametrize(
     ("changes", "reason"),
     [
-        ({"facts": _facts(hold=None)}, "no_hold_control"),
-        ({"facts": _facts(hold=_control(enabled=False))}, "control_disabled"),
+        # The executor's own refusals, as its preview gives them.
+        ({"reads": _without("remote_ems")}, "control_not_found:remote_ems"),
+        ({"reads": _reads() | {"remote_ems": replace(_reads()["remote_ems"], enabled=False)}}, "control_disabled:remote_ems"),
+        ({"reads": _reads(remote_ems="on")}, "remote_ems_already_on"),
+        ({"reads": _reads(discharge_limit="unavailable")}, "no_restore_value:discharge_limit"),
         ({"facts": _facts(on_grid=False)}, "off_grid"),
-        ({"measurement_ok": False}, "measurement_lost"),
+        ({"measurement_ok": False}, "stale_data"),
         ({"headroom_a": None}, "headroom_unknown"),
         # 4.6 kW is 6.6 A per phase at 400 V: 8 A of headroom would leave 1.4 A.
         ({"headroom_a": 8.0}, "headroom_too_small"),
@@ -196,11 +211,7 @@ def test_a_hold_that_is_not_possible_says_why(changes: dict, reason: str) -> Non
     assert [(d.action, d.reason) for d in decisions] == [("not_possible", reason)] and not memory.held
 
 
-def test_goodwe_has_no_hold_to_offer() -> None:
-    assert GOODWE.hold is None
-
-
-def test_the_daily_write_cap() -> None:
+def test_the_daily_write_cap_is_the_executors() -> None:
     memory = HoldMemory(day=T0.date().isoformat(), writes_today=DAILY_WRITE_CAP)
 
     _memory, decisions = _run(memory, _inputs(T0), _inputs(T0 + timedelta(seconds=ARM_S)))
@@ -224,7 +235,8 @@ def test_a_restart_restores_first() -> None:
     released, decision = restart(stored, _facts(), T0 + timedelta(hours=1))
 
     assert decision is not None and decision.action == "would_restore" and decision.reason == "restart"
-    assert decision.value == 23.04 and not released.held
+    assert decision.value == {"control_mode": "Maximum Self Consumption", "remote_ems": False, "discharge_limit": 23.04}
+    assert not released.held
     assert restart(released, _facts(), T0 + timedelta(hours=1)) == (released, None)
 
 
@@ -246,3 +258,9 @@ def test_the_kwh_the_battery_gave_the_car_is_counted_per_day_up_to_the_cars_draw
 def test_broken_memory_loads_empty() -> None:
     assert HoldMemory.from_dict({"held": "yes", "writes_today": -3, "gave_car_kwh": {"d": "x"}, "noted": "x"}) == HoldMemory()
     assert HoldMemory.from_dict(None) == HoldMemory()
+
+
+def test_an_earlier_versions_single_snapshot_loads_as_none() -> None:
+    memory = HoldMemory.from_dict({"held": True, "snapshot": "4.8", "snapshot_unset": False})
+
+    assert memory.held and memory.snapshot == {} and memory.restore == {}
