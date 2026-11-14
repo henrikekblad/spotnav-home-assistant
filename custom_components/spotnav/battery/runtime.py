@@ -38,7 +38,9 @@ from ..const import (
 )
 from ..planning.grid_voltage import stored_voltage_between_phases_v
 from ..site.measurement_problem import UNHEALTHY_STATES
+from .commands import BrandControl
 from .dry_run import SECTION_LEDGER, SECTION_MONITOR, HoldDryRun
+from .executor import RoleRead, role_reads
 from .facts import BatteryFacts, EntityFact, battery_facts, with_outside_control
 from .hold import HoldDecision, HoldInputs, HoldMemory, restart, step
 from .ledger import Ledger
@@ -125,6 +127,20 @@ def read_battery_facts(hass: HomeAssistant, config: dict[str, Any], power_kw: fl
         power_kw=power_kw,
         external_planner=external_planner(hass),
     )
+
+
+def read_role_reads(hass: HomeAssistant, config: dict[str, Any], control: BrandControl | None) -> dict[str, RoleRead]:
+    """Each of the brand's control roles (`commands.py`) as found in the battery's config entry; none without one."""
+    if control is None:
+        return {}
+    registry = er.async_get(hass)
+    entity_id = config.get(CONF_BATTERY_AGGREGATE_POWER_ENTITY)
+    battery_entry = registry.async_get(entity_id) if isinstance(entity_id, str) and entity_id else None
+    if battery_entry is None or battery_entry.config_entry_id is None:
+        return {}
+    entries = er.async_entries_for_config_entry(registry, battery_entry.config_entry_id)
+    entities = [_entity_fact(entry, hass) for entry in entries if entry.platform == battery_entry.platform]
+    return role_reads(control, entities, _entity_fact(battery_entry, hass))
 
 
 class BatteryShadow:

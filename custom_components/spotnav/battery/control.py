@@ -31,12 +31,10 @@ from typing import TYPE_CHECKING, Any, Final
 
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
-from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
 from ..const import (
-    CONF_BATTERY_AGGREGATE_POWER_ENTITY,
     CONF_CHARGER_ENTRY_IDS,
     CONF_SOLAR_PRIORITY,
     DEFAULT_SOLAR_PRIORITY,
@@ -48,11 +46,11 @@ from ..site.measurement_problem import UNHEALTHY_STATES
 from . import shadow
 from .commands import WATCHDOG_S, BrandControl, control_for, service_call
 from .executor import ExecInputs, ExecState, Executor, Op, RoleRead, StepResult
-from .facts import BatteryFacts, EntityFact, find_entity
+from .facts import BatteryFacts
 from .ledger import Ledger
 from .monitor import Capability, Monitor
 from .plan_shadow import slot_at
-from .runtime import _entity_fact, read_battery_facts
+from .runtime import read_battery_facts, read_role_reads
 from .verify import Sample, Verification, keep_report
 
 if TYPE_CHECKING:
@@ -83,30 +81,6 @@ def _reachable() -> None:
     """Refuse before anything is read, decided or written while no part may write (`shadow.ON_REACHABLE`)."""
     if not shadow.ON_REACHABLE:
         raise ControlNotReachable("no battery control can write in this release")
-
-
-def _registry_reads(hass: HomeAssistant, config: dict[str, Any], control: BrandControl) -> dict[str, RoleRead]:
-    """Each role's entity in the battery's config entry, found by the integration's unique-id key."""
-    registry = er.async_get(hass)
-    entity_id = config.get(CONF_BATTERY_AGGREGATE_POWER_ENTITY)
-    battery_entry = registry.async_get(entity_id) if isinstance(entity_id, str) and entity_id else None
-    if battery_entry is None or battery_entry.config_entry_id is None:
-        return {}
-    entries = er.async_entries_for_config_entry(registry, battery_entry.config_entry_id)
-    entities: list[EntityFact] = [
-        _entity_fact(entry, hass) for entry in entries if entry.platform == battery_entry.platform
-    ]
-    battery = _entity_fact(battery_entry, hass)
-    reads: dict[str, RoleRead] = {}
-    for role in control.roles:
-        found = find_entity(role.match, entities, battery)
-        if found is None:
-            continue
-        reads[role.name] = RoleRead(
-            entity_id=found.entity_id, state=found.state, found=True, enabled=not found.disabled, step=found.step,
-            device_id=found.device_id,
-        )
-    return reads
 
 
 class BatteryControl:
@@ -278,7 +252,7 @@ class BatteryControl:
         return executor is not None and executor.state.phase in ("active", "restoring")
 
     def _reads(self, control: BrandControl) -> dict[str, RoleRead]:
-        reads = _registry_reads(self.hass, self.site.config, control)
+        reads = read_role_reads(self.hass, self.site.config, control)
         executor = self.executor
         if executor is not None:
             # After a restart the stored entities are read even if the registry lookup fails.
