@@ -97,7 +97,7 @@ async def test_an_idle_ocpp_charger_without_phase_attributes_draws_nothing(
     charger, site = await _world(hass, status=status)
     assert charger.connection()[0] != "charging"
 
-    assert site_car_w(hass, site) == 0.0
+    assert site_car_w(hass, site, idle_unread_as_zero=True) == 0.0
     assert _observed_car_w(site, monkeypatch) == 0.0
     # The house figure is the grid's: 3 x 600 W.
     running = site.demand.tracker.running_hour(dt_util.utcnow())
@@ -107,36 +107,44 @@ async def test_an_idle_ocpp_charger_without_phase_attributes_draws_nothing(
 async def test_an_idle_charger_of_unknown_status_whose_current_reads_zero_draws_nothing(hass: HomeAssistant) -> None:
     _charger, site = await _world(hass, status="unavailable")
 
-    assert site_car_w(hass, site) == 0.0
+    assert site_car_w(hass, site, idle_unread_as_zero=True) == 0.0
     # The current sensor itself unreadable too: nothing says it is idle.
     hass.states.async_set(CURRENT, "unavailable")
-    assert site_car_w(hass, site) is None
+    assert site_car_w(hass, site, idle_unread_as_zero=True) is None
     # Or reading a current: it may be drawing.
     _current(hass, 10.0)
-    assert site_car_w(hass, site) is None
+    assert site_car_w(hass, site, idle_unread_as_zero=True) is None
+
+
+async def test_only_ocpp_trusts_the_current_entity_state_of_a_charger_of_unknown_status(hass: HomeAssistant) -> None:
+    """Another integration's state may be one phase or the neutral: a 0 A there proves nothing."""
+    charger, site = await _world(hass, status="unavailable")
+    charger.ocpp_target = None
+
+    assert site_car_w(hass, site, idle_unread_as_zero=True) is None
 
 
 async def test_a_charging_charger_without_phase_attributes_stays_unknown(hass: HomeAssistant, monkeypatch) -> None:
     _charger, site = await _world(hass, status="Charging", amps=16.0)
 
-    assert site_car_w(hass, site) is None
+    assert site_car_w(hass, site, idle_unread_as_zero=True) is None
     assert _observed_car_w(site, monkeypatch) is None
     # Even a current sensor that still reads 0 A: the status says charging.
     _current(hass, 0.0)
-    assert site_car_w(hass, site) is None
+    assert site_car_w(hass, site, idle_unread_as_zero=True) is None
 
 
 async def test_a_charger_whose_phases_read_is_counted_as_before(hass: HomeAssistant) -> None:
     _charger, site = await _world(hass, status="Charging", amps=10.0, phases={"L1": 10.0, "L2": 10.0, "L3": 10.0})
 
-    assert site_car_w(hass, site) == pytest.approx(3 * 10.0 * 230.0)
+    assert site_car_w(hass, site, idle_unread_as_zero=True) == pytest.approx(3 * 10.0 * 230.0)
 
 
 async def test_the_import_target_keeps_an_unreadable_charger_unknown(hass: HomeAssistant) -> None:
     """The import target steers chargers: an idle charger it cannot read leaves its house figure unknown, as before."""
     _charger, site = await _world(hass, status="Finishing")
 
-    assert site_car_w(hass, site, idle_unread_as_zero=False) is None
+    assert site_car_w(hass, site) is None
 
 
 async def test_the_fuse_protection_still_credits_nothing_for_an_unreadable_charger(hass: HomeAssistant) -> None:
