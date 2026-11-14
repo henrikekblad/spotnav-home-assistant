@@ -3,6 +3,7 @@
   "battery": null,
   "calendar": null,
   "days": [],
+  "energy_flow": null,
   "flow": null,
   "generated_at": "2026-11-13T16:20:00+00:00",
   "hours": [

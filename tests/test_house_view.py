@@ -32,6 +32,7 @@ from custom_components.spotnav.battery.plan_shadow import (
 )
 from custom_components.spotnav.battery.stored_value import DayMoney, StoredValue
 from custom_components.spotnav.planning.demand_charge import HourMean, hour_start
+from custom_components.spotnav.site.energy_flow import EnergyHour, energy_flow
 from custom_components.spotnav.site.forecast_log import (
     KIND_HOUSE,
     KIND_SUN,
@@ -301,7 +302,42 @@ def full_inputs(now: datetime = NOW) -> HouseInputs:
             stored=stored_value(now),
         ),
         money=("SEK", "kr", "öre"),
+        energy_flow=villa_flow(now),
     )
+
+
+#: A real site's 13 November 2026, local hours 00-16 (kWh, the Energy dashboard's hourly statistics): grid import,
+#: export, sun, battery charge, battery discharge, the charger's register. A night grid charge at 03-04, the car from
+#: 10 to 14 with the battery charging from the grid beside it.
+VILLA_HOURS = (
+    (1.65, 0, 0, 0.01, 0, 0),
+    (1.32, 0, 0, 0, 0, 0),
+    (1.53, 0, 0, 0, 0, 0),
+    (4.52, 0, 0, 2.67, 0.02, 0),
+    (4.76, 0, 0, 2.8, 0.01, 0),
+    (1.46, 0, 0, 0, 0, 0),
+    (0.01, 0.03, 0, 0, 1.8, 0),
+    (0.02, 0.02, 0.01, 0, 1.57, 0),
+    (0, 0.02, 0.59, 0.16, 1.38, 0),
+    (0.01, 0.02, 0.82, 0.02, 1.31, 0),
+    (3.59, 0.02, 0.53, 0.89, 0.45, 2.1),
+    (12.69, 0, 1.64, 7.41, 0.02, 4.67),
+    (13.8, 0, 2.49, 5.5, 0.01, 8.56),
+    (13.81, 0, 0.86, 3.13, 0, 10.13),
+    (13.72, 0, 0.47, 12.52, 0, 0),
+    (3.99, 0, 0.09, 3.1, 0.48, 0),
+    (0.01, 0.01, 0, 0, 1.7, 0),
+)
+
+
+def villa_flow(now: datetime) -> dict[str, Any] | None:
+    midnight = datetime(2026, 11, 13, tzinfo=timezone.utc) - CET
+    hours = [
+        EnergyHour(midnight + timedelta(hours=i), g_in, g_out, sun, b_in, b_out, car)
+        for i, (g_in, g_out, sun, b_in, b_out, car) in enumerate(VILLA_HOURS)
+        if midnight + timedelta(hours=i + 1) <= now
+    ]
+    return energy_flow(hours, day=date(2026, 11, 13), has_solar=True, has_battery=True, soc_pct=48.3)
 
 
 def test_the_full_site_and_its_fixture() -> None:

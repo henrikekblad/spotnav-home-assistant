@@ -16,7 +16,9 @@ It shows what the site diagnostics already carry, cut to what a card draws:
   `None` on a site without a solar forecast, `battery` on a site without a battery.
 * **`today`**: today so far, split as the battery's own app splits a day (sold, arbitrage, bought) with the mode in
   force, from the stored energy's running value (`battery/stored_value.py`); **`flow`**: today's energy from sources (sun, battery, grid) to uses
-  (battery, load, grid); **`calendar`**: the running month's reviewed days, the plan beside the battery's own way.
+  (battery, load, grid); **`energy_flow`**: today's completed hours as a Sankey diagram's nodes and links, from the
+  Energy dashboard's meters and the chargers' registers, the flows allocated hour by hour (`site/energy_flow.py`, its
+  docstring has the rule; `None` without the dashboard's grid meter, also on a site without a battery); **`calendar`**: the running month's reviewed days, the plan beside the battery's own way.
   All three are `None` without a battery. Each hour also has its mean buy and sell price (`buy`, `sell`, minor per
   kWh) where the battery plan priced it.
 * **`days`**: the last reviewed days, one row each, for the card's details.
@@ -68,6 +70,7 @@ HOUSE_KEYS: Final = (
     "battery",
     "today",
     "flow",
+    "energy_flow",
     "calendar",
     "days",
     "sources",
@@ -157,6 +160,8 @@ class HouseInputs:
     money: tuple[str | None, str | None, str | None] | None = None
     #: What the house figure is: the import less the chargers (`net`) or the house's whole load (`gross`).
     basis: str = "net"
+    #: Today's energy flow as `site/energy_flow.energy_flow` built it (the shell reads the statistics); `None` without.
+    energy_flow: Mapping[str, Any] | None = None
 
 
 def _round(value: float | None, digits: int = 3) -> float | None:
@@ -491,6 +496,7 @@ def house_view(inputs: HouseInputs) -> dict[str, Any]:
         "flow": None
         if inputs.battery is None
         else day_flow(inputs.battery, inputs.now, inputs.tz, inputs.sun is not None),
+        "energy_flow": None if inputs.energy_flow is None else dict(inputs.energy_flow),
         "calendar": None if inputs.battery is None else month_calendar(inputs.battery, inputs.now, inputs.tz),
         "days": days_view(inputs),
         "sources": {

@@ -29,9 +29,10 @@ class _Connection:
         self.answers.append({"id": message_id, "success": False, "error": {"code": code, "message": message}})
 
 
-def ask(hass: HomeAssistant, message_id: int, **request: Any) -> dict[str, Any]:
+async def ask(hass: HomeAssistant, message_id: int, **request: Any) -> dict[str, Any]:
     connection = _Connection()
     websocket_get_house(hass, connection, {"id": message_id, "type": "spotnav/get_house", **request})  # type: ignore[arg-type]
+    await hass.async_block_till_done()
     (answer,) = connection.answers
     return answer
 
@@ -40,7 +41,7 @@ async def test_the_pilot_site_is_answered(hass: HomeAssistant, freezer) -> None:
     site = await pilot_site(hass, freezer, import_target_kw=6.0)
     await run(hass, freezer, 60, 4000.0)
     await run(hass, freezer, 60, 3000.0)
-    answer = ask(hass, 1, api_version=1, charger_id="entry_a")
+    answer = await ask(hass, 1, api_version=1, charger_id="entry_a")
     assert answer["success"], answer
     result = answer["result"]
     assert tuple(result) == HOUSE_KEYS
@@ -56,7 +57,7 @@ async def test_the_pilot_site_is_answered(hass: HomeAssistant, freezer) -> None:
         expected = None if hour.house_kw is None else round(hour.house_kw, 3)
         assert by_start[hour.start.isoformat()] == expected
     assert result["sources"]["solar_forecasts"] == []
-    assert ask(hass, 2, api_version=1, site_id=site.entry_id)["result"] == result
+    assert (await ask(hass, 2, api_version=1, site_id=site.entry_id))["result"] == result
 
 
 async def test_refusals(hass: HomeAssistant, freezer) -> None:
@@ -71,10 +72,10 @@ async def test_refusals(hass: HomeAssistant, freezer) -> None:
         ({"api_version": 1, "site_id": 7}, "spotnav_unknown_site"),
     ]
     for index, (request, code) in enumerate(cases, start=1):
-        answer = ask(hass, index, **request)
+        answer = await ask(hass, index, **request)
         assert not answer["success"] and answer["error"]["code"] == code, request
     assert await hass.config_entries.async_unload(site.entry_id)
-    answer = ask(hass, 99, api_version=1, site_id=site.entry_id)
+    answer = await ask(hass, 99, api_version=1, site_id=site.entry_id)
     assert not answer["success"] and answer["error"]["code"] == "spotnav_no_site"
 
 
@@ -95,3 +96,44 @@ def test_the_suns_production_comes_from_the_sun_forecasts_log() -> None:
     controller = SimpleNamespace(house_forecast=SimpleNamespace(log=log))
 
     assert _production(controller) == {measured: 1.2}
+
+
+async def test_todays_energy_flow_comes_from_the_energy_dashboard(hass: HomeAssistant, freezer, monkeypatch) -> None:
+    """The flow reads the Energy dashboard's meters and the chargers' registers for today's completed hours, once per
+    hour (or `FLOW_REFRESH_S`); without the dashboard's grid meter there is none."""
+    from datetime import timedelta
+
+    from custom_components.spotnav.api import house as house_api
+    from custom_components.spotnav.planning.demand_charge import hour_start
+
+    site = await pilot_site(hass, freezer, import_target_kw=6.0)
+    await run(hass, freezer, 60, 4000.0)
+    answer = await ask(hass, 1, api_version=1, site_id=site.entry_id)
+    assert answer["result"]["energy_flow"] is None  # no Energy integration in the test
+
+    controller = site_controller_for(hass, site.entry_id)
+    now = controller.demand.now()  # type: ignore[union-attr]
+    current = hour_start(now, controller.demand.tracker.tz)  # type: ignore[union-attr]
+    prefs = {"energy_sources": [{"type": "grid", "stat_energy_from": "sensor.import", "stat_energy_to": "sensor.export"}]}
+    reads: list[tuple] = []
+
+    async def fake_prefs(_hass):
+        return prefs
+
+    async def fake_statistics(_hass, ids, start, end, period):
+        reads.append((tuple(ids), start, end, period))
+        last = current - timedelta(hours=1)
+        rows = {"sensor.import": [{"start": last, "change": 3.0}], "sensor.export": [{"start": last, "change": 0.0}]}
+        return {i: rows.get(i, [{"start": last, "change": 1.0}]) for i in ids}
+
+    monkeypatch.setattr(house_api, "async_energy_prefs", fake_prefs)
+    monkeypatch.setattr(house_api, "async_statistics", fake_statistics)
+    hass.data.pop(house_api._FLOW_CACHE, None)  # noqa: SLF001
+    first = (await ask(hass, 2, api_version=1, site_id=site.entry_id))["result"]["energy_flow"]
+    assert reads and reads[0][3] == "hour" and reads[0][2] == current
+    nodes = {node["id"]: node["kwh"] for node in first["nodes"]}
+    assert nodes["source.grid"] == 3.0
+    assert set(nodes) == {"source.grid", "use.house", "use.car", "use.grid"}
+    # Asked again within the hour: read from the cache.
+    await ask(hass, 3, api_version=1, site_id=site.entry_id)
+    assert len(reads) == 1
