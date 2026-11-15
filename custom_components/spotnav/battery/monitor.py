@@ -98,7 +98,7 @@ class Command:
         if not isinstance(data, Mapping):
             return None
         kind, at, rate, before = data.get("kind"), parse_aware_datetime(data.get("at")), data.get("rate_kw"), data.get("before_kw")
-        if kind not in _KINDS or at is None or not _finite(rate):
+        if not isinstance(kind, str) or kind not in _KINDS or at is None or not _finite(rate):
             return None
         return cls(
             kind=kind,
