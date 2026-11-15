@@ -738,6 +738,19 @@ def test_watchdog_renewals_do_not_count_against_the_day_s_write_cap() -> None:
     assert executor.state.phase == "active" and executor.state.writes_today == entered
 
 
+def test_a_role_never_written_that_reads_unknown_for_a_moment_is_not_written_on_the_way_back() -> None:
+    executor = Executor(SOLAREDGE_CONTROL)
+    battery = FakeBattery(SOLAREDGE_CONTROL, dict(SOLAREDGE_STATES))
+    now, results = run(executor, battery, T0, 6, "hold")
+    assert "charge_limit" not in [role for role, _ in written(results)]
+    # The limits blink while the command mode changes back: no reading is no reason to write the snapshot.
+    battery.states["charge_limit"] = "unavailable"
+    battery.states["discharge_limit"] = "unknown"
+    _now, results = run(executor, battery, now, 8, "self_consume")
+    assert [role for role, _ in written(results)] == ["command_mode", "command_timeout"]
+    assert executor.state.phase == "idle"
+
+
 def test_huawei_charges_through_its_forcible_charge_service_and_stops_it_on_the_way_back() -> None:
     executor = Executor(HUAWEI_CONTROL)
     battery = FakeBattery(HUAWEI_CONTROL, dict(HUAWEI_STATES))

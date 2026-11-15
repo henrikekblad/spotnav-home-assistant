@@ -1131,9 +1131,16 @@ class Executor:
         if restoring and role.idle_when and state in role.idle_when:
             return True
         snapshot = self.state.snapshot.get(role.name)
+        never_written = role.name not in self.state.written
+        if never_written and reading(role, state) is None and (
+            restoring or wanted == self.state.restore_values.get(role.name)
+        ):
+            # Never written and no reading now (an entity that blinks unknown or unavailable): nothing SpotNav did to
+            # undo, and no evidence it needs its snapshot written.
+            return True
         if (
             snapshot is not None and state == snapshot and wanted == self.state.restore_values.get(role.name)
-            and role.name not in self.state.written
+            and never_written
         ):
             # Never written and still as found (a never-set limit reads "unknown"): nothing to write back. A role
             # SpotNav wrote is restored by writing its snapshot and reading it back, whatever it reads now.
