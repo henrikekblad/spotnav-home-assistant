@@ -37,6 +37,16 @@ How it acts (`step`, one look every few seconds; pure, the shell does the writes
   charger held below what it asked makes the battery yield (`YIELD_STEP_KW` per review); with "battery first" the
   battery keeps its rate and the site's load balancing backs the car off (the battery is house load to it).
   The rate goes down at once and up only by `RATE_STEP_KW` after `RATE_UP_DWELL_S`.
+* **Peak cover under a hold.** A hold stops the battery covering the house, so a peak (a kettle, the oven, one
+  phase) lands on the fuse. When the least phase headroom falls under `PEAK_COVER_A` the executor first lifts the
+  hold: one write, the brand's `peak_first` roles back to the value found (Sigenergy: the discharge limit, which
+  covers a one-phase peak on that phase at once), Remote EMS left on. If the headroom is not back at or above
+  `PEAK_COVER_A` within `PEAK_RECOVER_S` (or later stays under it that long), the battery is handed back in full.
+  Under `RESTORE_HEADROOM_A` it is handed back at once, as before, and every hand-back of a hold or a grid charge
+  writes the `peak_first` roles first (a grid charge: the mode that stops it). The cover's write is never held back
+  by the day's write cap. A covered hold holds again only after `PEAK_REHOLD_S`, and only when the start rule
+  allows it (the headroom keeps `HEADROOM_MARGIN_A` once the battery stops covering); otherwise it stays covered
+  until the plan changes the action.
 * **The export limit** (`commands.EXPORT_CONTROLS`, kind `export`): the same executor, ledger and rules run the
   site's export limit as its own instance, for the one action `curtail_export` (the limit at 0 kW while the sell price
   is below zero, `export_curtail.py`); anything else hands it back to the value found. It needs no battery reading
@@ -85,6 +95,14 @@ BATTERY_MAX_AGE_S: Final = 120.0
 HEADROOM_MARGIN_A: Final = 2.0
 #: Below this headroom (A) any action that adds import is handed back at once.
 RESTORE_HEADROOM_A: Final = 1.0
+#: Under a hold, below this headroom (A) the hold is lifted (the battery covers the peak) before anything else.
+#: Between `RESTORE_HEADROOM_A` and `HEADROOM_MARGIN_A`: a hold starts only with `HEADROOM_MARGIN_A` left, so a
+#: hold that just started does not lift at once.
+PEAK_COVER_A: Final = 1.5
+#: A lifted hold whose headroom stays under `PEAK_COVER_A` this long (s) is handed back in full.
+PEAK_RECOVER_S: Final = 30.0
+#: A lifted hold holds again no sooner than this (s): its own lift is why the headroom recovered.
+PEAK_REHOLD_S: Final = 900.0
 #: A grid charge below this is not worth running (kW).
 MIN_RATE_KW: Final = 0.5
 #: The rate goes up only by this much (kW), after this long since its last change (s).
@@ -107,7 +125,9 @@ RESTORE_ATTEMPTS: Final = len(RESTORE_RETRY_S)
 Phase = Literal["idle", "active", "restoring", "blocked"]
 _PHASES: Final = frozenset({"idle", "active", "restoring", "blocked"})
 #: Hand-back reasons that block the control until it is reset (or, for the cap, until the next day).
-_BLOCKING_PREFIXES: Final = ("write_not_taken", "changed_outside_spotnav", "no_effect", "management_changed")
+_BLOCKING_PREFIXES: Final = (
+    "write_not_taken", "changed_outside_spotnav", "no_effect", "management_changed", "not_obeyed",
+)
 #: States that are no value: never a snapshot to write back.
 _NO_VALUE: Final = frozenset({"", "unavailable", "unknown", "none"})
 _RAISES_IMPORT: Final = frozenset({ACTION_HOLD, ACTION_GRID_CHARGE})
@@ -225,6 +245,9 @@ class ExecState:
     #: Roles SpotNav wrote since the snapshot was taken: their restore always writes the snapshot back and waits
     #: for its read-back (a read that only looks like the value found, Sigenergy's `unknown`, is not enough).
     written: tuple[str, ...] = ()
+    #: A hold lifted for a peak (`peak_cover`): since when, and since when the headroom has been under the mark.
+    covered_at: datetime | None = None
+    peak_low_since: datetime | None = None
     day: str | None = None
     writes_today: int = 0
 
@@ -261,6 +284,8 @@ class ExecState:
             "retries": {name: [count, at.isoformat()] for name, (count, at) in self.retries.items()},
             "unrestored": list(self.unrestored),
             "written": list(self.written),
+            "covered_at": iso(self.covered_at),
+            "peak_low_since": iso(self.peak_low_since),
             "day": self.day,
             "writes_today": self.writes_today,
         }
@@ -330,6 +355,8 @@ class ExecState:
             retries=retries,
             unrestored=names("unrestored"),
             written=names("written"),
+            covered_at=parse_aware_datetime(data.get("covered_at")),
+            peak_low_since=parse_aware_datetime(data.get("peak_low_since")),
             day=text("day"),
             writes_today=writes if isinstance(writes, int) and not isinstance(writes, bool) and writes >= 0 else 0,
         )
@@ -369,6 +396,18 @@ def grid_charge_cap_kw(inputs: ExecInputs, commanded_kw: float) -> float | None:
     if inputs.car_first and inputs.car_held:
         cap = min(cap, own - YIELD_STEP_KW)
     return cap
+
+
+def hold_headroom_ok(inputs: ExecInputs) -> bool:
+    """Whether a hold may start (or a lifted one hold again): the headroom keeps `HEADROOM_MARGIN_A` once the
+    battery stops covering what it discharges now."""
+    if inputs.headroom_a is None or inputs.volts_between_phases <= 0:
+        return False
+    extra_a = 0.0
+    power = inputs.facts.power_kw
+    if power is not None and power < 0:
+        extra_a = -power * 1000.0 / (math.sqrt(3.0) * inputs.volts_between_phases)
+    return inputs.headroom_a - extra_a >= HEADROOM_MARGIN_A
 
 
 # --- helpers -------------------------------------------------------------------------------------------------------
@@ -437,6 +476,13 @@ def _management_problem(facts: BatteryFacts, control: BrandControl, active: bool
             continue
         return f"self_managed:{rule.label}:{state}"
     return None if management.settings else f"{management.state}:{management.reason}"
+
+
+def restore_order(control: BrandControl, action: str | None) -> tuple[str, ...]:
+    """The order a hand-back writes the roles in: for a hold or a grid charge the roles that let the battery cover
+    a peak first (`BrandControl.peak_first`), then the brand's restore order."""
+    first = control.peak_first.get(action or "", ())
+    return (*first, *(name for name in control.restore_order if name not in first))
 
 
 def _event(now: datetime, kind: str, reason: str, **detail: Any) -> dict[str, Any]:
@@ -510,7 +556,9 @@ class Executor:
             events += start_events
             persist_first = started
         elif self.state.phase == "active":
-            events += self._retarget(inputs)
+            events += self._cover(inputs)
+            if self.state.phase == "active":
+                events += self._retarget(inputs)
         events += self._precheck(inputs)
         ops = self._progress(inputs)
         events += [_event(now, "write", op.role, entity_id=op.entity_id, value=op.value, restore=op.restore)
@@ -585,10 +633,10 @@ class Executor:
             state = self.state
             if state.phase not in ("active", "restoring") or state.pending is not None:
                 break
-            if not state.phase == "restoring" and state.writes_today >= DAILY_WRITE_CAP:
-                break
             name = self._next_role(state, inputs)
             if name is None:
+                break
+            if self._capped(state, inputs, name):
                 break
             role = self.control.role(name)
             read = inputs.reads.get(name)
@@ -696,7 +744,7 @@ class Executor:
         blocked = reason if _blocking(reason) else state.blocked
         self.state = replace(
             state, phase="restoring", target=target, reason=reason, blocked=blocked, sent=(), renew=(),
-            retries={}, unrestored=(), management_unknown_since=None,
+            retries={}, unrestored=(), management_unknown_since=None, covered_at=None, peak_low_since=None,
         )
         return [_event(now, "hand_back", reason)]
 
@@ -788,12 +836,10 @@ class Executor:
             return "stale_data"
         if inputs.headroom_a is None and not self._export:
             return "headroom_unknown"
-        if action in _RAISES_IMPORT:
-            extra_a = 0.0
-            if action == ACTION_HOLD and facts.power_kw is not None and facts.power_kw < 0:
-                extra_a = -facts.power_kw * 1000.0 / (math.sqrt(3.0) * inputs.volts_between_phases)
-            if inputs.headroom_a - extra_a < HEADROOM_MARGIN_A:
-                return "headroom_too_small"
+        if action == ACTION_HOLD and not hold_headroom_ok(inputs):
+            return "headroom_too_small"
+        if action == ACTION_GRID_CHARGE and inputs.headroom_a < HEADROOM_MARGIN_A:
+            return "headroom_too_small"
         if _writes_today(state, inputs) >= DAILY_WRITE_CAP:
             return "daily_write_cap"
         if state.released_at is not None and (inputs.now - state.released_at).total_seconds() < REARM_S:
@@ -843,6 +889,7 @@ class Executor:
             target=self._wanted(action, rate, restore_values), snapshot=snapshot, restore_values=restore_values,
             entities=entities, device_id=device_id, snapshot_at=now, entered_at=now, rate_changed_at=now,
             watchdog_at=now, sent=(), renew=(), reason=None, given_up=(), management_unknown_since=None, written=(),
+            covered_at=None, peak_low_since=None,
         )
         self._watch(inputs, action, rate)
         return True, [_event(now, "enter", action, rate_kw=rate, snapshot=snapshot)]
@@ -870,7 +917,7 @@ class Executor:
         if action != state.action:
             self.state = replace(
                 state, action=action, rate_kw=rate, target=self._wanted(action, rate, state.restore_values),
-                sent=(), renew=(), rate_changed_at=now, watchdog_at=now,
+                sent=(), renew=(), rate_changed_at=now, watchdog_at=now, covered_at=None, peak_low_since=None,
             )
             self._watch(inputs, action, rate)
             return [_event(now, "change", action, rate_kw=rate)]
@@ -894,6 +941,69 @@ class Executor:
             events.append(_event(now, "renew", ",".join(self.control.watchdog_roles)))
         return events
 
+    # --- the peak cover ---
+
+    def _normal_value(self, name: str) -> Native | None:
+        """What a hand-back writes to a role: its snapshot, or the brand's normal value for one without."""
+        role = self.control.role(name)
+        if role.restored and name in self.state.restore_values:
+            return self.state.restore_values[name]
+        if name in self.state.entities:
+            return NORMAL.get(self.control.brand, {}).get(name)
+        return None
+
+    def _covering(self, state: ExecState, name: str) -> bool:
+        """Whether `name` is a write of a lifted hold (never held back: the battery must cover the peak)."""
+        return state.covered_at is not None and name in self.control.peak_first.get(state.action or "", ())
+
+    def _capped(self, state: ExecState, inputs: ExecInputs, name: str) -> bool:
+        """Whether the day's write cap holds this write back (a restore and a peak cover never are)."""
+        if state.phase == "restoring" or self._covering(state, name):
+            return False
+        return _writes_today(state, inputs) >= DAILY_WRITE_CAP
+
+    def _cover(self, inputs: ExecInputs) -> list[dict[str, Any]]:
+        """Under a hold: lift it when the headroom falls under `PEAK_COVER_A`, hand back in full when it does not
+        recover within `PEAK_RECOVER_S`, hold again after `PEAK_REHOLD_S` when the start rule allows it."""
+        state = self.state
+        now = inputs.now
+        headroom = inputs.headroom_a
+        first = self.control.peak_first.get(ACTION_HOLD, ())
+        if state.action != ACTION_HOLD or inputs.action != ACTION_HOLD or headroom is None or not first:
+            return []
+        if state.covered_at is None:
+            if headroom >= PEAK_COVER_A:
+                return []
+            target = dict(state.target)
+            for name in first:
+                value = self._normal_value(name)
+                if value is not None and name in target:
+                    target[name] = value
+            # The battery is meant to discharge now: the hold's monitor would read that as a hold not taken.
+            self.monitor.stop(now)
+            self.state = replace(
+                state, target=target, covered_at=now, peak_low_since=now,
+                sent=tuple(name for name in state.sent if name not in first),
+            )
+            return [_event(now, "peak_cover", ACTION_HOLD, headroom_a=round(headroom, 2), roles=list(first))]
+        if headroom < PEAK_COVER_A:
+            since = state.peak_low_since or now
+            if (now - since).total_seconds() >= PEAK_RECOVER_S:
+                return self._begin_restore(now, "fuse_headroom")
+            if state.peak_low_since is None:
+                self.state = replace(state, peak_low_since=since)
+            return []
+        if state.peak_low_since is not None:
+            self.state = state = replace(state, peak_low_since=None)
+        if (now - state.covered_at).total_seconds() >= PEAK_REHOLD_S and hold_headroom_ok(inputs):
+            self.state = replace(
+                state, target=self._wanted(ACTION_HOLD, 0.0, state.restore_values), covered_at=None,
+                sent=tuple(name for name in state.sent if name not in first),
+            )
+            self._watch(inputs, ACTION_HOLD, 0.0)
+            return [_event(now, "peak_rehold", ACTION_HOLD, headroom_a=round(headroom, 2))]
+        return []
+
     # --- writing ---
 
     def _satisfied(self, role: Role, wanted: Native, read: RoleRead | None, *, restoring: bool) -> bool:
@@ -915,7 +1025,7 @@ class Executor:
     def _next_role(self, state: ExecState, inputs: ExecInputs) -> str | None:
         """The first role, in the brand's order, that does not read what it should (or must be renewed)."""
         restoring = state.phase == "restoring"
-        order = self.control.restore_order if restoring else self.control.enter_order
+        order = restore_order(self.control, state.action) if restoring else self.control.enter_order
         for name in order:
             if name not in state.target or name in state.given_up or name in state.unrestored:
                 continue
@@ -939,10 +1049,8 @@ class Executor:
         if state.phase not in ("active", "restoring") or state.pending is not None:
             return []
         restoring = state.phase == "restoring"
-        if not restoring and _writes_today(state, inputs) >= DAILY_WRITE_CAP:
-            return []
         name = self._next_role(state, inputs)
-        if name is None:
+        if name is None or self._capped(state, inputs, name):
             return []
         role = self.control.role(name)
         value = state.target[name]
@@ -1011,7 +1119,7 @@ def preview(
     back = executor.state.target
     restores = tuple(
         Op(name, control.role(name).method, state.entities.get(name), back[name], device_id=state.device_id, restore=True)
-        for name in control.restore_order
+        for name in restore_order(control, state.action)
         if name in back and name in written
     )
     return Preview(None, state.rate_kw, tuple(writes), restores, dict(state.snapshot), dict(state.restore_values))

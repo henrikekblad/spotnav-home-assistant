@@ -22,10 +22,15 @@ from custom_components.spotnav.battery.commands import (
 )
 from custom_components.spotnav.battery.executor import (
     DAILY_WRITE_CAP,
+    HEADROOM_MARGIN_A,
     MANAGEMENT_GRACE_S,
+    PEAK_COVER_A,
+    PEAK_RECOVER_S,
+    PEAK_REHOLD_S,
     RATE_UP_DWELL_S,
     REARM_S,
     RESTORE_ATTEMPTS,
+    RESTORE_HEADROOM_A,
     ExecState,
     Executor,
     grid_charge_cap_kw,
@@ -419,6 +424,125 @@ def test_a_grid_charge_that_the_headroom_cannot_carry_is_not_started_or_is_hande
     assert events(results, "hand_back")[0]["reason"] == "fuse_headroom"
 
 
+# --- the peak cover under a hold -------------------------------------------------------------------------------------
+
+
+def _looks(seconds: float) -> int:
+    return int(seconds / TICK.total_seconds()) + 1
+
+
+def test_the_peak_cover_mark_lies_between_the_hand_back_and_the_start_margin() -> None:
+    assert RESTORE_HEADROOM_A < PEAK_COVER_A < HEADROOM_MARGIN_A
+
+
+def test_a_peak_under_a_hold_lifts_the_discharge_limit_first_in_one_write_and_keeps_remote_ems() -> None:
+    executor, battery = _sigenergy()
+    now = _held(executor, battery)
+    now, results = run(executor, battery, now, 3, "hold", headroom_a=1.2)
+    assert written(results) == [("discharge_limit", 23.04)]
+    assert events(results, "peak_cover")[0]["headroom_a"] == 1.2
+    assert executor.state.phase == "active" and executor.state.covered_at is not None
+    assert battery.states["remote_ems"] == "on" and battery.states["discharge_limit"] == "23.04"
+    # The battery covers the peak: the headroom recovers and the battery discharges; that is no failed hold.
+    _now, results = run(executor, battery, now, _looks(GRACE_S + 5 * 60), "hold", headroom_a=3.0, power_kw=-3.0)
+    assert written(results) == [] and events(results, "hand_back") == [] and events(results, "monitor") == []
+    assert executor.state.phase == "active"
+
+
+def test_a_peak_the_lift_does_not_cover_is_handed_back_in_full_after_the_recover_time() -> None:
+    executor, battery = _sigenergy()
+    now = _held(executor, battery)
+    now, results = run(executor, battery, now, _looks(PEAK_RECOVER_S) - 2, "hold", headroom_a=1.2)
+    assert written(results) == [("discharge_limit", 23.04)] and events(results, "hand_back") == []
+    _now, results = run(executor, battery, now, 6, "hold", headroom_a=1.2)
+    assert events(results, "hand_back")[0]["reason"] == "fuse_headroom"
+    assert written(results) == [("remote_ems", False)]
+    assert executor.state.phase == "idle" and executor.state.blocked is None
+
+
+def test_a_covered_hold_that_falls_low_again_is_handed_back_after_the_recover_time() -> None:
+    executor, battery = _sigenergy()
+    now = _held(executor, battery)
+    now, _ = run(executor, battery, now, 3, "hold", headroom_a=1.2)
+    now, _ = run(executor, battery, now, 6, "hold", headroom_a=3.0, power_kw=-3.0)
+    now, results = run(executor, battery, now, _looks(PEAK_RECOVER_S) - 2, "hold", headroom_a=1.3, power_kw=-10.0)
+    assert events(results, "hand_back") == []
+    _now, results = run(executor, battery, now, 4, "hold", headroom_a=1.3, power_kw=-10.0)
+    assert events(results, "hand_back")[0]["reason"] == "fuse_headroom"
+
+
+def test_a_peak_under_the_hand_back_mark_hands_back_at_once_with_the_discharge_limit_first() -> None:
+    executor, battery = _sigenergy()
+    now = _held(executor, battery)
+    _now, results = run(executor, battery, now, 6, "hold", headroom_a=RESTORE_HEADROOM_A - 0.5)
+    assert events(results, "hand_back")[0]["reason"] == "fuse_headroom"
+    assert results[0].ops[0].role == "discharge_limit", "the first write after the peak lets the battery cover it"
+    assert written(results) == [("discharge_limit", 23.04), ("remote_ems", False)]
+    # Lifted first, then under the mark: the hand-back goes on from there without writing the limit again.
+    executor, battery = _sigenergy()
+    now = _held(executor, battery)
+    now, results = run(executor, battery, now, 1, "hold", headroom_a=1.2)
+    assert written(results) == [("discharge_limit", 23.04)]
+    _now, results = run(executor, battery, now, 6, "hold", headroom_a=0.2)
+    assert written(results) == [("remote_ems", False)]
+    assert executor.state.phase == "idle"
+
+
+def test_a_grid_charge_is_handed_back_for_the_fuse_with_the_mode_that_stops_it_first() -> None:
+    executor, battery = _sigenergy()
+    now, _ = run(executor, battery, T0, 6, "grid_charge", 4.0)
+    _now, results = run(executor, battery, now, 6, "grid_charge", 4.0, headroom_a=0.5, grid_import_kw=0.0)
+    assert events(results, "hand_back")[0]["reason"] == "fuse_headroom"
+    assert written(results)[0] == ("control_mode", "Maximum Self Consumption")
+
+
+def test_a_covered_hold_holds_again_only_after_the_dwell_and_with_the_start_margin() -> None:
+    executor, battery = _sigenergy()
+    now = _held(executor, battery)
+    now, _ = run(executor, battery, now, 3, "hold", headroom_a=1.2)
+    # The battery covers 3 kW (4.3 A per phase at 400 V): 5 A of headroom is not enough to hold it again.
+    now, results = run(executor, battery, now, _looks(PEAK_REHOLD_S), "hold", headroom_a=5.0, power_kw=-3.0)
+    assert written(results) == [] and events(results, "peak_rehold") == []
+    _now, results = run(executor, battery, now, 3, "hold", headroom_a=8.0, power_kw=-3.0)
+    assert events(results, "peak_rehold")[0]["headroom_a"] == 8.0
+    assert written(results) == [("discharge_limit", 0.0)]
+    assert executor.state.covered_at is None and executor.monitor.watch is not None
+    # Before the dwell it does not hold again, however much headroom.
+    executor, battery = _sigenergy()
+    now = _held(executor, battery)
+    now, _ = run(executor, battery, now, 3, "hold", headroom_a=1.2)
+    _now, results = run(executor, battery, now, _looks(PEAK_REHOLD_S) - 5, "hold", headroom_a=20.0)
+    assert events(results, "peak_rehold") == []
+
+
+def test_a_new_action_ends_the_cover_and_the_cover_survives_a_restart_in_the_stored_state() -> None:
+    executor, battery = _sigenergy()
+    now = _held(executor, battery)
+    now, _ = run(executor, battery, now, 3, "hold", headroom_a=1.2)
+    stored = ExecState.from_dict(executor.state.as_dict())
+    assert stored.covered_at == executor.state.covered_at and stored.covered_at is not None
+    _now, results = run(executor, battery, now, 6, "discharge_house")
+    assert executor.state.covered_at is None and executor.state.action == "discharge_house"
+
+
+@pytest.mark.parametrize(
+    ("control", "states", "first"),
+    [
+        (SOLAREDGE_CONTROL, SOLAREDGE_STATES, [("command_mode", "Maximize Self Consumption")]),
+        (HUAWEI_CONTROL, HUAWEI_STATES, [("discharge_power", 5000.0)]),
+        (SOLAX_CONTROL, SOLAX_STATES, [("power_control", "Disabled"), ("trigger", True)]),
+    ],
+)
+def test_every_brand_lifts_its_hold_for_a_peak(control, states, first) -> None:
+    executor = Executor(control)
+    battery = FakeBattery(control, dict(states))
+    now, _ = run(executor, battery, T0, 8, "hold")
+    assert executor.state.phase == "active"
+    _now, results = run(executor, battery, now, 3, "hold", headroom_a=1.2)
+    assert written(results) == first
+    assert executor.state.phase == "active"
+
+
 # --- the monitor ------------------------------------------------------------------------------------------------------
 
 
@@ -445,7 +569,7 @@ def test_a_restart_restores_the_stored_snapshot_before_anything_else() -> None:
     assert again.restart(now)[0]["reason"] == "restart"
     _now, results = run(again, battery, now, 8, "hold")
     # The hold's mode already is Maximum Self Consumption: the switch goes off, then the limit back.
-    assert written(results) == [("remote_ems", False), ("discharge_limit", 23.04)]
+    assert written(results) == [("discharge_limit", 23.04), ("remote_ems", False)]
     assert battery.states["remote_ems"] == "off"
 
 
@@ -529,9 +653,10 @@ def test_the_preview_is_the_executors_own_writes_and_hand_back_without_writing()
     assert [(op.role, op.value) for op in seen.writes] == [
         ("discharge_limit", 0.0), ("remote_ems", True), ("control_mode", "Maximum Self Consumption")
     ]
-    # Handing back: the mode, the switch, then the limit it wrote as the rating (it read unknown: never set).
+    # Handing back: the limit it wrote first, as the rating (it read unknown: never set), so the battery covers a
+    # peak at once, then the mode and the switch.
     assert [(op.role, op.value) for op in seen.restores] == [
-        ("control_mode", "Maximum Self Consumption"), ("remote_ems", False), ("discharge_limit", 10.0)
+        ("discharge_limit", 10.0), ("control_mode", "Maximum Self Consumption"), ("remote_ems", False)
     ]
     assert all(op.restore for op in seen.restores)
     assert seen.snapshot == {"charge_limit": "unknown", "discharge_limit": "unknown"}

@@ -78,7 +78,7 @@ def test_a_discharge_into_a_grid_charge_would_run_the_executors_hold_after_it_la
     assert decision.action == "would_write" and decision.entity_id == LIMIT and decision.value == HOLD_WRITES
     assert decision.read == "23.04"
     assert [(row["role"], row["value"]) for row in decision.detail["restore"]] == [
-        ("control_mode", "Maximum Self Consumption"), ("remote_ems", False), ("discharge_limit", 23.04)
+        ("discharge_limit", 23.04), ("control_mode", "Maximum Self Consumption"), ("remote_ems", False)
     ]
     assert memory.held and memory.snapshot == {"discharge_limit": "23.04"} and memory.writes_today == 3
     assert requested_action(memory) == "hold"

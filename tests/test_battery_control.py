@@ -204,8 +204,9 @@ async def test_a_hold_is_written_in_order_read_back_with_the_snapshot_stored_fir
     again = BatteryControl(hass, controller, plan_source=_hold)
     plant.calls.clear()
     await again.async_start()
+    # The discharge limit first: the battery covers a peak again before Remote EMS goes off.
     assert [(domain, service) for domain, service, _data in plant.calls] == [
-        ("switch", "turn_off"), ("number", "set_value")
+        ("number", "set_value"), ("switch", "turn_off")
     ]
     assert hass.states.get(SWITCH).state == "off"
     assert hass.states.get(DISCHARGE).state == "23.04"
