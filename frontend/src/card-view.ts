@@ -4263,6 +4263,19 @@ export function createCardView(input: CardViewInput): CardView {
         "site",
       ),
     );
+    // Offered only while SpotNav cannot find the heat pump's meter by itself (or once one is chosen).
+    if (fieldsOf(config, "site").some((entry) => entry.field === "heat_meter_entity")) {
+      const label = translate(model.language, "entity.field.heatMeter");
+      nodes.push(
+        entityRow(
+          "heat_meter",
+          label,
+          fieldEntityName(config, "site", "heat_meter_entity") ?? translate(model.language, "settings.value.none"),
+          "site",
+          "heat-meter",
+        ),
+      );
+    }
     if (model.site !== null) {
       nodes.push(priorityRow(model.site));
     }

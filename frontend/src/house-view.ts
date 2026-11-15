@@ -3,7 +3,7 @@
 // sources and what was assumed). Built fresh for each state with `textContent` only; every figure is the backend's.
 
 import { clock, dateLabel, dayCue, formatFixed, formatNumber, hourLabel, type EntityWords, type FormatContext } from "./format";
-import { houseChartHeight, houseShown, renderHouseChart, sunShown, type HouseChart, type HouseChartView } from "./house-chart";
+import { heatShown, houseChartHeight, houseShown, renderHouseChart, sunShown, type HouseChart, type HouseChartView } from "./house-chart";
 import { MODES, type BatteryMode, type DayFlow, type HouseAnswer, type HouseHour } from "./house-model";
 import { renderFlow } from "./house-flow";
 import { HOUSE_CLASSES as H } from "./house-styles";
@@ -142,6 +142,10 @@ export function hourFigures(language: Language, answer: HouseAnswer, hour: House
       parts.push(translate(language, house.measured ? "house.readout.house" : "house.readout.houseForecast", { kw: kw(language, house.kw) }));
     }
   }
+  const heat = heatShown(hour);
+  if (view === "energy" && heat !== null) {
+    parts.push(translate(language, house.measured ? "house.readout.heat" : "house.readout.heatForecast", { kw: kw(language, heat) }));
+  }
   const sun = sunShown(hour, nowMs);
   const past = hour.startMs + HOUR_MS <= nowMs;
   if (view === "energy" && sun !== null && (sun > 0 || (hour.sun_forecast_kwh ?? 0) > 0)) {
@@ -185,6 +189,31 @@ export function savingLine(language: Language, answer: HouseAnswer): string | nu
 }
 
 /** The review line: the last week's mean error of each forecast, or that the first review is tonight. */
+/** The heat pump's line: the shown day's heat beside the house's whole load over the same hours; with more than one
+ * meter that could be it, where to choose; `null` without a meter, or one found with no hour measured yet. */
+export function heatLine(language: Language, answer: HouseAnswer, words?: EntityWords): string | null {
+  const heat = answer.heat;
+  if (heat === null) {
+    return null;
+  }
+  if (heat.status === "ambiguous") {
+    return translate(language, "house.heat.ambiguous", { names: heat.candidates.map((id) => entityName(words, id)).join(", ") });
+  }
+  if (heat.status === "unusable") {
+    return translate(language, "house.heat.unusable");
+  }
+  const day = heat.day;
+  if (heat.status !== "found" || day === null) {
+    return null;
+  }
+  const past = answer.day !== null && !answer.day.today;
+  return translate(language, past ? "house.heat.dayPast" : "house.heat.day", {
+    heat: kwh(language, day.heat_kwh),
+    house: kwh(language, day.house_kwh),
+    share: pctOf(language, day.heat_kwh, day.house_kwh),
+  });
+}
+
 export function reviewLine(language: Language, answer: HouseAnswer): string {
   const house = answer.house.review;
   if (house === null) {
@@ -428,6 +457,9 @@ function legend(doc: Document, language: Language, answer: HouseAnswer, view: Ho
     item("sellPrice", "house.legend.sellPrice");
   } else {
     item("house", "house.legend.house");
+    if (answer.hours.some((hour) => heatShown(hour) !== null)) {
+      item("heat", "house.legend.heat");
+    }
     if (answer.hours.some((hour) => hour.house_kw !== null && hour.house_forecast_kw !== null)) {
       item("forecast", "house.legend.forecast");
     }
@@ -638,6 +670,11 @@ function energyFlowBlock(input: HouseRenderInput, answer: HouseAnswer): HTMLElem
   );
   if (flow.car_hours < flow.hours && flow.nodes.some((node) => node.role === "car")) {
     section.append(element(doc, "p", `${C.muted} ${H.note}`, translate(language, "house.flow.carPart")));
+  }
+  if (flow.nodes.some((node) => node.role === "heat")) {
+    section.append(
+      element(doc, "p", `${C.muted} ${H.note}`, translate(language, flow.heat_hours < flow.hours ? "house.flow.heatPart" : "house.flow.heatRule")),
+    );
   }
   return section;
 }
@@ -869,6 +906,21 @@ function sourcesBlock(doc: Document, language: Language, answer: HouseAnswer, wo
   if (sources.solar_forecasts.length > 0) {
     add(translate(language, "house.sources.solar", { names: sources.solar_forecasts.join(", ") }));
   }
+  const heat = answer.heat;
+  if (heat !== null && heat.status === "found" && heat.entity_id !== null) {
+    const from = heat.source === "energy_dashboard" ? "house.sources.heatFromDashboard" : heat.source === "integration" ? "house.sources.heatFromIntegration" : "house.sources.heatFromSetting";
+    add(translate(language, from, { name: heat.name ?? entityName(words, heat.entity_id) }));
+    const comparison = heat.comparison;
+    if (comparison !== null) {
+      add(
+        translate(language, "house.sources.heatSplit", {
+          split: plusMinus(language, comparison.split_mae, "kW"),
+          whole: plusMinus(language, comparison.house_mae, "kW"),
+          hours: String(comparison.hours),
+        }),
+      );
+    }
+  }
   const battery = answer.battery;
   if (battery !== null) {
     const name = battery.label ?? battery.brand ?? "";
@@ -951,6 +1003,12 @@ export function houseBody(input: HouseRenderInput): HTMLElement {
   if (saving !== null) {
     const line = element(doc, "p", H.line, saving);
     line.dataset["line"] = "saving";
+    card.append(line);
+  }
+  const heat = heatLine(language, answer, input.entityWords);
+  if (heat !== null) {
+    const line = element(doc, "p", H.line, heat);
+    line.dataset["line"] = "heat";
     card.append(line);
   }
   const review = element(doc, "p", `${H.line} ${C.muted}`, reviewLine(language, answer));

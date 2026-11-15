@@ -951,6 +951,10 @@ export function entityEditorBody(
       block.append(element(doc, "legend", C.siteLegend, label), entityField(field, label, false));
     } else if (field.kind === "entity") {
       block = entityField(field, label);
+      if (field.field === "heat_meter_entity") {
+        // Opened on its own from Settings' site rows ("Heat pump meter").
+        block.dataset["part"] = "heat-meter";
+      }
     } else if (field.kind === "flag") {
       block = flagField(field, label);
     } else if (field.kind === "number") {

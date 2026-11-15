@@ -54,7 +54,7 @@ async def test_get_reports_charger_and_direct_site_fields(hass: HomeAssistant, h
         "main_fuse_a", "safety_margin_a", "import_target_kw", "measurement_mode", "voltage_between_phases_v", "direct_L1", "direct_L2", "direct_L3",
         "site_current_signed", "grid_power_source_power", "grid_power_source_power_export", "grid_power_inverted",
         "battery_aggregate_power_entity", "battery_discharge_power_entity",
-        "battery_power_inverted", "max_age_s",
+        "battery_power_inverted", "heat_meter_entity", "max_age_s",
     ]
     control = field(result, "charge_control")
     assert control["required"] is True and control["scope"] == "charger"
@@ -255,6 +255,56 @@ async def test_the_import_target_is_an_optional_site_number_written_without_a_re
     )["result"]
     assert cleared["ok"] is True and field(cleared, "import_target_kw")["value"] is None
     assert "import_target_kw" not in hass.config_entries.async_get_entry(site.entry_id).data
+
+
+async def test_the_heat_pump_meter_is_offered_while_not_found_and_written_without_a_reload(
+    hass: HomeAssistant, hass_ws_client
+) -> None:
+    from homeassistant.helpers import entity_registry as er  # noqa: PLC0415
+
+    from custom_components.spotnav.site.heat_meter import KIND_POWER, SOURCE_ENERGY_DASHBOARD, STATUS_FOUND, HeatMeter  # noqa: PLC0415
+
+    charger, site = await setup_charger_and_site(hass)
+    client = await admin(hass, hass_ws_client)
+    got = (await ws_call(client, get_message(charger.entry_id)))["result"]
+    meter = field(got, "heat_meter_entity")
+    assert (meter["scope"], meter["kind"], meter["required"], meter["current"]) == ("site", "entity", False, None)
+    assert meter["allowed_domains"] == ["sensor"] and meter["allowed_device_classes"] == ["power", "energy"]
+    controller = site.runtime_data.controller
+    refreshes: list[bool] = []
+    controller.house_forecast.request_refresh = lambda: refreshes.append(True)
+
+    er.async_get(hass).async_get_or_create("sensor", "zwave_js", "hem", suggested_object_id="varme_effekt")
+    hass.states.async_set("sensor.varme_effekt", "1093", {"unit_of_measurement": "W", "device_class": "power"})
+    written = (
+        await ws_call(
+            client,
+            update_entity_config_message(charger.entry_id, scope="site", changes={"heat_meter_entity": "sensor.varme_effekt"}),
+        )
+    )["result"]
+    assert written["ok"] is True
+    assert field(written, "heat_meter_entity")["current"]["entity_id"] == "sensor.varme_effekt"
+    assert hass.config_entries.async_get_entry(site.entry_id).data["heat_meter_entity"] == "sensor.varme_effekt"
+    # The site kept running, and the house forecast reads the meter at the next reading.
+    assert site.runtime_data.controller is controller and refreshes == [True]
+
+    refused = (
+        await ws_call(
+            client, update_entity_config_message(charger.entry_id, scope="site", changes={"heat_meter_entity": "switch.x"})
+        )
+    )["result"]
+    assert refused["field_errors"] == [{"field": "heat_meter_entity", "code": "entity_not_found"}]
+
+    cleared = (
+        await ws_call(
+            client, update_entity_config_message(charger.entry_id, scope="site", changes={"heat_meter_entity": ""})
+        )
+    )["result"]
+    assert cleared["ok"] is True
+    # Found by itself (one heat pump on the Energy dashboard) and none set: not offered.
+    controller.house_forecast.heat.detected = HeatMeter(STATUS_FOUND, "sensor.hp", KIND_POWER, SOURCE_ENERGY_DASHBOARD)
+    names = [item["field"] for item in (await ws_call(client, get_message(charger.entry_id)))["result"]["config"]["fields"]]
+    assert "heat_meter_entity" not in names
 
 
 async def test_switching_to_derived_needs_the_six_required_meters_and_keeps_direct(hass: HomeAssistant, hass_ws_client) -> None:

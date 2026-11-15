@@ -51,6 +51,7 @@ from ..const import (
     CONF_PHASE_WIRING,
     CONF_BATTERY_AGGREGATE_POWER_ENTITY,
     CONF_BATTERY_DISCHARGE_POWER_ENTITY,
+    CONF_HEAT_METER_ENTITY,
     CONF_BATTERY_POWER_INVERTED,
     CHARGER_PRIORITIES,
     CONF_CHARGE_CONTROL,
@@ -90,6 +91,7 @@ from ..planning.first_run import charger_phases_from_entry, site_for_charger
 from ..planning.phases import charger_wiring, DEFAULT_WIRING_PHASES
 from ..planning.grid_voltage import stored_voltage_between_phases_v
 from ..runtime import controller_for, site_controller_for
+from ..site.heat_meter import needs_setting
 from ..site.battery_limit import battery_import_limit, WARNING_CODE as BATTERY_LIMIT_WARNING
 from ..site.site_detection import (
     apply_meter_candidate,
@@ -187,6 +189,9 @@ FIELD_MEASUREMENT_MODE: Final = "measurement_mode"
 FIELD_MAX_AGE_S: Final = "max_age_s"
 FIELD_BATTERY_AGGREGATE_POWER: Final = "battery_aggregate_power_entity"
 FIELD_BATTERY_DISCHARGE_POWER: Final = "battery_discharge_power_entity"
+#: The heat pump's electricity meter (`CONF_HEAT_METER_ENTITY`, a power or energy sensor; `""` is none): listed only
+#: while SpotNav finds none, or more than one, by itself (`site/heat_meter.py`), or once one is set.
+FIELD_HEAT_METER: Final = "heat_meter_entity"
 #: The meter's total grid power (`CONF_GRID_POWER_SOURCE`): one signed entity, or with the second field
 #: an import/export pair (import minus export). Solar and hybrid read it on a direct site.
 FIELD_GRID_POWER_SOURCE_POWER: Final = "grid_power_source_power"
@@ -229,6 +234,7 @@ def site_fixed_fields() -> tuple[str, ...]:
         FIELD_BATTERY_DISCHARGE_POWER,
         *GRID_POWER_SOURCE_FIELDS,
         *FLAG_FIELDS,
+        FIELD_HEAT_METER,
         FIELD_APPLY_DETECTION,
     )
 
@@ -297,6 +303,7 @@ _ENTITY_DOMAIN: Final[dict[str, str]] = {
     FIELD_VEHICLE_SOC: "sensor",
     FIELD_BATTERY_AGGREGATE_POWER: "sensor",
     FIELD_BATTERY_DISCHARGE_POWER: "sensor",
+    FIELD_HEAT_METER: "sensor",
     FIELD_GRID_POWER_SOURCE_POWER: "sensor",
     FIELD_GRID_POWER_SOURCE_EXPORT: "sensor",
 }
@@ -315,6 +322,7 @@ _ENTITY_DEVICE_CLASSES: Final[dict[str, tuple[str, ...]]] = {
     FIELD_VEHICLE_SOC: ("battery",),
     FIELD_BATTERY_AGGREGATE_POWER: ("power",),
     FIELD_BATTERY_DISCHARGE_POWER: ("power",),
+    FIELD_HEAT_METER: ("power", "energy"),
     FIELD_GRID_POWER_SOURCE_POWER: ("power",),
     FIELD_GRID_POWER_SOURCE_EXPORT: ("power",),
 }
@@ -1058,6 +1066,7 @@ def current_site_values(entry: ConfigEntry) -> dict[str, Any]:
         FIELD_MAX_AGE_S: entry.data.get(CONF_MAX_AGE_S, DEFAULT_MAX_AGE_S),
         FIELD_BATTERY_AGGREGATE_POWER: entry.data.get(CONF_BATTERY_AGGREGATE_POWER_ENTITY) or "",
         FIELD_BATTERY_DISCHARGE_POWER: entry.data.get(CONF_BATTERY_DISCHARGE_POWER_ENTITY) or "",
+        FIELD_HEAT_METER: entry.data.get(CONF_HEAT_METER_ENTITY) or "",
     }
     for field, key in FLAG_FIELDS.items():
         values[field] = bool(entry.data.get(key, False))
@@ -1170,7 +1179,7 @@ def site_field_errors(
     if (voltage_error := _voltage_error(changes)) is not None:
         errors.append(voltage_error)
 
-    for field in (FIELD_BATTERY_AGGREGATE_POWER, FIELD_BATTERY_DISCHARGE_POWER, *GRID_POWER_SOURCE_FIELDS):
+    for field in (FIELD_BATTERY_AGGREGATE_POWER, FIELD_BATTERY_DISCHARGE_POWER, FIELD_HEAT_METER, *GRID_POWER_SOURCE_FIELDS):
         if field in changes:
             value = changes[field]
             if value:
@@ -1286,6 +1295,13 @@ def _flag_descriptor(field: str, values: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def heat_meter_setting_offered(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Whether the heat pump meter is offered as a setting: the site's house forecast found none, or more than one,
+    by itself at its last refresh (`site/heat_meter.needs_setting`); offered while the site is not running."""
+    controller = site_controller_for(hass, entry.entry_id)
+    return controller is None or needs_setting(controller.house_forecast.heat.detected)
+
+
 def site_field_descriptors(hass: HomeAssistant, entry: ConfigEntry) -> list[dict[str, Any]]:
     """`get_entity_config`'s `fields` entries for one site, all scoped `"site"`: main fuse, measurement
     mode, that mode's own per-phase meters (never both modes), battery aggregate power, max age.
@@ -1374,6 +1390,17 @@ def site_field_descriptors(hass: HomeAssistant, entry: ConfigEntry) -> list[dict
             )
         )
     descriptors.append(_flag_descriptor(FIELD_BATTERY_POWER_INVERTED, values))
+    if values[FIELD_HEAT_METER] or heat_meter_setting_offered(hass, entry):
+        descriptors.append(
+            _entity_field_descriptor(
+                hass,
+                field=FIELD_HEAT_METER,
+                scope="site",
+                required=False,
+                writable=True,
+                current_entity_id=values[FIELD_HEAT_METER] or None,
+            )
+        )
     descriptors.append(
         {
             "field": FIELD_MAX_AGE_S,

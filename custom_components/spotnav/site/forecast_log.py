@@ -55,6 +55,10 @@ KIND_SUN_P90: Final = "sun_kwh_p90"
 #: On a battery site: the import less the chargers as forecast for a plan under the import target, beside the house
 #: kinds (then the house's whole load).
 KIND_IMPORT: Final = "import_kw"
+#: Where a heat pump meter is (`site/heat_meter.py`): the heat pump's own use as forecast and measured (kW), and the
+#: house figure as heat plus the rest forecast apart, beside the house kinds so the review shows what the split earns.
+KIND_HEAT: Final = "heat_kw"
+KIND_HOUSE_SPLIT: Final = "house_kw_split"
 #: The local hour from which the next day's prices are out (the day-ahead auction's results, ~12:45 CET).
 DAY_AHEAD_HOUR: Final = 13
 
@@ -64,9 +68,9 @@ KEEP_HOURS_DAYS: Final = 14
 MAX_HOURS: Final = (KEEP_HOURS_DAYS + 3) * 24
 #: The daily reviews of the last this many days are kept.
 KEEP_REVIEW_DAYS: Final = 30
-#: At most this many kinds are kept (a store that grew kinds by mistake stays small). Eleven are in use (the four
-#: house kinds, `import_kw`, `battery`, the two sun kinds and Solcast's three); the rest is room for more.
-MAX_KINDS: Final = 12
+#: At most this many kinds are kept (a store that grew kinds by mistake stays small). Thirteen are in use (the four
+#: house kinds, `import_kw`, `battery`, the two sun kinds, Solcast's three and the two heat kinds); the rest is room.
+MAX_KINDS: Final = 15
 #: An under-forecast by more than this (in the kind's unit) is a large one.
 BIG_UNDER: Final = 0.5
 STORE_VERSION: Final = 1

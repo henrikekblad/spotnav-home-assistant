@@ -473,6 +473,14 @@ describe("one setup value, one dialog", () => {
     expect(dialog(element).textContent).toContain(translate("en", "entity.limit.none"));
   });
 
+  it("opens only the heat pump meter for its site row, offered while none is found by itself", async () => {
+    const { element } = await openSettings();
+    await tap(element, "[data-edit='heat_meter']");
+    expect(visibleParts(element)).toEqual(["heat-meter"]);
+    expect(dialog(element).querySelector("h3")?.textContent).toBe(translate("en", "entity.field.heatMeter"));
+    expect(dialog(element).textContent).toContain(translate("en", "entity.help.heatMeter"));
+  });
+
   it("opens only the energy choice for the energy register", async () => {
     const { element } = await openSettings();
     await tap(element, "[data-edit='energy_register']");

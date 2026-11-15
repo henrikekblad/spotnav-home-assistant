@@ -4,7 +4,9 @@
 // Both tint the hours the plan charges from the grid (violet) and sells to the grid (teal), and mark now ("Nu").
 //
 // * The house: a bar per hour, the measured load in the past and the forecast ahead (lighter); over a past bar a short
-//   line stands at what was forecast for that hour first, so a miss shows at a glance.
+//   line stands at what was forecast for that hour first, so a miss shows at a glance. Where the heat pump's meter is,
+//   the bar's lower part is heat (measured in the past, forecast ahead) in its own warm colour: part of the house, never
+//   stacked on top of it.
 // * The sun: a soft area, the production in the past and the corrected forecast ahead (the raw one where there is
 //   none); the raw forecast as a dotted line over all of it, since the Hybrid strategy reads that one.
 // * The battery: its charge level on its own scale (0-100 % over the plot's height), measured in the past and as the
@@ -87,6 +89,17 @@ export function sunShown(hour: HouseHour, nowMs: number): number | null {
 /** The house's figure drawn in an hour: the measured load in the past, else the forecast. */
 export function houseShown(hour: HouseHour): { kw: number | null; measured: boolean } {
   return hour.house_kw !== null ? { kw: hour.house_kw, measured: true } : { kw: hour.house_forecast_kw, measured: false };
+}
+
+/** The heat pump's part of an hour's bar: the measured use beside a measured house figure, the forecast beside a
+ * forecast one; never above the house's own figure. `null` without one. */
+export function heatShown(hour: HouseHour): number | null {
+  const house = houseShown(hour);
+  const heat = house.measured ? hour.heat_kw : hour.heat_forecast_kw;
+  if (heat === null || house.kw === null) {
+    return null;
+  }
+  return Math.max(0, Math.min(heat, house.kw));
 }
 
 /** A path through points, broken where a point is missing; `area` closes each run down to `baseY`. */
@@ -307,6 +320,19 @@ export function renderHouseChart(input: HouseChartInput): HouseChart {
       });
       bar.style.setProperty("fill", barFill);
       bars.append(bar);
+      const heat = heatShown(hour);
+      if (heat !== null && heat > 0) {
+        const heatTop = yAt(scale, heat);
+        bars.append(
+          svg("rect", {
+            class: shown.measured ? H.heatBar : `${H.heatBar} ${H.heatForecast}`,
+            x: left + inset,
+            y: heatTop,
+            width: Math.max(0.5, width - 2 * inset),
+            height: Math.max(0.5, base - heatTop),
+          }),
+        );
+      }
     }
     if (shown.measured && hour.house_forecast_kw !== null) {
       const y = yAt(scale, hour.house_forecast_kw);

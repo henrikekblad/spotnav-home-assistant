@@ -9,7 +9,9 @@ corrected (`site/solar_correction_shadow.py`), and the battery's facts and plan 
 (`energy_flow`, `site/energy_flow.py`): the Energy dashboard's hourly statistics and the chargers' energy registers,
 read from the recorder at most every `FLOW_REFRESH_S` per site and between hours kept in `hass.data`; and, under the
 same rules, the battery's SoC at the end of each shown past hour its plan's log has no level for (the recorder's
-statistics of its SoC sensor, `async_recorded_soc`).
+statistics of its SoC sensor, `async_recorded_soc`). Where the heat pump's meter is found or set
+(`site/heat_meter.py`), the energy flow reads its hourly statistics too (a `heat` use split out of the house), and the
+hours and the `heat` block take its hours and the heat forecast the house forecast keeps (`_heat`).
 
 Refusals (WebSocket errors): `spotnav_unsupported_api_version`, `spotnav_invalid_date` (not a date, in the future or
 before `day.first`), `spotnav_charger_required` (neither id), the charger
@@ -44,9 +46,11 @@ from ..site.energy_statistics import (
 )
 from ..pricing.price_source import site_price_source
 from ..runtime import controller_for, site_controller_for
+from ..site.heat_meter import SOURCE_SETTING, STATUS_NONE, async_heat_hours, needs_setting
 from ..site.house_view import (
     HOUSE_API_VERSION,
     BatteryInputs,
+    HeatInputs,
     HouseInputs,
     HouseSources,
     SunInputs,
@@ -141,6 +145,29 @@ def _battery(controller: Any) -> BatteryInputs | None:
     )
 
 
+def _heat(hass: HomeAssistant, controller: Any) -> HeatInputs | None:
+    """The heat pump's meter as the house forecast last found it, its hours and the heat forecast; `None` where none
+    is found, set or ambiguous."""
+    forecast = controller.house_forecast
+    heat = forecast.heat
+    meter = heat.meter
+    if meter.status == STATUS_NONE:
+        return None
+    state = None if meter.entity_id is None else hass.states.get(meter.entity_id)
+    split = forecast.heat_split
+    return HeatInputs(
+        status=meter.status,
+        entity_id=meter.entity_id,
+        name=None if state is None else state.name,
+        kind=meter.kind,
+        source=meter.source,
+        candidates=meter.candidates,
+        setting_offered=needs_setting(heat.detected) or meter.source == SOURCE_SETTING,
+        actual=dict(heat.by_hour),
+        forecast={} if split is None else split.heat.by_hour(),
+    )
+
+
 def _bucket_car(controller: Any) -> dict[datetime, float]:
     """The cars' energy per local hour (kWh, UTC hour starts) as the battery plan measured it: only hours all four of
     whose quarter hours were measured."""
@@ -186,6 +213,13 @@ async def async_energy_flow(
     if car_ids:
         car = {**car, **summed(rows, car_ids)}
     has_battery = bool(ids.battery_in)
+    meter = controller.house_forecast.heat.meter
+    heat = None
+    if meter.found:
+        try:
+            heat = await async_heat_hours(hass, meter, midnight, end)
+        except Exception:  # noqa: BLE001 - without the heat figures, heat stays in the house
+            _LOGGER.debug("SpotNav house view: the heat meter's hours could not be read", exc_info=True)
     hours = energy_hours(
         starts,
         summed(rows, ids.grid_in),
@@ -194,6 +228,7 @@ async def async_energy_flow(
         summed(rows, ids.battery_in) if has_battery else None,
         summed(rows, ids.battery_out) if has_battery else None,
         car,
+        heat,
     )
     soc = None
     if has_battery and day == today:
@@ -202,7 +237,9 @@ async def async_energy_flow(
         # A past day: the SoC logged at its last hour's end.
         logged = controller.house_forecast.log.hours(KIND_BATTERY).get(max(hour.start for hour in hours))
         soc = None if logged is None else logged.actual
-    return energy_flow(hours, day=day, has_solar=bool(ids.solar), has_battery=has_battery, soc_pct=soc)
+    return energy_flow(
+        hours, day=day, has_solar=bool(ids.solar), has_battery=has_battery, soc_pct=soc, has_heat=heat is not None
+    )
 
 
 async def async_recorded_soc(
@@ -338,6 +375,7 @@ def house_answer(
             energy_flow=flow,
             day=day,
             soc_recorded=soc or {},
+            heat=_heat(hass, controller),
         )
     )
 

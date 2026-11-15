@@ -20,6 +20,8 @@ export const HOUSE_CLASSES = {
   bar: "spotnav-house-bar",
   barForecast: "spotnav-house-bar-forecast",
   forecastTick: "spotnav-house-forecast-tick",
+  heatBar: "spotnav-house-heat-bar",
+  heatForecast: "spotnav-house-heat-forecast",
   sunArea: "spotnav-house-sun-area",
   sunRaw: "spotnav-house-sun-raw",
   soc: "spotnav-house-soc",
@@ -84,6 +86,8 @@ export const HOUSE_STYLES = `
     --spotnav-flow-grid: var(--spotnav-flow-grid-colour, #8c9cf5);
     --spotnav-flow-house: var(--spotnav-flow-house-colour, #b98cf0);
     --spotnav-flow-car: var(--spotnav-flow-car-colour, #ffa86b);
+    --spotnav-heat-colour: var(--spotnav-heat, #e0453a);
+    --spotnav-flow-heat: var(--spotnav-flow-heat-colour, #ff8f87);
     --spotnav-flow-other: #b0bec5;
   }
   .${H.compare} {
@@ -377,6 +381,13 @@ export const HOUSE_STYLES = `
   .${H.barForecast} {
     opacity: 0.32;
   }
+  .${H.heatBar} {
+    fill: var(--spotnav-heat-colour);
+    opacity: 0.9;
+  }
+  .${H.heatBar}.${H.heatForecast} {
+    opacity: 0.38;
+  }
   .${H.forecastTick} {
     stroke: var(--primary-text-color, #212121);
     stroke-width: 1.5;
@@ -433,6 +444,9 @@ export const HOUSE_STYLES = `
     border-top: 2px solid var(--primary-text-color, #212121);
     border-radius: 0;
     opacity: 0.75;
+  }
+  .${H.swatch}[data-series="heat"] {
+    background: var(--spotnav-heat-colour);
   }
   .${H.swatch}[data-series="sun"] {
     background: var(--spotnav-sun-colour);
@@ -528,6 +542,7 @@ export const HOUSE_STYLES = `
   }
   @media (forced-colors: active) {
     .${H.bar},
+    .${H.heatBar},
     .${H.sunArea},
     .${H.band} {
       fill: CanvasText;

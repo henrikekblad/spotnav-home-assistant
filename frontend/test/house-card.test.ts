@@ -109,8 +109,10 @@ describe("the lines", () => {
     const value = answer();
     const past = value.hours[2]!;
     const ahead = value.hours.find((hour) => hour.battery_action === "grid_charge")!;
-    expect(hourFigures("en", value, past, NOW)).toMatch(/^07:00–08:00 · house 1\.9 kW \(forecast 1\.7 kW\) · battery \d+ %$/);
-    expect(hourFigures("en", value, ahead, NOW)).toMatch(/^0[2-4]:00–0[3-5]:00 · house 1\.0 kW expected · battery \d+ % planned · charges from the grid$/);
+    expect(hourFigures("en", value, past, NOW)).toMatch(/^07:00–08:00 · house 1\.9 kW \(forecast 1\.7 kW\) · heat 0\.9 kW · battery \d+ %$/);
+    expect(hourFigures("en", value, ahead, NOW)).toMatch(
+      /^0[2-4]:00–0[3-5]:00 · house 1\.0 kW expected · heat 0\.5 kW expected · battery \d+ % planned · charges from the grid$/,
+    );
   });
 });
 
@@ -126,6 +128,9 @@ describe("the body", () => {
     expect(svg.querySelectorAll(".spotnav-house-bar")).toHaveLength(36);
     expect(svg.querySelectorAll(".spotnav-house-bar-forecast")).toHaveLength(24);
     expect(svg.querySelectorAll(".spotnav-house-forecast-tick")).toHaveLength(12);
+    // The heat pump's part of each bar: measured in the past, forecast ahead.
+    expect(svg.querySelectorAll(".spotnav-house-heat-bar")).toHaveLength(36);
+    expect(svg.querySelectorAll(".spotnav-house-heat-forecast")).toHaveLength(24);
     expect(svg.querySelector(".spotnav-house-sun-area")).not.toBeNull();
     expect(svg.querySelectorAll(".spotnav-house-soc")).toHaveLength(2);
     expect(svg.querySelectorAll(".spotnav-house-band[data-action='grid_charge']")).toHaveLength(3);
@@ -480,7 +485,7 @@ describe("today's energy flow", () => {
     const svgRoot = section.querySelector("svg")!;
     expect(Number(svgRoot.getAttribute("width"))).toBe(340);
     const nodes = Array.from(svgRoot.querySelectorAll(".spotnav-house-flow-node")).map((node) => `${node.getAttribute("data-side")}:${node.getAttribute("data-role")}`);
-    expect(nodes).toEqual(["source:solar", "source:battery", "source:grid", "use:battery", "use:house", "use:car", "use:grid"]);
+    expect(nodes).toEqual(["source:solar", "source:battery", "source:grid", "use:battery", "use:house", "use:heat", "use:car", "use:grid"]);
     expect(svgRoot.querySelectorAll(".spotnav-house-flow-band")).toHaveLength(answer().energy_flow!.links.length);
     const grid = svgRoot.querySelector(".spotnav-house-flow-node[data-role='grid'][data-side='source']")!;
     expect(Array.from(grid.querySelectorAll("text")).map((text) => text.textContent)).toEqual(["Nät", "76,9 kWh", "83 %"]);
@@ -491,16 +496,20 @@ describe("today's energy flow", () => {
     expect(battery.textContent).toContain("nu 48 %");
     expect(svgRoot.getAttribute("aria-label")).toMatch(/^Sol 7,5 kWh \(8 %\), Batteri 8,6 kWh/);
     expect(section.textContent).toContain("Hela timmar fram till 17:00.");
+    const heat = svgRoot.querySelector(".spotnav-house-flow-node[data-role='heat']")!;
+    expect(heat.querySelector("text")?.textContent).toBe("Värme");
+    // One hour lacked the heat pump's figure: said so.
+    expect(section.textContent).toContain("Värmepumpens mätare kunde inte läsas varje timme");
     // The details do not repeat it as bars.
     expect(body(answer(), { detailsOpen: true }, "sv").querySelector(".spotnav-house-flow-key")).toBeNull();
   });
 
-  it("grows with the number of blocks so the house and the car get the tall form", () => {
+  it("grows with the number of blocks so the larger uses get the tall form", () => {
     expect(flowHeight(328, 3)).toBe(250);
     expect(flowHeight(328, 4)).toBe(320);
     expect(flowHeight(328, 9)).toBe(440);
     const card = body(answer(), {}, "sv");
-    for (const role of ["house", "car"]) {
+    for (const role of ["battery", "car"]) {
       const node = card.querySelector(`.spotnav-house-flow-node[data-side='use'][data-role='${role}']`)!;
       expect(node.querySelector(".spotnav-house-flow-value")).not.toBeNull();
     }
@@ -528,6 +537,68 @@ describe("today's energy flow", () => {
       for (const key of ["house.flow.house", "house.flow.car", "house.flow.socNow", "house.flow.through", "house.flow.rule", "house.flow.carPart"] as const) {
         expect(translate(language, key, { pct: "1 %", time: "17:00" })).not.toBe(key);
       }
+    }
+  });
+});
+
+describe("the heat pump", () => {
+  it("decodes the heat block and each hour's heat, and an answer before heat as none", () => {
+    const full = answer();
+    expect(full.heat?.status).toBe("found");
+    expect(full.heat?.day).toEqual({ date: "2026-11-13", hours: 17, heat_kwh: 10.57, house_kwh: 20.5 });
+    expect(full.heat?.comparison?.hours).toBe(168);
+    expect(full.hours.filter((hour) => hour.heat_kw !== null)).toHaveLength(12);
+    expect(full.energy_flow?.heat_hours).toBe(16);
+    const raw = JSON.parse(JSON.stringify(read("house/villa_battery_sun.json")));
+    delete raw.heat;
+    delete raw.energy_flow.heat_hours;
+    for (const hour of raw.hours) {
+      delete hour.heat_kw;
+      delete hour.heat_forecast_kw;
+    }
+    const older = decodeHouse(raw);
+    expect(older.ok && older.value.heat).toBeNull();
+    expect(older.ok && older.value.hours.every((hour) => hour.heat_kw === null && hour.heat_forecast_kw === null)).toBe(true);
+    // A mistyped heat block makes the answer unreadable, never half-shown.
+    const broken = JSON.parse(JSON.stringify(read("house/villa_battery_sun.json")));
+    broken.heat.day.heat_kwh = "10";
+    expect(decodeHouse(broken).ok).toBe(false);
+  });
+
+  it("says the day's heat beside the house, and keys heat in the legend", () => {
+    const card = body(answer(), {}, "sv");
+    expect(card.querySelector("[data-line='heat']")?.textContent).toBe("Värme i dag: 10,6 kWh av husets 20,5 kWh (52 %)");
+    const legend = Array.from(card.querySelectorAll(".spotnav-house-legend li")).map((item) => item.textContent);
+    expect(legend).toContain("Värme");
+    const learning = body(answer("house/house_learning.json"));
+    expect(learning.querySelector("[data-line='heat']")).toBeNull();
+    expect(learning.querySelector(".spotnav-house-heat-bar")).toBeNull();
+  });
+
+  it("names the meter and the forecast split in the sources", () => {
+    const open = body(answer(), { detailsOpen: true }, "en");
+    const sources = Array.from(open.querySelectorAll(".spotnav-house-facts li")).map((item) => item.textContent);
+    expect(sources).toContain("Heat pump meter: Värme Effekt (chosen in Settings)");
+    expect(sources).toContain("House forecast as heat plus the rest: ±0.04 kW against ±0.09 kW for the whole (168 h, shown only)");
+  });
+
+  it("asks where to choose when more than one meter could be it, and is quiet once found with no hour yet", () => {
+    const value = answer();
+    value.heat = { ...value.heat!, status: "ambiguous", entity_id: null, name: null, candidates: ["sensor.hp_power", "sensor.pool_power"], day: null, comparison: null };
+    const line = body(value, {}, "en").querySelector("[data-line='heat']")?.textContent;
+    expect(line).toBe("More than one meter could be the heat pump's (sensor.hp_power, sensor.pool_power): choose it in Settings, Site.");
+    value.heat = { ...value.heat, status: "found", entity_id: "sensor.hp_power", candidates: [] };
+    expect(body(value, {}, "en").querySelector("[data-line='heat']")).toBeNull();
+    value.heat = { ...value.heat, status: "unusable" };
+    expect(body(value, {}, "en").querySelector("[data-line='heat']")?.textContent).toContain("neither a power nor an energy sensor");
+  });
+
+  it("is worded in every language", () => {
+    const value = answer();
+    for (const language of LANGUAGES) {
+      const text = body(value, { detailsOpen: true }, language).textContent ?? "";
+      expect(text, language).toContain(translate(language, "house.flow.heat"));
+      expect(text, language).not.toMatch(/house\.heat|house\.sources\.heat|\{\w+\}/);
     }
   });
 });
