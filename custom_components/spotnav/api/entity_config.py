@@ -43,7 +43,9 @@ per-phase meters, battery power sensor and maximum measurement age), validated b
   `update_phase_switching` (`async_webhook_update_phase_switching`), answering the webhook dashboard's
   `phase_switching` block.
 * A site's import target (`import_target_kw`, kW, `null` or `""` clears it) is written without a reload too: it is
-  read from the entry each time it is shown, and nothing in load balancing reads it.
+  read from the entry each time it is shown, and nothing in load balancing reads it. So is the heat pump's meter
+  (`heat_meter_entity`, a power or energy sensor, `""` clears it; listed only while SpotNav cannot find it by itself):
+  the house forecast reads it at its next refresh, which the write asks for.
 """
 
 from __future__ import annotations
@@ -60,6 +62,7 @@ from homeassistant.core import callback, HomeAssistant
 from ..const import (
     CONF_BATTERY_AGGREGATE_POWER_ENTITY,
     CONF_BATTERY_DISCHARGE_POWER_ENTITY,
+    CONF_HEAT_METER_ENTITY,
     CONF_CHARGE_CONTROL,
     CONF_CHARGER_ENTRY_IDS,
     CHARGER_PRIORITIES,
@@ -90,7 +93,7 @@ from ..const import (
     MODE_OCPP,
 )
 from ..repairs import async_clear_vehicle_soc, async_record_vehicle_soc
-from ..runtime import domain_data, preview_for
+from ..runtime import domain_data, preview_for, site_controller_for
 from ..vehicles import vehicle_properties, vehicle_target
 from ..vehicles.ocpp_identity import apply_target, resolve_target
 from ..vehicles.vehicle_discovery import resolve_target_vehicle, soc_choices, valid_soc_choice
@@ -132,6 +135,7 @@ from .entity_fields import (
     FIELD_APPLY_DETECTION,
     FIELD_BATTERY_AGGREGATE_POWER,
     FIELD_BATTERY_DISCHARGE_POWER,
+    FIELD_HEAT_METER,
     FIELD_CHARGE_CONTROL,
     FIELD_CHARGER_PRIORITY,
     CURRENT_LIMIT_NONE,
@@ -184,7 +188,7 @@ _SCOPES: Final = ("charger", "site")
 _NO_RELOAD_CHARGER_FIELDS: Final = frozenset({FIELD_CHARGER_PRIORITY, FIELD_PHASE_SWITCHING})
 #: Site fields read from the entry when they are used (the import target is only measured against), so a write of
 #: only these needs no reload: load balancing keeps running untouched.
-_NO_RELOAD_SITE_FIELDS: Final = frozenset({FIELD_IMPORT_TARGET_KW})
+_NO_RELOAD_SITE_FIELDS: Final = frozenset({FIELD_IMPORT_TARGET_KW, FIELD_HEAT_METER})
 
 
 class EntityConfigRefusal(Exception):
@@ -355,6 +359,8 @@ def _write_site(hass: HomeAssistant, entry: ConfigEntry, changes: dict[str, Any]
         updated[CONF_BATTERY_AGGREGATE_POWER_ENTITY] = changes[FIELD_BATTERY_AGGREGATE_POWER] or ""
     if FIELD_BATTERY_DISCHARGE_POWER in changes:
         updated[CONF_BATTERY_DISCHARGE_POWER_ENTITY] = changes[FIELD_BATTERY_DISCHARGE_POWER] or ""
+    if FIELD_HEAT_METER in changes:
+        updated[CONF_HEAT_METER_ENTITY] = changes[FIELD_HEAT_METER] or ""
     for flag_field, key in FLAG_FIELDS.items():
         if flag_field in changes:
             updated[key] = bool(changes[flag_field])
@@ -450,6 +456,9 @@ async def async_update_entity_config(
     if written and not set(changes) <= no_reload:
         # Same reload the options flows perform: neither entry kind has an update listener.
         await hass.config_entries.async_reload(target.entry_id)
+    elif written and FIELD_HEAT_METER in changes and (site := site_controller_for(hass, target.entry_id)) is not None:
+        # The house forecast reads the meter at its refresh: at the next reading, not the next hour.
+        site.house_forecast.request_refresh()
     return read_entity_config(hass, charger)
 
 
