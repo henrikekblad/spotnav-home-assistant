@@ -29,7 +29,7 @@ from custom_components.spotnav.planning.auto_settings import (
     AutoSettingsError,
     TargetSocIntent,
 )
-from custom_components.spotnav.planning.calendar_reader import KEEP_LAST_S, REFRESH_S
+from custom_components.spotnav.planning.calendar_reader import KEEP_LAST_S, MISSING_RETRY_S, REFRESH_S
 
 from .harness import Harness
 from .relay import Clock, flat_day, hold_history, index_listing, serve, SE4
@@ -295,6 +295,84 @@ async def test_an_event_on_a_day_outside_the_weekdays_is_the_departure(harness: 
     )
     assert _departure(controller) == datetime(2026, 10, 3, 6, 0, tzinfo=timezone.utc)
     assert controller.calendar_status()["all_day"] is True
+
+
+# ------------------------------------------------------------------------------- reading it never holds anything up
+
+
+async def test_a_calendar_that_raises_anything_is_one_that_cannot_be_read(
+    harness: Harness, calendar: Calendar, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _publish(harness)
+
+    async def broken(_call: ServiceCall) -> dict[str, Any]:
+        raise RuntimeError("the integration broke")
+
+    harness.hass.services.async_register("calendar", "get_events", broken, supports_response=SupportsResponse.ONLY)
+    controller = await harness.auto(departure=time(8, 0), requested_kwh=10.0, departure_calendar=CALENDAR)
+    await harness.hass.async_block_till_done(wait_background_tasks=True)
+    assert _departure(controller) == datetime(2026, 10, 2, 6, 0, tzinfo=timezone.utc)
+    assert controller.calendar_status()["state"] == "unavailable"
+
+
+async def test_the_plan_does_not_wait_for_a_slow_calendar_and_plans_again_when_it_answers(
+    harness: Harness, calendar: Calendar
+) -> None:
+    import asyncio
+
+    _publish(harness)
+    calendar.add("2026-10-02T10:00:00+02:00")
+    answered = asyncio.Event()
+    quick = calendar._answer
+
+    async def slow(call: ServiceCall) -> dict[str, Any]:
+        await answered.wait()
+        return await quick(call)
+
+    harness.hass.services.async_register("calendar", "get_events", slow, supports_response=SupportsResponse.ONLY)
+    controller = await harness.auto(departure=time(8, 0), requested_kwh=10.0, departure_calendar=CALENDAR)
+    # Planned on the daily departure while the calendar has not answered.
+    assert controller.snapshot().proposal is not None
+    assert _departure(controller) == datetime(2026, 10, 2, 6, 0, tzinfo=timezone.utc)
+
+    answered.set()
+    await harness.hass.async_block_till_done(wait_background_tasks=True)
+    assert controller.calendar_status()["state"] == "used"
+    assert _departure(controller) == datetime(2026, 10, 2, 8, 0, tzinfo=timezone.utc)
+
+
+async def test_a_calendar_not_there_yet_is_looked_for_again_soon(harness: Harness, calendar: Calendar) -> None:
+    """At a start the calendar's integration may come up after SpotNav: it is looked for within a minute."""
+    _publish(harness)
+    calendar.add("2026-10-02T10:00:00+02:00")
+    harness.hass.states.async_remove(CALENDAR)
+    controller = await harness.auto(departure=time(8, 0), requested_kwh=10.0, departure_calendar=CALENDAR)
+    await harness.hass.async_block_till_done(wait_background_tasks=True)
+    assert controller.calendar_status()["state"] == "unavailable"
+    [due] = [timer for timer in harness.scheduler.pending if timer.when == THURSDAY + timedelta(seconds=MISSING_RETRY_S)]
+
+    harness.hass.states.async_set(CALENDAR, "off", {"friendly_name": "Trips"})
+    due.fire()
+    await harness.hass.async_block_till_done(wait_background_tasks=True)
+    assert controller.calendar_status()["state"] == "used"
+
+
+async def test_the_shutdown_cancels_a_calendar_read_in_flight(harness: Harness, calendar: Calendar) -> None:
+    import asyncio
+
+    _publish(harness)
+    never = asyncio.Event()
+
+    async def hangs(_call: ServiceCall) -> dict[str, Any]:
+        await never.wait()
+        return {}
+
+    harness.hass.services.async_register("calendar", "get_events", hangs, supports_response=SupportsResponse.ONLY)
+    controller = await harness.auto(departure=time(8, 0), requested_kwh=10.0, departure_calendar=CALENDAR)
+    [task] = controller._calendar_tasks
+    await controller.async_shutdown()
+    await harness.hass.async_block_till_done(wait_background_tasks=True)
+    assert task.cancelled()
 
 
 # ------------------------------------------------------------------------------- the calendar alone decides
