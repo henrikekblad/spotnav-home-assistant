@@ -3,6 +3,7 @@ doing what they say with sample states, run as real automations."""
 
 from __future__ import annotations
 
+import asyncio
 import shutil
 from datetime import timedelta
 from pathlib import Path
@@ -11,14 +12,15 @@ from typing import Any
 import pytest
 from homeassistant.components.automation.config import AUTOMATION_BLUEPRINT_SCHEMA
 from homeassistant.components.blueprint.models import Blueprint
-from homeassistant.core import HomeAssistant
+from homeassistant.const import EVENT_HOMEASSISTANT_STARTED
+from homeassistant.core import HomeAssistant, State
 from homeassistant.setup import async_setup_component
 from homeassistant.util import dt as dt_util
 from homeassistant.util.yaml import load_yaml_dict
-from pytest_homeassistant_custom_component.common import async_fire_time_changed, async_mock_service
+from pytest_homeassistant_custom_component.common import async_fire_time_changed, async_mock_service, mock_restore_cache
 
 BLUEPRINTS = Path(__file__).resolve().parent.parent / "custom_components" / "spotnav" / "blueprints" / "automation"
-NAMES = ("price_setpoint.yaml", "solar_surplus_switch.yaml")
+NAMES = ("price_setpoint.yaml", "solar_surplus_switch.yaml", "relay_by_price.yaml")
 
 CHEAP = "binary_sensor.electricity_price_se4_cheap_now"
 EXPENSIVE = "binary_sensor.electricity_price_se4_expensive_now"
@@ -489,3 +491,321 @@ async def test_minimum_times_hold_across_a_switch_between_reasons(
     hass.states.async_set(CHEAP, "on")
     await hass.async_block_till_done()
     assert len(on) == 1
+
+
+# ------------------------------------------------------------------------------------------------ relay by price
+
+RELAY = "switch.heat_pump_curve"
+RELAY_B = "switch.heat_pump_sg_b"
+OUTDOOR = "sensor.outdoor_temperature"
+
+
+def relays_of(hass: HomeAssistant) -> "_Relays":
+    return hass.data["test_relays"]
+
+
+class _Relays:
+    """switch.turn_on and switch.turn_off that set the switch's state, as a real relay's would, and keep each call
+    in order as (service, entity)."""
+
+    def __init__(self, hass: HomeAssistant) -> None:
+        self.calls: list[tuple[str, str]] = []
+        hass.data["test_relays"] = self
+        for service in ("turn_on", "turn_off"):
+            hass.services.async_register("switch", service, self._handler(hass, service))
+
+    def _handler(self, hass: HomeAssistant, service: str):
+        async def handle(call) -> None:
+            for entity in call.data["entity_id"]:
+                self.calls.append((service, entity))
+                hass.states.async_set(entity, "on" if service == "turn_on" else "off")
+
+        return handle
+
+    def take(self) -> list[tuple[str, str]]:
+        calls, self.calls = self.calls, []
+        return calls
+
+
+def _relay_prices(hass: HomeAssistant, *, cheap: str = "off", expensive: str = "off") -> None:
+    hass.states.async_set(CHEAP, cheap)
+    hass.states.async_set(EXPENSIVE, expensive)
+
+
+async def _relay_automation(hass: HomeAssistant, tmp_path: Path, mode: str, **extra: Any) -> _Relays:
+    relays = _Relays(hass)
+    await _automation(
+        hass,
+        tmp_path,
+        "relay_by_price.yaml",
+        {"mode": mode, "relay": RELAY, "cheap_now": CHEAP, "expensive_now": EXPENSIVE, **extra},
+    )
+    return relays
+
+
+async def _at(hass: HomeAssistant, freezer, when) -> None:
+    """The clock moved to `when`, with every timer due by then fired."""
+    freezer.move_to(when)
+    async_fire_time_changed(hass, when)
+    await hass.async_block_till_done()
+
+
+async def _cheap_on(hass: HomeAssistant, freezer, when) -> list[tuple[str, str]]:
+    """Cheap now off and on at `when`, the clock then moved past a pulse; the relay calls made."""
+    hass.states.async_set(CHEAP, "off")
+    await _at(hass, freezer, when)
+    hass.states.async_set(CHEAP, "on")
+    # A pulse's delay keeps its run going, so wait for nothing but the pulse to start.
+    for _ in range(20):
+        await asyncio.sleep(0)
+    await _at(hass, freezer, when + timedelta(seconds=61))
+    return relays_of(hass).take()
+
+
+@pytest.fixture
+def morning(freezer):
+    """10:02 local time on a fixed day, set before anything else so states are not newer than the clock."""
+    start = dt_util.now().replace(year=2026, month=11, day=16, hour=10, minute=2, second=0, microsecond=0)
+    freezer.move_to(start)
+    return start
+
+
+async def test_relay_closed_while_expensive(hass: HomeAssistant, tmp_path: Path, morning) -> None:
+    _relay_prices(hass)
+    hass.states.async_set(RELAY, "off")
+    relays = await _relay_automation(hass, tmp_path, "expensive_closed")
+    assert relays.take() == []
+
+    hass.states.async_set(EXPENSIVE, "on")
+    await hass.async_block_till_done()
+    assert relays.take() == [("turn_on", RELAY)]
+
+    hass.states.async_set(EXPENSIVE, "off")
+    await hass.async_block_till_done()
+    assert relays.take() == [("turn_off", RELAY)]
+    # Cheap does nothing in this mode.
+    hass.states.async_set(CHEAP, "on")
+    await hass.async_block_till_done()
+    assert relays.take() == []
+
+
+async def test_relay_opens_after_the_longest_closed_time_and_rests(
+    hass: HomeAssistant, tmp_path: Path, freezer, morning
+) -> None:
+    _relay_prices(hass)
+    hass.states.async_set(RELAY, "off")
+    relays = await _relay_automation(hass, tmp_path, "expensive_closed", max_on_hours=3, min_rest_hours=1)
+    hass.states.async_set(EXPENSIVE, "on")
+    await hass.async_block_till_done()
+    assert relays.take() == [("turn_on", RELAY)]
+
+    # Still expensive after 2:59: closed. At 3 hours: opened.
+    await _at(hass, freezer, morning + timedelta(hours=2, minutes=59))
+    assert relays.take() == []
+    await _at(hass, freezer, morning + timedelta(hours=3, seconds=1))
+    assert relays.take() == [("turn_off", RELAY)]
+
+    # Resting: neither the 5-minute run nor a price change closes it within the hour.
+    await _at(hass, freezer, morning + timedelta(hours=3, minutes=30))
+    hass.states.async_set(EXPENSIVE, "on", {"threshold": 2})
+    await hass.async_block_till_done()
+    await _at(hass, freezer, morning + timedelta(hours=3, minutes=59))
+    assert relays.take() == []
+    # The rest is over: closed again while it is still expensive.
+    await _at(hass, freezer, morning + timedelta(hours=4, minutes=1))
+    assert relays.take() == [("turn_on", RELAY)]
+
+
+async def test_relay_rests_between_two_expensive_spells(hass: HomeAssistant, tmp_path: Path, freezer, morning) -> None:
+    _relay_prices(hass, expensive="on")
+    hass.states.async_set(RELAY, "off")
+    relays = await _relay_automation(hass, tmp_path, "expensive_closed", min_rest_hours=1)
+    hass.bus.async_fire(EVENT_HOMEASSISTANT_STARTED)
+    await hass.async_block_till_done()
+    assert relays.take() == [("turn_on", RELAY)]
+    await _at(hass, freezer, morning + timedelta(minutes=30))
+    hass.states.async_set(EXPENSIVE, "off")
+    await hass.async_block_till_done()
+    assert relays.take() == [("turn_off", RELAY)]
+    await _at(hass, freezer, morning + timedelta(minutes=45))
+    hass.states.async_set(EXPENSIVE, "on")
+    await hass.async_block_till_done()
+    assert relays.take() == []
+    await _at(hass, freezer, morning + timedelta(minutes=91))
+    assert relays.take() == [("turn_on", RELAY)]
+
+
+async def test_relay_not_closed_below_the_lowest_outdoor_temperature(
+    hass: HomeAssistant, tmp_path: Path, freezer, morning
+) -> None:
+    _relay_prices(hass)
+    hass.states.async_set(RELAY, "off")
+    hass.states.async_set(OUTDOOR, "-18.5", {"unit_of_measurement": "°C", "device_class": "temperature"})
+    relays = await _relay_automation(hass, tmp_path, "expensive_closed", outdoor_sensor=OUTDOOR, min_outdoor=-15)
+    hass.states.async_set(EXPENSIVE, "on")
+    await hass.async_block_till_done()
+    assert relays.take() == []
+
+    hass.states.async_set(OUTDOOR, "-9", {"unit_of_measurement": "°C", "device_class": "temperature"})
+    await _at(hass, freezer, morning + timedelta(minutes=5))
+    assert relays.take() == [("turn_on", RELAY)]
+
+    # Colder while closed: opened at the next run.
+    hass.states.async_set(OUTDOOR, "-16", {"unit_of_measurement": "°C", "device_class": "temperature"})
+    await _at(hass, freezer, morning + timedelta(minutes=10))
+    assert relays.take() == [("turn_off", RELAY)]
+
+    # No reading: not closed either.
+    hass.states.async_set(OUTDOOR, "unavailable")
+    await _at(hass, freezer, morning + timedelta(hours=2))
+    assert relays.take() == []
+
+
+async def test_relay_does_nothing_while_unavailable(hass: HomeAssistant, tmp_path: Path, morning) -> None:
+    _relay_prices(hass)
+    hass.states.async_set(RELAY, "unavailable")
+    relays = await _relay_automation(hass, tmp_path, "expensive_closed")
+    hass.states.async_set(EXPENSIVE, "on")
+    await hass.async_block_till_done()
+    assert relays.take() == []
+
+
+async def test_relay_start_opens_what_the_price_does_not_call_for(
+    hass: HomeAssistant, tmp_path: Path, morning
+) -> None:
+    _relay_prices(hass)
+    hass.states.async_set(RELAY, "on")
+    relays = await _relay_automation(hass, tmp_path, "expensive_closed")
+    hass.bus.async_fire(EVENT_HOMEASSISTANT_STARTED)
+    await hass.async_block_till_done()
+    assert relays.take() == [("turn_off", RELAY)]
+
+
+async def test_relay_reload_closes_what_the_price_calls_for(hass: HomeAssistant, tmp_path: Path, morning) -> None:
+    _relay_prices(hass, expensive="on")
+    hass.states.async_set(RELAY, "off")
+    relays = await _relay_automation(hass, tmp_path, "expensive_closed")
+    hass.bus.async_fire("automation_reloaded")
+    await hass.async_block_till_done()
+    assert relays.take() == [("turn_on", RELAY)]
+
+
+async def test_relay_counts_the_closed_time_over_a_restart(hass: HomeAssistant, tmp_path: Path, morning) -> None:
+    # Closed by the automation 3 hours ago (kept over the restart); the relay's own state is new since the start.
+    mock_restore_cache(
+        hass,
+        [State("automation.under_test", "on", {"last_triggered": (morning - timedelta(hours=3, minutes=1)).isoformat()})],
+    )
+    _relay_prices(hass, expensive="on")
+    hass.states.async_set(RELAY, "on")
+    relays = await _relay_automation(hass, tmp_path, "expensive_closed", max_on_hours=3)
+    hass.bus.async_fire(EVENT_HOMEASSISTANT_STARTED)
+    await hass.async_block_till_done()
+    assert relays.take() == [("turn_off", RELAY)]
+
+
+async def test_relay_pulses_once_a_day_when_cheap(hass: HomeAssistant, tmp_path: Path, freezer, morning) -> None:
+    _relay_prices(hass)
+    hass.states.async_set(RELAY, "off")
+    await _relay_automation(hass, tmp_path, "cheap_pulse", pulse_seconds=2)
+
+    pulse = [("turn_on", RELAY), ("turn_off", RELAY)]
+    assert await _cheap_on(hass, freezer, morning) == pulse
+    # Cheap again later the same day, and the 5-minute runs while it lasts: no second pulse.
+    assert await _cheap_on(hass, freezer, morning + timedelta(hours=5)) == []
+    await _at(hass, freezer, morning + timedelta(hours=5, minutes=10))
+    assert relays_of(hass).take() == []
+    # The next day: one again.
+    assert await _cheap_on(hass, freezer, morning + timedelta(hours=16)) == pulse
+
+
+async def test_relay_pulses_per_day_and_the_shortest_time_between(
+    hass: HomeAssistant, tmp_path: Path, freezer, morning
+) -> None:
+    _relay_prices(hass)
+    hass.states.async_set(RELAY, "off")
+    await _relay_automation(hass, tmp_path, "cheap_pulse", pulse_seconds=1, pulses_per_day=2, min_interval_hours=3)
+
+    pulse = [("turn_on", RELAY), ("turn_off", RELAY)]
+    # 10:02: the first of the day's two halves.
+    assert await _cheap_on(hass, freezer, morning) == pulse
+    # 11:32: the same half.
+    assert await _cheap_on(hass, freezer, morning + timedelta(hours=1.5)) == []
+    # 12:32: the second half, but only 2.5 hours since the last pulse.
+    assert await _cheap_on(hass, freezer, morning + timedelta(hours=2.5)) == []
+    # 13:32: the second half, 3.5 hours on.
+    assert await _cheap_on(hass, freezer, morning + timedelta(hours=3.5)) == pulse
+    # 20:02: the second half has had its pulse.
+    assert await _cheap_on(hass, freezer, morning + timedelta(hours=10)) == []
+
+
+async def test_relay_pulse_mode_opens_a_relay_left_closed_at_the_start(
+    hass: HomeAssistant, tmp_path: Path, morning
+) -> None:
+    _relay_prices(hass)
+    hass.states.async_set(RELAY, "on")
+    relays = await _relay_automation(hass, tmp_path, "cheap_pulse")
+    hass.bus.async_fire(EVENT_HOMEASSISTANT_STARTED)
+    await hass.async_block_till_done()
+    assert relays.take() == [("turn_off", RELAY)]
+
+
+async def test_relay_sg_ready_states(hass: HomeAssistant, tmp_path: Path, freezer, morning) -> None:
+    # Both open since well before.
+    freezer.move_to(morning - timedelta(hours=5))
+    _relay_prices(hass)
+    hass.states.async_set(RELAY, "off")
+    hass.states.async_set(RELAY_B, "off")
+    freezer.move_to(morning)
+    relays = await _relay_automation(hass, tmp_path, "sg_ready", relay_b=RELAY_B, max_on_hours=2, min_rest_hours=1)
+
+    # Cheap: recommended raise (A open, B closed).
+    hass.states.async_set(CHEAP, "on")
+    await hass.async_block_till_done()
+    assert relays.take() == [("turn_on", RELAY_B)]
+
+    # Straight from cheap to expensive: B is opened before A is closed, never both closed.
+    hass.states.async_set(CHEAP, "off")
+    hass.states.async_set(EXPENSIVE, "on")
+    await hass.async_block_till_done()
+    assert relays.take() == [("turn_off", RELAY_B), ("turn_on", RELAY)]
+
+    # Blocked for at most 2 hours, then normal for the rest, then blocked again.
+    await _at(hass, freezer, morning + timedelta(hours=2, seconds=1))
+    assert relays.take() == [("turn_off", RELAY)]
+    await _at(hass, freezer, morning + timedelta(hours=2, minutes=55))
+    assert relays.take() == []
+    await _at(hass, freezer, morning + timedelta(hours=3, minutes=5))
+    assert relays.take() == [("turn_on", RELAY)]
+
+    # Expensive to cheap: A opened before B is closed.
+    hass.states.async_set(EXPENSIVE, "off")
+    hass.states.async_set(CHEAP, "on")
+    await hass.async_block_till_done()
+    assert relays.take() == [("turn_off", RELAY), ("turn_on", RELAY_B)]
+
+    # Neither: normal, both open.
+    hass.states.async_set(CHEAP, "off")
+    await hass.async_block_till_done()
+    assert relays.take() == [("turn_off", RELAY_B)]
+
+
+async def test_relay_sg_ready_outdoor_floor_and_start(hass: HomeAssistant, tmp_path: Path, morning) -> None:
+    _relay_prices(hass, expensive="on")
+    hass.states.async_set(RELAY, "on")
+    hass.states.async_set(RELAY_B, "on")
+    hass.states.async_set(OUTDOOR, "-20", {"unit_of_measurement": "°C", "device_class": "temperature"})
+    relays = await _relay_automation(hass, tmp_path, "sg_ready", relay_b=RELAY_B, outdoor_sensor=OUTDOOR)
+    # Both closed (forced raise) at the start, expensive and too cold: both opened, normal.
+    hass.bus.async_fire(EVENT_HOMEASSISTANT_STARTED)
+    await hass.async_block_till_done()
+    assert sorted(relays.take()) == [("turn_off", RELAY), ("turn_off", RELAY_B)]
+
+
+async def test_relay_sg_ready_without_relay_b_does_nothing(hass: HomeAssistant, tmp_path: Path, morning) -> None:
+    _relay_prices(hass)
+    hass.states.async_set(RELAY, "off")
+    relays = await _relay_automation(hass, tmp_path, "sg_ready")
+    hass.states.async_set(EXPENSIVE, "on")
+    await hass.async_block_till_done()
+    assert relays.take() == []
