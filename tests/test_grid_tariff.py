@@ -92,6 +92,56 @@ def test_a_stored_tariff_is_read_and_moves_the_revision() -> None:
     assert set(row.as_dict()) == {"area_id", "vat", "tax", "transfer"}
 
 
+def test_the_supplier_figures_are_stored_beside_the_tariff_and_only_a_set_one_moves_the_revision() -> None:
+    data = {"area_id": SE4, "vat": SUGGESTED, "tax": SUGGESTED, "transfer": OFF}
+    plain = fees_from_data(SE4, data)
+    # Stored off with no figure: none at all, the digest as before.
+    off = fees_from_data(SE4, {**data, "supplier_markup": OFF, "sell_adjustment": OFF})
+    assert off.grid_tariff is None and source_revision(off) == source_revision(plain)
+    # A tariff stored before the two figures keeps its digest beside them stored off.
+    percent = {**data, "transfer_percent": OWNER_PERCENT, "transfer_high": OFF, "high_load_window": None}
+    assert source_revision(fees_from_data(SE4, percent)) == source_revision(
+        fees_from_data(SE4, {**percent, "supplier_markup": OFF, "sell_adjustment": OFF})
+    )
+    # What a sold kWh earns may be a deduction; the markup may not.
+    row = fees_from_data(
+        SE4, {**data, "supplier_markup": {"enabled": True, "value": 4.5}, "sell_adjustment": {"enabled": True, "value": -2.0}}
+    )
+    assert row.grid_tariff == GridTariff(
+        supplier_markup=FiscalOverride(True, 4.5), sell_adjustment=FiscalOverride(True, -2.0)
+    )
+    assert source_revision(row) != source_revision(plain)
+    bad = fees_from_data(SE4, {**data, "supplier_markup": {"enabled": True, "value": -1.0}})
+    assert bad.grid_tariff is None
+
+
+def test_the_supplier_figures_resolve_even_where_the_price_includes_the_grid_fee() -> None:
+    se4 = CATALOGUE.area(SE4)
+    fiscal = fiscal_choice_for(
+        AutoSettings(
+            area_id=SE4,
+            overrides=(
+                _se4(supplier_markup=FiscalOverride(True, 4.0), sell_adjustment=FiscalOverride(True, -2.0)),
+            ),
+        ),
+        se4,
+    )
+    assert fiscal is not None
+    assert (fiscal.markup_enabled, fiscal.markup_minor_per_kwh, fiscal.sell_adjustment) == (True, 4.0, -2.0)
+    # Spot + markup + tax 36 + transfer 16, then VAT 25 %.
+    assert effective_minor_per_kwh(0.80, fiscal) == pytest.approx((80 + 4 + 36 + 16) * 1.25)
+    # Off with a figure kept: nothing.
+    kept = fiscal_choice_for(
+        AutoSettings(area_id=SE4, overrides=(_se4(supplier_markup=FiscalOverride(False, 4.0)),)), se4
+    )
+    assert kept is not None and kept.markup_minor_per_kwh is None and kept.sell_adjustment == 0.0
+    # On with no figure cannot be priced.
+    unresolved = fiscal_choice_for(
+        AutoSettings(area_id=SE4, overrides=(_se4(sell_adjustment=FiscalOverride(True, None)),)), se4
+    )
+    assert unresolved is None
+
+
 def test_an_unreadable_stored_part_is_off_never_a_guess() -> None:
     data = {
         "area_id": SE4, "transfer_percent": {"enabled": "yes", "value": 5}, "transfer_high": {"enabled": True},
@@ -108,6 +158,9 @@ def test_an_unreadable_stored_part_is_off_never_a_guess() -> None:
         GridTariff(transfer_high=FiscalOverride(True, None), high_load_window=HighLoadWindow()),
         GridTariff(transfer_percent=FiscalOverride(True, -1.0)),
         GridTariff(high_load_window=HighLoadWindow(from_hour=19, to_hour=19)),
+        GridTariff(supplier_markup=FiscalOverride(True, None)),
+        GridTariff(supplier_markup=FiscalOverride(True, -1.0)),
+        GridTariff(sell_adjustment=FiscalOverride(True, None)),
     ],
 )
 def test_a_tariff_that_cannot_be_priced_is_refused(tariff: GridTariff) -> None:
@@ -200,6 +253,18 @@ async def test_an_area_change_switches_the_high_fee_off_and_keeps_the_rest(hass:
     assert price.data["transfer_high"] == {"enabled": False, "value": 60.0}
     assert price.data["transfer_percent"] == OWNER_PERCENT
     assert price.data["high_load_window"] == WINDOW
+
+
+async def test_an_area_change_switches_the_supplier_figures_off_and_keeps_them(hass: HomeAssistant, freezer) -> None:
+    freezer.move_to(NOW)
+    price = await add_price(
+        hass, supplier_markup={"enabled": True, "value": 4.0}, sell_adjustment={"enabled": True, "value": -2.0}
+    )
+    async_write_price_entry(hass, price, AreaAutoSettings(area_id="DK1"))
+    await hass.async_block_till_done()
+    # Figures in the old area's unit: off, each kept so switching it on again is one step.
+    assert price.data["supplier_markup"] == {"enabled": False, "value": 4.0}
+    assert price.data["sell_adjustment"] == {"enabled": False, "value": -2.0}
 
 
 async def test_a_tariff_change_replans_with_the_new_price(hass: HomeAssistant, freezer) -> None:

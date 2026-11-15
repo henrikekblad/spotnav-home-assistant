@@ -98,7 +98,20 @@ import {
   type ReferencePicture,
   type Vehicle,
 } from "./validate";
-import { gridTariffRows, highLoadEditor, withComponent, withHighLoad, withoutHighLoad, withPercent, type GridTariffRowKey } from "./grid-tariff";
+import {
+  gridTariffRows,
+  highLoadEditor,
+  supplierRows,
+  withComponent,
+  withHighLoad,
+  withMarkup,
+  withoutHighLoad,
+  withPercent,
+  withSellAdjustment,
+  SUPPLIER_MAX,
+  type GridTariffRowKey,
+  type SupplierRow,
+} from "./grid-tariff";
 import { componentEditor, demandRows, hourLine, kwText } from "./demand-charge";
 import { suggestionAdvice } from "./target-suggestion";
 import { floorEditor, limitEditor, targetEditor } from "./percent-editors";
@@ -3136,6 +3149,7 @@ export function createCardView(input: CardViewInput): CardView {
         section.append(...gridTariffNodes());
       }
     }
+    section.append(...supplierNodes());
     section.append(...demandNodes());
     return section;
   }
@@ -3191,6 +3205,48 @@ export function createCardView(input: CardViewInput): CardView {
     };
     return gridTariffRows(model.language, block).map((row) =>
       overviewRow(row.key, row.label, row.value, row.included || !block.writable ? undefined : edit[row.key]),
+    );
+  }
+
+  /**
+   * The electricity supplier's two figures below the fees: the markup on each bought kWh and what a sold kWh earns
+   * beyond spot. Read-only for a reader who may not change the electricity price.
+   */
+  function supplierNodes(): HTMLElement[] {
+    const block = model.gridTariff;
+    if (block === null) {
+      return [];
+    }
+    return supplierRows(model.language, block).map((row) =>
+      overviewRow(row.key, row.label, row.value, block.writable ? () => editSupplier(block, row) : undefined),
+    );
+  }
+
+  /** One supplier figure in a number editor with its line of help; "Off" keeps the figure for next time. */
+  function editSupplier(block: GridTariffBlock, row: SupplierRow): void {
+    const markup = row.key === "supplier_markup";
+    const fee = markup ? block.supplier_markup : block.sell_adjustment;
+    if (fee === null) {
+      return;
+    }
+    editNumber(
+      row.label,
+      {
+        help: row.help,
+        unit: fee.unit ?? "",
+        current: fee.effective_value,
+        prefill: fee.explicit_value,
+        // What a sold kWh earns may be a deduction; the markup is a cost.
+        min: markup ? 0 : -SUPPLIER_MAX,
+        max: SUPPLIER_MAX,
+        decimals: 2,
+        noneLabel: translate(model.language, "settings.value.off"),
+      },
+      (value) =>
+        writeValue({
+          kind: "gridTariff",
+          change: (current) => (markup ? withMarkup(current, value) : withSellAdjustment(current, value)),
+        }),
     );
   }
 

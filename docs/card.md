@@ -293,7 +293,9 @@ use it ("Electricity price SE4 · used by all 2 chargers"; with one charger only
 than one uses it, that a change here applies to every charger using it. Below are the area and the VAT,
 energy tax and grid fee as the plan applies them. Tapping the area or a tax opens the editor. *Grid fee in
 high-load hours* and *High-load hours* open the same dialog, with the fee and its hours together, one *Save* and
-*Remove the high-load fee* (see [a grid fee higher in high-load hours](prices.md#a-grid-fee-that-is-a-percentage-of-spot-or-higher-in-high-load-hours)).
+*Remove the high-load fee* (see [a grid fee higher in high-load hours](prices.md#a-grid-fee-that-is-a-percentage-of-spot-or-higher-in-high-load-hours)). Below the fees, *Supplier markup*
+(on each bought kWh, without VAT) and *Sold kWh: extra or deduction* (as it is paid out, without VAT; a deduction
+is a negative figure) are off until set (see [the supplier's markup](prices.md#the-suppliers-markup-and-what-a-sold-kwh-earns)).
 
 ![The electricity price settings](images/card-settings-price.png)
 

@@ -53,6 +53,7 @@ from custom_components.spotnav.site.house_history import MIN_GROSS_HOURS
 from custom_components.spotnav.site.load_forecast import NO_TEMPERATURE, ForecastHour, LoadForecast
 
 from tests.test_battery_runtime import _service_calls, _site
+from tests.test_price_device import add_price
 
 
 @pytest.fixture(autouse=True)
@@ -136,10 +137,35 @@ async def test_the_plan_runs_in_shadow_as_a_benchmark_beside_a_battery_in_its_ow
     assert [call for call in calls if call.data.get("domain") not in ("system_log", "logger")] == []
 
 
-async def test_a_sell_credit_is_read_from_the_hook(hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_what_a_sold_kwh_earns_beyond_spot_is_the_prices_own_figure(hass: HomeAssistant) -> None:
+    _site_entry, controller = await _site(hass)
+    assert controller.battery_shadow.plan._sell_credit() == 0.0
+    await add_price(hass, sell_adjustment={"enabled": True, "value": -2.5})
+    assert controller.battery_shadow.plan._sell_credit() == -2.5
+
+
+async def test_the_old_hook_moves_to_the_price_once_and_leaves_the_site(hass: HomeAssistant) -> None:
     site, controller = await _site(hass)
     hass.config_entries.async_update_entry(site, data={**site.data, plan_runtime.SELL_CREDIT_KEY: 4.5})
+    # No electricity price yet: the hook waits for one.
+    assert plan_runtime.migrate_sell_credit(hass, site.entry_id) is False
+    assert site.data[plan_runtime.SELL_CREDIT_KEY] == 4.5
+    price = await add_price(hass)
+    assert plan_runtime.migrate_sell_credit(hass, site.entry_id) is True
+    assert plan_runtime.SELL_CREDIT_KEY not in site.data
+    assert price.data["sell_adjustment"] == {"enabled": True, "value": 4.5}
     assert controller.battery_shadow.plan._sell_credit() == 4.5
+    # Done once: nothing is left to move.
+    assert plan_runtime.migrate_sell_credit(hass, site.entry_id) is False
+
+
+async def test_the_old_hook_never_overwrites_a_figure_the_price_already_has(hass: HomeAssistant) -> None:
+    site, _controller = await _site(hass)
+    price = await add_price(hass, sell_adjustment={"enabled": False, "value": 7.0})
+    hass.config_entries.async_update_entry(site, data={**site.data, plan_runtime.SELL_CREDIT_KEY: 4.5})
+    assert plan_runtime.migrate_sell_credit(hass, site.entry_id) is True
+    assert plan_runtime.SELL_CREDIT_KEY not in site.data
+    assert price.data["sell_adjustment"] == {"enabled": False, "value": 7.0}
 
 
 async def test_without_prices_there_is_no_plan_and_it_says_why(hass: HomeAssistant) -> None:

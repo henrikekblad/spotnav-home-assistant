@@ -58,6 +58,25 @@ def test_the_percentage_part_is_added_before_vat_as_the_owners_bill_shows() -> N
     assert effective_minor_per_kwh(1.0, fiscal) == pytest.approx(196.25)
 
 
+def test_the_supplier_markup_is_added_before_vat_and_the_percentage_is_of_spot_alone() -> None:
+    fiscal = _owner(markup_enabled=True, markup_minor_per_kwh=4.0)
+    # 1.00 kr spot: (100 + 4 markup + 5 % of 100 + 36 + 16) x 1.25 = 201.25 öre: the markup carries VAT, and the
+    # percentage is of the spot price, not of spot plus markup.
+    assert effective_minor_per_kwh(1.0, fiscal) == pytest.approx((100 + 4 + 5 + 36 + 16) * 1.25)
+    assert effective_minor_per_kwh(1.0, fiscal) == pytest.approx(201.25)
+    # Switched off, its figure kept: nothing added.
+    off = _owner(markup_enabled=False, markup_minor_per_kwh=4.0)
+    assert off.markup_minor_per_kwh is None
+    assert effective_minor_per_kwh(1.0, off) == effective_minor_per_kwh(1.0, _owner())
+
+
+def test_what_a_sold_kwh_earns_beyond_spot_never_prices_a_bought_one() -> None:
+    fiscal = _owner(sell_adjustment_minor_per_kwh=-3.0)
+    assert fiscal.sell_adjustment == -3.0
+    assert effective_minor_per_kwh(1.0, fiscal) == effective_minor_per_kwh(1.0, _owner())
+    assert _owner().sell_adjustment == 0.0
+
+
 def test_the_percentage_part_follows_a_negative_spot_price() -> None:
     fiscal = _owner()
     # -0.20 kr spot: the 5 % part is -1 öre, not clamped at zero: (1.05 x -20 + 36 + 16) x 1.25 = 38.75.
@@ -169,6 +188,10 @@ def test_a_window_without_the_intervals_start_is_a_refusal_not_the_low_fee() -> 
         # Negative figures.
         FiscalChoice(transfer_percent_enabled=True, transfer_percent=-5),
         FiscalChoice(transfer_high_enabled=True, transfer_high_minor_per_kwh=-1, high_load_window=WINDOW),
+        # The supplier's markup: on with no figure, negative; what a sold kWh earns: not a number.
+        FiscalChoice(markup_enabled=True),
+        FiscalChoice(markup_enabled=True, markup_minor_per_kwh=-1),
+        FiscalChoice(sell_adjustment_minor_per_kwh="5"),  # type: ignore[arg-type]
     ],
 )
 def test_validation_refuses_what_cannot_be_priced(fiscal: FiscalChoice) -> None:

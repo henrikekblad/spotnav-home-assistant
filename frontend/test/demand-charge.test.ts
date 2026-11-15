@@ -221,6 +221,9 @@ describe("the demand charge in the Electricity price section", () => {
             price_per_kw: { winter: 12, summer: 8.5 },
           },
         ],
+        // The supplier's two figures as stored: the backend states them, so the write carries them unchanged.
+        supplier_markup: { enabled: false, value: null },
+        sell_adjustment: { enabled: false, value: null },
       },
     ]);
   });

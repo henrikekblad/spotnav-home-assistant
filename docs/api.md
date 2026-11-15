@@ -444,16 +444,27 @@ in the dashboard and in `update_grid_tariff`'s answer). `import_target_kw` is th
 of at least 0.1, `null` or `""` to clear; written without reloading the site). Since 2.3 the import target holds
 the site's chargers through load balancing (the status lines below); a demand charge is measured only. A full example is `tests/fixtures/grid_tariff/pilot_demand.json`.
 
+The block also carries the electricity supplier's two figures (additive, 3.0), each
+`{"policy", "explicit_value", "effective_value", "unit"}` with `policy` `off` or `manual` (never `included`) and
+`unit` the area's minor unit per kWh: `supplier_markup`, the supplier's markup on each bought kWh, added before VAT
+like the other fees (spot + markup + energy tax + grid fee, then VAT; a grid fee's percentage stays a percentage of
+the spot price alone), and `sell_adjustment`, what a sold kWh earns beyond the spot price as it is paid out (the
+grid operator's credit for production plus or minus the supplier's terms): never with VAT, and negative for a
+deduction. The webhook sends both only to an app that asks for them (`"reads": ["supplier_fees"]`, in the dashboard
+and in `update_grid_tariff`'s answer).
+
 `update_grid_tariff {"expected_write_revision", "grid_tariff"}` replaces the three parts in full; `grid_tariff` is
 `{"transfer_percent": {"enabled", "value"}, "transfer_high": {"enabled", "value"}, "high_load_window"}`, every key
 required, and optionally `"demand_components"` (the list as `demand.components` states it, `[]` removes every
-part; absent keeps the stored parts, so a writer that does not know them leaves them alone). A part needs `top_n`
+part; absent keeps the stored parts, so a writer that does not know them leaves them alone), and optionally
+`"supplier_markup"` and `"sell_adjustment"` (each `{"enabled", "value"}`, absent keeps the stored figure; only
+`sell_adjustment` may be negative). A part needs `top_n`
 1, 3 or 5, a window of whole hours or `null`, and prices that are `null` or not negative; at most three parts. A fee that is on needs its figure, and the high-load fee needs a window (a window may stay while its fee
 is off). It is the card's `spotnav/update_grid_tariff` for the webhook's own charger, through the same core, and
 answers `{"ok", "error", "field_errors", "grid_tariff", "action"}` with the block re-read after the write. HTTP 200
 on success; 409 `revision_conflict` (the electricity price was written since `write_revision`); 400
 `invalid_fiscal` (with `field_errors` `[{"field": "transfer_percent" | "transfer_high" | "high_load_window" |
-"demand_components" | "grid_tariff", "code": "invalid_value"}]`), `invalid_number` (`expected_write_revision` is not a whole number) or
+"demand_components" | "supplier_markup" | "sell_adjustment" | "grid_tariff", "code": "invalid_value"}]`), `invalid_number` (`expected_write_revision` is not a whole number) or
 `spotnav_no_price_entry` (the charger prices with its own settings). Nothing is written on a refusal. The write
 counts as a write of the electricity price: every charger using it replans, and their settings records' `revision`
 moves with it. A write of the tariff as stored (all off where nothing is stored) passes the compare-and-set and

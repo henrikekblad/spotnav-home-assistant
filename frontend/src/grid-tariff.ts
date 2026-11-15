@@ -36,6 +36,9 @@ export interface GridTariffBody {
   transfer_high: GridTariffFeeBody;
   high_load_window: HighLoadWindow | null;
   demand_components?: DemandComponent[];
+  /** The supplier's two figures, whenever the backend states them (an older one refuses the keys). */
+  supplier_markup?: GridTariffFeeBody;
+  sell_adjustment?: GridTariffFeeBody;
 }
 
 /** The write's refusal when the electricity price was written since the block was read. */
@@ -79,7 +82,14 @@ export function storedBody(block: GridTariffBlock): GridTariffBody {
     transfer_high: feeBody(block.transfer_high),
     high_load_window: block.high_load_window === null ? null : { ...block.high_load_window },
   };
-  return block.demand === null ? body : { ...body, demand_components: block.demand.components.map(copyComponent) };
+  if (block.demand !== null) {
+    body.demand_components = block.demand.components.map(copyComponent);
+  }
+  if (block.supplier_markup !== null && block.sell_adjustment !== null) {
+    body.supplier_markup = feeBody(block.supplier_markup);
+    body.sell_adjustment = feeBody(block.sell_adjustment);
+  }
+  return body;
 }
 
 /** The demand-charge components set, the rest as stored. */
@@ -111,6 +121,8 @@ export function sameComponent(a: DemandComponent, b: DemandComponent): boolean {
   );
 }
 
+const OFF_FEE: GridTariffFee = { policy: "off", explicit_value: null, effective_value: null, unit: null };
+
 /** A fee turned on with `value`, or off (`null`) keeping its stored figure, so turning it on again is one step. */
 function feeChange(fee: GridTariffFee, value: number | null): GridTariffFeeBody {
   return value === null ? { enabled: false, value: fee.explicit_value } : { enabled: true, value };
@@ -119,6 +131,18 @@ function feeChange(fee: GridTariffFee, value: number | null): GridTariffFeeBody 
 /** The percentage of spot set (`null` is off), the rest as stored. */
 export function withPercent(block: GridTariffBlock, value: number | null): GridTariffBody {
   return { ...storedBody(block), transfer_percent: feeChange(block.transfer_percent, value) };
+}
+
+/** The supplier's markup set (`null` is off, its figure kept), the rest as stored. */
+export function withMarkup(block: GridTariffBlock, value: number | null): GridTariffBody {
+  const fee = block.supplier_markup ?? OFF_FEE;
+  return { ...storedBody(block), supplier_markup: feeChange(fee, value) };
+}
+
+/** What a sold kWh earns beyond spot set (`null` is off, its figure kept), the rest as stored. */
+export function withSellAdjustment(block: GridTariffBlock, value: number | null): GridTariffBody {
+  const fee = block.sell_adjustment ?? OFF_FEE;
+  return { ...storedBody(block), sell_adjustment: feeChange(fee, value) };
 }
 
 /** The high-load hours set, the fees as stored. */
@@ -140,6 +164,8 @@ export function sameBody(left: GridTariffBody, right: GridTariffBody): boolean {
   const fee = (a: GridTariffFeeBody, b: GridTariffFeeBody): boolean => a.enabled === b.enabled && a.value === b.value;
   const window = (a: HighLoadWindow | null, b: HighLoadWindow | null): boolean =>
     a === null || b === null ? a === b : sameWindow(a, b);
+  const optional = (a: GridTariffFeeBody | undefined, b: GridTariffFeeBody | undefined): boolean =>
+    a === undefined || b === undefined ? a === b : fee(a, b);
   const components = (a: DemandComponent[] | undefined, b: DemandComponent[] | undefined): boolean =>
     a === undefined || b === undefined
       ? a === b
@@ -148,7 +174,9 @@ export function sameBody(left: GridTariffBody, right: GridTariffBody): boolean {
     fee(left.transfer_percent, right.transfer_percent) &&
     fee(left.transfer_high, right.transfer_high) &&
     window(left.high_load_window, right.high_load_window) &&
-    components(left.demand_components, right.demand_components)
+    components(left.demand_components, right.demand_components) &&
+    optional(left.supplier_markup, right.supplier_markup) &&
+    optional(left.sell_adjustment, right.sell_adjustment)
   );
 }
 
@@ -240,6 +268,43 @@ export function gridTariffRows(language: Language, block: GridTariffBlock | null
     });
   }
   return rows;
+}
+
+/** The largest supplier figure the card takes either way (the area's minor unit per kWh). */
+export const SUPPLIER_MAX = 10000;
+
+export type SupplierRowKey = "supplier_markup" | "sell_adjustment";
+
+export interface SupplierRow {
+  key: SupplierRowKey;
+  label: string;
+  value: string;
+  /** One plain line under the row: what it is and how VAT is handled. */
+  help: string;
+}
+
+/**
+ * The electricity supplier's two figures below the grid fees: the markup on each bought kWh and what a sold kWh earns
+ * beyond spot. Never locked (no area's price holds them); none from a backend before them.
+ */
+export function supplierRows(language: Language, block: GridTariffBlock | null): SupplierRow[] {
+  if (block === null || block.supplier_markup === null || block.sell_adjustment === null) {
+    return [];
+  }
+  return [
+    {
+      key: "supplier_markup",
+      label: translate(language, "supplier.markup"),
+      value: feeText(language, block.supplier_markup),
+      help: translate(language, "supplier.markup.help"),
+    },
+    {
+      key: "sell_adjustment",
+      label: translate(language, "supplier.sell"),
+      value: feeText(language, block.sell_adjustment),
+      help: translate(language, "supplier.sell.help"),
+    },
+  ];
 }
 
 function hourSelect(doc: Document, id: string, from: number, to: number, selected: number): HTMLSelectElement {

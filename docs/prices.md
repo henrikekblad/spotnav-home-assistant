@@ -107,10 +107,11 @@ A spot price has no VAT, tax or grid fee. You can add each of them in the card, 
 additions are applied as:
 
 ```text
-(spot price + electricity tax + grid fee) × (1 + VAT)
+(spot price + supplier markup + electricity tax + grid fee) × (1 + VAT)
 ```
 
-VAT is applied last because it is charged on the tax and the grid fee too. The electricity tax and
+VAT is applied last because it is charged on the markup, the tax and the grid fee too. The supplier markup is off
+until you set it (see [The supplier's markup, and what a sold kWh earns](#the-suppliers-markup-and-what-a-sold-kwh-earns)). The electricity tax and
 the grid fee are in the area's smallest currency unit per kWh (öre, cent, pence); VAT is a
 percentage.
 
@@ -173,6 +174,27 @@ percentage, the high-load fee and the window belong to the electricity price, no
 area switches the high-load fee off (its figure is in the old area's unit) but keeps the figure, so switching it on
 again is one step; the percentage and the window stay as they are. Check the values against your contract. The cost of past charges in the charge history is recalculated with your
 current values every time it is shown (see [Charge history](card.md#charge-history)).
+
+### The supplier's markup, and what a sold kWh earns
+
+Two more figures make SpotNav's costs match your invoice. Both belong to the electricity price, both are in the
+area's smallest currency unit per kWh (öre, cent, pence), and both are off until you set them in the card's
+Settings, below the grid fees. Neither has a suggestion: take them from your contract or invoice.
+
+- **Supplier markup** (*påslag*). What your electricity supplier adds to each bought kWh on top of the spot price,
+  **without VAT**, like the tax and the grid fee: VAT is added on top. It is a real cost, so it is in every plan's
+  price, in what a charge cost and in the charge history; it adds the same to every hour, so it hardly moves when a
+  plan charges. A grid fee that is a percentage of spot stays a percentage of the spot price alone.
+- **Sold kWh: extra or deduction**. What each kWh you sell earns beyond the spot price, **as it is paid out,
+  without VAT** (a private seller charges none): your grid operator's credit for production (*nätnytta*, a few öre
+  in Sweden) plus or minus what your supplier adds or deducts for bought-back power. A deduction is a negative
+  figure. A sold kWh earns spot + this figure, and nothing else is added to it. The home battery's plan, the
+  house card's sell price, the day's review and the rule that stops exporting when a sold kWh would earn less than
+  nothing all use it: with a credit of 5 öre, export stops only when the spot price is below -5 öre.
+
+For example, with a markup of 4 öre, 36 öre of tax, a grid fee of 16 öre and 25 % VAT, a spot price of 80 öre costs
+(80 + 4 + 36 + 16) × 1.25 = 170 öre; with a sale figure of 5 öre a sold kWh at the same spot price earns 85 öre.
+Moving the electricity price to another area switches both off and keeps the figures, as for the high-load fee.
 
 ### A demand charge
 

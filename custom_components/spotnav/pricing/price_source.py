@@ -64,6 +64,7 @@ from ..planning.auto_settings import (
     FiscalOverride,
     GRID_TARIFF_FEES,
     GridTariff,
+    SUPPLIER_FEES,
 )
 from ..runtime import domain_data
 from .relay_contract import AreaEntry
@@ -166,13 +167,17 @@ def source_revision(overrides: AreaAutoSettings) -> str:
     """A digest of an area and its fees: equal for equal fees, different when the area or a fee moves.
 
     The grid tariff joins the digest only while one is stored, so an entry without one keeps the revision it had;
-    its demand-charge components only while there are any, so a tariff without them keeps its revision too.
+    its demand-charge components only while there are any, so a tariff without them keeps its revision too; the
+    supplier's two figures likewise only while one is stored (off with no figure is none).
     """
     body = overrides.as_dict()
     if overrides.grid_tariff is not None:
         tariff = overrides.grid_tariff.as_dict()
         if not overrides.grid_tariff.demand:
             del tariff[DEMAND_COMPONENTS]
+        for name in SUPPLIER_FEES:
+            if getattr(overrides.grid_tariff, name) == FiscalOverride():
+                del tariff[name]
         body = {**body, "grid_tariff": tariff}
     canonical = json.dumps(body, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:16]
@@ -418,10 +423,13 @@ def async_write_price_entry(
     }
     if tariff is not None:
         data.update(tariff.as_dict())
-    elif previous_area and previous_area != overrides.area_id and HIGH_FEE in data:
-        # The high-load fee is a figure in the old area's unit: another area starts with it off, the figure kept so
-        # switching it on again is one step. The percentage and the window carry no unit and stay.
+    elif previous_area and previous_area != overrides.area_id:
+        # The high-load fee and the supplier's two figures are in the old area's unit: another area starts with them
+        # off, each figure kept so switching it on again is one step. The percentage and the window carry no unit and
+        # stay.
         stored = fees_from_data(str(previous_area), entry.data).grid_tariff
-        kept = None if stored is None else stored.transfer_high.value
-        data[HIGH_FEE] = FiscalOverride(enabled=False, value=kept).as_dict()
+        for name in (HIGH_FEE, *SUPPLIER_FEES):
+            if name in data:
+                kept = None if stored is None else getattr(stored, name).value
+                data[name] = FiscalOverride(enabled=False, value=kept).as_dict()
     hass.config_entries.async_update_entry(entry, data=data, title=title)

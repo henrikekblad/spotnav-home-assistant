@@ -190,6 +190,11 @@ APP_DASHBOARD_NESTED_READS: Final = {("prices", "provider"): APP_READS_PRICE_PRO
 #: not read `APP_READS_EFFECTIVE_TARGET` (its decoder refuses a demand block with an unknown key), in the dashboard
 #: and in `update_grid_tariff`'s answer.
 APP_READS_EFFECTIVE_TARGET: Final = "effective_target"
+#: The supplier's markup and what a sold kWh earns beyond spot (`grid_tariff.supplier_markup`, `.sell_adjustment`):
+#: left out for an app that does not read `APP_READS_SUPPLIER_FEES` (its decoder refuses a block with an unknown key),
+#: in the dashboard and in `update_grid_tariff`'s answer. Its write without them keeps the stored figures.
+APP_READS_SUPPLIER_FEES: Final = "supplier_fees"
+APP_UNREAD_SUPPLIER_FEE_KEYS: Final = ("supplier_markup", "sell_adjustment")
 #: Each vehicle-row field an app released before it does not read, with the `reads` name that opts into it.
 APP_VEHICLE_FIELD_READS: Final = {"min_percent": APP_READS_MIN_SOC, "wake_for_reading": APP_READS_WAKE_FOR_READING}
 
@@ -297,8 +302,13 @@ def _vehicle_answer_for_app(body: dict[str, Any], payload: dict[str, Any]) -> di
 
 
 def _grid_tariff_for_app(block: Any, opted_in: set[str]) -> Any:
-    """A `grid_tariff` block as the app reads it: without `demand.effective_target_kw` unless it opted in."""
-    if APP_READS_EFFECTIVE_TARGET in opted_in or not isinstance(block, dict):
+    """A `grid_tariff` block as the app reads it: without `demand.effective_target_kw` and without the supplier's
+    figures unless it opted in to each."""
+    if not isinstance(block, dict):
+        return block
+    if APP_READS_SUPPLIER_FEES not in opted_in and any(key in block for key in APP_UNREAD_SUPPLIER_FEE_KEYS):
+        block = {key: value for key, value in block.items() if key not in APP_UNREAD_SUPPLIER_FEE_KEYS}
+    if APP_READS_EFFECTIVE_TARGET in opted_in:
         return block
     demand = block.get("demand")
     if not isinstance(demand, dict) or "effective_target_kw" not in demand:
@@ -325,7 +335,8 @@ def _for_app(body: dict[str, Any], payload: dict[str, Any]) -> dict[str, Any]:
     `phase_switching` block; `grid_tariff` for its `grid_tariff` block; `price_provider` for `prices.provider`; `setup` for its `setup` block; `plan_facts` for the status lines
     `plan_saving` and `solar_forecast` and hybrid's `sun_start`/`sun_end`; `own_mode_status` for the status line
     `charger_own_mode`; `sun_past_target` for the status line `sun_past_target`; `import_target_status` for the import
-    target's five status lines; `effective_target` for `grid_tariff.demand.effective_target_kw`; `guest` for the guest
+    target's five status lines; `effective_target` for `grid_tariff.demand.effective_target_kw`; `supplier_fees` for
+    `grid_tariff.supplier_markup` and `.sell_adjustment`; `guest` for the guest
     car: the `guest` block, its status lines, a one-car charger's question and the guest standing as the vehicle;
     `stop_unplug_unseen` for the status line of a person's Stop nothing can see end; `departure_calendar` for the
     dashboard's `departure_calendar` block and the settings field);
