@@ -286,6 +286,51 @@ async def test_the_quarter_hours_record_what_the_battery_did_and_the_day_is_revi
     assert set(review) >= {"actual", "plan", "modes", "self_consumption", "saving", "mode_savings", "actual_saving"}
     assert snapshot["review_totals"]["days"] == 1
     assert len(plan.actuals.rows) >= 23
+    # No battery and no sun here: the day costs what it cost, and without solar statistics the sun's figure is none.
+    assert review["baselines"] == {"no_battery_cost": review["actual"]["cost"], "sun_gave": 0.0, "sun_quarters": 0}
+    assert plan.reviews[0].battery_saving == pytest.approx(0.0) and plan.reviews[0].sun_value is None
+
+
+async def test_the_sun_is_read_for_the_review_a_little_after_it(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _site_entry, controller, now = await _planned(hass, monkeypatch)
+    plan = controller.battery_shadow.plan
+    tz = controller.demand.tracker.tz
+    from custom_components.spotnav import time_zones
+
+    zone = time_zones.require_zone(tz)
+    yesterday = now.astimezone(zone).date() - timedelta(days=1)
+    start = datetime.combine(yesterday, datetime.min.time(), zone).astimezone(dt_util.UTC)
+    reads: list[tuple[datetime, datetime]] = []
+    moments: list[datetime] = []
+
+    async def read(first: datetime, end: datetime) -> dict[datetime, float]:
+        reads.append((first, end))
+        return {moment: 0.5 for moment in moments[:40]}  # the statistics miss the rest of the day
+
+    monkeypatch.setattr(plan, "_async_read_sun", read)
+    moment = start
+    while moment.astimezone(zone).date() == yesterday:
+        bucket = plan.actuals.open(moment, price=PriceSlot(moment, moment + BUCKET, 100.0, 40.0), cap_kw=None, ran=None)
+        bucket.import_kwh, bucket.covered_s = 0.25, 900.0
+        bucket.soc_start = bucket.soc_end = 44.6
+        moments.append(moment)
+        moment += BUCKET
+    plan._quarter = None
+    controller.battery_shadow.tick(now + timedelta(seconds=1))
+    await hass.async_block_till_done()
+    assert reads == [(start, start + timedelta(days=1))]
+    [review] = plan.reviews
+    # 0.5 kWh of sun that the house used: without it 0.5 kWh more is bought at 100.
+    assert review.sun_quarters == 40 and review.covered == len(moments)
+    assert review.sun_gave == pytest.approx(40 * 50.0)
+    assert review.against_nothing is None
+    # Asked once: the next quarter hour does not read it again.
+    plan._quarter = None
+    controller.battery_shadow.tick(now + timedelta(minutes=16))
+    await hass.async_block_till_done()
+    assert len(reads) == 1
 
 
 async def test_two_reviewed_days_survive_a_reload(hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch) -> None:

@@ -51,7 +51,7 @@ from __future__ import annotations
 import math
 import statistics
 from collections.abc import Iterable, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date, datetime, timedelta, timezone
 from typing import Any, Final
 
@@ -76,6 +76,7 @@ from .plan_model import (
     PlanSlot,
     SlotDecision,
 )
+from .review_baselines import no_battery_cost, sun_gave
 from .shadow import parse_aware_datetime
 
 #: The floor the plan keeps when the battery does not say its own (its reserve or cut-off is not read yet).
@@ -840,6 +841,13 @@ class DayReview:
     #: what the export-limit rule (`export_curtail.py`) would have saved. Apart from the runs above.
     curtail_kwh: float = 0.0
     curtail_saving: float = 0.0
+    #: What the covered quarter hours would have cost with no battery (minor units; `review_baselines.py`); `None` in
+    #: a review from before it.
+    no_battery_cost: float | None = None
+    #: What the sun gave over the `sun_quarters` quarter hours that had a production figure (minor units). `None`
+    #: quarters: not asked for yet (the production comes from the statistics a little later); 0: no figure.
+    sun_gave: float = 0.0
+    sun_quarters: int | None = None
 
     def net(self, run: Run) -> float:
         return run.cost - (run.end_soc_pct - self.start_soc_pct) / 100 * self.usable_kwh * self.end_value
@@ -859,6 +867,30 @@ class DayReview:
     def actual_saving(self) -> float:
         """What the battery's own way (its optimiser, or plain self-consumption) earned against the same baseline."""
         return self.net(self.self_consumption) - self.net(self.actual)
+
+    @property
+    def battery_saving(self) -> float | None:
+        """What the day really cost against the same day with no battery (positive: money the battery saved): the
+        figure to hold up against the battery's own app. `None` for a review from before it."""
+        return None if self.no_battery_cost is None else self.no_battery_cost - self.actual.cost
+
+    @property
+    def sun_value(self) -> float | None:
+        """What the sun gave, `None` while its production is not known."""
+        return self.sun_gave if self.sun_quarters else None
+
+    @property
+    def against_nothing(self) -> float | None:
+        """The sun and the battery together against neither, over a day whose every covered quarter hour has the sun's
+        production; `None` otherwise."""
+        battery, sun = self.battery_saving, self.sun_value
+        return None if battery is None or sun is None or self.sun_quarters != self.covered else battery + sun
+
+    def with_sun(self, usable: Iterable[Bucket], sun_kwh: Mapping[datetime, float]) -> DayReview:
+        """This review with what the sun gave over [usable] (the day's covered quarter hours) from [sun_kwh] (per UTC
+        quarter hour)."""
+        gave, quarters = sun_gave(usable, sun_kwh)
+        return replace(self, sun_gave=gave, sun_quarters=quarters)
 
     def as_dict(self) -> dict[str, Any]:
         def run(item: Run | None) -> dict[str, Any] | None:
@@ -885,6 +917,11 @@ class DayReview:
             "actual_saving": round(self.actual_saving, 2),
             "soc_mae": None if self.soc_mae is None else round(self.soc_mae, 2),
             "curtail": {"kwh": round(self.curtail_kwh, 3), "saving": round(self.curtail_saving, 2)},
+            "baselines": {
+                "no_battery_cost": None if self.no_battery_cost is None else round(self.no_battery_cost, 3),
+                "sun_gave": round(self.sun_gave, 3),
+                "sun_quarters": self.sun_quarters,
+            },
         }
 
     @classmethod
@@ -916,6 +953,7 @@ class DayReview:
                 soc_mae=None if raw.get("soc_mae") is None else float(raw["soc_mae"]),
                 mode=raw.get("mode") if raw.get("mode") in MODES else None,
                 **_curtail_from(raw.get("curtail")),
+                **_baselines_from(raw.get("baselines")),
             )
         except (KeyError, TypeError, ValueError):
             return None
@@ -930,6 +968,19 @@ def _curtail_from(raw: Any) -> dict[str, float]:
         value = raw.get(key)
         if isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value) and value >= 0:
             out[name] = float(value)
+    return out
+
+
+def _baselines_from(raw: Any) -> dict[str, Any]:
+    """A stored review's baseline figures; a review from before them has none."""
+    if not isinstance(raw, Mapping):
+        return {}
+    out: dict[str, Any] = {}
+    cost, gave, quarters = raw.get("no_battery_cost"), raw.get("sun_gave"), raw.get("sun_quarters")
+    if _finite(cost):
+        out["no_battery_cost"] = float(cost)
+    if _finite(gave) and isinstance(quarters, int) and not isinstance(quarters, bool) and quarters >= 0:
+        out["sun_gave"], out["sun_quarters"] = float(gave), quarters
     return out
 
 
@@ -955,6 +1006,8 @@ def review_totals(reviews: Sequence[DayReview]) -> dict[str, Any]:
         "self_consumption_net": round(sum(review.net(review.self_consumption) for review in reviews), 2),
         "saving": round(sum(review.saving for review in reviews), 2),
         "actual_saving": round(sum(review.actual_saving for review in reviews), 2),
+        "battery_saving": round(sum(review.battery_saving or 0.0 for review in reviews), 2),
+        "sun_gave": round(sum(review.sun_value or 0.0 for review in reviews), 2),
         "modes": modes,
         "curtail": {
             "kwh": round(sum(review.curtail_kwh for review in reviews), 3),
@@ -1063,7 +1116,26 @@ def review_day(
         mode=mode,
         curtail_kwh=curtail_kwh,
         curtail_saving=curtail_saving,
+        no_battery_cost=no_battery_cost(usable),
     )
+
+
+def usable_buckets(buckets: Iterable[Bucket], day: date, tz: str) -> list[Bucket]:
+    """The day's quarter hours a review counts (measured, with their prices), oldest first."""
+    zone = time_zones.require_zone(tz)
+    rows = (bucket for bucket in buckets if bucket.start.astimezone(zone).date() == day)
+    return sorted(
+        (b for b in rows if b.covered and b.buy is not None and b.sell is not None), key=lambda bucket: bucket.start
+    )
+
+
+def day_quarters(day: date, tz: str) -> int:
+    """How many quarter hours the local [day] has (96; 92 and 100 on the days the clock changes)."""
+    zone = time_zones.require_zone(tz)
+    start = datetime(day.year, day.month, day.day, tzinfo=zone).astimezone(timezone.utc)
+    end_day = day + timedelta(days=1)
+    end = datetime(end_day.year, end_day.month, end_day.day, tzinfo=zone).astimezone(timezone.utc)
+    return int((end - start) / BUCKET)
 
 
 def days_to_review(buckets: Iterable[Bucket], reviewed: Iterable[date], now: datetime, tz: str) -> list[date]:

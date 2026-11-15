@@ -24,6 +24,7 @@ from custom_components.spotnav.battery.plan_model import (
     PlanRequest,
     PlanSlot,
 )
+from custom_components.spotnav.battery.review_baselines import sun_by_quarter
 from custom_components.spotnav.battery.plan_shadow import (
     ASSUMED_MIN_SOC_PCT,
     BUCKET,
@@ -58,6 +59,7 @@ from custom_components.spotnav.battery.plan_shadow import (
     TRIGGER_START,
     VARIANT_DEFENSIVE,
     Bucket,
+    day_quarters,
     DayReview,
     PlanActuals,
     review_totals,
@@ -493,6 +495,99 @@ def test_a_day_with_an_idle_battery_scores_the_plan_against_self_consumption() -
     assert as_dict["plan"]["net"] == pytest.approx(review.net(review.plan), abs=0.01)
     assert DayReview.from_dict(as_dict).as_dict() == as_dict
     assert DayReview.from_dict({"date": "x"}) is None
+
+
+def test_the_day_against_no_battery_is_what_the_battery_saved() -> None:
+    # The battery charged 6 cheap hours at 1.5 kW and gave it back in the dear hours (the house draws 1 kW).
+    battery = [1.5] * 6 + [0.0] * 6 + [-1.0] * 6 + [0.0] * 6
+    soc = [10.0]
+    for hour in range(24):
+        soc.append(soc[-1] + battery[hour] * 10)
+    buckets = _day(buy=CHEAP_NIGHT, house=1.0, battery=battery, soc=soc, ran=None)
+    review = review_day(date(2026, 11, 13), buckets, BATTERY, TZ, MIDNIGHT + timedelta(days=1, hours=1))
+    assert review is not None
+    # With no battery the house's 1 kW is bought all day: 6 x 20 + 18 x 300 per kW.
+    assert review.no_battery_cost == pytest.approx(6 * 20 + 18 * 300)
+    # What it did: night 2.5 kWh/h at 20, the dear 6 hours of 0 kW (the house covered) and 12 more hours at 1 kW.
+    assert review.actual.cost == pytest.approx(6 * 2.5 * 20 + 6 * 1.0 * 300 + 6 * 0.0 * 300 + 6 * 1.0 * 300)
+    assert review.battery_saving == pytest.approx(review.no_battery_cost - review.actual.cost)
+    assert review.battery_saving == pytest.approx(6 * 20 + 18 * 300 - (300 + 1800 + 1800))
+    # The sun is not known yet: no figure, and no "against nothing".
+    assert review.sun_quarters is None and review.sun_value is None and review.against_nothing is None
+    assert review.as_dict()["baselines"] == {"no_battery_cost": round(review.no_battery_cost, 3), "sun_gave": 0.0, "sun_quarters": None}
+
+
+def test_a_battery_that_exports_in_the_dear_hours_is_credited_the_export() -> None:
+    battery = [0.0] * 12 + [-3.0] * 4 + [0.0] * 8  # 3 kW out beside the house's 1: 2 kW exported at the sell price
+    soc = [90.0] * 13 + [90.0 - 30.0 * (h + 1) / 4 for h in range(4)] + [60.0] * 8
+    buckets = _day(buy=[100.0] * 24, house=1.0, battery=battery, soc=soc, ran=None)
+    review = review_day(date(2026, 11, 13), buckets, BATTERY, TZ, MIDNIGHT + timedelta(days=1, hours=1))
+    assert review is not None
+    # No battery: 24 kWh bought at 100. With it: 20 kWh bought and 8 kWh exported at 40.
+    assert review.no_battery_cost == pytest.approx(24 * 100.0)
+    assert review.actual.cost == pytest.approx(20 * 100.0 - 8 * 40.0)
+    assert review.battery_saving == pytest.approx(4 * 100.0 + 8 * 40.0)
+
+
+def _with_sun(buckets: list[Bucket], hours: range, kw: float) -> dict[datetime, float]:
+    """The sun's [kw] in [hours]: the grid falls by it in those quarter hours; its production per quarter hour."""
+    sun: dict[datetime, float] = {bucket.start: 0.0 for bucket in buckets}  # the statistics give the night's zeros
+    for index, bucket in enumerate(buckets):
+        if index // 4 in hours:
+            grid = bucket.import_kwh - bucket.export_kwh - kw * 0.25
+            bucket.import_kwh, bucket.export_kwh = max(0.0, grid), max(0.0, -grid)
+            sun[bucket.start] = kw * 0.25
+    return sun
+
+
+def test_what_the_sun_gave_is_the_self_used_sun_at_buy_and_the_exported_at_sell() -> None:
+    buckets = _day(buy=[100.0] * 24, house=1.0, battery=[0.0] * 24, soc=[50.0] * 25, ran=None)
+    sun = _with_sun(buckets, range(10, 14), 3.0)  # sell price 40; 4 h x 3 kWh, of which 1 kWh/h is used by the house
+    review = review_day(date(2026, 11, 13), buckets, BATTERY, TZ, MIDNIGHT + timedelta(days=1, hours=1))
+    assert review is not None
+    gave = review.with_sun(buckets, sun)
+    assert gave.sun_quarters == 96 and gave.sun_value == pytest.approx(4 * (1.0 * 100.0 + 2.0 * 40.0))
+    # No battery on this day: the battery saved nothing and the sun and the battery together are the sun's value.
+    assert gave.battery_saving == pytest.approx(0.0)
+    assert gave.against_nothing == pytest.approx(gave.sun_value)
+    assert DayReview.from_dict(gave.as_dict()).as_dict() == gave.as_dict()
+    # Without a production figure for some covered quarter hours there is a sun figure and no "against nothing".
+    part = review.with_sun(buckets, {start: kwh for start, kwh in sun.items() if start < MIDNIGHT + timedelta(hours=12)})
+    assert part.sun_quarters == 48 and part.sun_value == pytest.approx(2 * (100.0 + 2.0 * 40.0))
+    assert part.against_nothing is None
+    # Asked and none read: no figure.
+    assert review.with_sun(buckets, {}).sun_value is None
+
+
+def test_the_sun_per_quarter_hour_is_the_five_minute_figures_else_the_hour_spread() -> None:
+    hour = MIDNIGHT + timedelta(hours=10)
+    five = {hour + timedelta(minutes=5 * index): 0.1 for index in range(3)}  # the first quarter hour only
+    five[hour + timedelta(minutes=15)] = 0.5  # a quarter hour with one of its three: ignored
+    out = sun_by_quarter(five, {hour: 2.0, hour + timedelta(hours=1): 0.4})
+    assert out[hour] == pytest.approx(0.3)
+    assert out[hour + timedelta(minutes=15)] == pytest.approx(0.5)  # the hour spread: 2.0 / 4
+    assert out[hour + timedelta(minutes=45)] == pytest.approx(0.5)
+    assert out[hour + timedelta(hours=1, minutes=30)] == pytest.approx(0.1)
+    assert hour + timedelta(hours=2) not in out
+
+
+def test_a_partial_day_says_how_many_of_the_day_s_quarter_hours_are_covered() -> None:
+    assert day_quarters(date(2026, 11, 13), TZ) == 96
+    assert day_quarters(date(2026, 10, 25), TZ) == 100 and day_quarters(date(2026, 3, 29), TZ) == 92
+    buckets = _day(buy=[100.0] * 24, house=1.0, battery=[0.0] * 24, soc=[50.0] * 25, ran=None)
+    review = review_day(date(2026, 11, 13), buckets[:40], BATTERY, TZ, MIDNIGHT + timedelta(days=1))
+    assert review is not None and review.covered == 40 and review.no_battery_cost == pytest.approx(10 * 100.0)
+
+
+def test_a_review_stored_before_the_baselines_has_none() -> None:
+    buckets = _day(buy=[100.0] * 24, house=1.0, battery=[0.0] * 24, soc=[50.0] * 25, ran=None)
+    review = review_day(date(2026, 11, 13), buckets, BATTERY, TZ, MIDNIGHT + timedelta(days=1))
+    assert review is not None
+    raw = review.as_dict()
+    del raw["baselines"]
+    old = DayReview.from_dict(raw)
+    assert old is not None and old.battery_saving is None and old.against_nothing is None and old.sun_quarters is None
+    assert review_totals([old])["battery_saving"] == 0.0
 
 
 def test_a_battery_emptied_at_the_end_is_charged_for_it() -> None:
