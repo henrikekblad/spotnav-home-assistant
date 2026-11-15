@@ -157,7 +157,7 @@ class BatteryInputs:
     estimates: tuple[str, ...] = ()
     #: The quarter hours measured (`PlanActuals.buckets`): energies, the battery's signed (+ charging), and prices.
     quarters: Sequence[Bucket] = ()
-    #: The price slots the plan read (today and the next day), buy with every fee and sell at spot (minor per kWh).
+    #: The price slots the plan read (today and the next day), buy with every fee and sell at spot plus the price's sold-kWh figure (minor per kWh).
     prices: Sequence[PriceSlot] = ()
     #: The sun's production per hour (kWh, UTC hour starts) from the Energy dashboard's statistics; empty without.
     production: Mapping[datetime, float] = field(default_factory=dict)

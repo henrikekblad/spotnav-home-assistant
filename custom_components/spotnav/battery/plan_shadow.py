@@ -206,7 +206,7 @@ def battery_params(facts: BatteryFacts) -> tuple[BatteryParams | None, str | Non
 
 @dataclass(frozen=True, slots=True)
 class PriceSlot:
-    """One price interval as the plan prices it: buy with every fee, sell at spot (minor per kWh)."""
+    """One price interval as the plan prices it: buy with every fee, sell at spot plus the sold-kWh figure (minor per kWh)."""
 
     start: datetime
     end: datetime

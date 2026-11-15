@@ -31,18 +31,22 @@ brand's integration offers:
 | SolaX Modbus | Runs once the ratings are learnt | Level and size are read; the ratings are learnt (below). |
 | Enphase | Runs once the ratings are learnt | Level and size are read; the ratings are learnt (below). |
 
+A battery from any other brand has no adapter in SpotNav yet and gets no plan: the integrations above are the whole list. Where the integration also gives the plant's maximum output (Sigenergy does), the plan uses the lower of the battery's rating and that maximum.
+
 **A size or rating the integration does not give is learnt, not asked for.** From the quarter hours SpotNav already measures, a steady charge or discharge that moves the level 20 points or more gives one estimate of the usable size (the energy that went through the cells, with the round trip counted, over the level change); the median of at least three agreeing runs is taken. The rated power is the highest power two quarter hours in a row held, so it is a floor: the battery may manage more than it has been asked for. Both are marked as estimates in the card and in the diagnostics (`learned`), never replace a value the integration reads, and the plan starts once they are known. There is no setting for either.
 
 It also reads:
 
-* the prices with every fee SpotNav adds as the buying price, and the spot price as the selling price (no tax credit or
-  other compensation is added),
+* the prices with every fee SpotNav adds as the buying price, and the spot price plus the price's *Sold kWh: extra or
+  deduction* as the selling price (0 until you set it, no VAT; see [Prices](prices.md#the-suppliers-markup-and-what-a-sold-kwh-earns)),
 * the house's expected load ([Forecasts](forecasts.md)),
 * the solar forecast as SpotNav corrects it, once the correction has learnt, else the raw forecast,
 * the charging plans already made for your cars, as a fixed load,
 * the import limit (the main fuse less its margin, or the import target where you set one).
 
 The battery's lowest level is the reserve its integration reports where SpotNav can read one; otherwise 10 % is assumed.
+SpotNav reads a reserve only where it knows the integration's entity for it: SolaX has none mapped, and Huawei's needs the
+installer password in the integration.
 The round trip is assumed to be 90 %. Both are said to be assumed in the card's details.
 
 The plan is made again when the prices change (the next day's at 13:00), every hour with the forecast, when the cars' plans
@@ -62,7 +66,7 @@ on price. Every mode keeps the battery's own lowest level.
 * **Max profit**: every action, with the true wear cost, including selling to the grid where that pays.
 
 There is no setting for the mode yet: **Balanced is the mode in force**. The other two are planned beside it on the same
-figures, so you can see what each would have saved before any of them is ever used.
+figures (a mode is skipped when the solve would take longer than 5 seconds), so you can see what each would have saved before any of them is ever used.
 
 ### The wear cost
 
@@ -78,7 +82,7 @@ earned (**arbitrage**) and what was **bought**. For arbitrage it needs what the 
 running average cost of what is stored:
 
 * energy from the **grid** is valued at the buying price of that quarter hour, every fee included,
-* energy from the **sun** is valued at the **selling price**, what that kWh would have fetched on the grid,
+* energy from the **sun** is valued at the **selling price** (spot plus the sold-kWh figure), what that kWh would have fetched on the grid,
 * each kWh the battery gives back earns the price of that quarter hour (the buying price for what the house used, the selling
   price for what was exported) less that average cost.
 

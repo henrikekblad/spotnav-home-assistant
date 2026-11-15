@@ -194,7 +194,9 @@ Settings, below the grid fees. Neither has a suggestion: take them from your con
 
 For example, with a markup of 4 öre, 36 öre of tax, a grid fee of 16 öre and 25 % VAT, a spot price of 80 öre costs
 (80 + 4 + 36 + 16) × 1.25 = 170 öre; with a sale figure of 5 öre a sold kWh at the same spot price earns 85 öre.
-Moving the electricity price to another area switches both off and keeps the figures, as for the high-load fee.
+Moving the electricity price to another area switches both off and keeps the figures, as for the high-load fee. The
+sold-kWh row shows in the card only on a price used by a site with a home battery, solar production, a solar forecast or a
+separate export meter, or where it already has a figure.
 
 ### A demand charge
 
@@ -358,7 +360,7 @@ The prices are what the source published, converted to EUR/kWh. They contain onl
 `included` says. For Great Britain Octopus's pence are converted to EUR with the ECB rate in `fx`, so
 multiplying back by `fx.GBP` gives Octopus's price.
 
-### The history profile
+### The history profile document
 
 ```json
 {

@@ -103,8 +103,9 @@ the setting you write: some firmware ignores it in some modes.
 ## Forecasts for other energy tools
 
 SpotNav shows its forecasts in the shape energy optimisers such as HAEO and EMHASS read, and offers the
-corrected solar forecast to the Energy dashboard. Nothing here is a setting and nothing here is planned
-on: it is a view of figures SpotNav already makes.
+corrected solar forecast to the Energy dashboard. Nothing here is a setting: it is a view of figures SpotNav already
+makes. The house forecast and the corrected sun do drive SpotNav's own plans; publishing them here changes nothing in
+those.
 
 | Where | State | Attribute `forecast` (`[{time, value}]`, never recorded) |
 |---|---|---|
@@ -126,7 +127,8 @@ forecast chosen gives anything.
 Many home batteries are run by something else: the maker's own optimiser (Sigen AI mode, FusionSolar
 time-of-use, SEMS), a service that sells the battery's flexibility (CheckWatt, Greenely, Tibber Grid
 Rewards), a planner (Predbat, EMHASS) or an automation of yours. One controller per battery: SpotNav
-notices the others and only watches.
+notices the others and only watches. Today SpotNav writes to no battery at all, so every battery is only watched; the
+detection matters for the opt-in that may come later.
 
 * **A planner or CheckWatt set up in Home Assistant**: the battery is watch-only while it is there.
 * **The battery's settings change three times within 24 hours without SpotNav writing them, or in plain
@@ -134,6 +136,10 @@ notices the others and only watches.
   row** (and its level moves the same way): something outside SpotNav drives it, and SpotNav marks it watch-only. This ends by itself 48 hours after the
   battery last showed it. Tibber or Greenely set up in Home Assistant is named as the likely source but
   never marks the battery by itself.
+
+The behaviour rule is deliberately narrow: the site must also import (or export) more than 1 kW, the level must move at
+least 1 point the same way, a charge within 5 points of the battery's own lowest level is ignored as its maintenance
+charge, and under the battery's own optimiser only changes of mode count.
 
 SpotNav does not raise a notice for this in Settings → Repairs: there is nothing you need to do. It
 writes one line to the log (at INFO) when it starts watching only and one when it stops, and keeps it
@@ -172,9 +178,9 @@ shows the same figure (`curtail`).
   Its exported kWh at a negative price are still counted, apart, so you can see what it costs.
 * If you or the app change the export limit while SpotNav holds it at 0 kW, SpotNav leaves your value alone
   and does not write it again.
-* It works beside SpotNav's own battery control: a plant in Remote EMS because SpotNav runs the battery is
-  still SpotNav's to curtail (Remote EMS of another app's is not), and the export limit stays at 0 kW when
-  SpotNav hands the battery back.
+* Beside SpotNav's own battery control, which is for later (today SpotNav runs no battery): a plant in Remote EMS
+  because SpotNav runs the battery would still be SpotNav's to curtail (Remote EMS of another app's is not), and the
+  export limit would stay at 0 kW when SpotNav hands the battery back.
 * If the site keeps exporting for a few minutes with the limit at 0 kW, the inverter is not obeying it:
   SpotNav would put the value it found back and stop trying.
 
