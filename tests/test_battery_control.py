@@ -204,8 +204,9 @@ async def test_a_hold_is_written_in_order_read_back_with_the_snapshot_stored_fir
     again = BatteryControl(hass, controller, plan_source=_hold)
     plant.calls.clear()
     await again.async_start()
+    # The discharge limit first: the battery covers a peak again before Remote EMS goes off.
     assert [(domain, service) for domain, service, _data in plant.calls] == [
-        ("switch", "turn_off"), ("number", "set_value")
+        ("number", "set_value"), ("switch", "turn_off")
     ]
     assert hass.states.get(SWITCH).state == "off"
     assert hass.states.get(DISCHARGE).state == "23.04"
@@ -347,6 +348,39 @@ async def test_the_export_limit_is_zero_below_a_zero_sell_price_and_back_after_w
     assert plant.calls == [("number", "set_value", {"entity_id": EXPORT, "value": 11.5})]
     assert again.export_executor.state.phase == "idle" and not again.acting()
     assert hass.states.get(DISCHARGE).state == "23.04" and hass.states.get(SWITCH).state == "off"
+
+
+async def test_the_export_limit_is_taken_beside_spotnav_s_own_battery_control_and_kept_through_its_hand_back(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    monkeypatch.setattr(shadow, "ON_REACHABLE", True)
+    _site_entry, controller, plant = await _site(hass, monkeypatch, hass_storage)
+    _export_limit(hass)
+    plan: dict[str, Any] = {"now": ("hold", 0.0, None)}
+    sell = {"now": 3.0}
+    control = BatteryControl(hass, controller, plan_source=lambda _now: plan["now"], sell_source=lambda _now: sell["now"])
+    await control.async_start()
+    now = dt_util.now()
+    for index in range(4):
+        await control.async_tick(now + timedelta(seconds=10 * index))
+    assert hass.states.get(SWITCH).state == "on" and hass.states.get(WORK_MODE).state == "remote_ems"
+    assert control.export_inputs(now, control.export_executor.control).sibling_active
+    # A negative price while SpotNav's own battery control holds Remote EMS: the export limit is still taken.
+    sell["now"] = -12.0
+    plant.calls.clear()
+    for index in range(4):
+        await control.async_tick(now + timedelta(minutes=1, seconds=10 * index))
+    assert plant.calls == [("number", "set_value", {"entity_id": EXPORT, "value": 0.0})]
+    assert control.export_executor.state.phase == "active"
+    # The battery is handed back (Remote EMS off): the export limit stays at 0 kW, SpotNav's.
+    plan["now"] = ("self_consume", 0.0, None)
+    plant.calls.clear()
+    for index in range(6):
+        await control.async_tick(now + timedelta(minutes=2, seconds=10 * index))
+    assert hass.states.get(SWITCH).state == "off" and control.executor.state.phase == "idle"
+    assert all(data.get("entity_id") != EXPORT for _domain, _service, data in plant.calls)
+    assert hass.states.get(EXPORT).state == "0" and control.export_executor.state.phase == "active"
+    assert not control.export_inputs(now, control.export_executor.control).sibling_active
 
 
 async def test_the_export_limit_is_never_written_while_unreachable(

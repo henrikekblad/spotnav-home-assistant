@@ -193,7 +193,7 @@ async def test_the_ledger_and_monitor_run_dry_beside_a_shadow_hold_and_survive_a
     assert write.value == {"discharge_limit": 0.0, "remote_ems": True, "control_mode": "Maximum Self Consumption"}
     assert write.entity_id == "number.sigen_plant_ess_max_discharging_limit" and write.read == "23.04"
     assert [(row["role"], row["value"]) for row in write.detail["restore"]] == [
-        ("control_mode", "Maximum Self Consumption"), ("remote_ems", False), ("discharge_limit", 23.04)
+        ("discharge_limit", 23.04), ("control_mode", "Maximum Self Consumption"), ("remote_ems", False)
     ]
     assert write.detail["read_back"] == "possible"
     assert write.detail["read_back_roles"] == {"discharge_limit": "possible", "remote_ems": "possible", "control_mode": "idle"}

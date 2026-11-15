@@ -150,6 +150,9 @@ class BrandControl:
     action_requires: tuple[tuple[str, str, frozenset[str], str], ...] = ()
     #: Whether the effect can only be judged by the battery's power (no read-back from the device).
     local_readback: bool = False
+    #: Per action that adds import, the roles that let the battery cover a peak again, written first (`executor`'s
+    #: peak cover under a hold, and the first writes of every hand-back of that action).
+    peak_first: Mapping[str, tuple[str, ...]] = field(default_factory=dict)
     #: `battery` (the plan's actions) or `export` (the export limit, `ACTION_CURTAIL_EXPORT`): an export control
     #: needs no battery reading or fuse headroom, since a lower export limit never adds import.
     kind: Literal["battery", "export"] = "battery"
@@ -249,6 +252,9 @@ SIGENERGY_CONTROL: Final = BrandControl(
     restore_order=("control_mode", "remote_ems", "charge_limit", "discharge_limit"),
     own_states={"EMS work mode": frozenset({"remote_ems"})},
     requires=(("remote_ems", frozenset({"off"}), "remote_ems_already_on"),),
+    # A hold is the discharge limit at 0: lifting it lets the battery cover a peak at once (SigenStor covers each
+    # phase on its own). A grid charge stops with the mode back at Maximum Self Consumption.
+    peak_first={ACTION_HOLD: ("discharge_limit",), ACTION_GRID_CHARGE: ("control_mode",)},
     note="Remote EMS replaces the app's mode only while it is on; SpotNav takes a plant in Maximum Self"
     " Consumption only, so turning it off hands back the mode it found.",
 )
@@ -288,6 +294,7 @@ SOLAREDGE_CONTROL: Final = BrandControl(
     restore_order=("command_mode", "charge_limit", "discharge_limit", "command_timeout"),
     watchdog_roles=("command_timeout", "command_mode"),
     requires=(("control_mode", frozenset({"Remote Control"}), "not_in_remote_control"),),
+    peak_first={ACTION_HOLD: ("command_mode",), ACTION_GRID_CHARGE: ("command_mode",)},
     action_requires=((ACTION_GRID_CHARGE, "ac_charge_policy", frozenset({"Disabled"}), "ac_charge_disabled"),),
     note="Remote Control only, as the owner set it; the command timeout returns the inverter to its default mode.",
 )
@@ -325,6 +332,7 @@ HUAWEI_CONTROL: Final = BrandControl(
     restore_order=("forcible", "charge_power", "discharge_power"),
     watchdog_roles=("forcible",),
     requires=(("forcible", frozenset({"stop"}), "forcible_charge_running"),),
+    peak_first={ACTION_HOLD: ("discharge_power",), ACTION_GRID_CHARGE: ("forcible",)},
     note="Services and numbers need the installer password; a forcible charge ends by itself after its duration.",
 )
 
@@ -365,6 +373,7 @@ SOLAX_CONTROL: Final = BrandControl(
     },
     watchdog_roles=("trigger",),
     requires=(("power_control", frozenset({"Disabled"}), "remote_control_in_use"),),
+    peak_first={ACTION_HOLD: ("power_control", "trigger"), ACTION_GRID_CHARGE: ("power_control", "trigger")},
     local_readback=True,
     note="The integration holds the values and sends them on the trigger; only the battery's power shows the"
     " effect.",

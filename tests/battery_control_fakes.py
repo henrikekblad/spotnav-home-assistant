@@ -48,6 +48,8 @@ class FakeBattery:
     raises: set[str] = field(default_factory=set)
     #: Roles the integration does not have.
     missing: set[str] = field(default_factory=set)
+    #: Roles whose writes the integration drops silently (no error, no change).
+    drops: set[str] = field(default_factory=set)
     action: str | None = None
     rate_kw: float = 0.0
     writes: list[Op] = field(default_factory=list)
@@ -76,7 +78,7 @@ class FakeBattery:
         self.writes.append(op)
         if op.role in self.raises:
             return False
-        if self.read_only:
+        if self.read_only or op.role in self.drops:
             return True
         brand = self.control.brand
         if op.method == "switch":

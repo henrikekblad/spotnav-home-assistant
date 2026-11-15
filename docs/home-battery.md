@@ -172,5 +172,10 @@ shows the same figure (`curtail`).
   Its exported kWh at a negative price are still counted, apart, so you can see what it costs.
 * If you or the app change the export limit while SpotNav holds it at 0 kW, SpotNav leaves your value alone
   and does not write it again.
+* It works beside SpotNav's own battery control: a plant in Remote EMS because SpotNav runs the battery is
+  still SpotNav's to curtail (Remote EMS of another app's is not), and the export limit stays at 0 kW when
+  SpotNav hands the battery back.
+* If the site keeps exporting for a few minutes with the limit at 0 kW, the inverter is not obeying it:
+  SpotNav would put the value it found back and stop trying.
 
 There is no setting for this: it will come with the battery control opt-in.
