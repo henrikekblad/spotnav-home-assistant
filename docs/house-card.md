@@ -34,6 +34,8 @@ minutes.
   Tap an hour for its figures: the house in kW (measured, with the forecast beside it), the sun in kWh (expected for hours
   ahead), the battery's level (planned for hours ahead) and what the plan does in that hour (charges from the grid, sells
   to the grid or holds its charge).
+* **Past days**: browse earlier days with *Previous day*, *Next day* and *Choose a day*; a day
+  nothing was measured on says so.
 * **The money line**: the last reviewed days, SpotNav's plan against the battery's own way, each measured against plain
   self-consumption. Until a day has been reviewed it says what the plan expects until the end of its horizon, and the
   first comparison arrives the night after.
@@ -60,7 +62,9 @@ minutes.
 *Details* opens, as far as the site has them:
 
 * **Energy today so far**: where today's energy came from (sun, battery, grid) and where it went (battery, use, grid). The
-  sun counts only the hours Home Assistant has already compiled.
+  sun counts only the hours Home Assistant has already compiled. The meters do not say which source fed which use, so
+  the split follows a fixed rule, not a measurement: each hour the sun goes to the house first, then the car, the battery
+  and the grid, and the battery covers the house before the grid does.
 * **Saved per day**: the month's reviewed days, the plan beside the battery's own way, and the month's arbitrage.
 * **Battery modes side by side**: for Self-consumption, Balanced and Max profit, what each is planned to save ahead and what
   it would have saved over the reviewed days, with the mode in force marked, and the battery's own way (or its own optimiser)
@@ -69,7 +73,8 @@ minutes.
 * **Sources**: the weather entity, outdoor temperature, holiday calendar and solar forecast the forecasts read, whether
   temperature is in the house forecast (and why not), the battery, and what is stored in it now with its average cost
   (marked estimated until the first measured energy has been used). A note lists what the plan assumed, such as the
-  battery's lowest level.
+  battery's lowest level. Where the house's load is measured as the grid less the chargers, a note says that it looks
+  smaller while the battery covers the house.
 
 The card says plainly when the battery runs its own optimiser ("SpotNav plans beside it only to compare, and writes nothing
 to it") and when it is in shadow ("SpotNav plans the battery but writes nothing to it").
