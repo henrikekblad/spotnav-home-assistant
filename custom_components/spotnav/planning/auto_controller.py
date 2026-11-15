@@ -12,7 +12,9 @@ proposal is delegated to the injected `AutoExecutor`; without one this only calc
 
 from __future__ import annotations
 
+import asyncio
 import logging
+from collections.abc import Coroutine
 from dataclasses import dataclass, replace
 from datetime import date, datetime, timedelta, timezone
 from typing import Any, Callable, Final, Literal
@@ -82,7 +84,7 @@ from .auto_settings import (
     STRATEGY_SOLAR,
 )
 from .calendar_departure import calendar_departure, CalendarDeparture
-from .calendar_reader import CalendarReader, REFRESH_S as CALENDAR_REFRESH_S
+from .calendar_reader import CalendarReader
 from .grid_voltage import voltage_between_phases_v
 from .learned_energy import (
     EnergySampler,
@@ -776,6 +778,8 @@ class AutoPlannerController:
         # and what the last calculation made of it (`calendar_status`).
         self._calendar = CalendarReader(hass, self._now)
         self._calendar_cancel: Callable[[], None] | None = None
+        #: The calendar reads in flight (`_start_calendar_read`), cancelled at the shutdown.
+        self._calendar_tasks: set[asyncio.Task[None]] = set()
         self._calendar_status: dict[str, Any] | None = None
 
     async def async_start(self) -> AutoSnapshot:
@@ -880,21 +884,42 @@ class AutoPlannerController:
             return False
         return await self._calendar.async_refresh(entity_id, force=force)
 
+    def _read_calendar_soon(self, settings: AutoSettings) -> None:
+        """Read the chosen calendar in the background when due, and plan again when what it answers changed: a
+        calculation plans with the events last read and never waits for a calendar (a read may take up to
+        `READ_TIMEOUT_S`)."""
+        entity_id = settings.departure_calendar
+        if self._shutdown or entity_id is None or not settings.departure_enabled or is_guest(settings):
+            return
+        if self._calendar.due(entity_id):
+            self._start_calendar_read(self._async_calendar_read(entity_id))
+
+    async def _async_calendar_read(self, entity_id: str) -> None:
+        if await self._calendar.async_refresh(entity_id) and not self._shutdown:
+            await self._on_area_changed(self._generation)
+
+    def _start_calendar_read(self, read: Coroutine[Any, Any, None]) -> None:
+        """A calendar read as a background task (it never holds up Home Assistant's start), kept to be cancelled."""
+        task = self._hass.async_create_background_task(read, name=f"spotnav departure calendar {self._entry_id}")
+        self._calendar_tasks.add(task)
+        task.add_done_callback(self._calendar_tasks.discard)
+
     def _arm_calendar(self, settings: AutoSettings) -> None:
-        """One appointment to read the calendar again (`CALENDAR_REFRESH_S`), and plan again when what it makes the
-        departure changed."""
+        """One appointment to read the calendar again (`calendar_reader.REFRESH_S`, sooner while the calendar does not
+        exist yet), and plan again when what it makes the departure changed."""
         self._cancel_calendar()
-        if self._shutdown or settings.departure_calendar is None or not settings.departure_enabled:
+        entity_id = settings.departure_calendar
+        if self._shutdown or entity_id is None or not settings.departure_enabled:
             return
         generation = self._generation
-        target = self._now() + timedelta(seconds=CALENDAR_REFRESH_S)
+        target = self._now() + timedelta(seconds=self._calendar.next_read_s(entity_id))
 
         @callback
         def due(_now: datetime) -> None:
             self._calendar_cancel = None
             if self._shutdown or generation != self._generation:
                 return
-            self._hass.async_create_task(self._async_calendar_due(generation))
+            self._start_calendar_read(self._async_calendar_due(generation))
 
         self._calendar_cancel = self._manager.schedule_at(target, due)
 
@@ -951,6 +976,8 @@ class AutoPlannerController:
         self._cancel_wake()
         self._cancel_departure()
         self._cancel_calendar()
+        for task in list(self._calendar_tasks):
+            task.cancel()
         self._cancel_connection()
         self._drop_energy_watch()
         self._cancel_unread_notice()
@@ -1345,11 +1372,15 @@ class AutoPlannerController:
         attempt = self._attempt
         # The price source's area and fees, read once per calculation: everything below plans with them.
         source = self._source()
-        await self._async_read_calendar(settings)
+        self._read_calendar_soon(settings)
         settings = self._with_calendar(with_source(settings, source), record=True)
         self._price_revision = None if source is None else source.plan_revision
         self._lapse_target_stop(settings)
         snapshot = await self._compute(settings, attempt)
+        if (self._shutdown or attempt != self._attempt) and self._snapshot is not None:
+            # A newer calculation (or the shutdown) began while this one planned in the executor: its answer is the
+            # one that counts, and this one is dropped.
+            return self._snapshot
         await self._apply(settings, snapshot, attempt)
         self._arm_watch()
         return self._republish_execution(snapshot)
@@ -1549,7 +1580,7 @@ class AutoPlannerController:
         )
         wait_facts: dict[str, Any] = {}
         try:
-            result = calculate_plan(plan_request)
+            result = await self._plan_in_executor(plan_request)
             if result.reason == "insufficient_price_horizon":
                 waited = None
                 if plan_request.departure is not None:
@@ -1557,7 +1588,7 @@ class AutoPlannerController:
                         plan_request, result, entry, calculated_at, preview=preview
                     )
                 if waited is None:
-                    waited = self._plan_while_prices_are_missing(
+                    waited = await self._plan_while_prices_are_missing(
                         plan_request, result, entry, calculated_at, preview=preview
                     )
                 if waited is not None:
@@ -1616,6 +1647,10 @@ class AutoPlannerController:
             return failed
         return snapshot
 
+    async def _plan_in_executor(self, request: PlanRequest) -> PlanResult:
+        """`calculate_plan` in the executor: a search with per-hour caps can take a noticeable part of a second."""
+        return await self._hass.async_add_executor_job(calculate_plan, request)
+
     def _stops_at_need(
         self, settings: AutoSettings, resolved: _EnergyResolution, result: PlanResult, need_kwh: float
     ) -> bool:
@@ -1635,7 +1670,7 @@ class AutoPlannerController:
             and abs(result.requested_kwh - need_kwh) <= price_wait.EPSILON_KWH
         )
 
-    def _plan_while_prices_are_missing(
+    async def _plan_while_prices_are_missing(
         self,
         request: PlanRequest,
         refusal: PlanResult,
@@ -1697,7 +1732,7 @@ class AutoPlannerController:
         if decision.action == "wait":
             return (refusal, facts, ("waiting_for_publication", "publication_pending"))
         if decision.action == "buy_now":
-            bought = calculate_plan(
+            bought = await self._plan_in_executor(
                 replace(request, requested_kwh=decision.must_buy_kwh, window_end=decision.window_end)
             )
             if bought.has_plan:
@@ -1738,13 +1773,13 @@ class AutoPlannerController:
         gap = price_gap(request)
         if gap is None:
             return None
-        known = calculate_plan(replace(request, window_end=gap.missing_from))
+        known = await self._plan_in_executor(replace(request, window_end=gap.missing_from))
         if not known.has_plan:
             return None
         profile = await self._manager.async_profile(request.area_id)
         decision = history_wait.evaluate(request, gap, known, profile)
         if request.departure_date is None:
-            return self._daily_by_history(request, refusal, entry, calculated_at, known, decision, preview=preview)
+            return await self._daily_by_history(request, refusal, entry, calculated_at, known, decision, preview=preview)
         facts: dict[str, Any] = {"history": decision, "wait_rule": "history"}
         if decision.outcome != "wait":
             return (known, facts, None)
@@ -1777,7 +1812,7 @@ class AutoPlannerController:
         )
         if waited.action == "wait":
             return (refusal, facts, ("waiting_for_publication", "waiting_for_history"))
-        bought = calculate_plan(
+        bought = await self._plan_in_executor(
             replace(request, requested_kwh=waited.must_buy_kwh, window_end=waited.window_end)
         )
         if bought.has_plan:
@@ -1785,7 +1820,7 @@ class AutoPlannerController:
         # The cheapest published slots could not hold even the part that cannot wait: install the whole plan.
         return (known, {"history": history_wait.unsafe(decision), "wait_rule": "history"}, None)
 
-    def _daily_by_history(
+    async def _daily_by_history(
         self,
         request: PlanRequest,
         refusal: PlanResult,
@@ -1807,7 +1842,7 @@ class AutoPlannerController:
             return (known, {"history": decision, "wait_rule": "history"}, None)
         if decision.outcome != "wait":
             return None
-        implicit = self._plan_while_prices_are_missing(request, refusal, entry, calculated_at, preview=preview)
+        implicit = await self._plan_while_prices_are_missing(request, refusal, entry, calculated_at, preview=preview)
         if implicit is None:
             return None
         result, facts, early = implicit

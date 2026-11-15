@@ -31,6 +31,8 @@ REFRESH_S: Final = 15 * 60
 KEEP_LAST_S: Final = 60 * 60
 #: The longest one read may take.
 READ_TIMEOUT_S: Final = 20.0
+#: How soon a calendar that does not exist yet is looked for again (its integration may still be starting).
+MISSING_RETRY_S: Final = 60
 
 _UNREADABLE_STATES: Final = frozenset({"unavailable"})
 
@@ -51,6 +53,8 @@ class CalendarReader:
         self._last_good: _Read | None = None
         self._tried: tuple[str, datetime] | None = None
         self._failing: str | None = None
+        #: The calendar the last read found no entity for.
+        self._missing: str | None = None
         self._lock = asyncio.Lock()
 
     def events(self, entity_id: str) -> tuple[CalendarEvent, ...] | None:
@@ -67,6 +71,10 @@ class CalendarReader:
         """Whether `entity_id` should be read again now."""
         tried = self._tried
         return tried is None or tried[0] != entity_id or (self._now() - tried[1]).total_seconds() >= REFRESH_S
+
+    def next_read_s(self, entity_id: str) -> int:
+        """How long until `entity_id` is read again: sooner when it did not exist at the last read."""
+        return MISSING_RETRY_S if self._missing == entity_id else REFRESH_S
 
     async def async_refresh(self, entity_id: str, *, force: bool = False) -> bool:
         """Read `entity_id` when due (or `force`); whether what `events` answers changed."""
@@ -92,6 +100,7 @@ class CalendarReader:
 
     async def _async_read(self, entity_id: str, now: datetime) -> tuple[CalendarEvent, ...] | None:
         state = self._hass.states.get(entity_id)
+        self._missing = entity_id if state is None else None
         if state is None or state.state in _UNREADABLE_STATES:
             return None
         # A day either side: the price area's zone may not be the installation's, and today is read in the area's.
@@ -110,6 +119,13 @@ class CalendarReader:
         except (HomeAssistantError, TimeoutError, ValueError) as err:
             _LOGGER.debug("Reading the departure calendar %s failed: %s", entity_id, err)
             return None
+        except Exception:  # noqa: BLE001 - any calendar integration's failure is a calendar that cannot be read
+            _LOGGER.debug("Reading the departure calendar %s failed", entity_id, exc_info=True)
+            return None
         if not isinstance(response, dict) or not isinstance(response.get(entity_id), dict):
             return None
-        return events_from_response(response[entity_id])
+        try:
+            return events_from_response(response[entity_id])
+        except Exception:  # noqa: BLE001 - an answer that cannot be read is a calendar that cannot be read
+            _LOGGER.debug("The departure calendar %s answered something unreadable", entity_id, exc_info=True)
+            return None

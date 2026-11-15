@@ -1275,7 +1275,7 @@ def calculate_plan(request: PlanRequest) -> PlanResult:
             latest_end,
         )
         if found is _TOO_LARGE:
-            # A search this large would hold the event loop up: the plan as it is without the per-hour caps, and
+            # A search this large would take seconds on a small host: the plan as it is without the per-hour caps, and
             # said so (the diagnostics' `per_hour_caps_dropped`).
             return replace(calculate_plan(replace(request, power_cap_kw_by_hour=None)), per_hour_caps_dropped=True)
         chosen = found
@@ -1600,8 +1600,8 @@ def _choose_capped(
 #: The energy search's resolution: states whose energy differs by less than the smallest slot's share of this many
 #: parts are one state (the cheaper is kept), so it may now and then buy one slot more than an exact search would.
 ENERGY_STEPS_PER_SLOT: Final = 4
-#: Above this many states over all candidates the energy search is not run (it runs in the event loop): the plan is
-#: then made without the per-hour caps, as before them.
+#: Above this many states over all candidates the energy search is not run (about half a second on a desktop, run in
+#: the executor by `auto_controller`): the plan is then made without the per-hour caps, as before them.
 ENERGY_SEARCH_LIMIT: Final = 400_000
 
 #: `_choose_by_energy`'s answer when the search would be too large.

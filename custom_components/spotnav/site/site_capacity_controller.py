@@ -14,7 +14,7 @@ import logging
 import math
 import time
 from collections import deque
-from collections.abc import Callable, Collection, Mapping, Sequence
+from collections.abc import Awaitable, Callable, Collection, Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from typing import Any, cast, Literal
@@ -866,21 +866,13 @@ class SiteCapacityController:
         return self._history.samples
 
     async def async_shutdown(self) -> None:
-        """Cancel the timer and listeners and any unfinished apply pass."""
+        """Cancel the timer and listeners first, then close each part (one failing does not skip the rest), then
+        any unfinished apply pass."""
         self._closed = True
         self._cancel_probe_timer()
         if self._history_cancel is not None:
             self._history_cancel()
             self._history_cancel = None
-        await self._history.async_close()
-        await self.demand.async_close()
-        await self.battery_shadow.async_shutdown()
-        await self.switch_load.async_shutdown()
-        await self.house_forecast.async_close()
-        await self.solar_correction.async_shutdown()
-        if self._grid_sign_unsaved:
-            self._grid_sign_unsaved = False
-            await self._grid_sign_store.async_save(self._grid_sign.as_dict())
         if self._timer_cancel is not None:
             self._timer_cancel()
             self._timer_cancel = None
@@ -893,7 +885,26 @@ class SiteCapacityController:
         for cancel in self._controller_listener_cancels:
             cancel()
         self._controller_listener_cancels.clear()
+        parts: tuple[tuple[str, Callable[[], Awaitable[None]]], ...] = (
+            ("history", self._history.async_close),
+            ("demand", self.demand.async_close),
+            ("battery", self.battery_shadow.async_shutdown),
+            ("switched load", self.switch_load.async_shutdown),
+            ("house forecast", self.house_forecast.async_close),
+            ("solar correction", self.solar_correction.async_shutdown),
+            ("grid sign", self._async_save_grid_sign),
+        )
+        for name, close in parts:
+            try:
+                await close()
+            except Exception:  # noqa: BLE001 - one part's failure must not leave the others running
+                _LOGGER.warning("SpotNav site: closing the %s failed", name, exc_info=True)
         await self._async_retire_operations()
+
+    async def _async_save_grid_sign(self) -> None:
+        if self._grid_sign_unsaved:
+            self._grid_sign_unsaved = False
+            await self._grid_sign_store.async_save(self._grid_sign.as_dict())
 
     async def _async_retire_operations(self) -> None:
         """Cancel every apply pass and every charger's operation in flight, and wait for them to end (at most

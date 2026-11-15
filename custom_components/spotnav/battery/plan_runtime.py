@@ -42,10 +42,11 @@ the debug bundle only (`battery.plan`).
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import math
 import time
-from collections.abc import Sequence
+from collections.abc import Coroutine, Sequence
 from dataclasses import replace
 from datetime import date, datetime, timedelta, timezone
 from functools import partial
@@ -469,6 +470,8 @@ class BatteryPlanShadow:
         self._sun_running = False
         self._loaded = False
         self._closed = False
+        #: The plan's and the sun's tasks in flight, cancelled at the shutdown.
+        self._tasks: set[asyncio.Task[None]] = set()
 
     # ---- life
 
@@ -478,7 +481,11 @@ class BatteryPlanShadow:
         except Exception:  # noqa: BLE001 - a broken store starts again
             _LOGGER.warning("The battery plan's record could not be read; starting a new one")
             stored = None
-        self._restore(stored, now)
+        try:
+            self._restore(stored, now)
+        except Exception:  # noqa: BLE001 - a record SpotNav cannot read must not stop the site; it starts again
+            _LOGGER.warning("The battery plan's record could not be read; starting a new one", exc_info=True)
+            self._reset_record()
         self._loaded = True
         try:
             migrate_sell_credit(self.hass, self.site.entry_id)
@@ -487,6 +494,8 @@ class BatteryPlanShadow:
 
     async def async_shutdown(self) -> None:
         self._closed = True
+        for task in list(self._tasks):
+            task.cancel()
         if self._loaded:
             await self._store.async_save(self.as_dict())
 
@@ -514,10 +523,12 @@ class BatteryPlanShadow:
         self.actuals = PlanActuals.from_dict(raw.get("actuals"), now)
         self.stored = StoredValue.from_dict(raw.get("stored_value"))
         self.learned = LearnedBattery.from_dict(raw.get("learned"))
-        reviews = [DayReview.from_dict(item) for item in raw.get("reviews") or []]
+        stored_reviews = raw.get("reviews")
+        reviews = [DayReview.from_dict(item) for item in stored_reviews] if isinstance(stored_reviews, list) else []
         self.reviews = sorted((r for r in reviews if r is not None), key=lambda r: r.day)[-REVIEW_DAYS:]
         plan = raw.get("plan") if isinstance(raw.get("plan"), dict) else {}
-        slots = [PlannedSlot.from_row(row) for row in plan.get("slots") or []]
+        stored_slots = plan.get("slots")
+        slots = [PlannedSlot.from_row(row) for row in stored_slots] if isinstance(stored_slots, list) else []
         # A record from before the modes kept an export variant (`export_slots`): not a mode, dropped.
         mode_slots = plan.get("mode_slots") if isinstance(plan.get("mode_slots"), dict) else {}
         for mode, rows in mode_slots.items():
@@ -532,8 +543,28 @@ class BatteryPlanShadow:
             self.plan = tuple(slot for slot in slots if slot is not None)
             self.soc_at_plan = float(soc)
 
+    def _reset_record(self) -> None:
+        """The restored parts set back to a new record's (after a record that could not be read)."""
+        self.actuals = PlanActuals()
+        self.reviews = []
+        self.stored = StoredValue()
+        self.learned = LearnedBattery()
+        self.plan = ()
+        self.soc_at_plan = None
+        self.mode = DEFAULT_MODE
+        self.mode_plans = {}
+
     def _save(self) -> None:
+        if self._closed:
+            # Closed (unloaded or removed): the shutdown wrote the record, and a removed site's must not come back.
+            return
         self._store.async_delay_save(self.as_dict, _SAVE_DELAY_S)
+
+    def _start(self, job: Coroutine[Any, Any, None], name: str) -> None:
+        """A task kept until it ends, so the shutdown can cancel it."""
+        task = self.hass.async_create_task(job, name, eager_start=False)
+        self._tasks.add(task)
+        task.add_done_callback(self._tasks.discard)
 
     # ---- the tick
 
@@ -622,7 +653,7 @@ class BatteryPlanShadow:
         if not waiting or self._sun_running or self._closed:
             return
         self._sun_running = True
-        self.hass.async_create_task(self._async_sun(waiting), "spotnav_battery_review_sun", eager_start=False)
+        self._start(self._async_sun(waiting), "spotnav_battery_review_sun")
 
     async def _async_read_sun(self, first: datetime, end: datetime) -> dict[datetime, float] | None:
         """The sun's production per UTC quarter hour from the Energy dashboard's statistics (five minutes where the
@@ -775,7 +806,7 @@ class BatteryPlanShadow:
         if trigger == TRIGGER_SOC:
             memory.soc_replan_at = now
         self._running = True
-        self.hass.async_create_task(self.async_plan(now, trigger), "spotnav_battery_plan", eager_start=False)
+        self._start(self.async_plan(now, trigger), "spotnav_battery_plan")
 
     # ---- the plan
 

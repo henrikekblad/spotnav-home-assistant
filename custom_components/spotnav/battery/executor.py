@@ -363,7 +363,7 @@ class ExecState:
                     if at is not None and row[0] >= 0:
                         retries[str(name)] = (row[0], at)
         return cls(
-            phase=phase if phase in _PHASES else "idle",
+            phase=phase if isinstance(phase, str) and phase in _PHASES else "idle",
             brand=text("brand"),
             action=text("action"),
             rate_kw=float(rate) if isinstance(rate, (int, float)) and not isinstance(rate, bool) and math.isfinite(rate) else 0.0,

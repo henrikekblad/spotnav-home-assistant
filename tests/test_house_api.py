@@ -189,3 +189,33 @@ async def test_the_recorded_soc_reads_the_shown_past_hours(hass: HomeAssistant, 
     soc = await house_api.async_recorded_soc(hass, with_battery, now)
     assert reads == [("sensor.soc", current - timedelta(hours=PAST_HOURS), current)]
     assert soc == {current - timedelta(hours=1): 55.0}
+
+
+async def test_figures_that_cannot_be_read_are_left_out_of_the_answer(hass: HomeAssistant, freezer, monkeypatch) -> None:
+    """Without a recorder the energy flow and the recorded SoC raise: the house view is answered without them."""
+    from custom_components.spotnav.api import house as house_api
+
+    site = await pilot_site(hass, freezer, import_target_kw=6.0)
+
+    async def no_recorder(*_args: Any, **_kwargs: Any) -> Any:
+        raise KeyError("recorder_instance")
+
+    monkeypatch.setattr(house_api, "async_energy_flow", no_recorder)
+    monkeypatch.setattr(house_api, "async_recorded_soc", no_recorder)
+    hass.data.pop(house_api._FLOW_CACHE, None)  # noqa: SLF001
+    answer = await ask(hass, 1, api_version=1, site_id=site.entry_id)
+
+    assert answer["success"] is True and answer["result"]["energy_flow"] is None
+
+
+async def test_the_unload_forgets_the_sites_cached_flow(hass: HomeAssistant, freezer) -> None:
+    from custom_components.spotnav.api import house as house_api
+
+    site = await pilot_site(hass, freezer, import_target_kw=6.0)
+    await ask(hass, 1, api_version=1, site_id=site.entry_id)
+    assert any(key[0] == site.entry_id for key in hass.data[house_api._FLOW_CACHE])  # noqa: SLF001
+
+    assert await hass.config_entries.async_unload(site.entry_id)
+    await hass.async_block_till_done()
+
+    assert not any(key[0] == site.entry_id for key in hass.data[house_api._FLOW_CACHE])  # noqa: SLF001

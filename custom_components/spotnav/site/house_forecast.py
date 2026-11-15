@@ -57,6 +57,7 @@ measurements; it is shown on the site's state sensor (`forecast`), in the diagno
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Callable, Iterable, Mapping
 from datetime import date, datetime, time as dt_time, timedelta, timezone
 from functools import partial
@@ -333,6 +334,8 @@ class SiteHouseForecast:
         self._retry_at: datetime | None = None
         self._running = False
         self._closed = False
+        #: The refresh in flight, cancelled at the close.
+        self._task: asyncio.Task[None] | None = None
         self._attribute: list[dict[str, Any]] = []
         self._rows: list[tuple[datetime, float]] = []
         self.refreshes = 0
@@ -367,6 +370,8 @@ class SiteHouseForecast:
 
     async def async_close(self) -> None:
         self._closed = True
+        if self._task is not None and not self._task.done():
+            self._task.cancel()
         if self._store is not None:
             await self._store.async_close()
 
@@ -497,7 +502,7 @@ class SiteHouseForecast:
         self._running = True
         self._for_hour = current
         # Short (a cached forecast, a calendar read and a few milliseconds in the executor): a tracked task.
-        self.hass.async_create_task(self.async_refresh(), "spotnav_house_forecast", eager_start=False)
+        self._task = self.hass.async_create_task(self.async_refresh(), "spotnav_house_forecast", eager_start=False)
 
     async def async_refresh(self) -> None:
         """Read the sources, run the model in the executor, log the forecast and the hours' outcomes, review the

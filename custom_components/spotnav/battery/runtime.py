@@ -72,6 +72,10 @@ STORE_VERSION: Final = 1
 _SAVE_DELAY_S: Final = 30.0
 
 
+def _without_count_time(memory: Mapping[str, Any]) -> dict[str, Any]:
+    return {key: value for key, value in memory.items() if key != "counted_at"}
+
+
 def store_key(entry_id: str) -> str:
     return f"{DOMAIN}.battery_shadow.{entry_id}"
 
@@ -204,6 +208,10 @@ class BatteryShadow:
         self.spotnav_acting: Callable[[], bool] = lambda: False
         self._timer_cancel: Callable[[], None] | None = None
         self._loaded = False
+        #: Whether a write of the book waits (`_save`): the ticks go on, and must not keep putting it off.
+        self._save_pending = False
+        #: The kinds of look that failed since the start (`_look_failed`), each logged once.
+        self._failed_looks: set[str] = set()
         self.plan = BatteryPlanShadow(hass, site)
         self.curtail = CurtailShadow()
         #: The sell price now (minor per kWh) and the export control found, as at the last look (shown only).
@@ -222,20 +230,34 @@ class BatteryShadow:
         except Exception:  # noqa: BLE001 - a broken store starts an empty book
             _LOGGER.warning("The battery shadow log could not be read; starting a new one")
             stored = None
+        try:
+            self._restore(stored, now)
+        except Exception:  # noqa: BLE001 - a record SpotNav cannot read must not stop the site; it starts again
+            _LOGGER.warning("The battery shadow log could not be read; starting a new one", exc_info=True)
+            try:
+                self._restore(None, now)
+            except Exception:  # noqa: BLE001 - the battery's facts are read again at each look
+                _LOGGER.debug("SpotNav battery shadow: the start's first look failed", exc_info=True)
+        self._loaded = True
+        # An earlier version raised a Repairs notice for an occurrence: it is retired, so a left-over one goes.
+        ir.async_delete_issue(self.hass, DOMAIN, outside_control_issue_id(self.site.entry_id))
+        try:
+            await self.plan.async_start(now)
+        except Exception:  # noqa: BLE001 - the plan must never stop the site; it starts without its record
+            _LOGGER.warning("SpotNav battery plan: the start failed", exc_info=True)
+        self._timer_cancel = async_track_time_interval(self.hass, self._async_tick, timedelta(seconds=TICK_S))
+
+    def _restore(self, stored: Any, now: datetime) -> None:
+        """The book and its parts from the stored record (`None`: a new one), then the restart's look at the hold."""
         self.book = ShadowBook.from_dict(stored, now)
         self.dry_run = HoldDryRun(
             Ledger.from_dict(self.book.section(SECTION_LEDGER)), Monitor.from_dict(self.book.section(SECTION_MONITOR))
         )
         self.outside = OutsideControlWatch.from_dict(self.book.section(SECTION_OUTSIDE))
         self.curtail = CurtailShadow.from_dict(self.book.section(SECTION_CURTAIL))
-        self._loaded = True
-        # An earlier version raised a Repairs notice for an occurrence: it is retired, so a left-over one goes.
-        ir.async_delete_issue(self.hass, DOMAIN, outside_control_issue_id(self.site.entry_id))
         self.facts = self._read_facts()
         memory, decision = restart(self._hold, self.facts, now)
         self._apply(PART_HOLD_FOR_CAR, memory, decision, now)
-        await self.plan.async_start(now)
-        self._timer_cancel = async_track_time_interval(self.hass, self._async_tick, timedelta(seconds=TICK_S))
 
     async def async_shutdown(self) -> None:
         if self._timer_cancel is not None:
@@ -356,18 +378,36 @@ class BatteryShadow:
         self.tick(dt_util.now())
 
     def tick(self, now: datetime) -> None:
-        inputs = self._observe_outside(self.inputs(now))
-        self.facts = inputs.facts
-        memory, decision = step(self._hold, inputs)
-        self._apply(
-            PART_HOLD_FOR_CAR, memory, decision, now, reads=inputs.reads,
-            age_s=inputs.battery_age_s, headroom_a=inputs.headroom_a, volts=inputs.volts_between_phases,
-        )
-        self.plan.tick(now, inputs.facts)
+        """One look: the hold, the plan and the export limit, each on its own. Never raises into the site."""
+        inputs: HoldInputs | None = None
+        try:
+            inputs = self._observe_outside(self.inputs(now))
+            self.facts = inputs.facts
+            memory, decision = step(self._hold, inputs)
+            self._apply(
+                PART_HOLD_FOR_CAR, memory, decision, now, reads=inputs.reads,
+                age_s=inputs.battery_age_s, headroom_a=inputs.headroom_a, volts=inputs.volts_between_phases,
+            )
+        except Exception:  # noqa: BLE001 - the battery's shadow must never disturb the site
+            self._look_failed("hold")
+        try:
+            self.plan.tick(now, self.facts)
+        except Exception:  # noqa: BLE001
+            self._look_failed("plan")
+        if inputs is None:
+            return
         try:
             self._curtail_tick(now, inputs)
         except Exception:  # noqa: BLE001 - the rule's shadow must never disturb the site
-            _LOGGER.debug("SpotNav export limit: the look failed", exc_info=True)
+            self._look_failed("export limit")
+
+    def _look_failed(self, kind: str) -> None:
+        """A failed look, logged with its traceback the first time for each kind and quietly after."""
+        if kind in self._failed_looks:
+            _LOGGER.debug("SpotNav battery shadow: the %s look failed again", kind, exc_info=True)
+            return
+        self._failed_looks.add(kind)
+        _LOGGER.warning("SpotNav battery shadow: the %s look failed; it is tried again at each look", kind, exc_info=True)
 
     def _curtail_tick(self, now: datetime, inputs: HoldInputs) -> None:
         """One look of the export-limit rule in shadow (`export_curtail.py`): in a curtail slot, what the executor's
@@ -423,14 +463,15 @@ class BatteryShadow:
         after = self.curtail.as_dict()
         if entry is not None or after != before:
             self.book.set_section(SECTION_CURTAIL, after)
-            self._store.async_delay_save(self.book.as_dict, _SAVE_DELAY_S)
+            self._save()
 
     def _apply(
         self, part: str, memory: HoldMemory, decision: HoldDecision | None, now: datetime, *,
         reads: Mapping[str, RoleRead] | None = None, age_s: float | None = None, headroom_a: float | None = None,
         volts: float = 400.0,
     ) -> None:
-        changed = memory.as_dict() != self.book.memory(part)
+        # When the hold last counted changes at every look: alone it is no change worth a write.
+        changed = _without_count_time(memory.as_dict()) != _without_count_time(self.book.memory(part))
         self.book.set_memory(part, memory.as_dict())
         entries: list[ShadowEntry] = []
         if decision is not None:
@@ -465,7 +506,18 @@ class BatteryShadow:
                 self.book.set_section(name, data)
                 changed = True
         if changed or entries:
-            self._store.async_delay_save(self.book.as_dict, _SAVE_DELAY_S)
+            self._save()
+
+    def _save(self) -> None:
+        """Write the book within `_SAVE_DELAY_S`: a write already waiting is not put off by a later change."""
+        if self._save_pending:
+            return
+        self._save_pending = True
+        self._store.async_delay_save(self._data_to_save, _SAVE_DELAY_S)
+
+    def _data_to_save(self) -> dict[str, Any]:
+        self._save_pending = False
+        return self.book.as_dict()
 
     def _dry_run_snapshot(self) -> dict[str, Any]:
         """The ledger's and the monitor's state and today's counters; in shadow nothing is written, so their real

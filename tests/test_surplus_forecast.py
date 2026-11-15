@@ -159,6 +159,8 @@ async def test_the_house_and_solar_forecast_sensors_carry_time_and_value_rows_ou
     house = hass.states.get(house_id)
     assert float(house.state) == 1.0
     assert house.attributes["unit_of_measurement"] == "kW"
+    # A forecast keeps no long-term statistics.
+    assert "state_class" not in house.attributes and "state_class" not in hass.states.get(solar_id).attributes
     assert house.attributes["basis"] == "gross"
     assert [row["value"] for row in house.attributes["forecast"]] == [1.0, 2.0, 3.0]
     assert set(house.attributes["forecast"][0]) == {"time", "value"}
