@@ -92,6 +92,8 @@ async def test_the_block_sits_beside_the_price_source_and_is_off_until_written(
         "demand": NO_DEMAND,
         "supplier_markup": {"policy": "off", "explicit_value": None, "effective_value": None, "unit": "öre/kWh"},
         "sell_adjustment": {"policy": "off", "explicit_value": None, "effective_value": None, "unit": "öre/kWh"},
+        # A charger in no site: nothing sold on this price.
+        "sells": False,
         "writable": True,
     }
 
@@ -454,11 +456,11 @@ async def test_the_supplier_figures_are_written_read_back_and_kept_by_a_writer_t
         return {"version": 1, "action": "dashboard", "api_version": 1, "reads": ["grid_tariff", *reads]}
 
     unread = (await (await app.post("/api/webhook/webhook-a", json=dashboard_reads())).json())["grid_tariff"]
-    assert "supplier_markup" not in unread and "sell_adjustment" not in unread
+    assert "supplier_markup" not in unread and "sell_adjustment" not in unread and "sells" not in unread
     read = (await (await app.post("/api/webhook/webhook-a", json=dashboard_reads("supplier_fees"))).json())[
         "grid_tariff"
     ]
-    assert read["sell_adjustment"]["effective_value"] == -2.0
+    assert read["sell_adjustment"]["effective_value"] == -2.0 and read["sells"] is False
     response = await app.post(
         "/api/webhook/webhook-a",
         json={"version": 1, "action": "update_grid_tariff", "expected_write_revision": 2, "grid_tariff": OWNER},

@@ -71,6 +71,7 @@
     "policy": "off",
     "unit": "öre/kWh"
   },
+  "sells": false,
   "supplier_markup": {
     "effective_value": null,
     "explicit_value": null,

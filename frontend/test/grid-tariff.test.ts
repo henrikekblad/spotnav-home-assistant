@@ -33,7 +33,7 @@ const BLOCK = {
 
 const OFF = { policy: "off", explicit_value: null, effective_value: null };
 /** What a block from a backend before the supplier's two figures reads as. */
-const NO_SUPPLIER = { supplier_markup: null, sell_adjustment: null };
+const NO_SUPPLIER = { supplier_markup: null, sell_adjustment: null, sells: null };
 /** Nothing stored: what a fresh electricity price carries. */
 const NOTHING = {
   ...BLOCK,
@@ -477,7 +477,7 @@ describe("the supplier's markup and what a sold kWh earns", () => {
   const SUPPLIER = { ...NOTHING, supplier_markup: MARKUP, sell_adjustment: { ...OFF, unit: "öre/kWh" } };
 
   it("are read together, and a block with only one of them is dropped", () => {
-    expect(decodeGridTariff(SUPPLIER)).toEqual({ ...SUPPLIER, demand: null });
+    expect(decodeGridTariff(SUPPLIER)).toEqual({ ...SUPPLIER, demand: null, sells: null });
     for (const broken of [
       { ...NOTHING, supplier_markup: MARKUP },
       { ...NOTHING, sell_adjustment: SELL },
@@ -502,6 +502,40 @@ describe("the supplier's markup and what a sold kWh earns", () => {
     expect(row("supplier_markup").querySelector("button")).not.toBeNull();
     const before = await open(dashboard(NOTHING));
     expect(rowKeys(before.element)).not.toContain("supplier_markup");
+  });
+
+  describe("the sale figure's row", () => {
+    const SET_OFF = { policy: "off", explicit_value: 3, effective_value: null, unit: "öre/kWh" };
+    const rows = async (block: Record<string, unknown>) => rowKeys((await open(dashboard(block))).element);
+
+    it("is hidden where nothing is sold and the figure is off and unset, the markup stays", async () => {
+      const keys = await rows({ ...SUPPLIER, sells: false });
+      expect(keys).toContain("supplier_markup");
+      expect(keys).not.toContain("sell_adjustment");
+    });
+
+    it("shows where something is sold", async () => {
+      expect(await rows({ ...SUPPLIER, sells: true })).toContain("sell_adjustment");
+    });
+
+    it("shows from a backend that does not say, as before", async () => {
+      expect(await rows(SUPPLIER)).toContain("sell_adjustment");
+    });
+
+    it("never hides a figure that is on, or one that is set but off", async () => {
+      expect(await rows({ ...SUPPLIER, sells: false, sell_adjustment: SELL })).toContain("sell_adjustment");
+      expect(await rows({ ...SUPPLIER, sells: false, sell_adjustment: SET_OFF })).toContain("sell_adjustment");
+    });
+
+    it("is read strictly: a block with a non-boolean sells is dropped", () => {
+      expect(decodeGridTariff({ ...SUPPLIER, sells: true }).sells).toBe(true);
+      expect(decodeGridTariff({ ...SUPPLIER, sells: false }).sells).toBe(false);
+      const decoded = decodeDashboard({
+        ...read("dashboard", "cheapest_no_site.json"),
+        grid_tariff: { ...SUPPLIER, sells: "yes" },
+      });
+      expect(decoded.ok && decoded.value.grid_tariff).toBeNull();
+    });
   });
 
   it("are read-only where the price may not be changed", async () => {

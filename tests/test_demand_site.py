@@ -218,3 +218,44 @@ async def test_a_site_without_the_total_and_nothing_set_asks_for_nothing(hass: H
     await add_price(hass)
     body = dashboard_api.serialize_dashboard(dashboard_api.capture_dashboard(hass, charger), can_act=True)
     assert "demand_grid_power" not in [item["id"] for item in body["setup"]["items"]]
+
+
+async def test_the_price_sells_only_where_a_site_on_it_has_a_battery_or_a_sun_source(
+    hass: HomeAssistant, freezer
+) -> None:
+    """`grid_tariff.sells` is what the card hides the sale figure by: a battery, a solar forecast, solar production
+    statistics or a measured export on any site whose chargers use the price; a grid-only site says false."""
+    from custom_components.spotnav.api.grid_tariff import price_sells, site_sells
+
+    def sells() -> bool:
+        block = serialize_grid_tariff(capture_grid_tariff(hass, "entry_a"), can_act=True)
+        assert block is not None
+        return block["sells"]
+
+    site = await pilot_site(hass, freezer)
+    price = next(entry for entry in hass.config_entries.async_entries(DOMAIN) if entry.data.get("area_id"))
+    assert sells() is False and price_sells(hass, price.entry_id) is False
+
+    # Statistics of the sun's production on the Energy dashboard.
+    controller = site_controller_for(hass, site.entry_id)
+    assert controller is not None
+    controller.house_forecast.solar_statistics = ("sensor.sun_energy",)
+    assert sells() is True
+    controller.house_forecast.solar_statistics = ()
+    assert sells() is False
+
+    # Each setting of the site on its own.
+    for data in (
+        {"solar_forecast_entries": ["forecast_entry"]},
+        {"battery_aggregate_power_entity": "sensor.battery_power"},
+        {CONF_GRID_POWER_SOURCE: {"power": GRID, "power_export": "sensor.site_grid_export"}},
+    ):
+        original = dict(site.data)
+        hass.config_entries.async_update_entry(site, data={**original, **data}, )
+        assert site_sells(hass, site) is True, data
+        assert sells() is True, data
+        hass.config_entries.async_update_entry(site, data=original)
+        assert sells() is False, data
+
+    # A site on another price does not make this one sell.
+    assert price_sells(hass, "no_such_price") is False

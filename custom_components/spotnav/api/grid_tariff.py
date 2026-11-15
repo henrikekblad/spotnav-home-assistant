@@ -8,7 +8,7 @@ The dashboard's optional `grid_tariff` block (`serialize_grid_tariff`), present 
 (the charger prices with an electricity price entry):
 
     {entry_id, write_revision, transfer_percent, transfer_high, high_load_window, demand,
-     supplier_markup, sell_adjustment, writable}
+     supplier_markup, sell_adjustment, sells, writable}
 
 * `transfer_percent`/`transfer_high`: `{policy, explicit_value, effective_value, unit}`. `policy` is `off`,
   `manual` or `included` (the area's published price already holds the grid fee: locked like `transfer`, nothing
@@ -20,6 +20,11 @@ The dashboard's optional `grid_tariff` block (`serialize_grid_tariff`), present 
   `supplier_markup` is added to each bought kWh before VAT, as the other fees are (`planning/planner.py:
   effective_minor_per_kwh`). `sell_adjustment` is what a sold kWh earns beyond the spot price, as it is paid out:
   never with VAT, and negative for a deduction (`battery/plan.py:sell_prices`).
+* `sells` (additive): whether anything is sold on this price, so that the card shows `sell_adjustment` only where it
+  can matter. True when any site whose chargers use this price entry has a home battery (its level entity, or a
+  battery power entity), a solar forecast, solar production statistics on the Energy dashboard, or a measured grid
+  export (the meter's separate export entity); see `price_sells`. The card also shows the row whenever the figure is
+  on or set, whatever this says. Read-only and derived: never written.
 * `high_load_window`: `{days, from_month, to_month, from_hour, to_hour}` or `null`. `days` is `all`, `weekdays`
   (Monday to Friday) or `mon_sat`; months 1-12, both included, wrapping over the new year (11 to 3 is November to
   March, 1 to 12 all year); whole hours of the area's own clock, `from_hour` 0-23 and `to_hour` 1-24, wrapping over
@@ -93,7 +98,17 @@ from ..pricing.price_source import async_write_price_entry, entry_source_for, Pr
 from ..runtime import site_controller_for
 from ..site.demand_tracker import DemandSnapshot
 from ..site.solar_capability import REASON_NEEDS_TOTAL_GRID_POWER, solar_capability
-from ..const import CONF_GRID_POWER_SOURCE, CONF_MEASUREMENT_MODE
+from ..const import (
+    CONF_BATTERY_AGGREGATE_POWER_ENTITY,
+    CONF_CHARGER_ENTRY_IDS,
+    CONF_ENTRY_TYPE,
+    CONF_GRID_POWER_SOURCE,
+    CONF_MEASUREMENT_MODE,
+    CONF_SOLAR_FORECAST_ENTRIES,
+    DOMAIN,
+    ENTRY_TYPE_SITE,
+)
+from ..site.measurement_source import grid_power_source_from_dict
 from .common import ERROR_NOT_ADMIN, is_admin, lookup_charger
 from .entity_fields import ERR_INVALID_VALUE, stored_import_target_kw
 
@@ -143,6 +158,8 @@ class CapturedGridTariff:
     #: The area's major unit (a demand charge's price per kW), `None` while the area is not listed.
     major_unit: str | None = None
     demand: CapturedDemand = CapturedDemand(available=False, reason=DEMAND_NO_SITE, snapshot=None, import_target_kw=None)
+    #: Something is sold on this price (`price_sells`).
+    sells: bool = False
 
 
 def capture_grid_tariff(hass: HomeAssistant, charger_id: str) -> CapturedGridTariff | None:
@@ -151,7 +168,43 @@ def capture_grid_tariff(hass: HomeAssistant, charger_id: str) -> CapturedGridTar
     if source is None or source.entry_id is None:
         return None
     captured = _captured(source)
-    return replace(captured, demand=capture_demand(hass, charger_id, captured.tariff.demand))
+    return replace(
+        captured,
+        demand=capture_demand(hass, charger_id, captured.tariff.demand),
+        sells=price_sells(hass, source.entry_id),
+    )
+
+
+def site_sells(hass: HomeAssistant, site: ConfigEntry) -> bool:
+    """Whether the site can sell energy: a home battery (its level entity, or a battery power entity), a solar
+    forecast, the Energy dashboard's solar production statistics, or a measured grid export (the meter's separate
+    export entity). Read from what the site and its controller already hold; nothing is looked up."""
+    data = site.data
+    if data.get(CONF_SOLAR_FORECAST_ENTRIES) or data.get(CONF_BATTERY_AGGREGATE_POWER_ENTITY):
+        return True
+    source = grid_power_source_from_dict(data.get(CONF_GRID_POWER_SOURCE))
+    if source is not None and source.power_export:
+        return True
+    controller = site_controller_for(hass, site.entry_id)
+    if controller is None:
+        return False
+    return bool(controller.battery_shadow.facts.battery_entity_id) or bool(controller.house_forecast.solar_statistics)
+
+
+def price_sells(hass: HomeAssistant, entry_id: str) -> bool:
+    """Whether any site whose chargers price with this electricity price entry `site_sells`."""
+    for site in hass.config_entries.async_entries(DOMAIN):
+        if site.data.get(CONF_ENTRY_TYPE) != ENTRY_TYPE_SITE:
+            continue
+        uses = False
+        for charger_id in site.data.get(CONF_CHARGER_ENTRY_IDS) or []:
+            source = entry_source_for(hass, charger_id)
+            if source is not None and source.entry_id == entry_id:
+                uses = True
+                break
+        if uses and site_sells(hass, site):
+            return True
+    return False
 
 
 def capture_demand(hass: HomeAssistant, charger_id: str, components: tuple[DemandComponent, ...]) -> CapturedDemand:
@@ -274,6 +327,7 @@ def serialize_grid_tariff(grid_tariff: CapturedGridTariff | None, *, can_act: bo
         "demand": serialize_demand(captured),
         SUPPLIER_MARKUP: _fee(tariff.supplier_markup, minor_per_kwh, included=False),
         SELL_ADJUSTMENT: _fee(tariff.sell_adjustment, minor_per_kwh, included=False),
+        "sells": captured.sells,
         "writable": bool(can_act),
     }
 

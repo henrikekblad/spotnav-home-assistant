@@ -461,6 +461,11 @@ export interface GridTariffBlock {
   supplier_markup: GridTariffFee | null;
   /** What a sold kWh earns beyond spot, as paid out (no VAT, may be negative); `null` as `supplier_markup`. */
   sell_adjustment: GridTariffFee | null;
+  /**
+   * Whether anything is sold on this price (a site on it has a battery, a solar source or a measured export); `null`
+   * when the backend does not say, which shows the sale figure as before.
+   */
+  sells: boolean | null;
   writable: boolean;
 }
 
@@ -2197,6 +2202,10 @@ export function decodeGridTariff(raw: unknown): GridTariffBlock {
   if (supplier) {
     keys.push("supplier_markup", "sell_adjustment");
   }
+  const sells = value.sells !== undefined;
+  if (sells) {
+    keys.push("sells");
+  }
   exactKeys(value, keys);
   const entryId = text(value, "entry_id");
   if (entryId === "") {
@@ -2211,6 +2220,7 @@ export function decodeGridTariff(raw: unknown): GridTariffBlock {
     demand: value.demand === undefined ? null : decodeDemand(value.demand),
     supplier_markup: supplier ? gridTariffFee(value.supplier_markup) : null,
     sell_adjustment: supplier ? gridTariffFee(value.sell_adjustment) : null,
+    sells: sells ? booleanValue(value, "sells") : null,
     writable: booleanValue(value, "writable"),
   };
 }
