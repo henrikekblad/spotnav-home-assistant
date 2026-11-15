@@ -856,6 +856,58 @@ async def test_a_callback_from_the_area_this_charger_left_is_inert(
     assert len(recording.snapshots) == delivered
 
 
+async def test_the_plan_is_made_off_the_event_loop(harness: Harness, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A search with per-hour caps can take a noticeable part of a second: it never runs in the event loop."""
+    import threading
+
+    from custom_components.spotnav.planning import auto_controller
+
+    threads: list[bool] = []
+    real = auto_controller.calculate_plan
+
+    def spy(request: Any) -> Any:
+        threads.append(threading.current_thread() is threading.main_thread())
+        return real(request)
+
+    serve(harness.transport)
+    monkeypatch.setattr(auto_controller, "calculate_plan", spy)
+    controller = await harness.auto()
+    await controller.async_recalculate()
+
+    assert controller.snapshot().state == "proposal_ready"
+    assert threads and not any(threads)
+
+
+async def test_a_calculation_overtaken_by_a_newer_one_is_dropped(
+    harness: Harness, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Two calculations in flight: the older one, finishing last, does not replace the newer one's answer."""
+    import asyncio
+
+    serve(harness.transport)
+    controller = await harness.auto()
+    gate = asyncio.Event()
+    real = AutoPlannerController._plan_in_executor
+    calls = 0
+
+    async def slow_first(self: Any, request: Any) -> Any:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            await gate.wait()
+        return await real(self, request)
+
+    monkeypatch.setattr(AutoPlannerController, "_plan_in_executor", slow_first)
+    older = asyncio.ensure_future(controller.async_recalculate())
+    await asyncio.sleep(0)
+    harness.clock.advance(minutes=5)
+    newer = await controller.async_recalculate()
+    gate.set()
+    await older
+
+    assert controller.snapshot() is newer
+
+
 async def test_a_callback_after_shutdown_is_inert(
     harness: Harness, monkeypatch: pytest.MonkeyPatch
 ) -> None:
