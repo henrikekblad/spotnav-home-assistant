@@ -21,6 +21,7 @@ from custom_components.spotnav.battery.commands import (
     table,
 )
 from custom_components.spotnav.battery.executor import (
+    BLOCKED_RESTORE_S,
     DAILY_WRITE_CAP,
     HEADROOM_MARGIN_A,
     MANAGEMENT_BLOCK_S,
@@ -32,6 +33,7 @@ from custom_components.spotnav.battery.executor import (
     REARM_S,
     RESTORE_ATTEMPTS,
     RESTORE_HEADROOM_A,
+    RESTORE_RETRY_S,
     ExecState,
     Executor,
     grid_charge_cap_kw,
@@ -658,6 +660,25 @@ def test_a_restore_write_not_taken_is_retried_with_backoff_and_the_others_still_
     assert executor.state.restore_values == {"discharge_limit": 23.04}, "its snapshot is kept for the next start"
     executor.reset()
     assert executor.state.phase == "blocked", "a kept snapshot cannot be reset away"
+
+
+def test_a_restore_given_up_is_tried_again_on_a_slow_timer_while_blocked() -> None:
+    executor, battery = _sigenergy()
+    now = _held(executor, battery)
+    battery.raises = {"discharge_limit"}
+    while executor.state.phase != "blocked":
+        now, _ = run(executor, battery, now, 1, "self_consume")
+    assert executor.state.blocked == "restore_failed:discharge_limit"
+    # Still failing: tried again every BLOCKED_RESTORE_S, never more often.
+    now, results = run(executor, battery, now, _looks(BLOCKED_RESTORE_S) - 3, "self_consume")
+    assert written(results) == []
+    now, results = run(executor, battery, now, 4, "self_consume")
+    assert written(results) == [("discharge_limit", 23.04)]
+    # The integration takes writes again: the next try restores it and the block ends.
+    battery.raises = set()
+    _now, results = run(executor, battery, now, _looks(sum(RESTORE_RETRY_S) + BLOCKED_RESTORE_S), "self_consume")
+    assert battery.states["discharge_limit"] == "23.04"
+    assert executor.state.phase == "idle" and not executor.state.holds_snapshot
 
 
 # --- the other brands ---------------------------------------------------------------------------------------------------

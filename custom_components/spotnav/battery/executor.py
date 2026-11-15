@@ -31,7 +31,8 @@ How it acts (`step`, one look every few seconds; pure, the shell does the writes
   after SpotNav's own write proves nothing; the snapshot is then written as the rating, never as `unknown`, and an
   `unknown` read-back is never a confirmed write (the ledger waits for a real value until its deadline). A restore write that does not read back is retried with backoff
   (`RESTORE_RETRY_S`), up to `RESTORE_ATTEMPTS` times each; a role still not restored then is left with its
-  snapshot kept (the control blocks, and the next start tries again), while the other roles are handed back. A role
+  snapshot kept (the control blocks and tries that role again every `BLOCKED_RESTORE_S`, and a restart tries it
+  first), while the other roles are handed back. A role
   that meanwhile needs no write (it reads its restore value, or its select is idle once Remote EMS is off) drops its
   retry, and a write made for the action that is still awaited when the hand-back begins is no restore retry: every
   hand-back ends.
@@ -137,6 +138,9 @@ DAILY_WRITE_CAP: Final = 96
 #: A restore write that does not read back is retried after these delays (s), then given up.
 RESTORE_RETRY_S: Final = (30.0, 60.0, 120.0, 300.0, 600.0)
 RESTORE_ATTEMPTS: Final = len(RESTORE_RETRY_S)
+#: A restore given up after every retry is tried again this often while the control is blocked (s): Remote EMS or a
+#: limit left set must not wait for a restart.
+BLOCKED_RESTORE_S: Final = 900.0
 
 Phase = Literal["idle", "active", "restoring", "blocked"]
 _PHASES: Final = frozenset({"idle", "active", "restoring", "blocked"})
@@ -586,6 +590,11 @@ class Executor:
         ):
             self.state = replace(state, phase="idle", blocked=None, reason=None, given_up=())
             events.append(_event(now, "unblocked", state.blocked or ""))
+        if (
+            state.phase == "blocked" and state.holds_snapshot and (state.blocked or "").startswith("restore_failed")
+            and (state.released_at is None or (now - state.released_at).total_seconds() >= BLOCKED_RESTORE_S)
+        ):
+            events += self._begin_restore(now, "restore_again")
 
         events += self._observe(inputs)
         if self.state.phase == "active":
