@@ -331,6 +331,16 @@ def test_a_stored_settings_record_needs_every_field_and_no_others(
     assert refused.value.code == code
 
 
+def test_a_record_with_a_later_release_departure_calendar_still_loads() -> None:
+    """3.0 stores the departure calendar beside the rest: going back to this release keeps the charger's record."""
+    raw = AutoSettings(revision=2, area_id="SE4", amps=10).as_dict()
+    raw["departure_calendar"] = "calendar.work"
+    raw["departure_calendar_only"] = True
+    settings = AutoSettings.from_stored(raw)
+    assert settings.amps == 10
+    assert "departure_calendar" not in settings.as_dict()
+
+
 def test_a_complete_stored_record_round_trips_exactly() -> None:
     """Everything a person chose survives the round trip, overrides included."""
     settings = AutoSettings(
