@@ -35,8 +35,8 @@ brand's integration offers:
 
 It also reads:
 
-* the prices with every fee SpotNav adds as the buying price, and the spot price as the selling price (no tax credit or
-  other compensation is added),
+* the prices with every fee SpotNav adds as the buying price, and the spot price plus the price's *Sold kWh: extra or
+  deduction* as the selling price (0 until you set it, no VAT; see [Prices](prices.md#the-suppliers-markup-and-what-a-sold-kwh-earns)),
 * the house's expected load ([Forecasts](forecasts.md)),
 * the solar forecast as SpotNav corrects it, once the correction has learnt, else the raw forecast,
 * the charging plans already made for your cars, as a fixed load,
@@ -78,7 +78,7 @@ earned (**arbitrage**) and what was **bought**. For arbitrage it needs what the 
 running average cost of what is stored:
 
 * energy from the **grid** is valued at the buying price of that quarter hour, every fee included,
-* energy from the **sun** is valued at the **selling price**, what that kWh would have fetched on the grid,
+* energy from the **sun** is valued at the **selling price** (spot plus the sold-kWh figure), what that kWh would have fetched on the grid,
 * each kWh the battery gives back earns the price of that quarter hour (the buying price for what the house used, the selling
   price for what was exported) less that average cost.
 
