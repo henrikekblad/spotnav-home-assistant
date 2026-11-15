@@ -185,7 +185,7 @@ yet).
 **Who may replace the settings.** An administrator may change any field. A user who is not one is refused with
 `spotnav_not_admin` while the charger's `users_change_plan` is off; while it is on, a replacement from them is
 accepted only when every field it changes is one of the strategy and plan fields: `strategy`, `requested_kwh`,
-`fill_to_limit`, `driver`, `target`, `departure_enabled`, `departure_time`, `departure_date`,
+`fill_to_limit`, `driver`, `target`, `departure_enabled`, `departure`, `departure_date`,
 `departure_weekdays`, `departure_calendar`, `departure_calendar_only`, `amps` and `if_not_ready` (`NON_ADMIN_FIELDS` in `custom_components/spotnav/api/settings.py`). One that
 also changes anything else (`area_id`, `overrides`, `max_periods`, `notifications`, `vehicle_ids`,
 `identify_mode`, `identify_camera`, `users_change_plan`) is refused whole with `spotnav_not_admin` and
@@ -555,7 +555,7 @@ so a client that read the relay reads them unchanged:
   and tomorrow in the area's `tz`: two when its calendars agree, up to three when they do not (a Finnish day from
   Nord Pool's CET days, a London day from Paris days). A file not held yet is absent; cut the display days from the
   files by instant.
-- `profile` is the history profile ([prices](prices.md#the-history-profile-1)), `null` until 21 of the last 28 days
+- `profile` is the history profile ([prices](prices.md#the-history-profile-document)), `null` until 21 of the last 28 days
   are held.
 
 Refusals are HTTP 400 `{"ok": false, "error", "action": "price_days"}`: `spotnav_no_price_area` (nothing names an
@@ -643,6 +643,7 @@ and `charger_priority.writable` say whether it may change those (an administrato
 | ------- | ------- |
 | `spotnav/list_chargers` | The chargers on this instance (`id`, `name`). |
 | `spotnav/get_dashboard` | The dashboard document for one charger. |
+| `spotnav/get_house` | The [house card's](house-card.md) read-only view of one site (a shadow preview): `{"api_version": 1, "charger_id" or "site_id", "date"}`, `date` (a day, `YYYY-MM-DD`) optional for a past day. |
 | `spotnav/get_settings`, `spotnav/update_settings` | Read and replace the settings record. |
 | `spotnav/manual_action` | `start`, `stop` (with an optional pause `choice`) or `resume`; any signed-in user. |
 | `spotnav/plan_preview` | What a Save would plan, with nothing saved (see [Plan preview](#plan-preview)). |
