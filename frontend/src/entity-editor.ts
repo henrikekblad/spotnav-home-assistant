@@ -488,6 +488,7 @@ const FOCUS_FIELDS: Readonly<Record<string, readonly string[]>> = {
   "charge-control": ["charge_control"],
   "current-limit": ["current_limit"],
   energy: ["energy_register_entity", "power_entity"],
+  "heat-meter": ["heat_meter_entity"],
 };
 
 export function entityEditorBody(
