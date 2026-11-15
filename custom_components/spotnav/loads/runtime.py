@@ -117,6 +117,7 @@ class SwitchLoadShadow:
         self._loaded = False
         #: Whether a write of the book waits (`_save`): the ticks go on, and must not keep putting it off.
         self._save_pending = False
+        self._look_failed_logged = False
         self._planning = False
         self._closed = False
         self._plan_task: asyncio.Task[None] | None = None
@@ -133,22 +134,42 @@ class SwitchLoadShadow:
         except Exception:  # noqa: BLE001 - a broken store starts an empty book
             _LOGGER.warning("The switched load's shadow log could not be read; starting a new one")
             stored = None
+        try:
+            self._restore(stored, now)
+        except Exception:  # noqa: BLE001 - a record SpotNav cannot read must not stop the site; it starts again
+            _LOGGER.warning("The switched load's shadow log could not be read; starting a new one", exc_info=True)
+            self.book, self.history, self.days = ShadowBook(), RunHistory(), {}
+        self._loaded = True
+        if self.history.tracked_since is None:
+            self.history.tracked_since = now
+        try:
+            await self.async_replan(now)
+            self.tick(now)
+        except Exception:  # noqa: BLE001 - the first look is tried again at the next one
+            self._look_failed()
+        self._timer_cancel = async_track_time_interval(self.hass, self._async_tick, timedelta(seconds=TICK_S))
+
+    def _restore(self, stored: Any, now: datetime) -> None:
+        config = self.config
+        assert config is not None
         self.book = ShadowBook.from_dict(stored, now)
         memory = self.book.memory(PART_SWITCH_LOAD)
-        if memory.get("entity_id") == self.config.entity_id:
+        # Another switch (or none before): its history says nothing about this one.
+        if memory.get("entity_id") == config.entity_id:
             self.history = RunHistory.from_dict(self.book.section(SECTION_HISTORY))
             self.days = {
                 day: DayTally.from_dict(row)
                 for day, row in self.book.section(SECTION_DAYS).items()
                 if isinstance(day, str)
             }
-        # Another switch (or none before): its history says nothing about this one.
-        self._loaded = True
-        if self.history.tracked_since is None:
-            self.history.tracked_since = now
-        await self.async_replan(now)
-        self.tick(now)
-        self._timer_cancel = async_track_time_interval(self.hass, self._async_tick, timedelta(seconds=TICK_S))
+
+    def _look_failed(self) -> None:
+        """A failed look, logged with its traceback the first time and quietly after."""
+        if self._look_failed_logged:
+            _LOGGER.debug("SpotNav switched load: the look failed again", exc_info=True)
+            return
+        self._look_failed_logged = True
+        _LOGGER.warning("SpotNav switched load: the look failed; it is tried again at each look", exc_info=True)
 
     async def async_shutdown(self) -> None:
         self._closed = True
@@ -321,7 +342,10 @@ class SwitchLoadShadow:
 
     @callback
     def _async_tick(self, _now: datetime) -> None:
-        self.tick(dt_util.now())
+        try:
+            self.tick(dt_util.now())
+        except Exception:  # noqa: BLE001 - the switched load's shadow must never disturb the site
+            self._look_failed()
 
     def _account(self, now: datetime) -> None:
         """The time since the last look, at the last decision: the shadow's run history and the day's tallies."""
