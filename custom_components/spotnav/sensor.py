@@ -603,7 +603,7 @@ class _SiteForecastEntity(SpotNavSiteEntity, SensorEntity):
     when the shown figures change; `unknown` while there is no row for the running hour."""
 
     _attr_device_class = SensorDeviceClass.POWER
-    _attr_state_class = SensorStateClass.MEASUREMENT
+    # No state class: a forecast is no measurement, and gets no long-term statistics.
     _attr_native_unit_of_measurement = UnitOfPower.KILO_WATT
     _attr_suggested_display_precision = 2
     _attr_entity_category = EntityCategory.DIAGNOSTIC
