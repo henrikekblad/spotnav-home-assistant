@@ -9,6 +9,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import date, datetime, time, timedelta, timezone
 from typing import Any
 
@@ -400,7 +401,8 @@ async def test_alone_without_an_event_ahead_there_is_no_departure(harness: Harne
     assert harness.store.settings("entry-a").departure_enabled is True
 
 
-async def test_alone_a_chosen_date_still_wins(harness: Harness, calendar: Calendar) -> None:
+async def test_alone_a_chosen_date_no_longer_goes_first(harness: Harness, calendar: Calendar) -> None:
+    """A date stored before the switch was ticked is ignored: the calendar decides (here, no event: none)."""
     _publish(harness)
     chosen = await harness.auto(
         departure=time(8, 0),
@@ -409,8 +411,27 @@ async def test_alone_a_chosen_date_still_wins(harness: Harness, calendar: Calend
         departure_calendar=CALENDAR,
         departure_calendar_only=True,
     )
-    assert _departure(chosen) == datetime(2026, 10, 3, 6, 0, tzinfo=timezone.utc)
-    assert chosen.calendar_status()["state"] == "date"
+    assert _departure(chosen) is None
+    assert chosen.calendar_status()["state"] == "no_event"
+
+
+async def test_a_write_with_the_calendar_alone_deciding_clears_the_chosen_date(
+    harness: Harness, calendar: Calendar
+) -> None:
+    _publish(harness)
+    controller = await harness.auto(departure=time(8, 0), requested_kwh=10.0, departure_calendar=CALENDAR)
+    await controller.async_apply_settings(mutate=lambda current: replace(current, departure_date=SATURDAY))
+    assert harness.store.settings("entry-a").departure_date == SATURDAY
+    await controller.async_apply_settings(mutate=lambda current: replace(current, departure_calendar_only=True))
+    assert harness.store.settings("entry-a").departure_date is None
+    # Nor can a later write set one again.
+    await controller.async_apply_settings(mutate=lambda current: replace(current, departure_date=SATURDAY))
+    assert harness.store.settings("entry-a").departure_date is None
+    # Without a chosen calendar the switch does nothing, so a date is kept.
+    await controller.async_apply_settings(
+        mutate=lambda current: replace(current, departure_calendar=None, departure_date=SATURDAY)
+    )
+    assert harness.store.settings("entry-a").departure_date == SATURDAY
 
 
 async def test_alone_a_calendar_that_cannot_be_read_falls_back_to_the_daily_departure(

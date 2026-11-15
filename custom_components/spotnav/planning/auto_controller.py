@@ -809,7 +809,8 @@ class AutoPlannerController:
         (`planning/calendar_departure.py`); unchanged when it makes none.
 
         Precedence: the departure switch off or a guest car, nothing (the calendar is not read); a one-off date the
-        person chose that is still ahead wins; else the calendar's departure (a day's first event replaces the daily
+        person chose that is still ahead wins, except when the calendar alone decides (`departure_calendar_only`:
+        then a date left over from before is ignored); else the calendar's departure (a day's first event replaces the daily
         departure on its day) as a dated departure, with the event's target where it fits the charger's driver; a
         calendar that cannot be read leaves the daily departure, also when the calendar alone decides (safer than
         none). With `departure_calendar_only` and no event ahead there is no departure: the plan is made as with the
@@ -821,6 +822,10 @@ class AutoPlannerController:
                 self._calendar_status = None
             return settings
         status: dict[str, Any] = {"entity_id": entity_id, "state": "off"}
+        if settings.departure_calendar_only and settings.departure_date is not None:
+            # The calendar alone decides: a chosen date no longer goes first (writes clear it; this covers one stored
+            # before the switch was ticked).
+            settings = replace(settings, departure_date=None)
         updated = settings
         entry = None if not settings.area_id else self._manager.catalogue_snapshot().area(settings.area_id)
         now = self._now()
@@ -1108,12 +1113,17 @@ class AutoPlannerController:
         """Judge `departure_date` against today in the area's zone, at every write, whichever transport.
 
         * a date newly set must not be in the past and at most 7 days ahead (`invalid_departure`);
+        * with the calendar alone deciding, the date is cleared;
         * a stored date that has gone by and is carried through unchanged is cleared by this write: it
           was already ignored by planning, and the write is the first chance to forget it.
         """
 
         def guarded(current: AutoSettings) -> AutoSettings:
             updated = mutate(current)
+            if updated.departure_calendar_only and updated.departure_calendar is not None:
+                # The calendar alone decides: no one-off date is kept to steer the plan behind its back, whichever
+                # transport wrote it (the card, the settings API, the date entity, the app's full write).
+                updated = replace(updated, departure_date=None)
             chosen = updated.departure_date
             if chosen is None:
                 return updated
