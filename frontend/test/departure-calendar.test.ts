@@ -240,6 +240,83 @@ describe("the Plan dialog's calendar", () => {
     expect(built.body.querySelector<HTMLInputElement>("[data-part='departure-calendar-only'] input")!.checked).toBe(true);
   });
 
+  it("hides the weekdays and the date while only the calendar decides, and calls the time the fallback", () => {
+    const { built } = dialog("sv", block(), { departure_calendar_only: false, departure_date: "2026-10-03" });
+    const controls = built.body.querySelector<HTMLElement>("[data-part='departure-day-controls']")!;
+    const label = built.body.querySelector("label[for$='deadline-time']")!;
+    expect(controls.hidden).toBe(false);
+    expect(controls.querySelector("[data-part='departure-weekdays']")).not.toBeNull();
+    expect(label.textContent).toBe("Avresetid");
+    const check = built.body.querySelector<HTMLInputElement>("[data-part='departure-calendar-only'] input")!;
+    check.checked = true;
+    check.dispatchEvent(new Event("change"));
+    expect(controls.hidden).toBe(true);
+    expect(label.textContent).toBe("Reservtid om kalendern inte går att läsa");
+    // No date is written while it is hidden.
+    expect(built.values().departureDate).toBe("");
+    check.checked = false;
+    check.dispatchEvent(new Event("change"));
+    expect(controls.hidden).toBe(false);
+    expect(label.textContent).toBe("Avresetid");
+    expect(built.values().departureDate).toBe("2026-10-03");
+  });
+
+  it("folds both calendar help texts behind info buttons, collapsed by default, beside the status note that stays", () => {
+    const { built } = dialog("en", block(), { departure_calendar_only: false });
+    const help = built.body.querySelector<HTMLElement>("[data-note='departure-calendar-help']")!;
+    const onlyHelp = built.body.querySelector<HTMLElement>("[data-note='departure-calendar-only-help']")!;
+    const note = built.body.querySelector<HTMLElement>("[data-note='departure-calendar']")!;
+    expect(help.hidden).toBe(true);
+    expect(onlyHelp.hidden).toBe(true);
+    expect(note.hidden).toBe(false);
+    const buttons = [...built.body.querySelectorAll<HTMLButtonElement>("button[data-info]")];
+    expect(buttons.map((button) => button.getAttribute("aria-controls"))).toEqual([help.id, onlyHelp.id]);
+    buttons[0]!.click();
+    expect(help.hidden).toBe(false);
+    expect(buttons[0]!.getAttribute("aria-expanded")).toBe("true");
+    buttons[1]!.click();
+    expect(onlyHelp.hidden).toBe(false);
+    // Unchoosing the calendar hides the switch and folds its help.
+    const select = built.body.querySelector<HTMLSelectElement>("[data-part='departure-calendar'] select")!;
+    select.value = "";
+    select.dispatchEvent(new Event("change"));
+    expect(onlyHelp.hidden).toBe(true);
+    expect(buttons[1]!.getAttribute("aria-expanded")).toBe("false");
+  });
+
+  it("shows the day controls again when the calendar is unchosen", () => {
+    const { built } = dialog("en", block(), { departure_calendar_only: true });
+    const controls = built.body.querySelector<HTMLElement>("[data-part='departure-day-controls']")!;
+    expect(controls.hidden).toBe(true);
+    const select = built.body.querySelector<HTMLSelectElement>("[data-part='departure-calendar'] select")!;
+    select.value = "";
+    select.dispatchEvent(new Event("change"));
+    expect(controls.hidden).toBe(false);
+  });
+
+  it("says to add a calendar in Home Assistant when it has none, only against a backend with the field", () => {
+    const { built } = dialog("sv", null);
+    expect(built.body.querySelector("[data-note='departure-calendar-missing']")?.textContent).toBe(
+      "Lägg till en kalender i Home Assistant för att styra avresan med den.",
+    );
+    const older = storedRecord({ departure_enabled: true });
+    const form = {
+      kind: "plan" as const,
+      readOnly: false,
+      values: formFromRecord(older),
+      energyReadOnly: false,
+      phases: 3,
+      currentRange: { min: 6, max: 16 },
+      conflict: null,
+      soc: null,
+      vehicles: [],
+      calendar: null,
+    };
+    const old = settingsEditorBody(document, "en", form as never, HANDLERS as never, "older");
+    expect(old.body.querySelector("[data-note='departure-calendar-missing']")).toBeNull();
+    expect(dialog("en", block()).built.body.querySelector("[data-note='departure-calendar-missing']")).toBeNull();
+  });
+
   it("keeps a chosen calendar that is gone, named by its id", () => {
     const { built } = dialog("en", block({ calendars: [], state: "unavailable" }));
     const select = built.body.querySelector<HTMLSelectElement>("[data-part='departure-calendar'] select")!;

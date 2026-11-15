@@ -22,6 +22,7 @@ import {
 } from "./settings";
 import { VISUAL_CLASSES as C, summaryValueClass } from "./visual-styles";
 import { settingRow } from "./value-editors";
+import { infoButton, type InfoButton } from "./info-button";
 import { floorSegment, placeMarks, targetTicks } from "./percent-slider";
 import { chargeCeiling, effectiveTarget, targetNeedKwh } from "./target-need";
 import type { DepartureCalendarBlock, Soc, Vehicle } from "./validate";
@@ -511,7 +512,14 @@ export function settingsEditorBody(
    */
   const appendCalendar = (into: HTMLElement): void => {
     const block = form.calendar ?? null;
-    if (block === null || form.values.departureCalendar === undefined) {
+    if (form.values.departureCalendar === undefined) {
+      return;
+    }
+    if (block === null) {
+      // Home Assistant has no calendar (and none is chosen): one note says where the departure could come from.
+      const missing = element(doc, "p", C.settingsNote, translate(language, "settings.deadline.calendarMissing"));
+      missing.dataset["note"] = "departure-calendar-missing";
+      into.append(missing);
       return;
     }
     const chosen = form.values.departureCalendar;
@@ -541,9 +549,11 @@ export function settingsEditorBody(
     note.setAttribute("aria-live", "polite");
     const help = element(doc, "p", C.settingsNote, translate(language, "settings.deadline.calendarHelp"));
     help.dataset["note"] = "departure-calendar-help";
+    const helpInfo = infoButton(doc, language, help, `${idPrefix}-deadline-calendar-help`);
     // Whether the calendar alone decides: only where the backend has the field, and shown once a calendar is chosen.
     let onlyRow: HTMLElement | null = null;
     let onlyHelp: HTMLElement | null = null;
+    let onlyInfo: InfoButton | null = null;
     if (form.values.departureCalendarOnly !== undefined) {
       calendarOnlyInput = doc.createElement("input") as HTMLInputElement;
       calendarOnlyInput.type = "checkbox";
@@ -559,19 +569,33 @@ export function settingsEditorBody(
       onlyRow.dataset["part"] = "departure-calendar-only";
       onlyHelp = element(doc, "p", C.settingsNote, translate(language, "settings.deadline.calendarOnlyHelp"));
       onlyHelp.dataset["note"] = "departure-calendar-only-help";
+      onlyInfo = infoButton(doc, language, onlyHelp, `${idPrefix}-deadline-calendar-only-help`);
+      onlyRow.append(onlyInfo.button);
     }
     const paint = (): void => {
+      syncCalendarOnly();
       const text = select.value !== "" && select.value === block.entity_id ? calendarNote(block) : "";
       note.textContent = text;
       note.hidden = text === "";
-      help.hidden = select.value === "";
-      if (onlyRow !== null && onlyHelp !== null) {
+      if (onlyRow !== null && onlyInfo !== null) {
         onlyRow.hidden = select.value === "";
-        onlyHelp.hidden = select.value === "";
+        if (select.value === "") {
+          onlyInfo.collapse();
+        }
       }
     };
     select.addEventListener("change", paint);
-    group.append(field(doc, `${idPrefix}-deadline-calendar`, translate(language, "settings.deadline.calendar"), select));
+    calendarOnlyInput?.addEventListener("change", paint);
+    const selectField = field(doc, `${idPrefix}-deadline-calendar`, translate(language, "settings.deadline.calendar"), select);
+    // The info button sits beside the label, and the help it folds away goes under the picker.
+    const selectLabel = selectField.querySelector("label");
+    if (selectLabel !== null) {
+      const head = element(doc, "div");
+      head.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:8px";
+      selectLabel.replaceWith(head);
+      head.append(selectLabel, helpInfo.button);
+    }
+    group.append(selectField);
     if (onlyRow !== null && onlyHelp !== null) {
       group.append(onlyRow, onlyHelp);
     }
@@ -624,6 +648,22 @@ export function settingsEditorBody(
   const weekdayChecks: HTMLInputElement[] = [];
   let calendarSelect: HTMLSelectElement | null = null;
   let calendarOnlyInput: HTMLInputElement | null = null;
+  /** The weekdays and the date, and the departure time's label: they follow whether the calendar alone decides. */
+  let dayControls: HTMLElement | null = null;
+  let timeLabel: HTMLElement | null = null;
+  /** Whether the calendar alone decides now: the box ticked with a calendar chosen. */
+  const calendarAlone = (): boolean =>
+    calendarOnlyInput !== null && calendarSelect !== null && calendarOnlyInput.checked && calendarSelect.value !== "";
+  /** Hide the weekdays and the date while the calendar alone decides; the time is then only the fallback. */
+  const syncCalendarOnly = (): void => {
+    const alone = calendarAlone();
+    if (dayControls !== null) {
+      dayControls.hidden = alone;
+    }
+    if (timeLabel !== null) {
+      timeLabel.textContent = translate(language, alone ? "settings.deadline.timeFallback" : "settings.deadline.time");
+    }
+  };
   const weekdayGroup = (): HTMLElement => {
     const group = element(doc, "fieldset", C.siteFieldset);
     group.dataset["part"] = "departure-weekdays";
@@ -656,10 +696,15 @@ export function settingsEditorBody(
     // The departure (time and day) only exists while the deadline is on; off, the time is today.
     const departure = element(doc, "div");
     departure.dataset["part"] = "departure";
-    departure.append(field(doc, `${idPrefix}-deadline-time`, translate(language, "settings.deadline.time"), timeInput));
+    const timeField = field(doc, `${idPrefix}-deadline-time`, translate(language, "settings.deadline.time"), timeInput);
+    timeLabel = timeField.querySelector("label");
+    departure.append(timeField);
     if (form.guest !== true) {
       // A guest leaves at the next occurrence of the time: the household's date, weekdays and calendar are not shown.
-      appendDate(departure);
+      dayControls = element(doc, "div");
+      dayControls.dataset["part"] = "departure-day-controls";
+      appendDate(dayControls);
+      departure.append(dayControls);
       appendCalendar(departure);
     }
     departure.hidden = !enabledInput.checked;
@@ -1172,7 +1217,8 @@ export function settingsEditorBody(
     values.energy = energyValue;
     values.deadlineEnabled = enabledInput.checked;
     values.deadlineTime = timeInput.value;
-    values.departureDate = dateInput.value;
+    // The calendar alone decides: no date is sent, so none is kept behind the hidden control.
+    values.departureDate = calendarAlone() ? "" : dateInput.value;
     if (weekdayChecks.length > 0) {
       values.departureWeekdays = weekdayChecks
         .filter((check) => check.checked)

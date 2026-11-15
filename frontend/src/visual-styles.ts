@@ -28,6 +28,7 @@ export const VISUAL_CLASSES = {
   visuallyHidden: "spotnav-visually-hidden",
   name: "spotnav-name",
   iconButton: "spotnav-icon-button",
+  infoButton: "spotnav-info-button",
   headerActions: "spotnav-header-actions",
   actionRow: "spotnav-action-row",
   button: "spotnav-button",
@@ -1232,6 +1233,35 @@ export const VISUAL_STYLES = `
   .${VISUAL_CLASSES.headerActions} > .${VISUAL_CLASSES.iconButton} > svg {
     width: 1.375rem;
     height: 1.375rem;
+  }
+  .${VISUAL_CLASSES.infoButton} {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    min-width: 40px;
+    min-height: 40px;
+    margin: -8px 0;
+    padding: 0;
+    line-height: 0;
+    box-sizing: border-box;
+    color: var(--secondary-text-color, #727272);
+    background: none;
+    border: 0;
+    border-radius: 50%;
+    cursor: pointer;
+  }
+  .${VISUAL_CLASSES.infoButton}[aria-expanded="true"] {
+    color: var(--primary-color, #03a9f4);
+  }
+  .${VISUAL_CLASSES.infoButton} > svg {
+    display: block;
+    width: 1.5rem;
+    height: 1.5rem;
+  }
+  .${VISUAL_CLASSES.infoButton}:focus-visible {
+    outline: 2px solid var(--primary-color, #03a9f4);
+    outline-offset: 2px;
   }
   .${VISUAL_CLASSES.banner} {
     display: flex;

@@ -166,7 +166,9 @@ out, and then it is kept; anything that is not `null` or a calendar entity id is
 Since 3.0 the record also carries `departure_calendar_only` (a boolean, `false` by default; stored only when `true`):
 the calendar alone decides. A day without an event then has no departure, and the plan runs to the next event; with
 no event within the seven days there is no departure at all, and the charger plans as with the departure switched
-off (the block's `state` is `no_event`). A one-off `departure_date` still ahead still wins. A calendar that cannot be
+off (the block's `state` is `no_event`). A one-off `departure_date` no longer goes first: with the switch on and a
+calendar chosen every write clears it (the card, the settings API, the date entity and an app's full write alike), and
+one stored earlier is ignored in planning. A calendar that cannot be
 read falls back to the daily departure as without the switch (`unavailable`): a car that must leave is safer
 charged by the daily time than not at all. A plan field. A replacement may leave it out, and then it is kept; a
 value that is not a boolean is refused with `invalid_departure`. It is withheld from the webhook like the fields

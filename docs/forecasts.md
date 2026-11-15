@@ -104,7 +104,7 @@ minutes, up to seven days ahead.
   departure at its start.
 * Tick **Only the calendar decides** and a day without an event has no departure. Otherwise such days keep the daily
   departure.
-* A date you pick yourself still comes first. If the calendar cannot be read, the daily departure is used until it can.
+* A date you pick yourself still comes first, unless only the calendar decides (then it is cleared on save). If the calendar cannot be read, the daily departure is used until it can.
 
 More detail is in [Charging strategies](strategies.md) ("Departures from a calendar").
 
