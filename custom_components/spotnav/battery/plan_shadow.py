@@ -5,8 +5,8 @@ The shell (`battery/plan_runtime.py`) reads the sources and calls these; `batter
 or there writes to a device: the plan is a shadow and a benchmark (wave 2 of 3.0).
 
 * **Inputs** (`build_slots`): the price slots with every fee SpotNav adds (`plan.buy_prices`) and the spot price as
-  the sell price (`plan.sell_prices`, no credit); the house's expected load per hour; the raw solar forecast per hour
-  (Wh, the Hybrid strategy's source); the cars' installed plans as a fixed load; the import cap (the main fuse less
+  the sell price (`plan.sell_prices`, plus the price's `sell_adjustment`); the house's expected load per hour; the
+  raw solar forecast per hour (Wh, the Hybrid strategy's source); the cars' installed plans as a fixed load; the import cap (the main fuse less
   the safety margin as three-phase power, and the import target's held level where one is set). The first slot is
   cut to start now. The horizon ends where the prices or the house forecast end, at most `plan_model.MAX_SLOTS`.
   A slot whose sell price is below zero exports nothing (`export_curtail.curtail_slots`): the rule beside the plan
@@ -215,14 +215,16 @@ class PriceSlot:
 
 
 def price_slots(
-    points: Iterable[tuple[datetime, datetime, float]], fiscal: FiscalChoice, sell_credit: float = 0.0
+    points: Iterable[tuple[datetime, datetime, float]], fiscal: FiscalChoice, sell_credit: float | None = None
 ) -> list[PriceSlot]:
     """`(start, end, spot in major per kWh)` rows as plan prices (`plan.buy_prices`, `plan.sell_prices`), in order.
-    `sell_credit` (minor per kWh, default none) is added to every exported kWh: the grid operator's credit for
-    production (Swedish "nätnytta"), a setting to come."""
+    Every exported kWh earns the spot price plus what the electricity price says a sold kWh earns beyond it
+    (`FiscalChoice.sell_adjustment`: the grid operator's credit for production, Swedish "nätnytta", plus or minus the
+    supplier's terms, as paid out with no VAT); `sell_credit` (minor per kWh) stands in for it where given."""
     rows = sorted(points, key=lambda row: row[0])
     buys = buy_prices([row[2] for row in rows], [row[0] for row in rows], fiscal)
-    sells = sell_prices([row[2] for row in rows], sell_credit)
+    credit = fiscal.sell_adjustment if sell_credit is None else sell_credit
+    sells = sell_prices([row[2] for row in rows], credit)
     return [PriceSlot(row[0], row[1], buy, sell) for row, buy, sell in zip(rows, buys, sells)]
 
 

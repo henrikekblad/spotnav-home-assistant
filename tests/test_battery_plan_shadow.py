@@ -744,3 +744,15 @@ def test_a_sell_credit_is_added_to_every_exported_kwh() -> None:
     rows = [(MIDNIGHT, MIDNIGHT + timedelta(hours=1), 0.50)]
     assert price_slots(rows, FiscalChoice())[0].sell == pytest.approx(50.0)
     assert price_slots(rows, FiscalChoice(), sell_credit=4.0)[0].sell == pytest.approx(54.0)
+
+
+def test_a_sold_kwh_earns_the_prices_own_figure_beyond_spot_with_no_vat() -> None:
+    rows = [(MIDNIGHT, MIDNIGHT + timedelta(hours=1), 0.50)]
+    fiscal = FiscalChoice(vat_enabled=True, vat_percent=25, sell_adjustment_minor_per_kwh=6.0).validated()
+    slot = price_slots(rows, fiscal)[0]
+    # 50 öre spot plus 6 öre, as paid out: no VAT on either.
+    assert slot.sell == pytest.approx(56.0)
+    assert slot.buy == pytest.approx(62.5)
+    # A deduction makes a sold kWh earn less than spot.
+    deduction = FiscalChoice(sell_adjustment_minor_per_kwh=-8.0).validated()
+    assert price_slots(rows, deduction)[0].sell == pytest.approx(42.0)

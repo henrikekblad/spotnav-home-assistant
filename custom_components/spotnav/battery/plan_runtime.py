@@ -140,9 +140,9 @@ PRICE_DAYS: Final = 2
 MODES_BUDGET_S: Final = 5.0
 # The clock the modes budget is read from: wall-clock in production, replaced by tests so they do not depend on load.
 budget_clock = time.monotonic
-#: The hook for a credit per exported kWh (minor units, the grid operator's "nätnytta", a few öre in Sweden): read
-#: from the site's entry under this key, none by default; added to the spot price of every kWh sold, by the sun or
-#: by the battery. No setting offers it yet.
+#: The old hidden hook for a credit per exported kWh (minor units), once read from the site's entry under this key.
+#: What a sold kWh earns beyond spot is now the electricity price's own figure (`sell_adjustment`, set in the card);
+#: a value still under this key is moved there once (`migrate_sell_credit`) and the key removed.
 SELL_CREDIT_KEY: Final = "sell_credit_minor_per_kwh"
 #: The site's battery mode (`plan_model.MODES`), read from the site's entry under this key; Balanced when unset or
 #: unknown. No setting offers it yet.
@@ -226,6 +226,36 @@ def site_price_source_of(hass: HomeAssistant, site: SiteCapacityController) -> A
     from ..pricing.price_source import site_price_source  # noqa: PLC0415 - it imports the planner
 
     return site_price_source(hass, site.entry_id)
+
+
+def migrate_sell_credit(hass: HomeAssistant, site_entry_id: str) -> bool:
+    """Move a value under the old hook `SELL_CREDIT_KEY` in the site's entry to its electricity price's
+    `sell_adjustment`, on with that figure, and remove the key. A price whose figure is already set keeps its own; a
+    value that is no finite number is dropped. Nothing happens while the site has no electricity price entry (the key
+    waits for one). Whether the site's entry was changed."""
+    from ..planning.auto_settings import FiscalOverride, GridTariff  # noqa: PLC0415
+    from ..pricing.price_source import async_write_price_entry, site_price_source  # noqa: PLC0415
+
+    site = hass.config_entries.async_get_entry(site_entry_id)
+    if site is None or SELL_CREDIT_KEY not in site.data:
+        return False
+    source = site_price_source(hass, site_entry_id)
+    price_entry = None if source is None or source.entry_id is None else hass.config_entries.async_get_entry(
+        source.entry_id
+    )
+    if source is None or price_entry is None:
+        return False
+    value = site.data[SELL_CREDIT_KEY]
+    usable = not isinstance(value, bool) and isinstance(value, (int, float)) and math.isfinite(value) and value != 0
+    tariff = source.overrides.grid_tariff or GridTariff()
+    if usable and tariff.sell_adjustment == FiscalOverride():
+        moved = replace(tariff, sell_adjustment=FiscalOverride(enabled=True, value=float(value)))
+        async_write_price_entry(hass, price_entry, replace(source.overrides, grid_tariff=moved))
+        _LOGGER.info("SpotNav moved the site's credit per sold kWh (%s) to its electricity price", value)
+    hass.config_entries.async_update_entry(
+        site, data={key: item for key, item in site.data.items() if key != SELL_CREDIT_KEY}
+    )
+    return True
 
 
 def price_days(hass: HomeAssistant, source: Any, now: datetime, days: int = PRICE_DAYS) -> list[Any]:
@@ -450,6 +480,10 @@ class BatteryPlanShadow:
             stored = None
         self._restore(stored, now)
         self._loaded = True
+        try:
+            migrate_sell_credit(self.hass, self.site.entry_id)
+        except Exception:  # noqa: BLE001 - a hook value left in place prices nothing; it is tried again next start
+            _LOGGER.warning("SpotNav could not move the site's credit per sold kWh to its electricity price")
 
     async def async_shutdown(self) -> None:
         self._closed = True
@@ -659,7 +693,7 @@ class BatteryPlanShadow:
             points = price_points(self._price_days(source, now), currency=source.area.currency, fiscal=fiscal)
         except PlannerInputError as err:
             raise _NoPlan(NO_PRICES) from err
-        prices = price_slots(((p.start, p.end, p.spot) for p in points), fiscal, self._sell_credit())
+        prices = price_slots(((p.start, p.end, p.spot) for p in points), fiscal)
         if not any(price.end > now for price in prices):
             raise _NoPlan(NO_PRICES)
         return source.area_id, prices
@@ -680,12 +714,11 @@ class BatteryPlanShadow:
         return next((price.sell for price in self._sell_prices if price.start <= now < price.end), None)
 
     def _sell_credit(self) -> float:
-        """The credit per exported kWh (minor units): the hook `SELL_CREDIT_KEY`, none by default."""
-        entry = self.hass.config_entries.async_get_entry(self.site.entry_id)
-        value = (self.site.config if entry is None else entry.data).get(SELL_CREDIT_KEY)
-        if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
-            return 0.0
-        return float(value)
+        """What a sold kWh earns beyond spot (minor units, no VAT): the electricity price's `sell_adjustment`, none
+        without one or while the fees cannot be resolved."""
+        source = self._price_source()
+        fiscal = None if source is None else source.fiscal
+        return 0.0 if fiscal is None else fiscal.sell_adjustment
 
     def _site_mode(self) -> tuple[str, bool]:
         """The site's mode (`MODE_KEY`) and whether the key held something unknown (then Balanced)."""

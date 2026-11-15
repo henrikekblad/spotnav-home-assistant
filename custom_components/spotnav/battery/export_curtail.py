@@ -1,8 +1,8 @@
 """No solar export at a negative sell price: the rule, its shadow and what it would have saved. Pure.
 
 The rule (owner, 2026-11-15): a quarter hour whose sell price is below zero is a **curtail** slot. The sell price is
-what an exported kWh earns (`plan.sell_prices`: the spot price plus the site's export credit, so with a 5 öre credit
-the spot must be below -5 öre). In a curtail slot the site's export limit goes to 0 kW; when the price turns positive
+what an exported kWh earns (`plan.sell_prices`: the spot price plus what the electricity price says a sold kWh earns
+beyond it, `sell_adjustment`, so with 5 öre the spot must be below -5 öre). In a curtail slot the site's export limit goes to 0 kW; when the price turns positive
 again the limit goes back to the value found. The sun still covers the house, the car and the battery; the inverter
 curtails only the rest.
 
