@@ -489,6 +489,7 @@ class Executor:
             persist_first = started
         elif self.state.phase == "active":
             events += self._retarget(inputs)
+        events += self._precheck(inputs)
         ops = self._progress(inputs)
         events += [_event(now, "write", op.role, entity_id=op.entity_id, value=op.value, restore=op.restore)
                    for op in ops]
@@ -526,13 +527,7 @@ class Executor:
                     self.state = replace(self.state, pending=None)
                 events += self._not_taken(now, role.name, "no_read_back", read=event.read)
             else:
-                self.state = replace(
-                    self.state, given_up=(*self.state.given_up, role.name),
-                    pending=None if self.state.pending == role.name else self.state.pending,
-                )
-                events.append(_event(now, "external", role.name, entity_id=entity_id, read=event.read))
-                if self.state.phase == "active":
-                    events += self._begin_restore(now, f"changed_outside_spotnav:{role.name}")
+                events += self._gave_up(now, role.name, entity_id, event.read)
         if self.state.phase == "active":
             facts = inputs.facts
             capability = Capability(
@@ -546,6 +541,55 @@ class Executor:
                 events.append(_event(now, "monitor", judged.outcome, detail=judged.as_dict()))
                 if judged.outcome == "no_effect":
                     events += self._begin_restore(now, f"no_effect:{self.state.action}")
+        return events
+
+    def _gave_up(self, now: datetime, role: str, entity_id: str, read: str | None, **detail: Any) -> list[dict[str, Any]]:
+        """A role someone else changed: given up (never fought); an active part hands the rest back."""
+        self.state = replace(
+            self.state, given_up=(*self.state.given_up, role),
+            pending=None if self.state.pending == role else self.state.pending,
+        )
+        events = [_event(now, "external", role, entity_id=entity_id, read=read, **detail)]
+        if self.state.phase == "active":
+            events += self._begin_restore(now, f"changed_outside_spotnav:{role}")
+        return events
+
+    def _precheck(self, inputs: ExecInputs) -> list[dict[str, Any]]:
+        """Re-read the role about to be written: if it is not what SpotNav expects (the value it owns, or for a role
+        not written yet the value found at enter) someone else changed it: give it up instead of writing over it.
+        A reading that is no reading (unknown, unavailable) is no evidence and never stops a write."""
+        events: list[dict[str, Any]] = []
+        for _ in self.control.roles:
+            state = self.state
+            if state.phase not in ("active", "restoring") or state.pending is not None:
+                break
+            if not state.phase == "restoring" and state.writes_today >= DAILY_WRITE_CAP:
+                break
+            name = self._next_role(state, inputs)
+            if name is None:
+                break
+            role = self.control.role(name)
+            read = inputs.reads.get(name)
+            entity_id = state.entities.get(name)
+            if role.method == "button" or read is None or entity_id is None:
+                break
+            claim = self.ledger.claim(entity_id)
+            if claim is not None and claim.owned is not None:
+                expected: str | None = claim.owned
+            elif name not in state.written and name in state.snapshot:
+                expected = reading(role, state.snapshot[name])
+            else:
+                break
+            if expected is None:
+                break
+            now_read = reading(role, read.state)
+            if same(expected, now_read, read.step or role.step) is not False:
+                break
+            if claim is not None:
+                self.ledger.give_up(entity_id, now_read, inputs.now, state.target.get(name, expected))
+            events += self._gave_up(
+                inputs.now, name, entity_id, now_read, expected=expected, why="changed_before_write"
+            )
         return events
 
     def _not_taken(self, now: datetime, role: str, why: str, **detail: Any) -> list[dict[str, Any]]:

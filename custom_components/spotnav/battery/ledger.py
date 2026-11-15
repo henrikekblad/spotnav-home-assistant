@@ -280,6 +280,19 @@ class Ledger:
             "external", entity_id, now, claim.intended, claim.owned, read, claim.adopted, notify=not claim.adopted
         )
 
+    def give_up(self, entity_id: str, read: str | None, now: datetime, intended: Intended) -> LedgerEvent:
+        """The control was found changed just before a write (the caller compared it with what was expected): it is
+        someone else's now, given up at once, without the dwell a later read needs."""
+        claim = self._claims.get(entity_id)
+        owned = None if claim is None else claim.owned
+        adopted = claim is not None and claim.adopted
+        if claim is not None:
+            self._claims[entity_id] = replace(
+                claim, diverging_since=None, given_up=True, verdict="external", last_read=read
+            )
+        self._count(now, "shadow_external" if adopted else "external")
+        return LedgerEvent("external", entity_id, now, intended, owned, read, adopted, notify=not adopted)
+
     def _pending(self, claim: Claim, read: str | None, now: datetime) -> LedgerEvent | None:
         match = same(claim.intended, read, claim.step)
         if match:
