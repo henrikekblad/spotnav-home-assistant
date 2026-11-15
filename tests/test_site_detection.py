@@ -1228,6 +1228,17 @@ def test_the_battery_sign_convention_comes_with_the_integration(build, integrati
     assert battery.inverted is inverted
 
 
+def test_the_community_victron_modbus_battery_is_its_system_battery_power_charge_positive() -> None:
+    r = Registry()
+    r.add("victron", "victron_system_battery_power", "100_system_battery_power", device_class="power", unit="W", entry="vm")
+    r.add("victron", "victron_battery_power", "225_battery_power", device_class="power", unit="W", entry="vm")
+
+    battery = next(b for b in r.detect().batteries if b.integration == "victron")
+
+    assert battery.entity_id == "sensor.victron_system_battery_power"
+    assert battery.inverted is False
+
+
 def test_battery_only_integrations_are_detected_as_batteries() -> None:
     r = Registry()
     r.add("powerwall", "powerwall_battery_power", "PW1_battery_instant_power", device_class="power", unit="kW", entry="pw")

@@ -19,8 +19,17 @@ No part of SpotNav can be switched on to write to a battery in this version. Whe
 ## What the plan needs
 
 The plan runs on a site whose battery SpotNav can read: its charge level, its usable size in kWh and its rated charge and
-discharge power. The Sigenergy, Huawei, SolarEdge, SolaX, Victron, GoodWe and Enphase integrations are read this way.
-Without any one of those figures there is no plan, and the diagnostics say which is missing.
+discharge power. Without any one of those figures there is no plan, and the diagnostics say which is missing. What each
+brand's integration offers:
+
+| Integration | Plan | Notes |
+|---|---|---|
+| Sigenergy, Huawei Solar, SolarEdge Modbus Multi | Runs | Level, size and both ratings are read as they are. |
+| Victron (GX, the HACS Victron MQTT) | Runs when the battery's BMS reports its limits | The size is the BMS's installed Ah times the system voltage, the ratings its allowed charge and discharge current times the voltage; the plan says it is an estimate. A battery without a CAN-bus BMS (lead-acid, a plain shunt) gives no ratings and so no plan. |
+| Victron (community Modbus integration) | Runs when the BMS reports its limits | The size is the Dynamic ESS "battery capacity" where it is filled in, else the capacity register times the voltage. |
+| GoodWe | No plan | The integration reads the level and the BMS's current limits but not the battery's size. |
+| SolaX Modbus | No plan | Level and size are read, the ratings are not. |
+| Enphase | No plan | Level and size are read, the ratings are not. |
 
 It also reads:
 

@@ -592,7 +592,8 @@ BATTERY_ROWS: Final[tuple[BatteryRow, ...]] = (
     # Charge-positive, matching SpotNav's convention.
     BatteryRow(("huawei_solar",), _re(r"storage_charge_discharge_power$")),
     BatteryRow(("sigen",), _re(r"plant_ess_power$")),
-    BatteryRow(("victron_gx", "victron_mqtt", "victron"), _re(r"system_dc_battery_power$")),
+    # The community Modbus integration (`victron`) names it `system_battery_power`.
+    BatteryRow(("victron_gx", "victron_mqtt", "victron"), _re(r"system_(?:dc_)?battery_power$")),
     BatteryRow(
         ("solaredge_modbus_multi", "solaredge_modbus"),
         _re(r"(?:^|_)b1_dc_power$"),

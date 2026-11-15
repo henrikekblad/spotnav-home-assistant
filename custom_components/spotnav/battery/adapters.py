@@ -12,7 +12,10 @@ Sources, read 2026-11-13 (`plans/research_integrations/battery_control_2026-10-0
 * SolarEdge Modbus Multi, `solaredge_modbus_multi` (WillCodeForCats `0ab6569`): `<model>_<serial>[_B<n>]_<key>`;
   the storage controls sit on the inverter, the battery's facts on its own `B<n>` device.
 * SolaX Modbus, `solax_modbus` (wills106 `8a1f3fc`): `<hub name>_<key>`, the SolaX plugin's devices only.
-* Victron, core `victron_gx` (victron-mqtt 2026.11.1): `<installation>_<device type>_<device id>_<short id>`.
+* Victron, core `victron_gx` (victron-mqtt 2026.11.1): `<installation>_<device type>_<device id>_<short id>`; the HACS
+  `victron_mqtt` (tomer-w/ha-victron-mqtt 2026.11.2, same short ids) is read the same way.
+* Victron Modbus, community `victron` (sfstar/hass-victron `32fb345`): `<unit id>_<register key>`, the GX system at unit
+  100, a battery monitor or BMS at 225 by default.
 * GoodWe, core `goodwe` (goodwe 0.4.10): `goodwe-<key>-<serial>`, the key in the middle.
 * Enphase, core `enphase_envoy`: `<serial>_<key>`.
 
@@ -22,8 +25,12 @@ Beside the facts, an adapter may know two limits (read 2026-11-13; the Sigenergy
   13.2 kW beside a battery rated 23.04 kW): the battery charges and discharges through it, so the plan takes the lower.
 * **The reserve** (`reserves`): the SoC the battery itself does not discharge below (its discharge cut-off or backup
   reserve). Several may be read; the highest that can be read counts. Sigenergy's are disabled by default; Huawei's
-  need the installer password; GoodWe states the depth of discharge (the floor is 100 less it). SolaX and Victron:
-  none mapped yet.
+  need the installer password; GoodWe states the depth of discharge (the floor is 100 less it); Victron's is the ESS minimum SoC. SolaX: none
+  mapped yet.
+
+A battery whose integration states its size in amp-hours and its limits as currents (Victron, GoodWe) gets kWh and
+kW from the battery voltage the same integration reads (`voltage`): energy = Ah x V, power = A x V. That is an
+estimate (the voltage is the live one, not the nominal) and is named as one (`BatteryFacts.estimates`).
 
 A control here is read only: the outside-control watch and the diagnostics read it. What SpotNav would write is the
 executor's brand command (`commands.py`), the one write route; nothing in this release writes either.
@@ -37,7 +44,18 @@ from dataclasses import dataclass, field
 from typing import Final, Literal
 
 #: The facts an adapter may know where to read.
-FactRole = Literal["soc", "capacity", "rated_charge", "rated_discharge", "firmware"]
+FactRole = Literal[
+    "soc",
+    "capacity",
+    "rated_charge",
+    "rated_discharge",
+    "firmware",
+    # Read in amp-hours, amperes and volts, and turned into kWh and kW with the voltage (see the module).
+    "capacity_ah",
+    "charge_current",
+    "discharge_current",
+    "voltage",
+]
 
 #: How a control would be written.
 ControlMethod = Literal["number", "select", "switch", "service"]
@@ -261,8 +279,17 @@ SOLAX: Final = Adapter(
 VICTRON: Final = Adapter(
     brand="victron",
     label="Victron (GX)",
-    platforms=("victron_gx",),
-    facts={"soc": _key("system_dc_battery_soc")},
+    platforms=("victron_gx", "victron_mqtt"),
+    facts={
+        "soc": _key("system_dc_battery_soc"),
+        # The BMS' own figures (a CAN-bus battery or Lynx NG; "not supported by all Victron products"), in Ah and A.
+        "capacity_ah": _key("battery_installed_capacity"),
+        "charge_current": _key("battery_max_charge_current"),
+        "discharge_current": _key("battery_max_discharge_current"),
+        "voltage": _key("system_dc_battery_voltage"),
+    },
+    # The ESS minimum SoC (Settings/CGwacs/BatteryLife/MinimumSocLimit), the floor the system discharges to.
+    reserves=(ReserveSource(_key("system_ess_min_soc_limit", "number")),),
     modes=(
         ModeRule(
             _key("system_ess_batterylife_state", "select", "sensor"),
@@ -280,11 +307,46 @@ VICTRON: Final = Adapter(
     ),
 )
 
+#: The community Modbus integration (sfstar/hass-victron): the same system, read through the GX's Modbus-TCP
+#: registers. Its battery capacity register (309) is in Ah but the entity carries the unit A; the GX's Dynamic ESS
+#: setting "battery capacity" (register 5420) is a sensor in kWh and is preferred where the person has filled it in.
+#: The ESS mode and Dynamic ESS selects exist only with the integration's advanced options, so without them the
+#: mode is `unknown` and SpotNav leaves the battery alone.
+VICTRON_MODBUS: Final = Adapter(
+    brand="victron_modbus",
+    label="Victron (Modbus)",
+    platforms=("victron",),
+    facts={
+        "soc": _key("system_battery_soc"),
+        "capacity": _key("settings_dynamicess_batterycapacity"),
+        "capacity_ah": _key("battery_capacity"),
+        "charge_current": _key("battery_info_maxchargecurrent"),
+        "discharge_current": _key("battery_info_maxdischargecurrent"),
+        "voltage": _key("system_battery_voltage"),
+    },
+    reserves=(ReserveSource(_key("settings_ess_batterylife_minimumsoc", "number")),),
+    modes=(
+        ModeRule(
+            _key("settings_ess_mode", "select"),
+            frozenset({"SELF_CONSUMPTION_WITH_BATTERY_LIFE", "SELF_CONSUMPTION"}),
+            "ESS mode",
+        ),
+        ModeRule(_key("settings_dynamicess_mode", "select"), frozenset({"OFF"}), "Dynamic ESS", required=False),
+    ),
+)
+
 GOODWE: Final = Adapter(
     brand="goodwe",
     label="GoodWe",
     platforms=("goodwe",),
-    facts={"soc": _goodwe("battery_soc")},
+    facts={
+        "soc": _goodwe("battery_soc"),
+        # The BMS' present limits (A) and the battery voltage: the inverter's own limits, no size is exposed in core
+        # (the library's `battery_capacity` is a setting that core does not publish).
+        "charge_current": _goodwe("battery_charge_limit"),
+        "discharge_current": _goodwe("battery_discharge_limit"),
+        "voltage": _goodwe("vbattery1"),
+    },
     modes=(ModeRule(_goodwe("operation_mode", "select"), frozenset({"general"}), "operating mode"),),
     reserves=(ReserveSource(_goodwe("battery_discharge_depth", "number"), depth=True),),
     # No discharge cap: the depth-of-discharge trick has the cut-off-above-SoC grid-charge risk.
@@ -313,7 +375,7 @@ ENPHASE: Final = Adapter(
     ),
 )
 
-ADAPTERS: Final[tuple[Adapter, ...]] = (SIGENERGY, HUAWEI, SOLAREDGE, SOLAX, VICTRON, GOODWE, ENPHASE)
+ADAPTERS: Final[tuple[Adapter, ...]] = (SIGENERGY, HUAWEI, SOLAREDGE, SOLAX, VICTRON, VICTRON_MODBUS, GOODWE, ENPHASE)
 
 
 def adapter_for(platform: str, manufacturer: str | None = None) -> Adapter | None:

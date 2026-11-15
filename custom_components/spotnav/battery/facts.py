@@ -134,6 +134,9 @@ class BatteryFacts:
     hold: ControlStatus | None = None
     grid_charge: ControlStatus | None = None
     sources: dict[str, str] = field(default_factory=dict)
+    #: What was worked out and not read: `capacity_from_ah` (Ah x the live voltage), `rated_from_current` (the BMS'
+    #: present current limits x the live voltage). The plan carries them on as its estimates.
+    estimates: tuple[str, ...] = ()
 
     @property
     def max_charge_kw(self) -> float | None:
@@ -172,6 +175,7 @@ class BatteryFacts:
                 "grid_charge": None if self.grid_charge is None else self.grid_charge.as_dict(),
             },
             "sources": dict(self.sources),
+            "estimates": list(self.estimates),
         }
 
 
@@ -209,9 +213,35 @@ def to_kwh(state: str | None, unit: str | None) -> float | None:
     return None if factor is None else value * factor
 
 
+#: A battery's voltage that can be a reading of one (V); below or above it the entity is something else.
+_VOLTAGE_RANGE: Final = (5.0, 1000.0)
+#: Units a current or an amp-hour size is read in. The community Victron Modbus integration puts `A` on its Ah register.
+_CURRENT_UNITS: Final = frozenset({"A", "Ah"})
+EST_CAPACITY_FROM_AH: Final = "capacity_from_ah"
+EST_RATED_FROM_CURRENT: Final = "rated_from_current"
+
+
 def _percent(state: str | None) -> float | None:
     value = _number(state)
     return value if value is not None and 0.0 <= value <= 100.0 else None
+
+
+def _volts(entity: EntityFact | None) -> float | None:
+    """The battery voltage an entity reads, `None` when it reads none, is not in volts or is not a battery's."""
+    if entity is None or (entity.unit or "V") != "V":
+        return None
+    value = _number(entity.state)
+    return value if value is not None and _VOLTAGE_RANGE[0] <= value <= _VOLTAGE_RANGE[1] else None
+
+
+def _from_amps(entity: EntityFact | None, volts: float | None) -> tuple[float | None, str | None]:
+    """An amp reading (Ah or A) times the voltage in thousandths (kWh or kW), with the entity it came from."""
+    if entity is None or volts is None or (entity.unit or "A") not in _CURRENT_UNITS:
+        return None, None
+    amps = _number(entity.state)
+    if amps is None or amps <= 0:
+        return None, None
+    return amps * volts / 1000.0, entity.entity_id
 
 
 def find_entity(match: Match, entities: Sequence[EntityFact], battery: EntityFact) -> EntityFact | None:
@@ -381,7 +411,30 @@ def battery_facts(
         return None if entity is None else to_kw(entity.state, entity.unit)
 
     soc_entity, capacity_entity, firmware_entity = found.get("soc"), found.get("capacity"), found.get("firmware")
-    rated_discharge_kw = kw("rated_discharge")
+    capacity_kwh = None if capacity_entity is None else to_kwh(capacity_entity.state, capacity_entity.unit)
+    if capacity_kwh is not None and capacity_kwh <= 0:
+        capacity_kwh = None
+    rated_charge_kw, rated_discharge_kw = kw("rated_charge"), kw("rated_discharge")
+    estimates: list[str] = []
+    volts_entity = found.get("voltage")
+    volts = _volts(volts_entity)
+    if volts is not None and volts_entity is not None:
+        if capacity_kwh is None:
+            capacity_kwh, source = _from_amps(found.get("capacity_ah"), volts)
+            if source is not None:
+                sources["capacity"] = f"{source} x {volts_entity.entity_id}"
+                estimates.append(EST_CAPACITY_FROM_AH)
+        if rated_charge_kw is None:
+            rated_charge_kw, source = _from_amps(found.get("charge_current"), volts)
+            if source is not None:
+                sources["rated_charge"] = f"{source} x {volts_entity.entity_id}"
+                estimates.append(EST_RATED_FROM_CURRENT)
+        if rated_discharge_kw is None:
+            rated_discharge_kw, source = _from_amps(found.get("discharge_current"), volts)
+            if source is not None:
+                sources["rated_discharge"] = f"{source} x {volts_entity.entity_id}"
+                if EST_RATED_FROM_CURRENT not in estimates:
+                    estimates.append(EST_RATED_FROM_CURRENT)
     plant_max_kw: float | None = None
     if adapter.plant_max is not None:
         plant = find_entity(adapter.plant_max, entities, battery)
@@ -407,8 +460,8 @@ def battery_facts(
         label=adapter.label,
         soc_pct=None if soc_entity is None else _percent(soc_entity.state),
         power_kw=power_kw,
-        capacity_kwh=None if capacity_entity is None else to_kwh(capacity_entity.state, capacity_entity.unit),
-        rated_charge_kw=kw("rated_charge"),
+        capacity_kwh=capacity_kwh,
+        rated_charge_kw=rated_charge_kw,
         rated_discharge_kw=rated_discharge_kw,
         plant_max_kw=plant_max_kw,
         reserve_soc_pct=reserve_soc_pct,
@@ -418,4 +471,5 @@ def battery_facts(
         hold=_control(adapter.hold, entities, battery, rated_discharge_kw),
         grid_charge=_control(adapter.grid_charge, entities, battery, rated_discharge_kw),
         sources=sources,
+        estimates=tuple(estimates),
     )
