@@ -22,7 +22,8 @@ How it acts (`step`, one look every few seconds; pure, the shell does the writes
   self-consumption, has no slot now or names an action the brand cannot do; a reading is stale or the site's
   measurement is lost; the plant leaves the grid; the fuse headroom falls under `RESTORE_HEADROOM_A` (or a grid
   charge cannot keep `MIN_RATE_KW` within it); the battery's management changes (its own optimiser, another planner,
-  an app taking Remote EMS back) or the site's battery is no longer that brand; someone else changes a control
+  an app taking Remote EMS back: blocked, the block clears by itself after `MANAGEMENT_BLOCK_S`) or reads unknown
+  past `MANAGEMENT_GRACE_S` (handed back as stale data is, not blocked) or the site's battery is no longer that brand; someone else changes a control
   SpotNav owns (that control is given up and not written back over the other system, as the ledger says); a write
   is not taken; the monitor sees no effect; the day's write cap is reached. After a restart a stored snapshot is
   restored before anything else. A role SpotNav wrote is restored by writing its snapshot and reading it back even
@@ -128,6 +129,9 @@ YIELD_STEP_KW: Final = 1.0
 REARM_S: Final = 120.0
 #: A management reading may be unknown this long (Sigenergy's Remote EMS entities blink, issue #427) (s).
 MANAGEMENT_GRACE_S: Final = 60.0
+#: A block for a real management change (the app, the plant's own optimiser) clears by itself this long after the
+#: hand-back (s): the start rule still refuses a plant that is not free, so nothing is fought.
+MANAGEMENT_BLOCK_S: Final = 6 * 3600.0
 #: Writes a day outside restores (flash wear is unknown for most brands).
 DAILY_WRITE_CAP: Final = 96
 #: A restore write that does not read back is retried after these delays (s), then given up.
@@ -136,7 +140,8 @@ RESTORE_ATTEMPTS: Final = len(RESTORE_RETRY_S)
 
 Phase = Literal["idle", "active", "restoring", "blocked"]
 _PHASES: Final = frozenset({"idle", "active", "restoring", "blocked"})
-#: Hand-back reasons that block the control until it is reset (or, for the cap, until the next day).
+#: Hand-back reasons that block the control until it is reset (the cap until the next day, a management change
+#: after `MANAGEMENT_BLOCK_S`).
 _BLOCKING_PREFIXES: Final = (
     "write_not_taken", "changed_outside_spotnav", "no_effect", "management_changed", "not_obeyed",
 )
@@ -570,6 +575,14 @@ class Executor:
             self.state = replace(self.state, day=today, writes_today=0)
             if self.state.phase == "blocked" and self.state.blocked == "daily_write_cap" and not self.state.holds_snapshot:
                 self.state = replace(self.state, phase="idle", blocked=None)
+        state = self.state
+        if (
+            state.phase == "blocked" and (state.blocked or "").startswith("management_changed")
+            and not state.holds_snapshot and state.released_at is not None
+            and (now - state.released_at).total_seconds() >= MANAGEMENT_BLOCK_S
+        ):
+            self.state = replace(state, phase="idle", blocked=None, reason=None, given_up=())
+            events.append(_event(now, "unblocked", state.blocked or ""))
 
         events += self._observe(inputs)
         if self.state.phase == "active":
@@ -771,7 +784,8 @@ class Executor:
             since = self.state.management_unknown_since or inputs.now
             self.state = replace(self.state, management_unknown_since=since)
             if (inputs.now - since).total_seconds() >= MANAGEMENT_GRACE_S:
-                return "management_changed:unknown"
+                # No evidence of another owner: handed back as stale data is, the next start re-arms.
+                return "management_unknown"
         elif management is not None:
             return f"management_changed:{management}"
         else:

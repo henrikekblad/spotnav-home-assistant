@@ -23,6 +23,7 @@ from custom_components.spotnav.battery.commands import (
 from custom_components.spotnav.battery.executor import (
     DAILY_WRITE_CAP,
     HEADROOM_MARGIN_A,
+    MANAGEMENT_BLOCK_S,
     MANAGEMENT_GRACE_S,
     PEAK_COVER_A,
     PEAK_RECOVER_S,
@@ -336,8 +337,29 @@ def test_a_management_reading_that_blinks_is_tolerated_for_a_grace() -> None:
     looks = int(MANAGEMENT_GRACE_S / TICK.total_seconds()) - 1
     now, results = run(executor, battery, now, looks, "hold", management=unknown)
     assert events(results, "hand_back") == []
-    _now, results = run(executor, battery, now, 3, "hold", management=unknown)
-    assert events(results, "hand_back")[0]["reason"] == "management_changed:unknown"
+    now, results = run(executor, battery, now, 3, "hold", management=unknown)
+    # After the grace an unknown management is handed back as stale data is: no block, the next start re-arms.
+    assert events(results, "hand_back")[0]["reason"] == "management_unknown"
+    now, _ = run(executor, battery, now, 6, "hold", management=unknown)
+    assert executor.state.phase == "idle" and executor.state.blocked is None
+    _now, results = run(executor, battery, now + timedelta(seconds=REARM_S), 6, "hold")
+    assert executor.state.phase == "active"
+
+
+def test_a_real_management_change_blocks_and_the_block_clears_by_itself_after_a_long_rearm() -> None:
+    executor, battery = _sigenergy()
+    now = _held(executor, battery)
+    ai = Management("self_managed", "EMS work mode:ai_mode", {"EMS work mode": "ai_mode"})
+    now, _ = run(executor, battery, now, 8, "hold", management=ai)
+    assert executor.state.phase == "blocked" and executor.state.blocked.startswith("management_changed")
+    # Hours later the plant is back in Maximum Self Consumption; the block still holds until the long re-arm.
+    now, results = run(executor, battery, now + timedelta(hours=1), 3, "hold")
+    assert executor.state.phase == "blocked" and written(results) == []
+    # It survives a restart, and clears by itself after MANAGEMENT_BLOCK_S without anything calling reset.
+    executor = Executor(SIGENERGY_CONTROL, state=ExecState.from_dict(executor.state.as_dict()))
+    assert executor.restart(now) == [] and executor.state.phase == "blocked"
+    _now, results = run(executor, battery, now + timedelta(seconds=MANAGEMENT_BLOCK_S), 6, "hold")
+    assert executor.state.phase == "active" and written(results)
 
 
 def test_the_day_s_write_cap_hands_back_and_waits_for_the_next_day() -> None:
