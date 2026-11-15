@@ -3,7 +3,7 @@
 // automations use it (from `spotnav/get_blueprints`, once the list is open; nothing when none or unknown, which then
 // links to Home Assistant's automation list filtered by it) and a button to Home Assistant's blueprint page, where
 // "Create automation" on it starts one. Home Assistant has no address that opens a new automation from a given
-// blueprint, so the button opens the page that lists the blueprints. Both are always listed: the blueprint's own inputs
+// blueprint, so the button opens the page that lists the blueprints. All are always listed: the blueprint's own inputs
 // say what it needs (a site's solar surplus sensor, for one).
 
 import { pluralForm, translate, type Language, type TranslationKey } from "./i18n";
@@ -13,6 +13,7 @@ import { VISUAL_CLASSES as C } from "./visual-styles";
 export const BLUEPRINTS: readonly { file: string; name: TranslationKey; text: TranslationKey }[] = [
   { file: "price_setpoint.yaml", name: "automations.priceSetpoint.name", text: "automations.priceSetpoint.text" },
   { file: "solar_surplus_switch.yaml", name: "automations.solarSurplus.name", text: "automations.solarSurplus.text" },
+  { file: "relay_by_price.yaml", name: "automations.relayByPrice.name", text: "automations.relayByPrice.text" },
 ];
 
 /** Home Assistant's page of blueprints. */

@@ -1124,6 +1124,8 @@
   "automations.priceSetpoint.text": "Floor heating, radiators or a heat pump get a higher temperature when electricity is cheap and a lower one when it is expensive.",
   "automations.solarSurplus.name": "Run on solar surplus",
   "automations.solarSurplus.text": "A pool heater, water heater or immersion heater is switched on when the sun gives a surplus.",
+  "automations.relayByPrice.name": "Relay by electricity price",
+  "automations.relayByPrice.text": "A relay on a heat pump's input lowers the heating curve while electricity is expensive, starts extra hot water when it is cheap, or sets SG Ready.",
   "automations.usedBy.one": "Used by {count} automation",
   "automations.usedBy.other": "Used by {count} automations",
   "identify.guest": "Guest car",

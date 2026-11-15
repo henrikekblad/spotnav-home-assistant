@@ -1124,6 +1124,8 @@
   "automations.priceSetpoint.text": "Fußbodenheizung, Heizkörper oder eine Wärmepumpe bekommen eine höhere Temperatur, wenn Strom günstig ist, und eine niedrigere, wenn er teuer ist.",
   "automations.solarSurplus.name": "Bei Solarüberschuss einschalten",
   "automations.solarSurplus.text": "Eine Poolheizung, ein Warmwasserspeicher oder ein Heizstab wird eingeschaltet, wenn die Sonne einen Überschuss liefert.",
+  "automations.relayByPrice.name": "Relais nach Strompreis",
+  "automations.relayByPrice.text": "Ein Relais am Eingang der Wärmepumpe senkt die Heizkurve, wenn Strom teuer ist, startet zusätzliches Warmwasser, wenn er günstig ist, oder steuert SG Ready.",
   "automations.usedBy.one": "Von {count} Automation verwendet",
   "automations.usedBy.other": "Von {count} Automationen verwendet",
   "identify.guest": "Gastauto",

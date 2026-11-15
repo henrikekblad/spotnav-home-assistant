@@ -1,0 +1,303 @@
+# Installed by SpotNav in blueprints/automation/spotnav/ and updated with SpotNav while it is left unchanged.
+# A copy you edit is kept as it is and no longer updated; delete it and restart Home Assistant to get SpotNav's again.
+blueprint:
+  name: "SpotNav: relay by electricity price"
+  description: >-
+    Closes a relay (a Shelly or any other switch) wired to a heat pump's or water heater's
+    potential-free input, from a SpotNav electricity price's Cheap now and Expensive now sensors. An
+    electrician connects the relay inside the heat pump; the heat pump's manual says which input does
+    what.
+
+
+    **Closed while expensive**: the relay is closed while Expensive now is on and opened as soon as it
+    ends, for an input that lowers the heating curve or blocks an add-on heater. On a NIBE SPLIT ACVM
+    270, for example, a closed contact on X1:3-4 shifts the heating curve by the steps set in menu 2.4.
+    It is closed for at most the longest closed time in a row, then stays open for at least the
+    shortest rest, and is never closed while the outdoor temperature (if you choose a sensor) is below
+    the lowest outdoor temperature.
+
+
+    **Pulse when cheap**: a short pulse when Cheap now comes on, for an input that starts extra hot
+    water. On the NIBE, a pulse of at least 1 second on X6:1-2 starts "temporary extra hot water" for
+    3 hours. The day is split into as many equal parts as pulses per day, with at most one pulse in each,
+    and never within the shortest time between pulses. With one pulse a day it comes in the first cheap
+    hour of the day; set the price's Cheap hours per day to 1 for only the day's cheapest hour.
+
+
+    **SG Ready (two relays)**: relay A and relay B give the heat pump's four SG Ready states. Expensive
+    now gives "blocked" (A closed, B open) with the same limits as closed while expensive; Cheap now
+    gives "recommended raise" (A open, B closed); otherwise "normal" (both open). "Forced raise" (both
+    closed) is never used: a relay is always opened before the other is closed.
+
+
+    It runs when the price sensors change, when a limit runs out, every 5 minutes, and when Home
+    Assistant starts or automations are reloaded, and then sets the relays the price calls for. The time
+    limits count from this automation's own last switching, which Home Assistant keeps over a restart.
+  domain: automation
+  source_url: https://raw.githubusercontent.com/henrikekblad/spotnav-home-assistant/main/custom_components/spotnav/blueprints/automation/relay_by_price.yaml
+  author: SpotNav
+  homeassistant:
+    min_version: "2024.10.0"
+  input:
+    mode:
+      name: Mode
+      description: What the relay does. See the description above.
+      default: expensive_closed
+      selector:
+        select:
+          options:
+            - label: Closed while expensive
+              value: expensive_closed
+            - label: Pulse when cheap
+              value: cheap_pulse
+            - label: SG Ready (two relays)
+              value: sg_ready
+    relay:
+      name: Relay (A)
+      description: The switch that closes the contact. For SG Ready, relay A (the first SG Ready input).
+      selector:
+        entity:
+          filter:
+            - domain: switch
+    relay_b:
+      name: Relay B (SG Ready only)
+      description: For SG Ready, relay B (the second SG Ready input). Leave empty for the other modes.
+      default: ""
+      selector:
+        entity:
+          filter:
+            - domain: switch
+    prices:
+      name: Electricity price
+      description: The entities of a SpotNav electricity price (for example SE4).
+      input:
+        cheap_now:
+          name: Cheap now
+          description: SpotNav's Cheap now binary sensor, such as binary_sensor.electricity_price_se4_cheap_now.
+          selector:
+            entity:
+              filter:
+                - integration: spotnav
+                  domain: binary_sensor
+        expensive_now:
+          name: Expensive now
+          description: SpotNav's Expensive now binary sensor, such as binary_sensor.electricity_price_se4_expensive_now.
+          selector:
+            entity:
+              filter:
+                - integration: spotnav
+                  domain: binary_sensor
+    limits:
+      name: Limits while expensive
+      description: For closed while expensive and SG Ready "blocked".
+      collapsed: true
+      input:
+        max_on_hours:
+          name: Longest closed time in a row
+          default: 3
+          selector:
+            number:
+              min: 0.25
+              max: 24
+              step: 0.25
+              unit_of_measurement: h
+        min_rest_hours:
+          name: Shortest rest
+          description: How long the relay stays open before it may close again.
+          default: 1
+          selector:
+            number:
+              min: 0
+              max: 24
+              step: 0.25
+              unit_of_measurement: h
+        outdoor_sensor:
+          name: Outdoor temperature (optional)
+          description: >-
+            Below the lowest outdoor temperature the relay is not closed, and opened if it is. While
+            the sensor has no reading the relay is not closed either. Leave empty to not use it.
+          default: ""
+          selector:
+            entity:
+              filter:
+                - domain: sensor
+                  device_class: temperature
+        min_outdoor:
+          name: Lowest outdoor temperature
+          default: -15
+          selector:
+            number:
+              min: -40
+              max: 20
+              step: 1
+              unit_of_measurement: °C
+    pulses:
+      name: Pulses
+      description: For pulse when cheap.
+      collapsed: true
+      input:
+        pulse_seconds:
+          name: Pulse length
+          default: 2
+          selector:
+            number:
+              min: 1
+              max: 60
+              step: 1
+              unit_of_measurement: s
+        pulses_per_day:
+          name: Pulses per day
+          default: 1
+          selector:
+            number:
+              min: 1
+              max: 6
+              step: 1
+              mode: box
+        min_interval_hours:
+          name: Shortest time between pulses
+          default: 3
+          selector:
+            number:
+              min: 0
+              max: 24
+              step: 0.5
+              unit_of_measurement: h
+
+mode: single
+max_exceeded: silent
+
+triggers:
+  - trigger: state
+    entity_id:
+      - !input cheap_now
+      - !input expensive_now
+    to: null
+  - trigger: state
+    entity_id: !input relay
+    to: "on"
+    for:
+      hours: !input max_on_hours
+  - trigger: state
+    entity_id: !input relay
+    to: "off"
+    for:
+      hours: !input min_rest_hours
+  - trigger: time_pattern
+    minutes: "/5"
+  - trigger: homeassistant
+    event: start
+  - trigger: event
+    event_type: automation_reloaded
+
+variables:
+  relay_mode: !input mode
+  relay: !input relay
+  relay_b: !input relay_b
+  cheap_now: !input cheap_now
+  expensive_now: !input expensive_now
+  max_on_hours: !input max_on_hours
+  min_rest_hours: !input min_rest_hours
+  outdoor_sensor: !input outdoor_sensor
+  min_outdoor: !input min_outdoor
+  pulse_seconds: !input pulse_seconds
+  pulses_per_day: !input pulses_per_day
+  min_interval_hours: !input min_interval_hours
+  has_b: "{{ relay_mode == 'sg_ready' and relay_b not in ['', none, []] }}"
+  usable: >-
+    {{ states(relay) not in ['unavailable', 'unknown']
+       and (relay_mode != 'sg_ready' or (has_b and states(relay_b) not in ['unavailable', 'unknown'])) }}
+  a_on: "{{ is_state(relay, 'on') }}"
+  b_on: "{{ has_b and is_state(relay_b, 'on') }}"
+  # When this automation last switched a relay, as a timestamp. Home Assistant keeps it over a restart, which a
+  # relay's own last change is not.
+  last_switched: >-
+    {{ as_timestamp(this.attributes.last_triggered, none)
+       if this is not none and this.attributes.last_triggered else none }}
+  # How long relay A has been as it is: from the earlier of its own last change and this automation's last switching
+  # (a restart makes the relay's change look new; a switch of relay B alone makes the automation's look new).
+  a_minutes: >-
+    {% set entity = states[relay] %}
+    {% set since = [as_timestamp(entity.last_changed) if entity is not none else as_timestamp(now())] %}
+    {% if last_switched is number %}{% set since = since + [last_switched] %}{% endif %}
+    {{ ((as_timestamp(now()) - since | min) / 60) | round(2) }}
+  too_cold: >-
+    {% if outdoor_sensor in ['', none, []] %}
+      {{ false }}
+    {% else %}
+      {% set outdoor = states(outdoor_sensor) | float(none) %}
+      {{ outdoor is none or outdoor < min_outdoor | float }}
+    {% endif %}
+  block: >-
+    {% if not is_state(expensive_now, 'on') or too_cold %}
+      {{ false }}
+    {% elif a_on %}
+      {{ a_minutes | float < max_on_hours | float * 60 }}
+    {% else %}
+      {# Never switched by this automation: no rest is owed. #}
+      {{ last_switched is not number or a_minutes | float >= min_rest_hours | float * 60 }}
+    {% endif %}
+  pulse_allowed: >-
+    {% if last_switched is not number %}
+      {{ true }}
+    {% else %}
+      {% set parts = [pulses_per_day | int(1), 1] | max %}
+      {% set last = as_local(as_datetime(last_switched)) %}
+      {% set time = now() %}
+      {% set last_part = ((last.hour * 60 + last.minute) * parts) // 1440 %}
+      {% set part = ((time.hour * 60 + time.minute) * parts) // 1440 %}
+      {{ not (last.date() == time.date() and last_part == part)
+         and as_timestamp(time) - last_switched >= min_interval_hours | float * 3600 }}
+    {% endif %}
+  pulse: >-
+    {{ relay_mode == 'cheap_pulse' and not a_on and is_state(cheap_now, 'on') and pulse_allowed }}
+  # The relays to open and to close: in pulse mode only one left closed; otherwise what the price calls for.
+  # Opened before any is closed, so SG Ready never passes through both closed.
+  to_open: >-
+    {% set relays = [] %}
+    {% if relay_mode == 'cheap_pulse' %}
+      {% if a_on %}{% set relays = [relay] %}{% endif %}
+    {% else %}
+      {% if a_on and not block %}{% set relays = relays + [relay] %}{% endif %}
+      {% if b_on and (block or not is_state(cheap_now, 'on')) %}{% set relays = relays + [relay_b] %}{% endif %}
+    {% endif %}
+    {{ relays }}
+  to_close: >-
+    {% set relays = [] %}
+    {% if relay_mode != 'cheap_pulse' %}
+      {% if not a_on and block %}{% set relays = relays + [relay] %}{% endif %}
+      {% if has_b and not b_on and not block and is_state(cheap_now, 'on') %}{% set relays = relays + [relay_b] %}{% endif %}
+    {% endif %}
+    {{ relays }}
+
+conditions:
+  - condition: template
+    value_template: "{{ usable and (pulse or to_open | length > 0 or to_close | length > 0) }}"
+
+actions:
+  - if:
+      - condition: template
+        value_template: "{{ to_open | length > 0 }}"
+    then:
+      - action: switch.turn_off
+        target:
+          entity_id: "{{ to_open }}"
+  - if:
+      - condition: template
+        value_template: "{{ to_close | length > 0 }}"
+    then:
+      - action: switch.turn_on
+        target:
+          entity_id: "{{ to_close }}"
+  - if:
+      - condition: template
+        value_template: "{{ pulse }}"
+    then:
+      - action: switch.turn_on
+        target:
+          entity_id: "{{ relay }}"
+      - delay:
+          seconds: "{{ pulse_seconds | int(2) }}"
+      - action: switch.turn_off
+        target:
+          entity_id: "{{ relay }}"

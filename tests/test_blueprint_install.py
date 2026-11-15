@@ -125,7 +125,9 @@ def test_a_copy_an_earlier_version_installed_is_updated_before_any_hash_was_kept
 
 
 def test_the_versions_shipped_before_are_hashes_of_other_content() -> None:
-    assert set(SHIPPED_BEFORE) == set(BLUEPRINT_FILES)
+    # Only the blueprints shipped before the hash was kept have earlier versions.
+    assert set(SHIPPED_BEFORE) == {"price_setpoint.yaml", "solar_surplus_switch.yaml"}
+    assert set(SHIPPED_BEFORE) <= set(BLUEPRINT_FILES)
     for name, hashes in SHIPPED_BEFORE.items():
         assert hashes and all(len(value) == 64 and int(value, 16) >= 0 for value in hashes)
         assert _sha(_shipped(name)) not in hashes
@@ -146,6 +148,11 @@ async def _automation_using(hass: HomeAssistant, tmp_path: Path, name: str) -> N
             "price_now": "sensor.electricity_price_se4_price_now",
         },
         "solar_surplus_switch.yaml": {"surplus_sensor": "sensor.home_solar_surplus", "target": "switch.pool"},
+        "relay_by_price.yaml": {
+            "relay": "switch.heat_pump_relay",
+            "cheap_now": "binary_sensor.electricity_price_se4_cheap_now",
+            "expensive_now": "binary_sensor.electricity_price_se4_expensive_now",
+        },
     }[name]
     config = {
         "automation": [
@@ -282,13 +289,14 @@ async def test_the_command_counts_the_automations_using_each(
         "blueprints": [
             {"file": "price_setpoint.yaml", "path": "spotnav/price_setpoint.yaml", "automations": 0},
             {"file": "solar_surplus_switch.yaml", "path": "spotnav/solar_surplus_switch.yaml", "automations": 0},
+            {"file": "relay_by_price.yaml", "path": "spotnav/relay_by_price.yaml", "automations": 0},
         ],
     }
 
     install_blueprints(str(tmp_path))
-    await _automation_using(hass, tmp_path, "price_setpoint.yaml")
+    await _automation_using(hass, tmp_path, "relay_by_price.yaml")
     reply = await ws_call(await admin(hass, hass_ws_client), dict(request))
-    assert [row["automations"] for row in reply["result"]["blueprints"]] == [1, 0]
+    assert [row["automations"] for row in reply["result"]["blueprints"]] == [0, 0, 1]
 
     denied = await ws_call(await non_admin(hass, hass_ws_client, hass_read_only_access_token), dict(request))
     assert denied["result"] == {"api_version": 1, "ok": False, "error": "spotnav_not_admin", "blueprints": []}

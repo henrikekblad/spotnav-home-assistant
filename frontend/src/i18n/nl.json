@@ -1124,6 +1124,8 @@
   "automations.priceSetpoint.text": "Vloerverwarming, radiatoren of een warmtepomp krijgen een hogere temperatuur als stroom goedkoop is en een lagere als die duur is.",
   "automations.solarSurplus.name": "Aan bij zonne-overschot",
   "automations.solarSurplus.text": "Een zwembadverwarming, boiler of elektrisch verwarmingselement wordt ingeschakeld als de zon een overschot geeft.",
+  "automations.relayByPrice.name": "Relais volgens stroomprijs",
+  "automations.relayByPrice.text": "Een relais op een ingang van de warmtepomp verlaagt de stooklijn als stroom duur is, start extra warm water als die goedkoop is, of stuurt SG Ready.",
   "automations.usedBy.one": "Gebruikt door {count} automatisering",
   "automations.usedBy.other": "Gebruikt door {count} automatiseringen",
   "identify.guest": "Gastauto",

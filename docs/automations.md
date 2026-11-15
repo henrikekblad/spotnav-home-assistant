@@ -1,6 +1,6 @@
 # Automations
 
-SpotNav ships two Home Assistant **blueprints**: ready-made automations that use SpotNav's
+SpotNav ships three Home Assistant **blueprints**: ready-made automations that use SpotNav's
 [electricity price](price-device.md) and a site's solar surplus for the rest of the house. SpotNav
 installs them itself; you make as many automations from each as you like, each with its own entities.
 
@@ -8,6 +8,7 @@ installs them itself; you make as many automations from each as you like, each w
 |---|---|
 | [Setpoint by electricity price](#setpoint-by-electricity-price) | Floor heating, radiators or a heat pump get a higher temperature when electricity is cheap and a lower one when it is expensive. |
 | [Run on solar surplus](#run-on-solar-surplus) | A pool heater, water heater or immersion heater is switched on when the sun gives a surplus. |
+| [Relay by electricity price](#relay-by-electricity-price) | A relay on a heat pump's input lowers the heating curve while electricity is expensive, starts extra hot water when it is cheap, or sets SG Ready. |
 
 ## SpotNav keeps them up to date
 
@@ -26,12 +27,12 @@ delete the file and restart Home Assistant. To keep both, copy the file to anoth
 
 In Home Assistant, go to **Settings**, **Automations & scenes**, **Blueprints**, choose one of the
 *SpotNav:* blueprints and **Create automation**, pick your entities and save. As an administrator you
-can also start from the card: **Card settings**, **Support**, **Automations** lists both, with how many
+can also start from the card: **Card settings**, **Support**, **Automations** lists them all, with how many
 automations already use each (which opens those automations), and **Create automation** opens the
 Blueprints page. Home Assistant has no link that opens a new automation from a given blueprint, so the
 last step, **Create automation** on the blueprint, is taken there.
 
-![Automations in the card's Settings: the two blueprints, how many automations use each, and Create automation](images/card-automations.png)
+![Automations in the card's Settings: the blueprints, how many automations use each, and Create automation](images/card-automations.png)
 
 On a Home Assistant without SpotNav, or to fetch one by hand, the buttons below import a blueprint from
 this repository's main branch through my.home-assistant.io. With SpotNav installed you do not need them.
@@ -126,3 +127,61 @@ A water heater or an immersion heater that only runs on the sun can stand lukewa
 heater's **own thermostat at 60 °C or more**, so the water is heated through when it runs, and let it
 also heat from the grid at least once a week if the sun does not reach 60 °C. This blueprint does not
 see to that; it only switches the power on and off.
+
+## Relay by electricity price
+
+[![Open your Home Assistant instance and show the blueprint import dialog with this blueprint filled in.](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fraw.githubusercontent.com%2Fhenrikekblad%2Fspotnav-home-assistant%2Fmain%2Fcustom_components%2Fspotnav%2Fblueprints%2Fautomation%2Frelay_by_price.yaml)
+
+Many heat pumps and water heaters have **potential-free inputs**: contacts that do something when they
+are closed. This blueprint closes a relay (a Shelly or any other switch in Home Assistant) on such an
+input from the electricity price's **Cheap now** and **Expensive now** sensors. An electrician connects
+the relay inside the heat pump; the heat pump's manual says which input does what and how it is set up.
+It has three modes.
+
+**Closed while expensive.** The relay is closed while Expensive now is on and opened as soon as it ends,
+for an input that lowers the heating curve or blocks an add-on heater. On a NIBE SPLIT ACVM 270, for
+example, a closed contact on X1:3-4 shifts the heating curve by the number of steps set in menu 2.4, so
+the house runs a little cooler through the expensive hours. Three limits keep the house warm:
+
+- it is closed for at most the **longest closed time in a row** (3 hours), then opened,
+- it then stays open for at least the **shortest rest** (1 hour) before it may close again, also between
+  two expensive spells,
+- with an **outdoor temperature** sensor, it is never closed while it is below the **lowest outdoor
+  temperature** (-15 °C), and opened if it gets colder while closed. While the sensor has no reading it is
+  not closed either.
+
+**Pulse when cheap.** A short pulse (2 seconds) when Cheap now comes on, for an input that starts extra hot
+water. On the NIBE, a pulse of at least 1 second on X6:1-2 starts "temporary extra hot water" for 3 hours.
+The day is split into as many equal parts as **pulses per day** (1), with at most one pulse in each, and
+never within the **shortest time between pulses** (3 hours) of the last. With one pulse a day it comes when
+the first cheap hours of the day start; set the electricity price's **Cheap hours per day** to 1 to have only
+the day's cheapest hour.
+
+**SG Ready (two relays).** SG Ready heat pumps have two inputs that together give four states. Relay A goes
+on the first input and relay B on the second:
+
+| A | B | SG Ready state | When |
+|---|---|---|---|
+| closed | open | Blocked | Expensive now is on, with the same three limits as closed while expensive. |
+| open | open | Normal | Neither, or expensive while a limit holds the block back. |
+| open | closed | Recommended raise | Cheap now is on. |
+| closed | closed | Forced raise | Never: a relay is always opened before the other is closed. |
+
+It runs when the price sensors change, when a limit runs out, every 5 minutes, and when Home Assistant
+starts or automations are reloaded, and each time sets the relays the price calls for: after a restart a
+relay is never left closed when it should be open. The time limits count from when this automation last
+switched the relays, which Home Assistant keeps over a restart. While a relay is unavailable nothing is
+done.
+
+| Input | Default | |
+|---|---|---|
+| **Mode** | Closed while expensive | Closed while expensive, pulse when cheap, or SG Ready. |
+| **Relay (A)** | | The switch that closes the contact; for SG Ready, relay A. |
+| **Relay B** | none | SG Ready only. |
+| **Cheap now**, **Expensive now** | | The electricity price's binary sensors, for example `binary_sensor.electricity_price_se4_cheap_now`. |
+| **Longest closed time in a row**, **Shortest rest** | 3 h, 1 h | Closed while expensive and SG Ready's blocked state. |
+| **Outdoor temperature**, **Lowest outdoor temperature** | none, -15 °C | Optional. |
+| **Pulse length**, **Pulses per day**, **Shortest time between pulses** | 2 s, 1, 3 h | Pulse when cheap. |
+
+A heat pump that only needs a lower or higher temperature is better served by
+[Setpoint by electricity price](#setpoint-by-electricity-price), when it can be set from Home Assistant.
