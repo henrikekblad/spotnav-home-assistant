@@ -919,6 +919,9 @@ class AutoSettings:
                 {
                     "departure_date", "departure_weekdays", "notifications", "fill_to_limit", "vehicle_ids",
                     "identify_mode", "identify_camera", "periods", "max_periods", "users_change_plan", "if_not_ready",
+                    # Written by 3.0 once a departure calendar is chosen: read past here, so going back keeps the
+                    # charger's record (its calendar is not used, and the next save leaves it out).
+                    "departure_calendar", "departure_calendar_only",
                 }
             ),
         )
