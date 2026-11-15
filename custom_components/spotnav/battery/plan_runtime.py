@@ -471,7 +471,7 @@ class BatteryPlanShadow:
         self.actuals = PlanActuals.from_dict(raw.get("actuals"), now)
         self.stored = StoredValue.from_dict(raw.get("stored_value"))
         reviews = [DayReview.from_dict(item) for item in raw.get("reviews") or []]
-        self.reviews = sorted((r for r in reviews if r is not None), key=lambda r: r.money.day)[-REVIEW_DAYS:]
+        self.reviews = sorted((r for r in reviews if r is not None), key=lambda r: r.day)[-REVIEW_DAYS:]
         plan = raw.get("plan") if isinstance(raw.get("plan"), dict) else {}
         slots = [PlannedSlot.from_row(row) for row in plan.get("slots") or []]
         # A record from before the modes kept an export variant (`export_slots`): not a mode, dropped.
@@ -556,14 +556,14 @@ class BatteryPlanShadow:
             sum(buys) / len(buys) if buys else None,
         )
         if params is not None:
-            reviewed = [review.money.day for review in self.reviews]
+            reviewed = [review.day for review in self.reviews]
             planning = [*(name for name in MODES if MODE_DEFS[name].plans), VARIANT_DEFENSIVE]
             for day in days_to_review(self.actuals.buckets.values(), reviewed, now, tz):
                 review = review_day(day, self.actuals.buckets.values(), params, tz, now, planning, self.mode)
                 if review is not None:
                     self.reviews.append(review)
                     _LOGGER.debug("SpotNav battery plan: %s reviewed, saving %.0f", day, review.saving)
-            self.reviews = sorted(self.reviews, key=lambda r: r.money.day)[-REVIEW_DAYS:]
+            self.reviews = sorted(self.reviews, key=lambda r: r.day)[-REVIEW_DAYS:]
         self.actuals.prune(now)
         self._save()
 

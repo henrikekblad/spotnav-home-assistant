@@ -288,6 +288,38 @@ async def test_the_quarter_hours_record_what_the_battery_did_and_the_day_is_revi
     assert len(plan.actuals.rows) >= 23
 
 
+async def test_two_reviewed_days_survive_a_reload(hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch) -> None:
+    site, controller, now = await _planned(hass, monkeypatch)
+    plan = controller.battery_shadow.plan
+    tz = controller.demand.tracker.tz
+    from custom_components.spotnav import time_zones
+
+    zone = time_zones.require_zone(tz)
+    yesterday = now.astimezone(zone).date() - timedelta(days=1)
+    start = datetime.combine(yesterday, datetime.min.time(), zone).astimezone(dt_util.UTC)
+    moment = start
+    while moment.astimezone(zone).date() == yesterday:
+        bucket = plan.actuals.open(moment, price=PriceSlot(moment, moment + BUCKET, 100.0, 40.0), cap_kw=None, ran=None)
+        bucket.import_kwh, bucket.covered_s = 0.25, 900.0
+        bucket.soc_start = bucket.soc_end = 44.6
+        bucket.ran_action = ACTION_SELF_CONSUME
+        moment += BUCKET
+    plan._quarter = None
+    controller.battery_shadow.tick(now + timedelta(seconds=1))
+    await hass.async_block_till_done()
+    [review] = plan.reviews
+    # A second, earlier day: sorting the reviews by day reads each one's day (one alone is never keyed).
+    plan.reviews = [review, replace(review, day=yesterday - timedelta(days=1))]
+    plan._save()
+    await hass.async_block_till_done()
+
+    assert await hass.config_entries.async_reload(site.entry_id)
+    await hass.async_block_till_done()
+    reloaded = site_controller_for(hass, site.entry_id)
+    assert reloaded is not None
+    assert [r.day for r in reloaded.battery_shadow.plan.reviews] == [yesterday - timedelta(days=1), yesterday]
+
+
 async def test_the_record_and_the_running_slot_survive_a_reload(
     hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch
 ) -> None:
