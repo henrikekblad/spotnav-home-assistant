@@ -420,6 +420,9 @@ class BatteryPlanShadow:
         self.skipped_busy = 0
         self.last_duration_s: float | None = None
         self._prices: list[PriceSlot] = []
+        #: The price slots read for the export-limit rule (`sell_at`), once a quarter hour, with or without a plan.
+        self._sell_prices: list[PriceSlot] = []
+        self._sell_quarter: datetime | None = None
         self._cap_kw: float | None = None
         self._facts = BatteryFacts()
         self._quarter: datetime | None = None
@@ -600,6 +603,21 @@ class BatteryPlanShadow:
         if not any(price.end > now for price in prices):
             raise _NoPlan(NO_PRICES)
         return source.area_id, prices
+
+    def sell_at(self, now: datetime) -> float | None:
+        """What an exported kWh earns now (minor per kWh, the credit included), `None` when it is not known. Read once
+        a quarter hour from the prices held (nothing is fetched), so the export-limit rule works without a battery."""
+        quarter = bucket_start(now)
+        if quarter != self._sell_quarter:
+            self._sell_quarter = quarter
+            try:
+                _area, self._sell_prices = self._read_prices(now)
+            except _NoPlan:
+                self._sell_prices = []
+            except Exception:  # noqa: BLE001 - the rule must never disturb the site
+                _LOGGER.debug("SpotNav export limit: the prices could not be read", exc_info=True)
+                self._sell_prices = []
+        return next((price.sell for price in self._sell_prices if price.start <= now < price.end), None)
 
     def _sell_credit(self) -> float:
         """The credit per exported kWh (minor units): the hook `SELL_CREDIT_KEY`, none by default."""

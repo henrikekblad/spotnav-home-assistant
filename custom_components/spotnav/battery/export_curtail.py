@@ -108,8 +108,11 @@ class CurtailShadow:
     curtailing: bool = False
     since: datetime | None = None
     blocker: str | None = None
+    #: The last look (not stored: after a restart the gap is too long to count anyway).
     last_at: datetime | None = None
     days: dict[str, DayCount] = field(default_factory=dict)
+    #: What the hand-back would write, per role, as the preview said when the slot began (shown when it ends).
+    restore: dict[str, Any] = field(default_factory=dict)
 
     def step(self, look: CurtailLook) -> str | None:
         """One look; returns `enter` or `leave` when a curtail slot starts or ends, else `None`."""
@@ -131,6 +134,7 @@ class CurtailShadow:
             self.curtailing, self.since, edge = True, now, "enter"
         elif not wanted and self.curtailing:
             self.curtailing, self.since, edge = False, None, "leave"
+            self.restore = {}
         self.blocker = look.blocker if self.curtailing else None
         if len(self.days) > TALLY_DAYS:
             for day in sorted(self.days)[: len(self.days) - TALLY_DAYS]:
@@ -152,8 +156,8 @@ class CurtailShadow:
             "curtailing": self.curtailing,
             "since": None if self.since is None else self.since.isoformat(),
             "blocker": self.blocker,
-            "last_at": None if self.last_at is None else self.last_at.isoformat(),
             "days": {day: count.as_dict() for day, count in sorted(self.days.items())},
+            "restore": dict(self.restore),
         }
 
     @classmethod
@@ -169,10 +173,12 @@ class CurtailShadow:
         since = parse_aware_datetime(raw.get("since"))
         curtailing = raw.get("curtailing") is True
         blocker = raw.get("blocker")
+        restore = raw.get("restore")
         return cls(
             curtailing=curtailing,
             since=since if curtailing else None,
             blocker=blocker if curtailing and isinstance(blocker, str) else None,
-            last_at=parse_aware_datetime(raw.get("last_at")),
             days=dict(sorted(days.items())[-TALLY_DAYS:]),
+            restore={str(k): v for k, v in restore.items() if isinstance(v, (int, float, str, bool))}
+            if curtailing and isinstance(restore, Mapping) else {},
         )
