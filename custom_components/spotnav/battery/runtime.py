@@ -210,6 +210,8 @@ class BatteryShadow:
         self._loaded = False
         #: Whether a write of the book waits (`_save`): the ticks go on, and must not keep putting it off.
         self._save_pending = False
+        #: The kinds of look that failed since the start (`_look_failed`), each logged once.
+        self._failed_looks: set[str] = set()
         self.plan = BatteryPlanShadow(hass, site)
         self.curtail = CurtailShadow()
         #: The sell price now (minor per kWh) and the export control found, as at the last look (shown only).
@@ -376,18 +378,36 @@ class BatteryShadow:
         self.tick(dt_util.now())
 
     def tick(self, now: datetime) -> None:
-        inputs = self._observe_outside(self.inputs(now))
-        self.facts = inputs.facts
-        memory, decision = step(self._hold, inputs)
-        self._apply(
-            PART_HOLD_FOR_CAR, memory, decision, now, reads=inputs.reads,
-            age_s=inputs.battery_age_s, headroom_a=inputs.headroom_a, volts=inputs.volts_between_phases,
-        )
-        self.plan.tick(now, inputs.facts)
+        """One look: the hold, the plan and the export limit, each on its own. Never raises into the site."""
+        inputs: HoldInputs | None = None
+        try:
+            inputs = self._observe_outside(self.inputs(now))
+            self.facts = inputs.facts
+            memory, decision = step(self._hold, inputs)
+            self._apply(
+                PART_HOLD_FOR_CAR, memory, decision, now, reads=inputs.reads,
+                age_s=inputs.battery_age_s, headroom_a=inputs.headroom_a, volts=inputs.volts_between_phases,
+            )
+        except Exception:  # noqa: BLE001 - the battery's shadow must never disturb the site
+            self._look_failed("hold")
+        try:
+            self.plan.tick(now, self.facts)
+        except Exception:  # noqa: BLE001
+            self._look_failed("plan")
+        if inputs is None:
+            return
         try:
             self._curtail_tick(now, inputs)
         except Exception:  # noqa: BLE001 - the rule's shadow must never disturb the site
-            _LOGGER.debug("SpotNav export limit: the look failed", exc_info=True)
+            self._look_failed("export limit")
+
+    def _look_failed(self, kind: str) -> None:
+        """A failed look, logged with its traceback the first time for each kind and quietly after."""
+        if kind in self._failed_looks:
+            _LOGGER.debug("SpotNav battery shadow: the %s look failed again", kind, exc_info=True)
+            return
+        self._failed_looks.add(kind)
+        _LOGGER.warning("SpotNav battery shadow: the %s look failed; it is tried again at each look", kind, exc_info=True)
 
     def _curtail_tick(self, now: datetime, inputs: HoldInputs) -> None:
         """One look of the export-limit rule in shadow (`export_curtail.py`): in a curtail slot, what the executor's
