@@ -478,7 +478,11 @@ class BatteryPlanShadow:
         except Exception:  # noqa: BLE001 - a broken store starts again
             _LOGGER.warning("The battery plan's record could not be read; starting a new one")
             stored = None
-        self._restore(stored, now)
+        try:
+            self._restore(stored, now)
+        except Exception:  # noqa: BLE001 - a record SpotNav cannot read must not stop the site; it starts again
+            _LOGGER.warning("The battery plan's record could not be read; starting a new one", exc_info=True)
+            self._reset_record()
         self._loaded = True
         try:
             migrate_sell_credit(self.hass, self.site.entry_id)
@@ -514,10 +518,12 @@ class BatteryPlanShadow:
         self.actuals = PlanActuals.from_dict(raw.get("actuals"), now)
         self.stored = StoredValue.from_dict(raw.get("stored_value"))
         self.learned = LearnedBattery.from_dict(raw.get("learned"))
-        reviews = [DayReview.from_dict(item) for item in raw.get("reviews") or []]
+        stored_reviews = raw.get("reviews")
+        reviews = [DayReview.from_dict(item) for item in stored_reviews] if isinstance(stored_reviews, list) else []
         self.reviews = sorted((r for r in reviews if r is not None), key=lambda r: r.day)[-REVIEW_DAYS:]
         plan = raw.get("plan") if isinstance(raw.get("plan"), dict) else {}
-        slots = [PlannedSlot.from_row(row) for row in plan.get("slots") or []]
+        stored_slots = plan.get("slots")
+        slots = [PlannedSlot.from_row(row) for row in stored_slots] if isinstance(stored_slots, list) else []
         # A record from before the modes kept an export variant (`export_slots`): not a mode, dropped.
         mode_slots = plan.get("mode_slots") if isinstance(plan.get("mode_slots"), dict) else {}
         for mode, rows in mode_slots.items():
@@ -531,6 +537,17 @@ class BatteryPlanShadow:
             # Kept for the running slot's stability only; a new plan is made at the first check.
             self.plan = tuple(slot for slot in slots if slot is not None)
             self.soc_at_plan = float(soc)
+
+    def _reset_record(self) -> None:
+        """The restored parts set back to a new record's (after a record that could not be read)."""
+        self.actuals = PlanActuals()
+        self.reviews = []
+        self.stored = StoredValue()
+        self.learned = LearnedBattery()
+        self.plan = ()
+        self.soc_at_plan = None
+        self.mode = DEFAULT_MODE
+        self.mode_plans = {}
 
     def _save(self) -> None:
         self._store.async_delay_save(self.as_dict, _SAVE_DELAY_S)

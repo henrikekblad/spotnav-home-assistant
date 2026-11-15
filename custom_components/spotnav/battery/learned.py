@@ -156,7 +156,8 @@ class LearnedBattery:
         if not isinstance(raw, dict):
             return cls()
         samples: list[tuple[datetime, float]] = []
-        for item in raw.get("samples") or []:
+        stored = raw.get("samples")
+        for item in stored if isinstance(stored, list) else []:
             try:
                 end = datetime.fromisoformat(str(item[0]))
                 kwh = float(item[1])

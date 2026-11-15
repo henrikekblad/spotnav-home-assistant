@@ -788,16 +788,16 @@ class PlanActuals:
         actuals = cls()
         if not isinstance(raw, Mapping):
             return actuals
-        for row in raw.get("buckets") or []:
+        for row in _list(raw.get("buckets")):
             bucket = Bucket.from_row(row)
             if bucket is not None:
                 actuals.buckets[bucket.start] = bucket
-        for row in raw.get("firsts") or []:
+        for row in _list(raw.get("firsts")):
             if isinstance(row, list) and len(row) == 3 and row[1] in ACTIONS and _finite(row[2]):
                 start = parse_aware_datetime(row[0])
                 if start is not None:
                     actuals.firsts[start.astimezone(timezone.utc)] = (row[1], float(row[2]))
-        for row in raw.get("rows") or []:
+        for row in _list(raw.get("rows")):
             if isinstance(row, list) and len(row) == 2 and _finite(row[1]):
                 start = parse_aware_datetime(row[0])
                 if start is not None:
@@ -957,8 +957,13 @@ class DayReview:
                 **_curtail_from(raw.get("curtail")),
                 **_baselines_from(raw.get("baselines")),
             )
-        except (KeyError, TypeError, ValueError):
+        except (AttributeError, KeyError, TypeError, ValueError):
             return None
+
+
+def _list(value: Any) -> list[Any]:
+    """A stored list, or none when the record holds something else there."""
+    return value if isinstance(value, list) else []
 
 
 def _curtail_from(raw: Any) -> dict[str, float]:
