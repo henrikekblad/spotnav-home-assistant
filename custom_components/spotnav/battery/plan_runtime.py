@@ -117,6 +117,7 @@ from .plan_shadow import (
     slot_at,
     soc_by_hour_end,
 )
+from .learned import LearnedBattery, with_learned
 from .stored_value import StoredValue
 
 if TYPE_CHECKING:
@@ -397,6 +398,9 @@ class BatteryPlanShadow:
         self.reviews: list[DayReview] = []
         #: The value of the energy in the battery and each day's money split (`stored_value.py`).
         self.stored = StoredValue()
+        #: The battery's size and rated power learnt from the quarter hours (`learned.py`), for a battery that does
+        #: not say them; persisted.
+        self.learned = LearnedBattery()
         self.memory = TriggerMemory()
         #: The plan in force: its slots and the SoC it started from.
         self.plan: tuple[PlannedSlot, ...] = ()
@@ -457,6 +461,7 @@ class BatteryPlanShadow:
             "actuals": self.actuals.as_dict(),
             "reviews": [review.as_dict() for review in self.reviews],
             "stored_value": self.stored.as_dict(),
+            "learned": self.learned.as_dict(),
             "plan": {
                 "soc_at_plan": self.soc_at_plan,
                 "slots": [slot.as_row() for slot in self.plan],
@@ -470,6 +475,7 @@ class BatteryPlanShadow:
             return
         self.actuals = PlanActuals.from_dict(raw.get("actuals"), now)
         self.stored = StoredValue.from_dict(raw.get("stored_value"))
+        self.learned = LearnedBattery.from_dict(raw.get("learned"))
         reviews = [DayReview.from_dict(item) for item in raw.get("reviews") or []]
         self.reviews = sorted((r for r in reviews if r is not None), key=lambda r: r.day)[-REVIEW_DAYS:]
         plan = raw.get("plan") if isinstance(raw.get("plan"), dict) else {}
@@ -501,6 +507,8 @@ class BatteryPlanShadow:
         """One look (see the module). Never raises into the battery's tick."""
         if not self._loaded or self._closed:
             return
+        if facts.battery_entity_id is not None:
+            facts = with_learned(facts, self.learned)
         self._facts = facts
         if facts.battery_entity_id is None:
             self.status, self.reason = STATUS_NO_PLAN, "no_battery"
@@ -544,6 +552,8 @@ class BatteryPlanShadow:
         log = self.site.house_forecast.log
         for hour in self.actuals.close_hours(now, tz):
             log.record_actual(KIND_BATTERY, hour, self.actuals.soc_at_hour_end(hour, tz))
+        if self._facts.battery_entity_id is not None and self.learned.learn(self.actuals.buckets.values(), now):
+            _LOGGER.debug("SpotNav battery plan: learnt %s", self.learned.view())
         params, _reason, _estimates = limited_params(*battery_params(self._facts), self._facts)
         # The stored energy's value and each day's money (`stored_value.py`), from the quarter hours completed.
         usable = params.usable_kwh if params is not None else self._facts.capacity_kwh
@@ -852,6 +862,8 @@ class BatteryPlanShadow:
             "skipped_busy": self.skipped_busy,
             "last_duration_s": self.last_duration_s,
             "inputs": dict(self.inputs),
+            # The size and rated power learnt where the integration reads none, and the samples behind them.
+            "learned": self.learned.view(),
             # The plan in force: the site's mode's.
             "mode": self.mode,
             "plan": self.view,

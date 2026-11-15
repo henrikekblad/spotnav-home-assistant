@@ -27,9 +27,11 @@ brand's integration offers:
 | Sigenergy, Huawei Solar, SolarEdge Modbus Multi | Runs | Level, size and both ratings are read as they are. |
 | Victron (GX, the HACS Victron MQTT) | Runs when the battery's BMS reports its limits | The size is the BMS's installed Ah times the system voltage, the ratings its allowed charge and discharge current times the voltage; the plan says it is an estimate. A battery without a CAN-bus BMS (lead-acid, a plain shunt) gives no ratings and so no plan. |
 | Victron (community Modbus integration) | Runs when the BMS reports its limits | The size is the Dynamic ESS "battery capacity" where it is filled in, else the capacity register times the voltage. |
-| GoodWe | No plan | The integration reads the level and the BMS's current limits but not the battery's size. |
-| SolaX Modbus | No plan | Level and size are read, the ratings are not. |
-| Enphase | No plan | Level and size are read, the ratings are not. |
+| GoodWe | Runs once the size is learnt | The integration reads the level and the BMS's current limits but not the battery's size; SpotNav learns it (below). |
+| SolaX Modbus | Runs once the ratings are learnt | Level and size are read; the ratings are learnt (below). |
+| Enphase | Runs once the ratings are learnt | Level and size are read; the ratings are learnt (below). |
+
+**A size or rating the integration does not give is learnt, not asked for.** From the quarter hours SpotNav already measures, a steady charge or discharge that moves the level 20 points or more gives one estimate of the usable size (the energy that went through the cells, with the round trip counted, over the level change); the median of at least three agreeing runs is taken. The rated power is the highest power two quarter hours in a row held, so it is a floor: the battery may manage more than it has been asked for. Both are marked as estimates in the card and in the diagnostics (`learned`), never replace a value the integration reads, and the plan starts once they are known. There is no setting for either.
 
 It also reads:
 

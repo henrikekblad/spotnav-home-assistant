@@ -646,3 +646,40 @@ async def test_the_defensive_variant_survives_a_reload(hass: HomeAssistant, monk
     reloaded = site_controller_for(hass, site.entry_id)
     assert reloaded is not None
     assert [s.action for s in reloaded.battery_shadow.plan.mode_plans[VARIANT_DEFENSIVE]] == [s.action for s in kept]
+
+
+async def test_a_battery_without_a_size_is_planned_once_its_size_is_learnt_and_it_survives_a_reload(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    site, controller = await _site(hass, **{"sensor.sigen_plant_rated_energy_capacity": "unavailable"})
+    now = dt_util.now()
+    _give_prices(monkeypatch, _prices(now))
+    _house_forecast(controller, now)
+    controller.battery_shadow.tick(now)
+    await hass.async_block_till_done()
+    plan = controller.battery_shadow.plan
+    assert plan.view is None and controller.battery_shadow.snapshot()["plan"]["reason"] == NO_CAPACITY
+    # Three steady runs yesterday of a 10 kWh battery (round trip 0.9, 20 points in each hour-long run).
+    first = bucket_start(now) - timedelta(days=1)
+    kw = 10.0 * 0.4 / 0.9**0.5 / 1.0
+    for run in range(3):
+        for i in range(4):
+            bucket = plan.actuals.open(first + timedelta(hours=run * 2) + BUCKET * i, price=None, cap_kw=None, ran=None)
+            bucket.battery_kwh, bucket.covered_s = kw * 0.25 / 2, 900.0
+            bucket.soc_start, bucket.soc_end = 20.0 + 5.0 * i, 25.0 + 5.0 * i
+    plan._quarter = None
+    controller.battery_shadow.tick(now + timedelta(seconds=1))
+    controller.battery_shadow.tick(now + timedelta(seconds=CHECK_S + 2))
+    await hass.async_block_till_done()
+
+    assert plan.learned.capacity_kwh == pytest.approx(10.0, abs=0.1)
+    snapshot = controller.battery_shadow.snapshot()["plan"]
+    assert snapshot["learned"]["capacity_kwh"] == pytest.approx(10.0, abs=0.1)
+    assert snapshot["status"] == "planned" and "capacity_learned" in snapshot["inputs"]["estimates"]
+    assert snapshot["inputs"]["battery"]["usable_kwh"] == pytest.approx(10.0, abs=0.1)
+
+    assert await hass.config_entries.async_reload(site.entry_id)
+    await hass.async_block_till_done()
+    reloaded = site_controller_for(hass, site.entry_id)
+    assert reloaded is not None and reloaded is not controller
+    assert reloaded.battery_shadow.plan.learned.capacity_kwh == pytest.approx(10.0, abs=0.1)
