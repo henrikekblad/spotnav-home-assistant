@@ -39,7 +39,8 @@ How it acts (`step`, one look every few seconds; pure, the shell does the writes
 * **Fuse safety.** A grid charge is clamped by the site's live headroom: what the battery already draws from the
   grid (at most its charge, the commanded rate and the site's import) plus the headroom less `HEADROOM_MARGIN_A`.
   Unlike evcc, the battery's charge counts against the main fuse. With the site's solar priority "car first" a
-  charger held below what it asked makes the battery yield (`YIELD_STEP_KW` per review); with "battery first" the
+  charger held below what it asked makes the battery yield (`YIELD_STEP_KW` below its measured grid charge, one step
+  per `RATE_UP_DWELL_S`, so the car's regulator has time to follow); with "battery first" the
   battery keeps its rate and the site's load balancing backs the car off (the battery is house load to it).
   The rate goes down at once and up only by `RATE_STEP_KW` after `RATE_UP_DWELL_S`.
 * **Peak cover under a hold.** A hold stops the battery covering the house, so a peak (a kettle, the oven, one
@@ -411,21 +412,24 @@ def _kw(amps: float, volts: float) -> float:
     return amps * math.sqrt(3.0) * volts / 1000.0
 
 
-def grid_charge_cap_kw(inputs: ExecInputs, commanded_kw: float) -> float | None:
+def grid_charge_cap_kw(inputs: ExecInputs, commanded_kw: float, *, yield_now: bool = True) -> float | None:
     """The most the battery may charge from the grid now (kW), `None` when the headroom is unknown.
 
     What the battery already takes from the grid is counted back (it is in the measured import): at most its own
     charge, the rate commanded and the site's import, and nothing when the import is unknown, so the figure is never
-    above the truth. The headroom keeps `HEADROOM_MARGIN_A` under the fuse."""
+    above the truth. The headroom keeps `HEADROOM_MARGIN_A` under the fuse. With "car first" and a car held, the
+    battery yields `YIELD_STEP_KW` below what it measurably takes from the grid now (not below its last command, which
+    it may not have reached yet), one step per `RATE_UP_DWELL_S` (`yield_now`); between steps it keeps its rate."""
     if inputs.headroom_a is None or inputs.volts_between_phases <= 0:
         return None
     battery = inputs.facts.power_kw
-    own = 0.0
+    own = measured = 0.0
     if inputs.grid_import_kw is not None and battery is not None:
         own = max(min(commanded_kw, battery, inputs.grid_import_kw), 0.0)
+        measured = max(min(battery, inputs.grid_import_kw), 0.0)
     cap = own + _kw(inputs.headroom_a - HEADROOM_MARGIN_A, inputs.volts_between_phases)
     if inputs.car_first and inputs.car_held:
-        cap = min(cap, own - YIELD_STEP_KW)
+        cap = min(cap, measured - YIELD_STEP_KW if yield_now else commanded_kw)
     return cap
 
 
@@ -908,7 +912,12 @@ class Executor:
             limit = facts.max_charge_kw
             if limit is not None:
                 rate = min(rate, limit)
-            cap = grid_charge_cap_kw(inputs, commanded_kw)
+            changed = self.state.rate_changed_at
+            yield_now = (
+                self.state.phase != "active" or changed is None
+                or (inputs.now - changed).total_seconds() >= RATE_UP_DWELL_S
+            )
+            cap = grid_charge_cap_kw(inputs, commanded_kw, yield_now=yield_now)
             if cap is None:
                 return 0.0, "headroom_unknown"
             rate = min(rate, cap)

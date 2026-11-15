@@ -431,12 +431,30 @@ def test_with_car_first_the_battery_yields_to_a_held_car_and_with_battery_first_
     now, _ = run(executor, battery, T0, 6, "grid_charge", 4.0)
     now, _ = run(executor, battery, now, 1, "grid_charge", 4.0, car_held=True, car_first=True, grid_import_kw=5.0)
     assert executor.state.rate_kw == pytest.approx(3.0)
-    _now, _ = run(executor, battery, now, 1, "grid_charge", 4.0, car_held=True, car_first=True, grid_import_kw=5.0)
+    # One step per dwell: a few looks later it has not yielded again (the car's regulator needs time to follow).
+    now, _ = run(executor, battery, now, 4, "grid_charge", 4.0, car_held=True, car_first=True, grid_import_kw=5.0)
+    assert executor.state.rate_kw == pytest.approx(3.0)
+    _now, _ = run(executor, battery, now + timedelta(seconds=RATE_UP_DWELL_S), 1, "grid_charge", 4.0, car_held=True,
+                  car_first=True, grid_import_kw=5.0)
     assert executor.state.rate_kw == pytest.approx(2.0), "it keeps yielding while the car is held"
     executor, battery = _sigenergy()
     now, _ = run(executor, battery, T0, 6, "grid_charge", 4.0)
     _now, _ = run(executor, battery, now, 2, "grid_charge", 4.0, car_held=True, car_first=False, grid_import_kw=5.0)
     assert executor.state.rate_kw == 4.0
+
+
+def test_a_yield_step_is_counted_from_the_battery_s_measured_charge_not_its_last_command() -> None:
+    executor, battery = _sigenergy()
+    now, _ = run(executor, battery, T0, 6, "grid_charge", 4.0)
+    # The battery has not followed the last command down yet: it still charges 4 kW, so one yield is 3 kW, ...
+    held = {"car_held": True, "car_first": True, "grid_import_kw": 5.0, "power_kw": 4.0}
+    now, _ = run(executor, battery, now, 1, "grid_charge", 4.0, **held)
+    assert executor.state.rate_kw == pytest.approx(3.0)
+    # ... and a dwell later, with the battery still at 4 kW (slow to follow), the next yield is 3 kW again, not 2.
+    _now, _ = run(executor, battery, now + timedelta(seconds=RATE_UP_DWELL_S), 1, "grid_charge", 4.0, **held)
+    assert executor.state.rate_kw == pytest.approx(3.0)
+    assert grid_charge_cap_kw(inputs(battery, now, "grid_charge", 4.0, power_kw=2.0, grid_import_kw=5.0,
+                                     car_held=True, car_first=True), 4.0) == pytest.approx(1.0)
 
 
 def test_a_grid_charge_that_the_headroom_cannot_carry_is_not_started_or_is_handed_back() -> None:
