@@ -608,13 +608,14 @@ describe("Automations", () => {
     return paths;
   }
 
-  const ANSWER = (price: number, solar: number) => ({
+  const ANSWER = (price: number, solar: number, relay = 0) => ({
     api_version: 1,
     ok: true,
     error: null,
     blueprints: [
       { file: "price_setpoint.yaml", path: "spotnav/price_setpoint.yaml", automations: price },
       { file: "solar_surplus_switch.yaml", path: "spotnav/solar_surplus_switch.yaml", automations: solar },
+      { file: "relay_by_price.yaml", path: "spotnav/relay_by_price.yaml", automations: relay },
     ],
   });
 
@@ -633,7 +634,7 @@ describe("Automations", () => {
     expect(automationsRow(reader.element)).toBeNull();
   });
 
-  it.each(["en", "sv"] as const)("lists both blueprints, each with a button to Home Assistant's blueprints (%s)", async (language) => {
+  it.each(["en", "sv"] as const)("lists the blueprints, each with a button to Home Assistant's blueprints (%s)", async (language) => {
     const { element } = await mounted(fixture("start_idle"), true, language);
     const paths = navigations(element);
     const dialog = await openAutomations(element, language);
@@ -646,6 +647,8 @@ describe("Automations", () => {
     expect(boxes[0]?.textContent).toContain(translate(language, "automations.priceSetpoint.text"));
     expect(boxes[1]?.textContent).toContain(translate(language, "automations.solarSurplus.name"));
     expect(boxes[1]?.textContent).toContain(translate(language, "automations.solarSurplus.text"));
+    expect(boxes[2]?.textContent).toContain(translate(language, "automations.relayByPrice.name"));
+    expect(boxes[2]?.textContent).toContain(translate(language, "automations.relayByPrice.text"));
 
     const button = boxes[1]?.querySelector<HTMLButtonElement>("[data-blueprint-create]");
     expect(button?.textContent).toBe(translate(language, "automations.add"));
@@ -677,11 +680,15 @@ describe("Automations", () => {
       throw new Error("unknown command");
     };
     const dialog = await openAutomations(element);
-    expect(dialog?.querySelectorAll("[data-blueprint]").length).toBe(2);
+    expect(dialog?.querySelectorAll("[data-blueprint]").length).toBe(3);
     expect(dialog?.querySelector("[data-blueprint-use]")).toBeNull();
     expect(decodeBlueprintUse({ ...ANSWER(1, 1), api_version: 2 })).toBeNull();
     expect(decodeBlueprintUse({ ...ANSWER(1, 1), ok: false })).toBeNull();
-    expect(decodeBlueprintUse(ANSWER(1, 3))).toEqual({ "price_setpoint.yaml": 1, "solar_surplus_switch.yaml": 3 });
+    expect(decodeBlueprintUse(ANSWER(1, 3, 2))).toEqual({
+      "price_setpoint.yaml": 1,
+      "solar_surplus_switch.yaml": 3,
+      "relay_by_price.yaml": 2,
+    });
   });
 
   it("links to Home Assistant's own pages only", () => {

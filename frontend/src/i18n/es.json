@@ -1124,6 +1124,8 @@
   "automations.priceSetpoint.text": "La calefacción por suelo, los radiadores o una bomba de calor reciben una temperatura más alta cuando la electricidad es barata y más baja cuando es cara.",
   "automations.solarSurplus.name": "Funcionar con excedente solar",
   "automations.solarSurplus.text": "Un calentador de piscina, un termo o una resistencia eléctrica se enciende cuando el sol da un excedente.",
+  "automations.relayByPrice.name": "Relé según el precio de la electricidad",
+  "automations.relayByPrice.text": "Un relé en la entrada de la bomba de calor baja la curva de calefacción cuando la electricidad es cara, pone en marcha agua caliente extra cuando es barata o controla SG Ready.",
   "automations.usedBy.one": "Usado por {count} automatización",
   "automations.usedBy.other": "Usado por {count} automatizaciones",
   "identify.guest": "Coche de invitado",

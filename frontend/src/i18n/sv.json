@@ -1124,6 +1124,8 @@
   "automations.priceSetpoint.text": "Golvvärme, element eller värmepump får högre temperatur när elen är billig och lägre när den är dyr.",
   "automations.solarSurplus.name": "Kör vid solöverskott",
   "automations.solarSurplus.text": "En pool, varmvattenberedare eller elpatron slås på när solen ger överskott.",
+  "automations.relayByPrice.name": "Relä efter elpris",
+  "automations.relayByPrice.text": "Ett relä på värmepumpens ingång sänker värmekurvan när elen är dyr, startar extra varmvatten när den är billig eller styr SG Ready.",
   "automations.usedBy.one": "Används av {count} automation",
   "automations.usedBy.other": "Används av {count} automationer",
   "identify.guest": "Gästbil",

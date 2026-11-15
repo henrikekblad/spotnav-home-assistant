@@ -1124,6 +1124,8 @@
   "automations.priceSetpoint.text": "Lattialämmitys, patterit tai lämpöpumppu saavat korkeamman lämpötilan, kun sähkö on halpaa, ja matalamman, kun se on kallista.",
   "automations.solarSurplus.name": "Käy aurinkoylijäämällä",
   "automations.solarSurplus.text": "Altaan lämmitin, lämminvesivaraaja tai sähkövastus kytketään päälle, kun aurinko tuottaa ylijäämää.",
+  "automations.relayByPrice.name": "Rele sähkön hinnan mukaan",
+  "automations.relayByPrice.text": "Lämpöpumpun tuloon kytketty rele laskee lämpökäyrää, kun sähkö on kallista, käynnistää ylimääräisen käyttöveden lämmityksen, kun se on halpaa, tai ohjaa SG Readya.",
   "automations.usedBy.one": "Käytössä {count} automaatiossa",
   "automations.usedBy.other": "Käytössä {count} automaatiossa",
   "identify.guest": "Vierasauto",
