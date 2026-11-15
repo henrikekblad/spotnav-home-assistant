@@ -26,6 +26,29 @@ export interface HouseHour {
   /** The hour's mean buy price with every fee and sell price (minor unit per kWh), where the battery plan priced it. */
   buy: number | null;
   sell: number | null;
+  /** The heat pump's measured use (past hours) and its forecast (past: the first; ahead: the latest), where its meter
+   * is found or set; part of the house's figures, never added to them. `null` from a backend before heat. */
+  heat_kw: number | null;
+  heat_forecast_kw: number | null;
+}
+
+/** The heat pump's meter and the day's heat (`site/house_view.py`'s `heat` block). */
+export interface HeatView {
+  /** `found`, `ambiguous` (more than one could be it: the user chooses), `unusable` (the chosen sensor is not a power or
+   * energy sensor) or a newer backend's word. */
+  status: string;
+  entity_id: string | null;
+  name: string | null;
+  kind: string | null;
+  /** `setting`, `energy_dashboard` or `integration`. */
+  source: string | null;
+  candidates: string[];
+  setting_offered: boolean;
+  /** The shown day's heat beside the house's whole load over the same completed hours. */
+  day: { date: string; hours: number; heat_kwh: number; house_kwh: number } | null;
+  review: Score | null;
+  /** The house forecast as heat plus the rest against the whole, over the same hours of the last week. */
+  comparison: { hours: number; house_mae: number; split_mae: number } | null;
 }
 
 export interface Score {
@@ -129,6 +152,8 @@ export interface EnergyFlow {
   through: string;
   hours: number;
   car_hours: number;
+  /** The hours that had the heat pump meter's figure (0 without a heat node or from a backend before heat). */
+  heat_hours: number;
   nodes: FlowNode[];
   links: FlowLink[];
 }
@@ -199,6 +224,8 @@ export interface HouseAnswer {
     holiday_calendar: string | null;
     solar_forecasts: string[];
   };
+  /** `null` without a heat pump meter found, set or ambiguous, and from a backend before heat. */
+  heat: HeatView | null;
 }
 
 export type HouseDecodeResult = { ok: true; value: HouseAnswer } | { ok: false; failure: "unsupported" | "malformed" };
@@ -294,6 +321,35 @@ function hour(value: unknown): HouseHour {
     battery_action: BATTERY_ACTIONS.includes(action as BatteryAction) ? (action as BatteryAction) : action === null || typeof action === "string" ? null : bad(),
     buy: additive(source, "buy", numberOrNull, null),
     sell: additive(source, "sell", numberOrNull, null),
+    heat_kw: additive(source, "heat_kw", numberOrNull, null),
+    heat_forecast_kw: additive(source, "heat_forecast_kw", numberOrNull, null),
+  };
+}
+
+function heatView(value: unknown): HeatView | null {
+  if (value === null) {
+    return null;
+  }
+  const source = record(value);
+  const dayRaw = source.day === null ? null : record(source.day);
+  const comparison = source.comparison === null ? null : record(source.comparison);
+  return {
+    status: text(source.status),
+    entity_id: textOrNull(source.entity_id),
+    name: textOrNull(source.name),
+    kind: textOrNull(source.kind),
+    source: textOrNull(source.source),
+    candidates: list(source.candidates).map(text),
+    setting_offered: flag(source.setting_offered),
+    day:
+      dayRaw === null
+        ? null
+        : { date: day(dayRaw.date), hours: count(dayRaw.hours), heat_kwh: number(dayRaw.heat_kwh), house_kwh: number(dayRaw.house_kwh) },
+    review: score(source.review),
+    comparison:
+      comparison === null
+        ? null
+        : { hours: count(comparison.hours), house_mae: number(comparison.house_mae), split_mae: number(comparison.split_mae) },
   };
 }
 
@@ -422,6 +478,7 @@ function energyFlow(value: unknown): EnergyFlow | null {
     through: instant(source.through),
     hours: count(source.hours),
     car_hours: count(source.car_hours),
+    heat_hours: additive(source, "heat_hours", count, 0),
     nodes,
     // A link to a node the answer does not have is not drawn.
     links: links.filter((link) => ids.has(link.from) && ids.has(link.to)),
@@ -541,6 +598,7 @@ export function decodeHouse(raw: unknown): HouseDecodeResult {
           holiday_calendar: textOrNull(sources.holiday_calendar),
           solar_forecasts: list(sources.solar_forecasts).map(text),
         },
+        heat: additive(source, "heat", heatView, null),
       },
     };
   } catch {

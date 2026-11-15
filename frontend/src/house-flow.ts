@@ -1,5 +1,5 @@
 // Today's energy flow as a Sankey diagram, like the battery app's daily flow: the sources on the left (sun, battery,
-// grid), the uses on the right (battery, house, car, grid export), each a block as tall as its share of the day's
+// grid), the uses on the right (battery, house, heat where the heat pump's meter is, car, grid export), each a block as tall as its share of the day's
 // energy, and a curved band from each source to each use as thick as the energy between them. Every figure is the
 // backend's (`site/energy_flow.py`, which states how the flows are allocated); this only places them.
 //
@@ -36,6 +36,7 @@ const ROLE_WORDS: Record<string, TranslationKey> = {
   grid: "house.flow.grid",
   house: "house.flow.house",
   car: "house.flow.car",
+  heat: "house.flow.heat",
 };
 
 /** The diagram's height: by the width, and tall enough that each block of the fuller side (most often the uses: battery,

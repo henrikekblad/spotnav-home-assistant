@@ -986,7 +986,8 @@ const DERIVED = ["L1", "L2", "L3"].flatMap((phase) =>
 const DERIVED_REQUIRED = ["L1", "L2", "L3"].flatMap((phase) =>
   ["power", "voltage"].map((kind) => `derived_${phase}_${kind}`),
 );
-/** What follows the phase meters: the sign options, the meter's total grid power, the battery sensors and the maximum age. */
+/** What follows the phase meters: the sign options, the meter's total grid power, the battery sensors, the heat pump's
+ * meter (offered: none is found by itself in the test world) and the maximum age. */
 const SITE_TAIL = [
   "site_current_signed",
   "grid_power_source_power",
@@ -995,6 +996,7 @@ const SITE_TAIL = [
   "battery_aggregate_power_entity",
   "battery_discharge_power_entity",
   "battery_power_inverted",
+  "heat_meter_entity",
   "max_age_s",
 ];
 const CHARGER = ["charge_control", "current_limit", "energy_register_entity", "power_entity", "charger_phases", "charger_priority", "measured_current_source", "vehicle_soc"];
