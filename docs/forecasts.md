@@ -7,6 +7,7 @@ What SpotNav 3.0 does today beside charging cars. Each part below says whether i
 | --- | --- |
 | House load forecast | Acts on car plans under an import target (and on the switched load's shadow plan); shown on the site |
 | Solar forecast correction | Shadow: logged and scored; the battery plan (also shadow) reads it; the Hybrid strategy still reads the raw forecast |
+| Expected solar surplus | A read-only sensor for your own automations; SpotNav acts on nothing from it |
 | Calendar departure | Acts: it moves a car's departure and target |
 | Switched load | Shadow: SpotNav shows when it would switch it and never does |
 
@@ -17,7 +18,8 @@ SpotNav learns what your house draws, hour by hour, and forecasts the next 48 ho
 **What it reads.** The house's measured load per hour over the last six weeks, newer days counting more (a day two weeks ago
 counts half as much as yesterday), with weekdays and weekends kept apart. A day that is a public holiday counts as a weekend
 day where Home Assistant's Holiday integration provides a calendar. A car's plan counts on a figure with some room (three in four hours the load is below it), not the average:
-counting on too little room costs a late car, counting on too much a slightly dearer plan. On a site with a home battery or
+counting on too little room costs a late car, counting on too much a slightly dearer plan. The battery plan counts on the
+typical hour instead, the median, without the in-day adjustment below; the cars use the figure with room and with it. On a site with a home battery or
 solar production in the Energy dashboard it uses the house's *whole* load (the grid less the car less the battery, plus what
 the sun produced), so the battery's own cycling is not mistaken for the house. With a battery it uses that from the first
 hour; with solar only, until it has three days of that it uses the import less the chargers.
@@ -37,7 +39,9 @@ then to a flat figure. So a weekday hour has its own figure after three weekdays
 which takes two weekends. The first review of how well it did comes the night after its first whole day.
 
 **What it does.** A plan for a car counts on it when an import target is set: the room left for the car is the target less
-the house's expected load for each hour, so an evening peak is planned around. The hold and the main fuse never use it; they
+the house's expected load for each hour, so an evening peak is planned around. On a site where the house is measured as its
+whole load (a battery or solar production), the car's room uses a separate forecast of the net import, which already holds
+what the battery and the sun really did in each hour. The hold and the main fuse never use it; they
 stay on what is measured. It is shown as the site's *House load forecast* sensor (diagnostic) and in the
 [house card](house-card.md).
 
@@ -65,14 +69,26 @@ needs three days with such hours before it moves.
 * On a site that curtails (an export limit, zero export, or production falling away in negative-price hours) it switches
   itself off and passes the raw forecast through.
 
-**How long until it is useful.** At least three days: until a kind of hour has three days of evidence its factor stays at 1 and
-the status is *learning*. After that the status is *shadow* and each factor moves a fifth of the way towards the week's
+**How long until it is useful.** At least three days: the status is *learning* until either clear or cloudy hours have three
+days of evidence, and *shadow* from then on. The other kind keeps its factor at 1 until it has three days of its own. Each
+factor moves a fifth of the way towards the week's
 ratio every night, so it takes some more days to settle.
 
 **What it does.** The corrected and the raw forecast are both logged and scored each night. The battery plan reads the
 corrected one once it has learnt. The Hybrid strategy keeps reading the raw forecast. The corrected forecast appears as the
 site's *Solar forecast* sensor (diagnostic, `basis` is `raw` until learnt, then `corrected`) and as an option for the Energy
 dashboard (see [Home batteries](home-battery.md#forecasts-for-other-energy-tools)).
+
+## The expected solar surplus
+
+The site has an **Expected solar surplus** sensor: how much of the sun the house is not expected to use. It is the sun
+forecast (as corrected once the correction has learnt, else as read) less the house's whole-load median, in kWh over the next
+four hours. The attributes give the next two hours, the rest of today and one row per hour (`hours`), for blueprints and
+automations.
+
+It is unknown while the site has no whole-load figure for the house (a solar or battery site that has not kept enough hours
+yet), and a sun forecast older than three hours is not used. It is a prediction: several automations that act on it can
+overbook the same sun, so let one of them own it. SpotNav itself acts on nothing from it.
 
 ## Departure from a calendar
 
