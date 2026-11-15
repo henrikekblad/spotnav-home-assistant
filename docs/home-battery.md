@@ -127,7 +127,8 @@ forecast chosen gives anything.
 Many home batteries are run by something else: the maker's own optimiser (Sigen AI mode, FusionSolar
 time-of-use, SEMS), a service that sells the battery's flexibility (CheckWatt, Greenely, Tibber Grid
 Rewards), a planner (Predbat, EMHASS) or an automation of yours. One controller per battery: SpotNav
-notices the others and only watches.
+notices the others and only watches. Today SpotNav writes to no battery at all, so every battery is only watched; the
+detection matters for the opt-in that may come later.
 
 * **A planner or CheckWatt set up in Home Assistant**: the battery is watch-only while it is there.
 * **The battery's settings change three times within 24 hours without SpotNav writing them, or in plain
