@@ -19,6 +19,12 @@ The order on every path:
 * **Stop / unload** (`async_stop`): the executor hands back with that reason; the shell keeps stepping until it is
   done or `HAND_BACK_DEADLINE_S` passes (the state is stored either way, so a restart finishes the restore).
 * **Verification** (`async_verify_step`, `verify.py`): the same looks with the routine choosing the action.
+* **The export limit** (`export_curtail.py`): a second executor on the brand's export control
+  (`commands.EXPORT_CONTROLS`), stepped in the same look: `curtail_export` while the sell price now is below zero
+  (`sell_source`, by default the plan shadow's `sell_at`), plain hand-back otherwise. Its plant is found from the
+  battery or the grid meter (`runtime.read_export_facts`), so a site without a battery has it too. Its state is
+  stored beside the battery's (`export`), restored first after a restart, handed back on stop; the two share the
+  day's write cap.
 """
 
 from __future__ import annotations
@@ -47,13 +53,22 @@ from ..const import (
 from ..planning.grid_voltage import stored_voltage_between_phases_v
 from ..site.measurement_problem import UNHEALTHY_STATES
 from . import shadow
-from .commands import WATCHDOG_S, BrandControl, control_for, service_call
+from .commands import (
+    ACTION_CURTAIL_EXPORT,
+    WATCHDOG_S,
+    BrandControl,
+    control_for,
+    export_control_for,
+    service_call,
+)
 from .executor import ExecInputs, ExecState, Executor, Op, RoleRead, StepResult
+from .export_curtail import curtails
 from .facts import BatteryFacts
 from .ledger import Ledger
 from .monitor import Capability, Monitor
+from .plan_model import ACTION_SELF_CONSUME
 from .plan_shadow import slot_at
-from .runtime import read_battery_facts, read_role_reads
+from .runtime import read_battery_facts, read_export_facts, read_role_reads
 from .verify import Sample, Verification, keep_report
 
 if TYPE_CHECKING:
@@ -70,6 +85,8 @@ LOG_MAX: Final = 200
 
 #: `(action, battery kW magnitude, slot end)` of the running slot, or `None`.
 PlanSource = Callable[[datetime], tuple[str, float, datetime | None] | None]
+#: What an exported kWh earns now (minor per kWh), `None` when unknown.
+SellSource = Callable[[datetime], float | None]
 
 
 def store_key(entry_id: str) -> str:
@@ -91,14 +108,18 @@ class BatteryControl:
 
     def __init__(
         self, hass: HomeAssistant, site: SiteCapacityController, *, plan_source: PlanSource | None = None,
-        watchdog_s: int = WATCHDOG_S,
+        sell_source: SellSource | None = None, watchdog_s: int = WATCHDOG_S,
     ) -> None:
         self.hass = hass
         self.site = site
         self._store: Store[dict[str, Any]] = Store(hass, STORE_VERSION, store_key(site.entry_id))
         self._plan_source = plan_source
+        self._sell_source = sell_source
         self._watchdog_s = watchdog_s
         self.executor: Executor | None = None
+        #: The export limit's executor (`commands.EXPORT_CONTROLS`), `None` when the site has none.
+        self.export_executor: Executor | None = None
+        self._export_failed: tuple[str, ...] = ()
         self.facts = BatteryFacts()
         self.log: deque[dict[str, Any]] = deque(maxlen=LOG_MAX)
         self.reports: dict[str, Any] = {}
@@ -124,6 +145,7 @@ class BatteryControl:
         self.reports = dict(reports) if isinstance(reports, dict) else {}
         state = ExecState.from_dict(self._stored.get("state"))
         self.facts = self._read_facts()
+        await self._async_start_export()
         control = control_for(state.brand) or control_for(self.facts.brand)
         if control is None:
             return
@@ -141,9 +163,31 @@ class BatteryControl:
         if self.executor.state.phase == "restoring":
             await self._async_until_handed_back("restart")
 
+    async def _async_start_export(self) -> None:
+        """The export limit's executor from the store; a stored snapshot is handed back first."""
+        stored = self._stored.get("export") if isinstance(self._stored.get("export"), dict) else {}
+        state = ExecState.from_dict(stored.get("state"))
+        control = export_control_for(state.brand) or read_export_facts(self.hass, self.site.config)[2]
+        if control is None:
+            return
+        self.export_executor = Executor(
+            control, Ledger.from_dict(stored.get("ledger")), state=state, watchdog_s=self._watchdog_s
+        )
+        if not shadow.ON_REACHABLE:
+            if state.holds_snapshot:
+                _LOGGER.warning("An export limit snapshot is stored but this release cannot write it back")
+            return
+        self._log(self.export_executor.restart(dt_util.now()))
+        if self.export_executor.state.phase == "restoring":
+            await self._async_export_until_handed_back("restart")
+
     async def async_stop(self, reason: str = "stop") -> None:
-        """Hand the battery back now (the part is stopped, the entry unloads)."""
-        if self.executor is None or not shadow.ON_REACHABLE:
+        """Hand the battery and the export limit back now (the part is stopped, the entry unloads)."""
+        if not shadow.ON_REACHABLE:
+            return
+        if self.export_executor is not None:
+            await self._async_export_until_handed_back(reason)
+        if self.executor is None:
             return
         await self._async_until_handed_back(reason)
 
@@ -160,11 +204,44 @@ class BatteryControl:
     async def async_tick(self, now: datetime | None = None, *, stopping: str | None = None) -> StepResult | None:
         _reachable()
         now = now or dt_util.now()
+        await self.async_export_tick(now, stopping=stopping)
         executor = self._executor()
         if executor is None:
             return None
         inputs = self.inputs(now, executor.control, stopping=stopping)
         return await self._async_step(executor, inputs)
+
+    async def async_export_tick(self, now: datetime | None = None, *, stopping: str | None = None) -> StepResult | None:
+        """One look of the export limit: `curtail_export` while the sell price is below zero, else hand back."""
+        _reachable()
+        now = now or dt_util.now()
+        executor = self._export_executor()
+        if executor is None:
+            return None
+        result = executor.step(self.export_inputs(now, executor.control, stopping=stopping))
+        self._log(result.events)
+        if result.persist_first:
+            await self._async_save()
+        failed: list[str] = []
+        for op in result.ops:
+            if not await self._async_write(op, executor):
+                failed.append(op.role)
+        self._export_failed = tuple(failed)
+        await self._async_save()
+        return result
+
+    async def _async_export_until_handed_back(self, reason: str) -> None:
+        executor = self.export_executor
+        assert executor is not None
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + HAND_BACK_DEADLINE_S
+        stopping: str | None = reason
+        while True:
+            result = await self.async_export_tick(stopping=stopping)
+            stopping = None if executor.state.phase == "restoring" else stopping
+            if result is None or executor.state.phase in ("idle", "blocked") or loop.time() >= deadline:
+                return
+            await asyncio.sleep(0 if result.ops else HAND_BACK_LOOK_S)
 
     async def async_verify_step(self, now: datetime | None = None) -> StepResult | None:
         """One look of the verification routine; it starts one when none runs. Built, not callable from HA."""
@@ -203,7 +280,7 @@ class BatteryControl:
             await self._async_save()
         failed: list[str] = []
         for op in result.ops:
-            if not await self._async_write(op):
+            if not await self._async_write(op, executor):
                 failed.append(op.role)
         self._failed = tuple(failed)
         await self._async_save()
@@ -216,7 +293,11 @@ class BatteryControl:
         deadline = loop.time() + HAND_BACK_DEADLINE_S
         stopping: str | None = reason
         while True:
-            result = await self.async_tick(stopping=stopping)
+            now = dt_util.now()
+            battery = self.executor
+            result = None if battery is None else await self._async_step(
+                battery, self.inputs(now, battery.control, stopping=stopping)
+            )
             stopping = None if executor.state.phase == "restoring" else stopping
             if result is None or executor.state.phase in ("idle", "blocked") or loop.time() >= deadline:
                 return
@@ -250,9 +331,52 @@ class BatteryControl:
         return facts if battery_shadow is None else battery_shadow.with_outside(facts)
 
     def acting(self) -> bool:
-        """Whether this path acts on the battery now (its writes are no one else's)."""
-        executor = self.executor
-        return executor is not None and executor.state.phase in ("active", "restoring")
+        """Whether this path acts on the battery or the export limit now (its writes are no one else's)."""
+        return any(
+            executor is not None and executor.state.phase in ("active", "restoring")
+            for executor in (self.executor, self.export_executor)
+        )
+
+    def _export_executor(self) -> Executor | None:
+        if self.export_executor is None:
+            control = read_export_facts(self.hass, self.site.config)[2]
+            if control is None:
+                return None
+            self.export_executor = Executor(control, watchdog_s=self._watchdog_s)
+        return self.export_executor
+
+    def _sell_now(self, now: datetime) -> float | None:
+        if self._sell_source is not None:
+            return self._sell_source(now)
+        return self.site.battery_shadow.plan.sell_at(now)
+
+    def export_inputs(self, now: datetime, control: BrandControl, *, stopping: str | None = None) -> ExecInputs:
+        """The export limit's look: the plant's facts and control, the site's measurement, the action from the sell
+        price now, and the battery path's writes today (the cap is shared)."""
+        facts, reads, _control = read_export_facts(self.hass, self.site.config)
+        executor = self.export_executor
+        if executor is not None:
+            for name, entity_id in executor.state.entities.items():
+                if name not in reads:
+                    state = self.hass.states.get(entity_id)
+                    reads[name] = RoleRead(entity_id=entity_id, state=None if state is None else state.state,
+                                           found=state is not None, enabled=state is not None)
+        result = self.site.result
+        headrooms = [value for value in result.phase_headroom_a.values() if value is not None]
+        battery = self.executor
+        return ExecInputs(
+            now=now,
+            facts=self._with_outside(facts),
+            reads=reads,
+            action=ACTION_CURTAIL_EXPORT if curtails(self._sell_now(now)) else ACTION_SELF_CONSUME,
+            measurement_ok=result.state not in UNHEALTHY_STATES and result.state != "not_configured",
+            headroom_a=min(headrooms) if headrooms else None,
+            volts_between_phases=stored_voltage_between_phases_v(self.site.config),
+            stopping=stopping,
+            failed=self._export_failed,
+            other_writes_today=0 if battery is None or battery.state.day != now.date().isoformat()
+            else battery.state.writes_today,
+        )
 
     def _reads(self, control: BrandControl) -> dict[str, RoleRead]:
         reads = read_role_reads(self.hass, self.site.config, control)
@@ -305,15 +429,20 @@ class BatteryControl:
             car_held=car_held,
             stopping=stopping,
             failed=self._failed,
+            other_writes_today=self._export_writes_today(now),
         )
+
+    def _export_writes_today(self, now: datetime) -> int:
+        executor = self.export_executor
+        if executor is None or executor.state.day != now.date().isoformat():
+            return 0
+        return executor.state.writes_today
 
     # ---- writes
 
-    async def _async_write(self, op: Op) -> bool:
+    async def _async_write(self, op: Op, executor: Executor) -> bool:
         """One write; `False` when the service call raised (the executor counts it as not taken)."""
         _reachable()
-        executor = self.executor
-        assert executor is not None
         domain, service, data = service_call(
             op.method, op.entity_id, op.value, device_id=op.device_id,  # type: ignore[arg-type]
             services=executor.control.role(op.role).services, watchdog_s=self._watchdog_s,
@@ -343,6 +472,9 @@ class BatteryControl:
                 "ledger": executor.ledger.as_dict(),
                 "monitor": executor.monitor.as_dict(),
             }
+        export = self.export_executor
+        if export is not None:
+            data["export"] = {"state": export.state.as_dict(), "ledger": export.ledger.as_dict()}
         await self._store.async_save(data)
 
     def snapshot(self) -> dict[str, Any]:
@@ -351,6 +483,7 @@ class BatteryControl:
             "reachable": shadow.ON_REACHABLE,
             "brand": None if executor is None else executor.control.brand,
             "executor": None if executor is None else executor.as_dict(),
+            "export": None if self.export_executor is None else self.export_executor.as_dict(),
             "verification": None if self.verification is None else self.verification.report(),
             "reports": dict(self.reports),
             "log": list(self.log),
