@@ -1,0 +1,1244 @@
+{
+ "nibe_f": {
+  "_source": "core nibe_heatpump 5aea6a2 (unique id `<entry>-<coil>`, every coil entity disabled by default) and nibe 2.26.0 f750.json (addresses, platforms by write flag and mappings, enum text upper case); states made up for an F750 with its coils enabled and the Smart Price Adaption coils left disabled.",
+  "platform": "nibe_heatpump",
+  "entities": [
+   {
+    "entity_id": "sensor.bt1_outdoor_temperature_40004",
+    "unique_id": "01JNIBEF750ENTRY-40004",
+    "device": "pump",
+    "state": "-3.2",
+    "unit": "°C",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.bt2_supply_temp_s1_40008",
+    "unique_id": "01JNIBEF750ENTRY-40008",
+    "device": "pump",
+    "state": "38.4",
+    "unit": "°C",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.bt25_ext_supply_40071",
+    "unique_id": "01JNIBEF750ENTRY-40071",
+    "device": "pump",
+    "state": null,
+    "unit": "°C",
+    "disabled": true
+   },
+   {
+    "entity_id": "sensor.eb100_ep14_bt3_return_temp_40012",
+    "unique_id": "01JNIBEF750ENTRY-40012",
+    "device": "pump",
+    "state": "33.1",
+    "unit": "°C",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.bt50_room_temp_s1_40033",
+    "unique_id": "01JNIBEF750ENTRY-40033",
+    "device": "pump",
+    "state": "21.4",
+    "unit": "°C",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.bt7_hw_top_40013",
+    "unique_id": "01JNIBEF750ENTRY-40013",
+    "device": "pump",
+    "state": "49.8",
+    "unit": "°C",
+    "disabled": false
+   },
+   {
+    "entity_id": "number.degree_minutes_16_bit_43005",
+    "unique_id": "01JNIBEF750ENTRY-43005",
+    "device": "pump",
+    "state": "-312.0",
+    "unit": "DM",
+    "disabled": false,
+    "min": -3000.0,
+    "max": 3000.0,
+    "step": 0.1
+   },
+   {
+    "entity_id": "number.degree_minutes_32_bit_40940",
+    "unique_id": "01JNIBEF750ENTRY-40940",
+    "device": "pump",
+    "state": null,
+    "unit": "DM",
+    "disabled": true
+   },
+   {
+    "entity_id": "sensor.compressor_frequency_actual_43136",
+    "unique_id": "01JNIBEF750ENTRY-43136",
+    "device": "pump",
+    "state": "52.0",
+    "unit": "Hz",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.compressor_state_ep14_43427",
+    "unique_id": "01JNIBEF750ENTRY-43427",
+    "device": "pump",
+    "state": "RUNNING",
+    "unit": null,
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.int_el_add_power_43084",
+    "unique_id": "01JNIBEF750ENTRY-43084",
+    "device": "pump",
+    "state": "0.0",
+    "unit": "kW",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.prio_43086",
+    "unique_id": "01JNIBEF750ENTRY-43086",
+    "device": "pump",
+    "state": "HEAT",
+    "unit": null,
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.smart_price_adaption_price_level_41929",
+    "unique_id": "01JNIBEF750ENTRY-41929",
+    "device": "pump",
+    "state": null,
+    "unit": null,
+    "disabled": true
+   },
+   {
+    "entity_id": "sensor.smart_price_adaption_heating_offset_44896",
+    "unique_id": "01JNIBEF750ENTRY-44896",
+    "device": "pump",
+    "state": null,
+    "unit": null,
+    "disabled": true
+   },
+   {
+    "entity_id": "number.heat_offset_s1_47011",
+    "unique_id": "01JNIBEF750ENTRY-47011",
+    "device": "pump",
+    "state": "0.0",
+    "unit": "°C",
+    "disabled": false,
+    "min": -10.0,
+    "max": 10.0,
+    "step": 1.0
+   },
+   {
+    "entity_id": "number.room_sensor_setpoint_s1_47398",
+    "unique_id": "01JNIBEF750ENTRY-47398",
+    "device": "pump",
+    "state": "21.0",
+    "unit": "°C",
+    "disabled": false,
+    "min": 5.0,
+    "max": 30.0,
+    "step": 0.1
+   },
+   {
+    "entity_id": "select.temporary_lux_48132",
+    "unique_id": "01JNIBEF750ENTRY-48132",
+    "device": "pump",
+    "state": "OFF",
+    "unit": null,
+    "disabled": false,
+    "options": [
+     "OFF",
+     "3H",
+     "6H",
+     "12H",
+     "ONE TIME INCREASE"
+    ]
+   },
+   {
+    "entity_id": "climate.climate_system_s1",
+    "unique_id": "01JNIBEF750ENTRY-s1",
+    "device": "pump",
+    "state": "auto",
+    "unit": null,
+    "disabled": false,
+    "min": 5.0,
+    "max": 35.0,
+    "step": 0.5
+   }
+  ],
+  "expected": {
+   "brand": "nibe_f",
+   "readings": {
+    "outdoor_temp_c": -3.2,
+    "supply_temp_c": 38.4,
+    "return_temp_c": 33.1,
+    "room_temp_c": 21.4,
+    "hot_water_temp_c": 49.8,
+    "degree_minutes": -312.0,
+    "compressor_speed": 52.0,
+    "compressor_speed_unit": "Hz",
+    "compressor_running": true,
+    "immersion_kw": 0.0,
+    "immersion_on": false,
+    "priority": "heating"
+   },
+   "missing": {},
+   "price_control": "unknown",
+   "control": "unknown",
+   "capabilities": {
+    "offset": [
+     "number.heat_offset_s1_47011"
+    ],
+    "setpoint": [
+     "climate.climate_system_s1",
+     "number.room_sensor_setpoint_s1_47398"
+    ],
+    "hot_water_boost": [
+     "select.temporary_lux_48132"
+    ]
+   }
+  }
+ },
+ "nibe_s": {
+  "_source": "core nibe_heatpump 5aea6a2 and nibe 2.26.0 s1155_s1255.json (40012 is degree minutes on the S series, return is 30008; 40844 switch Smart Price Adaption activated; 43033/46009 SG Ready via API); the room sensor reads NIBE's no-sensor value -3276.8; states made up.",
+  "platform": "nibe_heatpump",
+  "entities": [
+   {
+    "entity_id": "sensor.current_outdoor_temperature_bt1_30002",
+    "unique_id": "01JNIBES1155ENTRY-30002",
+    "device": "pump",
+    "state": "-1.5",
+    "unit": "°C",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.supply_line_bt2_30006",
+    "unique_id": "01JNIBES1155ENTRY-30006",
+    "device": "pump",
+    "state": "41.2",
+    "unit": "°C",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.return_line_bt3_30008",
+    "unique_id": "01JNIBES1155ENTRY-30008",
+    "device": "pump",
+    "state": "35.0",
+    "unit": "°C",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.roomsensor_1_1_30027",
+    "unique_id": "01JNIBES1155ENTRY-30027",
+    "device": "pump",
+    "state": "-3276.8",
+    "unit": "°C",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.hot_water_top_bt7_30009",
+    "unique_id": "01JNIBES1155ENTRY-30009",
+    "device": "pump",
+    "state": "51.0",
+    "unit": "°C",
+    "disabled": false
+   },
+   {
+    "entity_id": "number.degree_minutes_16_bit_40019",
+    "unique_id": "01JNIBES1155ENTRY-40019",
+    "device": "pump",
+    "state": "-150.0",
+    "unit": "DM",
+    "disabled": false,
+    "min": -3000.0,
+    "max": 3000.0,
+    "step": 0.1
+   },
+   {
+    "entity_id": "number.degree_minutes_32_bit_40012",
+    "unique_id": "01JNIBES1155ENTRY-40012",
+    "device": "pump",
+    "state": "-150.0",
+    "unit": "DM",
+    "disabled": false,
+    "min": -3000.0,
+    "max": 3000.0,
+    "step": 0.1
+   },
+   {
+    "entity_id": "sensor.compressor_frequency_current_31047",
+    "unique_id": "01JNIBES1155ENTRY-31047",
+    "device": "pump",
+    "state": "0.0",
+    "unit": "Hz",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.power_internal_additional_heat_31028",
+    "unique_id": "01JNIBES1155ENTRY-31028",
+    "device": "pump",
+    "state": "0.0",
+    "unit": "kW",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.priority_31029",
+    "unique_id": "01JNIBES1155ENTRY-31029",
+    "device": "pump",
+    "state": "OFF",
+    "unit": null,
+    "disabled": false
+   },
+   {
+    "entity_id": "switch.activated_smart_price_adaption_40844",
+    "unique_id": "01JNIBES1155ENTRY-40844",
+    "device": "pump",
+    "state": "on",
+    "unit": null,
+    "disabled": false
+   },
+   {
+    "entity_id": "number.heating_offset_climate_system_1_40031",
+    "unique_id": "01JNIBES1155ENTRY-40031",
+    "device": "pump",
+    "state": "0.0",
+    "unit": null,
+    "disabled": false,
+    "min": -10.0,
+    "max": 10.0,
+    "step": 1.0
+   },
+   {
+    "entity_id": "number.room_sensor_set_point_value_climate_system_1_40207",
+    "unique_id": "01JNIBES1155ENTRY-40207",
+    "device": "pump",
+    "state": "20.0",
+    "unit": "°C",
+    "disabled": false,
+    "min": 5.0,
+    "max": 30.0,
+    "step": 0.1
+   },
+   {
+    "entity_id": "switch.activate_sg_ready_via_api_43033",
+    "unique_id": "01JNIBES1155ENTRY-43033",
+    "device": "pump",
+    "state": "off",
+    "unit": null,
+    "disabled": false
+   },
+   {
+    "entity_id": "number.requested_operating_mode_sg_ready_46009",
+    "unique_id": "01JNIBES1155ENTRY-46009",
+    "device": "pump",
+    "state": "0.0",
+    "unit": null,
+    "disabled": false,
+    "min": 0.0,
+    "max": 3.0,
+    "step": 1.0
+   },
+   {
+    "entity_id": "number.more_hot_water_40698",
+    "unique_id": "01JNIBES1155ENTRY-40698",
+    "device": "pump",
+    "state": "0.0",
+    "unit": null,
+    "disabled": false
+   },
+   {
+    "entity_id": "climate.climate_system_s1",
+    "unique_id": "01JNIBES1155ENTRY-s1",
+    "device": "pump",
+    "state": "auto",
+    "unit": null,
+    "disabled": false,
+    "min": 5.0,
+    "max": 35.0,
+    "step": 0.5
+   }
+  ],
+  "expected": {
+   "brand": "nibe_s",
+   "readings": {
+    "outdoor_temp_c": -1.5,
+    "supply_temp_c": 41.2,
+    "return_temp_c": 35.0,
+    "room_temp_c": null,
+    "hot_water_temp_c": 51.0,
+    "degree_minutes": -150.0,
+    "compressor_speed": 0.0,
+    "compressor_speed_unit": "Hz",
+    "compressor_running": false,
+    "immersion_kw": 0.0,
+    "immersion_on": false,
+    "priority": "off"
+   },
+   "missing": {
+    "room_temp": "implausible"
+   },
+   "price_control": "active",
+   "control": "watch_only",
+   "capabilities": {
+    "offset": [
+     "number.heating_offset_climate_system_1_40031"
+    ],
+    "setpoint": [
+     "climate.climate_system_s1",
+     "number.room_sensor_set_point_value_climate_system_1_40207"
+    ],
+    "sg_ready": [
+     "switch.activate_sg_ready_via_api_43033",
+     "number.requested_operating_mode_sg_ready_46009"
+    ],
+    "hot_water_boost": [
+     "number.more_hot_water_40698"
+    ]
+   }
+  }
+ },
+ "myuplink": {
+  "_source": "core myuplink (unique id `<device id>-<parameter id>`) and the core test fixture device_points_nibe_f730.json (124619c): the values as there; priority 49994 reads 31, which its enum has no text for, so the enum sensor is unknown; no Smart Price Adaption parameters in that fixture.",
+  "platform": "myuplink",
+  "entities": [
+   {
+    "entity_id": "sensor.f730_cu_3x400v_current_outd_temp_bt1",
+    "unique_id": "batman-r-1234-20240201-123456-aa-bb-cc-dd-ee-ff-40004",
+    "device": "pump",
+    "state": "-9.3",
+    "unit": "°C",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.f730_cu_3x400v_supply_line_bt2",
+    "unique_id": "batman-r-1234-20240201-123456-aa-bb-cc-dd-ee-ff-40008",
+    "device": "pump",
+    "state": "39.7",
+    "unit": "°C",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.f730_cu_3x400v_return_line_bt3",
+    "unique_id": "batman-r-1234-20240201-123456-aa-bb-cc-dd-ee-ff-40012",
+    "device": "pump",
+    "state": "34.4",
+    "unit": "°C",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.f730_cu_3x400v_hot_water_top_bt7",
+    "unique_id": "batman-r-1234-20240201-123456-aa-bb-cc-dd-ee-ff-40013",
+    "device": "pump",
+    "state": "46",
+    "unit": "°C",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.f730_cu_3x400v_hot_water_charging_bt6",
+    "unique_id": "batman-r-1234-20240201-123456-aa-bb-cc-dd-ee-ff-40014",
+    "device": "pump",
+    "state": "44.4",
+    "unit": "°C",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.f730_cu_3x400v_room_temperature_bt50",
+    "unique_id": "batman-r-1234-20240201-123456-aa-bb-cc-dd-ee-ff-40033",
+    "device": "pump",
+    "state": "21.2",
+    "unit": "°C",
+    "disabled": false
+   },
+   {
+    "entity_id": "number.f730_cu_3x400v_degree_minutes",
+    "unique_id": "batman-r-1234-20240201-123456-aa-bb-cc-dd-ee-ff-40940",
+    "device": "pump",
+    "state": "-875",
+    "unit": "DM",
+    "disabled": false,
+    "min": -3000.0,
+    "max": 3000.0,
+    "step": 1.0
+   },
+   {
+    "entity_id": "sensor.f730_cu_3x400v_int_elec_add_heat",
+    "unique_id": "batman-r-1234-20240201-123456-aa-bb-cc-dd-ee-ff-49993",
+    "device": "pump",
+    "state": "Active",
+    "unit": null,
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.f730_cu_3x400v_int_elec_add_heat_raw",
+    "unique_id": "batman-r-1234-20240201-123456-aa-bb-cc-dd-ee-ff-49993-raw",
+    "device": "pump",
+    "state": null,
+    "unit": null,
+    "disabled": true
+   },
+   {
+    "entity_id": "sensor.f730_cu_3x400v_priority",
+    "unique_id": "batman-r-1234-20240201-123456-aa-bb-cc-dd-ee-ff-49994",
+    "device": "pump",
+    "state": "unknown",
+    "unit": null,
+    "disabled": false
+   },
+   {
+    "entity_id": "switch.f730_cu_3x400v_temporary_lux",
+    "unique_id": "batman-r-1234-20240201-123456-aa-bb-cc-dd-ee-ff-50004",
+    "device": "pump",
+    "state": "off",
+    "unit": null,
+    "disabled": false
+   },
+   {
+    "entity_id": "number.f730_cu_3x400v_heating_offset_climate_system_1",
+    "unique_id": "batman-r-1234-20240201-123456-aa-bb-cc-dd-ee-ff-47011",
+    "device": "pump",
+    "state": "1",
+    "unit": null,
+    "disabled": false,
+    "min": -10.0,
+    "max": 10.0,
+    "step": 1.0
+   },
+   {
+    "entity_id": "number.f730_cu_3x400v_room_sensor_set_point_value_heating_climate_system_1",
+    "unique_id": "batman-r-1234-20240201-123456-aa-bb-cc-dd-ee-ff-47398",
+    "device": "pump",
+    "state": "14.5",
+    "unit": "°C",
+    "disabled": false
+   }
+  ],
+  "expected": {
+   "brand": "myuplink",
+   "readings": {
+    "outdoor_temp_c": -9.3,
+    "supply_temp_c": 39.7,
+    "return_temp_c": 34.4,
+    "room_temp_c": 21.2,
+    "hot_water_temp_c": 46.0,
+    "degree_minutes": -875.0,
+    "compressor_speed": null,
+    "compressor_speed_unit": null,
+    "compressor_running": null,
+    "immersion_kw": null,
+    "immersion_on": true,
+    "priority": null
+   },
+   "missing": {
+    "compressor_speed": "not_found",
+    "immersion_power": "not_found",
+    "priority": "unavailable"
+   },
+   "price_control": "unknown",
+   "control": "unknown",
+   "capabilities": {
+    "offset": [
+     "number.f730_cu_3x400v_heating_offset_climate_system_1"
+    ],
+    "setpoint": [
+     "number.f730_cu_3x400v_room_sensor_set_point_value_heating_climate_system_1"
+    ],
+    "hot_water_boost": [
+     "switch.f730_cu_3x400v_temporary_lux"
+    ]
+   }
+  }
+ },
+ "myuplink_smo20": {
+  "_source": "core myuplink and the core test fixture device_points_nibe_smo20.json (124619c): an SMO 20 with an air-water pump, its values as there: supply BT25 40071, return BT71 40152, hot water BT6 40014, Smart Price Adaption mode Low (41929 = 1) with a heating offset of 0.2, priority 20 = Hot water, temporary lux 50004 on and 48132 'one time increase'.",
+  "platform": "myuplink",
+  "entities": [
+   {
+    "entity_id": "sensor.smo_20_current_outd_temp_bt1",
+    "unique_id": "robin-r-1234-20240201-123456-aa-bb-cc-dd-ee-ff-40004",
+    "device": "pump",
+    "state": "11.7",
+    "unit": "°C",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.smo_20_external_supply_line_bt25",
+    "unique_id": "robin-r-1234-20240201-123456-aa-bb-cc-dd-ee-ff-40071",
+    "device": "pump",
+    "state": "31.3",
+    "unit": "°C",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.smo_20_external_return_line_bt71",
+    "unique_id": "robin-r-1234-20240201-123456-aa-bb-cc-dd-ee-ff-40152",
+    "device": "pump",
+    "state": "30",
+    "unit": "°C",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.smo_20_hot_water_charging_bt6",
+    "unique_id": "robin-r-1234-20240201-123456-aa-bb-cc-dd-ee-ff-40014",
+    "device": "pump",
+    "state": "55.5",
+    "unit": "°C",
+    "disabled": false
+   },
+   {
+    "entity_id": "number.smo_20_degree_minutes",
+    "unique_id": "robin-r-1234-20240201-123456-aa-bb-cc-dd-ee-ff-40940",
+    "device": "pump",
+    "state": "-458",
+    "unit": "DM",
+    "disabled": false,
+    "min": -3000.0,
+    "max": 3000.0,
+    "step": 1.0
+   },
+   {
+    "entity_id": "sensor.smo_20_mode_smart_price_adaption",
+    "unique_id": "robin-r-1234-20240201-123456-aa-bb-cc-dd-ee-ff-41929",
+    "device": "pump",
+    "state": "Low",
+    "unit": null,
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.smo_20_heating_offset_smart_price_adaption",
+    "unique_id": "robin-r-1234-20240201-123456-aa-bb-cc-dd-ee-ff-44896",
+    "device": "pump",
+    "state": "0.2",
+    "unit": null,
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.smo_20_priority",
+    "unique_id": "robin-r-1234-20240201-123456-aa-bb-cc-dd-ee-ff-49994",
+    "device": "pump",
+    "state": "Hot water",
+    "unit": null,
+    "disabled": false
+   },
+   {
+    "entity_id": "switch.smo_20_temporary_lux",
+    "unique_id": "robin-r-1234-20240201-123456-aa-bb-cc-dd-ee-ff-50004",
+    "device": "pump",
+    "state": "on",
+    "unit": null,
+    "disabled": false
+   },
+   {
+    "entity_id": "select.smo_20_temporary_lux",
+    "unique_id": "robin-r-1234-20240201-123456-aa-bb-cc-dd-ee-ff-48132",
+    "device": "pump",
+    "state": "One time increase",
+    "unit": null,
+    "disabled": false,
+    "options": [
+     "Off",
+     "3 hrs",
+     "6 hrs",
+     "12 hrs",
+     "One time increase"
+    ]
+   },
+   {
+    "entity_id": "number.smo_20_heating_offset_climate_system_1",
+    "unique_id": "robin-r-1234-20240201-123456-aa-bb-cc-dd-ee-ff-47011",
+    "device": "pump",
+    "state": "5",
+    "unit": null,
+    "disabled": false,
+    "min": -10.0,
+    "max": 10.0,
+    "step": 1.0
+   }
+  ],
+  "expected": {
+   "brand": "myuplink",
+   "readings": {
+    "outdoor_temp_c": 11.7,
+    "supply_temp_c": 31.3,
+    "return_temp_c": 30.0,
+    "room_temp_c": null,
+    "hot_water_temp_c": 55.5,
+    "degree_minutes": -458.0,
+    "compressor_speed": null,
+    "compressor_speed_unit": null,
+    "compressor_running": null,
+    "immersion_kw": null,
+    "immersion_on": null,
+    "priority": "hot_water"
+   },
+   "missing": {
+    "room_temp": "not_found",
+    "compressor_speed": "not_found",
+    "immersion_power": "not_found",
+    "immersion_state": "not_found"
+   },
+   "price_control": "active",
+   "control": "watch_only",
+   "capabilities": {
+    "offset": [
+     "number.smo_20_heating_offset_climate_system_1"
+    ],
+    "hot_water_boost": [
+     "switch.smo_20_temporary_lux",
+     "select.smo_20_temporary_lux"
+    ]
+   }
+  }
+ },
+ "ctc_bms": {
+  "_source": "dklemm/home-assistant-ctc-bms 0.6.0 (582dff8): unique id `<entry>_<register>` and `<entry>_<control>`, `_1100_di<n>` for the virtual inputs; registers.py/const.py/overrides.py for the map, enum text, the immersion power sensors disabled by default and 62003 reading 0 as unknown. Devices as the integration splits them (System, Zone1, HP1, DHW, AddHeat). States made up; two of the eight virtual inputs kept.",
+  "platform": "ctc_bms",
+  "entities": [
+   {
+    "entity_id": "sensor.ctc_outdoor_temperature",
+    "unique_id": "01JCTCBMSENTRY_62000",
+    "device": "system",
+    "state": "2.4",
+    "unit": "°C",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.ctc_heating_system_1_primary_flow_temperature",
+    "unique_id": "01JCTCBMSENTRY_62011",
+    "device": "zone1",
+    "state": "36.5",
+    "unit": "°C",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.ctc_return_temp",
+    "unique_id": "01JCTCBMSENTRY_62015",
+    "device": "system",
+    "state": "31.0",
+    "unit": "°C",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.ctc_heating_system_1_current_room_temp",
+    "unique_id": "01JCTCBMSENTRY_62203",
+    "device": "zone1",
+    "state": "21.1",
+    "unit": "°C",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.ctc_hot_water_actual_temperature_dhw",
+    "unique_id": "01JCTCBMSENTRY_62276",
+    "device": "dhw",
+    "state": "52.3",
+    "unit": "°C",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.ctc_hot_water_temperature",
+    "unique_id": "01JCTCBMSENTRY_62003",
+    "device": "dhw",
+    "state": "unknown",
+    "unit": "°C",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.ctc_degree_minutes",
+    "unique_id": "01JCTCBMSENTRY_62167",
+    "device": "system",
+    "state": "-45.0",
+    "unit": "DM",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.ctc_heat_pump_1_current_rps",
+    "unique_id": "01JCTCBMSENTRY_62193",
+    "device": "hp1",
+    "state": "48.0",
+    "unit": "rps",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.ctc_heat_pump_1_status",
+    "unique_id": "01JCTCBMSENTRY_62017",
+    "device": "hp1",
+    "state": "Compressor on, heating",
+    "unit": null,
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.ctc_power_kw_immersion_heater",
+    "unique_id": "01JCTCBMSENTRY_62168",
+    "device": "addheat",
+    "state": null,
+    "unit": "kW",
+    "disabled": true
+   },
+   {
+    "entity_id": "sensor.ctc_power_kw_immersion_heater_lower",
+    "unique_id": "01JCTCBMSENTRY_62169",
+    "device": "addheat",
+    "state": null,
+    "unit": "kW",
+    "disabled": true
+   },
+   {
+    "entity_id": "sensor.ctc_smartgrid_mode",
+    "unique_id": "01JCTCBMSENTRY_62301",
+    "device": "system",
+    "state": "None/Normal",
+    "unit": null,
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.ctc_elspot_price_mwh",
+    "unique_id": "01JCTCBMSENTRY_62302",
+    "device": "system",
+    "state": "0",
+    "unit": null,
+    "disabled": false
+   },
+   {
+    "entity_id": "number.ctc_heating_system_1_curve_adjustment_override",
+    "unique_id": "01JCTCBMSENTRY_1023",
+    "device": "zone1",
+    "state": "unknown",
+    "unit": "°C",
+    "disabled": false,
+    "min": -10.0,
+    "max": 10.0,
+    "step": 0.1
+   },
+   {
+    "entity_id": "number.ctc_heating_system_1_room_temperature_setpoint_override",
+    "unique_id": "01JCTCBMSENTRY_1010",
+    "device": "zone1",
+    "state": "unknown",
+    "unit": "°C",
+    "disabled": false,
+    "min": 0.0,
+    "max": 30.0,
+    "step": 0.5
+   },
+   {
+    "entity_id": "switch.ctc_virtual_digital_input_0",
+    "unique_id": "01JCTCBMSENTRY_1100_di0",
+    "device": "system",
+    "state": "off",
+    "unit": null,
+    "disabled": false
+   },
+   {
+    "entity_id": "switch.ctc_virtual_digital_input_1",
+    "unique_id": "01JCTCBMSENTRY_1100_di1",
+    "device": "system",
+    "state": "off",
+    "unit": null,
+    "disabled": false
+   },
+   {
+    "entity_id": "number.ctc_hot_water_extra_timer_override",
+    "unique_id": "01JCTCBMSENTRY_1006",
+    "device": "dhw",
+    "state": "unknown",
+    "unit": "h",
+    "disabled": false,
+    "min": 0.0,
+    "max": 24.0,
+    "step": 0.5
+   },
+   {
+    "entity_id": "number.ctc_max_rps_override",
+    "unique_id": "01JCTCBMSENTRY_1002",
+    "device": "system",
+    "state": "unknown",
+    "unit": "rps",
+    "disabled": false,
+    "min": 0.0,
+    "max": 120.0,
+    "step": 1.0
+   },
+   {
+    "entity_id": "select.ctc_electricity_price_mode_override",
+    "unique_id": "01JCTCBMSENTRY_1005",
+    "device": "system",
+    "state": "Not controlled",
+    "unit": null,
+    "disabled": false,
+    "options": [
+     "Not controlled",
+     "Low",
+     "Normal",
+     "High"
+    ]
+   }
+  ],
+  "expected": {
+   "brand": "ctc_bms",
+   "readings": {
+    "outdoor_temp_c": 2.4,
+    "supply_temp_c": 36.5,
+    "return_temp_c": 31.0,
+    "room_temp_c": 21.1,
+    "hot_water_temp_c": 52.3,
+    "degree_minutes": -45.0,
+    "compressor_speed": 48.0,
+    "compressor_speed_unit": "rps",
+    "compressor_running": true,
+    "immersion_kw": null,
+    "immersion_on": null,
+    "priority": "heating"
+   },
+   "missing": {
+    "immersion_power": "disabled"
+   },
+   "price_control": "off",
+   "control": "free",
+   "capabilities": {
+    "offset": [
+     "number.ctc_heating_system_1_curve_adjustment_override"
+    ],
+    "setpoint": [
+     "number.ctc_heating_system_1_room_temperature_setpoint_override"
+    ],
+    "sg_ready": [
+     "switch.ctc_virtual_digital_input_0",
+     "switch.ctc_virtual_digital_input_1"
+    ],
+    "hot_water_boost": [
+     "number.ctc_hot_water_extra_timer_override"
+    ],
+    "blocking": [
+     "number.ctc_max_rps_override"
+    ],
+    "price_mode": [
+     "select.ctc_electricity_price_mode_override"
+    ]
+   }
+  }
+ },
+ "ctc_local": {
+  "_source": "beolink/HA-CTC-Local-Easyconf 0.30.0 (8d2f348): unique id `ctc_ecozenith_<device key>_<key>` (the device key here a host address), keys and Swedish enum text from const.py; `hp1_outdoor_temp` beside `outdoor_temp`. States made up: a hot water run with the upper immersion heater on and SmartGrid in low price.",
+  "platform": "ctc_ecozenith",
+  "entities": [
+   {
+    "entity_id": "sensor.ctc_utetemperatur",
+    "unique_id": "ctc_ecozenith_192.168.1.40_outdoor_temp",
+    "device": "pump",
+    "state": "-4.0",
+    "unit": "°C",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.ctc_utetemperatur_vid_varmepump",
+    "unique_id": "ctc_ecozenith_192.168.1.40_hp1_outdoor_temp",
+    "device": "pump",
+    "state": "-4.6",
+    "unit": "°C",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.ctc_framledning_vs1",
+    "unique_id": "ctc_ecozenith_192.168.1.40_hs1_flow",
+    "device": "pump",
+    "state": "40.1",
+    "unit": "°C",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.ctc_returtemperatur",
+    "unique_id": "ctc_ecozenith_192.168.1.40_return_temp",
+    "device": "pump",
+    "state": "34.0",
+    "unit": "°C",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.ctc_rumstemperatur",
+    "unique_id": "ctc_ecozenith_192.168.1.40_room_temp_1",
+    "device": "pump",
+    "state": "20.8",
+    "unit": "°C",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.ctc_varmvatten",
+    "unique_id": "ctc_ecozenith_192.168.1.40_dhw_temp",
+    "device": "pump",
+    "state": "48.0",
+    "unit": "°C",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.ctc_varmvattentemperatur_62003",
+    "unique_id": "ctc_ecozenith_192.168.1.40_dhw_temp_raw",
+    "device": "pump",
+    "state": "0.0",
+    "unit": "°C",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.ctc_gradminuter",
+    "unique_id": "ctc_ecozenith_192.168.1.40_degree_minutes",
+    "device": "pump",
+    "state": "-210.0",
+    "unit": null,
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.ctc_kompressorvarvtal",
+    "unique_id": "ctc_ecozenith_192.168.1.40_hp1_rps",
+    "device": "pump",
+    "state": "62.0",
+    "unit": "rps",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.ctc_varmepump_status",
+    "unique_id": "ctc_ecozenith_192.168.1.40_hp1_status",
+    "device": "pump",
+    "state": "Till varmvatten",
+    "unit": null,
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.ctc_elpatron_ovre",
+    "unique_id": "ctc_ecozenith_192.168.1.40_immersion_upper_kw",
+    "device": "pump",
+    "state": "3.0",
+    "unit": "kW",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.ctc_elpatron_nedre",
+    "unique_id": "ctc_ecozenith_192.168.1.40_immersion_lower_kw",
+    "device": "pump",
+    "state": "0.0",
+    "unit": "kW",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.ctc_smartgrid_lage",
+    "unique_id": "ctc_ecozenith_192.168.1.40_sg_mode",
+    "device": "pump",
+    "state": "Lågpris",
+    "unit": null,
+    "disabled": false
+   },
+   {
+    "entity_id": "number.ctc_styr_rumsborvarde",
+    "unique_id": "ctc_ecozenith_192.168.1.40_ctl_room_setpoint_1",
+    "device": "pump",
+    "state": "unknown",
+    "unit": "°C",
+    "disabled": false,
+    "min": 10.0,
+    "max": 30.0,
+    "step": 0.1
+   },
+   {
+    "entity_id": "number.ctc_styr_extra_varmvatten",
+    "unique_id": "ctc_ecozenith_192.168.1.40_ctl_extra_dhw",
+    "device": "pump",
+    "state": "0.0",
+    "unit": "h",
+    "disabled": false,
+    "min": 0.0,
+    "max": 12.0,
+    "step": 0.5
+   },
+   {
+    "entity_id": "number.ctc_styr_max_varvtal",
+    "unique_id": "ctc_ecozenith_192.168.1.40_ctl_max_rps",
+    "device": "pump",
+    "state": "0.0",
+    "unit": "rps",
+    "disabled": false,
+    "min": 0.0,
+    "max": 120.0,
+    "step": 1.0
+   },
+   {
+    "entity_id": "select.ctc_styr_elprislage",
+    "unique_id": "ctc_ecozenith_192.168.1.40_ctl_price_mode",
+    "device": "pump",
+    "state": "unknown",
+    "unit": null,
+    "disabled": false,
+    "options": [
+     "Låg",
+     "Normal",
+     "Hög"
+    ]
+   }
+  ],
+  "expected": {
+   "brand": "ctc_local",
+   "readings": {
+    "outdoor_temp_c": -4.0,
+    "supply_temp_c": 40.1,
+    "return_temp_c": 34.0,
+    "room_temp_c": 20.8,
+    "hot_water_temp_c": 48.0,
+    "degree_minutes": -210.0,
+    "compressor_speed": 62.0,
+    "compressor_speed_unit": "rps",
+    "compressor_running": true,
+    "immersion_kw": 3.0,
+    "immersion_on": true,
+    "priority": "hot_water"
+   },
+   "missing": {},
+   "price_control": "active",
+   "control": "watch_only",
+   "capabilities": {
+    "setpoint": [
+     "number.ctc_styr_rumsborvarde"
+    ],
+    "hot_water_boost": [
+     "number.ctc_styr_extra_varmvatten"
+    ],
+    "blocking": [
+     "number.ctc_styr_max_varvtal"
+    ],
+    "price_mode": [
+     "select.ctc_styr_elprislage"
+    ]
+   }
+  }
+ },
+ "heishamon": {
+  "_source": "kamaradclimber/heishamon-homeassistant 2.14.0 (6c91321), domain `aquarea`: unique id `<entry>-<topic id>` (TOP for readings, SET or a command for writables, `<entry>-<zone>` for the zone climate), entity ids from the MQTT topic; topics from heishamon/HeishaMon MQTT-Topics.md (ad7804e). No degree minutes, no room sensor topic read; the SmartGrid select is disabled by default (optional PCB). States made up.",
+  "platform": "aquarea",
+  "entities": [
+   {
+    "entity_id": "sensor.panasonic_heat_pump_main_outside_temp",
+    "unique_id": "01JHEISHAMONENTRY-TOP14",
+    "device": "pump",
+    "state": "5.0",
+    "unit": "°C",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.panasonic_heat_pump_main_main_outlet_temp",
+    "unique_id": "01JHEISHAMONENTRY-TOP6",
+    "device": "pump",
+    "state": "35.0",
+    "unit": "°C",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.panasonic_heat_pump_main_main_inlet_temp",
+    "unique_id": "01JHEISHAMONENTRY-TOP5",
+    "device": "pump",
+    "state": "30.0",
+    "unit": "°C",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.panasonic_heat_pump_main_dhw_temp",
+    "unique_id": "01JHEISHAMONENTRY-TOP10",
+    "device": "pump",
+    "state": "47.0",
+    "unit": "°C",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.panasonic_heat_pump_main_compressor_freq",
+    "unique_id": "01JHEISHAMONENTRY-TOP8",
+    "device": "pump",
+    "state": "38",
+    "unit": "Hz",
+    "disabled": false
+   },
+   {
+    "entity_id": "binary_sensor.panasonic_heat_pump_main_internal_heater_state",
+    "unique_id": "01JHEISHAMONENTRY-TOP60",
+    "device": "pump",
+    "state": "off",
+    "unit": null,
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.panasonic_heat_pump_main_threeway_valve_state",
+    "unique_id": "01JHEISHAMONENTRY-TOP20",
+    "device": "pump",
+    "state": "Room",
+    "unit": null,
+    "disabled": false
+   },
+   {
+    "entity_id": "number.panasonic_heat_pump_main_z1_heat_request_temp",
+    "unique_id": "01JHEISHAMONENTRY-SET5",
+    "device": "pump",
+    "state": "-2",
+    "unit": "°C",
+    "disabled": false,
+    "min": -5.0,
+    "max": 20.0,
+    "step": 1.0
+   },
+   {
+    "entity_id": "climate.aquarea_zone_1_climate",
+    "unique_id": "01JHEISHAMONENTRY-1",
+    "device": "pump",
+    "state": "heat",
+    "unit": null,
+    "disabled": false,
+    "min": -5.0,
+    "max": 5.0,
+    "step": 1.0
+   },
+   {
+    "entity_id": "switch.panasonic_heat_pump_main_force_dhw_state",
+    "unique_id": "01JHEISHAMONENTRY-SET10",
+    "device": "pump",
+    "state": "off",
+    "unit": null,
+    "disabled": false
+   },
+   {
+    "entity_id": "select.panasonic_heat_pump_commands_setsmartgridmode",
+    "unique_id": "01JHEISHAMONENTRY-SetSmartGridMode",
+    "device": "pump",
+    "state": null,
+    "unit": null,
+    "disabled": true
+   }
+  ],
+  "expected": {
+   "brand": "heishamon",
+   "readings": {
+    "outdoor_temp_c": 5.0,
+    "supply_temp_c": 35.0,
+    "return_temp_c": 30.0,
+    "room_temp_c": null,
+    "hot_water_temp_c": 47.0,
+    "degree_minutes": null,
+    "compressor_speed": 38.0,
+    "compressor_speed_unit": "Hz",
+    "compressor_running": true,
+    "immersion_kw": null,
+    "immersion_on": false,
+    "priority": "heating"
+   },
+   "missing": {},
+   "price_control": "none",
+   "control": "free",
+   "capabilities": {
+    "offset": [
+     "number.panasonic_heat_pump_main_z1_heat_request_temp"
+    ],
+    "setpoint": [
+     "climate.aquarea_zone_1_climate"
+    ],
+    "hot_water_boost": [
+     "switch.panasonic_heat_pump_main_force_dhw_state"
+    ],
+    "sg_ready": [
+     "select.panasonic_heat_pump_commands_setsmartgridmode"
+    ]
+   }
+  }
+ }
+}
