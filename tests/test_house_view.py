@@ -176,6 +176,10 @@ def battery_reviews(now: datetime) -> list[DayReview]:
                 modes={"balanced": Run(sc - 690.0 - 10 * back, 40.0), "max_profit": Run(sc - 735.0, 40.0)},
                 soc_mae=4.2,
                 mode="balanced",
+                # Against no battery (the day would have cost 500 more), the sun's value, and a few days that lack one.
+                no_battery_cost=None if back == 11 else sc + 500.0,
+                sun_gave=800.0 + 20 * back,
+                sun_quarters=None if back == 7 else 60 if back == 5 else 96,
             )
         )
     return reviews
@@ -425,6 +429,12 @@ def test_a_past_day_shows_its_own_hours_money_and_flow() -> None:
         "mode": review.mode,
         "modes": {mode: round(review.mode_savings[mode], 2) if mode in review.mode_savings else None for mode in ("self_consumption", "balanced", "max_profit")},
         "own_saving": round(review.actual_saving, 2),
+        "battery_saving": round(review.no_battery_cost - review.actual.cost, 2),
+        "sun_gave": 820.0,
+        "against_nothing": round(review.no_battery_cost - review.actual.cost + 820.0, 2),
+        "covered_quarters": 96,
+        "day_quarters": 96,
+        "sun_quarters": 96,
     }
     _fixture("villa_past_day.json", view)
     # A day nothing was measured on says so.

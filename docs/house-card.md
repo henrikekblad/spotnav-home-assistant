@@ -37,6 +37,20 @@ minutes.
 * **The money line**: the last reviewed days, SpotNav's plan against the battery's own way, each measured against plain
   self-consumption. Until a day has been reviewed it says what the plan expects until the end of its horizon, and the
   first comparison arrives the night after.
+* **The battery app's measure** (under the comparison): the same day in the terms the battery's own app uses, which are
+  not the comparison's. Two baselines, no setting:
+  * *Battery against no battery*: what the day really cost (bought at the buy price, less sold at the sell price) against
+    the same day with no battery at all: the house and the car on the grid, the sun still there. A positive figure is
+    money the battery saved. This is the one to hold up against the battery app's own figure. The energy the battery holds
+    at the end of the day is not counted in it, which the comparison above does count: a battery that emptied itself looks
+    better here than there.
+  * *What the sun gave*: the day with the sun and no battery against the same day with no sun and no battery (the sun used
+    in the house at the buy price, the sold sun at the sell price). The sun's production comes from the Energy dashboard's
+    solar statistics, read a little after midnight. *Sun and battery together* is then against a day with neither.
+
+  All of it is worked out from the same measured quarter hours as the comparison, so a day the meters missed part of says
+  how many of its quarter hours the figures cover, and how many of them had the sun's production. Today shows the sums of
+  the reviewed days.
 * **The forecast line**: how far off the forecasts were over the last week: the house in kW, the sun in kWh (with the
   corrected figure beside it where there is one) and the battery's level in points. Before the first whole day has been
   reviewed it says so.

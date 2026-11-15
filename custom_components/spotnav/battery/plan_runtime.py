@@ -116,7 +116,9 @@ from .plan_shadow import (
     review_totals,
     slot_at,
     soc_by_hour_end,
+    usable_buckets,
 )
+from .review_baselines import sun_by_quarter
 from .learned import LearnedBattery, with_learned
 from .stored_value import StoredValue
 
@@ -433,6 +435,8 @@ class BatteryPlanShadow:
         self._quarter: datetime | None = None
         self._checked_at: datetime | None = None
         self._running = False
+        #: Whether the sun's production for the reviews is being read (`_async_sun`).
+        self._sun_running = False
         self._loaded = False
         self._closed = False
 
@@ -574,8 +578,53 @@ class BatteryPlanShadow:
                     self.reviews.append(review)
                     _LOGGER.debug("SpotNav battery plan: %s reviewed, saving %.0f", day, review.saving)
             self.reviews = sorted(self.reviews, key=lambda r: r.day)[-REVIEW_DAYS:]
+            self._ask_sun(now)
         self.actuals.prune(now)
         self._save()
+
+    def _ask_sun(self, now: datetime) -> None:
+        """Read what the sun gave for the reviews that wait for its production (one read at a time)."""
+        waiting = [review.day for review in self.reviews if review.sun_quarters is None]
+        if not waiting or self._sun_running or self._closed:
+            return
+        self._sun_running = True
+        self.hass.async_create_task(self._async_sun(waiting), "spotnav_battery_review_sun", eager_start=False)
+
+    async def _async_read_sun(self, first: datetime, end: datetime) -> dict[datetime, float] | None:
+        """The sun's production per UTC quarter hour from the Energy dashboard's statistics (five minutes where the
+        recorder has them, else the hour); `None` without solar statistics. Raises when they cannot be read."""
+        from ..site.energy_statistics import async_energy_ids, async_statistics, summed  # noqa: PLC0415
+
+        ids, _export = await async_energy_ids(self.hass)
+        if not ids:
+            return None
+        hourly = summed(await async_statistics(self.hass, ids, first, end, "hour"), ids)
+        five = summed(await async_statistics(self.hass, ids, first, end, "5minute"), ids)
+        return sun_by_quarter(five, hourly)
+
+    async def _async_sun(self, days: list[date]) -> None:
+        """Fill the waiting reviews' sun figures (`review_baselines.py`); a failed read waits for the next quarter
+        hour, the quarter hours being kept only a few days."""
+        try:
+            tz = self._tz
+            zone = time_zones.require_zone(tz)
+            first = datetime(days[0].year, days[0].month, days[0].day, tzinfo=zone).astimezone(timezone.utc)
+            last = days[-1] + timedelta(days=1)
+            end = datetime(last.year, last.month, last.day, tzinfo=zone).astimezone(timezone.utc)
+            sun = await self._async_read_sun(first, end)
+            filled: dict[date, DayReview] = {}
+            for review in self.reviews:
+                if review.day not in days or review.sun_quarters is not None:
+                    continue
+                usable = usable_buckets(self.actuals.buckets.values(), review.day, tz)
+                filled[review.day] = review.with_sun(usable, sun or {}) if usable else replace(review, sun_quarters=0)
+            if filled:
+                self.reviews = [filled.get(review.day, review) for review in self.reviews]
+                self._save()
+        except Exception:  # noqa: BLE001 - the sun's figure waits for the next try
+            _LOGGER.debug("SpotNav battery plan: the sun's production could not be read", exc_info=True)
+        finally:
+            self._sun_running = False
 
     # ---- the triggers
 

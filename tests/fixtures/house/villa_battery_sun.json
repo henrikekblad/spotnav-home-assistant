@@ -29,12 +29,14 @@
     },
     "reason": null,
     "review": {
+      "battery_saving": 8030.0,
       "days": 7,
       "first": "2026-11-06",
       "last": "2026-11-12",
       "own_saving": 4530.0,
       "plan_saving": 5110.0,
-      "self_consumption_net": 30450.0
+      "self_consumption_net": 30450.0,
+      "sun_gave": 5220.0
     },
     "soc_pct": 48.3,
     "soc_review": {
@@ -144,73 +146,94 @@
   "day_review": null,
   "days": [
     {
+      "against_nothing": 1950.0,
       "arbitrage": 875.0,
+      "battery_saving": 1130.0,
       "date": "2026-11-12",
       "house_mae": 0.086,
       "own_saving": 630.0,
       "plan_saving": 700.0,
       "soc_mae": 2.5,
       "sun_corrected_mae": 0.013,
+      "sun_gave": 820.0,
       "sun_mae": 0.056
     },
     {
+      "against_nothing": 1990.0,
       "arbitrage": 850.0,
+      "battery_saving": 1150.0,
       "date": "2026-11-11",
       "house_mae": 0.093,
       "own_saving": 650.0,
       "plan_saving": 710.0,
       "soc_mae": 2.5,
       "sun_corrected_mae": 0.019,
+      "sun_gave": 840.0,
       "sun_mae": 0.084
     },
     {
+      "against_nothing": 2030.0,
       "arbitrage": 825.0,
+      "battery_saving": 1170.0,
       "date": "2026-11-10",
       "house_mae": 0.088,
       "own_saving": 670.0,
       "plan_saving": 720.0,
       "soc_mae": 2.5,
       "sun_corrected_mae": 0.017,
+      "sun_gave": 860.0,
       "sun_mae": 0.075
     },
     {
+      "against_nothing": 1770.0,
       "arbitrage": 800.0,
+      "battery_saving": 890.0,
       "date": "2026-11-09",
       "house_mae": 0.087,
       "own_saving": 390.0,
       "plan_saving": 730.0,
       "soc_mae": 2.5,
       "sun_corrected_mae": 0.015,
+      "sun_gave": 880.0,
       "sun_mae": 0.065
     },
     {
+      "against_nothing": null,
       "arbitrage": 900.0,
+      "battery_saving": 1210.0,
       "date": "2026-11-08",
       "house_mae": 0.092,
       "own_saving": 710.0,
       "plan_saving": 740.0,
       "soc_mae": 2.5,
       "sun_corrected_mae": 0.013,
+      "sun_gave": 900.0,
       "sun_mae": 0.056
     },
     {
+      "against_nothing": 2150.0,
       "arbitrage": 875.0,
+      "battery_saving": 1230.0,
       "date": "2026-11-07",
       "house_mae": 0.09,
       "own_saving": 730.0,
       "plan_saving": 750.0,
       "soc_mae": 2.5,
       "sun_corrected_mae": 0.019,
+      "sun_gave": 920.0,
       "sun_mae": 0.084
     },
     {
+      "against_nothing": null,
       "arbitrage": 850.0,
+      "battery_saving": 1250.0,
       "date": "2026-11-06",
       "house_mae": 0.086,
       "own_saving": 750.0,
       "plan_saving": 760.0,
       "soc_mae": 2.5,
       "sun_corrected_mae": 0.017,
+      "sun_gave": null,
       "sun_mae": 0.075
     }
   ],

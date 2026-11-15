@@ -57,6 +57,10 @@ export const HOUSE_CLASSES = {
   compareTrack: "spotnav-house-compare-track",
   compareFill: "spotnav-house-compare-fill",
   compareValue: "spotnav-house-compare-value",
+  base: "spotnav-house-base",
+  baseRow: "spotnav-house-base-row",
+  baseValue: "spotnav-house-base-value",
+  baseNote: "spotnav-house-base-note",
   dayStep: "spotnav-house-day-step",
   dayLabel: "spotnav-house-day-label",
   calendar: "spotnav-house-calendar",
@@ -123,6 +127,24 @@ export const HOUSE_STYLES = `
     text-align: right;
     white-space: nowrap;
     font-variant-numeric: tabular-nums;
+  }
+  .${H.base} {
+    margin-top: 8px;
+  }
+  .${H.baseRow} {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    padding-top: 4px;
+    font-size: 0.86rem;
+  }
+  .${H.baseValue} {
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+  .${H.baseNote} {
+    margin: 0;
+    font-size: 0.78rem;
   }
   .${H.dayBar} {
     display: flex;

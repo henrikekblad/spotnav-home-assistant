@@ -314,6 +314,68 @@ function compareBlock(doc: Document, language: Language, answer: HouseAnswer): H
   return section;
 }
 
+/** The day (or the week) in the battery app's terms: what the battery saved against no battery at all, what the sun
+ * gave, and both together, each with a line saying what it is compared with. A past day says how much of it the figures
+ * cover; today shows the reviewed days' sums. `null` where nothing is known yet. */
+function baselinesBlock(doc: Document, language: Language, answer: HouseAnswer): HTMLElement | null {
+  const battery = answer.battery;
+  if (battery === null) {
+    return null;
+  }
+  let heading: string;
+  let figures: Array<{ key: string; value: number | null }>;
+  let coverage = "";
+  if (answer.day !== null && !answer.day.today) {
+    const review = answer.day_review;
+    if (review === null || (review.battery_saving === null && review.sun_gave === null)) {
+      return null;
+    }
+    heading = translate(language, "house.baselines.headingDay", { day: dateLabel(language, review.date) });
+    figures = [
+      { key: "battery", value: review.battery_saving },
+      { key: "sun", value: review.sun_gave },
+      { key: "both", value: review.against_nothing },
+    ];
+    if (review.day_quarters > 0 && review.covered_quarters < review.day_quarters) {
+      coverage = translate(language, "house.baselines.partial", { covered: String(review.covered_quarters), total: String(review.day_quarters) });
+    }
+    if (review.sun_gave !== null && review.sun_quarters < review.covered_quarters) {
+      coverage = `${coverage} ${translate(language, "house.baselines.sunPartial", { sun: String(review.sun_quarters), covered: String(review.covered_quarters) })}`.trim();
+    }
+  } else {
+    const review = battery.review;
+    if (review === null || (review.battery_saving === null && review.sun_gave === null)) {
+      return null;
+    }
+    heading = translate(language, `house.baselines.headingWeek.${pluralForm(language, review.days)}`, { days: String(review.days) });
+    figures = [
+      { key: "battery", value: review.battery_saving },
+      { key: "sun", value: review.sun_gave },
+    ];
+  }
+  const section = element(doc, "section", H.base);
+  section.dataset["part"] = "baselines";
+  section.append(element(doc, "p", `${C.muted} ${H.compareHead}`, heading));
+  for (const figure of figures) {
+    if (figure.value === null) {
+      continue;
+    }
+    const row = element(doc, "div", H.baseRow);
+    row.dataset["row"] = figure.key;
+    row.append(
+      element(doc, "span", undefined, translate(language, `house.baselines.${figure.key}` as TranslationKey)),
+      element(doc, "span", H.baseValue, amount(language, figure.value, answer.money)),
+    );
+    section.append(row, element(doc, "p", `${C.muted} ${H.baseNote}`, translate(language, `house.baselines.${figure.key}Note` as TranslationKey)));
+  }
+  if (coverage !== "") {
+    const partial = element(doc, "p", `${C.muted} ${H.baseNote}`, coverage);
+    partial.dataset["line"] = "baselines-coverage";
+    section.append(partial);
+  }
+  return section;
+}
+
 /** A `YYYY-MM-DD` day moved by `days`. */
 export function shiftDay(isoDate: string, days: number): string {
   const [year, month, dayOfMonth] = isoDate.split("-").map(Number) as [number, number, number];
@@ -879,6 +941,10 @@ export function houseBody(input: HouseRenderInput): HTMLElement {
   const comparison = compareBlock(doc, language, answer);
   if (comparison !== null) {
     card.append(comparison);
+  }
+  const baselines = baselinesBlock(doc, language, answer);
+  if (baselines !== null) {
+    card.append(baselines);
   }
   // The week's sentence is the comparison's own once a night was reviewed; before, the line says what is to come.
   const saving = comparison !== null && answer.battery?.review !== null ? null : savingLine(language, answer);
