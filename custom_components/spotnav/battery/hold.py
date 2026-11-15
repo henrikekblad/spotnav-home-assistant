@@ -26,7 +26,9 @@ The rules follow `plans/research_integrations/battery_control_2026-10-03.md` §3
   (a never-set limit, Sigenergy's `unknown`, as the rating; never `unknown` itself).
 * Restore at once when the car stops charging from the grid, the battery charges, a reading goes stale, the plant
   leaves the grid, the measurement is lost, the headroom falls under `RESTORE_HEADROOM_A`, the battery stops being
-  free or a control role goes away; and first of all after a restart that finds a hold.
+  free (judged as the executor judges it: the Remote EMS SpotNav's own hold turns on is not the plant's own
+  management, and a reading that blinks is the executor's to judge after its grace) or a control role goes away;
+  and first of all after a restart that finds a hold.
 
 Everything is a decision: nothing is written. While shadowed a "hold" does not stop the battery, so the part keeps
 judging from the battery's own readings. Each non-write outcome (left alone, not possible) is logged once per grid
@@ -52,6 +54,7 @@ from .executor import (
     ExecInputs,
     Preview,
     RoleRead,
+    management_problem,
     preview,
 )
 from .facts import BatteryFacts
@@ -310,10 +313,14 @@ def _restore_reason(inputs: HoldInputs, memory: HoldMemory) -> str | None:
         return "measurement_lost"
     if inputs.headroom_a is None or inputs.headroom_a < RESTORE_HEADROOM_A:
         return "headroom_low"
-    if facts.management.state != "free":
-        return f"{facts.management.state}:{facts.management.reason}"
-    if control_for(facts.brand) is None:
+    control = control_for(facts.brand)
+    if control is None:
         return "no_brand_control"
+    # The hold's own writes turn Remote EMS on: that is SpotNav's, not the plant's own management. A reading that
+    # blinks (`unknown`) is the executor's to judge after its grace.
+    management = management_problem(facts, control, active=True)
+    if management is not None and management != "unknown":
+        return management
     for name in memory.entities:
         read = inputs.reads.get(name)
         if read is None or not read.found:
@@ -351,8 +358,13 @@ def step(memory: HoldMemory, inputs: HoldInputs) -> tuple[HoldMemory, HoldDecisi
         return replace(memory, armed_since=now), None
     if (now - memory.armed_since).total_seconds() < ARM_S:
         return memory, None
-    if facts.management.state != "free":
-        return _note(memory, "left_alone", f"{facts.management.state}:{facts.management.reason}", inputs)
+    control = control_for(facts.brand)
+    if control is None:
+        management = None if facts.management.state == "free" else f"{facts.management.state}:{facts.management.reason}"
+    else:
+        management = management_problem(facts, control, active=True)
+    if management is not None:
+        return _note(memory, "left_alone", management, inputs)
     seen = would_hold(inputs, memory.writes_today)
     if seen.blocker is not None:
         return _note(memory, "not_possible", seen.blocker, inputs)

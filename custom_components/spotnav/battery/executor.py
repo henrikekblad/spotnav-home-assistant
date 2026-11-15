@@ -480,7 +480,7 @@ def _restore_value(role: Role, state: str | None, facts: BatteryFacts) -> Native
     return reading(role, state)
 
 
-def _management_problem(facts: BatteryFacts, control: BrandControl, active: bool) -> str | None:
+def management_problem(facts: BatteryFacts, control: BrandControl, active: bool) -> str | None:
     """Why the battery is not SpotNav's to run now; `unknown` when a setting cannot be read."""
     management = facts.management
     if management.state == "free":
@@ -764,7 +764,7 @@ class Executor:
             return "headroom_unknown"
         if (action in _RAISES_IMPORT or self.state.action in _RAISES_IMPORT) and inputs.headroom_a < RESTORE_HEADROOM_A:
             return "fuse_headroom"
-        management = _management_problem(facts, self.control, active=True)
+        management = management_problem(facts, self.control, active=True)
         if management == "unknown":
             since = self.state.management_unknown_since or inputs.now
             self.state = replace(self.state, management_unknown_since=since)
@@ -905,7 +905,7 @@ class Executor:
             return problem
         if facts.brand != self.control.brand:
             return "brand_mismatch"
-        management = _management_problem(facts, self.control, active=inputs.sibling_active)
+        management = management_problem(facts, self.control, active=inputs.sibling_active)
         if management is not None:
             return management
         if facts.on_grid is False:
