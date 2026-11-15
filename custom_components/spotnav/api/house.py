@@ -18,6 +18,8 @@ lookup's codes, `spotnav_unknown_site` and `spotnav_no_site` (the charger is in 
 
 from __future__ import annotations
 
+import logging
+from collections.abc import Awaitable
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 from typing import Any, Final
@@ -64,6 +66,8 @@ from .power_month import ERROR_NO_SITE, PowerMonthRefusal, _site_of_request
 #: Today's energy flow is read from the recorder again after this many seconds, and at every new hour.
 FLOW_REFRESH_S: Final = 600
 _FLOW_CACHE: Final = f"{DOMAIN}_house_flow"
+
+_LOGGER = logging.getLogger(__name__)
 
 
 ERROR_INVALID_DATE: Final = "spotnav_invalid_date"
@@ -253,6 +257,24 @@ async def async_cached_recorded_soc(
     )
 
 
+async def _or_none(read: Awaitable[Any], what: str) -> Any:
+    """`read`'s answer, or `None` when it cannot be had (no recorder, statistics that fail): the view shows the rest."""
+    try:
+        return await read
+    except Exception:  # noqa: BLE001 - a figure that cannot be read is left out, never the whole view
+        _LOGGER.debug("SpotNav house view: the %s could not be read", what, exc_info=True)
+        return None
+
+
+@callback
+def forget_cached_flow(hass: HomeAssistant, site_entry_id: str) -> None:
+    """Drop the site's cached energy flow and recorded SoC (its unload)."""
+    cache: dict[tuple[str, str, date | None], _FlowCached] | None = hass.data.get(_FLOW_CACHE)
+    if cache:
+        for key in [key for key in cache if key[0] == site_entry_id]:
+            del cache[key]
+
+
 def requested_day(raw: Any, now: datetime, tz: str) -> date | None:
     """The past day asked for (`None`: today), or a `PowerMonthRefusal`."""
     if raw is None:
@@ -344,8 +366,8 @@ async def websocket_get_house(
         flow = day = soc = None
         if site.state is ConfigEntryState.LOADED and controller is not None:
             day = requested_day(msg.get("date"), controller.demand.now(), controller.demand.tracker.tz)
-            flow = await async_cached_energy_flow(hass, site.entry_id, controller, day)
-            soc = await async_cached_recorded_soc(hass, site.entry_id, controller, day)
+            flow = await _or_none(async_cached_energy_flow(hass, site.entry_id, controller, day), "energy flow")
+            soc = await _or_none(async_cached_recorded_soc(hass, site.entry_id, controller, day), "recorded SoC")
         answer = house_answer(hass, site, flow, day, soc)
     except PowerMonthRefusal as refusal:
         connection.send_error(msg["id"], refusal.code, refusal.message)
