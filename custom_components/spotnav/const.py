@@ -124,6 +124,9 @@ CONF_SAFETY_MARGIN_A = "safety_margin_a"
 #: The site's import target (kW, an hourly mean of net import; absent is none). Measured and shown against the
 #: running hour (`site/demand_tracker.py`); nothing holds a charger for it yet.
 CONF_IMPORT_TARGET_KW = "import_target_kw"
+#: The heat pump's electricity meter (a power or energy sensor; absent or "" is none): only where SpotNav cannot find
+#: it by itself (`site/heat_meter.py`). Shown in the house card; nothing controls the heat pump.
+CONF_HEAT_METER_ENTITY = "heat_meter_entity"
 CONF_MEASUREMENT_MODE = "measurement_mode"
 CONF_CHARGER_ENTRY_IDS = "charger_entry_ids"
 # A charger's place in its site's allocation order, on the charger entry: "first" is served before
