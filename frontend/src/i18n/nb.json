@@ -738,6 +738,8 @@
   "settings.deadline.calendarOnlyHelp": "En dag uten hendelse har ingen avreise: planen løper til neste hendelse. Kan kalenderen ikke leses, brukes den daglige avreisen.",
   "settings.deadline.timeFallback": "Reservetid hvis kalenderen ikke kan leses",
   "settings.deadline.calendarMissing": "Legg til en kalender i Home Assistant for å styre avreisen med den.",
+  "settings.info.show": "Vis hjelp",
+  "settings.info.hide": "Skjul hjelp",
   "settings.deadline.calendarNoEvent": "Ingen hendelse de neste 7 dagene: det er ingen avreise, så planen bruker de billigste kjente timene.",
   "settings.ifNotReady": "Hvis bilen ikke rekker å bli ferdig",
   "settings.ifNotReady.ask": "Spør",

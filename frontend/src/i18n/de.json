@@ -738,6 +738,8 @@
   "settings.deadline.calendarOnlyHelp": "Ein Tag ohne Termin hat keine Abfahrt: Der Plan läuft bis zum nächsten Termin. Ist der Kalender nicht lesbar, gilt die tägliche Abfahrt.",
   "settings.deadline.timeFallback": "Ersatzzeit, falls der Kalender nicht lesbar ist",
   "settings.deadline.calendarMissing": "Füge in Home Assistant einen Kalender hinzu, um die Abfahrt damit zu steuern.",
+  "settings.info.show": "Hilfe anzeigen",
+  "settings.info.hide": "Hilfe ausblenden",
   "settings.deadline.calendarNoEvent": "Kein Termin in den nächsten 7 Tagen: Es gibt keine Abfahrt, also nutzt der Plan die günstigsten bekannten Stunden.",
   "settings.ifNotReady": "Wenn das Auto nicht rechtzeitig fertig wird",
   "settings.ifNotReady.ask": "Fragen",

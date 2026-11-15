@@ -738,6 +738,8 @@
   "settings.deadline.calendarOnlyHelp": "Un jour sans événement n'a pas de départ : le plan va jusqu'au prochain événement. Si le calendrier ne peut pas être lu, le départ quotidien s'applique.",
   "settings.deadline.timeFallback": "Heure de repli si le calendrier ne peut pas être lu",
   "settings.deadline.calendarMissing": "Ajoutez un calendrier dans Home Assistant pour piloter le départ avec lui.",
+  "settings.info.show": "Afficher l'aide",
+  "settings.info.hide": "Masquer l'aide",
   "settings.deadline.calendarNoEvent": "Aucun événement dans les 7 prochains jours : il n'y a pas de départ, le plan utilise donc les heures les moins chères connues.",
   "settings.ifNotReady": "Si la voiture ne peut pas être prête à temps",
   "settings.ifNotReady.ask": "Demander",

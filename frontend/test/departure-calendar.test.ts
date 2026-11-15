@@ -261,6 +261,29 @@ describe("the Plan dialog's calendar", () => {
     expect(built.values().departureDate).toBe("2026-10-03");
   });
 
+  it("folds both calendar help texts behind info buttons, collapsed by default, beside the status note that stays", () => {
+    const { built } = dialog("en", block(), { departure_calendar_only: false });
+    const help = built.body.querySelector<HTMLElement>("[data-note='departure-calendar-help']")!;
+    const onlyHelp = built.body.querySelector<HTMLElement>("[data-note='departure-calendar-only-help']")!;
+    const note = built.body.querySelector<HTMLElement>("[data-note='departure-calendar']")!;
+    expect(help.hidden).toBe(true);
+    expect(onlyHelp.hidden).toBe(true);
+    expect(note.hidden).toBe(false);
+    const buttons = [...built.body.querySelectorAll<HTMLButtonElement>("button[data-info]")];
+    expect(buttons.map((button) => button.getAttribute("aria-controls"))).toEqual([help.id, onlyHelp.id]);
+    buttons[0]!.click();
+    expect(help.hidden).toBe(false);
+    expect(buttons[0]!.getAttribute("aria-expanded")).toBe("true");
+    buttons[1]!.click();
+    expect(onlyHelp.hidden).toBe(false);
+    // Unchoosing the calendar hides the switch and folds its help.
+    const select = built.body.querySelector<HTMLSelectElement>("[data-part='departure-calendar'] select")!;
+    select.value = "";
+    select.dispatchEvent(new Event("change"));
+    expect(onlyHelp.hidden).toBe(true);
+    expect(buttons[1]!.getAttribute("aria-expanded")).toBe("false");
+  });
+
   it("shows the day controls again when the calendar is unchosen", () => {
     const { built } = dialog("en", block(), { departure_calendar_only: true });
     const controls = built.body.querySelector<HTMLElement>("[data-part='departure-day-controls']")!;

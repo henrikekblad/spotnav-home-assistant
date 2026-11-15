@@ -738,6 +738,8 @@
   "settings.deadline.calendarOnlyHelp": "Een dag zonder afspraak heeft geen vertrek: het plan loopt tot de volgende afspraak. Is de agenda niet te lezen, dan geldt het dagelijkse vertrek.",
   "settings.deadline.timeFallback": "Reservetijd als de agenda niet te lezen is",
   "settings.deadline.calendarMissing": "Voeg een agenda toe in Home Assistant om het vertrek ermee te sturen.",
+  "settings.info.show": "Hulp tonen",
+  "settings.info.hide": "Hulp verbergen",
   "settings.deadline.calendarNoEvent": "Geen afspraak in de komende 7 dagen: er is geen vertrek, dus het plan gebruikt de goedkoopste bekende uren.",
   "settings.ifNotReady": "Als de auto niet op tijd klaar kan zijn",
   "settings.ifNotReady.ask": "Vragen",

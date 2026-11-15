@@ -22,6 +22,7 @@ import {
 } from "./settings";
 import { VISUAL_CLASSES as C, summaryValueClass } from "./visual-styles";
 import { settingRow } from "./value-editors";
+import { infoButton, type InfoButton } from "./info-button";
 import { floorSegment, placeMarks, targetTicks } from "./percent-slider";
 import { chargeCeiling, effectiveTarget, targetNeedKwh } from "./target-need";
 import type { DepartureCalendarBlock, Soc, Vehicle } from "./validate";
@@ -548,9 +549,11 @@ export function settingsEditorBody(
     note.setAttribute("aria-live", "polite");
     const help = element(doc, "p", C.settingsNote, translate(language, "settings.deadline.calendarHelp"));
     help.dataset["note"] = "departure-calendar-help";
+    const helpInfo = infoButton(doc, language, help, `${idPrefix}-deadline-calendar-help`);
     // Whether the calendar alone decides: only where the backend has the field, and shown once a calendar is chosen.
     let onlyRow: HTMLElement | null = null;
     let onlyHelp: HTMLElement | null = null;
+    let onlyInfo: InfoButton | null = null;
     if (form.values.departureCalendarOnly !== undefined) {
       calendarOnlyInput = doc.createElement("input") as HTMLInputElement;
       calendarOnlyInput.type = "checkbox";
@@ -566,21 +569,33 @@ export function settingsEditorBody(
       onlyRow.dataset["part"] = "departure-calendar-only";
       onlyHelp = element(doc, "p", C.settingsNote, translate(language, "settings.deadline.calendarOnlyHelp"));
       onlyHelp.dataset["note"] = "departure-calendar-only-help";
+      onlyInfo = infoButton(doc, language, onlyHelp, `${idPrefix}-deadline-calendar-only-help`);
+      onlyRow.append(onlyInfo.button);
     }
     const paint = (): void => {
       syncCalendarOnly();
       const text = select.value !== "" && select.value === block.entity_id ? calendarNote(block) : "";
       note.textContent = text;
       note.hidden = text === "";
-      help.hidden = select.value === "";
-      if (onlyRow !== null && onlyHelp !== null) {
+      if (onlyRow !== null && onlyInfo !== null) {
         onlyRow.hidden = select.value === "";
-        onlyHelp.hidden = select.value === "";
+        if (select.value === "") {
+          onlyInfo.collapse();
+        }
       }
     };
     select.addEventListener("change", paint);
     calendarOnlyInput?.addEventListener("change", paint);
-    group.append(field(doc, `${idPrefix}-deadline-calendar`, translate(language, "settings.deadline.calendar"), select));
+    const selectField = field(doc, `${idPrefix}-deadline-calendar`, translate(language, "settings.deadline.calendar"), select);
+    // The info button sits beside the label, and the help it folds away goes under the picker.
+    const selectLabel = selectField.querySelector("label");
+    if (selectLabel !== null) {
+      const head = element(doc, "div");
+      head.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:8px";
+      selectLabel.replaceWith(head);
+      head.append(selectLabel, helpInfo.button);
+    }
+    group.append(selectField);
     if (onlyRow !== null && onlyHelp !== null) {
       group.append(onlyRow, onlyHelp);
     }
