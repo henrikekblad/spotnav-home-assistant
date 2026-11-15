@@ -450,8 +450,12 @@ The block also carries the electricity supplier's two figures (additive, 3.0), e
 like the other fees (spot + markup + energy tax + grid fee, then VAT; a grid fee's percentage stays a percentage of
 the spot price alone), and `sell_adjustment`, what a sold kWh earns beyond the spot price as it is paid out (the
 grid operator's credit for production plus or minus the supplier's terms): never with VAT, and negative for a
-deduction. The webhook sends both only to an app that asks for them (`"reads": ["supplier_fees"]`, in the dashboard
-and in `update_grid_tariff`'s answer).
+deduction. The block also carries `sells` (boolean, read-only): whether anything is sold on this price, true when any
+site whose chargers use this price entry has a home battery, a solar forecast, solar production statistics on the
+Energy dashboard or a measured grid export (the meter's separate export entity). A client shows `sell_adjustment`
+only where `sells` is true or the figure is on or has a stored value (never hide a figure in use), and shows it when
+`sells` is absent. The webhook sends the two figures and `sells` only to an app that asks for them (`"reads":
+["supplier_fees"]`, in the dashboard and in `update_grid_tariff`'s answer).
 
 `update_grid_tariff {"expected_write_revision", "grid_tariff"}` replaces the three parts in full; `grid_tariff` is
 `{"transfer_percent": {"enabled", "value"}, "transfer_high": {"enabled", "value"}, "high_load_window"}`, every key

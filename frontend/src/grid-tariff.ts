@@ -291,20 +291,35 @@ export function supplierRows(language: Language, block: GridTariffBlock | null):
   if (block === null || block.supplier_markup === null || block.sell_adjustment === null) {
     return [];
   }
-  return [
+  const rows: SupplierRow[] = [
     {
       key: "supplier_markup",
       label: translate(language, "supplier.markup"),
       value: feeText(language, block.supplier_markup),
       help: translate(language, "supplier.markup.help"),
     },
-    {
+  ];
+  if (showsSellAdjustment(block)) {
+    rows.push({
       key: "sell_adjustment",
       label: translate(language, "supplier.sell"),
       value: feeText(language, block.sell_adjustment),
       help: translate(language, "supplier.sell.help"),
-    },
-  ];
+    });
+  }
+  return rows;
+}
+
+/**
+ * Whether the sale figure is shown: where something is sold on this price (`sells`, which a backend before it does
+ * not say: shown then), or wherever the figure is already on or set (a figure in use is never hidden).
+ */
+export function showsSellAdjustment(block: GridTariffBlock): boolean {
+  const fee = block.sell_adjustment;
+  if (fee === null) {
+    return false;
+  }
+  return block.sells !== false || fee.policy !== "off" || fee.explicit_value !== null;
 }
 
 function hourSelect(doc: Document, id: string, from: number, to: number, selected: number): HTMLSelectElement {
