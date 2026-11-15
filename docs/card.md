@@ -191,12 +191,6 @@ serious each is. Examples:
 | The energy meter cannot be read: 6.5 kWh remains, from its last reading. / No energy meter: 3 kWh remains, counted from this charger's recorded charges. | The requested energy is counted without the charger's energy register, see [counting the requested energy](strategies.md#cheapest). |
 | Charging was started, but the vehicle is not requesting current. | The connector reports the car is not asking for current. It is an observation only: check the car's charging settings or reconnect the cable. |
 
-<!-- Screenshot to add when available: ![The card while waiting for tomorrow's prices](images/card-waiting.png) -->
-
-<!-- Screenshot to add when available: ![The card during a charge, with the state of charge estimate](images/card-charging.png) -->
-
-<!-- Screenshot to add when available: ![The card with the solar strategy on a sunny day](images/card-solar.png) -->
-
 ## Charge history
 
 Every charge is recorded as a session, from the moment the charger starts charging, whatever
@@ -295,7 +289,9 @@ energy tax and grid fee as the plan applies them. Tapping the area or a tax open
 high-load hours* and *High-load hours* open the same dialog, with the fee and its hours together, one *Save* and
 *Remove the high-load fee* (see [a grid fee higher in high-load hours](prices.md#a-grid-fee-that-is-a-percentage-of-spot-or-higher-in-high-load-hours)). Below the fees, *Supplier markup*
 (on each bought kWh, without VAT) and *Sold kWh: extra or deduction* (as it is paid out, without VAT; a deduction
-is a negative figure) are off until set (see [the supplier's markup](prices.md#the-suppliers-markup-and-what-a-sold-kwh-earns)).
+is a negative figure) are off until set (see [the supplier's markup](prices.md#the-suppliers-markup-and-what-a-sold-kwh-earns)). The sold-kWh
+row shows only on a price used by a site with a home battery, solar production, a solar forecast or a separate export
+meter, or where it already has a figure.
 
 ![The electricity price settings](images/card-settings-price.png)
 
