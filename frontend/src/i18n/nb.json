@@ -1144,6 +1144,8 @@
   "automations.priceSetpoint.text": "Gulvvarme, ovner eller en varmepumpe får høyere temperatur når strømmen er billig og lavere når den er dyr.",
   "automations.solarSurplus.name": "Kjør på soloverskudd",
   "automations.solarSurplus.text": "En bassengvarmer, en varmtvannsbereder eller en elkolbe slås på når solen gir overskudd.",
+  "automations.relayByPrice.name": "Relé etter strømpris",
+  "automations.relayByPrice.text": "Et relé på varmepumpens inngang senker varmekurven når strømmen er dyr, starter ekstra varmtvann når den er billig, eller styrer SG Ready.",
   "automations.usedBy.one": "Brukes av {count} automasjon",
   "automations.usedBy.other": "Brukes av {count} automasjoner",
   "identify.guest": "Gjestebil",
