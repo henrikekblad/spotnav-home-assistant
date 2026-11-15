@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import asdict
+from collections.abc import Callable
 from typing import Any
 
 from homeassistant.components.diagnostics import async_redact_data
@@ -248,6 +249,14 @@ def _load_forecast_diagnostics(controller: Any) -> dict[str, Any] | None:
         return None
 
 
+def _part_snapshot(snapshot: Callable[[], Any]) -> Any:
+    """A part's snapshot, or `None` when it fails: diagnostics must never fail on one block."""
+    try:
+        return snapshot()
+    except Exception:  # noqa: BLE001
+        return None
+
+
 def _site_diagnostics(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, Any]:
     controller = site_controller_for(hass, entry.entry_id)
     return {
@@ -319,15 +328,15 @@ def _site_diagnostics(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, Any]
         # The site's home battery (`battery/runtime.py`): its facts, who runs it, what could be written, and each
         # shadow part's decisions (what it would have written, or why not) and the kWh the battery gave the car.
         # Nothing is written to the battery.
-        "battery": None if controller is None else controller.battery_shadow.snapshot(),
+        "battery": None if controller is None else _part_snapshot(controller.battery_shadow.snapshot),
         # The site's switched load in shadow (`loads/runtime.py`): its settings, the cheapest quarter hours it would run
         # in and the deadlines of its rolling runtime, what it would do now and why, each day's runtime and cost beside
         # what the switch really did, and the log. `None` without a load. Nothing is switched.
-        "switch_load": None if controller is None else controller.switch_load.snapshot(),
+        "switch_load": None if controller is None else _part_snapshot(controller.switch_load.snapshot),
         # The sun's forecast corrected in shadow (`site/solar_correction_shadow.py`): status, sources, what the guard
         # rails found, the factors, the next hours raw and corrected, and the log with its nightly reviews. The
         # Hybrid strategy reads the raw forecast.
-        "solar_correction": None if controller is None else controller.solar_correction.snapshot(),
+        "solar_correction": None if controller is None else _part_snapshot(controller.solar_correction.snapshot),
         # Per member charger, the phase load balancing reckons it on and how that was decided: `chosen` in the
         # wiring, `measured` (an "Automatic" single-phase charger followed by its own measured current) or
         # `worst_case` (the phase with the least headroom).
