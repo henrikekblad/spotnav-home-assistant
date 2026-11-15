@@ -134,7 +134,8 @@ MANAGEMENT_GRACE_S: Final = 60.0
 #: A block for a real management change (the app, the plant's own optimiser) clears by itself this long after the
 #: hand-back (s): the start rule still refuses a plant that is not free, so nothing is fought.
 MANAGEMENT_BLOCK_S: Final = 6 * 3600.0
-#: Writes a day outside restores (flash wear is unknown for most brands).
+#: Writes a day outside restores and watchdog renewals (flash wear is unknown for most brands). A renewal is bounded
+#: by its timer: `WATCHDOG_RENEW_S` per role (SolarEdge renews two roles: 192 a day).
 DAILY_WRITE_CAP: Final = 96
 #: A restore write that does not read back is retried after these delays (s), then given up.
 RESTORE_RETRY_S: Final = (30.0, 60.0, 120.0, 300.0, 600.0)
@@ -1073,8 +1074,9 @@ class Executor:
         return state.covered_at is not None and name in self.control.peak_first.get(state.action or "", ())
 
     def _capped(self, state: ExecState, inputs: ExecInputs, name: str) -> bool:
-        """Whether the day's write cap holds this write back (a restore and a peak cover never are)."""
-        if state.phase == "restoring" or self._covering(state, name):
+        """Whether the day's write cap holds this write back (a restore, a peak cover and a watchdog renewal never
+        are)."""
+        if state.phase == "restoring" or self._covering(state, name) or name in state.renew:
             return False
         return _writes_today(state, inputs) >= DAILY_WRITE_CAP
 
@@ -1174,7 +1176,10 @@ class Executor:
         read = inputs.reads.get(name)
         renew = tuple(item for item in state.renew if item != name)
         sent = state.sent if name in state.sent else (*state.sent, name)
-        writes = state.writes_today + (0 if restoring else 1)
+        # A restore and a watchdog renewal are not counted: the renewal is the brand's dead-man, on a fixed timer
+        # (`WATCHDOG_RENEW_S`, at most a few roles), never a change of the wanted state.
+        renewing = name in state.renew
+        writes = state.writes_today + (0 if restoring or renewing else 1)
         written = state.written if name in state.written else (*state.written, name)
         if role.method == "button":
             # A button has no read-back: pressed once per target; the monitor judges what it did.

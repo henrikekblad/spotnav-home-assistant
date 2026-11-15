@@ -724,6 +724,20 @@ def test_solaredge_runs_in_remote_control_only_with_its_timeout_as_the_watchdog_
         assert written(results) == [] and events(results, "not_started")[0]["reason"].startswith(reason)
 
 
+def test_watchdog_renewals_do_not_count_against_the_day_s_write_cap() -> None:
+    # A SolarEdge hold renews two roles every WATCHDOG_RENEW_S: 192 writes a day, past the cap of 96.
+    executor = Executor(SOLAREDGE_CONTROL)
+    battery = FakeBattery(SOLAREDGE_CONTROL, dict(SOLAREDGE_STATES))
+    now, _ = run(executor, battery, T0, 6, "hold")
+    entered = executor.state.writes_today
+    renewals = 0
+    for _ in range(DAILY_WRITE_CAP // 2 + 4):
+        now, results = run(executor, battery, now + timedelta(seconds=WATCHDOG_RENEW_S), 3, "hold")
+        renewals += len(written(results))
+    assert renewals > DAILY_WRITE_CAP and now.date() == T0.date()
+    assert executor.state.phase == "active" and executor.state.writes_today == entered
+
+
 def test_huawei_charges_through_its_forcible_charge_service_and_stops_it_on_the_way_back() -> None:
     executor = Executor(HUAWEI_CONTROL)
     battery = FakeBattery(HUAWEI_CONTROL, dict(HUAWEI_STATES))
