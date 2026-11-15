@@ -137,6 +137,10 @@ detection matters for the opt-in that may come later.
   battery last showed it. Tibber or Greenely set up in Home Assistant is named as the likely source but
   never marks the battery by itself.
 
+The behaviour rule is deliberately narrow: the site must also import (or export) more than 1 kW, the level must move at
+least 1 point the same way, a charge within 5 points of the battery's own lowest level is ignored as its maintenance
+charge, and under the battery's own optimiser only changes of mode count.
+
 SpotNav does not raise a notice for this in Settings → Repairs: there is nothing you need to do. It
 writes one line to the log (at INFO) when it starts watching only and one when it stops, and keeps it
 in the diagnostics and in what SpotNav detected.
