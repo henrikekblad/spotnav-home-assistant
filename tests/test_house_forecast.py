@@ -10,6 +10,7 @@ import pytest
 from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse
 from homeassistant.helpers import entity_registry as er
 
+from custom_components.spotnav import time_zones
 from custom_components.spotnav.planning.demand_charge import HourMean
 from custom_components.spotnav.diagnostics import async_get_config_entry_diagnostics
 from custom_components.spotnav.runtime import site_controller_for
@@ -376,12 +377,15 @@ async def test_on_a_battery_site_the_house_is_its_whole_load_and_the_import_targ
 
     monkeypatch.setattr(house_forecast_module, "async_energy_ids", ids)
     monkeypatch.setattr(house_forecast_module, "async_statistics", statistics)
-    # A forecast made on the net figure, logged before: its days not yet reviewed go when the figure changes.
+    # The whole load from its first hours on: the import less the chargers is the battery's, never the house. Twelve
+    # hours fill no hour's cell yet, so the forecast is their flat mean.
     await house.async_refresh()
-    assert house.basis == BASIS_NET  # twelve hours of the whole load are not enough yet
+    assert house.basis == BASIS_GROSS
     assert len(house.history.gross) == 12 and reads
+    assert {round(hour.kw, 3) for hour in house.forecast.hours} == {1.4}
+    assert {round(hour.kw, 3) for hour in house.import_forecast.hours} == {0.2}
     before = house.log.hours(KIND_HOUSE)
-    assert before and all(hour.forecast == pytest.approx(0.2) for hour in before.values())
+    assert before and all(hour.forecast == pytest.approx(1.4) for hour in before.values())
 
     # The battery plan's own rows of the two weeks before: taken over once, with the sun's production.
     old = [(start, 0.9) for start in sorted(house.history.rows) if start < min(house.history.gross)]
@@ -428,6 +432,40 @@ async def test_on_a_battery_site_the_house_is_its_whole_load_and_the_import_targ
     assert again.basis == BASIS_NET and again.import_forecast is None
     assert {round(hour.kw, 3) for hour in again.forecast.hours} == {0.2}
     assert again.surplus_house_by_hour(controller.demand.now()) == ({}, SURPLUS_NO_SOLAR_STATISTICS)
+
+
+async def test_a_battery_that_grid_charges_is_never_forecast_as_the_house(
+    hass: HomeAssistant, freezer, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The owner's site, 14 Nov: the import less the chargers read ~0 while the battery covered the house and 13.7 kW
+    in the hour it grid-charged at the fuse (14:00), so a forecast on it showed 4.8-17 kW for a house drawing 1.5 kW.
+    With one day of the whole load (1.0 kW of `grid - car - battery` and 0.5 kWh of sun per hour) the house is that
+    whole load at once; only the import target's forecast keeps the grid-charging hour."""
+    weather(hass, 4.0)
+    hass.states.async_set("sensor.battery_power", "0", {"unit_of_measurement": "W"})
+    entry = await pilot_site(hass, freezer, battery_aggregate_power_entity="sensor.battery_power")
+    controller = site_controller_for(hass, entry.entry_id)
+    house = controller.house_forecast
+    seed(controller, kw=0.0)
+    zone = time_zones.require_zone(TZ)
+    tracker = controller.demand.tracker
+    tracker.hours = [
+        HourMean(**{**{slot: getattr(hour, slot) for slot in HourMean.__slots__}, "house_kw": 13.7})
+        if hour.start.astimezone(zone).hour == 14 and hour.house_kw is not None
+        else hour
+        for hour in tracker.hours
+    ]
+    with_ex_battery(controller, 1.0, 24)
+    solar_statistics(monkeypatch, 0.5)
+    await house.async_refresh()
+
+    assert house.basis == BASIS_GROSS
+    assert {round(hour.kw, 3) for hour in house.forecast.hours} == {1.5}
+    assert {round(kw, 3) for kw in house.battery_house_by_hour()[0].values()} == {1.5}
+    assert all(item["kw"] == 1.5 for item in house.attribute)
+    # The import target counts on what the import less the chargers did: the grid-charging hour stays there.
+    target = house.import_forecast.by_hour()
+    assert {round(kw, 1) for start, kw in target.items() if start.astimezone(zone).hour == 14} == {13.7}
 
 
 async def no_ids(hass: Any) -> tuple[tuple[str, ...], tuple[str, ...]]:

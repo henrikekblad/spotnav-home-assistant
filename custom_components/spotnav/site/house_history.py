@@ -22,8 +22,8 @@ charged and discharged, so on a battery site it is not the house: the owner's re
   files every hour as it is and marks it (`sun` false): the rows are then the house less the sun.
 * **Migration** (`take_rows`): the battery plan kept its own rows of `grid - car - battery` before this; they are
   taken over once (`gross_migrated_at`), each hour before the first one filed here, with its production added.
-* **Basis** (`gross_ready`): the house's whole load is the site's house figure from `MIN_GROSS_HOURS` hours in the
-  forecast's window on.
+* **Basis** (`gross_ready`): on a solar site without a battery the house's whole load is the site's house figure from
+  `MIN_GROSS_HOURS` hours in the forecast's window on; on a battery site from the first (`house_forecast.house_basis`).
 
 It decides nothing on its own: the forecast reads it (`site/house_forecast.py`), the diagnostics count it.
 """
@@ -43,8 +43,8 @@ from .load_forecast import WINDOW_DAYS
 KEEP_DAYS: Final = 56
 #: A hard cap beside the age bound, with room for DST.
 MAX_ROWS: Final = KEEP_DAYS * 24 + 48
-#: The house's whole load is the site's house figure once this many of its hours are in the forecast's window (three
-#: days: the battery plan's own rows waited as long).
+#: On a solar site without a battery the house's whole load is the site's house figure once this many of its hours
+#: are in the forecast's window (three days); a battery site does not wait (`house_forecast.house_basis`).
 MIN_GROSS_HOURS: Final = 72
 #: An hour waits this long (hours) for its solar production in the statistics; then it is left out.
 PRODUCTION_WAIT_H: Final = 24
