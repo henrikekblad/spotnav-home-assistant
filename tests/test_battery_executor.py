@@ -21,8 +21,10 @@ from custom_components.spotnav.battery.commands import (
     table,
 )
 from custom_components.spotnav.battery.executor import (
+    BLOCKED_RESTORE_S,
     DAILY_WRITE_CAP,
     HEADROOM_MARGIN_A,
+    MANAGEMENT_BLOCK_S,
     MANAGEMENT_GRACE_S,
     PEAK_COVER_A,
     PEAK_RECOVER_S,
@@ -31,9 +33,11 @@ from custom_components.spotnav.battery.executor import (
     REARM_S,
     RESTORE_ATTEMPTS,
     RESTORE_HEADROOM_A,
+    RESTORE_RETRY_S,
     ExecState,
     Executor,
     grid_charge_cap_kw,
+    hold_headroom_ok,
     preview,
 )
 from custom_components.spotnav.battery.facts import Management
@@ -336,8 +340,29 @@ def test_a_management_reading_that_blinks_is_tolerated_for_a_grace() -> None:
     looks = int(MANAGEMENT_GRACE_S / TICK.total_seconds()) - 1
     now, results = run(executor, battery, now, looks, "hold", management=unknown)
     assert events(results, "hand_back") == []
-    _now, results = run(executor, battery, now, 3, "hold", management=unknown)
-    assert events(results, "hand_back")[0]["reason"] == "management_changed:unknown"
+    now, results = run(executor, battery, now, 3, "hold", management=unknown)
+    # After the grace an unknown management is handed back as stale data is: no block, the next start re-arms.
+    assert events(results, "hand_back")[0]["reason"] == "management_unknown"
+    now, _ = run(executor, battery, now, 6, "hold", management=unknown)
+    assert executor.state.phase == "idle" and executor.state.blocked is None
+    _now, results = run(executor, battery, now + timedelta(seconds=REARM_S), 6, "hold")
+    assert executor.state.phase == "active"
+
+
+def test_a_real_management_change_blocks_and_the_block_clears_by_itself_after_a_long_rearm() -> None:
+    executor, battery = _sigenergy()
+    now = _held(executor, battery)
+    ai = Management("self_managed", "EMS work mode:ai_mode", {"EMS work mode": "ai_mode"})
+    now, _ = run(executor, battery, now, 8, "hold", management=ai)
+    assert executor.state.phase == "blocked" and executor.state.blocked.startswith("management_changed")
+    # Hours later the plant is back in Maximum Self Consumption; the block still holds until the long re-arm.
+    now, results = run(executor, battery, now + timedelta(hours=1), 3, "hold")
+    assert executor.state.phase == "blocked" and written(results) == []
+    # It survives a restart, and clears by itself after MANAGEMENT_BLOCK_S without anything calling reset.
+    executor = Executor(SIGENERGY_CONTROL, state=ExecState.from_dict(executor.state.as_dict()))
+    assert executor.restart(now) == [] and executor.state.phase == "blocked"
+    _now, results = run(executor, battery, now + timedelta(seconds=MANAGEMENT_BLOCK_S), 6, "hold")
+    assert executor.state.phase == "active" and written(results)
 
 
 def test_the_day_s_write_cap_hands_back_and_waits_for_the_next_day() -> None:
@@ -406,12 +431,30 @@ def test_with_car_first_the_battery_yields_to_a_held_car_and_with_battery_first_
     now, _ = run(executor, battery, T0, 6, "grid_charge", 4.0)
     now, _ = run(executor, battery, now, 1, "grid_charge", 4.0, car_held=True, car_first=True, grid_import_kw=5.0)
     assert executor.state.rate_kw == pytest.approx(3.0)
-    _now, _ = run(executor, battery, now, 1, "grid_charge", 4.0, car_held=True, car_first=True, grid_import_kw=5.0)
+    # One step per dwell: a few looks later it has not yielded again (the car's regulator needs time to follow).
+    now, _ = run(executor, battery, now, 4, "grid_charge", 4.0, car_held=True, car_first=True, grid_import_kw=5.0)
+    assert executor.state.rate_kw == pytest.approx(3.0)
+    _now, _ = run(executor, battery, now + timedelta(seconds=RATE_UP_DWELL_S), 1, "grid_charge", 4.0, car_held=True,
+                  car_first=True, grid_import_kw=5.0)
     assert executor.state.rate_kw == pytest.approx(2.0), "it keeps yielding while the car is held"
     executor, battery = _sigenergy()
     now, _ = run(executor, battery, T0, 6, "grid_charge", 4.0)
     _now, _ = run(executor, battery, now, 2, "grid_charge", 4.0, car_held=True, car_first=False, grid_import_kw=5.0)
     assert executor.state.rate_kw == 4.0
+
+
+def test_a_yield_step_is_counted_from_the_battery_s_measured_charge_not_its_last_command() -> None:
+    executor, battery = _sigenergy()
+    now, _ = run(executor, battery, T0, 6, "grid_charge", 4.0)
+    # The battery has not followed the last command down yet: it still charges 4 kW, so one yield is 3 kW, ...
+    held = {"car_held": True, "car_first": True, "grid_import_kw": 5.0, "power_kw": 4.0}
+    now, _ = run(executor, battery, now, 1, "grid_charge", 4.0, **held)
+    assert executor.state.rate_kw == pytest.approx(3.0)
+    # ... and a dwell later, with the battery still at 4 kW (slow to follow), the next yield is 3 kW again, not 2.
+    _now, _ = run(executor, battery, now + timedelta(seconds=RATE_UP_DWELL_S), 1, "grid_charge", 4.0, **held)
+    assert executor.state.rate_kw == pytest.approx(3.0)
+    assert grid_charge_cap_kw(inputs(battery, now, "grid_charge", 4.0, power_kw=2.0, grid_import_kw=5.0,
+                                     car_held=True, car_first=True), 4.0) == pytest.approx(1.0)
 
 
 def test_a_grid_charge_that_the_headroom_cannot_carry_is_not_started_or_is_handed_back() -> None:
@@ -526,6 +569,15 @@ def test_a_hand_back_that_is_not_for_the_fuse_keeps_one_write_at_a_time() -> Non
     assert executor.state.in_flight == ()
 
 
+def test_a_hold_starts_only_when_the_headroom_carries_the_whole_discharge_on_one_phase() -> None:
+    executor, battery = _sigenergy()
+    # 3 kW is 4.3 A per phase spread over three, but 13 A on one phase.
+    assert not hold_headroom_ok(inputs(battery, T0, "hold", headroom_a=8.0, power_kw=-3.0))
+    assert hold_headroom_ok(inputs(battery, T0, "hold", headroom_a=15.1, power_kw=-3.0))
+    _now, results = run(executor, battery, T0, 3, "hold", headroom_a=8.0, power_kw=-3.0)
+    assert written(results) == [] and events(results, "not_started")[0]["reason"] == "headroom_too_small"
+
+
 def test_a_grid_charge_is_handed_back_for_the_fuse_with_the_mode_that_stops_it_first() -> None:
     executor, battery = _sigenergy()
     now, _ = run(executor, battery, T0, 6, "grid_charge", 4.0)
@@ -538,11 +590,12 @@ def test_a_covered_hold_holds_again_only_after_the_dwell_and_with_the_start_marg
     executor, battery = _sigenergy()
     now = _held(executor, battery)
     now, _ = run(executor, battery, now, 3, "hold", headroom_a=1.2)
-    # The battery covers 3 kW (4.3 A per phase at 400 V): 5 A of headroom is not enough to hold it again.
-    now, results = run(executor, battery, now, _looks(PEAK_REHOLD_S), "hold", headroom_a=5.0, power_kw=-3.0)
+    # The battery covers 3 kW, which can all be on one phase (SigenStor covers each phase on its own): 13 A at
+    # 230 V. 8 A of headroom, enough if it were spread over three phases (4.3 A), is not enough to hold it again.
+    now, results = run(executor, battery, now, _looks(PEAK_REHOLD_S), "hold", headroom_a=8.0, power_kw=-3.0)
     assert written(results) == [] and events(results, "peak_rehold") == []
-    _now, results = run(executor, battery, now, 3, "hold", headroom_a=8.0, power_kw=-3.0)
-    assert events(results, "peak_rehold")[0]["headroom_a"] == 8.0
+    _now, results = run(executor, battery, now, 3, "hold", headroom_a=16.0, power_kw=-3.0)
+    assert events(results, "peak_rehold")[0]["headroom_a"] == 16.0
     assert written(results) == [("discharge_limit", 0.0)]
     assert executor.state.covered_at is None and executor.monitor.watch is not None
     # Before the dwell it does not hold again, however much headroom.
@@ -627,6 +680,25 @@ def test_a_restore_write_not_taken_is_retried_with_backoff_and_the_others_still_
     assert executor.state.phase == "blocked", "a kept snapshot cannot be reset away"
 
 
+def test_a_restore_given_up_is_tried_again_on_a_slow_timer_while_blocked() -> None:
+    executor, battery = _sigenergy()
+    now = _held(executor, battery)
+    battery.raises = {"discharge_limit"}
+    while executor.state.phase != "blocked":
+        now, _ = run(executor, battery, now, 1, "self_consume")
+    assert executor.state.blocked == "restore_failed:discharge_limit"
+    # Still failing: tried again every BLOCKED_RESTORE_S, never more often.
+    now, results = run(executor, battery, now, _looks(BLOCKED_RESTORE_S) - 3, "self_consume")
+    assert written(results) == []
+    now, results = run(executor, battery, now, 4, "self_consume")
+    assert written(results) == [("discharge_limit", 23.04)]
+    # The integration takes writes again: the next try restores it and the block ends.
+    battery.raises = set()
+    _now, results = run(executor, battery, now, _looks(sum(RESTORE_RETRY_S) + BLOCKED_RESTORE_S), "self_consume")
+    assert battery.states["discharge_limit"] == "23.04"
+    assert executor.state.phase == "idle" and not executor.state.holds_snapshot
+
+
 # --- the other brands ---------------------------------------------------------------------------------------------------
 
 
@@ -650,6 +722,33 @@ def test_solaredge_runs_in_remote_control_only_with_its_timeout_as_the_watchdog_
         battery = FakeBattery(SOLAREDGE_CONTROL, dict(SOLAREDGE_STATES) | states)
         _now, results = run(executor, battery, T0, 2, "grid_charge", 3.0)
         assert written(results) == [] and events(results, "not_started")[0]["reason"].startswith(reason)
+
+
+def test_watchdog_renewals_do_not_count_against_the_day_s_write_cap() -> None:
+    # A SolarEdge hold renews two roles every WATCHDOG_RENEW_S: 192 writes a day, past the cap of 96.
+    executor = Executor(SOLAREDGE_CONTROL)
+    battery = FakeBattery(SOLAREDGE_CONTROL, dict(SOLAREDGE_STATES))
+    now, _ = run(executor, battery, T0, 6, "hold")
+    entered = executor.state.writes_today
+    renewals = 0
+    for _ in range(DAILY_WRITE_CAP // 2 + 4):
+        now, results = run(executor, battery, now + timedelta(seconds=WATCHDOG_RENEW_S), 3, "hold")
+        renewals += len(written(results))
+    assert renewals > DAILY_WRITE_CAP and now.date() == T0.date()
+    assert executor.state.phase == "active" and executor.state.writes_today == entered
+
+
+def test_a_role_never_written_that_reads_unknown_for_a_moment_is_not_written_on_the_way_back() -> None:
+    executor = Executor(SOLAREDGE_CONTROL)
+    battery = FakeBattery(SOLAREDGE_CONTROL, dict(SOLAREDGE_STATES))
+    now, results = run(executor, battery, T0, 6, "hold")
+    assert "charge_limit" not in [role for role, _ in written(results)]
+    # The limits blink while the command mode changes back: no reading is no reason to write the snapshot.
+    battery.states["charge_limit"] = "unavailable"
+    battery.states["discharge_limit"] = "unknown"
+    _now, results = run(executor, battery, now, 8, "self_consume")
+    assert [role for role, _ in written(results)] == ["command_mode", "command_timeout"]
+    assert executor.state.phase == "idle"
 
 
 def test_huawei_charges_through_its_forcible_charge_service_and_stops_it_on_the_way_back() -> None:
@@ -759,3 +858,83 @@ def test_the_sigenergy_mode_texts_are_the_options_of_typqxq_s_remote_ems_control
     assert mode("grid_charge") == "Command Charging (Grid First)"  # register value 3
     assert mode("export_discharge") == "Command Discharging (PV First)"  # register value 5
     assert mode("hold") == "Maximum Self Consumption"  # register value 2
+
+
+# --- every hand-back ends -------------------------------------------------------------------------------------------
+
+#: Forty minutes of looks: longer than every restore retry together.
+_HAND_BACK_LOOKS = int(40 * 60 / TICK.total_seconds())
+
+
+def _ended(executor: Executor) -> None:
+    state = executor.state
+    assert state.phase in ("idle", "blocked"), state
+    assert state.retries == {} and state.pending is None and state.in_flight == ()
+
+
+@pytest.mark.parametrize("brand", ["sigenergy", "solaredge", "huawei", "solax"])
+@pytest.mark.parametrize("action", ["hold", "grid_charge", "discharge_house", "export_discharge"])
+@pytest.mark.parametrize(
+    ("plan", "overrides"),
+    [
+        ("same", {"stopping": "stop"}),
+        ("self_consume", {}),
+        (None, {}),
+        ("same", {"battery_age_s": 600.0}),
+        ("same", {"headroom_a": 0.5}),
+        ("same", {"management": Management("self_managed", "planner:predbat")}),
+        ("same", {"on_grid": False}),
+    ],
+)
+def test_every_hand_back_path_ends_idle_or_blocked_with_no_retry_left(brand, action, plan, overrides) -> None:
+    control = control_for(brand)
+    states = {"sigenergy": SIGENERGY_STATES, "solaredge": SOLAREDGE_STATES, "huawei": HUAWEI_STATES,
+              "solax": SOLAX_STATES}[brand]
+    if "headroom_a" in overrides and action not in ("hold", "grid_charge"):
+        overrides = {"stopping": "stop"}  # the fuse hands back only an action that adds import
+    executor, battery = Executor(control), FakeBattery(control, dict(states))
+    now, _ = run(executor, battery, T0, 8, action, 3.0)
+    assert executor.state.phase == "active"
+    _now, _ = run(executor, battery, now, _HAND_BACK_LOOKS, action if plan == "same" else plan, 3.0, **overrides)
+    _ended(executor)
+
+
+def test_a_fuse_hand_back_of_a_sigenergy_grid_charge_ends_though_remote_ems_off_hides_the_mode() -> None:
+    # Remote EMS off makes the mode select unavailable before Maximum Self Consumption reads back: the mode is not
+    # confirmed, but it needs no write any more (`idle_when`).
+    executor, battery = _sigenergy()
+    now, _ = run(executor, battery, T0, 6, "grid_charge", 4.0)
+    _now, results = run(executor, battery, now, _HAND_BACK_LOOKS, "grid_charge", 4.0, headroom_a=0.5)
+    _ended(executor)
+    assert executor.state.phase == "idle" and not executor.state.holds_snapshot
+    assert battery.states["remote_ems"] == "off" and battery.states["charge_limit"] == "10"
+    executor.reset()
+    assert executor.state.phase == "idle"
+
+
+def test_a_write_still_pending_when_a_restore_begins_is_no_restore_retry() -> None:
+    # Remote EMS on is dropped silently; the part stops before its read-back deadline.
+    executor, battery = _sigenergy(drops={"remote_ems"})
+    now, _ = run(executor, battery, T0, 3, "hold")
+    assert executor.state.pending == "remote_ems"
+    _now, results = run(executor, battery, now, _HAND_BACK_LOOKS, "hold", stopping="stop")
+    _ended(executor)
+    assert battery.states["discharge_limit"] == "23.04"
+    assert ("remote_ems", True) not in [(op.role, op.value) for r in results for op in r.ops]
+
+
+def test_a_restore_write_pending_across_a_restart_ends_once_the_role_needs_no_write() -> None:
+    executor, battery = _sigenergy()
+    now, _ = run(executor, battery, T0, 6, "grid_charge", 4.0)
+    now, _ = run(executor, battery, now, 1, "grid_charge", 4.0, headroom_a=0.5)
+    assert executor.state.phase == "restoring" and executor.state.in_flight
+    stored = executor.as_dict()
+    again = Executor(
+        SIGENERGY_CONTROL, Ledger.from_dict(stored["ledger"]), Monitor.from_dict(stored["monitor"]),
+        ExecState.from_dict(stored["state"]),
+    )
+    later = now + timedelta(seconds=READBACK_DEADLINE_S + 60)
+    again.restart(later)
+    _now, _ = run(again, battery, later, _HAND_BACK_LOOKS, "grid_charge", 4.0, headroom_a=0.5)
+    _ended(again)
+    assert not again.state.holds_snapshot

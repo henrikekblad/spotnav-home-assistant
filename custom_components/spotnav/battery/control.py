@@ -11,7 +11,8 @@ executor's `preview`; it never imports this module.
 The order on every path:
 
 * **Start:** load the stored state; if it holds a snapshot (SpotNav wrote and HA stopped before handing back),
-  restore it before anything else (`async_start` runs the hand-back to its end or its deadline).
+  wait up to `STARTUP_WAIT_S` for its controls' entities and services to load, then restore it before anything else
+  (`async_start` runs the hand-back to its end or its deadline).
 * **Each look** (`async_tick`): read the battery's facts and the brand's control entities, the site's measurement,
   headroom, import and load balancing, and the plan's running slot; step the executor; **persist the state before
   the writes when it took a new snapshot**; make the writes (a raised service call is reported back as not taken);
@@ -24,8 +25,9 @@ The order on every path:
   (`sell_source`, by default the plan shadow's `sell_at`), plain hand-back otherwise. Its plant is found from the
   battery or the grid meter (`runtime.read_export_facts`), so a site without a battery has it too. Its state is
   stored beside the battery's (`export`), restored first after a restart, handed back on stop; the two share the
-  day's write cap. While the battery's executor runs the same plant (its Remote EMS on) the export instance is told
-  so (`sibling_active`) and still takes the limit; it is judged on the site's grid power (`grid_import_kw`).
+  day's write cap. While the battery's executor runs the same plant (its Remote EMS on, also while it hands back)
+  the export instance is told so (`sibling_active`) and still takes and keeps the limit; Remote EMS on otherwise is
+  another controller's and hands the limit back; it is judged on the site's grid power (`grid_import_kw`).
 """
 
 from __future__ import annotations
@@ -39,8 +41,8 @@ from dataclasses import replace
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, Final
 
+from homeassistant.const import ATTR_RESTORED
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
@@ -83,6 +85,14 @@ HAND_BACK_DEADLINE_S: Final = 30.0
 #: How long the shell waits for an entity to change after a write, between looks during a hand-back (s).
 HAND_BACK_LOOK_S: Final = 2.0
 LOG_MAX: Final = 200
+#: After a restart, how long the restore of a stored snapshot waits for its controls' integration to load (s), and
+#: how often it looks.
+STARTUP_WAIT_S: Final = 120.0
+STARTUP_LOOK_S: Final = 5.0
+#: The service each role's method writes with (a service role names its own, `Role.services`).
+_METHOD_SERVICES: Final = {
+    "number": ("set_value",), "select": ("select_option",), "switch": ("turn_on", "turn_off"), "button": ("press",),
+}
 
 #: `(action, battery kW magnitude, slot end)` of the running slot, or `None`.
 PlanSource = Callable[[datetime], tuple[str, float, datetime | None] | None]
@@ -159,6 +169,8 @@ class BatteryControl:
             if state.holds_snapshot:
                 _LOGGER.warning("A battery control snapshot is stored but this release cannot write it back")
             return
+        if state.holds_snapshot:
+            await self._async_wait_for_controls(self.executor)
         now = dt_util.now()
         self._log(self.executor.restart(now))
         if self.executor.state.phase == "restoring":
@@ -179,9 +191,41 @@ class BatteryControl:
             if state.holds_snapshot:
                 _LOGGER.warning("An export limit snapshot is stored but this release cannot write it back")
             return
+        if state.holds_snapshot:
+            await self._async_wait_for_controls(self.export_executor)
         self._log(self.export_executor.restart(dt_util.now()))
         if self.export_executor.state.phase == "restoring":
             await self._async_export_until_handed_back("restart")
+
+    def _controls_ready(self, executor: Executor) -> bool:
+        """Whether every stored control's entity is loaded (not the registry's restored placeholder) and the service
+        that writes it is registered."""
+        for name, entity_id in executor.state.entities.items():
+            state = self.hass.states.get(entity_id)
+            if state is None or state.attributes.get(ATTR_RESTORED):
+                return False
+            try:
+                role = executor.control.role(name)
+            except KeyError:
+                continue
+            services = (
+                [tuple(full.split(".", 1)) for full in role.services.values()] if role.method == "service"
+                else [(role.method, service) for service in _METHOD_SERVICES.get(role.method, ())]
+            )
+            if not all(self.hass.services.has_service(domain, service) for domain, service in services):
+                return False
+        return True
+
+    async def _async_wait_for_controls(self, executor: Executor) -> None:
+        """Before a stored snapshot is restored: wait, up to `STARTUP_WAIT_S`, for its controls to load, so an
+        integration that loads after SpotNav does not spend the restore's retries."""
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + STARTUP_WAIT_S
+        while not self._controls_ready(executor):
+            if loop.time() >= deadline:
+                _LOGGER.info("Battery control: restoring before every control has loaded")
+                return
+            await asyncio.sleep(STARTUP_LOOK_S)
 
     async def async_stop(self, reason: str = "stop") -> None:
         """Hand the battery and the export limit back now (the part is stopped, the entry unloads)."""
@@ -366,8 +410,11 @@ class BatteryControl:
         result = self.site.result
         headrooms = [value for value in result.phase_headroom_a.values() if value is not None]
         battery = self.executor
-        # SpotNav's own battery control on the same plant: its Remote EMS is not the plant's own management.
-        sibling_active = battery is not None and battery.state.phase == "active" and battery.state.brand == control.brand
+        # SpotNav's own battery control on the same plant: its Remote EMS is not the plant's own management, also
+        # while it hands back (Remote EMS goes off last) or keeps a snapshot it could not restore yet.
+        sibling_active = battery is not None and battery.state.brand == control.brand and (
+            battery.state.phase in ("active", "restoring") or battery.state.holds_snapshot
+        )
         return ExecInputs(
             now=now,
             facts=self._with_outside(facts),
@@ -458,7 +505,8 @@ class BatteryControl:
         )
         try:
             await self.hass.services.async_call(domain, service, data, blocking=True)
-        except (HomeAssistantError, ValueError) as err:
+        except Exception as err:  # noqa: BLE001 - any error (a Modbus library's too) is a write not taken; the state
+            # must still be stored and a stop or unload must still hand back.
             _LOGGER.warning("Battery control: %s.%s for %s failed: %s", domain, service, op.role, err)
             self._log([{"at": dt_util.now().isoformat(), "kind": "service_failed", "reason": op.role,
                         "error": str(err)}])

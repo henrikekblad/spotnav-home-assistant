@@ -86,6 +86,8 @@ class Plant:
             if not self.calls:
                 self.stored_at_first_call = self.storage.get(store_key(self.entry_id), {}).get("data")
             self.calls.append((domain, service, dict(call.data)))
+            if isinstance(self.raises, Exception):
+                raise self.raises
             if self.raises:
                 raise HomeAssistantError("Modbus write failed")
             if self.read_only:
@@ -217,6 +219,59 @@ async def test_a_hold_is_written_in_order_read_back_with_the_snapshot_stored_fir
 
 
 @pytest.mark.usefixtures("reachable")
+async def test_a_restart_waits_for_a_late_integration_before_it_restores(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    _site_entry, controller, plant = await _site(hass, monkeypatch, hass_storage)
+    control = BatteryControl(hass, controller, plan_source=_hold)
+    await control.async_start()
+    now = dt_util.now()
+    for index in range(6):
+        await control.async_tick(now + timedelta(seconds=10 * index))
+    assert control.executor.state.phase == "active"
+    # HA restarts; the plant's integration loads late: its switch is the registry's restored placeholder and its
+    # services are not there yet.
+    hass.states.async_set(SWITCH, "unavailable", {"restored": True})
+    hass.services.async_remove("switch", "turn_off")
+
+    def loaded() -> None:
+        hass.services.async_register("switch", "turn_off", plant._handler("switch", "turn_off"))
+        hass.states.async_set(SWITCH, "on", {})
+
+    monkeypatch.setattr(control_module, "STARTUP_LOOK_S", 0.01)
+    hass.loop.call_later(0.1, loaded)
+    plant.calls.clear()
+    again = BatteryControl(hass, controller, plan_source=_hold)
+    await again.async_start()
+    assert [(domain, service) for domain, service, _data in plant.calls] == [
+        ("number", "set_value"), ("switch", "turn_off")
+    ]
+    assert not any(row["kind"] in ("not_taken", "service_failed") for row in again.log)
+    assert again.executor.state.phase == "idle" and hass.states.get(SWITCH).state == "off"
+
+
+@pytest.mark.usefixtures("reachable")
+async def test_a_restart_waits_for_the_controls_only_so_long(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    _site_entry, controller, plant = await _site(hass, monkeypatch, hass_storage)
+    control = BatteryControl(hass, controller, plan_source=_hold)
+    await control.async_start()
+    now = dt_util.now()
+    for index in range(6):
+        await control.async_tick(now + timedelta(seconds=10 * index))
+    hass.states.async_set(SWITCH, "unavailable", {"restored": True})
+    monkeypatch.setattr(control_module, "STARTUP_LOOK_S", 0.01)
+    monkeypatch.setattr(control_module, "STARTUP_WAIT_S", 0.05)
+    monkeypatch.setattr(control_module, "HAND_BACK_DEADLINE_S", 0.1)
+    plant.calls.clear()
+    again = BatteryControl(hass, controller, plan_source=_hold)
+    await again.async_start()
+    assert plant.calls, "after the wait the restore goes ahead with what is there"
+    assert again.log[0]["reason"] == "restart"
+
+
+@pytest.mark.usefixtures("reachable")
 async def test_a_stop_hands_the_battery_back_at_once(
     hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
 ) -> None:
@@ -264,6 +319,33 @@ async def test_a_write_that_raises_is_not_taken_and_handed_back(
     assert control.executor.state.blocked.startswith("write_not_taken:discharge_limit:service_failed")
     assert any(row["kind"] == "service_failed" for row in control.log)
     assert len(plant.calls) == 1
+
+
+class ModbusIOException(Exception):
+    """Not a Home Assistant error: what a Modbus library may raise through an integration's service."""
+
+
+@pytest.mark.usefixtures("reachable")
+async def test_a_write_that_raises_any_error_is_not_taken_and_the_state_is_still_stored_and_stop_still_runs(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    site, controller, plant = await _site(hass, monkeypatch, hass_storage)
+    control = BatteryControl(hass, controller, plan_source=_hold)
+    await control.async_start()
+    now = dt_util.now()
+    for index in range(2):
+        await control.async_tick(now + timedelta(seconds=10 * index))
+    assert control.executor.state.phase == "active"
+    plant.raises = ModbusIOException("no response from the plant")
+    for index in range(2, 4):
+        await control.async_tick(now + timedelta(seconds=10 * index))
+    assert any(row["kind"] == "service_failed" for row in control.log)
+    stored = hass_storage[store_key(site.entry_id)]["data"]["state"]
+    assert stored["snapshot"] == {"charge_limit": "unknown", "discharge_limit": "23.04"}
+    assert stored["phase"] == control.executor.state.phase
+    monkeypatch.setattr(control_module, "HAND_BACK_DEADLINE_S", 0.1)
+    await control.async_shutdown()  # never raises: the hand-back is stored for the next start
+    assert hass_storage[store_key(site.entry_id)]["data"]["state"]["phase"] == "restoring"
 
 
 @pytest.mark.usefixtures("reachable")

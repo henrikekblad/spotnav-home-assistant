@@ -22,7 +22,8 @@ How it acts (`step`, one look every few seconds; pure, the shell does the writes
   self-consumption, has no slot now or names an action the brand cannot do; a reading is stale or the site's
   measurement is lost; the plant leaves the grid; the fuse headroom falls under `RESTORE_HEADROOM_A` (or a grid
   charge cannot keep `MIN_RATE_KW` within it); the battery's management changes (its own optimiser, another planner,
-  an app taking Remote EMS back) or the site's battery is no longer that brand; someone else changes a control
+  an app taking Remote EMS back: blocked, the block clears by itself after `MANAGEMENT_BLOCK_S`) or reads unknown
+  past `MANAGEMENT_GRACE_S` (handed back as stale data is, not blocked) or the site's battery is no longer that brand; someone else changes a control
   SpotNav owns (that control is given up and not written back over the other system, as the ledger says); a write
   is not taken; the monitor sees no effect; the day's write cap is reached. After a restart a stored snapshot is
   restored before anything else. A role SpotNav wrote is restored by writing its snapshot and reading it back even
@@ -30,11 +31,16 @@ How it acts (`step`, one look every few seconds; pure, the shell does the writes
   after SpotNav's own write proves nothing; the snapshot is then written as the rating, never as `unknown`, and an
   `unknown` read-back is never a confirmed write (the ledger waits for a real value until its deadline). A restore write that does not read back is retried with backoff
   (`RESTORE_RETRY_S`), up to `RESTORE_ATTEMPTS` times each; a role still not restored then is left with its
-  snapshot kept (the control blocks, and the next start tries again), while the other roles are handed back.
+  snapshot kept (the control blocks and tries that role again every `BLOCKED_RESTORE_S`, and a restart tries it
+  first), while the other roles are handed back. A role
+  that meanwhile needs no write (it reads its restore value, or its select is idle once Remote EMS is off) drops its
+  retry, and a write made for the action that is still awaited when the hand-back begins is no restore retry: every
+  hand-back ends.
 * **Fuse safety.** A grid charge is clamped by the site's live headroom: what the battery already draws from the
   grid (at most its charge, the commanded rate and the site's import) plus the headroom less `HEADROOM_MARGIN_A`.
   Unlike evcc, the battery's charge counts against the main fuse. With the site's solar priority "car first" a
-  charger held below what it asked makes the battery yield (`YIELD_STEP_KW` per review); with "battery first" the
+  charger held below what it asked makes the battery yield (`YIELD_STEP_KW` below its measured grid charge, one step
+  per `RATE_UP_DWELL_S`, so the car's regulator has time to follow); with "battery first" the
   battery keeps its rate and the site's load balancing backs the car off (the battery is house load to it).
   The rate goes down at once and up only by `RATE_STEP_KW` after `RATE_UP_DWELL_S`.
 * **Peak cover under a hold.** A hold stops the battery covering the house, so a peak (a kettle, the oven, one
@@ -57,7 +63,7 @@ How it acts (`step`, one look every few seconds; pure, the shell does the writes
   the restore. A never-set limit (`unknown`) is restored as the plant's maximum output. The day's write cap is the
   site's, shared with the battery's instance (`ExecInputs.other_writes_today`). A plant whose mode reads SpotNav's
   own battery control (Remote EMS that the battery instance runs, `ExecInputs.sibling_active`) is taken; one in
-  Remote EMS of someone else's is not. The two instances never write each other's roles: the battery's control
+  Remote EMS of someone else's is not, and a curtail is handed back when someone else takes Remote EMS. The two instances never write each other's roles: the battery's control
   does not read the export limit, and Sigenergy's export limit needs no Remote EMS, so the battery's hand-back
   (Remote EMS off) takes nothing from it. **Obeyed?** The monitor judges a curtail on the site's grid power: after
   `monitor.CURTAIL_GRACE_S`, three readings exporting more than `monitor.EXPORT_TOLERANCE_KW` hand the limit back
@@ -125,15 +131,23 @@ YIELD_STEP_KW: Final = 1.0
 REARM_S: Final = 120.0
 #: A management reading may be unknown this long (Sigenergy's Remote EMS entities blink, issue #427) (s).
 MANAGEMENT_GRACE_S: Final = 60.0
-#: Writes a day outside restores (flash wear is unknown for most brands).
+#: A block for a real management change (the app, the plant's own optimiser) clears by itself this long after the
+#: hand-back (s): the start rule still refuses a plant that is not free, so nothing is fought.
+MANAGEMENT_BLOCK_S: Final = 6 * 3600.0
+#: Writes a day outside restores and watchdog renewals (flash wear is unknown for most brands). A renewal is bounded
+#: by its timer: `WATCHDOG_RENEW_S` per role (SolarEdge renews two roles: 192 a day).
 DAILY_WRITE_CAP: Final = 96
 #: A restore write that does not read back is retried after these delays (s), then given up.
 RESTORE_RETRY_S: Final = (30.0, 60.0, 120.0, 300.0, 600.0)
 RESTORE_ATTEMPTS: Final = len(RESTORE_RETRY_S)
+#: A restore given up after every retry is tried again this often while the control is blocked (s): Remote EMS or a
+#: limit left set must not wait for a restart.
+BLOCKED_RESTORE_S: Final = 900.0
 
 Phase = Literal["idle", "active", "restoring", "blocked"]
 _PHASES: Final = frozenset({"idle", "active", "restoring", "blocked"})
-#: Hand-back reasons that block the control until it is reset (or, for the cap, until the next day).
+#: Hand-back reasons that block the control until it is reset (the cap until the next day, a management change
+#: after `MANAGEMENT_BLOCK_S`).
 _BLOCKING_PREFIXES: Final = (
     "write_not_taken", "changed_outside_spotnav", "no_effect", "management_changed", "not_obeyed",
 )
@@ -399,33 +413,39 @@ def _kw(amps: float, volts: float) -> float:
     return amps * math.sqrt(3.0) * volts / 1000.0
 
 
-def grid_charge_cap_kw(inputs: ExecInputs, commanded_kw: float) -> float | None:
+def grid_charge_cap_kw(inputs: ExecInputs, commanded_kw: float, *, yield_now: bool = True) -> float | None:
     """The most the battery may charge from the grid now (kW), `None` when the headroom is unknown.
 
     What the battery already takes from the grid is counted back (it is in the measured import): at most its own
     charge, the rate commanded and the site's import, and nothing when the import is unknown, so the figure is never
-    above the truth. The headroom keeps `HEADROOM_MARGIN_A` under the fuse."""
+    above the truth. The headroom keeps `HEADROOM_MARGIN_A` under the fuse. With "car first" and a car held, the
+    battery yields `YIELD_STEP_KW` below what it measurably takes from the grid now (not below its last command, which
+    it may not have reached yet), one step per `RATE_UP_DWELL_S` (`yield_now`); between steps it keeps its rate."""
     if inputs.headroom_a is None or inputs.volts_between_phases <= 0:
         return None
     battery = inputs.facts.power_kw
-    own = 0.0
+    own = measured = 0.0
     if inputs.grid_import_kw is not None and battery is not None:
         own = max(min(commanded_kw, battery, inputs.grid_import_kw), 0.0)
+        measured = max(min(battery, inputs.grid_import_kw), 0.0)
     cap = own + _kw(inputs.headroom_a - HEADROOM_MARGIN_A, inputs.volts_between_phases)
     if inputs.car_first and inputs.car_held:
-        cap = min(cap, own - YIELD_STEP_KW)
+        cap = min(cap, measured - YIELD_STEP_KW if yield_now else commanded_kw)
     return cap
 
 
 def hold_headroom_ok(inputs: ExecInputs) -> bool:
     """Whether a hold may start (or a lifted one hold again): the headroom keeps `HEADROOM_MARGIN_A` once the
-    battery stops covering what it discharges now."""
+    battery stops covering what it discharges now.
+
+    The discharge is counted as if it were all on one phase (kW·1000 / the phase voltage): a SigenStor covers each
+    phase on its own, so what it gives may be one phase's load, and the battery's power per phase is not known."""
     if inputs.headroom_a is None or inputs.volts_between_phases <= 0:
         return False
     extra_a = 0.0
     power = inputs.facts.power_kw
     if power is not None and power < 0:
-        extra_a = -power * 1000.0 / (math.sqrt(3.0) * inputs.volts_between_phases)
+        extra_a = -power * 1000.0 * math.sqrt(3.0) / inputs.volts_between_phases
     return inputs.headroom_a - extra_a >= HEADROOM_MARGIN_A
 
 
@@ -477,7 +497,7 @@ def _restore_value(role: Role, state: str | None, facts: BatteryFacts) -> Native
     return reading(role, state)
 
 
-def _management_problem(facts: BatteryFacts, control: BrandControl, active: bool) -> str | None:
+def management_problem(facts: BatteryFacts, control: BrandControl, active: bool) -> str | None:
     """Why the battery is not SpotNav's to run now; `unknown` when a setting cannot be read."""
     management = facts.management
     if management.state == "free":
@@ -567,6 +587,19 @@ class Executor:
             self.state = replace(self.state, day=today, writes_today=0)
             if self.state.phase == "blocked" and self.state.blocked == "daily_write_cap" and not self.state.holds_snapshot:
                 self.state = replace(self.state, phase="idle", blocked=None)
+        state = self.state
+        if (
+            state.phase == "blocked" and (state.blocked or "").startswith("management_changed")
+            and not state.holds_snapshot and state.released_at is not None
+            and (now - state.released_at).total_seconds() >= MANAGEMENT_BLOCK_S
+        ):
+            self.state = replace(state, phase="idle", blocked=None, reason=None, given_up=())
+            events.append(_event(now, "unblocked", state.blocked or ""))
+        if (
+            state.phase == "blocked" and state.holds_snapshot and (state.blocked or "").startswith("restore_failed")
+            and (state.released_at is None or (now - state.released_at).total_seconds() >= BLOCKED_RESTORE_S)
+        ):
+            events += self._begin_restore(now, "restore_again")
 
         events += self._observe(inputs)
         if self.state.phase == "active":
@@ -582,6 +615,7 @@ class Executor:
             events += self._cover(inputs)
             if self.state.phase == "active":
                 events += self._retarget(inputs)
+        self._settle_retries(inputs)
         ops: list[Op] = []
         while True:
             events += self._precheck(inputs)
@@ -628,7 +662,12 @@ class Executor:
                 if self.state.pending == role.name:
                     self.state = replace(self.state, pending=None)
                 self.state = replace(self.state, in_flight=_without(self.state.in_flight, role.name))
-                events += self._not_taken(now, role.name, "no_read_back", read=event.read)
+                if self.state.phase == "restoring" and event.intended != self.state.target.get(role.name):
+                    # A write made for the action, still awaited when the hand-back began: no restore to retry,
+                    # the role is judged afresh against its restore value.
+                    events.append(_event(now, "not_taken", role.name, why="superseded", read=event.read))
+                else:
+                    events += self._not_taken(now, role.name, "no_read_back", read=event.read)
             else:
                 events += self._gave_up(now, role.name, entity_id, event.read)
         if self.state.phase == "active" and self._export:
@@ -755,12 +794,15 @@ class Executor:
             return "headroom_unknown"
         if (action in _RAISES_IMPORT or self.state.action in _RAISES_IMPORT) and inputs.headroom_a < RESTORE_HEADROOM_A:
             return "fuse_headroom"
-        management = _management_problem(facts, self.control, active=True)
+        # The battery's own instance runs the Remote EMS it turned on; the export instance only while the battery's
+        # runs it (`sibling_active`): one taken by another controller (the app, a VPP) ends the curtail.
+        management = management_problem(facts, self.control, active=inputs.sibling_active if self._export else True)
         if management == "unknown":
             since = self.state.management_unknown_since or inputs.now
             self.state = replace(self.state, management_unknown_since=since)
             if (inputs.now - since).total_seconds() >= MANAGEMENT_GRACE_S:
-                return "management_changed:unknown"
+                # No evidence of another owner: handed back as stale data is, the next start re-arms.
+                return "management_unknown"
         elif management is not None:
             return f"management_changed:{management}"
         else:
@@ -792,6 +834,30 @@ class Executor:
             retries={}, unrestored=(), management_unknown_since=None, covered_at=None, peak_low_since=None,
         )
         return [_event(now, "hand_back", reason)]
+
+    def _settle_retries(self, inputs: ExecInputs) -> None:
+        """Drop the retry of a restore write that is no longer needed: the role now reads what the hand-back wants
+        (Sigenergy's mode select goes unavailable once Remote EMS is off, before its own write reads back), or it
+        is no longer the hand-back's to write. Its claim, if any, is released. Without this the hand-back would wait
+        for a retry `_next_role` never makes."""
+        state = self.state
+        if state.phase != "restoring" or not state.retries:
+            return
+        retries = dict(state.retries)
+        for name in list(retries):
+            if name == state.pending or name in state.in_flight:
+                continue
+            wanted = state.target.get(name)
+            if wanted is not None and name not in state.given_up and not self._satisfied(
+                self.control.role(name), wanted, inputs.reads.get(name), restoring=True
+            ):
+                continue
+            del retries[name]
+            entity_id = state.entities.get(name)
+            if entity_id is not None:
+                self.ledger.release(entity_id)
+        if retries != state.retries:
+            self.state = replace(state, retries=retries)
 
     def _finish(self, inputs: ExecInputs) -> list[dict[str, Any]]:
         """A restore with nothing left to write ends: claims released, the snapshot dropped (kept for a role whose
@@ -847,7 +913,12 @@ class Executor:
             limit = facts.max_charge_kw
             if limit is not None:
                 rate = min(rate, limit)
-            cap = grid_charge_cap_kw(inputs, commanded_kw)
+            changed = self.state.rate_changed_at
+            yield_now = (
+                self.state.phase != "active" or changed is None
+                or (inputs.now - changed).total_seconds() >= RATE_UP_DWELL_S
+            )
+            cap = grid_charge_cap_kw(inputs, commanded_kw, yield_now=yield_now)
             if cap is None:
                 return 0.0, "headroom_unknown"
             rate = min(rate, cap)
@@ -872,7 +943,7 @@ class Executor:
             return problem
         if facts.brand != self.control.brand:
             return "brand_mismatch"
-        management = _management_problem(facts, self.control, active=inputs.sibling_active)
+        management = management_problem(facts, self.control, active=inputs.sibling_active)
         if management is not None:
             return management
         if facts.on_grid is False:
@@ -1003,8 +1074,9 @@ class Executor:
         return state.covered_at is not None and name in self.control.peak_first.get(state.action or "", ())
 
     def _capped(self, state: ExecState, inputs: ExecInputs, name: str) -> bool:
-        """Whether the day's write cap holds this write back (a restore and a peak cover never are)."""
-        if state.phase == "restoring" or self._covering(state, name):
+        """Whether the day's write cap holds this write back (a restore, a peak cover and a watchdog renewal never
+        are)."""
+        if state.phase == "restoring" or self._covering(state, name) or name in state.renew:
             return False
         return _writes_today(state, inputs) >= DAILY_WRITE_CAP
 
@@ -1059,9 +1131,16 @@ class Executor:
         if restoring and role.idle_when and state in role.idle_when:
             return True
         snapshot = self.state.snapshot.get(role.name)
+        never_written = role.name not in self.state.written
+        if never_written and reading(role, state) is None and (
+            restoring or wanted == self.state.restore_values.get(role.name)
+        ):
+            # Never written and no reading now (an entity that blinks unknown or unavailable): nothing SpotNav did to
+            # undo, and no evidence it needs its snapshot written.
+            return True
         if (
             snapshot is not None and state == snapshot and wanted == self.state.restore_values.get(role.name)
-            and role.name not in self.state.written
+            and never_written
         ):
             # Never written and still as found (a never-set limit reads "unknown"): nothing to write back. A role
             # SpotNav wrote is restored by writing its snapshot and reading it back, whatever it reads now.
@@ -1104,7 +1183,10 @@ class Executor:
         read = inputs.reads.get(name)
         renew = tuple(item for item in state.renew if item != name)
         sent = state.sent if name in state.sent else (*state.sent, name)
-        writes = state.writes_today + (0 if restoring else 1)
+        # A restore and a watchdog renewal are not counted: the renewal is the brand's dead-man, on a fixed timer
+        # (`WATCHDOG_RENEW_S`, at most a few roles), never a change of the wanted state.
+        renewing = name in state.renew
+        writes = state.writes_today + (0 if restoring or renewing else 1)
         written = state.written if name in state.written else (*state.written, name)
         if role.method == "button":
             # A button has no read-back: pressed once per target; the monitor judges what it did.

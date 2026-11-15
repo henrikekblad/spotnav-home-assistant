@@ -50,7 +50,7 @@ def _facts(power_kw: float | None = -4.6, *, management: str = "free", **changes
 
 def _inputs(at: datetime, **changes) -> HoldInputs:
     base = HoldInputs(
-        now=at, grid_charging=True, facts=_facts(), battery_age_s=5.0, measurement_ok=True, headroom_a=12.0,
+        now=at, grid_charging=True, facts=_facts(), battery_age_s=5.0, measurement_ok=True, headroom_a=25.0,
         charger_ids=("charger_a",), car_kw=7.0, reads=_reads(),
     )
     return replace(base, **changes)
@@ -201,8 +201,9 @@ def _without(role: str) -> dict[str, RoleRead]:
         ({"facts": _facts(on_grid=False)}, "off_grid"),
         ({"measurement_ok": False}, "stale_data"),
         ({"headroom_a": None}, "headroom_unknown"),
-        # 4.6 kW is 6.6 A per phase at 400 V: 8 A of headroom would leave 1.4 A.
-        ({"headroom_a": 8.0}, "headroom_too_small"),
+        # 4.6 kW can all be on one phase: 19.9 A at 230 V. 20 A of headroom would leave 0.1 A (spread over three
+        # phases it would have left 13.4 A).
+        ({"headroom_a": 20.0}, "headroom_too_small"),
     ],
 )
 def test_a_hold_that_is_not_possible_says_why(changes: dict, reason: str) -> None:
@@ -264,3 +265,28 @@ def test_an_earlier_versions_single_snapshot_loads_as_none() -> None:
     memory = HoldMemory.from_dict({"held": True, "snapshot": "4.8", "snapshot_unset": False})
 
     assert memory.held and memory.snapshot == {} and memory.restore == {}
+
+
+def _remote_ems(state: str = "self_managed", mode: str = "remote_ems") -> BatteryFacts:
+    return replace(_facts(), management=Management(state, f"EMS work mode:{mode}", {"EMS work mode": mode}))
+
+
+def test_a_hold_does_not_release_itself_on_the_remote_ems_its_own_writes_turn_on() -> None:
+    memory, _ = _armed_hold()
+    own = _inputs(T0 + timedelta(seconds=ARM_S + 5), facts=_remote_ems(), reads=_reads(remote_ems="on"))
+
+    memory, decisions = _run(memory, own, replace(own, now=own.now + timedelta(seconds=10)))
+
+    assert decisions == [] and memory.held
+    # Another mode is still the plant's own management: released at once.
+    _memory, [decision] = _run(memory, _inputs(own.now + timedelta(seconds=20), facts=_remote_ems(mode="ai_mode")))
+    assert decision.action == "would_restore" and decision.reason == "self_managed:EMS work mode:ai_mode"
+
+
+def test_a_blinking_management_reading_does_not_release_a_hold_the_executor_judges_it_after_its_grace() -> None:
+    memory, _ = _armed_hold()
+    blink = _inputs(T0 + timedelta(seconds=ARM_S + 5), facts=_remote_ems("unknown", "unavailable"))
+
+    memory, decisions = _run(memory, blink)
+
+    assert decisions == [] and memory.held
