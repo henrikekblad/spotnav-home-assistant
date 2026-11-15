@@ -362,8 +362,6 @@ The card is described in [The card](card.md).
    services** named after the phone, with the same code.
 3. Check that the codes match and choose **Approve**. **Deny** refuses the request.
 
-<!-- Screenshot to add when available: ![The pairing approval in Home Assistant](images/pairing-approve.png) -->
-
 A pairing request expires after five minutes; start again on the phone. No Home Assistant password
 or access token is ever stored on the phone. Approving hands over the chargers of this instance,
 each with its own private webhook secret. Treat webhook ids as secrets. See
