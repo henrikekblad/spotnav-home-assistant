@@ -211,7 +211,7 @@ def test_the_export_control_is_sigenergys_grid_export_limitation_and_no_other_br
     mapped = {row["brand"] for row in EXPORT_LIMIT_TABLE if row["mapped"]}
     assert mapped == {control.brand for control in EXPORT_CONTROLS}
     assert {row["brand"] for row in EXPORT_LIMIT_TABLE} >= {
-        "sigenergy", "solaredge", "huawei", "solax", "sungrow", "fronius", "victron"
+        "sigenergy", "solaredge", "huawei", "solax", "sungrow", "fronius", "victron", "goodwe"
     }
 
 

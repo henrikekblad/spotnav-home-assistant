@@ -437,7 +437,11 @@ EXPORT_LIMIT_TABLE: Final[tuple[Mapping[str, Any], ...]] = (
      "note": "The limit applies only while the switch is on."},
     {"brand": "victron", "integration": "victron_gx (victron-mqtt)", "mapped": False,
      "entity": "number `system_ess_max_feed_in_power` (/Settings/CGwacs/MaxFeedInPower, W, -1 no limit)",
-     "note": "A setting stored on the GX; Multi RS also has switch `multi_disable_feed_in`."},
+     "note": "A setting stored on the GX; Multi RS also has switch `multi_disable_feed_in`. The community Modbus"
+     " integration (sfstar/hass-victron 32fb345) has `settings_ess_maxfeedinpower` (register 2706, W, -1 no limit)."},
+    {"brand": "goodwe", "integration": "core goodwe (library goodwe 66dfcdd)", "mapped": False,
+     "entity": "number `grid_export_limit` (W on ET/EH, register 47510; % on DT, register 40328)",
+     "note": "A setting written to the inverter; the unit depends on the model."},
     {"brand": "fronius", "integration": "core fronius (Solar API)", "mapped": False, "entity": None,
      "note": "The core integration reads only; an export limit needs Modbus, not checked."},
 )
