@@ -292,3 +292,104 @@ def test_goodwe_states_the_depth_of_discharge() -> None:
         "number.depth", "goodwe", "goodwe-battery_discharge_depth-SN1", device_id="d", state="85", unit="%"
     )
     assert _reserve(GOODWE.reserves, [battery, depth], battery) == (15.0, ["number.depth"])
+
+
+# ---- what the shadow plan needs from an adapter (W8-D) ----------------------------------------------------------------
+
+#: The plan needs the level, the size and both rated powers (`plan_shadow.battery_params`); each fixture's first
+#: reason. SolaX's fixture has no install capacity (the entity exists on a real one, but it has no rated power either).
+PLAN_REASON = {
+    "sigenergy": None, "huawei": None, "solaredge": None, "victron": None, "victron_modbus": None,
+    "solax": "no_capacity", "goodwe": "no_capacity", "enphase": "no_rated_power",
+}
+
+
+@pytest.mark.parametrize("name", sorted(BRANDS))
+def test_the_shadow_plan_runs_for_a_brand_exactly_when_the_adapter_reads_what_it_needs(name: str) -> None:
+    from custom_components.spotnav.battery.plan_shadow import battery_params
+
+    params, reason, _estimates = battery_params(_facts(name))
+
+    assert reason == PLAN_REASON[name]
+    assert (params is not None) is (PLAN_REASON[name] is None)
+
+
+def test_victron_size_and_ratings_are_amp_hours_and_amperes_times_the_system_voltage_and_say_so() -> None:
+    facts = _facts("victron")
+
+    assert facts.capacity_kwh == pytest.approx(10.24)
+    assert facts.rated_charge_kw == pytest.approx(5.12)
+    assert facts.rated_discharge_kw == pytest.approx(7.68)
+    assert facts.reserve_soc_pct == 20.0
+    assert facts.estimates == ("capacity_from_ah", "rated_from_current")
+    assert facts.sources["capacity"].endswith("x sensor.victron_system_battery_voltage")
+    assert facts.as_dict()["estimates"] == ["capacity_from_ah", "rated_from_current"]
+
+
+def test_victron_without_a_can_bms_has_a_size_but_no_ratings() -> None:
+    gone = {"sensor.victron_battery_max_charge_current": {"state": "unavailable"}}
+
+    facts = _facts("victron", **gone)
+
+    assert facts.capacity_kwh == pytest.approx(10.24) and facts.rated_charge_kw is None
+    assert facts.rated_discharge_kw == pytest.approx(7.68)
+
+
+def test_victron_without_a_voltage_reads_no_energy_and_no_power() -> None:
+    facts = _facts("victron", **{"sensor.victron_system_battery_voltage": {"state": "unavailable"}})
+
+    assert facts.capacity_kwh is None and facts.rated_charge_kw is None and facts.estimates == ()
+
+
+def test_a_voltage_that_is_no_battery_voltage_is_not_used() -> None:
+    facts = _facts("victron", **{"sensor.victron_system_battery_voltage": {"state": "0.4"}})
+
+    assert facts.capacity_kwh is None
+
+
+def test_victron_modbus_prefers_the_dynamic_ess_size_in_kwh_and_reads_the_a_labelled_ah_register_otherwise() -> None:
+    facts = _facts("victron_modbus")
+
+    assert facts.capacity_kwh == 15.0 and facts.estimates == ("rated_from_current",)
+    assert facts.rated_charge_kw == pytest.approx(4.0) and facts.rated_discharge_kw == pytest.approx(5.0)
+    unset = _facts("victron_modbus", **{"sensor.victron_settings_dynamicess_batterycapacity": {"state": "0"}})
+    assert unset.capacity_kwh == pytest.approx(15.0) and "capacity_from_ah" in unset.estimates
+    assert unset.sources["capacity"].startswith("sensor.victron_battery_capacity x ")
+
+
+def test_victron_modbus_without_the_advanced_selects_is_unknown_and_left_alone() -> None:
+    facts = _facts("victron_modbus")
+
+    assert facts.management.state == "unknown" and facts.management.reason == "ESS mode:not_found"
+
+
+def test_victron_modbus_in_self_consumption_is_free() -> None:
+    brand = BRANDS["victron_modbus"]
+    entities = _entities(brand) + [
+        EntityFact("select.victron_ess_mode", "victron", "100_settings_ess_mode", device_id="system", state="SELF_CONSUMPTION"),
+        EntityFact("select.victron_dess", "victron", "100_settings_dynamicess_mode", device_id="system", state="AUTO"),
+    ]
+    battery = next(entity for entity in entities if entity.entity_id == brand["battery"])
+
+    assert battery_facts(battery, entities).management.state == "self_managed"
+    entities[-1] = EntityFact("select.victron_dess", "victron", "100_settings_dynamicess_mode", device_id="system", state="OFF")
+    assert battery_facts(battery, entities).management.state == "free"
+
+
+def test_goodwe_reads_its_ratings_from_the_bms_limits_but_no_size_and_so_no_plan() -> None:
+    facts = _facts("goodwe")
+
+    assert facts.capacity_kwh is None
+    assert facts.rated_charge_kw == pytest.approx(2.56) and facts.rated_discharge_kw == pytest.approx(3.072)
+    assert facts.estimates == ("rated_from_current",)
+
+
+def test_the_plan_carries_the_adapters_estimates_on() -> None:
+    from custom_components.spotnav.battery.plan_runtime import limited_params
+    from custom_components.spotnav.battery.plan_shadow import battery_params
+
+    facts = _facts("victron")
+
+    _params, _reason, estimates = limited_params(*battery_params(facts), facts)
+
+    assert {"capacity_from_ah", "rated_from_current", "round_trip_assumed"} <= set(estimates)

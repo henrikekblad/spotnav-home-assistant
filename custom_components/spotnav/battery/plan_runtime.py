@@ -202,6 +202,7 @@ def limited_params(
     place of the assumed one (which is then no estimate). A reserve at or above the ceiling is left out."""
     if params is None:
         return params, reason, estimates
+    estimates = (*estimates, *(code for code in facts.estimates if code not in estimates))
     charge, discharge = facts.max_charge_kw, facts.max_discharge_kw
     params = replace(
         params,
