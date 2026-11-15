@@ -372,6 +372,11 @@ def energy_per_slot_kwh(
     return capped_power_kw(amps, phases, voltage_between_phases_v, cap_kw) * SLOT_HOURS
 
 
+#: A best-effort plan that falls short of the need by at most this share of it (percent) still reaches the departure:
+#: the last of the needed slots would only have been partly used, and "will not be ready" with 40.1 of 40.2 kWh
+#: planned reads as a fault. One percent is under one percent of the battery, below what the car's own level shows.
+NEAR_ENOUGH_PERCENT: Final = 1.0
+
 #: Decimals the slot count is rounded to before its ceiling (a nanoslot is far below any meter's resolution).
 _SLOT_DIGITS: Final = 9
 
@@ -1084,7 +1089,8 @@ def _window(request: PlanRequest) -> _Window | PlannerReason:
             needed = fit
             duration = step * fit
             latest_start_exclusive = first_start + step
-            short = True
+            # Short only where the slots that fit leave a real shortfall, not a part of the last slot.
+            short = fit * per_slot < request.requested_kwh * (1 - NEAR_ENOUGH_PERCENT / 100)
         # Where the latest possible start's run ends: never past the deadline's last slot boundary, so
         # no price at or after the deadline (or a caller's own `window_end`) is ever required.
         required_end = latest_start_exclusive - step + duration

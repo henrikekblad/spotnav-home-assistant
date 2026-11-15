@@ -130,6 +130,20 @@ def test_a_need_that_fits_exactly_is_an_ordinary_plan() -> None:
     assert result.periods[-1][1] == datetime(2026, 10, 5, 12, 0, tzinfo=CEST)
 
 
+def test_a_need_short_by_a_part_of_one_slot_is_not_short_of_the_departure() -> None:
+    """The field case of 2026-11-15 (Peblar, "will not be ready: about 40.2 of 40.2 kWh by 13:00"): the whole slots
+    to the departure hold all but a sliver of the need. Within one percent of it the car is ready; every slot is
+    still planned. Beyond one percent it is short, as before."""
+    near = calculate_plan(request(requested_kwh=8 * PER_SLOT_KWH * 1.005))
+    assert near.has_plan and near.short_of_deadline is False
+    assert len(near.slots) == 8
+    assert near.periods[-1][1] == datetime(2026, 10, 5, 12, 0, tzinfo=CEST)
+
+    far = calculate_plan(request(requested_kwh=8 * PER_SLOT_KWH * 1.02))
+    assert far.has_plan and far.short_of_deadline is True
+    assert len(far.slots) == 8
+
+
 def test_a_departure_already_passed_today_plans_for_tomorrows() -> None:
     """At 12:30 the 12:00 departure is tomorrow's: 11.79 kWh fits easily, an ordinary plan."""
     result = calculate_plan(request(now="2026-10-05T12:30:00+02:00"))

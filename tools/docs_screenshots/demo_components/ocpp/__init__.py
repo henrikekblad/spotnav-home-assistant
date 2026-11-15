@@ -18,10 +18,11 @@ DOMAIN = "ocpp"
 PLATFORMS = ["switch", "number", "sensor"]
 SIGNAL_STATUS = f"{DOMAIN}_docs_status"
 
-#: (charge point id, display name, connectors)
+#: (charge point id, display name). The connector device carries the short name ("Garage"), as a person
+#: would rename it: SpotNav titles the charger after the device chosen, and the card shows that title.
 CHARGE_POINTS = (
-    ("halo_charger", "Garage charger"),
-    ("workshop_charger", "Workshop charger"),
+    ("halo_charger", "Garage"),
+    ("workshop_charger", "Workshop"),
 )
 
 
@@ -33,11 +34,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     )
     for cpid, name in CHARGE_POINTS:
         devices.async_get_or_create(
-            config_entry_id=entry.entry_id, identifiers={(DOMAIN, cpid)}, name=name,
+            config_entry_id=entry.entry_id, identifiers={(DOMAIN, cpid)}, name=f"{name} charge point",
             manufacturer="Charge Amps", model="HALO", via_device=(DOMAIN, "central"),
         )
         devices.async_get_or_create(
-            config_entry_id=entry.entry_id, identifiers={(DOMAIN, f"{cpid}-1")}, name=f"{name} Connector 1",
+            config_entry_id=entry.entry_id, identifiers={(DOMAIN, f"{cpid}-1")}, name=name,
             via_device=(DOMAIN, cpid),
         )
 

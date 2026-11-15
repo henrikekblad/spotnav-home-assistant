@@ -4,6 +4,12 @@
 // Nothing external (no `@import`, `url(...)`, web font or image); dialogs are `position: fixed`
 // overlays, so opening one never changes the card's height.
 
+/**
+ * Below this width of the header (the card's width less its padding) the card counts as narrow and the header
+ * leaves out the product mark, so the charger's name keeps one row: a phone column, the card picker's preview.
+ */
+export const HEADER_NARROW_PX = 400;
+
 /** Values longer than this stack under their label (the Android app uses the same threshold). */
 export const LONG_VALUE_LENGTH = 18;
 
@@ -1105,18 +1111,27 @@ export const VISUAL_STYLES = `
   .${VISUAL_CLASSES.card}[data-fill] .${VISUAL_CLASSES.actionBarWrap} {
     margin-top: calc(8px + var(--spotnav-fill-spare, 0px));
   }
+  /* The header is a size container: what it shows follows the card's width, not the viewport. */
   .${VISUAL_CLASSES.header} {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
     gap: 8px;
     min-width: 0;
+    container-type: inline-size;
   }
   .${VISUAL_CLASSES.identity} {
     flex: 0 0 auto;
     font-weight: 600;
     letter-spacing: 0.01em;
     color: var(--primary-color, #03a9f4);
+  }
+  /* A narrow card (a phone, the card picker's preview) gives the mark's room to the charger's name; a header with
+     no name (a card with no charger yet) keeps its mark. */
+  @container (max-width: ${HEADER_NARROW_PX - 1}px) {
+    .${VISUAL_CLASSES.identity}:has(~ .${VISUAL_CLASSES.name}) {
+      display: none;
+    }
   }
   /* A modest basis in rem (not em of the large title font): a phone-wide card keeps name, vehicle line and
      both buttons on one row, and only a very narrow card moves the button group to a row of its own. */
@@ -1130,13 +1145,18 @@ export const VISUAL_STYLES = `
   .${VISUAL_CLASSES.headerActions} {
     display: flex;
     flex: none;
-    gap: 8px;
-    margin-left: auto;
+    gap: 4px;
+    margin-inline-start: auto;
+    margin-inline-end: -4px;
   }
   /*
    * The header's history and cog buttons: a flex container centres the icon on both axes, and
    * line-height 0 stops the empty line box pushing it off centre. The retry button shares the class.
    */
+  /* An author display beats the browser's [hidden]; a reader who may change nothing gets no cog. */
+  .${VISUAL_CLASSES.iconButton}[hidden] {
+    display: none;
+  }
   .${VISUAL_CLASSES.iconButton} {
     display: inline-flex;
     align-items: center;
@@ -1168,6 +1188,50 @@ export const VISUAL_STYLES = `
   .${VISUAL_CLASSES.dialogClose}:focus-visible {
     outline: 2px solid var(--primary-color, #03a9f4);
     outline-offset: 2px;
+  }
+  /*
+   * In the header the two buttons are plain icons, as Home Assistant's own ha-icon-button: no frame and no fill,
+   * a 32 px round hover and focus mark around a 22 px glyph, and a 40 px tap target (the mark's 4 px of padding
+   * around it). The group sits 4 px into the card's padding so the glyph lines up with the content's edge,
+   * and the narrow pair leaves the charger's name its row.
+   */
+  .${VISUAL_CLASSES.headerActions} > .${VISUAL_CLASSES.iconButton} {
+    position: relative;
+    min-width: 40px;
+    min-height: 40px;
+    color: var(--secondary-text-color, #727272);
+    background: none;
+    border: 0;
+    border-radius: 50%;
+  }
+  .${VISUAL_CLASSES.headerActions} > .${VISUAL_CLASSES.iconButton}::before {
+    content: "";
+    position: absolute;
+    inset: 4px;
+    border-radius: 50%;
+    pointer-events: none;
+  }
+  /* Hover only where there is one: on a touch screen a tapped button would keep its mark. */
+  @media (hover: hover) {
+    .${VISUAL_CLASSES.headerActions} > .${VISUAL_CLASSES.iconButton}:hover {
+      color: var(--primary-text-color, #212121);
+    }
+    .${VISUAL_CLASSES.headerActions} > .${VISUAL_CLASSES.iconButton}:hover::before {
+      background: color-mix(in srgb, currentColor 12%, transparent);
+    }
+  }
+  .${VISUAL_CLASSES.headerActions} > .${VISUAL_CLASSES.iconButton}:focus-visible::before {
+    background: color-mix(in srgb, currentColor 12%, transparent);
+  }
+  .${VISUAL_CLASSES.headerActions} > .${VISUAL_CLASSES.iconButton}:focus-visible {
+    outline: none;
+  }
+  .${VISUAL_CLASSES.headerActions} > .${VISUAL_CLASSES.iconButton}:focus-visible::before {
+    outline: 2px solid var(--primary-color, #03a9f4);
+  }
+  .${VISUAL_CLASSES.headerActions} > .${VISUAL_CLASSES.iconButton} > svg {
+    width: 1.375rem;
+    height: 1.375rem;
   }
   .${VISUAL_CLASSES.banner} {
     display: flex;
@@ -1255,7 +1319,7 @@ export const VISUAL_STYLES = `
     top: 0;
     visibility: hidden;
   }
-  /* The planned vehicle: a quiet text button under the name; the header's 44 px icon buttons keep the row tall enough to tap. */
+  /* The planned vehicle: a quiet text button under the name; the header's 40 px icon buttons keep the row tall enough to tap. */
   .${VISUAL_CLASSES.vehicleLine} {
     display: inline-flex;
     flex-wrap: wrap;

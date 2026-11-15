@@ -72,7 +72,7 @@ def install() -> None:
             cls = module.SessionStore
             if not getattr(cls, "_docs_seeded", False):
                 cls._docs_seeded = True
-                for name in ("closed", "closed_raw"):
+                for name in ("closed", "closed_raw", "_costed"):
                     inner = getattr(cls, name)
 
                     def wrapped(self, charger_id, _inner=inner):

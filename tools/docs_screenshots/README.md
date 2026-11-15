@@ -31,8 +31,9 @@ unplugged (see [Car identification](#car-identification)).
 Named like the real integrations so SpotNav's detection treats them as such, and reduced to the shapes
 the detection reads (device tree, entity ids, unique ids, translation keys):
 
-- `ocpp`: a central system with two charge points ("Garage charger", "Workshop charger"), each with a
-  connector device, charge control, session current limit, energy register, per-phase current; the
+- `ocpp`: a central system with two charge points, each with a connector device named short, as a person
+  would rename it ("Garage", "Workshop": SpotNav titles a charger after the device chosen, so the card's header reads
+  "Garage"), charge control, session current limit, energy register, per-phase current; the
   `ocpp.get_configuration` service answers `AssignedCurrent` with `1.16,2.10`.
 - `sigen`: a plant ("Grid meter") with per-phase power and an inverter with voltages; values move a little
   every few seconds.
@@ -82,6 +83,9 @@ card-settings-charger (with identification and the camera), card-settings-site, 
 the Automations row), card-automations (the blueprints it lists, one used by an automation the driver makes from it), card-camera-frame (the crop
 editor), card-reference-picture, card-settings-plan, card-identifying, card-identified, card-identify-question,
 diagnostics.
+
+Only when named: `social-card`, the hero card in the light theme at twice the pixels, written to
+`tools/social/card-light.png` for the banner and the README's card and app picture (`tools/social/render.sh`).
 
 Not produced (they need real-world state): card-waiting (only before about 13:45 local with no tomorrow
 prices; `STUB_TOMORROW=0` removes tomorrow from the demo Nord Pool, but the integration decides by the real clock),

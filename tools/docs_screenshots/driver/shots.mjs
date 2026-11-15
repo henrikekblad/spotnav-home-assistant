@@ -114,7 +114,7 @@ await submit();
 await b.click("ha-select", "");
 await sleep(700);
 await shot("charger-device", DIALOG, 0, { blur: false });
-await b.click("ha-dropdown-item", "Garage charger");
+await b.click("ha-dropdown-item", "^Garage");
 await sleep(500);
 await submit();
 await shot("charger-found");
@@ -125,11 +125,11 @@ await cancelDialog();
 
 // The charger itself, added for real so that the site and the card have something to work with. The last answer
 // passes the first setup's step about where prices come from (shown while the area has no source of its own).
-const garage = await api.flow("spotnav", [{ entry_type: "charger" }, { mode: "detected" }, { device: deviceId("Garage charger Connector 1") }, {}, { charger_phases: "3" }, {}]);
+const garage = await api.flow("spotnav", [{ entry_type: "charger" }, { mode: "detected" }, { device: deviceId("Garage") }, {}, { charger_phases: "3" }, {}]);
 if (garage.type !== "create_entry") throw new Error("could not add the demo charger: " + JSON.stringify(garage).slice(0, 300));
 // Two cars can charge there: the camera with a reference picture of each, and "Family car" identified by its
 // charging cable at the plug-in SpotNav sees when the charger is added.
-const garageId = (await api.entries("spotnav")).find((e) => e.title.startsWith("Garage")).entry_id;
+const garageId = (await api.entries("spotnav")).find((e) => e.title === "Garage").entry_id;
 step("camera and the first car");
 await demo.setupCamera(api, garageId);
 await demo.decideFamilyCar(api, garageId);
@@ -156,7 +156,7 @@ await startSpotnavFlow();
 await submit();
 await submit();
 await b.click("ha-select", "");
-await b.click("ha-dropdown-item", "Workshop charger");
+await b.click("ha-dropdown-item", "^Workshop");
 await sleep(500);
 await submit();
 await submit();
@@ -171,7 +171,14 @@ await cancelDialog();
 
 step("site options");
 await b.goto(ha.BASE + "/config/integrations/integration/spotnav", 3000);
-await b.click("ha-icon-button", "^Configure$", 1);
+// The site's own Configure button: the one level with its title, whatever order the entries are listed in.
+await b.clickExpr(`(() => { const D = window.__docs; const mid = (e) => { const r = e.getBoundingClientRect(); return r.y + r.height / 2; };
+  const titles = D.deepAll("*").filter((e) => D.visible(e) && e.children.length === 0 && D.text(e) === "Home" && e.getBoundingClientRect().x > 300);
+  const buttons = D.deepAll("ha-icon-button").filter((e) => D.visible(e) && /^Configure$/i.test(e.label || e.getAttribute("aria-label") || D.text(e)));
+  if (!titles.length || !buttons.length) return null;
+  const off = (e) => Math.min(...titles.map((t) => Math.abs(mid(t) - mid(e))));
+  return buttons.reduce((a, e) => (off(e) < off(a) ? e : a)); })()`, "the site's Configure button");
+await b.waitFor(`!!${b.finder("*", "^Site settings$")}`, { what: "the site's settings dialog" });
 await sleep(1500);
 await shot("site-options");
 await cancelDialog();
@@ -190,7 +197,7 @@ await b.send("Input.dispatchKeyEvent", { type: "keyDown", key: "Escape", code: "
 // ------------------------------------------------------------------------------------------------ dashboard
 
 step("dashboard");
-const charger = (await api.entries("spotnav")).find((e) => e.title.startsWith("Garage"));
+const charger = (await api.entries("spotnav")).find((e) => e.title === "Garage");
 try {
   await api.ws({ type: "lovelace/dashboards/create", url_path: "spotnav-demo", mode: "storage", title: "Charging", icon: "mdi:ev-station", show_in_sidebar: true, require_admin: false });
 } catch {}
@@ -231,6 +238,39 @@ await saveAmps(15);
 await saveAmps(16);
 await sleep(1500);
 await cardShot("card-hero", CARD, 0);
+// The same card in Home Assistant's light theme at twice the pixels, for the banner and the README's card and
+// app picture (tools/social/). Not a docs picture, so it goes to tools/social/card-light.png. Only on request:
+// `run.sh social-card`.
+if (only.has("social-card")) {
+  // A fully set-up installation: every "Get started" row left is answered "Not needed", as a person would in the
+  // card's dialog, so the card shows no "Get started: N things left" line. Kept for this throwaway instance only.
+  const left = (await demo.dashboard(api, charger.entry_id)).setup?.items ?? [];
+  for (const item of left) {
+    if (!item.dismissible) throw new Error(`social-card: setup row ${item.id} cannot be answered "Not needed"`);
+    await api.ws({ type: "spotnav/dismiss_setup_item", item: item.id });
+  }
+  const { identifier } = await b.send("Page.addScriptToEvaluateOnNewDocument", {
+    source: `try { localStorage.setItem("selectedTheme", '{"dark":false}'); } catch (e) {}`,
+  });
+  await b.send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-color-scheme", value: "light" }] });
+  await b.send("Emulation.setDeviceMetricsOverride", { width: b.width, height: b.height, deviceScaleFactor: 2, mobile: false });
+  await openCard();
+  await sleep(1500);
+  try {
+    const file = path.join(REPO, "tools", "social", "card-light.png");
+    const clip = await b.shotElement(file, CARD, 0);
+    done.push("social-card");
+    console.log(`   social-card ${clip.width}x${clip.height} (twice the pixels)`);
+  } catch (err) {
+    failed.push(`social-card: ${err.message}`);
+  }
+  await b.send("Page.removeScriptToEvaluateOnNewDocument", { identifier });
+  await b.send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-color-scheme", value: "dark" }] });
+  await b.send("Emulation.setDeviceMetricsOverride", { width: b.width, height: b.height, deviceScaleFactor: 1, mobile: false });
+  await b.eval(`localStorage.setItem("selectedTheme", '{"dark":true}')`);
+  await openCard();
+  await sleep(1000);
+}
 // The same card on the From now axis. The axis is this browser's choice (Settings → Display), kept in its
 // storage: set it there for the one picture and clear it again, so every other picture is on Day.
 if (wanted("card-from-now")) {
