@@ -179,6 +179,38 @@ def _bucket_car(controller: Any) -> dict[datetime, float]:
     return {start: sum(values) for start, values in quarters.items() if len(values) == 4}
 
 
+def _car_register_ids(hass: HomeAssistant, controller: Any) -> tuple[str, ...]:
+    """The chargers' energy registers, only when every charger has one (else the battery plan's measure is used)."""
+    registers: list[str | None] = []
+    for charger_entry_id in controller.config.get(CONF_CHARGER_ENTRY_IDS) or []:
+        charger = controller_for(hass, charger_entry_id)
+        registers.append(None if charger is None else charger.energy_register_entity_id)
+    return tuple(dict.fromkeys(r for r in registers if r)) if registers and all(registers) else ()
+
+
+def _car_hours(controller: Any, rows: Any, car_ids: tuple[str, ...]) -> dict[datetime, float]:
+    """The cars' energy per hour (kWh, UTC hour starts): the battery plan's measure, the chargers' registers over it."""
+    car = _bucket_car(controller) if controller.battery_shadow.facts.battery_entity_id is not None else {}
+    if car_ids:
+        car = {**car, **summed(rows, car_ids)}
+    return car
+
+
+async def async_car_hours(
+    hass: HomeAssistant, controller: Any, now: datetime, day: date | None = None
+) -> dict[datetime, float]:
+    """The cars' energy in each completed hour the card's chart shows (the energy flow's own figures, kWh = mean kW)."""
+    tz = controller.demand.tracker.tz
+    current = hour_start(now, tz)
+    starts = [start for start in (hour_starts(now, tz) if day is None else day_hour_starts(day, tz)) if start < current]
+    if not starts:
+        return {}
+    car_ids = _car_register_ids(hass, controller)
+    rows = await async_statistics(hass, car_ids, starts[0], starts[-1] + timedelta(hours=1), "hour") if car_ids else {}
+    wanted = set(starts)
+    return {start: kwh for start, kwh in _car_hours(controller, rows, car_ids).items() if start in wanted}
+
+
 async def async_energy_flow(
     hass: HomeAssistant, controller: Any, now: datetime, day: date | None = None
 ) -> dict[str, Any] | None:
@@ -198,20 +230,14 @@ async def async_energy_flow(
     ids = energy_flow_ids(await async_energy_prefs(hass))
     if not ids.grid_in:
         return None
-    registers: list[str | None] = []
-    for charger_entry_id in controller.config.get(CONF_CHARGER_ENTRY_IDS) or []:
-        charger = controller_for(hass, charger_entry_id)
-        registers.append(None if charger is None else charger.energy_register_entity_id)
-    car_ids = tuple(dict.fromkeys(r for r in registers if r)) if registers and all(registers) else ()
+    car_ids = _car_register_ids(hass, controller)
     rows = await async_statistics(hass, (*ids.all(), *car_ids), midnight, end, "hour")
     starts = []
     moment = midnight
     while moment < end:
         starts.append(moment)
         moment += timedelta(hours=1)
-    car = _bucket_car(controller) if controller.battery_shadow.facts.battery_entity_id is not None else {}
-    if car_ids:
-        car = {**car, **summed(rows, car_ids)}
+    car = _car_hours(controller, rows, car_ids)
     has_battery = bool(ids.battery_in)
     meter = controller.house_forecast.heat.meter
     heat = None
@@ -259,6 +285,15 @@ async def async_recorded_soc(
         return {}
     short, hourly = await async_soc_statistics(hass, entity_id, starts[0], starts[-1] + timedelta(hours=1))
     return soc_at_hour_ends(starts, short, hourly)
+
+
+async def async_cached_car_hours(
+    hass: HomeAssistant, site_entry_id: str, controller: Any, day: date | None = None
+) -> dict[datetime, float]:
+    """`async_car_hours` under the energy flow's cache rules."""
+    return await _cached(
+        hass, (site_entry_id, "car", day), controller, lambda now: async_car_hours(hass, controller, now, day)
+    )
 
 
 async def _cached(hass: HomeAssistant, key: tuple[str, str, date | None], controller: Any, read: Any) -> Any:
@@ -332,6 +367,7 @@ def house_answer(
     flow: dict[str, Any] | None = None,
     day: date | None = None,
     soc: dict[datetime, float] | None = None,
+    car: dict[datetime, float] | None = None,
 ) -> dict[str, Any]:
     """The answer for one site, or a `PowerMonthRefusal`."""
     controller = site_controller_for(hass, site.entry_id)
@@ -375,6 +411,7 @@ def house_answer(
             energy_flow=flow,
             day=day,
             soc_recorded=soc or {},
+            car_actual=car or {},
             heat=_heat(hass, controller),
         )
     )
@@ -401,12 +438,13 @@ async def websocket_get_house(
     try:
         site = _site_of_request(hass, msg)
         controller = site_controller_for(hass, site.entry_id)
-        flow = day = soc = None
+        flow = day = soc = car = None
         if site.state is ConfigEntryState.LOADED and controller is not None:
             day = requested_day(msg.get("date"), controller.demand.now(), controller.demand.tracker.tz)
             flow = await _or_none(async_cached_energy_flow(hass, site.entry_id, controller, day), "energy flow")
             soc = await _or_none(async_cached_recorded_soc(hass, site.entry_id, controller, day), "recorded SoC")
-        answer = house_answer(hass, site, flow, day, soc)
+            car = await _or_none(async_cached_car_hours(hass, site.entry_id, controller, day), "cars' hours")
+        answer = house_answer(hass, site, flow, day, soc, car)
     except PowerMonthRefusal as refusal:
         connection.send_error(msg["id"], refusal.code, refusal.message)
         return

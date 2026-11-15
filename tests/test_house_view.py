@@ -319,6 +319,7 @@ def full_inputs(now: datetime = NOW) -> HouseInputs:
         ),
         money=("SEK", "kr", "öre"),
         energy_flow=villa_flow(now),
+        car_actual=villa_car_hours(),
         heat=HeatInputs(
             status="found",
             entity_id="sensor.varme_effekt",
@@ -354,6 +355,12 @@ VILLA_HOURS = (
     (3.99, 0, 0.09, 3.1, 0.48, 0),
     (0.01, 0.01, 0, 0, 1.7, 0),
 )
+
+
+def villa_car_hours() -> dict[datetime, float]:
+    """The charger's energy per hour of the same day (the car, 10 to 14 local), as the energy flow reads it."""
+    midnight = datetime(2026, 11, 13, tzinfo=timezone.utc) - CET
+    return {midnight + timedelta(hours=i): row[5] for i, row in enumerate(VILLA_HOURS)}
 
 
 def villa_flow(now: datetime) -> dict[str, Any] | None:
@@ -427,6 +434,9 @@ def test_the_full_site_and_its_fixture() -> None:
     # house over the same hours, and the split against the whole over the same hours of the week.
     assert all(row["heat_kw"] is not None and row["heat_kw"] < row["house_kw"] for row in past)
     assert all(row["heat_kw"] is None and row["heat_forecast_kw"] is not None for row in ahead)
+    # The car: the cars' measured energy in the past hours it charged, never ahead.
+    assert [row["car_kw"] for row in past if row["car_kw"]] == [2.1, 4.67, 8.56, 10.13]
+    assert all(row["car_kw"] is None for row in ahead)
     heat = view["heat"]
     assert tuple(heat) == HEAT_KEYS
     assert heat["status"] == "found" and heat["entity_id"] == "sensor.varme_effekt" and heat["setting_offered"] is True

@@ -98,6 +98,39 @@ def test_the_suns_production_comes_from_the_sun_forecasts_log() -> None:
     assert _production(controller) == {measured: 1.2}
 
 
+async def test_the_cars_hours_are_the_flows_own_figures_for_the_charts_hours(hass: HomeAssistant, monkeypatch) -> None:
+    """The chart's per-hour car figure comes from the chargers' registers (else the battery plan's measure), for the
+    completed hours of the window only, and reads nothing without a register."""
+    from datetime import datetime, timedelta, timezone
+    from types import SimpleNamespace
+
+    from custom_components.spotnav.api import house as house_api
+    from custom_components.spotnav.const import CONF_CHARGER_ENTRY_IDS
+
+    now = datetime(2026, 11, 13, 14, 30, tzinfo=timezone.utc)
+    current = datetime(2026, 11, 13, 14, tzinfo=timezone.utc)
+    controller = SimpleNamespace(
+        demand=SimpleNamespace(tracker=SimpleNamespace(tz="UTC")),
+        battery_shadow=SimpleNamespace(facts=SimpleNamespace(battery_entity_id=None)),
+        config={CONF_CHARGER_ENTRY_IDS: ["c1"]},
+    )
+    monkeypatch.setattr(house_api, "controller_for", lambda _hass, _id: SimpleNamespace(energy_register_entity_id="sensor.reg"))
+    reads: list[Any] = []
+
+    async def fake_statistics(_hass, ids, start, end, period):
+        reads.append((tuple(ids), start, end))
+        before = current - timedelta(hours=1)
+        return {"sensor.reg": [{"start": before, "change": 7.2}, {"start": start, "change": 0.5}]}
+
+    monkeypatch.setattr(house_api, "async_statistics", fake_statistics)
+    hours = await house_api.async_car_hours(hass, controller, now)
+    assert hours[current - timedelta(hours=1)] == 7.2 and current not in hours
+    assert reads[0][0] == ("sensor.reg",) and reads[0][2] == current
+    controller.config = {}
+    reads.clear()
+    assert await house_api.async_car_hours(hass, controller, now) == {} and reads == []
+
+
 async def test_todays_energy_flow_comes_from_the_energy_dashboard(hass: HomeAssistant, freezer, monkeypatch) -> None:
     """The flow reads the Energy dashboard's meters and the chargers' registers for today's completed hours, once per
     hour (or `FLOW_REFRESH_S`); without the dashboard's grid meter there is none."""

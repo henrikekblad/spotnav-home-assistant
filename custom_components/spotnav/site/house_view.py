@@ -42,6 +42,9 @@ It shows what the site diagnostics already carry, cut to what a card draws:
   past hours) and its forecast (`heat_forecast_kw`: past, the first logged; ahead, the latest); both are part of
   `house_kw`/`house_forecast_kw`, never added to them. Shown only: nothing plans on the split.
 
+Each hour also has `car_kw`: the cars' measured energy in the past hour (kWh = mean kW; the energy flow's own figures,
+the chargers' registers else the battery plan's measure), `null` ahead and where the cars could not be measured.
+
 Money is in the area's minor unit (öre), as the battery plan reckons it; `money` names the units.
 Everything here is shadow: nothing in it controls a charger or a battery.
 """
@@ -128,6 +131,7 @@ HOUR_KEYS: Final = (
     "sell",
     "heat_kw",
     "heat_forecast_kw",
+    "car_kw",
 )
 HEAT_KEYS: Final = (
     "status",
@@ -242,6 +246,9 @@ class HouseInputs:
     soc_recorded: Mapping[datetime, float] = field(default_factory=dict)
     #: The heat pump's meter and its hours; `None` where none is found, set or ambiguous.
     heat: HeatInputs | None = None
+    #: The cars' energy per completed hour (kWh = mean kW, by UTC hour start), the energy flow's own figures; empty
+    #: where the cars could not be measured.
+    car_actual: Mapping[datetime, float] = field(default_factory=dict)
 
 
 def _round(value: float | None, digits: int = 3) -> float | None:
@@ -442,6 +449,7 @@ def hours_view(inputs: HouseInputs) -> list[dict[str, Any]]:
             "sell": None,
             "heat_kw": None,
             "heat_forecast_kw": None,
+            "car_kw": _round(inputs.car_actual.get(start)) if past else None,
         }
         if heat is not None:
             row["heat_kw"] = _round(heat.actual.get(start)) if past else None

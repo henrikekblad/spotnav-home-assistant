@@ -405,6 +405,7 @@
     {
       "battery_action": null,
       "buy": 120.0,
+      "car_kw": 0,
       "heat_forecast_kw": 0.499,
       "heat_kw": 0.475,
       "house_forecast_kw": 0.893,
@@ -420,6 +421,7 @@
     {
       "battery_action": null,
       "buy": 160.0,
+      "car_kw": 0,
       "heat_forecast_kw": 0.971,
       "heat_kw": 0.925,
       "house_forecast_kw": 1.739,
@@ -435,6 +437,7 @@
     {
       "battery_action": null,
       "buy": 210.0,
+      "car_kw": 0,
       "heat_forecast_kw": 0.971,
       "heat_kw": 0.925,
       "house_forecast_kw": 1.739,
@@ -450,6 +453,7 @@
     {
       "battery_action": null,
       "buy": 210.0,
+      "car_kw": 0,
       "heat_forecast_kw": 0.971,
       "heat_kw": 0.925,
       "house_forecast_kw": 1.739,
@@ -465,6 +469,7 @@
     {
       "battery_action": null,
       "buy": 210.0,
+      "car_kw": 0,
       "heat_forecast_kw": 0.499,
       "heat_kw": 0.475,
       "house_forecast_kw": 0.893,
@@ -480,6 +485,7 @@
     {
       "battery_action": null,
       "buy": 160.0,
+      "car_kw": 2.1,
       "heat_forecast_kw": 0.499,
       "heat_kw": 0.475,
       "house_forecast_kw": 0.893,
@@ -495,6 +501,7 @@
     {
       "battery_action": null,
       "buy": 160.0,
+      "car_kw": 4.67,
       "heat_forecast_kw": 0.499,
       "heat_kw": 0.475,
       "house_forecast_kw": 0.893,
@@ -510,6 +517,7 @@
     {
       "battery_action": null,
       "buy": 160.0,
+      "car_kw": 8.56,
       "heat_forecast_kw": 0.499,
       "heat_kw": 0.475,
       "house_forecast_kw": 0.893,
@@ -525,6 +533,7 @@
     {
       "battery_action": null,
       "buy": 160.0,
+      "car_kw": 10.13,
       "heat_forecast_kw": 0.499,
       "heat_kw": 0.475,
       "house_forecast_kw": 0.893,
@@ -540,6 +549,7 @@
     {
       "battery_action": null,
       "buy": 160.0,
+      "car_kw": 0,
       "heat_forecast_kw": 0.499,
       "heat_kw": 0.475,
       "house_forecast_kw": 0.893,
@@ -555,6 +565,7 @@
     {
       "battery_action": null,
       "buy": 160.0,
+      "car_kw": 0,
       "heat_forecast_kw": 0.499,
       "heat_kw": 0.475,
       "house_forecast_kw": 0.893,
@@ -570,6 +581,7 @@
     {
       "battery_action": null,
       "buy": 310.0,
+      "car_kw": 0,
       "heat_forecast_kw": 1.725,
       "heat_kw": 1.643,
       "house_forecast_kw": 2.491,
@@ -585,6 +597,7 @@
     {
       "battery_action": null,
       "buy": 320.0,
+      "car_kw": null,
       "heat_forecast_kw": 1.676,
       "heat_kw": null,
       "house_forecast_kw": 2.6,
@@ -600,6 +613,7 @@
     {
       "battery_action": "export_discharge",
       "buy": 330.0,
+      "car_kw": null,
       "heat_forecast_kw": 1.676,
       "heat_kw": null,
       "house_forecast_kw": 2.7,
@@ -615,6 +629,7 @@
     {
       "battery_action": "export_discharge",
       "buy": 320.0,
+      "car_kw": null,
       "heat_forecast_kw": 1.676,
       "heat_kw": null,
       "house_forecast_kw": 2.7,
@@ -630,6 +645,7 @@
     {
       "battery_action": null,
       "buy": 310.0,
+      "car_kw": null,
       "heat_forecast_kw": 1.676,
       "heat_kw": null,
       "house_forecast_kw": 2.7,
@@ -645,6 +661,7 @@
     {
       "battery_action": null,
       "buy": 160.0,
+      "car_kw": null,
       "heat_forecast_kw": 0.484,
       "heat_kw": null,
       "house_forecast_kw": 1.0,
@@ -660,6 +677,7 @@
     {
       "battery_action": null,
       "buy": 160.0,
+      "car_kw": null,
       "heat_forecast_kw": 0.484,
       "heat_kw": null,
       "house_forecast_kw": 1.0,
@@ -675,6 +693,7 @@
     {
       "battery_action": null,
       "buy": 160.0,
+      "car_kw": null,
       "heat_forecast_kw": 0.484,
       "heat_kw": null,
       "house_forecast_kw": 1.0,
@@ -690,6 +709,7 @@
     {
       "battery_action": null,
       "buy": 95.0,
+      "car_kw": null,
       "heat_forecast_kw": 0.484,
       "heat_kw": null,
       "house_forecast_kw": 0.95,
@@ -705,6 +725,7 @@
     {
       "battery_action": null,
       "buy": 100.0,
+      "car_kw": null,
       "heat_forecast_kw": 0.51,
       "heat_kw": null,
       "house_forecast_kw": 1.0,
@@ -720,6 +741,7 @@
     {
       "battery_action": "grid_charge",
       "buy": 105.0,
+      "car_kw": null,
       "heat_forecast_kw": 0.51,
       "heat_kw": null,
       "house_forecast_kw": 0.95,
@@ -735,6 +757,7 @@
     {
       "battery_action": "grid_charge",
       "buy": 110.0,
+      "car_kw": null,
       "heat_forecast_kw": 0.51,
       "heat_kw": null,
       "house_forecast_kw": 0.95,
@@ -750,6 +773,7 @@
     {
       "battery_action": "grid_charge",
       "buy": 115.0,
+      "car_kw": null,
       "heat_forecast_kw": 0.51,
       "heat_kw": null,
       "house_forecast_kw": 0.95,
@@ -765,6 +789,7 @@
     {
       "battery_action": null,
       "buy": 120.0,
+      "car_kw": null,
       "heat_forecast_kw": 0.51,
       "heat_kw": null,
       "house_forecast_kw": 0.95,
@@ -780,6 +805,7 @@
     {
       "battery_action": null,
       "buy": 160.0,
+      "car_kw": null,
       "heat_forecast_kw": 0.969,
       "heat_kw": null,
       "house_forecast_kw": 1.85,
@@ -795,6 +821,7 @@
     {
       "battery_action": null,
       "buy": 210.0,
+      "car_kw": null,
       "heat_forecast_kw": 0.969,
       "heat_kw": null,
       "house_forecast_kw": 1.85,
@@ -810,6 +837,7 @@
     {
       "battery_action": null,
       "buy": 210.0,
+      "car_kw": null,
       "heat_forecast_kw": 0.969,
       "heat_kw": null,
       "house_forecast_kw": 1.85,
@@ -825,6 +853,7 @@
     {
       "battery_action": null,
       "buy": 210.0,
+      "car_kw": null,
       "heat_forecast_kw": 0.51,
       "heat_kw": null,
       "house_forecast_kw": 1.0,
@@ -840,6 +869,7 @@
     {
       "battery_action": null,
       "buy": 160.0,
+      "car_kw": null,
       "heat_forecast_kw": 0.51,
       "heat_kw": null,
       "house_forecast_kw": 0.95,
@@ -855,6 +885,7 @@
     {
       "battery_action": null,
       "buy": 160.0,
+      "car_kw": null,
       "heat_forecast_kw": 0.51,
       "heat_kw": null,
       "house_forecast_kw": 0.95,
@@ -870,6 +901,7 @@
     {
       "battery_action": null,
       "buy": 160.0,
+      "car_kw": null,
       "heat_forecast_kw": 0.51,
       "heat_kw": null,
       "house_forecast_kw": 0.95,
@@ -885,6 +917,7 @@
     {
       "battery_action": "hold",
       "buy": 160.0,
+      "car_kw": null,
       "heat_forecast_kw": 0.51,
       "heat_kw": null,
       "house_forecast_kw": 0.95,
@@ -900,6 +933,7 @@
     {
       "battery_action": "hold",
       "buy": 160.0,
+      "car_kw": null,
       "heat_forecast_kw": 0.51,
       "heat_kw": null,
       "house_forecast_kw": 0.95,
@@ -915,6 +949,7 @@
     {
       "battery_action": "hold",
       "buy": 160.0,
+      "car_kw": null,
       "heat_forecast_kw": 0.51,
       "heat_kw": null,
       "house_forecast_kw": 0.95,
@@ -930,6 +965,7 @@
     {
       "battery_action": "hold",
       "buy": 310.0,
+      "car_kw": null,
       "heat_forecast_kw": 1.644,
       "heat_kw": null,
       "house_forecast_kw": 2.65,
