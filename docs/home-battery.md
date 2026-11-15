@@ -16,6 +16,11 @@ to your main fuse. A planner such as Predbat or EMHASS already owns the battery,
 one battery fight each other. So SpotNav only publishes a signal, and the planner or an automation of
 yours acts on it.
 
+One limit to know before any controller (SpotNav's own, when it comes, or yours) writes to a Sigenergy plant:
+Sigenergy has no dead-man. If Home Assistant stops (not restarts) during a command, the plant keeps that command
+until Home Assistant is back and the controller restores what it found (SpotNav does that first after a
+start).
+
 ## The signal
 
 Two binary sensors, both named "Charging from the grid":
@@ -173,7 +178,8 @@ shows the same figure (`curtail`).
 * If you or the app change the export limit while SpotNav holds it at 0 kW, SpotNav leaves your value alone
   and does not write it again.
 * It works beside SpotNav's own battery control: a plant in Remote EMS because SpotNav runs the battery is
-  still SpotNav's to curtail (Remote EMS of another app's is not), and the export limit stays at 0 kW when
+  still SpotNav's to curtail (Remote EMS of another app's is not: if the app or a VPP takes Remote EMS while
+  SpotNav curtails, SpotNav puts the limit back and only watches), and the export limit stays at 0 kW when
   SpotNav hands the battery back.
 * If the site keeps exporting for a few minutes with the limit at 0 kW, the inverter is not obeying it:
   SpotNav would put the value it found back and stop trying.
