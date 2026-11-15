@@ -90,6 +90,8 @@ async def test_the_block_sits_beside_the_price_source_and_is_off_until_written(
         "transfer_high": {"policy": "off", "explicit_value": None, "effective_value": None, "unit": "öre/kWh"},
         "high_load_window": None,
         "demand": NO_DEMAND,
+        "supplier_markup": {"policy": "off", "explicit_value": None, "effective_value": None, "unit": "öre/kWh"},
+        "sell_adjustment": {"policy": "off", "explicit_value": None, "effective_value": None, "unit": "öre/kWh"},
         "writable": True,
     }
 
@@ -411,3 +413,66 @@ async def test_the_demand_components_are_written_read_back_and_kept_by_a_writer_
     frame = await ws_call(client, update("entry_a", 3, {**OWNER, "demand_components": []}))
     assert frame["result"]["grid_tariff"]["demand"]["components"] == []
     assert price.data["demand_components"] == []
+
+
+async def test_the_supplier_figures_are_written_read_back_and_kept_by_a_writer_that_does_not_know_them(
+    hass: HomeAssistant, hass_ws_client, hass_client_no_auth, freezer
+) -> None:
+    await setup_charger(hass)
+    client = await admin(hass, hass_ws_client)
+    app = await hass_client_no_auth()
+    freezer.move_to(NOW)
+    await go_auto(hass)
+    price = await add_price(hass)
+    revision = price_source_for(hass, "entry_a").revision
+    markup = {"enabled": True, "value": 4.5}
+    sell = {"enabled": True, "value": -2.0}
+
+    frame = await ws_call(client, update("entry_a", 0, {**OWNER, "supplier_markup": markup, "sell_adjustment": sell}))
+    assert frame["success"] is True, frame
+    block = frame["result"]["grid_tariff"]
+    assert block["supplier_markup"] == {"policy": "manual", "explicit_value": 4.5, "effective_value": 4.5, "unit": "öre/kWh"}
+    assert block["sell_adjustment"] == {"policy": "manual", "explicit_value": -2.0, "effective_value": -2.0, "unit": "öre/kWh"}
+    assert (price.data["supplier_markup"], price.data["sell_adjustment"]) == (markup, sell)
+    assert price_source_for(hass, "entry_a").revision != revision
+    fiscal = price_source_for(hass, "entry_a").fiscal
+    assert fiscal is not None and (fiscal.markup_minor_per_kwh, fiscal.sell_adjustment) == (4.5, -2.0)
+
+    # A body without them (an older card or the app before them) changes the rest and keeps them.
+    frame = await ws_call(client, update("entry_a", 1, {**OWNER, "transfer_percent": OFF}))
+    assert frame["success"] is True, frame
+    assert frame["result"]["grid_tariff"]["supplier_markup"]["effective_value"] == 4.5
+    assert (price.data["supplier_markup"], price.data["sell_adjustment"]) == (markup, sell)
+
+    # A negative markup is refused; only what a sold kWh earns may be a deduction.
+    refused = await ws_call(client, update("entry_a", 2, {**OWNER, "supplier_markup": {"enabled": True, "value": -1}}))
+    assert refused["success"] is False and refused["error"]["code"] == "invalid_fiscal"
+    assert price.data["supplier_markup"] == markup
+
+    # Over the webhook the app meets them only when it reads them, and its write without them keeps them.
+    def dashboard_reads(*reads: str) -> dict[str, Any]:
+        return {"version": 1, "action": "dashboard", "api_version": 1, "reads": ["grid_tariff", *reads]}
+
+    unread = (await (await app.post("/api/webhook/webhook-a", json=dashboard_reads())).json())["grid_tariff"]
+    assert "supplier_markup" not in unread and "sell_adjustment" not in unread
+    read = (await (await app.post("/api/webhook/webhook-a", json=dashboard_reads("supplier_fees"))).json())[
+        "grid_tariff"
+    ]
+    assert read["sell_adjustment"]["effective_value"] == -2.0
+    response = await app.post(
+        "/api/webhook/webhook-a",
+        json={"version": 1, "action": "update_grid_tariff", "expected_write_revision": 2, "grid_tariff": OWNER},
+    )
+    body = await response.json()
+    assert response.status == 200, body
+    assert "supplier_markup" not in body["grid_tariff"]
+    assert (price.data["supplier_markup"], price.data["sell_adjustment"]) == (markup, sell)
+    # Turned off, each figure kept.
+    frame = await ws_call(
+        client, update("entry_a", 3, {**OWNER, "supplier_markup": {**markup, "enabled": False}, "sell_adjustment": OFF})
+    )
+    assert frame["result"]["grid_tariff"]["supplier_markup"] == {
+        "policy": "off", "explicit_value": 4.5, "effective_value": None, "unit": "öre/kWh"
+    }
+    fiscal = price_source_for(hass, "entry_a").fiscal
+    assert fiscal is not None and (fiscal.markup_minor_per_kwh, fiscal.sell_adjustment) == (None, 0.0)

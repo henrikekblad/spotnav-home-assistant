@@ -65,6 +65,18 @@
   },
   "entry_id": "price_a",
   "high_load_window": null,
+  "sell_adjustment": {
+    "effective_value": null,
+    "explicit_value": null,
+    "policy": "off",
+    "unit": "öre/kWh"
+  },
+  "supplier_markup": {
+    "effective_value": null,
+    "explicit_value": null,
+    "policy": "off",
+    "unit": "öre/kWh"
+  },
   "transfer_high": {
     "effective_value": null,
     "explicit_value": null,

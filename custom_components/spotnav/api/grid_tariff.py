@@ -7,12 +7,19 @@ fee there (`transfer_high`), and that window. Every charger pricing with the ent
 The dashboard's optional `grid_tariff` block (`serialize_grid_tariff`), present exactly where `price_source` is
 (the charger prices with an electricity price entry):
 
-    {entry_id, write_revision, transfer_percent, transfer_high, high_load_window, demand, writable}
+    {entry_id, write_revision, transfer_percent, transfer_high, high_load_window, demand,
+     supplier_markup, sell_adjustment, writable}
 
 * `transfer_percent`/`transfer_high`: `{policy, explicit_value, effective_value, unit}`. `policy` is `off`,
   `manual` or `included` (the area's published price already holds the grid fee: locked like `transfer`, nothing
   added, whatever is stored). `explicit_value` is what is stored, `effective_value` what is added (`null` while
   off or included). `unit` is `%` for the percentage and the area's minor unit per kWh for the high-load fee.
+* `supplier_markup`/`sell_adjustment` (additive): the electricity supplier's two figures, which are no grid fee but
+  live on the same price entry, each `{policy, explicit_value, effective_value, unit}` with `policy` `off` or `manual`
+  (never `included`: no area's published price holds them) and `unit` the area's minor unit per kWh.
+  `supplier_markup` is added to each bought kWh before VAT, as the other fees are (`planning/planner.py:
+  effective_minor_per_kwh`). `sell_adjustment` is what a sold kWh earns beyond the spot price, as it is paid out:
+  never with VAT, and negative for a deduction (`battery/plan.py:sell_prices`).
 * `high_load_window`: `{days, from_month, to_month, from_hour, to_hour}` or `null`. `days` is `all`, `weekdays`
   (Monday to Friday) or `mon_sat`; months 1-12, both included, wrapping over the new year (11 to 3 is November to
   March, 1 to 12 all year); whole hours of the area's own clock, `from_hour` 0-23 and `to_hour` 1-24, wrapping over
@@ -49,7 +56,8 @@ compare-and-set against the entry's write counter:
 
 `grid_tariff` is `{transfer_percent: {enabled, value}, transfer_high: {enabled, value}, high_load_window}` and,
 optionally, `demand_components` (the list as `demand.components` states it; absent keeps the stored components, so
-a writer that does not know them leaves them alone). A fee that is on needs its figure (no area suggests one); the
+a writer that does not know them leaves them alone), `supplier_markup` and `sell_adjustment` (each `{enabled,
+value}`; absent keeps the stored figure the same way; only `sell_adjustment` takes a negative value). A fee that is on needs its figure (no area suggests one); the
 high-load fee needs a window. A component needs `top_n` 1, 3 or 5, a window of whole hours (or `null`) and prices
 that are `null` or not negative. A tariff equal to the stored one (all off equals none stored) writes nothing and
 leaves the write counter. Refusals: `invalid_fiscal` (the body, with the field that is wrong), `revision_conflict`
@@ -76,6 +84,9 @@ from ..planning.auto_settings import (
     GridTariff,
     high_load_window_dict,
     high_load_window_from,
+    SELL_ADJUSTMENT,
+    SUPPLIER_FEES,
+    SUPPLIER_MARKUP,
 )
 from ..planning.first_run import site_for_charger
 from ..pricing.price_source import async_write_price_entry, entry_source_for, PriceSource
@@ -92,6 +103,8 @@ ERROR_NO_PRICE_ENTRY: Final = "spotnav_no_price_entry"
 #: The body's keys, all required.
 GRID_TARIFF_KEYS: Final = frozenset({"transfer_percent", "transfer_high", "high_load_window"})
 FEE_KEYS: Final = frozenset({"enabled", "value"})
+#: The body's optional keys: each absent one keeps what is stored.
+OPTIONAL_KEYS: Final = frozenset({DEMAND_COMPONENTS, *SUPPLIER_FEES})
 
 POLICY_OFF: Final = "off"
 POLICY_MANUAL: Final = "manual"
@@ -251,17 +264,16 @@ def serialize_grid_tariff(grid_tariff: CapturedGridTariff | None, *, can_act: bo
     captured = grid_tariff
     tariff = captured.tariff
     window = tariff.high_load_window
+    minor_per_kwh = None if captured.minor_unit is None else f"{captured.minor_unit}/kWh"
     return {
         "entry_id": captured.entry_id,
         "write_revision": captured.write_revision,
         "transfer_percent": _fee(tariff.transfer_percent, "%", captured.included),
-        "transfer_high": _fee(
-            tariff.transfer_high,
-            None if captured.minor_unit is None else f"{captured.minor_unit}/kWh",
-            captured.included,
-        ),
+        "transfer_high": _fee(tariff.transfer_high, minor_per_kwh, captured.included),
         "high_load_window": None if window is None else high_load_window_dict(window),
         "demand": serialize_demand(captured),
+        SUPPLIER_MARKUP: _fee(tariff.supplier_markup, minor_per_kwh, included=False),
+        SELL_ADJUSTMENT: _fee(tariff.sell_adjustment, minor_per_kwh, included=False),
         "writable": bool(can_act),
     }
 
@@ -281,7 +293,7 @@ def _invalid(message: str, field: str = "grid_tariff") -> GridTariffRefusal:
     return GridTariffRefusal("invalid_fiscal", message, field)
 
 
-def _decode_fee(raw: Any, name: str) -> FiscalOverride:
+def _decode_fee(raw: Any, name: str, *, signed: bool = False) -> FiscalOverride:
     if not isinstance(raw, Mapping) or set(raw) != FEE_KEYS:
         raise _invalid(f"{name} must be exactly {{enabled, value}}", name)
     enabled, value = raw["enabled"], raw["value"]
@@ -290,17 +302,22 @@ def _decode_fee(raw: Any, name: str) -> FiscalOverride:
     if value is not None and (isinstance(value, bool) or not isinstance(value, (int, float))):
         raise _invalid(f"{name}.value must be a number or null", name)
     try:
-        return FiscalOverride(enabled=enabled, value=None if value is None else float(value)).validated(name)
+        return FiscalOverride(enabled=enabled, value=None if value is None else float(value)).validated(
+            name, signed=signed
+        )
     except AutoSettingsError as err:
         raise _invalid(str(err), name) from err
 
 
 def decode_grid_tariff(raw: Any) -> tuple[GridTariff, bool]:
-    """A write's `grid_tariff`: exactly its three parts and optionally `demand_components`, validated, or
-    `invalid_fiscal`. Also whether the body named the components (absent keeps the stored ones)."""
+    """A write's `grid_tariff`: exactly its three parts and optionally `demand_components`, `supplier_markup` and
+    `sell_adjustment`, validated, or `invalid_fiscal`. Also whether the body named the components (absent keeps the
+    stored ones); an absent supplier figure decodes as off, and the write keeps the stored one in its place."""
     keys = set(raw) if isinstance(raw, Mapping) else set()
-    if not isinstance(raw, Mapping) or keys - {DEMAND_COMPONENTS} != GRID_TARIFF_KEYS:
-        raise _invalid(f"grid_tariff must be exactly {sorted(GRID_TARIFF_KEYS)} (and optionally {DEMAND_COMPONENTS})")
+    if not isinstance(raw, Mapping) or keys - OPTIONAL_KEYS != GRID_TARIFF_KEYS:
+        raise _invalid(
+            f"grid_tariff must be exactly {sorted(GRID_TARIFF_KEYS)} (and optionally {sorted(OPTIONAL_KEYS)})"
+        )
     window = None
     if raw["high_load_window"] is not None:
         try:
@@ -319,6 +336,12 @@ def decode_grid_tariff(raw: Any) -> tuple[GridTariff, bool]:
         transfer_high=_decode_fee(raw["transfer_high"], "transfer_high"),
         high_load_window=window,
         demand=demand,
+        supplier_markup=_decode_fee(raw[SUPPLIER_MARKUP], SUPPLIER_MARKUP)
+        if SUPPLIER_MARKUP in keys
+        else FiscalOverride(),
+        sell_adjustment=_decode_fee(raw[SELL_ADJUSTMENT], SELL_ADJUSTMENT, signed=True)
+        if SELL_ADJUSTMENT in keys
+        else FiscalOverride(),
     )
     try:
         return tariff.validated(), named
@@ -356,6 +379,10 @@ def update_grid_tariff(hass: HomeAssistant, charger_id: str, expected_write_revi
     if not demand_named:
         # A writer that does not know the demand charge leaves it as stored.
         tariff = replace(tariff, demand=stored.demand)
+    for name in SUPPLIER_FEES:
+        if not isinstance(body, Mapping) or name not in body:
+            # Likewise a writer that does not know the supplier's figures (an app before them).
+            tariff = replace(tariff, **{name: getattr(stored, name)})
     if tariff == stored:
         # The tariff as stored (nothing stored reads as all off): nothing to write, and no replan.
         return
