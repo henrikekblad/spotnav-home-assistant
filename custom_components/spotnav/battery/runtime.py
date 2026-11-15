@@ -222,20 +222,34 @@ class BatteryShadow:
         except Exception:  # noqa: BLE001 - a broken store starts an empty book
             _LOGGER.warning("The battery shadow log could not be read; starting a new one")
             stored = None
+        try:
+            self._restore(stored, now)
+        except Exception:  # noqa: BLE001 - a record SpotNav cannot read must not stop the site; it starts again
+            _LOGGER.warning("The battery shadow log could not be read; starting a new one", exc_info=True)
+            try:
+                self._restore(None, now)
+            except Exception:  # noqa: BLE001 - the battery's facts are read again at each look
+                _LOGGER.debug("SpotNav battery shadow: the start's first look failed", exc_info=True)
+        self._loaded = True
+        # An earlier version raised a Repairs notice for an occurrence: it is retired, so a left-over one goes.
+        ir.async_delete_issue(self.hass, DOMAIN, outside_control_issue_id(self.site.entry_id))
+        try:
+            await self.plan.async_start(now)
+        except Exception:  # noqa: BLE001 - the plan must never stop the site; it starts without its record
+            _LOGGER.warning("SpotNav battery plan: the start failed", exc_info=True)
+        self._timer_cancel = async_track_time_interval(self.hass, self._async_tick, timedelta(seconds=TICK_S))
+
+    def _restore(self, stored: Any, now: datetime) -> None:
+        """The book and its parts from the stored record (`None`: a new one), then the restart's look at the hold."""
         self.book = ShadowBook.from_dict(stored, now)
         self.dry_run = HoldDryRun(
             Ledger.from_dict(self.book.section(SECTION_LEDGER)), Monitor.from_dict(self.book.section(SECTION_MONITOR))
         )
         self.outside = OutsideControlWatch.from_dict(self.book.section(SECTION_OUTSIDE))
         self.curtail = CurtailShadow.from_dict(self.book.section(SECTION_CURTAIL))
-        self._loaded = True
-        # An earlier version raised a Repairs notice for an occurrence: it is retired, so a left-over one goes.
-        ir.async_delete_issue(self.hass, DOMAIN, outside_control_issue_id(self.site.entry_id))
         self.facts = self._read_facts()
         memory, decision = restart(self._hold, self.facts, now)
         self._apply(PART_HOLD_FOR_CAR, memory, decision, now)
-        await self.plan.async_start(now)
-        self._timer_cancel = async_track_time_interval(self.hass, self._async_tick, timedelta(seconds=TICK_S))
 
     async def async_shutdown(self) -> None:
         if self._timer_cancel is not None:
