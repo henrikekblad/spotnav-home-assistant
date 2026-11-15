@@ -759,3 +759,83 @@ def test_the_sigenergy_mode_texts_are_the_options_of_typqxq_s_remote_ems_control
     assert mode("grid_charge") == "Command Charging (Grid First)"  # register value 3
     assert mode("export_discharge") == "Command Discharging (PV First)"  # register value 5
     assert mode("hold") == "Maximum Self Consumption"  # register value 2
+
+
+# --- every hand-back ends -------------------------------------------------------------------------------------------
+
+#: Forty minutes of looks: longer than every restore retry together.
+_HAND_BACK_LOOKS = int(40 * 60 / TICK.total_seconds())
+
+
+def _ended(executor: Executor) -> None:
+    state = executor.state
+    assert state.phase in ("idle", "blocked"), state
+    assert state.retries == {} and state.pending is None and state.in_flight == ()
+
+
+@pytest.mark.parametrize("brand", ["sigenergy", "solaredge", "huawei", "solax"])
+@pytest.mark.parametrize("action", ["hold", "grid_charge", "discharge_house", "export_discharge"])
+@pytest.mark.parametrize(
+    ("plan", "overrides"),
+    [
+        ("same", {"stopping": "stop"}),
+        ("self_consume", {}),
+        (None, {}),
+        ("same", {"battery_age_s": 600.0}),
+        ("same", {"headroom_a": 0.5}),
+        ("same", {"management": Management("self_managed", "planner:predbat")}),
+        ("same", {"on_grid": False}),
+    ],
+)
+def test_every_hand_back_path_ends_idle_or_blocked_with_no_retry_left(brand, action, plan, overrides) -> None:
+    control = control_for(brand)
+    states = {"sigenergy": SIGENERGY_STATES, "solaredge": SOLAREDGE_STATES, "huawei": HUAWEI_STATES,
+              "solax": SOLAX_STATES}[brand]
+    if "headroom_a" in overrides and action not in ("hold", "grid_charge"):
+        overrides = {"stopping": "stop"}  # the fuse hands back only an action that adds import
+    executor, battery = Executor(control), FakeBattery(control, dict(states))
+    now, _ = run(executor, battery, T0, 8, action, 3.0)
+    assert executor.state.phase == "active"
+    _now, _ = run(executor, battery, now, _HAND_BACK_LOOKS, action if plan == "same" else plan, 3.0, **overrides)
+    _ended(executor)
+
+
+def test_a_fuse_hand_back_of_a_sigenergy_grid_charge_ends_though_remote_ems_off_hides_the_mode() -> None:
+    # Remote EMS off makes the mode select unavailable before Maximum Self Consumption reads back: the mode is not
+    # confirmed, but it needs no write any more (`idle_when`).
+    executor, battery = _sigenergy()
+    now, _ = run(executor, battery, T0, 6, "grid_charge", 4.0)
+    _now, results = run(executor, battery, now, _HAND_BACK_LOOKS, "grid_charge", 4.0, headroom_a=0.5)
+    _ended(executor)
+    assert executor.state.phase == "idle" and not executor.state.holds_snapshot
+    assert battery.states["remote_ems"] == "off" and battery.states["charge_limit"] == "10"
+    executor.reset()
+    assert executor.state.phase == "idle"
+
+
+def test_a_write_still_pending_when_a_restore_begins_is_no_restore_retry() -> None:
+    # Remote EMS on is dropped silently; the part stops before its read-back deadline.
+    executor, battery = _sigenergy(drops={"remote_ems"})
+    now, _ = run(executor, battery, T0, 3, "hold")
+    assert executor.state.pending == "remote_ems"
+    _now, results = run(executor, battery, now, _HAND_BACK_LOOKS, "hold", stopping="stop")
+    _ended(executor)
+    assert battery.states["discharge_limit"] == "23.04"
+    assert ("remote_ems", True) not in [(op.role, op.value) for r in results for op in r.ops]
+
+
+def test_a_restore_write_pending_across_a_restart_ends_once_the_role_needs_no_write() -> None:
+    executor, battery = _sigenergy()
+    now, _ = run(executor, battery, T0, 6, "grid_charge", 4.0)
+    now, _ = run(executor, battery, now, 1, "grid_charge", 4.0, headroom_a=0.5)
+    assert executor.state.phase == "restoring" and executor.state.in_flight
+    stored = executor.as_dict()
+    again = Executor(
+        SIGENERGY_CONTROL, Ledger.from_dict(stored["ledger"]), Monitor.from_dict(stored["monitor"]),
+        ExecState.from_dict(stored["state"]),
+    )
+    later = now + timedelta(seconds=READBACK_DEADLINE_S + 60)
+    again.restart(later)
+    _now, _ = run(again, battery, later, _HAND_BACK_LOOKS, "grid_charge", 4.0, headroom_a=0.5)
+    _ended(again)
+    assert not again.state.holds_snapshot

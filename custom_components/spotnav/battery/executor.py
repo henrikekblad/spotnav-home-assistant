@@ -30,7 +30,10 @@ How it acts (`step`, one look every few seconds; pure, the shell does the writes
   after SpotNav's own write proves nothing; the snapshot is then written as the rating, never as `unknown`, and an
   `unknown` read-back is never a confirmed write (the ledger waits for a real value until its deadline). A restore write that does not read back is retried with backoff
   (`RESTORE_RETRY_S`), up to `RESTORE_ATTEMPTS` times each; a role still not restored then is left with its
-  snapshot kept (the control blocks, and the next start tries again), while the other roles are handed back.
+  snapshot kept (the control blocks, and the next start tries again), while the other roles are handed back. A role
+  that meanwhile needs no write (it reads its restore value, or its select is idle once Remote EMS is off) drops its
+  retry, and a write made for the action that is still awaited when the hand-back begins is no restore retry: every
+  hand-back ends.
 * **Fuse safety.** A grid charge is clamped by the site's live headroom: what the battery already draws from the
   grid (at most its charge, the commanded rate and the site's import) plus the headroom less `HEADROOM_MARGIN_A`.
   Unlike evcc, the battery's charge counts against the main fuse. With the site's solar priority "car first" a
@@ -582,6 +585,7 @@ class Executor:
             events += self._cover(inputs)
             if self.state.phase == "active":
                 events += self._retarget(inputs)
+        self._settle_retries(inputs)
         ops: list[Op] = []
         while True:
             events += self._precheck(inputs)
@@ -628,7 +632,12 @@ class Executor:
                 if self.state.pending == role.name:
                     self.state = replace(self.state, pending=None)
                 self.state = replace(self.state, in_flight=_without(self.state.in_flight, role.name))
-                events += self._not_taken(now, role.name, "no_read_back", read=event.read)
+                if self.state.phase == "restoring" and event.intended != self.state.target.get(role.name):
+                    # A write made for the action, still awaited when the hand-back began: no restore to retry,
+                    # the role is judged afresh against its restore value.
+                    events.append(_event(now, "not_taken", role.name, why="superseded", read=event.read))
+                else:
+                    events += self._not_taken(now, role.name, "no_read_back", read=event.read)
             else:
                 events += self._gave_up(now, role.name, entity_id, event.read)
         if self.state.phase == "active" and self._export:
@@ -792,6 +801,30 @@ class Executor:
             retries={}, unrestored=(), management_unknown_since=None, covered_at=None, peak_low_since=None,
         )
         return [_event(now, "hand_back", reason)]
+
+    def _settle_retries(self, inputs: ExecInputs) -> None:
+        """Drop the retry of a restore write that is no longer needed: the role now reads what the hand-back wants
+        (Sigenergy's mode select goes unavailable once Remote EMS is off, before its own write reads back), or it
+        is no longer the hand-back's to write. Its claim, if any, is released. Without this the hand-back would wait
+        for a retry `_next_role` never makes."""
+        state = self.state
+        if state.phase != "restoring" or not state.retries:
+            return
+        retries = dict(state.retries)
+        for name in list(retries):
+            if name == state.pending or name in state.in_flight:
+                continue
+            wanted = state.target.get(name)
+            if wanted is not None and name not in state.given_up and not self._satisfied(
+                self.control.role(name), wanted, inputs.reads.get(name), restoring=True
+            ):
+                continue
+            del retries[name]
+            entity_id = state.entities.get(name)
+            if entity_id is not None:
+                self.ledger.release(entity_id)
+        if retries != state.retries:
+            self.state = replace(state, retries=retries)
 
     def _finish(self, inputs: ExecInputs) -> list[dict[str, Any]]:
         """A restore with nothing left to write ends: claims released, the snapshot dropped (kept for a role whose
