@@ -6,6 +6,7 @@ import { clock, dateLabel, dayCue, formatFixed, formatNumber, hourLabel, type En
 import { heatShown, houseChartHeight, houseShown, renderHouseChart, sunShown, type HouseChart, type HouseChartView } from "./house-chart";
 import { MODES, type BatteryMode, type DayFlow, type HouseAnswer, type HouseHour } from "./house-model";
 import { renderFlow } from "./house-flow";
+import { hiddenIn, type HiddenSeries } from "./house-series";
 import { HOUSE_CLASSES as H } from "./house-styles";
 import { pluralForm, translate, type Language, type TranslationKey } from "./i18n";
 import { VISUAL_CLASSES as C } from "./visual-styles";
@@ -20,6 +21,8 @@ export type HouseState =
 
 export interface HouseUi {
   detailsOpen: boolean;
+  /** The series hidden from the chart's legend, per view (absent: each view's defaults, `house-series.ts`). */
+  hidden?: HiddenSeries;
   /** The chart's view: the energy (default) or the price with the battery. */
   view?: HouseChartView;
   /** The hour shown in the readout (an index into `hours`), `null` for the hint. */
@@ -31,6 +34,8 @@ export interface HouseUi {
 export interface HouseHandlers {
   onDetails(open: boolean): void;
   onView?(view: HouseChartView): void;
+  /** The viewer hid or showed a series: the view's whole hidden list after the change. */
+  onLegend?(view: HouseChartView, hidden: string[]): void;
   onSelect(index: number | null): void;
   /** Step to another day (`null`: today). */
   onDay?(day: string | null): void;
@@ -122,41 +127,61 @@ function entityName(words: EntityWords | undefined, entityId: string): string {
 }
 
 /** One hour's figures in words, for the readout and the hour's accessible name. */
-export function hourFigures(language: Language, answer: HouseAnswer, hour: HouseHour, nowMs: number, view: HouseChartView = "energy"): string {
+export function hourFigures(
+  language: Language,
+  answer: HouseAnswer,
+  hour: HouseHour,
+  nowMs: number,
+  view: HouseChartView = "energy",
+  hidden: ReadonlySet<string> = hiddenIn(undefined, view),
+): string {
   const ctx = context(language, answer);
   const parts = [`${clock(ctx, hour.startMs)}–${clock(ctx, hour.startMs + HOUR_MS)}`];
   const house = houseShown(hour);
+  const visible = (series: string): boolean => !hidden.has(series);
   if (view === "price" && hour.buy !== null && hour.sell !== null) {
     const unit = priceUnit(answer);
-    parts.push(
-      translate(language, "house.readout.price", {
-        buy: `${formatNumber(language, hour.buy, 0)} ${unit}`,
-        sell: `${formatNumber(language, hour.sell, 0)} ${unit}`,
-      }),
-    );
+    const buy = `${formatNumber(language, hour.buy, 0)} ${unit}`;
+    const sell = `${formatNumber(language, hour.sell, 0)} ${unit}`;
+    if (visible("buy") && visible("sellPrice")) {
+      parts.push(translate(language, "house.readout.price", { buy, sell }));
+    } else if (visible("buy")) {
+      parts.push(translate(language, "house.readout.priceBuy", { buy }));
+    } else if (visible("sellPrice")) {
+      parts.push(translate(language, "house.readout.priceSell", { sell }));
+    }
   }
   if (view === "energy" && house.kw !== null) {
-    if (house.measured && hour.house_forecast_kw !== null) {
-      parts.push(translate(language, "house.readout.houseBoth", { kw: kw(language, house.kw), forecast: kw(language, hour.house_forecast_kw) }));
-    } else {
+    const forecast = hour.house_forecast_kw !== null && visible("forecast");
+    if (visible("house") && house.measured && forecast) {
+      parts.push(translate(language, "house.readout.houseBoth", { kw: kw(language, house.kw), forecast: kw(language, hour.house_forecast_kw as number) }));
+    } else if (visible("house") && (!house.measured || !forecast)) {
       parts.push(translate(language, house.measured ? "house.readout.house" : "house.readout.houseForecast", { kw: kw(language, house.kw) }));
+    } else if (house.measured && forecast) {
+      parts.push(translate(language, "house.readout.houseForecast", { kw: kw(language, hour.house_forecast_kw as number) }));
     }
   }
   const heat = heatShown(hour);
-  if (view === "energy" && heat !== null) {
+  if (view === "energy" && heat !== null && visible("heat")) {
     parts.push(translate(language, house.measured ? "house.readout.heat" : "house.readout.heatForecast", { kw: kw(language, heat) }));
+  }
+  if (view === "energy" && hour.car_kw !== null && hour.car_kw > 0 && visible("car")) {
+    parts.push(translate(language, "house.readout.car", { kw: kw(language, hour.car_kw) }));
   }
   const sun = sunShown(hour, nowMs);
   const past = hour.startMs + HOUR_MS <= nowMs;
-  if (view === "energy" && sun !== null && (sun > 0 || (hour.sun_forecast_kwh ?? 0) > 0)) {
+  if (view === "energy" && visible("sun") && sun !== null && (sun > 0 || (hour.sun_forecast_kwh ?? 0) > 0)) {
     parts.push(translate(language, past ? "house.readout.sun" : "house.readout.sunForecast", { kwh: kwh(language, sun) }));
   }
-  if (hour.soc_pct !== null) {
-    parts.push(translate(language, "house.readout.soc", { pct: pct(language, hour.soc_pct) }));
-  } else if (!past && hour.soc_plan_pct !== null) {
-    parts.push(translate(language, "house.readout.socPlan", { pct: pct(language, hour.soc_plan_pct) }));
+  if (visible("battery")) {
+    if (hour.soc_pct !== null) {
+      parts.push(translate(language, "house.readout.soc", { pct: pct(language, hour.soc_pct) }));
+    } else if (!past && hour.soc_plan_pct !== null) {
+      parts.push(translate(language, "house.readout.socPlan", { pct: pct(language, hour.soc_plan_pct) }));
+    }
   }
-  if (hour.battery_action !== null) {
+  const tint = hour.battery_action === "grid_charge" ? "charge" : hour.battery_action === "export_discharge" ? "sell" : null;
+  if (hour.battery_action !== null && visible("battery") && (view === "energy" || tint === null || visible(tint))) {
     parts.push(translate(language, `house.readout.action.${hour.battery_action}`));
   }
   return parts.join(" · ");
@@ -441,15 +466,28 @@ function dayBar(doc: Document, language: Language, answer: HouseAnswer, handlers
   return bar;
 }
 
-function legend(doc: Document, language: Language, answer: HouseAnswer, view: HouseChartView): HTMLElement {
+/** The legend: one button per series the chart has (pressed: shown), each hides or shows its series. */
+function legend(doc: Document, language: Language, answer: HouseAnswer, view: HouseChartView, hidden: ReadonlySet<string>, handlers: HouseHandlers): HTMLElement {
   const list = element(doc, "ul", H.legend);
   list.setAttribute("aria-label", translate(language, "house.legend"));
   const item = (series: string, key: TranslationKey): void => {
     const entry = element(doc, "li", H.legendItem);
+    const button = element(doc, "button", H.legendButton);
+    button.type = "button";
+    button.dataset["legend"] = series;
+    button.setAttribute("aria-pressed", String(!hidden.has(series)));
     const swatch = element(doc, "span", H.swatch);
     swatch.dataset["series"] = series;
     swatch.setAttribute("aria-hidden", "true");
-    entry.append(swatch, element(doc, "span", undefined, translate(language, key)));
+    button.append(swatch, element(doc, "span", undefined, translate(language, key)));
+    button.addEventListener("click", () => {
+      const next = new Set(hidden);
+      if (!next.delete(series)) {
+        next.add(series);
+      }
+      handlers.onLegend?.(view, [...next]);
+    });
+    entry.append(button);
     list.append(entry);
   };
   if (view === "price") {
@@ -466,13 +504,16 @@ function legend(doc: Document, language: Language, answer: HouseAnswer, view: Ho
     if (answer.sun !== null) {
       item("sun", "house.legend.sun");
     }
+    if (answer.hours.some((hour) => hour.car_kw !== null && hour.car_kw > 0)) {
+      item("car", "house.legend.car");
+    }
   }
   if (answer.battery !== null) {
     item("battery", "house.legend.battery");
-    if (answer.hours.some((hour) => hour.battery_action === "grid_charge")) {
+    if (view === "price" && answer.hours.some((hour) => hour.battery_action === "grid_charge")) {
       item("charge", "house.legend.charge");
     }
-    if (answer.hours.some((hour) => hour.battery_action === "export_discharge")) {
+    if (view === "price" && answer.hours.some((hour) => hour.battery_action === "export_discharge")) {
       item("sell", "house.legend.sell");
     }
   }
@@ -489,6 +530,7 @@ function chartBlock(input: HouseRenderInput, answer: HouseAnswer): HTMLElement {
   const width = Math.max(200, Math.round(input.width));
   const priced = answer.hours.some((hour) => hour.buy !== null);
   const view: HouseChartView = priced ? (ui.view ?? "energy") : "energy";
+  const hidden = hiddenIn(ui.hidden, view);
   const chart: HouseChart = renderHouseChart({
     hours: answer.hours,
     view,
@@ -507,6 +549,7 @@ function chartBlock(input: HouseRenderInput, answer: HouseAnswer): HTMLElement {
     title: translate(language, view === "price" ? "house.chart.priceLabel" : "house.chart.label"),
     description: translate(language, view === "price" ? "house.chart.priceDescription" : "house.chart.description"),
     ids: { title: `${input.idPrefix}-title`, description: `${input.idPrefix}-desc` },
+    hidden,
   });
   surface.style.height = `${chart.scale.height}px`;
   surface.setAttribute("role", "group");
@@ -517,7 +560,7 @@ function chartBlock(input: HouseRenderInput, answer: HouseAnswer): HTMLElement {
     selected = index;
     chart.select(index);
     const hour = index === null ? undefined : answer.hours[index];
-    readout.textContent = hour === undefined ? translate(language, "house.hint") : hourFigures(language, answer, hour, nowMs, view);
+    readout.textContent = hour === undefined ? translate(language, "house.hint") : hourFigures(language, answer, hour, nowMs, view, hidden);
   };
   const indexAt = (event: PointerEvent | MouseEvent): number | null => {
     const box = chart.element.getBoundingClientRect();
@@ -581,7 +624,7 @@ function chartBlock(input: HouseRenderInput, answer: HouseAnswer): HTMLElement {
   }
   // The readout right under the chart, where the eye is when a finger or the pointer is on it; its lines are reserved
   // so nothing below moves when an hour is chosen.
-  block.append(surface, readout, legend(doc, language, answer, view));
+  block.append(surface, readout, legend(doc, language, answer, view, hidden, handlers));
   return block;
 }
 
