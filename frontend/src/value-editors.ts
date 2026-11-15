@@ -323,7 +323,8 @@ export function numberEditor(
       // Already none: nothing to write.
       return input.current === null ? null : await save(null);
     }
-    const text = field.value.trim().replace(/\s/g, "").replace(",", ".");
+    // A minus sign as the reader's language writes it ("−2,5") is the same as a hyphen.
+    const text = field.value.trim().replace(/\s/g, "").replace(",", ".").replace(/\u2212/g, "-");
     const number = text === "" ? Number.NaN : Number(text);
     if (!Number.isFinite(number)) {
       return translate(language, "settings.error.number");

@@ -454,6 +454,13 @@ export interface GridTariffBlock {
   high_load_window: HighLoadWindow | null;
   /** `null` from a backend before the demand charge: the card then writes the tariff without it. */
   demand: DemandBlock | null;
+  /**
+   * The electricity supplier's markup on each bought kWh, before VAT (never `included`); `null` from a backend
+   * before it, and the card then writes the tariff without it.
+   */
+  supplier_markup: GridTariffFee | null;
+  /** What a sold kWh earns beyond spot, as paid out (no VAT, may be negative); `null` as `supplier_markup`. */
+  sell_adjustment: GridTariffFee | null;
   writable: boolean;
 }
 
@@ -2176,11 +2183,21 @@ export function decodeDemand(raw: unknown): DemandBlock {
   };
 }
 
-/** A `grid_tariff` block, strictly: exactly its keys (`demand` may be absent, from an older backend), or malformed. */
+/**
+ * A `grid_tariff` block, strictly: exactly its keys (`demand`, and the supplier's two figures together, may be absent,
+ * from an older backend), or malformed.
+ */
 export function decodeGridTariff(raw: unknown): GridTariffBlock {
   const value = record(raw);
   const keys = ["entry_id", "write_revision", "transfer_percent", "transfer_high", "high_load_window", "writable"];
-  exactKeys(value, value.demand === undefined ? keys : [...keys, "demand"]);
+  if (value.demand !== undefined) {
+    keys.push("demand");
+  }
+  const supplier = value.supplier_markup !== undefined || value.sell_adjustment !== undefined;
+  if (supplier) {
+    keys.push("supplier_markup", "sell_adjustment");
+  }
+  exactKeys(value, keys);
   const entryId = text(value, "entry_id");
   if (entryId === "") {
     return bad();
@@ -2192,6 +2209,8 @@ export function decodeGridTariff(raw: unknown): GridTariffBlock {
     transfer_high: gridTariffFee(value.transfer_high),
     high_load_window: value.high_load_window === null ? null : decodeHighLoadWindow(value.high_load_window),
     demand: value.demand === undefined ? null : decodeDemand(value.demand),
+    supplier_markup: supplier ? gridTariffFee(value.supplier_markup) : null,
+    sell_adjustment: supplier ? gridTariffFee(value.sell_adjustment) : null,
     writable: booleanValue(value, "writable"),
   };
 }

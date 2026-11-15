@@ -32,6 +32,8 @@ const BLOCK = {
 };
 
 const OFF = { policy: "off", explicit_value: null, effective_value: null };
+/** What a block from a backend before the supplier's two figures reads as. */
+const NO_SUPPLIER = { supplier_markup: null, sell_adjustment: null };
 /** Nothing stored: what a fresh electricity price carries. */
 const NOTHING = {
   ...BLOCK,
@@ -64,13 +66,13 @@ describe("the grid_tariff block", () => {
       expect(plain.ok, fixture).toBe(true);
       expect(plain.ok && plain.value.grid_tariff, fixture).toBeNull();
       // A block without `demand` (a backend before the demand charge) reads with none.
-      expect(withBlock.ok && withBlock.value.grid_tariff, fixture).toEqual({ ...BLOCK, demand: null });
+      expect(withBlock.ok && withBlock.value.grid_tariff, fixture).toEqual({ ...BLOCK, demand: null, ...NO_SUPPLIER });
       expect(withBlock.ok && { ...withBlock.value, grid_tariff: null }, fixture).toEqual(plain.ok && plain.value);
     }
-    expect(decodeGridTariff(NOTHING)).toEqual({ ...NOTHING, demand: null });
+    expect(decodeGridTariff(NOTHING)).toEqual({ ...NOTHING, demand: null, ...NO_SUPPLIER });
     const night = { ...BLOCK, high_load_window: { days: "mon_sat", from_month: 1, to_month: 12, from_hour: 22, to_hour: 6 } };
-    expect(decodeGridTariff(night)).toEqual({ ...night, demand: null });
-    expect(decodeGridTariff(INCLUDED)).toEqual({ ...INCLUDED, demand: null });
+    expect(decodeGridTariff(night)).toEqual({ ...night, demand: null, ...NO_SUPPLIER });
+    expect(decodeGridTariff(INCLUDED)).toEqual({ ...INCLUDED, demand: null, ...NO_SUPPLIER });
     expect(decodeGridTariff({ ...BLOCK, transfer_high: { ...BLOCK.transfer_high, unit: null } }).transfer_high.unit).toBeNull();
   });
 
@@ -466,5 +468,91 @@ describe("writing the tariff", () => {
     hass.rejectNext(apiFailure("invalid_fiscal"));
     await settle();
     expect(openDialog(element).textContent).toContain(translate("en", "settings.error.invalid"));
+  });
+});
+
+describe("the supplier's markup and what a sold kWh earns", () => {
+  const MARKUP = { policy: "manual", explicit_value: 4.5, effective_value: 4.5, unit: "öre/kWh" };
+  const SELL = { policy: "manual", explicit_value: -2, effective_value: -2, unit: "öre/kWh" };
+  const SUPPLIER = { ...NOTHING, supplier_markup: MARKUP, sell_adjustment: { ...OFF, unit: "öre/kWh" } };
+
+  it("are read together, and a block with only one of them is dropped", () => {
+    expect(decodeGridTariff(SUPPLIER)).toEqual({ ...SUPPLIER, demand: null });
+    for (const broken of [
+      { ...NOTHING, supplier_markup: MARKUP },
+      { ...NOTHING, sell_adjustment: SELL },
+      { ...SUPPLIER, sell_adjustment: { ...SELL, effective_value: null } },
+    ]) {
+      const decoded = decodeDashboard({ ...read("dashboard", "cheapest_no_site.json"), grid_tariff: broken });
+      expect(decoded.ok && decoded.value.grid_tariff, JSON.stringify(broken)).toBeNull();
+    }
+  });
+
+  it("show below the fees in Swedish, never locked, and not at all from a backend before them", async () => {
+    const { element } = await open(dashboard({ ...INCLUDED, supplier_markup: MARKUP, sell_adjustment: SELL }), {
+      language: "sv",
+    });
+    const keys = rowKeys(element);
+    expect(keys.indexOf("supplier_markup")).toBeGreaterThan(keys.indexOf("transfer_high"));
+    expect(keys.indexOf("sell_adjustment")).toBe(keys.indexOf("supplier_markup") + 1);
+    const row = (key: string) => priceSection(element).querySelector(`[data-row='${key}']`)!;
+    expect(row("supplier_markup").textContent).toBe("Påslag från elhandlaren4,5 öre/kWh");
+    expect(row("sell_adjustment").textContent).toBe("Såld kWh: tillägg eller avdrag−2 öre/kWh");
+    // The grid fee included in the price locks the grid tariff's rows, not the supplier's.
+    expect(row("supplier_markup").querySelector("button")).not.toBeNull();
+    const before = await open(dashboard(NOTHING));
+    expect(rowKeys(before.element)).not.toContain("supplier_markup");
+  });
+
+  it("are read-only where the price may not be changed", async () => {
+    const { element } = await open(dashboard({ ...SUPPLIER, writable: false }));
+    expect(priceSection(element).querySelector("[data-row='supplier_markup'] button")).toBeNull();
+    expect(priceSection(element).querySelector("[data-row='supplier_markup']")!.textContent).toContain("4.5");
+  });
+
+  it("set the markup with its line of help, keeping the rest as stored", async () => {
+    const { hass, element } = await open(dashboard(SUPPLIER), { language: "sv" });
+    await tap(element, "supplier_markup");
+    expect(openDialog(element).textContent).toContain("utan moms");
+    typeNumber(element, "-1");
+    await save(element);
+    expect(sent(hass, "spotnav/update_grid_tariff")).toEqual([]);
+    typeNumber(element, "3,25");
+    await save(element);
+    expect(sent(hass, "spotnav/update_grid_tariff").map((m) => m["grid_tariff"])).toEqual([
+      {
+        transfer_percent: { enabled: false, value: null },
+        transfer_high: { enabled: false, value: null },
+        high_load_window: null,
+        supplier_markup: { enabled: true, value: 3.25 },
+        sell_adjustment: { enabled: false, value: null },
+      },
+    ]);
+  });
+
+  it("take a deduction per sold kWh as a negative figure, in the reader's own minus sign", async () => {
+    const { hass, element } = await open(dashboard({ ...SUPPLIER, sell_adjustment: SELL }), { language: "sv" });
+    await tap(element, "sell_adjustment");
+    const dialog = openDialog(element);
+    expect(dialog.textContent).toContain("som det betalas ut, utan moms");
+    // The stored −2 fills the field as Swedish writes it; a change to −2,5 is read back as -2.5.
+    expect(dialog.querySelector<HTMLInputElement>("[data-value-field='number']")!.value).toBe("−2");
+    typeNumber(element, "−2,5");
+    await save(element);
+    expect(sent(hass, "spotnav/update_grid_tariff").map((m) => (m["grid_tariff"] as Record<string, unknown>)["sell_adjustment"])).toEqual([
+      { enabled: true, value: -2.5 },
+    ]);
+  });
+
+  it("turn off keeping the figure, so switching on again is one step", async () => {
+    const { hass, element } = await open(dashboard(SUPPLIER));
+    await tap(element, "supplier_markup");
+    const none = openDialog(element).querySelector<HTMLInputElement>("[data-value-none]")!;
+    none.checked = true;
+    none.dispatchEvent(new Event("change"));
+    await save(element);
+    expect(sent(hass, "spotnav/update_grid_tariff").map((m) => (m["grid_tariff"] as Record<string, unknown>)["supplier_markup"])).toEqual([
+      { enabled: false, value: 4.5 },
+    ]);
   });
 });
