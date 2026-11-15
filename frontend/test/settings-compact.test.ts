@@ -481,6 +481,30 @@ describe("one setup value, one dialog", () => {
     expect(dialog(element).textContent).toContain(translate("en", "entity.help.heatMeter"));
   });
 
+  it("saves the heat pump meter chosen in its own dialog, and shows a refusal there", async () => {
+    const { hass, element } = await openSettings();
+    await tap(element, "[data-edit='heat_meter']");
+    const input = dialog(element).querySelector<HTMLInputElement>("[data-field='heat_meter_entity']")!;
+    input.value = "sensor.varme_effekt";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+    hass.entityHandler = async (message) =>
+      message["type"] === "spotnav/update_entity_config"
+        ? read("entity_config", "v1", "field_errors_site.json")
+        : read("entity_config", "v1", "get_direct.json");
+    dialog(element).querySelector<HTMLFormElement>("form[data-entity-editor='site']")!.requestSubmit();
+    await settle();
+    const update = hass.entityMessages.find((message) => message["type"] === "spotnav/update_entity_config") as Record<string, any>;
+    expect(update["scope"]).toBe("site");
+    expect(update["changes"]).toEqual({ heat_meter_entity: "sensor.varme_effekt" });
+    expect(update["expected"]).toEqual({ heat_meter_entity: "" });
+    // Refused: the dialog stays open and says so.
+    const form = dialog(element).querySelector("form[data-entity-editor='site']")!;
+    const notice = footerOf(form).querySelector<HTMLElement>("[role='status']")!;
+    expect(notice.hidden).toBe(false);
+    expect(notice.textContent).not.toBe("");
+  });
+
   it("opens only the energy choice for the energy register", async () => {
     const { element } = await openSettings();
     await tap(element, "[data-edit='energy_register']");
