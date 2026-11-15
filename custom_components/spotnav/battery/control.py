@@ -41,7 +41,6 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Any, Final
 
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
@@ -462,7 +461,8 @@ class BatteryControl:
         )
         try:
             await self.hass.services.async_call(domain, service, data, blocking=True)
-        except (HomeAssistantError, ValueError) as err:
+        except Exception as err:  # noqa: BLE001 - any error (a Modbus library's too) is a write not taken; the state
+            # must still be stored and a stop or unload must still hand back.
             _LOGGER.warning("Battery control: %s.%s for %s failed: %s", domain, service, op.role, err)
             self._log([{"at": dt_util.now().isoformat(), "kind": "service_failed", "reason": op.role,
                         "error": str(err)}])

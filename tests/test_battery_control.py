@@ -86,6 +86,8 @@ class Plant:
             if not self.calls:
                 self.stored_at_first_call = self.storage.get(store_key(self.entry_id), {}).get("data")
             self.calls.append((domain, service, dict(call.data)))
+            if isinstance(self.raises, Exception):
+                raise self.raises
             if self.raises:
                 raise HomeAssistantError("Modbus write failed")
             if self.read_only:
@@ -264,6 +266,33 @@ async def test_a_write_that_raises_is_not_taken_and_handed_back(
     assert control.executor.state.blocked.startswith("write_not_taken:discharge_limit:service_failed")
     assert any(row["kind"] == "service_failed" for row in control.log)
     assert len(plant.calls) == 1
+
+
+class ModbusIOException(Exception):
+    """Not a Home Assistant error: what a Modbus library may raise through an integration's service."""
+
+
+@pytest.mark.usefixtures("reachable")
+async def test_a_write_that_raises_any_error_is_not_taken_and_the_state_is_still_stored_and_stop_still_runs(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    site, controller, plant = await _site(hass, monkeypatch, hass_storage)
+    control = BatteryControl(hass, controller, plan_source=_hold)
+    await control.async_start()
+    now = dt_util.now()
+    for index in range(2):
+        await control.async_tick(now + timedelta(seconds=10 * index))
+    assert control.executor.state.phase == "active"
+    plant.raises = ModbusIOException("no response from the plant")
+    for index in range(2, 4):
+        await control.async_tick(now + timedelta(seconds=10 * index))
+    assert any(row["kind"] == "service_failed" for row in control.log)
+    stored = hass_storage[store_key(site.entry_id)]["data"]["state"]
+    assert stored["snapshot"] == {"charge_limit": "unknown", "discharge_limit": "23.04"}
+    assert stored["phase"] == control.executor.state.phase
+    monkeypatch.setattr(control_module, "HAND_BACK_DEADLINE_S", 0.1)
+    await control.async_shutdown()  # never raises: the hand-back is stored for the next start
+    assert hass_storage[store_key(site.entry_id)]["data"]["state"]["phase"] == "restoring"
 
 
 @pytest.mark.usefixtures("reachable")
