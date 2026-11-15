@@ -24,8 +24,9 @@ The order on every path:
   (`sell_source`, by default the plan shadow's `sell_at`), plain hand-back otherwise. Its plant is found from the
   battery or the grid meter (`runtime.read_export_facts`), so a site without a battery has it too. Its state is
   stored beside the battery's (`export`), restored first after a restart, handed back on stop; the two share the
-  day's write cap. While the battery's executor runs the same plant (its Remote EMS on) the export instance is told
-  so (`sibling_active`) and still takes the limit; it is judged on the site's grid power (`grid_import_kw`).
+  day's write cap. While the battery's executor runs the same plant (its Remote EMS on, also while it hands back)
+  the export instance is told so (`sibling_active`) and still takes and keeps the limit; Remote EMS on otherwise is
+  another controller's and hands the limit back; it is judged on the site's grid power (`grid_import_kw`).
 """
 
 from __future__ import annotations
@@ -366,8 +367,11 @@ class BatteryControl:
         result = self.site.result
         headrooms = [value for value in result.phase_headroom_a.values() if value is not None]
         battery = self.executor
-        # SpotNav's own battery control on the same plant: its Remote EMS is not the plant's own management.
-        sibling_active = battery is not None and battery.state.phase == "active" and battery.state.brand == control.brand
+        # SpotNav's own battery control on the same plant: its Remote EMS is not the plant's own management, also
+        # while it hands back (Remote EMS goes off last) or keeps a snapshot it could not restore yet.
+        sibling_active = battery is not None and battery.state.brand == control.brand and (
+            battery.state.phase in ("active", "restoring") or battery.state.holds_snapshot
+        )
         return ExecInputs(
             now=now,
             facts=self._with_outside(facts),

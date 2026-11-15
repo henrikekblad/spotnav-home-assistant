@@ -288,8 +288,15 @@ def test_a_plant_in_its_own_optimiser_is_only_watched() -> None:
     executor, plant = _plant("11.5")
     now, _results = _run(executor, plant, T0, 3, ACTION_CURTAIL_EXPORT)
     plant.work_mode_override = "remote_ems"
-    _now, results = _run(executor, plant, now, 3, ACTION_CURTAIL_EXPORT)
+    _now, results = _run(executor, plant, now, 3, ACTION_CURTAIL_EXPORT, sibling_active=True)
     assert events(results, "hand_back") == [] and executor.state.phase == "active"
+    # Remote EMS taken by another controller (the app, a VPP) while curtailing: the limit is handed back, watched.
+    executor, plant = _plant("11.5")
+    now, _results = _run(executor, plant, T0, 3, ACTION_CURTAIL_EXPORT)
+    plant.work_mode_override = "remote_ems"
+    _now, results = _run(executor, plant, now, 3, ACTION_CURTAIL_EXPORT)
+    assert events(results, "hand_back")[0]["reason"] == "management_changed:self_managed:EMS work mode:remote_ems"
+    assert written(results) == [("export_limit", 11.5)] and executor.state.phase == "blocked"
     # An outside controller marked on the facts: watched, whatever the mode reads.
     executor, plant = _plant("11.5")
     outside = Management("externally_controlled", "outside:setpoint", {"EMS work mode": "max_self_consumption"})

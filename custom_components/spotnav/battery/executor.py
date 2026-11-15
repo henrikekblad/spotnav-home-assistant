@@ -764,7 +764,9 @@ class Executor:
             return "headroom_unknown"
         if (action in _RAISES_IMPORT or self.state.action in _RAISES_IMPORT) and inputs.headroom_a < RESTORE_HEADROOM_A:
             return "fuse_headroom"
-        management = management_problem(facts, self.control, active=True)
+        # The battery's own instance runs the Remote EMS it turned on; the export instance only while the battery's
+        # runs it (`sibling_active`): one taken by another controller (the app, a VPP) ends the curtail.
+        management = management_problem(facts, self.control, active=inputs.sibling_active if self._export else True)
         if management == "unknown":
             since = self.state.management_unknown_since or inputs.now
             self.state = replace(self.state, management_unknown_since=since)
