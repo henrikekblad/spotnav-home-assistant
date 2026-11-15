@@ -159,3 +159,27 @@ def test_the_soc_at_each_hours_end_from_the_recorder() -> None:
         {"start": (H0 + timedelta(hours=0)).timestamp(), "mean": 30.0},  # the short row wins
     ]
     assert soc_at_hour_ends(starts, short, hourly) == {starts[0]: 41.5, starts[1]: 44.0, starts[2]: 47.0}
+
+
+def test_heat_is_split_out_of_the_house_where_the_meter_reads() -> None:
+    # 4 kWh imported, the heat pump's meter 2.5: the house keeps 1.5; the sun covers the house before heat.
+    close(allocate_hour(hour(2, grid_in=4.0, heat=2.5)), {("grid", "house"): 1.5, ("grid", "heat"): 2.5})
+    close(
+        allocate_hour(hour(11, solar=2.0, grid_in=1.0, heat=1.6)),
+        {("solar", "house"): 1.4, ("solar", "heat"): 0.6, ("grid", "heat"): 1.0},
+    )
+    # A meter that reads more than the balance leaves the house at 0 and heat at what the other meters allow.
+    close(allocate_hour(hour(3, grid_in=1.0, heat=1.4)), {("grid", "heat"): 1.0})
+    hours = [hour(2, grid_in=4.0, heat=2.5), hour(3, grid_in=1.2, heat=None)]
+    flow = energy_flow(hours, day=DAY, has_solar=False, has_battery=False, has_heat=True)
+    assert tuple(flow) == FLOW_KEYS and flow["heat_hours"] == 1
+    nodes = {node["id"]: node["kwh"] for node in flow["nodes"]}
+    # The hour without the heat figure leaves it in the house.
+    assert nodes == {"source.grid": 5.2, "use.house": 2.7, "use.heat": 2.5, "use.car": 0.0, "use.grid": 0.0}
+    # Without a heat meter there is no heat node.
+    plain = energy_flow(hours, day=DAY, has_solar=False, has_battery=False)
+    assert "use.heat" not in {node["id"] for node in plain["nodes"]}
+    # The heat figures are read per hour beside the others.
+    starts = [H0 + timedelta(hours=i) for i in range(2)]
+    read = energy_hours(starts, {starts[0]: 1.0, starts[1]: 2.0}, None, None, None, None, None, {starts[1]: 0.7})
+    assert [item.heat for item in read] == [None, 0.7]
