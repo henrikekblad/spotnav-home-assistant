@@ -34,6 +34,13 @@ It shows what the site diagnostics already carry, cut to what a card draws:
   day without a review.
 * **`days`**: the last reviewed days, one row each, for the card's details.
 * **`sources`**: where the forecasts come from (weather entity, outdoor sensor, holiday calendar, solar forecast).
+* **`heat`** (`None` on a site where no heat pump meter is found, set or ambiguous): the heat pump's meter
+  (`site/heat_meter.py`: its status, sensor, kind, where it was found, the candidates when more than one could be it,
+  whether the site setting is offered), the shown day's heat beside the house's whole load over the same completed
+  hours (`day`), the week's review of the heat forecast, and the house forecast as heat plus the rest against the
+  whole over the same hours of the last week (`comparison`). Each hour has the heat pump's measured use (`heat_kw`,
+  past hours) and its forecast (`heat_forecast_kw`: past, the first logged; ahead, the latest); both are part of
+  `house_kw`/`house_forecast_kw`, never added to them. Shown only: nothing plans on the split.
 
 Money is in the area's minor unit (öre), as the battery plan reckons it; `money` names the units.
 Everything here is shadow: nothing in it controls a charger or a battery.
@@ -65,7 +72,17 @@ from ..battery.plan_shadow import (
 )
 from ..battery.stored_value import StoredValue
 from ..planning.demand_charge import hour_start
-from .forecast_log import KEEP_HOURS_DAYS, KIND_HOUSE, KIND_SUN, KIND_SUN_CORRECTED, ForecastLog, LoggedHour, Score
+from .forecast_log import (
+    KEEP_HOURS_DAYS,
+    KIND_HEAT,
+    KIND_HOUSE,
+    KIND_HOUSE_SPLIT,
+    KIND_SUN,
+    KIND_SUN_CORRECTED,
+    ForecastLog,
+    LoggedHour,
+    Score,
+)
 from .load_forecast import LoadForecast
 
 HOUSE_API_VERSION: Final = 1
@@ -95,6 +112,7 @@ HOUSE_KEYS: Final = (
     "calendar",
     "days",
     "sources",
+    "heat",
 )
 HOUR_KEYS: Final = (
     "start",
@@ -108,6 +126,20 @@ HOUR_KEYS: Final = (
     "battery_action",
     "buy",
     "sell",
+    "heat_kw",
+    "heat_forecast_kw",
+)
+HEAT_KEYS: Final = (
+    "status",
+    "entity_id",
+    "name",
+    "kind",
+    "source",
+    "candidates",
+    "setting_offered",
+    "day",
+    "review",
+    "comparison",
 )
 #: The hour's battery action shown: the strongest planned in the hour (grid charging, then selling, then holding).
 HOUR_ACTIONS: Final = (ACTION_GRID_CHARGE, ACTION_EXPORT_DISCHARGE, ACTION_HOLD)
@@ -166,6 +198,26 @@ class BatteryInputs:
 
 
 @dataclass(frozen=True, slots=True)
+class HeatInputs:
+    """The heat pump's meter as found (`site/heat_meter.HeatMeter`'s fields, the sensor's name) and its hours: the
+    measured use per completed hour and the latest heat forecast (kW, by UTC hour start)."""
+
+    status: str
+    entity_id: str | None = None
+    name: str | None = None
+    kind: str | None = None
+    source: str | None = None
+    candidates: tuple[str, ...] = ()
+    setting_offered: bool = False
+    actual: Mapping[datetime, float] = field(default_factory=dict)
+    forecast: Mapping[datetime, float] = field(default_factory=dict)
+
+    @property
+    def found(self) -> bool:
+        return self.status == "found"
+
+
+@dataclass(frozen=True, slots=True)
 class HouseInputs:
     site_id: str
     now: datetime
@@ -188,6 +240,8 @@ class HouseInputs:
     #: The battery's SoC (%) at each past hour's end from the recorder (the shell reads it), by UTC hour start: shown
     #: where the battery plan's log has no level for the hour (it was not measuring yet); a logged level wins.
     soc_recorded: Mapping[datetime, float] = field(default_factory=dict)
+    #: The heat pump's meter and its hours; `None` where none is found, set or ambiguous.
+    heat: HeatInputs | None = None
 
 
 def _round(value: float | None, digits: int = 3) -> float | None:
@@ -368,6 +422,8 @@ def hours_view(inputs: HouseInputs) -> list[dict[str, Any]]:
     plan_soc = {} if battery is None else soc_by_hour_end(battery.plan, tz)
     actions = {} if battery is None else hour_actions(battery.plan, tz)
     prices = {} if battery is None else hour_prices(battery.prices, battery.quarters, tz)
+    heat = inputs.heat if inputs.heat is not None and inputs.heat.found else None
+    heat_logged = log.hours(KIND_HEAT) if heat is not None else {}
     rows = []
     for start in hour_starts(inputs.now, tz) if inputs.day is None else day_hour_starts(inputs.day, tz):
         past = start < current
@@ -384,7 +440,12 @@ def hours_view(inputs: HouseInputs) -> list[dict[str, Any]]:
             "battery_action": None,
             "buy": None,
             "sell": None,
+            "heat_kw": None,
+            "heat_forecast_kw": None,
         }
+        if heat is not None:
+            row["heat_kw"] = _round(heat.actual.get(start)) if past else None
+            row["heat_forecast_kw"] = _round(_forecast_or_logged(start, current, heat.forecast, heat_logged))
         if start in prices:
             row["buy"], row["sell"] = (round(value, 2) for value in prices[start])
         if sun is not None:
@@ -573,12 +634,72 @@ def day_block(inputs: HouseInputs, hours: Sequence[Mapping[str, Any]]) -> dict[s
     """The `day` block (see the module)."""
     today = inputs.now.astimezone(time_zones.require_zone(inputs.tz)).date()
     shown = inputs.day or today
-    measured = ("house_kw", "sun_kwh", "soc_pct")
+    measured = ("house_kw", "sun_kwh", "soc_pct", "heat_kw")
     return {
         "date": shown.isoformat(),
         "today": shown == today,
         "first": first_day(inputs.now, inputs.tz).isoformat(),
         "has_data": inputs.energy_flow is not None or any(row[key] is not None for row in hours for key in measured),
+    }
+
+
+def heat_day(inputs: HouseInputs, heat: HeatInputs) -> dict[str, Any] | None:
+    """The shown day's heat so far (kWh) beside the house's whole load over the same completed hours (those that have
+    both figures); `None` before such an hour."""
+    tz = inputs.tz
+    current = hour_start(inputs.now, tz)
+    shown = inputs.day or inputs.now.astimezone(time_zones.require_zone(tz)).date()
+    starts = [start for start in day_hour_starts(shown, tz) if start < current]
+    both = [start for start in starts if start in heat.actual and start in inputs.house_actual]
+    if not both:
+        return None
+    return {
+        "date": shown.isoformat(),
+        "hours": len(both),
+        "heat_kwh": round(sum(heat.actual[start] for start in both), 2),
+        "house_kwh": round(sum(inputs.house_actual[start] for start in both), 2),
+    }
+
+
+def heat_comparison(log: ForecastLog, now: datetime, tz: str, days: int = REVIEW_DAYS_SHOWN) -> dict[str, Any] | None:
+    """The house forecast as heat plus the rest against the whole, over the same completed hours of the last `days`
+    days (each hour's first forecasts, as the review scores them): mean absolute errors (kW); `None` without such an
+    hour."""
+    current = hour_start(now, tz)
+    oldest = current - timedelta(days=days)
+    whole, split = log.hours(KIND_HOUSE), log.hours(KIND_HOUSE_SPLIT)
+    pairs = []
+    for start, hour in split.items():
+        other = whole.get(start)
+        if not oldest <= start < current or other is None or hour.actual is None:
+            continue
+        pairs.append((abs(other.forecast - hour.actual), abs(hour.forecast - hour.actual)))
+    if not pairs:
+        return None
+    return {
+        "hours": len(pairs),
+        "house_mae": round(sum(pair[0] for pair in pairs) / len(pairs), 3),
+        "split_mae": round(sum(pair[1] for pair in pairs) / len(pairs), 3),
+    }
+
+
+def heat_block(inputs: HouseInputs) -> dict[str, Any] | None:
+    """The `heat` block (`HEAT_KEYS`, see the module)."""
+    heat = inputs.heat
+    if heat is None:
+        return None
+    found = heat.found
+    return {
+        "status": heat.status,
+        "entity_id": heat.entity_id,
+        "name": heat.name,
+        "kind": heat.kind,
+        "source": heat.source,
+        "candidates": list(heat.candidates),
+        "setting_offered": heat.setting_offered,
+        "day": heat_day(inputs, heat) if found else None,
+        "review": _score(inputs.log.last_week(KIND_HEAT)) if found else None,
+        "comparison": heat_comparison(inputs.log, inputs.now, inputs.tz) if found else None,
     }
 
 
@@ -614,4 +735,5 @@ def house_view(inputs: HouseInputs) -> dict[str, Any]:
             "holiday_calendar": sources.holiday_calendar,
             "solar_forecasts": [] if inputs.sun is None else list(inputs.sun.forecast_names),
         },
+        "heat": heat_block(inputs),
     }

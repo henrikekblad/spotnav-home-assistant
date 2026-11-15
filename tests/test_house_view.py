@@ -34,7 +34,9 @@ from custom_components.spotnav.battery.stored_value import DayMoney, StoredValue
 from custom_components.spotnav.planning.demand_charge import HourMean, hour_start
 from custom_components.spotnav.site.energy_flow import EnergyHour, energy_flow
 from custom_components.spotnav.site.forecast_log import (
+    KIND_HEAT,
     KIND_HOUSE,
+    KIND_HOUSE_SPLIT,
     KIND_SUN,
     KIND_SUN_CORRECTED,
     ForecastLog,
@@ -45,7 +47,9 @@ from custom_components.spotnav.site.house_view import (
     HOUR_KEYS,
     HOUSE_KEYS,
     PAST_HOURS,
+    HEAT_KEYS,
     BatteryInputs,
+    HeatInputs,
     HouseInputs,
     HouseSources,
     SunInputs,
@@ -87,6 +91,11 @@ def house_kw(start: datetime) -> float:
     return round(base, 3)
 
 
+def heat_kw(start: datetime) -> float:
+    """The heat pump's own share of the house: a little more than half, most in the evening."""
+    return round(house_kw(start) * (0.62 if 16 <= local_hour(start) <= 20 else 0.5), 3)
+
+
 def sun_kwh(start: datetime) -> float:
     """A 6 kWp array in November: a short low day from 09 to 15."""
     hour = local_hour(start)
@@ -105,7 +114,7 @@ def history(now: datetime, days: int = 21) -> list[HourMean]:
     return rows
 
 
-def seeded_log(now: datetime, *, sun: bool, battery: bool) -> ForecastLog:
+def seeded_log(now: datetime, *, sun: bool, battery: bool, heat: bool = False) -> ForecastLog:
     """Eight days of first forecasts and outcomes, reviewed, and the hours ahead logged as the forecasts were made."""
     log = ForecastLog(TZ)
     current = hour_start(now, TZ)
@@ -117,6 +126,9 @@ def seeded_log(now: datetime, *, sun: bool, battery: bool) -> ForecastLog:
         if sun:
             rows.append((KIND_SUN, sun_kwh(start) * 1.35, sun_kwh(start)))
             rows.append((KIND_SUN_CORRECTED, sun_kwh(start) * 1.08, sun_kwh(start)))
+        if heat:
+            rows.append((KIND_HEAT, heat_kw(start) * 1.05, heat_kw(start)))
+            rows.append((KIND_HOUSE_SPLIT, house_kw(start) * 0.97, house_kw(start)))
         if battery:
             planned = max(15.0, 75.0 - 2.2 * ((local_hour(start) - 5) % 24))
             rows.append((KIND_BATTERY, planned, planned - 2.5))
@@ -265,7 +277,7 @@ def full_inputs(now: datetime = NOW) -> HouseInputs:
         site_id=SITE,
         now=now,
         tz=TZ,
-        log=seeded_log(now, sun=True, battery=True),
+        log=seeded_log(now, sun=True, battery=True, heat=True),
         forecast=forecast,
         house_actual={row.start: row.house_kw for row in rows if row.house_kw is not None},
         basis="gross",
@@ -307,6 +319,16 @@ def full_inputs(now: datetime = NOW) -> HouseInputs:
         ),
         money=("SEK", "kr", "öre"),
         energy_flow=villa_flow(now),
+        heat=HeatInputs(
+            status="found",
+            entity_id="sensor.varme_effekt",
+            name="Värme Effekt",
+            kind="power",
+            source="setting",
+            setting_offered=True,
+            actual={row.start: heat_kw(row.start) for row in rows},
+            forecast={start: round(heat_kw(start) * 1.02, 3) for start in ahead},
+        ),
     )
 
 
@@ -337,11 +359,15 @@ VILLA_HOURS = (
 def villa_flow(now: datetime) -> dict[str, Any] | None:
     midnight = datetime(2026, 11, 13, tzinfo=timezone.utc) - CET
     hours = [
-        EnergyHour(midnight + timedelta(hours=i), g_in, g_out, sun, b_in, b_out, car)
+        EnergyHour(midnight + timedelta(hours=i), g_in, g_out, sun, b_in, b_out, car, VILLA_HEAT[i])
         for i, (g_in, g_out, sun, b_in, b_out, car) in enumerate(VILLA_HOURS)
         if midnight + timedelta(hours=i + 1) <= now
     ]
-    return energy_flow(hours, day=date(2026, 11, 13), has_solar=True, has_battery=True, soc_pct=48.3)
+    return energy_flow(hours, day=date(2026, 11, 13), has_solar=True, has_battery=True, soc_pct=48.3, has_heat=True)
+
+
+#: The heat pump's meter on the same day (kWh): about 0.8 at night, more in the morning; one hour unread (in the house).
+VILLA_HEAT = (0.82, 0.85, 0.8, 0.9, 0.95, 1.05, 1.1, 1.0, 0.75, 0.6, None, 0.55, 0.5, 0.55, 0.6, 0.7, 0.9)
 
 
 def test_the_full_site_and_its_fixture() -> None:
@@ -397,6 +423,20 @@ def test_the_full_site_and_its_fixture() -> None:
     assert any(day["own_saving"] < 400 for day in calendar["days"])
     # Prices on every hour the plan or the quarter hours priced.
     assert all(row["buy"] is not None and row["sell"] is not None for row in hours)
+    # Heat: measured in the past (part of the house, never added to it), forecast ahead, the day so far beside the
+    # house over the same hours, and the split against the whole over the same hours of the week.
+    assert all(row["heat_kw"] is not None and row["heat_kw"] < row["house_kw"] for row in past)
+    assert all(row["heat_kw"] is None and row["heat_forecast_kw"] is not None for row in ahead)
+    heat = view["heat"]
+    assert tuple(heat) == HEAT_KEYS
+    assert heat["status"] == "found" and heat["entity_id"] == "sensor.varme_effekt" and heat["setting_offered"] is True
+    assert heat["day"]["date"] == "2026-11-13" and heat["day"]["hours"] == 17
+    assert 0 < heat["day"]["heat_kwh"] < heat["day"]["house_kwh"]
+    assert heat["review"]["hours"] == 7 * 24
+    comparison = heat["comparison"]
+    assert comparison["hours"] == 7 * 24 and comparison["split_mae"] < comparison["house_mae"]
+    nodes = {node["role"]: node for node in view["energy_flow"]["nodes"] if node["side"] == "use"}
+    assert nodes["heat"]["kwh"] > 0 and view["energy_flow"]["heat_hours"] == 16
     _fixture("villa_battery_sun.json", view)
 
 
@@ -438,7 +478,7 @@ def test_a_past_day_shows_its_own_hours_money_and_flow() -> None:
     }
     _fixture("villa_past_day.json", view)
     # A day nothing was measured on says so.
-    empty = house_view(replace(full_inputs(), day=date(2026, 11, 1), energy_flow=None, house_actual={}, log=ForecastLog(TZ)))
+    empty = house_view(replace(full_inputs(), day=date(2026, 11, 1), energy_flow=None, house_actual={}, log=ForecastLog(TZ), heat=None))
     assert empty["day"]["has_data"] is False
     # A day without a review has none.
     assert house_view(replace(full_inputs(), day=date(2026, 10, 31)))["day_review"] is None
@@ -491,7 +531,25 @@ def test_a_house_alone_still_learning() -> None:
     assert all(row["house_kw"] is not None and row["house_forecast_kw"] is None for row in hours[:PAST_HOURS])
     assert all(row["sun_forecast_kwh"] is None and row["soc_plan_pct"] is None for row in hours)
     assert view["sources"]["holiday_calendar"] is None and view["sources"]["solar_forecasts"] == []
+    # No heat pump meter: no heat block, no heat figures.
+    assert view["heat"] is None and all(row["heat_kw"] is None and row["heat_forecast_kw"] is None for row in hours)
     _fixture("house_learning.json", view)
+
+
+def test_an_ambiguous_heat_meter_shows_the_candidates_and_no_figures() -> None:
+    from dataclasses import replace
+
+    heat = HeatInputs(
+        status="ambiguous",
+        source="energy_dashboard",
+        candidates=("sensor.heat_pump_power", "sensor.floor_heating_power"),
+        setting_offered=True,
+        actual={hour_start(NOW, TZ) - timedelta(hours=1): 1.0},
+    )
+    view = house_view(replace(full_inputs(), heat=heat))
+    assert view["heat"]["status"] == "ambiguous" and view["heat"]["candidates"] == list(heat.candidates)
+    assert view["heat"]["day"] is None and view["heat"]["review"] is None and view["heat"]["comparison"] is None
+    assert all(row["heat_kw"] is None and row["heat_forecast_kw"] is None for row in view["hours"])
 
 
 def test_the_strongest_action_in_an_hour() -> None:
