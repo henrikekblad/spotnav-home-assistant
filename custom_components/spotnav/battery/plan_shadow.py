@@ -9,6 +9,8 @@ or there writes to a device: the plan is a shadow and a benchmark (wave 2 of 3.0
   (Wh, the Hybrid strategy's source); the cars' installed plans as a fixed load; the import cap (the main fuse less
   the safety margin as three-phase power, and the import target's held level where one is set). The first slot is
   cut to start now. The horizon ends where the prices or the house forecast end, at most `plan_model.MAX_SLOTS`.
+  A slot whose sell price is below zero exports nothing (`export_curtail.curtail_slots`): the rule beside the plan
+  sets the site's export limit to 0 kW there, so the plan stores the sun it cannot sell.
 * **House load.** The site's own forecast (`site/house_forecast.py`): on a battery site the house's whole load
   (`grid - car - battery` plus the sun's production), since the import less the chargers counts what the battery
   charged and discharged (Sigenergy's AI mode grid-charging at night would read as a heavy house). Until the site has
@@ -56,6 +58,7 @@ from typing import Any, Final
 from .. import time_zones
 from ..planning.demand_charge import hour_start
 from ..planning.planner import FiscalChoice
+from .export_curtail import curtail_slots, curtails, would_save
 from .facts import BatteryFacts
 from .plan import action_power, buy_prices, run_slot, sell_prices
 from .plan_model import (
@@ -295,7 +298,7 @@ def build_slots(
         )
         if len(slots) >= MAX_SLOTS:
             break
-    return tuple(slots), tuple(estimates)
+    return curtail_slots(slots), tuple(estimates)
 
 
 def keep_min_gain(kept_cost: float, horizon_h: float) -> float:
@@ -833,6 +836,10 @@ class DayReview:
     soc_mae: float | None = None
     #: The site's mode the day was planned in (the last one in force).
     mode: str | None = None
+    #: What the site exported in quarter hours with a sell price below zero (kWh) and what it cost (minor units):
+    #: what the export-limit rule (`export_curtail.py`) would have saved. Apart from the runs above.
+    curtail_kwh: float = 0.0
+    curtail_saving: float = 0.0
 
     def net(self, run: Run) -> float:
         return run.cost - (run.end_soc_pct - self.start_soc_pct) / 100 * self.usable_kwh * self.end_value
@@ -877,6 +884,7 @@ class DayReview:
             "mode_savings": {mode: round(value, 2) for mode, value in sorted(self.mode_savings.items())},
             "actual_saving": round(self.actual_saving, 2),
             "soc_mae": None if self.soc_mae is None else round(self.soc_mae, 2),
+            "curtail": {"kwh": round(self.curtail_kwh, 3), "saving": round(self.curtail_saving, 2)},
         }
 
     @classmethod
@@ -907,9 +915,22 @@ class DayReview:
                 modes={mode: run(item) for mode, item in (raw.get("modes") or {}).items() if mode in REVIEWED},
                 soc_mae=None if raw.get("soc_mae") is None else float(raw["soc_mae"]),
                 mode=raw.get("mode") if raw.get("mode") in MODES else None,
+                **_curtail_from(raw.get("curtail")),
             )
         except (KeyError, TypeError, ValueError):
             return None
+
+
+def _curtail_from(raw: Any) -> dict[str, float]:
+    """A stored review's curtail figures; a review from before the rule has none."""
+    if not isinstance(raw, Mapping):
+        return {}
+    out: dict[str, float] = {}
+    for key, name in (("kwh", "curtail_kwh"), ("saving", "curtail_saving")):
+        value = raw.get(key)
+        if isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value) and value >= 0:
+            out[name] = float(value)
+    return out
 
 
 def review_totals(reviews: Sequence[DayReview]) -> dict[str, Any]:
@@ -935,6 +956,10 @@ def review_totals(reviews: Sequence[DayReview]) -> dict[str, Any]:
         "saving": round(sum(review.saving for review in reviews), 2),
         "actual_saving": round(sum(review.actual_saving for review in reviews), 2),
         "modes": modes,
+        "curtail": {
+            "kwh": round(sum(review.curtail_kwh for review in reviews), 3),
+            "saving": round(sum(review.curtail_saving for review in reviews), 2),
+        },
     }
 
 
@@ -1004,7 +1029,12 @@ def review_day(
     sims = {name: _Sim(battery, start_kwh) for name in reviewed}
     unplanned = 0
     errors: list[float] = []
+    curtail_kwh = curtail_saving = 0.0
     for bucket in usable:  # no run counts a quarter hour the meters lost; the sims' battery idles through it
+        if curtails(bucket.sell):
+            exported = bucket.scaled(bucket.export_kwh)
+            curtail_kwh += exported
+            curtail_saving += would_save(exported, float(bucket.sell))  # type: ignore[arg-type]
         actual_cost += bucket.scaled(bucket.import_kwh) * bucket.buy - bucket.scaled(bucket.export_kwh) * bucket.sell  # type: ignore[operator]
         slot = _actual_slot(bucket)
         if bucket.ran_action is None:
@@ -1031,6 +1061,8 @@ def review_day(
         modes={name: sim.run() for name, sim in sims.items()},
         soc_mae=sum(errors) / len(errors) if errors else None,
         mode=mode,
+        curtail_kwh=curtail_kwh,
+        curtail_saving=curtail_saving,
     )
 
 
