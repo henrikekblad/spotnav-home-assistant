@@ -115,6 +115,8 @@ class SwitchLoadShadow:
         self._last_actual = False
         self._timer_cancel: Callable[[], None] | None = None
         self._loaded = False
+        #: Whether a write of the book waits (`_save`): the ticks go on, and must not keep putting it off.
+        self._save_pending = False
         self._planning = False
         self._closed = False
         self._plan_task: asyncio.Task[None] | None = None
@@ -161,6 +163,17 @@ class SwitchLoadShadow:
     @staticmethod
     async def async_remove_stored(hass: HomeAssistant, entry_id: str) -> None:
         await Store(hass, STORE_VERSION, store_key(entry_id)).async_remove()
+
+    def _save(self) -> None:
+        """Write the book within `_SAVE_DELAY_S`: a write already waiting is not put off by the next look."""
+        if self._save_pending:
+            return
+        self._save_pending = True
+        self._store.async_delay_save(self._data_to_save, _SAVE_DELAY_S)
+
+    def _data_to_save(self) -> dict[str, Any]:
+        self._save_pending = False
+        return self._book_data()
 
     def _book_data(self) -> dict[str, Any]:
         self.book.set_section(SECTION_HISTORY, self.history.as_dict())
@@ -357,7 +370,7 @@ class SwitchLoadShadow:
         )
         self._last_on = decision.on
         self._log(now, decision, state.state if state is not None else None, readable, memory)
-        self._store.async_delay_save(self._book_data, _SAVE_DELAY_S)
+        self._save()
 
     def _log(
         self, now: datetime, decision: SwitchDecision, read: str | None, readable: bool, memory: dict[str, Any]

@@ -72,6 +72,10 @@ STORE_VERSION: Final = 1
 _SAVE_DELAY_S: Final = 30.0
 
 
+def _without_count_time(memory: Mapping[str, Any]) -> dict[str, Any]:
+    return {key: value for key, value in memory.items() if key != "counted_at"}
+
+
 def store_key(entry_id: str) -> str:
     return f"{DOMAIN}.battery_shadow.{entry_id}"
 
@@ -204,6 +208,8 @@ class BatteryShadow:
         self.spotnav_acting: Callable[[], bool] = lambda: False
         self._timer_cancel: Callable[[], None] | None = None
         self._loaded = False
+        #: Whether a write of the book waits (`_save`): the ticks go on, and must not keep putting it off.
+        self._save_pending = False
         self.plan = BatteryPlanShadow(hass, site)
         self.curtail = CurtailShadow()
         #: The sell price now (minor per kWh) and the export control found, as at the last look (shown only).
@@ -437,14 +443,15 @@ class BatteryShadow:
         after = self.curtail.as_dict()
         if entry is not None or after != before:
             self.book.set_section(SECTION_CURTAIL, after)
-            self._store.async_delay_save(self.book.as_dict, _SAVE_DELAY_S)
+            self._save()
 
     def _apply(
         self, part: str, memory: HoldMemory, decision: HoldDecision | None, now: datetime, *,
         reads: Mapping[str, RoleRead] | None = None, age_s: float | None = None, headroom_a: float | None = None,
         volts: float = 400.0,
     ) -> None:
-        changed = memory.as_dict() != self.book.memory(part)
+        # When the hold last counted changes at every look: alone it is no change worth a write.
+        changed = _without_count_time(memory.as_dict()) != _without_count_time(self.book.memory(part))
         self.book.set_memory(part, memory.as_dict())
         entries: list[ShadowEntry] = []
         if decision is not None:
@@ -479,7 +486,18 @@ class BatteryShadow:
                 self.book.set_section(name, data)
                 changed = True
         if changed or entries:
-            self._store.async_delay_save(self.book.as_dict, _SAVE_DELAY_S)
+            self._save()
+
+    def _save(self) -> None:
+        """Write the book within `_SAVE_DELAY_S`: a write already waiting is not put off by a later change."""
+        if self._save_pending:
+            return
+        self._save_pending = True
+        self._store.async_delay_save(self._data_to_save, _SAVE_DELAY_S)
+
+    def _data_to_save(self) -> dict[str, Any]:
+        self._save_pending = False
+        return self.book.as_dict()
 
     def _dry_run_snapshot(self) -> dict[str, Any]:
         """The ledger's and the monitor's state and today's counters; in shadow nothing is written, so their real
