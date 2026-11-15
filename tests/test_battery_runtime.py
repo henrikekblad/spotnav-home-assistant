@@ -231,7 +231,7 @@ def _with_headroom(inputs):
     def wrapped(self, now):
         from dataclasses import replace  # noqa: PLC0415
 
-        return replace(inputs(self, now), headroom_a=20.0, measurement_ok=True)
+        return replace(inputs(self, now), headroom_a=25.0, measurement_ok=True)
 
     return wrapped
 

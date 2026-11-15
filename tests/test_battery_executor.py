@@ -35,6 +35,7 @@ from custom_components.spotnav.battery.executor import (
     ExecState,
     Executor,
     grid_charge_cap_kw,
+    hold_headroom_ok,
     preview,
 )
 from custom_components.spotnav.battery.facts import Management
@@ -548,6 +549,15 @@ def test_a_hand_back_that_is_not_for_the_fuse_keeps_one_write_at_a_time() -> Non
     assert executor.state.in_flight == ()
 
 
+def test_a_hold_starts_only_when_the_headroom_carries_the_whole_discharge_on_one_phase() -> None:
+    executor, battery = _sigenergy()
+    # 3 kW is 4.3 A per phase spread over three, but 13 A on one phase.
+    assert not hold_headroom_ok(inputs(battery, T0, "hold", headroom_a=8.0, power_kw=-3.0))
+    assert hold_headroom_ok(inputs(battery, T0, "hold", headroom_a=15.1, power_kw=-3.0))
+    _now, results = run(executor, battery, T0, 3, "hold", headroom_a=8.0, power_kw=-3.0)
+    assert written(results) == [] and events(results, "not_started")[0]["reason"] == "headroom_too_small"
+
+
 def test_a_grid_charge_is_handed_back_for_the_fuse_with_the_mode_that_stops_it_first() -> None:
     executor, battery = _sigenergy()
     now, _ = run(executor, battery, T0, 6, "grid_charge", 4.0)
@@ -560,11 +570,12 @@ def test_a_covered_hold_holds_again_only_after_the_dwell_and_with_the_start_marg
     executor, battery = _sigenergy()
     now = _held(executor, battery)
     now, _ = run(executor, battery, now, 3, "hold", headroom_a=1.2)
-    # The battery covers 3 kW (4.3 A per phase at 400 V): 5 A of headroom is not enough to hold it again.
-    now, results = run(executor, battery, now, _looks(PEAK_REHOLD_S), "hold", headroom_a=5.0, power_kw=-3.0)
+    # The battery covers 3 kW, which can all be on one phase (SigenStor covers each phase on its own): 13 A at
+    # 230 V. 8 A of headroom, enough if it were spread over three phases (4.3 A), is not enough to hold it again.
+    now, results = run(executor, battery, now, _looks(PEAK_REHOLD_S), "hold", headroom_a=8.0, power_kw=-3.0)
     assert written(results) == [] and events(results, "peak_rehold") == []
-    _now, results = run(executor, battery, now, 3, "hold", headroom_a=8.0, power_kw=-3.0)
-    assert events(results, "peak_rehold")[0]["headroom_a"] == 8.0
+    _now, results = run(executor, battery, now, 3, "hold", headroom_a=16.0, power_kw=-3.0)
+    assert events(results, "peak_rehold")[0]["headroom_a"] == 16.0
     assert written(results) == [("discharge_limit", 0.0)]
     assert executor.state.covered_at is None and executor.monitor.watch is not None
     # Before the dwell it does not hold again, however much headroom.

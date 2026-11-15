@@ -50,7 +50,7 @@ def _facts(power_kw: float | None = -4.6, *, management: str = "free", **changes
 
 def _inputs(at: datetime, **changes) -> HoldInputs:
     base = HoldInputs(
-        now=at, grid_charging=True, facts=_facts(), battery_age_s=5.0, measurement_ok=True, headroom_a=12.0,
+        now=at, grid_charging=True, facts=_facts(), battery_age_s=5.0, measurement_ok=True, headroom_a=25.0,
         charger_ids=("charger_a",), car_kw=7.0, reads=_reads(),
     )
     return replace(base, **changes)
@@ -201,8 +201,9 @@ def _without(role: str) -> dict[str, RoleRead]:
         ({"facts": _facts(on_grid=False)}, "off_grid"),
         ({"measurement_ok": False}, "stale_data"),
         ({"headroom_a": None}, "headroom_unknown"),
-        # 4.6 kW is 6.6 A per phase at 400 V: 8 A of headroom would leave 1.4 A.
-        ({"headroom_a": 8.0}, "headroom_too_small"),
+        # 4.6 kW can all be on one phase: 19.9 A at 230 V. 20 A of headroom would leave 0.1 A (spread over three
+        # phases it would have left 13.4 A).
+        ({"headroom_a": 20.0}, "headroom_too_small"),
     ],
 )
 def test_a_hold_that_is_not_possible_says_why(changes: dict, reason: str) -> None:

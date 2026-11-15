@@ -427,13 +427,16 @@ def grid_charge_cap_kw(inputs: ExecInputs, commanded_kw: float) -> float | None:
 
 def hold_headroom_ok(inputs: ExecInputs) -> bool:
     """Whether a hold may start (or a lifted one hold again): the headroom keeps `HEADROOM_MARGIN_A` once the
-    battery stops covering what it discharges now."""
+    battery stops covering what it discharges now.
+
+    The discharge is counted as if it were all on one phase (kW·1000 / the phase voltage): a SigenStor covers each
+    phase on its own, so what it gives may be one phase's load, and the battery's power per phase is not known."""
     if inputs.headroom_a is None or inputs.volts_between_phases <= 0:
         return False
     extra_a = 0.0
     power = inputs.facts.power_kw
     if power is not None and power < 0:
-        extra_a = -power * 1000.0 / (math.sqrt(3.0) * inputs.volts_between_phases)
+        extra_a = -power * 1000.0 * math.sqrt(3.0) / inputs.volts_between_phases
     return inputs.headroom_a - extra_a >= HEADROOM_MARGIN_A
 
 
