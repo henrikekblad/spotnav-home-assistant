@@ -18,7 +18,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 from custom_components.spotnav.battery.hold import ARM_S, HoldMemory
 from custom_components.spotnav.battery.monitor import GRACE_S, READING_GAP_S
 from custom_components.spotnav.battery.runtime import BatteryShadow
-from custom_components.spotnav.battery.shadow import MIN_DIVERGENCE_S, PART_HOLD_FOR_CAR, ShadowEntry
+from custom_components.spotnav.battery.shadow import MIN_DIVERGENCE_S, PART_EXPORT_CURTAIL, PART_HOLD_FOR_CAR, ShadowEntry
 from custom_components.spotnav.debug_bundle import async_build_debug_bundle
 from custom_components.spotnav.diagnostics import async_get_config_entry_diagnostics
 from custom_components.spotnav.runtime import site_controller_for
@@ -101,7 +101,7 @@ async def test_the_sites_battery_facts_are_in_its_diagnostics_and_the_debug_bund
     assert facts["power_kw"] == 4.603 and facts["firmware"] == "V100R001C21SPC117"
     assert facts["management"]["state"] == "self_managed"
     assert facts["controls"]["hold"]["entity_id"] == "number.sigen_plant_ess_max_discharging_limit"
-    assert battery["parts"] == {PART_HOLD_FOR_CAR: "shadow"}
+    assert battery["parts"] == {PART_HOLD_FOR_CAR: "shadow", PART_EXPORT_CURTAIL: "shadow"}
     bundle = await async_build_debug_bundle(hass)
     assert bundle["sites"][0]["diagnostics"]["battery"]["facts"]["brand"] == "sigenergy"
 

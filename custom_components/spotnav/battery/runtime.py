@@ -7,7 +7,9 @@ executor's own via `executor.preview`) and logs the decisions in the shadow book
 site's store. The
 confirmed-write ledger and the control-failure monitor run beside the hold as dry runs (`dry_run.py` says what they
 can and cannot tell in shadow); their state is kept in the book's sections. The house battery plan runs beside them
-as a shadow and a benchmark (`plan_runtime.py`). The outside-control watch (`outside_control.py`) looks at the same
+as a shadow and a benchmark (`plan_runtime.py`), and so does the export-limit rule (`export_curtail.py`: no export
+while the sell price is below zero), which logs what the executor's export control would write and counts what it
+would have saved, with or without a battery. The outside-control watch (`outside_control.py`) looks at the same
 readings: a battery another system drives is marked `externally_controlled` for every part (the plan stays a
 benchmark). Each occurrence is logged once at INFO when it starts and once when it ends, and kept in the diagnostics
 and in what SpotNav detected; nothing is raised in Repairs (nothing there is for the person to do). The Repairs
@@ -32,24 +34,27 @@ from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 
+from .. import time_zones
 from ..const import (
     BATTERY_OUTSIDE_CONTROL_ISSUE,
     CONF_BATTERY_AGGREGATE_POWER_ENTITY,
     CONF_CHARGER_ENTRY_IDS,
+    CONF_GRID_POWER_SOURCE,
     DOMAIN,
 )
 from ..planning.grid_voltage import stored_voltage_between_phases_v
 from ..site.measurement_problem import UNHEALTHY_STATES
-from .commands import BrandControl, control_for
+from .commands import ACTION_CURTAIL_EXPORT, EXPORT_CONTROLS, BrandControl, control_for, export_control_for, export_table
 from .dry_run import SECTION_LEDGER, SECTION_MONITOR, HoldDryRun
-from .executor import RoleRead, role_reads
+from .executor import ExecInputs, RoleRead, preview, role_reads
+from .export_curtail import CurtailLook, CurtailShadow, curtails
 from .facts import BatteryFacts, EntityFact, battery_facts, with_outside_control
 from .hold import HoldDecision, HoldInputs, HoldMemory, restart, step
 from .ledger import Ledger
 from .monitor import Monitor
 from .outside_control import Observation, OutsideControlWatch
 from .plan_runtime import BatteryPlanShadow
-from .shadow import PART_HOLD_FOR_CAR, ShadowBook, ShadowEntry
+from .shadow import PART_EXPORT_CURTAIL, PART_HOLD_FOR_CAR, ShadowBook, ShadowEntry
 
 if TYPE_CHECKING:
     from ..site.site_capacity_controller import SiteCapacityController
@@ -59,6 +64,8 @@ _LOGGER = logging.getLogger(__name__)
 TICK_S: Final = 10.0
 #: The book's section that keeps the outside-control watch.
 SECTION_OUTSIDE: Final = "outside_control"
+#: The book's section that keeps the export-limit rule's shadow (`export_curtail.CurtailShadow`).
+SECTION_CURTAIL: Final = "export_curtail"
 #: The issue-id prefix of the Repairs notice an earlier version raised (retired: deleted at start).
 OUTSIDE_CONTROL_ISSUE: Final = BATTERY_OUTSIDE_CONTROL_ISSUE
 STORE_VERSION: Final = 1
@@ -145,6 +152,43 @@ def read_role_reads(hass: HomeAssistant, config: dict[str, Any], control: BrandC
     return role_reads(control, entities, _entity_fact(battery_entry, hass))
 
 
+def _export_anchor(hass: HomeAssistant, config: dict[str, Any]) -> er.RegistryEntry | None:
+    """The site entity the plant's export limit is found from: the battery's, else the grid meter's, when it belongs to
+    an integration with an export control (`commands.EXPORT_CONTROLS`). A site without a battery is in scope."""
+    registry = er.async_get(hass)
+    candidates: list[Any] = [config.get(CONF_BATTERY_AGGREGATE_POWER_ENTITY)]
+    grid = config.get(CONF_GRID_POWER_SOURCE)
+    if isinstance(grid, dict):
+        candidates += [grid.get("power"), grid.get("power_export")]
+    platforms = {platform for control in EXPORT_CONTROLS for platform in control.adapter.platforms}
+    for entity_id in candidates:
+        entry = registry.async_get(entity_id) if isinstance(entity_id, str) and entity_id else None
+        if entry is not None and entry.config_entry_id is not None and entry.platform in platforms:
+            return entry
+    return None
+
+
+def read_export_facts(
+    hass: HomeAssistant, config: dict[str, Any]
+) -> tuple[BatteryFacts, dict[str, RoleRead], BrandControl | None]:
+    """The plant's facts (its management above all), its export control and that control's role read, as found from
+    `_export_anchor`; empty facts and no control when the site has none."""
+    anchor = _export_anchor(hass, config)
+    if anchor is None or anchor.config_entry_id is None:
+        return BatteryFacts(), {}, None
+    registry = er.async_get(hass)
+    entries = er.async_entries_for_config_entry(registry, anchor.config_entry_id)
+    entities = [_entity_fact(entry, hass) for entry in entries if entry.platform == anchor.platform]
+    device = None if anchor.device_id is None else dr.async_get(hass).async_get(anchor.device_id)
+    anchor_fact = _entity_fact(anchor, hass)
+    facts = battery_facts(
+        anchor_fact, entities, manufacturer=None if device is None else device.manufacturer,
+        external_planner=external_planner(hass),
+    )
+    control = export_control_for(facts.brand)
+    return facts, ({} if control is None else role_reads(control, entities, anchor_fact)), control
+
+
 class BatteryShadow:
     """The site's battery parts in shadow."""
 
@@ -161,6 +205,10 @@ class BatteryShadow:
         self._timer_cancel: Callable[[], None] | None = None
         self._loaded = False
         self.plan = BatteryPlanShadow(hass, site)
+        self.curtail = CurtailShadow()
+        #: The sell price now (minor per kWh) and the export control found, as at the last look (shown only).
+        self.curtail_sell: float | None = None
+        self.curtail_brand: str | None = None
 
     @property
     def _hold(self) -> HoldMemory:
@@ -179,6 +227,7 @@ class BatteryShadow:
             Ledger.from_dict(self.book.section(SECTION_LEDGER)), Monitor.from_dict(self.book.section(SECTION_MONITOR))
         )
         self.outside = OutsideControlWatch.from_dict(self.book.section(SECTION_OUTSIDE))
+        self.curtail = CurtailShadow.from_dict(self.book.section(SECTION_CURTAIL))
         self._loaded = True
         # An earlier version raised a Repairs notice for an occurrence: it is retired, so a left-over one goes.
         ir.async_delete_issue(self.hass, DOMAIN, outside_control_issue_id(self.site.entry_id))
@@ -315,6 +364,66 @@ class BatteryShadow:
             age_s=inputs.battery_age_s, headroom_a=inputs.headroom_a, volts=inputs.volts_between_phases,
         )
         self.plan.tick(now, inputs.facts)
+        try:
+            self._curtail_tick(now, inputs)
+        except Exception:  # noqa: BLE001 - the rule's shadow must never disturb the site
+            _LOGGER.debug("SpotNav export limit: the look failed", exc_info=True)
+
+    def _curtail_tick(self, now: datetime, inputs: HoldInputs) -> None:
+        """One look of the export-limit rule in shadow (`export_curtail.py`): in a curtail slot, what the executor's
+        export control would write (`executor.preview`) or why not; the export counted either way."""
+        from ..execution.solar_execution import site_net_grid_w  # noqa: PLC0415 - it imports the site
+
+        sell = self.curtail_sell = self.plan.sell_at(now)
+        shown = None
+        blocker: str | None = None
+        if curtails(sell):
+            facts, reads, control = read_export_facts(self.hass, self.site.config)
+            self.curtail_brand = None if control is None else control.brand
+            if control is None:
+                blocker = "no_export_control"
+            else:
+                shown = preview(
+                    control,
+                    ExecInputs(
+                        now=now, facts=self.with_outside(facts), reads=reads, action=ACTION_CURTAIL_EXPORT,
+                        measurement_ok=inputs.measurement_ok, headroom_a=inputs.headroom_a,
+                        volts_between_phases=inputs.volts_between_phases,
+                    ),
+                )
+                blocker = shown.blocker
+        grid_w = site_net_grid_w(self.site)
+        day = now.astimezone(time_zones.require_zone(self.plan._tz)).date().isoformat()
+        restore = dict(self.curtail.restore)
+        before = self.curtail.as_dict()
+        edge = self.curtail.step(CurtailLook(now, day, sell, None if grid_w is None else grid_w / 1000.0, blocker))
+        entry: ShadowEntry | None = None
+        detail: dict[str, Any] = {"sell": None if sell is None else round(sell, 2)}
+        if edge == "enter" and shown is not None and shown.blocker is None:
+            self.curtail.restore = {op.role: op.value for op in shown.restores}
+            write = shown.writes[0] if shown.writes else None
+            entry = ShadowEntry(
+                at=now, part=PART_EXPORT_CURTAIL, action="would_write" if write is not None else "left_alone",
+                reason="sell_below_zero" if write is not None else "already_at_zero",
+                entity_id=None if write is None else write.entity_id, value=None if write is None else write.value,
+                detail=detail | {"writes": [op.as_dict() for op in shown.writes],
+                                 "restores": [op.as_dict() for op in shown.restores], "snapshot": dict(shown.snapshot)},
+                read=next(iter(shown.snapshot.values()), None),
+            )
+        elif edge == "enter":
+            entry = ShadowEntry(at=now, part=PART_EXPORT_CURTAIL, action="not_possible", reason=blocker or "", detail=detail)
+        elif edge == "leave":
+            entry = ShadowEntry(
+                at=now, part=PART_EXPORT_CURTAIL, action="would_restore" if restore else "left_alone",
+                reason="sell_not_below_zero", detail=detail | {"restore": restore},
+            )
+        if entry is not None:
+            self.book.record(entry)
+            _LOGGER.debug("SpotNav export limit in shadow: %s (%s)", entry.action, entry.reason)
+        after = self.curtail.as_dict()
+        if entry is not None or after != before:
+            self.book.set_section(SECTION_CURTAIL, after)
+            self._store.async_delay_save(self.book.as_dict, _SAVE_DELAY_S)
 
     def _apply(
         self, part: str, memory: HoldMemory, decision: HoldDecision | None, now: datetime, *,
@@ -376,7 +485,7 @@ class BatteryShadow:
         hold = self._hold
         return {
             "facts": self.facts.as_dict(),
-            "parts": {part: self.book.state(part) for part in (PART_HOLD_FOR_CAR,)},
+            "parts": {part: self.book.state(part) for part in (PART_HOLD_FOR_CAR, PART_EXPORT_CURTAIL)},
             "hold_for_car": {
                 "held_in_shadow": hold.held,
                 "held_since": None if hold.held_since is None else hold.held_since.isoformat(),
@@ -392,4 +501,14 @@ class BatteryShadow:
             "outside_control": self.outside.as_dict(),
             "log": [entry.as_dict() for entry in self.book.entries],
             "plan": self.plan.snapshot(),
+            # No export while the sell price is below zero (`export_curtail.py`), in shadow: the slot now, the export
+            # control found, and per day the kWh exported in curtail slots and what they cost (the would-be saving;
+            # `blocked_*` the part the control could not have stopped).
+            "export_curtail": {
+                "sell_now": None if self.curtail_sell is None else round(self.curtail_sell, 2),
+                "control": self.curtail_brand,
+                **self.curtail.as_dict(),
+                "totals": self.curtail.totals(),
+                "commands": export_table(),
+            },
         }

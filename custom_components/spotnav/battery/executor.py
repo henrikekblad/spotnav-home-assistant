@@ -37,6 +37,13 @@ How it acts (`step`, one look every few seconds; pure, the shell does the writes
   charger held below what it asked makes the battery yield (`YIELD_STEP_KW` per review); with "battery first" the
   battery keeps its rate and the site's load balancing backs the car off (the battery is house load to it).
   The rate goes down at once and up only by `RATE_STEP_KW` after `RATE_UP_DWELL_S`.
+* **The export limit** (`commands.EXPORT_CONTROLS`, kind `export`): the same executor, ledger and rules run the
+  site's export limit as its own instance, for the one action `curtail_export` (the limit at 0 kW while the sell price
+  is below zero, `export_curtail.py`); anything else hands it back to the value found. It needs no battery reading
+  and no fuse headroom (a lower export limit never adds import), but every other rule holds: management (a battery in
+  its own optimiser is only watched), off-grid, the site's measurement, read-back, a change by someone else given up,
+  the restore. A never-set limit (`unknown`) is restored as the plant's maximum output. The day's write cap is the
+  site's, shared with the battery's instance (`ExecInputs.other_writes_today`).
 
 Pure: no Home Assistant import; times are aware datetimes from the caller. State survives a restart
 (`ExecState.as_dict`, `from_dict`); the ledger and the monitor keep their own.
@@ -162,6 +169,8 @@ class ExecInputs:
     stopping: str | None = None
     #: Roles whose last write raised (the shell's service call failed).
     failed: tuple[str, ...] = ()
+    #: Writes the site's other control instance made today (battery and export limit share `DAILY_WRITE_CAP`).
+    other_writes_today: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -375,6 +384,9 @@ def _rating(facts: BatteryFacts, kind: str | None) -> float | None:
         return facts.rated_charge_kw
     if kind == "discharge":
         return facts.rated_discharge_kw
+    if kind == "export":
+        # A never-set export limit holds none: the most the plant can put out is the most it can export.
+        return facts.plant_max_kw
     return None
 
 
@@ -435,6 +447,11 @@ def _blocking(reason: str) -> bool:
     return reason.startswith(_BLOCKING_PREFIXES)
 
 
+def _writes_today(state: ExecState, inputs: ExecInputs) -> int:
+    """The site's writes today: this instance's and the other's (the cap is shared)."""
+    return state.writes_today + max(inputs.other_writes_today, 0)
+
+
 class Executor:
     """One battery's write path: the brand's control, the ledger and the monitor, and the state."""
 
@@ -447,6 +464,11 @@ class Executor:
         self.monitor = monitor or Monitor()
         self.state = state or ExecState()
         self.watchdog_s = watchdog_s
+
+    @property
+    def _export(self) -> bool:
+        """Whether this instance runs the export limit (`commands.EXPORT_CONTROLS`)."""
+        return self.control.kind == "export"
 
     # --- life ---
 
@@ -629,7 +651,7 @@ class Executor:
         if action is None:
             return "no_plan_now"
         if action == ACTION_SELF_CONSUME:
-            return "plan_self_consume"
+            return "curtail_ended" if self._export else "plan_self_consume"
         if facts.brand != self.control.brand:
             return "battery_changed"
         problem = self._action_problem(inputs, action)
@@ -637,9 +659,9 @@ class Executor:
             return problem
         if facts.on_grid is False:
             return "off_grid"
-        if not inputs.measurement_ok or not _fresh(inputs):
+        if not inputs.measurement_ok or (not self._export and not _fresh(inputs)):
             return "stale_data"
-        if inputs.headroom_a is None:
+        if inputs.headroom_a is None and not self._export:
             return "headroom_unknown"
         if (action in _RAISES_IMPORT or self.state.action in _RAISES_IMPORT) and inputs.headroom_a < RESTORE_HEADROOM_A:
             return "fuse_headroom"
@@ -653,7 +675,7 @@ class Executor:
             return f"management_changed:{management}"
         else:
             self.state = replace(self.state, management_unknown_since=None)
-        if self.state.writes_today >= DAILY_WRITE_CAP:
+        if _writes_today(self.state, inputs) >= DAILY_WRITE_CAP:
             return "daily_write_cap"
         return None
 
@@ -762,9 +784,9 @@ class Executor:
             return management
         if facts.on_grid is False:
             return "off_grid"
-        if not inputs.measurement_ok or not _fresh(inputs):
+        if not inputs.measurement_ok or (not self._export and not _fresh(inputs)):
             return "stale_data"
-        if inputs.headroom_a is None:
+        if inputs.headroom_a is None and not self._export:
             return "headroom_unknown"
         if action in _RAISES_IMPORT:
             extra_a = 0.0
@@ -772,7 +794,7 @@ class Executor:
                 extra_a = -facts.power_kw * 1000.0 / (math.sqrt(3.0) * inputs.volts_between_phases)
             if inputs.headroom_a - extra_a < HEADROOM_MARGIN_A:
                 return "headroom_too_small"
-        if state.writes_today >= DAILY_WRITE_CAP:
+        if _writes_today(state, inputs) >= DAILY_WRITE_CAP:
             return "daily_write_cap"
         if state.released_at is not None and (inputs.now - state.released_at).total_seconds() < REARM_S:
             return "rearm"
@@ -917,7 +939,7 @@ class Executor:
         if state.phase not in ("active", "restoring") or state.pending is not None:
             return []
         restoring = state.phase == "restoring"
-        if not restoring and state.writes_today >= DAILY_WRITE_CAP:
+        if not restoring and _writes_today(state, inputs) >= DAILY_WRITE_CAP:
             return []
         name = self._next_role(state, inputs)
         if name is None:

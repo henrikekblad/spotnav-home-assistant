@@ -125,6 +125,12 @@ async def _site(hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_stora
         return replace(original(self, now, control, stopping=stopping), headroom_a=20.0, measurement_ok=True)
 
     monkeypatch.setattr(BatteryControl, "inputs", inputs)
+    export_original = BatteryControl.export_inputs
+
+    def export_inputs(self, now, control, *, stopping=None):
+        return replace(export_original(self, now, control, stopping=stopping), measurement_ok=True)
+
+    monkeypatch.setattr(BatteryControl, "export_inputs", export_inputs)
     return site, controller, plant
 
 
@@ -288,3 +294,69 @@ async def test_the_verification_routine_starts_through_the_shell(
     await control.async_stop()
     assert hass.states.get(SWITCH).state == "off"
     assert control_module.HAND_BACK_DEADLINE_S > 0
+
+
+# --- the export limit --------------------------------------------------------------------------------------------------
+
+EXPORT = "number.sigen_plant_grid_export_limitation"
+
+
+def _export_limit(hass: HomeAssistant, state: str = "11.5") -> None:
+    """The plant's Grid Export Limitation as on the owner's registry, enabled."""
+    owner = hass.config_entries.async_get_entry("ENTRY")
+    device = dr.async_get(hass).async_get_or_create(config_entry_id="ENTRY", identifiers={("sigen", "plant")})
+    entry = er.async_get(hass).async_get_or_create(
+        "number", "sigen", "ENTRY_sigen_plant_plant_grid_point_maximum_export_limitation", device_id=device.id,
+        config_entry=owner, suggested_object_id="sigen_plant_grid_export_limitation",
+    )
+    assert entry.entity_id == EXPORT
+    hass.states.async_set(EXPORT, state, {"unit_of_measurement": "kW", "step": 0.001})
+
+
+async def test_the_export_limit_is_zero_below_a_zero_sell_price_and_back_after_without_touching_the_battery(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    monkeypatch.setattr(shadow, "ON_REACHABLE", True)
+    _site_entry, controller, plant = await _site(hass, monkeypatch, hass_storage)
+    _export_limit(hass)
+    sell = {"now": -12.0}
+    control = BatteryControl(hass, controller, plan_source=lambda _now: None, sell_source=lambda _now: sell["now"])
+    await control.async_start()
+    now = dt_util.now()
+    for index in range(4):
+        await control.async_tick(now + timedelta(seconds=10 * index))
+    assert plant.calls == [("number", "set_value", {"entity_id": EXPORT, "value": 0.0})]
+    assert plant.stored_at_first_call["export"]["state"]["snapshot"] == {"export_limit": "11.5"}
+    assert control.export_executor.state.phase == "active" and control.acting()
+    assert control.snapshot()["export"]["state"]["action"] == "curtail_export"
+
+    # HA stops without handing back; the next start restores the limit before anything else.
+    again = BatteryControl(hass, controller, plan_source=lambda _now: None, sell_source=lambda _now: sell["now"])
+    plant.calls.clear()
+    await again.async_start()
+    assert plant.calls == [("number", "set_value", {"entity_id": EXPORT, "value": 11.5})]
+    assert hass.states.get(EXPORT).state == "11.5"
+
+    # The price turns positive while curtailing: handed back to the value found.
+    for index in range(4):
+        await again.async_tick(now + timedelta(minutes=5, seconds=10 * index))
+    plant.calls.clear()
+    sell["now"] = 3.0
+    for index in range(4):
+        await again.async_tick(now + timedelta(minutes=10, seconds=10 * index))
+    assert plant.calls == [("number", "set_value", {"entity_id": EXPORT, "value": 11.5})]
+    assert again.export_executor.state.phase == "idle" and not again.acting()
+    assert hass.states.get(DISCHARGE).state == "23.04" and hass.states.get(SWITCH).state == "off"
+
+
+async def test_the_export_limit_is_never_written_while_unreachable(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    _site_entry, controller, plant = await _site(hass, monkeypatch, hass_storage)
+    _export_limit(hass)
+    control = BatteryControl(hass, controller, plan_source=lambda _now: None, sell_source=lambda _now: -12.0)
+    await control.async_start()
+    with pytest.raises(ControlNotReachable):
+        await control.async_export_tick()
+    await control.async_stop()
+    assert plant.calls == [] and hass.states.get(EXPORT).state == "11.5"

@@ -36,8 +36,10 @@ ShadowAction = Literal["would_write", "would_restore", "left_alone", "not_possib
 PART_HOLD_FOR_CAR: Final = "hold_for_car"
 #: A switched load on the site run in the cheapest hours (`loads/`); its book is the load's own, not the battery's.
 PART_SWITCH_LOAD: Final = "switch_load"
+#: No solar export while the sell price is below zero (`export_curtail.py`): the site's export limit at 0 kW.
+PART_EXPORT_CURTAIL: Final = "export_curtail"
 #: Every part, in the order they were added.
-PARTS: Final[tuple[str, ...]] = (PART_HOLD_FOR_CAR, PART_SWITCH_LOAD)
+PARTS: Final[tuple[str, ...]] = (PART_HOLD_FOR_CAR, PART_SWITCH_LOAD, PART_EXPORT_CURTAIL)
 
 #: Whether a part may be turned on at all. Off in this release: everything runs in shadow.
 ON_REACHABLE: Final = False
