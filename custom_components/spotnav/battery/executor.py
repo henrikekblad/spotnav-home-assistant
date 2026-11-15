@@ -60,7 +60,7 @@ How it acts (`step`, one look every few seconds; pure, the shell does the writes
   the restore. A never-set limit (`unknown`) is restored as the plant's maximum output. The day's write cap is the
   site's, shared with the battery's instance (`ExecInputs.other_writes_today`). A plant whose mode reads SpotNav's
   own battery control (Remote EMS that the battery instance runs, `ExecInputs.sibling_active`) is taken; one in
-  Remote EMS of someone else's is not. The two instances never write each other's roles: the battery's control
+  Remote EMS of someone else's is not, and a curtail is handed back when someone else takes Remote EMS. The two instances never write each other's roles: the battery's control
   does not read the export limit, and Sigenergy's export limit needs no Remote EMS, so the battery's hand-back
   (Remote EMS off) takes nothing from it. **Obeyed?** The monitor judges a curtail on the site's grid power: after
   `monitor.CURTAIL_GRACE_S`, three readings exporting more than `monitor.EXPORT_TOLERANCE_KW` hand the limit back
