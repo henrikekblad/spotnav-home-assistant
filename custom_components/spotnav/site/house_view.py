@@ -27,7 +27,10 @@ It shows what the site diagnostics already carry, cut to what a card draws:
   (`HouseInputs.day`) shows its own local hours, all of them past (its outcomes beside its first forecasts), its money
   (`today`, from the stored energy's day) and its energy flow; the bars of `flow` are today's only.
 * **`day_review`**: on a past day, that day's own review side by side (each mode's saving and the battery's own way
-  against plain self-consumption, the mode in force); `None` on today (the week's sums are in `battery.modes`) and on a
+  against plain self-consumption, the mode in force; and the day in the battery app's terms: `battery_saving`
+  against the day with no battery, `sun_gave`, and `against_nothing` for both together, each `None` where not known,
+  with `covered_quarters` of `day_quarters` and `sun_quarters` saying how much of the day they cover, see
+  `battery/review_baselines.py`); `None` on today (the week's sums are in `battery.modes`) and on a
   day without a review.
 * **`days`**: the last reviewed days, one row each, for the card's details.
 * **`sources`**: where the forecasts come from (weather entity, outdoor sensor, holiday calendar, solar forecast).
@@ -51,7 +54,15 @@ from ..battery.plan_model import (
     MODES,
 )
 from .. import time_zones
-from ..battery.plan_shadow import KIND_BATTERY, Bucket, DayReview, PlannedSlot, PriceSlot, soc_by_hour_end
+from ..battery.plan_shadow import (
+    KIND_BATTERY,
+    Bucket,
+    DayReview,
+    PlannedSlot,
+    PriceSlot,
+    day_quarters,
+    soc_by_hour_end,
+)
 from ..battery.stored_value import StoredValue
 from ..planning.demand_charge import hour_start
 from .forecast_log import KEEP_HOURS_DAYS, KIND_HOUSE, KIND_SUN, KIND_SUN_CORRECTED, ForecastLog, LoggedHour, Score
@@ -424,6 +435,18 @@ def _money(value: float) -> float:
     return round(value, 2)
 
 
+def baselines(review: DayReview) -> dict[str, float | None]:
+    """A day's money in the battery app's terms (`battery/review_baselines.py`): what the battery saved against the
+    day with no battery, what the sun gave, and both against neither; `None` where it is not known (a day reviewed
+    before the figures, the sun's production not read)."""
+    battery, sun, nothing = review.battery_saving, review.sun_value, review.against_nothing
+    return {
+        "battery_saving": None if battery is None else _money(battery),
+        "sun_gave": None if sun is None else _money(sun),
+        "against_nothing": None if nothing is None else _money(nothing),
+    }
+
+
 def _battery_block(battery: BatteryInputs, log: ForecastLog) -> dict[str, Any]:
     reviews = list(battery.reviews)[-REVIEW_DAYS_SHOWN:]
     modes: dict[str, Any] = {}
@@ -447,6 +470,9 @@ def _battery_block(battery: BatteryInputs, log: ForecastLog) -> dict[str, Any]:
             "plan_saving": _money(sum(item.saving for item in reviews)),
             "own_saving": _money(sum(item.actual_saving for item in reviews)),
             "self_consumption_net": _money(sum(item.net(item.self_consumption) for item in reviews)),
+            # The days' money against no battery and what the sun gave, summed over the days that have each figure.
+            "battery_saving": _money(sum(item.battery_saving or 0.0 for item in reviews)),
+            "sun_gave": _money(sum(item.sun_value or 0.0 for item in reviews)),
         }
     return {
         "brand": battery.brand,
@@ -480,7 +506,17 @@ def days_view(inputs: HouseInputs) -> list[dict[str, Any]]:
 
     def day_row(day: str) -> dict[str, Any]:
         return by_day.setdefault(
-            day, {"date": day, **{key: None for key in kinds}, "plan_saving": None, "own_saving": None, "arbitrage": None}
+            day,
+            {
+                "date": day,
+                **{key: None for key in kinds},
+                "plan_saving": None,
+                "own_saving": None,
+                "arbitrage": None,
+                "battery_saving": None,
+                "sun_gave": None,
+                "against_nothing": None,
+            },
         )
 
     for key, kind in kinds.items():
@@ -492,6 +528,7 @@ def days_view(inputs: HouseInputs) -> list[dict[str, Any]]:
         row = day_row(item.day.isoformat())
         row["plan_saving"] = _money(item.saving)
         row["own_saving"] = _money(item.actual_saving)
+        row.update(baselines(item))
     if battery is not None and battery.stored is not None:
         today = inputs.now.astimezone(time_zones.require_zone(inputs.tz)).date()
         for day, money in battery.stored.days.items():
@@ -523,6 +560,12 @@ def day_review_block(inputs: HouseInputs) -> dict[str, Any] | None:
         "mode": review.mode,
         "modes": {mode: _money(savings[mode]) if mode in savings else None for mode in MODES},
         "own_saving": _money(review.actual_saving),
+        **baselines(review),
+        # How much of the day the figures cover: the quarter hours measured with their prices, of the day's own, and
+        # those of them that had the sun's production.
+        "covered_quarters": review.covered,
+        "day_quarters": day_quarters(review.day, inputs.tz),
+        "sun_quarters": review.sun_quarters or 0,
     }
 
 
