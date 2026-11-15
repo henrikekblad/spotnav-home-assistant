@@ -16,6 +16,11 @@ Outcomes per mode: `obeyed` (every reading as asked), `ignored` (every reading a
 rating, stale readings), `aborted:<why>` (the executor handed the battery back for a reason of its own: a write not
 taken, the fuse, a stale reading, a management change; the routine then stops) or, for normal, `restored`.
 
+The export limit (`commands.EXPORT_CONTROLS`) has its own two modes (`EXPORT_MODES`): `curtail` (the limit at 0 kW
+through the executor's export instance) and `normal` (handed back). Its sample's power is the site's grid power (kW,
++ import), judged as a hold judges the battery's: the export must stop. It can be judged only while the site exports
+(`not_judgeable:not_exporting` otherwise).
+
 Pure: no Home Assistant import; times are aware datetimes from the caller.
 """
 
@@ -26,6 +31,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Final, Literal
 
+from .commands import ACTION_CURTAIL_EXPORT
 from .executor import Executor, StepResult
 from .monitor import FLOOR_KW, Capability, Command, deliverable_kw, judge
 from .plan_model import ACTION_DISCHARGE_HOUSE, ACTION_GRID_CHARGE, ACTION_HOLD, ACTION_SELF_CONSUME
@@ -51,12 +57,19 @@ MODES: Final[tuple[tuple[str, str], ...]] = (
     ("normal", ACTION_SELF_CONSUME),
 )
 
+#: The export limit's modes: the export stopped, then handed back.
+EXPORT_MODES: Final[tuple[tuple[str, str], ...]] = (
+    ("curtail", ACTION_CURTAIL_EXPORT),
+    ("normal", ACTION_SELF_CONSUME),
+)
+
 Stage = Literal["command", "settle", "read", "hand_back", "done"]
 
 
 @dataclass(frozen=True, slots=True)
 class Sample:
-    """The battery now: power (kW, + charging), its age (s), SoC (%) and the house's deficit (kW, for a discharge)."""
+    """The battery now: power (kW, + charging), its age (s), SoC (%) and the house's deficit (kW, for a discharge).
+    For the export limit: the site's grid power (kW, + import) and its age."""
 
     power_kw: float | None
     age_s: float | None
@@ -102,7 +115,8 @@ class Verification:
         self.stage: Stage = "command"
         self.stage_at = now
         self.last_reading_at: datetime | None = None
-        self.results: list[ModeResult] = [ModeResult(name, action) for name, action in MODES]
+        modes = EXPORT_MODES if executor.control.kind == "export" else MODES
+        self.results: list[ModeResult] = [ModeResult(name, action) for name, action in modes]
 
     @property
     def done(self) -> bool:
@@ -176,13 +190,20 @@ class Verification:
         if self.last_reading_at is not None and (now - self.last_reading_at).total_seconds() < READING_GAP_S:
             return
         self.last_reading_at = now
-        kind = {ACTION_HOLD: "hold", ACTION_GRID_CHARGE: "charge", ACTION_DISCHARGE_HOUSE: "discharge"}[result.action]
+        # The export limit is judged as a hold, on the grid's power: what left the site must stop.
+        kind = {ACTION_HOLD: "hold", ACTION_GRID_CHARGE: "charge", ACTION_DISCHARGE_HOUSE: "discharge",
+                ACTION_CURTAIL_EXPORT: "hold"}[result.action]
         rate = result.rate_kw if kind == "charge" else (sample.house_deficit_kw or 0.0)
         command = Command(kind, result.commanded_at or now, rate, before_kw=result.before_kw, written=True)  # type: ignore[arg-type]
         why: str | None = None
         expected: float | None = None
         if sample.power_kw is None or sample.age_s is None or sample.age_s > READING_MAX_AGE_S:
             why = "reading_stale"
+        elif result.action == ACTION_CURTAIL_EXPORT:
+            if result.before_kw is None or result.before_kw > -FLOOR_KW:
+                why = "not_exporting"
+            else:
+                expected = 0.0
         elif kind == "hold" and (result.before_kw is None or result.before_kw > -FLOOR_KW):
             why = "battery_not_discharging"
         elif kind == "discharge" and sample.house_deficit_kw is None:

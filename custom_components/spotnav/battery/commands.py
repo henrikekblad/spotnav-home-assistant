@@ -43,6 +43,15 @@ The entity keys, options and services below were checked against each integratio
   them, has no read-back, and the battery's effect is judged by the monitor. The integration repeats the command
   until the autorepeat duration runs out and then writes Disabled: that is the watchdog. Remote control is not
   stored in EEPROM.
+* **Export limit** (`EXPORT_CONTROLS`, the action `ACTION_CURTAIL_EXPORT`: no export while the sell price is below
+  zero, `export_curtail.py`): its own control beside the battery's, written by the same executor and ledger. Sigenergy:
+  number `plant_grid_point_maximum_export_limitation` ("Grid Export Limitation", register 40038, U32, gain 1000, kW
+  0-100, step 0.001, disabled by default; TypQxQ/Sigenergy-Local-Modbus `41182ec23b9d146ab5c01379a7f08994aaada75d`
+  (2.0.3) `number.py` lines 185-199 (the key at 186), `modbusregisterdefinitions.py` lines 1624-1632). It applies in every EMS mode
+  (the integration's `docs/MODBUS_ENTITIES.md`, "Grid export power limit": "All EMS modes", "Hybrid / PV · grid
+  sensor"), so it does not need Remote EMS, but it needs the plant's grid sensor. Its never-set all-ones value reads
+  `unknown` as the battery limits do; it is restored as the plant's maximum output (`plant_max_active_power`), the most
+  the plant can export anyway, and the export control is not started without that figure.
 * Victron, GoodWe, Enphase and brands without an adapter: **none**. (Victron's discharge cap is a setting stored on
   the GX; GoodWe's and Enphase's controls in core are whole-mode switches or a reserve trick, see
   `battery_cycle_cost_and_modes_2026-11-13.md` part 3.)
@@ -76,6 +85,9 @@ WATCHDOG_S: Final = 1800
 WATCHDOG_RENEW_S: Final = 900
 
 RoleMethod = Literal["number", "select", "switch", "button", "service"]
+#: The export-limit rule's action (`export_curtail.py`): the site's export limit at 0 kW. Not a battery plan action.
+ACTION_CURTAIL_EXPORT: Final = "curtail_export"
+
 #: The plan's actions that write something; `self_consume` is "normal".
 CONTROL_ACTIONS: Final = (ACTION_HOLD, ACTION_GRID_CHARGE, ACTION_DISCHARGE_HOUSE, ACTION_EXPORT_DISCHARGE)
 
@@ -138,6 +150,9 @@ class BrandControl:
     action_requires: tuple[tuple[str, str, frozenset[str], str], ...] = ()
     #: Whether the effect can only be judged by the battery's power (no read-back from the device).
     local_readback: bool = False
+    #: `battery` (the plan's actions) or `export` (the export limit, `ACTION_CURTAIL_EXPORT`): an export control
+    #: needs no battery reading or fuse headroom, since a lower export limit never adds import.
+    kind: Literal["battery", "export"] = "battery"
     note: str = ""
 
     def role(self, name: str) -> Role:
@@ -355,6 +370,25 @@ SOLAX_CONTROL: Final = BrandControl(
     " effect.",
 )
 
+_SIG_EXPORT = Role(
+    "export_limit", "number", _key("plant_grid_point_maximum_export_limitation", "number"), step=0.001,
+    unset_as_rating="export", unknown_is_unset=True,
+)
+
+SIGENERGY_EXPORT_CONTROL: Final = BrandControl(
+    brand="sigenergy",
+    adapter=SIGENERGY,
+    roles=(_SIG_EXPORT,),
+    states={ACTION_CURTAIL_EXPORT: lambda _rate, _w: (Want("export_limit", 0.0),)},
+    enter_order=("export_limit",),
+    restore_order=("export_limit",),
+    # The battery control's own Remote EMS is not "managed by its own system" for the export limit either.
+    own_states={"EMS work mode": frozenset({"remote_ems"})},
+    kind="export",
+    note="Grid Export Limitation (40038) applies in every EMS mode and needs the plant's grid sensor; a never-set"
+    " limit is restored as the plant's maximum output.",
+)
+
 #: The restore value of a role that has no snapshot of its own (never read before: a select unavailable while its
 #: switch is off, a service, a button).
 NORMAL: Final[Mapping[str, Mapping[str, Native]]] = {
@@ -366,9 +400,47 @@ NORMAL: Final[Mapping[str, Mapping[str, Native]]] = {
 CONTROLS: Final[tuple[BrandControl, ...]] = (SIGENERGY_CONTROL, SOLAREDGE_CONTROL, HUAWEI_CONTROL, SOLAX_CONTROL)
 
 
+#: The export-limit controls: only where the brand's adapter already knows the entity (`EXPORT_LIMIT_TABLE` lists
+#: the brands seen with a local export limit, mapped or not).
+EXPORT_CONTROLS: Final[tuple[BrandControl, ...]] = (SIGENERGY_EXPORT_CONTROL,)
+
+
 def control_for(brand: str | None) -> BrandControl | None:
     """The brand's control, `None` for a brand SpotNav writes nothing to."""
     return next((control for control in CONTROLS if control.brand == brand), None)
+
+
+def export_control_for(brand: str | None) -> BrandControl | None:
+    """The brand's export-limit control, `None` for a brand SpotNav has none for."""
+    return next((control for control in EXPORT_CONTROLS if control.brand == brand), None)
+
+
+#: Brands with a local export limit in their Home Assistant integration, from each source (2026-11-15, shallow
+#: clones). `mapped`: SpotNav has the control (`EXPORT_CONTROLS`); the rest are noted for later, not written.
+EXPORT_LIMIT_TABLE: Final[tuple[Mapping[str, Any], ...]] = (
+    {"brand": "sigenergy", "integration": "sigen (TypQxQ 2.0.3, 41182ec)", "mapped": True,
+     "entity": "number `plant_grid_point_maximum_export_limitation` (Grid Export Limitation, kW, register 40038)",
+     "note": "Every EMS mode, no Remote EMS needed; needs the plant's grid sensor; disabled by default."},
+    {"brand": "solaredge", "integration": "solaredge_modbus_multi (WillCodeForCats fa590ea)", "mapped": False,
+     "entity": "number `<model>_<serial>_site_limit` (Site Limit, W) with select `<model>_<serial>_limit_control_mode`",
+     "note": "Only with the integration's advanced 'site limit control' option; the limit is available only while"
+     " an export-control mode is set."},
+    {"brand": "huawei", "integration": "huawei_solar (wlcrs 2412b4d)", "mapped": False,
+     "entity": "services `huawei_solar.set_zero_power_grid_connection` / `set_maximum_feed_grid_power` (W)",
+     "note": "Active power control of the inverter or EMMA; installer password; no plain number to read back."},
+    {"brand": "solax", "integration": "solax_modbus (wills106 4acd644)", "mapped": False,
+     "entity": "number `<hub>_export_control_user_limit` (Export Control User Limit, W, register 0x42)",
+     "note": "A setting register, not the remote control's local values; its range differs per generation."},
+    {"brand": "sungrow", "integration": "mkaiser Sungrow-SHx YAML package (13a7622), not an integration", "mapped": False,
+     "entity": "template number `uid_export_power_limit` (W, register 13073) with modbus switch"
+     " `sg_export_power_limit_switch` (13086)",
+     "note": "The limit applies only while the switch is on."},
+    {"brand": "victron", "integration": "victron_gx (victron-mqtt)", "mapped": False,
+     "entity": "number `system_ess_max_feed_in_power` (/Settings/CGwacs/MaxFeedInPower, W, -1 no limit)",
+     "note": "A setting stored on the GX; Multi RS also has switch `multi_disable_feed_in`."},
+    {"brand": "fronius", "integration": "core fronius (Solar API)", "mapped": False, "entity": None,
+     "note": "The core integration reads only; an export limit needs Modbus, not checked."},
+)
 
 
 def table() -> list[dict[str, Any]]:
@@ -382,6 +454,16 @@ def table() -> list[dict[str, Any]]:
             {"brand": control.brand, "action": ACTION_SELF_CONSUME,
              "writes": dict(NORMAL.get(control.brand, {})) | {"*": SNAPSHOT}}
         )
+    return rows
+
+
+def export_table() -> list[dict[str, Any]]:
+    """The export-limit command table and the brands seen with a local export limit, for diagnostics."""
+    rows: list[dict[str, Any]] = []
+    for control in EXPORT_CONTROLS:
+        wants = control.states[ACTION_CURTAIL_EXPORT](0.0, WATCHDOG_S)
+        rows.append({"brand": control.brand, "action": ACTION_CURTAIL_EXPORT, "writes": {w.role: w.value for w in wants}})
+        rows.append({"brand": control.brand, "action": ACTION_SELF_CONSUME, "writes": {"*": SNAPSHOT}})
     return rows
 
 
