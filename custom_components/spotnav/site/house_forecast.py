@@ -53,6 +53,12 @@ measurements; it is shown on the site's state sensor (`forecast`), in the diagno
   beside them (`import_kw`), and when the house figure changes what it is, the house kinds' days not yet reviewed are
   dropped. The log is the site's one forecast log: the battery plan and the solar correction log their kinds in it
   too (`log_changed`).
+* **Heat** (`site/heat_meter.py`, shown only): where the heat pump's meter is found (or set), its hours are read from
+  the recorder at each refresh and the house figure is forecast a second time split in two, heat (learned against
+  the outdoor temperature by the same model) and the rest (the house less heat), each logged with its outcome
+  (`heat_kw`, and their sum as `house_kw_split` beside `house_kw`) so the nightly review shows whether the split
+  forecasts the house better; each reviewed day's comparison is written to the log. Plans keep the whole load's
+  forecast: nothing a car or the battery is planned on changes.
 """
 
 from __future__ import annotations
@@ -80,13 +86,17 @@ from .forecast_log import (
     ForecastLog,
     KEEP_HOURS_DAYS,
     KIND_HOUSE,
+    KIND_HEAT,
     KIND_HOUSE_DAY_AHEAD,
     KIND_HOUSE_MEDIAN,
     KIND_HOUSE_RAW,
+    KIND_HOUSE_SPLIT,
     KIND_IMPORT,
+    DayReview,
     next_day_hours,
 )
 from .forecast_band import FORM_ADDITIVE, learn as learn_band, pairs_from_log, view as band_view
+from .heat_meter import HeatSplit, SiteHeatMeter, heat_split
 from .house_history import HouseHistory
 from .load_forecast import forecast_house_load, LoadForecast, WINDOW_DAYS
 
@@ -190,6 +200,32 @@ def house_forecasts(
 
 
 # ------------------------------------------------------------------------------------------------ pure helpers
+
+
+def heat_comparison(reviewed: Iterable[tuple[str, DayReview]]) -> list[str]:
+    """The comparison lines for the days just reviewed that have the split (`house_kw_split`) beside the whole
+    (`house_kw`): each forecast's mean absolute error, and the heat forecast's own."""
+    by_day: dict[date, dict[str, DayReview]] = {}
+    for kind, review in reviewed:
+        by_day.setdefault(review.day, {})[kind] = review
+    lines = []
+    for day, kinds in sorted(by_day.items()):
+        whole, split = kinds.get(KIND_HOUSE), kinds.get(KIND_HOUSE_SPLIT)
+        if whole is None or split is None:
+            continue
+        heat = kinds.get(KIND_HEAT)
+        lines.append(
+            f"{day.isoformat()}: house forecast as heat plus the rest MAE {split.all.mae:.3f} kW over {split.all.hours} h,"
+            f" whole {whole.all.mae:.3f} kW over {whole.all.hours} h"
+            + ("" if heat is None else f"; heat alone MAE {heat.all.mae:.3f} kW over {heat.all.hours} h")
+        )
+    return lines
+
+
+def log_heat_comparison(reviewed: Iterable[tuple[str, DayReview]]) -> None:
+    """Write `heat_comparison`'s lines to the log (info: one line a day, where a heat meter is)."""
+    for line in heat_comparison(reviewed):
+        _LOGGER.info("SpotNav house forecast: %s", line)
 
 
 def pick_weather_entity(entity_ids: Iterable[str]) -> str | None:
@@ -298,6 +334,7 @@ class SiteHouseForecast:
         *,
         flat_kw: Callable[[], float | None],
         has_battery: Callable[[], bool] = lambda: False,
+        heat_setting: Callable[[], str | None] = lambda: None,
     ) -> None:
         self.hass = hass
         self._demand = demand
@@ -308,6 +345,10 @@ class SiteHouseForecast:
         self._listeners: set[Callable[[], None]] = set()
         self.log = ForecastLog(tz=demand.tracker.tz)
         self.history = HouseHistory()
+        #: The heat pump's meter and its hours (`site/heat_meter.py`), and the house forecast split into heat and the
+        #: rest where it is (`None` without a meter or its hours). Shown and logged only.
+        self.heat = SiteHeatMeter(hass, heat_setting)
+        self.heat_split: HeatSplit | None = None
         #: The house figure's forecast (shown, logged), its median (the battery plan's and the expected surplus's)
         #: and, on a site whose house figure is the whole load, the import less the chargers for the import target
         #: (else `None`).
@@ -550,7 +591,7 @@ class SiteHouseForecast:
                 return
             if basis != self.basis:
                 # The house kinds change what they measure: no day is scored half on one figure, half on the other.
-                for kind in HOUSE_KINDS:
+                for kind in (*HOUSE_KINDS, KIND_HOUSE_SPLIT):
                     self.log.drop_unreviewed(kind)
                 _LOGGER.info("SpotNav house forecast: the house figure is now the %s load", basis)
                 self.basis = basis
@@ -562,6 +603,7 @@ class SiteHouseForecast:
             self._attribute = [{"start": start.isoformat(), "kw": round(kw, 2)} for start, kw in self._rows]
             if import_forecast is not None:
                 self._log_import(import_forecast, net_hours, now)
+            await self._async_heat(hours, now, tz, temperatures)
             self._log(forecast, median, hours, now, tz)
             self.refreshes += 1
             for listener in list(self._listeners):
@@ -570,6 +612,43 @@ class SiteHouseForecast:
             _LOGGER.debug("SpotNav house forecast: the refresh failed", exc_info=True)
         finally:
             self._running = False
+
+    async def _async_heat(
+        self, hours: list[Any], now: datetime, tz: str, temperatures: Mapping[datetime, float]
+    ) -> None:
+        """Read the heat meter's hours, split the house forecast into heat and the rest, and log both (see the
+        module). Never raises: without a meter or its hours there is no split."""
+        try:
+            if await self.heat.async_refresh(now):
+                for kind in (KIND_HEAT, KIND_HOUSE_SPLIT):
+                    self.log.drop_unreviewed(kind)
+            heat = dict(self.heat.by_hour) if self.heat.meter.found else {}
+            split = None
+            if heat:
+                split = await self.hass.async_add_executor_job(
+                    partial(heat_split, hours, heat, now, tz, temperatures=temperatures, holidays=self.holidays)
+                )
+            if self._closed:
+                return
+            self.heat_split = split
+            if split is None:
+                return
+            oldest = now - timedelta(days=KEEP_HOURS_DAYS)
+            for start, kw in heat.items():
+                if start >= oldest:
+                    self.log.record_actual(KIND_HEAT, start, kw)
+            for hour in hours:
+                if hour.start >= oldest and not hour.imported and hour.house_kw is not None:
+                    self.log.record_actual(KIND_HOUSE_SPLIT, hour.start, hour.house_kw)
+            self.log.record_forecast(KIND_HEAT, split.heat.by_hour(), now)
+            self.log.record_forecast(KIND_HOUSE_SPLIT, split.by_hour(), now)
+        except Exception:  # noqa: BLE001 - heat is shown only: the house forecast goes on without it
+            _LOGGER.debug("SpotNav house forecast: the heat split failed", exc_info=True)
+
+    def request_refresh(self) -> None:
+        """Refresh at the next reading, not at the next hour (a setting the forecast reads was changed)."""
+        self._for_hour = None
+        self.tick()
 
     async def _async_production(self, first: datetime, now: datetime) -> tuple[bool, dict[datetime, float] | None]:
         """The Energy dashboard's solar production per completed hour from `first` on (kWh, UTC hour starts):
@@ -659,7 +738,7 @@ class SiteHouseForecast:
         next_day = next_day_hours(forecast.by_hour(), now, tz)
         if next_day:
             log.record_forecast(KIND_HOUSE_DAY_AHEAD, next_day, now)
-        log.review(now)
+        log_heat_comparison(log.review(now))
         if self._store is not None:
             self._store.changed()
 
@@ -765,5 +844,11 @@ class SiteHouseForecast:
             # On a site whose house figure is the whole load: the import target's (the net figure).
             "import_forecast": None if self.import_forecast is None else self.import_forecast.as_dict(),
             "history": self.history.diagnostics(),
+            # The heat pump's meter and the house forecast split into heat and the rest (shown and logged only).
+            "heat": {
+                "meter": self.heat.diagnostics(),
+                "forecast": None if self.heat_split is None else self.heat_split.heat.as_dict(),
+                "rest": None if self.heat_split is None else self.heat_split.rest.as_dict(),
+            },
             "log": self.log.diagnostics(),
         }

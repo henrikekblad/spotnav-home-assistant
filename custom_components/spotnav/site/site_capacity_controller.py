@@ -38,6 +38,7 @@ from ..const import (
     DEFAULT_CHARGER_PRIORITY,
     CONF_ACTIVE_CONTROL_ENABLED,
     CONF_BATTERY_AGGREGATE_POWER_ENTITY,
+    CONF_HEAT_METER_ENTITY,
     CONF_BATTERY_DISCHARGE_POWER_ENTITY,
     CONF_BATTERY_PER_PHASE_SOURCE,
     CONF_BATTERY_POWER_INVERTED,
@@ -696,7 +697,12 @@ class SiteCapacityController:
         # (the site state sensor's `forecast`, the diagnostics), counted on by a plan under the import target (its net
         # import forecast, `plan_kw_by_hour`) and by the battery plan (the house's whole load on a battery site).
         self.house_forecast = SiteHouseForecast(
-            hass, entry_id, self.demand, flat_kw=self._typical_house_kw, has_battery=self.has_battery_reading
+            hass,
+            entry_id,
+            self.demand,
+            flat_kw=self._typical_house_kw,
+            has_battery=self.has_battery_reading,
+            heat_setting=self._heat_meter_setting,
         )
         self._demand_zone: tuple[float, str] | None = None
         # The import target (`_hold_to_import_target`), as of the last recompute: the hour's budget (`None` while not
@@ -5207,6 +5213,13 @@ class SiteCapacityController:
 
         entry = self.hass.config_entries.async_get_entry(self.entry_id)
         return stored_import_target_kw(self.config if entry is None else entry.data)
+
+    def _heat_meter_setting(self) -> str | None:
+        """The heat pump meter chosen in the site settings (`None`: found by itself or none), read from the entry: it
+        is written without a reload."""
+        entry = self.hass.config_entries.async_get_entry(self.entry_id)
+        value = (self.config if entry is None else entry.data).get(CONF_HEAT_METER_ENTITY)
+        return value if isinstance(value, str) and value else None
 
     def effective_import_target_kw(self, set_kw: float | None) -> float | None:
         """The level the running hour is held under now (`_effective_import_target`): the import target lifted to the
