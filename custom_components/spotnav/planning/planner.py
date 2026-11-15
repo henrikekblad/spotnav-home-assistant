@@ -246,6 +246,13 @@ class FiscalChoice:
     transfer_high_minor_per_kwh: float | None = None
     #: The high-load window, with the area's zone; present exactly while the high-load fee is on.
     high_load_window: HighLoadWindow | None = None
+    #: The electricity supplier's markup on each bought kWh ("påslag"), before VAT like the other fees.
+    markup_enabled: bool = False
+    markup_minor_per_kwh: float | None = None
+    #: What a sold kWh earns beyond the spot price (the grid operator's credit for production plus or minus the
+    #: supplier's terms), as it is paid out: never with VAT, and it may be negative. `None` is none. It prices no
+    #: bought kWh (`effective_minor_per_kwh` leaves it out); the sell price (`battery/plan.py:sell_prices`) adds it.
+    sell_adjustment_minor_per_kwh: float | None = None
 
     def validated(self) -> FiscalChoice:
         """The same choice, once every enabled component has a usable value."""
@@ -253,6 +260,10 @@ class FiscalChoice:
         transfer = _component("transfer", self.transfer_enabled, self.transfer_minor_per_kwh)
         percent = _component("transfer_percent", self.transfer_percent_enabled, self.transfer_percent)
         high = _component("transfer_high", self.transfer_high_enabled, self.transfer_high_minor_per_kwh)
+        markup = _component("markup", self.markup_enabled, self.markup_minor_per_kwh)
+        sell = self.sell_adjustment_minor_per_kwh
+        if sell is not None:
+            sell = _finite(sell, "invalid_fiscal", "sell_adjustment_minor_per_kwh")
         window = None if self.high_load_window is None else self.high_load_window.validated()
         if high is not None and window is None:
             _refuse("invalid_fiscal", "the high-load grid fee is on but there is no high-load window")
@@ -279,7 +290,15 @@ class FiscalChoice:
             transfer_high_enabled=self.transfer_high_enabled,
             transfer_high_minor_per_kwh=high,
             high_load_window=window,
+            markup_enabled=self.markup_enabled,
+            markup_minor_per_kwh=markup,
+            sell_adjustment_minor_per_kwh=sell,
         )
+
+    @property
+    def sell_adjustment(self) -> float:
+        """What a sold kWh earns beyond the spot price (minor per kWh, no VAT), zero for none."""
+        return self.sell_adjustment_minor_per_kwh or 0.0
 
     @property
     def needs_start(self) -> bool:
@@ -307,15 +326,19 @@ def effective_minor_per_kwh(local_major_per_kwh: float, fiscal: FiscalChoice, st
     """The price an interval is planned against, in the area's minor unit.
 
     The order is not commutative, which is why it lives in one function:
-    local major x 100, + energy tax, + transfer fee (the high-load one inside the high-load window),
+    local major x 100, + the supplier's markup, + energy tax,
+    + transfer fee (the high-load one inside the high-load window),
     + the grid fee's percentage of the spot price (which follows the spot price's sign),
-    x (1 + VAT / 100). VAT is last because it applies to the tax and the fees too.
+    x (1 + VAT / 100). VAT is last because it applies to the markup, the tax and the fees too. The percentage is
+    of the spot price alone, never of the markup. What a sold kWh earns beyond spot is no part of it.
 
     `start` is the interval's start. It is required while a high-load window is set: without it the fee in
     force is unknown, which is a refusal (`invalid_fiscal`), never the low fee.
     """
     spot_minor = local_major_per_kwh * 100
     minor = spot_minor
+    if fiscal.markup_enabled and fiscal.markup_minor_per_kwh is not None:
+        minor += fiscal.markup_minor_per_kwh
     if fiscal.tax_enabled and fiscal.tax_minor_per_kwh is not None:
         minor += fiscal.tax_minor_per_kwh
     transfer = fiscal.transfer_minor_per_kwh if fiscal.transfer_enabled else None

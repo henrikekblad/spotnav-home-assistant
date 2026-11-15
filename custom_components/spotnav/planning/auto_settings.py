@@ -246,13 +246,15 @@ class FiscalOverride:
     enabled: bool = False
     value: float | None = None
 
-    def validated(self, what: str) -> FiscalOverride:
+    def validated(self, what: str, *, signed: bool = False) -> FiscalOverride:
+        """The same component with a usable figure, or a refusal. Only a `signed` one (what a sold kWh earns beyond
+        spot, which may be a deduction) takes a negative figure."""
         if not isinstance(self.enabled, bool):
             _refuse("invalid_fiscal", f"{what}.enabled must be a boolean")
         if self.value is None:
             return self
         number = _finite(self.value, "invalid_fiscal", f"{what}.value")
-        if number < 0:
+        if number < 0 and not signed:
             _refuse("invalid_fiscal", f"{what}.value must not be negative")
         return FiscalOverride(enabled=self.enabled, value=number)
 
@@ -260,7 +262,7 @@ class FiscalOverride:
         return {"enabled": self.enabled, "value": self.value}
 
     @classmethod
-    def from_stored(cls, raw: Any, what: str) -> FiscalOverride:
+    def from_stored(cls, raw: Any, what: str, *, signed: bool = False) -> FiscalOverride:
         """This component as stored, or a refusal, never a coerced boolean.
 
         `bool("false")` is `True`, and "on" makes a fee part of a price somebody is charged.
@@ -269,11 +271,17 @@ class FiscalOverride:
         enabled = stored["enabled"]
         if not isinstance(enabled, bool):
             _refuse("invalid_fiscal", f"{what}.enabled must be a stored boolean")
-        return cls(enabled=enabled, value=stored["value"]).validated(what)
+        return cls(enabled=enabled, value=stored["value"]).validated(what, signed=signed)
 
 
 #: An electricity price entry's grid tariff keys beside its three fees (`pricing/price_source.py`).
 GRID_TARIFF_FEES: Final = ("transfer_percent", "transfer_high")
+#: The supplier's markup on each bought kWh (the area's minor unit per kWh, before VAT), stored beside the grid tariff.
+SUPPLIER_MARKUP: Final = "supplier_markup"
+#: What a sold kWh earns beyond the spot price (the area's minor unit per kWh, as paid out: no VAT, may be negative).
+SELL_ADJUSTMENT: Final = "sell_adjustment"
+#: The two supplier figures, in the order they are stored and sent.
+SUPPLIER_FEES: Final = (SUPPLIER_MARKUP, SELL_ADJUSTMENT)
 HIGH_LOAD_WINDOW: Final = "high_load_window"
 HIGH_LOAD_WINDOW_KEYS: Final = ("days", "from_month", "to_month", "from_hour", "to_hour")
 
@@ -380,6 +388,11 @@ class GridTariff:
     Each fee is off or on with the person's own figure: no area suggests one, so "on with none" is refused.
     The high-load fee needs a window; the window may stay without it (switched off, kept for next time).
 
+    Beside them, the electricity supplier's two figures, which are no grid fee but belong to the same price entry
+    and are written the same way: `supplier_markup` (on each bought kWh, before VAT) and `sell_adjustment` (what a
+    sold kWh earns beyond spot, as paid out: no VAT, and negative for a deduction). Each is off or on with a figure,
+    and neither is locked where the area's price already includes the grid fee.
+
     `demand` is the demand charge's components (`DemandComponent`, at most `MAX_DEMAND_COMPONENTS`), empty for none.
     They price nothing: the site measures the hours they count (`site/demand_tracker.py`) and shows the peaks.
     """
@@ -388,6 +401,8 @@ class GridTariff:
     transfer_high: FiscalOverride = FiscalOverride()
     high_load_window: HighLoadWindow | None = None
     demand: tuple[DemandComponent, ...] = ()
+    supplier_markup: FiscalOverride = FiscalOverride()
+    sell_adjustment: FiscalOverride = FiscalOverride()
 
     @property
     def empty(self) -> bool:
@@ -397,7 +412,14 @@ class GridTariff:
     def validated(self) -> GridTariff:
         percent = self.transfer_percent.validated("transfer_percent")
         high = self.transfer_high.validated("transfer_high")
-        for name, fee in (("transfer_percent", percent), ("transfer_high", high)):
+        markup = self.supplier_markup.validated(SUPPLIER_MARKUP)
+        sell = self.sell_adjustment.validated(SELL_ADJUSTMENT, signed=True)
+        for name, fee in (
+            ("transfer_percent", percent),
+            ("transfer_high", high),
+            (SUPPLIER_MARKUP, markup),
+            (SELL_ADJUSTMENT, sell),
+        ):
             if fee.enabled and fee.value is None:
                 _refuse("invalid_fiscal", f"{name} is on but has no figure (no area suggests one)")
         window = self.high_load_window
@@ -410,7 +432,14 @@ class GridTariff:
         demand = tuple(
             component.validated(f"{DEMAND_COMPONENTS}[{index}]") for index, component in enumerate(self.demand)
         )
-        return GridTariff(transfer_percent=percent, transfer_high=high, high_load_window=window, demand=demand)
+        return GridTariff(
+            transfer_percent=percent,
+            transfer_high=high,
+            high_load_window=window,
+            demand=demand,
+            supplier_markup=markup,
+            sell_adjustment=sell,
+        )
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -418,6 +447,8 @@ class GridTariff:
             "transfer_high": self.transfer_high.as_dict(),
             HIGH_LOAD_WINDOW: None if self.high_load_window is None else high_load_window_dict(self.high_load_window),
             DEMAND_COMPONENTS: [component.as_dict() for component in self.demand],
+            SUPPLIER_MARKUP: self.supplier_markup.as_dict(),
+            SELL_ADJUSTMENT: self.sell_adjustment.as_dict(),
         }
 
     @classmethod
@@ -428,6 +459,16 @@ class GridTariff:
             raw = data.get(name)
             try:
                 fees[name] = FiscalOverride() if raw is None else FiscalOverride.from_stored(raw, name)
+            except AutoSettingsError:
+                fees[name] = FiscalOverride()
+        for name in SUPPLIER_FEES:
+            raw = data.get(name)
+            try:
+                fees[name] = (
+                    FiscalOverride()
+                    if raw is None
+                    else FiscalOverride.from_stored(raw, name, signed=name == SELL_ADJUSTMENT)
+                )
             except AutoSettingsError:
                 fees[name] = FiscalOverride()
         window: HighLoadWindow | None = None
@@ -442,7 +483,14 @@ class GridTariff:
                 demand = demand_components_from(data.get(DEMAND_COMPONENTS))
             except AutoSettingsError:
                 demand = ()
-        return cls(fees["transfer_percent"], fees["transfer_high"], window, demand)
+        return cls(
+            fees["transfer_percent"],
+            fees["transfer_high"],
+            window,
+            demand,
+            supplier_markup=fees[SUPPLIER_MARKUP],
+            sell_adjustment=fees[SELL_ADJUSTMENT],
+        )
 
 
 @dataclass(frozen=True, slots=True)

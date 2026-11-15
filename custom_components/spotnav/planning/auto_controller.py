@@ -2315,7 +2315,8 @@ class AutoPlannerController:
         if sentinel in (vat, tax, transfer):
             return None
         grid = AutoPlannerController._grid_tariff_for(overrides.grid_tariff, entry, locked["transfer"])
-        if grid is None:
+        supplier = AutoPlannerController._supplier_fees_for(overrides.grid_tariff)
+        if grid is None or supplier is None:
             return None
         return FiscalChoice(
             tax_enabled=overrides.tax.enabled and not locked["tax"],
@@ -2325,7 +2326,24 @@ class AutoPlannerController:
             vat_enabled=overrides.vat.enabled and not locked["vat"],
             vat_percent=vat,
             **grid,
+            **supplier,
         ).validated()
+
+    @staticmethod
+    def _supplier_fees_for(tariff: GridTariff | None) -> dict[str, Any] | None:
+        """The price entry's supplier markup and what a sold kWh earns beyond spot as `FiscalChoice` fields, or `None`
+        when one is on without its figure. Never locked: no area's published price holds either."""
+        if tariff is None:
+            return {}
+        fields: dict[str, Any] = {}
+        for fee in (tariff.supplier_markup, tariff.sell_adjustment):
+            if fee.enabled and fee.value is None:
+                return None
+        if tariff.supplier_markup.enabled:
+            fields.update(markup_enabled=True, markup_minor_per_kwh=tariff.supplier_markup.value)
+        if tariff.sell_adjustment.enabled:
+            fields.update(sell_adjustment_minor_per_kwh=tariff.sell_adjustment.value)
+        return fields
 
     @staticmethod
     def _grid_tariff_for(tariff: GridTariff | None, entry: AreaEntry, included: bool) -> dict[str, Any] | None:
