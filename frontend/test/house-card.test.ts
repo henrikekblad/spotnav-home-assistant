@@ -305,6 +305,67 @@ describe("the modes side by side in the body", () => {
   });
 });
 
+describe("the day in the battery app's terms", () => {
+  const handlers = { onDetails: vi.fn(), onSelect: vi.fn(), onDay: vi.fn() } as never;
+
+  it("shows the three figures with what each is compared with on a past day", () => {
+    const past = answer("house/villa_past_day.json");
+    const part = body(past, {}, "sv", handlers).querySelector("[data-part='baselines']")!;
+    expect(part.querySelector(".spotnav-house-compare-head")?.textContent).toMatch(/^Batteriappens mått, tors 12 nov/);
+    expect(part.querySelector("[data-row='battery']")?.textContent).toContain("Batteriet mot inget batteri");
+    expect(part.querySelector("[data-row='battery']")?.textContent).toContain("11 kr");
+    expect(part.querySelector("[data-row='sun']")?.textContent).toContain("8,20 kr");
+    expect(part.querySelector("[data-row='both']")?.textContent).toMatch(/19,50 kr|20 kr/);
+    expect(part.textContent).toContain("samma dygn utan batteri");
+    expect(part.querySelector("[data-line='baselines-coverage']")).toBeNull();
+  });
+
+  it("says how much of a partial day the figures cover and leaves out what is not known", () => {
+    const past = answer("house/villa_past_day.json");
+    const review = { ...past.day_review!, covered_quarters: 60, sun_quarters: 40, against_nothing: null, sun_gave: null };
+    const part = body({ ...past, day_review: review }, {}, "sv", handlers).querySelector("[data-part='baselines']")!;
+    expect(part.querySelector("[data-line='baselines-coverage']")?.textContent).toBe("60 av dygnets 96 kvartar är mätta.");
+    expect(part.querySelector("[data-row='sun']")).toBeNull();
+    expect(part.querySelector("[data-row='both']")).toBeNull();
+    const sunKnown = { ...past.day_review!, covered_quarters: 96, sun_quarters: 40 };
+    const partial = body({ ...past, day_review: sunKnown }, {}, "sv", handlers).querySelector("[data-line='baselines-coverage']");
+    expect(partial?.textContent).toBe("Solens produktion är känd för 40 av 96.");
+  });
+
+  it("shows nothing for a day without them, from an older backend and on a day without a review", () => {
+    const past = answer("house/villa_past_day.json");
+    expect(body({ ...past, day_review: null }, {}, "sv", handlers).querySelector("[data-part='baselines']")).toBeNull();
+    const old = { ...past.day_review!, battery_saving: null, sun_gave: null, against_nothing: null };
+    expect(body({ ...past, day_review: old }, {}, "sv", handlers).querySelector("[data-part='baselines']")).toBeNull();
+  });
+
+  it("sums the reviewed days on today", () => {
+    const part = body(answer(), {}, "sv").querySelector("[data-part='baselines']")!;
+    expect(part.querySelector(".spotnav-house-compare-head")?.textContent).toBe("Batteriappens mått, senaste 7 dygnen");
+    expect(part.querySelector("[data-row='battery']")?.textContent).toContain("80 kr");
+    expect(part.querySelector("[data-row='sun']")?.textContent).toContain("52 kr");
+    expect(part.querySelector("[data-row='both']")).toBeNull();
+  });
+
+  it("is worded in every language", () => {
+    for (const language of ["en", "sv", "da", "de", "es", "fi", "fr", "nb", "nl"] as const) {
+      for (const key of ["headingDay", "headingWeek.one", "headingWeek.other", "battery", "batteryNote", "sun", "sunNote", "both", "bothNote", "partial", "sunPartial"]) {
+        expect(translate(language, `house.baselines.${key}` as never, { day: "d", days: "2", covered: "1", total: "2", sun: "1" })).not.toBe(`house.baselines.${key}`);
+      }
+    }
+  });
+
+  it("reads a backend before the figures as none", () => {
+    const raw = JSON.parse(JSON.stringify(read("house/villa_past_day.json")));
+    for (const key of ["battery_saving", "sun_gave", "against_nothing", "covered_quarters", "day_quarters", "sun_quarters"]) {
+      delete raw.day_review[key];
+    }
+    delete raw.battery.review.battery_saving;
+    const result = decodeHouse(raw);
+    expect(result.ok).toBe(true);
+  });
+});
+
 describe("the modes on a past day", () => {
   it("show that day's own review under its date, the day's mode marked", () => {
     const past = answer("house/villa_past_day.json");

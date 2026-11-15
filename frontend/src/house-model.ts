@@ -63,6 +63,10 @@ export interface BatteryView {
     plan_saving: number;
     own_saving: number;
     self_consumption_net: number;
+    /** The days' money against no battery and what the sun gave (minor unit), summed over the days that have each;
+     * `null` from a backend before them. */
+    battery_saving: number | null;
+    sun_gave: number | null;
   } | null;
   soc_review: Score | null;
   estimates: string[];
@@ -76,6 +80,9 @@ export interface ReviewDay {
   soc_mae: number | null;
   plan_saving: number | null;
   own_saving: number | null;
+  battery_saving: number | null;
+  sun_gave: number | null;
+  against_nothing: number | null;
 }
 
 export interface TodayMoney {
@@ -140,6 +147,16 @@ export interface DayReviewFigures {
   mode: string | null;
   modes: Partial<Record<BatteryMode, number | null>>;
   own_saving: number;
+  /** The day in the battery app's terms (minor unit; `null` where not known): what the battery saved against the day
+   * with no battery, what the sun gave, and both against neither. */
+  battery_saving: number | null;
+  sun_gave: number | null;
+  against_nothing: number | null;
+  /** How much of the day the figures cover: the quarter hours measured, of the day's own, and those with the sun's
+   * production. `day_quarters` is 0 from a backend before them. */
+  covered_quarters: number;
+  day_quarters: number;
+  sun_quarters: number;
 }
 
 export interface CalendarDay {
@@ -325,6 +342,8 @@ function battery(value: unknown): BatteryView | null {
             plan_saving: number(review.plan_saving),
             own_saving: number(review.own_saving),
             self_consumption_net: number(review.self_consumption_net),
+            battery_saving: additive(review, "battery_saving", numberOrNull, null),
+            sun_gave: additive(review, "sun_gave", numberOrNull, null),
           },
     soc_review: score(source.soc_review),
     estimates: list(source.estimates).map(text),
@@ -341,6 +360,9 @@ function reviewDay(value: unknown): ReviewDay {
     soc_mae: numberOrNull(source.soc_mae),
     plan_saving: numberOrNull(source.plan_saving),
     own_saving: numberOrNull(source.own_saving),
+    battery_saving: additive(source, "battery_saving", numberOrNull, null),
+    sun_gave: additive(source, "sun_gave", numberOrNull, null),
+    against_nothing: additive(source, "against_nothing", numberOrNull, null),
   };
 }
 
@@ -426,7 +448,18 @@ function dayReview(value: unknown): DayReviewFigures | null {
       modes[mode] = numberOrNull(raw[mode]);
     }
   }
-  return { date: day(source.date), mode: textOrNull(source.mode), modes, own_saving: number(source.own_saving) };
+  return {
+    date: day(source.date),
+    mode: textOrNull(source.mode),
+    modes,
+    own_saving: number(source.own_saving),
+    battery_saving: additive(source, "battery_saving", numberOrNull, null),
+    sun_gave: additive(source, "sun_gave", numberOrNull, null),
+    against_nothing: additive(source, "against_nothing", numberOrNull, null),
+    covered_quarters: additive(source, "covered_quarters", count, 0),
+    day_quarters: additive(source, "day_quarters", count, 0),
+    sun_quarters: additive(source, "sun_quarters", count, 0),
+  };
 }
 
 function calendar(value: unknown): { month: string; days: CalendarDay[] } | null {
