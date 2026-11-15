@@ -14,6 +14,9 @@ What each command expects:
 
 * `hold` (no discharge): discharge at most `FLOOR_KW`. Still discharging is `no_effect` while it is at least
   `1 - FAIL_FRACTION` of the discharge before the command, `partial` below that.
+* `curtail` (the site's export limit at 0 kW, judged on the site's grid power, + import): export at most
+  `EXPORT_TOLERANCE_KW`, after `CURTAIL_GRACE_S`. Still exporting at least `1 - FAIL_FRACTION` of the export before
+  the command is `no_effect`, less is `partial`.
 * `charge`/`discharge` at a rate: below `FAIL_FRACTION` of what the battery can deliver (at least `FLOOR_KW`) is
   `no_effect`, below `PARTIAL_FRACTION` is `partial`. A deliverable rate under `FLOOR_KW` is not judged.
 
@@ -38,6 +41,10 @@ from typing import Any, Final, Literal
 from .shadow import parse_aware_datetime
 
 GRACE_S: Final = 300.0
+#: An export limit acts within seconds (it is the inverter's own loop): judged sooner.
+CURTAIL_GRACE_S: Final = 120.0
+#: The export (kW) a curtailed site may still show: meter noise and the inverter's regulation around 0.
+EXPORT_TOLERANCE_KW: Final = 0.5
 CONFIRM_READINGS: Final = 3
 #: Readings judged are at least this far apart.
 READING_GAP_S: Final = 60.0
@@ -53,9 +60,14 @@ DISCHARGE_MARGIN_PCT: Final = 5.0
 COUNTER_DAYS: Final = 30
 COUNTERS: Final[tuple[str, ...]] = ("writes", "no_effect", "partial")
 
-CommandKind = Literal["hold", "charge", "discharge"]
+CommandKind = Literal["hold", "charge", "discharge", "curtail"]
 ReadingVerdict = Literal["ok", "partial", "no_effect"]
-_KINDS: Final = frozenset({"hold", "charge", "discharge"})
+_KINDS: Final = frozenset({"hold", "charge", "discharge", "curtail"})
+
+
+def grace_s(kind: str) -> float:
+    """How long after a command its effect is first judged (s)."""
+    return CURTAIL_GRACE_S if kind == "curtail" else GRACE_S
 
 
 @dataclass(frozen=True, slots=True)
@@ -125,7 +137,7 @@ class Capability:
 
 def deliverable_kw(command: Command, capability: Capability, soc_pct: float | None) -> tuple[float | None, str | None]:
     """What the battery can deliver for the command (kW), or why that cannot be judged."""
-    if command.kind == "hold":
+    if command.kind in ("hold", "curtail"):
         return 0.0, None
     if soc_pct is None:
         return None, "soc_unknown"
@@ -148,6 +160,14 @@ def deliverable_kw(command: Command, capability: Capability, soc_pct: float | No
 
 def judge(command: Command, expected_kw: float, power_kw: float) -> ReadingVerdict:
     """One reading against what the command expects."""
+    if command.kind == "curtail":
+        export = max(-power_kw, 0.0)
+        if export <= EXPORT_TOLERANCE_KW:
+            return "ok"
+        before = None if command.before_kw is None else max(-command.before_kw, 0.0)
+        if before is not None and before > EXPORT_TOLERANCE_KW and export >= (1.0 - FAIL_FRACTION) * before:
+            return "no_effect"
+        return "partial"
     if command.kind == "hold":
         discharge = max(-power_kw, 0.0)
         if discharge <= FLOOR_KW:
@@ -242,7 +262,7 @@ class Monitor:
         if watch is None or watch.done or watch.command.written:
             return None
         command = watch.command
-        if (now - command.at).total_seconds() < GRACE_S:
+        if (now - command.at).total_seconds() < grace_s(command.kind):
             why = "ended_within_grace"
         else:
             why = watch.why_not or "too_few_readings"
@@ -255,7 +275,7 @@ class Monitor:
         command = watch.command
         if command.slot_end is not None and now >= command.slot_end:
             return self.stop(now)
-        if (now - command.at).total_seconds() < GRACE_S:
+        if (now - command.at).total_seconds() < grace_s(command.kind):
             return None
         if watch.last_reading_at is not None and (now - watch.last_reading_at).total_seconds() < READING_GAP_S:
             return None

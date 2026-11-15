@@ -24,7 +24,8 @@ The order on every path:
   (`sell_source`, by default the plan shadow's `sell_at`), plain hand-back otherwise. Its plant is found from the
   battery or the grid meter (`runtime.read_export_facts`), so a site without a battery has it too. Its state is
   stored beside the battery's (`export`), restored first after a restart, handed back on stop; the two share the
-  day's write cap.
+  day's write cap. While the battery's executor runs the same plant (its Remote EMS on) the export instance is told
+  so (`sibling_active`) and still takes the limit; it is judged on the site's grid power (`grid_import_kw`).
 """
 
 from __future__ import annotations
@@ -171,7 +172,8 @@ class BatteryControl:
         if control is None:
             return
         self.export_executor = Executor(
-            control, Ledger.from_dict(stored.get("ledger")), state=state, watchdog_s=self._watchdog_s
+            control, Ledger.from_dict(stored.get("ledger")), Monitor.from_dict(stored.get("monitor")), state=state,
+            watchdog_s=self._watchdog_s,
         )
         if not shadow.ON_REACHABLE:
             if state.holds_snapshot:
@@ -364,6 +366,8 @@ class BatteryControl:
         result = self.site.result
         headrooms = [value for value in result.phase_headroom_a.values() if value is not None]
         battery = self.executor
+        # SpotNav's own battery control on the same plant: its Remote EMS is not the plant's own management.
+        sibling_active = battery is not None and battery.state.phase == "active" and battery.state.brand == control.brand
         return ExecInputs(
             now=now,
             facts=self._with_outside(facts),
@@ -376,7 +380,16 @@ class BatteryControl:
             failed=self._export_failed,
             other_writes_today=0 if battery is None or battery.state.day != now.date().isoformat()
             else battery.state.writes_today,
+            grid_import_kw=self._grid_import_kw(),
+            sibling_active=sibling_active,
         )
+
+    def _grid_import_kw(self) -> float | None:
+        """The site's grid power (kW, + import) from its signed phase powers, `None` when one is not known."""
+        signed = list(self.site.result.phase_signed_active_power_w.values())
+        if not signed or not all(value is not None and math.isfinite(value) for value in signed):
+            return None
+        return sum(signed) / 1000.0  # type: ignore[arg-type]
 
     def _reads(self, control: BrandControl) -> dict[str, RoleRead]:
         reads = read_role_reads(self.hass, self.site.config, control)
@@ -403,11 +416,7 @@ class BatteryControl:
         self.facts = facts = self._with_outside(read_battery_facts(self.hass, self.site.config, power_kw))
         result = self.site.result
         headrooms = [value for value in result.phase_headroom_a.values() if value is not None]
-        signed = list(result.phase_signed_active_power_w.values())
-        grid_import_kw = (
-            sum(value for value in signed if value is not None) / 1000.0
-            if signed and all(value is not None and math.isfinite(value) for value in signed) else None
-        )
+        grid_import_kw = self._grid_import_kw()
         config = self.site.config
         car_held = any(
             self.site.load_balancing_limit(charger)[0] is not None for charger in config.get(CONF_CHARGER_ENTRY_IDS) or []
@@ -474,7 +483,9 @@ class BatteryControl:
             }
         export = self.export_executor
         if export is not None:
-            data["export"] = {"state": export.state.as_dict(), "ledger": export.ledger.as_dict()}
+            data["export"] = {
+                "state": export.state.as_dict(), "ledger": export.ledger.as_dict(), "monitor": export.monitor.as_dict(),
+            }
         await self._store.async_save(data)
 
     def snapshot(self) -> dict[str, Any]:

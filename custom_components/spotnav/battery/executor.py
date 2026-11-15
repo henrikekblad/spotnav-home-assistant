@@ -53,7 +53,13 @@ How it acts (`step`, one look every few seconds; pure, the shell does the writes
   and no fuse headroom (a lower export limit never adds import), but every other rule holds: management (a battery in
   its own optimiser is only watched), off-grid, the site's measurement, read-back, a change by someone else given up,
   the restore. A never-set limit (`unknown`) is restored as the plant's maximum output. The day's write cap is the
-  site's, shared with the battery's instance (`ExecInputs.other_writes_today`).
+  site's, shared with the battery's instance (`ExecInputs.other_writes_today`). A plant whose mode reads SpotNav's
+  own battery control (Remote EMS that the battery instance runs, `ExecInputs.sibling_active`) is taken; one in
+  Remote EMS of someone else's is not. The two instances never write each other's roles: the battery's control
+  does not read the export limit, and Sigenergy's export limit needs no Remote EMS, so the battery's hand-back
+  (Remote EMS off) takes nothing from it. **Obeyed?** The monitor judges a curtail on the site's grid power: after
+  `monitor.CURTAIL_GRACE_S`, three readings exporting more than `monitor.EXPORT_TOLERANCE_KW` hand the limit back
+  and block it (`not_obeyed`).
 
 Pure: no Home Assistant import; times are aware datetimes from the caller. State survives a restart
 (`ExecState.as_dict`, `from_dict`); the ledger and the monitor keep their own.
@@ -68,6 +74,7 @@ from datetime import datetime, timedelta
 from typing import Any, Final, Literal
 
 from .commands import (
+    ACTION_CURTAIL_EXPORT,
     NORMAL,
     SNAPSHOT,
     WATCHDOG_RENEW_S,
@@ -132,7 +139,7 @@ _BLOCKING_PREFIXES: Final = (
 _NO_VALUE: Final = frozenset({"", "unavailable", "unknown", "none"})
 _RAISES_IMPORT: Final = frozenset({ACTION_HOLD, ACTION_GRID_CHARGE})
 _MONITORED: Final = {ACTION_HOLD: "hold", ACTION_GRID_CHARGE: "charge", ACTION_DISCHARGE_HOUSE: "discharge",
-                     ACTION_EXPORT_DISCHARGE: "discharge"}
+                     ACTION_EXPORT_DISCHARGE: "discharge", ACTION_CURTAIL_EXPORT: "curtail"}
 
 
 @dataclass(frozen=True, slots=True)
@@ -191,6 +198,9 @@ class ExecInputs:
     failed: tuple[str, ...] = ()
     #: Writes the site's other control instance made today (battery and export limit share `DAILY_WRITE_CAP`).
     other_writes_today: int = 0
+    #: SpotNav's other control instance on this plant runs it now (the battery control's Remote EMS): the modes it
+    #: leaves (`BrandControl.own_states`) are SpotNav's own, not the plant's own management, for this instance too.
+    sibling_active: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -598,7 +608,15 @@ class Executor:
                 events += self._not_taken(now, role.name, "no_read_back", read=event.read)
             else:
                 events += self._gave_up(now, role.name, entity_id, event.read)
-        if self.state.phase == "active":
+        if self.state.phase == "active" and self._export:
+            # The export limit is judged on the site's grid power: the export must stop.
+            grid = inputs.grid_import_kw
+            fresh = inputs.measurement_ok and grid is not None and math.isfinite(grid)
+            judged = self.monitor.observe(Reading(grid, 0.0 if fresh else None), Capability(), now)
+            if judged is not None and judged.kind == "failure":
+                events.append(_event(now, "monitor", judged.outcome, detail=judged.as_dict()))
+                events += self._begin_restore(now, f"not_obeyed:{self.state.action}:{judged.outcome}")
+        elif self.state.phase == "active":
             facts = inputs.facts
             capability = Capability(
                 rated_charge_kw=facts.max_charge_kw,
@@ -827,7 +845,7 @@ class Executor:
             return problem
         if facts.brand != self.control.brand:
             return "brand_mismatch"
-        management = _management_problem(facts, self.control, active=False)
+        management = _management_problem(facts, self.control, active=inputs.sibling_active)
         if management is not None:
             return management
         if facts.on_grid is False:
@@ -902,7 +920,8 @@ class Executor:
             return
         if action == ACTION_DISCHARGE_HOUSE:
             rate = max(inputs.house_deficit_kw or 0.0, 0.0)
-        self.monitor.start(Command(kind, inputs.now, rate, before_kw=inputs.facts.power_kw, written=True))
+        before = inputs.grid_import_kw if kind == "curtail" else inputs.facts.power_kw
+        self.monitor.start(Command(kind, inputs.now, rate, before_kw=before, written=True))
 
     def _retarget(self, inputs: ExecInputs) -> list[dict[str, Any]]:
         """A new action, a new rate past the hysteresis, or a watchdog to renew."""

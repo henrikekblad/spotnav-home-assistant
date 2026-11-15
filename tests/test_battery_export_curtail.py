@@ -13,6 +13,7 @@ from custom_components.spotnav.battery.commands import (
     ACTION_CURTAIL_EXPORT,
     EXPORT_CONTROLS,
     EXPORT_LIMIT_TABLE,
+    SIGENERGY_CONTROL,
     SIGENERGY_EXPORT_CONTROL,
     control_for,
     export_control_for,
@@ -30,7 +31,7 @@ from custom_components.spotnav.battery.export_curtail import (
 )
 from custom_components.spotnav.battery.facts import BatteryFacts, Management
 from custom_components.spotnav.battery.ledger import READBACK_DEADLINE_S
-from custom_components.spotnav.battery.monitor import Capability
+from custom_components.spotnav.battery.monitor import CURTAIL_GRACE_S, EXPORT_TOLERANCE_KW, READING_GAP_S, Capability
 from custom_components.spotnav.battery.plan import plan_battery, sell_prices
 from custom_components.spotnav.battery.plan_model import BatteryParams, PlanRequest, PlanSlot
 from custom_components.spotnav.battery.plan_shadow import (
@@ -44,7 +45,7 @@ from custom_components.spotnav.battery.plan_shadow import (
 )
 from custom_components.spotnav.battery.shadow import MIN_DIVERGENCE_S
 from custom_components.spotnav.battery.verify import Sample, Verification
-from tests.battery_control_fakes import T0, TICK, FakeBattery, events, inputs, written
+from tests.battery_control_fakes import SIGENERGY_STATES, T0, TICK, FakeBattery, events, inputs, run, written
 
 UTC = timezone.utc
 TZ = "Europe/Stockholm"
@@ -283,7 +284,7 @@ def test_a_plant_in_its_own_optimiser_is_only_watched() -> None:
     assert written(results) == []
     assert events(results, "not_started")[0]["reason"] == "self_managed:EMS work mode:ai_mode"
     # Taken while the plant is free, the battery control's own Remote EMS later does not hand it back (a plant
-    # already in Remote EMS is not taken: SpotNav cannot tell whose it is).
+    # already in Remote EMS is taken only when it is SpotNav's own battery control's, `sibling_active`).
     executor, plant = _plant("11.5")
     now, _results = _run(executor, plant, T0, 3, ACTION_CURTAIL_EXPORT)
     plant.work_mode_override = "remote_ems"
@@ -354,3 +355,104 @@ def test_the_verification_judges_the_export_limit_on_the_grid_power() -> None:
     assert report["modes"]["curtail"]["outcome"] == "obeyed"
     assert report["modes"]["normal"]["outcome"] == "restored"
     assert plant.states["export_limit"] == "11.5"
+
+
+# --- beside SpotNav's own battery control -----------------------------------------------------------------------------
+
+
+def test_a_plant_in_remote_ems_is_taken_only_when_spotnav_s_own_battery_control_runs_it() -> None:
+    executor, plant = _plant("11.5", work_mode_override="remote_ems")
+    _now, results = _run(executor, plant, T0, 3, ACTION_CURTAIL_EXPORT)
+    assert written(results) == []
+    assert events(results, "not_started")[0]["reason"] == "self_managed:EMS work mode:remote_ems"
+    executor, plant = _plant("11.5", work_mode_override="remote_ems")
+    _now, results = _run(executor, plant, T0, 3, ACTION_CURTAIL_EXPORT, sibling_active=True)
+    assert written(results) == [("export_limit", 0.0)] and executor.state.phase == "active"
+    # SpotNav's battery control running does not make the plant's own optimiser or another system SpotNav's.
+    executor, plant = _plant("11.5", work_mode_override="ai_mode")
+    _now, results = _run(executor, plant, T0, 3, ACTION_CURTAIL_EXPORT, sibling_active=True)
+    assert written(results) == [] and events(results, "not_started")[0]["reason"] == "self_managed:EMS work mode:ai_mode"
+    executor, plant = _plant("11.5", work_mode_override="remote_ems")
+    outside = Management("externally_controlled", "outside:setpoint", {"EMS work mode": "remote_ems"})
+    _now, results = _run(executor, plant, T0, 3, ACTION_CURTAIL_EXPORT, sibling_active=True, management=outside)
+    assert written(results) == []
+
+
+def test_the_battery_control_and_the_export_limit_never_take_each_other_s_roles() -> None:
+    """The battery's hold and hand-back on one plant beside the export limit at 0: neither writes, claims or reads
+    the other's entity, and the battery's hand-back (Remote EMS off) leaves the export limit as SpotNav holds it."""
+    battery_roles = {role.name for role in SIGENERGY_CONTROL.roles}
+    export_roles = {role.name for role in SIGENERGY_EXPORT_CONTROL.roles}
+    assert battery_roles.isdisjoint(export_roles)
+    battery_exec, battery = Executor(SIGENERGY_CONTROL), FakeBattery(SIGENERGY_CONTROL, dict(SIGENERGY_STATES))
+    now, _ = run(battery_exec, battery, T0, 6, "hold")
+    assert battery.states["remote_ems"] == "on"
+    export_exec, plant = _plant("11.5", work_mode_override="remote_ems")
+    now, results = _run(export_exec, plant, now, 3, ACTION_CURTAIL_EXPORT, sibling_active=True)
+    assert written(results) == [("export_limit", 0.0)]
+    # The battery is handed back: Remote EMS off, the plant back in Maximum Self Consumption.
+    now, results = run(battery_exec, battery, now, 8, "self_consume")
+    assert battery.states["remote_ems"] == "off" and battery_exec.state.phase == "idle"
+    assert all(op.role in battery_roles for result in results for op in result.ops)
+    assert not set(battery_exec.ledger.entity_ids()) & {"number.sigenergy_export_limit"}
+    plant.work_mode_override = None
+    _now, results = _run(export_exec, plant, now, 6, ACTION_CURTAIL_EXPORT)
+    assert events(results, "hand_back") == [] and export_exec.state.phase == "active"
+    assert plant.states["export_limit"] == "0"
+
+
+def _grid_run(executor: Executor, plant: FakePlant, start: datetime, seconds: float, grid_kw, **overrides):
+    """Looks `TICK` apart with the site's grid power: `grid_kw(limit_state)` (kW, + import)."""
+    now = start
+    results = []
+    failed: tuple[str, ...] = ()
+    for _ in range(int(seconds / TICK.total_seconds())):
+        result = executor.step(
+            inputs(plant, now, ACTION_CURTAIL_EXPORT, failed=failed, grid_import_kw=grid_kw(plant.states["export_limit"]),
+                   **overrides)
+        )
+        results.append(result)
+        failed = tuple(op.role for op in result.ops if not plant.apply(op))
+        now += TICK
+    return now, results
+
+
+_JUDGED_S = CURTAIL_GRACE_S + 5 * READING_GAP_S
+
+
+def test_a_limit_the_inverter_obeys_keeps_running() -> None:
+    executor, plant = _plant("11.5")
+    _now, results = _grid_run(executor, plant, T0, _JUDGED_S, lambda limit: 1.0 if limit == "0" else -4.0)
+    assert written(results) == [("export_limit", 0.0)]
+    assert events(results, "monitor") == [] and executor.state.phase == "active"
+    # Its regulation around 0 is within the tolerance.
+    executor, plant = _plant("11.5")
+    _now, results = _grid_run(
+        executor, plant, T0, _JUDGED_S, lambda limit: -(EXPORT_TOLERANCE_KW - 0.1) if limit == "0" else -4.0
+    )
+    assert events(results, "monitor") == [] and executor.state.phase == "active"
+
+
+@pytest.mark.parametrize(("export_kw", "outcome"), [(4.0, "no_effect"), (1.5, "partial")])
+def test_a_limit_the_inverter_does_not_obey_is_handed_back_and_blocked(export_kw, outcome) -> None:
+    executor, plant = _plant("11.5")
+    _now, results = _grid_run(executor, plant, T0, _JUDGED_S, lambda limit: -export_kw if limit == "0" else -4.0)
+    assert events(results, "monitor")[0]["reason"] == outcome
+    assert events(results, "hand_back")[0]["reason"] == f"not_obeyed:curtail_export:{outcome}"
+    assert plant.states["export_limit"] == "11.5"
+    assert executor.state.phase == "blocked" and executor.state.blocked.startswith("not_obeyed")
+    # Blocked: the next negative price does not take it again until the part's next explicit decision.
+    _now, results = _grid_run(executor, plant, _now, 60.0, lambda _limit: -4.0)
+    assert written(results) == []
+
+
+def test_an_unknown_grid_reading_is_never_judged_as_not_obeyed() -> None:
+    executor, plant = _plant("11.5")
+    _now, results = _grid_run(executor, plant, T0, _JUDGED_S, lambda _limit: None)
+    assert events(results, "monitor") == [] and executor.state.phase == "active"
+    executor, plant = _plant("11.5")
+    now, _results = _grid_run(executor, plant, T0, 30.0, lambda _limit: -4.0)
+    # A lost measurement hands back as stale data, never as "not obeyed" (no block).
+    _now, results = _grid_run(executor, plant, now, _JUDGED_S, lambda _limit: -4.0, measurement_ok=False)
+    assert events(results, "monitor") == [] and events(results, "hand_back")[0]["reason"] == "stale_data"
+    assert executor.state.blocked is None
