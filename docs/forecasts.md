@@ -19,8 +19,8 @@ counts half as much as yesterday), with weekdays and weekends kept apart. A day 
 day where Home Assistant's Holiday integration provides a calendar. A car's plan counts on a figure with some room (three in four hours the load is below it), not the average:
 counting on too little room costs a late car, counting on too much a slightly dearer plan. On a site with a home battery or
 solar production in the Energy dashboard it uses the house's *whole* load (the grid less the car less the battery, plus what
-the sun produced), so the battery's own cycling is not mistaken for the house. Until it has three days of that it uses the
-import less the chargers.
+the sun produced), so the battery's own cycling is not mistaken for the house. With a battery it uses that from the first
+hour; with solar only, until it has three days of that it uses the import less the chargers.
 
 It also uses, without any setting:
 

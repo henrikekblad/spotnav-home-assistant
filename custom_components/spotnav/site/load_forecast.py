@@ -30,8 +30,10 @@ release reach).
   hours (the model as known at today's midnight, never the adjusted figure) scales the rest of today, damped
   (`INDAY_DAMPING`) and clamped (`INDAY_MIN`-`INDAY_MAX`). Tomorrow carries today's factor, falling linearly to none by
   tomorrow's end; before today has enough hours, yesterday's factor is carried the same way through today. It catches
-  a sick day, guests or a cold snap the temperature term misses. The flat rung is never scaled. The forecast log scores
-  the raw and the adjusted figures apart, so its benefit is measured.
+  a sick day, guests or a cold snap the temperature term misses. The flat rung is never scaled, and it never lifts an
+  hour above the highest hour measured in the window (the owner's import less the chargers, a battery grid-charging
+  at the fuse's 13.7 kW, was scaled to 17.4 kW, more than the fuse lets through). The forecast log scores the raw and
+  the adjusted figures apart, so its benefit is measured.
 
 The owner's backtest (16 months): p75 + temperature cuts the night's large under-forecasts (> 0.5 kW) from 10.1 % of
 hours (today's flat 24-h mean) to 3.7 %.
@@ -422,6 +424,8 @@ median without the in-day adjustment, `battery/plan_runtime.py`)."""
         yesterday, _count = day_ratio(rows, today - timedelta(days=1), now, tz, holidays)
         adjustment = InDay(ratio, counted, inday_factor(ratio), inday_factor(yesterday))
     first = hour_start(now, tz)
+    # The in-day adjustment's ceiling: the highest hour measured in the window.
+    ceiling = max((sample.kw for sample in samples), default=0.0)
     forecast: list[ForecastHour] = []
     for index in range(horizon_h):
         start = first + timedelta(hours=index)
@@ -441,7 +445,10 @@ median without the in-day adjustment, `battery/plan_runtime.py`)."""
             factor = _decayed(adjustment.today_factor, start, day, tz)
         else:
             factor = 1.0
-        forecast.append(ForecastHour(start, kw * factor, source, outdoor, adjust, raw_kw=kw, inday_factor=factor))
+        adjusted = kw * factor
+        if factor > 1.0:
+            adjusted = min(adjusted, max(kw, ceiling))
+        forecast.append(ForecastHour(start, adjusted, source, outdoor, adjust, raw_kw=kw, inday_factor=factor))
     return LoadForecast(
         made_at=now,
         hours=tuple(forecast),

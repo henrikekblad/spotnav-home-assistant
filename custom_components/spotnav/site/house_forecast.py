@@ -10,10 +10,15 @@ measurements; it is shown on the site's state sensor (`forecast`), in the diagno
   reading that figure counts what the battery charged and discharged (the owner's read ~0 kW while the battery
   covered the house), and on a site with solar production it is the house less the sun, so there the house is its
   whole load (`gross`): `grid - car - battery` per hour (the battery term 0 without one) plus the sun's production
-  from the Energy dashboard's statistics (`site/house_history.py`), once `MIN_GROSS_HOURS` such hours are kept. On a
-  site without a battery an hour is filed only with its production (never as the house less the sun). The battery
-  plan's own rows of before are taken over once (`async_take_rows`). The shown forecast, the log's house kinds and the
-  battery plan's input (`battery_house_by_hour`, the median without the in-day adjustment) are then the whole load.
+  from the Energy dashboard's statistics (`site/house_history.py`). On a battery site that is the house figure from
+  the start (`house_basis`): the import less the chargers there is the battery's timing, not the house (it read ~0
+  while the battery covered the house and up to the fuse while it grid-charged, so its p75 per hour, scaled by the
+  in-day adjustment, forecast 17 kW for a house drawing 1.5 kW); with few hours of the whole load the forecast falls
+  back to their flat mean, and to nothing before the first. On a solar site without a battery it is the house figure
+  once `MIN_GROSS_HOURS` such hours are kept, and an hour is filed only with its production (never as the house
+  less the sun). The battery plan's own rows of before are taken over once (`async_take_rows`). The shown forecast,
+  the log's house kinds and the battery plan's input (`battery_house_by_hour`, the median without the in-day
+  adjustment) are then the whole load.
 * **The expected solar surplus** (`surplus_house_by_hour`): the sun less the house's whole load, so it reads the
   whole load's median without the in-day adjustment, and nothing (with a reason) while there is no whole load with
   the sun in every hour: the import less the chargers already has the sun taken off.
@@ -139,6 +144,17 @@ OUTDOOR_SENSORS: Final[dict[str, re.Pattern[str]]] = {
 
 def store_key(entry_id: str) -> str:
     return f"{DOMAIN}.load_forecast.{entry_id}"
+
+
+def house_basis(*, battery: bool, solar: bool, gross_ready: bool) -> str:
+    """What the house figure is (see the module): on a battery site always the whole load, since the import less the
+    chargers there counts the battery (0 while it covers the house, the fuse's worth while it grid-charges: the
+    owner's read 13.7 kW at 14:00 on 13 Nov with the house at 1.2 kW); on a solar site without a battery the whole
+    load once it has `MIN_GROSS_HOURS` hours (until then the import less the chargers is the house less the sun, too
+    low at noon but never the battery); else the import less the chargers."""
+    if battery:
+        return BASIS_GROSS
+    return BASIS_GROSS if solar and gross_ready else BASIS_NET
 
 
 def house_forecasts(
@@ -503,7 +519,7 @@ class SiteHouseForecast:
             whole = battery or solar
             if whole:
                 await self._async_merge_gross(tracked, now, sun_needed=not battery)
-            basis = BASIS_GROSS if whole and self.history.gross_ready(now) else BASIS_NET
+            basis = house_basis(battery=battery, solar=solar, gross_ready=self.history.gross_ready(now))
             net_hours = self.history.hours()
             hours = self.history.gross_hours() if basis == BASIS_GROSS else net_hours
             temperatures = dict(self._temperatures)

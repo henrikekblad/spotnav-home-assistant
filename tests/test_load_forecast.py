@@ -410,3 +410,19 @@ def test_the_flat_rung_is_never_scaled_and_the_dst_day_fades_over_its_25_hours()
     factor = forecast.inday.today_factor
     last = local(2026, 10, 26) - timedelta(hours=1)
     assert hour_of(forecast, last).inday_factor == pytest.approx(1 + (factor - 1) / 25)
+
+
+def test_the_adjustment_never_lifts_an_hour_above_the_highest_one_measured() -> None:
+    """The owner's import less the chargers, 15 Nov: a battery grid-charging at the fuse (13.7 kW) in one hour a day,
+    and a day running above its median, forecast 17.4 kW for that hour, more than the fuse lets through. The rest of
+    the day is scaled as before."""
+    midnight = local(2026, 11, 18)
+    rows = history(midnight - timedelta(days=28), midnight, lambda moment: 13.7 if local_hour(moment) == 14 else 1.0)
+    rows += history(midnight, midnight + timedelta(hours=6), lambda _moment: 2.0)
+    forecast = forecast_house_load(rows, local(2026, 11, 18, 6, 5), TZ)
+    factor = forecast.inday.today_factor
+    assert factor == pytest.approx(1.95)
+    charging = hour_of(forecast, local(2026, 11, 18, 14))
+    assert (charging.raw_kw, charging.kw, charging.inday_factor) == (13.7, 13.7, pytest.approx(factor))
+    assert hour_of(forecast, local(2026, 11, 18, 12)).kw == pytest.approx(factor)
+    assert max(hour.kw for hour in forecast.hours if hour.kw is not None) == 13.7
