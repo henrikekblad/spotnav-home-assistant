@@ -546,3 +546,53 @@ def test_the_preview_refuses_as_the_executor_does() -> None:
     battery = FakeBattery(SIGENERGY_CONTROL, dict(SIGENERGY_STATES))
     assert preview(SIGENERGY_CONTROL, inputs(battery, T0, "hold"), writes_today=DAILY_WRITE_CAP).blocker == "daily_write_cap"
     assert preview(SIGENERGY_CONTROL, inputs(battery, T0, "hold", headroom_a=None)).blocker == "headroom_unknown"
+
+
+# --- the expected value is checked just before each write ---------------------------------------------------------
+
+
+def test_a_rate_change_never_writes_over_a_limit_someone_else_just_changed() -> None:
+    executor, battery = _sigenergy()
+    now, _ = run(executor, battery, T0, 6, "grid_charge", 4.0, headroom_a=20.0)
+    assert executor.state.phase == "active"
+    battery.states["charge_limit"] = "9"  # the app sets its own limit, seconds ago
+    _now, results = run(executor, battery, now, 3, "grid_charge", 4.0, headroom_a=1.5, grid_import_kw=6.0)
+    assert [event["reason"] for event in events(results, "external")] == ["charge_limit"]
+    assert events(results, "external")[0]["expected"] == "4"
+    assert all(role != "charge_limit" for role, _value in written(results)), "no write over the foreign value"
+    assert battery.states["charge_limit"] == "9", "and the restore leaves it alone"
+    assert executor.state.phase == "blocked" and executor.state.blocked.startswith("changed_outside_spotnav")
+
+
+def test_a_role_never_written_that_no_longer_reads_as_found_is_not_restored_over() -> None:
+    executor, battery = _sigenergy()
+    battery.states["charge_limit"] = "8"
+    now = _held(executor, battery)
+    assert executor.state.snapshot["charge_limit"] == "8"
+    battery.states["charge_limit"] = "9"  # the app sets the charge limit while we hold
+    _now, results = run(executor, battery, now, 8, "self_consume")
+    assert [event["reason"] for event in events(results, "external")] == ["charge_limit"]
+    assert all(role != "charge_limit" for role, _value in written(results))
+    assert battery.states["charge_limit"] == "9"
+    assert ("discharge_limit", 23.04) in written(results), "what SpotNav wrote is still handed back"
+
+
+def test_an_unknown_reading_before_a_write_is_no_evidence_and_the_write_goes_ahead() -> None:
+    executor, battery = _sigenergy()
+    now, _ = run(executor, battery, T0, 6, "grid_charge", 4.0, headroom_a=20.0)
+    battery.states["charge_limit"] = "unknown"
+    now, results = run(executor, battery, now, 1, "grid_charge", 6.0, headroom_a=1.5, grid_import_kw=6.0)
+    assert events(results, "external") == []
+    assert any(role == "charge_limit" for role, _value in written(results))
+
+
+def test_the_sigenergy_mode_texts_are_the_options_of_typqxq_s_remote_ems_control_mode_select() -> None:
+    """TypQxQ/Sigenergy-Local-Modbus, custom_components/sigen/select.py lines 109-112 (options) and 120-123 (map),
+    register 40031 values in modbusregisterdefinitions.py lines 164-167: 2 Maximum Self Consumption,
+    3 Command Charging (Grid First), 5 Command Discharging (PV First)."""
+    def mode(action: str) -> object:
+        return SIGENERGY_CONTROL.wanted(action, 4.0, 0)["control_mode"]
+
+    assert mode("grid_charge") == "Command Charging (Grid First)"  # register value 3
+    assert mode("export_discharge") == "Command Discharging (PV First)"  # register value 5
+    assert mode("hold") == "Maximum Self Consumption"  # register value 2
