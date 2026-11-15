@@ -29,7 +29,7 @@ from homeassistant.helpers.storage import Store
 _LOGGER = logging.getLogger(__name__)
 
 #: The blueprints, by file name, in the order the card lists them.
-BLUEPRINT_FILES: Final = ("price_setpoint.yaml", "solar_surplus_switch.yaml")
+BLUEPRINT_FILES: Final = ("price_setpoint.yaml", "solar_surplus_switch.yaml", "relay_by_price.yaml")
 #: Where they ship, inside the integration.
 SOURCE_FOLDER: Final = Path(__file__).parent / "blueprints" / "automation"
 #: The folder under Home Assistant's `blueprints/automation/` that SpotNav owns.
@@ -38,7 +38,8 @@ INSTALL_FOLDER: Final = "spotnav"
 STORE_KEY: Final = "spotnav.blueprints"
 STORE_VERSION: Final = 1
 #: The SHA-256 of every content SpotNav installed before the written hash was kept (the blueprints as shipped from
-#: 2.1.0 to 2.3.0, commit 19ed1871): such a copy, with no hash kept, was written by SpotNav and is still updated.
+#: 2.1.0 to 2.3.0, commit 19ed1871): such a copy, with no hash kept, was written by SpotNav and is still updated. A
+#: blueprint first shipped after the hash was kept has none.
 SHIPPED_BEFORE: Final[Mapping[str, tuple[str, ...]]] = {
     "price_setpoint.yaml": ("4a938bdf89f3b87f8ad709d304cc3f24cb57a1e969db6b759b82f73801d90b41",),
     "solar_surplus_switch.yaml": ("9acc30d24075c922da9d4ec05e56f14f08df58a8de667b3f34d787744d04a091",),
