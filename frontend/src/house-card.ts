@@ -9,6 +9,7 @@ import { getHouse, listChargers, SpotnavApiError, UNSUPPORTED_API_VERSION } from
 import { entityWordsOf } from "./entity-words";
 import { decodeHouse } from "./house-model";
 import { HOUSE_STYLES } from "./house-styles";
+import { readHiddenSeries, writeHiddenSeries } from "./house-series";
 import { houseBody, type HouseState, type HouseUi } from "./house-view";
 import { isLanguagePending, loadLanguage, resolveLanguage, type Language } from "./i18n";
 import type { HomeAssistantLike } from "./types";
@@ -56,7 +57,7 @@ export class SpotnavHouseCard extends HTMLElement {
   private hassObject: HomeAssistantLike | null = null;
   private config: HouseCardConfig | null = null;
   private state: HouseState = { kind: "unconfigured" };
-  private ui: HouseUi = { detailsOpen: false, selected: null, view: "energy" };
+  private ui: HouseUi = { detailsOpen: false, selected: null, view: "energy", hidden: readHiddenSeries() };
   private language: Language | null = null;
   private wantedLanguage: Language | null = null;
   private timer: number | null = null;
@@ -76,7 +77,7 @@ export class SpotnavHouseCard extends HTMLElement {
   setConfig(config: unknown): void {
     this.config = parseHouseConfig(config);
     this.generation += 1;
-    this.ui = { detailsOpen: false, selected: null, view: "energy" };
+    this.ui = { detailsOpen: false, selected: null, view: "energy", hidden: this.ui.hidden ?? readHiddenSeries() };
     this.state = this.target() === null ? { kind: "unconfigured" } : { kind: "loading" };
     this.render();
     this.start();
@@ -264,6 +265,15 @@ export class SpotnavHouseCard extends HTMLElement {
             this.render();
             if (focused) {
               (this.root.querySelector(`button[data-view="${view}"]`) as HTMLElement | null)?.focus();
+            }
+          },
+          onLegend: (view, hidden) => {
+            const focused = (this.root.activeElement as HTMLElement | null)?.dataset["legend"] ?? null;
+            this.ui = { ...this.ui, hidden: { ...this.ui.hidden, [view]: hidden } };
+            writeHiddenSeries(view, hidden);
+            this.render();
+            if (focused !== null) {
+              (this.root.querySelector(`button[data-legend="${focused}"]`) as HTMLElement | null)?.focus();
             }
           },
           onSelect: (index) => {

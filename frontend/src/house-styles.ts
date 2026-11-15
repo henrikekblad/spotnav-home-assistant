@@ -20,6 +20,7 @@ export const HOUSE_CLASSES = {
   bar: "spotnav-house-bar",
   barForecast: "spotnav-house-bar-forecast",
   forecastTick: "spotnav-house-forecast-tick",
+  carBar: "spotnav-house-car-bar",
   heatBar: "spotnav-house-heat-bar",
   heatForecast: "spotnav-house-heat-forecast",
   sunArea: "spotnav-house-sun-area",
@@ -28,6 +29,7 @@ export const HOUSE_CLASSES = {
   socPlan: "spotnav-house-soc-plan",
   legend: "spotnav-house-legend",
   legendItem: "spotnav-house-legend-item",
+  legendButton: "spotnav-house-legend-button",
   swatch: "spotnav-house-swatch",
   line: "spotnav-house-line",
   detailsToggle: "spotnav-house-details-toggle",
@@ -381,6 +383,10 @@ export const HOUSE_STYLES = `
   .${H.barForecast} {
     opacity: 0.32;
   }
+  .${H.carBar} {
+    fill: var(--spotnav-flow-car);
+    opacity: 0.9;
+  }
   .${H.heatBar} {
     fill: var(--spotnav-heat-colour);
     opacity: 0.9;
@@ -429,6 +435,27 @@ export const HOUSE_STYLES = `
     align-items: center;
     gap: 5px;
   }
+  .${H.legendButton} {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    margin: 0;
+    padding: 4px 2px;
+    border: 0;
+    border-radius: 4px;
+    background: none;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+  }
+  .${H.legendButton}:focus-visible {
+    outline: 2px solid var(--primary-color, #03a9f4);
+    outline-offset: 1px;
+  }
+  .${H.legendButton}[aria-pressed="false"] {
+    text-decoration: line-through;
+    opacity: 0.5;
+  }
   .${H.swatch} {
     display: inline-block;
     width: 14px;
@@ -447,6 +474,9 @@ export const HOUSE_STYLES = `
   }
   .${H.swatch}[data-series="heat"] {
     background: var(--spotnav-heat-colour);
+  }
+  .${H.swatch}[data-series="car"] {
+    background: var(--spotnav-flow-car);
   }
   .${H.swatch}[data-series="sun"] {
     background: var(--spotnav-sun-colour);
@@ -543,6 +573,7 @@ export const HOUSE_STYLES = `
   @media (forced-colors: active) {
     .${H.bar},
     .${H.heatBar},
+    .${H.carBar},
     .${H.sunArea},
     .${H.band} {
       fill: CanvasText;

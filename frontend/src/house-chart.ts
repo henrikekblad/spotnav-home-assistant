@@ -1,12 +1,16 @@
 // The house card's one chart, as SVG, from 12 hours back to 24 hours ahead on one real-time axis, in one of two
 // views (like the battery app's two charts): "energy", the house's load per hour, the sun and the battery's level;
 // "price", the buy and sell price per hour (left axis, minor unit per kWh) with the battery's level (right axis).
-// Both tint the hours the plan charges from the grid (violet) and sells to the grid (teal), and mark now ("Nu").
+// The price view tints the hours the plan charges from the grid (violet) and sells to the grid (teal); both mark now
+// ("Nu"). A viewer may hide any series from the legend (`hidden`, see `house-series.ts`): it is left out and the kW axis
+// rescales to what is shown.
 //
 // * The house: a bar per hour, the measured load in the past and the forecast ahead (lighter); over a past bar a short
 //   line stands at what was forecast for that hour first, so a miss shows at a glance. Where the heat pump's meter is,
 //   the bar's lower part is heat (measured in the past, forecast ahead) in its own warm colour: part of the house, never
 //   stacked on top of it.
+// * The car: its own bar per past hour (the energy flow's car colour), beside the house's bar (the house's takes the left
+//   part of the hour, the car's the right) so neither hides the other; hidden until toggled on in the legend.
 // * The sun: a soft area, the production in the past and the corrected forecast ahead (the raw one where there is
 //   none); the raw forecast as a dotted line over all of it, since the Hybrid strategy reads that one.
 // * The battery: its charge level on its own scale (0-100 % over the plot's height), measured in the past and as the
@@ -59,6 +63,8 @@ export interface HouseChartInput {
   title: string;
   description: string;
   ids: { title: string; description: string };
+  /** The series the viewer hid (`HouseSeries` keys); none by default. */
+  hidden?: ReadonlySet<string>;
 }
 
 export interface HouseChart {
@@ -137,14 +143,25 @@ function pathOf(points: Array<{ x: number; y: number } | null>, area: boolean, b
 export function renderHouseChart(input: HouseChartInput): HouseChart {
   const { hours, nowMs, labels } = input;
   const view = input.view ?? "energy";
+  const shown_ = (series: string): boolean => !(input.hidden?.has(series) ?? false);
   const count = hours.length;
   const startMs = hours[0]!.startMs;
   const endMs = hours[count - 1]!.startMs + HOUR_MS;
   const axis = rangeAxis(startMs, endMs);
   const values: number[] = [];
   for (const hour of hours) {
-    const shown = view === "price" ? [hour.buy, hour.sell] : [hour.house_kw, hour.house_forecast_kw, sunShown(hour, nowMs), hour.sun_forecast_kwh];
-    for (const value of shown) {
+    const figures: Array<number | null> =
+      view === "price"
+        ? [shown_("buy") ? hour.buy : null, shown_("sellPrice") ? hour.sell : null]
+        : [
+            shown_("house") ? houseShown(hour).kw : null,
+            shown_("forecast") && hour.house_kw !== null ? hour.house_forecast_kw : null,
+            shown_("sun") ? sunShown(hour, nowMs) : null,
+            shown_("sun") ? hour.sun_forecast_kwh : null,
+            shown_("heat") ? heatShown(hour) : null,
+            shown_("car") ? hour.car_kw : null,
+          ];
+    for (const value of figures) {
       if (value !== null) {
         values.push(value);
       }
@@ -194,15 +211,16 @@ export function renderHouseChart(input: HouseChartInput): HouseChart {
 
   // The plan's grid charging and selling, behind everything.
   const bands = svg("g", { class: H.bands });
-  for (const hour of hours) {
-    if (hour.battery_action !== "grid_charge" && hour.battery_action !== "export_discharge") {
+  for (const hour of view === "price" ? hours : []) {
+    const wanted = hour.battery_action === "grid_charge" ? "charge" : hour.battery_action === "export_discharge" ? "sell" : null;
+    if (wanted === null || !shown_(wanted)) {
       continue;
     }
     const left = x(hour.startMs);
     bands.append(
       svg("rect", {
         class: H.band,
-        "data-action": hour.battery_action,
+        "data-action": hour.battery_action ?? "",
         x: left,
         y: scale.top,
         width: Math.max(0, x(hour.startMs + HOUR_MS) - left),
@@ -252,7 +270,7 @@ export function renderHouseChart(input: HouseChartInput): HouseChart {
   }
   root.append(grid);
 
-  if (view === "price") {
+  if (view === "price" && shown_("battery")) {
     for (const pct of [0, 50, 100]) {
       const tick = svg("text", {
         class: C.axisLabel,
@@ -268,10 +286,13 @@ export function renderHouseChart(input: HouseChartInput): HouseChart {
   // The sun: the area, then the raw forecast dotted over it.
   const base = yAt(scale, 0);
   if (view === "price") {
-    for (const [key, className] of [
-      ["sell", H.priceSell],
-      ["buy", H.priceBuy],
+    for (const [key, className, series] of [
+      ["sell", H.priceSell, "sellPrice"],
+      ["buy", H.priceBuy, "buy"],
     ] as const) {
+      if (!shown_(series)) {
+        continue;
+      }
       const points = hours.flatMap((hour) => {
         const value = hour[key];
         if (value === null) {
@@ -287,7 +308,7 @@ export function renderHouseChart(input: HouseChartInput): HouseChart {
     const value = sunShown(hour, nowMs);
     return value === null ? null : { x: centre(hour), y: yAt(scale, value) };
   });
-  if (view === "energy" && sunPoints.some((point) => point !== null && point.y < base - 0.5)) {
+  if (view === "energy" && shown_("sun") && sunPoints.some((point) => point !== null && point.y < base - 0.5)) {
     const area = svg("path", { class: H.sunArea, d: pathOf(sunPoints, true, base) });
     area.style.setProperty("fill", sunFill);
     root.append(area);
@@ -303,24 +324,30 @@ export function renderHouseChart(input: HouseChartInput): HouseChart {
 
   // The house: a bar per hour, and over a measured bar the first forecast as a short line.
   const bars = svg("g", { class: H.bars });
+  const carOn = view === "energy" && shown_("car");
   for (const hour of view === "energy" ? hours : []) {
     const shown = houseShown(hour);
     const left = x(hour.startMs);
     const width = x(hour.startMs + HOUR_MS) - left;
     const inset = width * 0.18;
+    // With the car's bar on, the house's takes the left part of the hour and the car's the right.
+    const room = Math.max(0.5, width - 2 * inset);
+    const houseWidth = carOn ? room * 0.62 : room;
     if (shown.kw !== null && shown.kw > 0) {
       const top = yAt(scale, shown.kw);
-      const bar = svg("rect", {
-        class: shown.measured ? H.bar : `${H.bar} ${H.barForecast}`,
-        x: left + inset,
-        y: top,
-        width: Math.max(0.5, width - 2 * inset),
-        height: Math.max(0.5, base - top),
-        rx: Math.min(2, width / 6),
-      });
-      bar.style.setProperty("fill", barFill);
-      bars.append(bar);
-      const heat = heatShown(hour);
+      if (shown_("house")) {
+        const bar = svg("rect", {
+          class: shown.measured ? H.bar : `${H.bar} ${H.barForecast}`,
+          x: left + inset,
+          y: top,
+          width: Math.max(0.5, houseWidth),
+          height: Math.max(0.5, base - top),
+          rx: Math.min(2, width / 6),
+        });
+        bar.style.setProperty("fill", barFill);
+        bars.append(bar);
+      }
+      const heat = shown_("heat") ? heatShown(hour) : null;
       if (heat !== null && heat > 0) {
         const heatTop = yAt(scale, heat);
         bars.append(
@@ -328,22 +355,38 @@ export function renderHouseChart(input: HouseChartInput): HouseChart {
             class: shown.measured ? H.heatBar : `${H.heatBar} ${H.heatForecast}`,
             x: left + inset,
             y: heatTop,
-            width: Math.max(0.5, width - 2 * inset),
+            width: Math.max(0.5, houseWidth),
             height: Math.max(0.5, base - heatTop),
           }),
         );
       }
     }
-    if (shown.measured && hour.house_forecast_kw !== null) {
+    if (shown_("forecast") && shown.measured && hour.house_forecast_kw !== null) {
       const y = yAt(scale, hour.house_forecast_kw);
-      bars.append(svg("line", { class: H.forecastTick, x1: left + inset * 0.4, x2: left + width - inset * 0.4, y1: y, y2: y }));
+      const end = carOn ? left + inset + houseWidth + inset * 0.4 : left + width - inset * 0.4;
+      bars.append(svg("line", { class: H.forecastTick, x1: left + inset * 0.4, x2: end, y1: y, y2: y }));
+    }
+    if (carOn && hour.car_kw !== null && hour.car_kw > 0) {
+      const top = yAt(scale, hour.car_kw);
+      const gap = room * 0.06;
+      bars.append(
+        svg("rect", {
+          class: H.carBar,
+          "data-series": "car",
+          x: left + inset + houseWidth + gap,
+          y: top,
+          width: Math.max(0.5, room - houseWidth - gap),
+          height: Math.max(0.5, base - top),
+          rx: Math.min(2, width / 6),
+        }),
+      );
     }
   }
   root.append(bars);
 
   // The battery: measured, then planned (from the last measured point on, so the two lines meet).
   const hasSoc = hours.some((hour) => hour.soc_pct !== null || (hour.soc_plan_pct !== null && hour.startMs + HOUR_MS > nowMs));
-  if (hasSoc) {
+  if (hasSoc && shown_("battery")) {
     const end = (hour: HouseHour): number => x(hour.startMs + HOUR_MS);
     const measured = hours.map((hour) => (hour.soc_pct === null ? null : { x: end(hour), y: socY(hour.soc_pct) }));
     let lastMeasured: { x: number; y: number } | null = null;

@@ -133,7 +133,8 @@ describe("the body", () => {
     expect(svg.querySelectorAll(".spotnav-house-heat-forecast")).toHaveLength(24);
     expect(svg.querySelector(".spotnav-house-sun-area")).not.toBeNull();
     expect(svg.querySelectorAll(".spotnav-house-soc")).toHaveLength(2);
-    expect(svg.querySelectorAll(".spotnav-house-band[data-action='grid_charge']")).toHaveLength(3);
+    // The plan's tints belong to the price view only.
+    expect(svg.querySelector(".spotnav-house-band")).toBeNull();
     expect(svg.querySelector(".spotnav-now")?.getAttribute("display")).toBeNull();
     expect(card.querySelector("[data-line='saving']")).toBeNull();
     expect(card.querySelector("[data-part='modes']")?.textContent).toContain("51 kr");
@@ -255,6 +256,7 @@ describe("the battery app's views, calm", () => {
     expect(svg.querySelector(".spotnav-house-price-sell")).not.toBeNull();
     expect(Array.from(svg.querySelectorAll("text")).map((text) => text.textContent)).toEqual(expect.arrayContaining(["100 %", "Now"]));
     expect(svg.querySelectorAll(".spotnav-house-band[data-action='export_discharge']").length).toBeGreaterThan(0);
+    expect(svg.querySelectorAll(".spotnav-house-band[data-action='grid_charge']")).toHaveLength(3);
     const surface = price.querySelector<HTMLElement>(".spotnav-house-surface")!;
     document.body.append(price);
     surface.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
@@ -280,6 +282,165 @@ describe("the battery app's views, calm", () => {
     expect(card.querySelector(".spotnav-house-calendar-day[data-date='2026-11-04']")?.getAttribute("aria-label")).toMatch(/ · arbitrage 8,00 kr$/);
     expect(card.textContent).toContain("Batteriets arbitrage, 12 dygn:");
     expect(card.textContent).toContain("Lagrat nu: 32,3 kWh à 121 öre/kWh i snitt");
+  });
+});
+
+/** The legend's labels in order, as shown. */
+function legendOf(card: HTMLElement): string[] {
+  return Array.from(card.querySelectorAll(".spotnav-house-legend li")).map((item) => item.textContent ?? "");
+}
+
+/** The y of the top of the tallest house bar, to see the axis rescale. */
+function tallestBar(card: HTMLElement): number {
+  return Math.min(...Array.from(card.querySelectorAll(".spotnav-house-bar")).map((bar) => Number(bar.getAttribute("y"))));
+}
+
+describe("the legend", () => {
+  beforeEach(() => {
+    document.body.innerHTML = "";
+  });
+
+  it("keeps the grid charging and selling tints and their legend items to the price view", () => {
+    expect(legendOf(body(answer()))).toEqual(["House", "Heat", "Forecast", "Sun", "Car", "Battery 0–100 % (dashed: plan)"]);
+    expect(legendOf(body(answer(), { view: "price" }))).toEqual([
+      "Buy price",
+      "Sell price",
+      "Battery 0–100 % (dashed: plan)",
+      "Charges from the grid",
+      "Sells to the grid",
+    ]);
+    const price = body(answer(), { view: "price" });
+    expect(price.querySelectorAll(".spotnav-house-band")).not.toHaveLength(0);
+    expect(body(answer()).querySelector(".spotnav-house-band")).toBeNull();
+  });
+
+  it("gives every item as a button that tells whether its series is shown, and asks to toggle it", () => {
+    const onLegend = vi.fn();
+    const card = body(answer(), {}, "en", { onDetails: vi.fn(), onSelect: vi.fn(), onLegend } as never);
+    const buttons = Array.from(card.querySelectorAll<HTMLButtonElement>(".spotnav-house-legend button"));
+    expect(buttons.every((button) => button.type === "button" && button.hasAttribute("aria-pressed"))).toBe(true);
+    const pressed = Object.fromEntries(buttons.map((button) => [button.dataset["legend"], button.getAttribute("aria-pressed")]));
+    expect(pressed).toEqual({ house: "true", heat: "true", forecast: "true", sun: "true", car: "false", battery: "true" });
+    card.querySelector<HTMLButtonElement>("button[data-legend='sun']")!.click();
+    expect(onLegend).toHaveBeenLastCalledWith("energy", ["car", "sun"]);
+    card.querySelector<HTMLButtonElement>("button[data-legend='car']")!.click();
+    expect(onLegend).toHaveBeenLastCalledWith("energy", []);
+  });
+
+  it("leaves a hidden series out of the chart and the readout", () => {
+    const value = answer();
+    const hidden = { energy: ["car", "heat", "sun", "forecast", "battery"] };
+    const card = body(value, { hidden });
+    const svg = card.querySelector("svg")!;
+    expect(svg.querySelector(".spotnav-house-heat-bar")).toBeNull();
+    expect(svg.querySelector(".spotnav-house-sun-area")).toBeNull();
+    expect(svg.querySelector(".spotnav-house-sun-raw")).toBeNull();
+    expect(svg.querySelector(".spotnav-house-forecast-tick")).toBeNull();
+    expect(svg.querySelector(".spotnav-house-soc")).toBeNull();
+    expect(svg.querySelectorAll(".spotnav-house-bar")).toHaveLength(36);
+    const past = value.hours[2]!;
+    expect(hourFigures("en", value, past, NOW, "energy", new Set(hidden.energy))).toBe("07:00–08:00 · house 1.9 kW");
+    const buttons = Array.from(card.querySelectorAll<HTMLButtonElement>(".spotnav-house-legend button"));
+    expect(buttons.filter((button) => button.getAttribute("aria-pressed") === "false")).toHaveLength(5);
+    // Hiding the house itself leaves the rest (the forecast ticks, the heat) standing.
+    const noHouse = body(value, { hidden: { energy: ["house", "car"] } }).querySelector("svg")!;
+    expect(noHouse.querySelector(".spotnav-house-bar")).toBeNull();
+    expect(noHouse.querySelector(".spotnav-house-heat-bar")).not.toBeNull();
+  });
+
+  it("rescales the kW axis to the series shown", () => {
+    const value = answer();
+    const withCar = body(value, { hidden: { energy: [] } });
+    const without = body(value);
+    expect(tallestBar(withCar)).toBeGreaterThan(tallestBar(without));
+    const axis = (card: HTMLElement): string[] => Array.from(card.querySelectorAll("svg .spotnav-axis-label, svg text")).map((text) => text.textContent ?? "");
+    expect(axis(withCar).join()).not.toBe(axis(without).join());
+    // Only the sun left: the axis shrinks to the sun's figures.
+    const sunOnly = body(value, { hidden: { energy: ["car", "house", "heat", "forecast"] } });
+    expect(axis(sunOnly).join()).not.toBe(axis(without).join());
+    expect(sunOnly.querySelector("svg .spotnav-house-bar")).toBeNull();
+  });
+
+  it("draws the car as its own bar beside the house's, hidden until toggled on", () => {
+    const value = answer();
+    const carHours = value.hours.filter((hour) => hour.car_kw !== null && hour.car_kw > 0);
+    expect(carHours.length).toBeGreaterThan(0);
+    expect(body(value).querySelector("svg .spotnav-house-car-bar")).toBeNull();
+    const shown = body(value, { hidden: { energy: [] } });
+    const cars = Array.from(shown.querySelectorAll("svg .spotnav-house-car-bar"));
+    expect(cars).toHaveLength(carHours.length);
+    // Beside, not over: the car's bar starts where the house's of the same hour ends.
+    const bars = Array.from(shown.querySelectorAll("svg .spotnav-house-bar"));
+    const houseOfHour = bars.find((bar) => Math.abs(Number(bar.getAttribute("x")) - (Number(cars[0]!.getAttribute("x")) - 0)) < 40)!;
+    expect(Number(houseOfHour.getAttribute("x")) + Number(houseOfHour.getAttribute("width"))).toBeLessThanOrEqual(Number(cars[0]!.getAttribute("x")));
+    expect(shown.querySelector(".spotnav-readout")).not.toBeNull();
+    const peak = carHours.find((hour) => hour.car_kw === Math.max(...carHours.map((h) => h.car_kw as number)))!;
+    expect(hourFigures("en", value, peak, NOW, "energy", new Set())).toContain(`car ${peak.car_kw!.toFixed(1)} kW`);
+    expect(hourFigures("en", value, peak, NOW)).not.toContain("car ");
+  });
+
+  it("hides the price lines and the tints from the price view's legend, and the battery's axis with the battery", () => {
+    const hidden = { price: ["sellPrice", "charge", "battery"] };
+    const svg = body(answer(), { view: "price", hidden }).querySelector("svg")!;
+    expect(svg.querySelector(".spotnav-house-price-sell")).toBeNull();
+    expect(svg.querySelector(".spotnav-house-price-buy")).not.toBeNull();
+    expect(svg.querySelector(".spotnav-house-band[data-action='grid_charge']")).toBeNull();
+    expect(svg.querySelector(".spotnav-house-band[data-action='export_discharge']")).not.toBeNull();
+    expect(svg.querySelector(".spotnav-house-soc")).toBeNull();
+    expect(Array.from(svg.querySelectorAll("text")).map((text) => text.textContent)).not.toContain("100 %");
+    const value = answer();
+    const hour = value.hours.find((h) => h.battery_action === "grid_charge")!;
+    expect(hourFigures("en", value, hour, NOW, "price", new Set(hidden.price))).toMatch(/^[0-9:–]+ · buy \d+ öre\/kWh$/);
+  });
+
+  it("has a word for the car in every language", () => {
+    for (const language of LANGUAGES) {
+      expect(legendOf(body(answer(), {}, language)).length).toBeGreaterThan(4);
+      expect(translate(language, "house.legend.car")).not.toBe("");
+    }
+    expect(translate("sv", "house.legend.car")).toBe("Bil");
+  });
+});
+
+describe("the legend in the card element", () => {
+  const store = new Map<string, string>();
+  beforeEach(() => {
+    store.clear();
+    vi.stubGlobal("localStorage", {
+      getItem: (key: string) => store.get(key) ?? null,
+      setItem: (key: string, value: string) => void store.set(key, value),
+    });
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("remembers the choice per view in this browser, the car hidden to begin with", async () => {
+    const { readHiddenSeries, writeHiddenSeries } = await import("../src/house-series");
+    expect(readHiddenSeries()).toEqual({});
+    writeHiddenSeries("energy", ["sun"]);
+    writeHiddenSeries("price", ["buy"]);
+    expect(readHiddenSeries()).toEqual({ energy: ["sun"], price: ["buy"] });
+    store.set("spotnav-card.house.hidden.energy", "not json");
+    expect(readHiddenSeries()).toEqual({ price: ["buy"] });
+  });
+
+  it("renders from the defaults when storage is missing or throws", async () => {
+    const { readHiddenSeries, writeHiddenSeries } = await import("../src/house-series");
+    vi.stubGlobal("localStorage", undefined);
+    expect(readHiddenSeries()).toEqual({});
+    expect(() => writeHiddenSeries("energy", [])).not.toThrow();
+    vi.stubGlobal("localStorage", {
+      getItem: () => {
+        throw new Error("blocked");
+      },
+      setItem: () => {
+        throw new Error("blocked");
+      },
+    });
+    expect(readHiddenSeries()).toEqual({});
+    expect(() => writeHiddenSeries("energy", [])).not.toThrow();
+    expect(legendOf(body(answer(), { hidden: readHiddenSeries() })).length).toBe(6);
   });
 });
 
@@ -555,10 +716,11 @@ describe("the heat pump", () => {
     for (const hour of raw.hours) {
       delete hour.heat_kw;
       delete hour.heat_forecast_kw;
+      delete hour.car_kw;
     }
     const older = decodeHouse(raw);
     expect(older.ok && older.value.heat).toBeNull();
-    expect(older.ok && older.value.hours.every((hour) => hour.heat_kw === null && hour.heat_forecast_kw === null)).toBe(true);
+    expect(older.ok && older.value.hours.every((hour) => hour.heat_kw === null && hour.heat_forecast_kw === null && hour.car_kw === null)).toBe(true);
     // A mistyped heat block makes the answer unreadable, never half-shown.
     const broken = JSON.parse(JSON.stringify(read("house/villa_battery_sun.json")));
     broken.heat.day.heat_kwh = "10";
@@ -697,6 +859,49 @@ describe("the element", () => {
     await vi.advanceTimersByTimeAsync(300_000);
     expect(hass.messages[3]).not.toHaveProperty("date");
     element.remove();
+  });
+
+  it("toggles a legend series, remembers it in this browser and finds it again in a new card; without storage it still toggles", async () => {
+    const store = new Map<string, string>();
+    vi.stubGlobal("localStorage", { getItem: (key: string) => store.get(key) ?? null, setItem: (key: string, value: string) => void store.set(key, value) });
+    const load = async (): Promise<SpotnavHouseCard> => {
+      const hass = new FakeHass();
+      const element = mount({ type: "custom:spotnav-house-card", site: "site_villa" }, hass);
+      await vi.advanceTimersByTimeAsync(0);
+      hass.resolveNext(read("house/villa_battery_sun.json"));
+      await vi.advanceTimersByTimeAsync(0);
+      return element;
+    };
+    const first = await load();
+    const root = first.shadowRoot!;
+    expect(root.querySelector("svg .spotnav-house-car-bar")).toBeNull();
+    root.querySelector<HTMLButtonElement>("button[data-legend='car']")!.click();
+    expect(root.querySelector("svg .spotnav-house-car-bar")).not.toBeNull();
+    expect(root.querySelector("button[data-legend='car']")!.getAttribute("aria-pressed")).toBe("true");
+    root.querySelector<HTMLButtonElement>("button[data-legend='sun']")!.click();
+    expect(root.querySelector("svg .spotnav-house-sun-area")).toBeNull();
+    expect(JSON.parse(store.get("spotnav-card.house.hidden.energy")!)).toEqual(["sun"]);
+    // The price view keeps its own choice.
+    root.querySelector<HTMLButtonElement>("button[data-view='price']")!.click();
+    expect(root.querySelector("button[data-legend='buy']")!.getAttribute("aria-pressed")).toBe("true");
+    root.querySelector<HTMLButtonElement>("button[data-legend='buy']")!.click();
+    expect(root.querySelector("svg .spotnav-house-price-buy")).toBeNull();
+    expect(store.has("spotnav-card.house.hidden.price")).toBe(true);
+    first.remove();
+    const again = await load();
+    expect(again.shadowRoot!.querySelector("svg .spotnav-house-car-bar")).not.toBeNull();
+    expect(again.shadowRoot!.querySelector("svg .spotnav-house-sun-area")).toBeNull();
+    again.shadowRoot!.querySelector<HTMLButtonElement>("button[data-view='price']")!.click();
+    expect(again.shadowRoot!.querySelector("svg .spotnav-house-price-buy")).toBeNull();
+    again.remove();
+    // No storage at all: the defaults, and a toggle still works for the page's life.
+    vi.stubGlobal("localStorage", undefined);
+    const bare = await load();
+    expect(bare.shadowRoot!.querySelector("svg .spotnav-house-car-bar")).toBeNull();
+    bare.shadowRoot!.querySelector<HTMLButtonElement>("button[data-legend='car']")!.click();
+    expect(bare.shadowRoot!.querySelector("svg .spotnav-house-car-bar")).not.toBeNull();
+    bare.remove();
+    vi.unstubAllGlobals();
   });
 
   it("says a SpotNav without the command needs updating", async () => {

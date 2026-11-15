@@ -30,6 +30,9 @@ export interface HouseHour {
    * is found or set; part of the house's figures, never added to them. `null` from a backend before heat. */
   heat_kw: number | null;
   heat_forecast_kw: number | null;
+  /** The cars' measured energy in a past hour (kWh = mean kW; the energy flow's own figures); `null` ahead, where the
+   * cars could not be measured and from a backend before it. */
+  car_kw: number | null;
 }
 
 /** The heat pump's meter and the day's heat (`site/house_view.py`'s `heat` block). */
@@ -323,6 +326,7 @@ function hour(value: unknown): HouseHour {
     sell: additive(source, "sell", numberOrNull, null),
     heat_kw: additive(source, "heat_kw", numberOrNull, null),
     heat_forecast_kw: additive(source, "heat_forecast_kw", numberOrNull, null),
+    car_kw: additive(source, "car_kw", numberOrNull, null),
   };
 }
 
