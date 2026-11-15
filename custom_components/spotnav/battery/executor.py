@@ -43,7 +43,9 @@ How it acts (`step`, one look every few seconds; pure, the shell does the writes
   covers a one-phase peak on that phase at once), Remote EMS left on. If the headroom is not back at or above
   `PEAK_COVER_A` within `PEAK_RECOVER_S` (or later stays under it that long), the battery is handed back in full.
   Under `RESTORE_HEADROOM_A` it is handed back at once, as before, and every hand-back of a hold or a grid charge
-  writes the `peak_first` roles first (a grid charge: the mode that stops it). The cover's write is never held back
+  writes the `peak_first` roles first (a grid charge: the mode that stops it). A hand-back for the fuse writes all
+  its roles in one look, without waiting for each read-back (each is still read back, and one not confirmed is
+  retried as any restore); other hand-backs keep one write at a time. The cover's write is never held back
   by the day's write cap. A covered hold holds again only after `PEAK_REHOLD_S`, and only when the start rule
   allows it (the headroom keeps `HEADROOM_MARGIN_A` once the battery stops covering); otherwise it stays covered
   until the plan changes the action.
@@ -138,6 +140,8 @@ _BLOCKING_PREFIXES: Final = (
 #: States that are no value: never a snapshot to write back.
 _NO_VALUE: Final = frozenset({"", "unavailable", "unknown", "none"})
 _RAISES_IMPORT: Final = frozenset({ACTION_HOLD, ACTION_GRID_CHARGE})
+#: Hand-backs for the fuse: every role is written at once, without waiting for the last one's read-back.
+_FUSE_REASONS: Final = frozenset({"fuse_headroom"})
 _MONITORED: Final = {ACTION_HOLD: "hold", ACTION_GRID_CHARGE: "charge", ACTION_DISCHARGE_HOUSE: "discharge",
                      ACTION_EXPORT_DISCHARGE: "discharge", ACTION_CURTAIL_EXPORT: "curtail"}
 
@@ -237,6 +241,9 @@ class ExecState:
     snapshot_at: datetime | None = None
     #: The role written and not yet read back.
     pending: str | None = None
+    #: In a fuse hand-back (`_FUSE_REASONS`): the roles written at once and not yet read back (each still read back,
+    #: a role not confirmed retried as any restore).
+    in_flight: tuple[str, ...] = ()
     #: Buttons pressed and roles renewed for the current target.
     sent: tuple[str, ...] = ()
     renew: tuple[str, ...] = ()
@@ -281,6 +288,7 @@ class ExecState:
             "device_id": self.device_id,
             "snapshot_at": iso(self.snapshot_at),
             "pending": self.pending,
+            "in_flight": list(self.in_flight),
             "sent": list(self.sent),
             "renew": list(self.renew),
             "reason": self.reason,
@@ -352,6 +360,7 @@ class ExecState:
             device_id=text("device_id"),
             snapshot_at=parse_aware_datetime(data.get("snapshot_at")),
             pending=text("pending"),
+            in_flight=names("in_flight"),
             sent=names("sent"),
             renew=names("renew"),
             reason=text("reason"),
@@ -503,6 +512,10 @@ def _blocking(reason: str) -> bool:
     return reason.startswith(_BLOCKING_PREFIXES)
 
 
+def _without(names: tuple[str, ...], name: str) -> tuple[str, ...]:
+    return tuple(item for item in names if item != name)
+
+
 def _writes_today(state: ExecState, inputs: ExecInputs) -> int:
     """The site's writes today: this instance's and the other's (the cap is shared)."""
     return state.writes_today + max(inputs.other_writes_today, 0)
@@ -536,7 +549,7 @@ class Executor:
                 self.state = replace(state, phase="idle", pending=None)
             return []
         # A write in flight when HA stopped is no longer awaited: the restore reads every role afresh.
-        self.state = replace(state, pending=None, retries={}, unrestored=())
+        self.state = replace(state, pending=None, in_flight=(), retries={}, unrestored=())
         return self._begin_restore(now, "restart")
 
     def reset(self) -> None:
@@ -569,8 +582,13 @@ class Executor:
             events += self._cover(inputs)
             if self.state.phase == "active":
                 events += self._retarget(inputs)
-        events += self._precheck(inputs)
-        ops = self._progress(inputs)
+        ops: list[Op] = []
+        while True:
+            events += self._precheck(inputs)
+            batch = self._progress(inputs)
+            ops += batch
+            if not batch or not self._fuse_hand_back():
+                break
         events += [_event(now, "write", op.role, entity_id=op.entity_id, value=op.value, restore=op.restore)
                    for op in ops]
         if not ops:
@@ -583,11 +601,12 @@ class Executor:
         now = inputs.now
         events: list[dict[str, Any]] = []
         for role_name in inputs.failed:
-            if self.state.pending == role_name:
+            if self.state.pending == role_name or role_name in self.state.in_flight:
                 entity_id = self.state.entities.get(role_name)
                 if entity_id is not None:
                     self.ledger.release(entity_id)
-                self.state = replace(self.state, pending=None)
+                self.state = replace(self.state, pending=None if self.state.pending == role_name else self.state.pending,
+                                     in_flight=_without(self.state.in_flight, role_name))
                 events += self._not_taken(now, role_name, "service_failed")
         for role in self.control.roles:
             entity_id = self.state.entities.get(role.name)
@@ -598,13 +617,17 @@ class Executor:
             if event is None:
                 continue
             if event.kind == "confirmed":
-                if self.state.pending == role.name:
+                if self.state.pending == role.name or role.name in self.state.in_flight:
                     retries = {name: row for name, row in self.state.retries.items() if name != role.name}
-                    self.state = replace(self.state, pending=None, retries=retries)
+                    self.state = replace(
+                        self.state, pending=None if self.state.pending == role.name else self.state.pending,
+                        in_flight=_without(self.state.in_flight, role.name), retries=retries,
+                    )
                 events.append(_event(now, "confirmed", role.name, entity_id=entity_id, read=event.read))
             elif event.kind == "unconfirmed":
                 if self.state.pending == role.name:
                     self.state = replace(self.state, pending=None)
+                self.state = replace(self.state, in_flight=_without(self.state.in_flight, role.name))
                 events += self._not_taken(now, role.name, "no_read_back", read=event.read)
             else:
                 events += self._gave_up(now, role.name, entity_id, event.read)
@@ -636,6 +659,7 @@ class Executor:
         self.state = replace(
             self.state, given_up=(*self.state.given_up, role),
             pending=None if self.state.pending == role else self.state.pending,
+            in_flight=_without(self.state.in_flight, role),
         )
         events = [_event(now, "external", role, entity_id=entity_id, read=read, **detail)]
         if self.state.phase == "active":
@@ -760,6 +784,9 @@ class Executor:
             elif role.name in normal and role.name in state.entities:
                 target[role.name] = normal[role.name]
         blocked = reason if _blocking(reason) else state.blocked
+        if reason in _FUSE_REASONS and state.pending is not None:
+            # A write still awaiting its read-back (the peak cover's lift) does not hold the rest back.
+            state = replace(state, pending=None, in_flight=(*_without(state.in_flight, state.pending), state.pending))
         self.state = replace(
             state, phase="restoring", target=target, reason=reason, blocked=blocked, sent=(), renew=(),
             retries={}, unrestored=(), management_unknown_since=None, covered_at=None, peak_low_since=None,
@@ -770,7 +797,7 @@ class Executor:
         """A restore with nothing left to write ends: claims released, the snapshot dropped (kept for a role whose
         restore was given up)."""
         state = self.state
-        if state.phase != "restoring" or state.pending is not None or state.retries:
+        if state.phase != "restoring" or state.pending is not None or state.in_flight or state.retries:
             return []
         if self._next_role(state, inputs) is not None:
             return []
@@ -1046,7 +1073,7 @@ class Executor:
         restoring = state.phase == "restoring"
         order = restore_order(self.control, state.action) if restoring else self.control.enter_order
         for name in order:
-            if name not in state.target or name in state.given_up or name in state.unrestored:
+            if name not in state.target or name in state.given_up or name in state.unrestored or name in state.in_flight:
                 continue
             retry = state.retries.get(name)
             if retry is not None and inputs.now < retry[1]:
@@ -1085,8 +1112,16 @@ class Executor:
         else:
             if entity_id is not None:
                 self.ledger.intend(entity_id, value, inputs.now, step=None if read is None else (read.step or role.step))
-            self.state = replace(state, pending=name, sent=sent, renew=renew, writes_today=writes, written=written)
+            if self._fuse_hand_back():
+                self.state = replace(state, in_flight=(*state.in_flight, name), sent=sent, renew=renew,
+                                     writes_today=writes, written=written)
+            else:
+                self.state = replace(state, pending=name, sent=sent, renew=renew, writes_today=writes, written=written)
         return [Op(name, role.method, entity_id, value, device_id=state.device_id, restore=restoring)]
+
+    def _fuse_hand_back(self) -> bool:
+        """A hand-back for the fuse: its roles are written at once, each read back afterwards."""
+        return self.state.phase == "restoring" and self.state.reason in _FUSE_REASONS
 
     # --- what it shows ---
 

@@ -488,6 +488,44 @@ def test_a_peak_under_the_hand_back_mark_hands_back_at_once_with_the_discharge_l
     assert executor.state.phase == "idle"
 
 
+def test_a_fuse_hand_back_writes_every_role_at_once_and_a_lift_not_read_back_never_delays_remote_ems_off() -> None:
+    executor, battery = _sigenergy()
+    now = _held(executor, battery)
+    battery.drops = {"discharge_limit"}
+    now, results = run(executor, battery, now, 1, "hold", headroom_a=0.5)
+    assert [(op.role, op.value) for op in results[0].ops] == [("discharge_limit", 23.04), ("remote_ems", False)]
+    assert battery.states["remote_ems"] == "off"
+    # Each is still read back: Remote EMS off is confirmed, the dropped limit is retried as any restore.
+    now, results = run(executor, battery, now, _looks(READBACK_DEADLINE_S) + 1, "hold", headroom_a=0.5)
+    assert [event["reason"] for event in events(results, "confirmed")] == ["remote_ems"]
+    assert events(results, "not_taken")[0]["reason"] == "discharge_limit"
+    assert "discharge_limit" in executor.state.retries and executor.state.phase == "restoring"
+    battery.drops.clear()
+    _now, results = run(executor, battery, now, _looks(60.0), "hold", headroom_a=0.5)
+    assert written(results) == [("discharge_limit", 23.04)]
+    assert executor.state.phase == "idle" and battery.states["discharge_limit"] == "23.04"
+
+
+def test_a_peak_cover_lift_still_awaiting_its_read_back_does_not_hold_the_fuse_hand_back() -> None:
+    executor, battery = _sigenergy()
+    now = _held(executor, battery)
+    battery.drops = {"discharge_limit"}
+    now, results = run(executor, battery, now, 1, "hold", headroom_a=1.2)
+    assert written(results) == [("discharge_limit", 23.04)] and executor.state.pending == "discharge_limit"
+    _now, results = run(executor, battery, now, 1, "hold", headroom_a=0.2)
+    assert written(results) == [("remote_ems", False)], "Remote EMS goes off in the very next look"
+    assert set(executor.state.in_flight) == {"discharge_limit", "remote_ems"}
+
+
+def test_a_hand_back_that_is_not_for_the_fuse_keeps_one_write_at_a_time() -> None:
+    executor, battery = _sigenergy()
+    now = _held(executor, battery)
+    _now, results = run(executor, battery, now, 6, "hold", stopping="stop")
+    assert written(results) == [("discharge_limit", 23.04), ("remote_ems", False)]
+    assert all(len(result.ops) <= 1 for result in results)
+    assert executor.state.in_flight == ()
+
+
 def test_a_grid_charge_is_handed_back_for_the_fuse_with_the_mode_that_stops_it_first() -> None:
     executor, battery = _sigenergy()
     now, _ = run(executor, battery, T0, 6, "grid_charge", 4.0)
