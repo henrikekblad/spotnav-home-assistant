@@ -146,3 +146,31 @@ SpotNav found for the site, the battery included, with what usually runs that br
 For chargers, a short pause from such a service (Tibber Grid Rewards pauses a charge up to five times, about
 ten minutes each) is expected: SpotNav keeps its plan and does not tell you (see
 [notifications](notifications.md)).
+
+## No export at a negative price
+
+When an exported kWh would cost you money, SpotNav 3.0 wants the inverter to stop exporting. "Costs money"
+means the spot price plus any credit you get per exported kWh is below zero: with a 5 öre credit, the spot
+price must be below −5 öre. In those quarter hours SpotNav would set the site's export limit to 0 kW, and
+put back the value it found when the price turns positive again. Your sun still covers the house, the car
+and the battery; the inverter only curtails what is left. The battery plan already counts on it: in those
+quarter hours it stores the sun first and never plans to sell at a negative price.
+
+**Today this is shadow only: nothing is written.** The site's diagnostics (`battery.export_curtail`) show
+whether a negative-price quarter hour is running, what SpotNav would have written or why it could not, and
+per day the kWh you exported at a negative price and what that cost you. The battery plan's nightly review
+shows the same figure (`curtail`).
+
+* **Sigenergy** (the Sigenergy Local Modbus integration) is the first brand: the plant's **Grid Export
+  Limitation** number. It works in every EMS mode, needs the plant's grid sensor, and is disabled in Home
+  Assistant by default. A limit that was never set reads `unknown`; SpotNav would put back the plant's
+  maximum output instead, never `unknown`.
+* SolarEdge, Huawei, SolaX, Sungrow, Victron and GoodWe also have a local export limit; SpotNav does not use
+  them yet.
+* Works with or without a battery: without one, SpotNav finds the plant through your grid meter's entity.
+* A plant in its own optimiser (Sigen AI mode) or run by another system is only watched, as for the battery.
+  Its exported kWh at a negative price are still counted, apart, so you can see what it costs.
+* If you or the app change the export limit while SpotNav holds it at 0 kW, SpotNav leaves your value alone
+  and does not write it again.
+
+There is no setting for this: it will come with the battery control opt-in.
