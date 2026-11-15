@@ -219,6 +219,59 @@ async def test_a_hold_is_written_in_order_read_back_with_the_snapshot_stored_fir
 
 
 @pytest.mark.usefixtures("reachable")
+async def test_a_restart_waits_for_a_late_integration_before_it_restores(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    _site_entry, controller, plant = await _site(hass, monkeypatch, hass_storage)
+    control = BatteryControl(hass, controller, plan_source=_hold)
+    await control.async_start()
+    now = dt_util.now()
+    for index in range(6):
+        await control.async_tick(now + timedelta(seconds=10 * index))
+    assert control.executor.state.phase == "active"
+    # HA restarts; the plant's integration loads late: its switch is the registry's restored placeholder and its
+    # services are not there yet.
+    hass.states.async_set(SWITCH, "unavailable", {"restored": True})
+    hass.services.async_remove("switch", "turn_off")
+
+    def loaded() -> None:
+        hass.services.async_register("switch", "turn_off", plant._handler("switch", "turn_off"))
+        hass.states.async_set(SWITCH, "on", {})
+
+    monkeypatch.setattr(control_module, "STARTUP_LOOK_S", 0.01)
+    hass.loop.call_later(0.1, loaded)
+    plant.calls.clear()
+    again = BatteryControl(hass, controller, plan_source=_hold)
+    await again.async_start()
+    assert [(domain, service) for domain, service, _data in plant.calls] == [
+        ("number", "set_value"), ("switch", "turn_off")
+    ]
+    assert not any(row["kind"] in ("not_taken", "service_failed") for row in again.log)
+    assert again.executor.state.phase == "idle" and hass.states.get(SWITCH).state == "off"
+
+
+@pytest.mark.usefixtures("reachable")
+async def test_a_restart_waits_for_the_controls_only_so_long(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    _site_entry, controller, plant = await _site(hass, monkeypatch, hass_storage)
+    control = BatteryControl(hass, controller, plan_source=_hold)
+    await control.async_start()
+    now = dt_util.now()
+    for index in range(6):
+        await control.async_tick(now + timedelta(seconds=10 * index))
+    hass.states.async_set(SWITCH, "unavailable", {"restored": True})
+    monkeypatch.setattr(control_module, "STARTUP_LOOK_S", 0.01)
+    monkeypatch.setattr(control_module, "STARTUP_WAIT_S", 0.05)
+    monkeypatch.setattr(control_module, "HAND_BACK_DEADLINE_S", 0.1)
+    plant.calls.clear()
+    again = BatteryControl(hass, controller, plan_source=_hold)
+    await again.async_start()
+    assert plant.calls, "after the wait the restore goes ahead with what is there"
+    assert again.log[0]["reason"] == "restart"
+
+
+@pytest.mark.usefixtures("reachable")
 async def test_a_stop_hands_the_battery_back_at_once(
     hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
 ) -> None:
