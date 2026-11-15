@@ -103,9 +103,9 @@ day starts earlier. A target in the event's title or description (`mål: 80`, `8
 for that departure. Days without an event keep the daily departure, unless you tick **Only the
 calendar decides**: then a day without an event has no departure and the plan runs to the next event
 (with no event in the next seven days there is no departure, and the plan uses the cheapest hours
-known). A date you choose still comes first. If the calendar cannot be read, the daily departure is used
+known). With only the calendar deciding, a date you chose is not used and is cleared when you save. Otherwise a date you choose still comes first. If the calendar cannot be read, the daily departure is used
 until it can, also when only the calendar decides: a car that must leave is better charged by the daily
-time than not at all. The dialog says which of these applies.
+time than not at all. In the dialog, ticking **Only the calendar decides** hides the weekdays and the date and calls the time the fallback if the calendar cannot be read. Without a calendar in Home Assistant the dialog says to add one. The dialog says which of these applies.
 
 **Plugging in and unplugging.** SpotNav plans again a few seconds after the car is plugged in or
 unplugged, and again the moment the departure passes, without waiting for the next price. A car

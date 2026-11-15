@@ -23,7 +23,7 @@ A charger may name one calendar (`AutoSettings.departure_calendar`). Its events 
   the other kind is not used (`target_ignored`).
 
 What this module does not decide (the controller does, `auto_controller.py`): the departure switch off or a guest
-car (the calendar is not read); a one-off date the person chose (it wins while it is ahead); a calendar that cannot
+car (the calendar is not read); a one-off date the person chose (it wins while it is ahead, except when the calendar alone decides); a calendar that cannot
 be read (the daily departure, also when the calendar alone decides: a car that must leave is safer charged by the
 daily time than not at all, and the dialog says so); the calendar alone deciding and no event ahead (no departure:
 the charger plans as with the departure switched off).
