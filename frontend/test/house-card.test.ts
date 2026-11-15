@@ -169,6 +169,21 @@ describe("the body", () => {
     expect(open.textContent).toContain("Antaget hittills: batteriets lägsta nivå.");
   });
 
+  it("words every estimate code the battery's facts can carry, in every language", () => {
+    const value = answer();
+    const codes = ["capacity_from_ah", "rated_from_current", "capacity_learned", "rated_learned"];
+    value.battery!.estimates = codes;
+    for (const language of LANGUAGES) {
+      const text = body(value, { detailsOpen: true }, language).textContent ?? "";
+      for (const code of codes) {
+        expect(translate(language, `house.estimate.${code}` as never)).not.toBe(`house.estimate.${code}`);
+      }
+      expect(text).toContain(translate(language, "house.estimate.capacity_learned" as never));
+      expect(text).toContain(translate(language, "house.estimate.rated_learned" as never));
+    }
+    expect(body(value, { detailsOpen: true }, "en").textContent).toContain("the size (learnt from use)");
+  });
+
   it("walks the hours with the keyboard and shows each in the readout", () => {
     const handlers = { onDetails: vi.fn(), onSelect: vi.fn() };
     const card = body(answer(), {}, "en", handlers);

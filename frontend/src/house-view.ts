@@ -764,6 +764,10 @@ const ESTIMATE_KEYS: Record<string, TranslationKey> = {
   wear_currency_unknown: "house.estimate.wear_currency_unknown",
   no_solar_forecast: "house.estimate.no_solar_forecast",
   horizon_cut_by_forecast: "house.estimate.horizon_cut_by_forecast",
+  capacity_from_ah: "house.estimate.capacity_from_ah",
+  rated_from_current: "house.estimate.rated_from_current",
+  capacity_learned: "house.estimate.capacity_learned",
+  rated_learned: "house.estimate.rated_learned",
 };
 
 function sourcesBlock(doc: Document, language: Language, answer: HouseAnswer, words: EntityWords | undefined): HTMLElement {
