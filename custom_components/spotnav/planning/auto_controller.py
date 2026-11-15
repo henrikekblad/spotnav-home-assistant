@@ -1350,6 +1350,10 @@ class AutoPlannerController:
         self._price_revision = None if source is None else source.plan_revision
         self._lapse_target_stop(settings)
         snapshot = await self._compute(settings, attempt)
+        if (self._shutdown or attempt != self._attempt) and self._snapshot is not None:
+            # A newer calculation (or the shutdown) began while this one planned in the executor: its answer is the
+            # one that counts, and this one is dropped.
+            return self._snapshot
         await self._apply(settings, snapshot, attempt)
         self._arm_watch()
         return self._republish_execution(snapshot)
@@ -1549,7 +1553,7 @@ class AutoPlannerController:
         )
         wait_facts: dict[str, Any] = {}
         try:
-            result = calculate_plan(plan_request)
+            result = await self._plan_in_executor(plan_request)
             if result.reason == "insufficient_price_horizon":
                 waited = None
                 if plan_request.departure is not None:
@@ -1557,7 +1561,7 @@ class AutoPlannerController:
                         plan_request, result, entry, calculated_at, preview=preview
                     )
                 if waited is None:
-                    waited = self._plan_while_prices_are_missing(
+                    waited = await self._plan_while_prices_are_missing(
                         plan_request, result, entry, calculated_at, preview=preview
                     )
                 if waited is not None:
@@ -1616,6 +1620,10 @@ class AutoPlannerController:
             return failed
         return snapshot
 
+    async def _plan_in_executor(self, request: PlanRequest) -> PlanResult:
+        """`calculate_plan` in the executor: a search with per-hour caps can take a noticeable part of a second."""
+        return await self._hass.async_add_executor_job(calculate_plan, request)
+
     def _stops_at_need(
         self, settings: AutoSettings, resolved: _EnergyResolution, result: PlanResult, need_kwh: float
     ) -> bool:
@@ -1635,7 +1643,7 @@ class AutoPlannerController:
             and abs(result.requested_kwh - need_kwh) <= price_wait.EPSILON_KWH
         )
 
-    def _plan_while_prices_are_missing(
+    async def _plan_while_prices_are_missing(
         self,
         request: PlanRequest,
         refusal: PlanResult,
@@ -1697,7 +1705,7 @@ class AutoPlannerController:
         if decision.action == "wait":
             return (refusal, facts, ("waiting_for_publication", "publication_pending"))
         if decision.action == "buy_now":
-            bought = calculate_plan(
+            bought = await self._plan_in_executor(
                 replace(request, requested_kwh=decision.must_buy_kwh, window_end=decision.window_end)
             )
             if bought.has_plan:
@@ -1738,13 +1746,13 @@ class AutoPlannerController:
         gap = price_gap(request)
         if gap is None:
             return None
-        known = calculate_plan(replace(request, window_end=gap.missing_from))
+        known = await self._plan_in_executor(replace(request, window_end=gap.missing_from))
         if not known.has_plan:
             return None
         profile = await self._manager.async_profile(request.area_id)
         decision = history_wait.evaluate(request, gap, known, profile)
         if request.departure_date is None:
-            return self._daily_by_history(request, refusal, entry, calculated_at, known, decision, preview=preview)
+            return await self._daily_by_history(request, refusal, entry, calculated_at, known, decision, preview=preview)
         facts: dict[str, Any] = {"history": decision, "wait_rule": "history"}
         if decision.outcome != "wait":
             return (known, facts, None)
@@ -1777,7 +1785,7 @@ class AutoPlannerController:
         )
         if waited.action == "wait":
             return (refusal, facts, ("waiting_for_publication", "waiting_for_history"))
-        bought = calculate_plan(
+        bought = await self._plan_in_executor(
             replace(request, requested_kwh=waited.must_buy_kwh, window_end=waited.window_end)
         )
         if bought.has_plan:
@@ -1785,7 +1793,7 @@ class AutoPlannerController:
         # The cheapest published slots could not hold even the part that cannot wait: install the whole plan.
         return (known, {"history": history_wait.unsafe(decision), "wait_rule": "history"}, None)
 
-    def _daily_by_history(
+    async def _daily_by_history(
         self,
         request: PlanRequest,
         refusal: PlanResult,
@@ -1807,7 +1815,7 @@ class AutoPlannerController:
             return (known, {"history": decision, "wait_rule": "history"}, None)
         if decision.outcome != "wait":
             return None
-        implicit = self._plan_while_prices_are_missing(request, refusal, entry, calculated_at, preview=preview)
+        implicit = await self._plan_while_prices_are_missing(request, refusal, entry, calculated_at, preview=preview)
         if implicit is None:
             return None
         result, facts, early = implicit
