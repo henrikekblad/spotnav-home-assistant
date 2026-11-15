@@ -103,8 +103,9 @@ the setting you write: some firmware ignores it in some modes.
 ## Forecasts for other energy tools
 
 SpotNav shows its forecasts in the shape energy optimisers such as HAEO and EMHASS read, and offers the
-corrected solar forecast to the Energy dashboard. Nothing here is a setting and nothing here is planned
-on: it is a view of figures SpotNav already makes.
+corrected solar forecast to the Energy dashboard. Nothing here is a setting: it is a view of figures SpotNav already
+makes. The house forecast and the corrected sun do drive SpotNav's own plans; publishing them here changes nothing in
+those.
 
 | Where | State | Attribute `forecast` (`[{time, value}]`, never recorded) |
 |---|---|---|
@@ -172,9 +173,9 @@ shows the same figure (`curtail`).
   Its exported kWh at a negative price are still counted, apart, so you can see what it costs.
 * If you or the app change the export limit while SpotNav holds it at 0 kW, SpotNav leaves your value alone
   and does not write it again.
-* It works beside SpotNav's own battery control: a plant in Remote EMS because SpotNav runs the battery is
-  still SpotNav's to curtail (Remote EMS of another app's is not), and the export limit stays at 0 kW when
-  SpotNav hands the battery back.
+* Beside SpotNav's own battery control, which is for later (today SpotNav runs no battery): a plant in Remote EMS
+  because SpotNav runs the battery would still be SpotNav's to curtail (Remote EMS of another app's is not), and the
+  export limit would stay at 0 kW when SpotNav hands the battery back.
 * If the site keeps exporting for a few minutes with the limit at 0 kW, the inverter is not obeying it:
   SpotNav would put the value it found back and stop trying.
 
