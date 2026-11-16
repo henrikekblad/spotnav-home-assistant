@@ -25,6 +25,7 @@ import type { EntityRequest, VehicleSocRequest } from "./entity-config";
 import type { SiteSettingsRequest } from "./site-settings";
 import type { GridTariffBody } from "./grid-tariff";
 import { SUGGEST_IMPORT_TARGET_API_VERSION } from "./target-suggestion";
+import { HEAT_API_VERSION } from "./heat-model";
 import { HOUSE_API_VERSION } from "./house-model";
 
 export const UNSUPPORTED_API_VERSION = "spotnav_unsupported_api_version";
@@ -666,5 +667,37 @@ export async function getHouse(hass: HomeAssistantLike, target: { site: string }
     ...("site" in target ? { site_id: target.site } : { charger_id: target.charger }),
     // A past local day (`YYYY-MM-DD`); left out for today, so an older backend is asked as before.
     ...(date === null ? {} : { date }),
+  });
+}
+
+/**
+ * The heat card's view of a site (`spotnav/get_heat`), by the site's id or a charger's in it; `unknown` until
+ * `decodeHeat()` decodes it. Read-only; any signed-in user may read it.
+ */
+export async function getHeat(hass: HomeAssistantLike, target: { site: string } | { charger: string }): Promise<unknown> {
+  return await call<unknown>(hass, {
+    type: "spotnav/get_heat",
+    api_version: HEAT_API_VERSION,
+    ...("site" in target ? { site_id: target.site } : { charger_id: target.charger }),
+  });
+}
+
+/**
+ * Change the site's heat settings (`spotnav/update_heat`): `changes` and the values last seen for the same keys in
+ * `expected` (a compare-and-set); `unknown` until `decodeHeatWrite()` decodes it. Shadow only: nothing is written to
+ * a heating device.
+ */
+export async function updateHeat(
+  hass: HomeAssistantLike,
+  target: { site: string } | { charger: string },
+  changes: Record<string, unknown>,
+  expected: Record<string, unknown>,
+): Promise<unknown> {
+  return await call<unknown>(hass, {
+    type: "spotnav/update_heat",
+    api_version: HEAT_API_VERSION,
+    ...("site" in target ? { site_id: target.site } : { charger_id: target.charger }),
+    changes,
+    expected,
   });
 }
