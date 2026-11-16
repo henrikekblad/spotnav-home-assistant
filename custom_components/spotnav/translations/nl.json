@@ -968,10 +968,6 @@
       "title": "Twee SpotNav-laadpalen zijn dezelfde laadpaal",
       "description": "**{charger}** en **{other}** zijn dezelfde fysieke laadpaal: ze delen een apparaat, een gemeten stroom, een OCPP-connector of een Easee-apparaat. Twee SpotNav-laadpalen op één laadpaal sturen tegenstrijdige commando's. Verwijder er één: Instellingen → Apparaten & diensten → SpotNav → het menu van het item → Verwijderen. SpotNav verwijdert er nooit zelf een."
     },
-    "site_without_chargers": {
-      "title": "Voeg een laadpaal toe aan de locatie",
-      "description": "De locatie **{site}** heeft nog geen laadpaal. Voeg een laadpaal toe: Instellingen → Apparaten & diensten → SpotNav → Item toevoegen → Laadpaal; je krijgt dan de vraag of hij aan deze locatie moet worden toegevoegd."
-    },
     "core_decision_failed": {
       "title": "De laadbeslissingen van een laadpaal mislukten",
       "description": "SpotNav kon het afgelopen etmaal meerdere keren geen laadbeslissing nemen voor **{charger}**, dus op die momenten startte of stopte het niets automatisch en besliste het opnieuw bij de volgende keer. Wat je zelf start of stopt, werkt nog steeds, en load balancing beschermt nog steeds de zekering. Om te helpen het op te lossen: download de debuginfo (het tandwiel op de SpotNav-kaart → Debuginfo downloaden) en voeg die toe aan een issue op GitHub. Deze melding verdwijnt na een etmaal zonder fouten."

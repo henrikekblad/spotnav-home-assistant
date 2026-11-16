@@ -23,6 +23,7 @@ from homeassistant.util import dt as dt_util
 
 from .api.dashboard import async_setup_dashboard_api
 from .api.blueprints import async_setup_blueprints_api
+from .api.site_view import async_setup_site_view_api
 from .api.debug import async_setup_debug_api
 from .blueprint_install import async_install_blueprints
 from .api.entity_config import async_setup_entity_config_api
@@ -213,6 +214,7 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     async_setup_camera_api(hass)
     async_setup_debug_api(hass)
     async_setup_blueprints_api(hass)
+    async_setup_site_view_api(hass)
     # Static route for the bundled card asset, versioned by the manifest.
     await async_setup_card_asset(hass)
     async_register_pairing(hass)

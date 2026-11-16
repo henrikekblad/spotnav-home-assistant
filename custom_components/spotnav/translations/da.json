@@ -968,10 +968,6 @@
       "title": "To SpotNav-ladere er den samme lader",
       "description": "**{charger}** og **{other}** er den samme fysiske lader: de deler en enhed, en målt strøm, et OCPP-stik eller en Easee-enhed. To SpotNav-ladere på én lader sender modstridende kommandoer. Fjern en af dem: Indstillinger → Enheder og tjenester → SpotNav → postens menu → Slet. SpotNav fjerner aldrig en for dig."
     },
-    "site_without_chargers": {
-      "title": "Tilføj en lader til anlægget",
-      "description": "Anlægget **{site}** har endnu ingen lader. Tilføj en lader: Indstillinger → Enheder og tjenester → SpotNav → Tilføj post → Lader; den tilbyder at blive en del af dette anlæg."
-    },
     "core_decision_failed": {
       "title": "En laders ladebeslutninger mislykkedes",
       "description": "SpotNav kunne ikke træffe sin ladebeslutning for **{charger}** flere gange det seneste døgn, så på de tidspunkter startede eller stoppede den intet automatisk og besluttede igen ved det næste. Det, du selv starter eller stopper, virker stadig, og lastbalanceringen beskytter stadig sikringen. For at hjælpe med at rette fejlen: download fejlsøgningsinfo (tandhjulet på SpotNav-kortet → Download fejlsøgningsinfo) og vedhæft den til et issue på GitHub. Beskeden forsvinder efter et døgn uden fejl."

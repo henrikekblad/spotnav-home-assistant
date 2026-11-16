@@ -27,6 +27,7 @@ import type { GridTariffBody } from "./grid-tariff";
 import { SUGGEST_IMPORT_TARGET_API_VERSION } from "./target-suggestion";
 import { HEAT_API_VERSION } from "./heat-model";
 import { HOUSE_API_VERSION } from "./house-model";
+import { BATTERY_CONTROL_API_VERSION, SITE_VIEW_API_VERSION } from "./site-model";
 
 export const UNSUPPORTED_API_VERSION = "spotnav_unsupported_api_version";
 
@@ -699,5 +700,64 @@ export async function updateHeat(
     ...("site" in target ? { site_id: target.site } : { charger_id: target.charger }),
     changes,
     expected,
+  });
+}
+
+/** The shared settings popover's target: a site by its own id, or the site of a charger in it. */
+export type SiteTarget = { site: string } | { charger: string };
+
+function siteKey(target: SiteTarget): Record<string, string> {
+  return "site" in target ? { site_id: target.site } : { charger_id: target.charger };
+}
+
+/** Every loaded site (`spotnav/list_sites`): `unknown` until `decodeSiteList()` decodes it. */
+export async function listSites(hass: HomeAssistantLike): Promise<unknown> {
+  return await call<unknown>(hass, { type: "spotnav/list_sites", api_version: SITE_VIEW_API_VERSION });
+}
+
+/** The popover's site block (`spotnav/get_site_settings_view`): `unknown` until `decodeSiteView()` decodes it. */
+export async function getSiteSettingsView(hass: HomeAssistantLike, target: SiteTarget): Promise<unknown> {
+  return await call<unknown>(hass, {
+    type: "spotnav/get_site_settings_view",
+    api_version: SITE_VIEW_API_VERSION,
+    ...siteKey(target),
+  });
+}
+
+/**
+ * The site's battery control status (`spotnav/battery_control`), after writing `changes` when given (administrators
+ * only); `unknown` until `decodeBatteryControl()` decodes it. The changes are SpotNav's own settings for the site.
+ */
+export async function batteryControl(
+  hass: HomeAssistantLike,
+  target: SiteTarget,
+  changes: Record<string, boolean> | null = null,
+): Promise<unknown> {
+  return await call<unknown>(hass, {
+    type: "spotnav/battery_control",
+    api_version: BATTERY_CONTROL_API_VERSION,
+    ...siteKey(target),
+    ...(changes === null ? {} : { changes }),
+  });
+}
+
+/** A site's entity choices by the site's own id (the scope "site" alone); same envelope as `getEntityConfig`. */
+export async function getSiteEntityConfig(hass: HomeAssistantLike, siteId: string): Promise<unknown> {
+  return await call<unknown>(hass, {
+    type: "spotnav/get_entity_config",
+    api_version: ENTITY_CONFIG_API_VERSION,
+    site_id: siteId,
+  });
+}
+
+/** Change a site's entity choices by the site's own id; same envelope as `updateEntityConfig`. */
+export async function updateSiteEntityConfig(hass: HomeAssistantLike, siteId: string, request: EntityRequest): Promise<unknown> {
+  return await call<unknown>(hass, {
+    type: "spotnav/update_entity_config",
+    api_version: ENTITY_CONFIG_API_VERSION,
+    site_id: siteId,
+    scope: "site",
+    expected: request.expected,
+    changes: request.changes,
   });
 }

@@ -2,7 +2,7 @@
 
 A second card in the same bundle as the charging card, about the whole house: its load, the sun and the home battery.
 It is a **preview in shadow**: it shows what SpotNav forecasts and what its battery plan would do, and it never writes to
-anything. The charging card stays about the car.
+anything. The charging card stays about the car; the house card is where a home without a charger starts.
 
 ## Add it
 
@@ -14,8 +14,23 @@ site: <the site's entry id>
 ```
 
 Use `charger: <a charger's entry id>` instead and the card finds that charger's site (`site` wins if both are given).
-The card is also in the card picker as "SpotNav house (preview)". It reads one read-only answer from SpotNav every five
-minutes.
+The card is also in the card picker as "SpotNav house (preview)", set to the first charger's site, else the first site.
+It reads one read-only answer from SpotNav every five minutes.
+
+## Settings
+
+An administrator sees a gear in the card's header. It opens the **settings popover**, the same one the heat card's gear
+and the charging card's **Card settings** share, for the card's site. Its sections follow what the site has:
+
+* **Get started**: what is left for the site: add a charger (answer **Not needed** for a home without one), an
+  electricity price, the grid meter's sign, a solar forecast, the home battery, heating.
+* **Electricity price**: the price area; it is changed on the electricity price's entry in Home Assistant.
+* **The site**: main fuse, import target and the meters.
+* **Home battery**, when SpotNav finds one: the battery control switch, what is missing, the check and allowing sales
+  ([home batteries](home-battery.md#spotnavs-own-battery-control-off-by-default-in-testing)).
+* **Heating**, always: one line "Nothing found" until a heat pump, a heat meter or a thermostat is found; tap it to add a
+  water heater on a relay. Otherwise the [heat settings](heat-pumps.md) in full.
+* **Support**: download the debug info.
 
 ## What you see
 

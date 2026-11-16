@@ -1,0 +1,38 @@
+{
+  "api_version": 1,
+  "ok": true,
+  "error": null,
+  "status": {
+    "options": {
+      "battery_control_enabled": true,
+      "battery_control_shadow_only": false,
+      "battery_control_ai_takeover_ack": false,
+      "battery_control_allow_sell": false,
+      "battery_control_import_limit_acts": false
+    },
+    "state": "on",
+    "line": "watching:ai_mode",
+    "key": "SIGEN-FW 2.1 | sigen 1.4.0",
+    "report": {
+      "key": "SIGEN-FW 2.1 | sigen 1.4.0",
+      "brand": "sigenergy",
+      "firmware": "SIGEN-FW 2.1",
+      "first_run_at": "2026-11-12T18:02:00+01:00",
+      "last_run_at": "2026-11-12T18:02:00+01:00",
+      "updated_at": "2026-11-12T18:44:00+01:00",
+      "attempts": 1,
+      "modes": {
+        "hold": {"outcome": "obeyed"},
+        "charge": {"outcome": "obeyed"},
+        "discharge_house": {"outcome": "not_judgeable:nearly_full"},
+        "normal": {"outcome": "restored"}
+      }
+    },
+    "allowed_actions": ["grid_charge", "hold"],
+    "verification": null,
+    "waiting_for": null,
+    "needs": ["ai_takeover_ack"],
+    "notes": [],
+    "trial": null
+  }
+}

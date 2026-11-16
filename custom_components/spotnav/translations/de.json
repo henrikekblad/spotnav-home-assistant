@@ -968,10 +968,6 @@
       "title": "Zwei SpotNav-Ladestationen sind dieselbe Ladestation",
       "description": "**{charger}** und **{other}** sind dieselbe physische Ladestation: Sie teilen sich ein Gerät, einen gemessenen Strom, einen OCPP-Anschluss oder ein Easee-Gerät. Zwei SpotNav-Ladestationen an einer Ladestation senden ihr widersprüchliche Befehle. Entferne eine davon: Einstellungen → Geräte & Dienste → SpotNav → Menü des Eintrags → Löschen. SpotNav entfernt nie selbst eine."
     },
-    "site_without_chargers": {
-      "title": "Eine Ladestation zum Standort hinzufügen",
-      "description": "Der Standort **{site}** hat noch keine Ladestation. Ladestation hinzufügen: Einstellungen → Geräte & Dienste → SpotNav → Eintrag hinzufügen → Ladestation; sie bietet dann an, diesem Standort beizutreten."
-    },
     "core_decision_failed": {
       "title": "Ladeentscheidungen einer Ladestation sind fehlgeschlagen",
       "description": "SpotNav konnte für **{charger}** am letzten Tag mehrmals keine Ladeentscheidung treffen; in diesen Momenten hat es daher nichts automatisch gestartet oder gestoppt und beim nächsten Mal neu entschieden. Was du selbst startest oder stoppst, funktioniert weiterhin, und das Lastmanagement schützt weiterhin die Sicherung. Um beim Beheben zu helfen: Lade die Debug-Infos herunter (Zahnrad auf der SpotNav-Karte → Debug-Infos herunterladen) und hänge sie an ein Issue auf GitHub an. Diese Meldung verschwindet nach einem Tag ohne Fehler."

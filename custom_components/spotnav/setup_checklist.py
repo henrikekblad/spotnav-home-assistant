@@ -30,7 +30,14 @@ browser and for every charger.
 * `app`: the SpotNav app has never been used with this installation (no charger's webhook has had a request
   from it, and no charger holds its push registration). Dismissible.
 
-Prices are not a row: the price provider notice (`pricing/providers/notices.py`) already asks for what an
+A site's own rows (`capture_site_setup`, the shared settings popover's "Get started", with or without a charger):
+`charger` (the site has no charger; dismissible: a home with a battery or heat alone does not need one), `price`
+(no electricity price applies to the site; not dismissible), the grid sign rows, `solar_forecast` and
+`demand_grid_power` as above, `battery` (a battery is found but SpotNav's battery control is off; dismissible) and
+`heat` (a heat pump is found but no heat settings are made; dismissible). The charger rows and `app` are not
+among them, and the dashboard's charger rows stay as they are.
+
+Prices are not a charger row: the price provider notice (`pricing/providers/notices.py`) already asks for what an
 area without a source of its own needs.
 """
 
@@ -42,7 +49,18 @@ from typing import Any, Final
 from homeassistant.core import HomeAssistant
 from homeassistant.util import dt as dt_util
 
-from .const import CONF_GRID_POWER_INVERTED, CONF_SITE_CURRENT_SIGNED, DOMAIN
+from homeassistant.config_entries import ConfigEntry
+
+from .const import (
+    CONF_CHARGER_ENTRY_IDS,
+    CONF_GRID_POWER_INVERTED,
+    CONF_GRID_POWER_SOURCE,
+    CONF_HEAT_METER_ENTITY,
+    CONF_MEASUREMENT_MODE,
+    CONF_SITE_CURRENT_SIGNED,
+    CONF_SOLAR_FORECAST_ENTRIES,
+    DOMAIN,
+)
 from .planning.auto_settings import DRIVER_TARGET_SOC, AutoSettings
 from .runtime import charger_data, domain_data
 from .site.grid_sign import KIND_CURRENT, KIND_POWER
@@ -57,6 +75,10 @@ SETUP_GRID_CURRENT_SIGN: Final = "grid_current_sign"
 SETUP_PHASE_SWITCHING: Final = "phase_switching"
 SETUP_PHONE: Final = "phone"
 SETUP_APP: Final = "app"
+SETUP_CHARGER: Final = "charger"
+SETUP_PRICE: Final = "price"
+SETUP_BATTERY: Final = "battery"
+SETUP_HEAT: Final = "heat"
 #: Every row, in the order the card lists them.
 SETUP_ITEMS: Final = (
     SETUP_VEHICLE,
@@ -70,9 +92,30 @@ SETUP_ITEMS: Final = (
     SETUP_PHONE,
     SETUP_APP,
 )
+#: A site's own rows, in the order the popover lists them.
+SITE_SETUP_ITEMS: Final = (
+    SETUP_CHARGER,
+    SETUP_PRICE,
+    SETUP_GRID_POWER_SIGN,
+    SETUP_GRID_CURRENT_SIGN,
+    SETUP_SOLAR_FORECAST,
+    SETUP_DEMAND_GRID_POWER,
+    SETUP_BATTERY,
+    SETUP_HEAT,
+)
 #: The rows a person may answer "Not needed" to.
 DISMISSIBLE_ITEMS: Final = frozenset(
-    {SETUP_VEHICLE, SETUP_SITE, SETUP_SOLAR_FORECAST, SETUP_PHASE_SWITCHING, SETUP_PHONE, SETUP_APP}
+    {
+        SETUP_VEHICLE,
+        SETUP_SITE,
+        SETUP_SOLAR_FORECAST,
+        SETUP_PHASE_SWITCHING,
+        SETUP_PHONE,
+        SETUP_APP,
+        SETUP_CHARGER,
+        SETUP_BATTERY,
+        SETUP_HEAT,
+    }
 )
 
 #: The decision store's domain for dismissed rows, and for the fact that the app has been used.
@@ -202,6 +245,61 @@ def capture_setup(
     if not app_used(hass):
         left.append(SETUP_APP)
     writes = {row.id: row for row in grid_sign}
+    return tuple(
+        SetupItem(
+            item,
+            item in DISMISSIBLE_ITEMS,
+            writes[item].field if item in writes else None,
+            writes[item].value if item in writes else None,
+        )
+        for item in left
+        if item not in DISMISSIBLE_ITEMS or not _dismissed(hass, item)
+    )
+
+
+def capture_site_setup(hass: HomeAssistant, site: ConfigEntry) -> tuple[SetupItem, ...]:
+    """The rows still left for a site (see the module), in `SITE_SETUP_ITEMS` order, dismissed rows left out."""
+    # Imported here: these modules import the API layer, which imports this one.
+    from .api.entity_fields import stored_import_target_kw  # noqa: PLC0415
+    from .api.heat import stored_config  # noqa: PLC0415
+    from .battery.gate import Options  # noqa: PLC0415
+    from .heat.config import PATH_NONE  # noqa: PLC0415
+    from .heat.detect import read_heat_pumps  # noqa: PLC0415
+    from .pricing.price_source import site_price_source  # noqa: PLC0415
+    from .runtime import site_controller_for  # noqa: PLC0415
+    from .site.solar_capability import solar_capability  # noqa: PLC0415
+
+    data = site.data
+    controller = site_controller_for(hass, site.entry_id)
+    left: list[str] = []
+    if not data.get(CONF_CHARGER_ENTRY_IDS):
+        left.append(SETUP_CHARGER)
+    source = site_price_source(hass, site.entry_id)
+    if source is None:
+        left.append(SETUP_PRICE)
+    signs = grid_sign_rows(controller)
+    left += [row.id for row in signs]
+    capability = solar_capability(data.get(CONF_MEASUREMENT_MODE), data.get(CONF_GRID_POWER_SOURCE))
+    if capability.capable and not data.get(CONF_SOLAR_FORECAST_ENTRIES):
+        left.append(SETUP_SOLAR_FORECAST)
+    tariff = None if source is None else source.overrides.grid_tariff
+    if not capability.capable and (
+        (tariff is not None and bool(tariff.demand)) or stored_import_target_kw(data) is not None
+    ):
+        left.append(SETUP_DEMAND_GRID_POWER)
+    battery = controller is not None and bool(controller.battery_shadow.facts.battery_entity_id)
+    if battery and not Options.from_config(data).enabled:
+        left.append(SETUP_BATTERY)
+    heat = stored_config(site)
+    if (
+        heat.control_path == PATH_NONE
+        and not heat.indoor_sensors
+        and not heat.zones
+        and not data.get(CONF_HEAT_METER_ENTITY)
+        and read_heat_pumps(hass)
+    ):
+        left.append(SETUP_HEAT)
+    writes = {row.id: row for row in signs}
     return tuple(
         SetupItem(
             item,

@@ -1,0 +1,14 @@
+{
+  "api_version": 1,
+  "site_id": "site_villa",
+  "name": "Villan",
+  "charger_ids": [],
+  "writable": true,
+  "price": {"entry_id": "price_se4", "title": "Elpris SE4", "area_id": "SE4", "area_name": "Sverige SE4"},
+  "battery": {"found": true},
+  "setup": {"items": [
+    {"id": "charger", "dismissible": true},
+    {"id": "grid_power_sign", "dismissible": false, "field": "grid_power_inverted", "value": false},
+    {"id": "battery", "dismissible": true}
+  ]}
+}

@@ -268,8 +268,9 @@ three months back, where they hold the site's grid power.
 
 The gear icon opens **Card settings**, built fresh each time you open it. The plan and the strategy
 have their own cells on the card; everything else is here, in sections headed by what they are about
-(**Electricity price**, **Car**, **Charger · …**, **Site · …**, **Solar**, **Notifications**, **Display**,
-**Support**). Each value is one row; an administrator taps a value to open its own editor. **Display**
+(**Electricity price**, **Car**, **Charger · …**, **Site · …**, **Solar**, **Home battery** (when SpotNav finds one),
+**Heating**, **Notifications**, **Display**, **Support**). **Home battery** and **Heating** are the same sections as in
+the house and heat cards' settings (see [the house card](house-card.md#settings)). Each value is one row; an administrator taps a value to open its own editor. **Display**
 belongs to this device, and anyone can change it. A user who is not an administrator is shown only the
 sections holding something they may change (today **Display**), and no gear icon when there are none.
 

@@ -5,7 +5,7 @@
 
 export const HEAT_API_VERSION = 1;
 
-type Spec =
+export type Spec =
   | "number"
   | "string"
   | "boolean"
@@ -14,11 +14,12 @@ type Spec =
   | { array: Spec }
   | { object: Record<string, Spec> };
 
-const N = (spec: Spec): Spec => ({ nullable: spec });
-const A = (spec: Spec): Spec => ({ array: spec });
-const O = (fields: Record<string, Spec>): Spec => ({ object: fields });
+export const N = (spec: Spec): Spec => ({ nullable: spec });
+export const A = (spec: Spec): Spec => ({ array: spec });
+export const O = (fields: Record<string, Spec>): Spec => ({ object: fields });
 
-function fits(value: unknown, spec: Spec): boolean {
+/** Whether `value` has exactly the shape `spec` names (every object exact-key). */
+export function fits(value: unknown, spec: Spec): boolean {
   if (spec === "any") {
     return true;
   }

@@ -2956,6 +2956,7 @@ export class SpotnavCard extends HTMLElement {
         },
         onCancelMarket: () => this.cancelMarket(),
         hass: () => this.hassObject,
+        siteTarget: () => (this.config === null || this.config.charger === "" ? null : { charger: this.config.charger }),
         onOpenHistory: () => {
           void this.loadHistory();
         },

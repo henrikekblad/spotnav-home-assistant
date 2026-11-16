@@ -968,10 +968,6 @@
       "title": "Two SpotNav chargers are the same charger",
       "description": "**{charger}** and **{other}** are the same physical charger: they share a device, a measured current, an OCPP connector or an Easee device. Two SpotNav chargers on one charger send it conflicting commands. Remove one of them: Settings → Devices & services → SpotNav → the entry's menu → Delete. SpotNav never removes one for you."
     },
-    "site_without_chargers": {
-      "title": "Add a charger to the site",
-      "description": "The site **{site}** has no charger yet. Add a charger: Settings → Devices & services → SpotNav → Add entry → Charger; it will offer to join this site."
-    },
     "core_decision_failed": {
       "title": "A charger's charging decisions failed",
       "description": "SpotNav could not take its charging decision for **{charger}** several times in the last day, so at those moments it started or stopped nothing automatically and decided again at the next one. What you start or stop yourself still works, and load balancing still protects the fuse. To help fix it, download the debug info (the gear icon on the SpotNav card → Download debug info) and attach it to an issue on GitHub. This message goes away after a day without failures."

@@ -66,6 +66,9 @@ reports on how they work are welcome.
 
 ![The Add card picker with the SpotNav preview](docs/images/card-picker.png)
 
+**No charger?** A home with only a battery or heating adds **A site** in step 2, then the **SpotNav house** card in
+step 4; its gear opens the site's settings, with Get started, the electricity price, the home battery and heating.
+
 Every dialog is described in [Set up SpotNav](docs/setup.md), including pairing the app.
 
 ## Documentation

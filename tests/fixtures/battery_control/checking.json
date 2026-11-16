@@ -1,0 +1,30 @@
+{
+  "api_version": 1,
+  "ok": true,
+  "error": null,
+  "status": {
+    "options": {
+      "battery_control_enabled": true,
+      "battery_control_shadow_only": false,
+      "battery_control_ai_takeover_ack": true,
+      "battery_control_allow_sell": true,
+      "battery_control_import_limit_acts": false
+    },
+    "state": "verifying",
+    "line": "checking",
+    "key": "SIGEN-FW 2.1 | sigen 1.4.0",
+    "report": null,
+    "allowed_actions": [],
+    "verification": {
+      "started_at": "2026-11-16T18:05:00+01:00",
+      "mode": "charge",
+      "stage": "settle",
+      "modes": ["hold", "charge", "discharge_house", "normal"],
+      "done": ["hold"]
+    },
+    "waiting_for": null,
+    "needs": ["control_disabled:remote_ems"],
+    "notes": [{"code": "ai_mode_back", "at": "2026-11-15T21:10:00+01:00"}],
+    "trial": null
+  }
+}

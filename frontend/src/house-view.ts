@@ -7,6 +7,7 @@ import { heatShown, houseChartHeight, houseShown, renderHouseChart, sunShown, ty
 import { MODES, type BatteryMode, type DayFlow, type HouseAnswer, type HouseHour } from "./house-model";
 import { renderFlow } from "./house-flow";
 import { hiddenIn, type HiddenSeries } from "./house-series";
+import { settingsGearButton } from "./heat-view";
 import { HOUSE_CLASSES as H } from "./house-styles";
 import { pluralForm, translate, type Language, type TranslationKey } from "./i18n";
 import { VISUAL_CLASSES as C } from "./visual-styles";
@@ -39,6 +40,8 @@ export interface HouseHandlers {
   onSelect(index: number | null): void;
   /** Step to another day (`null`: today). */
   onDay?(day: string | null): void;
+  /** An administrator's settings gear: the shared settings popover. Without it the card has no gear. */
+  onSettings?(): void;
 }
 
 export interface HouseRenderInput {
@@ -265,9 +268,12 @@ export function reviewLine(language: Language, answer: HouseAnswer): string {
 
 // ------------------------------------------------------------------------------------------------ parts
 
-function header(doc: Document, language: Language, answer: HouseAnswer | null): HTMLElement {
+function header(doc: Document, language: Language, answer: HouseAnswer | null, onSettings?: () => void): HTMLElement {
   const head = element(doc, "div", H.head);
   head.append(element(doc, "h2", H.title, translate(language, "house.title")), element(doc, "span", H.chip, translate(language, "house.preview")));
+  if (onSettings !== undefined) {
+    head.append(settingsGearButton(doc, translate(language, "popover.open"), onSettings));
+  }
   const wrap = element(doc, "div");
   wrap.append(head);
   const battery = answer?.battery ?? null;
@@ -1010,7 +1016,7 @@ export function houseBody(input: HouseRenderInput): HTMLElement {
   const card = element(doc, "div", `${C.card} ${H.card}`);
   card.dataset["state"] = state.kind;
   if (state.kind !== "ready") {
-    card.append(header(doc, language, null));
+    card.append(header(doc, language, null, input.handlers.onSettings?.bind(input.handlers)));
     const key: TranslationKey =
       state.kind === "unconfigured" ? "house.unconfigured" : state.kind === "loading" ? "house.loading" : state.sentenceKey;
     const line = element(doc, "p", C.muted, translate(language, key));
@@ -1025,7 +1031,7 @@ export function houseBody(input: HouseRenderInput): HTMLElement {
     return card;
   }
   const answer = state.answer;
-  card.append(header(doc, language, answer));
+  card.append(header(doc, language, answer, input.handlers.onSettings?.bind(input.handlers)));
   const days = dayBar(doc, language, answer, input.handlers);
   if (days !== null) {
     card.append(days);

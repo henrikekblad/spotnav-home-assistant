@@ -179,24 +179,30 @@ function nameOf(names: Map<string, string>, entityId: string | null, fallback: s
 
 // ------------------------------------------------------------------------------------------------ header
 
+/** The settings gear in a card's header (the heat and house cards): opens the shared settings popover. */
+export function settingsGearButton(doc: Document, label: string, onClick: () => void): HTMLButtonElement {
+  const button = element(doc, "button", X.settingsButton) as HTMLButtonElement;
+  button.type = "button";
+  button.dataset["action"] = "settings";
+  button.setAttribute("aria-label", label);
+  button.title = label;
+  const icon = svg(doc, "svg", { viewBox: "0 0 24 24", width: 20, height: 20, "aria-hidden": "true", focusable: "false" });
+  icon.append(
+    svg(doc, "path", {
+      d: "M19.4 13a7.5 7.5 0 0 0 0-2l2-1.6-2-3.4-2.4 1a7 7 0 0 0-1.7-1L15 3.5h-4l-.4 2.5a7 7 0 0 0-1.7 1l-2.4-1-2 3.4 2 1.6a7.5 7.5 0 0 0 0 2l-2 1.6 2 3.4 2.4-1a7 7 0 0 0 1.7 1l.4 2.5h4l.4-2.5a7 7 0 0 0 1.7-1l2.4 1 2-3.4zM12 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z",
+      fill: "currentColor",
+    }),
+  );
+  button.append(icon);
+  button.addEventListener("click", onClick);
+  return button;
+}
+
 function header(doc: Document, language: Language, answer: HeatAnswer | null, handlers: HeatHandlers | null): HTMLElement {
   const head = element(doc, "div", H.head);
   head.append(element(doc, "h2", H.title, translate(language, "heat.title")), element(doc, "span", H.chip, translate(language, "house.preview")));
   if (answer?.writable === true && handlers !== null) {
-    const button = element(doc, "button", X.settingsButton);
-    button.type = "button";
-    button.dataset["action"] = "settings";
-    button.setAttribute("aria-label", translate(language, "heat.settings.open"));
-    button.title = translate(language, "heat.settings.open");
-    const icon = svg(doc, "svg", { viewBox: "0 0 24 24", width: 20, height: 20, "aria-hidden": "true", focusable: "false" });
-    icon.append(
-      svg(doc, "path", {
-        d: "M19.4 13a7.5 7.5 0 0 0 0-2l2-1.6-2-3.4-2.4 1a7 7 0 0 0-1.7-1L15 3.5h-4l-.4 2.5a7 7 0 0 0-1.7 1l-2.4-1-2 3.4 2 1.6a7.5 7.5 0 0 0 0 2l-2 1.6 2 3.4 2.4-1a7 7 0 0 0 1.7 1l.4 2.5h4l.4-2.5a7 7 0 0 0 1.7-1l2.4 1 2-3.4zM12 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z",
-        fill: "currentColor",
-      }),
-    );
-    button.append(icon);
-    button.addEventListener("click", () => handlers.onSettings());
+    const button = settingsGearButton(doc, translate(language, "heat.settings.open"), () => handlers.onSettings());
     head.append(button);
   }
   return head;
@@ -574,7 +580,7 @@ export type HeatSettingKey =
 /** The "Heating" section of the settings dialog: one row per setting, each opening its editor (`onEdit`). */
 export function heatSettingsSection(doc: Document, language: Language, answer: HeatAnswer, onEdit: (key: HeatSettingKey) => void): HTMLElement {
   const section = element(doc, "section", `${C.settingsSection} ${X.section}`);
-  section.append(sectionHeading(doc, "site", translate(language, "heat.settings.title")));
+  section.append(sectionHeading(doc, "heat", translate(language, "heat.settings.title")));
   const intro = element(doc, "p", `${C.muted} ${H.note}`, translate(language, "heat.settings.intro"));
   section.append(intro);
   const config = answer.config;

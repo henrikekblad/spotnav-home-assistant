@@ -1,0 +1,155 @@
+// The shared settings popover's answers, decoded strictly as the heat card's are (`heat-model.ts`): the site block
+// (`spotnav/get_site_settings_view`, `spotnav/list_sites`, backend `api/site_view.py`) and the site's battery control
+// status (`spotnav/battery_control`, backend `api/battery_control.py`, codes in `docs/home-battery.md`). A missing,
+// mistyped or unknown key makes the answer unreadable. The verification report and the trial are passed through as
+// they are (the card reads only the report's mode outcomes, defensively).
+
+import { A, fits, N, O, type Spec } from "./heat-model";
+
+export const SITE_VIEW_API_VERSION = 1;
+export const BATTERY_CONTROL_API_VERSION = 1;
+
+export interface SiteListEntry {
+  site_id: string;
+  name: string;
+  charger_ids: string[];
+}
+
+export interface SiteSetupItem {
+  id: string;
+  dismissible: boolean;
+  field?: string;
+  value?: boolean;
+}
+
+export interface SiteView {
+  api_version: number;
+  site_id: string;
+  name: string;
+  charger_ids: string[];
+  writable: boolean;
+  price: { entry_id: string; title: string | null; area_id: string; area_name: string | null } | null;
+  battery: { found: boolean };
+  setup: { items: SiteSetupItem[] };
+}
+
+export interface BatteryOptions {
+  battery_control_enabled: boolean;
+  battery_control_shadow_only: boolean;
+  battery_control_ai_takeover_ack: boolean;
+  battery_control_allow_sell: boolean;
+  battery_control_import_limit_acts: boolean;
+}
+
+export interface BatteryStatus {
+  options: BatteryOptions;
+  state: string;
+  line: string;
+  key: string;
+  report: unknown;
+  allowed_actions: string[];
+  verification: { started_at: string; mode: string | null; stage: string; modes: string[]; done: string[] } | null;
+  waiting_for: string | null;
+  needs: string[];
+  notes: { code: string; at: string }[];
+  trial: unknown;
+}
+
+export interface BatteryAnswer {
+  api_version: number;
+  ok: boolean;
+  error: string | null;
+  status: BatteryStatus | null;
+}
+
+const SITE_LIST = O({ api_version: "number", sites: A(O({ site_id: "string", name: "string", charger_ids: A("string") })) });
+
+const PLAIN_ITEM = O({ id: "string", dismissible: "boolean" });
+const WRITING_ITEM = O({ id: "string", dismissible: "boolean", field: "string", value: "boolean" });
+
+const SITE_VIEW = O({
+  api_version: "number",
+  site_id: "string",
+  name: "string",
+  charger_ids: A("string"),
+  writable: "boolean",
+  price: N(O({ entry_id: "string", title: N("string"), area_id: "string", area_name: N("string") })),
+  battery: O({ found: "boolean" }),
+  setup: O({ items: A("any") }),
+});
+
+const OPTIONS = O({
+  battery_control_enabled: "boolean",
+  battery_control_shadow_only: "boolean",
+  battery_control_ai_takeover_ack: "boolean",
+  battery_control_allow_sell: "boolean",
+  battery_control_import_limit_acts: "boolean",
+});
+
+const STATUS: Spec = O({
+  options: OPTIONS,
+  state: "string",
+  line: "string",
+  key: "string",
+  report: "any",
+  allowed_actions: A("string"),
+  verification: N(O({ started_at: "string", mode: N("string"), stage: "string", modes: A("string"), done: A("string") })),
+  waiting_for: N("string"),
+  needs: A("string"),
+  notes: A(O({ code: "string", at: "string" })),
+  trial: "any",
+});
+
+const BATTERY = O({ api_version: "number", ok: "boolean", error: N("string"), status: N(STATUS) });
+
+export type Decoded<T> = { ok: true; value: T } | { ok: false; failure: "unsupported" | "malformed" };
+
+function versioned<T>(raw: unknown, version: number, spec: Spec): Decoded<T> {
+  if (typeof raw !== "object" || raw === null) {
+    return { ok: false, failure: "malformed" };
+  }
+  const found = (raw as Record<string, unknown>)["api_version"];
+  if (typeof found === "number" && found !== version) {
+    return { ok: false, failure: "unsupported" };
+  }
+  return fits(raw, spec) ? { ok: true, value: raw as T } : { ok: false, failure: "malformed" };
+}
+
+export function decodeSiteList(raw: unknown): Decoded<{ api_version: number; sites: SiteListEntry[] }> {
+  return versioned(raw, SITE_VIEW_API_VERSION, SITE_LIST);
+}
+
+export function decodeSiteView(raw: unknown): Decoded<SiteView> {
+  const decoded = versioned<SiteView>(raw, SITE_VIEW_API_VERSION, SITE_VIEW);
+  if (decoded.ok && !decoded.value.setup.items.every((item) => fits(item, PLAIN_ITEM) || fits(item, WRITING_ITEM))) {
+    return { ok: false, failure: "malformed" };
+  }
+  return decoded;
+}
+
+export function decodeBatteryControl(raw: unknown): Decoded<BatteryAnswer> {
+  const decoded = versioned<BatteryAnswer>(raw, BATTERY_CONTROL_API_VERSION, BATTERY);
+  if (decoded.ok && decoded.value.ok !== (decoded.value.error === null)) {
+    return { ok: false, failure: "malformed" };
+  }
+  return decoded;
+}
+
+/** Each mode's last outcome in the verification report (`{modes: {hold: {outcome}}}`), read defensively. */
+export function reportOutcomes(report: unknown): Record<string, string> {
+  if (typeof report !== "object" || report === null) {
+    return {};
+  }
+  const modes = (report as Record<string, unknown>)["modes"];
+  if (typeof modes !== "object" || modes === null) {
+    return {};
+  }
+  const found: Record<string, string> = {};
+  for (const [mode, row] of Object.entries(modes as Record<string, unknown>)) {
+    const outcome = typeof row === "object" && row !== null ? (row as Record<string, unknown>)["outcome"] : null;
+    if (typeof outcome === "string") {
+      found[mode] = outcome;
+    }
+  }
+  return found;
+}

@@ -194,13 +194,15 @@ export class SpotnavCardEditor extends HTMLElement {
     }
     const options = chargerOptions(this.list, this.config.charger);
     if (this.list !== null && options.length === 0) {
-      // The charger list is empty, so say how to add one (a site on its own has no card to configure).
+      // The charger list is empty: say how to add one, and that a home without a charger starts with the house card.
       const language = resolveLanguage(this.hassObject?.locale?.language ?? this.hassObject?.language);
       if (isLanguagePending(language)) {
         // English for now; the reader's own words once their file is in (one request per page).
         void loadLanguage(language).then(() => this.render());
       }
-      return status(`${translate(language, "state.noChargers")} ${translate(language, "state.addCharger")}`);
+      return status(
+        `${translate(language, "state.noChargers")} ${translate(language, "state.addCharger")} ${translate(language, "state.houseCardStart")}`,
+      );
     }
     if (this.list === null) {
       return status("Loading chargers\u2026");

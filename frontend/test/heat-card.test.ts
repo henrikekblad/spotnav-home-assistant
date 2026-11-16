@@ -14,6 +14,7 @@ import { TRANSLATIONS } from "../src/i18n/all";
 import { defineCard, HEAT_PICKER_ENTRY } from "../src/index";
 
 const FIXTURES = join(__dirname, "..", "..", "tests", "fixtures", "heat_card");
+const SITE_FIXTURES = join(__dirname, "..", "..", "tests", "fixtures");
 
 function read(name: string): Record<string, unknown> {
   return JSON.parse(readFileSync(join(FIXTURES, name), "utf8")) as Record<string, unknown>;
@@ -184,10 +185,17 @@ describe("the element", () => {
       language,
       locale: { language },
       states: {},
+      user: { is_admin: true },
       callWS: async (message: Record<string, unknown>): Promise<unknown> => {
         messages.push(message);
         if (message["type"] === "spotnav/get_heat") {
           return current;
+        }
+        if (message["type"] === "spotnav/get_site_settings_view") {
+          return JSON.parse(readFileSync(join(SITE_FIXTURES, "site_view", "villa.json"), "utf8"));
+        }
+        if (message["type"] === "spotnav/battery_control") {
+          return JSON.parse(readFileSync(join(SITE_FIXTURES, "battery_control", "needs_ack.json"), "utf8"));
         }
         if (message["type"] === "spotnav/update_heat") {
           const changes = message["changes"] as Record<string, unknown>;
@@ -245,6 +253,7 @@ describe("the element", () => {
   it("opens the settings, edits the indoor sensors and writes them", async () => {
     const { messages, root } = await mount();
     root.querySelector<HTMLButtonElement>("button[data-action='settings']")!.click();
+    await vi.advanceTimersByTimeAsync(0);
     root.querySelector<HTMLButtonElement>("button[data-edit='indoor']")!.click();
     const form = root.querySelector<HTMLFormElement>("form[data-value-editor='multi']")!;
     const boxes = [...form.querySelectorAll<HTMLInputElement>("input[type='checkbox']")];
@@ -256,13 +265,15 @@ describe("the element", () => {
     expect(write["changes"]).toEqual({
       indoor_sensors: ["sensor.inomhus_kok_temperatur", "sensor.ovanvaning_temperatur", "sensor.toalett_nv_temperatur", "sensor.garage_temperatur"],
     });
-    // Back on the section after the write.
+    // Back on the shared popover's heat section after the write, the other sections beside it.
     expect(root.querySelector("button[data-edit='indoor']")).not.toBeNull();
+    expect(root.querySelector("[data-popover='site'] [data-section='battery']")).not.toBeNull();
   });
 
   it("refuses an offset off the half degree before writing", async () => {
     const { messages, root } = await mount();
     root.querySelector<HTMLButtonElement>("button[data-action='settings']")!.click();
+    await vi.advanceTimersByTimeAsync(0);
     root.querySelector<HTMLButtonElement>("button[data-edit='zone:climate.ovanvaning']")!.click();
     const form = root.querySelector<HTMLFormElement>("form[data-value-editor='number']")!;
     const input = form.querySelector<HTMLInputElement>("input")!;

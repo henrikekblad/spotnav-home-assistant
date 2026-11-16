@@ -1,4 +1,5 @@
-"""A site with no charger says how to add one: in its setup step, in Repairs and on its own device page."""
+"""A site with no charger says how to add one in its setup step only: a home with only a battery or heating needs
+none, so there is no Repairs issue and no hint on its device page (the card's Get started offers adding one)."""
 
 from __future__ import annotations
 
@@ -41,25 +42,25 @@ async def test_the_site_step_says_how_to_add_a_charger_only_while_there_is_none(
     assert again["description_placeholders"]["charger_hint"] == ""
 
 
-async def test_a_site_without_a_charger_has_a_repair_and_a_hint_on_its_device(hass: HomeAssistant) -> None:
+async def test_a_site_without_a_charger_has_no_repair_and_no_hint(hass: HomeAssistant) -> None:
     site = await setup_site(hass, entry_id="site_empty", title="Home")
+    ir.async_create_issue(
+        hass, DOMAIN, f"site_without_chargers_{site.entry_id}", is_fixable=False, severity=ir.IssueSeverity.WARNING,
+        translation_key="site_without_chargers",
+    )
     await async_sync_resolution_repairs(hass)
-    issue = _issues(hass)[f"site_without_chargers_{site.entry_id}"]
-    assert (issue.translation_key, issue.is_fixable) == ("site_without_chargers", False)
-    assert issue.translation_placeholders == {"site": "Home"}
-
+    # An issue raised by an older version goes at the next sync.
+    assert [key for key in _issues(hass) if key.startswith("site_without_chargers")] == []
     state_id = er.async_get(hass).async_get_entity_id("sensor", DOMAIN, f"{site.entry_id}_site_state")
-    assert hass.states.get(state_id).attributes["next_step"] == HINT
+    assert "next_step" not in hass.states.get(state_id).attributes
 
 
-async def test_the_repair_and_the_hint_go_when_the_site_has_a_charger(hass: HomeAssistant) -> None:
+async def test_a_site_with_a_charger_has_no_repair_either(hass: HomeAssistant) -> None:
     charger = await setup_charger(hass, entry_id="entry_a")
     site = make_site_entry(hass, entry_id="site_full", charger_entry_ids=[charger.entry_id])
     assert await hass.config_entries.async_setup(site.entry_id)
     await hass.async_block_till_done()
     assert [key for key in _issues(hass) if key.startswith("site_without_chargers")] == []
-    state_id = er.async_get(hass).async_get_entity_id("sensor", DOMAIN, f"{site.entry_id}_site_state")
-    assert "next_step" not in hass.states.get(state_id).attributes
 
 
 async def test_the_confirm_step_says_how_to_add_a_charger_only_while_there_is_none(hass: HomeAssistant) -> None:

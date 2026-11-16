@@ -320,7 +320,8 @@ export interface EntityControl {
 }
 
 export interface EntityConfig {
-  chargerId: string;
+  /** `null` when the site was named by its own id (the shared settings popover): the site's fields alone. */
+  chargerId: string | null;
   fields: EntityField[];
   site: EntitySite | null;
   vehicles: VehicleSoc[];
@@ -844,7 +845,7 @@ function decodeConfig(raw: unknown): EntityConfig {
     };
   }
   return {
-    chargerId: text(source, "charger_id"),
+    chargerId: source["charger_id"] === null ? null : text(source, "charger_id"),
     fields: fields.map(decodeField),
     site,
     vehicles: vehicles.map(decodeVehicle),

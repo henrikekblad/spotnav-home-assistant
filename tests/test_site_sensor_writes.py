@@ -79,7 +79,7 @@ async def test_the_attributes_carry_no_age_and_no_raw_reading(hass: HomeAssistan
 
 
 def test_settings_and_fixed_facts_stay_out_of_the_recorder() -> None:
-    assert {"next_step", "membership_conflicts", "solar_priority"} <= SiteStateEntity._unrecorded_attributes
+    assert {"membership_conflicts", "solar_priority"} <= SiteStateEntity._unrecorded_attributes
     assert {"reason", "site_activity", "confidence"}.isdisjoint(SiteStateEntity._unrecorded_attributes)
     assert "charger_entry_id" in ChargerProposedCurrentEntity._unrecorded_attributes
     assert {"state", "reason"}.isdisjoint(ChargerProposedCurrentEntity._unrecorded_attributes)

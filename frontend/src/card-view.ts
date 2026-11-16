@@ -164,6 +164,9 @@ import {
   type SettingsFormValues,
 } from "./settings";
 import { CHART_DENSITY, VISUAL_CLASSES as C } from "./visual-styles";
+import type { SiteTarget } from "./api";
+import { SiteSections } from "./settings-popover";
+import type { HomeAssistantLike } from "./types";
 
 /** What the camera's editors ask the card for. */
 export type CameraPictureRequest =
@@ -292,6 +295,11 @@ export interface CardViewInput {
   onDialogsClosed?: () => void;
   /** The Home Assistant object the entity pickers need, read when an editor opens. */
   hass?: () => unknown;
+  /**
+   * The site the shared battery and heat sections read and write (`settings-popover.ts`), named by this card's
+   * charger; without it, or without a site, Settings has no such sections.
+   */
+  siteTarget?: () => SiteTarget | null;
   onSettingsOverviewOpened?: () => void;
   /**
    * The History button was pressed: the card reads the charge history and answers through
@@ -2703,6 +2711,24 @@ export function createCardView(input: CardViewInput): CardView {
         },
       },
       {
+        // The home battery and heat: the same sections as the house and heat cards' popover, read for the site.
+        key: "site-shared",
+        anyone: false,
+        append: (body) => {
+          if (siteSections === null || model.site === null) {
+            batterySlot = null;
+            heatSlot = null;
+            return;
+          }
+          batterySlot = element(doc, "div");
+          batterySlot.dataset["slot"] = "battery";
+          heatSlot = element(doc, "div");
+          heatSlot.dataset["slot"] = "heat";
+          body.append(batterySlot, heatSlot);
+          paintSiteSections();
+        },
+      },
+      {
         key: "notifications",
         anyone: false,
         append: (body) => {
@@ -2716,6 +2742,44 @@ export function createCardView(input: CardViewInput): CardView {
       { key: "display", anyone: true, append: (body) => body.append(displaySectionBody()) },
       { key: "support", anyone: false, append: (body) => body.append(supportSectionBody()) },
     ];
+  }
+
+  // The shared battery and heat sections (`settings-popover.ts`), read again each time Settings opens.
+  let batterySlot: HTMLElement | null = null;
+  let heatSlot: HTMLElement | null = null;
+  const siteSections: SiteSections | null =
+    input.siteTarget === undefined
+      ? null
+      : new SiteSections({
+          doc,
+          idPrefix,
+          hass: () => (input.hass?.() ?? null) as HomeAssistantLike | null,
+          target: () => input.siteTarget?.() ?? null,
+          language: () => model.language,
+          isAdmin: () => input.isAdmin,
+          openEditor: (title, build) => openValueEditor(title, build),
+          repaint: () => paintSiteSections(),
+        });
+
+  function paintSiteSections(): void {
+    if (siteSections === null) {
+      return;
+    }
+    batterySlot?.replaceChildren(...[siteSections.batteryNode()].filter((node): node is HTMLElement => node !== null));
+    if (siteSections.heat !== null || siteSections.heatFailed) {
+      heatSlot?.replaceChildren(siteSections.heatNode());
+    }
+  }
+
+  function loadSiteSections(): void {
+    if (siteSections === null || model.site === null || !input.isAdmin) {
+      return;
+    }
+    void siteSections.loadSite().then(() => {
+      if (!destroyed && settingsOverviewDialog.isOpen()) {
+        paintSiteSections();
+      }
+    });
   }
 
   /** Whether this reader may change anything in Settings: an administrator always, anyone else only an `anyone` section. */
@@ -4732,6 +4796,7 @@ export function createCardView(input: CardViewInput): CardView {
       row?.focus({ preventScroll: true });
       panel.scrollTop = place.scrollTop;
     }
+    loadSiteSections();
     input.onSettingsOverviewOpened?.();
   }
 

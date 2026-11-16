@@ -1,6 +1,6 @@
 """The home battery control's switch and status for the card (none shows them yet): `spotnav/battery_control`.
 
-`{api_version: 1, site_id}` answers the site's battery control status (`BatteryControl.status`): its options, the
+`{api_version: 1, site_id}` (or `charger_id`, which names the charger's site) answers the site's battery control status (`BatteryControl.status`): its options, the
 state and the one line under the switch as stable codes, the verification report for the plant's firmware, the
 actions it allows, the routine's progress, what the person still has to do (`needs`) and the notes. Any user may read.
 
@@ -18,12 +18,19 @@ from typing import Any, Final
 
 import voluptuous as vol
 from homeassistant.components import websocket_api
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 
 from ..battery import gate
-from ..const import CONF_ENTRY_TYPE, ENTRY_TYPE_SITE
 from ..runtime import site_controller_for
-from .common import ERROR_NOT_ADMIN, is_admin, send_unsupported_version
+from .common import (
+    ERROR_NOT_ADMIN,
+    is_admin,
+    lookup_charger,
+    lookup_site,
+    send_unsupported_version,
+    site_of_charger,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -36,11 +43,21 @@ def _answer(status: dict[str, Any] | None = None, error: str | None = None) -> d
     return {"api_version": BATTERY_CONTROL_API_VERSION, "ok": error is None, "error": error, "status": status}
 
 
+def _site_of(hass: HomeAssistant, msg: dict[str, Any]) -> ConfigEntry | None:
+    """The site the request names: `site_id`, else the site of `charger_id`."""
+    if "site_id" in msg:
+        entry, _code = lookup_site(hass, msg.get("site_id"), require_loaded=False)
+        return entry
+    charger, _code = lookup_charger(hass, msg.get("charger_id"), require_loaded=False)
+    return None if charger is None else site_of_charger(hass, charger.entry_id)
+
+
 @websocket_api.websocket_command(
     {
         vol.Required("type"): "spotnav/battery_control",
         vol.Optional("api_version"): object,
         vol.Optional("site_id"): object,
+        vol.Optional("charger_id"): object,
         vol.Optional("changes"): object,
     }
 )
@@ -53,11 +70,8 @@ async def websocket_battery_control(
     if isinstance(version, bool) or version != BATTERY_CONTROL_API_VERSION:
         send_unsupported_version(connection, msg, BATTERY_CONTROL_API_VERSION)
         return
-    site_id = msg.get("site_id")
-    entry = hass.config_entries.async_get_entry(site_id) if isinstance(site_id, str) else None
-    controller = None
-    if entry is not None and entry.data.get(CONF_ENTRY_TYPE) == ENTRY_TYPE_SITE:
-        controller = site_controller_for(hass, entry.entry_id)
+    entry = _site_of(hass, msg)
+    controller = None if entry is None else site_controller_for(hass, entry.entry_id)
     if controller is None:
         connection.send_result(msg["id"], _answer(error=ERROR_NO_SITE))
         return

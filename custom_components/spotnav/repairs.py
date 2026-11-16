@@ -33,13 +33,10 @@ from homeassistant.helpers.event import async_call_later
 from homeassistant.util import dt as dt_util
 
 from .const import (
-    CONF_CHARGER_ENTRY_IDS,
-    CONF_ENTRY_TYPE,
     DOMAIN,
-    ENTRY_TYPE_SITE,
     PRICE_SOURCE_MISSING_ISSUE,
 )
-from .vehicles.duplicate_chargers import charger_entries_except, duplicate_pairs
+from .vehicles.duplicate_chargers import duplicate_pairs
 from .vehicles.choices import (
     DISMISS_VEHICLE_CHOICE,
     entity_option,
@@ -75,7 +72,6 @@ _ISSUE_TRANSLATION_KEYS = {
 
 #: Issues about how entries are set up (translation keys under `issues`, issue-id prefixes).
 DUPLICATE_CHARGER_ISSUE = "duplicate_charger"
-SITE_WITHOUT_CHARGERS_ISSUE = "site_without_chargers"
 
 #: A charger whose charging decisions keep failing (translation key under `issues`, issue-id prefix): raised when
 #: `CORE_FAILURE_REPEATS` failures fall within `CORE_FAILURE_WINDOW`, deleted after that long without one.
@@ -121,8 +117,9 @@ def _setup_issue_fields(
     hass: HomeAssistant, exclude_entry_ids: Iterable[str] = ()
 ) -> dict[str, dict[str, Any]]:
     """The issues about how entries are set up, by issue id: two charger entries that are one physical
-    charger (named on both, nothing removed for the person) and a site none of whose members is a charger
-    (how to add one). Not fixable: the person decides which entry stays.
+    charger (named on both, nothing removed for the person). Not fixable: the person decides which entry stays.
+    A site without a charger is no issue: a home with only a battery or heating needs none (the card's Get started
+    offers adding one, answerable "Not needed"); an issue raised by an older version goes at the next sync.
     """
     excluded = set(exclude_entry_ids)
     issues: dict[str, dict[str, Any]] = {}
@@ -133,17 +130,6 @@ def _setup_issue_fields(
             "is_fixable": False,
             "severity": ir.IssueSeverity.WARNING,
         }
-    existing = {entry.entry_id for entry in charger_entries_except(hass, excluded)}
-    for site in hass.config_entries.async_entries(DOMAIN):
-        if site.entry_id in excluded or site.data.get(CONF_ENTRY_TYPE) != ENTRY_TYPE_SITE:
-            continue
-        if not existing.intersection(site.data.get(CONF_CHARGER_ENTRY_IDS) or []):
-            issues[f"{SITE_WITHOUT_CHARGERS_ISSUE}_{site.entry_id}"] = {
-                "translation_key": SITE_WITHOUT_CHARGERS_ISSUE,
-                "translation_placeholders": {"site": site.title},
-                "is_fixable": False,
-                "severity": ir.IssueSeverity.WARNING,
-            }
     return issues
 
 

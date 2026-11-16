@@ -1,17 +1,20 @@
 // The house card (`custom:spotnav-house-card`, SpotNav 3.0 preview): a second element in the same bundle, so nothing
 // extra is installed. It reads one read-only answer (`spotnav/get_house`) for a site, named by the site's id or a
 // charger's in it, every `HOUSE_REFRESH_MS` (the forecasts change once an hour), and shows it (`house-view.ts`).
-// It never writes. The charging card stays about the car.
+// An administrator's gear opens the shared settings popover (`settings-popover.ts`): the house card is where a home
+// without a charger starts. The charging card stays about the car.
 //
 // YAML: `type: custom:spotnav-house-card` with `site: <site entry id>` or `charger: <charger entry id>`.
 
-import { getHouse, listChargers, SpotnavApiError, UNSUPPORTED_API_VERSION } from "./api";
+import { getHouse, SpotnavApiError, UNSUPPORTED_API_VERSION } from "./api";
 import { entityWordsOf } from "./entity-words";
 import { decodeHouse } from "./house-model";
+import { HEAT_STYLES } from "./heat-styles";
 import { HOUSE_STYLES } from "./house-styles";
 import { readHiddenSeries, writeHiddenSeries } from "./house-series";
 import { houseBody, type HouseState, type HouseUi } from "./house-view";
 import { isLanguagePending, loadLanguage, resolveLanguage, type Language } from "./i18n";
+import { SettingsPopover, stubTarget } from "./settings-popover";
 import type { HomeAssistantLike } from "./types";
 import { VISUAL_CLASSES, VISUAL_STYLES } from "./visual-styles";
 
@@ -66,12 +69,49 @@ export class SpotnavHouseCard extends HTMLElement {
   private width = HOUSE_FALLBACK_WIDTH;
   private observer: ResizeObserver | null = null;
   private readonly idPrefix: string;
+  private readonly styleNode: HTMLStyleElement;
+  private readonly mount: HTMLDivElement;
+  /** Where the shared settings popover's dialog lives, apart from what each render replaces. */
+  private readonly layer: HTMLDivElement;
+  private settingsPopover: SettingsPopover | null = null;
 
   constructor() {
     super();
     this.root = this.attachShadow({ mode: "open" });
     instances += 1;
     this.idPrefix = `spotnav-house-${instances}`;
+    const doc = this.ownerDocument;
+    this.styleNode = doc.createElement("style");
+    this.styleNode.textContent = VISUAL_STYLES + HOUSE_STYLES + HEAT_STYLES;
+    this.mount = doc.createElement("div");
+    this.mount.className = VISUAL_CLASSES.shell;
+    this.layer = doc.createElement("div");
+    this.layer.className = VISUAL_CLASSES.shell;
+    this.root.append(this.styleNode, this.mount, this.layer);
+  }
+
+  private ensurePopover(): SettingsPopover {
+    if (this.settingsPopover === null) {
+      this.settingsPopover = new SettingsPopover({
+        doc: this.ownerDocument,
+        owner: this.layer,
+        background: () => this.mount,
+        idPrefix: this.idPrefix,
+        hass: () => this.hassObject,
+        target: () => this.target(),
+        language: () => this.language ?? resolveLanguage(null),
+        onChanged: () => void this.refresh(),
+      });
+    }
+    return this.settingsPopover;
+  }
+
+  /** The shared settings popover, opened at its top (the house's own section is the site). */
+  showSettings(): void {
+    if (this.hassObject?.user?.is_admin !== true || this.target() === null) {
+      return;
+    }
+    void this.ensurePopover().open("house");
   }
 
   setConfig(config: unknown): void {
@@ -115,6 +155,8 @@ export class SpotnavHouseCard extends HTMLElement {
       window.clearInterval(this.timer);
       this.timer = null;
     }
+    this.settingsPopover?.destroy();
+    this.settingsPopover = null;
   }
 
   getCardSize(): number {
@@ -125,30 +167,11 @@ export class SpotnavHouseCard extends HTMLElement {
     return { rows: "auto", columns: "full" };
   }
 
-  /** The card picker's preview: the one charger's site, else an unconfigured card. */
+  /** The card picker's preview: the first charger's site, else the first site (a home without a charger), else an
+   *  unconfigured card. */
   static async getStubConfig(hass?: HomeAssistantLike): Promise<HouseCardConfig> {
     const stub: HouseCardConfig = { type: `custom:${HOUSE_CARD_TYPE}` };
-    if (hass === undefined) {
-      return stub;
-    }
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    try {
-      const list = await Promise.race([
-        listChargers(hass),
-        new Promise<null>((resolve) => {
-          timer = setTimeout(() => resolve(null), STUB_TIMEOUT_MS);
-        }),
-      ]);
-      const first = list?.chargers[0];
-      if (first !== undefined) {
-        return { ...stub, charger: first.charger_id };
-      }
-    } catch {
-      // An unconfigured card, never an error in the picker.
-    } finally {
-      clearTimeout(timer);
-    }
-    return stub;
+    return { ...stub, ...(hass === undefined ? {} : await stubTarget(hass, STUB_TIMEOUT_MS)) };
   }
 
   private target(): { site: string } | { charger: string } | null {
@@ -239,12 +262,9 @@ export class SpotnavHouseCard extends HTMLElement {
       return;
     }
     const doc = this.ownerDocument;
-    const style = doc.createElement("style");
-    style.textContent = VISUAL_STYLES + HOUSE_STYLES;
-    const shell = doc.createElement("div");
-    shell.className = VISUAL_CLASSES.shell;
     const language = this.language ?? resolveLanguage(null);
-    shell.append(
+    const admin = this.hassObject?.user?.is_admin === true;
+    this.mount.replaceChildren(
       houseBody({
         doc,
         language,
@@ -279,6 +299,7 @@ export class SpotnavHouseCard extends HTMLElement {
           onSelect: (index) => {
             this.ui = { ...this.ui, selected: index };
           },
+          ...(admin ? { onSettings: () => this.showSettings() } : {}),
           onDay: (day) => {
             const focused = this.root.activeElement as HTMLElement | null;
             const which = focused?.dataset["step"] ?? null;
@@ -297,6 +318,5 @@ export class SpotnavHouseCard extends HTMLElement {
         entityWords: entityWordsOf(this.hassObject),
       }),
     );
-    this.root.replaceChildren(style, shell);
   }
 }
