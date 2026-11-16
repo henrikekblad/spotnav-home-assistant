@@ -19,5 +19,23 @@
         "dismissible": false
       }
     ]
+  },
+  "price_settings": null,
+  "site": {
+    "name": "Hemma",
+    "charger_count": 0,
+    "solar_priority": "car_first",
+    "solar_forecast": {
+      "selected": [],
+      "choices": []
+    },
+    "active_control": {
+      "available": false,
+      "enabled": false,
+      "reason": "site_measurement_configured_missing",
+      "direction_hint": null,
+      "writable": true
+    },
+    "writable": true
   }
 }

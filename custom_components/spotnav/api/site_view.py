@@ -10,6 +10,15 @@ charger's site when a charger is named:
 * `price`: the electricity price entry the site reads (`site_price_source`): `{entry_id, title, area_id, area_name}`,
   `area_name` `null` while the area list does not name it; `null` when no price applies to the site.
 * `battery`: `{found}`, whether the site's battery facts name a battery (the battery section is shown then).
+* `price_settings` (additive): what the popover's price section shows and edits, `null` exactly where `price` is:
+  `market` (the area's facts: `area_id`, `area_name`, `countries`, `timezone`, `currency`, `major_unit`,
+  `minor_unit`, each `null` while the area list does not name the area, `area_id` never), `fiscal` (the dashboard's
+  `fiscal` block, `null` while the area is not listed), `fees` (the price entry's stored row as the settings body
+  states one, `{area_id, vat, tax, transfer}`, which `spotnav/update_price` writes), `provider` (the dashboard's
+  `prices.provider`), `price_source` and `grid_tariff` (the dashboard's blocks, read for the site:
+  `api/price_source.py`, `api/grid_tariff.py`).
+* `site` (additive): the site's own `site` block as the dashboard and `spotnav/update_site_settings` state it (solar
+  priority, forecast sources and their choices, load balancing), `null` while the site is not running.
 * `setup`: the site's own "Get started" rows (`setup_checklist.capture_site_setup`), in the dashboard's shape.
 
 Refusals are WebSocket errors with stable codes: `spotnav_unsupported_api_version`, `spotnav_unknown_site`,
@@ -26,9 +35,16 @@ from homeassistant.config_entries import ConfigEntry, ConfigEntryState
 from homeassistant.core import HomeAssistant, callback
 
 from ..const import CONF_CHARGER_ENTRY_IDS, CONF_ENTRY_TYPE, DOMAIN, ENTRY_TYPE_SITE
-from ..pricing.price_source import site_price_source
+from ..planning.auto_settings import AutoSettings
+from ..planning.hybrid_forecast import async_forecast_capable_domains
+from ..pricing.price_source import PriceSource, site_price_source
+from ..runtime import domain_data
 from ..runtime import site_controller_for
 from ..setup_checklist import capture_site_setup, serialize_setup
+from .dashboard import serialize_fiscal, serialize_site_entry
+from .grid_tariff import capture_site_grid_tariff, serialize_grid_tariff
+from .price_source import capture_site_price_source, serialize_price_source
+from .settings import encoded_override
 from .common import (
     ERROR_NO_SITE,
     is_admin,
@@ -101,13 +117,47 @@ def _price_block(hass: HomeAssistant, site: ConfigEntry) -> dict[str, Any] | Non
     }
 
 
+def _market(source: PriceSource) -> dict[str, Any]:
+    area = source.area
+    return {
+        "area_id": source.area_id,
+        "area_name": None if area is None else area.name,
+        "countries": None if area is None else list(area.countries),
+        "timezone": None if area is None else area.tz,
+        "currency": None if area is None else area.currency,
+        "major_unit": None if area is None else area.major_unit,
+        "minor_unit": None if area is None else area.minor_unit,
+    }
+
+
+def price_settings_block(hass: HomeAssistant, site: ConfigEntry, *, writable: bool) -> dict[str, Any] | None:
+    """The popover's price section for the site (see the module), or `None` while no price applies to it."""
+    source = site_price_source(hass, site.entry_id)
+    if source is None or source.entry_id is None:
+        return None
+    repository = domain_data(hass).price_repository
+    status = None if repository is None else repository.source_status(source.area_id)
+    return {
+        "market": _market(source),
+        "fiscal": serialize_fiscal(AutoSettings(area_id=source.area_id, overrides=(source.overrides,)), source.area),
+        "fees": encoded_override(source.overrides),
+        "provider": None if status is None else status.as_dict(),
+        "price_source": serialize_price_source(capture_site_price_source(hass, site), can_act=writable),
+        "grid_tariff": serialize_grid_tariff(capture_site_grid_tariff(hass, site), can_act=writable),
+    }
+
+
 def battery_found(hass: HomeAssistant, site: ConfigEntry) -> bool:
     """Whether the site's battery facts name a battery."""
     controller = site_controller_for(hass, site.entry_id)
     return controller is not None and bool(controller.battery_shadow.facts.battery_entity_id)
 
 
-def site_settings_view(hass: HomeAssistant, site: ConfigEntry, *, writable: bool) -> dict[str, Any]:
+def site_settings_view(
+    hass: HomeAssistant, site: ConfigEntry, *, writable: bool, forecast_domains: frozenset[str] = frozenset()
+) -> dict[str, Any]:
+    """The whole answer; `forecast_domains` (`async_forecast_capable_domains`, read first) lists the solar forecast
+    sources the `site` block offers."""
     return {
         "api_version": SITE_VIEW_API_VERSION,
         "site_id": site.entry_id,
@@ -117,6 +167,8 @@ def site_settings_view(hass: HomeAssistant, site: ConfigEntry, *, writable: bool
         "price": _price_block(hass, site),
         "battery": {"found": battery_found(hass, site)},
         "setup": serialize_setup(capture_site_setup(hass, site)),
+        "price_settings": price_settings_block(hass, site, writable=writable),
+        "site": serialize_site_entry(hass, site, forecast_domains=forecast_domains, can_act=writable),
     }
 
 
@@ -143,8 +195,8 @@ def websocket_list_sites(
         vol.Optional("charger_id"): object,
     }
 )
-@callback
-def websocket_get_site_settings_view(
+@websocket_api.async_response
+async def websocket_get_site_settings_view(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]
 ) -> None:
     """The popover's site block. Any signed-in user may read; `writable` says whether this one may change it."""
@@ -154,7 +206,10 @@ def websocket_get_site_settings_view(
     if site is None:
         connection.send_error(msg["id"], code or ERROR_NO_SITE, "No such site")
         return
-    connection.send_result(msg["id"], site_settings_view(hass, site, writable=is_admin(connection)))
+    forecast_domains = await async_forecast_capable_domains(hass)
+    connection.send_result(
+        msg["id"], site_settings_view(hass, site, writable=is_admin(connection), forecast_domains=forecast_domains)
+    )
 
 
 @callback
