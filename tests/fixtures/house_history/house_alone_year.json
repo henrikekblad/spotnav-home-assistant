@@ -1,0 +1,250 @@
+{
+  "api_version": 1,
+  "buckets": [
+    {
+      "battery_in": null,
+      "battery_out": null,
+      "car": 0.0,
+      "cost": null,
+      "grid_in": 595.2,
+      "grid_out": 0.0,
+      "heat": null,
+      "house": 595.2,
+      "key": "2026-01",
+      "periods": 248,
+      "solar": null,
+      "use": 595.2
+    },
+    {
+      "battery_in": null,
+      "battery_out": null,
+      "car": 0.0,
+      "cost": null,
+      "grid_in": 537.6,
+      "grid_out": 0.0,
+      "heat": null,
+      "house": 537.6,
+      "key": "2026-02",
+      "periods": 224,
+      "solar": null,
+      "use": 537.6
+    },
+    {
+      "battery_in": null,
+      "battery_out": null,
+      "car": 0.0,
+      "cost": null,
+      "grid_in": 595.2,
+      "grid_out": 0.0,
+      "heat": null,
+      "house": 595.2,
+      "key": "2026-03",
+      "periods": 248,
+      "solar": null,
+      "use": 595.2
+    },
+    {
+      "battery_in": null,
+      "battery_out": null,
+      "car": 0.0,
+      "cost": null,
+      "grid_in": 576.0,
+      "grid_out": 0.0,
+      "heat": null,
+      "house": 576.0,
+      "key": "2026-04",
+      "periods": 240,
+      "solar": null,
+      "use": 576.0
+    },
+    {
+      "battery_in": null,
+      "battery_out": null,
+      "car": 0.0,
+      "cost": null,
+      "grid_in": 595.2,
+      "grid_out": 0.0,
+      "heat": null,
+      "house": 595.2,
+      "key": "2026-05",
+      "periods": 248,
+      "solar": null,
+      "use": 595.2
+    },
+    {
+      "battery_in": null,
+      "battery_out": null,
+      "car": 0.0,
+      "cost": null,
+      "grid_in": 576.0,
+      "grid_out": 0.0,
+      "heat": null,
+      "house": 576.0,
+      "key": "2026-06",
+      "periods": 240,
+      "solar": null,
+      "use": 576.0
+    },
+    {
+      "battery_in": null,
+      "battery_out": null,
+      "car": 0.0,
+      "cost": null,
+      "grid_in": 595.2,
+      "grid_out": 0.0,
+      "heat": null,
+      "house": 595.2,
+      "key": "2026-07",
+      "periods": 248,
+      "solar": null,
+      "use": 595.2
+    },
+    {
+      "battery_in": null,
+      "battery_out": null,
+      "car": 0.0,
+      "cost": null,
+      "grid_in": 595.2,
+      "grid_out": 0.0,
+      "heat": null,
+      "house": 595.2,
+      "key": "2026-08",
+      "periods": 248,
+      "solar": null,
+      "use": 595.2
+    },
+    {
+      "battery_in": null,
+      "battery_out": null,
+      "car": 0.0,
+      "cost": null,
+      "grid_in": 576.0,
+      "grid_out": 0.0,
+      "heat": null,
+      "house": 576.0,
+      "key": "2026-09",
+      "periods": 240,
+      "solar": null,
+      "use": 576.0
+    },
+    {
+      "battery_in": null,
+      "battery_out": null,
+      "car": 0.0,
+      "cost": 3120.0,
+      "grid_in": 595.2,
+      "grid_out": 0.0,
+      "heat": null,
+      "house": 595.2,
+      "key": "2026-10",
+      "periods": 248,
+      "solar": null,
+      "use": 595.2
+    },
+    {
+      "battery_in": null,
+      "battery_out": null,
+      "car": 0.0,
+      "cost": 46800.0,
+      "grid_in": 288.0,
+      "grid_out": 0.0,
+      "heat": null,
+      "house": 288.0,
+      "key": "2026-11",
+      "periods": 120,
+      "solar": null,
+      "use": 288.0
+    },
+    {
+      "battery_in": null,
+      "battery_out": null,
+      "car": 0.0,
+      "cost": null,
+      "grid_in": 0.0,
+      "grid_out": 0.0,
+      "heat": null,
+      "house": 0.0,
+      "key": "2026-12",
+      "periods": 0,
+      "solar": null,
+      "use": 0.0
+    }
+  ],
+  "complete": false,
+  "cost": {
+    "bought": 49920.0,
+    "kwh_in": 307.2,
+    "kwh_out": 0.0,
+    "net": 49920.0,
+    "periods": 2552,
+    "priced": 128,
+    "sold": 0.0
+  },
+  "date": "2026-01-01",
+  "end": "2027-01-01",
+  "energy_flow": {
+    "car_hours": 0,
+    "date": "2026-01-01",
+    "heat_hours": 0,
+    "hours": 2552,
+    "links": [
+      {
+        "from": "source.grid",
+        "kwh": 6124.8,
+        "to": "use.house"
+      }
+    ],
+    "nodes": [
+      {
+        "id": "source.grid",
+        "kwh": 6124.8,
+        "role": "grid",
+        "side": "source",
+        "soc_pct": null
+      },
+      {
+        "id": "use.house",
+        "kwh": 6124.8,
+        "role": "house",
+        "side": "use",
+        "soc_pct": null
+      },
+      {
+        "id": "use.car",
+        "kwh": 0,
+        "role": "car",
+        "side": "use",
+        "soc_pct": null
+      },
+      {
+        "id": "use.grid",
+        "kwh": 0,
+        "role": "grid",
+        "side": "use",
+        "soc_pct": null
+      }
+    ],
+    "step_min": 60,
+    "through": "2026-11-15T21:00:00+00:00"
+  },
+  "forecast": {
+    "house": {
+      "days": 3,
+      "mae": 3.333
+    },
+    "soc": null,
+    "sun": null,
+    "sun_corrected": null
+  },
+  "generated_at": "2026-11-16T13:20:00+00:00",
+  "money": {
+    "currency": "SEK",
+    "major_unit": "kr",
+    "minor_unit": "öre"
+  },
+  "period": "year",
+  "review": null,
+  "site_id": "site_villa",
+  "time_zone": "Europe/Stockholm",
+  "today": "2026-11-16"
+}

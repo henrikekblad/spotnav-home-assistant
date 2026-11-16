@@ -267,20 +267,13 @@ describe("the battery app's views, calm", () => {
     expect(body(answer("house/house_learning.json")).querySelector("button[data-view]")).toBeNull();
   });
 
-  it("show today's energy from sources to uses and the month's days in the details", () => {
+  it("show today's energy from sources to uses in the details, and no month calendar (it is in the history)", () => {
     // Without the energy flow (an older backend) the details keep the two bars.
     const card = body({ ...answer(), energy_flow: null }, { detailsOpen: true }, "sv");
     const keys = Array.from(card.querySelectorAll(".spotnav-house-flow-key")).map((item) => item.textContent);
     expect(keys[0]).toMatch(/^Sol 4,5 kWh \(\d+ %\) · Batteri 9,8 kWh \(\d+ %\) · Nät 34,3 kWh \(\d+ %\)$/);
     expect(keys[1]).toMatch(/^Batteri 27,1 kWh/);
-    const days = card.querySelectorAll(".spotnav-house-calendar-day[data-date]");
-    expect(days).toHaveLength(30);
-    expect(card.querySelectorAll(".spotnav-house-calendar-day[data-result='plan']")).toHaveLength(9);
-    expect(card.querySelectorAll(".spotnav-house-calendar-day[data-result='own']")).toHaveLength(3);
-    expect(card.querySelector(".spotnav-house-calendar-day[data-today]")?.getAttribute("data-date")).toBe("2026-11-13");
-    expect(card.querySelector(".spotnav-house-calendar-day[data-date='2026-11-04']")?.getAttribute("aria-label")).toMatch(/^ons 4 nov\.?: SpotNavs plan/);
-    expect(card.querySelector(".spotnav-house-calendar-day[data-date='2026-11-04']")?.getAttribute("aria-label")).toMatch(/ · arbitrage 8,00 kr$/);
-    expect(card.textContent).toContain("Batteriets arbitrage, 12 dygn:");
+    expect(card.querySelector(".spotnav-house-calendar-day")).toBeNull();
     expect(card.textContent).toContain("Lagrat nu: 32,3 kWh à 121 öre/kWh i snitt");
   });
 });
@@ -472,7 +465,7 @@ describe("the modes side by side in the body", () => {
 });
 
 describe("the day in the battery app's terms", () => {
-  const handlers = { onDetails: vi.fn(), onSelect: vi.fn(), onDay: vi.fn() } as never;
+  const handlers = { onDetails: vi.fn(), onSelect: vi.fn(), } as never;
 
   it("shows the three figures with what each is compared with on a past day", () => {
     const past = answer("house/villa_past_day.json");
@@ -535,7 +528,7 @@ describe("the day in the battery app's terms", () => {
 describe("the modes on a past day", () => {
   it("show that day's own review under its date, the day's mode marked", () => {
     const past = answer("house/villa_past_day.json");
-    const card = body(past, {}, "sv", { onDetails: vi.fn(), onSelect: vi.fn(), onDay: vi.fn() } as never);
+    const card = body(past, {}, "sv", { onDetails: vi.fn(), onSelect: vi.fn(), } as never);
     const part = card.querySelector("[data-part='modes']")!;
     expect(part.querySelector(".spotnav-house-compare-head")?.textContent).toMatch(/^Mot ren egenförbrukning, tors 12 nov/);
     const rows = Array.from(part.querySelectorAll<HTMLElement>(".spotnav-house-compare-row"));
@@ -547,7 +540,7 @@ describe("the modes on a past day", () => {
 
   it("say no full day on a past day without a review", () => {
     const past = answer("house/villa_past_day.json");
-    const card = body({ ...past, day_review: null }, {}, "sv", { onDetails: vi.fn(), onSelect: vi.fn(), onDay: vi.fn() } as never);
+    const card = body({ ...past, day_review: null }, {}, "sv", { onDetails: vi.fn(), onSelect: vi.fn(), } as never);
     const part = card.querySelector("[data-part='modes']")!;
     expect(part.querySelector(".spotnav-house-compare-head")?.textContent).toBe("Mot ren egenförbrukning: inget fullt dygn än");
     expect(part.querySelector("[data-row='balanced']")?.textContent).toContain("inget fullt dygn");
@@ -555,24 +548,18 @@ describe("the modes on a past day", () => {
   });
 });
 
-describe("the day choice", () => {
-  it("steps back a day from today, never forward past it", () => {
-    const onDay = vi.fn();
-    const card = body(answer(), {}, "sv", { onDetails: vi.fn(), onSelect: vi.fn(), onDay } as never);
-    const [back, forward] = Array.from(card.querySelectorAll<HTMLButtonElement>("button[data-step]"));
-    expect(card.querySelector(".spotnav-house-day-label")?.textContent).toBe("I dag");
-    expect(forward!.disabled).toBe(true);
-    back!.click();
-    expect(onDay).toHaveBeenCalledWith("2026-11-12");
+describe("a past day's answer", () => {
+  it("has no day steps on the front: the day choice is in the history", () => {
+    const card = body(answer(), {}, "sv", { onDetails: vi.fn(), onSelect: vi.fn(), onHistory: vi.fn() } as never);
+    expect(card.querySelector("button[data-step]")).toBeNull();
+    expect(card.querySelector("button[data-history='open']")?.getAttribute("aria-label")).toBe("Historik");
   });
 
-  it("shows a past day's 24 hours, its money and flow under its date, forward back toward today", () => {
-    const onDay = vi.fn();
+  it("still shows a past day's 24 hours, its money and flow under its date", () => {
     const past = answer("house/villa_past_day.json");
     expect(past.day).toEqual({ date: "2026-11-12", today: false, first: "2026-10-31", has_data: true });
     expect(past.hours).toHaveLength(24);
-    const card = body(past, {}, "sv", { onDetails: vi.fn(), onSelect: vi.fn(), onDay } as never);
-    expect(card.querySelector(".spotnav-house-day-label")?.textContent).toMatch(/^tors 12 nov/);
+    const card = body(past, {}, "sv", { onDetails: vi.fn(), onSelect: vi.fn() } as never);
     expect(card.querySelector("[data-line='today']")?.textContent).toMatch(/^tors 12 nov\.?: sålt/);
     expect(card.querySelector("[data-part='energy-flow'] h3")?.textContent).toMatch(/^Energi tors 12 nov/);
     expect(card.textContent).not.toContain("Hela timmar fram till");
@@ -580,25 +567,18 @@ describe("the day choice", () => {
     const endSoc = [...past.hours].reverse().find((hour) => hour.soc_pct !== null)!.soc_pct!;
     expect(card.querySelector(".spotnav-house-sub")?.textContent).toBe(`Batteri ${Math.round(endSoc)} % vid dagens slut`);
     expect(translate("en", "house.sub.socDayEnd", { pct: "41 %" })).toBe("Battery 41 % at the end of the day");
-    card.querySelectorAll<HTMLButtonElement>("button[data-step]")[1]!.click();
-    expect(onDay).toHaveBeenCalledWith("2026-11-13");
   });
 
-  it("says so on a day without data, and stops at the first day", () => {
+  it("says so on a day without data", () => {
     const past = answer("house/villa_past_day.json");
-    const card = body({ ...past, day: { ...past.day!, date: "2026-10-31", has_data: false } }, {}, "sv", { onDetails: vi.fn(), onSelect: vi.fn(), onDay: vi.fn() } as never);
+    const card = body({ ...past, day: { ...past.day!, date: "2026-10-31", has_data: false } }, {}, "sv", { onDetails: vi.fn(), onSelect: vi.fn() } as never);
     expect(card.querySelector("[data-line='no-data']")?.textContent).toBe("Inget mättes den här dagen.");
     expect(card.querySelector(".spotnav-house-surface")).toBeNull();
-    expect(card.querySelectorAll<HTMLButtonElement>("button[data-step]")[0]!.disabled).toBe(true);
-  });
-
-  it("has step buttons of 28 px, above the 24 px minimum target", () => {
-    expect(HOUSE_STYLES).toMatch(/\.spotnav-house-day-step \{[^}]*height: 28px;[^}]*min-height: 28px;/);
   });
 
   it("is worded in every language", () => {
     for (const language of LANGUAGES) {
-      for (const key of ["house.dayMoney", "house.day.choose", "house.day.today", "house.day.back", "house.day.forward", "house.day.noData", "house.flow.headingDay", "house.compare.heading.other", "house.compare.headingNone", "house.compare.inForce", "house.compare.none", "house.compare.reference", "house.compare.days.other"] as const) {
+      for (const key of ["house.dayMoney", "house.day.noData", "house.flow.headingDay", "house.compare.heading.other", "house.compare.headingNone", "house.compare.inForce", "house.compare.none", "house.compare.reference", "house.compare.days.other"] as const) {
         expect(translate(language, key, { day: "d", days: "2", sold: "", arbitrage: "", bought: "", mode: "" })).not.toBe(key);
       }
     }
@@ -903,25 +883,34 @@ describe("the element", () => {
     expect(hass.messages).toHaveLength(2);
   });
 
-  it("asks for a past day by date when stepped back, and for today without one when stepped forward onto it", async () => {
+  it("asks only for today; the clock opens the history at the running month and steps by period", async () => {
     const hass = new FakeHass();
     const element = mount({ type: "custom:spotnav-house-card", site: "site_villa" }, hass);
     await vi.advanceTimersByTimeAsync(0);
     hass.resolveNext(read("house/villa_battery_sun.json"));
     await vi.advanceTimersByTimeAsync(0);
-    element.shadowRoot!.querySelector<HTMLButtonElement>("button[data-step='back']")!.click();
+    const root = element.shadowRoot!;
+    root.querySelector<HTMLButtonElement>("button[data-history='open']")!.click();
     await vi.advanceTimersByTimeAsync(0);
-    expect(hass.messages[1]).toEqual({ type: "spotnav/get_house", api_version: 1, site_id: "site_villa", date: "2026-11-12" });
-    hass.resolveNext(read("house/villa_past_day.json"));
+    expect(hass.messages[1]).toEqual({ type: "spotnav/get_house_history", api_version: 1, site_id: "site_villa", period: "month" });
+    hass.resolveNext(read("house_history/villa_month.json"));
     await vi.advanceTimersByTimeAsync(0);
-    expect(element.shadowRoot!.querySelector(".spotnav-house-day-label")?.textContent).toMatch(/12/);
-    element.shadowRoot!.querySelector<HTMLButtonElement>("button[data-step='forward']")!.click();
+    const dialog = root.querySelector<HTMLElement>("[role='dialog']")!;
+    expect(dialog.querySelector("[data-part='energy-flow'] svg")).not.toBeNull();
+    expect(dialog.querySelectorAll(".spotnav-history-bar")).toHaveLength(30);
+    dialog.querySelector<HTMLButtonElement>("button[data-step='back']")!.click();
     await vi.advanceTimersByTimeAsync(0);
-    expect(hass.messages[2]).toMatchObject({ date: "2026-11-13" });
-    hass.resolveNext(read("house/villa_battery_sun.json"));
+    expect(hass.messages[2]).toMatchObject({ period: "month", date: "2026-10-01" });
+    hass.resolveNext(read("house_history/villa_month.json"));
     await vi.advanceTimersByTimeAsync(0);
+    dialog.querySelector<HTMLButtonElement>("button[data-period='day']")!.click();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(hass.messages[3]).toMatchObject({ type: "spotnav/get_house_history", period: "day" });
+    hass.resolveNext(read("house_history/villa_day.json"));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(dialog.querySelectorAll(".spotnav-history-bar")).toHaveLength(24);
     await vi.advanceTimersByTimeAsync(300_000);
-    expect(hass.messages[3]).not.toHaveProperty("date");
+    expect(hass.messages.filter((message) => message.type === "spotnav/get_house").every((message) => !("date" in message))).toBe(true);
     element.remove();
   });
 

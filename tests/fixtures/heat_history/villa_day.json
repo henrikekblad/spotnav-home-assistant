@@ -1,0 +1,277 @@
+{
+  "api_version": 1,
+  "buckets": [
+    {
+      "cost": 232.4,
+      "degree_days": null,
+      "hot_water_kwh": null,
+      "key": "2026-11-15T00:00:00+01:00",
+      "kwh": 1.66,
+      "outdoor_c": 4.0
+    },
+    {
+      "cost": 232.4,
+      "degree_days": null,
+      "hot_water_kwh": null,
+      "key": "2026-11-15T01:00:00+01:00",
+      "kwh": 1.66,
+      "outdoor_c": 4.0
+    },
+    {
+      "cost": 149.4,
+      "degree_days": null,
+      "hot_water_kwh": null,
+      "key": "2026-11-15T02:00:00+01:00",
+      "kwh": 1.66,
+      "outdoor_c": 4.0
+    },
+    {
+      "cost": 149.4,
+      "degree_days": null,
+      "hot_water_kwh": null,
+      "key": "2026-11-15T03:00:00+01:00",
+      "kwh": 1.66,
+      "outdoor_c": 4.0
+    },
+    {
+      "cost": 149.4,
+      "degree_days": null,
+      "hot_water_kwh": null,
+      "key": "2026-11-15T04:00:00+01:00",
+      "kwh": 1.66,
+      "outdoor_c": 4.0
+    },
+    {
+      "cost": 232.4,
+      "degree_days": null,
+      "hot_water_kwh": null,
+      "key": "2026-11-15T05:00:00+01:00",
+      "kwh": 1.66,
+      "outdoor_c": 4.0
+    },
+    {
+      "cost": 232.4,
+      "degree_days": null,
+      "hot_water_kwh": null,
+      "key": "2026-11-15T06:00:00+01:00",
+      "kwh": 1.66,
+      "outdoor_c": 4.0
+    },
+    {
+      "cost": 232.4,
+      "degree_days": null,
+      "hot_water_kwh": null,
+      "key": "2026-11-15T07:00:00+01:00",
+      "kwh": 1.66,
+      "outdoor_c": 4.0
+    },
+    {
+      "cost": 232.4,
+      "degree_days": null,
+      "hot_water_kwh": null,
+      "key": "2026-11-15T08:00:00+01:00",
+      "kwh": 1.66,
+      "outdoor_c": 4.0
+    },
+    {
+      "cost": 232.4,
+      "degree_days": null,
+      "hot_water_kwh": null,
+      "key": "2026-11-15T09:00:00+01:00",
+      "kwh": 1.66,
+      "outdoor_c": 4.0
+    },
+    {
+      "cost": 232.4,
+      "degree_days": null,
+      "hot_water_kwh": null,
+      "key": "2026-11-15T10:00:00+01:00",
+      "kwh": 1.66,
+      "outdoor_c": 4.0
+    },
+    {
+      "cost": 198.8,
+      "degree_days": null,
+      "hot_water_kwh": null,
+      "key": "2026-11-15T11:00:00+01:00",
+      "kwh": 1.42,
+      "outdoor_c": 6.0
+    },
+    {
+      "cost": 198.8,
+      "degree_days": null,
+      "hot_water_kwh": null,
+      "key": "2026-11-15T12:00:00+01:00",
+      "kwh": 1.42,
+      "outdoor_c": 6.0
+    },
+    {
+      "cost": 198.8,
+      "degree_days": null,
+      "hot_water_kwh": null,
+      "key": "2026-11-15T13:00:00+01:00",
+      "kwh": 1.42,
+      "outdoor_c": 6.0
+    },
+    {
+      "cost": 198.8,
+      "degree_days": null,
+      "hot_water_kwh": null,
+      "key": "2026-11-15T14:00:00+01:00",
+      "kwh": 1.42,
+      "outdoor_c": 6.0
+    },
+    {
+      "cost": 198.8,
+      "degree_days": null,
+      "hot_water_kwh": null,
+      "key": "2026-11-15T15:00:00+01:00",
+      "kwh": 1.42,
+      "outdoor_c": 6.0
+    },
+    {
+      "cost": 127.8,
+      "degree_days": null,
+      "hot_water_kwh": null,
+      "key": "2026-11-15T16:00:00+01:00",
+      "kwh": 1.42,
+      "outdoor_c": 6.0
+    },
+    {
+      "cost": 431.6,
+      "degree_days": null,
+      "hot_water_kwh": null,
+      "key": "2026-11-15T17:00:00+01:00",
+      "kwh": 1.66,
+      "outdoor_c": 4.0
+    },
+    {
+      "cost": 431.6,
+      "degree_days": null,
+      "hot_water_kwh": null,
+      "key": "2026-11-15T18:00:00+01:00",
+      "kwh": 1.66,
+      "outdoor_c": 4.0
+    },
+    {
+      "cost": 431.6,
+      "degree_days": null,
+      "hot_water_kwh": null,
+      "key": "2026-11-15T19:00:00+01:00",
+      "kwh": 1.66,
+      "outdoor_c": 4.0
+    },
+    {
+      "cost": 232.4,
+      "degree_days": null,
+      "hot_water_kwh": null,
+      "key": "2026-11-15T20:00:00+01:00",
+      "kwh": 1.66,
+      "outdoor_c": 4.0
+    },
+    {
+      "cost": 232.4,
+      "degree_days": null,
+      "hot_water_kwh": null,
+      "key": "2026-11-15T21:00:00+01:00",
+      "kwh": 1.66,
+      "outdoor_c": 4.0
+    },
+    {
+      "cost": 232.4,
+      "degree_days": null,
+      "hot_water_kwh": null,
+      "key": "2026-11-15T22:00:00+01:00",
+      "kwh": 1.66,
+      "outdoor_c": 4.0
+    },
+    {
+      "cost": 232.4,
+      "degree_days": null,
+      "hot_water_kwh": null,
+      "key": "2026-11-15T23:00:00+01:00",
+      "kwh": 1.66,
+      "outdoor_c": 4.0
+    }
+  ],
+  "comfort": {
+    "coldest": {
+      "entity_id": "sensor.uppe",
+      "mean_c": 20.7,
+      "min_c": 20.1,
+      "name": "Övervåning"
+    },
+    "hours": 24,
+    "hours_below": 7,
+    "low_c": 20.5,
+    "sensors": 2
+  },
+  "complete": true,
+  "date": "2026-11-15",
+  "degree_days": {
+    "base_c": 17.0,
+    "days": 1,
+    "kwh": 38.4,
+    "kwh_per_degree_day": 3.072,
+    "outdoor": {
+      "entity_id": "sensor.utomhus",
+      "source": "sensor"
+    },
+    "sum": 12.5,
+    "trend": []
+  },
+  "end": "2026-11-16",
+  "energy": {
+    "cost": 5653.6,
+    "days": 1,
+    "hot_water_kwh": 2.4,
+    "hours": 24,
+    "priced_hours": 24,
+    "split_days": 1,
+    "total_kwh": 38.4
+  },
+  "generated_at": "2026-11-16T13:20:00+00:00",
+  "immersion": {
+    "hours": 0,
+    "kwh": 0.0
+  },
+  "meter": {
+    "entity_id": "sensor.varme_effekt",
+    "name": "Elmätare värme"
+  },
+  "money": {
+    "currency": "SEK",
+    "major": "kr",
+    "minor": "öre"
+  },
+  "period": "day",
+  "runs": [
+    {
+      "cause": "standby",
+      "end": "2026-11-15T02:10:00+00:00",
+      "kwh": 0.317,
+      "start": "2026-11-15T02:00:00+00:00"
+    },
+    {
+      "cause": "draw",
+      "end": "2026-11-15T05:40:00+00:00",
+      "kwh": 1.175,
+      "start": "2026-11-15T05:15:00+00:00"
+    },
+    {
+      "cause": "draw",
+      "end": "2026-11-15T06:45:00+00:00",
+      "kwh": 0.908,
+      "start": "2026-11-15T06:25:00+00:00"
+    }
+  ],
+  "shadow": {
+    "days": 1,
+    "lowered_hours": 3,
+    "moved_kwh": 4.98,
+    "value": 846.6
+  },
+  "site_id": "site_villa",
+  "time_zone": "Europe/Stockholm",
+  "today": "2026-11-16"
+}
