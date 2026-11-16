@@ -1691,5 +1691,5 @@
   "hist.heat.causeUnknown": "årsak ukjent",
   "hist.heat.runsNote": "Vurdert ut fra energien alene (ingen tankgiver): en kjøring klart over den vanlige lille er en tapping, omtrent like stor er tanken som har kjølnet uten tapping.",
   "hist.heat.noRuns": "Ingen varmtvannskjøring funnet denne dagen.",
-  "hist.heat.footnote": "Kostnadene er beregnet med lagrede priser og dagens avgifter. Test: SpotNav styrer ikke varmen ennå."
+  "hist.heat.footnote": "Kostnadene er beregnet med lagrede priser og dagens avgifter."
 }

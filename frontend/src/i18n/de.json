@@ -1691,5 +1691,5 @@
   "hist.heat.causeUnknown": "Ursache unbekannt",
   "hist.heat.runsNote": "Allein aus der Energie geschätzt (kein Speicherfühler): ein Lauf deutlich über dem üblichen kleinen ist eine Zapfung, etwa so groß ist der ohne Zapfung abgekühlte Speicher.",
   "hist.heat.noRuns": "An diesem Tag wurde kein Warmwasserlauf gefunden.",
-  "hist.heat.footnote": "Kosten zu den gespeicherten Preisen mit den heutigen Gebühren. Test: SpotNav steuert die Heizung noch nicht."
+  "hist.heat.footnote": "Kosten zu den gespeicherten Preisen mit den heutigen Gebühren."
 }

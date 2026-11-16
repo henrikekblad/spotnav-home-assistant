@@ -1691,5 +1691,5 @@
   "hist.heat.causeUnknown": "cause unknown",
   "hist.heat.runsNote": "Told from the energy alone (no tank sensor): a run well above the usual small one is a draw, about its size the tank cooling while nobody drew.",
   "hist.heat.noRuns": "No hot-water run found this day.",
-  "hist.heat.footnote": "Costs are at the held prices with today's fees. Test: SpotNav does not control the heating yet."
+  "hist.heat.footnote": "Costs are at the held prices with today's fees."
 }

@@ -1691,5 +1691,5 @@
   "hist.heat.causeUnknown": "oorzaak onbekend",
   "hist.heat.runsNote": "Alleen uit de energie afgeleid (geen boilervoeler): een beurt duidelijk boven de gewone kleine is tappen, ongeveer even groot is de boiler die zonder tappen afkoelde.",
   "hist.heat.noRuns": "Geen warmwaterbeurt gevonden op deze dag.",
-  "hist.heat.footnote": "Kosten berekend met de opgeslagen prijzen en de huidige toeslagen. Test: SpotNav stuurt de verwarming nog niet aan."
+  "hist.heat.footnote": "Kosten berekend met de opgeslagen prijzen en de huidige toeslagen."
 }

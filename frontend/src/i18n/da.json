@@ -1691,5 +1691,5 @@
   "hist.heat.causeUnknown": "årsag ukendt",
   "hist.heat.runsNote": "Vurderet ud fra energien alene (ingen tankføler): en kørsel klart over den sædvanlige lille er en tapning, omtrent lige så stor er tanken, der er kølet af uden tapning.",
   "hist.heat.noRuns": "Ingen varmtvandskørsel fundet denne dag.",
-  "hist.heat.footnote": "Udgifterne er beregnet med gemte priser og dagens afgifter. Test: SpotNav styrer ikke varmen endnu."
+  "hist.heat.footnote": "Udgifterne er beregnet med gemte priser og dagens afgifter."
 }

@@ -1691,5 +1691,5 @@
   "hist.heat.causeUnknown": "syy tuntematon",
   "hist.heat.runsNote": "Päätelty pelkästä energiasta (ei säiliöanturia): tavallista pientä selvästi suurempi ajo on käyttö, suunnilleen samankokoinen on säiliön jäähtyminen ilman käyttöä.",
   "hist.heat.noRuns": "Tältä päivältä ei löytynyt lämpimän veden ajoja.",
-  "hist.heat.footnote": "Kustannukset on laskettu tallennetuilla hinnoilla ja nykyisillä maksuilla. Testi: SpotNav ei vielä ohjaa lämmitystä."
+  "hist.heat.footnote": "Kustannukset on laskettu tallennetuilla hinnoilla ja nykyisillä maksuilla."
 }

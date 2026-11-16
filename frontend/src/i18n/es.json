@@ -1691,5 +1691,5 @@
   "hist.heat.causeUnknown": "causa desconocida",
   "hist.heat.runsNote": "Deducido solo de la energía (sin sensor del depósito): un ciclo claramente mayor que el pequeño habitual es un consumo; de tamaño parecido, el depósito enfriándose sin consumo.",
   "hist.heat.noRuns": "No se encontró ningún ciclo de agua caliente este día.",
-  "hist.heat.footnote": "Costes calculados con los precios guardados y las tarifas actuales. Prueba: SpotNav aún no controla la calefacción."
+  "hist.heat.footnote": "Costes calculados con los precios guardados y las tarifas actuales."
 }

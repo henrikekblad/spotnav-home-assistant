@@ -1691,5 +1691,5 @@
   "hist.heat.causeUnknown": "cause inconnue",
   "hist.heat.runsNote": "Déduit de la seule énergie (pas de sonde de ballon) : un cycle nettement au-dessus du petit habituel est un puisage, de même taille environ c'est le ballon refroidi sans puisage.",
   "hist.heat.noRuns": "Aucun cycle d'eau chaude trouvé ce jour-là.",
-  "hist.heat.footnote": "Coûts calculés avec les prix enregistrés et les frais actuels. Test : SpotNav ne pilote pas encore le chauffage."
+  "hist.heat.footnote": "Coûts calculés avec les prix enregistrés et les frais actuels."
 }
