@@ -203,6 +203,25 @@ export function batteryLine(language: Language, line: string): string {
 }
 
 /** One `status.needs` code in words. */
+/** The one line under what SpotNav may do: the grid charge cap and what it rests on; `null` when charging from the
+ * grid is not allowed or the cap could not be worked out. */
+export function gridChargeCapLine(language: Language, status: BatteryStatus): string | null {
+  const cap = status.grid_charge_cap;
+  if (!status.allowed_actions.includes("grid_charge")) {
+    return null;
+  }
+  if (cap.cap_kw === null) {
+    return cap.rule === "import_limit" ? translate(language, "battery.cap.importLimit") : null;
+  }
+  if (cap.rule !== "learned" && cap.rule !== "conservative") {
+    return null;
+  }
+  const rule = translate(language, `battery.cap.rule.${cap.rule}` as TranslationKey);
+  return cap.cap_kw === 0
+    ? translate(language, "battery.cap.zero", { rule })
+    : translate(language, "battery.cap.line", { kw: formatNumber(language, cap.cap_kw, 1), rule });
+}
+
 export function batteryNeed(language: Language, need: string): string {
   const [kind, param] = need.split(":");
   switch (kind) {
@@ -469,6 +488,12 @@ export class SiteSections {
       section.append(
         element(doc, "p", C.settingRowHelp, translate(language, "battery.allowed", { actions: allowed.map((key) => translate(language, key)).join(", ") })),
       );
+    }
+    const capLine = gridChargeCapLine(language, status);
+    if (capLine !== null) {
+      const cap = element(doc, "p", C.settingRowHelp, capLine);
+      cap.dataset["gridChargeCap"] = "true";
+      section.append(cap);
     }
     if (status.notes.some((note) => note.code === "ai_mode_back")) {
       const note = element(doc, "p", C.settingsNotice, translate(language, "battery.note.aiModeBack"));

@@ -53,6 +53,27 @@ export interface BatteryStatus {
   needs: string[];
   notes: { code: string; at: string }[];
   trial: unknown;
+  grid_charge_cap: GridChargeCap;
+}
+
+export type PhaseValues = { L1: number; L2: number; L3: number };
+
+export interface GridChargeCap {
+  cap_kw: number | null;
+  rule: string;
+  main_fuse_a: number | null;
+  learned: {
+    ready: boolean;
+    raw_a: PhaseValues | null;
+    factor: number;
+    margin_a: number;
+    peaks_a: PhaseValues | null;
+    days_counted: number;
+    days_needed: number;
+    hours: number;
+    minutes: number;
+    heat_peak_w: PhaseValues | null;
+  } | null;
 }
 
 export interface BatteryAnswer {
@@ -86,6 +107,28 @@ const OPTIONS = O({
   battery_control_import_limit_acts: "boolean",
 });
 
+const PHASE_VALUES = O({ L1: "number", L2: "number", L3: "number" });
+
+const GRID_CHARGE_CAP = O({
+  cap_kw: N("number"),
+  rule: "string",
+  main_fuse_a: N("number"),
+  learned: N(
+    O({
+      ready: "boolean",
+      raw_a: N(PHASE_VALUES),
+      factor: "number",
+      margin_a: "number",
+      peaks_a: N(PHASE_VALUES),
+      days_counted: "number",
+      days_needed: "number",
+      hours: "number",
+      minutes: "number",
+      heat_peak_w: N(PHASE_VALUES),
+    }),
+  ),
+});
+
 const STATUS: Spec = O({
   options: OPTIONS,
   state: "string",
@@ -98,6 +141,7 @@ const STATUS: Spec = O({
   needs: A("string"),
   notes: A(O({ code: "string", at: "string" })),
   trial: "any",
+  grid_charge_cap: GRID_CHARGE_CAP,
 });
 
 const BATTERY = O({ api_version: "number", ok: "boolean", error: N("string"), status: N(STATUS) });
