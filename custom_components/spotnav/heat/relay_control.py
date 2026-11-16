@@ -24,11 +24,12 @@ when the pump heats (its meter between its running level and a hot-water run) or
 reads, `BASELINE` of readings with the relay open, then the relay closed: within `EFFECT_GRACE` the calculated supply
 must fall by `SUPPLY_DROP_C`, or the meter's power to `POWER_DROP_SHARE` of the baseline (and by `POWER_DROP_MIN_KW`),
 on `SEEN` readings in a row. Then the relay opens: within `RETURN_GRACE` the supply must come back within
-`SUPPLY_BACK_C`, or the power to `POWER_BACK_SHARE` of the baseline. Outcomes: `passed`; `failed` (no effect, or no
-return where the calculated supply reads: a curve follows its contact at once); `not_judgeable:<why>` (a hot-water
-run began, the readings went, a safety reason or a block came, the power alone did not show the return, the power
-alone showed no effect the first time): tried again at a later moment, at least `RETRY_AFTER` apart and at most
-`MAX_TRIES_DAY` a day. A moment that stops suiting during the baseline is no try (nothing was written).
+`SUPPLY_BACK_C`, or the power to `POWER_BACK_SHARE` of the baseline. Outcomes: `passed` (on the supply, or on the
+power alone on `POWER_PASSES` tries, or one where closings already measured show an effect); `failed` (no effect, or
+no return, where the calculated supply reads: a curve follows its contact at once); `not_judgeable:<why>` (a
+hot-water run began, the readings went, a safety reason or a block came, the power alone showed no effect or no
+return or passed only once: the compressor cycles by itself): tried again at a later moment, at least `RETRY_AFTER`
+apart and at most `MAX_TRIES_DAY` a day. A moment that stops suiting during the baseline is no try (nothing was written).
 """
 
 from __future__ import annotations
@@ -73,8 +74,9 @@ POWER_BACK_SHARE: Final = 0.8
 SEEN: Final = 2
 RETRY_AFTER: Final = timedelta(hours=1)
 MAX_TRIES_DAY: Final = 3
-#: Power-only checks that saw no effect before that counts as failed (the first may be the pump's own cycle).
-POWER_NO_EFFECT_TRIES: Final = 2
+#: Power-only tries (at least `RETRY_AFTER` apart, so not on one compressor cycle) that must each show the effect and
+#: its return before the check passes; one is enough where measured closings already show an effect.
+POWER_PASSES: Final = 2
 
 PHASE_WAIT: Final = "wait"
 PHASE_BASELINE: Final = "baseline"
@@ -210,7 +212,7 @@ class Check:
     samples: list[tuple[float | None, float | None]] = field(default_factory=list)
     seen: int = 0
     tries: list[datetime] = field(default_factory=list)
-    power_no_effect: int = 0
+    power_passes: int = 0
     last: str | None = None
 
     # ---- kept
@@ -222,7 +224,7 @@ class Check:
             "baseline_kw": self.baseline_kw,
             "baseline_supply": self.baseline_supply,
             "tries": [moment.isoformat() for moment in self.tries],
-            "power_no_effect": self.power_no_effect,
+            "power_passes": self.power_passes,
             "last": self.last,
         }
 
@@ -238,8 +240,8 @@ class Check:
                 check.tries.append(datetime.fromisoformat(text))
             except (TypeError, ValueError):
                 continue
-        count = raw.get("power_no_effect")
-        check.power_no_effect = count if isinstance(count, int) and not isinstance(count, bool) else 0
+        count = raw.get("power_passes")
+        check.power_passes = count if isinstance(count, int) and not isinstance(count, bool) else 0
         check.last = raw.get("last") if isinstance(raw.get("last"), str) else None
         return check
 
@@ -266,8 +268,11 @@ class Check:
             return None
         return self._end(f"{NOT_JUDGEABLE}:{why}")
 
-    def step(self, now: datetime, sample: Sample, relay_closed: bool | None, blocked: str | None = None) -> CheckStep:
-        """One look (see the module). `relay_closed` is the relay as read now; `blocked` a reason not to run now."""
+    def step(
+        self, now: datetime, sample: Sample, relay_closed: bool | None, blocked: str | None = None, *, measured: bool = False
+    ) -> CheckStep:
+        """One look (see the module). `relay_closed` is the relay as read now; `blocked` a reason not to run now;
+        `measured` whether closings already measured on the meter show an effect (one power-only pass is enough)."""
         if blocked is not None:
             ended = self.abort(blocked)
             return ended if ended is not None else CheckStep(False)
@@ -304,16 +309,18 @@ class Check:
             if self.baseline_supply is not None and any(supply is not None for _kw, supply in self.samples):
                 return self._end(f"{FAILED}:no_effect")
             if self.baseline_kw is not None and any(kw is not None for kw, _supply in self.samples):
-                self.power_no_effect += 1
-                if self.power_no_effect >= POWER_NO_EFFECT_TRIES:
-                    return self._end(f"{FAILED}:no_effect")
+                # The power alone proves little (the compressor cycles by itself): never a failure, tried again.
                 return self._end(f"{NOT_JUDGEABLE}:no_effect")
             return self._end(f"{NOT_JUDGEABLE}:no_readings")
         # PHASE_OPENED
         self.seen = self.seen + 1 if relay_closed is False and self._back(sample) else 0
         if self.seen >= SEEN:
-            self.power_no_effect = 0
-            return self._end(PASSED)
+            if self.baseline_supply is not None and sample.supply_c is not None:
+                return self._end(PASSED)
+            self.power_passes += 1
+            if self.power_passes >= POWER_PASSES or measured:
+                return self._end(PASSED)
+            return self._end(f"{NOT_JUDGEABLE}:power_once")
         if now - self.phase_at < RETURN_GRACE:
             return CheckStep(False)
         if self.baseline_supply is not None and sample.supply_c is not None:

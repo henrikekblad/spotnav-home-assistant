@@ -99,6 +99,14 @@ CALL_TIMEOUT_S: Final = 10.0
 SHUTDOWN_WAIT_S: Final = 5.0
 #: The plan must have been made within this long to be acted on.
 FRESH_PLAN: Final = timedelta(hours=2)
+#: The meter's readings averaged for what the pump does (a compressor start's spike is no hot-water run), and how much
+#: of it must have been seen.
+POWER_MEAN: Final = timedelta(minutes=5)
+POWER_MEAN_SEEN: Final = timedelta(minutes=4)
+#: Measured closings (the meter's blocks) that each took at least `MEASURED_SHARE` of the heat away, enough to let a
+#: single power-only try pass the check.
+MEASURED_BLOCKS: Final = 2
+MEASURED_SHARE: Final = 0.3
 #: Lowerings and writes kept (days).
 DAYS_KEPT: Final = 3
 LOG_SIZE: Final = 100
@@ -187,6 +195,8 @@ class HeatControl:
         #: Openings in a row not read back.
         self._open_failures = 0
         self._levels: Levels | None = None
+        #: The meter's power as read at the looks, the last `POWER_MEAN`.
+        self._power: deque[tuple[datetime, float]] = deque()
         #: Whether anything can show the check an effect: a power meter or a calculated supply the pump reports.
         self.signal = False
         self._levels_hour: datetime | None = None
@@ -476,7 +486,7 @@ class HeatControl:
             self._set(STATE_WAITING, WAIT_NO_SIGNAL)
             return
         blocked = None if safety in (None, SAFETY_SETTLING) else safety
-        step = self.check.step(now, sample, read, blocked)
+        step = self.check.step(now, sample, read, blocked, measured=self._measured())
         if step.outcome is not None:
             self._log(now, "check", outcome=step.outcome)
             _LOGGER.info("SpotNav heat control: the check of %s ended: %s", relay, step.outcome)
@@ -571,8 +581,22 @@ class HeatControl:
         supply = pumps[0].calc_supply_temp_c if pumps else None
         # A meter without its levels yet, or a supply that reads unavailable for a while, is no reason to say none.
         self.signal = power_meter or (bool(pumps) and "calc_supply_temp" in pumps[0].sources) or supply is not None
-        state_now_ = state_now(kw, self._levels, kw) if kw is not None else None
+        state_now_ = state_now(kw, self._levels, self._power_mean(now, kw)) if kw is not None else None
         return Sample(kw if state_now_ is not None else None, state_now_, supply)
+
+    def _power_mean(self, now: datetime, kw: float) -> float | None:
+        """The meter's mean over the last `POWER_MEAN` (with `kw` now), `None` before `POWER_MEAN_SEEN` of it."""
+        self._power.append((now, kw))
+        while self._power and now - self._power[0][0] > POWER_MEAN:
+            self._power.popleft()
+        if now - self._power[0][0] < POWER_MEAN_SEEN:
+            return None
+        return sum(value for _moment, value in self._power) / len(self._power)
+
+    def _measured(self) -> bool:
+        """Whether closings already measured on the meter show the relay's effect (see `MEASURED_BLOCKS`)."""
+        blocks = getattr(self.shadow, "blocks", None) or []
+        return sum(1 for block in blocks if (share := block.share()) is not None and share >= MEASURED_SHARE) >= MEASURED_BLOCKS
 
     # ---- writes
 

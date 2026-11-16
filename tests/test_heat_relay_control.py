@@ -120,14 +120,25 @@ def to_closed(check: Check, sample: Sample = HEATING) -> datetime:
     return moment
 
 
-def test_the_check_passes_on_the_meters_power() -> None:
-    check = Check()
-    moment = to_closed(check)
-    # The relay read back closed; the pump falls to 0.6 kW, seen twice: the relay is opened.
+def _power_try(check: Check, start: datetime, measured: bool = False) -> str | None:
+    """One power-only try from `start` whose closing shows an effect and whose opening a return."""
+    moment, _ = run(check, start, 6, HEATING, False)
+    assert check.phase == PHASE_CLOSED
     moment, steps = run(check, moment, 3, Sample(0.6, "heating"), True)
     assert check.phase == PHASE_OPENED and steps[-1].closed is False
-    moment, steps = run(check, moment, 2, Sample(1.0, "heating"), False)
-    assert steps[-1].outcome == "passed" and check.phase == PHASE_WAIT
+    steps = [check.step(moment + i * MIN, Sample(1.0, "heating"), False, measured=measured) for i in range(2)]
+    return outcome(steps)
+
+
+def test_the_check_passes_on_the_meters_power_on_two_tries_apart() -> None:
+    check = Check()
+    # One try may meet the compressor's own pause: not judged yet, tried again at another time.
+    assert _power_try(check, T0) == "not_judgeable:power_once" and check.phase == PHASE_WAIT
+    assert _power_try(check, T0 + 2 * H) == "passed"
+
+
+def test_the_check_passes_on_one_power_try_where_measured_closings_show_an_effect() -> None:
+    assert _power_try(Check(), T0, measured=True) == "passed"
 
 
 def test_the_check_passes_on_the_calculated_supply_alone() -> None:
@@ -148,18 +159,18 @@ def test_no_effect_on_the_supply_fails() -> None:
     assert outcome(steps) == "failed:no_effect" and verdict(outcome(steps)) == "failed"
 
 
-def test_no_effect_on_the_power_alone_is_tried_again_once_then_fails() -> None:
+def test_no_effect_on_the_power_alone_is_never_a_failure() -> None:
     check = Check()
     moment = to_closed(check)
     _moment, steps = run(check, moment, int(EFFECT_GRACE / MIN) + 1, HEATING, True)
     assert outcome(steps) == "not_judgeable:no_effect"
-    # Not again within the hour; then a second try that shows nothing fails.
+    # Not again within the hour; a second try that shows nothing is still only not judgeable (tried again).
     assert check.step(T0 + 40 * MIN, HEATING, False).closed is False and check.phase == PHASE_WAIT
     later = T0 + 2 * H
     moment, _ = run(check, later, 6, HEATING, False)
     assert check.phase == PHASE_CLOSED
     _moment, steps = run(check, moment, int(EFFECT_GRACE / MIN) + 1, HEATING, True)
-    assert outcome(steps) == "failed:no_effect"
+    assert outcome(steps) == "not_judgeable:no_effect"
 
 
 def test_a_supply_that_does_not_come_back_fails_a_power_that_does_not_is_not_judgeable() -> None:
@@ -207,4 +218,4 @@ def test_the_check_is_kept_without_its_running_try() -> None:
     to_closed(check)
     kept = Check.from_dict(check.as_dict())
     assert kept.phase == PHASE_WAIT and kept.tries == check.tries
-    assert Check.from_dict(None).tries == [] and Check.from_dict({"tries": ["x"], "power_no_effect": True}).power_no_effect == 0
+    assert Check.from_dict(None).tries == [] and Check.from_dict({"tries": ["x"], "power_passes": True}).power_passes == 0

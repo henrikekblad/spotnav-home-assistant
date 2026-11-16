@@ -598,3 +598,33 @@ async def test_an_old_relay_that_never_opens_is_let_go_after_a_few_tries(hass: H
         await control.async_look(now + minute * MIN)
     assert 2 <= relay.calls.count("off") <= 4
     assert control.relay == "input_boolean.vp_rele_2" and not control.held
+
+
+async def test_a_compressor_start_spike_is_not_read_as_hot_water(hass: HomeAssistant, freezer) -> None:
+    from custom_components.spotnav.heat.meter_split import Levels
+    from custom_components.spotnav.site.heat_meter import KIND_POWER, STATUS_FOUND, HeatMeter
+
+    _site_, controller, _relay = await _site(hass, freezer)
+    control: HeatControl = controller.heat_control
+    control.site.house_forecast.heat.meter = HeatMeter(STATUS_FOUND, "sensor.vp_effekt", KIND_POWER)
+    now = controller.demand.now()
+    control._levels, control._levels_hour = Levels(0.4, 1.1), now.replace(minute=0, second=0, microsecond=0)  # noqa: SLF001
+    for second in range(0, 300, 30):
+        hass.states.async_set("sensor.vp_effekt", "1.1", {"unit_of_measurement": "kW"})
+        await control.async_sample(now + timedelta(seconds=second))
+    # A 2.2 kW start spike after five minutes at 1.1 kW: the 5-minute mean is far below a hot-water run.
+    hass.states.async_set("sensor.vp_effekt", "2.2", {"unit_of_measurement": "kW"})
+    sample = await control.async_sample(now + timedelta(seconds=300))
+    assert sample.state == "heating" and sample.kw == 2.2
+
+
+async def test_closings_already_measured_let_one_power_try_pass(hass: HomeAssistant, freezer) -> None:
+    from custom_components.spotnav.heat.relay_effect import BlockResult
+
+    samples = [Sample(1.1, "heating")] * 6 + [Sample(0.5, "heating")] * 2 + [Sample(1.1, "heating")] * 2
+    control, relay, now = await _checking(hass, freezer, samples)
+    control.shadow.blocks = [
+        BlockResult(now - (d + 1) * 24 * H, now - (d + 1) * 24 * H + 2 * H, 1.2, 0.5, 1.4) for d in range(2)
+    ]
+    await _looks(control, now, 11)
+    assert relay.calls == ["on", "off"] and control.checks[RELAY]["result"] == "passed"
