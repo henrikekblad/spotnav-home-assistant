@@ -417,3 +417,13 @@ def test_the_plan_carries_the_adapters_estimates_on() -> None:
     _params, _reason, estimates = limited_params(*battery_params(facts), facts)
 
     assert {"capacity_from_ah", "rated_from_current", "round_trip_assumed"} <= set(estimates)
+
+
+def test_sigenergy_finds_the_plants_cell_temperature_else_the_inverters() -> None:
+    facts = _facts("sigenergy")
+    assert facts.cell_temperature_entity == "sensor.sigen_plant_ess_average_cell_temperature"
+    assert facts.sources["cell_temperature"] == "sensor.sigen_plant_ess_average_cell_temperature"
+    # Register 30286 needs firmware V2.8: without the plant's, the inverter's own.
+    older = _facts("sigenergy", **{"sensor.sigen_plant_ess_average_cell_temperature": {"disabled": True}})
+    assert older.cell_temperature_entity == "sensor.sigen_inverter_battery_average_cell_temperature"
+    assert _facts("huawei").cell_temperature_entity is None

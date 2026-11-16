@@ -135,6 +135,9 @@ class BatteryFacts:
     #: their values are read live, with their age, by the one that uses them (`site/phase_peaks.py`).
     plant_phase_entities: tuple[str, str, str] | None = None
     plant_phase_sign: float = 1.0
+    #: The battery's average cell temperature entity (`adapters.Adapter.cell_temperature`), found and enabled, else
+    #: `None`. Its day is read from the recorder's statistics by the nightly review, never live.
+    cell_temperature_entity: str | None = None
     management: Management = field(default_factory=lambda: Management("unknown", "no_battery"))
     hold: ControlStatus | None = None
     grid_charge: ControlStatus | None = None
@@ -282,6 +285,15 @@ def _plant_phase_entities(
     if any(entity is None or entity.disabled or entity.domain != "sensor" for entity in found):
         return None
     return (found[0].entity_id, found[1].entity_id, found[2].entity_id)  # type: ignore[union-attr]
+
+
+def _cell_temperature_entity(adapter: Adapter, entities: Sequence[EntityFact], battery: EntityFact) -> str | None:
+    """The first of the adapter's cell temperature sensors that is found and enabled."""
+    for match in adapter.cell_temperature:
+        entity = find_entity(match, entities, battery)
+        if entity is not None and not entity.disabled and entity.domain == "sensor":
+            return entity.entity_id
+    return None
 
 
 def _reserve(
@@ -464,6 +476,9 @@ def battery_facts(
     plant_phases = _plant_phase_entities(adapter, entities, battery)
     if plant_phases is not None:
         sources["plant_phase_power"] = ", ".join(plant_phases)
+    cell_temperature = _cell_temperature_entity(adapter, entities, battery)
+    if cell_temperature is not None:
+        sources["cell_temperature"] = cell_temperature
     reserve_soc_pct, reserve_read = _reserve(adapter.reserves, entities, battery)
     if reserve_read:
         sources["reserve"] = ", ".join(reserve_read)
@@ -489,6 +504,7 @@ def battery_facts(
         on_grid=on_grid,
         plant_phase_entities=plant_phases,
         plant_phase_sign=adapter.plant_phase_sign,
+        cell_temperature_entity=cell_temperature,
         management=management,
         hold=_control(adapter.hold, entities, battery, rated_discharge_kw),
         grid_charge=_control(adapter.grid_charge, entities, battery, rated_discharge_kw),

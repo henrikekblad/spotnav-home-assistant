@@ -150,6 +150,24 @@
     "disabled": true
    },
    {
+    "entity_id": "sensor.sigen_plant_ess_average_cell_temperature",
+    "unique_id": "ENTRY_sigen_plant_plant_ess_average_cell_temperature",
+    "device": "battery",
+    "state": "20.8",
+    "unit": "°C",
+    "device_class": "temperature",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.sigen_inverter_battery_average_cell_temperature",
+    "unique_id": "ENTRY_sigen_inverter_inverter_ess_average_cell_temperature",
+    "device": "battery",
+    "state": "20.8",
+    "unit": "°C",
+    "device_class": "temperature",
+    "disabled": false
+   },
+   {
     "entity_id": "sensor.sigen_plant_phase_a_active_power",
     "unique_id": "ENTRY_sigen_plant_plant_phase_a_active_power",
     "device": "battery",
