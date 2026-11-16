@@ -6,7 +6,7 @@
 // blueprint, so the button opens the page that lists the blueprints. All are always listed: the blueprint's own inputs
 // say what it needs (a site's solar surplus sensor, for one).
 
-import { pluralForm, translate, type Language, type TranslationKey } from "./i18n";
+import { numberWord, pluralForm, translate, type Language, type TranslationKey } from "./i18n";
 import { VISUAL_CLASSES as C } from "./visual-styles";
 
 /** The blueprints, by the file SpotNav installs them under, in the order they are listed. */
@@ -111,7 +111,7 @@ export function automationsBody(doc: Document, language: Language, navigate: (pa
       link.href = automationsUsingPath(blueprint.file);
       link.dataset["blueprintUse"] = blueprint.file;
       const key: TranslationKey = pluralForm(language, count) === "one" ? "automations.usedBy.one" : "automations.usedBy.other";
-      link.textContent = translate(language, key, { count: String(count) });
+      link.textContent = translate(language, key, { count: String(count), countWord: numberWord(language, count) });
       link.addEventListener("click", (event) => {
         event.preventDefault();
         navigate(automationsUsingPath(blueprint.file));

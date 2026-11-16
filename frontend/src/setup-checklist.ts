@@ -6,7 +6,7 @@
 // and the places are the card's. A grid sign row (the site's grid reading looks to have its sign the wrong way round)
 // names the one site option its button writes and the value; nothing is written unless a person presses it.
 
-import { pluralForm, translate, type Language, type TranslationKey } from "./i18n";
+import { numberWord, pluralForm, translate, type Language, type TranslationKey } from "./i18n";
 import { addIntegrationPath } from "./price-provider";
 import type { SetupBlock } from "./validate";
 import { VISUAL_CLASSES as C } from "./visual-styles";
@@ -82,7 +82,7 @@ export function setupRowsOf(block: SetupBlock | null): SetupRow[] {
 /** "Get started: 3 things left", in the language's own plural. */
 export function setupLineText(language: Language, count: number): string {
   const key: TranslationKey = pluralForm(language, count) === "one" ? "setup.line.one" : "setup.line.other";
-  return translate(language, key, { count: String(count) });
+  return translate(language, key, { count: String(count), countWord: numberWord(language, count) });
 }
 
 export interface SetupSectionInput {

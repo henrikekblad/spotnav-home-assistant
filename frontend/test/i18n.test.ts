@@ -3,7 +3,8 @@
 import { describe, expect, it } from "vitest";
 
 import { TRANSLATIONS } from "../src/i18n/all";
-import { LANGUAGES, placeholders, pluralForm, periodHeadingKey, resolveLanguage, translate } from "../src/i18n";
+import { setupLineText } from "../src/setup-checklist";
+import { LANGUAGES, numberWord, placeholders, pluralForm, periodHeadingKey, resolveLanguage, translate } from "../src/i18n";
 import en from "../src/i18n/en.json";
 
 const keys = Object.keys(en) as Array<keyof typeof en>;
@@ -81,5 +82,49 @@ describe("translate", () => {
   it("fills placeholders and leaves unknown ones visible rather than blanking them", () => {
     expect(translate("en", "status.externalInstalled", { time: "21:00" })).toContain("21:00");
     expect(translate("en", "plan.period", { day: "Mon", from: "21:00" })).toContain("{to}");
+  });
+});
+
+describe("numberWord", () => {
+  const expected: Record<string, string[]> = {
+    sv: ["en", "två", "tre", "fyra", "fem", "sex", "sju", "åtta", "nio", "tio", "elva", "tolv"],
+    en: ["one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve"],
+    nb: ["en", "to", "tre", "fire", "fem", "seks", "syv", "åtte", "ni", "ti", "elleve", "tolv"],
+    da: ["en", "to", "tre", "fire", "fem", "seks", "syv", "otte", "ni", "ti", "elleve", "tolv"],
+    fi: ["yksi", "kaksi", "kolme", "neljä", "viisi", "kuusi", "seitsemän", "kahdeksan", "yhdeksän", "kymmenen", "yksitoista", "kaksitoista"],
+    de: ["ein", "zwei", "drei", "vier", "fünf", "sechs", "sieben", "acht", "neun", "zehn", "elf", "zwölf"],
+    nl: ["een", "twee", "drie", "vier", "vijf", "zes", "zeven", "acht", "negen", "tien", "elf", "twaalf"],
+    fr: ["un", "deux", "trois", "quatre", "cinq", "six", "sept", "huit", "neuf", "dix", "onze", "douze"],
+    es: ["un", "dos", "tres", "cuatro", "cinco", "seis", "siete", "ocho", "nueve", "diez", "once", "doce"],
+  };
+
+  it("gives the word for 1 to 12 in every language, the digits otherwise", () => {
+    for (const language of LANGUAGES) {
+      for (let n = 1; n <= 12; n++) {
+        expect(numberWord(language, n), `${language} ${n}`).toBe(expected[language]![n - 1]);
+      }
+      expect(numberWord(language, 0)).toBe("0");
+      expect(numberWord(language, 13)).toBe("13");
+      expect(numberWord(language, 2.5)).toBe("2.5");
+    }
+  });
+
+  it("capitalises when asked", () => {
+    expect(numberWord("sv", 2, true)).toBe("Två");
+    expect(numberWord("de", 5, true)).toBe("Fünf");
+    expect(numberWord("sv", 20, true)).toBe("20");
+  });
+
+  it("fills the two sentences that count what is left, in every language", () => {
+    expect(setupLineText("sv", 2)).toBe("Kom igång: två saker kvar");
+    expect(setupLineText("en", 3)).toBe("Get started: three things left");
+    for (const language of LANGUAGES) {
+      const heading = translate(language, "battery.needs.heading.other", { count: "2", countWord: numberWord(language, 2, true) });
+      expect(heading.toLocaleLowerCase(language), language).toContain(expected[language]![1]!);
+      expect(heading).not.toContain("{");
+    }
+    expect(translate("sv", "battery.needs.heading.other", { countWord: numberWord("sv", 2, true) })).toBe(
+      "Två saker kvar innan SpotNav kan styra batteriet",
+    );
   });
 });

@@ -160,7 +160,7 @@ describe("the Electricity price section", () => {
   it("names the price and says every charger uses it, with the shared note", async () => {
     const { element } = await open(dashboard(priceSource()));
     const section = priceSection(element);
-    expect(section.querySelector("[data-price-source]")?.textContent).toBe("Electricity price SE4 · used by all 2 chargers");
+    expect(section.querySelector("[data-price-source]")?.textContent).toBe("Electricity price SE4 · used by all two chargers");
     expect(section.querySelector("[data-price-shared]")?.textContent).toBe(translate("en", "price.shared"));
     // One price: no choice, no question.
     expect(section.querySelector("[data-row='price_from']")).toBeNull();
@@ -183,7 +183,7 @@ describe("the Electricity price section", () => {
     });
     await settle();
     const section = priceSection(element);
-    expect(section.querySelector("[data-price-source]")?.textContent).toBe("Elpris SE4 · används av alla 2 laddare");
+    expect(section.querySelector("[data-price-source]")?.textContent).toBe("Elpris SE4 · används av alla två laddare");
     expect(section.querySelector("[data-row='price_from']")?.textContent).toContain("Pris från");
     const question = section.querySelector<HTMLElement>("[data-price-duplicate]")!;
     expect(question.textContent).toContain("Två elpriser för SE4 med olika avgifter. Använd ett?");

@@ -194,11 +194,11 @@ describe("the popover from the house card", () => {
     const { root } = await mount({ battery: "live.json" });
     const popover = await open(root);
     const box = popover.querySelector<HTMLElement>("[data-section='battery'] [data-battery-needs]")!;
-    expect(box.querySelector(".spotnav-battery-needs-heading")!.textContent).toBe("2 saker kvar innan SpotNav kan styra batteriet");
+    expect(box.querySelector(".spotnav-battery-needs-heading")!.textContent).toBe("Två saker kvar innan SpotNav kan styra batteriet");
     const steps = [...box.querySelectorAll<HTMLElement>("ol > li")];
     expect(steps.map((step) => step.dataset["need"])).toEqual(["control_disabled", "ai_takeover_ack"]);
     expect(steps[0]!.textContent).toContain(
-      "Slå på 3 avstängda inställningar på batteriets enhet i Home Assistant: Remote EMS, Control mode och Charge limit.",
+      "Slå på tre avstängda inställningar på batteriets enhet i Home Assistant: Remote EMS, Control mode och Charge limit.",
     );
     const pushed: string[] = [];
     window.addEventListener("location-changed", () => pushed.push(window.location.pathname), { once: true });

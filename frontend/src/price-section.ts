@@ -8,7 +8,7 @@
 // makes each write (`write`), so a charger writes through its own commands and a site through the site-keyed ones.
 
 import type { FormatContext } from "./format";
-import { translate, type Language, type TranslationKey } from "./i18n";
+import { numberWord, translate, type Language, type TranslationKey } from "./i18n";
 import { marketAreaLabel } from "./market";
 import type { PriceEntryFacts } from "./model";
 import {
@@ -382,7 +382,7 @@ function priceEntryNodes(input: PriceSectionInput): HTMLElement[] {
       ? title
       : translate(language, count >= entry.chargerTotal ? "price.source.usedByAll" : "price.source.usedBy", {
           title,
-          count: String(count),
+          countWord: numberWord(language, count),
         });
   // The entry's own name only says something when other chargers share it; alone it repeats the area.
   if (count > 1) {
@@ -449,7 +449,7 @@ function priceDuplicateQuestion(
       C.suggestionText,
       translate(language, many ? "price.duplicate.questionMany" : "price.duplicate.question", {
         area: duplicate.areaId,
-        count: String(duplicate.entries.length),
+        countWord: numberWord(language, duplicate.entries.length, true),
       }),
     ),
   );

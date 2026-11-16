@@ -666,7 +666,7 @@ describe("Automations", () => {
     expect(hass.blueprintMessages).toEqual([{ type: "spotnav/get_blueprints", api_version: 1 }]);
 
     const used = dialog?.querySelector<HTMLAnchorElement>("[data-blueprint-use='price_setpoint.yaml']");
-    expect(used?.textContent).toBe("Används av 2 automationer");
+    expect(used?.textContent).toBe("Används av två automationer");
     expect(dialog?.querySelector("[data-blueprint-use='solar_surplus_switch.yaml']")).toBeNull();
     used?.click();
     await settle();

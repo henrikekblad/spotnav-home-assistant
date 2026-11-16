@@ -121,13 +121,13 @@ describe("the setup block", () => {
 describe("the attention line", () => {
   it("says how many things are left, for an administrator", async () => {
     const { element } = await open(dashboard(ALL.slice(1)));
-    expect(line(element)?.textContent).toBe("Get started: 3 things left");
+    expect(line(element)?.textContent).toBe("Get started: three things left");
   });
 
   it("is in the reader's language and plural", async () => {
     const { element } = await open(dashboard([ALL[1]!]), { language: "sv" });
     expect(line(element)?.textContent).toBe("Kom igång: 1 sak kvar");
-    expect(setupLineText("sv", 3)).toBe("Kom igång: 3 saker kvar");
+    expect(setupLineText("sv", 3)).toBe("Kom igång: tre saker kvar");
     expect(setupLineText("en", 1)).toBe("Get started: 1 thing left");
   });
 
@@ -236,7 +236,7 @@ describe("the dialog's Get started section", () => {
       { id: "phase_switching", dismissible: true },
     ];
     const { element } = await open(dashboard(rows));
-    expect(line(element)?.textContent).toBe("Get started: 3 things left");
+    expect(line(element)?.textContent).toBe("Get started: three things left");
     line(element)!.click();
     await settle();
     expect(row(element, "vehicle").querySelector(".spotnav-suggestion-text")?.textContent).toBe(
@@ -286,7 +286,7 @@ describe("the dialog's Get started section", () => {
     expect(hass.messages.at(-1)).toMatchObject({ type: "spotnav/get_dashboard" });
     hass.resolveNext(dashboard(ALL.slice(1, 3)));
     await settle();
-    expect(line(element)?.textContent).toBe("Get started: 2 things left");
+    expect(line(element)?.textContent).toBe("Get started: two things left");
   });
 });
 
@@ -391,7 +391,7 @@ describe("the words", () => {
       ]) {
         expect(words[key], `${language} ${key}`).toBeTruthy();
       }
-      expect(words["setup.line.other"]).toContain("{count}");
+      expect(words["setup.line.other"]).toContain("{countWord}");
     }
   });
 });
