@@ -9,9 +9,10 @@ The relay path only (and SG Ready's first contact): **closed** lowers the pump's
 planned lowered run: `planned_run_end`):
 
 * A lowering starts only where the plan lowers the running hour and its run ahead leaves at least `MIN_LOWER` (no
-  quarter blips), at least `MIN_NORMAL` after SpotNav's last lowering ended, while the day's lowered time leaves
-  `MIN_LOWER` under `MAX_DAY`, and the day's writes leave room for its end too (`MAX_WRITES_DAY`).
-* A lowering lasts at least `MIN_LOWER` and at most `MAX_RUN` in a row, never past `MAX_DAY` for the day; it ends
+  quarter blips), at least `MIN_NORMAL` after SpotNav's last lowering ended, while the lowered time of the last 24
+  hours (a rolling day) leaves `MIN_LOWER` under `MAX_DAY`, and the day's writes leave room for its end too
+  (`MAX_WRITES_DAY`).
+* A lowering lasts at least `MIN_LOWER` and at most `MAX_RUN` in a row, never past `MAX_DAY` in 24 hours; it ends
   when the plan stops lowering once `MIN_LOWER` has passed.
 * A safety reason ends a lowering at once, also before `MIN_LOWER`, and starts none: outdoors at or below
   `NO_LOWER_AT_C` (`too_cold`), a counted room below the comfort band (`room_cold`), data that is not good
@@ -24,16 +25,19 @@ when the pump heats (its meter between its running level and a hot-water run) or
 reads, `BASELINE` of readings with the relay open, then the relay closed: within `EFFECT_GRACE` the calculated supply
 must fall by `SUPPLY_DROP_C`, or the meter's power to `POWER_DROP_SHARE` of the baseline (and by `POWER_DROP_MIN_KW`),
 on `SEEN` readings in a row. Then the relay opens: within `RETURN_GRACE` the supply must come back within
-`SUPPLY_BACK_C`, or the power to `POWER_BACK_SHARE` of the baseline. Outcomes: `passed`; `failed` (no effect, or no
-return where the calculated supply reads: a curve follows its contact at once); `not_judgeable:<why>` (a hot-water
-run began, the readings went, a safety reason or a block came, the power alone did not show the return, the power
-alone showed no effect the first time): tried again at a later moment, at least `RETRY_AFTER` apart and at most
-`MAX_TRIES_DAY` a day. A moment that stops suiting during the baseline is no try (nothing was written).
+`SUPPLY_BACK_C`, or the power to `POWER_BACK_SHARE` of the baseline. Outcomes: `passed` (on the supply, or on the
+power alone on `POWER_PASSES` tries, or one where closings already measured show an effect); `failed` (no effect, or
+no return, where the calculated supply reads: a curve follows its contact at once); `not_judgeable:<why>` (a
+hot-water run began, the readings went, a safety reason or a block came, the power alone showed no effect or no
+return or passed only once: the compressor cycles by itself): tried again at a later moment, at most
+`MAX_TRIES_DAY` a day, at least `RETRY_AFTER` apart, doubled for each try in a row without a verdict up to
+`MAX_RETRY_AFTER`. A try's closing and opening count toward the day's writes (`MAX_WRITES_DAY`): none starts without
+room for both. A moment that stops suiting during the baseline is no try (nothing was written).
 """
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Any, Final
@@ -44,7 +48,7 @@ MIN_LOWER: Final = timedelta(minutes=45)
 MAX_RUN: Final = timedelta(hours=3)
 MIN_NORMAL: Final = timedelta(hours=1)
 MAX_DAY: Final = timedelta(hours=6)
-MAX_WRITES_DAY: Final = 16
+MAX_WRITES_DAY: Final = 6
 NO_LOWER_AT_C: Final = -15.0
 GOOD_FOR: Final = timedelta(minutes=10)
 
@@ -73,8 +77,11 @@ POWER_BACK_SHARE: Final = 0.8
 SEEN: Final = 2
 RETRY_AFTER: Final = timedelta(hours=1)
 MAX_TRIES_DAY: Final = 3
-#: Power-only checks that saw no effect before that counts as failed (the first may be the pump's own cycle).
-POWER_NO_EFFECT_TRIES: Final = 2
+#: The longest wait between tries: each try in a row without a verdict doubles `RETRY_AFTER` up to it.
+MAX_RETRY_AFTER: Final = timedelta(hours=24)
+#: Power-only tries (at least `RETRY_AFTER` apart, so not on one compressor cycle) that must each show the effect and
+#: its return before the check passes; one is enough where measured closings already show an effect.
+POWER_PASSES: Final = 2
 
 PHASE_WAIT: Final = "wait"
 PHASE_BASELINE: Final = "baseline"
@@ -118,8 +125,8 @@ class Situation:
     held_since: datetime | None
     #: When SpotNav's last lowering ended.
     last_end: datetime | None
-    #: SpotNav's lowered time today, the running lowering's part included.
-    lowered_today: timedelta
+    #: SpotNav's lowered time over the last 24 hours, the running lowering's part included.
+    lowered_24h: timedelta
     writes_today: int
     #: A reason that ends any lowering at once and starts none (`SAFETY_*`; `settling` starts none only).
     safety: str | None = None
@@ -135,7 +142,7 @@ class Decision:
 
 def decide(s: Situation) -> Decision:
     """Whether the relay is to be closed now, and why (see the module)."""
-    day_left = max(timedelta(0), MAX_DAY - s.lowered_today)
+    day_left = max(timedelta(0), MAX_DAY - s.lowered_24h)
     if s.held_since is not None:
         if s.safety is not None and s.safety != SAFETY_SETTLING:
             return Decision(False, s.safety)
@@ -161,6 +168,58 @@ def decide(s: Situation) -> Decision:
     if s.writes_today + 2 > MAX_WRITES_DAY:
         return Decision(False, REASON_WRITE_CAP)
     return Decision(True, REASON_PLANNED, until)
+
+
+def closings_ahead(
+    plan: Sequence[BandHour],
+    now: datetime,
+    *,
+    held_until: datetime | None,
+    last_end: datetime | None,
+    lowerings: Sequence[tuple[datetime, datetime | None]],
+    writes: Mapping[str, int],
+    day_of: Callable[[datetime], str],
+    safety: str | None = None,
+) -> list[tuple[datetime, datetime]]:
+    """The relay's closings to expect from `now` on by the rules (`decide`) on the plan as it stands: the running one
+    to `held_until`, then each lowered run of the plan from the end of the rest after the last, at most `MAX_RUN` in
+    a row (a longer run again after the rest), cut to what the rolling `MAX_DAY` leaves, none shorter than
+    `MIN_LOWER` or past the day's `MAX_WRITES_DAY`. None while a safety reason holds (ended now, none started)."""
+    if safety is not None and safety != SAFETY_SETTLING:
+        return []
+    out: list[tuple[datetime, datetime]] = []
+    done = [(begin, end if end is not None else (held_until or now)) for begin, end in lowerings]
+    counts = dict(writes)
+    if held_until is not None:
+        # The running one's opening is a write still to come.
+        out.append((now, held_until))
+        last_end = held_until
+        counts[day_of(held_until)] = counts.get(day_of(held_until), 0) + 1
+    runs: list[list[datetime]] = []
+    for hour in sorted(plan, key=lambda item: item.start):
+        end = hour.start + timedelta(hours=1)
+        if hour.action != ACTION_LOWER or end <= now:
+            continue
+        if runs and runs[-1][1] == hour.start:
+            runs[-1][1] = end
+        else:
+            runs.append([max(hour.start, now), end])
+    for run_start, run_end in runs:
+        moment = run_start
+        while True:
+            if last_end is not None:
+                moment = max(moment, last_end + MIN_NORMAL)
+            if moment >= run_end:
+                break
+            day_left = MAX_DAY - lowered_within(done + out, moment - timedelta(days=1), moment)
+            until = min(run_end, moment + MAX_RUN, moment + max(timedelta(0), day_left))
+            day = day_of(moment)
+            if until - moment < MIN_LOWER or counts.get(day, 0) + 2 > MAX_WRITES_DAY:
+                break
+            out.append((moment, until))
+            counts[day] = counts.get(day, 0) + 2
+            last_end = moment = until
+    return out
 
 
 def lowered_within(lowerings: Sequence[tuple[datetime, datetime | None]], start: datetime, end: datetime) -> timedelta:
@@ -210,7 +269,9 @@ class Check:
     samples: list[tuple[float | None, float | None]] = field(default_factory=list)
     seen: int = 0
     tries: list[datetime] = field(default_factory=list)
-    power_no_effect: int = 0
+    power_passes: int = 0
+    #: Tries in a row that ended without a verdict (the back-off between tries).
+    unjudged: int = 0
     last: str | None = None
 
     # ---- kept
@@ -222,7 +283,8 @@ class Check:
             "baseline_kw": self.baseline_kw,
             "baseline_supply": self.baseline_supply,
             "tries": [moment.isoformat() for moment in self.tries],
-            "power_no_effect": self.power_no_effect,
+            "power_passes": self.power_passes,
+            "unjudged": self.unjudged,
             "last": self.last,
         }
 
@@ -238,16 +300,24 @@ class Check:
                 check.tries.append(datetime.fromisoformat(text))
             except (TypeError, ValueError):
                 continue
-        count = raw.get("power_no_effect")
-        check.power_no_effect = count if isinstance(count, int) and not isinstance(count, bool) else 0
+        count = raw.get("power_passes")
+        check.power_passes = count if isinstance(count, int) and not isinstance(count, bool) else 0
+        unjudged = raw.get("unjudged")
+        check.unjudged = unjudged if isinstance(unjudged, int) and not isinstance(unjudged, bool) else 0
         check.last = raw.get("last") if isinstance(raw.get("last"), str) else None
         return check
 
     # ---- the steps
 
+    def retry_after(self) -> timedelta:
+        """The wait after the last try: `RETRY_AFTER`, doubled for each try in a row without a verdict."""
+        return min(MAX_RETRY_AFTER, RETRY_AFTER * 2 ** min(self.unjudged, 8))
+
     def may_try(self, now: datetime) -> bool:
         recent = [moment for moment in self.tries if now - moment < timedelta(days=1)]
-        return len(recent) < MAX_TRIES_DAY and (not recent or now - max(recent) >= RETRY_AFTER)
+        if len(recent) >= MAX_TRIES_DAY:
+            return False
+        return not self.tries or now - max(self.tries) >= self.retry_after()
 
     def running(self) -> bool:
         return self.phase in (PHASE_CLOSED, PHASE_OPENED)
@@ -255,6 +325,7 @@ class Check:
     def _end(self, outcome: str) -> CheckStep:
         self.phase, self.phase_at, self.seen, self.samples = PHASE_WAIT, None, 0, []
         self.last = outcome
+        self.unjudged = self.unjudged + 1 if verdict(outcome) == NOT_JUDGEABLE else 0
         return CheckStep(False, outcome)
 
     def abort(self, why: str) -> CheckStep | None:
@@ -266,13 +337,24 @@ class Check:
             return None
         return self._end(f"{NOT_JUDGEABLE}:{why}")
 
-    def step(self, now: datetime, sample: Sample, relay_closed: bool | None, blocked: str | None = None) -> CheckStep:
-        """One look (see the module). `relay_closed` is the relay as read now; `blocked` a reason not to run now."""
+    def step(
+        self,
+        now: datetime,
+        sample: Sample,
+        relay_closed: bool | None,
+        blocked: str | None = None,
+        *,
+        measured: bool = False,
+        may_start: bool = True,
+    ) -> CheckStep:
+        """One look (see the module). `relay_closed` is the relay as read now; `blocked` a reason not to run now;
+        `measured` whether closings already measured on the meter show an effect (one power-only pass is enough);
+        `may_start` whether the day's writes leave room for a try's closing and opening."""
         if blocked is not None:
             ended = self.abort(blocked)
             return ended if ended is not None else CheckStep(False)
         if self.phase == PHASE_WAIT:
-            if sample.usable and relay_closed is False and self.may_try(now):
+            if may_start and sample.usable and relay_closed is False and self.may_try(now):
                 self.phase, self.phase_at, self.samples = PHASE_BASELINE, now, [(sample.kw, sample.supply_c)]
             return CheckStep(False)
         assert self.phase_at is not None
@@ -304,16 +386,18 @@ class Check:
             if self.baseline_supply is not None and any(supply is not None for _kw, supply in self.samples):
                 return self._end(f"{FAILED}:no_effect")
             if self.baseline_kw is not None and any(kw is not None for kw, _supply in self.samples):
-                self.power_no_effect += 1
-                if self.power_no_effect >= POWER_NO_EFFECT_TRIES:
-                    return self._end(f"{FAILED}:no_effect")
+                # The power alone proves little (the compressor cycles by itself): never a failure, tried again.
                 return self._end(f"{NOT_JUDGEABLE}:no_effect")
             return self._end(f"{NOT_JUDGEABLE}:no_readings")
         # PHASE_OPENED
         self.seen = self.seen + 1 if relay_closed is False and self._back(sample) else 0
         if self.seen >= SEEN:
-            self.power_no_effect = 0
-            return self._end(PASSED)
+            if self.baseline_supply is not None and sample.supply_c is not None:
+                return self._end(PASSED)
+            self.power_passes += 1
+            if self.power_passes >= POWER_PASSES or measured:
+                return self._end(PASSED)
+            return self._end(f"{NOT_JUDGEABLE}:power_once")
         if now - self.phase_at < RETURN_GRACE:
             return CheckStep(False)
         if self.baseline_supply is not None and sample.supply_c is not None:
@@ -322,8 +406,8 @@ class Check:
 
     def _effect(self, sample: Sample) -> bool:
         if self.baseline_supply is not None and sample.supply_c is not None:
-            if sample.supply_c <= self.baseline_supply - SUPPLY_DROP_C:
-                return True
+            # The supply follows the contact at once: where it reads, it alone is judged.
+            return sample.supply_c <= self.baseline_supply - SUPPLY_DROP_C
         if self.baseline_kw is not None and sample.kw is not None:
             return sample.kw <= self.baseline_kw * POWER_DROP_SHARE and self.baseline_kw - sample.kw >= POWER_DROP_MIN_KW
         return False

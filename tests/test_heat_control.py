@@ -140,7 +140,7 @@ async def test_a_planned_lowering_is_switched_read_back_and_counted_ahead(hass: 
     await control.async_look(now + 2 * H)
     assert relay.calls == ["on", "off"] and not control.held
     assert control.executed_minutes([now, now + H, now + 2 * H], now + 3 * H) == {now: 60, now + H: 60, now + 2 * H: 0}
-    assert control.lowered_today(now + 3 * H) == 2 * H
+    assert control.lowered_24h(now + 3 * H) == 2 * H
 
 
 async def test_a_lowering_lasts_at_least_45_minutes(hass: HomeAssistant, freezer) -> None:
@@ -211,6 +211,7 @@ async def test_another_writer_is_never_fought(hass: HomeAssistant, freezer) -> N
     # The household opens the relay: SpotNav gives it up, writes nothing and waits for the next day.
     hass.states.async_set(RELAY, "off")
     await control.async_look(now + 10 * MIN)
+    await control.async_look(now + 11 * MIN)
     assert relay.calls == ["on"] and not control.held
     status = control.status()
     assert (status["state"], status["reason"]) == ("waiting", "foreign_change") and status["paused_until"] is not None
@@ -231,6 +232,7 @@ async def test_a_close_by_someone_else_while_open_pauses(hass: HomeAssistant, fr
     await control.async_look(now)
     hass.states.async_set(RELAY, "on")
     await control.async_look(now + MIN)
+    await control.async_look(now + 2 * MIN)
     assert relay.calls == [] and control.status()["reason"] == "foreign_change"
 
 
@@ -471,3 +473,395 @@ async def test_a_site_without_a_meter_or_a_pump_reading_asks_for_the_meter(hass:
     await control.async_look(now)
     assert control.signal is False and relay.calls == []
     assert (control.status()["state"], control.status()["reason"]) == ("waiting", "no_signal")
+
+
+async def test_turning_off_while_a_closing_is_read_back_opens_the_relay(hass: HomeAssistant, freezer) -> None:
+    site, control, relay, now = await _running(hass, freezer, 0, 1)
+    relay.ignore = True
+    await control.async_look(now)
+    assert relay.calls == ["on"] and control.pending is not None
+    # The closing takes late, and the person turns control off before it is read back.
+    hass.states.async_set(RELAY, "on")
+    relay.ignore = False
+    hass.config_entries.async_update_entry(site, data={**site.data, CONF_HEAT: {**site.data[CONF_HEAT], "control_enabled": False}})
+    await control.async_look(now + 30 * timedelta(seconds=1))
+    await control.async_look(now + MIN)
+    assert relay.calls == ["on", "off"] and relay.state == "off" and not control.held
+
+
+async def test_turning_off_while_a_closing_is_never_read_back_opens_the_relay(hass: HomeAssistant, freezer) -> None:
+    site, control, relay, now = await _running(hass, freezer, 0, 1)
+    relay.ignore = True
+    await control.async_look(now)
+    hass.config_entries.async_update_entry(site, data={**site.data, CONF_HEAT: {**site.data[CONF_HEAT], "control_enabled": False}})
+    await control.async_look(now + MIN)
+    relay.ignore = False
+    await control.async_look(now + READ_BACK + MIN)
+    await control.async_look(now + READ_BACK + 2 * MIN)
+    assert relay.calls == ["on", "off"] and relay.state == "off" and not control.held and control.pending is None
+
+
+async def test_an_error_while_a_write_is_pending_opens_the_relay_once_it_expires(hass: HomeAssistant, freezer) -> None:
+    _site_, control, relay, now = await _running(hass, freezer, 0, 1)
+    relay.ignore = True
+    await control.async_look(now)
+    relay.ignore = False
+
+    async def broken(_now: datetime) -> None:
+        raise RuntimeError("broken")
+
+    control._async_look = broken  # type: ignore[method-assign]  # noqa: SLF001
+    await control.async_look(now + READ_BACK + MIN)
+    assert relay.calls == ["on", "off"] and relay.state == "off"
+
+
+async def test_one_open_reading_while_held_is_no_foreign_change(hass: HomeAssistant, freezer) -> None:
+    _site_, control, relay, now = await _running(hass, freezer, 0, 1)
+    await control.async_look(now)
+    # A reading that bounces open for one look: SpotNav keeps its lowering and is not paused.
+    hass.states.async_set(RELAY, "off")
+    await control.async_look(now + 10 * MIN)
+    hass.states.async_set(RELAY, "on")
+    await control.async_look(now + 10 * MIN + 30 * timedelta(seconds=1))
+    assert relay.calls == ["on"] and control.held and control.paused_until is None
+
+
+async def test_a_late_closed_reading_after_spotnavs_own_opening_is_opened_once(hass: HomeAssistant, freezer) -> None:
+    _site_, control, relay, now = await _running(hass, freezer, 0)
+    await control.async_look(now)
+    _plan(control, now + 50 * MIN)
+    await control.async_look(now + 50 * MIN)
+    assert relay.calls == ["on", "off"] and not control.held
+    # SpotNav's own closing reads again (a late or bounced reading): taken as its own and opened, no pause.
+    hass.states.async_set(RELAY, "on")
+    await control.async_look(now + 51 * MIN)
+    await control.async_look(now + 52 * MIN)
+    assert relay.calls == ["on", "off", "off"] and relay.state == "off" and not control.held
+    assert control.paused_until is None
+    # Closed again after that one opening: someone else's, never fought.
+    hass.states.async_set(RELAY, "on")
+    await control.async_look(now + 53 * MIN)
+    await control.async_look(now + 54 * MIN)
+    assert relay.calls == ["on", "off", "off"] and control.status()["reason"] == "foreign_change"
+
+
+async def test_a_closing_that_takes_after_it_timed_out_is_opened(hass: HomeAssistant, freezer) -> None:
+    _site_, control, relay, now = await _running(hass, freezer, 0, 1)
+    relay.ignore = True
+    await control.async_look(now)
+    await control.async_look(now + READ_BACK + MIN)
+    # Not read back: paused, the opening written (not seen either, the relay reads open all along).
+    assert relay.calls == ["on", "off"] and not control.held
+    relay.ignore = False
+    # The closing takes late: SpotNav's own, opened, never left closed.
+    hass.states.async_set(RELAY, "on")
+    await control.async_look(now + READ_BACK + 2 * MIN)
+    await control.async_look(now + READ_BACK + 3 * MIN)
+    assert relay.calls == ["on", "off", "off"] and relay.state == "off" and not control.held
+
+
+async def test_a_relay_found_closed_is_noted_once_and_left_alone(hass: HomeAssistant, freezer) -> None:
+    _site_, control, relay, now = await _running(hass, freezer, 0, 1)
+    hass.states.async_set(RELAY, "on")
+    control._expect = None  # noqa: SLF001 - found so, not seen to change
+    await control.async_look(now)
+    await control.async_look(now + MIN)
+    assert relay.calls == [] and control.status()["reason"] == "relay_closed"
+    assert [item["what"] for item in control.log].count("found_closed") == 1
+
+
+async def _change_relay(hass: HomeAssistant, site: Any) -> Relay:
+    other = Relay(hass, "input_boolean.vp_rele_2")
+    hass.config_entries.async_update_entry(
+        site, data={**site.data, CONF_HEAT: {**site.data[CONF_HEAT], "control_entity": "input_boolean.vp_rele_2"}}
+    )
+    return other
+
+
+async def test_a_removed_relay_held_closed_is_let_go_and_the_new_one_taken_up(hass: HomeAssistant, freezer) -> None:
+    site, control, relay, now = await _running(hass, freezer, 0, 1)
+    await control.async_look(now)
+    await _change_relay(hass, site)
+    hass.states.async_remove(RELAY)
+    for minute in range(5, 20):
+        await control.async_look(now + minute * MIN)
+    assert control.relay == "input_boolean.vp_rele_2" and not control.held
+    assert any(item["what"] == "relay_let_go" for item in control.log)
+
+
+async def test_an_old_relay_that_never_opens_is_let_go_after_a_few_tries(hass: HomeAssistant, freezer) -> None:
+    site, control, relay, now = await _running(hass, freezer, 0, 1)
+    await control.async_look(now)
+    relay.ignore = True
+    await _change_relay(hass, site)
+    for minute in range(5, 60, 2):
+        await control.async_look(now + minute * MIN)
+    assert 2 <= relay.calls.count("off") <= 4
+    assert control.relay == "input_boolean.vp_rele_2" and not control.held
+
+
+async def test_a_compressor_start_spike_is_not_read_as_hot_water(hass: HomeAssistant, freezer) -> None:
+    from custom_components.spotnav.heat.meter_split import Levels
+    from custom_components.spotnav.site.heat_meter import KIND_POWER, STATUS_FOUND, HeatMeter
+
+    _site_, controller, _relay = await _site(hass, freezer)
+    control: HeatControl = controller.heat_control
+    control.site.house_forecast.heat.meter = HeatMeter(STATUS_FOUND, "sensor.vp_effekt", KIND_POWER)
+    now = controller.demand.now()
+    control._levels, control._levels_hour = Levels(0.4, 1.1), now.replace(minute=0, second=0, microsecond=0)  # noqa: SLF001
+    for second in range(0, 300, 30):
+        hass.states.async_set("sensor.vp_effekt", "1.1", {"unit_of_measurement": "kW"})
+        await control.async_sample(now + timedelta(seconds=second))
+    # A 2.2 kW start spike after five minutes at 1.1 kW: the 5-minute mean is far below a hot-water run.
+    hass.states.async_set("sensor.vp_effekt", "2.2", {"unit_of_measurement": "kW"})
+    sample = await control.async_sample(now + timedelta(seconds=300))
+    assert sample.state == "heating" and sample.kw == 2.2
+
+
+async def test_closings_already_measured_let_one_power_try_pass(hass: HomeAssistant, freezer) -> None:
+    from custom_components.spotnav.heat.relay_effect import BlockResult
+
+    samples = [Sample(1.1, "heating")] * 6 + [Sample(0.5, "heating")] * 2 + [Sample(1.1, "heating")] * 2
+    control, relay, now = await _checking(hass, freezer, samples)
+    control.shadow.blocks = [
+        BlockResult(now - (d + 1) * 24 * H, now - (d + 1) * 24 * H + 2 * H, 1.2, 0.5, 1.4) for d in range(2)
+    ]
+    await _looks(control, now, 11)
+    assert relay.calls == ["on", "off"] and control.checks[RELAY]["result"] == "passed"
+
+
+@pytest.mark.parametrize("room", ["unavailable", "55.0"])
+async def test_chosen_rooms_none_readable_release(hass: HomeAssistant, freezer, room: str) -> None:
+    _site_, control, relay, now = await _running(hass, freezer, 0, 1, 2)
+    await control.async_look(now)
+    hass.states.async_set(ROOM, room, {"unit_of_measurement": "°C"})
+    await control.async_look(now + 5 * MIN)
+    assert relay.calls == ["on", "off"] and control.status()["reason"] == "stale"
+
+
+async def test_no_chosen_room_still_lowers(hass: HomeAssistant, freezer) -> None:
+    _site_, control, relay, now = await _running(hass, freezer, 0, 1, indoor_sensors=[])
+    await control.async_look(now)
+    assert relay.calls == ["on"] and control.status()["reason"] == "planned"
+
+
+@pytest.mark.parametrize("frozen", [OUTDOOR, ROOM])
+async def test_a_frozen_sensor_is_stale(hass: HomeAssistant, freezer, frozen: str) -> None:
+    _site_, control, relay, now = await _running(hass, freezer, 0, 1)
+    later = now + 4 * H
+    freezer.move_to(later)
+    # The other sensor reports on; the frozen one last reported four hours ago.
+    for entity_id, value in ((OUTDOOR, "4.0"), (ROOM, "21.0")):
+        if entity_id != frozen:
+            hass.states.async_set(entity_id, value, {"unit_of_measurement": "°C", "device_class": "temperature"})
+    _plan(control, later, 0, 1)
+    await control.async_look(later)
+    assert relay.calls == [] and control.status()["reason"] == "stale"
+
+
+async def test_the_forecast_colder_than_the_sensor_rules_the_cold_limit(hass: HomeAssistant, freezer) -> None:
+    _site_, control, relay, now = await _running(hass, freezer, 0, 1)
+    control.site.house_forecast._temperatures = {now: -16.0}  # noqa: SLF001 - the weather's hourly forecast
+    await control.async_look(now)
+    assert relay.calls == [] and control.status()["reason"] == "too_cold"
+
+
+async def test_a_frozen_meter_gives_no_power(hass: HomeAssistant, freezer) -> None:
+    from custom_components.spotnav.heat.meter_split import Levels
+    from custom_components.spotnav.site.heat_meter import KIND_POWER, STATUS_FOUND, HeatMeter
+
+    _site_, controller, _relay = await _site(hass, freezer)
+    control: HeatControl = controller.heat_control
+    control.site.house_forecast.heat.meter = HeatMeter(STATUS_FOUND, "sensor.vp_effekt", KIND_POWER)
+    now = controller.demand.now()
+    hass.states.async_set("sensor.vp_effekt", "1.1", {"unit_of_measurement": "kW"})
+    freezer.move_to(now + 4 * H)
+    control._levels, control._levels_hour = Levels(0.4, 1.1), (now + 4 * H).replace(minute=0, second=0, microsecond=0)  # noqa: SLF001
+    sample = await control.async_sample(now + 4 * H)
+    assert sample.kw is None and sample.state is None
+
+
+async def test_an_unavailable_relay_is_not_written_and_opened_once_it_reads(hass: HomeAssistant, freezer) -> None:
+    _site_, control, relay, now = await _running(hass, freezer, 0, 1)
+    await control.async_look(now)
+    # The integration restarts: the relay reads unavailable for a few minutes. Nothing is written, no pause.
+    relay.ignore = True
+    hass.states.async_set(RELAY, "unavailable")
+    await control.async_look(now + MIN)
+    await control.async_look(now + 4 * MIN)
+    assert relay.calls == ["on"] and control.paused_until is None
+    assert control.status()["reason"] == "relay_unavailable"
+    # Back, closed: opened at the first readable look.
+    relay.ignore = False
+    hass.states.async_set(RELAY, "on")
+    await control.async_look(now + 5 * MIN)
+    await control.async_look(now + 6 * MIN)
+    assert relay.calls == ["on", "off"] and relay.state == "off" and not control.held and control.paused_until is None
+
+
+async def test_a_closing_pending_while_the_relay_is_unavailable_starts_no_pause(hass: HomeAssistant, freezer) -> None:
+    _site_, control, relay, now = await _running(hass, freezer, 0, 1)
+    relay.ignore = True
+    await control.async_look(now)
+    hass.states.async_set(RELAY, "unavailable")
+    await control.async_look(now + READ_BACK + MIN)
+    assert relay.calls == ["on"] and control.paused_until is None and control.pending is None
+    # Back open: nothing more to do.
+    relay.ignore = False
+    hass.states.async_set(RELAY, "off")
+    await control.async_look(now + READ_BACK + 2 * MIN)
+    assert relay.calls == ["on"] and not control.held and control.paused_until is None
+
+
+async def test_the_store_is_saved_only_when_its_data_changed(hass: HomeAssistant, freezer) -> None:
+    _site_, control, relay, now = await _running(hass, freezer)
+    await control.async_look(now)
+    saves: list[int] = []
+    control._store.async_delay_save = lambda *_args, **_kw: saves.append(1)  # type: ignore[method-assign]  # noqa: SLF001
+    for minute in range(1, 6):
+        await control.async_look(now + minute * MIN)
+    assert saves == []
+    _plan(control, now + 6 * MIN, 0, 1)
+    await control.async_look(now + 6 * MIN)
+    assert relay.calls == ["on"] and saves
+
+
+async def test_the_check_counts_toward_the_days_writes(hass: HomeAssistant, freezer) -> None:
+    control, relay, now = await _checking(hass, freezer, [Sample(1.1, "heating")])
+    control.writes[control._day(now)] = 5  # noqa: SLF001
+    await _looks(control, now, 10)
+    assert relay.calls == [] and control.check.phase == "wait"
+
+
+async def test_the_lowered_hours_cap_is_a_rolling_day(hass: HomeAssistant, freezer) -> None:
+    _site_, control, relay, now = await _running(hass, freezer, 0, 1)
+    zone = control._midnight(now.date()).tzinfo  # noqa: SLF001
+    midnight = control._midnight((now.astimezone(zone) + timedelta(days=1)).date())  # noqa: SLF001
+    # Six hours lowered up to just before midnight: two hours after it, no new lowering yet.
+    control.lowerings = [[midnight - 6 * H + MIN, midnight]]
+    control.last_end = midnight
+    later = midnight + 2 * H
+    _plan(control, later, 0, 1)
+    await control.async_look(later)
+    assert relay.calls == [] and control.status()["reason"] in ("day_cap", "too_short")
+
+
+async def test_the_closings_ahead_keep_the_rest_and_the_rolling_cap(hass: HomeAssistant, freezer) -> None:
+    _site_, control, relay, now = await _running(hass, freezer, *range(12))
+    await control.async_look(now)
+    assert relay.calls == ["on"]
+    # Three hours (the longest run), an hour's rest, three more: then six hours in 24 and nothing more.
+    assert control.closings_ahead(now + MIN) == [(now + MIN, now + 3 * H), (now + 4 * H, now + 7 * H)]
+
+
+async def test_the_closings_ahead_keep_the_days_writes(hass: HomeAssistant, freezer) -> None:
+    _site_, control, relay, now = await _running(hass, freezer, 0, 2)
+    control.writes[control._day(now)] = 3  # noqa: SLF001
+    await control.async_look(now)
+    assert relay.calls == ["on"]
+    # Four writes today with this closing; its opening makes five: no room for another closing and opening today.
+    assert control._day(now + 2 * H) == control._day(now)  # noqa: SLF001 - the pilot's morning
+    assert control.closings_ahead(now + MIN) == [(now + MIN, now + H)]
+
+
+async def test_no_closings_ahead_while_a_safety_reason_holds(hass: HomeAssistant, freezer) -> None:
+    _site_, control, relay, now = await _running(hass, freezer, 0, 3, 4)
+    hass.states.async_set(OUTDOOR, "-16.0", {"unit_of_measurement": "°C"})
+    await control.async_look(now)
+    assert relay.calls == [] and control.closings_ahead(now + MIN) == []
+
+
+@pytest.mark.parametrize(
+    ("entity_id", "state", "attributes"),
+    [
+        ("weather.hemma", "cloudy", {"temperature": -4.0, "temperature_unit": "°F"}),
+        ("sensor.ute_f", "-4.0", {"unit_of_measurement": "°F", "device_class": "temperature"}),
+    ],
+)
+async def test_the_plan_reads_the_outdoor_temperature_like_the_control(
+    hass: HomeAssistant, freezer, monkeypatch: pytest.MonkeyPatch, entity_id: str, state: str, attributes: dict[str, Any]
+) -> None:
+    from custom_components.spotnav.heat import runtime
+
+    hass.states.async_set(entity_id, state, attributes)
+    _site_, controller, _relay = await _site(hass, freezer, outdoor_sensor=entity_id)
+    seen: list[float | None] = []
+
+    def plan_days(*_args: Any, outdoor_c: float | None = None, **_kw: Any) -> tuple[list[Any], None]:
+        seen.append(outdoor_c)
+        return [], None
+
+    monkeypatch.setattr(runtime, "plan_days", plan_days)
+    await controller.heat_control.shadow._async_plan(controller.demand.now())  # noqa: SLF001
+    assert seen and seen[-1] == pytest.approx(-20.0)
+
+
+async def test_an_automation_that_only_reads_the_relay_does_not_block(hass: HomeAssistant, freezer) -> None:
+    _site_, control, relay, now = await _running(hass, freezer, 0, 1)
+    assert await async_setup_component(
+        hass,
+        "automation",
+        {
+            "automation": [
+                {
+                    "id": "tell",
+                    "alias": "Säg till när reläet slår",
+                    "triggers": [{"trigger": "state", "entity_id": RELAY}],
+                    "actions": [{"action": "input_boolean.turn_on", "target": {"entity_id": "input_boolean.flagga"}}],
+                }
+            ]
+        },
+    )
+    await hass.async_block_till_done()
+    await control.async_look(now)
+    assert relay.calls == ["on"] and control.status()["reason"] == "planned"
+
+
+@pytest.mark.parametrize(
+    ("domain", "config"),
+    [
+        ("script", {"vp_dyrt": {"alias": "VP dyrt", "sequence": [{"action": "switch.turn_on", "target": {"entity_id": RELAY}}]}}),
+        ("scene", [{"name": "Natt", "entities": {RELAY: "on"}}]),
+    ],
+)
+async def test_a_script_or_scene_on_the_relay_blocks_control(hass: HomeAssistant, freezer, domain: str, config: Any) -> None:
+    _site_, control, relay, now = await _running(hass, freezer, 0, 1)
+    assert await async_setup_component(hass, domain, {domain: config})
+    await hass.async_block_till_done()
+    await control.async_look(now)
+    assert relay.calls == [] and control.status()["reason"] == "automation"
+    assert control.status()["automation"]["entity_id"].startswith(f"{domain}.")
+
+
+async def test_the_stop_waits_for_a_running_look_before_it_opens(hass: HomeAssistant, freezer) -> None:
+    import asyncio
+
+    _site_, control, relay, now = await _running(hass, freezer, 0, 1)
+    release = asyncio.Event()
+
+    async def slow_on(call: ServiceCall) -> None:
+        relay.calls.append("on")
+        try:
+            await release.wait()
+        except asyncio.CancelledError:
+            # The device takes the closing as the call is cancelled.
+            hass.states.async_set(RELAY, "on")
+            raise
+        hass.states.async_set(RELAY, "on")
+
+    look_done_at_opening: list[bool] = []
+
+    async def off(call: ServiceCall) -> None:
+        look_done_at_opening.append(task.done())
+        relay.calls.append("off")
+        hass.states.async_set(RELAY, "off")
+
+    hass.services.async_register("switch", "turn_on", slow_on)
+    hass.services.async_register("switch", "turn_off", off)
+    task = control._task = hass.async_create_task(control.async_look(now))  # noqa: SLF001
+    for _ in range(20):
+        await asyncio.sleep(0)
+    assert relay.calls == ["on"] and control.held
+    await control.async_shutdown()
+    # The look ended (its closing taken) before the opening was written: the relay ends open.
+    assert look_done_at_opening == [True] and relay.calls == ["on", "off"] and relay.state == "off"

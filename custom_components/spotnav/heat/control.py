@@ -15,16 +15,22 @@ first contact only. Nothing is written without it. The rules and the check are p
    closed by someone else (`relay_closed`).
 3. **A write is read back**: the relay must show it within `READ_BACK`; a write that raised or was not seen pauses
    control for the day (`no_read_back`) after an opening (tried again every `RETRY_OPEN` while SpotNav may hold it).
+   A relay that does not read (`relay_unavailable`) is not written and starts no pause: what SpotNav may hold is
+   opened at its first readable look.
 4. **Never fight another writer**: a change SpotNav did not make (the relay opened while SpotNav held it, or closed
-   while it was open) gives the relay up at once (nothing written) and pauses control until the next local day
-   (`foreign_change`).
+   while it was open), read on every look for `FOREIGN_CONFIRM`, gives the relay up (nothing written) and pauses
+   control until the next local day (`foreign_change`). A closed reading within `OWN_WINDOW` of SpotNav's own write
+   (a closing that failed, timed out or was just given up) is SpotNav's own: opened once, and only if it stays
+   closed after that is it someone else's. SpotNav's own closing is never left unbounded.
 5. **The check** before control runs, at the first start and after the relay entity changes (kept per entity): the
    meter's power now and its levels (read again every hour from its 5-minute rows) or the pump's calculated supply
    (`heat/facts.py`); without either nothing can be judged (`no_signal`). A failed check stops control
    (`check_failed`) until the switch is turned off and on again.
-6. **Control**: `relay_control.decide` on the heat shadow's plan, with SpotNav's lowerings of the day, its writes and
-   the safety reasons: no fresh plan or no outdoor reading (`stale`), outdoors at or below -15 °C, the coldest
-   counted room (its offset counted) below the band, SG Ready's second contact on or unreadable.
+6. **Control**: `relay_control.decide` on the heat shadow's plan, with SpotNav's lowerings of the last 24 hours, its writes and
+   the safety reasons: no fresh plan, no outdoor reading or chosen rooms none of which reads (`stale`; a sensor that
+   has not reported for `runtime.STALE_AFTER` does not read), outdoors at or below -15 °C (the lowest of the chosen
+   sensor, the site's reading and the weather's forecast for the hour), the coldest counted room (its offset counted)
+   below the band, SG Ready's second contact on or unreadable.
 
 **Every exit opens the relay** SpotNav holds (open = the pump's normal curve): the switch off, a block, a pause, a
 safety reason, a changed relay entity, unload and Home Assistant's stop (`async_shutdown`, bounded); what could not be
@@ -39,7 +45,7 @@ import logging
 from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any, Final
 
 from homeassistant.core import HomeAssistant, callback
@@ -53,9 +59,10 @@ from .automations import SteeringAutomation, steering_automations
 from .config import BAND_C, PATH_SG_READY, HeatConfig
 from .meter_split import Levels, levels, state_now
 from .relay_control import (
+    closings_ahead as relay_closings_ahead,
     FAILED,
     GOOD_FOR,
-    MAX_RUN,
+    MAX_WRITES_DAY,
     NO_LOWER_AT_C,
     PASSED,
     SAFETY_ROOM_COLD,
@@ -72,7 +79,6 @@ from .relay_control import (
     planned_run_end,
     verdict,
 )
-from .shadow_rule import ACTION_LOWER
 
 if TYPE_CHECKING:
     from .runtime import HeatShadow
@@ -85,12 +91,26 @@ LOOK_S: Final = 30.0
 READ_BACK: Final = timedelta(seconds=90)
 #: After a failed opening, how often it is tried again while SpotNav may hold the relay closed.
 RETRY_OPEN: Final = timedelta(minutes=5)
+#: A change SpotNav did not make must read on looks this far apart (and on every look between) to count.
+FOREIGN_CONFIRM: Final = timedelta(seconds=60)
+#: A closed reading this soon after SpotNav's own write is SpotNav's own closing (late or bounced): opened once.
+OWN_WINDOW: Final = timedelta(minutes=5)
+#: Openings of a relay no longer chosen that were not read back before SpotNav lets it go.
+OPEN_TRIES: Final = 3
 #: How long a service call may take.
 CALL_TIMEOUT_S: Final = 10.0
 #: How long the shutdown waits for the opening to be read back (s).
 SHUTDOWN_WAIT_S: Final = 5.0
 #: The plan must have been made within this long to be acted on.
 FRESH_PLAN: Final = timedelta(hours=2)
+#: The meter's readings averaged for what the pump does (a compressor start's spike is no hot-water run), and how much
+#: of it must have been seen.
+POWER_MEAN: Final = timedelta(minutes=5)
+POWER_MEAN_SEEN: Final = timedelta(minutes=4)
+#: Measured closings (the meter's blocks) that each took at least `MEASURED_SHARE` of the heat away, enough to let a
+#: single power-only try pass the check.
+MEASURED_BLOCKS: Final = 2
+MEASURED_SHARE: Final = 0.3
 #: Lowerings and writes kept (days).
 DAYS_KEPT: Final = 3
 LOG_SIZE: Final = 100
@@ -163,6 +183,8 @@ class HeatControl:
         self.state = STATE_OFF
         self.reason: str | None = None
         self.decision: Decision | None = None
+        #: The safety reason at the last look (`relay_control.SAFETY_*`).
+        self.safety: str | None = None
         self.automation: SteeringAutomation | None = None
         self.log: deque[dict[str, Any]] = deque(maxlen=LOG_SIZE)
         self._was_enabled: bool | None = None
@@ -171,11 +193,22 @@ class HeatControl:
         self._expect: bool | None = None
         self._good_since: datetime | None = None
         self._retry_open_at: datetime | None = None
+        #: A change SpotNav did not make, as first read: `(open|close, since)`.
+        self._foreign: tuple[str, datetime] | None = None
+        #: SpotNav's last write, and when it opened a late reading of its own closing (once per closing).
+        self._own_at: datetime | None = None
+        self._own_reopen_at: datetime | None = None
+        #: Openings in a row not read back.
+        self._open_failures = 0
         self._levels: Levels | None = None
+        #: The meter's power as read at the looks, the last `POWER_MEAN`.
+        self._power: deque[tuple[datetime, float]] = deque()
         #: Whether anything can show the check an effect: a power meter or a calculated supply the pump reports.
         self.signal = False
         self._levels_hour: datetime | None = None
         self._loaded = False
+        #: The kept data as last saved (or loaded).
+        self._saved: dict[str, Any] | None = None
         self._closed = False
         self._looking = False
         self._again = False
@@ -189,6 +222,7 @@ class HeatControl:
             self._restore(await self._store.async_load())
         except Exception:  # noqa: BLE001 - a store that cannot be read starts again (the relay is read as it is)
             _LOGGER.warning("SpotNav heat control: the kept state could not be read; starting a new one", exc_info=True)
+        self._saved = self._data()
         self._loaded = True
         self._timer_cancel = async_track_time_interval(self.hass, self._async_tick, timedelta(seconds=LOOK_S))
         self.request_look()
@@ -233,8 +267,14 @@ class HeatControl:
         }
 
     def _save(self) -> None:
-        if self._loaded:
-            self._store.async_delay_save(self._data, 1.0)
+        """Save (delayed) when the kept data changed since the last save."""
+        if not self._loaded:
+            return
+        data = self._data()
+        if data == self._saved:
+            return
+        self._saved = data
+        self._store.async_delay_save(self._data, 1.0)
 
     async def async_shutdown(self) -> None:
         """Open the relay SpotNav holds (bounded) and keep the state: a relay still held is opened at the next start."""
@@ -243,7 +283,13 @@ class HeatControl:
             self._timer_cancel()
             self._timer_cancel = None
         if self._task is not None and not self._task.done():
+            # The running look ends first (a write it was making is over), so the opening below is the last word.
             self._task.cancel()
+            try:
+                async with asyncio.timeout(SHUTDOWN_WAIT_S):
+                    await asyncio.wait({self._task})
+            except TimeoutError:
+                _LOGGER.warning("SpotNav heat control: a look did not end at the stop")
         if not self._loaded:
             return
         if self.held and self.relay is not None:
@@ -297,8 +343,10 @@ class HeatControl:
             raise
         except Exception:  # noqa: BLE001 - the next look tries again; the relay is opened where it can be
             _LOGGER.warning("SpotNav heat control: a look failed", exc_info=True)
-            if self.held and self.relay is not None and self.pending is None:
-                await self._async_write(False, now, why="error")
+            try:
+                await self._async_give_back(now, "error")
+            except Exception:  # noqa: BLE001 - tried again at the next look
+                _LOGGER.warning("SpotNav heat control: the relay could not be given back", exc_info=True)
         self._trim(now)
         self._save()
 
@@ -311,10 +359,19 @@ class HeatControl:
             # The old relay is given back first: opened where SpotNav holds it, read back at the next looks.
             if self.pending is not None and self._read(self.relay) == self.pending.closed:
                 self._confirm(self.pending, now)
+            if self.held and (self.hass.states.get(self.relay) is None or self._open_failures >= OPEN_TRIES):
+                # Removed, or it does not open: let go (logged) rather than stay stuck on it; the new relay is taken
+                # up. Nothing more can be written to it.
+                gone = self.hass.states.get(self.relay) is None
+                _LOGGER.warning(
+                    "SpotNav heat control: %s, held closed, %s; let go", self.relay, "is gone" if gone else "did not open"
+                )
+                self._log(now, "relay_let_go", relay=self.relay)
+                self.pending = None
+                self._end_lowering(now)
             if self.held:
                 if self.pending is None or now - self.pending.at > READ_BACK:
-                    self.pending = None
-                    await self._async_give_back(now, "relay_changed")
+                    await self._async_give_back(now, "relay_changed", unreadable_too=True)
                 if self.held:
                     return
             self.pending, self._expect = None, None
@@ -331,40 +388,86 @@ class HeatControl:
         self._was_enabled = enabled
         if self.paused_until is not None and now >= self.paused_until:
             self.paused_until = self.paused_reason = None
+        # A write is read back (or given up) first, also when control was just turned off: a closing still pending
+        # is opened all the same.
+        read = None if relay is None else self._read(relay)
+        if self.pending is not None:
+            if read == self.pending.closed:
+                self._confirm(self.pending, now)
+            elif now - self.pending.at > READ_BACK and read is None:
+                # Not seen because the relay does not read (its integration not up yet, a blip): no pause; what
+                # SpotNav may hold is opened at the first readable look.
+                self._log(now, "not_read_back", why=WAIT_RELAY_UNAVAILABLE)
+                self.pending = None
+                if self.held:
+                    self._reopen = True
+            elif now - self.pending.at > READ_BACK:
+                own_reopen = self._own_reopen_at is not None and self.pending.at >= self._own_reopen_at
+                if not self.pending.closed and own_reopen and read is True:
+                    # SpotNav opened what it took for its own late closing once; still closed: someone else's.
+                    self.pending = None
+                    self._log(now, "foreign_close")
+                    self._end_lowering(now)
+                    self._pause(now, WAIT_FOREIGN_CHANGE)
+                    self._set(STATE_WAITING, self.paused_reason)
+                    return
+                await self._async_failed(now, "not_read_back")
+                return
+            else:
+                if not enabled:
+                    self._set(STATE_OFF, None)
+                return
         if not enabled or relay is None:
             await self._async_give_back(now, "off")
             self._set(STATE_OFF if not enabled else STATE_WAITING, None if not enabled else WAIT_NO_RELAY)
             self._expect = None
             return
 
-        read = self._read(relay)
-        if self.pending is not None:
-            if read == self.pending.closed:
-                self._confirm(self.pending, now)
-            elif now - self.pending.at > READ_BACK:
-                await self._async_failed(now, "not_read_back")
-                return
-            else:
-                return
         if read is None:
+            # Nothing is written to a relay that does not read, and no pause starts: it is opened at the first
+            # readable look where SpotNav may hold it.
             self._set(STATE_WAITING, WAIT_RELAY_UNAVAILABLE)
+            self.check.abort(WAIT_RELAY_UNAVAILABLE)
             if self.held:
-                await self._async_give_back(now, "relay_unavailable")
+                self._reopen = True
             return
         if self._reopen:
-            # Held at the last stop: opened before anything else (a relay found open was reset meanwhile).
+            # Held at the last stop, or while the relay did not read: opened before anything else (a relay found
+            # open was reset meanwhile).
             if self.held and read is True:
                 await self._async_give_back(now, "restart")
                 return
             self._end_lowering(now)
             self._reopen = False
-        # Never fight another writer.
+        if not self.held and read is True and self._own_late(now):
+            # SpotNav's own closing read late or bounced (its write failed, timed out or was just given up): its
+            # own, opened once, never left closed.
+            self._log(now, "own_late_close")
+            self._own_reopen_at, self._foreign = now, None
+            self.held, self.held_since = True, now
+            self.lowerings.append([now, None])
+            self._set(STATE_WAITING, self.paused_reason or WAIT_RELAY_CLOSED)
+            await self._async_write(False, now, why="own_late_close")
+            return
+        # Never fight another writer, but only on a change that reads on two looks a minute apart.
+        foreign = None
         if self.held and read is False:
-            self._log(now, "foreign_open")
-            self._end_lowering(now)
-            self._pause(now, WAIT_FOREIGN_CHANGE)
+            foreign = "open"
         elif not self.held and read is True and self._expect is False:
-            self._log(now, "foreign_close")
+            foreign = "close"
+        if foreign is None:
+            self._foreign = None
+        elif self._foreign is None or self._foreign[0] != foreign:
+            self._foreign = (foreign, now)
+            self._log(now, f"foreign_{foreign}_seen")
+            return
+        elif now - self._foreign[1] < FOREIGN_CONFIRM:
+            return
+        else:
+            self._foreign = None
+            self._log(now, f"foreign_{foreign}")
+            if foreign == "open":
+                self._end_lowering(now)
             self._pause(now, WAIT_FOREIGN_CHANGE)
         if self.paused_until is not None:
             await self._async_give_back(now, self.paused_reason or "paused")
@@ -376,6 +479,9 @@ class HeatControl:
         blocker = self._blocker(config, relay)
         if blocker is None and not self.held and read is True:
             blocker = WAIT_RELAY_CLOSED
+            if self.reason != WAIT_RELAY_CLOSED:
+                self._log(now, "found_closed")
+                _LOGGER.info("SpotNav heat control: %s is closed by something else; nothing is written", relay)
         if blocker is not None:
             await self._async_give_back(now, blocker)
             self._expect = None
@@ -383,7 +489,7 @@ class HeatControl:
             self._set(STATE_WAITING, blocker)
             return
         self._expect = read
-        safety = self._safety(config, now)
+        safety = self.safety = self._safety(config, now)
 
         result = self.checks.get(relay)
         if result is None or result.get("result") != PASSED:
@@ -400,7 +506,7 @@ class HeatControl:
                 plan_until=planned_run_end(self.shadow.plan, now),
                 held_since=self.held_since if self.held else None,
                 last_end=self.last_end,
-                lowered_today=self.lowered_today(now),
+                lowered_24h=self.lowered_24h(now),
                 writes_today=self.writes.get(self._day(now), 0),
                 safety=safety,
             )
@@ -417,7 +523,8 @@ class HeatControl:
             self._set(STATE_WAITING, WAIT_NO_SIGNAL)
             return
         blocked = None if safety in (None, SAFETY_SETTLING) else safety
-        step = self.check.step(now, sample, read, blocked)
+        room = self.writes.get(self._day(now), 0) + 2 <= MAX_WRITES_DAY
+        step = self.check.step(now, sample, read, blocked, measured=self._measured(), may_start=room)
         if step.outcome is not None:
             self._log(now, "check", outcome=step.outcome)
             _LOGGER.info("SpotNav heat control: the check of %s ended: %s", relay, step.outcome)
@@ -450,16 +557,21 @@ class HeatControl:
         return None
 
     def outdoor_now(self, config: HeatConfig) -> float | None:
-        from ..site.house_forecast import to_celsius  # noqa: PLC0415 - the site imports this module
+        """The outdoor temperature now: the chosen sensor (a frozen one does not read), else the site's."""
+        from .runtime import temperature_c  # noqa: PLC0415 - the runtime imports this module
 
         if config.outdoor_sensor is None:
             return self.site.house_forecast.outdoor_c()
-        state = self.hass.states.get(config.outdoor_sensor)
-        if state is None:
-            return None
-        if config.outdoor_sensor.startswith("weather."):
-            return to_celsius(state.attributes.get("temperature"), state.attributes.get("temperature_unit"))
-        return to_celsius(state.state, state.attributes.get("unit_of_measurement"))
+        return temperature_c(self.hass, config.outdoor_sensor)
+
+    def coldest_outdoor(self, config: HeatConfig, now: datetime) -> float | None:
+        """The lowest of the outdoor readings now: the chosen sensor, the site's (the pump's sensor or the weather),
+        and the weather's forecast for the running hour. What the cold limit is compared with."""
+        forecast = self.site.house_forecast
+        hour = now.astimezone(timezone.utc).replace(minute=0, second=0, microsecond=0)
+        readings = [self.outdoor_now(config), forecast.outdoor_c(), forecast.temperatures().get(hour)]
+        values = [value for value in readings if value is not None]
+        return min(values) if values else None
 
     def _safety(self, config: HeatConfig, now: datetime) -> str | None:
         """The safety reason now (see `relay_control`), `settling` while good data is younger than `GOOD_FOR`."""
@@ -470,9 +582,14 @@ class HeatControl:
             return SAFETY_STALE
         if self._good_since is None:
             self._good_since = now
-        if outdoor <= NO_LOWER_AT_C:
+        coldest_out = self.coldest_outdoor(config, now)
+        if coldest_out is not None and coldest_out <= NO_LOWER_AT_C:
             return SAFETY_TOO_COLD
         coldest = self.shadow.coldest_now(config)
+        if coldest is None and config.indoor_sensors:
+            # Rooms chosen but none reads (or none plausibly): not known to be warm enough.
+            self._good_since = None
+            return SAFETY_STALE
         if coldest is not None and coldest < config.target_c - BAND_C:
             return SAFETY_ROOM_COLD
         if config.control_path == PATH_SG_READY and config.control_entity_b is not None:
@@ -486,12 +603,13 @@ class HeatControl:
         """The check's readings now: the meter's power and what the pump does by it, the calculated supply."""
         from ..site.heat_meter import KIND_POWER, async_heat_hours  # noqa: PLC0415 - the site imports this module
         from .detect import read_heat_pumps  # noqa: PLC0415
+        from .runtime import fresh_state  # noqa: PLC0415
 
         meter = self.site.house_forecast.heat.meter
         kw = None
         power_meter = meter.found and meter.kind == KIND_POWER and meter.entity_id is not None
         if power_meter and meter.entity_id is not None:
-            state = self.hass.states.get(meter.entity_id)
+            state = fresh_state(self.hass, meter.entity_id)
             try:
                 value = None if state is None else float(state.state)
             except ValueError:
@@ -512,8 +630,22 @@ class HeatControl:
         supply = pumps[0].calc_supply_temp_c if pumps else None
         # A meter without its levels yet, or a supply that reads unavailable for a while, is no reason to say none.
         self.signal = power_meter or (bool(pumps) and "calc_supply_temp" in pumps[0].sources) or supply is not None
-        state_now_ = state_now(kw, self._levels, kw) if kw is not None else None
+        state_now_ = state_now(kw, self._levels, self._power_mean(now, kw)) if kw is not None else None
         return Sample(kw if state_now_ is not None else None, state_now_, supply)
+
+    def _power_mean(self, now: datetime, kw: float) -> float | None:
+        """The meter's mean over the last `POWER_MEAN` (with `kw` now), `None` before `POWER_MEAN_SEEN` of it."""
+        self._power.append((now, kw))
+        while self._power and now - self._power[0][0] > POWER_MEAN:
+            self._power.popleft()
+        if now - self._power[0][0] < POWER_MEAN_SEEN:
+            return None
+        return sum(value for _moment, value in self._power) / len(self._power)
+
+    def _measured(self) -> bool:
+        """Whether closings already measured on the meter show the relay's effect (see `MEASURED_BLOCKS`)."""
+        blocks = getattr(self.shadow, "blocks", None) or []
+        return sum(1 for block in blocks if (share := block.share()) is not None and share >= MEASURED_SHARE) >= MEASURED_BLOCKS
 
     # ---- writes
 
@@ -532,6 +664,9 @@ class HeatControl:
         if not closed and self._retry_open_at is not None and now < self._retry_open_at:
             return
         self.pending = Pending(closed, now)
+        self._own_at = now
+        if closed:
+            self._own_reopen_at = None
         day = self._day(now)
         self.writes[day] = self.writes.get(day, 0) + 1
         if closed:
@@ -548,16 +683,22 @@ class HeatControl:
         if self._read(relay) == closed:
             self._confirm(self.pending, now)
 
+    def _own_late(self, now: datetime) -> bool:
+        """Whether a closed reading now is SpotNav's own closing read late (see `OWN_WINDOW`), not opened yet."""
+        return self._own_reopen_at is None and self._own_at is not None and now - self._own_at <= OWN_WINDOW
+
     def _confirm(self, pending: Pending, now: datetime) -> None:
         self.pending = None
         self._expect = pending.closed
         if not pending.closed:
             self._end_lowering(pending.at)
             self._retry_open_at = None
+            self._open_failures = 0
 
     def _end_lowering(self, at: datetime) -> None:
         if self.held:
             self.last_end = at
+        self._open_failures = 0
         self.held, self.held_since = False, None
         for item in self.lowerings:
             if item[1] is None:
@@ -572,6 +713,7 @@ class HeatControl:
         self._pause(now, WAIT_NO_READ_BACK)
         self._set(STATE_WAITING, self.paused_reason)
         if pending is not None and not pending.closed:
+            self._open_failures += 1
             self._retry_open_at = now + RETRY_OPEN
         elif self.held and self.relay is not None:
             # A closing not seen may still take: opened all the same (the fail-safe); one that reads open is owed
@@ -581,9 +723,18 @@ class HeatControl:
                 self.pending, self._retry_open_at = None, None
                 self._end_lowering(now)
 
-    async def _async_give_back(self, now: datetime, why: str) -> None:
-        """Open the relay SpotNav holds (no write otherwise), and end a running check."""
+    async def _async_give_back(self, now: datetime, why: str, *, unreadable_too: bool = False) -> None:
+        """Open the relay SpotNav holds (no write otherwise), and end a running check. A write not read back within
+        `READ_BACK` is given up: the opening is written all the same. A relay that does not read is not written
+        (opened at its first readable look) unless `unreadable_too` (one no longer chosen)."""
         self.check.abort(why)
+        if not unreadable_too and self.held and self.relay is not None and self._read(self.relay) is None:
+            self._reopen = True
+            return
+        if self.pending is not None and now - self.pending.at > READ_BACK:
+            if not self.pending.closed:
+                self._open_failures += 1
+            self.pending = None
         if self.held and self.relay is not None and self.pending is None:
             await self._async_write(False, now, why=why)
 
@@ -606,9 +757,9 @@ class HeatControl:
         zone = time_zones.require_zone(self.shadow.tz)
         return datetime(day.year, day.month, day.day, tzinfo=zone)
 
-    def lowered_today(self, now: datetime) -> timedelta:
-        start = self._midnight(now.astimezone(time_zones.require_zone(self.shadow.tz)).date())
-        return lowered_within([(item[0], item[1]) for item in self.lowerings], start, now)  # type: ignore[misc]
+    def lowered_24h(self, now: datetime) -> timedelta:
+        """SpotNav's lowered time over the last 24 hours (a rolling day, not the local one)."""
+        return lowered_within([(item[0], item[1]) for item in self.lowerings], now - timedelta(days=1), now)  # type: ignore[misc]
 
     def executed_minutes(self, hours: list[datetime], now: datetime) -> dict[datetime, int]:
         """Per hour: the minutes SpotNav held the relay closed (up to now)."""
@@ -620,23 +771,21 @@ class HeatControl:
         return out
 
     def closings_ahead(self, now: datetime) -> list[tuple[datetime, datetime]] | None:
-        """The relay's closings expected from now on while control runs (the plan's lowered runs, each at most
-        `MAX_RUN`; the running one to its decided end); `None` while it does not run."""
+        """The relay's closings expected from now on while control runs (`relay_control.closings_ahead`: the running
+        one to its decided end, then the plan's lowered runs by the rules); `None` while it does not run."""
         if self.state != STATE_RUNNING:
             return None
-        out: list[tuple[datetime, datetime]] = []
-        if self.held and self.decision is not None and self.decision.closed and self.decision.until is not None:
-            out.append((now, self.decision.until))
-        run: list[datetime] = []
-        for hour in sorted(self.shadow.plan, key=lambda item: item.start):
-            if hour.action == ACTION_LOWER and hour.start >= now and (not out or hour.start >= out[-1][1]):
-                if run and hour.start != run[-1] + timedelta(hours=1):
-                    out.append((run[0], min(run[-1] + timedelta(hours=1), run[0] + MAX_RUN)))
-                    run = []
-                run.append(hour.start)
-        if run:
-            out.append((run[0], min(run[-1] + timedelta(hours=1), run[0] + MAX_RUN)))
-        return out
+        held = self.held and self.decision is not None and self.decision.closed and self.decision.until is not None
+        return relay_closings_ahead(
+            self.shadow.plan,
+            now,
+            held_until=self.decision.until if held and self.decision is not None else None,
+            last_end=self.last_end,
+            lowerings=[(item[0], item[1]) for item in self.lowerings if item[1] is not None],  # type: ignore[misc]
+            writes=self.writes,
+            day_of=self._day,
+            safety=self.safety,
+        )
 
     def _set(self, state: str, reason: str | None) -> None:
         if (state, reason) != (self.state, self.reason):
