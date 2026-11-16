@@ -48,6 +48,8 @@ const ICON_PATHS = {
   },
   support: { stroke: "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 11v6M12 7.5v.5" },
   display: { stroke: "M4 5h16a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1zM9 21h6M12 17v4" },
+  battery: { stroke: "M8 5h8a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1zM10 2.5h4M9.5 13h5M12 10.5v5" },
+  heat: { stroke: "M14 14.8V5a2 2 0 0 0-4 0v9.8a4 4 0 1 0 4 0zM12 9v7" },
 } as const;
 
 export type SectionIcon = keyof typeof ICON_PATHS;

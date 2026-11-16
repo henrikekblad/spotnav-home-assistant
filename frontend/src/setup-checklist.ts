@@ -1,5 +1,6 @@
 // "Get started": what is still left to set up for this charger (the dashboard's `setup` block), shown to an
-// administrator in the card's attention line and the "What needs attention" dialog. Each row says what is
+// administrator in the card's attention line and the "What needs attention" dialog, and for a site in the shared
+// settings popover (`get_site_settings_view`'s `setup`, with the site's own rows: charger, price, battery, heat). Each row says what is
 // missing and has one button to the place where it is done; an optional row can also be answered "Not needed",
 // which the integration keeps for the whole installation. The backend decides which rows are left; the words
 // and the places are the card's. A grid sign row (the site's grid reading looks to have its sign the wrong way round)
@@ -12,6 +13,8 @@ import { VISUAL_CLASSES as C } from "./visual-styles";
 
 /** The rows this card knows, in the order it lists them. */
 export const SETUP_ROWS = [
+  "charger",
+  "price",
   "vehicle",
   "car_level",
   "site",
@@ -19,6 +22,8 @@ export const SETUP_ROWS = [
   "grid_current_sign",
   "solar_forecast",
   "demand_grid_power",
+  "battery",
+  "heat",
   "phase_switching",
   "phone",
   "app",
@@ -43,6 +48,10 @@ export const INTEGRATIONS_PATH = "/config/integrations/dashboard";
 export const FORECAST_DOMAIN = "forecast_solar";
 
 const WORDS: Record<SetupRowId, { text: TranslationKey; action: TranslationKey }> = {
+  charger: { text: "setup.charger.text", action: "setup.charger.action" },
+  price: { text: "setup.price.text", action: "setup.price.action" },
+  battery: { text: "setup.battery.text", action: "setup.battery.action" },
+  heat: { text: "setup.heat.text", action: "setup.heat.action" },
   vehicle: { text: "setup.vehicle.text", action: "setup.vehicle.action" },
   car_level: { text: "setup.carLevel.text", action: "setup.carLevel.action" },
   site: { text: "setup.site.text", action: "setup.site.action" },
@@ -154,6 +163,17 @@ export function setupSection(doc: Document, input: SetupSectionInput): HTMLEleme
 
 function open(input: SetupSectionInput, id: SetupRowId): void {
   switch (id) {
+    case "charger":
+    case "price":
+      // A charger or an electricity price is a new SpotNav entry of that kind.
+      input.navigate(addIntegrationPath("spotnav"));
+      return;
+    case "battery":
+      input.openSetting("battery", "battery_control_enabled");
+      return;
+    case "heat":
+      input.openSetting("heat", "path");
+      return;
     case "vehicle":
       input.navigate(INTEGRATIONS_PATH);
       return;
