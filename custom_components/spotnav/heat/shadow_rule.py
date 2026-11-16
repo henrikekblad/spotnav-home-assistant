@@ -21,7 +21,9 @@ Pure. Per local hour of the day, one action and the temperature it aims at:
 
 Guards that keep the house at `normal` instead of `lower` (and say why): no prices (`no_prices`), outdoors at or
 below `NO_LOWER_BELOW_C` now (`too_cold`, the whole day) or forecast for the hour (that hour), the coldest counted room
-already below the comfort band (the target less the band, `room_cold`, for the running hour on). The night and away
+already below the comfort band (the target less the band, `room_cold`, for the running hour and the next
+`ROOM_COLD_HOURS - 1`: the plan is made again every hour on the reading then, so one cold evening reading does not
+decide the rest of the day). The night and away
 keep their own aims under the guards: they are what the household asked for, not a saving SpotNav chose.
 """
 
@@ -45,6 +47,7 @@ RETURN_HOURS: Final = 2
 NO_LOWER_BELOW_C: Final = -15.0
 #: The coldest counted room below the target less this: no lowering (the comfort band's low edge).
 ROOM_COLD_C: Final = BAND_C
+ROOM_COLD_HOURS: Final = 2
 
 ACTION_NORMAL: Final = "normal"
 ACTION_LOWER: Final = "lower"
@@ -210,7 +213,7 @@ def band(
     blocked |= cold_hours
     if guard is None and coldest_c is not None and coldest_c < target - ROOM_COLD_C:
         guard = REASON_ROOM_COLD
-        blocked |= {start for start in hours if start >= current}
+        blocked |= {start for start in hours if current <= start < current + timedelta(hours=ROOM_COLD_HOURS)}
     pressed = frozenset(start for start in tight if start in day_prices and day_prices[start] >= statistics.median(day_prices.values()))
     lowered = set() if guard in (REASON_NO_PRICES, REASON_TOO_COLD) else dear_hours(day_prices, blocked, pressed)
 

@@ -57,11 +57,13 @@ def test_the_guards() -> None:
     assert hours[10].reason == "no_prices" and hours[2].reason == "normal"
     _, guard = band(HeatConfig(), HOURS, priced(), now, ZONE, outdoor_c=-16.0)
     assert guard == "too_cold"
-    # A room already a degree below the target: no lowering from now on; the morning before now keeps its plan.
-    later = MIDNIGHT + timedelta(hours=9, minutes=30)
+    # A room already a degree below the target at 16:30: no lowering in the running hour and the next (the plan is
+    # made again every hour); the morning before now keeps its plan, and later hours stay planned.
+    later = MIDNIGHT + timedelta(hours=16, minutes=30)
     hours, guard = band(HeatConfig(target_c=21.0), HOURS, priced(), later, ZONE, coldest_c=19.8)
     assert guard == "room_cold"
-    assert "L" not in actions(hours)[9:] and actions(hours)[7:9] == "LL"
+    assert actions(hours)[16:18] == ".." and hours[16].reason == "room_cold" and actions(hours)[7:9] == "LL"
+    assert "L" in actions(hours)[18:]
 
 
 def test_the_cooler_night_and_away() -> None:
