@@ -134,7 +134,7 @@ def test_the_check_passes_on_the_meters_power_on_two_tries_apart() -> None:
     check = Check()
     # One try may meet the compressor's own pause: not judged yet, tried again at another time.
     assert _power_try(check, T0) == "not_judgeable:power_once" and check.phase == PHASE_WAIT
-    assert _power_try(check, T0 + 2 * H) == "passed"
+    assert _power_try(check, T0 + 3 * H) == "passed"
 
 
 def test_the_check_passes_on_one_power_try_where_measured_closings_show_an_effect() -> None:
@@ -164,9 +164,9 @@ def test_no_effect_on_the_power_alone_is_never_a_failure() -> None:
     moment = to_closed(check)
     _moment, steps = run(check, moment, int(EFFECT_GRACE / MIN) + 1, HEATING, True)
     assert outcome(steps) == "not_judgeable:no_effect"
-    # Not again within the hour; a second try that shows nothing is still only not judgeable (tried again).
+    # Not again soon; a second try that shows nothing is still only not judgeable (tried again).
     assert check.step(T0 + 40 * MIN, HEATING, False).closed is False and check.phase == PHASE_WAIT
-    later = T0 + 2 * H
+    later = T0 + 3 * H
     moment, _ = run(check, later, 6, HEATING, False)
     assert check.phase == PHASE_CLOSED
     _moment, steps = run(check, moment, int(EFFECT_GRACE / MIN) + 1, HEATING, True)
@@ -234,3 +234,22 @@ def test_at_most_six_switchings_a_day_and_an_opening_never_refused() -> None:
     assert decide(situation(T0, plan_until=T0 + 2 * H, writes_today=5)).reason == "write_cap"
     assert decide(situation(T0, plan_until=T0 + 2 * H, writes_today=4)).closed is True
     assert decide(situation(T0 + H, plan_until=None, held_since=T0, writes_today=9)).closed is False
+
+
+def test_unjudged_tries_back_off_over_days() -> None:
+    check = Check()
+    moment = to_closed(check)
+    run(check, moment, int(EFFECT_GRACE / MIN) + 1, HEATING, True)
+    assert check.last == "not_judgeable:no_effect" and check.unjudged == 1
+    last = check.tries[-1]
+    # After one try without a verdict, two hours; after more, longer, at most a day.
+    assert check.may_try(last + 90 * MIN) is False and check.may_try(last + 2 * H) is True
+    many = Check(tries=[T0 - 20 * H], unjudged=6)
+    assert many.may_try(T0) is False and many.may_try(T0 + 5 * H) is True
+    assert Check.from_dict(many.as_dict()).unjudged == 6
+
+
+def test_a_try_starts_only_where_the_days_writes_leave_room() -> None:
+    check = Check()
+    assert check.step(T0, HEATING, False, may_start=False).closed is False and check.phase == PHASE_WAIT
+    assert check.step(T0, HEATING, False).closed is False and check.phase != PHASE_WAIT

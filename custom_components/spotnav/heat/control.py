@@ -62,6 +62,7 @@ from .relay_control import (
     FAILED,
     GOOD_FOR,
     MAX_RUN,
+    MAX_WRITES_DAY,
     NO_LOWER_AT_C,
     PASSED,
     SAFETY_ROOM_COLD,
@@ -510,7 +511,8 @@ class HeatControl:
             self._set(STATE_WAITING, WAIT_NO_SIGNAL)
             return
         blocked = None if safety in (None, SAFETY_SETTLING) else safety
-        step = self.check.step(now, sample, read, blocked, measured=self._measured())
+        room = self.writes.get(self._day(now), 0) + 2 <= MAX_WRITES_DAY
+        step = self.check.step(now, sample, read, blocked, measured=self._measured(), may_start=room)
         if step.outcome is not None:
             self._log(now, "check", outcome=step.outcome)
             _LOGGER.info("SpotNav heat control: the check of %s ended: %s", relay, step.outcome)

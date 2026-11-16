@@ -724,3 +724,10 @@ async def test_the_store_is_saved_only_when_its_data_changed(hass: HomeAssistant
     _plan(control, now + 6 * MIN, 0, 1)
     await control.async_look(now + 6 * MIN)
     assert relay.calls == ["on"] and saves
+
+
+async def test_the_check_counts_toward_the_days_writes(hass: HomeAssistant, freezer) -> None:
+    control, relay, now = await _checking(hass, freezer, [Sample(1.1, "heating")])
+    control.writes[control._day(now)] = 5  # noqa: SLF001
+    await _looks(control, now, 10)
+    assert relay.calls == [] and control.check.phase == "wait"

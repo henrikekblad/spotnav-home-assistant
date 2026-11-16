@@ -28,8 +28,10 @@ on `SEEN` readings in a row. Then the relay opens: within `RETURN_GRACE` the sup
 power alone on `POWER_PASSES` tries, or one where closings already measured show an effect); `failed` (no effect, or
 no return, where the calculated supply reads: a curve follows its contact at once); `not_judgeable:<why>` (a
 hot-water run began, the readings went, a safety reason or a block came, the power alone showed no effect or no
-return or passed only once: the compressor cycles by itself): tried again at a later moment, at least `RETRY_AFTER`
-apart and at most `MAX_TRIES_DAY` a day. A moment that stops suiting during the baseline is no try (nothing was written).
+return or passed only once: the compressor cycles by itself): tried again at a later moment, at most
+`MAX_TRIES_DAY` a day, at least `RETRY_AFTER` apart, doubled for each try in a row without a verdict up to
+`MAX_RETRY_AFTER`. A try's closing and opening count toward the day's writes (`MAX_WRITES_DAY`): none starts without
+room for both. A moment that stops suiting during the baseline is no try (nothing was written).
 """
 
 from __future__ import annotations
@@ -74,6 +76,8 @@ POWER_BACK_SHARE: Final = 0.8
 SEEN: Final = 2
 RETRY_AFTER: Final = timedelta(hours=1)
 MAX_TRIES_DAY: Final = 3
+#: The longest wait between tries: each try in a row without a verdict doubles `RETRY_AFTER` up to it.
+MAX_RETRY_AFTER: Final = timedelta(hours=24)
 #: Power-only tries (at least `RETRY_AFTER` apart, so not on one compressor cycle) that must each show the effect and
 #: its return before the check passes; one is enough where measured closings already show an effect.
 POWER_PASSES: Final = 2
@@ -213,6 +217,8 @@ class Check:
     seen: int = 0
     tries: list[datetime] = field(default_factory=list)
     power_passes: int = 0
+    #: Tries in a row that ended without a verdict (the back-off between tries).
+    unjudged: int = 0
     last: str | None = None
 
     # ---- kept
@@ -225,6 +231,7 @@ class Check:
             "baseline_supply": self.baseline_supply,
             "tries": [moment.isoformat() for moment in self.tries],
             "power_passes": self.power_passes,
+            "unjudged": self.unjudged,
             "last": self.last,
         }
 
@@ -242,14 +249,22 @@ class Check:
                 continue
         count = raw.get("power_passes")
         check.power_passes = count if isinstance(count, int) and not isinstance(count, bool) else 0
+        unjudged = raw.get("unjudged")
+        check.unjudged = unjudged if isinstance(unjudged, int) and not isinstance(unjudged, bool) else 0
         check.last = raw.get("last") if isinstance(raw.get("last"), str) else None
         return check
 
     # ---- the steps
 
+    def retry_after(self) -> timedelta:
+        """The wait after the last try: `RETRY_AFTER`, doubled for each try in a row without a verdict."""
+        return min(MAX_RETRY_AFTER, RETRY_AFTER * 2 ** min(self.unjudged, 8))
+
     def may_try(self, now: datetime) -> bool:
         recent = [moment for moment in self.tries if now - moment < timedelta(days=1)]
-        return len(recent) < MAX_TRIES_DAY and (not recent or now - max(recent) >= RETRY_AFTER)
+        if len(recent) >= MAX_TRIES_DAY:
+            return False
+        return not self.tries or now - max(self.tries) >= self.retry_after()
 
     def running(self) -> bool:
         return self.phase in (PHASE_CLOSED, PHASE_OPENED)
@@ -257,6 +272,7 @@ class Check:
     def _end(self, outcome: str) -> CheckStep:
         self.phase, self.phase_at, self.seen, self.samples = PHASE_WAIT, None, 0, []
         self.last = outcome
+        self.unjudged = self.unjudged + 1 if verdict(outcome) == NOT_JUDGEABLE else 0
         return CheckStep(False, outcome)
 
     def abort(self, why: str) -> CheckStep | None:
@@ -269,15 +285,23 @@ class Check:
         return self._end(f"{NOT_JUDGEABLE}:{why}")
 
     def step(
-        self, now: datetime, sample: Sample, relay_closed: bool | None, blocked: str | None = None, *, measured: bool = False
+        self,
+        now: datetime,
+        sample: Sample,
+        relay_closed: bool | None,
+        blocked: str | None = None,
+        *,
+        measured: bool = False,
+        may_start: bool = True,
     ) -> CheckStep:
         """One look (see the module). `relay_closed` is the relay as read now; `blocked` a reason not to run now;
-        `measured` whether closings already measured on the meter show an effect (one power-only pass is enough)."""
+        `measured` whether closings already measured on the meter show an effect (one power-only pass is enough);
+        `may_start` whether the day's writes leave room for a try's closing and opening."""
         if blocked is not None:
             ended = self.abort(blocked)
             return ended if ended is not None else CheckStep(False)
         if self.phase == PHASE_WAIT:
-            if sample.usable and relay_closed is False and self.may_try(now):
+            if may_start and sample.usable and relay_closed is False and self.may_try(now):
                 self.phase, self.phase_at, self.samples = PHASE_BASELINE, now, [(sample.kw, sample.supply_c)]
             return CheckStep(False)
         assert self.phase_at is not None
