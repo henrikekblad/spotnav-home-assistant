@@ -1,0 +1,356 @@
+{
+  "api_version": 1,
+  "band": {
+    "date": "2026-11-16",
+    "hot_water_pick": null,
+    "hours": [
+      {
+        "action": "away",
+        "car": false,
+        "hot_water": false,
+        "past": true,
+        "price": 80.0,
+        "reason": "away",
+        "start": "2026-11-15T23:00:00+00:00",
+        "target_c": 17.5
+      },
+      {
+        "action": "away",
+        "car": false,
+        "hot_water": false,
+        "past": true,
+        "price": 78.0,
+        "reason": "away",
+        "start": "2026-11-16T00:00:00+00:00",
+        "target_c": 17.5
+      },
+      {
+        "action": "away",
+        "car": false,
+        "hot_water": false,
+        "past": true,
+        "price": 76.0,
+        "reason": "away",
+        "start": "2026-11-16T01:00:00+00:00",
+        "target_c": 17.5
+      },
+      {
+        "action": "away",
+        "car": false,
+        "hot_water": false,
+        "past": true,
+        "price": 75.0,
+        "reason": "away",
+        "start": "2026-11-16T02:00:00+00:00",
+        "target_c": 17.5
+      },
+      {
+        "action": "away",
+        "car": false,
+        "hot_water": false,
+        "past": true,
+        "price": 77.0,
+        "reason": "away",
+        "start": "2026-11-16T03:00:00+00:00",
+        "target_c": 17.5
+      },
+      {
+        "action": "away",
+        "car": false,
+        "hot_water": false,
+        "past": true,
+        "price": 85.0,
+        "reason": "away",
+        "start": "2026-11-16T04:00:00+00:00",
+        "target_c": 17.5
+      },
+      {
+        "action": "away",
+        "car": false,
+        "hot_water": false,
+        "past": true,
+        "price": 120.0,
+        "reason": "away",
+        "start": "2026-11-16T05:00:00+00:00",
+        "target_c": 17.5
+      },
+      {
+        "action": "away",
+        "car": false,
+        "hot_water": false,
+        "past": true,
+        "price": 190.0,
+        "reason": "away",
+        "start": "2026-11-16T06:00:00+00:00",
+        "target_c": 17.5
+      },
+      {
+        "action": "away",
+        "car": false,
+        "hot_water": false,
+        "past": true,
+        "price": 210.0,
+        "reason": "away",
+        "start": "2026-11-16T07:00:00+00:00",
+        "target_c": 17.5
+      },
+      {
+        "action": "away",
+        "car": false,
+        "hot_water": false,
+        "past": true,
+        "price": 160.0,
+        "reason": "away",
+        "start": "2026-11-16T08:00:00+00:00",
+        "target_c": 17.5
+      },
+      {
+        "action": "away",
+        "car": false,
+        "hot_water": false,
+        "past": true,
+        "price": 120.0,
+        "reason": "away",
+        "start": "2026-11-16T09:00:00+00:00",
+        "target_c": 17.5
+      },
+      {
+        "action": "away",
+        "car": false,
+        "hot_water": false,
+        "past": true,
+        "price": 110.0,
+        "reason": "away",
+        "start": "2026-11-16T10:00:00+00:00",
+        "target_c": 17.5
+      },
+      {
+        "action": "away",
+        "car": false,
+        "hot_water": false,
+        "past": true,
+        "price": 105.0,
+        "reason": "away",
+        "start": "2026-11-16T11:00:00+00:00",
+        "target_c": 17.5
+      },
+      {
+        "action": "away",
+        "car": false,
+        "hot_water": false,
+        "past": true,
+        "price": 100.0,
+        "reason": "away",
+        "start": "2026-11-16T12:00:00+00:00",
+        "target_c": 17.5
+      },
+      {
+        "action": "away",
+        "car": false,
+        "hot_water": false,
+        "past": true,
+        "price": 105.0,
+        "reason": "away",
+        "start": "2026-11-16T13:00:00+00:00",
+        "target_c": 17.5
+      },
+      {
+        "action": "away",
+        "car": false,
+        "hot_water": false,
+        "past": true,
+        "price": 130.0,
+        "reason": "away",
+        "start": "2026-11-16T14:00:00+00:00",
+        "target_c": 17.5
+      },
+      {
+        "action": "away",
+        "car": false,
+        "hot_water": false,
+        "past": true,
+        "price": 180.0,
+        "reason": "away",
+        "start": "2026-11-16T15:00:00+00:00",
+        "target_c": 17.5
+      },
+      {
+        "action": "away",
+        "car": false,
+        "hot_water": false,
+        "past": false,
+        "price": 240.0,
+        "reason": "away",
+        "start": "2026-11-16T16:00:00+00:00",
+        "target_c": 17.5
+      },
+      {
+        "action": "away",
+        "car": false,
+        "hot_water": false,
+        "past": false,
+        "price": 260.0,
+        "reason": "away",
+        "start": "2026-11-16T17:00:00+00:00",
+        "target_c": 17.5
+      },
+      {
+        "action": "away",
+        "car": false,
+        "hot_water": false,
+        "past": false,
+        "price": 220.0,
+        "reason": "away",
+        "start": "2026-11-16T18:00:00+00:00",
+        "target_c": 17.5
+      },
+      {
+        "action": "away",
+        "car": false,
+        "hot_water": false,
+        "past": false,
+        "price": 150.0,
+        "reason": "away",
+        "start": "2026-11-16T19:00:00+00:00",
+        "target_c": 17.5
+      },
+      {
+        "action": "away",
+        "car": false,
+        "hot_water": false,
+        "past": false,
+        "price": 110.0,
+        "reason": "away",
+        "start": "2026-11-16T20:00:00+00:00",
+        "target_c": 17.5
+      },
+      {
+        "action": "away",
+        "car": false,
+        "hot_water": false,
+        "past": false,
+        "price": 95.0,
+        "reason": "away",
+        "start": "2026-11-16T21:00:00+00:00",
+        "target_c": 17.5
+      },
+      {
+        "action": "away",
+        "car": false,
+        "hot_water": false,
+        "past": false,
+        "price": 85.0,
+        "reason": "away",
+        "start": "2026-11-16T22:00:00+00:00",
+        "target_c": 17.5
+      }
+    ]
+  },
+  "choices": null,
+  "comfort": {
+    "aim_c": 17.5,
+    "away_until": "2026-11-20T15:00:00+00:00",
+    "high_c": 21.0,
+    "low_c": 20.0,
+    "mode": "away",
+    "target_c": 20.5
+  },
+  "config": {
+    "away_until": "2026-11-20T15:00:00+00:00",
+    "control_entity": null,
+    "control_entity_b": null,
+    "control_path": "none",
+    "heat_meter_entity": null,
+    "hot_water_entity": null,
+    "indoor_sensors": [],
+    "mode": "away",
+    "night": {
+      "delta_c": 1.0,
+      "end": "06:00",
+      "on": false,
+      "start": "23:00"
+    },
+    "outdoor_sensor": null,
+    "target_c": 20.5,
+    "zones": []
+  },
+  "indoor": {
+    "coldest": null,
+    "coldest_name": null,
+    "sensors": [],
+    "value_c": null
+  },
+  "meter": null,
+  "notes": [
+    {
+      "code": "pump_price_control",
+      "params": {
+        "label": "NIBE F750",
+        "where": "nibe_smart_price"
+      }
+    },
+    {
+      "code": "readings_disabled",
+      "params": {
+        "device_id": "device_nibe",
+        "entities": [
+          "degree_minutes"
+        ]
+      }
+    },
+    {
+      "code": "other_controller",
+      "params": {
+        "names": [
+          "effektguard"
+        ]
+      }
+    }
+  ],
+  "now": "2026-11-16T16:20:00+00:00",
+  "outdoor": {
+    "entity_id": "sensor.nibe_bt1_outdoor_temperature",
+    "name": "NIBE BT1",
+    "source": "pump",
+    "value_c": 4.5
+  },
+  "pump": {
+    "brand": "nibe",
+    "capabilities": [
+      "hot_water_boost",
+      "offset"
+    ],
+    "compressor_running": true,
+    "control": "watch_only",
+    "degree_minutes": null,
+    "device_id": "device_nibe",
+    "disabled": [
+      "degree_minutes"
+    ],
+    "hot_water_c": 48.5,
+    "immersion_on": null,
+    "integration": "nibe_heatpump",
+    "label": "NIBE F750",
+    "price_control": "active",
+    "priority": "heating",
+    "supply_c": 34.0
+  },
+  "shadow": true,
+  "site_id": "site_nibe",
+  "status": {
+    "guard": null,
+    "kw": null,
+    "pump_state": "heating",
+    "pump_state_source": "pump",
+    "would": {
+      "action": "away",
+      "reason": "away",
+      "target_c": 17.5,
+      "until": "2026-11-16T23:00:00+00:00"
+    }
+  },
+  "time_zone": "Europe/Stockholm",
+  "today": null,
+  "writable": false,
+  "zones": []
+}

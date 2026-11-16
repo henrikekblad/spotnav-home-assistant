@@ -1,0 +1,228 @@
+"""`spotnav/get_heat`'s answer from the pure view (`heat/view.py`), and the contract fixtures the card reads
+(`tests/fixtures/heat_card/`, `SPOTNAV_WRITE_FIXTURES=1` rewrites them):
+
+* `villa.json`: a villa like the owner's on 16 November 2026 at 17:20, a NIBE without a network (no pump facts),
+  its meter on the Energy dashboard, three indoor sensors, three electric floor zones and an air-to-air heat pump
+  upstairs, a car planned tonight, the cooler night on; an administrator's answer (with `choices`).
+* `network_pump.json`: a house with a NIBE on its local integration whose own price control runs and whose
+  degree minutes are disabled, while another optimiser is set up; away until Friday; a household member's answer.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from typing import Any
+from zoneinfo import ZoneInfo
+
+from custom_components.spotnav.api.heat import config_block
+from custom_components.spotnav.heat.config import HeatConfig, Night, Zone
+from custom_components.spotnav.heat.facts import CapabilityStatus, HeatPumpFacts, PriceControl
+from custom_components.spotnav.heat.meter_split import levels, split_day
+from custom_components.spotnav.heat.rooms import SensorReading, indoor
+from custom_components.spotnav.heat.view import (
+    BAND_HOUR_KEYS,
+    HEAT_KEYS,
+    HeatViewInputs,
+    MeterInputs,
+    Outdoor,
+    ZoneReading,
+    heat_view,
+)
+
+from .test_heat_meter_split import villa_day
+
+FIXTURES = Path(__file__).parent / "fixtures" / "heat_card"
+ZONE = ZoneInfo("Europe/Stockholm")
+MIDNIGHT = datetime(2026, 11, 16, 0, 0, tzinfo=ZONE).astimezone(timezone.utc)
+NOW = MIDNIGHT + timedelta(hours=17, minutes=20)
+PRICES = [80, 78, 76, 75, 77, 85, 120, 190, 210, 160, 120, 110, 105, 100, 105, 130, 180, 240, 260, 220, 150, 110, 95, 85]
+
+
+def _slots() -> tuple[tuple[datetime, datetime, float], ...]:
+    out = []
+    for index, price in enumerate(PRICES):
+        start = MIDNIGHT + timedelta(hours=index)
+        out.extend((start + timedelta(minutes=15 * q), start + timedelta(minutes=15 * (q + 1)), float(price)) for q in range(4))
+    return tuple(out)
+
+
+class _Entry:
+    def __init__(self, data: dict[str, Any]) -> None:
+        self.data = data
+
+
+def _write_or_compare(name: str, answer: dict[str, Any]) -> None:
+    path = FIXTURES / name
+    text = json.dumps(answer, indent=2, ensure_ascii=False, sort_keys=True) + "\n"
+    if os.environ.get("SPOTNAV_WRITE_FIXTURES") == "1":
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8")
+    assert json.loads(path.read_text(encoding="utf-8")) == json.loads(text)
+
+
+def _choice(entity_id: str, name: str, value: str | None, **extra: Any) -> dict[str, Any]:
+    return {"entity_id": entity_id, "name": name, "value": value, **extra}
+
+
+def villa_answer() -> dict[str, Any]:
+    config = HeatConfig(
+        target_c=21.0,
+        night=Night(True, 1.0, "23:00", "06:00"),
+        indoor_sensors=("sensor.inomhus_kok_temperatur", "sensor.ovanvaning_temperatur", "sensor.toalett_nv_temperatur"),
+        zones=(
+            Zone("climate.golvvarme_toalett_nere", 0.0),
+            Zone("climate.golvvarme_toalett_uppe", 0.0),
+            Zone("climate.golvvarme_tvattstuga", -1.0),
+            Zone("climate.ovanvaning", -0.5),
+        ),
+    )
+    entry = _Entry({"heat": config.as_dict(), "heat_meter_entity": "sensor.varme_effekt"})
+    # The last day of 5-minute rows: yesterday evening and today until now, the same shape each day.
+    window = {start - timedelta(days=1): kw for start, kw in villa_day().items() if start - timedelta(days=1) >= NOW - timedelta(days=1)}
+    window |= {start: kw for start, kw in villa_day().items() if start < NOW}
+    found = levels(window)
+    split = split_day(window, MIDNIGHT, MIDNIGHT + timedelta(days=1))
+    sensors = [
+        SensorReading("sensor.inomhus_kok_temperatur", "Inomhus kök temperatur", 21.3, ((NOW - timedelta(minutes=40), 21.2),)),
+        SensorReading("sensor.ovanvaning_temperatur", "Ovanvåning temperatur", 20.5, ((NOW - timedelta(minutes=40), 20.5),)),
+        SensorReading("sensor.toalett_nv_temperatur", "Toalett NV temperatur", 20.4, ((NOW - timedelta(minutes=40), 20.5),)),
+    ]
+    car = frozenset(MIDNIGHT + timedelta(hours=h) for h in (1, 2, 3, 4))
+    choices = {
+        "indoor": [
+            _choice("sensor.inomhus_kok_temperatur", "Inomhus kök temperatur", "21.3 °C"),
+            _choice("sensor.ovanvaning_temperatur", "Ovanvåning temperatur", "20.5 °C"),
+            _choice("sensor.toalett_nv_temperatur", "Toalett NV temperatur", "20.4 °C"),
+            _choice("sensor.garage_temperatur", "Garage temperatur", "13.5 °C"),
+        ],
+        "outdoor": [
+            _choice("sensor.utomhus_garage_temperatur", "Utomhus garage temperatur", "9.4 °C"),
+            _choice("weather.forecast_hem", "Forecast Hem", "cloudy"),
+        ],
+        "zones": [
+            _choice("climate.golvvarme_toalett_nere", "Golvvärme toalett nedervåning", "off", kind="floor"),
+            _choice("climate.golvvarme_toalett_uppe", "Golvvärme toalett ovanvåning", "heat", kind="floor"),
+            _choice("climate.golvvarme_tvattstuga", "Golvvärme tvättstuga", "heat", kind="floor"),
+            _choice("climate.ovanvaning", "Värmepump ovanvåning", "off", kind="air"),
+        ],
+        "relay": [_choice("switch.larm_utgang_1", "Larm utgång 1", "off"), _choice("switch.larm_utgang_2", "Larm utgång 2", "off")],
+        "offset": [],
+        "setpoint": [],
+        "hot_water": [_choice("switch.larm_utgang_2", "Larm utgång 2", "off")],
+        "meter": [_choice("sensor.varme_effekt", "Elmätare värme (Nibe + panna) Effekt", "1128.84 W")],
+    }
+    return heat_view(
+        HeatViewInputs(
+            site_id="site_villa",
+            now=NOW,
+            tz="Europe/Stockholm",
+            writable=True,
+            config=config,
+            config_block=config_block(entry),  # type: ignore[arg-type]
+            indoor=indoor(sensors, NOW),
+            outdoor=Outdoor(6.2, "sensor.utomhus_garage_temperatur", "Utomhus garage temperatur", "house_forecast"),
+            zones=(
+                ZoneReading("climate.golvvarme_toalett_nere", "Golvvärme toalett nedervåning", "floor", 0.0, 19.5, 17.0, "off", False, 0.0),
+                ZoneReading("climate.golvvarme_toalett_uppe", "Golvvärme toalett ovanvåning", "floor", 0.0, 21.5, 17.0, "heat", False, 0.0),
+                ZoneReading("climate.golvvarme_tvattstuga", "Golvvärme tvättstuga", "floor", -1.0, 20.4, 17.0, "heat", False, 0.0),
+                ZoneReading("climate.ovanvaning", "Värmepump ovanvåning", "air", -0.5, 21.5, 21.0, "off", False, None),
+            ),
+            meter=MeterInputs(
+                status="found",
+                entity_id="sensor.varme_effekt",
+                name="Elmätare värme (Nibe + panna) Effekt",
+                source="setting",
+                setting_offered=True,
+                candidates=(),
+                kw_now=1.13,
+                last_period_kw=1.12,
+                levels=found,
+                split=split,
+                periods={start: kw / 12.0 for start, kw in window.items() if start >= MIDNIGHT},
+            ),
+            prices=_slots(),
+            money=("SEK", "kr", "öre"),
+            car_hours=car,
+            choices=choices,
+        )
+    )
+
+
+def network_pump_answer() -> dict[str, Any]:
+    config = HeatConfig(target_c=20.5, mode="away", away_until=(MIDNIGHT + timedelta(days=4, hours=16)).isoformat())
+    pump = HeatPumpFacts(
+        integration="nibe_heatpump",
+        brand="nibe",
+        label="NIBE F750",
+        anchor_entity_id="sensor.nibe_bt1_outdoor_temperature",
+        device_id="device_nibe",
+        outdoor_temp_c=4.5,
+        supply_temp_c=34.0,
+        hot_water_temp_c=48.5,
+        compressor_running=True,
+        priority="heating",
+        price_control=PriceControl("active", "smart_price_adaption_on", ("switch.nibe_smart_price_adaption",)),
+        control="watch_only",
+        control_reason="price_control",
+        capabilities=(
+            CapabilityStatus("offset", "number.nibe_heating_offset_s1", "number.set_value", True, True, "0", -10, 10, 1),
+            CapabilityStatus("hot_water_boost", "switch.nibe_temporary_lux", "switch.turn_on", True, True, "off"),
+        ),
+        missing={"degree_minutes": "disabled", "room_temp": "not_found"},
+    )
+    return heat_view(
+        HeatViewInputs(
+            site_id="site_nibe",
+            now=NOW,
+            tz="Europe/Stockholm",
+            writable=False,
+            config=config,
+            config_block=config_block(_Entry({"heat": config.as_dict()})),  # type: ignore[arg-type]
+            indoor=indoor([], NOW),
+            outdoor=Outdoor(4.5, "sensor.nibe_bt1_outdoor_temperature", "NIBE BT1", "pump"),
+            pump=pump,
+            other_controllers=("effektguard",),
+            prices=_slots(),
+            money=("SEK", "kr", "öre"),
+        )
+    )
+
+
+def test_the_villa() -> None:
+    answer = villa_answer()
+    assert tuple(answer) == HEAT_KEYS
+    assert all(tuple(hour) == BAND_HOUR_KEYS for hour in answer["band"]["hours"])
+    assert answer["comfort"] == {"target_c": 21.0, "low_c": 20.5, "high_c": 21.5, "mode": "home", "away_until": None, "aim_c": 20.5}
+    assert (answer["indoor"]["value_c"], answer["indoor"]["coldest"]) == (20.4, "sensor.toalett_nv_temperatur")
+    # 17:20 lies in the evening's dearest hours: lowered to the band's low edge until 20:00.
+    would = answer["status"]["would"]
+    assert (would["action"], would["reason"]) == ("lower", "dear_hour")
+    assert would["until"] == (MIDNIGHT + timedelta(hours=20)).isoformat()
+    assert answer["status"]["pump_state"] == "heating" and answer["status"]["pump_state_source"] == "meter"
+    actions = [hour["action"] for hour in answer["band"]["hours"]]
+    assert actions[0] == "night" and actions[23] == "night"
+    assert [hour["car"] for hour in answer["band"]["hours"]][1:5] == [True] * 4
+    hot = [hour["start"] for hour in answer["band"]["hours"] if hour["hot_water"]]
+    assert hot == [(MIDNIGHT + timedelta(hours=h)).isoformat() for h in (5, 7)]
+    today = answer["today"]
+    assert today["hot_water_kwh"] > 1.5 and today["cost"] > 0 and today["money"]["minor"] == "öre"
+    # The zones aim at the house's aim plus their own offset.
+    assert [zone["aim_c"] for zone in answer["zones"]] == [20.5, 20.5, 19.5, 20.0]
+    assert answer["notes"] == [] and answer["pump"] is None
+    _write_or_compare("villa.json", answer)
+
+
+def test_the_network_pump_and_its_notes() -> None:
+    answer = network_pump_answer()
+    assert answer["choices"] is None and answer["writable"] is False
+    assert [note["code"] for note in answer["notes"]] == ["pump_price_control", "readings_disabled", "other_controller"]
+    assert answer["notes"][0]["params"] == {"label": "NIBE F750", "where": "nibe_smart_price"}
+    assert answer["notes"][1]["params"] == {"entities": ["degree_minutes"], "device_id": "device_nibe"}
+    assert answer["pump"]["capabilities"] == ["hot_water_boost", "offset"]
+    assert answer["status"]["pump_state"] == "heating" and answer["status"]["pump_state_source"] == "pump"
+    assert answer["status"]["would"]["action"] == "away"
+    assert answer["comfort"]["aim_c"] == 17.5 and answer["today"] is None and answer["meter"] is None
+    _write_or_compare("network_pump.json", answer)
