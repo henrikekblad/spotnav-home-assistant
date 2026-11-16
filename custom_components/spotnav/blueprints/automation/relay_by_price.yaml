@@ -12,7 +12,8 @@ blueprint:
     **Closed while expensive**: the relay is closed while Expensive now is on and opened as soon as it
     ends, for an input that lowers the heating curve or blocks an add-on heater. On a NIBE SPLIT ACVM
     270, for example, a closed contact on X1:3-4 shifts the heating curve by the steps set in menu 2.4.
-    It is closed for at most the longest closed time in a row, then stays open for at least the
+    It is only closed when the expensive stretch ahead lasts at least the shortest closing, and then
+    stays closed until Expensive now ends. It is closed for at most the longest closed time in a row, then stays open for at least the
     shortest rest, and is never closed while the outdoor temperature (if you choose a sensor) is below
     the lowest outdoor temperature.
 
@@ -101,6 +102,19 @@ blueprint:
               max: 24
               step: 0.25
               unit_of_measurement: h
+        min_closed_minutes:
+          name: Shortest closing
+          description: >-
+            The relay is only closed when the expensive stretch ahead lasts at least this long, so a single
+            expensive quarter-hour does not close it. Once closed it stays closed until Expensive now ends.
+            0 turns this off.
+          default: 45
+          selector:
+            number:
+              min: 0
+              max: 240
+              step: 15
+              unit_of_measurement: min
         min_rest_hours:
           name: Shortest rest
           description: How long the relay stays open before it may close again.
@@ -198,6 +212,7 @@ variables:
   expensive_now: !input expensive_now
   max_on_hours: !input max_on_hours
   min_rest_hours: !input min_rest_hours
+  min_closed_minutes: !input min_closed_minutes
   outdoor_sensor: !input outdoor_sensor
   min_outdoor: !input min_outdoor
   pulse_seconds: !input pulse_seconds
@@ -228,6 +243,13 @@ variables:
       {% set outdoor = states(outdoor_sensor) | float(none) %}
       {{ outdoor is none or outdoor < min_outdoor | float }}
     {% endif %}
+  # Minutes until Expensive now ends, from its next_change; none when that is missing.
+  expensive_left: >-
+    {% set end = as_timestamp(state_attr(expensive_now, 'next_change'), none) %}
+    {{ ((end - as_timestamp(now())) / 60) if end is number else none }}
+  long_enough: >-
+    {{ min_closed_minutes | float(0) <= 0 or expensive_left is not number
+       or expensive_left >= min_closed_minutes | float(0) }}
   block: >-
     {% if not is_state(expensive_now, 'on') or too_cold %}
       {{ false }}
@@ -235,7 +257,7 @@ variables:
       {{ a_minutes | float < max_on_hours | float * 60 }}
     {% else %}
       {# Never switched by this automation: no rest is owed. #}
-      {{ last_switched is not number or a_minutes | float >= min_rest_hours | float * 60 }}
+      {{ long_enough and (last_switched is not number or a_minutes | float >= min_rest_hours | float * 60) }}
     {% endif %}
   pulse_allowed: >-
     {% if last_switched is not number %}

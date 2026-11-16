@@ -141,7 +141,11 @@ It has three modes.
 **Closed while expensive.** The relay is closed while Expensive now is on and opened as soon as it ends,
 for an input that lowers the heating curve or blocks an add-on heater. On a NIBE SPLIT ACVM 270, for
 example, a closed contact on X1:3-4 shifts the heating curve by the number of steps set in menu 2.4, so
-the house runs a little cooler through the expensive hours. Three limits keep the house warm:
+the house runs a little cooler through the expensive hours. With quarter-hour prices Expensive now can be
+on for a single quarter; the **shortest closing** (45 minutes) keeps such a blip from closing the relay: it
+closes only when the expensive stretch ahead, read from Expensive now's `next_change`, lasts at least that
+long, and then stays closed until Expensive now ends (or a limit below opens it). Set it to 0 to close
+at once. Three limits keep the house warm:
 
 - it is closed for at most the **longest closed time in a row** (3 hours), then opened,
 - it then stays open for at least the **shortest rest** (1 hour) before it may close again, also between
@@ -180,6 +184,7 @@ done.
 | **Relay B** | none | SG Ready only. |
 | **Cheap now**, **Expensive now** | | The electricity price's binary sensors, for example `binary_sensor.electricity_price_se4_cheap_now`. |
 | **Longest closed time in a row**, **Shortest rest** | 3 h, 1 h | Closed while expensive and SG Ready's blocked state. |
+| **Shortest closing** | 45 min | Closed while expensive and SG Ready's blocked state; 0 turns it off. |
 | **Outdoor temperature**, **Lowest outdoor temperature** | none, -15 °C | Optional. |
 | **Pulse length**, **Pulses per day**, **Shortest time between pulses** | 2 s, 1, 3 h | Pulse when cheap. |
 

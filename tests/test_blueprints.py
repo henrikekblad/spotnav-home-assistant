@@ -661,6 +661,78 @@ async def test_relay_not_closed_below_the_lowest_outdoor_temperature(
     assert relays.take() == []
 
 
+async def _expensive_until(hass: HomeAssistant, start, minutes: int | None) -> None:
+    """Expensive now on, with a next_change `minutes` after `start` (none: no attribute)."""
+    attributes = {} if minutes is None else {"next_change": (start + timedelta(minutes=minutes)).isoformat()}
+    hass.states.async_set(EXPENSIVE, "on", attributes)
+    await hass.async_block_till_done()
+
+
+async def test_relay_a_single_expensive_quarter_does_not_close(
+    hass: HomeAssistant, tmp_path: Path, freezer, morning
+) -> None:
+    _relay_prices(hass)
+    hass.states.async_set(RELAY, "off")
+    relays = await _relay_automation(hass, tmp_path, "expensive_closed")
+    await _expensive_until(hass, morning, 15)
+    assert relays.take() == []
+    await _at(hass, freezer, morning + timedelta(minutes=5))
+    assert relays.take() == []
+    hass.states.async_set(EXPENSIVE, "off")
+    await hass.async_block_till_done()
+    assert relays.take() == []
+
+
+async def test_relay_a_long_expensive_stretch_closes_and_stays_closed_until_it_ends(
+    hass: HomeAssistant, tmp_path: Path, freezer, morning
+) -> None:
+    _relay_prices(hass)
+    hass.states.async_set(RELAY, "off")
+    relays = await _relay_automation(hass, tmp_path, "expensive_closed")
+    await _expensive_until(hass, morning, 120)
+    assert relays.take() == [("turn_on", RELAY)]
+    # Less than the shortest closing is left: it stays closed.
+    await _at(hass, freezer, morning + timedelta(minutes=100))
+    assert relays.take() == []
+    assert hass.states.get(RELAY).state == "on"
+    hass.states.async_set(EXPENSIVE, "off")
+    await hass.async_block_till_done()
+    assert relays.take() == [("turn_off", RELAY)]
+
+
+async def test_relay_without_next_change_closes_as_before(hass: HomeAssistant, tmp_path: Path, morning) -> None:
+    _relay_prices(hass)
+    hass.states.async_set(RELAY, "off")
+    relays = await _relay_automation(hass, tmp_path, "expensive_closed")
+    await _expensive_until(hass, morning, None)
+    assert relays.take() == [("turn_on", RELAY)]
+
+
+async def test_relay_shortest_closing_zero_closes_for_a_single_quarter(
+    hass: HomeAssistant, tmp_path: Path, morning
+) -> None:
+    _relay_prices(hass)
+    hass.states.async_set(RELAY, "off")
+    relays = await _relay_automation(hass, tmp_path, "expensive_closed", min_closed_minutes=0)
+    await _expensive_until(hass, morning, 15)
+    assert relays.take() == [("turn_on", RELAY)]
+
+
+async def test_relay_sg_ready_blocked_needs_the_shortest_closing(
+    hass: HomeAssistant, tmp_path: Path, freezer, morning
+) -> None:
+    _relay_prices(hass)
+    hass.states.async_set(RELAY, "off")
+    hass.states.async_set(RELAY_B, "off")
+    relays = await _relay_automation(hass, tmp_path, "sg_ready", relay_b=RELAY_B)
+    await _expensive_until(hass, morning, 15)
+    assert relays.take() == []
+    # A longer stretch known at the next run (an attribute change alone does not trigger it).
+    await _expensive_until(hass, morning, 90)
+    await _at(hass, freezer, morning + timedelta(minutes=5))
+    assert relays.take() == [("turn_on", RELAY)]
+
+
 async def test_relay_does_nothing_while_unavailable(hass: HomeAssistant, tmp_path: Path, morning) -> None:
     _relay_prices(hass)
     hass.states.async_set(RELAY, "unavailable")
