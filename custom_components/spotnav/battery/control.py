@@ -76,6 +76,7 @@ from ..site.measurement_problem import UNHEALTHY_STATES
 from . import gate
 from .commands import (
     ACTION_CURTAIL_EXPORT,
+    OUTPUT_TYPE_PHASES,
     WATCHDOG_S,
     BrandControl,
     control_for,
@@ -105,7 +106,7 @@ from .plan_model import (
     ACTION_SELF_CONSUME,
 )
 from .plan_shadow import slot_at
-from .runtime import TICK_S, read_battery_facts, read_export_facts, read_role_reads
+from .runtime import TICK_S, read_battery_facts, read_export_facts, read_plant_entity, read_role_reads
 from .verify import TEST_CHARGE_KW, Sample, Verification
 
 if TYPE_CHECKING:
@@ -150,6 +151,14 @@ _UNSET: Final = object()
 
 def store_key(entry_id: str) -> str:
     return f"{DOMAIN}.battery_control.{entry_id}"
+
+
+def _float(value: Any) -> float | None:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return number if math.isfinite(number) else None
 
 
 def stored_reads(hass: HomeAssistant, executor: Executor) -> dict[str, RoleRead]:
@@ -727,6 +736,10 @@ class BatteryControl:
         action, rate = verification.command(now, sample, inputs.facts.max_charge_kw)
         if action == ACTION_GRID_CHARGE:
             cap = self._grid_charge_cap_kw(now, self.options())
+            if cap is not None and cap < gate.MIN_RATE_KW:
+                # No grid charge fits under the HA-down cap now: tried again at a later run.
+                verification.not_judgeable(now, "grid_charge_cap")
+                action, rate = verification.command(now, sample, inputs.facts.max_charge_kw)
             rate = rate if cap is None else min(rate, cap)
         inputs = replace(inputs, action=action, rate_kw=rate, slot_end=None)
         result = await self._async_step(executor, inputs, allowed=True)
@@ -934,14 +947,45 @@ class BatteryControl:
                             "rate_kw": None if slot is None else slot[1]}])
         return slot
 
+    def _main_fuse_a(self) -> float | None:
+        fuse_a = self.site.config.get(CONF_MAIN_FUSE_A)
+        return float(fuse_a) if isinstance(fuse_a, (int, float)) and not isinstance(fuse_a, bool) else None
+
     def _grid_charge_cap_kw(self, now: datetime, options: gate.Options) -> float | None:
-        config = self.site.config
-        fuse_a = config.get(CONF_MAIN_FUSE_A)
-        fuse = gate.fuse_kw(
-            float(fuse_a) if isinstance(fuse_a, (int, float)) and not isinstance(fuse_a, bool) else None,
-            stored_voltage_between_phases_v(config), HEADROOM_MARGIN_A,
+        """The HA-down grid charge cap (`gate.grid_charge_cap_kw`) on the site's readings now."""
+        control = control_for(self.facts.brand)
+        import_limit_kw = None
+        if options.import_limit_acts and control is not None:
+            import_limit_kw = _float(read_plant_entity(self.hass, self.site.config, control.import_limit))
+        return gate.grid_charge_cap_kw(
+            self._main_fuse_a(), stored_voltage_between_phases_v(self.site.config), margin_a=HEADROOM_MARGIN_A,
+            cars_a=self._cars_allowed_a(), house_peak_kw=self._house_peak_kw(now),
+            plant_phases=self._plant_phases(control), import_limit_kw=import_limit_kw,
+            import_limit_acts=options.import_limit_acts,
         )
-        return gate.grid_charge_cap_kw(fuse, self._house_peak_kw(now), import_limit_acts=options.import_limit_acts)
+
+    def _cars_allowed_a(self) -> float:
+        """What the site's chargers may draw per phase if nothing writes them again (A, summed): each one's last
+        current (`charger_allowed_a`), `ASSUMED_CURRENT_A` when it is not known; infinite (no grid charge) when the
+        chargers cannot be read."""
+        from ..execution.controller import ASSUMED_CURRENT_A  # noqa: PLC0415 - the charger side imports the site
+
+        try:
+            total = 0.0
+            for charger_entry_id in self.site.config.get(CONF_CHARGER_ENTRY_IDS) or []:
+                amps = self.site.charger_allowed_a(charger_entry_id)
+                total += float(ASSUMED_CURRENT_A) if amps is None else max(amps, 0.0)
+        except Exception:  # noqa: BLE001 - unknown: no grid charge on the HA-down rule
+            self._look_failed("cars_allowed")
+            return math.inf
+        return total
+
+    def _plant_phases(self, control: BrandControl | None) -> int:
+        """The phases the plant spreads a grid charge over: its Output Type when it shows one, else the brand's."""
+        if control is None:
+            return 1
+        state = read_plant_entity(self.hass, self.site.config, control.output_type)
+        return OUTPUT_TYPE_PHASES.get(str(state).lower(), control.grid_charge_phases) if state else control.grid_charge_phases
 
     def _house_peak_kw(self, now: datetime) -> float | None:
         """The house forecast's p90 for the running hour (kW), read once an hour; `None` when it has none."""

@@ -21,6 +21,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 from custom_components.spotnav.battery import control as control_module, gate
 from custom_components.spotnav.battery.control import BatteryControl, ControlNotReachable, TrialRefused, store_key
 from custom_components.spotnav.runtime import site_controller_for
+from custom_components.spotnav.site.site_capacity_controller import SiteCapacityController
 from tests.world import setup_charger_and_site
 
 pytestmark = pytest.mark.usefixtures("offline_relay")
@@ -34,6 +35,8 @@ CHARGE = "number.sigen_plant_ess_max_charging_limit"
 WORK_MODE = "sensor.sigen_plant_ems_work_mode"
 FIRMWARE = "sensor.sigen_inverter_firmware_version"
 CONTROLS = {SWITCH: "off", MODE: "unavailable", DISCHARGE: "23.04", WORK_MODE: "max_self_consumption"}
+#: The site's own reading of a charger's last current (`_site` replaces it with no car).
+_CHARGER_ALLOWED_A = SiteCapacityController.charger_allowed_a
 #: The house's own load in the fake (kW): the battery covers it when it may.
 HOUSE_KW = 2.0
 def _plant(hass: HomeAssistant) -> str:
@@ -142,6 +145,8 @@ async def _site(
         return replace(original(self, now, control, **kwargs), headroom_a=20.0, measurement_ok=True)
 
     monkeypatch.setattr(BatteryControl, "inputs", inputs)
+    # No car at the site's charger: its last current is 0 A (the HA-down grid charge cap counts it).
+    monkeypatch.setattr(type(controller), "charger_allowed_a", lambda self, charger: 0.0)
     export_original = BatteryControl.export_inputs
 
     def export_inputs(self, now, control, **kwargs):
@@ -767,19 +772,87 @@ async def test_with_the_acknowledgement_ai_mode_is_taken_over_and_turning_off_le
     assert control.status()["notes"] == []
 
 
-@pytest.mark.parametrize(("import_limit_acts", "written"), [(False, "8.471"), (True, "12.47")])
-async def test_the_grid_charge_is_capped_for_a_house_peak_until_the_import_limit_is_shown_to_act(
-    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any], import_limit_acts: bool,
-    written: str,
+IMPORT_LIMIT = "number.sigen_plant_grid_import_limitation"
+
+
+def _import_limit(hass: HomeAssistant, state: str) -> None:
+    """The plant's Grid Import Limitation (register 40040), enabled and reading `state` kW."""
+    registry = er.async_get(hass)
+    device = dr.async_get(hass).async_get_or_create(config_entry_id="ENTRY", identifiers={("sigen", "plant")})
+    owner = hass.config_entries.async_get_entry("ENTRY")
+    entry = registry.async_get_or_create(
+        "number", "sigen", "ENTRY_sigen_plant_plant_grid_maximum_import_limitation", device_id=device.id,
+        config_entry=owner, suggested_object_id="sigen_plant_grid_import_limitation",
+    )
+    assert entry.entity_id == IMPORT_LIMIT
+    hass.states.async_set(IMPORT_LIMIT, state, {"unit_of_measurement": "kW"})
+
+
+@pytest.mark.parametrize(
+    ("fuse_a", "import_limit_acts", "limit", "written"),
+    [
+        # The default 4 kW peak on one phase leaves 5.7 A of 25 A (less the 2 A margin): 3.935 kW balanced.
+        (25.0, False, None, "3.935"),
+        # Shown to act and reading under the fuse: only the live clamp on the measured headroom.
+        (25.0, True, "10", "12.47"),
+        # Shown to act but reading above the fuse: the cap stays.
+        (25.0, True, "100", "3.935"),
+    ],
+)
+async def test_the_grid_charge_is_capped_per_phase_until_the_import_limit_is_shown_to_act_and_set_under_the_fuse(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any], fuse_a: float,
+    import_limit_acts: bool, limit: str | None, written: str,
 ) -> None:
-    site, controller, plant = await _site(hass, monkeypatch, hass_storage, main_fuse_a=20.0)
+    site, controller, plant = await _site(hass, monkeypatch, hass_storage, main_fuse_a=fuse_a)
+    if limit is not None:
+        _import_limit(hass, limit)
     control = await _started(hass, site, controller, plan_source=lambda _now: ("grid_charge", 15.0, None))
     _options(hass, site, import_limit_acts=import_limit_acts)
     await _looks(control, dt_util.now(), 6)
-    # Without the flag: the fuse less its margin (12.47 kW at 20 A) less the house's peak (4 kW without a p90);
-    # with it, only the live clamp on the measured headroom.
     assert hass.states.get(CHARGE).state[:len(written)] == written
-    assert any(row["kind"] == "restricted" for row in control.log) is not import_limit_acts
+    assert any(row["kind"] == "restricted" for row in control.log) is (written != "12.47")
+
+
+async def test_no_grid_charge_where_the_cap_leaves_too_little(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    site, controller, plant = await _site(hass, monkeypatch, hass_storage, main_fuse_a=20.0)
+    control = await _started(hass, site, controller, plan_source=lambda _now: ("grid_charge", 15.0, None))
+    await _looks(control, dt_util.now(), 6)
+    assert plant.calls == []
+    assert [row["reason"] for row in control.log if row["kind"] == "restricted"] == ["grid_charge_cap"]
+
+
+async def test_the_check_leaves_the_charge_mode_for_later_where_the_cap_leaves_no_grid_charge(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    site, controller, plant = await _site(hass, monkeypatch, hass_storage, main_fuse_a=20.0)
+    control = BatteryControl(hass, controller, plan_source=lambda _now: None)
+    await control.async_start()
+    _options(hass, site, enabled=True, shadow_only=False)
+    await _looks(control, dt_util.now(), 400)
+    report = control.report()
+    assert report["modes"]["charge"]["outcome"] == "not_judgeable:grid_charge_cap"
+    assert gate.report_status(report) == "passed" and "grid_charge" not in control.allowed()
+    assert not any(call[2].get("option") == "Command Charging (Grid First)" for call in plant.calls), "no grid charge"
+
+
+async def test_the_chargers_last_currents_count_against_the_grid_charge_cap(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    site, controller, plant = await _site(hass, monkeypatch, hass_storage, main_fuse_a=40.0)
+    control = BatteryControl(hass, controller)
+    control.facts = control._read_facts()
+    # The charger's last current: what load balancing wrote, else what SpotNav asked; 16 A when neither is known.
+    charger = (controller.config.get("charger_entry_ids") or [])[0]
+    monkeypatch.setattr(type(controller), "charger_allowed_a", _CHARGER_ALLOWED_A)
+    assert controller.charger_allowed_a(charger) is None and control._cars_allowed_a() == 16.0
+    monkeypatch.setattr(type(controller), "charger_allowed_a", lambda self, entry_id: 10.0)
+    assert control._cars_allowed_a() == 10.0
+    volts = 400.0 / 3 ** 0.5
+    assert control._grid_charge_cap_kw(dt_util.now(), control.options()) == pytest.approx(
+        (40.0 - 2.0 - 10.0 - 4000.0 / volts) * 3 * volts / 1000
+    )
 
 
 async def test_selling_from_the_battery_is_off_by_default(
@@ -857,9 +930,9 @@ async def test_the_test_action_ends_by_itself_and_hands_back(
 ) -> None:
     site, controller, plant = await _site(hass, monkeypatch, hass_storage)
     control = await _started(hass, site, controller, plan_source=lambda _now: None)
-    await control.async_trial("grid_charge", 6.0, 2, force=False)
+    await control.async_trial("grid_charge", 3.0, 2, force=False)
     now = await _looks(control, dt_util.now() + timedelta(seconds=10), 4)
-    assert hass.states.get(MODE).state == "Command Charging (Grid First)" and hass.states.get(CHARGE).state == "6"
+    assert hass.states.get(MODE).state == "Command Charging (Grid First)" and hass.states.get(CHARGE).state == "3"
     await _looks(control, now + timedelta(minutes=3), 6)
     assert control.trial is None and hass.states.get(SWITCH).state == "off"
     assert any(row["kind"] == "trial_ended" for row in control.log)

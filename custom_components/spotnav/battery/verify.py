@@ -146,6 +146,15 @@ class Verification:
                 result.rate_kw = min(self.charge_kw, rated_charge_kw) if rated_charge_kw else self.charge_kw
         return result.action, result.rate_kw
 
+    def not_judgeable(self, now: datetime, why: str) -> None:
+        """The running mode cannot be tried now for a reason of the shell's (the grid charge cap): it is left pending
+        and the run goes on once the executor has handed back."""
+        result = self.current
+        if result is None or self.stage == "hand_back" or result.action == ACTION_SELF_CONSUME:
+            return
+        result.outcome = f"not_judgeable:{why}"
+        self._enter(now, "hand_back")
+
     def after(self, now: datetime, step: StepResult, sample: Sample, capability: Capability) -> None:
         """What the executor did in this look, and the battery's reading."""
         result = self.current

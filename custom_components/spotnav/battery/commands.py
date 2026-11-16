@@ -163,6 +163,14 @@ class BrandControl:
     #: `battery` (the plan's actions) or `export` (the export limit, `ACTION_CURTAIL_EXPORT`): an export control
     #: needs no battery reading or fuse headroom, since a lower export limit never adds import.
     kind: Literal["battery", "export"] = "battery"
+    #: How the plant spreads a grid charge over the phases: as many phases, evenly (the HA-down grid charge cap,
+    #: `gate.grid_charge_cap_kw`); 1 (all on one phase) where the brand does not say. `output_type` (an enum sensor,
+    #: read by `OUTPUT_TYPE_PHASES`) overrides it when the plant shows it.
+    grid_charge_phases: int = 1
+    output_type: Match | None = None
+    #: The plant's own grid import limit (kW): while it reads at most the fuse, and the person's on-site test showed
+    #: it acts (`battery_control_import_limit_acts`), it bounds a grid charge with Home Assistant down.
+    import_limit: Match | None = None
     note: str = ""
 
     def role(self, name: str) -> Role:
@@ -265,9 +273,19 @@ SIGENERGY_CONTROL: Final = BrandControl(
     # A hold is the discharge limit at 0: lifting it lets the battery cover a peak at once (SigenStor covers each
     # phase on its own). A grid charge stops with the mode back at Maximum Self Consumption.
     peak_first={ACTION_HOLD: ("discharge_limit",), ACTION_GRID_CHARGE: ("control_mode",)},
+    # A three-phase SigenStor charges from the grid balanced over its phases; a single-phase one says so in its
+    # inverter's Output Type (TypQxQ 2.0.3 `static_sensor.py` key `inverter_output_type`, register 31004, disabled
+    # by default). Grid Import Limitation: `number.py` key `plant_grid_maximum_import_limitation` (lines 201-216),
+    # register 40040 (`modbusregisterdefinitions.py` lines 1633-1641), kW.
+    grid_charge_phases=3,
+    output_type=_key("inverter_output_type"),
+    import_limit=_key("plant_grid_maximum_import_limitation", "number"),
     note="Remote EMS replaces the app's mode only while it is on; SpotNav takes a plant in Maximum Self"
     " Consumption only, so turning it off hands back the mode it found.",
 )
+
+#: An inverter's Output Type (Sigenergy's enum, lower-cased) as the phases it feeds.
+OUTPUT_TYPE_PHASES: Final[Mapping[str, int]] = {"l_n": 1, "l1_l2_n": 2, "l1_l2_l3": 3, "l1_l2_l3_n": 3}
 
 # The normal state has no wanted value for these: the switch goes off, the select to MSC (only while it can).
 _SIGENERGY_NORMAL: Final = {"remote_ems": False, "control_mode": _SIG_MSC}

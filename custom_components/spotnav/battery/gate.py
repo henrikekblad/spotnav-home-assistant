@@ -11,8 +11,10 @@ The site's options (`Options`, kept in the site entry's data beside its other se
   that turning control off leaves it in Maximum Self Consumption. Without it a plant in AI mode is only watched.
 * `battery_control_allow_sell` (default off): the plan may discharge the battery to the grid (`export_discharge`).
 * `battery_control_import_limit_acts` (default off): the owner's on-site test (T3) showed that the plant's own grid
-  import limit acts under Remote EMS. Until then a grid charge is capped so that it and a normal house peak stay under
-  the fuse while Home Assistant is down (Sigenergy has no dead-man: a command stays until something writes it).
+  import limit acts under Remote EMS. Until then, and whenever that limit does not read at most the fuse, a grid
+  charge is capped so that it, the chargers' last currents and a house peak on one phase keep every phase under the
+  fuse while Home Assistant is down (`grid_charge_cap_kw`; Sigenergy has no dead-man: a command stays until
+  something writes it).
 
 The verification report, per firmware key (`merge_report`): each mode's last decisive outcome. `obeyed` (`restored`
 for normal) passes; `ignored`, `partial` and an abort that shows the plant does not do as told (`FAILING_ABORTS`)
@@ -314,17 +316,48 @@ def fuse_kw(main_fuse_a: float | None, volts_between_phases: float, margin_a: fl
     return max(main_fuse_a - margin_a, 0.0) * math.sqrt(3.0) * volts_between_phases / 1000.0
 
 
-def grid_charge_cap_kw(fuse: float | None, house_peak_kw: float | None, *, import_limit_acts: bool) -> float | None:
-    """The most a grid charge may be commanded at (kW), so that it and a normal house peak (the house forecast's p90
-    for the hour, `HOUSE_PEAK_DEFAULT_KW` without one) stay under the fuse even if Home Assistant stops while it
-    runs; `None` (no cap of this kind) once the plant's own import limit is shown to act. With the fuse unknown no
-    grid charge may run (0)."""
-    if import_limit_acts:
+def phase_volts(volts_between_phases: float) -> float:
+    """One phase's voltage to neutral."""
+    return volts_between_phases / math.sqrt(3.0)
+
+
+def import_limit_holds(import_limit_kw: float | None, main_fuse_a: float | None, volts_between_phases: float) -> bool:
+    """Whether the plant's own grid import limit reads a value at or below the fuse (as three-phase kW)."""
+    fuse = fuse_kw(main_fuse_a, volts_between_phases, 0.0)
+    return (
+        fuse is not None and import_limit_kw is not None and math.isfinite(import_limit_kw)
+        and 0.0 <= import_limit_kw <= fuse + 1e-6
+    )
+
+
+def grid_charge_cap_kw(
+    main_fuse_a: float | None, volts_between_phases: float, *, margin_a: float, cars_a: float,
+    house_peak_kw: float | None, plant_phases: int, import_limit_kw: float | None = None,
+    import_limit_acts: bool = False,
+) -> float | None:
+    """The most a grid charge may be commanded at (kW), so that no phase passes the fuse even if Home Assistant
+    stops while it runs (Sigenergy has no dead-man: the command stays, and so does each charger's last current).
+
+    Reckoned in amps on the worst phase: the fuse, less `margin_a`, less what the site's chargers may draw now
+    (`cars_a`, each at its last current, all counted on that phase), less the house's peak (the larger of the house
+    forecast's p90 for the hour and `HOUSE_PEAK_DEFAULT_KW`) all on that one phase; the battery's charge takes
+    `1 / plant_phases` of its power on each phase (Sigenergy's three-phase plants balance it). `None` (no cap of this
+    kind) only while the person's on-site test showed the plant's own import limit acts (`import_limit_acts`) and that
+    limit reads at most the fuse (`import_limit_holds`). With the fuse unknown no grid charge may run (0)."""
+    if import_limit_acts and import_limit_holds(import_limit_kw, main_fuse_a, volts_between_phases):
         return None
-    if fuse is None:
+    if (
+        main_fuse_a is None or not math.isfinite(main_fuse_a) or main_fuse_a <= 0 or volts_between_phases <= 0
+        or not math.isfinite(cars_a)
+    ):
         return 0.0
-    peak = HOUSE_PEAK_DEFAULT_KW if house_peak_kw is None or not math.isfinite(house_peak_kw) else max(house_peak_kw, 0.0)
-    return max(fuse - peak, 0.0)
+    volts = phase_volts(volts_between_phases)
+    peak = HOUSE_PEAK_DEFAULT_KW
+    if house_peak_kw is not None and math.isfinite(house_peak_kw):
+        peak = max(peak, house_peak_kw)
+    room_a = main_fuse_a - margin_a - max(cars_a, 0.0) - peak * 1000.0 / volts
+    phases = min(max(int(plant_phases), 1), 3)
+    return max(room_a, 0.0) * phases * volts / 1000.0
 
 
 # --- what control runs ---------------------------------------------------------------------------------------------

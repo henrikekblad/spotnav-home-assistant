@@ -12,6 +12,7 @@ from custom_components.spotnav.battery.gate import (
     CONF_SHADOW_ONLY,
     HOUSE_PEAK_DEFAULT_KW,
     MAX_ATTEMPTS,
+    MIN_RATE_KW,
     Moment,
     Options,
     allowed_actions,
@@ -141,13 +142,43 @@ def test_a_re_verification_waits_for_an_evening() -> None:
     assert suitable(_moment(local_hour=20), evening=True) is None
 
 
-def test_the_grid_charge_is_capped_to_leave_a_house_peak_under_the_fuse_until_the_import_limit_is_shown_to_act() -> None:
+def _cap(fuse_a: float | None = 25.0, *, cars_a: float = 0.0, peak: float | None = None, phases: int = 3,
+         limit: float | None = None, acts: bool = False) -> float | None:
+    return grid_charge_cap_kw(fuse_a, 400.0, margin_a=2.0, cars_a=cars_a, house_peak_kw=peak, plant_phases=phases,
+                              import_limit_kw=limit, import_limit_acts=acts)
+
+
+def test_the_grid_charge_cap_keeps_every_phase_under_the_fuse_with_home_assistant_down() -> None:
+    volts = 400.0 / 3 ** 0.5
     fuse = fuse_kw(20.0, 400.0, 2.0)
     assert fuse == pytest.approx(12.47, abs=0.01)
-    assert grid_charge_cap_kw(fuse, 3.0, import_limit_acts=False) == pytest.approx(fuse - 3.0)
-    assert grid_charge_cap_kw(fuse, None, import_limit_acts=False) == pytest.approx(fuse - HOUSE_PEAK_DEFAULT_KW)
-    assert grid_charge_cap_kw(fuse, 3.0, import_limit_acts=True) is None
-    assert grid_charge_cap_kw(None, 3.0, import_limit_acts=False) == 0.0, "an unknown fuse allows no grid charge"
+    # 25 A: the default 4 kW house peak all on one phase (17.3 A) leaves 5.7 A on it; a balanced three-phase
+    # charge may take 5.7 A on each phase.
+    cap = _cap()
+    assert cap == pytest.approx((25.0 - 2.0 - HOUSE_PEAK_DEFAULT_KW * 1000 / volts) * 3 * volts / 1000)
+    assert round(cap, 2) == 3.93
+    # On the worst phase with HA down: the house's peak + the battery's third stays under the fuse less the margin.
+    assert HOUSE_PEAK_DEFAULT_KW * 1000 / volts + cap * 1000 / 3 / volts == pytest.approx(23.0)
+    # A quiet hour's p90 never lowers the peak below the default; a larger one raises it.
+    assert _cap(peak=0.6) == pytest.approx(cap)
+    assert _cap(peak=5.0) < cap
+    # The chargers' last currents count on that phase too.
+    assert _cap(cars_a=3.0) == pytest.approx((25.0 - 2.0 - 3.0 - HOUSE_PEAK_DEFAULT_KW * 1000 / volts) * 3 * volts / 1000)
+    assert _cap(cars_a=6.0) == 0.0
+    # A single-phase plant puts its whole charge on one phase.
+    assert _cap(phases=1) == pytest.approx(cap / 3)
+    # 20 A with the default peak leaves no grid charge worth running.
+    assert _cap(20.0) < MIN_RATE_KW
+    assert _cap(None) == 0.0, "an unknown fuse allows no grid charge"
+    assert _cap(cars_a=float("inf")) == 0.0, "chargers that cannot be read allow none"
+
+
+def test_the_import_limit_lifts_the_cap_only_while_it_reads_at_most_the_fuse() -> None:
+    assert _cap(acts=True, limit=10.0) is None
+    assert _cap(acts=True, limit=fuse_kw(25.0, 400.0, 0.0)) is None
+    assert _cap(acts=True, limit=100.0) == pytest.approx(_cap()), "a limit above the fuse protects nothing"
+    assert _cap(acts=True, limit=None) == pytest.approx(_cap()), "a limit that reads nothing protects nothing"
+    assert _cap(acts=False, limit=10.0) == pytest.approx(_cap()), "not shown to act on site"
     slot = ("grid_charge", 15.0, None)
     assert restricted(slot, {"grid_charge"}, 9.0) == (("grid_charge", 9.0, None), "grid_charge_cap")
     assert restricted(slot, {"grid_charge"}, 0.2) == (("self_consume", 0.0, None), "grid_charge_cap")
