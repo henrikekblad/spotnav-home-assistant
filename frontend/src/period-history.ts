@@ -407,10 +407,14 @@ export const PERIOD_STYLES = `
     gap: 8px;
     font-size: 0.9rem;
   }
+  .spotnav-period-row > span:first-child {
+    flex: 1 1 8rem;
+    min-width: 0;
+  }
   .spotnav-period-figure {
+    flex: 0 1 auto;
     font-variant-numeric: tabular-nums;
     text-align: right;
-    white-space: nowrap;
   }
   .spotnav-period-runs {
     margin: 0;
