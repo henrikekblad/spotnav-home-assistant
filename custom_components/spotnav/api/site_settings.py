@@ -3,7 +3,9 @@
 A compare-and-set over one site config entry's stored data, reusing the dashboard contract's own
 `site` capture and serialization.
 
-* The charger names the site (`charger_id`); the server resolves it, never a site entry id.
+* The charger names the site (`charger_id`); the server resolves it. Or (since 3.0, for the shared settings popover
+  of a home with or without chargers) `site_id` names the site itself; the `site` block is then read from the site
+  (`dashboard_api.serialize_site_entry`), in the same shape. The webhook stays charger-bound.
 * A stale write is a `conflict`: `expected` carries the values (a subset of
   `solar_priority`/`solar_forecast`) the card last saw, and the current `site` block travels back.
 * One write, only the fields this command owns. `changes` names `solar_priority` and/or
@@ -55,13 +57,14 @@ from ..site.site_capacity_controller import (
     SiteCapacityController,
     SiteControllerClosed,
 )
-from .common import ERROR_NOT_ADMIN, ERROR_UNSUPPORTED_VERSION, is_admin, send_unsupported_version
+from .common import ERROR_NOT_ADMIN, ERROR_UNSUPPORTED_VERSION, is_admin, lookup_site, send_unsupported_version
 from .entity_fields import import_target_error, stored_import_target_kw
 from .dashboard import (
     capture_site,
     DashboardFailure,
     resolve_charger_request,
     serialize_site,
+    serialize_site_entry,
     site_binding,
     solar_forecast_choices,
 )
@@ -118,14 +121,26 @@ def _current_values(entry: ConfigEntry) -> tuple[str, tuple[str, ...]]:
 
 async def _site_block(
     hass: HomeAssistant,
-    charger_entry_id: str,
+    charger_entry_id: str | None,
     *,
     forecast_domains: frozenset[str],
     active_control_writable: bool = True,
+    site_entry: ConfigEntry | None = None,
 ) -> dict[str, Any] | None:
     """The `site` block this command answers with: `capture_site` re-read now and serialized as the
-    dashboard does (`writable` is always `True`; only an admin reaches this far).
+    dashboard does (`writable` is always `True`; only an admin reaches this far). A request that named the site
+    (`charger_entry_id` `None`) reads the site's own block (`serialize_site_entry`).
     """
+    if charger_entry_id is None:
+        if site_entry is None:
+            return None
+        return serialize_site_entry(
+            hass,
+            site_entry,
+            forecast_domains=forecast_domains,
+            can_act=True,
+            active_control_writable=active_control_writable,
+        )
     site = capture_site(hass, charger_entry_id, forecast_domains=forecast_domains)
     return serialize_site(site, can_act=True, active_control_writable=active_control_writable)
 
@@ -172,6 +187,7 @@ async def async_update_site_settings(
     expected: Any,
     changes: Any,
     active_control_writable: bool = True,
+    site_id: Any = None,
 ) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
     """Resolve, validate, compare-and-set, write at most once, and answer `(site, restore)`: the re-read
     `site` block and (a disable only) the `restore` block. Raises `SiteSettingsRefusal` for every
@@ -180,15 +196,24 @@ async def async_update_site_settings(
     Everything from the compare onward runs under the controller's `transition_lock`, so admins'
     calls and solar writes cannot interleave with a reload; a call that finds its controller replaced
     while waiting starts again.
-    """
-    resolved = resolve_charger_request(hass, {"charger_id": charger_id})
-    if isinstance(resolved, DashboardFailure):
-        raise SiteSettingsRefusal(ERROR_UNAVAILABLE)
-    charger_entry_id = resolved.entry_id
 
-    site_entry = site_binding(hass, charger_entry_id)
-    if site_entry is None:
-        raise SiteSettingsRefusal(ERROR_NO_SITE)
+    `site_id` in place of `charger_id` names the site itself (a site without chargers too): its unknown id is
+    `spotnav_unknown_site`, and the answer's `site` block is the site's own (`serialize_site_entry`).
+    """
+    charger_entry_id: str | None
+    if site_id is not None:
+        site_entry, code = lookup_site(hass, site_id)
+        if site_entry is None:
+            raise SiteSettingsRefusal(code or ERROR_NO_SITE)
+        charger_entry_id = None
+    else:
+        resolved = resolve_charger_request(hass, {"charger_id": charger_id})
+        if isinstance(resolved, DashboardFailure):
+            raise SiteSettingsRefusal(ERROR_UNAVAILABLE)
+        charger_entry_id = resolved.entry_id
+        site_entry = site_binding(hass, charger_entry_id)
+        if site_entry is None:
+            raise SiteSettingsRefusal(ERROR_NO_SITE)
 
     forecast_domains = await async_forecast_capable_domains(hass)
 
@@ -204,6 +229,7 @@ async def async_update_site_settings(
                 charger_entry_id,
                 forecast_domains=forecast_domains,
                 active_control_writable=False,
+                site_entry=site_entry,
             ),
         )
 
@@ -229,7 +255,7 @@ async def async_update_site_settings(
 
 async def _update_locked(
     hass: HomeAssistant,
-    charger_entry_id: str,
+    charger_entry_id: str | None,
     site_entry: ConfigEntry,
     controller: SiteCapacityController,
     *,
@@ -246,6 +272,7 @@ async def _update_locked(
             charger_entry_id,
             forecast_domains=forecast_domains,
             active_control_writable=active_control_writable,
+            site_entry=site_entry,
         )
 
     async def _refuse(code: str, restore: dict[str, Any] | None = None) -> None:
@@ -350,7 +377,7 @@ async def _update_locked(
 
 async def _change_active_control(
     hass: HomeAssistant,
-    charger_entry_id: str,
+    charger_entry_id: str | None,
     site_entry: ConfigEntry,
     controller: SiteCapacityController,
     *,
@@ -370,7 +397,7 @@ async def _change_active_control(
     async def _refuse(code: str, restore: dict[str, Any] | None = None) -> None:
         raise SiteSettingsRefusal(
             code,
-            await _site_block(hass, charger_entry_id, forecast_domains=forecast_domains),
+            await _site_block(hass, charger_entry_id, forecast_domains=forecast_domains, site_entry=site_entry),
             restore,
         )
 
@@ -425,17 +452,24 @@ async def _change_active_control(
         await _refuse(ERROR_CONFIRMATION_FAILED, restore)
 
     return (
-        await _site_block(hass, charger_entry_id, forecast_domains=forecast_domains),
+        await _site_block(hass, charger_entry_id, forecast_domains=forecast_domains, site_entry=site_entry),
         restore,
     )
 
 
-def _with_target(hass: HomeAssistant, charger_id: Any, changes: Any, answer: dict[str, Any]) -> dict[str, Any]:
+def _with_target(
+    hass: HomeAssistant, charger_id: Any, changes: Any, answer: dict[str, Any], site_id: Any = None
+) -> dict[str, Any]:
     """`answer` with the site's import target as stored now (`import_target_kw`), where the request named it: the
     `site` block does not carry it (the dashboard's `grid_tariff.demand.import_target_kw` does)."""
-    if not isinstance(changes, dict) or _IMPORT_TARGET not in changes or not isinstance(charger_id, str):
+    if not isinstance(changes, dict) or _IMPORT_TARGET not in changes:
         return answer
-    site_entry = site_binding(hass, charger_id)
+    if site_id is not None:
+        site_entry = lookup_site(hass, site_id)[0]
+    elif isinstance(charger_id, str):
+        site_entry = site_binding(hass, charger_id)
+    else:
+        return answer
     return {**answer, _IMPORT_TARGET: None if site_entry is None else stored_import_target_kw(site_entry.data)}
 
 
@@ -469,6 +503,8 @@ def _failure(
         # Version is judged in the handler so a wrong one gets this contract's stable code.
         vol.Optional("api_version"): object,
         vol.Optional("charger_id"): object,
+        # In place of `charger_id`: the site itself, with or without chargers.
+        vol.Optional("site_id"): object,
         vol.Optional("expected"): object,
         vol.Optional("changes"): object,
     }
@@ -496,12 +532,15 @@ async def websocket_update_site_settings(
             msg.get("charger_id"),
             expected=msg.get("expected"),
             changes=msg.get("changes"),
+            site_id=msg.get("site_id"),
         )
     except SiteSettingsRefusal as refusal:
         connection.send_result(msg["id"], _failure(refusal.code, refusal.site, refusal.restore))
         return
     answer = _envelope(site, restore)
-    connection.send_result(msg["id"], _with_target(hass, msg.get("charger_id"), msg.get("changes"), answer))
+    connection.send_result(
+        msg["id"], _with_target(hass, msg.get("charger_id"), msg.get("changes"), answer, msg.get("site_id"))
+    )
 
 
 async def async_webhook_update_site_settings(

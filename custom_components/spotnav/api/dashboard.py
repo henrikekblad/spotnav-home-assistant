@@ -2447,24 +2447,78 @@ def serialize_site(
     """
     if site is None:
         return None
-    if active_control_writable is None:
-        active_control_writable = can_act
+    return _site_dict(
+        name=site.site_name,
+        charger_count=site.charger_count,
+        solar_priority=site.solar_priority,
+        selected=site.solar_forecast_selected,
+        choices=site.solar_forecast_choices,
+        available=site.active_control_available,
+        enabled=site.active_control_enabled,
+        reason=site.active_control_reason,
+        hint=site.active_control_hint,
+        can_act=can_act,
+        active_control_writable=can_act if active_control_writable is None else active_control_writable,
+    )
+
+
+def serialize_site_entry(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    *,
+    forecast_domains: frozenset[str],
+    can_act: bool,
+    active_control_writable: bool | None = None,
+) -> dict[str, Any] | None:
+    """The `site` block read from the site itself, with or without chargers (`serialize_site` reads it through one
+    of its chargers): the same keys, every one of them the site's own. `None` while the site is not running."""
+    controller = site_controller_for(hass, entry.entry_id)
+    if controller is None:
+        return None
+    selected = tuple(entry.data.get(CONF_SOLAR_FORECAST_ENTRIES, []) or ())
+    reason = _active_control_reason(controller)
+    return _site_dict(
+        name=entry.title,
+        charger_count=len(entry.data.get(CONF_CHARGER_ENTRY_IDS) or []),
+        solar_priority=str(entry.data.get(CONF_SOLAR_PRIORITY, DEFAULT_SOLAR_PRIORITY)),
+        selected=selected,
+        choices=solar_forecast_choices(hass, forecast_domains, selected),
+        available=controller.capability_snapshot.load_balancing.active_available,
+        enabled=controller.active_control_enabled,
+        reason=reason,
+        hint=_active_control_hint(hass, entry, controller, reason),
+        can_act=can_act,
+        active_control_writable=can_act if active_control_writable is None else active_control_writable,
+    )
+
+
+def _site_dict(
+    *,
+    name: str,
+    charger_count: int,
+    solar_priority: str,
+    selected: Iterable[str],
+    choices: Iterable[tuple[str, str]],
+    available: bool,
+    enabled: bool,
+    reason: str | None,
+    hint: str | None,
+    can_act: bool,
+    active_control_writable: bool,
+) -> dict[str, Any]:
     return {
-        "name": site.site_name,
-        "charger_count": site.charger_count,
-        "solar_priority": site.solar_priority,
+        "name": name,
+        "charger_count": charger_count,
+        "solar_priority": solar_priority,
         "solar_forecast": {
-            "selected": list(site.solar_forecast_selected),
-            "choices": [
-                {"id": entry_id, "title": title}
-                for entry_id, title in site.solar_forecast_choices
-            ],
+            "selected": list(selected),
+            "choices": [{"id": entry_id, "title": title} for entry_id, title in choices],
         },
         "active_control": {
-            "available": site.active_control_available,
-            "enabled": site.active_control_enabled,
-            "reason": site.active_control_reason,
-            "direction_hint": site.active_control_hint,
+            "available": available,
+            "enabled": enabled,
+            "reason": reason,
+            "direction_hint": hint,
             "writable": bool(active_control_writable),
         },
         "writable": bool(can_act),
