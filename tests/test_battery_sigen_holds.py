@@ -373,7 +373,7 @@ class OnlyModeFour(FakeBattery):
         return super().power_kw(action, rate_kw)
 
 
-def _verify(executor: Executor, battery: FakeBattery, *, looks: int = 900, grid_kw: float = 1.0,
+def _verify(executor: Executor, battery: FakeBattery, *, looks: int = 900, grid_kw: float | None = 1.0,
             tried: tuple = (), modes: tuple[str, ...] | None = ("hold",)) -> Verification:
     now = T0
     verification = Verification(executor, now, firmware="V100R001C21SPC117", modes=modes, tried=tried)
@@ -411,6 +411,27 @@ def test_a_plant_that_ignores_the_msc_hold_passes_with_the_mode_4_hold_and_contr
     assert modes.index(PV_FIRST) > modes.index(MSC)
     assert battery.states == dict(SIGENERGY_STATES) | {"charge_limit": "10"}
     assert gate.hold_variant({"modes": {"hold": hold}}) == "pv_first"
+
+
+@pytest.mark.parametrize("grid_kw", [None, 2.0])
+def test_a_plant_whose_mode_4_is_a_forced_charge_passes_the_mode_4_hold_idle_with_or_without_a_grid_reading(
+    grid_kw,
+) -> None:
+    executor = Executor(SIGENERGY_CONTROL)
+    battery = ForcedModeFour(SIGENERGY_CONTROL, dict(SIGENERGY_STATES))
+    charged: list[float] = []
+    original = battery.power_kw
+
+    def power_kw(action: str | None, rate_kw: float) -> float:
+        power = original(action, rate_kw)
+        charged.append(power)
+        return power
+
+    battery.power_kw = power_kw  # type: ignore[method-assign]
+    hold = _verify(executor, battery, grid_kw=grid_kw).report()["modes"]["hold"]
+    assert hold["outcome"] == "obeyed" and hold["variant"] == "pv_first"
+    assert max(charged) <= 0.0, "mode 4 never charged: its limit was at 0 before Remote EMS and the mode"
+    assert executor.state.phase == "idle" and battery.states["remote_ems"] == "off"
 
 
 def test_a_plant_that_obeys_the_msc_hold_never_tries_mode_4() -> None:
