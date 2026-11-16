@@ -170,6 +170,24 @@ describe("the body", () => {
     expect(body(answer(), { testOpen: true }, "sv").querySelector<HTMLElement>("[data-line='test-explain']")!.hidden).toBe(false);
   });
 
+  it("says Test only while SpotNav does not control the battery, and a quiet chip once it does", () => {
+    for (const control of ["off", "shadow_only", "verifying", "waiting", "failed", null]) {
+      const value = answer();
+      value.battery = { ...value.battery!, control };
+      const card = body(value, {}, "sv");
+      expect(card.querySelector("button[data-action='test']"), String(control)).not.toBeNull();
+      expect(card.querySelector("[data-line='controlling']")).toBeNull();
+    }
+    const on = answer();
+    on.battery = { ...on.battery!, control: "on" };
+    const card = body(on, { detailsOpen: true }, "sv");
+    expect(card.querySelector("button[data-action='test']")).toBeNull();
+    expect(card.querySelector("[data-line='test-explain']")).toBeNull();
+    expect(card.querySelector("[data-line='controlling']")!.textContent).toBe("Styr batteriet");
+    expect(card.textContent).toContain("SpotNav styr batteriet efter planen.");
+    expect(card.textContent).not.toContain("SpotNav planerar batteriet men styr det inte än.");
+  });
+
   it("opens the details on a tap: the modes side by side, the days and the sources", () => {
     const handlers = { onDetails: vi.fn(), onSelect: vi.fn() };
     const closed = body(answer(), {}, "en", handlers);

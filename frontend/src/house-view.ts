@@ -300,8 +300,15 @@ function header(input: HouseRenderInput, answer: HouseAnswer | null): HTMLElemen
   const onSettings = handlers.onSettings?.bind(handlers);
   const onHistory = handlers.onHistory?.bind(handlers);
   const head = element(doc, "div", H.head);
+  // "Test" while SpotNav does not control the battery (off, test only, still checking it); once control is on and
+  // checked, a quiet chip that says so instead.
+  const controlling = answer?.battery?.control === "on";
   const test = testChip(doc, language, "house.test.explain", input.ui.testOpen === true, `${input.idPrefix}-test`, handlers.onTest?.bind(handlers));
-  head.append(element(doc, "h2", H.title, translate(language, "house.title")), test.chip);
+  const chip = controlling ? element(doc, "span", H.chip, translate(language, "house.controlling")) : test.chip;
+  if (controlling) {
+    chip.dataset["line"] = "controlling";
+  }
+  head.append(element(doc, "h2", H.title, translate(language, "house.title")), chip);
   if (onHistory !== undefined) {
     const button = historyHeaderButton(doc, translate(language, "hist.open"), X.settingsButton, () => onHistory(button));
     head.append(button);
@@ -310,7 +317,10 @@ function header(input: HouseRenderInput, answer: HouseAnswer | null): HTMLElemen
     head.append(settingsGearButton(doc, translate(language, "popover.open"), onSettings));
   }
   const wrap = element(doc, "div");
-  wrap.append(head, test.explain);
+  wrap.append(head);
+  if (!controlling) {
+    wrap.append(test.explain);
+  }
   const battery = answer?.battery ?? null;
   if (battery !== null) {
     const words = [];
@@ -932,7 +942,12 @@ function sourcesBlock(doc: Document, language: Language, answer: HouseAnswer, wo
   section.append(list);
   const notes: string[] = [];
   if (battery !== null) {
-    notes.push(translate(language, battery.management === "self_managed" ? "house.note.selfManaged" : "house.note.shadow"));
+    notes.push(
+      translate(
+        language,
+        battery.control === "on" ? "house.note.controlling" : battery.management === "self_managed" ? "house.note.selfManaged" : "house.note.shadow",
+      ),
+    );
     const assumed = battery.estimates.map((code) => ESTIMATE_KEYS[code]).filter((key): key is TranslationKey => key !== undefined);
     if (assumed.length > 0) {
       notes.push(translate(language, "house.note.assumed", { list: assumed.map((key) => translate(language, key)).join(", ") }));

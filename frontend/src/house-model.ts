@@ -78,6 +78,9 @@ export interface BatteryView {
   soc_pct: number | null;
   usable_kwh: number | null;
   management: string;
+  /** Whether SpotNav controls the battery (`off`, `shadow_only`, `verifying`, `waiting`, `on`, `failed`); `null` from
+   * an older backend or where it is not read, which the card treats as not controlling. */
+  control: string | null;
   status: string;
   reason: string | null;
   mode: string;
@@ -391,6 +394,7 @@ function battery(value: unknown): BatteryView | null {
     soc_pct: numberOrNull(source.soc_pct),
     usable_kwh: numberOrNull(source.usable_kwh),
     management: text(source.management),
+    control: additive(source, "control", textOrNull, null),
     status: text(source.status),
     reason: textOrNull(source.reason),
     mode: text(source.mode),

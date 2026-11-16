@@ -1,8 +1,10 @@
 # The house card (preview)
 
 A second card in the same bundle as the charging card, about the whole house: its load, the sun and the home battery.
-It is in **test**: the chip in its header says "Test · not controlling yet" (tap it for two sentences on what that
-means). It shows what SpotNav forecasts and what its battery plan would do, and it never writes to anything. The charging card stays about the car; the house card is where a home without a charger starts.
+Until battery control is on and checked, the chip in its header says "Test · not controlling yet" (tap it for two
+sentences on what that means): the card shows what SpotNav forecasts and what its battery plan would do, and writes to
+nothing. Once SpotNav controls the battery ([Home battery](home-battery.md)), the chip says "Controls the battery".
+The card itself never writes to anything. The charging card stays about the car; the house card is where a home without a charger starts.
 
 ## Add it
 
