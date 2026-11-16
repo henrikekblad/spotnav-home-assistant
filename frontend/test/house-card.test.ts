@@ -29,6 +29,12 @@ function answer(path = "house/villa_battery_sun.json"): HouseAnswer {
   return decoded.value;
 }
 
+/** The answer as from a backend before the perfect plan (or before its first day): the comparison in money. */
+function withoutPerfect(value: HouseAnswer): HouseAnswer {
+  const battery = value.battery === null ? null : { ...value.battery, review: value.battery.review === null ? null : { ...value.battery.review, perfect: null } };
+  return { ...value, battery, day_review: value.day_review === null ? null : { ...value.day_review, perfect: null } };
+}
+
 /** The fixture's own moment: 13 November 2026, 17:20 in Stockholm. */
 const NOW = Date.parse("2026-11-13T16:20:00+00:00");
 
@@ -140,7 +146,7 @@ describe("the body", () => {
     expect(svg.querySelector(".spotnav-house-band")).toBeNull();
     expect(svg.querySelector(".spotnav-now")?.getAttribute("display")).toBeNull();
     expect(card.querySelector("[data-line='saving']")).toBeNull();
-    expect(card.querySelector("[data-part='modes']")?.textContent).toContain("51 kr");
+    expect(card.querySelector("[data-line='perfect-headline']")?.textContent).toBe("Sigenergy AI 79 % of perfect · SpotNav Balanced 85 %");
     // The forecasts' errors are in the details, not on the front.
     expect(card.querySelector("[data-line='review']")).toBeNull();
     expect(card.querySelector(".spotnav-house-details")).toBeNull();
@@ -197,7 +203,8 @@ describe("the body", () => {
     expect(handlers.onDetails).toHaveBeenCalledWith(true);
     const open = body(answer(), { detailsOpen: true }, "sv");
     const tables = open.querySelectorAll("table");
-    expect(tables).toHaveLength(2);
+    // The modes in money, the shares in money, the battery's work, the days.
+    expect(tables).toHaveLength(4);
     const modes = Array.from(tables[0]!.querySelectorAll("tbody tr")).map((row) => Array.from(row.children).map((cell) => cell.textContent));
     expect(modes).toEqual([
       ["Egenförbrukning", "0 kr", "–"],
@@ -205,7 +212,7 @@ describe("the body", () => {
       ["Max vinst", "9,1 kr", "51 kr"],
       ["Batteriets egen optimerare", "–", "45 kr"],
     ]);
-    expect(tables[1]!.querySelectorAll("tbody tr")).toHaveLength(7);
+    expect(tables[3]!.querySelectorAll("tbody tr")).toHaveLength(7);
     expect(open.querySelector("[data-line='review']")?.textContent).toContain("±0,09 kW");
     const sources = Array.from(open.querySelectorAll(".spotnav-house-facts li")).map((item) => item.textContent);
     expect(sources).toContain("Utetemperatur: sensor.nibe_bt1_outdoor_temperature");
@@ -483,7 +490,8 @@ describe("the legend in the card element", () => {
 
 describe("the modes side by side in the body", () => {
   it("show what the battery would have saved: SpotNav's modes and the battery as it ran, the chosen mode marked", () => {
-    const value = answer();
+    // From a backend before the perfect plan: the money against self-consumption.
+    const value = withoutPerfect(answer());
     const card = body(value, {}, "sv");
     const part = card.querySelector("[data-part='modes']")!;
     expect(part.querySelector(".spotnav-house-compare-head")?.textContent).toBe("Jämfört med om batteriet bara lagrat egen sol, senaste 7 dygnen");
@@ -507,6 +515,84 @@ describe("the modes side by side in the body", () => {
     expect(rows.find((row) => row.dataset["row"] === "own")?.textContent).toContain("inget fullt dygn");
     // Before any review the line still says what the plan expects.
     expect(card.querySelector("[data-line='saving']")).not.toBeNull();
+  });
+});
+
+describe("the shares of the perfect plan", () => {
+  it("lead the comparison: the battery's own optimiser and the chosen mode, a bar a way, and what perfect is", () => {
+    const card = body(answer(), {}, "sv");
+    const part = card.querySelector<HTMLElement>("[data-part='modes']")!;
+    expect(part.dataset["view"]).toBe("perfect");
+    expect(part.querySelector(".spotnav-house-compare-head")?.textContent).toBe("Andel av perfekt, senaste 7 dygnen");
+    expect(part.querySelector("[data-line='perfect-headline']")?.textContent).toBe("Sigenergy AI 79 % av perfekt · SpotNav Balanserad 85 %");
+    const rows = Array.from(part.querySelectorAll<HTMLElement>(".spotnav-house-compare-row"));
+    expect(rows.map((row) => row.dataset["row"])).toEqual(["own", "balanced", "max_profit", "self_consumption"]);
+    expect(rows.map((row) => row.querySelector(".spotnav-house-compare-value")?.textContent)).toEqual(["79 %", "85 %", "72 %", "55 %"]);
+    expect(rows[1]!.dataset["inForce"]).toBe("true");
+    expect(rows[0]!.querySelector<HTMLElement>(".spotnav-house-compare-fill")!.style.width).toBe("79%");
+    expect(part.querySelector("[data-line='perfect-explain']")?.textContent).toBe("Perfekt: bästa möjliga i efterhand, med samma regler.");
+    // A week: the day boundary washes out, so no word about midnight; one day still on its own value says so.
+    expect(part.querySelector("[data-line='perfect-midnight']")).toBeNull();
+    expect(part.querySelector("[data-line='perfect-provisional']")?.textContent).toBe(
+      "Det som fanns kvar vid midnatt räknas med dygnets eget pris för en av dygnen, tills nästa dygns priser finns.",
+    );
+    // No money on the front: it is in the details.
+    expect(part.textContent).not.toContain("kr");
+  });
+
+  it("say on a single day that what was left at midnight counted", () => {
+    const card = body(answer("house/villa_past_day.json"), {}, "sv");
+    const part = card.querySelector("[data-part='modes']")!;
+    expect(part.querySelector(".spotnav-house-compare-head")?.textContent).toMatch(/^Andel av perfekt, tors 12 nov/);
+    expect(part.querySelector("[data-line='perfect-midnight']")?.textContent).toBe("Räknat med det som fanns kvar i batteriet vid midnatt.");
+    expect(part.querySelector("[data-line='perfect-provisional']")?.textContent).toBe(
+      "Det som fanns kvar vid midnatt räknas med dygnets eget pris tills nästa dygns priser finns.",
+    );
+  });
+
+  it("name a share clamped to 0-100 % and a way with nothing to gain", () => {
+    const value = answer();
+    const perfect = value.battery!.review!.perfect!;
+    const clamped = { ...perfect, clamped: ["own"], shares: { ...perfect.shares, own: 100, max_profit: null } };
+    const card = body({ ...value, battery: { ...value.battery!, review: { ...value.battery!.review!, perfect: clamped } } }, {}, "sv");
+    expect(card.querySelector("[data-line='perfect-clamped']")?.textContent).toBe("Sigenergy AI: utanför 0–100 %, visas vid närmaste gräns (en förlust som 0 %).");
+    expect(card.querySelector("[data-row='max_profit'] .spotnav-house-compare-value")?.textContent).toBe("inget att vinna");
+    // Not managed by its own optimiser: the battery's own control by name.
+    const free = body({ ...value, battery: { ...value.battery!, management: "free" } }, {}, "sv");
+    expect(free.querySelector("[data-line='perfect-headline']")?.textContent).toMatch(/^Batteriets egen styrning 79 % av perfekt/);
+  });
+
+  it("show the money behind the shares, the battery's work and the cells' temperature in the details", () => {
+    const open = body(answer(), { detailsOpen: true }, "sv");
+    const part = open.querySelector("[data-part='perfect-details']")!;
+    const [money, work] = Array.from(part.querySelectorAll("table"));
+    const rows = (table: Element) => Array.from(table.querySelectorAll("tbody tr")).map((row) => Array.from(row.children).map((cell) => cell.textContent));
+    expect(rows(money!)).toEqual([
+      ["Perfekt", "81 kr", "100 %"],
+      ["Sigenergy AI", "64 kr", "79 %"],
+      ["SpotNav Balanserad", "69 kr", "85 %"],
+      ["SpotNav Max vinst", "63 kr", "72 %"],
+      ["SpotNav Egenförbrukning", "45 kr", "55 %"],
+    ]);
+    expect(rows(work!)[0]).toEqual(["Sigenergy AI", "2,87", "28", "63,0", "2,8"]);
+    expect(rows(work!).at(-1)).toEqual(["Perfekt", "3,13", "14", "98,0", "0,0"]);
+    expect(part.querySelector("[data-line='cell-temperature']")?.textContent).toBe("Battericeller: medel 22,4 °C, högst 30,0 °C, 25 min över 30 °C (sex dygn).");
+  });
+
+  it("are worded in every language and read from an older backend as none", () => {
+    for (const language of LANGUAGES) {
+      for (const key of ["perfect.heading.one", "perfect.heading.other", "perfect.headingDay", "perfect.headingPeriod", "perfect.headline", "perfect.headlineOne", "perfect.explain", "perfect.midnight", "perfect.provisional.one", "perfect.provisional.other", "perfect.provisionalDay", "perfect.clamped", "perfect.nothing", "perfect.money.heading", "perfect.money.saved", "perfect.money.share", "perfect.money.perfect", "perfect.money.note", "perfect.work.heading", "perfect.work.way", "perfect.work.cycles", "perfect.work.switches", "perfect.work.fromGrid", "perfect.work.toGrid", "perfect.work.note", "perfect.temperature.one", "perfect.temperature.other", "hist.house.col.share"] as const) {
+        expect(translate(language, key as never, {}), `${language} ${key}`).not.toBe(key);
+      }
+    }
+    const raw = JSON.parse(JSON.stringify(read("house/villa_past_day.json")));
+    delete raw.day_review.perfect;
+    delete raw.battery.review.perfect;
+    const decoded = decodeHouse(raw);
+    expect(decoded.ok && decoded.value.day_review?.perfect === null && decoded.value.battery?.review?.perfect === null).toBe(true);
+    const broken = JSON.parse(JSON.stringify(read("house/villa_past_day.json")));
+    delete broken.day_review.perfect.shares.own;
+    expect(decodeHouse(broken).ok).toBe(false);
   });
 });
 
@@ -575,7 +661,7 @@ describe("the day in the battery app's terms", () => {
 
 describe("the modes on a past day", () => {
   it("show that day's own review under its date, the day's mode marked", () => {
-    const past = answer("house/villa_past_day.json");
+    const past = withoutPerfect(answer("house/villa_past_day.json"));
     const card = body(past, {}, "sv", { onDetails: vi.fn(), onSelect: vi.fn(), } as never);
     const part = card.querySelector("[data-part='modes']")!;
     expect(part.querySelector(".spotnav-house-compare-head")?.textContent).toMatch(/^Jämfört med om batteriet bara lagrat egen sol, tors 12 nov/);
