@@ -229,6 +229,8 @@ class BatteryShadow:
         #: the plant over from its own optimiser (`battery_control_ai_takeover_ack`); set by that path.
         self.spotnav_acting: Callable[[], bool] = lambda: False
         self.takeover: Callable[[], bool] = lambda: False
+        #: The hold variant the write path would run (`gate.hold_variant_to_run`), set by that path.
+        self.hold_variant: Callable[[], str | None] = lambda: None
         self._timer_cancel: Callable[[], None] | None = None
         self._loaded = False
         #: Whether a write of the book waits (`_save`): the ticks go on, and must not keep putting it off.
@@ -400,7 +402,14 @@ class BatteryShadow:
             car_kw=car_kw,
             reads=read_role_reads(self.hass, self.site.config, control_for(facts.brand)),
             takeover=self._takeover(),
+            variant=self._hold_variant(),
         )
+
+    def _hold_variant(self) -> str | None:
+        try:
+            return self.hold_variant()
+        except Exception:  # noqa: BLE001 - without the write path's answer the brand's first variant is shown
+            return None
 
     def _takeover(self) -> bool:
         try:
@@ -510,7 +519,7 @@ class BatteryShadow:
         self.book.set_memory(part, memory.as_dict())
         entries: list[ShadowEntry] = []
         if decision is not None:
-            decision, judged = self.dry_run.decided(decision, self.facts, now)
+            decision, judged = self.dry_run.decided(decision, self.facts, now, self._hold_variant())
             # Shadow only: the decision is logged, never written (`ShadowBook.writes` is off in this release).
             entries += [
                 ShadowEntry(

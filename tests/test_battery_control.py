@@ -1487,3 +1487,27 @@ async def test_without_a_passed_variant_the_executor_runs_the_first(
     await _looks(control, dt_util.now() + timedelta(seconds=10), 4)
     assert control.executor.control.variant == "msc_no_discharge"
     assert hass.states.get(DISCHARGE).state == "0" and hass.states.get(MODE).state == "Maximum Self Consumption"
+
+
+async def test_the_shadow_shows_the_hold_variant_the_verification_passed(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    site, controller, plant = await _site(hass, monkeypatch, hass_storage)
+    control = BatteryControl(hass, controller, plan_source=_hold)
+    await control.async_start()
+    _options(hass, site, enabled=True)  # shadow only
+    _passed(control)
+    control.reports[control.firmware_key()]["modes"]["hold"] |= {
+        "variant": "pv_first",
+        "variants": [{"variant": "msc_no_discharge", "outcome": "ignored"}, {"variant": "pv_first", "outcome": "obeyed"}],
+    }
+    assert control.hold_variant() == "pv_first" and controller.battery_shadow.hold_variant() == "pv_first"
+    now = dt_util.now()
+    for index in range(3):
+        await control.async_look(now + timedelta(seconds=10 * index))
+    assert plant.calls == []
+    would = [row for row in control.log if row["kind"] == "would_do"]
+    assert [(write["role"], write["value"]) for write in would[0]["writes"]] == [
+        ("charge_limit", 0.0), ("remote_ems", True), ("control_mode", "Command Charging (PV First)")
+    ]
+    assert controller.battery_shadow.inputs(now).variant == "pv_first"

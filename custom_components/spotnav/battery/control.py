@@ -327,6 +327,7 @@ class BatteryControl:
             # judges a plant in AI mode as control would.
             battery_shadow.spotnav_acting = self.acting
             battery_shadow.takeover = lambda: self.options().ai_takeover_ack
+            battery_shadow.hold_variant = self.hold_variant
 
     # ---- life
 
@@ -748,6 +749,13 @@ class BatteryControl:
             return None
         return await self._async_step(executor, self.inputs(now, executor.control, slot=slot), allowed=allowed)
 
+    def hold_variant(self) -> str | None:
+        """The hold variant control runs on this firmware (`gate.hold_variant_to_run`); `None` for a brand with one
+        hold. The shadow and its previews show the same."""
+        control = control_for(self.facts.brand)
+        names = () if control is None else control.variant_names()
+        return (gate.hold_variant_to_run(self.report(), names) or names[0]) if names else None
+
     def _control_executor(self) -> Executor | None:
         """The executor for control and trials, running the hold variant the verification passed, else the first not
         recorded as failed, else the brand's first (once it holds nothing; `Executor.use_variant`). A test hold is
@@ -1091,7 +1099,7 @@ class BatteryControl:
 
     def _shadow_look(self, now: datetime, options: gate.Options) -> None:
         """While shadow only: what control would do now (`executor.preview`), logged when it changes."""
-        control = control_for(self.facts.brand)
+        control = control_for(self.facts.brand, self.hold_variant())
         if control is None:
             return
         allowed = _PLAN_ACTIONS | ({ACTION_EXPORT_DISCHARGE} if options.allow_sell else set())
