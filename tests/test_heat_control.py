@@ -350,6 +350,7 @@ async def _checking(hass: HomeAssistant, freezer: Any, samples: list[Sample]) ->
 
     async def sample(_now: datetime) -> Sample:
         last[0] = next(feed, last[0])
+        control.signal = last[0].kw is not None or last[0].supply_c is not None
         return last[0]
 
     control.async_sample = sample  # type: ignore[method-assign]
@@ -460,3 +461,13 @@ async def test_the_card_reads_the_control_and_turning_it_off_opens_the_relay_at_
     # Only an administrator may turn it on.
     refused = (await update(hass, admin=False, api_version=1, site_id=site.entry_id, changes={"control_enabled": True}))["result"]
     assert refused["error"] == "spotnav_not_admin"
+
+
+async def test_a_site_without_a_meter_or_a_pump_reading_asks_for_the_meter(hass: HomeAssistant, freezer) -> None:
+    _site_, controller, relay = await _site(hass, freezer)
+    control: HeatControl = controller.heat_control
+    now = controller.demand.now()
+    _plan(control, now)
+    await control.async_look(now)
+    assert control.signal is False and relay.calls == []
+    assert (control.status()["state"], control.status()["reason"]) == ("waiting", "no_signal")

@@ -172,6 +172,8 @@ class HeatControl:
         self._good_since: datetime | None = None
         self._retry_open_at: datetime | None = None
         self._levels: Levels | None = None
+        #: Whether anything can show the check an effect: a power meter or a calculated supply the pump reports.
+        self.signal = False
         self._levels_hour: datetime | None = None
         self._loaded = False
         self._closed = False
@@ -409,7 +411,7 @@ class HeatControl:
 
     async def _async_verify(self, now: datetime, relay: str, read: bool, safety: str | None) -> None:
         sample = await self.async_sample(now)
-        if sample.supply_c is None and sample.kw is None:
+        if not self.signal:
             self.check.abort(WAIT_NO_SIGNAL)
             await self._async_give_back(now, WAIT_NO_SIGNAL)
             self._set(STATE_WAITING, WAIT_NO_SIGNAL)
@@ -487,7 +489,8 @@ class HeatControl:
 
         meter = self.site.house_forecast.heat.meter
         kw = None
-        if meter.found and meter.kind == KIND_POWER and meter.entity_id is not None:
+        power_meter = meter.found and meter.kind == KIND_POWER and meter.entity_id is not None
+        if power_meter and meter.entity_id is not None:
             state = self.hass.states.get(meter.entity_id)
             try:
                 value = None if state is None else float(state.state)
@@ -507,6 +510,8 @@ class HeatControl:
                 self._levels = None
         pumps = read_heat_pumps(self.hass)
         supply = pumps[0].calc_supply_temp_c if pumps else None
+        # A meter without its levels yet, or a supply that reads unavailable for a while, is no reason to say none.
+        self.signal = power_meter or (bool(pumps) and "calc_supply_temp" in pumps[0].sources) or supply is not None
         state_now_ = state_now(kw, self._levels, kw) if kw is not None else None
         return Sample(kw if state_now_ is not None else None, state_now_, supply)
 
