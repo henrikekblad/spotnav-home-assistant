@@ -21,7 +21,8 @@ circumstances normal still judges that hand-back) or, for normal, `restored` (on
 **Hold variants** (`commands.HoldVariant`, Sigenergy's `msc_no_discharge` then `pv_first`): hold is tried with the
 brand's first variant; when the plant ignores it (`VARIANT_RETRY`: every reading as if nothing was written) the
 battery is handed back, the block that finding left is lifted, and hold is tried again with the next variant, never
-two at once. The hold row records the variant judged
+two at once, and only once the battery discharges again (`VARIANT_WAIT_S`; otherwise hold is left
+`not_judgeable:battery_not_discharging` and a later run starts with that variant). The hold row records the variant judged
 (`variant`) and every one tried (`variants`); a later run starts after the variants that failed, and control runs the
 one that passed (`gate.hold_variant`). A hold reading is judged as the monitor judges it (`monitor.judge`): no
 discharge while the house draws; for an idle hold (`HoldVariant.idle`) no charge either, on the battery's own power;
@@ -65,6 +66,9 @@ MAX_REPORTS: Final = 10
 #: did something other than told, such as an idle hold that charges, a write not taken, a timeout) ends the run as
 #: before: a plant that misbehaves under one variant is not given another.
 VARIANT_RETRY: Final = ("ignored", "aborted:no_effect")
+#: The next variant is commanded only once the battery discharges again after the hand-back (a hold is judged against
+#: the discharge it stops), waiting at most this long (s); otherwise hold is left pending for a later run.
+VARIANT_WAIT_S: Final = 300.0
 
 #: The modes, in order: (name, the plan action commanded).
 MODES: Final[tuple[tuple[str, str], ...]] = (
@@ -161,6 +165,8 @@ class Verification:
                 result.variant = self.variants[0] if self.variants else None
         #: After a hand-back, hold runs again with the next variant (not the next mode).
         self.retry_variant = False
+        #: Since when the next variant waits for the battery to discharge again (`VARIANT_WAIT_S`).
+        self.variant_wait_since: datetime | None = None
 
     @property
     def done(self) -> bool:
@@ -179,6 +185,16 @@ class Verification:
             if result.action == ACTION_HOLD and result.variant is not None and not self.executor.use_variant(result.variant):
                 # Only while the executor holds nothing; the next look tries again.
                 return ACTION_SELF_CONSUME, 0.0
+            if self.variant_wait_since is not None:
+                if sample.power_kw is None or sample.power_kw > -FLOOR_KW:
+                    if (now - self.variant_wait_since).total_seconds() < VARIANT_WAIT_S:
+                        return ACTION_SELF_CONSUME, 0.0
+                    # Nothing to stop now: this variant is tried at a later run.
+                    self.variant_wait_since = None
+                    result.outcome = "not_judgeable:battery_not_discharging"
+                    self._next(now)
+                    return ACTION_SELF_CONSUME, 0.0
+                self.variant_wait_since = None
             result.commanded_at = now
             result.before_kw = sample.power_kw
             if result.action == ACTION_GRID_CHARGE:
@@ -250,6 +266,7 @@ class Verification:
                 self.executor.reset()
             if self.retry_variant:
                 self.retry_variant = False
+                self.variant_wait_since = now
                 self._enter(now, "command")
                 return
             self._next(now)

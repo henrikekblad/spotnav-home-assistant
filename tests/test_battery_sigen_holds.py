@@ -484,3 +484,44 @@ def test_a_hold_write_not_taken_is_not_given_the_next_variant() -> None:
     assert [row["variant"] for row in hold["variants"]] == ["msc_no_discharge"]
     assert PV_FIRST not in [op.value for op in battery.writes]
     assert battery.states["remote_ems"] == "off"
+
+
+@dataclass
+class SlowToDischarge(OnlyModeFour):
+    """After the first hold is handed back the battery stays idle for `idle_looks` looks (the house draws less, the
+    plant ramps slowly) before it discharges again."""
+
+    idle_looks: int = 10**6
+    seen_hold: bool = False
+    looks_since: int = 0
+
+    def power_kw(self, action: str | None, rate_kw: float) -> float:
+        if action == "hold":
+            self.seen_hold = True
+        elif self.seen_hold and action is None:
+            self.looks_since += 1
+            if self.looks_since <= self.idle_looks:
+                return 0.0
+        return super().power_kw(action, rate_kw)
+
+
+def test_the_next_variant_waits_for_the_battery_to_discharge_again() -> None:
+    executor = Executor(SIGENERGY_CONTROL)
+    battery = SlowToDischarge(SIGENERGY_CONTROL, dict(SIGENERGY_STATES), idle_looks=12)
+    verification = _verify(executor, battery)
+    hold = verification.report()["modes"]["hold"]
+    assert hold["outcome"] == "obeyed" and hold["variant"] == "pv_first"
+    assert hold["before_kw"] <= -1.0, "mode 4 was judged against a discharge it stopped"
+
+
+def test_a_battery_that_does_not_discharge_again_leaves_the_next_variant_for_a_later_run() -> None:
+    executor = Executor(SIGENERGY_CONTROL)
+    battery = SlowToDischarge(SIGENERGY_CONTROL, dict(SIGENERGY_STATES))
+    report = _verify(executor, battery).report()
+    hold = report["modes"]["hold"]
+    assert hold["outcome"] == "not_judgeable:battery_not_discharging" and hold["variant"] == "pv_first"
+    assert hold["variants"] == [{"variant": "msc_no_discharge", "outcome": "ignored"}]
+    assert gate.mode_verdict(hold["outcome"]) == "pending" and gate.hold_variant(report) is None
+    assert PV_FIRST not in [op.value for op in battery.writes]
+    assert report["modes"]["normal"]["outcome"] == "restored"
+    assert battery.states == dict(SIGENERGY_STATES)
