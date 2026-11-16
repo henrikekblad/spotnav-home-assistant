@@ -107,6 +107,16 @@ describe("the house history", () => {
     expect(decodeHouseHistory({ ...read("house_history/villa_month.json"), later: 1 }).ok).toBe(true);
   });
 
+  it("names one day count for the savings, and a row's own only where it has fewer days", () => {
+    const answer = house("house_history/villa_month.json");
+    answer.review!.battery_days = 1;
+    const body = houseHistoryBody({ doc: document, language: "sv", state: { kind: "ready", answer }, ui: ui(), handlers: handlers(), width: 330, idPrefix: "t", today: "2026-11-16" });
+    const money = body.querySelector("[data-part='money']")!;
+    expect(money.querySelector("[data-row='battery']")?.textContent).toMatch(/52 kr på 1 dygn$/);
+    expect(money.querySelector("[data-row='sun']")?.textContent).not.toContain("dygn");
+    expect(money.querySelector("[data-line='reviewed']")?.textContent).toBe("Sparat är mätt för 13 av periodens 15 dygn.");
+  });
+
   it("shows a month: a bar a day, the flow, the money; no forward step past today", () => {
     const answer = house("house_history/villa_month.json");
     const on = handlers();
@@ -116,9 +126,9 @@ describe("the house history", () => {
     expect(body.querySelector<HTMLSelectElement>("select[data-pick='month']")!.value).toBe("2026-11-01");
     expect(body.querySelector("[data-part='energy-flow'] svg")).not.toBeNull();
     const money = body.querySelector("[data-part='money']")!;
-    expect(money.querySelector("[data-row='cost']")?.textContent).toMatch(/^Vad perioden kostade/);
-    expect(money.querySelector("[data-row='battery']")?.textContent).toContain("52 kr");
-    expect(money.querySelector("[data-line='reviewed']")?.textContent).toBe("Batteriets pengar är från 13 av 15 granskade dygn.");
+    expect(money.querySelector("[data-row='cost']")?.textContent).toMatch(/^Elkostnad/);
+    expect(money.querySelector("[data-row='battery']")?.textContent).toMatch(/^Batteriet sparade.*52 kr/);
+    expect(money.querySelector("[data-line='reviewed']")?.textContent).toBe("Sparat är mätt för 13 av periodens 15 dygn.");
     expect(body.querySelector("[data-part='modes']")).toBeNull();
     body.querySelector<HTMLButtonElement>("button[data-step='back']")!.click();
     expect(on.onPeriod).toHaveBeenCalledWith("month", "2026-10-01");

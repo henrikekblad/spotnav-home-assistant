@@ -9,7 +9,7 @@ import { dateLabel, formatFixed, formatNumber } from "./format";
 import { renderFlow } from "./house-flow";
 import { decodeEnergyFlow, HOUSE_HISTORY_API_VERSION, MODES, type EnergyFlow } from "./house-model";
 import { amount } from "./house-view";
-import { translate, type Language, type TranslationKey } from "./i18n";
+import { pluralForm, translate, type Language, type TranslationKey } from "./i18n";
 import {
   axisShown,
   element,
@@ -431,29 +431,34 @@ function moneySection(input: HouseHistoryInput, answer: HouseHistory): HTMLEleme
     block.append(note(doc, translate(language, "hist.house.noReview"), "no-review"));
     return block;
   }
-  for (const [key, value, days] of [
-    ["battery", reviewed.battery_saving, reviewed.battery_days],
-    ["sun", reviewed.sun_gave, reviewed.sun_days],
-    ["both", reviewed.against_nothing, reviewed.nothing_days],
-  ] as const) {
-    if (value === null) {
-      continue;
-    }
-    const figure = amount(language, value, answer.money);
+  // What each saved, and over how many days the saving is measured: one count in the note, and a row's own only where
+  // it has fewer days than that.
+  const rows = (
+    [
+      ["battery", reviewed.battery_saving, reviewed.battery_days],
+      ["sun", reviewed.sun_gave, reviewed.sun_days],
+      ["both", reviewed.against_nothing, reviewed.nothing_days],
+    ] as const
+  ).filter(([, value]) => value !== null);
+  const measured = Math.max(0, ...rows.map(([, , days]) => days));
+  for (const [key, value, days] of rows) {
+    const figure = amount(language, value!, answer.money);
     block.append(
       figureRow(
         doc,
-        translate(language, `house.baselines.${key}`),
-        days < reviewed.days ? `${figure} (${translate(language, "hist.days", { days: String(days) })})` : figure,
+        translate(language, `hist.house.saved.${key}`),
+        days < measured ? translate(language, `hist.house.savedDays.${pluralForm(language, days)}`, { figure, days: String(days) }) : figure,
         key,
       ),
     );
   }
-  block.append(note(doc, translate(language, "hist.house.baselinesNote")));
+  if (rows.length > 0) {
+    block.append(note(doc, translate(language, "hist.house.baselinesNote")));
+  }
   block.append(
     note(
       doc,
-      translate(language, "hist.house.reviewed", { days: String(reviewed.days), total: String(Math.max(reviewed.days, reviewed.period_days)) }),
+      translate(language, "hist.house.reviewed", { days: String(rows.length > 0 ? measured : reviewed.days), total: String(Math.max(reviewed.days, reviewed.period_days)) }),
       "reviewed",
     ),
   );
