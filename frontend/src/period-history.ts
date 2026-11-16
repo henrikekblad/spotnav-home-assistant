@@ -1,0 +1,429 @@
+// The parts the house and heat cards' history dialogs share (SpotNav 3.0): the clock icon in a card's header (the
+// charger card's history icon), the Day / Month / Year tabs with ‹ › and a date picker, the "Detailed" switch
+// remembered in this browser, and the bar chart in the charger history's look (`history.ts`). Built with
+// `textContent` only; every figure is the backend's.
+
+import { browserStore, type PreferenceStore } from "./chart-preference";
+import { dateLabel, formatFixed } from "./format";
+import { monthLabel } from "./history";
+import { translate, type Language, type TranslationKey } from "./i18n";
+import { VISUAL_CLASSES as C } from "./visual-styles";
+
+export type HistoryPeriod = "day" | "month" | "year";
+export const HISTORY_PERIODS: readonly HistoryPeriod[] = ["day", "month", "year"];
+/** How far back the pickers offer (the backend answers ten years back). */
+export const PICKER_MONTHS = 36;
+export const PICKER_YEARS = 10;
+
+export interface PeriodUi {
+  period: HistoryPeriod;
+  /** A day inside the period shown (`YYYY-MM-DD`), `null` for today's. */
+  date: string | null;
+  /** The Detailed switch. */
+  detailed: boolean;
+  /** A period is being read: the old figures stay, dimmed. */
+  pending: boolean;
+  /** The bar whose figures the readout shows, or `null`. */
+  selected: string | null;
+}
+
+export interface PeriodHandlers {
+  /** Another period kind or day was chosen: the card reads it. */
+  onPeriod(period: HistoryPeriod, date: string | null): void;
+  onDetailed(detailed: boolean): void;
+}
+
+// ------------------------------------------------------------------------------------------------ dates
+
+const DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
+
+function parts(isoDate: string): [number, number, number] | null {
+  const match = DATE.exec(isoDate);
+  return match === null ? null : [Number(match[1]), Number(match[2]), Number(match[3])];
+}
+
+function iso(year: number, month: number, day: number): string {
+  return new Date(Date.UTC(year, month - 1, day, 12)).toISOString().slice(0, 10);
+}
+
+/** The first day of the period that holds `isoDate`. */
+export function periodStart(period: HistoryPeriod, isoDate: string): string {
+  const p = parts(isoDate);
+  if (p === null) {
+    return isoDate;
+  }
+  return period === "day" ? isoDate : period === "month" ? iso(p[0], p[1], 1) : iso(p[0], 1, 1);
+}
+
+/** The first day of the period `steps` periods from the one holding `isoDate`. */
+export function shiftPeriod(period: HistoryPeriod, isoDate: string, steps: number): string {
+  const p = parts(isoDate);
+  if (p === null) {
+    return isoDate;
+  }
+  if (period === "day") {
+    return iso(p[0], p[1], p[2] + steps);
+  }
+  if (period === "month") {
+    return iso(p[0], p[1] + steps, 1);
+  }
+  return iso(p[0] + steps, 1, 1);
+}
+
+/** The period as the reader's language names it: a date, a month and year, a year. */
+export function periodLabel(language: Language, period: HistoryPeriod, isoDate: string): string {
+  if (period === "day") {
+    return dateLabel(language, isoDate);
+  }
+  if (period === "month") {
+    return monthLabel(language, isoDate.slice(0, 7));
+  }
+  return isoDate.slice(0, 4);
+}
+
+// ------------------------------------------------------------------------------------------------ storage
+
+export function detailedKey(card: "house" | "heat"): string {
+  return `spotnav-card.${card}.history.detailed`;
+}
+
+/** The Detailed switch as this browser last left it (off when nothing usable is stored). */
+export function readDetailed(card: "house" | "heat", store: () => PreferenceStore | null = browserStore): boolean {
+  try {
+    return store()?.getItem(detailedKey(card)) === "1";
+  } catch {
+    return false;
+  }
+}
+
+export function writeDetailed(card: "house" | "heat", detailed: boolean, store: () => PreferenceStore | null = browserStore): void {
+  try {
+    store()?.setItem(detailedKey(card), detailed ? "1" : "0");
+  } catch {
+    // Nothing is remembered; the choice holds until the card reloads.
+  }
+}
+
+// ------------------------------------------------------------------------------------------------ parts
+
+export function element<K extends keyof HTMLElementTagNameMap>(doc: Document, tag: K, className?: string, content?: string): HTMLElementTagNameMap[K] {
+  const created = doc.createElement(tag);
+  if (className !== undefined) {
+    created.className = className;
+  }
+  if (content !== undefined) {
+    created.textContent = content;
+  }
+  return created;
+}
+
+const SVG_NS = "http://www.w3.org/2000/svg";
+
+/** The history clock (a clock with an arrow running back), the charger card's history icon, `size` px. */
+export function historyIcon(doc: Document, size = 16, className?: string): SVGElement {
+  const svg = doc.createElementNS(SVG_NS, "svg") as SVGElement;
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("width", String(size));
+  svg.setAttribute("height", String(size));
+  svg.setAttribute("aria-hidden", "true");
+  svg.setAttribute("focusable", "false");
+  if (className !== undefined) {
+    svg.classList.add(className);
+  }
+  for (const d of ["M3.5 12a8.5 8.5 0 1 0 2.6-6.1", "M3.5 4.5v4.5H8", "M12 7.5V12l3 2"]) {
+    const path = doc.createElementNS(SVG_NS, "path");
+    path.setAttribute("d", d);
+    path.setAttribute("fill", "none");
+    path.setAttribute("stroke", "currentColor");
+    path.setAttribute("stroke-width", "2");
+    path.setAttribute("stroke-linecap", "round");
+    path.setAttribute("stroke-linejoin", "round");
+    svg.append(path);
+  }
+  return svg;
+}
+
+/** The history button in the house and heat cards' headers, beside the settings gear and in its style. */
+export function historyHeaderButton(doc: Document, label: string, className: string, onClick: () => void): HTMLButtonElement {
+  const button = element(doc, "button", className);
+  button.type = "button";
+  button.dataset["history"] = "open";
+  button.setAttribute("aria-label", label);
+  button.setAttribute("aria-haspopup", "dialog");
+  button.title = label;
+  button.append(historyIcon(doc, 20));
+  button.addEventListener("click", onClick);
+  return button;
+}
+
+const STEP_KEYS: Record<HistoryPeriod, [TranslationKey, TranslationKey, TranslationKey]> = {
+  day: ["hist.previous.day", "hist.next.day", "hist.pick.day"],
+  month: ["hist.previous.month", "hist.next.month", "hist.pick.month"],
+  year: ["hist.previous.year", "hist.next.year", "hist.pick.year"],
+};
+
+/** The months the month picker offers, newest first: back `PICKER_MONTHS` from today's, and the one shown. */
+export function pickerMonths(today: string, shown: string): string[] {
+  const months = new Set<string>([periodStart("month", shown)]);
+  for (let back = 0; back < PICKER_MONTHS; back += 1) {
+    months.add(shiftPeriod("month", today, -back));
+  }
+  return [...months].filter((month) => month <= today).sort().reverse();
+}
+
+export function pickerYears(today: string, shown: string): string[] {
+  const years = new Set<string>([periodStart("year", shown)]);
+  for (let back = 0; back <= PICKER_YEARS; back += 1) {
+    years.add(shiftPeriod("year", today, -back));
+  }
+  return [...years].sort().reverse();
+}
+
+/**
+ * The Day / Month / Year tabs, the ‹ › steps with the picker between them, and the Detailed switch. `today` is the
+ * site's local date; `shown` the first day of the period shown. Nothing after today is offered.
+ */
+export function periodNav(doc: Document, language: Language, ui: PeriodUi, today: string, shown: string, handlers: PeriodHandlers): HTMLElement {
+  const nav = element(doc, "div", "spotnav-period-nav");
+  const tabs = element(doc, "div", C.historyViews);
+  tabs.setAttribute("role", "group");
+  tabs.setAttribute("aria-label", translate(language, "hist.period.label"));
+  for (const period of HISTORY_PERIODS) {
+    const button = element(doc, "button", C.historyToggleButton, translate(language, `hist.period.${period}`));
+    button.type = "button";
+    button.dataset["period"] = period;
+    button.setAttribute("aria-pressed", String(ui.period === period));
+    button.addEventListener("click", () => {
+      if (ui.period !== period) {
+        // The same moment in the new kind: today's period when the shown one holds today.
+        handlers.onPeriod(period, ui.date);
+      }
+    });
+    tabs.append(button);
+  }
+  const [previousKey, nextKey, pickKey] = STEP_KEYS[ui.period];
+  const row = element(doc, "div", C.historyMonthPicker);
+  const step = (label: TranslationKey, glyph: string, target: string, allowed: boolean, which: string): HTMLButtonElement => {
+    const button = element(doc, "button", C.historyToggleButton, glyph);
+    button.type = "button";
+    button.dataset["step"] = which;
+    button.setAttribute("aria-label", translate(language, label));
+    button.disabled = !allowed;
+    button.addEventListener("click", () => handlers.onPeriod(ui.period, target >= periodStart(ui.period, today) ? null : target));
+    return button;
+  };
+  const before = shiftPeriod(ui.period, shown, -1);
+  const after = shiftPeriod(ui.period, shown, 1);
+  const earliest = shiftPeriod("year", today, -PICKER_YEARS);
+  let picker: HTMLElement;
+  if (ui.period === "day") {
+    const input = element(doc, "input");
+    input.type = "date";
+    input.value = shown;
+    input.max = today;
+    input.min = periodStart("year", earliest);
+    input.dataset["pick"] = "day";
+    input.setAttribute("aria-label", translate(language, pickKey));
+    input.addEventListener("change", () => {
+      if (DATE.test(input.value) && input.value <= today) {
+        handlers.onPeriod("day", input.value === today ? null : input.value);
+      }
+    });
+    picker = input;
+  } else {
+    const select = element(doc, "select");
+    select.dataset["pick"] = ui.period;
+    select.setAttribute("aria-label", translate(language, pickKey));
+    const options = ui.period === "month" ? pickerMonths(periodStart("month", today), shown) : pickerYears(periodStart("year", today), shown);
+    for (const first of options) {
+      const option = new Option(periodLabel(language, ui.period, first), first);
+      option.selected = first === shown;
+      select.append(option);
+    }
+    select.addEventListener("change", () => {
+      if (DATE.test(select.value)) {
+        handlers.onPeriod(ui.period, select.value >= periodStart(ui.period, today) ? null : select.value);
+      }
+    });
+    picker = select;
+  }
+  row.append(
+    step(previousKey, "‹", before, before >= periodStart(ui.period, earliest), "back"),
+    picker,
+    step(nextKey, "›", after, after <= today, "forward"),
+  );
+  const detailed = element(doc, "button", `${C.historyToggleButton} spotnav-period-detailed`, translate(language, "hist.detailed"));
+  detailed.type = "button";
+  detailed.dataset["detailed"] = "toggle";
+  detailed.setAttribute("aria-pressed", String(ui.detailed));
+  detailed.addEventListener("click", () => handlers.onDetailed(!ui.detailed));
+  const top = element(doc, "div", "spotnav-period-top");
+  top.append(tabs, detailed);
+  nav.append(top, row);
+  return nav;
+}
+
+/** One bar of the period's chart: its height, its colour's position between cheap (0) and dear (1) or none, and its
+ * figures in words. */
+export interface PeriodBar {
+  key: string;
+  value: number | null;
+  dear: number | null;
+  words: string;
+  axis: string;
+}
+
+/** Each bar's position between the cheapest (0) and dearest (1) of `prices` (minor per kWh), `null` without one. */
+export function pricePositions(prices: Array<number | null>): Array<number | null> {
+  const known = prices.filter((price): price is number => price !== null);
+  const low = Math.min(...known);
+  const high = Math.max(...known);
+  return prices.map((price) => (price === null ? null : high > low ? (price - low) / (high - low) : 0));
+}
+
+/** The bars in the charger history's look: hover, focus or a tap shows a bar's figures under the chart. */
+export function periodBars(doc: Document, language: Language, label: string, unit: string, bars: PeriodBar[], ui: PeriodUi, hint: string): HTMLElement {
+  const wrap = element(doc, "div", C.historyChart);
+  const top = Math.max(0, ...bars.map((bar) => bar.value ?? 0));
+  const readout = element(doc, "p", `${C.muted} ${C.historyReadout}`);
+  readout.setAttribute("aria-live", "polite");
+  const buttons: HTMLButtonElement[] = [];
+  const show = (bar: PeriodBar | null): void => {
+    readout.textContent = bar === null ? hint : bar.words;
+    buttons.forEach((button) => button.setAttribute("aria-pressed", String(bar !== null && button.dataset["bar"] === bar.key)));
+  };
+  const plot = element(doc, "div", C.historyBars);
+  plot.setAttribute("role", "group");
+  plot.setAttribute("aria-label", label);
+  for (const bar of bars) {
+    const button = element(doc, "button", C.historyBar);
+    button.type = "button";
+    button.dataset["bar"] = bar.key;
+    button.setAttribute("aria-label", bar.words);
+    const fill = element(doc, "span", C.historyBarFill);
+    if (bar.value !== null && bar.value > 0 && top > 0) {
+      fill.style.height = `${Math.max(4, (bar.value / top) * 100)}%`;
+      if (bar.dear === null) {
+        fill.dataset["price"] = "none";
+      } else {
+        fill.style.setProperty("--spotnav-day-dear", `${Math.round(bar.dear * 100)}%`);
+      }
+    } else {
+      fill.dataset["empty"] = "true";
+    }
+    button.append(fill);
+    button.addEventListener("mouseenter", () => show(bar));
+    button.addEventListener("focus", () => show(bar));
+    button.addEventListener("click", () => {
+      ui.selected = bar.key;
+      show(bar);
+    });
+    buttons.push(button);
+    plot.append(button);
+  }
+  plot.addEventListener("mouseleave", () => show(bars.find((bar) => bar.key === ui.selected) ?? null));
+  const axis = element(doc, "div", C.historyAxis);
+  axis.setAttribute("aria-hidden", "true");
+  for (const bar of bars) {
+    axis.append(element(doc, "span", undefined, bar.axis));
+  }
+  const scale = element(doc, "span", `${C.muted} ${C.historyScale}`, `${formatFixed(language, top, top >= 10 ? 0 : 1)} ${unit}`);
+  scale.setAttribute("aria-hidden", "true");
+  wrap.append(scale, plot, axis, readout);
+  show(bars.find((bar) => bar.key === ui.selected) ?? null);
+  return wrap;
+}
+
+/** Which axis labels to write: the first, the last, and every `every`th not too near the last. */
+export function axisShown(index: number, count: number, every: number): boolean {
+  const number = index + 1;
+  return number === 1 || number === count || (number % every === 0 && count - number >= Math.ceil(every / 2));
+}
+
+/** A section of the dialog with its heading. */
+export function section(doc: Document, heading: string, part: string): HTMLElement {
+  const block = element(doc, "section", C.historyTile);
+  block.dataset["part"] = part;
+  block.append(element(doc, "h4", C.historyTileHeading, heading));
+  return block;
+}
+
+/** One `name … figure` row of a section. */
+export function figureRow(doc: Document, name: string, figure: string, key: string, muted = false): HTMLElement {
+  const row = element(doc, "div", "spotnav-period-row");
+  row.dataset["row"] = key;
+  row.append(element(doc, "span", undefined, name), element(doc, "span", muted ? `spotnav-period-figure ${C.muted}` : "spotnav-period-figure", figure));
+  return row;
+}
+
+export function note(doc: Document, text: string, line?: string): HTMLElement {
+  const paragraph = element(doc, "p", `${C.muted} ${C.historyFootnote}`, text);
+  if (line !== undefined) {
+    paragraph.dataset["line"] = line;
+  }
+  return paragraph;
+}
+
+/** The status line while a period is read or when it could not be. */
+export function statusLine(doc: Document, language: Language, key: TranslationKey, code: string | null = null): HTMLElement {
+  const line = element(doc, "p", key === "hist.loading" ? C.muted : C.settingsNotice, translate(language, key));
+  line.setAttribute("role", "status");
+  if (code !== null) {
+    line.dataset["code"] = code;
+  }
+  return line;
+}
+
+export const PERIOD_STYLES = `
+  .spotnav-period-nav {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .spotnav-period-top {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+  }
+  .${C.historyMonthPicker} > input {
+    flex: 1 1 auto;
+    min-width: 0;
+    min-height: 36px;
+    box-sizing: border-box;
+    padding: 0 8px;
+    font: inherit;
+    color: var(--primary-text-color, #212121);
+    background: var(--secondary-background-color, transparent);
+    border: 1px solid var(--divider-color, #e0e0e0);
+    border-radius: 8px;
+    color-scheme: light dark;
+  }
+  .spotnav-period-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 8px;
+    font-size: 0.9rem;
+  }
+  .spotnav-period-figure {
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+    white-space: nowrap;
+  }
+  .spotnav-period-runs {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 0.9rem;
+  }
+  .spotnav-period-runs > li {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+  }
+`;

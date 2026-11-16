@@ -145,6 +145,7 @@ import { integrationPath, keyEditor, priceProviderNodes } from "./price-provider
 import { setupLineText, setupSection, type SetupRowId } from "./setup-checklist";
 import { automationsBody, type BlueprintUse } from "./automations";
 import { sendDebugEditor, type SendDebug } from "./send-debug";
+import { historyIcon as sharedHistoryIcon } from "./period-history";
 import { historyBody, type HistoryPower, type HistoryState, type HistoryUi, type HistoryView } from "./history";
 import type { PowerState, PowerUi } from "./power-view";
 import { connectionLabel, guestLineFor, vehicleLineFor } from "./vehicle-line";
@@ -786,20 +787,15 @@ function fillPath(ns: string, doc: Document, d: string): SVGPathElement {
   return path;
 }
 
+/** The history clock, shared with the house and heat cards' headers (`period-history.ts`). */
+function historyIcon(doc: Document): SVGElement {
+  return sharedHistoryIcon(doc, 16, C.actionIcon);
+}
+
 /**
  * The settings cog: MDI `mdiCog` path data (`@mdi/js`, Apache License 2.0), one filled path unlike
  * this file's usual stroked primitives.
  */
-function historyIcon(doc: Document): SVGElement {
-  return icon(doc, (svg, ns) => {
-    svg.append(
-      strokePath(ns, doc, "M3.5 12a8.5 8.5 0 1 0 2.6-6.1"),
-      strokePath(ns, doc, "M3.5 4.5v4.5H8"),
-      strokePath(ns, doc, "M12 7.5V12l3 2"),
-    );
-  });
-}
-
 function settingsGearIcon(doc: Document): SVGElement {
   return icon(doc, (svg, ns) => {
     svg.append(
