@@ -69,7 +69,9 @@ export const HOUSE_CLASSES = {
 const H = HOUSE_CLASSES;
 
 export const HOUSE_STYLES = `
-  .${H.card} {
+  /* The colours, also in the history dialog, which lives outside the card. */
+  .${H.card},
+  .spotnav-history-body {
     --spotnav-house-colour: var(--spotnav-house, var(--primary-color, #03a9f4));
     --spotnav-sun-colour: var(--spotnav-sun, #e8a200);
     --spotnav-battery-colour: var(--spotnav-battery, #129c90);
