@@ -10,7 +10,15 @@ no service call): per phase, the site meter's current, signed as load balancing 
 where the phase's active power is known to export), less each charger's own measured current on that phase, less
 the home battery's share:
 
-* **The battery.** Its split over the phases is not known (a SigenStor can deliver unbalanced), so only a sample
+* **The plant's own per-phase power** (exact). Where the battery's integration states the plant's AC power on each
+  phase (`battery/adapters.py` `plant_phase_power`, Sigenergy's `plant_phase_{a,b,c}_active_power`; positive for
+  output, which on a hybrid inverter is the sun's power and the battery's together) and all three readings are
+  fresh (reported within the site's maximum age), the house's current on a phase is exactly the meter's less the
+  chargers' plus the plant's output there: house = meter - chargers + plant / V. Every minute counts, whatever the
+  battery and the sun do, and the bias factor below does not apply to those minutes. A sample whose house reads
+  below `-PLANT_MISMATCH_A` on a phase does not count this way (the plant's phases A, B, C are taken as the meter's
+  L1, L2, L3; a plant wired otherwise would show so) and falls to the rule below.
+* **The battery** (without the plant's per-phase power, or with it stale or unknown). Its split over the phases is not known (a SigenStor can deliver unbalanced), so only a sample
   with the battery's power within `BATTERY_BAND_W` (0.5 kW) of zero counts per phase, and there it is counted the way
   that makes the house largest: its whole discharge on every phase, none of its charge. A phase then never reads
   less than the house drew; it reads at most 0.5 kW / 230 V = 2.2 A more. Wider, the error grows with the battery's
@@ -30,17 +38,20 @@ samples, every one of them counting), the minutes counted, and two figures for t
 in the site's own store (bounded, read as untrusted: anything malformed is dropped).
 
 **What the cap uses** (`learned`): once `READY_DAYS` days in the window each have at least `DAY_MINUTES` counted
-minutes, per phase **the largest hourly peak in the whole window** (not a quantile: the minutes that count are biased
+minutes (either way), per phase **the largest hourly peak in the whole window** (not a quantile: the minutes that count are biased
 toward the battery standing idle, mostly night, so the rarest peaks are the ones to keep; a 1-minute mean already
 leaves out a motor's start), scaled up by the **bias factor** and plus `MARGIN_A`. The bias factor is how much larger
 the house's whole load (its current summed over the phases, known exactly whatever the battery's split) got in every
 minute than in the minutes that counted (at least 1): a house whose battery covers its evening peaks has those peaks
-reckoned at that ratio. Before that the conservative rule stays. Loads that back off by themselves (a heat pump's own
+reckoned at that ratio. Exact minutes are kept apart from these and count as they are, unscaled: the cap takes per
+phase the larger of the two (each plus `MARGIN_A`); once `READY_DAYS` days each have `DAY_MINUTES` exact minutes,
+the exact peaks alone (the battery's band no longer needed). Before that the conservative rule stays. Loads that back off by themselves (a heat pump's own
 load monitor shedding its immersion heater) never peak on the meter, so they are left out as they should be.
 
-The sun: on a hybrid inverter the sun's power reaches the meter through the plant, so it hides house load in the
-meter's reading while it shines. It only ever lowers what is seen, and the largest peaks come from the hours without
-it, which every day has.
+The sun: on a hybrid inverter the sun's power reaches the meter through the plant, so without the plant's per-phase
+power it hides house load in the meter's reading while it shines. It only ever lowers what is seen, and the largest
+peaks come from the hours without it, which every day has. With it, the sun is part of the plant's output and is
+added back.
 
 The heat pump's meter: where its sensor has per-phase siblings (`<sensor>_l1` .. `_l3`, power), their hourly peaks
 are kept beside the house's, for the diagnostics only.
@@ -82,7 +93,11 @@ DAY_MINUTES: Final = 120
 MARGIN_A: Final = 2.0
 #: A phase's current is read as at most this (A): anything beyond is a broken reading, not kept.
 MAX_A: Final = 1000.0
+#: An exact sample whose house reads below this on a phase (A, negative) is not counted exactly (see the module).
+PLANT_MISMATCH_A: Final = 3.0
 
+#: Only to tell a broken plant reading (`MAX_A`); the sample's own voltage is used for the current.
+_NOMINAL_PHASE_V: Final = 230.0
 _HOUR_S: Final = 3600
 _MINUTE_S: Final = 60
 
@@ -126,7 +141,8 @@ class Reading:
     """One sample's inputs, already read: the meter's current per phase (signed: + import, - export; `None` when the
     measurement is not usable), what the chargers draw per phase (A; `None` while one draws on an unknown phase),
     each charger's readings (for the change check), the battery's power (W, + charging; `None` when it cannot be
-    read; 0 on a site without one), the phase voltage (V) and the heat pump's per-phase power (W, diagnostics)."""
+    read; 0 on a site without one), the phase voltage (V), the heat pump's per-phase power (W, diagnostics) and the
+    plant's own power per phase (W, + output into the house; `None` without it, or with a phase stale or unknown)."""
 
     site_a: Triple | None
     chargers_a: Triple | None
@@ -134,11 +150,35 @@ class Reading:
     battery_w: float | None
     phase_volts: float
     heat_w: Triple | None = None
+    plant_w: Triple | None = None
+
+
+def exact_phase_a(reading: Reading) -> Triple | None:
+    """The house's current per phase from the plant's own per-phase power (see the module), `None` without it, without
+    the measurement or a charger's phase, or where a phase reads below `-PLANT_MISMATCH_A`."""
+    if reading.plant_w is None or reading.site_a is None or reading.chargers_a is None or reading.phase_volts <= 0:
+        return None
+    house = (
+        reading.site_a[0] - reading.chargers_a[0] + reading.plant_w[0] / reading.phase_volts,
+        reading.site_a[1] - reading.chargers_a[1] + reading.plant_w[1] / reading.phase_volts,
+        reading.site_a[2] - reading.chargers_a[2] + reading.plant_w[2] / reading.phase_volts,
+    )
+    return None if min(house) < -PLANT_MISMATCH_A else house
+
+
+def house_phase(reading: Reading) -> tuple[Triple | None, bool]:
+    """The house's current per phase in this sample and whether it is exact: from the plant's per-phase power where
+    that counts (`exact_phase_a`), else within the battery's band (`house_phase_a`)."""
+    exact = exact_phase_a(reading)
+    if exact is not None:
+        return exact, True
+    return house_phase_a(reading), False
 
 
 def house_phase_a(reading: Reading) -> Triple | None:
-    """The house's current per phase in this sample (see the module), `None` when the sample does not count per
-    phase: the measurement, a charger's phase or the battery's power unknown, or the battery outside the band."""
+    """The house's current per phase in this sample by the battery's band (see the module), `None` when the sample
+    does not count so: the measurement, a charger's phase or the battery's power unknown, or the battery outside
+    the band."""
     if reading.site_a is None or reading.chargers_a is None or reading.battery_w is None or reading.phase_volts <= 0:
         return None
     if abs(reading.battery_w) > BATTERY_BAND_W:
@@ -153,7 +193,11 @@ def house_phase_a(reading: Reading) -> Triple | None:
 
 def house_sum_a(reading: Reading) -> float | None:
     """The house's whole load as current summed over the phases (A), whatever the battery does: the meter's sum less
-    the chargers' less the battery's power. `None` when any of them is unknown."""
+    the chargers' plus the plant's output where its per-phase power counts (the sun included), else less the
+    battery's power. `None` when any of them is unknown."""
+    exact = exact_phase_a(reading)
+    if exact is not None:
+        return sum(exact)
     if reading.site_a is None or reading.chargers_a is None or reading.battery_w is None or reading.phase_volts <= 0:
         return None
     return sum(reading.site_a) - sum(reading.chargers_a) - reading.battery_w / reading.phase_volts
@@ -167,6 +211,8 @@ class _Minute:
     samples: int = 0
     house: list[float] | None = None
     house_ok: bool = True
+    #: Every sample of the minute exact (`exact_phase_a`).
+    exact: bool = True
     total: float = 0.0
     total_ok: bool = True
     low: tuple[float, ...] | None = None
@@ -177,7 +223,9 @@ class _Minute:
 
     def add(self, reading: Reading) -> None:
         self.samples += 1
-        house = house_phase_a(reading)
+        house, exact = house_phase(reading)
+        if not exact:
+            self.exact = False
         if house is None:
             self.house_ok = False
         elif self.house_ok:
@@ -226,15 +274,18 @@ class _Minute:
 
 @dataclass(slots=True)
 class HourMark:
-    """One clock hour's high-water marks: per phase the largest counted minute (A), the minutes counted, the house's
-    whole load's largest minute among every minute (`total_all`) and among the counted ones (`total_counted`), and the
-    heat pump's per-phase peak (kW)."""
+    """One clock hour's high-water marks: per phase the largest minute counted by the battery's band (A) and the
+    minutes so counted, the same for the exact minutes (`exact_a`, `exact_minutes`), the house's whole load's largest
+    minute among every minute (`total_all`) and among the band's counted ones (`total_counted`), and the heat pump's
+    per-phase peak (kW)."""
 
     house_a: Triple | None = None
     minutes: int = 0
     total_all: float | None = None
     total_counted: float | None = None
     heat_kw: Triple | None = None
+    exact_a: Triple | None = None
+    exact_minutes: int = 0
 
     def as_dict(self) -> dict[str, Any]:
         def rounded(values: Triple | None, digits: int = 2) -> list[float] | None:
@@ -246,6 +297,8 @@ class HourMark:
             "all": None if self.total_all is None else round(self.total_all, 2),
             "counted": None if self.total_counted is None else round(self.total_counted, 2),
             "heat": rounded(self.heat_kw, 3),
+            "xa": rounded(self.exact_a),
+            "xn": self.exact_minutes,
         }
 
     @classmethod
@@ -258,12 +311,20 @@ class HourMark:
         house = _triple(raw.get("a"))
         if minutes and house is None:
             return None
+        exact_minutes = raw.get("xn", 0)  # absent in marks kept before the exact minutes
+        if isinstance(exact_minutes, bool) or not isinstance(exact_minutes, int) or not 0 <= exact_minutes <= 60:
+            return None
+        exact = _triple(raw.get("xa"))
+        if (exact_minutes and exact is None) or minutes + exact_minutes > 60:
+            return None
         return cls(
             house_a=house if minutes else None,
             minutes=minutes,
             total_all=_finite(raw.get("all")),
             total_counted=_finite(raw.get("counted")),
             heat_kw=_triple(raw.get("heat")),
+            exact_a=exact if exact_minutes else None,
+            exact_minutes=exact_minutes,
         )
 
 
@@ -277,15 +338,30 @@ class Learned:
 
     #: Whether the learned peaks count (`READY_DAYS` days with `DAY_MINUTES` counted minutes).
     ready: bool
-    #: Per phase the largest hourly peak in the window (A), `None` while no minute counted.
+    #: Per phase the largest hourly peak in the window counted by the battery's band (A), `None` while none counted.
     raw_a: Triple | None
-    #: The bias factor (at least 1) and the per-phase peaks the cap uses (A): raw x factor + `MARGIN_A`.
+    #: The bias factor (at least 1) and the per-phase peaks the cap uses (A): the larger of raw x factor and the exact
+    #: peak, plus `MARGIN_A`; the exact peak alone once `exact_days` reach `READY_DAYS`.
     factor: float
     peaks_a: Triple | None
     days: int
     hours: int
     minutes: int
     heat_w: Triple | None
+    #: Per phase the largest exact hourly peak in the window (A), the days with `DAY_MINUTES` exact minutes, and the
+    #: exact minutes (`exact_phase_a`).
+    exact_a: Triple | None = None
+    exact_days: int = 0
+    exact_minutes: int = 0
+
+    @property
+    def basis(self) -> str:
+        """What the peaks rest on: `exact` (the plant's per-phase power alone), `mixed` or `band`; `none` without."""
+        if self.peaks_a is None:
+            return "none"
+        if self.exact_days >= READY_DAYS:
+            return "exact"
+        return "band" if self.exact_a is None else "mixed" if self.raw_a is not None else "exact"
 
     def as_dict(self) -> dict[str, Any]:
         def per_phase(values: Triple | None, digits: int = 1) -> dict[str, float] | None:
@@ -304,6 +380,10 @@ class Learned:
             "hours": self.hours,
             "minutes": self.minutes,
             "heat_peak_w": per_phase(self.heat_w, 0),
+            "exact_a": per_phase(self.exact_a),
+            "exact_days": self.exact_days,
+            "exact_minutes": self.exact_minutes,
+            "basis": self.basis,
         }
 
     def phase_peaks(self) -> dict[str, float] | None:
@@ -364,7 +444,10 @@ class PhasePeaks:
         if total is not None:
             mark.total_all = _max(mark.total_all, total)
         house = minute.house_mean()
-        if house is not None:
+        if house is not None and minute.exact:
+            mark.exact_a = _max_triple(mark.exact_a, house)
+            mark.exact_minutes += 1
+        elif house is not None:
             mark.house_a = _max_triple(mark.house_a, house)
             mark.minutes += 1
             if total is not None:
@@ -380,37 +463,54 @@ class PhasePeaks:
         """The window's peaks (see the module)."""
         oldest = int(now // _HOUR_S) - WINDOW_DAYS * 24
         raw: Triple | None = None
+        exact: Triple | None = None
         heat: Triple | None = None
         total_all: float | None = None
         total_counted: float | None = None
         days: dict[int, int] = {}
-        hours = minutes = 0
+        exact_days: dict[int, int] = {}
+        hours = minutes = exact_minutes = 0
         for hour, mark in self.hours.items():
             if hour < oldest:
                 continue
             heat = _max_triple(heat, mark.heat_kw)
             total_all = _max(total_all, mark.total_all)
-            if mark.minutes <= 0 or mark.house_a is None:
-                continue
-            raw = _max_triple(raw, mark.house_a)
-            total_counted = _max(total_counted, mark.total_counted)
-            hours += 1
-            minutes += mark.minutes
-            days[hour // 24] = days.get(hour // 24, 0) + mark.minutes
+            band = mark.minutes > 0 and mark.house_a is not None
+            exactly = mark.exact_minutes > 0 and mark.exact_a is not None
+            if band:
+                raw = _max_triple(raw, mark.house_a)
+                total_counted = _max(total_counted, mark.total_counted)
+                minutes += mark.minutes
+                days[hour // 24] = days.get(hour // 24, 0) + mark.minutes
+            if exactly:
+                exact = _max_triple(exact, mark.exact_a)
+                exact_minutes += mark.exact_minutes
+                days[hour // 24] = days.get(hour // 24, 0) + mark.exact_minutes
+                exact_days[hour // 24] = exact_days.get(hour // 24, 0) + mark.exact_minutes
+            hours += 1 if band or exactly else 0
         factor = 1.0
         if total_all is not None and total_counted is not None:
             factor = max(1.0, total_all / max(total_counted, 1.0))
-        peaks = None if raw is None else tuple(max(value, 0.0) * factor + MARGIN_A for value in raw)
+        exact_day_count = sum(1 for counted in exact_days.values() if counted >= DAY_MINUTES)
+        band_peaks = None if raw is None or exact_day_count >= READY_DAYS else tuple(
+            max(value, 0.0) * factor for value in raw
+        )
+        exact_peaks = None if exact is None else tuple(max(value, 0.0) for value in exact)
+        largest = _max_triple(band_peaks, exact_peaks)  # type: ignore[arg-type]
+        peaks = None if largest is None else tuple(value + MARGIN_A for value in largest)
         day_count = sum(1 for counted in days.values() if counted >= DAY_MINUTES)
         return Learned(
-            ready=raw is not None and day_count >= READY_DAYS,
+            ready=peaks is not None and day_count >= READY_DAYS,
             raw_a=raw,
             factor=factor,
             peaks_a=peaks,  # type: ignore[arg-type]
             days=day_count,
             hours=hours,
-            minutes=minutes,
+            minutes=minutes + exact_minutes,
             heat_w=_heat_w(heat),
+            exact_a=exact,
+            exact_days=exact_day_count,
+            exact_minutes=exact_minutes,
         )
 
     def as_dict(self) -> dict[str, Any]:
@@ -487,6 +587,32 @@ def _heat_phase_w(site: SiteCapacityController) -> Triple | None:
     return (values[0], values[1], values[2])
 
 
+def _plant_phase_w(site: SiteCapacityController, max_age_s: float, now: float) -> Triple | None:
+    """The plant's own power per phase (W, + output; `battery/adapters.py` `plant_phase_power`), where the battery's
+    facts name its entities and all three read a power reported within `max_age_s`; else `None`."""
+    from ..battery.facts import to_kw  # noqa: PLC0415 - the battery package imports the site
+
+    facts = getattr(getattr(site, "battery_shadow", None), "facts", None)
+    entity_ids = getattr(facts, "plant_phase_entities", None)
+    sign = getattr(facts, "plant_phase_sign", None)
+    if not entity_ids or len(entity_ids) != 3 or sign not in (1.0, -1.0):
+        return None
+    values: list[float] = []
+    for entity_id in entity_ids:
+        state = site.hass.states.get(entity_id)
+        if state is None:
+            return None
+        kw = to_kw(state.state, state.attributes.get("unit_of_measurement"))
+        reported = getattr(state, "last_reported", None) or getattr(state, "last_updated", None)
+        if kw is None or reported is None or not 0.0 <= now - reported.timestamp() <= max_age_s:
+            return None
+        watts = kw * 1000.0 * sign
+        if abs(watts) / _NOMINAL_PHASE_V > MAX_A:  # a broken reading
+            return None
+        values.append(watts)
+    return (values[0], values[1], values[2])
+
+
 def _finite_any(value: Any) -> float | None:
     try:
         number = float(value)
@@ -530,6 +656,7 @@ def read_site(site: SiteCapacityController, now: float) -> Reading:
         battery_w=battery_w if configured else 0.0,
         phase_volts=phase_volts(stored_voltage_between_phases_v(site.config)),
         heat_w=_heat_phase_w(site),
+        plant_w=_plant_phase_w(site, max_age_s, now),
     )
 
 
@@ -581,5 +708,5 @@ class SitePhasePeaks:
 
 __all__: Sequence[str] = (
     "BATTERY_BAND_W", "DAY_MINUTES", "Learned", "MARGIN_A", "PhasePeaks", "READY_DAYS", "Reading", "SitePhasePeaks",
-    "WINDOW_DAYS", "house_phase_a", "house_sum_a",
+    "PLANT_MISMATCH_A", "WINDOW_DAYS", "exact_phase_a", "house_phase", "house_phase_a", "house_sum_a",
 )
