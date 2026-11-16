@@ -46,6 +46,7 @@ export const HOUSE_CLASSES = {
   nowLabel: "spotnav-house-now-label",
   views: "spotnav-house-views",
   today: "spotnav-house-today",
+  todayDetail: "spotnav-house-today-detail",
   flow: "spotnav-house-flow",
   flowRow: "spotnav-house-flow-row",
   flowLabel: "spotnav-house-flow-label",
@@ -284,9 +285,16 @@ export const HOUSE_STYLES = `
     padding: 2px 10px;
     font-size: 0.82rem;
   }
+  /* The day's headline: what the electricity cost so far, with the battery's earnings under it. */
   .${H.today} {
-    margin: 4px 0 0;
-    font-size: 0.88rem;
+    margin: 6px 0 0;
+    font-size: 1.25rem;
+    font-weight: 500;
+    line-height: 1.3;
+    overflow-wrap: break-word;
+  }
+  .${H.todayDetail} {
+    margin: 2px 0 0;
     overflow-wrap: break-word;
   }
   .${H.flowRow} {

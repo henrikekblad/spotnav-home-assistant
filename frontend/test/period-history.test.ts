@@ -135,7 +135,9 @@ describe("the house history", () => {
     expect(body.querySelector<HTMLInputElement>("input[data-pick='day']")!.value).toBe("2026-11-15");
     expect(body.querySelector<HTMLInputElement>("input[data-pick='day']")!.max).toBe("2026-11-16");
     expect(body.querySelector("[data-part='modes'] [data-row='max_profit']")?.textContent).toContain("2,00 kr");
-    expect(body.querySelector("[data-part='modes'] [data-row='self_consumption']")?.textContent).toContain("referens");
+    // Self-consumption is the zero the others are measured against, not a row.
+    expect(body.querySelector("[data-part='modes'] [data-row='self_consumption']")).toBeNull();
+    expect(body.querySelector("[data-part='modes'] [data-row='own']")?.textContent).toContain("Som batteriet gick");
     expect(body.querySelector("[data-part='forecast'] [data-row='house']")?.textContent).toBe("Husets last±0,42 kW (1 d)");
     // A day has no day-by-day list.
     expect(body.querySelector("[data-part='days']")).toBeNull();
