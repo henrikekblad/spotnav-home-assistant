@@ -76,6 +76,7 @@ from ..const import (
 )
 from ..planning.grid_voltage import stored_voltage_between_phases_v
 from ..site.measurement_problem import UNHEALTHY_STATES
+from ..site.phase_peaks import Learned
 from . import gate
 from .commands import (
     ACTION_CURTAIL_EXPORT,
@@ -1129,8 +1130,41 @@ class BatteryControl:
             self._main_fuse_a(), stored_voltage_between_phases_v(self.site.config), margin_a=HEADROOM_MARGIN_A,
             cars_a=self._cars_allowed_a(), house_peak_kw=self._house_peak_kw(now),
             plant_phases=self._plant_phases(control), import_limit_kw=import_limit_kw,
-            import_limit_acts=options.import_limit_acts,
+            import_limit_acts=options.import_limit_acts, house_phase_peaks_a=self._phase_peaks(now),
         )
+
+    def _learned(self, now: datetime) -> Learned | None:
+        """The site's learned per-phase house peaks (`site/phase_peaks.py`), `None` when it keeps none."""
+        peaks = getattr(self.site, "phase_peaks", None)
+        if peaks is None:
+            return None
+        try:
+            return peaks.learned(now.timestamp())
+        except Exception:  # noqa: BLE001 - without them the conservative rule counts
+            self._look_failed("phase_peaks")
+            return None
+
+    def _phase_peaks(self, now: datetime) -> dict[str, float] | None:
+        """The per-phase peaks the grid charge cap uses once they are learned, else `None` (the conservative rule)."""
+        learned = self._learned(now)
+        return None if learned is None else learned.phase_peaks()
+
+    def _cap_status(self, now: datetime, options: gate.Options) -> dict[str, Any]:
+        """The grid charge cap and what it rests on, for the status and the diagnostics."""
+        learned = self._learned(now)
+        try:
+            cap: float | None = self._grid_charge_cap_kw(now, options)
+            failed = False
+        except Exception:  # noqa: BLE001 - the status must never fail on it
+            cap, failed = None, True
+        return {
+            "cap_kw": None if cap is None else round(cap, 2),
+            "rule": "error" if failed else "import_limit" if cap is None else (
+                "learned" if learned is not None and learned.phase_peaks() is not None else "conservative"
+            ),
+            "main_fuse_a": self._main_fuse_a(),
+            "learned": None if learned is None else learned.as_dict(),
+        }
 
     def _export_cap_kw(self) -> float:
         """The fuse rule on the export side (`gate.export_discharge_cap_kw`) on the site's phases now."""
@@ -1650,6 +1684,7 @@ class BatteryControl:
             "needs": self._needs(),
             "notes": [dict(note) for note in self.notes],
             "trial": None if self.trial is None else self.trial.as_dict(),
+            "grid_charge_cap": self._cap_status(dt_util.now(), options),
         }
 
     def snapshot(self) -> dict[str, Any]:

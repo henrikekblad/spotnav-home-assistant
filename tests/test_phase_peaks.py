@@ -8,6 +8,7 @@ from typing import Any
 
 import pytest
 
+from custom_components.spotnav.battery.gate import HOUSE_PEAK_DEFAULT_KW, MIN_RATE_KW, grid_charge_cap_kw
 from custom_components.spotnav.site.phase_peaks import (
     BATTERY_BAND_W,
     DAY_MINUTES,
@@ -270,6 +271,55 @@ async def test_the_site_s_marks_are_kept_in_its_own_store(hass, hass_storage) ->
     assert saved[str(T0 // 3600 + 1)]["a"][0] == 9.0
     await SitePhasePeaks.async_remove_stored(hass, "site")
     assert store_key("site") not in hass_storage
+
+
+# --- the cap ----------------------------------------------------------------------------------------------------------
+
+
+def _cap(fuse_a=20.0, *, peaks=None, cars_a=0.0, phases=3, house_peak_kw=None):
+    return grid_charge_cap_kw(fuse_a, 400.0, margin_a=2.0, cars_a=cars_a, house_peak_kw=house_peak_kw,
+                              plant_phases=phases, house_phase_peaks_a=peaks)
+
+
+def test_the_cap_uses_each_phase_s_learned_peak_once_ready() -> None:
+    volts = 400.0 / 3 ** 0.5
+    conservative = _cap()
+    assert conservative < MIN_RATE_KW, "20 A with 4 kW on one phase: no grid charge"
+    peaks = {"L1": 9.0, "L2": 7.0, "L3": 12.0}
+    cap = _cap(peaks=peaks)
+    # The worst phase (L3) decides: 20 - 2 - 12 = 6 A on each phase for a balanced three-phase charge.
+    assert cap == pytest.approx(6.0 * 3 * volts / 1000)
+    # On that phase with HA down: the house's peak + the battery's third + the margin stays at the fuse.
+    assert peaks["L3"] + cap * 1000 / 3 / volts + 2.0 == pytest.approx(20.0)
+    # The chargers' last currents still count, and the conservative p90 no longer does.
+    assert _cap(peaks=peaks, cars_a=4.0) == pytest.approx(2.0 * 3 * volts / 1000)
+    assert _cap(peaks=peaks, house_peak_kw=8.0) == pytest.approx(cap)
+
+
+def test_the_cap_on_a_single_phase_plant_counts_the_worst_phase() -> None:
+    volts = 400.0 / 3 ** 0.5
+    cap = _cap(peaks={"L1": 9.0, "L2": 7.0, "L3": 12.0}, phases=1)
+    assert cap == pytest.approx(6.0 * volts / 1000)
+    assert 12.0 + cap * 1000 / volts + 2.0 == pytest.approx(20.0)
+
+
+@pytest.mark.parametrize("peaks", [
+    {"L1": 9.0, "L2": 7.0},
+    {"L1": 9.0, "L2": 7.0, "L3": math.nan},
+    {"L1": 9.0, "L2": 7.0, "L3": None},
+    {},
+])
+def test_the_cap_falls_back_to_the_conservative_rule_without_three_usable_phases(peaks) -> None:
+    assert _cap(25.0, peaks=peaks) == pytest.approx(_cap(25.0))
+    assert _cap(25.0) == pytest.approx(
+        (25.0 - 2.0 - HOUSE_PEAK_DEFAULT_KW * 1000 / (400.0 / 3 ** 0.5)) * 3 * (400.0 / 3 ** 0.5) / 1000
+    )
+
+
+def test_the_cap_never_goes_below_zero() -> None:
+    assert _cap(peaks={"L1": 30.0, "L2": 7.0, "L3": 12.0}) == 0.0
+    assert _cap(peaks={"L1": 3.0, "L2": 3.0, "L3": 3.0}, cars_a=40.0) == 0.0
+    assert _cap(None, peaks={"L1": 3.0, "L2": 3.0, "L3": 3.0}) == 0.0
 
 
 # --- what the site holds ----------------------------------------------------------------------------------------------
