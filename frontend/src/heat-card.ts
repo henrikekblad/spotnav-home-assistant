@@ -1,34 +1,24 @@
 // The heat card (`custom:spotnav-heat-card`, SpotNav 3.0 preview): a third element in the same bundle, so nothing extra
 // is installed. It reads `spotnav/get_heat` for a site, named by the site's id or a charger's in it, every
 // `HEAT_REFRESH_MS`, and shows it (`heat-view.ts`). The dial and home/away write the site's heat settings through
-// `spotnav/update_heat` (a compare-and-set); an administrator's settings button opens the "Heating" section. Shadow
+// `spotnav/update_heat` (a compare-and-set); an administrator's settings button opens the shared settings popover
+// (`settings-popover.ts`) at its heat section. Shadow
 // only: what the card writes is SpotNav's own settings, never a heating device.
 //
 // YAML: `type: custom:spotnav-heat-card` with `site: <site entry id>` or `charger: <charger entry id>`.
 
-import { getHeat, listChargers, SpotnavApiError, UNSUPPORTED_API_VERSION, updateHeat } from "./api";
-import { createDialog, type DialogHandle } from "./dialog";
-import { decodeHeat, decodeHeatWrite, type HeatAnswer, type HeatChoice, type HeatConfig } from "./heat-model";
+import { getHeat, SpotnavApiError, UNSUPPORTED_API_VERSION } from "./api";
+import { writeError, writeHeat } from "./heat-editors";
+import { decodeHeat, type HeatAnswer, type HeatConfig } from "./heat-model";
 import { HEAT_CLASSES as X, HEAT_STYLES } from "./heat-styles";
-import {
-  TARGET_MAX,
-  TARGET_MIN,
-  instantToLocal,
-  localToInstant,
-  heatBody,
-  heatSettingsSection,
-  namesOf,
-  type HeatSettingKey,
-  type HeatState,
-  type HeatUi,
-} from "./heat-view";
+import { TARGET_MAX, TARGET_MIN, instantToLocal, localToInstant, heatBody, type HeatState, type HeatUi } from "./heat-view";
 import { HOUSE_STYLES } from "./house-styles";
-import { isLanguagePending, loadLanguage, resolveLanguage, translate, type Language, type TranslationKey } from "./i18n";
+import { isLanguagePending, loadLanguage, resolveLanguage, translate, type Language } from "./i18n";
+import { SettingsPopover, stubTarget } from "./settings-popover";
 import type { HomeAssistantLike } from "./types";
-import { multiEditor, numberEditor, shell, singleEditor, type ChoiceOption, type EditorHandlers } from "./value-editors";
 import { VISUAL_CLASSES, VISUAL_STYLES } from "./visual-styles";
 
-export { instantToLocal, localToInstant };
+export { instantToLocal, localToInstant, writeError };
 
 export const HEAT_CARD_TYPE = "spotnav-heat-card";
 export const HEAT_CARD_ELEMENT = "spotnav-heat-card";
@@ -38,8 +28,6 @@ export const DIAL_SETTLE_MS = 700;
 export const HEAT_FALLBACK_WIDTH = 330;
 const CARD_PADDING_PX = 28;
 const STUB_TIMEOUT_MS = 3000;
-/** The return time the away editor offers first. */
-const DEFAULT_RETURN = "16:00";
 
 export interface HeatCardConfig {
   type: string;
@@ -67,24 +55,6 @@ export function parseHeatConfig(raw: unknown): HeatCardConfig {
   return config;
 }
 
-/** A refused write in words. */
-export function writeError(language: Language, error: string | null, fieldCodes: readonly string[]): string {
-  if (error === "spotnav_conflict") {
-    return translate(language, "heat.error.conflict");
-  }
-  if (error === "spotnav_not_admin") {
-    return translate(language, "heat.error.notAdmin");
-  }
-  const byCode: Record<string, TranslationKey> = {
-    out_of_range: "heat.error.range",
-    not_a_step: "heat.error.step",
-    away_in_past: "heat.error.past",
-    away_too_far: "heat.error.far",
-  };
-  const known = fieldCodes.map((code) => byCode[code]).find((key) => key !== undefined);
-  return translate(language, known ?? "heat.error.generic");
-}
-
 let instances = 0;
 
 export class SpotnavHeatCard extends HTMLElement {
@@ -103,9 +73,8 @@ export class SpotnavHeatCard extends HTMLElement {
   private generation = 0;
   private width = HEAT_FALLBACK_WIDTH;
   private observer: ResizeObserver | null = null;
-  private dialog: DialogHandle | null = null;
-  /** What the open dialog shows: the settings section, or one editor and where it returns. */
-  private page: { kind: "settings" } | { kind: "editor"; key: HeatSettingKey | "away"; back: boolean } | null = null;
+  /** The shared settings popover (and the away editor), made on first use. */
+  private settingsPopover: SettingsPopover | null = null;
   private readonly idPrefix: string;
 
   constructor() {
@@ -168,9 +137,8 @@ export class SpotnavHeatCard extends HTMLElement {
       clearTimeout(this.settle);
       this.settle = null;
     }
-    this.dialog?.destroy();
-    this.dialog = null;
-    this.page = null;
+    this.settingsPopover?.destroy();
+    this.settingsPopover = null;
   }
 
   getCardSize(): number {
@@ -181,30 +149,10 @@ export class SpotnavHeatCard extends HTMLElement {
     return { rows: "auto", columns: 6, min_columns: 6 };
   }
 
-  /** The card picker's preview: the one charger's site, else an unconfigured card. */
+  /** The card picker's preview: the first charger's site, else the first site, else an unconfigured card. */
   static async getStubConfig(hass?: HomeAssistantLike): Promise<HeatCardConfig> {
     const stub: HeatCardConfig = { type: `custom:${HEAT_CARD_TYPE}` };
-    if (hass === undefined) {
-      return stub;
-    }
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    try {
-      const list = await Promise.race([
-        listChargers(hass),
-        new Promise<null>((resolve) => {
-          timer = setTimeout(() => resolve(null), STUB_TIMEOUT_MS);
-        }),
-      ]);
-      const first = list?.chargers[0];
-      if (first !== undefined) {
-        return { ...stub, charger: first.charger_id };
-      }
-    } catch {
-      // An unconfigured card, never an error in the picker.
-    } finally {
-      clearTimeout(timer);
-    }
-    return stub;
+    return { ...stub, ...(hass === undefined ? {} : await stubTarget(hass, STUB_TIMEOUT_MS)) };
   }
 
   private target(): { site: string } | { charger: string } | null {
@@ -285,13 +233,8 @@ export class SpotnavHeatCard extends HTMLElement {
     if (next.kind === "failed" && this.state.kind === "ready") {
       return;
     }
-    const before = this.answer()?.config;
     this.state = next;
     this.render();
-    // The open settings follow a change of the stored settings only, not every read.
-    if (this.page?.kind === "settings" && next.kind === "ready" && JSON.stringify(before) !== JSON.stringify(next.answer.config)) {
-      this.showSettings();
-    }
   }
 
   /** Write `changes` with what was last seen for the same keys; `null` when it took, else the sentence. */
@@ -303,27 +246,13 @@ export class SpotnavHeatCard extends HTMLElement {
     if (hass === null || target === null || answer === null) {
       return translate(language, "heat.error.generic");
     }
-    const expected: Record<string, unknown> = {};
-    for (const key of Object.keys(changes) as (keyof HeatConfig)[]) {
-      expected[key] = answer.config[key];
-    }
-    let raw: unknown;
-    try {
-      raw = await updateHeat(hass, target, changes, expected);
-    } catch {
-      return translate(language, "heat.error.generic");
-    }
-    const decoded = decodeHeatWrite(raw);
-    if (!decoded.ok) {
-      return translate(language, "heat.error.generic");
-    }
-    const result = decoded.value;
-    if (result.ok && result.config !== null && this.state.kind === "ready") {
+    const result = await writeHeat(hass, target, answer, changes, language);
+    if (result.config !== null && this.state.kind === "ready") {
       // The stored settings at once; the rest of the view follows with the read.
       this.state = { kind: "ready", answer: { ...this.state.answer, config: result.config } };
     }
     await this.refresh();
-    return result.ok ? null : writeError(language, result.error, result.field_errors.map((item) => item.code));
+    return result.error;
   }
 
   private step(delta: number): void {
@@ -353,237 +282,42 @@ export class SpotnavHeatCard extends HTMLElement {
     }, DIAL_SETTLE_MS);
   }
 
-  private ensureDialog(): DialogHandle {
-    if (this.dialog === null) {
-      this.dialog = createDialog({
+  private ensurePopover(): SettingsPopover {
+    if (this.settingsPopover === null) {
+      this.settingsPopover = new SettingsPopover({
+        doc: this.ownerDocument,
         owner: this.layer,
-        idPrefix: this.idPrefix,
-        labels: { close: translate(this.cardLanguage(), "dialog.close") },
         background: () => this.mount,
-        onClose: () => {
-          this.page = null;
+        idPrefix: this.idPrefix,
+        hass: () => this.hassObject,
+        target: () => this.target(),
+        language: () => this.cardLanguage(),
+        onChanged: (what) => {
+          if (what === "heat") {
+            void this.refresh();
+          }
         },
       });
     }
-    return this.dialog;
+    return this.settingsPopover;
   }
 
+  /** The shared settings popover, opened at the heat section. */
   showSettings(): void {
     const answer = this.answer();
     if (answer === null || !answer.writable) {
       return;
     }
-    const language = this.cardLanguage();
-    this.page = { kind: "settings" };
-    const body = heatSettingsSection(this.ownerDocument, language, answer, (key) => this.showEditor(key, true));
-    this.ensureDialog().show({ title: translate(language, "heat.settings.open"), body });
+    void this.ensurePopover().open("heat");
   }
 
-  showEditor(key: HeatSettingKey | "away", back: boolean): void {
+  /** The away editor on its own (the card's away button), in the popover's dialog. */
+  showAway(): void {
     const answer = this.answer();
     if (answer === null) {
       return;
     }
-    const form = this.editor(key, answer, {
-      onDone: () => (back ? this.showSettings() : this.ensureDialog().hide()),
-      onCancel: () => (back ? this.showSettings() : this.ensureDialog().hide()),
-    });
-    if (form === null) {
-      return;
-    }
-    this.page = { kind: "editor", key, back };
-    this.ensureDialog().show({ title: form.title, body: form.body });
-  }
-
-  /** The editor for one setting: its title and form (`null` for a setting that cannot be changed here). */
-  private editor(key: HeatSettingKey | "away", answer: HeatAnswer, handlers: EditorHandlers): { title: string; body: HTMLElement } | null {
-    const doc = this.ownerDocument;
-    const language = this.cardLanguage();
-    const config = answer.config;
-    const choices = answer.choices;
-    const prefix = `${this.idPrefix}-${key.replace(/[^a-z0-9]/gi, "-")}`;
-    const t = (k: TranslationKey, params?: Record<string, string>): string => translate(language, k, params);
-    const option = (choice: HeatChoice): ChoiceOption => ({ value: choice.entity_id, label: choice.name, ...(choice.value === null ? {} : { help: choice.value }) });
-    const none: ChoiceOption = { value: "", label: t("heat.settings.none") };
-    const pick = (title: string, options: ChoiceOption[], selected: string | null, save: (value: string | null) => Promise<string | null>, intro?: string) => ({
-      title,
-      body: singleEditor(doc, language, { ...(intro === undefined ? {} : { intro }), options, selected: selected ?? "", idPrefix: prefix }, (value) => save(value === "" ? null : value), handlers),
-    });
-    if (key === "away") {
-      return { title: t("heat.away.title"), body: this.awayEditor(answer, handlers) };
-    }
-    if (key === "night") {
-      return { title: t("heat.settings.night"), body: this.nightEditor(answer, handlers) };
-    }
-    if (choices === null) {
-      return null;
-    }
-    switch (key) {
-      case "indoor":
-        return {
-          title: t("heat.settings.indoor"),
-          body: multiEditor(doc, language, { intro: t("heat.settings.indoorHelp"), options: choices.indoor.map(option), checked: config.indoor_sensors }, (values) =>
-            this.write({ indoor_sensors: values }),
-          handlers),
-        };
-      case "outdoor":
-        return pick(
-          t("heat.settings.outdoor"),
-          [{ value: "", label: t("heat.settings.outdoorAuto"), help: t("heat.settings.outdoorHelp") }, ...choices.outdoor.map(option)],
-          config.outdoor_sensor,
-          (value) => this.write({ outdoor_sensor: value }),
-        );
-      case "meter":
-        return choices.meter === null
-          ? null
-          : pick(t("heat.settings.meter"), [none, ...choices.meter.map(option)], config.heat_meter_entity, (value) => this.write({ heat_meter_entity: value }), t("heat.settings.meterHelp"));
-      case "path":
-        return pick(
-          t("heat.settings.path"),
-          ["none", "relay", "sg_ready", "offset", "setpoint"].map((path) => ({ value: path, label: t(`heat.path.${path}` as TranslationKey) })),
-          config.control_path,
-          (value) => this.write({ control_path: value ?? "none" }),
-          t("heat.settings.pathHelp"),
-        );
-      case "control":
-      case "controlB": {
-        const group = config.control_path === "offset" ? choices.offset : config.control_path === "setpoint" ? choices.setpoint : choices.relay;
-        const field = key === "control" ? "control_entity" : "control_entity_b";
-        return pick(t(key === "control" ? "heat.settings.control" : "heat.settings.controlB"), [none, ...group.map(option)], config[field], (value) =>
-          this.write({ control_path: config.control_path, [field]: value }),
-        );
-      }
-      case "hotWater":
-        return pick(t("heat.settings.hotWater"), [none, ...choices.hot_water.map(option)], config.hot_water_entity, (value) => this.write({ hot_water_entity: value }), t("heat.settings.hotWaterHelp"));
-      case "zones": {
-        const kindWord = (kind: string | undefined): string => t(kind === "air" ? "heat.zone.air" : "heat.zone.floor");
-        return {
-          title: t("heat.settings.zones"),
-          body: multiEditor(
-            doc,
-            language,
-            { intro: t("heat.settings.zonesHelp"), options: choices.zones.map((choice) => ({ value: choice.entity_id, label: `${choice.name} · ${kindWord(choice.kind)}` })), checked: config.zones.map((zone) => zone.entity_id) },
-            (values) => this.write({ zones: values.map((entity_id) => ({ entity_id, offset_c: config.zones.find((zone) => zone.entity_id === entity_id)?.offset_c ?? 0 })) }),
-            handlers,
-          ),
-        };
-      }
-      default: {
-        const entityId = key.slice("zone:".length);
-        const zone = config.zones.find((item) => item.entity_id === entityId);
-        if (zone === undefined) {
-          return null;
-        }
-        const air = answer.zones.find((item) => item.entity_id === entityId)?.kind === "air";
-        const help = air ? `${t("heat.settings.offsetHelp")} ${t("heat.settings.airHelp")}` : t("heat.settings.offsetHelp");
-        return {
-          title: namesOf(answer).get(entityId) ?? entityId,
-          body: numberEditor(
-            doc,
-            language,
-            { help, unit: "°C", current: zone.offset_c, min: -3, max: 3, decimals: 1, rangeMessage: t("heat.error.range"), idPrefix: prefix },
-            async (value) => {
-              const offset = value ?? 0;
-              if (Math.abs(offset * 2 - Math.round(offset * 2)) > 1e-9) {
-                return t("heat.error.step");
-              }
-              return await this.write({ zones: config.zones.map((item) => (item.entity_id === entityId ? { ...item, offset_c: offset } : item)) });
-            },
-            handlers,
-          ),
-        };
-      }
-    }
-  }
-
-  private field(doc: Document, label: string, input: HTMLInputElement): HTMLElement {
-    const wrap = doc.createElement("label");
-    wrap.className = X.editorField;
-    wrap.append(doc.createTextNode(label), input);
-    return wrap;
-  }
-
-  private awayEditor(answer: HeatAnswer, handlers: EditorHandlers): HTMLFormElement {
-    const doc = this.ownerDocument;
-    const language = this.cardLanguage();
-    const editor = shell(doc, language, "away", handlers);
-    const help = doc.createElement("p");
-    help.className = VISUAL_CLASSES.entityHelp;
-    help.textContent = translate(language, "heat.away.help");
-    const now = Date.parse(answer.now);
-    const start = answer.config.away_until !== null
-      ? instantToLocal(Date.parse(answer.config.away_until), answer.time_zone)
-      : { date: instantToLocal(now + 86_400_000, answer.time_zone).date, time: DEFAULT_RETURN };
-    const date = doc.createElement("input");
-    date.type = "date";
-    date.value = start.date;
-    date.dataset["field"] = "date";
-    const time = doc.createElement("input");
-    time.type = "time";
-    time.value = start.time;
-    time.dataset["field"] = "time";
-    editor.body.append(help, this.field(doc, translate(language, "heat.away.date"), date), this.field(doc, translate(language, "heat.away.time"), time));
-    editor.submit(async () => {
-      const instant = localToInstant(date.value, time.value, answer.time_zone);
-      if (instant === null) {
-        return translate(language, "heat.error.generic");
-      }
-      if (instant <= Date.now()) {
-        return translate(language, "heat.error.past");
-      }
-      return await this.write({ mode: "away", away_until: new Date(instant).toISOString() });
-    });
-    return editor.form;
-  }
-
-  private nightEditor(answer: HeatAnswer, handlers: EditorHandlers): HTMLFormElement {
-    const doc = this.ownerDocument;
-    const language = this.cardLanguage();
-    const night = answer.config.night;
-    const editor = shell(doc, language, "night", handlers);
-    const help = doc.createElement("p");
-    help.className = VISUAL_CLASSES.entityHelp;
-    help.textContent = translate(language, "heat.settings.nightHelp");
-    const on = doc.createElement("input");
-    on.type = "checkbox";
-    on.checked = night.on;
-    on.dataset["field"] = "on";
-    const onLabel = doc.createElement("label");
-    onLabel.className = VISUAL_CLASSES.siteChoice;
-    onLabel.append(on, doc.createTextNode(translate(language, "settings.value.on")));
-    const delta = doc.createElement("input");
-    delta.type = "number";
-    delta.min = "0.5";
-    delta.max = "3";
-    delta.step = "0.5";
-    delta.value = String(night.delta_c);
-    delta.dataset["field"] = "delta";
-    const startInput = doc.createElement("input");
-    startInput.type = "time";
-    startInput.value = night.start;
-    startInput.dataset["field"] = "start";
-    const endInput = doc.createElement("input");
-    endInput.type = "time";
-    endInput.value = night.end;
-    endInput.dataset["field"] = "end";
-    editor.body.append(
-      help,
-      onLabel,
-      this.field(doc, translate(language, "heat.settings.nightDelta"), delta),
-      this.field(doc, translate(language, "heat.settings.nightStart"), startInput),
-      this.field(doc, translate(language, "heat.settings.nightEnd"), endInput),
-    );
-    editor.submit(async () => {
-      const value = Number(delta.value.replace(",", "."));
-      if (!Number.isFinite(value) || value < 0.5 || value > 3) {
-        return translate(language, "heat.error.range");
-      }
-      if (Math.abs(value * 2 - Math.round(value * 2)) > 1e-9) {
-        return translate(language, "heat.error.step");
-      }
-      return await this.write({ night: { on: on.checked, delta_c: value, start: startInput.value, end: endInput.value } });
-    });
-    return editor.form;
+    this.ensurePopover().openHeatAlone(answer, "away");
   }
 
   private render(): void {
@@ -611,7 +345,7 @@ export class SpotnavHeatCard extends HTMLElement {
               this.render();
             });
           },
-          onAway: () => this.showEditor("away", false),
+          onAway: () => this.showAway(),
           onSettings: () => this.showSettings(),
         },
       }),
