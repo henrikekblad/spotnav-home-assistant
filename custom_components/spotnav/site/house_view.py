@@ -13,7 +13,8 @@ It shows what the site diagnostics already carry, cut to what a card draws:
   import less the chargers.
 * **`house`**, **`sun`**, **`battery`**: the last week's review of each (mean absolute error and how often the
   forecast was below the outcome), and the battery plan's money side by side: the plan (the site's mode), the
-  battery's own way (its optimiser, or whatever it did) and plain self-consumption, over the reviewed days. `sun` is
+  battery's own way (its optimiser, or whatever it did) and plain self-consumption, over the reviewed days, and the
+  same days against their perfect plans in hindsight (`review.perfect`, `site/perfect_view.py`). `sun` is
   `None` on a site without a solar forecast, `battery` on a site without a battery.
 * **`today`**: today so far, split as the battery's own app splits a day (sold, arbitrage, bought) with the mode in
   force, from the stored energy's running value (`battery/stored_value.py`); **`flow`**: today's energy from sources (sun, battery, grid) to uses
@@ -31,7 +32,8 @@ It shows what the site diagnostics already carry, cut to what a card draws:
   against plain self-consumption, the mode in force; and the day in the battery app's terms: `battery_saving`
   against the day with no battery, `sun_gave`, and `against_nothing` for both together, each `None` where not known,
   with `covered_quarters` of `day_quarters` and `sun_quarters` saying how much of the day they cover, see
-  `battery/review_baselines.py`); `None` on today (the week's sums are in `battery.modes`) and on a
+  `battery/review_baselines.py`), and the day against its perfect plan in hindsight (`perfect`,
+  `site/perfect_view.py`); `None` on today (the week's sums are in `battery.modes`) and on a
   day without a review.
 * **`days`**: the last reviewed days, one row each, for the card's details.
 * **`sources`**: where the forecasts come from (weather entity, outdoor sensor, holiday calendar, solar forecast).
@@ -88,6 +90,7 @@ from .forecast_log import (
     Score,
 )
 from .load_forecast import LoadForecast
+from .perfect_view import perfect_block
 
 HOUSE_API_VERSION: Final = 1
 #: The hours before the running one that are shown, and the hours from the running one on.
@@ -546,6 +549,8 @@ def _battery_block(battery: BatteryInputs, log: ForecastLog) -> dict[str, Any]:
             # The days' money against no battery and what the sun gave, summed over the days that have each figure.
             "battery_saving": _money(sum(item.battery_saving or 0.0 for item in reviews)),
             "sun_gave": _money(sum(item.sun_value or 0.0 for item in reviews)),
+            # The same days against their perfect plans in hindsight (`site/perfect_view.py`).
+            "perfect": perfect_block(reviews),
         }
     return {
         "brand": battery.brand,
@@ -640,6 +645,8 @@ def day_review_block(inputs: HouseInputs) -> dict[str, Any] | None:
         "covered_quarters": review.covered,
         "day_quarters": day_quarters(review.day, inputs.tz),
         "sun_quarters": review.sun_quarters or 0,
+        # The day against its perfect plan, the energy left at midnight counted (`site/perfect_view.py`).
+        "perfect": perfect_block([review]),
     }
 
 

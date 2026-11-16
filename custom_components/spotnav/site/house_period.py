@@ -11,7 +11,8 @@ the battery's reviewed days and the forecasts' daily reviews; nothing is read or
      cost: {net, bought, sold, kwh_in, kwh_out, periods, priced} | null,
      review: {days, period_days, archived, actual_cost, battery_saving, battery_days, sun_gave, sun_days,
               against_nothing, nothing_days, plan_saving, own_saving, modes: {mode: {saving, days}}, mode,
-              by_day: [{date, battery_saving, plan_saving, own_saving}]} | null,
+              by_day: [{date, battery_saving, plan_saving, own_saving, own_share, plan_share}],
+              perfect: (`site/perfect_view.py`) | null} | null,
      forecast: {house, sun, sun_corrected, soc: {mae, days} | null} }
 
 * **Energy** (`energy_flow`, `buckets`): the Energy dashboard's meters and the chargers' registers per period (a
@@ -37,7 +38,9 @@ the battery's reviewed days and the forecasts' daily reviews; nothing is read or
   (`battery_saving`), what the sun gave, both together, the plan and the battery's own way against plain
   self-consumption, each mode planned beside it. Each sum says over how many days (`*_days`); `days` against
   `period_days` (the period's days up to yesterday) says how much of the period was reviewed; `by_day` has each
-  reviewed day (the front's month calendar moved here). `null` without a battery or with no reviewed day.
+  reviewed day (the front's month calendar moved here) with its share of its perfect plan in hindsight (`own_share`,
+  `plan_share`); `perfect` the period's days against their perfect plans (`site/perfect_view.py`: the shares summed
+  over the period, where the day boundary washes out). `null` without a battery or with no reviewed day.
 * **The forecasts** (`forecast`): the mean of each forecast's daily mean absolute error over the period's reviewed
   days (the forecast log keeps 30 days of reviews), with the days counted; `null` per forecast without one.
 
@@ -56,6 +59,7 @@ from ..battery.plan_model import MODES
 from ..battery.plan_shadow import KIND_BATTERY, DayReview, PriceSlot
 from .energy_flow import EnergyHour, allocate_hour, energy_flow
 from .forecast_log import KIND_HOUSE, KIND_SUN, KIND_SUN_CORRECTED
+from .perfect_view import perfect_block
 from .history_period import PERIOD_DAY, Period, bucket_key, bucket_keys, local_date, midnight_utc
 
 HOUSE_HISTORY_API_VERSION: Final = 1
@@ -296,9 +300,23 @@ def review_block(inputs: HouseHistoryInputs) -> dict[str, Any] | None:
                 "battery_saving": None if review.battery_saving is None else _r(review.battery_saving),
                 "plan_saving": _r(review.saving),
                 "own_saving": _r(review.actual_saving),
+                **_day_shares(review),
             }
             for review in reviews
         ],
+        # The days against their perfect plans in hindsight (`site/perfect_view.py`).
+        "perfect": perfect_block(reviews),
+    }
+
+
+def _day_shares(review: DayReview) -> dict[str, Any]:
+    """A day's share of its perfect plan: what really happened and the site's mode; `None` without a perfect plan."""
+    facit = review.facit
+    own = None if facit is None else facit.candidates.get("own")
+    plan = None if facit is None or review.mode is None else facit.candidates.get(review.mode)
+    return {
+        "own_share": None if own is None or own.share is None else round(own.share, 1),
+        "plan_share": None if plan is None or plan.share is None else round(plan.share, 1),
     }
 
 

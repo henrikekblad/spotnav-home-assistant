@@ -13,6 +13,7 @@ from typing import Any
 import pytest
 
 from custom_components.spotnav.api.house_history import read_archived_reviews
+from custom_components.spotnav.battery.hindsight import CellTemperature
 from custom_components.spotnav.battery.plan_shadow import DayReview, PriceSlot, Run
 from custom_components.spotnav.day_record import review_part
 from custom_components.spotnav.site.energy_flow import EnergyHour
@@ -27,6 +28,8 @@ from custom_components.spotnav.site.history_period import (
     shifted,
     utc_bounds,
 )
+from tests.test_house_view import facit_for
+
 from custom_components.spotnav.site.house_period import (
     BUCKET_KEYS,
     HISTORY_KEYS,
@@ -171,7 +174,14 @@ def month_inputs(**extra: Any) -> HouseHistoryInputs:
         has_heat=True,
         prices=flat_slots(start - timedelta(days=1), last + timedelta(days=1)),
         money=MONEY,
-        reviews=[review(date(2026, 11, day)) for day in range(3, 16)],
+        reviews=[
+            review(
+                date(2026, 11, day),
+                facit=None if day < 6 else facit_for(date(2026, 11, day), 900.0 + 20 * day, 700.0 + 15 * day, 820.0, 760.0, provisional=day == 15),
+                cell_temperature=None if day < 8 else CellTemperature(19.5 + day * 0.2, 23.0 + day * 0.3, 15 if day == 12 else 0, 1440),
+            )
+            for day in range(3, 16)
+        ],
         archived=frozenset({date(2026, 11, 3)}),
         forecast_mae={"house_kw": {date(2026, 11, 14): 0.4, date(2026, 11, 15): 0.6, date(2026, 10, 31): 9.0}},
     )
