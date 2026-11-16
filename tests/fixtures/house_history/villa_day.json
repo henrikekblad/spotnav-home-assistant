@@ -1,0 +1,518 @@
+{
+  "api_version": 1,
+  "buckets": [
+    {
+      "battery_in": 0.0,
+      "battery_out": 0.0,
+      "car": 0.0,
+      "cost": 180.0,
+      "grid_in": 1.2,
+      "grid_out": 0.0,
+      "heat": 0.8,
+      "house": 0.4,
+      "key": "2026-11-15T00:00:00+01:00",
+      "periods": 4,
+      "solar": 0.0,
+      "use": 1.2
+    },
+    {
+      "battery_in": 0.0,
+      "battery_out": 0.0,
+      "car": 0.0,
+      "cost": 180.0,
+      "grid_in": 1.2,
+      "grid_out": 0.0,
+      "heat": 0.8,
+      "house": 0.4,
+      "key": "2026-11-15T01:00:00+01:00",
+      "periods": 4,
+      "solar": 0.0,
+      "use": 1.2
+    },
+    {
+      "battery_in": 0.0,
+      "battery_out": 0.0,
+      "car": 0.0,
+      "cost": 180.0,
+      "grid_in": 1.2,
+      "grid_out": 0.0,
+      "heat": 0.8,
+      "house": 0.4,
+      "key": "2026-11-15T02:00:00+01:00",
+      "periods": 4,
+      "solar": 0.0,
+      "use": 1.2
+    },
+    {
+      "battery_in": 0.0,
+      "battery_out": 0.0,
+      "car": 0.0,
+      "cost": 180.0,
+      "grid_in": 1.2,
+      "grid_out": 0.0,
+      "heat": 0.8,
+      "house": 0.4,
+      "key": "2026-11-15T03:00:00+01:00",
+      "periods": 4,
+      "solar": 0.0,
+      "use": 1.2
+    },
+    {
+      "battery_in": 0.0,
+      "battery_out": 0.0,
+      "car": 0.0,
+      "cost": 180.0,
+      "grid_in": 1.2,
+      "grid_out": 0.0,
+      "heat": 0.8,
+      "house": 0.4,
+      "key": "2026-11-15T04:00:00+01:00",
+      "periods": 4,
+      "solar": 0.0,
+      "use": 1.2
+    },
+    {
+      "battery_in": 0.0,
+      "battery_out": 0.0,
+      "car": 0.0,
+      "cost": 180.0,
+      "grid_in": 1.2,
+      "grid_out": 0.0,
+      "heat": 0.8,
+      "house": 0.4,
+      "key": "2026-11-15T05:00:00+01:00",
+      "periods": 4,
+      "solar": 0.0,
+      "use": 1.2
+    },
+    {
+      "battery_in": 0.0,
+      "battery_out": 0.0,
+      "car": 0.0,
+      "cost": 180.0,
+      "grid_in": 1.2,
+      "grid_out": 0.0,
+      "heat": 0.8,
+      "house": 0.4,
+      "key": "2026-11-15T06:00:00+01:00",
+      "periods": 4,
+      "solar": 0.0,
+      "use": 1.2
+    },
+    {
+      "battery_in": 0.0,
+      "battery_out": 0.0,
+      "car": 0.0,
+      "cost": 180.0,
+      "grid_in": 1.2,
+      "grid_out": 0.0,
+      "heat": 0.8,
+      "house": 0.4,
+      "key": "2026-11-15T07:00:00+01:00",
+      "periods": 4,
+      "solar": 0.0,
+      "use": 1.2
+    },
+    {
+      "battery_in": 0.0,
+      "battery_out": 0.0,
+      "car": 0.0,
+      "cost": 180.0,
+      "grid_in": 1.2,
+      "grid_out": 0.0,
+      "heat": 0.8,
+      "house": 0.4,
+      "key": "2026-11-15T08:00:00+01:00",
+      "periods": 4,
+      "solar": 0.0,
+      "use": 1.2
+    },
+    {
+      "battery_in": 0.0,
+      "battery_out": 0.0,
+      "car": 0.0,
+      "cost": 180.0,
+      "grid_in": 1.2,
+      "grid_out": 0.0,
+      "heat": 0.8,
+      "house": 0.4,
+      "key": "2026-11-15T09:00:00+01:00",
+      "periods": 4,
+      "solar": 0.0,
+      "use": 1.2
+    },
+    {
+      "battery_in": 0.5,
+      "battery_out": 0.0,
+      "car": 0.0,
+      "cost": 48.0,
+      "grid_in": 0.4,
+      "grid_out": 0.2,
+      "heat": 0.8,
+      "house": 0.4,
+      "key": "2026-11-15T10:00:00+01:00",
+      "periods": 4,
+      "solar": 1.5,
+      "use": 1.2
+    },
+    {
+      "battery_in": 0.5,
+      "battery_out": 0.0,
+      "car": 0.0,
+      "cost": 48.0,
+      "grid_in": 0.4,
+      "grid_out": 0.2,
+      "heat": 0.8,
+      "house": 0.4,
+      "key": "2026-11-15T11:00:00+01:00",
+      "periods": 4,
+      "solar": 1.5,
+      "use": 1.2
+    },
+    {
+      "battery_in": 0.5,
+      "battery_out": 0.0,
+      "car": 0.0,
+      "cost": 48.0,
+      "grid_in": 0.4,
+      "grid_out": 0.2,
+      "heat": 0.8,
+      "house": 0.4,
+      "key": "2026-11-15T12:00:00+01:00",
+      "periods": 4,
+      "solar": 1.5,
+      "use": 1.2
+    },
+    {
+      "battery_in": 0.5,
+      "battery_out": 0.0,
+      "car": 0.0,
+      "cost": 48.0,
+      "grid_in": 0.4,
+      "grid_out": 0.2,
+      "heat": 0.8,
+      "house": 0.4,
+      "key": "2026-11-15T13:00:00+01:00",
+      "periods": 4,
+      "solar": 1.5,
+      "use": 1.2
+    },
+    {
+      "battery_in": 0.0,
+      "battery_out": 0.0,
+      "car": 0.0,
+      "cost": 180.0,
+      "grid_in": 1.2,
+      "grid_out": 0.0,
+      "heat": 0.8,
+      "house": 0.4,
+      "key": "2026-11-15T14:00:00+01:00",
+      "periods": 4,
+      "solar": 0.0,
+      "use": 1.2
+    },
+    {
+      "battery_in": 0.0,
+      "battery_out": 0.0,
+      "car": 0.0,
+      "cost": 180.0,
+      "grid_in": 1.2,
+      "grid_out": 0.0,
+      "heat": 0.8,
+      "house": 0.4,
+      "key": "2026-11-15T15:00:00+01:00",
+      "periods": 4,
+      "solar": 0.0,
+      "use": 1.2
+    },
+    {
+      "battery_in": 0.0,
+      "battery_out": 0.0,
+      "car": 0.0,
+      "cost": 180.0,
+      "grid_in": 1.2,
+      "grid_out": 0.0,
+      "heat": 0.8,
+      "house": 0.4,
+      "key": "2026-11-15T16:00:00+01:00",
+      "periods": 4,
+      "solar": 0.0,
+      "use": 1.2
+    },
+    {
+      "battery_in": 0.0,
+      "battery_out": 0.6,
+      "car": 0.0,
+      "cost": 150.0,
+      "grid_in": 0.6,
+      "grid_out": 0.0,
+      "heat": 0.8,
+      "house": 0.4,
+      "key": "2026-11-15T17:00:00+01:00",
+      "periods": 4,
+      "solar": 0.0,
+      "use": 1.2
+    },
+    {
+      "battery_in": 0.0,
+      "battery_out": 0.6,
+      "car": 0.0,
+      "cost": 150.0,
+      "grid_in": 0.6,
+      "grid_out": 0.0,
+      "heat": 0.8,
+      "house": 0.4,
+      "key": "2026-11-15T18:00:00+01:00",
+      "periods": 4,
+      "solar": 0.0,
+      "use": 1.2
+    },
+    {
+      "battery_in": 0.0,
+      "battery_out": 0.6,
+      "car": 0.0,
+      "cost": 150.0,
+      "grid_in": 0.6,
+      "grid_out": 0.0,
+      "heat": 0.8,
+      "house": 0.4,
+      "key": "2026-11-15T19:00:00+01:00",
+      "periods": 4,
+      "solar": 0.0,
+      "use": 1.2
+    },
+    {
+      "battery_in": 0.0,
+      "battery_out": 0.6,
+      "car": 0.0,
+      "cost": 90.0,
+      "grid_in": 0.6,
+      "grid_out": 0.0,
+      "heat": 0.8,
+      "house": 0.4,
+      "key": "2026-11-15T20:00:00+01:00",
+      "periods": 4,
+      "solar": 0.0,
+      "use": 1.2
+    },
+    {
+      "battery_in": 0.0,
+      "battery_out": 0.0,
+      "car": 0.0,
+      "cost": 90.0,
+      "grid_in": 0.6,
+      "grid_out": 0.0,
+      "heat": 0.6,
+      "house": 0.0,
+      "key": "2026-11-15T21:00:00+01:00",
+      "periods": 4,
+      "solar": 0.0,
+      "use": 0.6
+    },
+    {
+      "battery_in": 0.0,
+      "battery_out": 0.0,
+      "car": 0.0,
+      "cost": 90.0,
+      "grid_in": 0.6,
+      "grid_out": 0.0,
+      "heat": 0.6,
+      "house": 0.0,
+      "key": "2026-11-15T22:00:00+01:00",
+      "periods": 4,
+      "solar": 0.0,
+      "use": 0.6
+    },
+    {
+      "battery_in": 0.0,
+      "battery_out": 0.0,
+      "car": 0.0,
+      "cost": 90.0,
+      "grid_in": 0.6,
+      "grid_out": 0.0,
+      "heat": 0.6,
+      "house": 0.0,
+      "key": "2026-11-15T23:00:00+01:00",
+      "periods": 4,
+      "solar": 0.0,
+      "use": 0.6
+    }
+  ],
+  "complete": true,
+  "cost": {
+    "bought": 3390.0,
+    "kwh_in": 21.4,
+    "kwh_out": 0.8,
+    "net": 3342.0,
+    "periods": 96,
+    "priced": 96,
+    "sold": 48.0
+  },
+  "date": "2026-11-15",
+  "end": "2026-11-16",
+  "energy_flow": {
+    "car_hours": 96,
+    "date": "2026-11-15",
+    "heat_hours": 96,
+    "hours": 96,
+    "links": [
+      {
+        "from": "source.solar",
+        "kwh": 1.2,
+        "to": "use.battery"
+      },
+      {
+        "from": "source.solar",
+        "kwh": 1.6,
+        "to": "use.house"
+      },
+      {
+        "from": "source.solar",
+        "kwh": 3.2,
+        "to": "use.heat"
+      },
+      {
+        "from": "source.battery",
+        "kwh": 1.6,
+        "to": "use.house"
+      },
+      {
+        "from": "source.battery",
+        "kwh": 0.8,
+        "to": "use.heat"
+      },
+      {
+        "from": "source.grid",
+        "kwh": 0.8,
+        "to": "use.battery"
+      },
+      {
+        "from": "source.grid",
+        "kwh": 5.2,
+        "to": "use.house"
+      },
+      {
+        "from": "source.grid",
+        "kwh": 14.6,
+        "to": "use.heat"
+      }
+    ],
+    "nodes": [
+      {
+        "id": "source.solar",
+        "kwh": 6.0,
+        "role": "solar",
+        "side": "source",
+        "soc_pct": null
+      },
+      {
+        "id": "source.battery",
+        "kwh": 2.4,
+        "role": "battery",
+        "side": "source",
+        "soc_pct": null
+      },
+      {
+        "id": "source.grid",
+        "kwh": 20.6,
+        "role": "grid",
+        "side": "source",
+        "soc_pct": null
+      },
+      {
+        "id": "use.battery",
+        "kwh": 2.0,
+        "role": "battery",
+        "side": "use",
+        "soc_pct": null
+      },
+      {
+        "id": "use.house",
+        "kwh": 8.4,
+        "role": "house",
+        "side": "use",
+        "soc_pct": null
+      },
+      {
+        "id": "use.heat",
+        "kwh": 18.6,
+        "role": "heat",
+        "side": "use",
+        "soc_pct": null
+      },
+      {
+        "id": "use.car",
+        "kwh": 0,
+        "role": "car",
+        "side": "use",
+        "soc_pct": null
+      },
+      {
+        "id": "use.grid",
+        "kwh": 0,
+        "role": "grid",
+        "side": "use",
+        "soc_pct": null
+      }
+    ],
+    "step_min": 15,
+    "through": "2026-11-15T23:00:00+00:00"
+  },
+  "forecast": {
+    "house": {
+      "days": 1,
+      "mae": 0.42
+    },
+    "soc": {
+      "days": 1,
+      "mae": 6.5
+    },
+    "sun": {
+      "days": 1,
+      "mae": 0.12
+    },
+    "sun_corrected": {
+      "days": 1,
+      "mae": 0.09
+    }
+  },
+  "generated_at": "2026-11-16T13:20:00+00:00",
+  "money": {
+    "currency": "SEK",
+    "major_unit": "kr",
+    "minor_unit": "öre"
+  },
+  "period": "day",
+  "review": {
+    "actual_cost": 3000.0,
+    "against_nothing": 1100.0,
+    "archived": 0,
+    "battery_days": 1,
+    "battery_saving": 400.0,
+    "days": 1,
+    "mode": "balanced",
+    "modes": {
+      "balanced": {
+        "days": 1,
+        "saving": 150.0
+      },
+      "max_profit": {
+        "days": 1,
+        "saving": 200.0
+      },
+      "self_consumption": {
+        "days": 0,
+        "saving": null
+      }
+    },
+    "nothing_days": 1,
+    "own_saving": 50.0,
+    "period_days": 1,
+    "plan_saving": 150.0,
+    "sun_days": 1,
+    "sun_gave": 700.0
+  },
+  "site_id": "site_villa",
+  "time_zone": "Europe/Stockholm",
+  "today": "2026-11-16"
+}
