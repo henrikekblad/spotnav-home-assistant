@@ -1,0 +1,23 @@
+{
+  "api_version": 1,
+  "site_id": "site_empty",
+  "name": "Hemma",
+  "charger_ids": [],
+  "writable": true,
+  "price": null,
+  "battery": {
+    "found": false
+  },
+  "setup": {
+    "items": [
+      {
+        "id": "charger",
+        "dismissible": true
+      },
+      {
+        "id": "price",
+        "dismissible": false
+      }
+    ]
+  }
+}

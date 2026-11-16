@@ -4,6 +4,9 @@
 
 from __future__ import annotations
 
+import json
+import os
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -133,3 +136,36 @@ async def test_battery_control_by_a_charger_reads_its_site(hass: HomeAssistant, 
         "result"
     ]
     assert alone["error"] == "spotnav_no_site"
+
+
+FIXTURES = Path(__file__).parent / "fixtures"
+
+
+def _fixture(*parts: str) -> dict[str, Any]:
+    return json.loads((FIXTURES.joinpath(*parts)).read_text(encoding="utf-8"))
+
+
+async def test_the_card_fixtures_have_the_answers_shapes(hass: HomeAssistant, hass_ws_client: Any) -> None:
+    """The card's contract fixtures (`tests/fixtures/site_view/`, `tests/fixtures/battery_control/`) carry exactly
+    the keys the real answers carry; `no_charger.json` is the real answer itself (`SPOTNAV_WRITE_FIXTURES=1`
+    rewrites it)."""
+    await setup_site(hass, entry_id="site_empty", title="Hemma")
+    client = await hass_ws_client(hass)
+    view = (await _ask(client, {"type": "spotnav/get_site_settings_view", "api_version": 1, "site_id": "site_empty"}))[
+        "result"
+    ]
+    path = FIXTURES / "site_view" / "no_charger.json"
+    if os.environ.get("SPOTNAV_WRITE_FIXTURES") == "1":
+        path.write_text(json.dumps(view, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    assert view == _fixture("site_view", "no_charger.json")
+    villa = _fixture("site_view", "villa.json")
+    assert set(villa) == set(view) and set(villa["price"]) == {"entry_id", "title", "area_id", "area_name"}
+
+    battery = (await _ask(client, {"type": "spotnav/battery_control", "api_version": 1, "site_id": "site_empty"}))[
+        "result"
+    ]
+    for name in ("needs_ack.json", "checking.json"):
+        fixture = _fixture("battery_control", name)
+        assert set(fixture) == set(battery)
+        assert set(fixture["status"]) == set(battery["status"]), name
+        assert set(fixture["status"]["options"]) == set(battery["status"]["options"]), name
