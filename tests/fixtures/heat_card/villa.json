@@ -268,7 +268,7 @@
       {
         "entity_id": "sensor.toalett_nv_temperatur",
         "name": "Toalett NV temperatur",
-        "value": "20.4 °C"
+        "value": "20.6 °C"
       },
       {
         "entity_id": "sensor.garage_temperatur",
@@ -385,8 +385,8 @@
     ]
   },
   "indoor": {
-    "coldest": "sensor.toalett_nv_temperatur",
-    "coldest_name": "Toalett NV temperatur",
+    "coldest": "sensor.ovanvaning_temperatur",
+    "coldest_name": "Ovanvåning temperatur",
     "sensors": [
       {
         "entity_id": "sensor.inomhus_kok_temperatur",
@@ -407,10 +407,10 @@
         "name": "Toalett NV temperatur",
         "rise_c": -0.1,
         "status": "ok",
-        "value_c": 20.4
+        "value_c": 20.6
       }
     ],
-    "value_c": 20.4
+    "value_c": 20.5
   },
   "meter": {
     "baseline_kw": 1.12,

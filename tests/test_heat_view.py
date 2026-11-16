@@ -88,14 +88,14 @@ def villa_answer() -> dict[str, Any]:
     sensors = [
         SensorReading("sensor.inomhus_kok_temperatur", "Inomhus kök temperatur", 21.3, ((NOW - timedelta(minutes=40), 21.2),)),
         SensorReading("sensor.ovanvaning_temperatur", "Ovanvåning temperatur", 20.5, ((NOW - timedelta(minutes=40), 20.5),)),
-        SensorReading("sensor.toalett_nv_temperatur", "Toalett NV temperatur", 20.4, ((NOW - timedelta(minutes=40), 20.5),)),
+        SensorReading("sensor.toalett_nv_temperatur", "Toalett NV temperatur", 20.6, ((NOW - timedelta(minutes=40), 20.7),)),
     ]
     car = frozenset(MIDNIGHT + timedelta(hours=h) for h in (1, 2, 3, 4))
     choices = {
         "indoor": [
             _choice("sensor.inomhus_kok_temperatur", "Inomhus kök temperatur", "21.3 °C"),
             _choice("sensor.ovanvaning_temperatur", "Ovanvåning temperatur", "20.5 °C"),
-            _choice("sensor.toalett_nv_temperatur", "Toalett NV temperatur", "20.4 °C"),
+            _choice("sensor.toalett_nv_temperatur", "Toalett NV temperatur", "20.6 °C"),
             _choice("sensor.garage_temperatur", "Garage temperatur", "13.5 °C"),
         ],
         "outdoor": [
@@ -196,7 +196,7 @@ def test_the_villa() -> None:
     assert tuple(answer) == HEAT_KEYS
     assert all(tuple(hour) == BAND_HOUR_KEYS for hour in answer["band"]["hours"])
     assert answer["comfort"] == {"target_c": 21.0, "low_c": 20.5, "high_c": 21.5, "mode": "home", "away_until": None, "aim_c": 20.5}
-    assert (answer["indoor"]["value_c"], answer["indoor"]["coldest"]) == (20.4, "sensor.toalett_nv_temperatur")
+    assert (answer["indoor"]["value_c"], answer["indoor"]["coldest"]) == (20.5, "sensor.ovanvaning_temperatur")
     # 17:20 lies in the evening's dearest hours: lowered to the band's low edge until 20:00.
     would = answer["status"]["would"]
     assert (would["action"], would["reason"]) == ("lower", "dear_hour")

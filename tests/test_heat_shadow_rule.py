@@ -88,3 +88,25 @@ def test_the_cooler_night_and_away() -> None:
 def test_a_short_day_at_the_clock_change() -> None:
     spring = datetime(2027, 3, 28, 0, 0, tzinfo=ZONE).astimezone(timezone.utc)
     assert len(day_hours(spring, ZONE)) == 23
+
+
+def test_a_tight_hour_in_the_dearer_half_is_lowered_first() -> None:
+    now = MIDNIGHT + timedelta(hours=5)
+    # 15:00 (130 öre, below the dear bar) is tight: the car and the house reach the import cap there.
+    tight = {HOURS[15], HOURS[2]}
+    hours, _ = band(HeatConfig(target_c=21.0), HOURS, priced(), now, ZONE, tight=tight)
+    assert hours[15].action == "lower" and hours[15].reason == "tight_hour"
+    # 02:00 is tight too, but in the cheap half: the heat would come back dearer after it.
+    assert hours[2].action == "normal"
+    assert sum(1 for hour in hours if hour.action == "lower") <= 6
+
+
+def test_a_cold_forecast_hour_is_not_lowered_and_a_room_below_the_band_stops_it() -> None:
+    now = MIDNIGHT + timedelta(hours=5)
+    outdoor = {start: (-16.0 if index in (17, 18) else -5.0) for index, start in enumerate(HOURS)}
+    hours, guard = band(HeatConfig(target_c=21.0), HOURS, priced(), now, ZONE, outdoor_by_hour=outdoor)
+    assert guard is None
+    assert hours[17].action == "normal" and hours[17].reason == "too_cold" and hours[16].action == "lower"
+    # The coldest room 20.4 °C is below the band (20.5): no lowering from now on.
+    _, guard = band(HeatConfig(target_c=21.0), HOURS, priced(), now, ZONE, coldest_c=20.4)
+    assert guard == "room_cold"

@@ -76,7 +76,7 @@ describe("the front", () => {
     expect(card.querySelector("[data-line='band']")!.textContent).toBe("inom 20,5–21,5 °C");
     expect(card.querySelector("[data-measured]")).not.toBeNull();
     // The sensor's "temperatur" left off the room's name; a figure and its unit kept together.
-    expect(measuredLine("sv", villa)).toBe("Inne 20,4\u00a0°C (kallast: Toalett NV) · Ute 6,2\u00a0°C");
+    expect(measuredLine("sv", villa)).toBe("Inne 20,5\u00a0°C (kallast: Ovanvåning) · Ute 6,2\u00a0°C");
     expect(pumpLine("sv", villa)).toBe("Värmepumpen värmer · 1,1 kW");
     expect(wouldLine("sv", villa)).toBe("Skulle sänka till 20,5 °C till 20:00: dyra timmar");
     expect(card.querySelector("[data-line='shadow']")!.textContent).toBe("Temperaturen och Hemma/Borta som du ställer in här följer SpotNav när den börjar styra värmen.");
