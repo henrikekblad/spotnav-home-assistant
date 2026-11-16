@@ -711,3 +711,16 @@ async def test_a_closing_pending_while_the_relay_is_unavailable_starts_no_pause(
     hass.states.async_set(RELAY, "off")
     await control.async_look(now + READ_BACK + 2 * MIN)
     assert relay.calls == ["on"] and not control.held and control.paused_until is None
+
+
+async def test_the_store_is_saved_only_when_its_data_changed(hass: HomeAssistant, freezer) -> None:
+    _site_, control, relay, now = await _running(hass, freezer)
+    await control.async_look(now)
+    saves: list[int] = []
+    control._store.async_delay_save = lambda *_args, **_kw: saves.append(1)  # type: ignore[method-assign]  # noqa: SLF001
+    for minute in range(1, 6):
+        await control.async_look(now + minute * MIN)
+    assert saves == []
+    _plan(control, now + 6 * MIN, 0, 1)
+    await control.async_look(now + 6 * MIN)
+    assert relay.calls == ["on"] and saves

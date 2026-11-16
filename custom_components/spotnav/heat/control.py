@@ -205,6 +205,8 @@ class HeatControl:
         self.signal = False
         self._levels_hour: datetime | None = None
         self._loaded = False
+        #: The kept data as last saved (or loaded).
+        self._saved: dict[str, Any] | None = None
         self._closed = False
         self._looking = False
         self._again = False
@@ -218,6 +220,7 @@ class HeatControl:
             self._restore(await self._store.async_load())
         except Exception:  # noqa: BLE001 - a store that cannot be read starts again (the relay is read as it is)
             _LOGGER.warning("SpotNav heat control: the kept state could not be read; starting a new one", exc_info=True)
+        self._saved = self._data()
         self._loaded = True
         self._timer_cancel = async_track_time_interval(self.hass, self._async_tick, timedelta(seconds=LOOK_S))
         self.request_look()
@@ -262,8 +265,14 @@ class HeatControl:
         }
 
     def _save(self) -> None:
-        if self._loaded:
-            self._store.async_delay_save(self._data, 1.0)
+        """Save (delayed) when the kept data changed since the last save."""
+        if not self._loaded:
+            return
+        data = self._data()
+        if data == self._saved:
+            return
+        self._saved = data
+        self._store.async_delay_save(self._data, 1.0)
 
     async def async_shutdown(self) -> None:
         """Open the relay SpotNav holds (bounded) and keep the state: a relay still held is opened at the next start."""
