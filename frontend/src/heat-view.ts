@@ -650,34 +650,34 @@ export function heatSettingsSection(doc: Document, language: Language, answer: H
     : sensors.length <= 2
       ? sensors.map((id) => nameOf(names, id, id)).join(", ")
       : translate(language, "heat.settings.indoorCount", { count: String(sensors.length) });
-  row("indoor", translate(language, "heat.settings.indoor"), indoorValue, translate(language, "heat.settings.indoorHelp"));
+  // Each row's help is in its own editor, so the section is a short list; only a row that cannot be opened keeps it.
+  row("indoor", translate(language, "heat.settings.indoor"), indoorValue);
   row(
     "outdoor",
     translate(language, "heat.settings.outdoor"),
     config.outdoor_sensor === null ? translate(language, "heat.settings.outdoorAuto") : nameOf(names, config.outdoor_sensor, none),
-    config.outdoor_sensor === null ? translate(language, "heat.settings.outdoorHelp") : undefined,
   );
   const meter = answer.meter;
+  const meterEditable = meter?.setting_offered === true && answer.choices?.meter !== null && answer.choices !== null;
   row(
     "meter",
     translate(language, "heat.settings.meter"),
     meter?.entity_id ? nameOf(names, meter.entity_id, none) : translate(language, "heat.settings.meterNone"),
-    translate(language, "heat.settings.meterHelp"),
-    meter?.setting_offered === true && answer.choices?.meter !== null && answer.choices !== null,
+    meterEditable ? undefined : translate(language, "heat.settings.meterHelp"),
+    meterEditable,
   );
-  row("path", translate(language, "heat.settings.path"), translate(language, `heat.path.${config.control_path}` as TranslationKey), translate(language, "heat.settings.pathHelp"));
+  row("path", translate(language, "heat.settings.path"), translate(language, `heat.path.${config.control_path}` as TranslationKey));
   if (config.control_path !== "none") {
     row("control", translate(language, "heat.settings.control"), nameOf(names, config.control_entity, none));
   }
   if (config.control_path === "sg_ready") {
     row("controlB", translate(language, "heat.settings.controlB"), nameOf(names, config.control_entity_b, none));
   }
-  row("hotWater", translate(language, "heat.settings.hotWater"), nameOf(names, config.hot_water_entity, none), translate(language, "heat.settings.hotWaterHelp"));
+  row("hotWater", translate(language, "heat.settings.hotWater"), nameOf(names, config.hot_water_entity, none));
   row(
     "zones",
     translate(language, "heat.settings.zones"),
     config.zones.length === 0 ? translate(language, "heat.settings.zonesNone") : String(config.zones.length),
-    translate(language, "heat.settings.zonesHelp"),
   );
   for (const zone of config.zones) {
     const shown = answer.zones.find((item) => item.entity_id === zone.entity_id);
@@ -697,7 +697,6 @@ export function heatSettingsSection(doc: Document, language: Language, answer: H
     night.on
       ? translate(language, "heat.settings.nightValue", { delta: degrees(language, night.delta_c), start: night.start, end: night.end })
       : translate(language, "settings.value.off"),
-    translate(language, "heat.settings.nightHelp"),
   );
   return section;
 }

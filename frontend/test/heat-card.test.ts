@@ -148,6 +148,10 @@ describe("the settings section", () => {
     expect(section.querySelector("[data-help='zone:climate.ovanvaning']")!.textContent).toBe(
       "Luft-luftvärmepump: SpotNav ändrar bara börvärdet, slår aldrig av eller på.",
     );
+    // A row that opens an editor says its help there, not under the row.
+    for (const key of ["indoor", "outdoor", "path", "hotWater", "zones", "night"]) {
+      expect(section.querySelector(`[data-help='${key}']`), key).toBeNull();
+    }
   });
 });
 
