@@ -8,17 +8,18 @@ from datetime import date, datetime, timedelta, timezone
 import pytest
 
 from custom_components.spotnav.battery.hindsight import (
-    BASIS_AHEAD,
     BASIS_DAY,
+    BASIS_NEXT_DAY,
     HOT_C,
+    MIN_PERFECT_SAVING,
     OWN,
     SELF_CONSUMPTION,
+    WHOLE_DAY_SHARE,
     CellTemperature,
     Facit,
     cell_temperature,
-    end_value_ahead,
+    end_value_next_day,
     facit_day,
-    house_profile,
     share_of,
     work_of,
 )
@@ -65,7 +66,7 @@ def _ahead(buy: list[float], start: datetime) -> list[PriceSlot]:
     return [PriceSlot(start + timedelta(hours=h), start + timedelta(hours=h + 1), price, price - 60) for h, price in enumerate(buy)]
 
 
-def _facit(buckets: list[Bucket], end_value: float, basis: str = BASIS_AHEAD) -> Facit:
+def _facit(buckets: list[Bucket], end_value: float, basis: str = BASIS_NEXT_DAY) -> Facit:
     review = review_day(DAY, buckets, BATTERY, TZ, MIDNIGHT + timedelta(days=1, hours=1), [MODE_BALANCED, MODE_MAX_PROFIT], MODE_BALANCED)
     assert review is not None
     made = facit_day(
@@ -79,6 +80,7 @@ def _facit(buckets: list[Bucket], end_value: float, basis: str = BASIS_AHEAD) ->
         end_value=end_value,
         basis=basis,
         no_battery_cost=no_battery_cost(buckets),
+        day_quarters=96,
         now=MIDNIGHT + timedelta(days=1, hours=1),
     )
     assert made is not None
@@ -88,42 +90,24 @@ def _facit(buckets: list[Bucket], end_value: float, basis: str = BASIS_AHEAD) ->
 # ------------------------------------------------------------------------------------------------ the end value
 
 
-def test_the_energy_left_is_worth_the_dearest_hours_a_full_battery_covers_less_the_round_trip() -> None:
+def test_the_energy_left_is_worth_the_next_days_mean_buy_price_less_the_round_trip() -> None:
     end = MIDNIGHT + timedelta(days=1)
-    # 48 h: one dear hour at 500, the rest at 100. The house draws 1 kW all day.
-    buy = [100.0] * 48
+    # The next day: one dear hour at 500, the rest at 100. Its mean, not its dearest hours: a price known at the time.
+    buy = [100.0] * 24
     buy[18] = 500.0
-    profile = {index: 1.0 for index in range(96)}
-    value = end_value_ahead(_ahead(buy, end), end, BATTERY, profile)
-    # A full battery gives 9 kWh x the one-way efficiency; the house takes 1 kWh an hour: the dear hour and the
-    # rest at 100.
-    ac = 9 * BATTERY.one_way_efficiency
-    assert value == pytest.approx((500 * 1 + 100 * (ac - 1)) / ac * BATTERY.round_trip_efficiency)
+    value = end_value_next_day(_ahead(buy + [900.0] * 24, end), end, end + timedelta(days=1), BATTERY)
+    assert value == pytest.approx((100 * 23 + 500) / 24 * BATTERY.round_trip_efficiency)
+    # Weighed by time over the next day's own length: a 23-hour day of quarter hours.
+    quarters = [PriceSlot(end + timedelta(minutes=15 * q), end + timedelta(minutes=15 * (q + 1)), 200.0, 140.0) for q in range(92)]
+    assert end_value_next_day(quarters, end, end + timedelta(hours=23), BATTERY) == pytest.approx(200 * BATTERY.round_trip_efficiency)
 
 
-def test_the_house_bounds_what_a_dear_hour_can_take() -> None:
+def test_without_the_next_days_prices_there_is_no_value_yet() -> None:
     end = MIDNIGHT + timedelta(days=1)
-    buy = [100.0] * 48
-    buy[18] = 500.0
-    # An idle house: each quarter hour can take nothing, so no hour is worth more than another: the median.
-    value = end_value_ahead(_ahead(buy, end), end, BATTERY, {index: 0.0 for index in range(96)})
-    assert value == pytest.approx(100 * BATTERY.round_trip_efficiency)
-    # No figure for the time of day: the battery's rated discharge (5 kW) takes the whole dear hour.
-    full = end_value_ahead(_ahead(buy, end), end, BATTERY, {})
-    ac = 9 * BATTERY.one_way_efficiency
-    assert full == pytest.approx((500 * 5 + 100 * (ac - 5)) / ac * BATTERY.round_trip_efficiency)
-
-
-def test_without_the_next_two_days_prices_there_is_no_value_yet() -> None:
-    end = MIDNIGHT + timedelta(days=1)
-    assert end_value_ahead(_ahead([100.0] * 24, end), end, BATTERY, {}) is None
-    assert end_value_ahead([], end, BATTERY, {}) is None
-
-
-def test_the_house_profile_is_by_quarter_hour_of_the_day() -> None:
-    buckets = _day(battery=[0.0] * 24, soc=[10.0] * 25, house=2.0)
-    profile = house_profile(buckets, MIDNIGHT)
-    assert len(profile) == 96 and set(profile.values()) == {2.0}
+    assert end_value_next_day(_ahead([100.0] * 12, end), end, end + timedelta(days=1), BATTERY) is None
+    assert end_value_next_day([], end, end + timedelta(days=1), BATTERY) is None
+    # The day itself does not stand in for the next.
+    assert end_value_next_day(_ahead([100.0] * 24, MIDNIGHT), end, end + timedelta(days=1), BATTERY) is None
 
 
 # ------------------------------------------------------------------------------------------------ the facit
@@ -147,7 +131,7 @@ def test_an_idle_battery_gets_none_of_what_the_perfect_plan_saves() -> None:
     # Its perfect plan charged from the grid in the night and gave it back in the day.
     work = made.perfect[MODE_BALANCED].work
     assert work.grid_charge_kwh > 5 and work.switches == 1 and work.cycles == pytest.approx(work.discharged_kwh / 10)
-    assert made.mode == MODE_BALANCED and made.basis == BASIS_AHEAD
+    assert made.mode == MODE_BALANCED and made.basis == BASIS_NEXT_DAY and made.whole
 
 
 def test_energy_left_at_midnight_counts_for_every_way_at_the_same_value() -> None:
@@ -166,15 +150,53 @@ def test_energy_left_at_midnight_counts_for_every_way_at_the_same_value() -> Non
     assert high.saving > low.saving
     own = high.candidates[OWN]
     assert own.saving > high.saving and own.share == 100.0 and own.clamped
-    assert low.basis == BASIS_AHEAD
+    assert low.basis == BASIS_NEXT_DAY
 
 
 def test_a_way_above_the_perfect_plan_or_below_no_battery_is_clamped_and_says_so() -> None:
-    assert share_of(80.0, 100.0) == (pytest.approx(80.0), False)
-    assert share_of(103.0, 100.0) == (100.0, True)
-    assert share_of(-20.0, 100.0) == (0.0, True)
-    assert share_of(100.04, 100.0) == (100.0, False)  # rounding, not worth a word
-    assert share_of(50.0, 0.0) == (None, False)  # nothing to gain
+    assert share_of(800.0, 1000.0) == (pytest.approx(80.0), False)
+    assert share_of(1030.0, 1000.0) == (100.0, True)
+    assert share_of(-200.0, 1000.0) == (0.0, True)
+    assert share_of(1000.4, 1000.0) == (100.0, False)  # rounding, not worth a word
+
+
+def test_a_perfect_saving_under_five_kronor_a_day_is_too_small_to_compare() -> None:
+    assert MIN_PERFECT_SAVING == 500.0
+    assert share_of(300.0, 499.0) == (None, False)
+    assert share_of(300.0, 500.0) == (pytest.approx(60.0), False)
+    assert share_of(50.0, 0.0) == (None, False)
+    # A week: 5 kr a day over its days.
+    assert share_of(1500.0, 3000.0, MIN_PERFECT_SAVING * 7) == (None, False)
+    assert share_of(1500.0, 3500.0, MIN_PERFECT_SAVING * 7)[0] == pytest.approx(1500 / 3500 * 100)
+
+
+def test_a_partial_day_gets_its_figures_and_no_share() -> None:
+    ran = [(ACTION_GRID_CHARGE, 1.5)] * 6 + [(ACTION_DISCHARGE_HOUSE, 0.0)] * 18
+    whole = _day(battery=[0.0] * 24, soc=[10.0] * 25, ran=ran)
+    # 86 of 96 quarter hours measured: under 90 %.
+    buckets = whole[:40] + whole[50:]
+    assert len(buckets) < WHOLE_DAY_SHARE * 96 <= len(whole[:44] + whole[50:])
+    review = review_day(DAY, buckets, BATTERY, TZ, MIDNIGHT + timedelta(days=1, hours=1), [MODE_BALANCED], MODE_BALANCED)
+    assert review is not None
+    made = facit_day(
+        buckets,
+        BATTERY,
+        start_soc_pct=review.start_soc_pct,
+        actual_cost=review.actual.cost,
+        actual_end_soc_pct=review.actual.end_soc_pct,
+        mode=review.mode,
+        wear=WEAR,
+        end_value=100.0,
+        basis=BASIS_NEXT_DAY,
+        no_battery_cost=no_battery_cost(buckets),
+        day_quarters=96,
+        now=MIDNIGHT + timedelta(days=1, hours=1),
+    )
+    assert made is not None and not made.whole and (made.measured, made.quarters) == (86, 96)
+    assert made.saving is not None and made.saving > MIN_PERFECT_SAVING
+    assert all(item.share is None for item in [*made.perfect.values(), *made.candidates.values()])
+    again = Facit.from_dict(made.as_dict())
+    assert again is not None and not again.whole and again.as_dict() == made.as_dict()
 
 
 def test_the_facit_survives_the_store_beside_its_review() -> None:

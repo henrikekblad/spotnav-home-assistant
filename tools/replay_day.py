@@ -21,8 +21,8 @@ have earned). The battery is the record's settings (as at the export) and its fl
 
 `--facit` prints the day against its perfect plan in hindsight instead (`battery/hindsight.py`, as the night's review
 works it out): the perfect plan's saving against no battery and each way's share of it, with the energy left at
-midnight valued over the 48 h after the day where the record's price table holds them, else at the day's own end
-value (`basis` says which).
+midnight valued at the next day's mean buy price where the record's price table holds it, else at the day's own end
+value (`basis` says which). A day under 90 % measured, or one whose perfect plan saved under 5 kr, has no share.
 
 Only the pure planner modules are imported, never Home Assistant's runtime; the Python of the test environment
 (`.venv`, with the `homeassistant` package installed) runs it. Exit status: 0 done, 2 the record cannot be replayed.
@@ -32,13 +32,14 @@ from __future__ import annotations
 
 import argparse
 from dataclasses import replace
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 import importlib
 import json
 from pathlib import Path
 import sys
 import types
 from typing import Any
+from zoneinfo import ZoneInfo
 
 ROOT = Path(__file__).resolve().parent.parent
 SCHEMA = 1
@@ -316,10 +317,12 @@ def facit(record: dict[str, Any]) -> dict[str, Any]:
     review = shadow.DayReview.from_dict(record.get("battery_review"))
     if review is None or not usable:
         raise ReplayError("the record has no review or no measured quarter hour with its prices")
-    start, end = _instant(record["start"]), _instant(record["end"])
+    end = _instant(record["end"])
+    following = day + timedelta(days=2)
+    next_end = datetime(following.year, following.month, following.day, tzinfo=ZoneInfo(tz)).astimezone(timezone.utc)
     table = [shadow.PriceSlot(first, last, float(buy), 0.0) for first, last, buy, _sell in _price_table(record) if buy is not None]
-    value = hindsight.end_value_ahead(table, end, battery, hindsight.house_profile(usable, start))
-    basis = hindsight.BASIS_AHEAD if value is not None else hindsight.BASIS_DAY
+    value = hindsight.end_value_next_day(table, end, next_end, battery)
+    basis = hindsight.BASIS_NEXT_DAY if value is not None else hindsight.BASIS_DAY
     currency = (record.get("prices") or {}).get("currency") or (record.get("settings") or {}).get("currency")
     made = hindsight.facit_day(
         usable,
@@ -332,6 +335,7 @@ def facit(record: dict[str, Any]) -> dict[str, Any]:
         end_value=review.end_value if value is None else value,
         basis=basis,
         no_battery_cost=no_battery_cost(usable),
+        day_quarters=shadow.day_quarters(day, tz),
         now=datetime.now(timezone.utc),
     )
     if made is None:
@@ -344,7 +348,9 @@ def render_facit(result: dict[str, Any]) -> str:
     lines = [
         f"{result['date']} (site {result['site_id']}): the perfect plan ({made['mode']}) saved "
         f"{made['perfect'][made['mode']]['saving']} minor {result['currency'] or 'currency'} units against no battery; "
-        f"the energy left at midnight at {made['end_value']} per kWh ({made['basis']})",
+        f"the energy left at midnight at {made['end_value']} per kWh ({made['basis']}); {made['measured']} of "
+        f"{made['quarters']} quarter hours measured"
+        + ("" if made["measured"] >= 0.9 * made["quarters"] else " (an incomplete day: no share)"),
     ]
     for name, item in made["candidates"].items():
         share = "-" if item["share"] is None else f"{item['share']} %" + (" (clamped)" if item["clamped"] else "")

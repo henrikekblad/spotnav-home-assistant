@@ -805,7 +805,7 @@ async def test_the_day_is_held_against_its_perfect_plan_once_reviewed_and_again_
 
     [review] = plan.reviews
     assert review.facit is not None
-    # The next two days' prices are not held: the energy left is valued at the day's own end value, said to be.
+    # The next day's prices are not held: the energy left is valued at the day's own end value, said to be.
     assert review.facit.basis == "day_median" and review.facit.end_value == pytest.approx(review.end_value)
     assert review.facit.saving is not None and review.facit.saving > 0
     assert review.facit.candidates["own"].share is not None
@@ -814,13 +814,13 @@ async def test_the_day_is_held_against_its_perfect_plan_once_reviewed_and_again_
     stored = plan.as_dict()["reviews"][0]
     assert stored["facit"]["basis"] == "day_median" and stored["cell_temperature"]["max_c"] == 32.0
 
-    # The next two days' prices come: worked out again on them, once.
-    ahead.extend(PriceSlot(end + timedelta(hours=h), end + timedelta(hours=h + 1), 500.0, 440.0) for h in range(48))
+    # The next day's prices come: worked out again on their mean, once.
+    ahead.extend(PriceSlot(end + timedelta(hours=h), end + timedelta(hours=h + 1), 400.0 + 200 * (h % 2), 440.0) for h in range(24))
     plan._quarter = None
     controller.battery_shadow.tick(now + timedelta(minutes=16))
     await hass.async_block_till_done()
     [review] = plan.reviews
-    assert review.facit is not None and review.facit.basis == "ahead"
+    assert review.facit is not None and review.facit.basis == "next_day"
     assert review.facit.end_value == pytest.approx(500.0 * 0.9)
     plan._quarter = None
     controller.battery_shadow.tick(now + timedelta(minutes=32))

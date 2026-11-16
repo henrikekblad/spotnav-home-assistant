@@ -852,7 +852,7 @@ class DayReview:
     sun_gave: float = 0.0
     sun_quarters: int | None = None
     #: The day against its perfect plan in hindsight (`hindsight.py`); `None` until it is worked out (the night after,
-    #: again once the next two days' prices are known) and in a review from before it.
+    #: again once the next day's prices are known) and in a review from before it.
     facit: Facit | None = None
     #: The battery's cells over the day, where the battery reports their temperature (`hindsight.cell_temperature`).
     cell_temperature: CellTemperature | None = None

@@ -35,9 +35,10 @@ Owned by the site's `BatteryShadow` (`runtime.py`), which calls `tick` every `ru
 * **The perfect plan** (`hindsight.py`): each reviewed day, while its quarter hours are kept, is planned again in
   hindsight in the executor (`_async_facit`, one run at a time): the perfect plan, each way's share of it, the
   battery's work and, where the battery reports it, the cells' temperature over the day (the recorder's statistics).
-  The energy left at midnight is valued over the next two days' prices once they are held (the next day's from
-  13:00 on the day after): until then on the day's own end value, said to be (`basis`), and worked out again when
-  they are. A failed try waits `FACIT_RETRY_S`.
+  The energy left at midnight is valued at the next day's mean buy price once it is held (published at about 13:00
+  on the day itself, so usually by the night's review): until then on the day's own end value, said to be (`basis`),
+  and worked out again when it is. A day under 90 % measured gets its figures and no share. A failed try waits
+  `FACIT_RETRY_S`.
 * **Storage**: the quarter hours, the first planned actions, the house rows, the reviews and the plan in force (so a
   restart keeps the running slot's action stable) in `spotnav.battery_plan.<entry>`. The forecast log is the site's
   (`site/house_forecast.py`), saved with its hourly refresh.
@@ -77,7 +78,7 @@ from ..site.house_forecast import BASIS_GROSS, MEDIAN_QUANTILE
 from ..site.solar_correction import STATUS_SHADOW as CORRECTION_LEARNT, SolarCorrection
 from .defensive import NO_BAND, DefensiveInputs, defensive_inputs
 from .facts import BatteryFacts
-from .hindsight import BASIS_AHEAD, BASIS_DAY, CellTemperature, Facit, end_value_ahead, facit_day, house_profile
+from .hindsight import BASIS_DAY, BASIS_NEXT_DAY, CellTemperature, Facit, end_value_next_day, facit_day
 from .plan import plan_mode, self_consumption
 from .plan_model import (
     DEFAULT_CYCLE_COST,
@@ -112,6 +113,7 @@ from .plan_shadow import (
     battery_params,
     bucket_start,
     build_slots,
+    day_quarters,
     days_to_review,
     expected_soc_at,
     import_cap_kw,
@@ -435,14 +437,15 @@ def work_facit(
     battery: BatteryParams,
     review: DayReview,
     prices: Sequence[PriceSlot],
-    start: datetime,
     end: datetime,
+    next_end: datetime,
+    day_quarters: int,
     wear: float,
     now: datetime,
 ) -> Facit | None:
-    """The executor's part of a day's perfect plan (`hindsight.py`): the energy left at midnight valued over the next
-    two days' prices where held, else at the review's own end value; then the plans and the shares."""
-    value = end_value_ahead(prices, end, battery, house_profile(usable, start))
+    """The executor's part of a day's perfect plan (`hindsight.py`): the energy left at midnight valued at the next
+    day's mean buy price where held, else at the review's own end value; then the plans and the shares."""
+    value = end_value_next_day(prices, end, next_end, battery)
     return facit_day(
         usable,
         battery,
@@ -452,8 +455,9 @@ def work_facit(
         mode=review.mode,
         wear=wear,
         end_value=review.end_value if value is None else value,
-        basis=BASIS_DAY if value is None else BASIS_AHEAD,
+        basis=BASIS_DAY if value is None else BASIS_NEXT_DAY,
         no_battery_cost=no_battery_cost(usable),
+        day_quarters=day_quarters,
         now=now,
     )
 
@@ -737,14 +741,14 @@ class BatteryPlanShadow:
 
     def _facit_due(self, review: DayReview, now: datetime) -> bool:
         """Whether [review]'s day wants its perfect plan worked out (again) now."""
-        if review.facit is not None and review.facit.basis == BASIS_AHEAD:
+        if review.facit is not None and review.facit.basis == BASIS_NEXT_DAY:
             return False
         tried = self._facit_tried.get(review.day)
         if tried is not None and (now - tried).total_seconds() < FACIT_RETRY_S:
             return False
         if not usable_buckets(self.actuals.buckets.values(), review.day, self._tz):
             return False  # its quarter hours are gone (kept three days): as it is
-        # A day worked out on its own end value waits for the next two days' prices.
+        # A day worked out on its own end value waits for the next day's prices.
         return review.facit is None or self._prices_after_held(review.day)
 
     def _ask_facit(self, now: datetime) -> None:
@@ -767,7 +771,7 @@ class BatteryPlanShadow:
         )
 
     def _prices_after(self, day: date) -> list[PriceSlot]:
-        """The buy prices with the fees of the two days after [day], as held (nothing is fetched); empty without them."""
+        """The buy prices with the fees of the day after [day], as held (nothing is fetched); empty without them."""
         from ..pricing.price_points import price_points  # noqa: PLC0415 - it imports the planner
         from ..runtime import domain_data  # noqa: PLC0415
 
@@ -776,7 +780,7 @@ class BatteryPlanShadow:
         if source is None or source.area is None or source.fiscal is None or repository is None:
             return []
         documents = []
-        for offset in (1, 2):
+        for offset in (1,):
             document = repository.day_snapshot(source.area_id, day + timedelta(days=offset)).document
             if document is None:
                 return []
@@ -788,9 +792,9 @@ class BatteryPlanShadow:
         return price_slots(((p.start, p.end, p.spot) for p in points), source.fiscal)
 
     def _prices_after_held(self, day: date) -> bool:
-        _start, end = self._day_bounds(day)
+        _start, next_end = self._day_bounds(day + timedelta(days=1))
         prices = self._prices_after(day)
-        return bool(prices) and max(slot.end for slot in prices) >= end + timedelta(hours=47, minutes=59)
+        return bool(prices) and max(slot.end for slot in prices) >= next_end - timedelta(minutes=1)
 
     async def _async_cell_temperature(self, day: date) -> CellTemperature | None:
         """The day's cell temperature from the recorder's statistics, where the battery reports one."""
@@ -812,7 +816,8 @@ class BatteryPlanShadow:
             usable = usable_buckets(self.actuals.buckets.values(), day, self._tz)
             if review is None or params is None or not usable:
                 return
-            start, end = self._day_bounds(day)
+            _start, end = self._day_bounds(day)
+            _end, next_end = self._day_bounds(day + timedelta(days=1))
             prices = self._prices_after(day)
             wear, _unknown = self._wear()
             try:
@@ -821,7 +826,7 @@ class BatteryPlanShadow:
                 _LOGGER.debug("SpotNav battery plan: the cell temperature could not be read", exc_info=True)
                 temperature = review.cell_temperature
             made: Facit | None = await self.hass.async_add_executor_job(
-                partial(work_facit, usable, params, review, prices, start, end, wear, now)
+                partial(work_facit, usable, params, review, prices, end, next_end, day_quarters(day, self._tz), wear, now)
             )
             if made is None:
                 return

@@ -12,19 +12,21 @@ that day had everything been known, and each way's share of it.
   A quarter hour the meters lost counts in no run, as in the review: the plan steps over it.
 * **The day boundary** (fairness): every way (what really happened, which is the battery's own optimiser on a battery
   that runs its own way; each SpotNav mode; the perfect plan) starts the day at the same measured SoC, and the energy
-  each leaves at midnight is valued the same way (`end_value_ahead`): at its best use over the next `AHEAD_HOURS` of
-  known prices (the following days' prices are known for a finished day: the next day's are published at 13:00),
-  less the round trip's loss. Its best use is the dearest quarter hours that a full battery could cover, each at most
-  the battery's rated discharge and the house's own load at that time of day (the finished day's, as measured). Until
-  those prices are known the review's own end value (the day's median buy price times the round trip) stands in,
-  and the figure says so (`basis`); it is worked out again once they are. The perfect plan values its own end the
-  same way, so it plans for the night after.
+  each leaves at midnight is valued the same way (`end_value_next_day`): at the next day's mean buy price with its
+  fees, less the round trip's loss. That is a price a real controller could know at the time (the next day's prices
+  are published at about 13:00), not hindsight about the dear hours ahead. Until the next day's prices are held the
+  review's own end value (the day's median buy price times the round trip) stands in, and the figure says so
+  (`basis`); it is worked out again once they are. The perfect plan values its own end the same way, so it plans for
+  the night after.
+* **Whole days only** (`Facit.whole`): a day counts when at least `WHOLE_DAY_SHARE` of its quarter hours were
+  measured. A partial day has no share (the card says "incomplete day") and no sum counts it.
 * **Shares** (`Facit.candidates`): each way's saving against the day with no battery at all (`review_baselines`),
   with the energy left at midnight counted at that value, as a share of the perfect plan's: the site's mode's for
-  what really happened and for self-consumption, the mode's own for each SpotNav mode. Shares are clamped to 0-100 %
-  (`clamped` says when one was): above 100 only by the model's ideal battery or the wear the perfect plan weighs but
-  money does not count; below 0 a way that cost more than no battery. `None` on a day when the perfect plan saves
-  nothing (nothing to gain).
+  what really happened and for self-consumption, the mode's own for each SpotNav mode. A share is given only where
+  the perfect plan saves at least `MIN_PERFECT_SAVING` a day (5 kr): below it the difference is too small to compare
+  and the share is `None`. Shares are clamped to 0-100 % (`clamped` says when one was): above 100 only by the model's
+  ideal battery or the wear the perfect plan weighs but money does not count; below 0 a way that cost more than no
+  battery.
 * **Work** (`Work`): per way, the kWh discharged and the cycles (that over the usable capacity), how often it switched
   between charging and discharging (idle quarter hours not counted), the kWh charged from the grid and the kWh the
   battery sold to the grid.
@@ -32,13 +34,14 @@ that day had everything been known, and each way's share of it.
   five-minute (else hourly) statistics of the battery's own cell temperature, where the battery reports it.
 
 What it cannot tell: the model's battery is ideal (the real one has its own losses and ramps), so what really happened
-is held to a slightly kinder standard than it met; the perfect plan sees only the measured quarter hours.
+is held to a slightly kinder standard than it met; the perfect plan sees only the measured quarter hours; a single
+day's share still hangs on the energy left at midnight, which a week or a month washes out (`site/perfect_view.py`
+sums the days' savings before it divides).
 """
 
 from __future__ import annotations
 
 import math
-import statistics
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
@@ -54,18 +57,21 @@ from .plan_model import (
     PlanSlot,
 )
 
-#: How far after the day's end the energy left is valued (h), and the quarter hour.
-AHEAD_HOURS: Final = 48
+#: The quarter hour.
 QUARTER: Final = timedelta(minutes=15)
+#: A day counts when at least this share of its quarter hours was measured.
+WHOLE_DAY_SHARE: Final = 0.9
+#: A share is given only where the perfect plan saves at least this much a day (minor units: 5 kr).
+MIN_PERFECT_SAVING: Final = 500.0
 #: A cell temperature above this (°C) counts as warm.
 HOT_C: Final = 30.0
 #: A battery power below this (kW) is idle: it neither charges nor discharges (`plan_shadow.IDLE_KW`).
 IDLE_KW: Final = 0.2
 
 # Where the end value came from.
-BASIS_AHEAD: Final = "ahead"
+BASIS_NEXT_DAY: Final = "next_day"
 BASIS_DAY: Final = "day_median"
-BASES: Final = (BASIS_AHEAD, BASIS_DAY)
+BASES: Final = (BASIS_NEXT_DAY, BASIS_DAY)
 
 # The ways compared, by the answer's name: what really happened, self-consumption, each planning mode, the perfect plan.
 OWN: Final = "own"
@@ -126,57 +132,20 @@ def measured_slot(bucket: MeasuredQuarter) -> PlanSlot:
 # ------------------------------------------------------------------------------------------------ the end value
 
 
-def house_profile(buckets: Sequence[MeasuredQuarter], day_start: datetime) -> dict[int, float]:
-    """The finished day's house load (kW, the house less the sun, never below 0) by quarter hour of the day."""
-    out: dict[int, float] = {}
-    for bucket in buckets:
-        net = bucket.net_house_kw
-        if net is None:
+def end_value_next_day(prices: Sequence[PricedSlot], day_end: datetime, next_end: datetime, battery: BatteryParams) -> float | None:
+    """What a kWh left in the battery at [day_end] is worth (minor units, see the module): the mean buy price of the
+    next day ([day_end] to [next_end]) over its time, times the round trip; `None` while the prices do not cover it."""
+    worth = seen = 0.0
+    for slot in prices:
+        start, end = max(slot.start, day_end), min(slot.end, next_end)
+        if end <= start or not _finite(slot.buy):
             continue
-        index = int((bucket.start - day_start) / QUARTER) % 96
-        out[index] = max(0.0, net)
-    return out
-
-
-def end_value_ahead(
-    prices: Sequence[PricedSlot],
-    day_end: datetime,
-    battery: BatteryParams,
-    profile: Mapping[int, float],
-    hours: int = AHEAD_HOURS,
-) -> float | None:
-    """What a kWh left in the battery at [day_end] is worth (minor units, see the module); `None` while the prices do
-    not cover the [hours] after it. [profile] is the house's load by quarter hour of the day; a quarter hour it has no
-    figure for takes the battery's rated discharge."""
-    horizon = day_end + timedelta(hours=hours)
-    covered = [slot for slot in prices if slot.end > day_end and slot.start < horizon and _finite(slot.buy)]
-    quarters: list[tuple[float, float]] = []
-    seen = 0.0
-    for slot in sorted(covered, key=lambda item: item.start):
-        start, end = max(slot.start, day_end), min(slot.end, horizon)
-        seen += (end - start).total_seconds()
-        moment = start
-        while moment < end:
-            step = min(end, moment + QUARTER)
-            index = int((moment - day_end) / QUARTER) % 96
-            kw = min(battery.max_discharge_kw, profile.get(index, battery.max_discharge_kw))
-            quarters.append((float(slot.buy), max(0.0, kw) * (step - moment).total_seconds() / 3600.0))
-            moment = step
-    if seen < hours * 3600 - 60:
+        seconds = (end - start).total_seconds()
+        worth += float(slot.buy) * seconds
+        seen += seconds
+    if seen <= 0 or seen < (next_end - day_end).total_seconds() - 60:
         return None
-    room = battery.max_kwh - battery.min_kwh
-    left = room * battery.one_way_efficiency  # the AC energy a full battery gives
-    worth = used = 0.0
-    for price, kwh in sorted(quarters, key=lambda item: -item[0]):
-        if left <= 0:
-            break
-        take = min(kwh, left)
-        worth += price * take
-        used += take
-        left -= take
-    if used <= 0:
-        return statistics.median(price for price, _kwh in quarters) * battery.round_trip_efficiency if quarters else None
-    return worth / used * battery.round_trip_efficiency
+    return worth / seen * battery.round_trip_efficiency
 
 
 # ------------------------------------------------------------------------------------------------ the runs
@@ -311,7 +280,8 @@ def perfect_plans(
 @dataclass(frozen=True, slots=True)
 class Candidate:
     """One way against no battery: its saving with the energy left at midnight counted, the perfect plan's it is
-    measured against, its share (0-100, `None`: nothing to gain), whether the share was clamped, and its work."""
+    measured against, its share (0-100, `None`: a partial day or too small a difference to compare), whether the share
+    was clamped, and its work."""
 
     saving: float
     perfect: float
@@ -340,10 +310,11 @@ class Candidate:
         )
 
 
-def share_of(saving: float, perfect: float) -> tuple[float | None, bool]:
+def share_of(saving: float, perfect: float, minimum: float = MIN_PERFECT_SAVING) -> tuple[float | None, bool]:
     """[saving] as a percentage of [perfect], clamped to 0-100, and whether it was clamped; `None` when the perfect
-    plan saves nothing."""
-    if perfect <= 0.5:  # under half an öre: nothing to gain
+    plan saves less than [minimum] (a day's `MIN_PERFECT_SAVING`; a period's, that times its days): too small a
+    difference to compare."""
+    if perfect < minimum or perfect <= 0:
         return None, False
     share = saving / perfect * 100
     clamped = min(100.0, max(0.0, share))
@@ -361,9 +332,17 @@ class Facit:
     #: The mode whose rules the headline's perfect plan kept (the site's).
     mode: str
     no_battery_cost: float
+    #: The local day's quarter hours and how many of them were measured (`whole`).
+    quarters: int
+    measured: int
     #: The perfect plan's saving against no battery, per planning mode, and its work.
     perfect: dict[str, Candidate] = field(default_factory=dict)
     candidates: dict[str, Candidate] = field(default_factory=dict)
+
+    @property
+    def whole(self) -> bool:
+        """Whether the day counts: at least `WHOLE_DAY_SHARE` of its quarter hours measured."""
+        return self.quarters > 0 and self.measured >= WHOLE_DAY_SHARE * self.quarters
 
     @property
     def saving(self) -> float | None:
@@ -378,6 +357,8 @@ class Facit:
             "basis": self.basis,
             "mode": self.mode,
             "no_battery_cost": round(self.no_battery_cost, 2),
+            "quarters": self.quarters,
+            "measured": self.measured,
             "perfect": {name: item.as_dict() for name, item in sorted(self.perfect.items())},
             "candidates": {name: item.as_dict() for name, item in sorted(self.candidates.items())},
         }
@@ -396,6 +377,8 @@ class Facit:
                 basis=raw["basis"],
                 mode=raw["mode"],
                 no_battery_cost=float(raw["no_battery_cost"]),
+                quarters=int(raw["quarters"]),
+                measured=int(raw["measured"]),
                 perfect={k: Candidate.from_dict(v) for k, v in raw["perfect"].items() if k in PLANNING_MODES},
                 candidates={k: Candidate.from_dict(v) for k, v in raw["candidates"].items() if k in CANDIDATES},
             )
@@ -415,10 +398,12 @@ def facit_day(
     end_value: float,
     basis: str,
     no_battery_cost: float,
+    day_quarters: int,
     now: datetime,
 ) -> Facit | None:
     """The day against its perfect plan (see the module). [buckets] are the review's usable quarter hours, oldest
-    first; [actual_cost] and [actual_end_soc_pct] what really happened (the review's); `None` without a quarter hour."""
+    first, of a local day of [day_quarters]; [actual_cost] and [actual_end_soc_pct] what really happened (the
+    review's); `None` without a quarter hour. A partial day gets its figures and no share."""
     if not buckets:
         return None
     site_mode = mode if mode in PLANNING_MODES else PLANNING_MODES[0]
@@ -431,11 +416,12 @@ def facit_day(
     def saving(cost: float, end_soc: float) -> float:
         return no_battery_cost - net(cost, end_soc)
 
+    whole = len(buckets) >= WHOLE_DAY_SHARE * day_quarters
     perfect_runs = perfect_plans(slots, battery, start_soc_pct, wear, end_value)
     perfect: dict[str, Candidate] = {}
     for name, run in perfect_runs.items():
         value = saving(run.cost, run.end_soc_pct)
-        perfect[name] = Candidate(value, value, 100.0 if value > 0.5 else None, False, run.work)
+        perfect[name] = Candidate(value, value, 100.0 if whole and value >= MIN_PERFECT_SAVING else None, False, run.work)
     headline = perfect.get(site_mode)
     if headline is None:
         return None
@@ -444,7 +430,7 @@ def facit_day(
 
     def add(name: str, cost: float, end_soc: float, work: Work, against: float) -> None:
         value = saving(cost, end_soc)
-        share, clamped = share_of(value, against)
+        share, clamped = share_of(value, against) if whole else (None, False)
         candidates[name] = Candidate(value, against, share, clamped, work)
 
     add(OWN, actual_cost, actual_end_soc_pct, measured_work(buckets, usable), headline.saving)
@@ -461,6 +447,8 @@ def facit_day(
         basis=basis,
         mode=site_mode,
         no_battery_cost=no_battery_cost,
+        quarters=day_quarters,
+        measured=len(buckets),
         perfect=perfect,
         candidates=candidates,
     )
