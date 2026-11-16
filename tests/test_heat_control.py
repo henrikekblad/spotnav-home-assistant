@@ -211,6 +211,7 @@ async def test_another_writer_is_never_fought(hass: HomeAssistant, freezer) -> N
     # The household opens the relay: SpotNav gives it up, writes nothing and waits for the next day.
     hass.states.async_set(RELAY, "off")
     await control.async_look(now + 10 * MIN)
+    await control.async_look(now + 11 * MIN)
     assert relay.calls == ["on"] and not control.held
     status = control.status()
     assert (status["state"], status["reason"]) == ("waiting", "foreign_change") and status["paused_until"] is not None
@@ -231,6 +232,7 @@ async def test_a_close_by_someone_else_while_open_pauses(hass: HomeAssistant, fr
     await control.async_look(now)
     hass.states.async_set(RELAY, "on")
     await control.async_look(now + MIN)
+    await control.async_look(now + 2 * MIN)
     assert relay.calls == [] and control.status()["reason"] == "foreign_change"
 
 
@@ -511,3 +513,58 @@ async def test_an_error_while_a_write_is_pending_opens_the_relay_once_it_expires
     control._async_look = broken  # type: ignore[method-assign]  # noqa: SLF001
     await control.async_look(now + READ_BACK + MIN)
     assert relay.calls == ["on", "off"] and relay.state == "off"
+
+
+async def test_one_open_reading_while_held_is_no_foreign_change(hass: HomeAssistant, freezer) -> None:
+    _site_, control, relay, now = await _running(hass, freezer, 0, 1)
+    await control.async_look(now)
+    # A reading that bounces open for one look: SpotNav keeps its lowering and is not paused.
+    hass.states.async_set(RELAY, "off")
+    await control.async_look(now + 10 * MIN)
+    hass.states.async_set(RELAY, "on")
+    await control.async_look(now + 10 * MIN + 30 * timedelta(seconds=1))
+    assert relay.calls == ["on"] and control.held and control.paused_until is None
+
+
+async def test_a_late_closed_reading_after_spotnavs_own_opening_is_opened_once(hass: HomeAssistant, freezer) -> None:
+    _site_, control, relay, now = await _running(hass, freezer, 0)
+    await control.async_look(now)
+    _plan(control, now + 50 * MIN)
+    await control.async_look(now + 50 * MIN)
+    assert relay.calls == ["on", "off"] and not control.held
+    # SpotNav's own closing reads again (a late or bounced reading): taken as its own and opened, no pause.
+    hass.states.async_set(RELAY, "on")
+    await control.async_look(now + 51 * MIN)
+    await control.async_look(now + 52 * MIN)
+    assert relay.calls == ["on", "off", "off"] and relay.state == "off" and not control.held
+    assert control.paused_until is None
+    # Closed again after that one opening: someone else's, never fought.
+    hass.states.async_set(RELAY, "on")
+    await control.async_look(now + 53 * MIN)
+    await control.async_look(now + 54 * MIN)
+    assert relay.calls == ["on", "off", "off"] and control.status()["reason"] == "foreign_change"
+
+
+async def test_a_closing_that_takes_after_it_timed_out_is_opened(hass: HomeAssistant, freezer) -> None:
+    _site_, control, relay, now = await _running(hass, freezer, 0, 1)
+    relay.ignore = True
+    await control.async_look(now)
+    await control.async_look(now + READ_BACK + MIN)
+    # Not read back: paused, the opening written (not seen either, the relay reads open all along).
+    assert relay.calls == ["on", "off"] and not control.held
+    relay.ignore = False
+    # The closing takes late: SpotNav's own, opened, never left closed.
+    hass.states.async_set(RELAY, "on")
+    await control.async_look(now + READ_BACK + 2 * MIN)
+    await control.async_look(now + READ_BACK + 3 * MIN)
+    assert relay.calls == ["on", "off", "off"] and relay.state == "off" and not control.held
+
+
+async def test_a_relay_found_closed_is_noted_once_and_left_alone(hass: HomeAssistant, freezer) -> None:
+    _site_, control, relay, now = await _running(hass, freezer, 0, 1)
+    hass.states.async_set(RELAY, "on")
+    control._expect = None  # noqa: SLF001 - found so, not seen to change
+    await control.async_look(now)
+    await control.async_look(now + MIN)
+    assert relay.calls == [] and control.status()["reason"] == "relay_closed"
+    assert [item["what"] for item in control.log].count("found_closed") == 1

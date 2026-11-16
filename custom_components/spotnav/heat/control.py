@@ -16,8 +16,10 @@ first contact only. Nothing is written without it. The rules and the check are p
 3. **A write is read back**: the relay must show it within `READ_BACK`; a write that raised or was not seen pauses
    control for the day (`no_read_back`) after an opening (tried again every `RETRY_OPEN` while SpotNav may hold it).
 4. **Never fight another writer**: a change SpotNav did not make (the relay opened while SpotNav held it, or closed
-   while it was open) gives the relay up at once (nothing written) and pauses control until the next local day
-   (`foreign_change`).
+   while it was open), read on every look for `FOREIGN_CONFIRM`, gives the relay up (nothing written) and pauses
+   control until the next local day (`foreign_change`). A closed reading within `OWN_WINDOW` of SpotNav's own write
+   (a closing that failed, timed out or was just given up) is SpotNav's own: opened once, and only if it stays
+   closed after that is it someone else's. SpotNav's own closing is never left unbounded.
 5. **The check** before control runs, at the first start and after the relay entity changes (kept per entity): the
    meter's power now and its levels (read again every hour from its 5-minute rows) or the pump's calculated supply
    (`heat/facts.py`); without either nothing can be judged (`no_signal`). A failed check stops control
@@ -85,6 +87,10 @@ LOOK_S: Final = 30.0
 READ_BACK: Final = timedelta(seconds=90)
 #: After a failed opening, how often it is tried again while SpotNav may hold the relay closed.
 RETRY_OPEN: Final = timedelta(minutes=5)
+#: A change SpotNav did not make must read on looks this far apart (and on every look between) to count.
+FOREIGN_CONFIRM: Final = timedelta(seconds=60)
+#: A closed reading this soon after SpotNav's own write is SpotNav's own closing (late or bounced): opened once.
+OWN_WINDOW: Final = timedelta(minutes=5)
 #: How long a service call may take.
 CALL_TIMEOUT_S: Final = 10.0
 #: How long the shutdown waits for the opening to be read back (s).
@@ -171,6 +177,11 @@ class HeatControl:
         self._expect: bool | None = None
         self._good_since: datetime | None = None
         self._retry_open_at: datetime | None = None
+        #: A change SpotNav did not make, as first read: `(open|close, since)`.
+        self._foreign: tuple[str, datetime] | None = None
+        #: SpotNav's last write, and when it opened a late reading of its own closing (once per closing).
+        self._own_at: datetime | None = None
+        self._own_reopen_at: datetime | None = None
         self._levels: Levels | None = None
         #: Whether anything can show the check an effect: a power meter or a calculated supply the pump reports.
         self.signal = False
@@ -340,6 +351,14 @@ class HeatControl:
             if read == self.pending.closed:
                 self._confirm(self.pending, now)
             elif now - self.pending.at > READ_BACK:
+                if not self.pending.closed and self._own_reopen_at is not None and self.pending.at >= self._own_reopen_at and read is True:
+                    # SpotNav opened what it took for its own late closing once; still closed: someone else's.
+                    self.pending = None
+                    self._log(now, "foreign_close")
+                    self._end_lowering(now)
+                    self._pause(now, WAIT_FOREIGN_CHANGE)
+                    self._set(STATE_WAITING, self.paused_reason)
+                    return
                 await self._async_failed(now, "not_read_back")
                 return
             else:
@@ -364,13 +383,31 @@ class HeatControl:
                 return
             self._end_lowering(now)
             self._reopen = False
-        # Never fight another writer.
-        if self.held and read is False:
-            self._log(now, "foreign_open")
-            self._end_lowering(now)
-            self._pause(now, WAIT_FOREIGN_CHANGE)
-        elif not self.held and read is True and self._expect is False:
-            self._log(now, "foreign_close")
+        if not self.held and read is True and self._own_late(now):
+            # SpotNav's own closing read late or bounced (its write failed, timed out or was just given up): its
+            # own, opened once, never left closed.
+            self._log(now, "own_late_close")
+            self._own_reopen_at, self._foreign = now, None
+            self.held, self.held_since = True, now
+            self.lowerings.append([now, None])
+            self._set(STATE_WAITING, self.paused_reason or WAIT_RELAY_CLOSED)
+            await self._async_write(False, now, why="own_late_close")
+            return
+        # Never fight another writer, but only on a change that reads on two looks a minute apart.
+        foreign = "open" if self.held and read is False else "close" if not self.held and read is True and self._expect is False else None
+        if foreign is None:
+            self._foreign = None
+        elif self._foreign is None or self._foreign[0] != foreign:
+            self._foreign = (foreign, now)
+            self._log(now, f"foreign_{foreign}_seen")
+            return
+        elif now - self._foreign[1] < FOREIGN_CONFIRM:
+            return
+        else:
+            self._foreign = None
+            self._log(now, f"foreign_{foreign}")
+            if foreign == "open":
+                self._end_lowering(now)
             self._pause(now, WAIT_FOREIGN_CHANGE)
         if self.paused_until is not None:
             await self._async_give_back(now, self.paused_reason or "paused")
@@ -382,6 +419,9 @@ class HeatControl:
         blocker = self._blocker(config, relay)
         if blocker is None and not self.held and read is True:
             blocker = WAIT_RELAY_CLOSED
+            if self.reason != WAIT_RELAY_CLOSED:
+                self._log(now, "found_closed")
+                _LOGGER.info("SpotNav heat control: %s is closed by something else; nothing is written", relay)
         if blocker is not None:
             await self._async_give_back(now, blocker)
             self._expect = None
@@ -538,6 +578,9 @@ class HeatControl:
         if not closed and self._retry_open_at is not None and now < self._retry_open_at:
             return
         self.pending = Pending(closed, now)
+        self._own_at = now
+        if closed:
+            self._own_reopen_at = None
         day = self._day(now)
         self.writes[day] = self.writes.get(day, 0) + 1
         if closed:
@@ -553,6 +596,10 @@ class HeatControl:
             return
         if self._read(relay) == closed:
             self._confirm(self.pending, now)
+
+    def _own_late(self, now: datetime) -> bool:
+        """Whether a closed reading now is SpotNav's own closing read late (see `OWN_WINDOW`), not opened yet."""
+        return self._own_reopen_at is None and self._own_at is not None and now - self._own_at <= OWN_WINDOW
 
     def _confirm(self, pending: Pending, now: datetime) -> None:
         self.pending = None
