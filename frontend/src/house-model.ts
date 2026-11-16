@@ -149,11 +149,14 @@ export interface FlowLink {
   kwh: number;
 }
 
-/** Today's completed hours as a Sankey diagram (`site/energy_flow.py`). */
+/** The day so far as a Sankey diagram (`site/energy_flow.py`): by the quarter hour within the recorder's short-term
+ * statistics, else by the hour; `hours` counts the periods allocated (0: today's first minutes, nothing yet). */
 export interface EnergyFlow {
   date: string;
   through: string;
   hours: number;
+  /** The period the flows were allocated by (minutes): 15 or 60 (60 from a backend before quarters). */
+  step_min: number;
   car_hours: number;
   /** The hours that had the heat pump meter's figure (0 without a heat node or from a backend before heat). */
   heat_hours: number;
@@ -481,6 +484,7 @@ function energyFlow(value: unknown): EnergyFlow | null {
     date: day(source.date),
     through: instant(source.through),
     hours: count(source.hours),
+    step_min: additive(source, "step_min", count, 60),
     car_hours: count(source.car_hours),
     heat_hours: additive(source, "heat_hours", count, 0),
     nodes,

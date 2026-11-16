@@ -686,30 +686,35 @@ function flowBlock(doc: Document, language: Language, flow: DayFlow | null): HTM
   return section;
 }
 
-/** Today's energy flow as a Sankey diagram (`house-flow.ts`), under the chart; `null` without one. */
+/** The day's energy flow as a Sankey diagram (`house-flow.ts`), under the chart; `null` without one. Today before
+ * anything can be drawn (its first minutes), a short line says it is on its way. */
 function energyFlowBlock(input: HouseRenderInput, answer: HouseAnswer): HTMLElement | null {
   const flow = answer.energy_flow;
   if (flow === null) {
     return null;
   }
   const { doc, language } = input;
-  const diagram = renderFlow(doc, language, flow, Math.max(260, Math.floor(input.width)), input.idPrefix, answer.day !== null && !answer.day.today);
-  if (diagram === null) {
+  const past = answer.day !== null && !answer.day.today;
+  const diagram = renderFlow(doc, language, flow, Math.max(260, Math.floor(input.width)), input.idPrefix, past);
+  if (diagram === null && past) {
     return null;
   }
   const section = element(doc, "section", `${H.section} ${H.flow}`);
   section.dataset["part"] = "energy-flow";
-  const past = answer.day !== null && !answer.day.today;
-  const through = clock(context(language, answer), Date.parse(flow.through));
   section.append(
     element(doc, "h3", H.heading, past ? translate(language, "house.flow.headingDay", { day: dateLabel(language, flow.date) }) : translate(language, "house.flow.heading")),
   );
+  if (diagram === null) {
+    section.append(element(doc, "p", `${C.muted} ${H.note}`, translate(language, "house.flow.waiting")));
+    return section;
+  }
   if (!past) {
+    const through = clock(context(language, answer), Date.parse(flow.through));
     section.append(element(doc, "p", `${C.muted} ${H.note}`, translate(language, "house.flow.through", { time: through })));
   }
   section.append(
     diagram,
-    element(doc, "p", `${C.muted} ${H.note}`, translate(language, "house.flow.rule")),
+    element(doc, "p", `${C.muted} ${H.note}`, translate(language, flow.step_min < 60 ? "house.flow.ruleQuarter" : "house.flow.rule")),
   );
   if (flow.car_hours < flow.hours && flow.nodes.some((node) => node.role === "car")) {
     section.append(element(doc, "p", `${C.muted} ${H.note}`, translate(language, "house.flow.carPart")));
