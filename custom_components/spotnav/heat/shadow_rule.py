@@ -25,7 +25,7 @@ from __future__ import annotations
 import statistics
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Final
 from zoneinfo import ZoneInfo
 
@@ -101,7 +101,7 @@ def day_hours(day_start: datetime, zone: ZoneInfo) -> list[datetime]:
     following = midnight.date() + timedelta(days=1)
     end = datetime(following.year, following.month, following.day, tzinfo=zone)
     hours: list[datetime] = []
-    moment = midnight.astimezone(ZoneInfo("UTC"))
+    moment = midnight.astimezone(timezone.utc)
     while moment < end:
         hours.append(moment)
         moment += timedelta(hours=1)
