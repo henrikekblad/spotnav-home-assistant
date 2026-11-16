@@ -60,6 +60,7 @@ from ..planning.demand_charge import hour_start
 from ..planning.planner import FiscalChoice
 from .export_curtail import curtail_slots, curtails, would_save
 from .facts import BatteryFacts
+from .hindsight import CellTemperature, Facit, measured_slot
 from .plan import action_power, buy_prices, run_slot, sell_prices
 from .plan_model import (
     ACTION_DISCHARGE_HOUSE,
@@ -850,6 +851,11 @@ class DayReview:
     #: quarters: not asked for yet (the production comes from the statistics a little later); 0: no figure.
     sun_gave: float = 0.0
     sun_quarters: int | None = None
+    #: The day against its perfect plan in hindsight (`hindsight.py`); `None` until it is worked out (the night after,
+    #: again once the next two days' prices are known) and in a review from before it.
+    facit: Facit | None = None
+    #: The battery's cells over the day, where the battery reports their temperature (`hindsight.cell_temperature`).
+    cell_temperature: CellTemperature | None = None
 
     def net(self, run: Run) -> float:
         return run.cost - (run.end_soc_pct - self.start_soc_pct) / 100 * self.usable_kwh * self.end_value
@@ -924,6 +930,8 @@ class DayReview:
                 "sun_gave": round(self.sun_gave, 3),
                 "sun_quarters": self.sun_quarters,
             },
+            "facit": None if self.facit is None else self.facit.as_dict(),
+            "cell_temperature": None if self.cell_temperature is None else self.cell_temperature.as_dict(),
         }
 
     @classmethod
@@ -956,6 +964,8 @@ class DayReview:
                 mode=raw.get("mode") if raw.get("mode") in MODES else None,
                 **_curtail_from(raw.get("curtail")),
                 **_baselines_from(raw.get("baselines")),
+                facit=Facit.from_dict(raw.get("facit")),
+                cell_temperature=CellTemperature.from_dict(raw.get("cell_temperature")),
             )
         except (AttributeError, KeyError, TypeError, ValueError):
             return None
@@ -1024,17 +1034,7 @@ def review_totals(reviews: Sequence[DayReview]) -> dict[str, Any]:
 
 
 def _actual_slot(bucket: Bucket) -> PlanSlot:
-    net = bucket.net_house_kw or 0.0
-    return PlanSlot(
-        start=bucket.start,
-        end=bucket.end,
-        buy=float(bucket.buy or 0.0),
-        sell=float(bucket.sell or 0.0),
-        house_kw=max(0.0, net),
-        solar_kw=max(0.0, -net),
-        car_kw=bucket.scaled(bucket.car_kwh) / (BUCKET.total_seconds() / 3600.0),
-        import_cap_kw=bucket.cap_kw,
-    )
+    return measured_slot(bucket)
 
 
 class _Sim:
