@@ -28,6 +28,19 @@ Beside the facts, an adapter may know two limits (read 2026-11-13; the Sigenergy
   need the installer password; GoodWe states the depth of discharge (the floor is 100 less it); Victron's is the ESS minimum SoC. SolaX: none
   mapped yet.
 
+And one live reading (read 2026-11-16):
+
+* **The plant's power per phase** (`plant_phase_power`): the AC power the plant puts out on each of its three phases,
+  normalised by `plant_phase_sign` so that positive is output into the house (the sun's power and the battery's
+  discharge, both through the hybrid inverter) and negative is drawn (the battery charging). It is the inverter
+  side, not the grid point: the house's own current per phase is then the meter's less the chargers' plus this
+  (`site/phase_peaks.py`). Sigenergy `plant_phase_{a,b,c}_active_power` (registers 30015/30017/30019, kW, disabled by
+  default): the integration states no sign; on the owner's plant (2026-11-16, battery discharging 0.4-1.4 kW, grid
+  held at 0 per phase) the three summed to `plant_active_power` (within 0.01 kW on average), which is the sun's power
+  less the battery's (`plant_ess_power`, + charging) less ~0.1 kW of the plant's own losses, and phase C's 0.96 kW
+  matched the heat pump's own meter on L3. So positive is output. Its `plant_grid_sensor_phase_*` are the grid point
+  (the site's meter there) and not this. Phase A, B and C are taken as the meter's L1, L2 and L3.
+
 A battery whose integration states its size in amp-hours and its limits as currents (Victron, GoodWe) gets kWh and
 kW from the battery voltage the same integration reads (`voltage`): energy = Ah x V, power = A x V. That is an
 estimate (the voltage is the live one, not the nominal) and is named as one (`BatteryFacts.estimates`).
@@ -134,6 +147,9 @@ class Adapter:
     plant_max: Match | None = None
     #: Where the battery's own floor is kept (see the module).
     reserves: tuple[ReserveSource, ...] = ()
+    #: The plant's AC power on phases A, B and C, and the factor that makes it positive for output (see the module).
+    plant_phase_power: tuple[Match, Match, Match] | None = None
+    plant_phase_sign: float = 1.0
 
 
 def _key(key: str, *domains: str, reject: str | None = None) -> Match:
@@ -162,6 +178,9 @@ SIGENERGY: Final = Adapter(
     ),
     grid_status=(_key("plant_on_off_grid_status"), "on_grid"),
     plant_max=_key("plant_max_active_power"),
+    plant_phase_power=(
+        _key("plant_phase_a_active_power"), _key("plant_phase_b_active_power"), _key("plant_phase_c_active_power"),
+    ),
     reserves=(
         ReserveSource(_key("plant_ess_discharge_cut_off_soc")),
         ReserveSource(_key("plant_discharge_cut_off_soc", "number")),

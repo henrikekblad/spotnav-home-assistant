@@ -130,6 +130,11 @@ class BatteryFacts:
     reserve_soc_pct: float | None = None
     #: `True` on the grid, `False` off it (backup), `None` when the brand does not say.
     on_grid: bool | None = None
+    #: The entities of the plant's power on phases A, B and C (`adapters.Adapter.plant_phase_power`), all three found
+    #: and enabled, else `None`; and the factor that makes their reading positive for output. Only where they are:
+    #: their values are read live, with their age, by the one that uses them (`site/phase_peaks.py`).
+    plant_phase_entities: tuple[str, str, str] | None = None
+    plant_phase_sign: float = 1.0
     management: Management = field(default_factory=lambda: Management("unknown", "no_battery"))
     hold: ControlStatus | None = None
     grid_charge: ControlStatus | None = None
@@ -265,6 +270,18 @@ def _fact(adapter: Adapter, role: FactRole, entities: Sequence[EntityFact], batt
         return None
     entity = find_entity(match, entities, battery)
     return entity if entity is not None and entity.available else None
+
+
+def _plant_phase_entities(
+    adapter: Adapter, entities: Sequence[EntityFact], battery: EntityFact
+) -> tuple[str, str, str] | None:
+    """The plant's per-phase power entities, when the adapter knows them and all three are found and enabled."""
+    if adapter.plant_phase_power is None:
+        return None
+    found = [find_entity(match, entities, battery) for match in adapter.plant_phase_power]
+    if any(entity is None or entity.disabled or entity.domain != "sensor" for entity in found):
+        return None
+    return (found[0].entity_id, found[1].entity_id, found[2].entity_id)  # type: ignore[union-attr]
 
 
 def _reserve(
@@ -444,6 +461,9 @@ def battery_facts(
                 sources["plant_max"] = plant.entity_id
             else:
                 plant_max_kw = None
+    plant_phases = _plant_phase_entities(adapter, entities, battery)
+    if plant_phases is not None:
+        sources["plant_phase_power"] = ", ".join(plant_phases)
     reserve_soc_pct, reserve_read = _reserve(adapter.reserves, entities, battery)
     if reserve_read:
         sources["reserve"] = ", ".join(reserve_read)
@@ -467,6 +487,8 @@ def battery_facts(
         reserve_soc_pct=reserve_soc_pct,
         firmware=None if firmware_entity is None else firmware_entity.state,
         on_grid=on_grid,
+        plant_phase_entities=plant_phases,
+        plant_phase_sign=adapter.plant_phase_sign,
         management=management,
         hold=_control(adapter.hold, entities, battery, rated_discharge_kw),
         grid_charge=_control(adapter.grid_charge, entities, battery, rated_discharge_kw),

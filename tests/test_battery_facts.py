@@ -263,6 +263,30 @@ def test_sigenergy_reads_the_plants_maximum_below_the_battery_rating() -> None:
     assert facts.as_dict()["max_charge_kw"] == 13.2 and facts.as_dict()["max_discharge_kw"] == 13.2
 
 
+def test_sigenergy_finds_the_plants_per_phase_power_not_the_grid_sensors() -> None:
+    facts = _facts("sigenergy")
+
+    assert facts.plant_phase_entities == (
+        "sensor.sigen_plant_phase_a_active_power",
+        "sensor.sigen_plant_phase_b_active_power",
+        "sensor.sigen_plant_phase_c_active_power",
+    )
+    # Positive is the plant's output (its integration's reading as it is).
+    assert facts.plant_phase_sign == 1.0
+    assert facts.sources["plant_phase_power"].startswith("sensor.sigen_plant_phase_a_active_power, ")
+
+
+def test_the_plants_per_phase_power_needs_all_three_phases_enabled() -> None:
+    disabled = _facts("sigenergy", **{"sensor.sigen_plant_phase_b_active_power": {"disabled": True, "state": None}})
+    assert disabled.plant_phase_entities is None and "plant_phase_power" not in disabled.sources
+    # An entity that is there but has no reading now is still the one to read: its value is read live, and an
+    # unknown reading is no value there.
+    unknown = _facts("sigenergy", **{"sensor.sigen_plant_phase_c_active_power": {"state": "unknown"}})
+    assert unknown.plant_phase_entities is not None
+    # A brand whose adapter knows no per-phase power has none.
+    assert _facts("huawei").plant_phase_entities is None
+
+
 def test_the_highest_reserve_that_can_be_read_is_the_floor() -> None:
     facts = _facts(
         "sigenergy",

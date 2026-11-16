@@ -1,6 +1,6 @@
 {
  "sigenergy": {
-  "_source": "A real plant's registry and states on 2026-11-13 (config entry id replaced), firmware SPC117, AI mode; the plant maximum and the three reserve entities added from the same registry later that day (the reserves disabled, as there).",
+  "_source": "A real plant's registry and states on 2026-11-13 (config entry id replaced), firmware SPC117, AI mode; the plant maximum and the three reserve entities added from the same registry later that day (the reserves disabled, as there). The plant's and the grid sensor's per-phase power added from the same registry on 2026-11-16 (enabled there that day; states of that afternoon).",
   "platform": "sigen",
   "manufacturer": "Sigenergy",
   "battery": "sensor.sigen_plant_battery_power",
@@ -148,6 +148,60 @@
     "unit": null,
     "device_class": null,
     "disabled": true
+   },
+   {
+    "entity_id": "sensor.sigen_plant_phase_a_active_power",
+    "unique_id": "ENTRY_sigen_plant_plant_phase_a_active_power",
+    "device": "battery",
+    "state": "0.285",
+    "unit": "kW",
+    "device_class": "power",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.sigen_plant_phase_b_active_power",
+    "unique_id": "ENTRY_sigen_plant_plant_phase_b_active_power",
+    "device": "battery",
+    "state": "0.078",
+    "unit": "kW",
+    "device_class": "power",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.sigen_plant_phase_c_active_power",
+    "unique_id": "ENTRY_sigen_plant_plant_phase_c_active_power",
+    "device": "battery",
+    "state": "0.081",
+    "unit": "kW",
+    "device_class": "power",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.sigen_plant_grid_phase_a_active_power",
+    "unique_id": "ENTRY_sigen_plant_plant_grid_sensor_phase_a_active_power",
+    "device": "battery",
+    "state": "0.0",
+    "unit": "kW",
+    "device_class": "power",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.sigen_plant_grid_phase_b_active_power",
+    "unique_id": "ENTRY_sigen_plant_plant_grid_sensor_phase_b_active_power",
+    "device": "battery",
+    "state": "0.0",
+    "unit": "kW",
+    "device_class": "power",
+    "disabled": false
+   },
+   {
+    "entity_id": "sensor.sigen_plant_grid_phase_c_active_power",
+    "unique_id": "ENTRY_sigen_plant_plant_grid_sensor_phase_c_active_power",
+    "device": "battery",
+    "state": "0.0",
+    "unit": "kW",
+    "device_class": "power",
+    "disabled": false
    }
   ],
   "expected": {
