@@ -33,6 +33,12 @@
     "waiting_for": null,
     "needs": ["ai_takeover_ack"],
     "notes": [],
-    "trial": null
+    "trial": null,
+    "grid_charge_cap": {
+      "cap_kw": null,
+      "rule": "import_limit",
+      "main_fuse_a": null,
+      "learned": null
+    }
   }
 }

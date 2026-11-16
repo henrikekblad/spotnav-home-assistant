@@ -25,6 +25,23 @@
     "waiting_for": null,
     "needs": ["control_disabled:remote_ems"],
     "notes": [{"code": "ai_mode_back", "at": "2026-11-15T21:10:00+01:00"}],
-    "trial": null
+    "trial": null,
+    "grid_charge_cap": {
+      "cap_kw": 3.2,
+      "rule": "learned",
+      "main_fuse_a": 20,
+      "learned": {
+        "ready": true,
+        "raw_a": {"L1": 6.1, "L2": 4.3, "L3": 5.2},
+        "factor": 1.1,
+        "margin_a": 2.0,
+        "peaks_a": {"L1": 7.7, "L2": 5.7, "L3": 6.7},
+        "days_counted": 15,
+        "days_needed": 14,
+        "hours": 360,
+        "minutes": 21000,
+        "heat_peak_w": {"L1": 800.0, "L2": 800.0, "L3": 800.0}
+      }
+    }
   }
 }

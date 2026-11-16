@@ -169,3 +169,4 @@ async def test_the_card_fixtures_have_the_answers_shapes(hass: HomeAssistant, ha
         assert set(fixture) == set(battery)
         assert set(fixture["status"]) == set(battery["status"]), name
         assert set(fixture["status"]["options"]) == set(battery["status"]["options"]), name
+        assert set(fixture["status"]["grid_charge_cap"]) == set(battery["status"]["grid_charge_cap"]), name
