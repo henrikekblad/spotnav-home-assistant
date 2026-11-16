@@ -20,6 +20,7 @@ import {
   type ManualAction,
   type ManualActionResult,
   type SettingsBody,
+  type AreaOverride,
 } from "./types";
 import type { EntityRequest, VehicleSocRequest } from "./entity-config";
 import type { SiteSettingsRequest } from "./site-settings";
@@ -757,6 +758,66 @@ export async function updateSiteEntityConfig(hass: HomeAssistantLike, siteId: st
     api_version: ENTITY_CONFIG_API_VERSION,
     site_id: siteId,
     scope: "site",
+    expected: request.expected,
+    changes: request.changes,
+  });
+}
+
+// ------------------------------------------------------------------ the price and solar settings, by site
+// The shared settings popover of a home with or without a charger: the same commands the charger card uses, naming
+// the site (`site_id`) in place of a charger, and `spotnav/update_price` for the area and fees (a charger writes
+// those through its settings).
+
+/** The market's areas and the site's stored one (`spotnav/get_market_options` by site). */
+export async function getSiteMarketOptions(hass: HomeAssistantLike, siteId: string): Promise<unknown> {
+  return await call<unknown>(hass, { type: "spotnav/get_market_options", api_version: MARKET_API_VERSION, site_id: siteId });
+}
+
+/** The site (and every charger on it) uses this electricity price (administrators only); `{ok: true}`. */
+export async function chooseSitePriceSource(hass: HomeAssistantLike, siteId: string, priceEntryId: string): Promise<unknown> {
+  return await call<unknown>(hass, { type: "spotnav/choose_price_source", site_id: siteId, price_entry_id: priceEntryId });
+}
+
+/** The grid tariff of the price the site reads, as `updateGridTariff` writes a charger's. */
+export async function updateSiteGridTariff(
+  hass: HomeAssistantLike,
+  siteId: string,
+  expectedWriteRevision: number,
+  gridTariff: GridTariffBody,
+): Promise<unknown> {
+  return await call<unknown>(hass, {
+    type: "spotnav/update_grid_tariff",
+    site_id: siteId,
+    expected_write_revision: expectedWriteRevision,
+    grid_tariff: gridTariff,
+  });
+}
+
+/**
+ * The area and fees of the price the site reads (`spotnav/update_price`, administrators only): one area's row as the
+ * settings body states it, compare-and-set against the price's write counter. `{ok: true}`, or an error with a stable
+ * code (`revision_conflict`, `invalid_area`, `invalid_fiscal`, `spotnav_no_price_entry`, ...).
+ */
+export async function updateSitePrice(
+  hass: HomeAssistantLike,
+  siteId: string,
+  expectedWriteRevision: number,
+  price: AreaOverride,
+): Promise<unknown> {
+  return await call<unknown>(hass, {
+    type: "spotnav/update_price",
+    site_id: siteId,
+    expected_write_revision: expectedWriteRevision,
+    price,
+  });
+}
+
+/** The site's solar settings (`spotnav/update_site_settings` by site): the envelope `decodeSiteSettingsAnswer` reads. */
+export async function updateSiteSettingsBySite(hass: HomeAssistantLike, siteId: string, request: SiteSettingsRequest): Promise<unknown> {
+  return await call<unknown>(hass, {
+    type: "spotnav/update_site_settings",
+    api_version: SITE_SETTINGS_API_VERSION,
+    site_id: siteId,
     expected: request.expected,
     changes: request.changes,
   });

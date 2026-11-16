@@ -19,6 +19,7 @@ Two WebSocket commands, administrators only, each answering `{"ok": true}` or a 
 * `spotnav/choose_price_source {entry_id, price_entry_id}` (named `choose_`, as the card's bundle carries no `set_`
   command): the charger (`entry_id`) uses that price entry. A charger
   on a site points its site at it, so it applies to every charger there; one without a site points at it itself.
+  `site_id` in place of `entry_id` points that site at it (a site without chargers too; its chargers follow).
 * `spotnav/answer_price_duplicate {area_id, keep_entry_id}`: the card's question answered. With an entry, every
   site and charger using one of the others in the record moves to it (the others stay, removable under Devices &
   services); with `null` both are kept. Either way the question is not asked again.
@@ -38,13 +39,19 @@ from homeassistant.components import websocket_api
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import callback, HomeAssistant
 
-from ..pricing.price_setup import choose_price_entry, use_price_entry
+from ..pricing.price_setup import choose_price_entry, choose_site_price_entry, use_price_entry
 from ..planning.auto_settings import AutoSettings
-from ..pricing.price_source import entry_source_for, price_entries, price_entry_source, PriceSource
+from ..pricing.price_source import (
+    entry_source_for,
+    price_entries,
+    price_entry_source,
+    PriceSource,
+    site_price_source,
+)
 from ..pricing.price_store import price_duplicates
 from ..runtime import domain_data
 from ..vehicles.charger_inventory import charger_entries
-from .common import ERROR_NOT_ADMIN, is_admin, lookup_charger
+from .common import ERROR_CHARGER_REQUIRED, ERROR_NOT_ADMIN, is_admin, lookup_charger, lookup_site
 from .entity_fields import ERR_INVALID_VALUE
 
 ERROR_UNKNOWN_PRICE_ENTRY: Final = "spotnav_unknown_price_entry"
@@ -75,7 +82,15 @@ def _title(hass: HomeAssistant, entry_id: str) -> str:
 
 def capture_price_source(hass: HomeAssistant, charger_id: str) -> CapturedPriceSource | None:
     """The charger's electricity price entry, or `None` while it prices with its own settings."""
-    source = entry_source_for(hass, charger_id)
+    return _capture(hass, entry_source_for(hass, charger_id))
+
+
+def capture_site_price_source(hass: HomeAssistant, site: ConfigEntry) -> CapturedPriceSource | None:
+    """The electricity price entry a site reads (`site_price_source`; a site without chargers too), or `None`."""
+    return _capture(hass, site_price_source(hass, site.entry_id))
+
+
+def _capture(hass: HomeAssistant, source: PriceSource | None) -> CapturedPriceSource | None:
     if source is None or source.entry_id is None:
         return None
     entry_id = source.entry_id
@@ -161,6 +176,13 @@ def choose_price_source(hass: HomeAssistant, charger_id: str, price_entry_id: st
     choose_price_entry(hass, charger_id, price_entry_id)
 
 
+def choose_site_price_source(hass: HomeAssistant, site: ConfigEntry, price_entry_id: str) -> None:
+    """The site uses this electricity price entry, and every charger on it follows (see the module)."""
+    if price_entry_id not in _price_entry_ids(hass):
+        raise PriceSourceRefusal(ERROR_UNKNOWN_PRICE_ENTRY, "Not an electricity price")
+    choose_site_price_entry(hass, site, price_entry_id)
+
+
 async def async_answer_price_duplicate(hass: HomeAssistant, area_id: str, keep: str | None) -> None:
     """The question for one area answered: use one of the entries, or (`None`) keep them all (see the module)."""
     record = next(
@@ -229,7 +251,9 @@ async def async_webhook_answer_price_duplicate(
 @websocket_api.websocket_command(
     {
         vol.Required("type"): "spotnav/choose_price_source",
-        vol.Required("entry_id"): str,
+        # One of the two: a charger (`entry_id`), or (a home with or without chargers) a site.
+        vol.Optional("entry_id"): str,
+        vol.Optional("site_id"): str,
         vol.Required("price_entry_id"): str,
     }
 )
@@ -241,11 +265,22 @@ async def websocket_choose_price_source(
     if not is_admin(connection):
         connection.send_error(msg["id"], ERROR_NOT_ADMIN, "Only administrators can change the electricity price")
         return
-    charger, failure = lookup_charger(hass, msg["entry_id"], require_loaded=False)
-    if failure is not None or charger is None:
-        connection.send_error(msg["id"], failure or ERROR_NOT_ADMIN, "Not a charger")
-        return
     try:
+        if "site_id" in msg:
+            site, code = lookup_site(hass, msg["site_id"], require_loaded=False)
+            if site is None:
+                connection.send_error(msg["id"], code or ERROR_NOT_ADMIN, "Not a site")
+                return
+            choose_site_price_source(hass, site, msg["price_entry_id"])
+            connection.send_result(msg["id"], {"ok": True})
+            return
+        if "entry_id" not in msg:
+            connection.send_error(msg["id"], ERROR_CHARGER_REQUIRED, "An entry_id or a site_id is required")
+            return
+        charger, failure = lookup_charger(hass, msg["entry_id"], require_loaded=False)
+        if failure is not None or charger is None:
+            connection.send_error(msg["id"], failure or ERROR_NOT_ADMIN, "Not a charger")
+            return
         choose_price_source(hass, charger.entry_id, msg["price_entry_id"])
     except PriceSourceRefusal as refusal:
         connection.send_error(msg["id"], refusal.code, refusal.message)

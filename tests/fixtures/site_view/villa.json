@@ -4,11 +4,168 @@
   "name": "Villan",
   "charger_ids": [],
   "writable": true,
-  "price": {"entry_id": "price_se4", "title": "Elpris SE4", "area_id": "SE4", "area_name": "Sverige SE4"},
-  "battery": {"found": true},
-  "setup": {"items": [
-    {"id": "charger", "dismissible": true},
-    {"id": "grid_power_sign", "dismissible": false, "field": "grid_power_inverted", "value": false},
-    {"id": "battery", "dismissible": true}
-  ]}
+  "price": {
+    "entry_id": "price_se4",
+    "title": "Elpris SE4",
+    "area_id": "SE4",
+    "area_name": "Sverige SE4"
+  },
+  "battery": {
+    "found": true
+  },
+  "setup": {
+    "items": [
+      {
+        "id": "charger",
+        "dismissible": true
+      },
+      {
+        "id": "grid_power_sign",
+        "dismissible": false,
+        "field": "grid_power_inverted",
+        "value": false
+      },
+      {
+        "id": "battery",
+        "dismissible": true
+      }
+    ]
+  },
+  "price_settings": {
+    "market": {
+      "area_id": "SE4",
+      "area_name": "Sverige SE4",
+      "countries": [
+        "SE"
+      ],
+      "timezone": "Europe/Stockholm",
+      "currency": "SEK",
+      "major_unit": "kr",
+      "minor_unit": "öre"
+    },
+    "fiscal": {
+      "vat": {
+        "policy": "suggested",
+        "explicit_value": null,
+        "suggested_value": 25.0,
+        "effective_value": 25.0,
+        "value_source": "suggested",
+        "unit": "%"
+      },
+      "tax": {
+        "policy": "suggested",
+        "explicit_value": null,
+        "suggested_value": 36.0,
+        "effective_value": 36.0,
+        "value_source": "suggested",
+        "unit": "öre/kWh"
+      },
+      "transfer": {
+        "policy": "manual",
+        "explicit_value": 31.5,
+        "suggested_value": 30.0,
+        "effective_value": 31.5,
+        "value_source": "manual",
+        "unit": "öre/kWh"
+      }
+    },
+    "fees": {
+      "area_id": "SE4",
+      "vat": {
+        "enabled": true,
+        "value": null
+      },
+      "tax": {
+        "enabled": true,
+        "value": null
+      },
+      "transfer": {
+        "enabled": true,
+        "value": 31.5
+      }
+    },
+    "provider": {
+      "key": "nordpool",
+      "name": "Nord Pool",
+      "url": "https://www.nordpoolgroup.com",
+      "notice": null
+    },
+    "price_source": {
+      "entry_id": "price_se4",
+      "title": "Elpris SE4",
+      "charger_count": 0,
+      "choices": [],
+      "writable": true,
+      "duplicate": null
+    },
+    "grid_tariff": {
+      "entry_id": "price_se4",
+      "write_revision": 1,
+      "transfer_percent": {
+        "policy": "manual",
+        "explicit_value": 5.0,
+        "effective_value": 5.0,
+        "unit": "%"
+      },
+      "transfer_high": {
+        "policy": "off",
+        "explicit_value": null,
+        "effective_value": null,
+        "unit": "öre/kWh"
+      },
+      "high_load_window": null,
+      "demand": {
+        "components": [],
+        "available": true,
+        "reason": null,
+        "price_unit": "kr/kW",
+        "per_component": [],
+        "hour": null,
+        "import_target_kw": null,
+        "effective_target_kw": null
+      },
+      "supplier_markup": {
+        "policy": "manual",
+        "explicit_value": 4.5,
+        "effective_value": 4.5,
+        "unit": "öre/kWh"
+      },
+      "sell_adjustment": {
+        "policy": "manual",
+        "explicit_value": -2.0,
+        "effective_value": -2.0,
+        "unit": "öre/kWh"
+      },
+      "sells": true,
+      "writable": true
+    }
+  },
+  "site": {
+    "name": "Villan",
+    "charger_count": 0,
+    "solar_priority": "car_first",
+    "solar_forecast": {
+      "selected": [
+        "forecast_solar_roof"
+      ],
+      "choices": [
+        {
+          "id": "forecast_solar_roof",
+          "title": "Forecast.Solar Tak"
+        },
+        {
+          "id": "solcast_a",
+          "title": "Solcast"
+        }
+      ]
+    },
+    "active_control": {
+      "available": false,
+      "enabled": false,
+      "reason": "no_commandable_charger",
+      "direction_hint": null,
+      "writable": true
+    },
+    "writable": true
+  }
 }

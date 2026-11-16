@@ -55,7 +55,9 @@ One write, a full replacement of the three parts (and of the demand-charge compo
 compare-and-set against the entry's write counter:
 
 * WebSocket `spotnav/update_grid_tariff {charger_id, expected_write_revision, grid_tariff}`, administrators only,
-  answering `{ok: true, grid_tariff: <block>}` or a stable error code;
+  answering `{ok: true, grid_tariff: <block>}` or a stable error code; `site_id` in place of `charger_id` writes the
+  electricity price the site reads (`site_price_source`; a site without chargers too) and answers with the site's
+  block (its `demand` measured on that site);
 * the webhook action `update_grid_tariff {expected_write_revision, grid_tariff}` for its own charger, answering
   `{ok, error, field_errors, grid_tariff}` with the block re-read now.
 
@@ -94,7 +96,7 @@ from ..planning.auto_settings import (
     SUPPLIER_MARKUP,
 )
 from ..planning.first_run import site_for_charger
-from ..pricing.price_source import async_write_price_entry, entry_source_for, PriceSource
+from ..pricing.price_source import async_write_price_entry, entry_source_for, PriceSource, site_price_source
 from ..runtime import site_controller_for
 from ..site.demand_tracker import DemandSnapshot
 from ..site.solar_capability import REASON_NEEDS_TOTAL_GRID_POWER, solar_capability
@@ -109,7 +111,7 @@ from ..const import (
     ENTRY_TYPE_SITE,
 )
 from ..site.measurement_source import grid_power_source_from_dict
-from .common import ERROR_NOT_ADMIN, is_admin, lookup_charger
+from .common import ERROR_CHARGER_REQUIRED, ERROR_NOT_ADMIN, is_admin, lookup_charger, lookup_site
 from .entity_fields import ERR_INVALID_VALUE, stored_import_target_kw
 
 #: The charger prices with its own settings: there is no electricity price entry to hold a grid tariff.
@@ -175,6 +177,20 @@ def capture_grid_tariff(hass: HomeAssistant, charger_id: str) -> CapturedGridTar
     )
 
 
+def capture_site_grid_tariff(hass: HomeAssistant, site: ConfigEntry) -> CapturedGridTariff | None:
+    """The grid tariff of the electricity price a site reads (`site_price_source`), with or without chargers, or
+    `None` while no price applies to it."""
+    source = site_price_source(hass, site.entry_id)
+    if source is None or source.entry_id is None:
+        return None
+    captured = _captured(source)
+    return replace(
+        captured,
+        demand=capture_site_demand(hass, site, captured.tariff.demand),
+        sells=price_sells(hass, source.entry_id),
+    )
+
+
 def site_sells(hass: HomeAssistant, site: ConfigEntry) -> bool:
     """Whether the site can sell energy: a home battery (its level entity, or a battery power entity), a solar
     forecast, the Energy dashboard's solar production statistics, or a measured grid export (the meter's separate
@@ -192,12 +208,14 @@ def site_sells(hass: HomeAssistant, site: ConfigEntry) -> bool:
 
 
 def price_sells(hass: HomeAssistant, entry_id: str) -> bool:
-    """Whether any site whose chargers price with this electricity price entry `site_sells`."""
+    """Whether any site that reads this electricity price entry (`site_price_source`, so a site without chargers
+    too), or whose chargers price with it, `site_sells`."""
     for site in hass.config_entries.async_entries(DOMAIN):
         if site.data.get(CONF_ENTRY_TYPE) != ENTRY_TYPE_SITE:
             continue
-        uses = False
-        for charger_id in site.data.get(CONF_CHARGER_ENTRY_IDS) or []:
+        own = site_price_source(hass, site.entry_id)
+        uses = own is not None and own.entry_id == entry_id
+        for charger_id in [] if uses else site.data.get(CONF_CHARGER_ENTRY_IDS) or []:
             source = entry_source_for(hass, charger_id)
             if source is not None and source.entry_id == entry_id:
                 uses = True
@@ -212,6 +230,13 @@ def capture_demand(hass: HomeAssistant, charger_id: str, components: tuple[Deman
     site = site_for_charger(hass, charger_id)
     if site is None:
         return CapturedDemand(available=False, reason=DEMAND_NO_SITE, snapshot=None, import_target_kw=None)
+    return capture_site_demand(hass, site, components)
+
+
+def capture_site_demand(
+    hass: HomeAssistant, site: ConfigEntry, components: tuple[DemandComponent, ...]
+) -> CapturedDemand:
+    """What a site measures for `components` and its import target (see the module)."""
     capability = solar_capability(site.data.get(CONF_MEASUREMENT_MODE), site.data.get(CONF_GRID_POWER_SOURCE))
     target = stored_import_target_kw(site.data)
     if not capability.capable:
@@ -417,11 +442,19 @@ def update_grid_tariff(hass: HomeAssistant, charger_id: str, expected_write_revi
     Every charger pricing with the entry replans (its revision moves). A tariff equal to the stored one (all off
     equals none stored) passes the compare-and-set and writes nothing: the write counter stays.
     """
+    _write_grid_tariff(hass, entry_source_for(hass, charger_id), expected_write_revision, body)
+
+
+def update_site_grid_tariff(hass: HomeAssistant, site: ConfigEntry, expected_write_revision: Any, body: Any) -> None:
+    """`update_grid_tariff` for the electricity price a site reads (`site_price_source`), with or without chargers."""
+    _write_grid_tariff(hass, site_price_source(hass, site.entry_id), expected_write_revision, body)
+
+
+def _write_grid_tariff(hass: HomeAssistant, source: PriceSource | None, expected_write_revision: Any, body: Any) -> None:
     expected = _expected(expected_write_revision)
     tariff, demand_named = decode_grid_tariff(body)
-    source = entry_source_for(hass, charger_id)
     if source is None or source.entry_id is None:
-        raise GridTariffRefusal(ERROR_NO_PRICE_ENTRY, "This charger has no electricity price entry")
+        raise GridTariffRefusal(ERROR_NO_PRICE_ENTRY, "No electricity price entry applies here")
     entry = hass.config_entries.async_get_entry(source.entry_id)
     if entry is None:
         raise GridTariffRefusal(ERROR_NO_PRICE_ENTRY, "The electricity price entry is gone")
@@ -474,7 +507,9 @@ async def async_webhook_update_grid_tariff(
 @websocket_api.websocket_command(
     {
         vol.Required("type"): "spotnav/update_grid_tariff",
-        vol.Required("charger_id"): str,
+        # One of the two: a charger, or (a home with or without chargers) a site.
+        vol.Optional("charger_id"): str,
+        vol.Optional("site_id"): str,
         vol.Required("expected_write_revision"): object,
         vol.Required("grid_tariff"): object,
     }
@@ -483,9 +518,27 @@ async def async_webhook_update_grid_tariff(
 async def websocket_update_grid_tariff(
     hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]
 ) -> None:
-    """The grid tariff of the charger's electricity price entry, replaced (see the module)."""
+    """The grid tariff of the charger's (or the site's) electricity price entry, replaced (see the module)."""
     if not is_admin(connection):
         connection.send_error(msg["id"], ERROR_NOT_ADMIN, "Only administrators can change the electricity price")
+        return
+    if "site_id" in msg:
+        site, code = lookup_site(hass, msg["site_id"], require_loaded=False)
+        if site is None:
+            connection.send_error(msg["id"], code or ERROR_NO_PRICE_ENTRY, "Not a site")
+            return
+        try:
+            update_site_grid_tariff(hass, site, msg["expected_write_revision"], msg["grid_tariff"])
+        except GridTariffRefusal as refusal:
+            connection.send_error(msg["id"], refusal.code, refusal.message)
+            return
+        connection.send_result(
+            msg["id"],
+            {"ok": True, "grid_tariff": serialize_grid_tariff(capture_site_grid_tariff(hass, site), can_act=True)},
+        )
+        return
+    if "charger_id" not in msg:
+        connection.send_error(msg["id"], ERROR_CHARGER_REQUIRED, "A charger_id or a site_id is required")
         return
     charger, failure = lookup_charger(hass, msg["charger_id"], require_loaded=False)
     if failure is not None or charger is None:

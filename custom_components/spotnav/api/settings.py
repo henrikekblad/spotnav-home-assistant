@@ -275,6 +275,12 @@ def _override(raw: Any) -> AreaAutoSettings:
     ).validated()
 
 
+def decode_override(raw: Any) -> AreaAutoSettings:
+    """One area's override row as the settings body states it (`{area_id, vat, tax, transfer}`), validated, or an
+    `AutoSettingsError` with the stable code: the site's price write (`api/site_price.py`) reads the same row."""
+    return _override(raw)
+
+
 def _target(raw: Any) -> TargetSocIntent:
     stored = _object(raw, TARGET_KEYS, "target")
     return TargetSocIntent(

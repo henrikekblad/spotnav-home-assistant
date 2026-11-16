@@ -24,8 +24,12 @@ and the charging card's **Card settings** share, for the card's site. Its sectio
 
 * **Get started**: what is left for the site: add a charger (answer **Not needed** for a home without one), an
   electricity price, the grid meter's sign, a solar forecast, the home battery, heating.
-* **Electricity price**: the price area; it is changed on the electricity price's entry in Home Assistant.
+* **Electricity price**: the same rows as the charging card's: which electricity price the site uses (and **Price
+  from** where there are several), the price area, VAT, energy tax and grid fee with the grid tariff beside it, the
+  supplier's markup and what a sold kWh earns (shown where something is sold), and the demand charge. Without an
+  electricity price, one row that adds one.
 * **The site**: main fuse, import target and the meters.
+* **Solar**: the solar forecast sources, as on the charging card.
 * **Home battery**, when SpotNav finds one: the battery control switch, what is missing, the check and allowing sales
   ([home batteries](home-battery.md#spotnavs-own-battery-control-off-by-default-in-testing)).
 * **Heating**, always: one line "Nothing found" until a heat pump, a heat meter or a thermostat is found; tap it to add a

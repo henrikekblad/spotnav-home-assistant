@@ -68,6 +68,7 @@ import type {
   Soc,
   Vehicle,
   PriceProvider,
+  PriceSourceBlock,
 } from "./validate";
 
 export type { Issue } from "./status";
@@ -372,15 +373,17 @@ export interface PriceEntryFacts {
 
 export function priceEntryFor(dashboard: Dashboard): PriceEntryFacts | null {
   const block = dashboard.price_source;
-  if (block === null) {
-    return null;
-  }
+  return block === null ? null : priceEntryFacts(block, dashboard.chargers.length);
+}
+
+/** One `price_source` block's facts, `chargerTotal` being how many chargers there are (at least those using it). */
+export function priceEntryFacts(block: PriceSourceBlock, chargers: number): PriceEntryFacts {
   const duplicate = block.duplicate;
   return {
     entryId: block.entry_id,
     title: block.title,
     chargerCount: block.charger_count,
-    chargerTotal: Math.max(dashboard.chargers.length, block.charger_count),
+    chargerTotal: Math.max(chargers, block.charger_count),
     choices: block.choices.map((choice) => ({ entryId: choice.entry_id, title: choice.title })),
     writable: block.writable,
     duplicate:

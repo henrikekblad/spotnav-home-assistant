@@ -26,9 +26,16 @@ beforeAll(() => {
 
 describe("decoding the site's answers", () => {
   it("reads the site views and the battery statuses, and refuses an unknown key", () => {
-    for (const name of ["villa.json", "no_charger.json"]) {
+    for (const name of ["villa.json", "no_charger.json", "with_price.json"]) {
       expect(decodeSiteView(read("site_view", name)).ok).toBe(true);
     }
+    const priced = read("site_view", "with_price.json");
+    const settings = priced["price_settings"] as Record<string, unknown>;
+    const tariff = settings["grid_tariff"] as Record<string, unknown>;
+    expect(decodeSiteView({ ...priced, price_settings: { ...settings, surprise: 1 } }).ok).toBe(false);
+    expect(decodeSiteView({ ...priced, price_settings: { ...settings, grid_tariff: { ...tariff, surprise: 1 } } }).ok).toBe(false);
+    expect(decodeSiteView({ ...priced, site: { ...(priced["site"] as object), surprise: 1 } }).ok).toBe(false);
+    expect(decodeSiteView({ ...priced, price: null }).ok).toBe(false);
     for (const name of ["needs_ack.json", "checking.json"]) {
       expect(decodeBatteryControl(read("battery_control", name)).ok).toBe(true);
     }
@@ -139,7 +146,7 @@ describe("the popover from the house card", () => {
     const { root, messages } = await mount();
     const popover = await open(root);
     expect([...popover.children].map((node) => (node as HTMLElement).dataset["section"])).toEqual([
-      "setup", "price", "site", "battery", "heat", "support",
+      "setup", "price", "site", "solar", "battery", "heat", "support",
     ]);
     const charger = popover.querySelector<HTMLElement>("[data-setup='charger']")!;
     expect(charger.textContent).toContain("Lägg till laddbox");

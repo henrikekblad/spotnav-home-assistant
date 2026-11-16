@@ -48,6 +48,7 @@ from .api.settings import async_setup_settings_api
 from .api.entsoe_key import async_setup_entsoe_key_api
 from .api.grid_tariff import async_setup_grid_tariff_api
 from .api.price_source import async_setup_price_source_api
+from .api.site_price import async_setup_site_price_api
 from .api.site_settings import async_setup_site_settings_api
 from .api.webhook import async_register_charger_webhook
 from .card_asset import async_setup_card_asset
@@ -199,6 +200,7 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     async_setup_site_settings_api(hass)
     async_setup_price_source_api(hass)
     async_setup_grid_tariff_api(hass)
+    async_setup_site_price_api(hass)
     async_setup_entsoe_key_api(hass)
     async_setup_setup_api(hass)
     async_setup_entity_config_api(hass)

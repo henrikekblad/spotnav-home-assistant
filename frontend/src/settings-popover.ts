@@ -1,23 +1,35 @@
 // The shared settings popover (SpotNav 3.0): one site settings surface reachable from every card. The house and heat
 // cards open it with `SettingsPopover` (`{siteId | chargerId, focus}`); the charger card keeps its own Settings page
 // and mounts the same battery and heat sections in it (`SiteSections`). Sections are built from what exists, never
-// from who opened it: Get started (the site's own rows), price, site, home battery (when one is found), heat (always a
-// row; one line "Heat · nothing found" until something is, which opens the section) and support.
+// from who opened it: Get started (the site's own rows), price, site, solar, home battery (when one is found), heat
+// (always a row; one line "Heat · nothing found" until something is, which opens the section) and support. The price
+// and solar sections are the charger card's own (`price-section.ts`), fed from the site's view.
 //
 // Writes go through the site-keyed commands: `spotnav/battery_control` (SpotNav's own options for the site; nothing is
-// written to the battery from here), `spotnav/update_heat` (shadow only), `spotnav/update_entity_config` by `site_id`.
+// written to the battery from here), `spotnav/update_heat` (shadow only), `spotnav/update_entity_config`,
+// `spotnav/update_grid_tariff`, `spotnav/choose_price_source` and `spotnav/update_site_settings` by `site_id`, and
+// `spotnav/update_price` for the area and fees.
 // Administrators only: the cards show no settings button to anyone else.
 
 import {
+  answerPriceDuplicate,
   batteryControl,
+  chooseSitePriceSource,
   dismissSetupItem,
+  findRegion,
   getDebugBundle,
   getHeat,
   getSiteEntityConfig,
+  getSiteMarketOptions,
   getSiteSettingsView,
   listChargers,
   listSites,
+  setEntsoeKey,
+  SpotnavApiError,
   updateSiteEntityConfig,
+  updateSiteGridTariff,
+  updateSitePrice,
+  updateSiteSettingsBySite,
   type SiteTarget,
 } from "./api";
 import { decodeDebugAnswer, saveDebugBundle } from "./debug-download";
@@ -33,12 +45,33 @@ import {
   type EntityField,
 } from "./entity-config";
 import { entityEditorBody, modeLabel } from "./entity-editor";
-import { formatNumber } from "./format";
+import { formatNumber, type FormatContext } from "./format";
+import { GRID_TARIFF_CONFLICT, gridTariffIncluded, sameBody, storedBody } from "./grid-tariff";
 import { heatEditor, writeHeat } from "./heat-editors";
 import { decodeHeat, type HeatAnswer, type HeatConfig } from "./heat-model";
 import { heatSettingsSection, type HeatSettingKey } from "./heat-view";
 import { translate, type Language, type TranslationKey } from "./i18n";
+import {
+  decodeMarketOptions,
+  fiscalValues,
+  marketEditable,
+  marketFormFor,
+  marketRow,
+  marketSuggestion,
+  switchArea,
+  type MarketFormValues,
+  type PriceRecord,
+} from "./market";
+import { marketEditorBody } from "./market-editor";
+import { priceEntryFacts, siteFactsFor } from "./model";
 import { addIntegrationPath, integrationPath } from "./price-provider";
+import {
+  priceSectionBody,
+  solarSectionBody,
+  type PriceWrite,
+  type SectionHost,
+} from "./price-section";
+import { settingsErrorKey } from "./settings";
 import { setupSection, type SetupRowId, setupRowsOf } from "./setup-checklist";
 import {
   decodeBatteryControl,
@@ -46,22 +79,27 @@ import {
   decodeSiteView,
   reportOutcomes,
   type BatteryStatus,
+  type SitePriceSettings,
   type SiteView,
 } from "./site-model";
-import type { HomeAssistantLike } from "./types";
+import { decodeSiteSettingsAnswer, siteSettingsErrorKey, solarSettingsChange } from "./site-settings";
+import type { HomeAssistantLike, MarketOptionsV1 } from "./types";
 import type { SetupBlock } from "./validate";
 import {
+  multiEditor,
   numberEditor,
   onOffEditor,
   sectionHeading,
   settingRow,
   shell,
+  singleEditor,
   type EditorHandlers,
 } from "./value-editors";
+import type { FiscalComponentName } from "./value-writes";
 import { VISUAL_CLASSES as C } from "./visual-styles";
 
 /** Where the popover opens: a section, or `house` for the top of the page (the house card's gear). */
-export type PopoverFocus = "house" | "setup" | "price" | "site" | "battery" | "heat" | "support";
+export type PopoverFocus = "house" | "setup" | "price" | "site" | "solar" | "battery" | "heat" | "support";
 
 /**
  * What a house or heat card in the card picker shows first: the first charger's site, else the first site (a home
@@ -793,7 +831,7 @@ export class SettingsPopover {
   }
 
   /** One value's editor in the same dialog; Save or Cancel returns to the page as it was, read again after a save. */
-  openEditor(title: string, build: (handlers: EditorHandlers) => HTMLFormElement): void {
+  openEditor(title: string, build: (handlers: EditorHandlers) => HTMLElement): void {
     const dialog = this.ensureDialog();
     this.scrollTop = this.panel()?.scrollTop ?? null;
     const back = (): void => {
@@ -832,6 +870,10 @@ export class SettingsPopover {
       body.append(setup);
     }
     body.append(this.priceNode(view), this.siteNode(view));
+    const solar = this.solarNode(view);
+    if (solar !== null) {
+      body.append(solar);
+    }
     const battery = this.sections.batteryNode();
     if (battery !== null) {
       body.append(battery);
@@ -862,7 +904,7 @@ export class SettingsPopover {
         rows,
         openPlan: () => undefined,
         openSetting: (section, edit) => this.openSettingAt(section, edit),
-        forecastChoosable: true,
+        forecastChoosable: (view.site?.solar_forecast.choices.length ?? 0) > 0,
         navigate: (path) => this.navigate(path),
         openExternal: (url) => doc.defaultView?.open(url, "_blank", "noopener"),
         heading: false,
@@ -914,30 +956,379 @@ export class SettingsPopover {
     this.paint();
   }
 
+  /** The host side of the shared price and solar sections: this popover's rows and editors. */
+  private sectionHost(): SectionHost {
+    const doc = this.input.doc;
+    const language = this.language;
+    const idPrefix = this.input.idPrefix;
+    const admin = this.isAdmin();
+    return {
+      doc,
+      language,
+      idPrefix,
+      isAdmin: admin,
+      row: (key, label, value, onTap) => {
+        const [row] = settingRow(doc, {
+          key,
+          label,
+          value,
+          ...(admin && onTap !== undefined
+            ? { onTap, changeableText: translate(language, "settings.row.changeable", { label, value }) }
+            : {}),
+        });
+        return row!;
+      },
+      rowHelp: (key, text) => {
+        const help = element(doc, "p", C.settingRowHelp, text);
+        help.dataset["help"] = key;
+        return help;
+      },
+      openValueEditor: (title, build) => this.openEditor(title, build),
+      editNumber: (title, spec, save) =>
+        this.openEditor(title, (handlers) =>
+          numberEditor(
+            doc,
+            language,
+            {
+              ...spec,
+              idPrefix,
+              rangeMessage: translate(language, "settings.error.range", {
+                min: formatNumber(language, spec.min, spec.decimals),
+                max: formatNumber(language, spec.max, spec.decimals),
+              }),
+            },
+            save,
+            handlers,
+          ),
+        ),
+      editSingle: (title, options, selected, save, intro) =>
+        this.openEditor(title, (handlers) =>
+          singleEditor(doc, language, { ...(intro === undefined ? {} : { intro }), options, selected, idPrefix }, save, handlers),
+        ),
+      editMulti: (title, options, checked, save) =>
+        this.openEditor(title, (handlers) => multiEditor(doc, language, { options, checked }, save, handlers)),
+    };
+  }
+
+  /**
+   * The price: the charger card's own section (`price-section.ts`) over the site's view. Without an electricity
+   * price, one row that adds one.
+   */
   private priceNode(view: SiteView): HTMLElement {
+    const settings = view.price_settings;
+    if (settings === null) {
+      return this.noPriceNode(view);
+    }
+    const doc = this.input.doc;
+    const market = settings.market;
+    const format: FormatContext = {
+      language: this.language,
+      timeZone: market.timezone ?? "",
+      unit: market.minor_unit ?? "",
+      currency: market.currency,
+      majorUnit: market.major_unit,
+      countries: market.countries ?? [],
+    };
+    const section = priceSectionBody({
+      ...this.sectionHost(),
+      facts: {
+        format,
+        priceEntry: priceEntryFacts(settings.price_source, view.charger_ids.length),
+        gridTariff: settings.grid_tariff,
+        fiscal: settings.fiscal,
+        provider: settings.provider,
+        areaId: market.area_id,
+        areaName: market.area_name,
+        onSite: true,
+      },
+      write: (write) => this.writePrice(view.site_id, settings, write),
+      openArea: () => void this.openArea(view.site_id, settings),
+      editFiscal: (component) => void this.editFiscal(view.site_id, settings, component),
+      hasComponent: (domain) => {
+        const components = (this.input.hass() as { config?: { components?: unknown } } | null)?.config?.components;
+        return Array.isArray(components) && components.includes(domain);
+      },
+      navigate: (path) => this.navigate(path),
+      openExternal: (url) => {
+        doc.defaultView?.open(url, "_blank", "noopener,noreferrer");
+      },
+    });
+    section.dataset["section"] = "price";
+    return section;
+  }
+
+  private noPriceNode(view: SiteView): HTMLElement {
     const doc = this.input.doc;
     const language = this.language;
     const section = element(doc, "section", C.settingsSection);
     section.dataset["section"] = "price";
     section.append(sectionHeading(doc, "price", translate(language, "settings.heading.price")));
-    const price = view.price;
     const label = translate(language, "popover.price.area");
-    const value = price === null ? translate(language, "popover.price.none") : (price.area_name ?? price.area_id);
+    const value = translate(language, "popover.price.none");
     section.append(
       ...settingRow(doc, {
         key: "price_area",
         label,
         value,
-        help: translate(language, price === null ? "popover.price.noneHelp" : "popover.price.help"),
+        help: translate(language, "popover.price.noneHelp"),
         ...(view.writable
           ? {
-              onTap: () => this.navigate(price === null ? addIntegrationPath("spotnav") : `${integrationPath("spotnav")}#config_entry=${encodeURIComponent(price.entry_id)}`),
+              onTap: () => this.navigate(addIntegrationPath("spotnav")),
               changeableText: translate(language, "settings.row.changeable", { label, value }),
             }
           : {}),
       }),
     );
     return section;
+  }
+
+  /** One write of the price section, by the site; `null` when it took, else the sentence. */
+  private async writePrice(siteId: string, settings: SitePriceSettings, write: PriceWrite): Promise<string | null> {
+    const hass = this.input.hass();
+    const language = this.language;
+    if (hass === null) {
+      return translate(language, "settings.error.generic");
+    }
+    try {
+      switch (write.kind) {
+        case "priceSource":
+          await chooseSitePriceSource(hass, siteId, write.priceEntryId);
+          break;
+        case "entsoeKey": {
+          const answer = await setEntsoeKey(hass, write.key, write.areaId);
+          // A key the platform could not be asked about is kept, and proved by the first day it is asked for.
+          if (!answer.ok && answer.error !== "entsoe_unreachable") {
+            return translate(language, "price.key.rejected");
+          }
+          break;
+        }
+        case "priceDuplicate":
+          await answerPriceDuplicate(hass, write.areaId, write.keepEntryId);
+          // Answered on the page itself (no editor to close): read the page again.
+          void this.load().then(() => this.paint());
+          break;
+        case "gridTariff": {
+          const block = settings.grid_tariff;
+          if (!block.writable || gridTariffIncluded(block)) {
+            return translate(language, "settings.error.generic");
+          }
+          const body = write.change(block);
+          if (!sameBody(body, storedBody(block))) {
+            await updateSiteGridTariff(hass, siteId, block.write_revision, body);
+          }
+          break;
+        }
+      }
+      this.input.onChanged?.("site");
+      return null;
+    } catch (error) {
+      return this.priceFailure(error);
+    }
+  }
+
+  /** A refused price write in words; a conflict reads the page again so the next Save builds on what is stored. */
+  private priceFailure(error: unknown): string {
+    const code = error instanceof SpotnavApiError ? error.code : null;
+    if (code === GRID_TARIFF_CONFLICT) {
+      void this.load();
+      return translate(this.language, "gridFee.error.conflict");
+    }
+    return translate(this.language, settingsErrorKey(code));
+  }
+
+  /** The price entry's own row as the area editor reads a record. */
+  private static priceRecord(settings: SitePriceSettings): PriceRecord {
+    return { area_id: settings.fees.area_id, overrides: [settings.fees] };
+  }
+
+  /** Write one area's row (`spotnav/update_price`), compare-and-set on the price's write counter. */
+  private async writeRow(
+    siteId: string,
+    settings: SitePriceSettings,
+    values: MarketFormValues,
+    options: MarketOptionsV1,
+  ): Promise<string | null> {
+    const hass = this.input.hass();
+    if (hass === null) {
+      return translate(this.language, "settings.error.generic");
+    }
+    const stated = marketRow(SettingsPopover.priceRecord(settings), values, options);
+    if (!stated.ok) {
+      return translate(this.language, stated.errorKey);
+    }
+    if (!stated.changed) {
+      return null;
+    }
+    try {
+      await updateSitePrice(hass, siteId, settings.grid_tariff.write_revision, stated.row);
+      this.input.onChanged?.("site");
+      return null;
+    } catch (error) {
+      return this.priceFailure(error);
+    }
+  }
+
+  private async marketOptions(siteId: string): Promise<MarketOptionsV1 | null> {
+    const hass = this.input.hass();
+    if (hass === null) {
+      return null;
+    }
+    try {
+      const decoded = decodeMarketOptions(await getSiteMarketOptions(hass, siteId));
+      return decoded.ok ? decoded.value : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /** A fee's own editor, as the charger card's: it needs the area's suggestion, read with the area list. */
+  private async editFiscal(siteId: string, settings: SitePriceSettings, component: FiscalComponentName): Promise<void> {
+    if (!this.isAdmin()) {
+      return;
+    }
+    const options = await this.marketOptions(siteId);
+    if (options === null) {
+      this.openReadFailure(translate(this.language, "market.title"));
+      return;
+    }
+    const record = SettingsPopover.priceRecord(settings);
+    const stored = settings.fees[component];
+    const suggestion = marketSuggestion(options, record.area_id, component);
+    const language = this.language;
+    const label = translate(
+      language,
+      component === "vat" ? "settings.fiscal.vat" : component === "tax" ? "settings.fiscal.tax" : "settings.fiscal.transfer",
+    );
+    this.sectionHost().editNumber(
+      label,
+      {
+        unit: settings.fiscal?.[component].unit ?? "",
+        current: stored.enabled ? (stored.value ?? suggestion) : null,
+        min: 0,
+        max: component === "vat" ? 100 : 100000,
+        decimals: 2,
+        noneLabel: translate(language, "settings.value.off"),
+        suggestion,
+      },
+      (value) => this.writeRow(siteId, settings, fiscalValues(record, component, value), options),
+    );
+  }
+
+  /** The area and its fees in the charger card's market editor, over the price entry's own row. */
+  private async openArea(siteId: string, settings: SitePriceSettings): Promise<void> {
+    const title = translate(this.language, "market.title");
+    if (!this.isAdmin()) {
+      return;
+    }
+    const options = await this.marketOptions(siteId);
+    if (options === null) {
+      this.openReadFailure(title);
+      return;
+    }
+    const record = SettingsPopover.priceRecord(settings);
+    const hass = this.input.hass();
+    const country = (hass as { config?: { country?: unknown } } | null)?.config?.country;
+    let drafts = {};
+    const show = (values: MarketFormValues): void =>
+      this.openEditor(title, (handlers) => {
+        const built = marketEditorBody(
+          this.input.doc,
+          this.language,
+          { readOnly: !marketEditable(options.state, this.isAdmin()), options, values, conflict: null },
+          {
+            onSave: (chosen) => {
+              const save = built.body.querySelector<HTMLButtonElement>(`.${C.settingsSave}`);
+              if (save !== null) {
+                save.disabled = true;
+              }
+              void this.writeRow(siteId, settings, chosen, options).then((sentence) => {
+                if (sentence === null) {
+                  handlers.onDone();
+                  return;
+                }
+                if (save !== null) {
+                  save.disabled = false;
+                }
+                built.body.querySelector("[data-market-notice]")?.remove();
+                const notice = element(this.input.doc, "p", C.settingsNotice, sentence);
+                notice.dataset["marketNotice"] = "";
+                notice.setAttribute("role", "alert");
+                built.body.prepend(notice);
+              });
+            },
+            onReload: () => handlers.onCancel(),
+            onReapply: () => handlers.onCancel(),
+            onCancel: () => handlers.onCancel(),
+            onAreaChange: (areaId, live) => {
+              const switched = switchArea(record, drafts, live, areaId);
+              drafts = switched.drafts;
+              show(switched.values);
+            },
+            ...(hass === null ? {} : { onFindRegion: (postcode: string) => findRegion(hass, postcode) }),
+          },
+          `${this.input.idPrefix}-market`,
+          typeof country === "string" && country.trim() !== "" ? country : null,
+        );
+        return built.body;
+      });
+    show(marketFormFor(record, record.area_id));
+  }
+
+  /** The area list could not be read: say so, with the way back. */
+  private openReadFailure(title: string): void {
+    this.openEditor(title, (handlers) => {
+      const editor = shell(this.input.doc, this.language, "market", handlers);
+      editor.body.append(element(this.input.doc, "p", C.settingsNotice, translate(this.language, "market.error.read")));
+      editor.form.querySelector<HTMLButtonElement>(`.${C.settingsSave}`)?.remove();
+      return editor.form;
+    });
+  }
+
+  /** Solar: the charger card's section (`price-section.ts`) over the site's own block; absent while it is not read. */
+  private solarNode(view: SiteView): HTMLElement | null {
+    const site = view.site;
+    if (site === null) {
+      return null;
+    }
+    const facts = siteFactsFor(site, this.language)!;
+    return solarSectionBody({
+      ...this.sectionHost(),
+      facts: {
+        chargerCount: facts.chargerCount,
+        appliesToText: facts.appliesToText,
+        writable: view.writable && facts.writable,
+        choices: facts.solarForecastChoices,
+      },
+      writeForecast: (forecast) => this.writeForecast(view, forecast),
+    });
+  }
+
+  private async writeForecast(view: SiteView, forecast: string[]): Promise<string | null> {
+    const hass = this.input.hass();
+    const site = view.site;
+    if (hass === null || site === null) {
+      return translate(this.language, "settings.error.generic");
+    }
+    const request = solarSettingsChange(
+      { priority: site.solar_priority, forecast: site.solar_forecast.selected },
+      { priority: site.solar_priority, forecast },
+    );
+    if (request === null) {
+      return null;
+    }
+    try {
+      const decoded = decodeSiteSettingsAnswer(await updateSiteSettingsBySite(hass, view.site_id, request));
+      if (!decoded.ok) {
+        return translate(this.language, decoded.failure === "unsupported" ? "settings.error.version" : "settings.error.generic");
+      }
+      if (!decoded.value.ok) {
+        return translate(this.language, siteSettingsErrorKey(decoded.value.code));
+      }
+      this.input.onChanged?.("site");
+      return null;
+    } catch {
+      return translate(this.language, "settings.error.generic");
+    }
   }
 
   private field(name: string): EntityField | undefined {
