@@ -8,7 +8,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
 
 import { HEAT_CARD_ELEMENT, instantToLocal, localToInstant, parseHeatConfig, SpotnavHeatCard, writeError } from "../src/heat-card";
 import { decodeHeat, decodeHeatWrite, type HeatAnswer } from "../src/heat-model";
-import { heatBody, heatSettingsSection, measuredLine, noteLines, pumpLine, relayLine, reviewLines, todayLine, wouldLine, type HeatState } from "../src/heat-view";
+import { controlLine, heatBody, heatSettingsSection, measuredLine, noteLines, pumpLine, relayLine, reviewLines, todayLine, wouldLine, type HeatState } from "../src/heat-view";
 import { registerTranslation } from "../src/i18n";
 import { TRANSLATIONS } from "../src/i18n/all";
 import { defineCard, HEAT_PICKER_ENTRY } from "../src/index";
@@ -46,6 +46,40 @@ describe("decoding the backend's own answer", () => {
     expect(villa.band.hours).toHaveLength(24);
     expect(villa.band.hours[0]!.startMs).toBe(Date.parse("2026-11-15T23:00:00+00:00"));
     expect(answer("network_pump.json").notes.map((note) => note.code)).toEqual(["pump_price_control", "readings_disabled", "other_controller"]);
+  });
+
+  it("reads SpotNav's own control and refuses an unknown key at any depth of every fixture", () => {
+    const controlled = answer("controlled.json");
+    expect(controlled.control!.state).toBe("running");
+    expect(controlled.band.hours[7]!.executed_min).toBe(60);
+    for (const name of ["villa.json", "network_pump.json", "controlled.json"]) {
+      const raw = read(name);
+      const paths: (string | number)[][] = [];
+      const walk = (value: unknown, path: (string | number)[]): void => {
+        if (Array.isArray(value)) {
+          value.forEach((item, index) => walk(item, [...path, index]));
+        } else if (typeof value === "object" && value !== null) {
+          // A note's params are free-form by design; every other object is exact-key.
+          if (path[path.length - 1] !== "params") {
+            paths.push(path);
+          }
+          for (const [key, item] of Object.entries(value)) {
+            walk(item, [...path, key]);
+          }
+        }
+      };
+      walk(raw, []);
+      expect(paths.length).toBeGreaterThan(20);
+      for (const path of paths) {
+        const copy = JSON.parse(JSON.stringify(raw)) as Record<string, unknown>;
+        let target: Record<string, unknown> = copy;
+        for (const step of path) {
+          target = (target as Record<string | number, unknown>)[step] as Record<string, unknown>;
+        }
+        target["surprise"] = 1;
+        expect(decodeHeat(copy).ok, `${name} ${path.join(".")}`).toBe(false);
+      }
+    }
   });
 
   it("refuses an unknown key, a missing one, a mistyped one and another version", () => {
@@ -147,8 +181,13 @@ describe("the front", () => {
     expect(card.querySelector("[data-line='review-plan']")).not.toBeNull();
     expect(noteLines("sv", villa).map((note) => note.text)).toEqual([
       "Automationen 'Golvvärme – börvärde efter elpris och larm' styr också Golvvärme toalett nedervåning: stäng av den när SpotNav ska styra.",
-      "Automationen 'Värmepanna: sänk värmekurvan när elen är dyr' styr reläet: stäng av den när SpotNav ska styra värmen.",
+      // Styr värmen is on: the automation on the relay is what it waits for, one note that says what to do.
+      "Stäng av automationen 'Värmepanna: sänk värmekurvan när elen är dyr' så att SpotNav kan styra värmen.",
     ]);
+    const before = { ...villa, notes: villa.notes.map((note) => ({ ...note, params: { ...note.params, blocks: false } })) };
+    expect(noteLines("sv", before)[1]!.text).toBe(
+      "Automationen 'Värmepanna: sänk värmekurvan när elen är dyr' styr reläet: stäng av den när SpotNav ska styra värmen.",
+    );
   });
 
   it("refuses a relay or review with a key too many or missing, deep down", () => {
@@ -174,6 +213,7 @@ describe("the settings section", () => {
     const section = heatSettingsSection(document, "sv", answer(), (key) => edits.push(key));
     const rows = [...section.querySelectorAll<HTMLElement>("[data-row]")].map((row) => [row.dataset["row"], row.textContent]);
     expect(rows).toEqual([
+      ["steer", "Styr värmenPå"],
       ["indoor", "Inomhusgivare3 valda"],
       ["sensor:sensor.inomhus_kok_temperatur", "Inomhus kök0 °C"],
       ["sensor:sensor.ovanvaning_temperatur", "Ovanvåning−1,0 °C"],
@@ -195,6 +235,11 @@ describe("the settings section", () => {
     expect(section.querySelector("[data-help='zone:climate.ovanvaning']")!.textContent).toBe(
       "Luft-luftvärmepump: SpotNav ändrar bara börvärdet, slår aldrig av eller på.",
     );
+    // The switch's line: what it waits for, and no "test" intro while it is on.
+    expect(section.querySelector("[data-help='steer']")!.textContent).toBe(
+      "Väntar: stäng av automationen 'Värmepanna: sänk värmekurvan när elen är dyr' så att SpotNav kan styra värmen.",
+    );
+    expect(section.textContent).not.toContain("styr ingen värme än");
     // A row that opens an editor says its help there, not under the row.
     for (const key of ["indoor", "outdoor", "path", "hotWater", "zones", "night"]) {
       expect(section.querySelector(`[data-help='${key}']`), key).toBeNull();
@@ -359,5 +404,68 @@ describe("the element", () => {
       ],
     });
     expect(write["expected"]).toEqual({ indoor_offsets: [{ entity_id: "sensor.ovanvaning_temperatur", offset_c: -1 }] });
+  });
+
+  it("turns the heat control on through its own editor", async () => {
+    const { messages, root } = await mount();
+    root.querySelector<HTMLButtonElement>("button[data-action='settings']")!.click();
+    await vi.advanceTimersByTimeAsync(0);
+    root.querySelector<HTMLButtonElement>("button[data-edit='steer']")!.click();
+    const form = root.querySelector<HTMLFormElement>("form")!;
+    expect(form.textContent).toContain("minst 45 minuter");
+    form.querySelector<HTMLInputElement>("input[value='off']")!.click();
+    form.requestSubmit();
+    await vi.advanceTimersByTimeAsync(0);
+    const write = messages.find((message) => message["type"] === "spotnav/update_heat")!;
+    expect(write["changes"]).toEqual({ control_enabled: false });
+    expect(write["expected"]).toEqual({ control_enabled: true });
+  });
+});
+
+describe("SpotNav controlling the heat", () => {
+  it("says so in the header, under the switch and in the day's band", () => {
+    const controlled = answer("controlled.json");
+    const card = body(controlled);
+    expect(card.querySelector("[data-line='controlling']")!.textContent).toBe("Styr värmen");
+    expect(card.querySelector("[data-action='test']")).toBeNull();
+    expect(card.querySelector("[data-line='test-explain']")).toBeNull();
+    expect(card.querySelector("[data-line='shadow']")).toBeNull();
+    expect(controlLine("sv", controlled)).toBe("Styr: sänker värmen till 19:00.");
+    // SpotNav's own lowerings in the relay's row, said in words and in the legend.
+    const marks = [...card.querySelectorAll<SVGElement>("[data-mark='executed']")];
+    expect(marks).toHaveLength(3);
+    expect(card.textContent).toContain("07:00: Sänkt, 20,5 °C · SpotNav sänkte 60 min");
+    expect([...card.querySelectorAll("li")].map((item) => item.textContent)).toContain("SpotNav sänkte");
+    // The villa before: the test chip, nothing executed.
+    const villa = body(answer());
+    expect(villa.querySelector("[data-action='test']")).not.toBeNull();
+    expect(villa.querySelectorAll("[data-mark='executed']")).toHaveLength(0);
+  });
+
+  it("words every state of the switch's line", () => {
+    const controlled = answer("controlled.json");
+    const at = (control: Partial<NonNullable<HeatAnswer["control"]>>): string | null =>
+      controlLine("sv", { ...controlled, control: { ...controlled.control!, ...control } });
+    expect(at({ enabled: false, state: "off" })).toBe("Av: SpotNav visar bara vad den skulle göra.");
+    expect(at({ state: "verifying", reason: "wait", lowered: false })).toBe("Provar att värmepumpen svarar på reläet: väntar på en stund när den värmer.");
+    expect(at({ state: "verifying", reason: "closed" })).toBe("Provar nu att värmepumpen svarar på reläet.");
+    expect(at({ lowered: false, reason: "normal" })).toBe("Styr: värmepumpen går på sin vanliga kurva just nu.");
+    expect(at({ lowered: false, reason: "room_cold" })).toBe("Styr: ett rum ligger under bandet, ingen sänkning.");
+    expect(at({ state: "waiting", reason: "foreign_change", lowered: false })).toBe("Väntar: någon annan ändrade reläet. SpotNav styr igen i morgon.");
+    expect(at({ state: "waiting", reason: "check_failed", lowered: false })).toBe("Värmepumpen svarade inte på reläet. Kontrollera kopplingen och slå på igen.");
+    expect(at({ state: "waiting", reason: "no_signal", lowered: false })).toBe("Väntar: välj värmepumpens mätare så att SpotNav kan se att reläet verkar.");
+    expect(at({ state: "waiting", reason: "something_new", lowered: false })).toBe("Väntar.");
+    expect(controlLine("sv", { ...controlled, control: null })).toBeNull();
+    for (const language of ["en", "sv"] as const) {
+      for (const reason of ["automation", "other_controller", "pump_price_control", "relay_unavailable", "relay_closed", "no_relay", "no_read_back"]) {
+        expect(controlLine(language, { ...controlled, control: { ...controlled.control!, state: "waiting", reason } })).not.toContain("heat.");
+      }
+    }
+  });
+
+  it("keeps the switch away from a path it cannot steer", () => {
+    const pump = answer("network_pump.json");
+    const section = heatSettingsSection(document, "sv", pump, () => undefined);
+    expect(section.querySelector("[data-row='steer']")).toBeNull();
   });
 });

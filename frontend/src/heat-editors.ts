@@ -8,7 +8,7 @@ import { HEAT_CLASSES as X } from "./heat-styles";
 import { instantToLocal, localToInstant, namesOf, type HeatSettingKey } from "./heat-view";
 import { translate, type Language, type TranslationKey } from "./i18n";
 import type { HomeAssistantLike } from "./types";
-import { multiEditor, numberEditor, shell, singleEditor, type ChoiceOption, type EditorHandlers } from "./value-editors";
+import { multiEditor, numberEditor, onOffEditor, shell, singleEditor, type ChoiceOption, type EditorHandlers } from "./value-editors";
 import { VISUAL_CLASSES } from "./visual-styles";
 
 /** The return time the away editor offers first. */
@@ -91,6 +91,14 @@ export function heatEditor(input: HeatEditorInput, key: HeatSettingKey | "away",
   }
   if (key === "night") {
     return { title: t("heat.settings.night"), body: nightEditor(input, handlers) };
+  }
+  if (key === "steer") {
+    return {
+      title: t("heat.settings.steer"),
+      body: onOffEditor(doc, language, { intro: t("heat.settings.steerHelp"), on: config.control_enabled, idPrefix: prefix }, async (on) =>
+        on === config.control_enabled ? null : await input.write({ control_enabled: on }),
+      handlers),
+    };
   }
   if (choices === null) {
     return null;

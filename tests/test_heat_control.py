@@ -20,6 +20,7 @@ from custom_components.spotnav.heat.shadow_rule import BandHour
 from custom_components.spotnav.runtime import site_controller_for
 
 from .test_demand_site import pilot_site
+from .test_heat_api import read, update
 
 pytestmark = pytest.mark.usefixtures("offline_relay")
 
@@ -438,3 +439,24 @@ async def test_home_assistants_stop_opens_the_relay(hass: HomeAssistant, freezer
     await hass.async_block_till_done()
     hass.set_state(CoreState.running)
     assert relay.calls == ["on", "off"] and relay.state == "off" and not control.held
+
+
+
+async def test_the_card_reads_the_control_and_turning_it_off_opens_the_relay_at_once(hass: HomeAssistant, freezer) -> None:
+    site, control, relay, now = await _running(hass, freezer, 0, 1)
+    await control.async_look(now)
+    await control.async_look(now + 30 * MIN)
+    freezer.move_to(now + 30 * MIN)
+    answer = (await read(hass, api_version=1, site_id=site.entry_id))["result"]
+    assert answer["control"]["state"] == "running" and answer["control"]["lowered"] is True
+    assert answer["config"]["control_enabled"] is True
+    current = next(hour for hour in answer["band"]["hours"] if hour["start"] == now.isoformat())
+    assert current["executed_min"] == 30 and answer["shadow"] is False
+    # Turned off from the card: the write makes the control look at once, and the relay opens.
+    result = (await update(hass, api_version=1, site_id=site.entry_id, changes={"control_enabled": False}, expected={"control_enabled": True}))["result"]
+    assert result["ok"] is True and result["config"]["control_enabled"] is False
+    await hass.async_block_till_done()
+    assert relay.calls == ["on", "off"] and relay.state == "off"
+    # Only an administrator may turn it on.
+    refused = (await update(hass, admin=False, api_version=1, site_id=site.entry_id, changes={"control_enabled": True}))["result"]
+    assert refused["error"] == "spotnav_not_admin"

@@ -1,6 +1,6 @@
-"""`spotnav/get_heat`'s answer (API v1), built from what the shell (`api/heat.py`) read. Pure. Shadow only.
+"""`spotnav/get_heat`'s answer (API v1), built from what the shell (`api/heat.py`) read. Pure.
 
-    {api_version: 1, site_id, now, time_zone, writable, shadow: true,
+    {api_version: 1, site_id, now, time_zone, writable, shadow: false only while SpotNav's heat control runs,
      config: the settings (`api/heat.config_block`),
      comfort: {target_c, low_c, high_c, mode, away_until, aim_c},
      indoor: {value_c, coldest, coldest_name, sensors: [{entity_id, name, value_c, rise_c, status, offset_c}],
@@ -13,13 +13,19 @@
      meter: {status, entity_id, name, source, setting_offered, candidates, kw_now, state, baseline_kw} | null,
      today: {date, total_kwh, heat_kwh, hot_water_kwh, runs: [{start, end, kwh}], baseline_kw, cost, money} | null,
      status: {pump_state, pump_state_source, kw, would: {action, target_c, until, reason} | null, guard},
-     band: {date, hours: [{start, action, target_c, reason, price, past, hot_water, car, relay_min, relay_expected}],
-            hot_water_pick} | null,
+     band: {date, hours: [{start, action, target_c, reason, price, past, hot_water, car, relay_min, relay_expected,
+                           executed_min}], hot_water_pick} | null,
      notes: [{code, params}],
      choices: {indoor, outdoor, zones, relay, offset, setpoint, hot_water, meter} | null (administrators only),
      relay: {entity_id, name, closed, since, source, automation: {entity_id, name} | null,
              effect: {lower_share, rebound, blocks}} | null,
-     review: yesterday's review (`heat/review.py`) | null}
+     review: yesterday's review (`heat/review.py`) | null,
+     control: {enabled, state: "off" | "verifying" | "running" | "waiting", reason, automation: {entity_id, name} | null,
+               check: "passed" | "failed" | null, lowered, since, until, paused_until} | null}
+
+`control` is SpotNav's own switching of the relay (`heat/control.py`, `HeatControl.status`): `reason` is the check's
+phase while verifying, the rules' reason while running (`heat/relay_control.py`), what it waits for while waiting.
+Each band hour's `executed_min` is the minutes SpotNav itself held the relay closed (`null` without the control).
 
 The band is SpotNav's own plan (`heat/shadow_rule.band`, joint with the cars, the battery and the import cap: the
 `tight` hours); an hour already begun shows what was planned when it began (`kept`). Beside it each hour says how many
@@ -31,7 +37,8 @@ the heat while SpotNav only watches.
 price control is on; `{label, where}`), `readings_disabled` (readings SpotNav needs are turned off in the integration;
 `{entities, device_id}`), `other_controller` (another optimiser steers the pump; `{names}`), `automation_steers` (an
 enabled automation of the household's references the relay or a zone, `heat/automations.py`; `{entity_id, name,
-targets: [names], relay}`, `relay` when the relay is among them: one note per automation). A thing the household
+targets: [names], relay, blocks}`, `relay` when the relay is among them, `blocks` when that keeps SpotNav's heat
+control from starting: one note per automation). A thing the household
 cannot change (no writable control path) is no note: `pump.capabilities` says it.
 """
 
@@ -54,10 +61,11 @@ from .shadow_rule import ACTION_LOWER, ACTION_NORMAL, ACTION_PREHEAT, BandHour, 
 HEAT_API_VERSION: Final = 1
 HEAT_KEYS: Final = (
     "api_version", "site_id", "now", "time_zone", "writable", "shadow", "config", "comfort", "indoor", "outdoor",
-    "zones", "pump", "meter", "today", "status", "band", "notes", "choices", "relay", "review",
+    "zones", "pump", "meter", "today", "status", "band", "notes", "choices", "relay", "review", "control",
 )
 BAND_HOUR_KEYS: Final = (
     "start", "action", "target_c", "reason", "price", "past", "hot_water", "car", "relay_min", "relay_expected",
+    "executed_min",
 )
 
 KIND_FLOOR: Final = "floor"
@@ -153,6 +161,9 @@ class HeatViewInputs:
     #: Names of the entities the automations reference.
     names: Mapping[str, str] = field(default_factory=dict)
     review: Mapping[str, Any] | None = None
+    #: The heat control's status (`HeatControl.status`) and the minutes it held the relay closed per hour.
+    control: Mapping[str, Any] | None = None
+    executed: Mapping[datetime, int] = field(default_factory=dict)
 
 
 def _hour_prices(prices: Sequence[tuple[datetime, datetime, float]]) -> dict[datetime, float]:
@@ -212,6 +223,7 @@ def notes(
     automations: Sequence[SteeringAutomation] = (),
     relay: str | None = None,
     names: Mapping[str, str] | None = None,
+    control_enabled: bool = False,
 ) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     if pump is not None and pump.price_control.state == "active":
@@ -232,6 +244,7 @@ def notes(
                     "name": automation.name,
                     "targets": [(names or {}).get(target, target) for target in targets],
                     "relay": relay is not None and relay in automation.targets,
+                    "blocks": control_enabled and relay is not None and relay in automation.targets,
                 },
             }
         )
@@ -296,6 +309,7 @@ def heat_view(inputs: HeatViewInputs) -> dict[str, Any]:
                 "car": hour.start in inputs.car_hours,
                 "relay_min": None if relay is None else relay.minutes.get(hour.start, (0, False))[0],
                 "relay_expected": relay is not None and relay.minutes.get(hour.start, (0, False))[1],
+                "executed_min": None if inputs.control is None else inputs.executed.get(hour.start, 0),
             }
             for hour in band_hours
         ],
@@ -329,7 +343,7 @@ def heat_view(inputs: HeatViewInputs) -> dict[str, Any]:
         "now": now.isoformat(),
         "time_zone": inputs.tz,
         "writable": inputs.writable,
-        "shadow": True,
+        "shadow": inputs.control is None or inputs.control.get("state") != "running",
         "config": dict(inputs.config_block),
         "comfort": {
             "target_c": config.target_c,
@@ -388,7 +402,12 @@ def heat_view(inputs: HeatViewInputs) -> dict[str, Any]:
         },
         "band": band_block,
         "notes": notes(
-            inputs.pump, inputs.other_controllers, inputs.automations, None if relay is None else relay.entity_id, inputs.names
+            inputs.pump,
+            inputs.other_controllers,
+            inputs.automations,
+            None if relay is None else relay.entity_id,
+            inputs.names,
+            control_enabled=inputs.control is not None and inputs.control.get("enabled") is True,
         ),
         "choices": None if not inputs.writable or inputs.choices is None else dict(inputs.choices),
         "relay": None
@@ -403,5 +422,6 @@ def heat_view(inputs: HeatViewInputs) -> dict[str, Any]:
             "effect": relay.effect.as_dict(),
         },
         "review": None if inputs.review is None else dict(inputs.review),
+        "control": None if inputs.control is None else dict(inputs.control),
     }
 

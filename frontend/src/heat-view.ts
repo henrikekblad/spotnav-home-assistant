@@ -240,8 +240,14 @@ export function testChip(
 
 function header(doc: Document, language: Language, answer: HeatAnswer | null, handlers: HeatHandlers | null, testOpen = false): HTMLElement[] {
   const head = element(doc, "div", H.head);
+  // "Test" while SpotNav only shows what it would do; once its heat control runs, a quiet chip that says so instead.
+  const controlling = answer?.control?.state === "running";
   const test = testChip(doc, language, "heat.test.explain", testOpen, "spotnav-heat-test", handlers?.onTest?.bind(handlers));
-  head.append(element(doc, "h2", H.title, translate(language, "heat.title")), test.chip);
+  const chip = controlling ? element(doc, "span", H.chip, translate(language, "heat.controlling")) : test.chip;
+  if (controlling) {
+    chip.dataset["line"] = "controlling";
+  }
+  head.append(element(doc, "h2", H.title, translate(language, "heat.title")), chip);
   const onHistory = handlers?.onHistory;
   if (answer !== null && onHistory !== undefined) {
     const button = historyHeaderButton(doc, translate(language, "hist.open"), X.settingsButton, () => onHistory.call(handlers, button));
@@ -251,7 +257,7 @@ function header(doc: Document, language: Language, answer: HeatAnswer | null, ha
     const button = settingsGearButton(doc, translate(language, "heat.settings.open"), () => handlers.onSettings());
     head.append(button);
   }
-  return [head, test.explain];
+  return controlling ? [head] : [head, test.explain];
 }
 
 // ------------------------------------------------------------------------------------------------ the dial
@@ -538,7 +544,10 @@ function bandBlock(doc: Document, language: Language, answer: HeatAnswer, width:
         action: words === "" ? degrees(language, hour.target_c) : words,
         temp: degrees(language, hour.target_c),
       });
-      if (hour.relay_min !== null && hour.relay_min > 0) {
+      const executed = hour.executed_min ?? 0;
+      if (executed > 0) {
+        title.textContent += ` · ${translate(language, "heat.band.executedHour", { minutes: String(executed) })}`;
+      } else if (hour.relay_min !== null && hour.relay_min > 0) {
         title.textContent += ` · ${translate(language, hour.relay_expected ? "heat.band.relayHourExpected" : "heat.band.relayHour", { minutes: String(hour.relay_min) })}`;
       }
       rect.append(title);
@@ -549,10 +558,11 @@ function bandBlock(doc: Document, language: Language, answer: HeatAnswer, width:
       rect.addEventListener("click", say);
       rect.addEventListener("mouseenter", say);
       picture.append(rect);
-      if (hour.relay_min !== null && hour.relay_min > 0) {
-        const share = Math.min(60, hour.relay_min) / 60;
+      // SpotNav's own lowering where it held the relay, else the relay as anyone closed it (or is expected to).
+      if (executed > 0 || (hour.relay_min !== null && hour.relay_min > 0)) {
+        const share = Math.min(60, executed > 0 ? executed : hour.relay_min ?? 0) / 60;
         const mark = svg(doc, "rect", { x: (x + 0.5).toFixed(2), y: 23, width: Math.max(1, (cell - 1) * share).toFixed(2), height: 6, rx: 1, class: X.bandRelay });
-        mark.dataset["mark"] = hour.relay_expected ? "relay_expected" : "relay";
+        mark.dataset["mark"] = executed > 0 ? "executed" : hour.relay_expected ? "relay_expected" : "relay";
         picture.append(mark);
       }
       if (hour.car) {
@@ -590,7 +600,10 @@ function bandBlock(doc: Document, language: Language, answer: HeatAnswer, width:
     }
     legend.append(legendItem(doc, action, actionWord(language, action)));
   }
-  if (hours.some((hour) => (hour.relay_min ?? 0) > 0 && !hour.relay_expected)) {
+  if (hours.some((hour) => (hour.executed_min ?? 0) > 0)) {
+    legend.append(legendItem(doc, "executed", translate(language, "heat.band.executed")));
+  }
+  if (hours.some((hour) => (hour.relay_min ?? 0) > 0 && !hour.relay_expected && (hour.executed_min ?? 0) === 0)) {
     legend.append(legendItem(doc, "relay", translate(language, "heat.band.relay")));
   }
   if (hours.some((hour) => (hour.relay_min ?? 0) > 0 && hour.relay_expected)) {
@@ -661,7 +674,9 @@ export function noteLines(language: Language, answer: HeatAnswer): { code: strin
     } else if (note.code === "automation_steers") {
       const name = String(params["name"] ?? "");
       const targets = Array.isArray(params["targets"]) ? (params["targets"] as unknown[]).map(String) : [];
-      const key: TranslationKey = params["relay"] === true ? "heat.note.automation_relay" : "heat.note.automation_zone";
+      const key: TranslationKey = params["blocks"] === true
+        ? "heat.note.automation_blocks"
+        : params["relay"] === true ? "heat.note.automation_relay" : "heat.note.automation_zone";
       out.push({ code: note.code, text: translate(language, key, { name, targets: targets.join(", ") }) });
     }
   }
@@ -738,6 +753,45 @@ export function heatBody(input: HeatRenderInput): HTMLElement {
 
 // ------------------------------------------------------------------------------------------------ settings
 
+const CONTROL_WAITS = [
+  "automation", "other_controller", "pump_price_control", "relay_unavailable", "relay_closed", "no_relay", "no_signal",
+  "check_failed", "foreign_change", "no_read_back",
+];
+const CONTROL_SAFETY = ["too_cold", "room_cold", "stale", "sg_ready_b"];
+
+/**
+ * The line under "Styr värmen": off, checking the pump answers the relay, controlling (lowered until when, or the
+ * pump's normal curve and why), or what it waits for ("Väntar: stäng av automationen '…' så att SpotNav kan styra
+ * värmen."). `null` without the control's status.
+ */
+export function controlLine(language: Language, answer: HeatAnswer): string | null {
+  const control = answer.control;
+  if (control === null) {
+    return null;
+  }
+  if (!control.enabled || control.state === "off") {
+    return translate(language, "heat.control.off");
+  }
+  if (control.state === "verifying") {
+    return translate(language, control.reason === "wait" ? "heat.control.verifyingWait" : "heat.control.verifying");
+  }
+  if (control.state === "running") {
+    if (control.lowered) {
+      return control.until === null
+        ? translate(language, "heat.control.loweredNow")
+        : translate(language, "heat.control.lowered", { until: whenLabel(language, answer, Date.parse(control.until)) });
+    }
+    const reason = control.reason ?? "";
+    return translate(language, (CONTROL_SAFETY.includes(reason) ? `heat.control.${reason}` : "heat.control.normal") as TranslationKey);
+  }
+  const reason = control.reason ?? "";
+  if (!CONTROL_WAITS.includes(reason)) {
+    return translate(language, "heat.control.waiting");
+  }
+  // A pause lasts to the next day: the line says "tomorrow".
+  return translate(language, `heat.control.wait.${reason}` as TranslationKey, { name: control.automation?.name ?? "" });
+}
+
 export type HeatSettingKey =
   | "indoor"
   | "outdoor"
@@ -749,15 +803,17 @@ export type HeatSettingKey =
   | "zones"
   | `zone:${string}`
   | `sensor:${string}`
+  | "steer"
   | "night";
 
 /** The "Heating" section of the settings dialog: one row per setting, each opening its editor (`onEdit`). */
 export function heatSettingsSection(doc: Document, language: Language, answer: HeatAnswer, onEdit: (key: HeatSettingKey) => void): HTMLElement {
   const section = element(doc, "section", `${C.settingsSection} ${X.section}`);
   section.append(sectionHeading(doc, "heat", translate(language, "heat.settings.title")));
-  const intro = element(doc, "p", `${C.muted} ${H.note}`, translate(language, "heat.settings.intro"));
-  section.append(intro);
   const config = answer.config;
+  if (!config.control_enabled) {
+    section.append(element(doc, "p", `${C.muted} ${H.note}`, translate(language, "heat.settings.intro")));
+  }
   const names = namesOf(answer);
   const none = translate(language, "heat.settings.none");
   const row = (key: HeatSettingKey, label: string, value: string, help?: string, editable = true): void => {
@@ -771,6 +827,21 @@ export function heatSettingsSection(doc: Document, language: Language, answer: H
       }),
     );
   };
+  // "Styr värmen": on the relay path (and SG Ready's) only, with one line on what it does or waits for.
+  if (["relay", "sg_ready"].includes(config.control_path) || config.control_enabled) {
+    row(
+      "steer",
+      translate(language, "heat.settings.steer"),
+      translate(language, config.control_enabled ? "settings.value.on" : "settings.value.off"),
+    );
+    const line = controlLine(language, answer);
+    if (line !== null) {
+      const help = element(doc, "p", C.settingRowHelp, line);
+      help.dataset["help"] = "steer";
+      help.dataset["controlState"] = answer.control?.state ?? "off";
+      section.append(help);
+    }
+  }
   const sensors = config.indoor_sensors;
   const indoorValue = sensors.length === 0
     ? none

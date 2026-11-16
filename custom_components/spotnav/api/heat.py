@@ -1,6 +1,7 @@
 """The heat card's commands (SpotNav 3.0, plan `plans/v3_heat_card.md`): `spotnav/get_heat` reads the card's view of
-a site, `spotnav/update_heat` writes the site's heat settings (`heat/config.py`) with a compare-and-set. Shadow only:
-nothing here or behind it writes to a heating device.
+a site, `spotnav/update_heat` writes the site's heat settings (`heat/config.py`) with a compare-and-set. Nothing here writes
+to a heating device; `control_enabled` is the person's opt-in that lets the heat control (`heat/control.py`) switch
+the relay, and a write makes it look at once (turned off, it opens what it holds).
 
 `spotnav/get_heat` (API v1): `{api_version: 1, site_id | charger_id}`, any user who can see the card; the answer is
 `heat/view.py:heat_view` (its docstring has the shape; `writable` and `choices` only for an administrator). Read from
@@ -219,8 +220,12 @@ def write_heat(hass: HomeAssistant, site: ConfigEntry, changes: Any, expected: A
     if data != dict(site.data):
         hass.config_entries.async_update_entry(site, data=data)
         _LOGGER.debug("SpotNav heat settings changed: %s", sorted(changes))
-    if F_METER in changes and (controller := site_controller_for(hass, site.entry_id)) is not None:
+    controller = site_controller_for(hass, site.entry_id)
+    if F_METER in changes and controller is not None:
         controller.house_forecast.request_refresh()
+    if controller is not None and (control := getattr(controller, "heat_control", None)) is not None:
+        # The heat control looks at once: turned off or the relay changed, it opens what it holds right away.
+        control.request_look()
 
 
 def _envelope(site: ConfigEntry | None, error: str | None = None, field_errors: list[FieldError] | None = None) -> dict[str, Any]:
@@ -274,6 +279,7 @@ def heat_settings_diagnostics(hass: HomeAssistant, entry: ConfigEntry) -> dict[s
         "read": config_block(entry),
         "shadow_log": [] if shadow is None else shadow.log.as_list(),
         "shadow": None if shadow is None else shadow.diagnostics(),
+        "control": None if (control := getattr(controller, "heat_control", None)) is None else control.diagnostics(),
     }
 
 
@@ -651,6 +657,14 @@ async def heat_answer(hass: HomeAssistant, site: ConfigEntry, *, writable: bool)
     shadow = getattr(controller, "heat_shadow", None)
     relay, tight, outdoor_by_hour, kept, review = None, frozenset(), {}, {}, None
     automations: tuple[Any, ...] = ()
+    control_status, executed = None, {}
+    control = getattr(controller, "heat_control", None)
+    if control is not None:
+        try:
+            control_status = control.status()
+            executed = control.executed_minutes(day_hours(day_start, zone_info), now)
+        except Exception:  # noqa: BLE001 - the card shows the rest
+            _LOGGER.debug("SpotNav heat: the heat control could not be read", exc_info=True)
     if shadow is not None:
         try:
             relay = relay_inputs(hass, shadow, now, day_start, zone_info)
@@ -685,6 +699,8 @@ async def heat_answer(hass: HomeAssistant, site: ConfigEntry, *, writable: bool)
             automations=automations,
             names={entity_id: _name(hass, entity_id) for item in automations for entity_id in item.targets},
             review=review,
+            control=control_status,
+            executed=executed,
         )
     )
     return answer

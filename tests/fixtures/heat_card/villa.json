@@ -7,6 +7,7 @@
       {
         "action": "night",
         "car": false,
+        "executed_min": 0,
         "hot_water": false,
         "past": true,
         "price": 80.0,
@@ -19,6 +20,7 @@
       {
         "action": "night",
         "car": true,
+        "executed_min": 0,
         "hot_water": false,
         "past": true,
         "price": 78.0,
@@ -31,6 +33,7 @@
       {
         "action": "night",
         "car": true,
+        "executed_min": 0,
         "hot_water": false,
         "past": true,
         "price": 76.0,
@@ -43,6 +46,7 @@
       {
         "action": "night",
         "car": true,
+        "executed_min": 0,
         "hot_water": false,
         "past": true,
         "price": 75.0,
@@ -55,6 +59,7 @@
       {
         "action": "night",
         "car": true,
+        "executed_min": 0,
         "hot_water": false,
         "past": true,
         "price": 77.0,
@@ -67,6 +72,7 @@
       {
         "action": "night",
         "car": false,
+        "executed_min": 0,
         "hot_water": true,
         "past": true,
         "price": 85.0,
@@ -79,6 +85,7 @@
       {
         "action": "preheat",
         "car": false,
+        "executed_min": 0,
         "hot_water": false,
         "past": true,
         "price": 120.0,
@@ -91,6 +98,7 @@
       {
         "action": "lower",
         "car": false,
+        "executed_min": 0,
         "hot_water": true,
         "past": true,
         "price": 190.0,
@@ -103,6 +111,7 @@
       {
         "action": "lower",
         "car": false,
+        "executed_min": 0,
         "hot_water": false,
         "past": true,
         "price": 210.0,
@@ -115,6 +124,7 @@
       {
         "action": "normal",
         "car": false,
+        "executed_min": 0,
         "hot_water": false,
         "past": true,
         "price": 160.0,
@@ -127,6 +137,7 @@
       {
         "action": "normal",
         "car": false,
+        "executed_min": 0,
         "hot_water": false,
         "past": true,
         "price": 120.0,
@@ -139,6 +150,7 @@
       {
         "action": "normal",
         "car": false,
+        "executed_min": 0,
         "hot_water": false,
         "past": true,
         "price": 110.0,
@@ -151,6 +163,7 @@
       {
         "action": "normal",
         "car": false,
+        "executed_min": 0,
         "hot_water": false,
         "past": true,
         "price": 105.0,
@@ -163,6 +176,7 @@
       {
         "action": "normal",
         "car": false,
+        "executed_min": 0,
         "hot_water": false,
         "past": true,
         "price": 100.0,
@@ -175,6 +189,7 @@
       {
         "action": "normal",
         "car": false,
+        "executed_min": 0,
         "hot_water": false,
         "past": true,
         "price": 105.0,
@@ -187,6 +202,7 @@
       {
         "action": "lower",
         "car": false,
+        "executed_min": 0,
         "hot_water": false,
         "past": true,
         "price": 130.0,
@@ -199,6 +215,7 @@
       {
         "action": "lower",
         "car": false,
+        "executed_min": 0,
         "hot_water": false,
         "past": true,
         "price": 180.0,
@@ -211,6 +228,7 @@
       {
         "action": "lower",
         "car": false,
+        "executed_min": 0,
         "hot_water": false,
         "past": false,
         "price": 240.0,
@@ -223,6 +241,7 @@
       {
         "action": "lower",
         "car": false,
+        "executed_min": 0,
         "hot_water": false,
         "past": false,
         "price": 260.0,
@@ -235,6 +254,7 @@
       {
         "action": "normal",
         "car": false,
+        "executed_min": 0,
         "hot_water": false,
         "past": false,
         "price": 220.0,
@@ -247,6 +267,7 @@
       {
         "action": "lower",
         "car": false,
+        "executed_min": 0,
         "hot_water": false,
         "past": false,
         "price": 150.0,
@@ -259,6 +280,7 @@
       {
         "action": "normal",
         "car": false,
+        "executed_min": 0,
         "hot_water": false,
         "past": false,
         "price": 110.0,
@@ -271,6 +293,7 @@
       {
         "action": "normal",
         "car": false,
+        "executed_min": 0,
         "hot_water": false,
         "past": false,
         "price": 95.0,
@@ -283,6 +306,7 @@
       {
         "action": "night",
         "car": false,
+        "executed_min": 0,
         "hot_water": false,
         "past": false,
         "price": 85.0,
@@ -394,7 +418,7 @@
   },
   "config": {
     "away_until": null,
-    "control_enabled": false,
+    "control_enabled": true,
     "control_entity": "switch.larm_utgang_1",
     "control_entity_b": null,
     "control_path": "relay",
@@ -438,6 +462,20 @@
         "offset_c": -0.5
       }
     ]
+  },
+  "control": {
+    "automation": {
+      "entity_id": "automation.varmepanna_sank_varmekurvan_nar_elen_ar_dyr",
+      "name": "Värmepanna: sänk värmekurvan när elen är dyr"
+    },
+    "check": null,
+    "enabled": true,
+    "lowered": false,
+    "paused_until": null,
+    "reason": "automation",
+    "since": null,
+    "state": "waiting",
+    "until": null
   },
   "indoor": {
     "coldest": "sensor.toalett_nv_temperatur",
@@ -486,6 +524,7 @@
     {
       "code": "automation_steers",
       "params": {
+        "blocks": false,
         "entity_id": "automation.golvvarme_borvarde_efter_elpris_och_larm",
         "name": "Golvvärme – börvärde efter elpris och larm",
         "relay": false,
@@ -497,6 +536,7 @@
     {
       "code": "automation_steers",
       "params": {
+        "blocks": true,
         "entity_id": "automation.varmepanna_sank_varmekurvan_nar_elen_ar_dyr",
         "name": "Värmepanna: sänk värmekurvan när elen är dyr",
         "relay": true,

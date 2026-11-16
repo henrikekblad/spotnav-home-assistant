@@ -6,12 +6,17 @@
   upstairs, a car planned tonight, the cooler night on; an administrator's answer (with `choices`).
 * `network_pump.json`: a house with a NIBE on its local integration whose own price control runs and whose
   degree minutes are disabled, while another optimiser is set up; away until Friday; a household member's answer.
+* `controlled.json`: the villa once SpotNav's heat control runs (the check passed, the household's automations turned
+  off): SpotNav lowered 07-09 and since 17:00, until 19:00.
+
+In the villa SpotNav's heat control is turned on but waits for the household's automation on the relay.
 """
 
 from __future__ import annotations
 
 import json
 import os
+from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -123,7 +128,7 @@ def villa_review() -> dict[str, Any]:
     )
 
 
-def villa_answer() -> dict[str, Any]:
+def villa_answer(**overrides: Any) -> dict[str, Any]:
     config = HeatConfig(
         target_c=21.0,
         night=Night(True, 1.0, "23:00", "06:00"),
@@ -138,6 +143,7 @@ def villa_answer() -> dict[str, Any]:
         ),
         control_path="relay",
         control_entity="switch.larm_utgang_1",
+        control_enabled=True,
     )
     entry = _Entry({"heat": config.as_dict(), "heat_meter_entity": "sensor.varme_effekt"})
     # The last day of 5-minute rows: yesterday evening and today until now, the same shape each day.
@@ -175,7 +181,7 @@ def villa_answer() -> dict[str, Any]:
         "meter": [_choice("sensor.varme_effekt", "Elmätare värme (Nibe + panna) Effekt", "1128.84 W")],
     }
     return heat_view(
-        HeatViewInputs(
+        replace(HeatViewInputs(
             site_id="site_villa",
             now=NOW,
             tz="Europe/Stockholm",
@@ -218,7 +224,59 @@ def villa_answer() -> dict[str, Any]:
             automations=villa_automations(),
             names={"climate.golvvarme_toalett_nere": "Golvvärme toalett nedervåning"},
             review=villa_review(),
-        )
+            control=control_status(
+                "waiting",
+                "automation",
+                automation={"entity_id": "automation.varmepanna_sank_varmekurvan_nar_elen_ar_dyr", "name": "Värmepanna: sänk värmekurvan när elen är dyr"},
+            ),
+        ), **overrides)
+    )
+
+
+def control_status(state: str, reason: str | None, **extra: Any) -> dict[str, Any]:
+    """The heat control's status as `HeatControl.status` answers it."""
+    return {
+        "enabled": state != "off",
+        "state": state,
+        "reason": reason,
+        "automation": None,
+        "check": None,
+        "lowered": False,
+        "since": None,
+        "until": None,
+        "paused_until": None,
+        **extra,
+    }
+
+
+def controlled_answer() -> dict[str, Any]:
+    """The villa with the heat control running: the relay is SpotNav's, lowered 07-09 and from 17:00 to 19:00."""
+    minutes = {MIDNIGHT + timedelta(hours=h): (60, False) for h in (7, 8)}
+    minutes[MIDNIGHT + timedelta(hours=17)] = (20, False)
+    minutes[MIDNIGHT + timedelta(hours=18)] = (60, True)
+    relay = RelayInputs(
+        entity_id="switch.larm_utgang_1",
+        name="Larm utgång 1",
+        closed=True,
+        since=MIDNIGHT + timedelta(hours=17),
+        source="spotnav",
+        automation=None,
+        minutes=minutes,
+        effect=Effect(0.46, 0.82, 7),
+    )
+    executed = {MIDNIGHT + timedelta(hours=7): 60, MIDNIGHT + timedelta(hours=8): 60, MIDNIGHT + timedelta(hours=17): 20}
+    return villa_answer(
+        relay=relay,
+        automations=(),
+        control=control_status(
+            "running",
+            "planned",
+            check="passed",
+            lowered=True,
+            since=(MIDNIGHT + timedelta(hours=17)).isoformat(),
+            until=(MIDNIGHT + timedelta(hours=19)).isoformat(),
+        ),
+        executed=executed,
     )
 
 
@@ -258,6 +316,7 @@ def network_pump_answer() -> dict[str, Any]:
             other_controllers=("effektguard",),
             prices=_slots(),
             money=("SEK", "kr", "öre"),
+            control=control_status("off", None),
         )
     )
 
@@ -305,7 +364,22 @@ def test_the_villa() -> None:
     assert answer["notes"][0]["params"]["targets"] == ["Golvvärme toalett nedervåning"]
     assert answer["notes"][0]["params"]["relay"] is False and answer["notes"][1]["params"]["relay"] is True
     assert answer["pump"] is None
+    # SpotNav's heat control is on but waits for the household's automation on the relay: that note says so.
+    assert answer["shadow"] is True and answer["control"]["state"] == "waiting"
+    assert answer["control"]["reason"] == "automation"
+    assert answer["notes"][1]["params"]["blocks"] is True and answer["notes"][0]["params"]["blocks"] is False
+    assert all(hour["executed_min"] == 0 for hour in band_hours)
     _write_or_compare("villa.json", answer)
+
+
+def test_the_villa_controlled_by_spotnav() -> None:
+    answer = controlled_answer()
+    assert tuple(answer) == HEAT_KEYS
+    assert answer["shadow"] is False and answer["control"]["state"] == "running" and answer["control"]["lowered"] is True
+    assert answer["relay"]["source"] == "spotnav" and answer["notes"] == []
+    band_hours = answer["band"]["hours"]
+    assert [band_hours[h]["executed_min"] for h in (6, 7, 8, 9, 17, 18)] == [0, 60, 60, 0, 20, 0]
+    _write_or_compare("controlled.json", answer)
 
 
 def test_the_network_pump_and_its_notes() -> None:
@@ -320,4 +394,6 @@ def test_the_network_pump_and_its_notes() -> None:
     assert answer["comfort"]["aim_c"] == 17.5 and answer["today"] is None and answer["meter"] is None
     assert answer["relay"] is None and answer["review"] is None
     assert all(hour["relay_min"] is None and hour["relay_expected"] is False for hour in answer["band"]["hours"])
+    # No relay path: the heat control was never turned on.
+    assert answer["control"]["state"] == "off" and answer["shadow"] is True
     _write_or_compare("network_pump.json", answer)

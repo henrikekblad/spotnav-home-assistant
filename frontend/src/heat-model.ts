@@ -176,6 +176,7 @@ const ANSWER = O({
         car: "boolean",
         relay_min: N("number"),
         relay_expected: "boolean",
+        executed_min: N("number"),
       }),
     ),
     hot_water_pick: N("string"),
@@ -205,6 +206,19 @@ const ANSWER = O({
     }),
   ),
   review: N(REVIEW),
+  control: N(
+    O({
+      enabled: "boolean",
+      state: "string",
+      reason: N("string"),
+      automation: N(O({ entity_id: "string", name: "string" })),
+      check: N("string"),
+      lowered: "boolean",
+      since: N("string"),
+      until: N("string"),
+      paused_until: N("string"),
+    }),
+  ),
 });
 
 const WRITE = O({
@@ -261,6 +275,8 @@ export interface HeatBandHour {
   /** Minutes the heat pump's relay was (or is expected to be) closed in the hour; `null` without a relay. */
   relay_min: number | null;
   relay_expected: boolean;
+  /** Minutes SpotNav itself held the relay closed in the hour; `null` without the heat control. */
+  executed_min: number | null;
 }
 
 export interface HeatEffect {
@@ -291,6 +307,21 @@ export interface HeatRelay {
   source: string | null;
   automation: { entity_id: string; name: string } | null;
   effect: HeatEffect;
+}
+
+/** SpotNav's own switching of the relay ("Styr värmen"), `heat/control.py`. */
+export interface HeatControl {
+  enabled: boolean;
+  /** "off", "verifying", "running" or "waiting". */
+  state: string;
+  /** The check's phase while verifying, the rules' reason while running, what it waits for while waiting. */
+  reason: string | null;
+  automation: { entity_id: string; name: string } | null;
+  check: string | null;
+  lowered: boolean;
+  since: string | null;
+  until: string | null;
+  paused_until: string | null;
 }
 
 export interface HeatZone {
@@ -384,6 +415,7 @@ export interface HeatAnswer {
   } | null;
   relay: HeatRelay | null;
   review: HeatReview | null;
+  control: HeatControl | null;
 }
 
 export interface HeatWriteAnswer {
