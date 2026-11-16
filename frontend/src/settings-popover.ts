@@ -54,7 +54,7 @@ import { GRID_TARIFF_CONFLICT, gridTariffIncluded, sameBody, storedBody } from "
 import { heatEditor, writeHeat } from "./heat-editors";
 import { decodeHeat, type HeatAnswer, type HeatConfig } from "./heat-model";
 import { heatSettingsSection, type HeatSettingKey } from "./heat-view";
-import { translate, type Language, type TranslationKey } from "./i18n";
+import { pluralForm, translate, type Language, type TranslationKey } from "./i18n";
 import {
   decodeMarketOptions,
   fiscalValues,
@@ -213,8 +213,10 @@ export function outcomeVerdict(outcome: string): "passed" | "failed" | "pending"
   return "pending";
 }
 
+/** A control's name as the battery's integration shows it ("Remote EMS", "Control mode"). */
 function roleName(role: string): string {
-  return role === "remote_ems" ? "Remote EMS" : role.replace(/_/g, " ");
+  const words = role.replace(/_/g, " ");
+  return role === "remote_ems" ? "Remote EMS" : words.charAt(0).toUpperCase() + words.slice(1);
 }
 
 function modeName(language: Language, mode: string): string {
@@ -466,6 +468,69 @@ export class SiteSections {
     );
   }
 
+  /**
+   * What the person still has to do before control can run, as numbered steps in a box: the disabled controls as one
+   * step with a link to the battery's device, the AI-mode takeover with its explanation. What nobody can act on (a
+   * brand SpotNav cannot run, something else running the battery) is a plain line instead.
+   */
+  private batteryNeeds(needs: string[], deviceId: string | null, admin: boolean): HTMLElement | null {
+    if (needs.length === 0) {
+      return null;
+    }
+    const doc = this.input.doc;
+    const language = this.language;
+    const wrap = element(doc, "div");
+    const disabled = needs.filter((need) => need.startsWith("control_disabled:")).map((need) => roleName(need.split(":")[1] ?? ""));
+    const plain = needs.filter((need) => need === "no_battery_control" || need.startsWith("outside_control"));
+    const steps: HTMLElement[] = [];
+    for (const need of needs) {
+      if (plain.includes(need) || (need.startsWith("control_disabled:") && need !== needs.find((item) => item.startsWith("control_disabled:")))) {
+        continue;
+      }
+      const item = element(doc, "li");
+      if (need.startsWith("control_disabled:")) {
+        item.dataset["need"] = "control_disabled";
+        const names = new Intl.ListFormat(language, { type: "conjunction" }).format(disabled);
+        item.append(translate(language, `battery.need.controlsDisabled.${pluralForm(language, disabled.length)}`, { count: String(disabled.length), names }));
+        if (deviceId !== null && admin) {
+          const button = element(doc, "button", `${C.button} ${C.batteryNeedAction}`, translate(language, "battery.device.open")) as HTMLButtonElement;
+          button.type = "button";
+          button.dataset["action"] = "open-battery-device";
+          button.addEventListener("click", () => navigateTo(doc, `/config/devices/device/${encodeURIComponent(deviceId)}`));
+          item.append(button);
+        }
+      } else {
+        item.dataset["need"] = need;
+        item.append(batteryNeed(language, need));
+        if (need === "ai_takeover_ack" && admin) {
+          const button = element(doc, "button", `${C.button} ${C.batteryNeedAction}`, translate(language, "battery.ack.open")) as HTMLButtonElement;
+          button.type = "button";
+          button.dataset["edit"] = "battery_control_ai_takeover_ack";
+          button.addEventListener("click", () => this.openTakeover());
+          item.append(button);
+        }
+      }
+      steps.push(item);
+    }
+    for (const need of plain) {
+      const line = element(doc, "p", C.settingRowHelp, batteryNeed(language, need));
+      line.dataset["need"] = need.split(":")[0]!;
+      wrap.append(line);
+    }
+    if (steps.length > 0) {
+      const box = element(doc, "div", C.batteryNeeds);
+      box.dataset["batteryNeeds"] = "true";
+      const list = element(doc, "ol");
+      list.append(...steps);
+      box.append(
+        element(doc, "p", C.batteryNeedsHeading, translate(language, `battery.needs.heading.${pluralForm(language, steps.length)}`, { count: String(steps.length) })),
+        list,
+      );
+      wrap.append(box);
+    }
+    return wrap;
+  }
+
   batteryNode(): HTMLElement | null {
     if (!this.batteryFound) {
       return null;
@@ -524,23 +589,9 @@ export class SiteSections {
           : {}),
       }),
     );
-    // What the person still has to do, one line each; the AI-mode one with its explanation.
-    if (status.needs.length > 0) {
-      const list = element(doc, "ul", C.settingRowHelp);
-      list.dataset["batteryNeeds"] = "true";
-      for (const need of status.needs) {
-        const item = element(doc, "li", undefined, batteryNeed(language, need));
-        item.dataset["need"] = need;
-        if (need === "ai_takeover_ack" && admin) {
-          const button = element(doc, "button", C.button, translate(language, "battery.ack.open")) as HTMLButtonElement;
-          button.type = "button";
-          button.dataset["edit"] = "battery_control_ai_takeover_ack";
-          button.addEventListener("click", () => this.openTakeover());
-          item.append(doc.createTextNode(" "), button);
-        }
-        list.append(item);
-      }
-      section.append(element(doc, "p", C.settingRowHelp, translate(language, "battery.needs.heading")), list);
+    const needs = this.batteryNeeds(status.needs, status.device_id, admin);
+    if (needs !== null) {
+      section.append(needs);
     }
     const verification = status.verification;
     if (verification !== null) {

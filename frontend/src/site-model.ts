@@ -93,6 +93,8 @@ export interface BatteryStatus {
   verification: { started_at: string; mode: string | null; stage: string; modes: string[]; done: string[] } | null;
   waiting_for: string | null;
   needs: string[];
+  /** The device that holds the first control to enable (`control_disabled:*`), for a link to its page. */
+  device_id: string | null;
   notes: { code: string; at: string }[];
   trial: unknown;
   grid_charge_cap: GridChargeCap;
@@ -215,6 +217,7 @@ const STATUS: Spec = O({
   verification: N(O({ started_at: "string", mode: N("string"), stage: "string", modes: A("string"), done: A("string") })),
   waiting_for: N("string"),
   needs: A("string"),
+  device_id: N("string"),
   notes: A(O({ code: "string", at: "string" })),
   trial: "any",
   grid_charge_cap: GRID_CHARGE_CAP,

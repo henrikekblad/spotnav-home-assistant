@@ -82,6 +82,9 @@ export const VISUAL_CLASSES = {
   settingRowValue: "spotnav-setting-row-value",
   settingRowEditable: "spotnav-setting-row-editable",
   settingRowHelp: "spotnav-setting-row-help",
+  batteryNeeds: "spotnav-battery-needs",
+  batteryNeedsHeading: "spotnav-battery-needs-heading",
+  batteryNeedAction: "spotnav-battery-need-action",
   settingRowSuggestion: "spotnav-setting-row-suggestion",
   cameraStage: "spotnav-camera-stage",
   cameraImage: "spotnav-camera-image",
@@ -2071,6 +2074,28 @@ export const VISUAL_STYLES = `
   }
   .${VISUAL_CLASSES.settingRowEditable}:disabled::after {
     visibility: hidden;
+  }
+  /* What is left before battery control can run: numbered steps in a box, each with its own button. */
+  .${VISUAL_CLASSES.batteryNeeds} {
+    margin: 8px 0;
+    padding: 10px 12px;
+    border: 1px solid var(--divider-color, #e0e0e0);
+    border-radius: 8px;
+  }
+  .${VISUAL_CLASSES.batteryNeedsHeading} {
+    margin: 0 0 6px;
+    font-weight: 500;
+  }
+  .${VISUAL_CLASSES.batteryNeeds} ol {
+    margin: 0;
+    padding-left: 1.4em;
+  }
+  .${VISUAL_CLASSES.batteryNeeds} li + li {
+    margin-top: 10px;
+  }
+  .${VISUAL_CLASSES.batteryNeedAction} {
+    display: block;
+    margin-top: 6px;
   }
   .${VISUAL_CLASSES.settingRowHelp} {
     margin: 0 0 4px;
