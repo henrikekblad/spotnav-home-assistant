@@ -431,7 +431,7 @@ export class SiteSections {
         }
         list.append(item);
       }
-      section.append(element(doc, "p", C.settingRowLabel, translate(language, "battery.needs.heading")), list);
+      section.append(element(doc, "p", C.settingRowHelp, translate(language, "battery.needs.heading")), list);
     }
     const verification = status.verification;
     if (verification !== null) {
@@ -718,9 +718,8 @@ export class SettingsPopover {
 
   private title(): string {
     const view = this.state.kind === "ready" ? this.state.view : null;
-    return view === null
-      ? translate(this.language, "settings.overview.title")
-      : translate(this.language, "settings.overview.titleNamed", { name: view.name });
+    const title = translate(this.language, "popover.open");
+    return view === null ? title : `${title} · ${view.name}`;
   }
 
   private panel(): HTMLElement | null {
