@@ -4,6 +4,7 @@
 // "Heating" settings section (`heatSettingsSection`), the rows the settings dialog shows. Built fresh for each state
 // with `textContent` only; every figure is the backend's.
 
+import { historyHeaderButton } from "./period-history";
 import { clock, dateLabel, formatFixed, hourLabel, type FormatContext } from "./format";
 import type { HeatAnswer, HeatBandHour, HeatChoice } from "./heat-model";
 import { HEAT_CLASSES as X } from "./heat-styles";
@@ -36,6 +37,8 @@ export interface HeatHandlers {
   onHome(): void;
   onAway(): void;
   onSettings(): void;
+  /** The clock in the header: the history dialog (`history-dialog.ts`). Without it the card has no clock. */
+  onHistory?(opener: HTMLElement): void;
 }
 
 export interface HeatRenderInput {
@@ -201,6 +204,11 @@ export function settingsGearButton(doc: Document, label: string, onClick: () => 
 function header(doc: Document, language: Language, answer: HeatAnswer | null, handlers: HeatHandlers | null): HTMLElement {
   const head = element(doc, "div", H.head);
   head.append(element(doc, "h2", H.title, translate(language, "heat.title")), element(doc, "span", H.chip, translate(language, "house.preview")));
+  const onHistory = handlers?.onHistory;
+  if (answer !== null && onHistory !== undefined) {
+    const button = historyHeaderButton(doc, translate(language, "hist.open"), X.settingsButton, () => onHistory.call(handlers, button));
+    head.append(button);
+  }
   if (answer?.writable === true && handlers !== null) {
     const button = settingsGearButton(doc, translate(language, "heat.settings.open"), () => handlers.onSettings());
     head.append(button);

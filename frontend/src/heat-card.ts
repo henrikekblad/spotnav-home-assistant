@@ -12,7 +12,10 @@ import { writeError, writeHeat } from "./heat-editors";
 import { decodeHeat, type HeatAnswer, type HeatConfig } from "./heat-model";
 import { HEAT_CLASSES as X, HEAT_STYLES } from "./heat-styles";
 import { TARGET_MAX, TARGET_MIN, instantToLocal, localToInstant, heatBody, type HeatState, type HeatUi } from "./heat-view";
+import { HistoryDialog } from "./history-dialog";
+import { decodeHeatHistory, heatHistoryBody, type HeatHistory } from "./heat-history";
 import { HOUSE_STYLES } from "./house-styles";
+import { PERIOD_STYLES } from "./period-history";
 import { isLanguagePending, loadLanguage, resolveLanguage, translate, type Language } from "./i18n";
 import { SettingsPopover, stubTarget } from "./settings-popover";
 import type { HomeAssistantLike } from "./types";
@@ -75,6 +78,7 @@ export class SpotnavHeatCard extends HTMLElement {
   private observer: ResizeObserver | null = null;
   /** The shared settings popover (and the away editor), made on first use. */
   private settingsPopover: SettingsPopover | null = null;
+  private historyDialog: HistoryDialog<HeatHistory> | null = null;
   private readonly idPrefix: string;
 
   constructor() {
@@ -84,7 +88,7 @@ export class SpotnavHeatCard extends HTMLElement {
     this.idPrefix = `spotnav-heat-${instances}`;
     const doc = this.ownerDocument;
     const style = doc.createElement("style");
-    style.textContent = VISUAL_STYLES + HOUSE_STYLES + HEAT_STYLES;
+    style.textContent = VISUAL_STYLES + HOUSE_STYLES + HEAT_STYLES + PERIOD_STYLES;
     this.mount = doc.createElement("div");
     this.mount.className = VISUAL_CLASSES.shell;
     this.layer = doc.createElement("div");
@@ -139,6 +143,8 @@ export class SpotnavHeatCard extends HTMLElement {
     }
     this.settingsPopover?.destroy();
     this.settingsPopover = null;
+    this.historyDialog?.destroy();
+    this.historyDialog = null;
   }
 
   getCardSize(): number {
@@ -179,12 +185,14 @@ export class SpotnavHeatCard extends HTMLElement {
     if (!isLanguagePending(next)) {
       this.language = next;
       this.render();
+      this.historyDialog?.repaint();
       return;
     }
     void loadLanguage(next).then(() => {
       if (this.wantedLanguage === next) {
         this.language = next;
         this.render();
+        this.historyDialog?.repaint();
       }
     });
   }
@@ -195,6 +203,7 @@ export class SpotnavHeatCard extends HTMLElement {
     if (Math.abs(width - this.width) >= 4) {
       this.width = width;
       this.render();
+      this.historyDialog?.repaint();
     }
   }
 
@@ -302,6 +311,29 @@ export class SpotnavHeatCard extends HTMLElement {
     return this.settingsPopover;
   }
 
+  /** The history dialog: a day, month or year of the house's heating (any user who sees the card). */
+  showHistory(opener: HTMLElement | null = null): void {
+    if (this.target() === null) {
+      return;
+    }
+    if (this.historyDialog === null) {
+      this.historyDialog = new HistoryDialog<HeatHistory>({
+        kind: "heat",
+        doc: this.ownerDocument,
+        owner: this.layer,
+        background: () => this.mount,
+        idPrefix: this.idPrefix,
+        hass: () => this.hassObject,
+        target: () => this.target(),
+        language: () => this.cardLanguage(),
+        width: () => this.width,
+        decode: decodeHeatHistory,
+        body: heatHistoryBody,
+      });
+    }
+    this.historyDialog.open(opener);
+  }
+
   /** The shared settings popover, opened at the heat section. */
   showSettings(): void {
     const answer = this.answer();
@@ -347,6 +379,7 @@ export class SpotnavHeatCard extends HTMLElement {
           },
           onAway: () => this.showAway(),
           onSettings: () => this.showSettings(),
+          onHistory: (opener) => this.showHistory(opener),
         },
       }),
     );

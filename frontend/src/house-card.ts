@@ -2,7 +2,8 @@
 // extra is installed. It reads one read-only answer (`spotnav/get_house`) for a site, named by the site's id or a
 // charger's in it, every `HOUSE_REFRESH_MS` (the forecasts change once an hour), and shows it (`house-view.ts`).
 // An administrator's gear opens the shared settings popover (`settings-popover.ts`): the house card is where a home
-// without a charger starts. The charging card stays about the car.
+// without a charger starts. The charging card stays about the car. The front shows today; the clock beside the gear
+// opens the history (`history-dialog.ts`, `house-history.ts`): a day, month or year.
 //
 // YAML: `type: custom:spotnav-house-card` with `site: <site entry id>` or `charger: <charger entry id>`.
 
@@ -10,7 +11,10 @@ import { getHouse, SpotnavApiError, UNSUPPORTED_API_VERSION } from "./api";
 import { entityWordsOf } from "./entity-words";
 import { decodeHouse } from "./house-model";
 import { HEAT_STYLES } from "./heat-styles";
+import { HistoryDialog } from "./history-dialog";
+import { decodeHouseHistory, houseHistoryBody, type HouseHistory } from "./house-history";
 import { HOUSE_STYLES } from "./house-styles";
+import { PERIOD_STYLES } from "./period-history";
 import { readHiddenSeries, writeHiddenSeries } from "./house-series";
 import { houseBody, type HouseState, type HouseUi } from "./house-view";
 import { isLanguagePending, loadLanguage, resolveLanguage, type Language } from "./i18n";
@@ -74,6 +78,7 @@ export class SpotnavHouseCard extends HTMLElement {
   /** Where the shared settings popover's dialog lives, apart from what each render replaces. */
   private readonly layer: HTMLDivElement;
   private settingsPopover: SettingsPopover | null = null;
+  private historyDialog: HistoryDialog<HouseHistory> | null = null;
 
   constructor() {
     super();
@@ -82,7 +87,7 @@ export class SpotnavHouseCard extends HTMLElement {
     this.idPrefix = `spotnav-house-${instances}`;
     const doc = this.ownerDocument;
     this.styleNode = doc.createElement("style");
-    this.styleNode.textContent = VISUAL_STYLES + HOUSE_STYLES + HEAT_STYLES;
+    this.styleNode.textContent = VISUAL_STYLES + HOUSE_STYLES + HEAT_STYLES + PERIOD_STYLES;
     this.mount = doc.createElement("div");
     this.mount.className = VISUAL_CLASSES.shell;
     this.layer = doc.createElement("div");
@@ -104,6 +109,33 @@ export class SpotnavHouseCard extends HTMLElement {
       });
     }
     return this.settingsPopover;
+  }
+
+  private ensureHistory(): HistoryDialog<HouseHistory> {
+    if (this.historyDialog === null) {
+      this.historyDialog = new HistoryDialog<HouseHistory>({
+        kind: "house",
+        doc: this.ownerDocument,
+        owner: this.layer,
+        background: () => this.mount,
+        idPrefix: this.idPrefix,
+        hass: () => this.hassObject,
+        target: () => this.target(),
+        language: () => this.language ?? resolveLanguage(null),
+        width: () => this.width,
+        decode: decodeHouseHistory,
+        body: houseHistoryBody,
+      });
+    }
+    return this.historyDialog;
+  }
+
+  /** The history dialog: a day, month or year of the house (any user who sees the card). */
+  showHistory(opener: HTMLElement | null = null): void {
+    if (this.target() === null) {
+      return;
+    }
+    this.ensureHistory().open(opener);
   }
 
   /** The shared settings popover, opened at its top (the house's own section is the site). */
@@ -157,6 +189,8 @@ export class SpotnavHouseCard extends HTMLElement {
     }
     this.settingsPopover?.destroy();
     this.settingsPopover = null;
+    this.historyDialog?.destroy();
+    this.historyDialog = null;
   }
 
   getCardSize(): number {
@@ -190,12 +224,14 @@ export class SpotnavHouseCard extends HTMLElement {
     if (!isLanguagePending(next)) {
       this.language = next;
       this.render();
+      this.historyDialog?.repaint();
       return;
     }
     void loadLanguage(next).then(() => {
       if (this.wantedLanguage === next) {
         this.language = next;
         this.render();
+        this.historyDialog?.repaint();
       }
     });
   }
@@ -206,6 +242,7 @@ export class SpotnavHouseCard extends HTMLElement {
     if (Math.abs(width - this.width) >= 4) {
       this.width = width;
       this.render();
+      this.historyDialog?.repaint();
     }
   }
 
@@ -229,15 +266,7 @@ export class SpotnavHouseCard extends HTMLElement {
     const generation = this.generation;
     let next: HouseState;
     try {
-      const day = this.ui.day ?? null;
-      const decoded = decodeHouse(await getHouse(hass, target, day));
-      if ((this.ui.day ?? null) !== day) {
-        return;
-      }
-      if (decoded.ok && decoded.value.day?.today === true && day !== null) {
-        // Stepped forward onto today: from now on asked for as today, so it follows midnight.
-        this.ui = { ...this.ui, day: null };
-      }
+      const decoded = decodeHouse(await getHouse(hass, target));
       next = decoded.ok
         ? { kind: "ready", answer: decoded.value }
         : { kind: "failed", sentenceKey: decoded.failure === "unsupported" ? "house.unsupported" : "house.failed", code: null };
@@ -300,17 +329,7 @@ export class SpotnavHouseCard extends HTMLElement {
             this.ui = { ...this.ui, selected: index };
           },
           ...(admin ? { onSettings: () => this.showSettings() } : {}),
-          onDay: (day) => {
-            const focused = this.root.activeElement as HTMLElement | null;
-            const which = focused?.dataset["step"] ?? null;
-            this.ui = { ...this.ui, day, selected: null };
-            void this.refresh().then(() => {
-              if (which !== null) {
-                const again = this.root.querySelector<HTMLButtonElement>(`button[data-step="${which}"]`);
-                (again !== null && !again.disabled ? again : this.root.querySelector<HTMLElement>("button[data-step]"))?.focus();
-              }
-            });
-          },
+          onHistory: (opener) => this.showHistory(opener),
         },
         width: this.width,
         nowMs: Date.now(),

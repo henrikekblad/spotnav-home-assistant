@@ -52,7 +52,6 @@ export const HOUSE_CLASSES = {
   flowKey: "spotnav-house-flow-key",
   flowChart: "spotnav-house-flow-chart",
   readout: "spotnav-house-readout",
-  dayBar: "spotnav-house-day-bar",
   compare: "spotnav-house-compare",
   compareHead: "spotnav-house-compare-head",
   compareGrid: "spotnav-house-compare-grid",
@@ -65,13 +64,6 @@ export const HOUSE_CLASSES = {
   baseRow: "spotnav-house-base-row",
   baseValue: "spotnav-house-base-value",
   baseNote: "spotnav-house-base-note",
-  dayStep: "spotnav-house-day-step",
-  dayLabel: "spotnav-house-day-label",
-  calendar: "spotnav-house-calendar",
-  calendarHead: "spotnav-house-calendar-head",
-  calendarDay: "spotnav-house-calendar-day",
-  calendarDate: "spotnav-house-calendar-date",
-  calendarFigure: "spotnav-house-calendar-figure",
 } as const;
 
 const H = HOUSE_CLASSES;
@@ -151,34 +143,6 @@ export const HOUSE_STYLES = `
   .${H.baseNote} {
     margin: 0;
     font-size: 0.78rem;
-  }
-  .${H.dayBar} {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin: 8px 0 0;
-  }
-  .${H.dayStep} {
-    /* 28 px: above WCAG 2.2's 24 px minimum target, smaller than the card's toggles. */
-    box-sizing: border-box;
-    width: 28px;
-    min-width: 28px;
-    height: 28px;
-    min-height: 28px;
-    padding: 0;
-    border-radius: 14px;
-    font-size: 1rem;
-    line-height: 1;
-  }
-  .${H.dayStep}:disabled {
-    opacity: 0.35;
-    cursor: default;
-  }
-  .${H.dayLabel} {
-    min-width: 6.5em;
-    text-align: center;
-    font-weight: 500;
-    font-variant-numeric: tabular-nums;
   }
   .${H.readout} {
     height: auto;
@@ -335,46 +299,6 @@ export const HOUSE_STYLES = `
     font-size: 0.76rem;
     color: var(--secondary-text-color, #727272);
     font-variant-numeric: tabular-nums;
-  }
-  .${H.calendar} {
-    display: grid;
-    grid-template-columns: repeat(7, minmax(0, 1fr));
-    gap: 2px;
-    font-variant-numeric: tabular-nums;
-  }
-  .${H.calendarHead} {
-    text-align: center;
-    font-size: 0.7rem;
-    color: var(--secondary-text-color, #727272);
-  }
-  .${H.calendarDay} {
-    min-height: 2.4rem;
-    padding: 2px 3px;
-    border-radius: 4px;
-    background: var(--secondary-background-color, rgba(127, 127, 127, 0.08));
-    font-size: 0.68rem;
-    line-height: 1.2;
-    overflow: hidden;
-  }
-  .${H.calendarDay}[data-empty] {
-    background: transparent;
-  }
-  .${H.calendarDay}[data-result="plan"] {
-    background: color-mix(in srgb, var(--success-color, #43a047) 22%, transparent);
-  }
-  .${H.calendarDay}[data-result="own"] {
-    background: color-mix(in srgb, var(--warning-color, #ffa600) 22%, transparent);
-  }
-  .${H.calendarDay}[data-today] {
-    outline: 1px solid var(--primary-color, #03a9f4);
-  }
-  .${H.calendarDate} {
-    color: var(--secondary-text-color, #727272);
-  }
-  .${H.calendarFigure} {
-    display: block;
-    font-weight: 500;
-    white-space: nowrap;
   }
   .${H.bar} {
     fill: var(--spotnav-house-colour);

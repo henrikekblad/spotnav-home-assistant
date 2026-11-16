@@ -8,6 +8,8 @@ import { MODES, type BatteryMode, type DayFlow, type HouseAnswer, type HouseHour
 import { renderFlow } from "./house-flow";
 import { hiddenIn, type HiddenSeries } from "./house-series";
 import { settingsGearButton } from "./heat-view";
+import { HEAT_CLASSES as X } from "./heat-styles";
+import { historyHeaderButton } from "./period-history";
 import { HOUSE_CLASSES as H } from "./house-styles";
 import { pluralForm, translate, type Language, type TranslationKey } from "./i18n";
 import { VISUAL_CLASSES as C } from "./visual-styles";
@@ -28,8 +30,6 @@ export interface HouseUi {
   view?: HouseChartView;
   /** The hour shown in the readout (an index into `hours`), `null` for the hint. */
   selected: number | null;
-  /** The past day asked for (`YYYY-MM-DD`), `null` or absent for today. */
-  day?: string | null;
 }
 
 export interface HouseHandlers {
@@ -38,8 +38,8 @@ export interface HouseHandlers {
   /** The viewer hid or showed a series: the view's whole hidden list after the change. */
   onLegend?(view: HouseChartView, hidden: string[]): void;
   onSelect(index: number | null): void;
-  /** Step to another day (`null`: today). */
-  onDay?(day: string | null): void;
+  /** The clock in the header: the history dialog (`history-dialog.ts`). Without it the card has no clock. */
+  onHistory?(opener: HTMLElement): void;
   /** An administrator's settings gear: the shared settings popover. Without it the card has no gear. */
   onSettings?(): void;
 }
@@ -268,9 +268,13 @@ export function reviewLine(language: Language, answer: HouseAnswer): string {
 
 // ------------------------------------------------------------------------------------------------ parts
 
-function header(doc: Document, language: Language, answer: HouseAnswer | null, onSettings?: () => void): HTMLElement {
+function header(doc: Document, language: Language, answer: HouseAnswer | null, onSettings?: () => void, onHistory?: (opener: HTMLElement) => void): HTMLElement {
   const head = element(doc, "div", H.head);
   head.append(element(doc, "h2", H.title, translate(language, "house.title")), element(doc, "span", H.chip, translate(language, "house.preview")));
+  if (onHistory !== undefined) {
+    const button = historyHeaderButton(doc, translate(language, "hist.open"), X.settingsButton, () => onHistory(button));
+    head.append(button);
+  }
   if (onSettings !== undefined) {
     head.append(settingsGearButton(doc, translate(language, "popover.open"), onSettings));
   }
@@ -434,42 +438,6 @@ function baselinesBlock(doc: Document, language: Language, answer: HouseAnswer):
     section.append(partial);
   }
   return section;
-}
-
-/** A `YYYY-MM-DD` day moved by `days`. */
-export function shiftDay(isoDate: string, days: number): string {
-  const [year, month, dayOfMonth] = isoDate.split("-").map(Number) as [number, number, number];
-  return new Date(Date.UTC(year, month - 1, dayOfMonth + days, 12)).toISOString().slice(0, 10);
-}
-
-/** ‹ day › : step a day back or forward, as the battery app's calendar; today is the default and the last. */
-function dayBar(doc: Document, language: Language, answer: HouseAnswer, handlers: HouseHandlers): HTMLElement | null {
-  const shown = answer.day;
-  if (shown === null || handlers.onDay === undefined) {
-    return null;
-  }
-  const bar = element(doc, "div", H.dayBar);
-  bar.setAttribute("role", "group");
-  bar.setAttribute("aria-label", translate(language, "house.day.choose"));
-  const step = (direction: "back" | "forward", glyph: string, labelKey: TranslationKey, disabled: boolean, target: string | null): HTMLButtonElement => {
-    const button = element(doc, "button", `${C.historyToggleButton} ${H.dayStep}`, glyph);
-    button.type = "button";
-    button.dataset["step"] = direction;
-    button.setAttribute("aria-label", translate(language, labelKey));
-    button.disabled = disabled;
-    button.addEventListener("click", () => handlers.onDay?.(target));
-    return button;
-  };
-  const before = shiftDay(shown.date, -1);
-  const after = shiftDay(shown.date, 1);
-  const label = element(doc, "span", H.dayLabel, shown.today ? translate(language, "house.day.today") : dateLabel(language, shown.date));
-  label.setAttribute("aria-live", "polite");
-  bar.append(
-    step("back", "‹", "house.day.back", shown.date <= shown.first, before),
-    label,
-    step("forward", "›", "house.day.forward", shown.today, shown.today ? null : after),
-  );
-  return bar;
 }
 
 /** The legend: one button per series the chart has (pressed: shown), each hides or shows its series. */
@@ -733,96 +701,6 @@ function energyFlowBlock(input: HouseRenderInput, answer: HouseAnswer): HTMLElem
   return section;
 }
 
-function calendarBlock(doc: Document, language: Language, answer: HouseAnswer, nowMs: number): HTMLElement | null {
-  const calendar = answer.calendar;
-  if (calendar === null || calendar.days.length === 0) {
-    return null;
-  }
-  const section = element(doc, "section", H.section);
-  const [year, month] = calendar.month.split("-").map(Number) as [number, number];
-  const first = new Date(Date.UTC(year, month - 1, 1, 12));
-  const monthName = new Intl.DateTimeFormat(language, { month: "long", timeZone: "UTC" }).format(first);
-  section.append(element(doc, "h3", H.heading, translate(language, "house.calendar.heading", { month: monthName })));
-  const grid = element(doc, "div", H.calendar);
-  const weekday = new Intl.DateTimeFormat(language, { weekday: "narrow", timeZone: "UTC" });
-  for (let index = 0; index < 7; index += 1) {
-    // 2024-01-01 was a Monday.
-    const head = element(doc, "span", H.calendarHead, weekday.format(new Date(Date.UTC(2024, 0, 1 + index, 12))));
-    head.setAttribute("aria-hidden", "true");
-    grid.append(head);
-  }
-  const offset = (first.getUTCDay() + 6) % 7;
-  for (let index = 0; index < offset; index += 1) {
-    const blank = element(doc, "span", H.calendarDay);
-    blank.dataset["empty"] = "true";
-    grid.append(blank);
-  }
-  const byDate = new Map(calendar.days.map((day) => [day.date, day]));
-  const length = new Date(Date.UTC(year, month, 0)).getUTCDate();
-  const todayKey = new Intl.DateTimeFormat("en-CA", { timeZone: answer.time_zone }).format(new Date(nowMs));
-  const short = (minor: number): string => formatFixed(language, minor / 100, Math.abs(minor) >= 1000 ? 0 : 1);
-  let plan = 0;
-  let own = 0;
-  let arbitrage = 0;
-  let arbitrageDays = 0;
-  for (let number = 1; number <= length; number += 1) {
-    const date = `${calendar.month}-${String(number).padStart(2, "0")}`;
-    const cell = element(doc, "span", H.calendarDay);
-    cell.dataset["date"] = date;
-    if (date === todayKey) {
-      cell.dataset["today"] = "true";
-    }
-    cell.append(element(doc, "span", H.calendarDate, String(number)));
-    const day = byDate.get(date);
-    if (day !== undefined) {
-      plan += day.plan_saving;
-      own += day.own_saving;
-      cell.dataset["result"] = day.plan_saving >= day.own_saving ? "plan" : "own";
-      cell.append(element(doc, "span", H.calendarFigure, short(day.plan_saving)), element(doc, "span", H.calendarDate, short(day.own_saving)));
-      const label = translate(language, "house.calendar.day", {
-        date: dateLabel(language, date),
-        plan: amount(language, day.plan_saving, answer.money),
-        own: amount(language, day.own_saving, answer.money),
-      });
-      cell.setAttribute(
-        "aria-label",
-        day.arbitrage === null ? label : `${label} · ${translate(language, "house.calendar.arbitrage", { amount: amount(language, day.arbitrage, answer.money) })}`,
-      );
-      if (day.arbitrage !== null) {
-        arbitrage += day.arbitrage;
-        arbitrageDays += 1;
-      }
-      cell.setAttribute("role", "img");
-    }
-    grid.append(cell);
-  }
-  section.append(grid);
-  section.append(
-    element(
-      doc,
-      "p",
-      `${C.muted} ${H.note}`,
-      translate(language, "house.calendar.total", {
-        plan: amount(language, plan, answer.money),
-        own: amount(language, own, answer.money),
-        days: String(calendar.days.length),
-        unit: answer.money?.major_unit ?? "",
-      }),
-    ),
-  );
-  if (arbitrageDays > 0) {
-    section.append(
-      element(
-        doc,
-        "p",
-        `${C.muted} ${H.note}`,
-        translate(language, "house.calendar.arbitrageTotal", { amount: amount(language, arbitrage, answer.money), days: String(arbitrageDays) }),
-      ),
-    );
-  }
-  return section;
-}
-
 function modesTable(doc: Document, language: Language, answer: HouseAnswer): HTMLElement | null {
   const battery = answer.battery;
   if (battery === null) {
@@ -1016,7 +894,7 @@ export function houseBody(input: HouseRenderInput): HTMLElement {
   const card = element(doc, "div", `${C.card} ${H.card}`);
   card.dataset["state"] = state.kind;
   if (state.kind !== "ready") {
-    card.append(header(doc, language, null, input.handlers.onSettings?.bind(input.handlers)));
+    card.append(header(doc, language, null, input.handlers.onSettings?.bind(input.handlers), input.handlers.onHistory?.bind(input.handlers)));
     const key: TranslationKey =
       state.kind === "unconfigured" ? "house.unconfigured" : state.kind === "loading" ? "house.loading" : state.sentenceKey;
     const line = element(doc, "p", C.muted, translate(language, key));
@@ -1031,11 +909,7 @@ export function houseBody(input: HouseRenderInput): HTMLElement {
     return card;
   }
   const answer = state.answer;
-  card.append(header(doc, language, answer, input.handlers.onSettings?.bind(input.handlers)));
-  const days = dayBar(doc, language, answer, input.handlers);
-  if (days !== null) {
-    card.append(days);
-  }
+  card.append(header(doc, language, answer, input.handlers.onSettings?.bind(input.handlers), input.handlers.onHistory?.bind(input.handlers)));
   if (answer.day !== null && !answer.day.has_data) {
     const none = element(doc, "p", `${C.muted} ${H.line}`, translate(language, "house.day.noData"));
     none.setAttribute("role", "status");
@@ -1084,7 +958,6 @@ export function houseBody(input: HouseRenderInput): HTMLElement {
     details.id = detailsId;
     for (const part of [
       energyFlow === null ? flowBlock(doc, language, answer.flow) : null,
-      calendarBlock(doc, language, answer, input.nowMs),
       modesTable(doc, language, answer),
       daysTable(doc, language, answer),
       sourcesBlock(doc, language, answer, input.entityWords),
