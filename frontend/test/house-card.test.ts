@@ -9,7 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { LANGUAGES, translate } from "../src/i18n";
 import { HOUSE_CARD_ELEMENT, parseHouseConfig, SpotnavHouseCard } from "../src/house-card";
 import { houseChartHeight, renderHouseChart } from "../src/house-chart";
-import { blockHeights, flowHeight, MIN_NODE } from "../src/house-flow";
+import { blockHeights, flowHeight, MIN_BAND, MIN_NODE } from "../src/house-flow";
 import { HOUSE_STYLES } from "../src/house-styles";
 import { decodeHouse, type HouseAnswer } from "../src/house-model";
 import { amount, hourFigures, houseBody, reviewLine, savingLine, todayLine, type HouseState, type HouseUi } from "../src/house-view";
@@ -656,7 +656,9 @@ describe("today's energy flow", () => {
     const battery = svgRoot.querySelector(".spotnav-house-flow-node[data-role='battery'][data-side='use']")!;
     expect(battery.textContent).toContain("nu 48 %");
     expect(svgRoot.getAttribute("aria-label")).toMatch(/^Sol 7,5 kWh \(8 %\), Batteri 8,6 kWh/);
-    expect(section.textContent).toContain("Hela timmar fram till 17:00.");
+    expect(section.textContent).toContain("Fram till 17:00.");
+    // A flow allocated by the hour says so; by the quarter hour, that.
+    expect(section.textContent).toContain("varje timme går solen");
     const heat = svgRoot.querySelector(".spotnav-house-flow-node[data-role='heat']")!;
     expect(heat.querySelector("text")?.textContent).toBe("Värme");
     // One hour lacked the heat pump's figure: said so.
@@ -690,12 +692,74 @@ describe("today's energy flow", () => {
     const roles = Array.from(body({ ...value, energy_flow: noCar }).querySelectorAll(".spotnav-house-flow-node")).map((node) => node.getAttribute("data-role"));
     expect(roles).not.toContain("car");
     const empty = { ...flow, nodes: flow.nodes.filter((node) => node.side === "use") };
-    expect(body({ ...value, energy_flow: empty }).querySelector("[data-part='energy-flow']")).toBeNull();
+    // Today: a short line instead of an empty diagram; a past day: nothing.
+    const today = body({ ...value, energy_flow: empty }, {}, "sv").querySelector("[data-part='energy-flow']")!;
+    expect(today.querySelector("svg")).toBeNull();
+    expect(today.textContent).toContain("Dagens energiflöde visas när de första fem minuterna är inne.");
+    const past = { ...value, day: { ...value.day!, today: false }, energy_flow: empty };
+    expect(body(past).querySelector("[data-part='energy-flow']")).toBeNull();
+  });
+
+  it("says it is on its way in today's first minutes, before the first 5-minute row", () => {
+    const value = answer();
+    const flow = value.energy_flow!;
+    const first = { ...flow, hours: 0, car_hours: 0, heat_hours: 0, step_min: 15, through: "2026-11-12T23:00:00+00:00", nodes: flow.nodes.map((node) => ({ ...node, kwh: 0 })), links: [] };
+    const section = body({ ...value, energy_flow: first }, {}, "en").querySelector("[data-part='energy-flow']")!;
+    expect(section.querySelector("svg")).toBeNull();
+    expect(Array.from(section.querySelectorAll("p")).map((p) => p.textContent)).toEqual(["Today's energy flow appears once the first five minutes are in."]);
+  });
+
+  it("follows the day by the quarter hour: says how far it reaches and the quarter rule", () => {
+    const value = answer();
+    const flow = { ...value.energy_flow!, step_min: 15, through: "2026-11-13T16:15:00+00:00" };
+    const section = body({ ...value, energy_flow: flow }, {}, "sv").querySelector("[data-part='energy-flow']")!;
+    expect(section.textContent).toContain("Fram till 17:15.");
+    expect(section.textContent).toContain("varje kvart går solen");
+    const raw = JSON.parse(JSON.stringify(read("house/villa_battery_sun.json")));
+    delete raw.energy_flow.step_min;
+    const older = decodeHouse(raw);
+    expect(older.ok && older.value.energy_flow?.step_min).toBe(60);
+    raw.energy_flow.step_min = "15";
+    expect(decodeHouse(raw).ok).toBe(false);
+  });
+
+  it("draws no block without a band and no band without width", () => {
+    const value = answer();
+    const flow = {
+      ...value.energy_flow!,
+      nodes: [
+        { id: "source.battery", side: "source" as const, role: "battery", kwh: 6, soc_pct: null },
+        { id: "source.grid", side: "source" as const, role: "grid", kwh: 0.06, soc_pct: null },
+        { id: "use.house", side: "use" as const, role: "house", kwh: 5.99, soc_pct: null },
+        { id: "use.heat", side: "use" as const, role: "heat", kwh: 0.04, soc_pct: null },
+        { id: "use.grid", side: "use" as const, role: "grid", kwh: 0.03, soc_pct: null },
+      ],
+      links: [
+        { from: "source.battery", to: "use.house", kwh: 5.98 },
+        { from: "source.battery", to: "use.grid", kwh: 0.01 },
+        { from: "source.battery", to: "use.heat", kwh: 0.01 },
+        { from: "source.grid", to: "use.heat", kwh: 0.03 },
+        { from: "source.grid", to: "use.house", kwh: 0.01 },
+      ],
+    };
+    const svgRoot = body({ ...value, energy_flow: flow }).querySelector("[data-part='energy-flow'] svg")!;
+    const nodes = Array.from(svgRoot.querySelectorAll(".spotnav-house-flow-node")).map((node) => `${node.getAttribute("data-side")}:${node.getAttribute("data-role")}`);
+    expect(nodes).toEqual(["source:battery", "source:grid", "use:house"]);
+    const bands = Array.from(svgRoot.querySelectorAll(".spotnav-house-flow-band"));
+    expect(bands.map((band) => `${band.getAttribute("data-from")}>${band.getAttribute("data-to")}`)).toEqual(["battery>house", "grid>house"]);
+    for (const band of bands) {
+      const numbers = (band.getAttribute("d") ?? "").match(/-?\d+(\.\d+)?/g)!.map(Number);
+      // M x0,a0 … x0,a1 Z: the band's thickness at its source end.
+      expect(numbers[numbers.length - 1]! - numbers[1]!).toBeGreaterThanOrEqual(MIN_BAND - 0.1);
+    }
+    // Every block drawn has a band at it.
+    const ends = new Set(bands.flatMap((band) => [`source:${band.getAttribute("data-from")}`, `use:${band.getAttribute("data-to")}`]));
+    expect(nodes.every((node) => ends.has(node))).toBe(true);
   });
 
   it("is worded in every language", () => {
     for (const language of LANGUAGES) {
-      for (const key of ["house.flow.house", "house.flow.car", "house.flow.socNow", "house.flow.through", "house.flow.rule", "house.flow.carPart"] as const) {
+      for (const key of ["house.flow.house", "house.flow.car", "house.flow.socNow", "house.flow.through", "house.flow.rule", "house.flow.ruleQuarter", "house.flow.waiting", "house.flow.carPart"] as const) {
         expect(translate(language, key, { pct: "1 %", time: "17:00" })).not.toBe(key);
       }
     }
