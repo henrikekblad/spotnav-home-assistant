@@ -19,9 +19,9 @@ circumstances normal still judges that hand-back) or, for normal, `restored` (on
 `not_judgeable:nothing_written` otherwise).
 
 **Hold variants** (`commands.HoldVariant`, Sigenergy's `msc_no_discharge` then `pv_first`): hold is tried with the
-brand's first variant; when that fails (`VARIANT_RETRY`: ignored, partial, or an abort that shows the plant did not do
-as told, such as an idle hold that charges) the battery is handed back, the block that finding left is lifted,
-and hold is tried again with the next variant, never two at once. The hold row records the variant judged
+brand's first variant; when the plant ignores it (`VARIANT_RETRY`: every reading as if nothing was written) the
+battery is handed back, the block that finding left is lifted, and hold is tried again with the next variant, never
+two at once. The hold row records the variant judged
 (`variant`) and every one tried (`variants`); a later run starts after the variants that failed, and control runs the
 one that passed (`gate.hold_variant`). A hold reading is judged as the monitor judges it (`monitor.judge`): no
 discharge while the house draws; for an idle hold (`HoldVariant.idle`) no charge either, on the battery's own power;
@@ -60,14 +60,11 @@ TEST_CHARGE_KW: Final = 2.0
 COMMAND_TIMEOUT_S: Final = 300.0
 #: Reports kept, one per firmware string.
 MAX_REPORTS: Final = 10
-#: Hold outcomes after which the next hold variant is tried: the plant did not do as this variant told it. Not a
-#: change by someone else, a restore that failed or a control that is missing: those end the run as before.
-VARIANT_RETRY: Final = (
-    "ignored", "partial", "aborted:no_effect", "aborted:not_obeyed", "aborted:write_not_taken",
-    "aborted:command_timeout",
-)
-#: Blocks the executor is left with after such a finding, lifted to try the next variant.
-_VARIANT_BLOCKS: Final = ("no_effect", "not_obeyed", "write_not_taken")
+#: Hold outcomes after which the next hold variant is tried: the plant took the writes and went on as if nothing had
+#: been written (the variant's limit does not act on this firmware). Anything else (a partial effect, a plant that
+#: did something other than told, such as an idle hold that charges, a write not taken, a timeout) ends the run as
+#: before: a plant that misbehaves under one variant is not given another.
+VARIANT_RETRY: Final = ("ignored", "aborted:no_effect")
 
 #: The modes, in order: (name, the plan action commanded).
 MODES: Final[tuple[tuple[str, str], ...]] = (
@@ -245,8 +242,7 @@ class Verification:
             return
         if self.stage == "hand_back" and state.phase in ("idle", "blocked") and not state.holds_snapshot and not step.ops:
             if state.phase == "blocked":
-                lifted = _VARIANT_BLOCKS if self.retry_variant else ("no_effect",)
-                if not str(state.blocked).startswith(lifted):
+                if not str(state.blocked).startswith("no_effect"):
                     self.retry_variant = False
                     self._abort(now, f"aborted:{state.blocked}")
                     return

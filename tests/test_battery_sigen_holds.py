@@ -456,3 +456,31 @@ def test_a_later_run_starts_after_the_variants_that_failed() -> None:
     report = {"modes": {"hold": {"outcome": "not_judgeable:battery_not_discharging", "variant": "pv_first",
                                  "variants": list(tried)}}}
     assert gate.variants_tried(report) == tried and gate.hold_variant(report) is None
+
+
+@dataclass
+class HalfHeld(FakeBattery):
+    """A plant that halves its discharge under the first hold: neither ignored nor obeyed."""
+
+    def power_kw(self, action: str | None, rate_kw: float) -> float:
+        if action == "hold" and self.states.get("control_mode") != PV_FIRST:
+            return -1.5
+        return super().power_kw(action, rate_kw)
+
+
+def test_a_partial_hold_is_not_given_the_next_variant() -> None:
+    executor = Executor(SIGENERGY_CONTROL)
+    battery = HalfHeld(SIGENERGY_CONTROL, dict(SIGENERGY_STATES))
+    hold = _verify(executor, battery).report()["modes"]["hold"]
+    assert hold["outcome"] == "partial" and hold["variants"] == [{"variant": "msc_no_discharge", "outcome": "partial"}]
+    assert PV_FIRST not in [op.value for op in battery.writes]
+
+
+def test_a_hold_write_not_taken_is_not_given_the_next_variant() -> None:
+    executor = Executor(SIGENERGY_CONTROL)
+    battery = FakeBattery(SIGENERGY_CONTROL, dict(SIGENERGY_STATES), drops={"discharge_limit"})
+    hold = _verify(executor, battery).report()["modes"]["hold"]
+    assert hold["outcome"].startswith("aborted:write_not_taken:discharge_limit")
+    assert [row["variant"] for row in hold["variants"]] == ["msc_no_discharge"]
+    assert PV_FIRST not in [op.value for op in battery.writes]
+    assert battery.states["remote_ems"] == "off"
