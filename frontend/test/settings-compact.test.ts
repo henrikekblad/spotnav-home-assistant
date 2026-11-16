@@ -114,7 +114,7 @@ describe("the page", () => {
     );
   });
 
-  it("has no Change buttons: a changeable value is the button, in the accent colour", async () => {
+  it("has no Change buttons: a changeable value is the button and its whole row the target", async () => {
     const { element } = await openSettings();
     const page = dialog(element);
     expect(page.querySelectorAll("[data-edit-vehicle], [data-edit-notifications], [data-edit-identification], [data-edit-solar]")).toHaveLength(0);
@@ -124,7 +124,9 @@ describe("the page", () => {
     expect(value.classList.contains(VISUAL_CLASSES.settingRowEditable)).toBe(true);
     expect(value.textContent).toBe("80 %");
     expect(value.getAttribute("aria-label")).toBe("Charge target, 80 %. Tap to change");
+    expect(target.dataset["tappable"]).toBe("true");
     expect(page.querySelector("[data-vehicle='vehicle_ev6'] [data-row='charge_level'] button")).toBeNull();
+    expect(page.querySelector<HTMLElement>("[data-vehicle='vehicle_ev6'] [data-row='charge_level']")!.dataset["tappable"]).toBeUndefined();
   });
 
   it("shows the setup in short words, never entity ids", async () => {
