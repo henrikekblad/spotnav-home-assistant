@@ -123,6 +123,7 @@ from ..planning.auto_settings import (
 )
 from ..runtime import charger_data, controller_for, domain_data, preview_for
 from ..vehicles.capability import build_capability_snapshot, SiteCapabilitySnapshot
+from ..battery.control import BatteryControl
 from ..battery.runtime import BatteryShadow
 from ..loads.runtime import SwitchLoadShadow
 from .measurement_problem import measurement_problem, MeasurementProblem, UNHEALTHY_STATES
@@ -794,6 +795,10 @@ class SiteCapacityController:
         # The site's home battery in shadow (`battery/runtime.py`): its facts and what SpotNav would do with it,
         # logged and never written.
         self.battery_shadow = BatteryShadow(hass, self)
+        # SpotNav's battery and export-limit control (`battery/control.py`): behind the site's gate (`battery/gate.py`,
+        # off and "shadow only" by default), fed by the battery plan's running slot and the hold for the car. Started
+        # in the background after the shadow (its restore may wait for the battery's integration); shut down first.
+        self.battery_control = BatteryControl(hass, self)
         # A switched load on the site (a water heater) run in the cheapest hours, in shadow (`loads/runtime.py`):
         # logged and never switched. Idle unless the site's options name one.
         self.switch_load = SwitchLoadShadow(hass, self)
@@ -855,6 +860,8 @@ class SiteCapacityController:
         await self._async_load_released()
         await self._async_load_grid_sign()
         await self.battery_shadow.async_start()
+        # Never awaited here: a restore after a restart may wait up to two minutes for the battery's integration.
+        self.battery_control.async_launch(self.hass.config_entries.async_get_entry(self.entry_id))
         await self.switch_load.async_start()
         await self.solar_correction.async_start()
         await self._history.async_load()
@@ -872,9 +879,14 @@ class SiteCapacityController:
         return self._history.samples
 
     async def async_shutdown(self) -> None:
-        """Cancel the timer and listeners first, then close each part (one failing does not skip the rest), then
-        any unfinished apply pass."""
+        """Hand the home battery and the export limit back first (bounded: `BatteryControl.async_shutdown`), then
+        cancel the timer and listeners, then close each part (one failing does not skip the rest), then any
+        unfinished apply pass."""
         self._closed = True
+        try:
+            await self.battery_control.async_shutdown()
+        except Exception:  # noqa: BLE001 - the rest of the site must still shut down; the state is stored
+            _LOGGER.warning("SpotNav site: handing the battery back failed", exc_info=True)
         self._cancel_probe_timer()
         if self._history_cancel is not None:
             self._history_cancel()

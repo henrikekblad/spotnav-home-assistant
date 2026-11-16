@@ -16,7 +16,8 @@ and in what SpotNav detected; nothing is raised in Repairs (nothing there is for
 notice an earlier version raised is deleted at start.
 
 Nothing here writes to a battery, an inverter or any other device: no service is called. The results are shown in
-the site's diagnostics (and so in the debug bundle) only.
+the site's diagnostics (and so in the debug bundle) only. The write path (`control.py`), behind the site's gate, takes
+the hold's decision as a request (`hold_requested`) and runs it through the executor.
 """
 
 from __future__ import annotations
@@ -49,10 +50,11 @@ from .dry_run import SECTION_LEDGER, SECTION_MONITOR, HoldDryRun
 from .executor import ExecInputs, RoleRead, preview, role_reads
 from .export_curtail import CurtailLook, CurtailShadow, curtails
 from .facts import BatteryFacts, EntityFact, battery_facts, with_outside_control
-from .hold import HoldDecision, HoldInputs, HoldMemory, restart, step
+from .hold import HoldDecision, HoldInputs, HoldMemory, requested_action, restart, step
 from .ledger import Ledger
 from .monitor import Monitor
 from .outside_control import Observation, OutsideControlWatch
+from .plan_model import ACTION_HOLD
 from .plan_runtime import BatteryPlanShadow
 from .shadow import PART_EXPORT_CURTAIL, PART_HOLD_FOR_CAR, ShadowBook, ShadowEntry
 
@@ -204,8 +206,10 @@ class BatteryShadow:
         self.facts: BatteryFacts = BatteryFacts()
         self.dry_run = HoldDryRun(Ledger(), Monitor())
         self.outside = OutsideControlWatch()
-        #: Whether SpotNav's own write path acts on the battery now (none can in this release).
+        #: Whether SpotNav's own write path (`control.py`) acts on the battery now, and whether the person let it take
+        #: the plant over from its own optimiser (`battery_control_ai_takeover_ack`); set by that path.
         self.spotnav_acting: Callable[[], bool] = lambda: False
+        self.takeover: Callable[[], bool] = lambda: False
         self._timer_cancel: Callable[[], None] | None = None
         self._loaded = False
         #: Whether a write of the book waits (`_save`): the ticks go on, and must not keep putting it off.
@@ -221,6 +225,11 @@ class BatteryShadow:
     @property
     def _hold(self) -> HoldMemory:
         return HoldMemory.from_dict(self.book.memory(PART_HOLD_FOR_CAR))
+
+    def hold_requested(self) -> bool:
+        """Whether the hold for the car asks for the executor's `hold` now (`hold.requested_action`), for the write
+        path to merge with the plan's slot."""
+        return requested_action(self._hold) == ACTION_HOLD
 
     async def async_start(self) -> None:
         """Load the book, restore a hold a restart found (in shadow: log it), then look every `TICK_S`."""
@@ -332,7 +341,7 @@ class BatteryShadow:
             )
         return replace(inputs, facts=self.with_outside(facts))
 
-    def _grid_charging(self) -> tuple[tuple[str, ...], float | None]:
+    def grid_charging(self) -> tuple[tuple[str, ...], float | None]:
         """The site's chargers charging from the grid, and what they draw together (kW, `None` when unknown)."""
         from ..execution.grid_charge import grid_charge  # noqa: PLC0415 - the charger side imports the site
         from ..runtime import controller_for  # noqa: PLC0415
@@ -357,7 +366,7 @@ class BatteryShadow:
     def inputs(self, now: datetime) -> HoldInputs:
         power_kw, age_s = self._battery_power()
         facts = read_battery_facts(self.hass, self.site.config, power_kw)
-        chargers, car_kw = self._grid_charging()
+        chargers, car_kw = self.grid_charging()
         result = self.site.result
         headrooms = [value for value in result.phase_headroom_a.values() if value is not None]
         return HoldInputs(
@@ -371,7 +380,14 @@ class BatteryShadow:
             charger_ids=chargers,
             car_kw=car_kw,
             reads=read_role_reads(self.hass, self.site.config, control_for(facts.brand)),
+            takeover=self._takeover(),
         )
+
+    def _takeover(self) -> bool:
+        try:
+            return bool(self.takeover())
+        except Exception:  # noqa: BLE001 - without the site's answer a plant in its own optimiser is only watched
+            return False
 
     @callback
     def _async_tick(self, _now: datetime) -> None:

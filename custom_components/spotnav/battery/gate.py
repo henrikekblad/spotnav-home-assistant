@@ -46,6 +46,7 @@ from .plan_model import (
     ACTION_HOLD,
     ACTION_SELF_CONSUME,
 )
+from .shadow import parse_aware_datetime
 
 CONF_ENABLED: Final = "battery_control_enabled"
 CONF_SHADOW_ONLY: Final = "battery_control_shadow_only"
@@ -136,6 +137,11 @@ class Options:
             CONF_ENABLED: self.enabled, CONF_SHADOW_ONLY: self.shadow_only, CONF_AI_TAKEOVER_ACK: self.ai_takeover_ack,
             CONF_ALLOW_SELL: self.allow_sell, CONF_IMPORT_LIMIT_ACTS: self.import_limit_acts,
         }
+
+
+def parse_time(value: Any) -> datetime | None:
+    """A stored ISO time (a report's `last_run_at`), `None` for anything else."""
+    return parse_aware_datetime(value)
 
 
 def firmware_key(firmware: str | None, integration: str | None, version: str | None) -> str:
