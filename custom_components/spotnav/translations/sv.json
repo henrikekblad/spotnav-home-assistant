@@ -1071,6 +1071,21 @@
     },
     "high_load_window_required": {
       "message": "Ställ först in höglasttiden: på elprisenheten (Höglasttid börjar och slutar, bland dess dolda entiteter) eller i kortet."
+    },
+    "export_site_unknown": {
+      "message": "Ingen inläst SpotNav-anläggning har det id:t."
+    },
+    "export_no_site": {
+      "message": "Det finns ingen inläst SpotNav-anläggning att exportera."
+    },
+    "export_site_required": {
+      "message": "Det finns mer än en anläggning: ange vilken som ska exporteras."
+    },
+    "export_date_future": {
+      "message": "Det dygnet har inte börjat än."
+    },
+    "export_write_failed": {
+      "message": "Dygnets underlag kunde inte skrivas till {path}."
     }
   },
   "services": {
@@ -1093,6 +1108,20 @@
         "end": {
           "name": "Slut",
           "description": "Var det slutar (standard: slutet av i morgon när de priserna är publicerade, annars slutet av i dag)."
+        }
+      }
+    },
+    "export_day": {
+      "name": "Exportera ett dygns underlag",
+      "description": "Skriver ett dygn för en anläggning, så som SpotNav beslutade och mätte det, till en JSON-fil i konfigurationsmappen (spotnav_archive): prognoserna med utfall, priserna, batteriplanens kvartar och utvärdering, husets timmar, inställningarna och skuggloggarna. Svarar med filens sökväg och antal.",
+      "fields": {
+        "site": {
+          "name": "Anläggning",
+          "description": "Anläggningen att exportera. Utelämna när det bara finns en."
+        },
+        "date": {
+          "name": "Datum",
+          "description": "Det lokala dygnet att exportera (standard: i går)."
         }
       }
     }

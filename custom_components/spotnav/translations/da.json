@@ -1071,6 +1071,21 @@
     },
     "high_load_window_required": {
       "message": "Angiv spidslasttimerne først: på elprisenheden (Spidslasttimer starter og slutter, blandt dens skjulte entiteter) eller i kortet."
+    },
+    "export_site_unknown": {
+      "message": "Intet indlæst SpotNav-anlæg har det id."
+    },
+    "export_no_site": {
+      "message": "Der er intet indlæst SpotNav-anlæg at eksportere."
+    },
+    "export_site_required": {
+      "message": "Der er mere end ét anlæg: angiv, hvilket der skal eksporteres."
+    },
+    "export_date_future": {
+      "message": "Det døgn er ikke begyndt endnu."
+    },
+    "export_write_failed": {
+      "message": "Døgnets data kunne ikke skrives til {path}."
     }
   },
   "services": {
@@ -1093,6 +1108,20 @@
         "end": {
           "name": "Slut",
           "description": "Hvor det stopper (standard: slutningen af i morgen, når de priser er offentliggjort, ellers slutningen af i dag)."
+        }
+      }
+    },
+    "export_day": {
+      "name": "Eksportér et døgns data",
+      "description": "Skriver et døgn for et anlæg, som SpotNav besluttede og målte det, til en JSON-fil i konfigurationsmappen (spotnav_archive): prognoserne med udfald, priserne, batteriplanens kvarterer og evaluering, husets timer, indstillingerne og skyggelogfilerne. Svarer med filens sti og antal.",
+      "fields": {
+        "site": {
+          "name": "Anlæg",
+          "description": "Anlægget, der skal eksporteres. Udelad, når der kun er ét."
+        },
+        "date": {
+          "name": "Dato",
+          "description": "Det lokale døgn, der skal eksporteres (standard: i går)."
         }
       }
     }

@@ -181,3 +181,32 @@ get_prices:
       required: false
       selector:
         datetime:
+
+export_day:
+  name: Export a day's records
+  description: >
+    Write one site's day as SpotNav decided and measured it to a JSON file in
+    the configuration folder, spotnav_archive/<site id>/<date>.json: the
+    forecasts with their outcomes, the prices, the battery plan's quarter
+    hours and review, the house's hours, the settings and the shadow logs.
+    A day already written is overwritten. SpotNav keeps these records for a
+    limited time (the quarter hours for three days, the forecasts for 14), so
+    call it every night to keep them; an older day exports what is left and
+    names what is missing. Answers with the file's path and counts.
+    Administrators only.
+  fields:
+    site:
+      name: Site
+      description: >
+        The site to export. Leave it out when there is only one.
+      required: false
+      selector:
+        config_entry:
+          integration: spotnav
+    date:
+      name: Date
+      description: >
+        The local day to export (default: yesterday).
+      required: false
+      selector:
+        date:

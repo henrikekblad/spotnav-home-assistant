@@ -1071,6 +1071,21 @@
     },
     "high_load_window_required": {
       "message": "Définissez d'abord les heures de forte charge : sur l'appareil du prix de l'électricité (Début et Fin des heures de forte charge, parmi ses entités masquées) ou dans la carte."
+    },
+    "export_site_unknown": {
+      "message": "Aucun site SpotNav chargé n'a cet identifiant."
+    },
+    "export_no_site": {
+      "message": "Il n'y a aucun site SpotNav chargé à exporter."
+    },
+    "export_site_required": {
+      "message": "Il y a plus d'un site : indiquez celui à exporter."
+    },
+    "export_date_future": {
+      "message": "Cette journée n'a pas encore commencé."
+    },
+    "export_write_failed": {
+      "message": "Les données de la journée n'ont pas pu être écrites dans {path}."
     }
   },
   "services": {
@@ -1093,6 +1108,20 @@
         "end": {
           "name": "Fin",
           "description": "Où s'arrêter (par défaut : la fin de demain quand ses prix sont publiés, sinon la fin d'aujourd'hui)."
+        }
+      }
+    },
+    "export_day": {
+      "name": "Exporter les données d'une journée",
+      "description": "Écrit une journée d'un site, telle que SpotNav l'a décidée et mesurée, dans un fichier JSON du dossier de configuration (spotnav_archive) : les prévisions avec leurs résultats, les prix, les quarts d'heure et le bilan du plan de batterie, les heures de la maison, les réglages et les journaux en mode fantôme. Répond avec le chemin du fichier et les nombres.",
+      "fields": {
+        "site": {
+          "name": "Site",
+          "description": "Le site à exporter. À omettre lorsqu'il n'y en a qu'un."
+        },
+        "date": {
+          "name": "Date",
+          "description": "La journée locale à exporter (par défaut : hier)."
         }
       }
     }

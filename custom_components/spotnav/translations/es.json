@@ -1071,6 +1071,21 @@
     },
     "high_load_window_required": {
       "message": "Configure primero las horas de alta carga: en el dispositivo del precio de la electricidad (Inicio y Fin de las horas de alta carga, entre sus entidades ocultas) o en la tarjeta."
+    },
+    "export_site_unknown": {
+      "message": "Ninguna instalación de SpotNav cargada tiene ese id."
+    },
+    "export_no_site": {
+      "message": "No hay ninguna instalación de SpotNav cargada que exportar."
+    },
+    "export_site_required": {
+      "message": "Hay más de una instalación: indica cuál exportar."
+    },
+    "export_date_future": {
+      "message": "Ese día aún no ha empezado."
+    },
+    "export_write_failed": {
+      "message": "Los datos del día no se pudieron escribir en {path}."
     }
   },
   "services": {
@@ -1093,6 +1108,20 @@
         "end": {
           "name": "Fin",
           "description": "Dónde termina (por defecto: el final de mañana cuando sus precios estén publicados, si no el final de hoy)."
+        }
+      }
+    },
+    "export_day": {
+      "name": "Exportar los datos de un día",
+      "description": "Escribe un día de una instalación, tal como SpotNav lo decidió y midió, en un archivo JSON de la carpeta de configuración (spotnav_archive): las previsiones con su resultado, los precios, los cuartos de hora y la revisión del plan de la batería, las horas de la casa, los ajustes y los registros en modo sombra. Responde con la ruta del archivo y los recuentos.",
+      "fields": {
+        "site": {
+          "name": "Instalación",
+          "description": "La instalación que se exporta. Omítela cuando solo hay una."
+        },
+        "date": {
+          "name": "Fecha",
+          "description": "El día local que se exporta (por defecto: ayer)."
         }
       }
     }

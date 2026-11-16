@@ -11,6 +11,9 @@ field test. A call with no user behind it (an automation fired by a trigger) is 
 SpotNav calls them: the Repairs flow, the config flow, the card's WebSocket commands and the phones'
 notification answers reach the decision store without a service call.
 
+`export_day` writes one site's day record to the configuration folder (`day_export.py`): an administrator's, as
+it writes a file; nothing runs unless it is called.
+
 `get_prices` only reads (an electricity price entry's prices, which every user's dashboard can show
 anyway) and changes nothing, so it is open to every user. It answers and does nothing else
 (`SupportsResponse.ONLY`).
@@ -18,28 +21,32 @@ anyway) and changes nothing, so it is open to every user. It answers and does no
 
 from __future__ import annotations
 
+from datetime import timedelta
 import logging
 from typing import Any
 
 import voluptuous as vol
 from homeassistant.components import websocket_api
 from homeassistant.core import HomeAssistant, ServiceCall, ServiceResponse, SupportsResponse
-from homeassistant.exceptions import ServiceValidationError
+from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.service import async_register_admin_service
+from homeassistant.loader import async_get_integration
 from homeassistant.util import dt as dt_util
 
 from . import time_zones
 from .const import CONF_ENTRY_TYPE, DOMAIN, ENTRY_TYPE_SITE
+from .day_export import archive_path, write_record
+from .day_record import day_record
 from .repairs import (
     async_clear_vehicle_soc,
     async_record_vehicle_soc,
     async_sync_resolution_repairs,
 )
 from .pricing.price_points import resolution_minutes, rounded
-from .runtime import charger_data, domain_data, price_data, PriceData
+from .runtime import charger_data, domain_data, price_data, PriceData, site_controller_for
 from .vehicles.discovery_decisions import (
     DECISION_DOMAIN_VEHICLE,
     DECISION_DOMAIN_VEHICLE_CHARGE_LIMIT,
@@ -130,6 +137,20 @@ def async_register_services(hass: HomeAssistant) -> None:
             supports_response=SupportsResponse.ONLY,
         )
 
+    if not hass.services.has_service(DOMAIN, SERVICE_EXPORT_DAY):
+
+        async def async_export_day(call: ServiceCall) -> ServiceResponse:
+            return await _async_export_day(hass, call)
+
+        async_register_admin_service(
+            hass,
+            DOMAIN,
+            SERVICE_EXPORT_DAY,
+            async_export_day,
+            schema=EXPORT_DAY_SCHEMA,
+            supports_response=SupportsResponse.OPTIONAL,
+        )
+
     websocket_api.async_register_command(hass, _async_ws_resolve_required)
 
 
@@ -212,6 +233,77 @@ def _get_prices(hass: HomeAssistant, call: ServiceCall) -> ServiceResponse:
             }
             for point in points
         ],
+    }
+
+
+#: One site's local day as SpotNav decided and measured it, written to `<config>/spotnav_archive` (`day_record.py`).
+SERVICE_EXPORT_DAY = "export_day"
+
+EXPORT_DAY_SCHEMA = vol.Schema(
+    {
+        vol.Optional("site"): cv.string,
+        vol.Optional("date"): cv.date,
+    }
+)
+
+
+def _export_refusal(key: str, message: str) -> ServiceValidationError:
+    return ServiceValidationError(message, translation_domain=DOMAIN, translation_key=key)
+
+
+def _export_site(hass: HomeAssistant, site: str | None) -> Any:
+    """The loaded site entry a call names by entry id or by its device id, or the only one there is."""
+    entries = [
+        entry
+        for entry in hass.config_entries.async_entries(DOMAIN)
+        if entry.data.get(CONF_ENTRY_TYPE) == ENTRY_TYPE_SITE and site_controller_for(hass, entry.entry_id) is not None
+    ]
+    if site:
+        device = dr.async_get(hass).async_get(site)
+        ids = {site} if device is None else set(device.config_entries)
+        entries = [entry for entry in entries if entry.entry_id in ids]
+        if not entries:
+            raise _export_refusal("export_site_unknown", "No loaded SpotNav site by that id")
+    if not entries:
+        raise _export_refusal("export_no_site", "There is no loaded SpotNav site to export")
+    if len(entries) > 1:
+        raise _export_refusal("export_site_required", "Name the site: there is more than one")
+    return entries[0]
+
+
+async def _async_export_day(hass: HomeAssistant, call: ServiceCall) -> ServiceResponse:
+    """Write one site's day record (default: yesterday in the site's zone) and answer where and how much."""
+    entry = _export_site(hass, call.data.get("site"))
+    controller = site_controller_for(hass, entry.entry_id)
+    now = dt_util.utcnow()
+    tz = controller.demand.tracker.tz
+    today = now.astimezone(time_zones.require_zone(tz)).date()
+    day = call.data.get("date") or today - timedelta(days=1)
+    if day > today:
+        raise _export_refusal("export_date_future", "The day has not begun yet")
+    integration = await async_get_integration(hass, DOMAIN)
+    version = None if integration.version is None else integration.version.string
+    record = day_record(hass, entry, controller, day, now, version=version)
+    path = archive_path(hass.config.config_dir, entry.entry_id, day.isoformat())
+    try:
+        size = await hass.async_add_executor_job(write_record, path, record)
+    except OSError as err:
+        _LOGGER.warning("SpotNav could not write the day record %s: %s", path, err)
+        raise HomeAssistantError(
+            f"The day record could not be written: {err}",
+            translation_domain=DOMAIN,
+            translation_key="export_write_failed",
+            translation_placeholders={"path": str(path)},
+        ) from err
+    _LOGGER.info("SpotNav wrote the day record %s (%d bytes)", path, size)
+    return {
+        "path": str(path),
+        "site_id": entry.entry_id,
+        "date": day.isoformat(),
+        "bytes": size,
+        "complete": record["complete"],
+        "counts": record["counts"],
+        "missing": record["missing"],
     }
 
 
