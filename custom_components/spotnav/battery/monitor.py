@@ -12,12 +12,13 @@ commands written per day.
 
 What each command expects:
 
-* `hold` (no discharge, the sun still stored): discharge at most `FLOOR_KW`. Still discharging is `no_effect` while
-  it is at least `1 - FAIL_FRACTION` of the discharge before the command, `partial` below that. With the site's grid
-  power known (`Reading.grid_kw`): charging from the grid (more than `HOLD_GRID_TOLERANCE_KW` of the charge while the
-  site imports) is `no_effect` (Sigenergy's mode 4 can be a grid charge at the charge limit), and the site exporting
-  more than `EXPORT_TOLERANCE_KW` while the battery does not charge (below `CHARGE_TAPER_SOC_PCT`) is `partial`: the
-  hold stopped the sun charging too.
+* `hold` (no discharge): discharge at most `FLOOR_KW`. Still discharging is `no_effect` while it is at least
+  `1 - FAIL_FRACTION` of the discharge before the command, `partial` below that. An idle hold (`Command.idle`,
+  Sigenergy's mode 4 with the charge limit at 0) is judged on the battery's own power alone: a charge of more than
+  `HOLD_CHARGE_TOLERANCE_KW` is `no_effect` (mode 4 is a charge at the charge limit, from the grid once the sun is
+  short). A hold that stores the sun is `partial` when the site's grid power is known (`Reading.grid_kw`) and the
+  site exports more than `EXPORT_TOLERANCE_KW` while the battery does not charge (below `CHARGE_TAPER_SOC_PCT`):
+  the hold stopped the sun charging too.
 * `curtail` (the site's export limit at 0 kW, judged on the site's grid power, + import): export at most
   `EXPORT_TOLERANCE_KW`, after `CURTAIL_GRACE_S`. Still exporting at least `1 - FAIL_FRACTION` of the export before
   the command is `no_effect`, less is `partial`.
@@ -64,8 +65,8 @@ DISCHARGE_MARGIN_PCT: Final = 5.0
 COUNTER_DAYS: Final = 30
 COUNTERS: Final[tuple[str, ...]] = ("writes", "no_effect", "partial")
 
-#: What a hold's battery may take from the grid (kW) before a reading counts as a grid charge.
-HOLD_GRID_TOLERANCE_KW: Final = 0.5
+#: What an idle hold's battery may charge (kW) before a reading counts as a hold not taken.
+HOLD_CHARGE_TOLERANCE_KW: Final = 0.5
 
 CommandKind = Literal["hold", "charge", "discharge", "curtail"]
 ReadingVerdict = Literal["ok", "partial", "no_effect"]
@@ -89,6 +90,8 @@ class Command:
     slot_end: datetime | None = None
     #: `False` for a dry run (shadow): nothing was written.
     written: bool = False
+    #: A hold that leaves the battery idle (`commands.HoldVariant.idle`): a charge is a hold not taken.
+    idle: bool = False
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -98,6 +101,7 @@ class Command:
             "before_kw": self.before_kw,
             "slot_end": None if self.slot_end is None else self.slot_end.isoformat(),
             "written": self.written,
+            "idle": self.idle,
         }
 
     @classmethod
@@ -114,6 +118,7 @@ class Command:
             before_kw=float(before) if _finite(before) else None,
             slot_end=parse_aware_datetime(data.get("slot_end")),
             written=data.get("written") is True,
+            idle=data.get("idle") is True,
         )
 
 
@@ -128,7 +133,8 @@ class Reading:
     power_kw: float | None
     age_s: float | None = None
     soc_pct: float | None = None
-    #: The site's grid power (kW, + import), for a hold: `None` when unknown (then only the discharge is judged).
+    #: The site's grid power (kW, + import), for a hold that stores the sun: `None` when unknown (then the battery's
+    #: own power alone is judged).
     grid_kw: float | None = None
 
 
@@ -170,7 +176,8 @@ def deliverable_kw(command: Command, capability: Capability, soc_pct: float | No
 def judge(
     command: Command, expected_kw: float, power_kw: float, grid_kw: float | None = None, soc_pct: float | None = None
 ) -> ReadingVerdict:
-    """One reading against what the command expects (a hold also against the site's grid power, when known)."""
+    """One reading against what the command expects (a hold that stores the sun also against the site's grid power,
+    when known)."""
     if command.kind == "curtail":
         export = max(-power_kw, 0.0)
         if export <= EXPORT_TOLERANCE_KW:
@@ -182,10 +189,10 @@ def judge(
     if command.kind == "hold":
         discharge = max(-power_kw, 0.0)
         if discharge <= FLOOR_KW:
+            if command.idle:
+                return "no_effect" if power_kw > HOLD_CHARGE_TOLERANCE_KW else "ok"
             if grid_kw is None or not math.isfinite(grid_kw):
                 return "ok"
-            if min(power_kw, grid_kw) > HOLD_GRID_TOLERANCE_KW:
-                return "no_effect"
             sun_left = -grid_kw > EXPORT_TOLERANCE_KW and power_kw < FLOOR_KW
             if sun_left and soc_pct is not None and soc_pct < CHARGE_TAPER_SOC_PCT:
                 return "partial"

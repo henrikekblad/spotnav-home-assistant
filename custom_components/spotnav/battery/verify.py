@@ -20,11 +20,12 @@ circumstances normal still judges that hand-back) or, for normal, `restored` (on
 
 **Hold variants** (`commands.HoldVariant`, Sigenergy's `msc_no_discharge` then `pv_first`): hold is tried with the
 brand's first variant; when that fails (`VARIANT_RETRY`: ignored, partial, or an abort that shows the plant did not do
-as told, such as a hold that charges from the grid) the battery is handed back, the block that finding left is lifted,
+as told, such as an idle hold that charges) the battery is handed back, the block that finding left is lifted,
 and hold is tried again with the next variant, never two at once. The hold row records the variant judged
 (`variant`) and every one tried (`variants`); a later run starts after the variants that failed, and control runs the
-one that passed (`gate.hold_variant`). A hold reading is judged with the site's grid power too (`monitor.judge`): no
-discharge while the house draws, no grid charge, and the sun still stored.
+one that passed (`gate.hold_variant`). A hold reading is judged as the monitor judges it (`monitor.judge`): no
+discharge while the house draws; for an idle hold (`HoldVariant.idle`) no charge either, on the battery's own power;
+for one that stores the sun, the sun still stored when the site's grid power is known.
 
 The export limit (`commands.EXPORT_CONTROLS`) has its own two modes (`EXPORT_MODES`): `curtail` (the limit at 0 kW
 through the executor's export instance) and `normal` (handed back). Its sample's power is the site's grid power (kW,
@@ -265,7 +266,10 @@ class Verification:
         kind = {ACTION_HOLD: "hold", ACTION_GRID_CHARGE: "charge", ACTION_DISCHARGE_HOUSE: "discharge",
                 ACTION_CURTAIL_EXPORT: "hold"}[result.action]
         rate = result.rate_kw if kind == "charge" else (sample.house_deficit_kw or 0.0)
-        command = Command(kind, result.commanded_at or now, rate, before_kw=result.before_kw, written=True)  # type: ignore[arg-type]
+        idle = result.action == ACTION_HOLD and self.executor.control.hold_idle()
+        command = Command(  # type: ignore[arg-type]
+            kind, result.commanded_at or now, rate, before_kw=result.before_kw, written=True, idle=idle
+        )
         why: str | None = None
         expected: float | None = None
         if sample.power_kw is None or sample.age_s is None or sample.age_s > READING_MAX_AGE_S:

@@ -1422,16 +1422,14 @@ async def test_control_runs_the_hold_variant_the_verification_passed_and_a_resta
     for index in range(6):
         await control.async_tick(now + timedelta(seconds=10 * index))
     calls = [(data.get("value"), data.get("option")) for _domain, service, data in plant.calls if service != "turn_on"]
-    # The charge limit at the plant's rating, then mode 4.
-    assert calls == [
-        (20.6, None), (None, "Command Charging (PV First)")
-    ]
+    # The charge limit at 0, then mode 4.
+    assert calls == [(0.0, None), (None, "Command Charging (PV First)")]
     assert plant.calls[0][2]["entity_id"] == CHARGE and hass.states.get(DISCHARGE).state == "23.04"
     assert control.executor.state.variant == "pv_first"
 
     again = BatteryControl(hass, controller, plan_source=_hold)
     plant.calls.clear()
     await again.async_start()
-    # The mode first (back to Maximum Self Consumption), then Remote EMS off; the charge limit keeps the rating.
+    # The mode first (back to Maximum Self Consumption), then Remote EMS off.
     assert plant.calls[0][2].get("option") == "Maximum Self Consumption"
     assert hass.states.get(SWITCH).state == "off" and again.executor.state.phase == "idle"

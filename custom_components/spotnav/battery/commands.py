@@ -31,15 +31,19 @@ The entity keys, options and services below were checked against each integratio
   act in every mode in both (`SIGENERGY_LIMIT_MODES`). A grid charge (mode 3, charge limit) and an export discharge
   (mode 5, discharge limit) keep to both generations. A hold has two variants (`SIGENERGY_HOLDS`), tried in order
   by the verification: `msc_no_discharge`, Maximum Self Consumption with the discharge limit at 0 (valid on
-  V2.9-era firmware and seen obeyed on SPC117 with Remote EMS on, TypQxQ discussion #424; its peak cover lifts the
-  limit), then `pv_first`, mode 4 Command Charging (PV First) with the charge limit at the battery's rating (within
-  V2.7's scope: nothing discharges, the sun still charges; its peak cover writes the mode back to Maximum Self
-  Consumption, where the plant balances each phase itself). Several integrations use mode 4 as a grid charge at the
-  charge limit (haeo's Sigenergy walkthrough, Roving-Ronin's EMS-Events-Card "grid import + solar"), so a hold that
-  draws the grid into the battery is handed back (`executor.HOLD_GRID_CHARGE_S`) and fails its verification. A
-  discharge to the house has no mode in V2.7 ("cover the house, store nothing"): it stays Maximum Self Consumption
-  with the charge limit at 0, valid under V2.9 and at worst ignored under V2.7 (the battery then also stores a sun
-  surplus, as in self-consumption). V2.8 removed 41500 (Remote EMS dispatch enable, never used here); V2.9 added
+  V2.9-era firmware and seen obeyed on SPC117 with Remote EMS on, TypQxQ discussion #424; the sun is still stored;
+  its peak cover lifts the limit), then `pv_first`, mode 4 with the charge limit at 0. Appendix 6 names mode 4
+  "Command charging (consume PV power first)" (`sig27.txt` lines 2180-2183, `sig29.txt` line 3346): a charge at the
+  charge limit, from the sun first and then the grid (haeo's Sigenergy walkthrough and Roving-Ronin's
+  EMS-Events-Card use it so). At a limit of 0 it charges nothing, and the discharge limit does not act in it under
+  V2.7 (it acts only in 5 and 6) while the plant discharges in no Command Charging mode: the battery stands idle and
+  a sun surplus is exported. That is within V2.7's scope and V2.9's, and it is also what a command left standing
+  after Home Assistant died does. Its peak cover writes the mode back to Maximum Self Consumption, where the plant
+  balances each phase itself. A `pv_first` hold whose battery charges anyway is handed back
+  (`executor.HOLD_CHARGE_S`) and fails its verification. A discharge to the house has no mode in V2.7 ("cover the
+  house, store nothing"): it stays Maximum Self Consumption with the charge limit at 0, valid under V2.9 and at
+  worst ignored under V2.7 (the battery then also stores a sun surplus, as in self-consumption). V2.8 removed 41500
+  (Remote EMS dispatch enable, never used here); V2.9 added
   0x08 V2G to 40031. 40049, Active power regulation gradient (%/s of the rated power, V2.8+), bounds how fast the
   plant changes its output and so its reaction to a mode or limit change; SpotNav never writes it. A plant is taken in Maximum Self Consumption (`adapters.SIGENERGY`'s mode rule), or in AI mode once the
   person acknowledged the takeover (`BrandControl.takeover`); turning Remote EMS off lands in Maximum Self
@@ -102,9 +106,6 @@ from .plan_model import (
 
 #: The value a role had before SpotNav first wrote it.
 SNAPSHOT: Final = "<snapshot>"
-#: The battery's own rating for the role's kind (`Role.unset_as_rating`), in the role's unit: resolved by the
-#: executor from the battery's facts; an action that needs it does not start without it.
-RATING: Final = "<rating>"
 
 #: How long a brand's own watchdog runs (s) and when SpotNav renews it: a command SpotNav stops renewing (HA died)
 #: falls back by itself within this.
@@ -158,13 +159,16 @@ class Want:
 
 @dataclass(frozen=True, slots=True)
 class HoldVariant:
-    """One way a brand can hold (no discharge, the sun still stored): its writes and the roles that let the battery
-    cover a peak again. The verification tries a brand's variants in order and control uses the first that passed."""
+    """One way a brand can hold (no discharge): its writes and the roles that let the battery cover a peak again.
+    The verification tries a brand's variants in order and control uses the first that passed."""
 
     name: str
     build: Callable[[float, int], tuple[Want, ...]]
     peak_first: tuple[str, ...]
     note: str = ""
+    #: The battery stands idle (it stores no sun either): a battery that charges under it did not take the hold
+    #: (`monitor.judge`, `executor.HOLD_CHARGE_S`). `False`: the sun is still stored.
+    idle: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -221,6 +225,10 @@ class BrandControl:
 
     def variant_names(self) -> tuple[str, ...]:
         return tuple(variant.name for variant in self.hold_variants)
+
+    def hold_idle(self) -> bool:
+        """Whether this control's hold leaves the battery idle (`HoldVariant.idle`)."""
+        return any(variant.idle for variant in self.hold_variants if variant.name == self.variant)
 
     def with_hold(self, name: str | None) -> BrandControl:
         """This control with the hold variant `name` (its writes and its peak cover); itself for `None`, for a name
@@ -335,12 +343,12 @@ SIGENERGY_HOLDS: Final = (
         "msc_no_discharge", _sig(_SIG_MSC, discharge_limit=lambda _rate: 0.0), ("discharge_limit",),
         "Maximum Self Consumption with the discharge limit at 0",
     ),
-    # For firmware that follows V2.7 (no limit acts in mode 2): mode 4 with the charge limit at the rating, where
-    # that limit acts; nothing discharges, the sun charges. The peak cover writes the mode back to Maximum Self
-    # Consumption.
+    # For firmware that follows V2.7 (no limit acts in mode 2): mode 4 with the charge limit at 0, where that limit
+    # acts; nothing charges or discharges, a sun surplus is exported. The peak cover writes the mode back to Maximum
+    # Self Consumption.
     HoldVariant(
-        "pv_first", _sig(_SIG_PV_FIRST, charge_limit=lambda _rate: RATING), ("control_mode",),
-        "Command Charging (PV First) with the charge limit at the rating",
+        "pv_first", _sig(_SIG_PV_FIRST, charge_limit=lambda _rate: 0.0), ("control_mode",),
+        "Command Charging (PV First) with the charge limit at 0", idle=True,
     ),
 )
 

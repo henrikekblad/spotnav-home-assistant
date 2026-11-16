@@ -4,13 +4,12 @@ verification trying the variants in order, and the hand-back after either."""
 
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 
 import pytest
 
 from custom_components.spotnav.battery import gate
 from custom_components.spotnav.battery.commands import (
-    RATING,
     SIGENERGY_CONTROL,
     SIGENERGY_HOLDS,
     SIGENERGY_LIMIT_MODES,
@@ -19,7 +18,7 @@ from custom_components.spotnav.battery.commands import (
     table,
 )
 from custom_components.spotnav.battery.executor import (
-    HOLD_GRID_CHARGE_S,
+    HOLD_CHARGE_S,
     PEAK_RECOVER_S,
     ExecState,
     Executor,
@@ -98,8 +97,9 @@ def test_the_hold_variants_are_tried_msc_first_and_the_table_shows_both() -> Non
     assert SIGENERGY_CONTROL.variant == "msc_no_discharge" and control_for("sigenergy").variant == "msc_no_discharge"
     assert control_for("sigenergy", "unknown").variant == "msc_no_discharge"
     assert PV_FIRST_CONTROL.wanted("hold", 0.0) == {
-        "charge_limit": RATING, "discharge_limit": "<snapshot>", "remote_ems": True, "control_mode": PV_FIRST,
+        "charge_limit": 0.0, "discharge_limit": "<snapshot>", "remote_ems": True, "control_mode": PV_FIRST,
     }
+    assert PV_FIRST_CONTROL.hold_idle() and not SIGENERGY_CONTROL.hold_idle()
     assert PV_FIRST_CONTROL.peak_first["hold"] == ("control_mode",)
     assert SIGENERGY_CONTROL.peak_first["hold"] == ("discharge_limit",)
     # The grid charge's peak cover is the mode either way.
@@ -110,6 +110,7 @@ def test_the_hold_variants_are_tried_msc_first_and_the_table_shows_both() -> Non
 
 
 def test_the_mode_texts_are_typqxqs_select_options() -> None:
+    # Appendix 6: 0x04 "Command charging (consume PV power first)" (sig27.txt lines 2180-2183, sig29.txt line 3346).
     """TypQxQ/Sigenergy-Local-Modbus custom_components/sigen/select.py lines 105-114 (options) and 116-124 (map to
     Appendix 6) at 94e38dae and 41182ec: 2, 3, 4, 5."""
     assert PV_FIRST_CONTROL.wanted("hold", 0.0)["control_mode"] == "Command Charging (PV First)"  # 4
@@ -118,26 +119,13 @@ def test_the_mode_texts_are_typqxqs_select_options() -> None:
 # --- the mode-4 hold ---------------------------------------------------------------------------------------------
 
 
-def test_a_pv_first_hold_writes_the_charge_limit_at_the_rating_then_remote_ems_then_mode_4() -> None:
+def test_a_pv_first_hold_writes_the_charge_limit_at_0_then_remote_ems_then_mode_4() -> None:
     executor, battery = _pv_first()
     _now, results = run(executor, battery, T0, 6, "hold")
-    assert written(results) == [("charge_limit", 10.0), ("remote_ems", True), ("control_mode", PV_FIRST)]
+    assert written(results) == [("charge_limit", 0.0), ("remote_ems", True), ("control_mode", PV_FIRST)]
     assert executor.state.variant == "pv_first"
     assert executor.state.snapshot == {"charge_limit": "unknown", "discharge_limit": "23.04"}
     assert battery.states["discharge_limit"] == "23.04", "the discharge limit is left as found"
-
-
-def test_a_pv_first_hold_does_not_start_without_the_batterys_rating() -> None:
-    executor, battery = _pv_first()
-    no_rating = replace(battery.facts(-3.0), rated_charge_kw=None)
-    result = executor.step(replace(inputs(battery, T0, "hold"), facts=no_rating))
-    assert result.ops == () and events([result], "not_started")[0]["reason"] in (
-        "rating_unknown:charge_limit", "no_restore_value:charge_limit"
-    )
-    # With a limit that was set (so its own value is the restore value), the rating is still needed.
-    battery.states["charge_limit"] = "5"
-    result = executor.step(replace(inputs(battery, T0, "hold", reads=battery.reads()), facts=no_rating))
-    assert events([result], "not_started")[0]["reason"] == "rating_unknown:charge_limit"
 
 
 def test_a_peak_under_a_pv_first_hold_writes_the_mode_back_to_msc_in_one_write() -> None:
@@ -159,8 +147,10 @@ def test_a_pv_first_hold_under_the_hand_back_mark_writes_every_role_in_one_look_
     now = _held(executor, battery)
     _now, results = run(executor, battery, now, 1, "hold", headroom_a=0.5)
     assert events(results, "hand_back")[0]["reason"] == "fuse_headroom"
-    # The charge limit already reads its restore value (the rating it was written as): nothing more to write.
-    assert [(op.role, op.value) for op in results[0].ops] == [("control_mode", MSC), ("remote_ems", False)]
+    # The never-set charge limit goes back as the rating.
+    assert [(op.role, op.value) for op in results[0].ops] == [
+        ("control_mode", MSC), ("remote_ems", False), ("charge_limit", 10.0)
+    ]
 
 
 def test_a_pv_first_charge_limit_someone_else_changed_is_given_up_not_written_over() -> None:
@@ -170,7 +160,7 @@ def test_a_pv_first_charge_limit_someone_else_changed_is_given_up_not_written_ov
     _now, results = run(executor, battery, now, _looks(MIN_DIVERGENCE_S) + 6, "hold")
     assert events(results, "external")[0]["reason"] == "charge_limit"
     assert events(results, "hand_back")[0]["reason"].startswith("changed_outside_spotnav:charge_limit")
-    assert ("charge_limit", 10.0) not in written(results) and battery.states["charge_limit"] == "4"
+    assert "charge_limit" not in [role for role, _value in written(results)] and battery.states["charge_limit"] == "4"
     assert battery.states["remote_ems"] == "off" and executor.state.phase == "blocked"
 
 
@@ -200,7 +190,7 @@ def test_either_variant_is_handed_back_to_every_value_found_and_a_restart_uses_t
     _now, results = run(again, battery, now, 12, "hold", stopping="stop")
     first = written(results)[0][0]
     assert first == ("discharge_limit" if variant == "msc_no_discharge" else "control_mode")
-    # A never-set limit SpotNav wrote holds the rating; everything else as found, Remote EMS off.
+    # A never-set limit SpotNav wrote goes back as the rating; everything else as found, Remote EMS off.
     expected = dict(SIGENERGY_STATES)
     if variant == "pv_first":
         expected["charge_limit"] = "10"
@@ -221,17 +211,29 @@ def test_the_preview_of_a_pv_first_hold_names_its_writes_and_hand_back() -> None
     _executor, battery = _pv_first()
     seen = preview(PV_FIRST_CONTROL, inputs(battery, T0, "hold"))
     assert [(op.role, op.value) for op in seen.writes] == [
-        ("charge_limit", 10.0), ("remote_ems", True), ("control_mode", PV_FIRST)
+        ("charge_limit", 0.0), ("remote_ems", True), ("control_mode", PV_FIRST)
     ]
     assert [op.role for op in seen.restores][0] == "control_mode"
 
 
-# --- a hold never charges from the grid -------------------------------------------------------------------------
+# --- an idle hold never charges --------------------------------------------------------------------------------
 
 
 @dataclass
-class GridChargingHold(FakeBattery):
-    """Mode 4 as others use it: a charge at the charge limit, from the grid for what the sun does not give."""
+class ForcedModeFour(FakeBattery):
+    """Mode 4 as haeo and Predbat read it: a charge at the charge limit, from the grid for what the sun does not give
+    (the discharge limit does nothing in Maximum Self Consumption, as V2.7 says)."""
+
+    def power_kw(self, action: str | None, rate_kw: float) -> float:
+        if self.states.get("remote_ems") == "on" and self.states.get("control_mode") == PV_FIRST:
+            limit = self.states.get("charge_limit")
+            return 10.0 if limit in ("unknown", None) else float(limit)
+        return self.idle_kw
+
+
+@dataclass
+class ChargingHold(FakeBattery):
+    """A plant whose mode 4 charges whatever its charge limit says."""
 
     def power_kw(self, action: str | None, rate_kw: float) -> float:
         if action == "hold" and self.states.get("control_mode") == PV_FIRST:
@@ -239,38 +241,68 @@ class GridChargingHold(FakeBattery):
         return super().power_kw(action, rate_kw)
 
 
-def test_a_hold_that_charges_from_the_grid_is_handed_back_within_a_minute_and_blocked() -> None:
+@pytest.mark.parametrize("grid_kw", [None, 4.0, -2.0])
+def test_an_idle_hold_that_charges_is_handed_back_within_a_minute_whatever_the_grid_reads(grid_kw) -> None:
     executor = Executor(PV_FIRST_CONTROL)
-    battery = GridChargingHold(PV_FIRST_CONTROL, dict(SIGENERGY_STATES))
-    now, _ = run(executor, battery, T0, 4, "hold", grid_import_kw=4.0)
-    now, results = run(executor, battery, now, _looks(HOLD_GRID_CHARGE_S) - 2, "hold", grid_import_kw=4.0)
+    battery = ChargingHold(PV_FIRST_CONTROL, dict(SIGENERGY_STATES))
+    now, _ = run(executor, battery, T0, 4, "hold", grid_import_kw=grid_kw)
+    now, results = run(executor, battery, now, _looks(HOLD_CHARGE_S) - 2, "hold", grid_import_kw=grid_kw)
     assert events(results, "hand_back") == []
-    _now, results = run(executor, battery, now, 8, "hold", grid_import_kw=4.0)
-    assert events(results, "hand_back")[0]["reason"] == "not_obeyed:hold:grid_charge"
+    _now, results = run(executor, battery, now, 8, "hold", grid_import_kw=grid_kw)
+    assert events(results, "hand_back")[0]["reason"] == "not_obeyed:hold:charging"
     assert executor.state.phase == "blocked" and battery.states["remote_ems"] == "off"
 
 
-def test_a_cloud_that_briefly_leaves_a_hold_charging_from_the_grid_is_no_reason_to_hand_back() -> None:
+def test_a_forced_mode_4_at_a_charge_limit_of_0_stands_idle_and_never_charges() -> None:
+    executor = Executor(PV_FIRST_CONTROL)
+    # 6 A of headroom on a 20 A fuse: a mode 4 that charged at the rating would take the site over it.
+    battery = ForcedModeFour(PV_FIRST_CONTROL, dict(SIGENERGY_STATES), idle_kw=-0.5)
+    now, results = run(executor, battery, T0, 6, "hold", grid_import_kw=None, headroom_a=6.0)
+    # The limit is at 0 before Remote EMS and mode 4: no look ever sees mode 4 at another limit.
+    roles = [role for role, _value in written(results)]
+    assert roles.index("charge_limit") < roles.index("remote_ems") < roles.index("control_mode")
+    assert battery.power_kw("hold", 0.0) == 0.0
+    _now, results = run(executor, battery, now, _looks(4 * HOLD_CHARGE_S), "hold", grid_import_kw=None, headroom_a=6.0)
+    assert events(results, "hand_back") == [] and executor.state.phase == "active"
+
+
+def test_a_short_charge_under_an_idle_hold_is_no_reason_to_hand_back() -> None:
     executor, battery = _pv_first()
     now = _held(executor, battery)
-    now, _ = run(executor, battery, now, 3, "hold", power_kw=2.0, grid_import_kw=1.5)
-    now, _ = run(executor, battery, now, 2, "hold", power_kw=2.0, grid_import_kw=-0.5)  # the sun is back
-    _now, results = run(executor, battery, now, 4, "hold", power_kw=2.0, grid_import_kw=1.5)
+    now, _ = run(executor, battery, now, 3, "hold", power_kw=2.0)
+    now, _ = run(executor, battery, now, 2, "hold", power_kw=0.0)
+    _now, results = run(executor, battery, now, 4, "hold", power_kw=2.0)
     assert events(results, "hand_back") == [] and executor.state.phase == "active"
-    # Charging from the sun while the site exports is what a hold is for.
-    _now, results = run(executor, battery, now, _looks(2 * HOLD_GRID_CHARGE_S), "hold", power_kw=3.0, grid_import_kw=-1.0)
-    assert events(results, "hand_back") == []
 
 
-def test_the_monitor_judges_a_hold_on_the_grid_too() -> None:
+def test_a_hold_that_stores_the_sun_is_never_handed_back_for_charging_even_while_a_car_imports() -> None:
+    executor = Executor(SIGENERGY_CONTROL)
+    battery = FakeBattery(SIGENERGY_CONTROL, dict(SIGENERGY_STATES))
+    now = _held(executor, battery)
+    # The sun charges the battery 3 kW while a car draws 11 kW from the grid.
+    _now, results = run(executor, battery, now, _looks(4 * HOLD_CHARGE_S), "hold", power_kw=3.0, grid_import_kw=11.0)
+    assert events(results, "hand_back") == [] and executor.state.phase == "active"
+
+
+def test_the_monitor_judges_an_idle_hold_on_the_batterys_own_power() -> None:
+    idle = Command("hold", T0, 0.0, before_kw=-3.0, written=True, idle=True)
+    assert judge(idle, 0.0, 0.0, None, 50.0) == "ok"
+    assert judge(idle, 0.0, 3.0, None, 50.0) == "no_effect"  # grid unknown: a charge is still a hold not taken
+    assert judge(idle, 0.0, 3.0, -1.0, 50.0) == "no_effect"  # even from the sun: the battery is to stand idle
+    assert judge(idle, 0.0, 0.0, -2.0, 50.0) == "ok"  # the sun is exported: what an idle hold does
+    assert judge(idle, 0.0, -3.0, 1.0, 50.0) == "no_effect"  # still discharging
+    assert Command.from_dict(idle.as_dict()) == idle
+
+
+def test_the_monitor_judges_a_hold_that_stores_the_sun() -> None:
     hold = Command("hold", T0, 0.0, before_kw=-3.0, written=True)
     assert judge(hold, 0.0, 0.0, 1.0, 50.0) == "ok"  # the grid covers the house
-    assert judge(hold, 0.0, 3.0, 4.0, 50.0) == "no_effect"  # charging from the grid
+    assert judge(hold, 0.0, 3.0, 4.0, 50.0) == "ok"  # Maximum Self Consumption never charges from the grid
     assert judge(hold, 0.0, 2.0, -1.0, 50.0) == "ok"  # the sun charges it
     assert judge(hold, 0.0, 0.0, -2.0, 50.0) == "partial"  # the sun is exported, not stored
     assert judge(hold, 0.0, 0.0, -2.0, 95.0) == "ok"  # nearly full: nothing to store
     assert judge(hold, 0.0, -3.0, 1.0, 50.0) == "no_effect"  # still discharging
-    assert judge(hold, 0.0, 3.0, None, 50.0) == "ok"  # grid unknown: only the discharge is judged
+    assert judge(hold, 0.0, 0.0, None, 50.0) == "ok"  # grid unknown: the battery's own power, no discharge
 
 
 # --- the verification tries the variants in order ---------------------------------------------------------------
@@ -336,13 +368,13 @@ def test_a_plant_that_obeys_the_msc_hold_never_tries_mode_4() -> None:
     assert gate.hold_variant({"modes": {"hold": hold}}) == "msc_no_discharge"
 
 
-def test_a_mode_4_hold_that_charges_from_the_grid_fails_and_hold_fails_with_both_variants_recorded() -> None:
+def test_a_mode_4_hold_that_charges_fails_and_hold_fails_with_both_variants_recorded() -> None:
     executor = Executor(SIGENERGY_CONTROL)
     battery = _GridChargingV27(SIGENERGY_CONTROL, dict(SIGENERGY_STATES))
     hold = _verify(executor, battery, grid_kw=4.0).report()["modes"]["hold"]
     assert gate.mode_verdict(hold["outcome"]) == "fail"
     assert [row["variant"] for row in hold["variants"]] == ["msc_no_discharge", "pv_first"]
-    assert hold["variants"][1]["outcome"].startswith("aborted:not_obeyed:hold:grid_charge")
+    assert hold["variants"][1]["outcome"] == "aborted:not_obeyed:hold:charging"
     assert gate.hold_variant({"modes": {"hold": hold}}) is None
     assert executor.state.phase == "blocked" and not executor.state.holds_snapshot
     assert battery.states["remote_ems"] == "off"
