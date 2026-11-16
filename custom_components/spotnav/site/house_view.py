@@ -17,9 +17,10 @@ It shows what the site diagnostics already carry, cut to what a card draws:
   `None` on a site without a solar forecast, `battery` on a site without a battery.
 * **`today`**: today so far, split as the battery's own app splits a day (sold, arbitrage, bought) with the mode in
   force, from the stored energy's running value (`battery/stored_value.py`); **`flow`**: today's energy from sources (sun, battery, grid) to uses
-  (battery, load, grid); **`energy_flow`**: today's completed hours as a Sankey diagram's nodes and links, from the
-  Energy dashboard's meters and the chargers' registers, the flows allocated hour by hour (`site/energy_flow.py`, its
-  docstring has the rule; `None` without the dashboard's grid meter, also on a site without a battery); **`calendar`**: the running month's reviewed days, the plan beside the battery's own way.
+  (battery, load, grid); **`energy_flow`**: today so far as a Sankey diagram's nodes and links, from the
+  Energy dashboard's meters and the chargers' registers, the flows allocated quarter hour by quarter hour within the
+  recorder's short-term statistics, else hour by hour (`site/energy_flow.py`, its docstring has the rule; `None`
+  without the dashboard's grid meter, also on a site without a battery; empty in today's first minutes); **`calendar`**: the running month's reviewed days, the plan beside the battery's own way.
   All three are `None` without a battery. Each hour also has its mean buy and sell price (`buy`, `sell`, minor per
   kWh) where the battery plan priced it.
 * **`day`**: the day shown (`date`), whether it is today, the first day that may be asked for (`first`: the forecast
@@ -647,7 +648,8 @@ def day_block(inputs: HouseInputs, hours: Sequence[Mapping[str, Any]]) -> dict[s
         "date": shown.isoformat(),
         "today": shown == today,
         "first": first_day(inputs.now, inputs.tz).isoformat(),
-        "has_data": inputs.energy_flow is not None or any(row[key] is not None for row in hours for key in measured),
+        "has_data": (inputs.energy_flow is not None and bool(inputs.energy_flow.get("hours")))
+        or any(row[key] is not None for row in hours for key in measured),
     }
 
 
