@@ -231,3 +231,15 @@ def test_a_day_without_quarter_hours_or_battery_cannot_be_replayed(tmp_path: Pat
     path = tmp_path / "day.json"
     path.write_text(json.dumps(empty), encoding="utf-8")
     assert replay_day.main([str(path)]) == 2
+
+
+def test_the_token_can_come_from_home_assistants_secrets(tmp_path) -> None:
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("archive_tool", "tools/spotnav_archive_to_influx.py")
+    tool = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(tool)
+    secrets = tmp_path / "secrets.yaml"
+    secrets.write_text('other: x\ninfluxdb_token: "abc 123" # comment\nplain: def\n', encoding="utf-8")
+    assert tool.read_token(None, "influxdb_token", str(secrets)) == "abc 123"
+    assert tool.read_token(None, "plain", str(secrets)) == "def"

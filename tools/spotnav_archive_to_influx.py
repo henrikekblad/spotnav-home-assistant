@@ -4,7 +4,7 @@
     python3 spotnav_archive_to_influx.py /config/spotnav_archive/<site_id>/<YYYY-MM-DD>.json \\
         --url http://localhost:8181 --db spotnav --token-file /config/.influx_token [--dry-run]
 
-The token is read from `--token-file` or else the environment (`INFLUXDB3_AUTH_TOKEN`); it is sent as a Bearer header
+The token is read from Home Assistant's `secrets.yaml` (`--token-secret NAME`), from `--token-file`, or else the environment (`INFLUXDB3_AUTH_TOKEN`); it is sent as a Bearer header
 and never printed. `--dry-run` prints the line protocol instead of writing it (no token needed). Only the standard
 library is used, so it runs with the Python in Home Assistant's container (for example from a `shell_command`).
 
@@ -203,14 +203,29 @@ def record_lines(record: dict[str, Any]) -> list[str]:
 # ------------------------------------------------------------------------------------------------ the write
 
 
-def read_token(path: str | None) -> str:
-    if path:
+def secret_value(secrets_path: str, name: str) -> str:
+    """One top-level `name: value` from Home Assistant's `secrets.yaml` (plain or quoted scalar), without a YAML library."""
+    with open(secrets_path, encoding="utf-8") as handle:
+        for raw in handle:
+            key, sep, value = raw.partition(":")
+            if sep and key == name:
+                value = value.split(" #", 1)[0].strip()
+                if len(value) >= 2 and value[0] == value[-1] and value[0] in "'\"":
+                    value = value[1:-1]
+                return value
+    return ""
+
+
+def read_token(path: str | None, secret: str | None = None, secrets_path: str = "/config/secrets.yaml") -> str:
+    if secret:
+        token = secret_value(secrets_path, secret).strip()
+    elif path:
         with open(path, encoding="utf-8") as handle:
             token = handle.read().strip()
     else:
         token = os.environ.get(TOKEN_ENV, "").strip()
     if not token:
-        raise ValueError(f"no token: give --token-file or set {TOKEN_ENV}")
+        raise ValueError(f"no token: give --token-file, --token-secret or set {TOKEN_ENV}")
     return token
 
 
@@ -235,6 +250,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--url", default="http://localhost:8181", help="InfluxDB 3 (default %(default)s)")
     parser.add_argument("--db", default="spotnav", help="the database (default %(default)s)")
     parser.add_argument("--token-file", help=f"a file holding the token (else ${TOKEN_ENV})")
+    parser.add_argument("--token-secret", help="the name of the token in Home Assistant's secrets.yaml")
+    parser.add_argument("--secrets", default="/config/secrets.yaml", help="secrets.yaml (default %(default)s)")
     parser.add_argument("--dry-run", action="store_true", help="print the line protocol, write nothing")
     args = parser.parse_args(argv)
     try:
@@ -247,7 +264,7 @@ def main(argv: list[str] | None = None) -> int:
         print("\n".join(lines))
         return 0
     try:
-        token = read_token(args.token_file)
+        token = read_token(args.token_file, args.token_secret, args.secrets)
     except (OSError, ValueError) as err:
         print(f"Cannot read the token: {err}", file=sys.stderr)
         return 2
