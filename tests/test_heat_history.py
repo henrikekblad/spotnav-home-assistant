@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import json
 import os
+from dataclasses import replace
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -13,7 +14,7 @@ from typing import Any
 import pytest
 
 from custom_components.spotnav.api.heat_history import hourly_means, outdoor_source, trend_start
-from custom_components.spotnav.heat.config import HeatConfig, Night
+from custom_components.spotnav.heat.config import HeatConfig, Night, SensorOffset
 from custom_components.spotnav.heat.history import (
     BASE_C,
     CAUSE_DRAW,
@@ -335,3 +336,11 @@ def test_contract_fixtures() -> None:
         "meter_only_year.json",
         heat_history(month_inputs(period=period_of(PERIOD_YEAR, date(2026, 1, 1)), outdoor_source=None, outdoor={}, indoor={}, immersion=None)),
     )
+
+
+def test_comfort_counts_each_room_against_its_own_aim() -> None:
+    # Upstairs aims a degree below the house: its 20.3 mornings are 21.3 against the band, the kitchen is the coldest.
+    config = replace(CONFIG, indoor_offsets=(SensorOffset("sensor.uppe", -1.0),))
+    comfort = heat_history(month_inputs(config=config))["comfort"]
+    assert comfort["coldest"]["entity_id"] == "sensor.kok" and comfort["coldest"]["mean_c"] == 21.4
+    assert comfort["hours_below"] == 0

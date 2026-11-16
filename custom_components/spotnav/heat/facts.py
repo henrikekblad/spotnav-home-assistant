@@ -34,6 +34,7 @@ _NO_SENSOR: Final = frozenset({-32768.0, -3276.8})
 _BANDS: Final[dict[FactRole, tuple[float, float]]] = {
     "outdoor_temp": (-50.0, 50.0),
     "supply_temp": (0.0, 100.0),
+    "calc_supply_temp": (0.0, 100.0),
     "return_temp": (0.0, 100.0),
     "room_temp": (0.0, 45.0),
     "hot_water_temp": (0.0, 100.0),
@@ -42,7 +43,11 @@ _BANDS: Final[dict[FactRole, tuple[float, float]]] = {
     "compressor_speed": (0.0, 200.0),
     "immersion_power": (0.0, 30.0),
 }
-_TEMPERATURE_ROLES: Final = frozenset({"outdoor_temp", "supply_temp", "return_temp", "room_temp", "hot_water_temp"})
+_TEMPERATURE_ROLES: Final = frozenset(
+    {"outdoor_temp", "supply_temp", "calc_supply_temp", "return_temp", "room_temp", "hot_water_temp"}
+)
+#: Roles read where the pump has them but never asked for: a missing one is no note to the household.
+_OPTIONAL_ROLES: Final = frozenset({"calc_supply_temp"})
 _TEXT_ROLES: Final = frozenset({"compressor_state", "immersion_state", "priority"})
 #: Roles whose readable entities are summed (CTC's upper and lower immersion heaters).
 _SUM_ROLES: Final = frozenset({"immersion_power"})
@@ -137,6 +142,7 @@ class HeatPumpFacts:
     device_id: str | None = None
     outdoor_temp_c: float | None = None
     supply_temp_c: float | None = None
+    calc_supply_temp_c: float | None = None
     return_temp_c: float | None = None
     room_temp_c: float | None = None
     hot_water_temp_c: float | None = None
@@ -172,6 +178,7 @@ class HeatPumpFacts:
             "readings": {
                 "outdoor_temp_c": self.outdoor_temp_c,
                 "supply_temp_c": self.supply_temp_c,
+                "calc_supply_temp_c": self.calc_supply_temp_c,
                 "return_temp_c": self.return_temp_c,
                 "room_temp_c": self.room_temp_c,
                 "hot_water_temp_c": self.hot_water_temp_c,
@@ -426,7 +433,8 @@ def heat_pump_facts(
     for role, matches in adapter.facts.items():
         value, read, why = _read_role(role, matches, scope)
         if value is None:
-            missing[role] = why or MISSING_NOT_FOUND
+            if role not in _OPTIONAL_ROLES:
+                missing[role] = why or MISSING_NOT_FOUND
             continue
         values[role] = value
         sources[role] = " + ".join(read)
@@ -466,6 +474,7 @@ def heat_pump_facts(
         device_id=anchor.device_id,
         outdoor_temp_c=number("outdoor_temp"),
         supply_temp_c=number("supply_temp"),
+        calc_supply_temp_c=number("calc_supply_temp"),
         return_temp_c=number("return_temp"),
         room_temp_c=number("room_temp"),
         hot_water_temp_c=number("hot_water_temp"),

@@ -216,6 +216,7 @@ export const HEAT_STYLES = `
   /* What the relay did (solid) and is expected to do (outlined), under SpotNav's plan. */
   .${X.bandRelay}[data-mark="relay"] { fill: var(--spotnav-heat-relay); }
   .${X.bandRelay}[data-mark="relay_expected"] { fill: none; stroke: var(--spotnav-heat-relay); stroke-width: 1.5; }
+  .${X.bandRelay}[data-mark="executed"] { fill: var(--spotnav-heat-lower); }
   .${X.bandAxis} {
     fill: var(--secondary-text-color, #727272);
     font-size: 10px;
@@ -254,6 +255,7 @@ export const HEAT_STYLES = `
   .${X.swatch}[data-action="car"] { background: var(--spotnav-heat-car); }
   .${X.swatch}[data-action="relay"] { background: var(--spotnav-heat-relay); height: 6px; }
   .${X.swatch}[data-action="relay_expected"] { border: 1.5px solid var(--spotnav-heat-relay); height: 6px; box-sizing: border-box; }
+  .${X.swatch}[data-action="executed"] { background: var(--spotnav-heat-lower); height: 6px; }
   .${X.error} {
     margin: 6px 0 0;
     text-align: center;

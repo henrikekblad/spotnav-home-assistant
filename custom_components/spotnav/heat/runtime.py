@@ -2,7 +2,9 @@
 plan, SpotNav's own relay plan made jointly with the cars, the battery and the import cap, logged, kept per hour and
 reviewed per day beside what the relay really did. One per site, owned by its `SiteCapacityController`.
 
-Nothing here writes to a heating device: no service is called, no automation is touched. The relay is read only.
+Nothing here writes to a heating device: no service is called, no automation is touched. The relay is read only;
+SpotNav's own switching of it, behind the person's opt-in, is the heat control (`heat/control.py`), which carries out
+this plan and tells what it will close ahead (`control.closings_ahead`).
 
 * **The relay** (the heat settings' control entity on the relay or SG Ready path; relay A for SG Ready): its closed
   intervals from the recorder (the last `RELAY_DAYS`, read again every hour) and its state now; whoever closes it.
@@ -68,6 +70,7 @@ from .shadow_rule import ACTION_LOWER, BandHour, band, day_hours, would_do
 
 if TYPE_CHECKING:
     from ..site.site_capacity_controller import SiteCapacityController
+    from .control import HeatControl
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -85,6 +88,7 @@ LOG_SIZE: Final = 96
 CLOSED: Final = frozenset({"on"})
 
 SOURCE_BLUEPRINT: Final = "blueprint"
+SOURCE_SPOTNAV: Final = "spotnav"
 SOURCE_UNKNOWN: Final = "unknown"
 
 
@@ -197,17 +201,21 @@ def plan_days(
     return hours, guard
 
 
-def coldest_by_period(rows: Mapping[str, Sequence[Mapping[str, Any]]]) -> dict[datetime, float]:
-    """The lowest of the rooms' 5-minute means per period (°C by UTC period start)."""
+def coldest_by_period(
+    rows: Mapping[str, Sequence[Mapping[str, Any]]], offsets: Mapping[str, float] | None = None
+) -> dict[datetime, float]:
+    """The lowest of the rooms' 5-minute means less each room's offset per period (°C by UTC period start): the
+    figure the house's comfort band is compared with."""
     out: dict[datetime, float] = {}
-    for series in rows.values():
+    for entity_id, series in rows.items():
+        offset = (offsets or {}).get(entity_id, 0.0)
         for row in series:
             start, mean = row.get("start"), row.get("mean")
             if isinstance(start, (int, float)) and not isinstance(start, bool):
                 start = datetime.fromtimestamp(float(start), timezone.utc)
             if not isinstance(start, datetime) or not isinstance(mean, (int, float)):
                 continue
-            out[start] = min(out.get(start, float(mean)), float(mean))
+            out[start] = min(out.get(start, float(mean) - offset), float(mean) - offset)
     return out
 
 
@@ -242,6 +250,8 @@ class HeatShadow:
         self._timer_cancel: Callable[[], None] | None = None
         self._delta_key: Any = None
         self._delta: dict[datetime, float] = {}
+        #: SpotNav's own switching of the relay (`heat/control.py`), set by the site.
+        self.control: HeatControl | None = None
 
     # ---- life cycle
 
@@ -336,9 +346,12 @@ class HeatShadow:
         return [(point.start, point.end) for point in device.points if point.start in chosen]
 
     def relay_source(self) -> tuple[str | None, SteeringAutomation | None]:
-        """Who is expected to drive the relay: the SpotNav blueprint (with its automation) or someone unknown."""
+        """Who is expected to drive the relay: SpotNav's heat control while it runs, the SpotNav blueprint (with its
+        automation) or someone unknown."""
         if self.relay_id is None:
             return None, None
+        if self.control is not None and self.control.closings_ahead(dt_util.utcnow()) is not None:
+            return SOURCE_SPOTNAV, None
         for automation in self.automations:
             if automation.rule is not None and automation.rule.relay == self.relay_id:
                 return SOURCE_BLUEPRINT, automation
@@ -354,7 +367,10 @@ class HeatShadow:
         if closed_now is None:
             return past, []
         source, automation = self.relay_source()
-        if source == SOURCE_BLUEPRINT and automation is not None and automation.rule is not None:
+        controlled = None if self.control is None else self.control.closings_ahead(now)
+        if controlled is not None:
+            ahead = controlled
+        elif source == SOURCE_BLUEPRINT and automation is not None and automation.rule is not None:
             rule = automation.rule
             outdoor = None
             if rule.outdoor_sensor is not None:
@@ -380,7 +396,8 @@ class HeatShadow:
         whose rebound is not over; empty without a relay. Kept per 5 minutes."""
         if self.relay_id is None or not self._loaded:
             return {}
-        key = (int(now.timestamp() // 300), self._relay_now(), len(self.relay_states), self.effect)
+        controlled = None if self.control is None else self.control.closings_ahead(now)
+        key = (int(now.timestamp() // 300), self._relay_now(), len(self.relay_states), self.effect, None if controlled is None else tuple(controlled))
         if key == self._delta_key:
             return self._delta
         past, ahead = self.relay_intervals(now)
@@ -519,7 +536,9 @@ class HeatShadow:
             self.blocks = sorted(self.blocks, key=lambda block: block.start)[-KEEP_BLOCKS:]
             self.effect = learn(self.blocks)
 
-    def _coldest_now(self, config: HeatConfig, now: datetime) -> float | None:
+    def coldest_now(self, config: HeatConfig) -> float | None:
+        """The coldest counted room now less its offset (what the comfort band is compared with), `None` without a
+        readable indoor sensor."""
         readings = []
         for entity_id in config.indoor_sensors:
             state = self.hass.states.get(entity_id)
@@ -527,8 +546,8 @@ class HeatShadow:
                 value = None if state is None else float(state.state)
             except ValueError:
                 value = None
-            readings.append(SensorReading(entity_id, entity_id, value, (), None))
-        return indoor(readings, now, frozenset()).value_c if readings else None
+            readings.append(SensorReading(entity_id, entity_id, value, (), None, config.offset_of(entity_id)))
+        return indoor(readings, dt_util.utcnow(), frozenset()).relative_c if readings else None
 
     def joint_inputs(self, now: datetime) -> tuple[frozenset[datetime], dict[datetime, float]]:
         """The joint plan's tight hours and the outdoor forecast (see the module)."""
@@ -579,7 +598,7 @@ class HeatShadow:
                 now,
                 zone,
                 outdoor_c=outdoor,
-                coldest_c=self._coldest_now(config, now),
+                coldest_c=self.coldest_now(config),
                 tight=tight,
                 outdoor_by_hour=outdoor_by_hour,
             )
@@ -675,7 +694,7 @@ class HeatShadow:
         except Exception:  # noqa: BLE001 - no rooms: the review has no comfort
             _LOGGER.debug("SpotNav heat: the rooms' 5-minute rows could not be read", exc_info=True)
             return {}
-        return coldest_by_period(rows)
+        return coldest_by_period(rows, {entity_id: config.offset_of(entity_id) for entity_id in ids})
 
     def _trim(self, now: datetime) -> None:
         oldest = (now - timedelta(days=DAYS_KEPT)).date().isoformat()

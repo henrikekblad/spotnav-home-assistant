@@ -65,3 +65,15 @@ def test_the_rise_is_against_the_reading_in_force_at_the_windows_start() -> None
     # Only readings inside the window: the first of them.
     inside = ((NOW - timedelta(minutes=20), 19.5),)
     assert rise(SensorReading("sensor.a", "A", 20.0, inside), NOW) == 0.5
+
+
+def test_each_room_is_judged_against_its_own_aim() -> None:
+    # Upstairs is kept 1.5 cooler: its 19.8 is 21.3 against the house, so the north room's 20.4 is the coldest.
+    upstairs = SensorReading("sensor.uppe", "Uppe", 19.8, (), None, -1.5)
+    result = indoor([upstairs, reading("sensor.norr", 20.4, 20.4)], NOW)
+    assert (result.coldest, result.value_c, result.relative_c) == ("sensor.norr", 20.4, 20.4)
+    # A sensor that reads half a degree warm: its 20.9 counts as 20.4.
+    warm = SensorReading("sensor.kok", "Kok", 20.9, (), None, 0.5)
+    result = indoor([warm, reading("sensor.norr", 20.6, 20.6)], NOW)
+    assert (result.coldest, result.value_c, result.relative_c) == ("sensor.kok", 20.9, 20.4)
+    assert [sensor.offset_c for sensor in result.sensors] == [0.5, 0.0]

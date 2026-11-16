@@ -61,6 +61,8 @@ const CONFIG = O({
   control_entity_b: N("string"),
   hot_water_entity: N("string"),
   zones: A(O({ entity_id: "string", offset_c: "number" })),
+  indoor_offsets: A(O({ entity_id: "string", offset_c: "number" })),
+  control_enabled: "boolean",
   heat_meter_entity: N("string"),
 });
 const CHOICE = O({ entity_id: "string", name: "string", value: N("string") });
@@ -91,7 +93,8 @@ const ANSWER = O({
     value_c: N("number"),
     coldest: N("string"),
     coldest_name: N("string"),
-    sensors: A(O({ entity_id: "string", name: "string", value_c: N("number"), rise_c: N("number"), status: "string" })),
+    sensors: A(O({ entity_id: "string", name: "string", value_c: N("number"), rise_c: N("number"), status: "string", offset_c: "number" })),
+    relative_c: N("number"),
   }),
   outdoor: N(O({ value_c: N("number"), entity_id: N("string"), name: N("string"), source: "string" })),
   zones: A(
@@ -173,6 +176,7 @@ const ANSWER = O({
         car: "boolean",
         relay_min: N("number"),
         relay_expected: "boolean",
+        executed_min: N("number"),
       }),
     ),
     hot_water_pick: N("string"),
@@ -202,6 +206,19 @@ const ANSWER = O({
     }),
   ),
   review: N(REVIEW),
+  control: N(
+    O({
+      enabled: "boolean",
+      state: "string",
+      reason: N("string"),
+      automation: N(O({ entity_id: "string", name: "string" })),
+      check: N("string"),
+      lowered: "boolean",
+      since: N("string"),
+      until: N("string"),
+      paused_until: N("string"),
+    }),
+  ),
 });
 
 const WRITE = O({
@@ -231,6 +248,10 @@ export interface HeatConfig {
   control_entity_b: string | null;
   hot_water_entity: string | null;
   zones: { entity_id: string; offset_c: number }[];
+  /** Each indoor sensor's room aim against the house target (°C); a sensor without one is 0. */
+  indoor_offsets: { entity_id: string; offset_c: number }[];
+  /** SpotNav's opt-in to switch the heat pump's relay itself ("Styr värmen"). */
+  control_enabled: boolean;
   heat_meter_entity: string | null;
 }
 
@@ -254,6 +275,8 @@ export interface HeatBandHour {
   /** Minutes the heat pump's relay was (or is expected to be) closed in the hour; `null` without a relay. */
   relay_min: number | null;
   relay_expected: boolean;
+  /** Minutes SpotNav itself held the relay closed in the hour; `null` without the heat control. */
+  executed_min: number | null;
 }
 
 export interface HeatEffect {
@@ -286,6 +309,21 @@ export interface HeatRelay {
   effect: HeatEffect;
 }
 
+/** SpotNav's own switching of the relay ("Styr värmen"), `heat/control.py`. */
+export interface HeatControl {
+  enabled: boolean;
+  /** "off", "verifying", "running" or "waiting". */
+  state: string;
+  /** The check's phase while verifying, the rules' reason while running, what it waits for while waiting. */
+  reason: string | null;
+  automation: { entity_id: string; name: string } | null;
+  check: string | null;
+  lowered: boolean;
+  since: string | null;
+  until: string | null;
+  paused_until: string | null;
+}
+
 export interface HeatZone {
   entity_id: string;
   name: string;
@@ -313,7 +351,9 @@ export interface HeatAnswer {
     value_c: number | null;
     coldest: string | null;
     coldest_name: string | null;
-    sensors: { entity_id: string; name: string; value_c: number | null; rise_c: number | null; status: string }[];
+    sensors: { entity_id: string; name: string; value_c: number | null; rise_c: number | null; status: string; offset_c: number }[];
+    /** The coldest room's reading less its offset: what the comfort band is compared with. */
+    relative_c: number | null;
   };
   outdoor: { value_c: number | null; entity_id: string | null; name: string | null; source: string } | null;
   zones: HeatZone[];
@@ -375,6 +415,7 @@ export interface HeatAnswer {
   } | null;
   relay: HeatRelay | null;
   review: HeatReview | null;
+  control: HeatControl | null;
 }
 
 export interface HeatWriteAnswer {

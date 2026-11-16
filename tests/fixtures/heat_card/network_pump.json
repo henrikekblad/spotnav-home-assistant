@@ -7,6 +7,7 @@
       {
         "action": "away",
         "car": false,
+        "executed_min": 0,
         "hot_water": false,
         "past": true,
         "price": 80.0,
@@ -19,6 +20,7 @@
       {
         "action": "away",
         "car": false,
+        "executed_min": 0,
         "hot_water": false,
         "past": true,
         "price": 78.0,
@@ -31,6 +33,7 @@
       {
         "action": "away",
         "car": false,
+        "executed_min": 0,
         "hot_water": false,
         "past": true,
         "price": 76.0,
@@ -43,6 +46,7 @@
       {
         "action": "away",
         "car": false,
+        "executed_min": 0,
         "hot_water": false,
         "past": true,
         "price": 75.0,
@@ -55,6 +59,7 @@
       {
         "action": "away",
         "car": false,
+        "executed_min": 0,
         "hot_water": false,
         "past": true,
         "price": 77.0,
@@ -67,6 +72,7 @@
       {
         "action": "away",
         "car": false,
+        "executed_min": 0,
         "hot_water": false,
         "past": true,
         "price": 85.0,
@@ -79,6 +85,7 @@
       {
         "action": "away",
         "car": false,
+        "executed_min": 0,
         "hot_water": false,
         "past": true,
         "price": 120.0,
@@ -91,6 +98,7 @@
       {
         "action": "away",
         "car": false,
+        "executed_min": 0,
         "hot_water": false,
         "past": true,
         "price": 190.0,
@@ -103,6 +111,7 @@
       {
         "action": "away",
         "car": false,
+        "executed_min": 0,
         "hot_water": false,
         "past": true,
         "price": 210.0,
@@ -115,6 +124,7 @@
       {
         "action": "away",
         "car": false,
+        "executed_min": 0,
         "hot_water": false,
         "past": true,
         "price": 160.0,
@@ -127,6 +137,7 @@
       {
         "action": "away",
         "car": false,
+        "executed_min": 0,
         "hot_water": false,
         "past": true,
         "price": 120.0,
@@ -139,6 +150,7 @@
       {
         "action": "away",
         "car": false,
+        "executed_min": 0,
         "hot_water": false,
         "past": true,
         "price": 110.0,
@@ -151,6 +163,7 @@
       {
         "action": "away",
         "car": false,
+        "executed_min": 0,
         "hot_water": false,
         "past": true,
         "price": 105.0,
@@ -163,6 +176,7 @@
       {
         "action": "away",
         "car": false,
+        "executed_min": 0,
         "hot_water": false,
         "past": true,
         "price": 100.0,
@@ -175,6 +189,7 @@
       {
         "action": "away",
         "car": false,
+        "executed_min": 0,
         "hot_water": false,
         "past": true,
         "price": 105.0,
@@ -187,6 +202,7 @@
       {
         "action": "away",
         "car": false,
+        "executed_min": 0,
         "hot_water": false,
         "past": true,
         "price": 130.0,
@@ -199,6 +215,7 @@
       {
         "action": "away",
         "car": false,
+        "executed_min": 0,
         "hot_water": false,
         "past": true,
         "price": 180.0,
@@ -211,6 +228,7 @@
       {
         "action": "away",
         "car": false,
+        "executed_min": 0,
         "hot_water": false,
         "past": false,
         "price": 240.0,
@@ -223,6 +241,7 @@
       {
         "action": "away",
         "car": false,
+        "executed_min": 0,
         "hot_water": false,
         "past": false,
         "price": 260.0,
@@ -235,6 +254,7 @@
       {
         "action": "away",
         "car": false,
+        "executed_min": 0,
         "hot_water": false,
         "past": false,
         "price": 220.0,
@@ -247,6 +267,7 @@
       {
         "action": "away",
         "car": false,
+        "executed_min": 0,
         "hot_water": false,
         "past": false,
         "price": 150.0,
@@ -259,6 +280,7 @@
       {
         "action": "away",
         "car": false,
+        "executed_min": 0,
         "hot_water": false,
         "past": false,
         "price": 110.0,
@@ -271,6 +293,7 @@
       {
         "action": "away",
         "car": false,
+        "executed_min": 0,
         "hot_water": false,
         "past": false,
         "price": 95.0,
@@ -283,6 +306,7 @@
       {
         "action": "away",
         "car": false,
+        "executed_min": 0,
         "hot_water": false,
         "past": false,
         "price": 85.0,
@@ -305,11 +329,13 @@
   },
   "config": {
     "away_until": "2026-11-20T15:00:00+00:00",
+    "control_enabled": false,
     "control_entity": null,
     "control_entity_b": null,
     "control_path": "none",
     "heat_meter_entity": null,
     "hot_water_entity": null,
+    "indoor_offsets": [],
     "indoor_sensors": [],
     "mode": "away",
     "night": {
@@ -322,9 +348,21 @@
     "target_c": 20.5,
     "zones": []
   },
+  "control": {
+    "automation": null,
+    "check": null,
+    "enabled": false,
+    "lowered": false,
+    "paused_until": null,
+    "reason": null,
+    "since": null,
+    "state": "off",
+    "until": null
+  },
   "indoor": {
     "coldest": null,
     "coldest_name": null,
+    "relative_c": null,
     "sensors": [],
     "value_c": null
   },

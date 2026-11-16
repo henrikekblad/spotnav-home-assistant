@@ -7,6 +7,7 @@ Each brand's entities are found by the integration and the key in the unique id,
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -363,3 +364,24 @@ def test_priority_words(text: str, expected: str | None) -> None:
 )
 def test_running_words(text: str | None, expected: bool | None) -> None:
     assert running_of(text) is expected
+
+
+def test_the_calculated_supply_is_read_where_the_pump_has_it_and_never_asked_for() -> None:
+    entities = _entities("nibe_f")
+    anchor = next(entity for entity in entities if entity.entity_id == "sensor.bt1_outdoor_temperature_40004")
+    assert _pump("nibe_f").calc_supply_temp_c is None and "calc_supply_temp" not in _pump("nibe_f").missing
+    calc = HeatEntity(
+        entity_id="sensor.calc_supply_s1_43009",
+        platform="nibe_heatpump",
+        unique_id=anchor.unique_id.replace("40004", "43009"),
+        device_id=anchor.device_id,
+        config_entry_id=anchor.config_entry_id,
+        disabled=False,
+        state="40.3",
+        unit="°C",
+    )
+    pump = find_heat_pumps([*entities, calc])[0]
+    assert pump.calc_supply_temp_c == 40.3 and pump.sources["calc_supply_temp"] == "sensor.calc_supply_s1_43009"
+    # Disabled, as the integration leaves every coil: still no note.
+    disabled = find_heat_pumps([*entities, replace(calc, disabled=True)])[0]
+    assert disabled.calc_supply_temp_c is None and "calc_supply_temp" not in disabled.missing
