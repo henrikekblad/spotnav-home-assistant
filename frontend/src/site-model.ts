@@ -112,6 +112,10 @@ export interface GridChargeCap {
     hours: number;
     minutes: number;
     heat_peak_w: PhaseValues | null;
+    exact_a: PhaseValues | null;
+    exact_days: number;
+    exact_minutes: number;
+    basis: string;
   } | null;
 }
 
@@ -189,6 +193,10 @@ const GRID_CHARGE_CAP = O({
       hours: "number",
       minutes: "number",
       heat_peak_w: N(PHASE_VALUES),
+      exact_a: N(PHASE_VALUES),
+      exact_days: "number",
+      exact_minutes: "number",
+      basis: "string",
     }),
   ),
 });
