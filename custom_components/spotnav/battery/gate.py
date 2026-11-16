@@ -288,6 +288,16 @@ def variants_tried(report: Mapping[str, Any] | None) -> tuple[Mapping[str, Any],
     return tuple(item for item in rows if isinstance(item, Mapping)) if isinstance(rows, list) else ()
 
 
+def hold_variant_to_run(report: Mapping[str, Any] | None, names: tuple[str, ...]) -> str | None:
+    """The hold variant control and a test action run (`names`: the brand's, in order): the one that passed, else the
+    first not recorded as failed; `None` when every one failed or the brand has one hold."""
+    passed = hold_variant(report)
+    if passed in names:
+        return passed
+    failed = {str(row.get("variant")) for row in variants_tried(report) if mode_verdict(row.get("outcome")) == "fail"}
+    return next((name for name in names if name not in failed), None)
+
+
 def keep_reports(reports: Mapping[str, Any], key: str, report: Mapping[str, Any], *, most: int) -> dict[str, Any]:
     """The reports by key with this one put in (the newest last), at most `most`, the oldest dropped first."""
     kept = {name: value for name, value in reports.items() if name != key and isinstance(value, Mapping)}

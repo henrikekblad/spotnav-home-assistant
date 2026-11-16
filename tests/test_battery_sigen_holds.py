@@ -525,3 +525,20 @@ def test_a_battery_that_does_not_discharge_again_leaves_the_next_variant_for_a_l
     assert PV_FIRST not in [op.value for op in battery.writes]
     assert report["modes"]["normal"]["outcome"] == "restored"
     assert battery.states == dict(SIGENERGY_STATES)
+
+
+def test_the_variant_to_run_is_the_one_that_passed_else_the_first_not_failed() -> None:
+    names = ("msc_no_discharge", "pv_first")
+
+    def report(outcome: str, variant: str, *rows: tuple[str, str]) -> dict:
+        variants = [{"variant": name, "outcome": result} for name, result in rows]
+        return {"modes": {"hold": {"outcome": outcome, "variant": variant, "variants": variants}}}
+
+    assert gate.hold_variant_to_run(None, names) == "msc_no_discharge"
+    assert gate.hold_variant_to_run(report("obeyed", "pv_first", ("msc_no_discharge", "ignored"),
+                                           ("pv_first", "obeyed")), names) == "pv_first"
+    assert gate.hold_variant_to_run(report("not_judgeable:battery_not_discharging", "pv_first",
+                                           ("msc_no_discharge", "ignored")), names) == "pv_first"
+    assert gate.hold_variant_to_run(report("partial", "pv_first", ("msc_no_discharge", "ignored"),
+                                           ("pv_first", "partial")), names) is None
+    assert gate.hold_variant_to_run(None, ()) is None

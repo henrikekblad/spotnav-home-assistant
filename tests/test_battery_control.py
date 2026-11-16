@@ -1433,3 +1433,57 @@ async def test_control_runs_the_hold_variant_the_verification_passed_and_a_resta
     # The mode first (back to Maximum Self Consumption), then Remote EMS off.
     assert plant.calls[0][2].get("option") == "Maximum Self Consumption"
     assert hass.states.get(SWITCH).state == "off" and again.executor.state.phase == "idle"
+
+
+async def _forced_hold_site(hass, monkeypatch, hass_storage, variants):
+    site, controller, plant = await _site(hass, monkeypatch, hass_storage)
+    control = BatteryControl(hass, controller, plan_source=lambda _now: None)
+    await control.async_start()
+    _options(hass, site, enabled=True, shadow_only=False)
+    control._enabled_seen = True
+    monkeypatch.setattr(BatteryControl, "_async_maybe_verify", lambda self, now, options: asyncio.sleep(0))
+    if variants is not None:
+        control.reports[control.firmware_key()] = {"modes": {"hold": {
+            "outcome": variants[-1]["outcome"], "variant": variants[-1]["variant"], "variants": variants,
+        }}}
+    return control, plant
+
+
+async def test_a_forced_test_hold_runs_the_first_variant_not_recorded_as_failed(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    control, _plant = await _forced_hold_site(
+        hass, monkeypatch, hass_storage, [{"variant": "msc_no_discharge", "outcome": "ignored"}]
+    )
+    await control.async_trial("hold", None, 5, force=True)
+    await _looks(control, dt_util.now() + timedelta(seconds=10), 4)
+    assert control.executor.control.variant == "pv_first"
+    assert hass.states.get(MODE).state == "Command Charging (PV First)" and hass.states.get(CHARGE).state == "0"
+    assert hass.states.get(DISCHARGE).state == "23.04"
+
+
+async def test_a_forced_test_hold_is_refused_when_every_variant_failed(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    control, plant = await _forced_hold_site(hass, monkeypatch, hass_storage, [
+        {"variant": "msc_no_discharge", "outcome": "ignored"},
+        {"variant": "pv_first", "outcome": "aborted:not_obeyed:hold:charging"},
+    ])
+    with pytest.raises(TrialRefused) as refused:
+        await control.async_trial("hold", None, 5, force=True)
+    assert refused.value.code == "hold_variants_failed" and plant.calls == []
+    # Another test action still runs.
+    await control.async_trial("grid_charge", 2.0, 5, force=True)
+    assert control.trial is not None
+
+
+async def test_without_a_passed_variant_the_executor_runs_the_first(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    control, _plant = await _forced_hold_site(hass, monkeypatch, hass_storage, None)
+    executor = control._executor()
+    assert executor.use_variant("pv_first")  # left from an earlier verification
+    await control.async_trial("hold", None, 5, force=True)
+    await _looks(control, dt_util.now() + timedelta(seconds=10), 4)
+    assert control.executor.control.variant == "msc_no_discharge"
+    assert hass.states.get(DISCHARGE).state == "0" and hass.states.get(MODE).state == "Maximum Self Consumption"

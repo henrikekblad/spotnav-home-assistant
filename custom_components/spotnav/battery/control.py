@@ -749,12 +749,13 @@ class BatteryControl:
         return await self._async_step(executor, self.inputs(now, executor.control, slot=slot), allowed=allowed)
 
     def _control_executor(self) -> Executor | None:
-        """The executor for control and trials, running the hold variant the verification passed (once it holds
-        nothing; `Executor.use_variant`)."""
+        """The executor for control and trials, running the hold variant the verification passed, else the first not
+        recorded as failed, else the brand's first (once it holds nothing; `Executor.use_variant`). A test hold is
+        refused when every variant failed (`async_trial`)."""
         executor = self._executor()
-        variant = gate.hold_variant(self.report())
-        if executor is not None and variant is not None:
-            executor.use_variant(variant)
+        if executor is not None and executor.control.hold_variants:
+            names = executor.control.variant_names()
+            executor.use_variant(gate.hold_variant_to_run(self.report(), names) or names[0])
         return executor
 
     async def async_tick(self, now: datetime | None = None, *, stopping: str | None = None) -> StepResult | None:
@@ -1025,8 +1026,13 @@ class BatteryControl:
                 raise TrialRefused("no_export_control")
             rate = 0.0
         else:
-            if self._executor() is None:
+            executor = self._executor()
+            if executor is None:
                 raise TrialRefused("no_battery_control")
+            names = executor.control.variant_names()
+            if action == ACTION_HOLD and names and gate.hold_variant_to_run(self.report(), names) is None:
+                # Every way to hold failed on this firmware: not even a forced test runs one again.
+                raise TrialRefused("hold_variants_failed")
             self.facts = self._read_facts()
             rate = 0.0
             if action in (ACTION_GRID_CHARGE, ACTION_EXPORT_DISCHARGE):
