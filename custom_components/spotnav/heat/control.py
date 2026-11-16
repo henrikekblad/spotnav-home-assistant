@@ -283,7 +283,13 @@ class HeatControl:
             self._timer_cancel()
             self._timer_cancel = None
         if self._task is not None and not self._task.done():
+            # The running look ends first (a write it was making is over), so the opening below is the last word.
             self._task.cancel()
+            try:
+                async with asyncio.timeout(SHUTDOWN_WAIT_S):
+                    await asyncio.wait({self._task})
+            except TimeoutError:
+                _LOGGER.warning("SpotNav heat control: a look did not end at the stop")
         if not self._loaded:
             return
         if self.held and self.relay is not None:

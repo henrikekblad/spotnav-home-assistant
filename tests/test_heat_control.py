@@ -831,3 +831,37 @@ async def test_a_script_or_scene_on_the_relay_blocks_control(hass: HomeAssistant
     await control.async_look(now)
     assert relay.calls == [] and control.status()["reason"] == "automation"
     assert control.status()["automation"]["entity_id"].startswith(f"{domain}.")
+
+
+async def test_the_stop_waits_for_a_running_look_before_it_opens(hass: HomeAssistant, freezer) -> None:
+    import asyncio
+
+    _site_, control, relay, now = await _running(hass, freezer, 0, 1)
+    release = asyncio.Event()
+
+    async def slow_on(call: ServiceCall) -> None:
+        relay.calls.append("on")
+        try:
+            await release.wait()
+        except asyncio.CancelledError:
+            # The device takes the closing as the call is cancelled.
+            hass.states.async_set(RELAY, "on")
+            raise
+        hass.states.async_set(RELAY, "on")
+
+    look_done_at_opening: list[bool] = []
+
+    async def off(call: ServiceCall) -> None:
+        look_done_at_opening.append(task.done())
+        relay.calls.append("off")
+        hass.states.async_set(RELAY, "off")
+
+    hass.services.async_register("switch", "turn_on", slow_on)
+    hass.services.async_register("switch", "turn_off", off)
+    task = control._task = hass.async_create_task(control.async_look(now))  # noqa: SLF001
+    for _ in range(20):
+        await asyncio.sleep(0)
+    assert relay.calls == ["on"] and control.held
+    await control.async_shutdown()
+    # The look ended (its closing taken) before the opening was written: the relay ends open.
+    assert look_done_at_opening == [True] and relay.calls == ["on", "off"] and relay.state == "off"
