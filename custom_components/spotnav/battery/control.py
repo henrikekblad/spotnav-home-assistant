@@ -1054,6 +1054,11 @@ class BatteryControl:
             if cap is not None and cap < gate.MIN_RATE_KW:
                 return (ACTION_SELF_CONSUME, 0.0, trial.until)
             rate = rate if cap is None else min(rate, cap)
+        elif trial.action == ACTION_EXPORT_DISCHARGE:
+            cap = self._export_cap_kw()
+            if cap < gate.MIN_RATE_KW:
+                return (ACTION_SELF_CONSUME, 0.0, trial.until)
+            rate = min(rate, cap)
         return (trial.action, round(rate, 3), trial.until)
 
     @staticmethod
@@ -1070,7 +1075,9 @@ class BatteryControl:
         if control is None:
             return
         allowed = _PLAN_ACTIONS | ({ACTION_EXPORT_DISCHARGE} if options.allow_sell else set())
-        slot, why = gate.restricted(self._merged_slot(now), allowed, self._grid_charge_cap_kw(now, options))
+        slot, why = gate.restricted(
+            self._merged_slot(now), allowed, self._grid_charge_cap_kw(now, options), self._export_cap_kw()
+        )
         action = None if slot is None else slot[0]
         if action in (None, ACTION_SELF_CONSUME):
             seen = None
@@ -1097,7 +1104,8 @@ class BatteryControl:
 
     def _control_slot(self, now: datetime, options: gate.Options) -> tuple[str, float, datetime | None] | None:
         slot, why = gate.restricted(
-            self._merged_slot(now), gate.allowed_actions(self.report(), options), self._grid_charge_cap_kw(now, options)
+            self._merged_slot(now), gate.allowed_actions(self.report(), options), self._grid_charge_cap_kw(now, options),
+            self._export_cap_kw(),
         )
         if why != self._restricted:
             # Logged when it changes: an action the report does not allow, or the grid charge cap.
@@ -1123,6 +1131,34 @@ class BatteryControl:
             plant_phases=self._plant_phases(control), import_limit_kw=import_limit_kw,
             import_limit_acts=options.import_limit_acts,
         )
+
+    def _export_cap_kw(self) -> float:
+        """The fuse rule on the export side (`gate.export_discharge_cap_kw`) on the site's phases now."""
+        volts = stored_voltage_between_phases_v(self.site.config)
+        exports = self._phase_export_a(volts)
+        control = control_for(self.facts.brand)
+        phases = self._plant_phases(control)
+        executor = self.executor
+        share_a = 0.0
+        battery_kw = self.facts.power_kw
+        if (
+            executor is not None and executor.state.phase == "active"
+            and executor.state.action == ACTION_EXPORT_DISCHARGE and battery_kw is not None and battery_kw < 0
+        ):
+            # What the battery measurably discharges, at most what it was told: never more of the export than its own.
+            share_a = min(executor.state.rate_kw, -battery_kw) * 1000.0 / (phases * gate.phase_volts(volts))
+        return gate.export_discharge_cap_kw(
+            self._main_fuse_a(), volts, margin_a=HEADROOM_MARGIN_A, phase_export_a=exports, battery_share_a=share_a,
+            plant_phases=phases,
+        )
+
+    def _phase_export_a(self, volts_between_phases: float) -> list[float] | None:
+        """Each phase's export now (A, 0 where it imports), `None` when a phase is not known."""
+        signed = list(self.site.result.phase_signed_active_power_w.values())
+        if not signed or not all(value is not None and math.isfinite(value) for value in signed):
+            return None
+        volts = gate.phase_volts(volts_between_phases)
+        return [max(-float(value), 0.0) / volts for value in signed]  # type: ignore[arg-type]
 
     def _cars_allowed_a(self) -> float:
         """What the site's chargers may draw per phase if nothing writes them again (A, summed): each one's last

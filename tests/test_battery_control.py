@@ -147,6 +147,8 @@ async def _site(
     monkeypatch.setattr(BatteryControl, "inputs", inputs)
     # No car at the site's charger: its last current is 0 A (the HA-down grid charge cap counts it).
     monkeypatch.setattr(type(controller), "charger_allowed_a", lambda self, charger: 0.0)
+    # No phase exports (the export side's fuse rule counts the sun's export).
+    monkeypatch.setattr(BatteryControl, "_phase_export_a", lambda self, volts: [0.0, 0.0, 0.0])
     export_original = BatteryControl.export_inputs
 
     def export_inputs(self, now, control, **kwargs):
@@ -943,6 +945,28 @@ async def test_no_grid_charge_where_the_cap_leaves_too_little(
     await _looks(control, dt_util.now(), 6)
     assert plant.calls == []
     assert [row["reason"] for row in control.log if row["kind"] == "restricted"] == ["grid_charge_cap"]
+
+
+async def test_a_discharge_to_the_grid_keeps_the_sun_s_export_and_its_own_under_the_fuse_on_each_phase(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    site, controller, plant = await _site(hass, monkeypatch, hass_storage, main_fuse_a=25.0)
+    export = {"a": [15.0, 3.0, 3.0]}
+    monkeypatch.setattr(BatteryControl, "_phase_export_a", lambda self, volts: export["a"])
+    control = await _started(hass, site, controller, plan_source=lambda _now: ("export_discharge", 20.0, None))
+    _options(hass, site, allow_sell=True)
+    await _looks(control, dt_util.now(), 6)
+    # 25 A less the 2 A margin less the sun's 15 A on L1 leaves 8 A a phase: 5.543 kW balanced.
+    volts = 400.0 / 3 ** 0.5
+    assert float(hass.states.get(DISCHARGE).state) == pytest.approx(8.0 * 3 * volts / 1000, abs=0.002)
+    assert [row["reason"] for row in control.log if row["kind"] == "restricted"] == ["export_fuse_cap"]
+    # The sun's export near the fuse: no discharge to the grid; a phase not known: none either.
+    # (The fake battery discharges 2 kW, 2.9 A a phase, of the export it is told to.)
+    export["a"] = [26.0, 3.0, 3.0]
+    await _looks(control, dt_util.now() + timedelta(minutes=5), 6)
+    assert hass.states.get(SWITCH).state == "off"
+    export["a"] = None
+    assert control._export_cap_kw() == 0.0
 
 
 async def test_the_check_leaves_the_charge_mode_for_later_where_the_cap_leaves_no_grid_charge(

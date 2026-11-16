@@ -18,6 +18,7 @@ from custom_components.spotnav.battery.gate import (
     allowed_actions,
     battery_yields,
     departure_has_room,
+    export_discharge_cap_kw,
     failed_mode,
     firmware_key,
     fuse_kw,
@@ -185,6 +186,26 @@ def test_the_grid_charge_cap_keeps_every_phase_under_the_fuse_with_home_assistan
     assert _cap(20.0) < MIN_RATE_KW
     assert _cap(None) == 0.0, "an unknown fuse allows no grid charge"
     assert _cap(cars_a=float("inf")) == 0.0, "chargers that cannot be read allow none"
+
+
+def test_a_discharge_to_the_grid_leaves_the_sun_s_export_under_the_fuse_on_the_worst_phase() -> None:
+    volts = 400.0 / 3 ** 0.5
+
+    def cap(exports, share=0.0, phases=3):
+        return export_discharge_cap_kw(25.0, 400.0, margin_a=2.0, phase_export_a=exports, battery_share_a=share,
+                                       plant_phases=phases)
+
+    assert cap([0.0, 0.0, 0.0]) == pytest.approx(23.0 * 3 * volts / 1000)
+    assert cap([15.0, 3.0, 0.0]) == pytest.approx(8.0 * 3 * volts / 1000)
+    assert cap([15.0, 3.0, 0.0], phases=1) == pytest.approx(8.0 * volts / 1000)
+    # SpotNav's own running discharge is not the sun's.
+    assert cap([15.0, 15.0, 15.0], share=10.0) == pytest.approx(18.0 * 3 * volts / 1000)
+    assert cap([24.0, 0.0, 0.0]) == 0.0
+    assert cap(None) == 0.0 and export_discharge_cap_kw(None, 400.0, margin_a=2.0, phase_export_a=[0.0],
+                                                        battery_share_a=0.0, plant_phases=3) == 0.0
+    slot = ("export_discharge", 9.0, None)
+    assert restricted(slot, {"export_discharge"}, None, 4.0) == (("export_discharge", 4.0, None), "export_fuse_cap")
+    assert restricted(slot, {"export_discharge"}, None, 0.1) == (("self_consume", 0.0, None), "export_fuse_cap")
 
 
 def test_the_import_limit_lifts_the_cap_only_while_it_reads_at_most_the_fuse() -> None:

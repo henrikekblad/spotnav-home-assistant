@@ -9,7 +9,8 @@ The site's options (`Options`, kept in the site entry's data beside its other se
   logs what it would do. It stays on until the owner's on-site tests are done (plan `v3_battery_control_optin.md`).
 * `battery_control_ai_takeover_ack`: the person read that SpotNav takes the plant over from Sigenergy's AI mode and
   that turning control off leaves it in Maximum Self Consumption. Without it a plant in AI mode is only watched.
-* `battery_control_allow_sell` (default off): the plan may discharge the battery to the grid (`export_discharge`).
+* `battery_control_allow_sell` (default off): the plan may discharge the battery to the grid (`export_discharge`),
+  capped so that it and the sun's export keep every phase under the fuse (`export_discharge_cap_kw`).
 * `battery_control_import_limit_acts` (default off): the owner's on-site test (T3) showed that the plant's own grid
   import limit acts under Remote EMS. Until then, and whenever that limit does not read at most the fuse, a grid
   charge is capped so that it, the chargers' last currents and a house peak on one phase keep every phase under the
@@ -373,6 +374,28 @@ def grid_charge_cap_kw(
     return max(room_a, 0.0) * phases * volts / 1000.0
 
 
+def export_discharge_cap_kw(
+    main_fuse_a: float | None, volts_between_phases: float, *, margin_a: float,
+    phase_export_a: Iterable[float] | None, battery_share_a: float, plant_phases: int,
+) -> float:
+    """The most a discharge to the grid may be commanded at (kW), so that it and the sun's export keep every phase
+    under the fuse: the fuse, less `margin_a`, less the worst phase's export now (`phase_export_a`, A, each phase's
+    export, 0 where it imports) without the battery's own part of it (`battery_share_a`, A per phase, what SpotNav's
+    running discharge to the grid carries now), spread over the plant's phases. 0 with the fuse or a phase unknown."""
+    if (
+        main_fuse_a is None or not math.isfinite(main_fuse_a) or main_fuse_a <= 0 or volts_between_phases <= 0
+        or phase_export_a is None
+    ):
+        return 0.0
+    exports = list(phase_export_a)
+    if not exports or not all(math.isfinite(value) for value in exports):
+        return 0.0
+    volts = phase_volts(volts_between_phases)
+    sun_a = max(max(value - max(battery_share_a, 0.0), 0.0) for value in exports)
+    phases = min(max(int(plant_phases), 1), 3)
+    return max(main_fuse_a - margin_a - sun_a, 0.0) * phases * volts / 1000.0
+
+
 # --- what control runs ---------------------------------------------------------------------------------------------
 
 #: `(action, battery kW magnitude, slot end)`.
@@ -387,9 +410,12 @@ def merged_action(plan: Slot | None, hold_requested: bool) -> Slot | None:
     return plan
 
 
-def restricted(slot: Slot | None, allowed: Iterable[str], cap_kw: float | None) -> tuple[Slot | None, str | None]:
+def restricted(
+    slot: Slot | None, allowed: Iterable[str], cap_kw: float | None, export_cap_kw: float | None = None
+) -> tuple[Slot | None, str | None]:
     """The slot control may run (an action the report does not allow becomes plain self-consumption; a grid charge
-    is capped, `restricted`'s second value says why it changed)."""
+    is capped by `cap_kw`, a discharge to the grid by `export_cap_kw`; `restricted`'s second value says why it
+    changed)."""
     if slot is None:
         return None, None
     action, rate, end = slot
@@ -397,10 +423,12 @@ def restricted(slot: Slot | None, allowed: Iterable[str], cap_kw: float | None) 
         return slot, None
     if action not in allowed:
         return (ACTION_SELF_CONSUME, 0.0, end), f"not_verified:{action}"
-    if action == ACTION_GRID_CHARGE and cap_kw is not None and abs(rate) > cap_kw:
-        if cap_kw < MIN_RATE_KW:
-            return (ACTION_SELF_CONSUME, 0.0, end), "grid_charge_cap"
-        return (action, cap_kw, end), "grid_charge_cap"
+    for capped, cap, why in ((ACTION_GRID_CHARGE, cap_kw, "grid_charge_cap"),
+                             (ACTION_EXPORT_DISCHARGE, export_cap_kw, "export_fuse_cap")):
+        if action == capped and cap is not None and abs(rate) > cap:
+            if cap < MIN_RATE_KW:
+                return (ACTION_SELF_CONSUME, 0.0, end), why
+            return (action, cap, end), why
     return slot, None
 
 
