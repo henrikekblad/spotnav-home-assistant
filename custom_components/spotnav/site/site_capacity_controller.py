@@ -131,6 +131,7 @@ from .measurement_problem import measurement_problem, MeasurementProblem, UNHEAL
 from .meter_cadence import ReportCadence, solar_liveness
 from .site_detection import UPDATE_BEHAVIOUR
 from .solar_capability import solar_capability
+from ..heat.control import HeatControl
 from ..heat.runtime import HeatShadow
 from .solar_correction_shadow import SiteSolarCorrection
 from .measurement_source import (
@@ -815,6 +816,10 @@ class SiteCapacityController:
         # relay's lowered hours change what the plans count on; nothing is ever written to a heating device.
         self.heat_shadow = HeatShadow(hass, self)
         self.house_forecast.heat_delta = self.heat_shadow.forecast_delta
+        # SpotNav's own switching of that relay (`heat/control.py`), behind the heat settings' opt-in (off by
+        # default) and a check that the pump answers it; every exit opens the relay. Shut down first beside the battery.
+        self.heat_control = HeatControl(hass, self.heat_shadow)
+        self.heat_shadow.control = self.heat_control
         self.result: SiteCapacityResult = self._calculate()
         self._update_direction_history()
         # One regulator decision per associated charger (`site/regulator.py`); acting on them is
@@ -875,6 +880,7 @@ class SiteCapacityController:
         await self.switch_load.async_start()
         await self.solar_correction.async_start()
         await self.heat_shadow.async_start()
+        await self.heat_control.async_start()
         await self._history.async_load()
         self._history_cancel = async_track_time_interval(
             self.hass, self._async_sample_history, timedelta(seconds=HISTORY_SAMPLE_INTERVAL_S)
@@ -906,6 +912,10 @@ class SiteCapacityController:
             await self.battery_control.async_shutdown()
         except Exception:  # noqa: BLE001 - the rest of the site must still shut down; the state is stored
             _LOGGER.warning("SpotNav site: handing the battery back failed", exc_info=True)
+        try:
+            await self.heat_control.async_shutdown()
+        except Exception:  # noqa: BLE001 - the relay still held is opened at the next start
+            _LOGGER.warning("SpotNav site: opening the heat relay failed", exc_info=True)
         self._cancel_probe_timer()
         if self._history_cancel is not None:
             self._history_cancel()
