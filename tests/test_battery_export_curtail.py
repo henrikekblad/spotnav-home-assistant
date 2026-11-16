@@ -385,6 +385,16 @@ def test_a_plant_in_remote_ems_is_taken_only_when_spotnav_s_own_battery_control_
     assert written(results) == []
 
 
+def test_the_export_limit_of_a_plant_in_ai_mode_is_taken_only_with_the_acknowledged_takeover() -> None:
+    executor, plant = _plant("11.5", work_mode_override="ai_mode")
+    _now, results = _run(executor, plant, T0, 3, ACTION_CURTAIL_EXPORT, takeover=True)
+    assert written(results) == [("export_limit", 0.0)] and executor.state.phase == "active"
+    # Someone else's Remote EMS stays someone else's.
+    executor, plant = _plant("11.5", work_mode_override="remote_ems")
+    _now, results = _run(executor, plant, T0, 3, ACTION_CURTAIL_EXPORT, takeover=True)
+    assert written(results) == []
+
+
 def test_the_battery_control_and_the_export_limit_never_take_each_other_s_roles() -> None:
     """The battery's hold and hand-back on one plant beside the export limit at 0: neither writes, claims or reads
     the other's entity, and the battery's hand-back (Remote EMS off) leaves the export limit as SpotNav holds it."""

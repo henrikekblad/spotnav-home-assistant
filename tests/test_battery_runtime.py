@@ -81,7 +81,7 @@ async def _site(hass: HomeAssistant, enable: tuple[str, ...] = (), extra: tuple[
 
 def _grid_charge(monkeypatch: pytest.MonkeyPatch, on: bool = True) -> None:
     monkeypatch.setattr(
-        BatteryShadow, "_grid_charging", lambda self: ((("entry_a",), 7.0) if on else ((), None))
+        BatteryShadow, "grid_charging", lambda self: ((("entry_a",), 7.0) if on else ((), None))
     )
 
 

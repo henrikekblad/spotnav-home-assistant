@@ -1086,6 +1086,9 @@
     },
     "export_write_failed": {
       "message": "De dagrecords konden niet naar {path} worden geschreven."
+    },
+    "battery_control_refused": {
+      "message": "De batterijsturing weigerde: {reason}."
     }
   },
   "services": {
@@ -1122,6 +1125,62 @@
         "date": {
           "name": "Datum",
           "description": "De te exporteren lokale dag (standaard: gisteren)."
+        }
+      }
+    },
+    "battery_control_test": {
+      "name": "Thuisbatterijsturing testen (eigenaar)",
+      "description": "Alleen voor de tests van de eigenaar ter plaatse: voer één actie met alle veiligheidsregels enkele minuten uit via de batterijsturing van SpotNav en geef de batterij daarna terug. Geweigerd zolang de locatie alleen schaduw draait, tenzij Test forceren aan staat. Alleen beheerders.",
+      "fields": {
+        "site": {
+          "name": "Locatie",
+          "description": "De locatie. Weglaten als er maar één is."
+        },
+        "action": {
+          "name": "Actie",
+          "description": "hold, grid_charge, discharge_house, export_discharge, curtail_export of stop om een lopende test te beëindigen."
+        },
+        "power": {
+          "name": "Vermogen",
+          "description": "kW voor grid_charge en export_discharge (standaard 2)."
+        },
+        "minutes": {
+          "name": "Minuten",
+          "description": "Hoe lang de actie loopt voordat de batterij wordt teruggegeven (standaard 15, hoogstens 120)."
+        },
+        "force_test": {
+          "name": "Test forceren",
+          "description": "Ook uitvoeren zolang de locatie alleen schaduw draait (tests ter plaatse)."
+        }
+      }
+    },
+    "battery_control_settings": {
+      "name": "Instellingen thuisbatterijsturing (eigenaar)",
+      "description": "Voor de tests van de eigenaar ter plaatse tot de kaart de schakelaar heeft: schrijf de instellingen van de batterijsturing van de locatie. Uitzetten geeft eerst de batterij terug. Alleen beheerders.",
+      "fields": {
+        "site": {
+          "name": "Locatie",
+          "description": "De locatie. Weglaten als er maar één is."
+        },
+        "battery_control_enabled": {
+          "name": "Sturing aan",
+          "description": "Laat SpotNav de batterij sturen zodra de controle geslaagd is."
+        },
+        "battery_control_shadow_only": {
+          "name": "Alleen schaduw",
+          "description": "Niets schrijven, alleen loggen wat er zou gebeuren (standaard aan)."
+        },
+        "battery_control_ai_takeover_ack": {
+          "name": "Overname uit AI-modus gelezen",
+          "description": "De persoon heeft gelezen dat SpotNav de installatie overneemt uit de AI-modus van Sigenergy."
+        },
+        "battery_control_allow_sell": {
+          "name": "Verkoop toestaan",
+          "description": "Het plan mag de batterij naar het net ontladen."
+        },
+        "battery_control_import_limit_acts": {
+          "name": "Importlimiet werkt",
+          "description": "De test ter plaatse toonde dat de importlimiet van de installatie werkt onder Remote EMS."
         }
       }
     }

@@ -14,7 +14,8 @@ only watches.** Nothing in this page writes to a battery or an inverter: the pla
 | Noticing that something else drives the battery | Only noticed and logged: the battery is marked watch-only in SpotNav's own view |
 | The "charging from the grid" signal, the chargers and load balancing | These act, as before, and never write to the battery |
 
-No part of SpotNav can be switched on to write to a battery in this version. Whether it ever will is not decided here.
+SpotNav's own battery control can run this plan on the battery, but it is off by default and still in testing: even
+switched on it only logs what it would do in this release ([Home batteries](home-battery.md#spotnavs-own-battery-control-off-by-default-in-testing)).
 
 ## What the plan needs
 

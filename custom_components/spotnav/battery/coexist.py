@@ -4,8 +4,9 @@ SpotNav is one controller among several. In Sweden most home batteries are steer
 optimiser (Sigen AI mode, FusionSolar time-of-use, iSolarCloud, SEMS, Enlighten), or an aggregator that sells the
 battery's flexibility (CheckWatt, Greenely, Tibber Grid Rewards, Ferroamp with Ntricity). Two writers on one battery
 fight each other, so SpotNav's battery parts default to **watch-only** for every brand: they plan in shadow as a
-benchmark and write nothing (`shadow.ON_REACHABLE`). A later opt-in can lift that for one battery at a time; this
-table says what usually runs each brand, so a reason or a notice can name it.
+benchmark and write nothing. The person's opt-in (`gate.py`, off and "shadow only" by default) lifts that for one
+site's battery after its verification passed; this table says what usually runs each brand, so a reason or a notice
+can name it.
 
 Sources (read 2026-11-14, `plans/research_integrations/commercial_energy_gap_2026-11-14.md` sections 1-2, its own
 markers kept: [V] verified on the vendor's or the aggregator's page, [F] forum or third party, [U] unverified):

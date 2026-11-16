@@ -14,6 +14,12 @@ notification answers reach the decision store without a service call.
 `export_day` writes one site's day record to the configuration folder (`day_export.py`): an administrator's, as
 it writes a file; nothing runs unless it is called.
 
+`battery_control_test` and `battery_control_settings` are the owner's, for the on-site tests of the home battery
+control (`battery/control.py`, plan `v3_battery_control_optin.md`), administrators only and in Developer tools only:
+the first runs one action through the battery's executor with every rule for some minutes (refused while the site is
+"shadow only" unless `force_test` is set), the second writes the site's `battery_control_*` options until the card
+has the switch. The card's own command is `spotnav/battery_control` (`api/battery_control.py`).
+
 `get_prices` only reads (an electricity price entry's prices, which every user's dashboard can show
 anyway) and changes nothing, so it is open to every user. It answers and does nothing else
 (`SupportsResponse.ONLY`).
@@ -37,6 +43,9 @@ from homeassistant.loader import async_get_integration
 from homeassistant.util import dt as dt_util
 
 from . import time_zones
+from .api.battery_control import async_setup_battery_control_api
+from .battery import gate
+from .battery.control import TRIAL_MAX_MIN, TrialRefused
 from .const import CONF_ENTRY_TYPE, DOMAIN, ENTRY_TYPE_SITE
 from .day_export import archive_path, write_record
 from .day_record import day_record
@@ -151,7 +160,36 @@ def async_register_services(hass: HomeAssistant) -> None:
             supports_response=SupportsResponse.OPTIONAL,
         )
 
+    if not hass.services.has_service(DOMAIN, SERVICE_BATTERY_CONTROL_TEST):
+
+        async def async_battery_control_test(call: ServiceCall) -> ServiceResponse:
+            return await _async_battery_control_test(hass, call)
+
+        async_register_admin_service(
+            hass,
+            DOMAIN,
+            SERVICE_BATTERY_CONTROL_TEST,
+            async_battery_control_test,
+            schema=BATTERY_CONTROL_TEST_SCHEMA,
+            supports_response=SupportsResponse.OPTIONAL,
+        )
+
+    if not hass.services.has_service(DOMAIN, SERVICE_BATTERY_CONTROL_SETTINGS):
+
+        async def async_battery_control_settings(call: ServiceCall) -> ServiceResponse:
+            return await _async_battery_control_settings(hass, call)
+
+        async_register_admin_service(
+            hass,
+            DOMAIN,
+            SERVICE_BATTERY_CONTROL_SETTINGS,
+            async_battery_control_settings,
+            schema=BATTERY_CONTROL_SETTINGS_SCHEMA,
+            supports_response=SupportsResponse.OPTIONAL,
+        )
+
     websocket_api.async_register_command(hass, _async_ws_resolve_required)
+    async_setup_battery_control_api(hass)
 
 
 #: An electricity price entry's prices with fees, for an automation or a script to work with.
@@ -305,6 +343,58 @@ async def _async_export_day(hass: HomeAssistant, call: ServiceCall) -> ServiceRe
         "counts": record["counts"],
         "missing": record["missing"],
     }
+
+
+#: The owner's on-site test of the home battery control: one action through the executor for some minutes.
+SERVICE_BATTERY_CONTROL_TEST = "battery_control_test"
+SERVICE_BATTERY_CONTROL_SETTINGS = "battery_control_settings"
+
+BATTERY_CONTROL_TEST_SCHEMA = vol.Schema(
+    {
+        vol.Optional("site"): cv.string,
+        vol.Required("action"): vol.In(
+            ["hold", "grid_charge", "discharge_house", "export_discharge", "curtail_export", "stop"]
+        ),
+        vol.Optional("power"): vol.All(vol.Coerce(float), vol.Range(min=0.1, max=100.0)),
+        vol.Optional("minutes", default=15): vol.All(vol.Coerce(float), vol.Range(min=1, max=TRIAL_MAX_MIN)),
+        vol.Optional("force_test", default=False): cv.boolean,
+    }
+)
+
+BATTERY_CONTROL_SETTINGS_SCHEMA = vol.Schema(
+    {vol.Optional("site"): cv.string} | {vol.Optional(key): cv.boolean for key in gate.DEFAULTS}
+)
+
+
+def _battery_refusal(reason: str) -> ServiceValidationError:
+    return ServiceValidationError(
+        f"The battery control refused: {reason}",
+        translation_domain=DOMAIN,
+        translation_key="battery_control_refused",
+        translation_placeholders={"reason": reason},
+    )
+
+
+async def _async_battery_control_test(hass: HomeAssistant, call: ServiceCall) -> ServiceResponse:
+    """Run (or `stop`) the owner's test action on a site's battery or export limit; answers what started."""
+    entry = _export_site(hass, call.data.get("site"))
+    controller = site_controller_for(hass, entry.entry_id)
+    try:
+        return await controller.battery_control.async_trial(
+            call.data["action"], call.data.get("power"), call.data["minutes"], force=call.data["force_test"]
+        )
+    except TrialRefused as refusal:
+        raise _battery_refusal(refusal.code) from None
+
+
+async def _async_battery_control_settings(hass: HomeAssistant, call: ServiceCall) -> ServiceResponse:
+    """Write a site's battery control options (as the card's switch will) and answer its status."""
+    entry = _export_site(hass, call.data.get("site"))
+    controller = site_controller_for(hass, entry.entry_id)
+    changes = {key: value for key, value in call.data.items() if key in gate.DEFAULTS}
+    if not changes:
+        raise _battery_refusal("no_change")
+    return await controller.battery_control.async_update_options(changes)
 
 
 #: A field test without unplugging the car: a test push to the paired app, a test message to the

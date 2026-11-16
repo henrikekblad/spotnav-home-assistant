@@ -164,6 +164,34 @@ def test_a_plant_not_in_maximum_self_consumption_or_with_remote_ems_on_is_never_
     assert written(results) == [] and events(results, "not_started")[0]["reason"].startswith("self_managed")
 
 
+def test_a_plant_in_ai_mode_is_taken_over_only_after_the_person_acknowledged_it_and_handed_back_to_msc() -> None:
+    executor, battery = _sigenergy(work_mode_override="ai_mode")
+    _now, results = run(executor, battery, T0, 3, "hold")
+    assert written(results) == [], "without the acknowledgement AI mode is only watched"
+    executor, battery = _sigenergy(work_mode_override="ai_mode")
+    now, results = run(executor, battery, T0, 6, "hold", takeover=True)
+    assert executor.state.phase == "active"
+    assert written(results) == [
+        ("discharge_limit", 0.0), ("remote_ems", True), ("control_mode", "Maximum Self Consumption")
+    ]
+    # Turning Remote EMS off lands the plant in Maximum Self Consumption, never back in AI mode.
+    battery.work_mode_override = None
+    _now, results = run(executor, battery, now, 6, "self_consume", takeover=True)
+    assert executor.state.phase == "idle"
+    assert battery.states["remote_ems"] == "off" and battery.management().settings["EMS work mode"] == "max_self_consumption"
+
+
+def test_the_acknowledged_takeover_is_no_way_past_another_planner_or_another_s_remote_ems() -> None:
+    executor, battery = _sigenergy(work_mode_override="ai_mode")
+    planner = Management("externally_controlled", "planner:predbat", {"EMS work mode": "ai_mode"})
+    _now, results = run(executor, battery, T0, 3, "hold", takeover=True, management=planner)
+    assert written(results) == []
+    executor, battery = _sigenergy()
+    battery.states["remote_ems"] = "on"
+    _now, results = run(executor, battery, T0, 3, "hold", takeover=True)
+    assert written(results) == []
+
+
 def test_a_control_that_cannot_be_read_or_restored_is_not_started() -> None:
     executor, battery = _sigenergy(missing={"control_mode"})
     _now, results = run(executor, battery, T0, 2, "hold")

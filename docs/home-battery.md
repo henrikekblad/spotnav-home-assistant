@@ -1,13 +1,15 @@
 # Home batteries
 
-For anyone with a home battery and a planner such as Predbat or EMHASS: how SpotNav signals a grid charge, and why it never controls the battery.
+For anyone with a home battery and a planner such as Predbat or EMHASS: how SpotNav signals a grid charge, why it does
+not control the battery by default, and the battery control that is off by default and still in testing.
 
-SpotNav tells your home battery planner when the car is charging from the grid. It does not control
+SpotNav tells your home battery planner when the car is charging from the grid. By default it does not control
 the battery itself. SpotNav 3.0 also plans the battery in shadow, as a benchmark you can compare with what the battery really
 does; that part only watches and is described in [The battery plan](battery-plan.md) and the
-[house card](house-card.md).
+[house card](house-card.md). SpotNav 3.0 also has its own battery control, **off by default and still in testing**:
+see [SpotNav's own battery control](#spotnavs-own-battery-control-off-by-default-in-testing).
 
-## Why SpotNav does not write to batteries
+## Why SpotNav does not write to batteries by default
 
 Battery integrations differ in which settings they expose, and firmware does not always obey them.
 On some Sigenergy systems, for example, the discharge limit is ignored in AI mode, and a "hold"
@@ -16,10 +18,79 @@ to your main fuse. A planner such as Predbat or EMHASS already owns the battery,
 one battery fight each other. So SpotNav only publishes a signal, and the planner or an automation of
 yours acts on it.
 
-One limit to know before any controller (SpotNav's own, when it comes, or yours) writes to a Sigenergy plant:
+One limit to know before any controller (SpotNav's own or yours) writes to a Sigenergy plant:
 Sigenergy has no dead-man. If Home Assistant stops (not restarts) during a command, the plant keeps that command
 until Home Assistant is back and the controller restores what it found (SpotNav does that first after a
 start).
+
+## SpotNav's own battery control (off by default, in testing)
+
+SpotNav can run the battery itself: hold it while the car charges from the grid, charge it in cheap hours, and
+stop export when selling costs money. **It is off by default, and in this release it is still being tested on site:
+even switched on, it only logs what it would do ("shadow only") until the tests are done.** The switch will be in
+the card's settings, site section ("Home battery"); until then there is no way to turn it on from the card.
+
+**Sigenergy** (the Sigenergy Local Modbus integration) is the first brand. Before control can run:
+
+* The integration must allow writes (its own option; it is read-only by default and then drops every write
+  without an error, which SpotNav notices: every write is read back).
+* The plant's Remote EMS switch, Remote EMS control mode, charge and discharge limits and plant maximum power must be
+  enabled in Home Assistant (they are disabled by default); for the export part also Grid Export Limitation.
+* No other controller may run the battery (Predbat, EMHASS, CheckWatt, a VPP in Remote EMS): SpotNav then only
+  watches (see below).
+
+**Switching on starts a check, not control.** SpotNav first checks that the battery obeys, each step through the
+same write path control uses: hold (the battery stops discharging), charge 2 kW from the grid, cover the house, and
+hand back (every setting back as found). Each step waits up to 5 minutes for the writes, 5 minutes to settle and
+takes three readings a minute apart: about 40 minutes in all. It runs at a suitable moment: the battery between 30
+and 80 % and discharging (so a hold can be seen), no car charging, room under the fuse; a weekday evening is
+typical. A step the battery cannot show at the moment (nothing to stop, nearly full) is tried again at a later
+suitable moment, not counted as a failure; after five runs without an answer the check gives up.
+
+**The check decides what SpotNav may do.** Hold and the hand-back must pass for any control; grid charging only if the
+charge step passed, covering the house only if that step passed. A failed step leaves control off, with one line
+saying what did not work (for example "the battery did not stop discharging when held"); turning the switch off and
+on again runs the check again. The result is kept per firmware and integration version: after a firmware update
+(or a new version of the integration) SpotNav hands the battery back and checks again at the next suitable evening.
+
+**What control does.** It follows the battery plan's running quarter hour, and holds the battery when the car
+charges from the grid in a quarter hour the plan leaves to the battery. Every write is read back; every command's
+effect is judged; anything unexpected hands the battery back (in Maximum Self Consumption) and stops. Safety rules:
+
+* **The fuse.** A grid charge is clamped to the live headroom under the main fuse. Because Sigenergy has no
+  dead-man, it is also capped so that the charge and a normal house peak (the house forecast's high figure for the
+  hour, 4 kW without one) stay under the fuse even if Home Assistant stops while it runs. Under a hold the battery is
+  let go at once when a phase nears the fuse (a kettle, the oven).
+* **What backs off first** when the fuse is short: the battery's grid charge, then the car; the car first when its
+  departure has room. With the solar priority "battery first" the car backs off before the battery.
+* **Selling from the battery** (discharging to the grid) is off unless you allow it in the battery section.
+* **At most 96 writes a day**, outside hand-backs.
+
+**Sigen AI mode.** SpotNav can take the plant over from AI mode only after you have read this: *SpotNav takes over
+the control; when you turn it off, the battery ends up in Maximum Self Consumption — turn AI mode on again in the
+Sigenergy app if you want it back* ("SpotNav tar över styrningen; när du stänger av hamnar batteriet i Maximal
+egenförbrukning — slå på AI-läget i Sigenergy-appen igen om du vill tillbaka"). Without that, a plant in AI mode is
+only watched. When you turn control off after such a takeover, the card reminds you once to turn AI mode on again
+("slå på AI-läget i Sigenergy-appen igen"); the reminder goes when the plant reads AI mode again.
+
+**Turning off** hands the battery back at once: control mode to Maximum Self Consumption, Remote EMS off, the
+limits to what SpotNav found (a limit that was never set comes back as the battery's rating), the export limit to
+what it found. A setting you or an app changed meanwhile is left as you set it. The battery plan keeps running in
+shadow. SpotNav also hands back when Home Assistant stops or the site is reloaded, before anything else of the site
+stops, and restores first after a start.
+
+**If something goes wrong, restore by hand:** in Home Assistant set the Remote EMS control mode to Maximum Self
+Consumption, turn the Remote EMS switch off and set the charge, discharge and export limits back to the values you
+noted; then turn SpotNav's switch off.
+
+**For the on-site tests only** (Developer tools, administrators): `spotnav.battery_control_test` runs one action
+(`hold`, `grid_charge`, `discharge_house`, `export_discharge`, `curtail_export`, or `stop`) through the same write
+path with every rule for some minutes and then hands back; it is refused while the site is shadow only unless
+`force_test` is set. `spotnav.battery_control_settings` writes the site's battery control options until the card has
+the switch. Neither is meant for everyday use.
+
+The site's diagnostics show it all under `battery_control`: the options, the state, the check's report per firmware,
+the actions allowed, what is missing, the notes, and the log of every write, refusal and would-do.
 
 ## The signal
 
@@ -132,8 +203,9 @@ forecast chosen gives anything.
 Many home batteries are run by something else: the maker's own optimiser (Sigen AI mode, FusionSolar
 time-of-use, SEMS), a service that sells the battery's flexibility (CheckWatt, Greenely, Tibber Grid
 Rewards), a planner (Predbat, EMHASS) or an automation of yours. One controller per battery: SpotNav
-notices the others and only watches. Today SpotNav writes to no battery at all, so every battery is only watched; the
-detection matters for the opt-in that may come later.
+notices the others and only watches. Unless you turn SpotNav's battery control on (off by default), SpotNav writes to
+no battery at all, so every battery is only watched; with it on, the detection keeps SpotNav off a battery another
+system runs.
 
 * **A planner or CheckWatt set up in Home Assistant**: the battery is watch-only while it is there.
 * **The battery's settings change three times within 24 hours without SpotNav writing them, or in plain
@@ -167,7 +239,8 @@ put back the value it found when the price turns positive again. Your sun still 
 and the battery; the inverter only curtails what is left. The battery plan already counts on it: in those
 quarter hours it stores the sun first and never plans to sell at a negative price.
 
-**Today this is shadow only: nothing is written.** The site's diagnostics (`battery.export_curtail`) show
+**Unless SpotNav's battery control is on (off by default, in testing), this is shadow only: nothing is
+written.** The site's diagnostics (`battery.export_curtail`) show
 whether a negative-price quarter hour is running, what SpotNav would have written or why it could not, and
 per day the kWh you exported at a negative price and what that cost you. The battery plan's nightly review
 shows the same figure (`curtail`).
@@ -183,11 +256,12 @@ shows the same figure (`curtail`).
   Its exported kWh at a negative price are still counted, apart, so you can see what it costs.
 * If you or the app change the export limit while SpotNav holds it at 0 kW, SpotNav leaves your value alone
   and does not write it again.
-* Beside SpotNav's own battery control, which is for later (today SpotNav runs no battery): a plant in Remote EMS
-  because SpotNav runs the battery would still be SpotNav's to curtail. Remote EMS of another app's is not: if the
-  app or a VPP took Remote EMS while SpotNav curtailed, SpotNav would put the limit back and only watch. The export
-  limit would stay at 0 kW when SpotNav hands the battery back.
+* Beside SpotNav's own battery control: a plant in Remote EMS because SpotNav runs the battery is still SpotNav's
+  to curtail. Remote EMS of another app's is not: if the app or a VPP takes Remote EMS while SpotNav curtails,
+  SpotNav puts the limit back and only watches. The export limit stays at 0 kW when SpotNav hands the battery back.
 * If the site keeps exporting for a few minutes with the limit at 0 kW, the inverter is not obeying it:
   SpotNav would put the value it found back and stop trying.
 
-There is no setting for this: it will come with the battery control opt-in.
+There is no setting of its own: it runs with the battery control switch, and needs no check of its own (its first
+real curtail is the check: the export must stop within a few minutes, or SpotNav puts the limit back and stops
+trying).
