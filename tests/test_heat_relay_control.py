@@ -227,3 +227,10 @@ def test_where_the_supply_reads_the_power_is_not_judged() -> None:
     # The compressor pauses by itself, but the calculated supply does not move: no effect.
     _moment, steps = run(check, moment, int(EFFECT_GRACE / MIN) + 1, Sample(0.5, "heating", 40.2), True)
     assert check.phase != PHASE_OPENED and outcome(steps) == "failed:no_effect"
+
+
+def test_at_most_six_switchings_a_day_and_an_opening_never_refused() -> None:
+    # Five writes today: a lowering (two more) would make seven.
+    assert decide(situation(T0, plan_until=T0 + 2 * H, writes_today=5)).reason == "write_cap"
+    assert decide(situation(T0, plan_until=T0 + 2 * H, writes_today=4)).closed is True
+    assert decide(situation(T0 + H, plan_until=None, held_since=T0, writes_today=9)).closed is False

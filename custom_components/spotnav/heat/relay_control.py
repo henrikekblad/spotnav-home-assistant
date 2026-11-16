@@ -45,7 +45,7 @@ MIN_LOWER: Final = timedelta(minutes=45)
 MAX_RUN: Final = timedelta(hours=3)
 MIN_NORMAL: Final = timedelta(hours=1)
 MAX_DAY: Final = timedelta(hours=6)
-MAX_WRITES_DAY: Final = 16
+MAX_WRITES_DAY: Final = 6
 NO_LOWER_AT_C: Final = -15.0
 GOOD_FOR: Final = timedelta(minutes=10)
 
