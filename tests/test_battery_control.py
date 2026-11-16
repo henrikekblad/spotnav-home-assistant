@@ -657,6 +657,25 @@ async def test_a_mode_that_cannot_be_judged_now_is_tried_again_later_not_failed(
     assert control.allowed() == {"hold", "grid_charge", "discharge_house"} and control.report()["attempts"] == 2
 
 
+async def test_no_check_runs_while_the_firmware_was_never_read(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    site, controller, plant = await _site(hass, monkeypatch, hass_storage)
+    hass.states.async_remove(FIRMWARE)
+    control = BatteryControl(hass, controller, plan_source=lambda _now: None)
+    await control.async_start()
+    _options(hass, site, enabled=True, shadow_only=False)
+    await _looks(control, dt_util.now(), 20)
+    status = control.status()
+    assert control.verification is None and plant.calls == []
+    assert status["state"] == "waiting" and status["line"] == "waiting:firmware_unknown"
+    assert "firmware_unknown" in status["needs"]
+    # The firmware reads: the check starts.
+    hass.states.async_set(FIRMWARE, "V100R001C21SPC117")
+    await _looks(control, dt_util.now() + timedelta(minutes=5), 1)
+    assert control.state() == "verifying" and "firmware_unknown" not in control.status()["needs"]
+
+
 async def test_normal_left_open_is_judged_on_a_hold_written_again(
     hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
 ) -> None:

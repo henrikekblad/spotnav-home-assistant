@@ -470,7 +470,14 @@ class BatteryControl:
             self._key = gate.firmware_key(facts.firmware, facts.integration, version)
         return self._key or gate.firmware_key(None, facts.integration, version)
 
+    def firmware_known(self) -> bool:
+        """Whether the plant's firmware was ever read (the last reading is kept while it blinks): without it a later
+        firmware change could not be seen, so no check runs and no report counts."""
+        return gate.firmware_known(self.firmware_key())
+
     def report(self) -> dict[str, Any] | None:
+        if not self.firmware_known():
+            return None
         report = self.reports.get(self.firmware_key())
         return report if isinstance(report, dict) else None
 
@@ -805,6 +812,9 @@ class BatteryControl:
         state = self.state(options)
         if state not in ("waiting", "on") or not gate.needs_run(report):
             self.waiting_for = None
+            return
+        if not self.firmware_known():
+            self.waiting_for = "firmware_unknown"
             return
         last = gate.parse_time((report or {}).get("last_run_at"))
         if last is not None and (now - last).total_seconds() < gate.RETRY_GAP_S:
@@ -1424,6 +1434,8 @@ class BatteryControl:
         if control is None:
             return ["no_battery_control"] if facts.battery_entity_id is not None else []
         reads = read_role_reads(self.hass, self.site.config, control)
+        if not self.firmware_known():
+            needs.append("firmware_unknown")
         for role in control.roles:
             read = reads.get(role.name)
             if read is None or not read.found:

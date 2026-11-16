@@ -152,6 +152,11 @@ def firmware_key(firmware: str | None, integration: str | None, version: str | N
     return f"{firmware or 'unknown'} | {integration or 'unknown'} {version or 'unknown'}"
 
 
+def firmware_known(key: str) -> bool:
+    """Whether a report key (`firmware_key`) names a firmware that was read."""
+    return not key.startswith("unknown |")
+
+
 # --- the report ------------------------------------------------------------------------------------------------------
 
 
