@@ -6,7 +6,7 @@
 
 import { historyHeaderButton } from "./period-history";
 import { clock, dateLabel, formatFixed, hourLabel, type FormatContext } from "./format";
-import type { HeatAnswer, HeatBandHour, HeatChoice } from "./heat-model";
+import { roomName, type HeatAnswer, type HeatBandHour, type HeatChoice } from "./heat-model";
 import { HEAT_CLASSES as X } from "./heat-styles";
 import { HOUSE_CLASSES as H } from "./house-styles";
 import { translate, type Language, type TranslationKey } from "./i18n";
@@ -327,12 +327,6 @@ function dial(doc: Document, language: Language, answer: HeatAnswer, target: num
     block.append(error);
   }
   return block;
-}
-
-/** A room's name without the sensor's trailing "temperature" word ("Ovanvåning temperatur" → "Ovanvåning"). */
-export function roomName(name: string): string {
-  const trimmed = name.replace(/\s+(temperatur|temperature|température|temperatura|lämpötila|temperatuur)$/iu, "").trim();
-  return trimmed === "" ? name : trimmed;
 }
 
 /** "Inne 20,4 °C (kallast: Toalett NV)" (the coldest of several), with the outdoor reading after it. A figure and its

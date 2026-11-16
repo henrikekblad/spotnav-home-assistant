@@ -197,6 +197,12 @@ describe("the heat history", () => {
     expect(degree.querySelector("[data-row='per-degree-day']")?.textContent).toContain("3,07 kWh/graddag");
     expect(degree.querySelectorAll(".spotnav-history-bar")).toHaveLength(12);
     expect(body.querySelector("[data-part='comfort'] [data-row='coldest']")?.textContent).toContain("Övervåning");
+    expect(body.querySelector("[data-part='comfort'] [data-row='coldest-figure']")?.textContent).toMatch(/^medel .* · lägst /);
+    // The split note only while days are missing from it.
+    expect(body.querySelector("[data-line='split-days']")).not.toBeNull();
+    const whole = { ...answer, energy: { ...answer.energy!, split_days: answer.energy!.days } };
+    const complete = heatHistoryBody({ doc: document, language: "sv", state: { kind: "ready", answer: whole }, ui: ui({ detailed: true }), handlers: handlers(), width: 330, idPrefix: "t", today: "2026-11-16" });
+    expect(complete.querySelector("[data-line='split-days']")).toBeNull();
     expect(body.querySelector("[data-part='comfort'] [data-row='below']")?.textContent).toContain("112 av 374");
     expect(body.querySelector("[data-part='shadow'] [data-row='value']")?.textContent).toContain("127 kr");
     expect(body.querySelector("[data-part='use'] [data-row='immersion']")?.textContent).toContain("3 h");

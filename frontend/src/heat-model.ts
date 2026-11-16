@@ -367,3 +367,9 @@ export function decodeHeatWrite(raw: unknown): Decoded<HeatWriteAnswer> {
   }
   return fits(raw, WRITE) ? { ok: true, value: raw as HeatWriteAnswer } : { ok: false, failure: "malformed" };
 }
+
+/** A room's name without the sensor's trailing "temperature" word ("Ovanvåning temperatur" → "Ovanvåning"). */
+export function roomName(name: string): string {
+  const trimmed = name.replace(/\s+(temperatur|temperature|température|temperatura|lämpötila|temperatuur)$/iu, "").trim();
+  return trimmed === "" ? name : trimmed;
+}
