@@ -637,6 +637,40 @@ async def test_a_firmware_change_hands_back_and_checks_again_at_the_next_suitabl
     assert control.state() == "verifying" and control.status()["line"] == "checking_after_update"
 
 
+async def test_a_look_writes_nothing_once_the_opt_in_is_turned_off_under_it(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    site, controller, plant = await _site(hass, monkeypatch, hass_storage)
+    control = await _started(hass, site, controller, plan_source=_hold)
+    flipped = {"done": False}
+    original = BatteryControl._read_facts
+
+    def flip(self):
+        # Another path writes the entry just after the look read the options.
+        if not flipped["done"] and self._lock.locked():
+            flipped["done"] = True
+            _options(hass, site, enabled=False)
+        return original(self)
+
+    monkeypatch.setattr(BatteryControl, "_read_facts", flip)
+    await control.async_look(dt_util.now())
+    assert flipped["done"] and plant.calls == []
+
+
+async def test_a_settings_write_waits_for_the_look_in_progress(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    site, controller, plant = await _site(hass, monkeypatch, hass_storage)
+    control = await _started(hass, site, controller, plan_source=_hold)
+    await control._lock.acquire()
+    update = asyncio.ensure_future(control.async_update_options({gate.CONF_ENABLED: False}))
+    await asyncio.sleep(0.01)
+    assert not update.done() and control.options().enabled, "the entry is written only under the lock"
+    control._lock.release()
+    await update
+    assert not control.options().enabled
+
+
 # --- a part of the site that raises ---------------------------------------------------------------------------------
 
 

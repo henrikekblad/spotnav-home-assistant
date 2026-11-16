@@ -637,6 +637,7 @@ class BatteryControl:
             inputs = self._export_hand_back_inputs(now, executor, stopping)
         else:
             inputs = self.export_inputs(now, executor.control, stopping=stopping, action=action)
+        inputs, allowed = self._gated(inputs, allowed)
         result = executor.step(inputs)
         self._log(result.events)
         if result.persist_first:
@@ -794,23 +795,28 @@ class BatteryControl:
         entry = self.hass.config_entries.async_get_entry(self.site.entry_id)
         if entry is None:
             raise ValueError("the site is not loaded")
-        before = self.options()
-        self.hass.config_entries.async_update_entry(entry, data={**entry.data, **changes})
-        after = self.options()
-        _LOGGER.info("SpotNav battery control: options %s", after.as_dict())
-        # The entry is written: nothing below may raise into the caller (the plant is handed back at the next look
-        # if this hand-back fails).
-        if self._started and not self._closed:
-            trial = self.trial
-            try:
-                if (before.writes and not after.writes) or (
-                    trial is not None and not self._trial_allowed(trial, after)
-                ):
-                    # A test action ends with the options that no longer allow it, forced or not.
-                    await self.async_stop("disabled" if not after.enabled else "shadow_only")
-            except Exception:  # noqa: BLE001
-                self._look_failed("options_stop")
-            await self.async_look()
+        # Under the lock: a look in progress finishes with the options it read before this write changes them.
+        async with self._lock:
+            before = self.options()
+            self.hass.config_entries.async_update_entry(entry, data={**entry.data, **changes})
+            after = self.options()
+            _LOGGER.info("SpotNav battery control: options %s", after.as_dict())
+            # The entry is written: nothing below may raise into the caller (the plant is handed back at the next
+            # look if this hand-back fails).
+            if self._started and not self._closed:
+                trial = self.trial
+                try:
+                    if (before.writes and not after.writes) or (
+                        trial is not None and not self._trial_allowed(trial, after)
+                    ):
+                        # A test action ends with the options that no longer allow it, forced or not.
+                        await self._async_stop("disabled" if not after.enabled else "shadow_only")
+                except Exception:  # noqa: BLE001
+                    self._look_failed("options_stop")
+                try:
+                    await self._async_look(dt_util.now())
+                except Exception:  # noqa: BLE001
+                    self._look_failed("look")
         try:
             return self.status()
         except Exception:  # noqa: BLE001
@@ -1217,7 +1223,23 @@ class BatteryControl:
 
     # ---- writes
 
+    def _writes_allowed_now(self) -> bool:
+        """Whether the options as stored now still allow a write that is not a hand-back (read again before every
+        step: the entry can change while a look waits on a write)."""
+        options = self.options()
+        trial = self.trial
+        return options.writes or (trial is not None and self._trial_allowed(trial, options))
+
+    def _gated(self, inputs: ExecInputs, allowed: bool) -> tuple[ExecInputs, bool]:
+        """A step the options no longer allow becomes a hand-back."""
+        if not allowed or self._writes_allowed_now():
+            return inputs, allowed
+        return replace(
+            inputs, stopping=inputs.stopping or "options_changed", action=None, rate_kw=0.0, slot_end=None
+        ), False
+
     async def _async_step(self, executor: Executor, inputs: ExecInputs, *, allowed: bool) -> StepResult:
+        inputs, allowed = self._gated(inputs, allowed)
         result = executor.step(inputs)
         self._failed = ()
         self._log(result.events)
