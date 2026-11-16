@@ -564,6 +564,86 @@
     "archived": 1,
     "battery_days": 13,
     "battery_saving": 5200.0,
+    "by_day": [
+      {
+        "battery_saving": 400.0,
+        "date": "2026-11-03",
+        "own_saving": 50.0,
+        "plan_saving": 150.0
+      },
+      {
+        "battery_saving": 400.0,
+        "date": "2026-11-04",
+        "own_saving": 50.0,
+        "plan_saving": 150.0
+      },
+      {
+        "battery_saving": 400.0,
+        "date": "2026-11-05",
+        "own_saving": 50.0,
+        "plan_saving": 150.0
+      },
+      {
+        "battery_saving": 400.0,
+        "date": "2026-11-06",
+        "own_saving": 50.0,
+        "plan_saving": 150.0
+      },
+      {
+        "battery_saving": 400.0,
+        "date": "2026-11-07",
+        "own_saving": 50.0,
+        "plan_saving": 150.0
+      },
+      {
+        "battery_saving": 400.0,
+        "date": "2026-11-08",
+        "own_saving": 50.0,
+        "plan_saving": 150.0
+      },
+      {
+        "battery_saving": 400.0,
+        "date": "2026-11-09",
+        "own_saving": 50.0,
+        "plan_saving": 150.0
+      },
+      {
+        "battery_saving": 400.0,
+        "date": "2026-11-10",
+        "own_saving": 50.0,
+        "plan_saving": 150.0
+      },
+      {
+        "battery_saving": 400.0,
+        "date": "2026-11-11",
+        "own_saving": 50.0,
+        "plan_saving": 150.0
+      },
+      {
+        "battery_saving": 400.0,
+        "date": "2026-11-12",
+        "own_saving": 50.0,
+        "plan_saving": 150.0
+      },
+      {
+        "battery_saving": 400.0,
+        "date": "2026-11-13",
+        "own_saving": 50.0,
+        "plan_saving": 150.0
+      },
+      {
+        "battery_saving": 400.0,
+        "date": "2026-11-14",
+        "own_saving": 50.0,
+        "plan_saving": 150.0
+      },
+      {
+        "battery_saving": 400.0,
+        "date": "2026-11-15",
+        "own_saving": 50.0,
+        "plan_saving": 150.0
+      }
+    ],
     "days": 13,
     "mode": "balanced",
     "modes": {

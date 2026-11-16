@@ -9,7 +9,8 @@ the battery's reviewed days and the forecasts' daily reviews; nothing is read or
      buckets: [{key, grid_in, grid_out, solar, battery_in, battery_out, car, heat, house, use, cost, periods}],
      cost: {net, bought, sold, kwh_in, kwh_out, periods, priced} | null,
      review: {days, period_days, archived, actual_cost, battery_saving, battery_days, sun_gave, sun_days,
-              against_nothing, nothing_days, plan_saving, own_saving, modes: {mode: {saving, days}}, mode} | null,
+              against_nothing, nothing_days, plan_saving, own_saving, modes: {mode: {saving, days}}, mode,
+              by_day: [{date, battery_saving, plan_saving, own_saving}]} | null,
      forecast: {house, sun, sun_corrected, soc: {mae, days} | null} }
 
 * **Energy** (`energy_flow`, `buckets`): the Energy dashboard's meters and the chargers' registers per period (a
@@ -30,8 +31,8 @@ the battery's reviewed days and the forecasts' daily reviews; nothing is read or
   `archived`), summed: what the days cost (`actual_cost`), against the same days with no battery
   (`battery_saving`), what the sun gave, both together, the plan and the battery's own way against plain
   self-consumption, each mode planned beside it. Each sum says over how many days (`*_days`); `days` against
-  `period_days` (the period's days up to yesterday) says how much of the period was reviewed. `null` without a
-  battery or with no reviewed day.
+  `period_days` (the period's days up to yesterday) says how much of the period was reviewed; `by_day` has each
+  reviewed day (the front's month calendar moved here). `null` without a battery or with no reviewed day.
 * **The forecasts** (`forecast`): the mean of each forecast's daily mean absolute error over the period's reviewed
   days (the forecast log keeps 30 days of reviews), with the days counted; `null` per forecast without one.
 
@@ -269,6 +270,15 @@ def review_block(inputs: HouseHistoryInputs) -> dict[str, Any] | None:
         "modes": modes,
         # The mode in force on most of the reviewed days (the last one on a tie).
         "mode": max(reversed(in_force), key=in_force.count) if in_force else None,
+        "by_day": [
+            {
+                "date": review.day.isoformat(),
+                "battery_saving": None if review.battery_saving is None else _r(review.battery_saving),
+                "plan_saving": _r(review.saving),
+                "own_saving": _r(review.actual_saving),
+            }
+            for review in reviews
+        ],
     }
 
 

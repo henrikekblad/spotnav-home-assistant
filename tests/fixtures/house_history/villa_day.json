@@ -489,6 +489,14 @@
     "archived": 0,
     "battery_days": 1,
     "battery_saving": 400.0,
+    "by_day": [
+      {
+        "battery_saving": 400.0,
+        "date": "2026-11-15",
+        "own_saving": 50.0,
+        "plan_saving": 150.0
+      }
+    ],
     "days": 1,
     "mode": "balanced",
     "modes": {
