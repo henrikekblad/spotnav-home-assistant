@@ -852,7 +852,6 @@ export const VISUAL_STYLES = `
   .spotnav-bar-caption {
     font-size: 0.68rem;
     line-height: 1.1;
-    opacity: 0.8;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -939,7 +938,7 @@ export const VISUAL_STYLES = `
    */
   .spotnav-planner-button {
     border-color: var(--primary-color, #03a9f4);
-    color: var(--primary-color, #03a9f4);
+    color: var(--primary-text-color, #212121);
     font-weight: 500;
   }
   .spotnav-strategy-button {
@@ -1412,9 +1411,6 @@ export const VISUAL_STYLES = `
     flex: none;
     white-space: nowrap;
   }
-  .${VISUAL_CLASSES.vehicleLineAge} {
-    opacity: 0.8;
-  }
   /* The line's parts wrap inside a clipped box whose inner row starts one separator to the left: a part that
      starts a row has its leading "·" in the clipped strip, so no row starts with a lone dot. */
   .${VISUAL_CLASSES.vehicleLineClip} {
@@ -1782,11 +1778,13 @@ export const VISUAL_STYLES = `
     gap: 10px;
     min-width: 0;
   }
+  /* The day's dearest and cheapest price as text: the price colours mixed a third toward the text colour, darker on a
+   * light card and lighter on a dark one, so both read at 4.5:1. */
   .${VISUAL_CLASSES.summaryMax} {
-    color: var(--spotnav-expensive, #c62828);
+    color: color-mix(in srgb, var(--spotnav-expensive, #c62828) 65%, var(--primary-text-color, #212121));
   }
   .${VISUAL_CLASSES.summaryMin} {
-    color: var(--spotnav-cheap, #2e7d32);
+    color: color-mix(in srgb, var(--spotnav-cheap, #2e7d32) 65%, var(--primary-text-color, #212121));
   }
   .${VISUAL_CLASSES.summary}[role="button"] {
     cursor: pointer;
