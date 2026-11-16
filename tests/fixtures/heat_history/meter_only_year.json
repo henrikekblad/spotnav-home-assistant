@@ -7,7 +7,8 @@
       "hot_water_kwh": null,
       "key": "2026-01",
       "kwh": 1815.0,
-      "outdoor_c": null
+      "outdoor_c": null,
+      "shadow_value": null
     },
     {
       "cost": null,
@@ -15,7 +16,8 @@
       "hot_water_kwh": null,
       "key": "2026-02",
       "kwh": 1559.16,
-      "outdoor_c": null
+      "outdoor_c": null,
+      "shadow_value": null
     },
     {
       "cost": null,
@@ -23,7 +25,8 @@
       "hot_water_kwh": null,
       "key": "2026-03",
       "kwh": 1456.58,
-      "outdoor_c": null
+      "outdoor_c": null,
+      "shadow_value": null
     },
     {
       "cost": null,
@@ -31,7 +34,8 @@
       "hot_water_kwh": null,
       "key": "2026-04",
       "kwh": 1066.56,
-      "outdoor_c": null
+      "outdoor_c": null,
+      "shadow_value": null
     },
     {
       "cost": null,
@@ -39,7 +43,8 @@
       "hot_water_kwh": null,
       "key": "2026-05",
       "kwh": 655.92,
-      "outdoor_c": null
+      "outdoor_c": null,
+      "shadow_value": null
     },
     {
       "cost": null,
@@ -47,7 +52,8 @@
       "hot_water_kwh": null,
       "key": "2026-06",
       "kwh": 288.96,
-      "outdoor_c": null
+      "outdoor_c": null,
+      "shadow_value": null
     },
     {
       "cost": null,
@@ -55,7 +61,8 @@
       "hot_water_kwh": null,
       "key": "2026-07",
       "kwh": 75.12,
-      "outdoor_c": null
+      "outdoor_c": null,
+      "shadow_value": null
     },
     {
       "cost": null,
@@ -63,7 +70,8 @@
       "hot_water_kwh": null,
       "key": "2026-08",
       "kwh": 141.12,
-      "outdoor_c": null
+      "outdoor_c": null,
+      "shadow_value": null
     },
     {
       "cost": null,
@@ -71,7 +79,8 @@
       "hot_water_kwh": null,
       "key": "2026-09",
       "kwh": 459.84,
-      "outdoor_c": null
+      "outdoor_c": null,
+      "shadow_value": null
     },
     {
       "cost": null,
@@ -79,7 +88,8 @@
       "hot_water_kwh": null,
       "key": "2026-10",
       "kwh": 833.5,
-      "outdoor_c": null
+      "outdoor_c": null,
+      "shadow_value": null
     },
     {
       "cost": 87640.6,
@@ -87,7 +97,8 @@
       "hot_water_kwh": 16.8,
       "key": "2026-11",
       "kwh": 598.04,
-      "outdoor_c": null
+      "outdoor_c": null,
+      "shadow_value": 12699.0
     },
     {
       "cost": null,
@@ -95,7 +106,8 @@
       "hot_water_kwh": null,
       "key": "2026-12",
       "kwh": null,
-      "outdoor_c": null
+      "outdoor_c": null,
+      "shadow_value": null
     }
   ],
   "comfort": null,
