@@ -97,7 +97,8 @@ export function amount(language: Language, minor: number, money: HouseAnswer["mo
   if (money === null || money.major_unit === null) {
     return `${formatNumber(language, minor, 0)}${money?.minor_unit ? ` ${money.minor_unit}` : ""}`;
   }
-  return `${formatFixed(language, major, Math.abs(major) >= 10 ? 0 : 2)} ${money.major_unit}`;
+  // Whole units from 10 (and nothing at all), one decimal below: "25 kr", "4,0 kr", "0,8 kr", "0 kr".
+  return `${formatFixed(language, major, Math.abs(major) >= 10 || major === 0 ? 0 : 1)} ${money.major_unit}`;
 }
 
 /** The price's unit per kWh, the area's minor unit ("öre/kWh"). */

@@ -144,7 +144,7 @@ describe("the house history", () => {
     expect(body.querySelectorAll(".spotnav-history-bar")).toHaveLength(24);
     expect(body.querySelector<HTMLInputElement>("input[data-pick='day']")!.value).toBe("2026-11-15");
     expect(body.querySelector<HTMLInputElement>("input[data-pick='day']")!.max).toBe("2026-11-16");
-    expect(body.querySelector("[data-part='modes'] [data-row='max_profit']")?.textContent).toContain("2,00 kr");
+    expect(body.querySelector("[data-part='modes'] [data-row='max_profit']")?.textContent).toContain("2,0 kr");
     // Self-consumption is the zero the others are measured against, not a row.
     expect(body.querySelector("[data-part='modes'] [data-row='self_consumption']")).toBeNull();
     expect(body.querySelector("[data-part='modes'] [data-row='own']")?.textContent).toContain("Batteriets egen styrning");
@@ -152,7 +152,9 @@ describe("the house history", () => {
     // A day has no day-by-day list.
     expect(body.querySelector("[data-part='days']")).toBeNull();
     const month = houseHistoryBody({ doc: document, language: "sv", state: { kind: "ready", answer: house("house_history/villa_month.json") }, ui: ui({ detailed: true }), handlers: handlers(), width: 330, idPrefix: "t", today: "2026-11-16" });
-    expect(month.querySelectorAll("[data-part='days'] li")).toHaveLength(13);
+    // A table: a row a day, a column a figure.
+    expect(month.querySelectorAll("[data-part='days'] tbody tr")).toHaveLength(13);
+    expect(month.querySelectorAll("[data-part='days'] tbody tr:first-child td")).toHaveLength(4);
   });
 
   it("says what is missing: no meters, no prices, no review", () => {

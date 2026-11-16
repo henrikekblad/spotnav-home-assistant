@@ -85,14 +85,14 @@ describe("the lines", () => {
     const value = answer();
     expect(savingLine("en", value)).toBe("Last 7 days: SpotNav's plan 51 kr · the battery itself 45 kr, against plain self-consumption");
     expect(savingLine("sv", value)).toBe("Senaste 7 dygnen: SpotNavs plan 51 kr · batteriet självt 45 kr, mot ren egenförbrukning");
-    expect(amount("sv", 812.4, value.money)).toBe("8,12 kr");
+    expect(amount("sv", 812.4, value.money)).toBe("8,1 kr");
   });
 
   it("before a day was reviewed, say what the plan expects; without a battery, say nothing", () => {
     const value = answer();
     const waiting: HouseAnswer = { ...value, battery: { ...value.battery!, review: null } };
     expect(savingLine("sv", waiting)).toBe(
-      "Planen räknar med 8,12 kr bättre än ren egenförbrukning till lör 14 23:00. Första dygnets jämförelse kommer natten efter.",
+      "Planen räknar med 8,1 kr bättre än ren egenförbrukning till lör 14 23:00. Första dygnets jämförelse kommer natten efter.",
     );
     expect(savingLine("en", { ...waiting, battery: { ...waiting.battery!, status: "no_plan", reason: "no_prices" } })).toBe(
       translate("en", "house.saving.noPlan"),
@@ -182,9 +182,9 @@ describe("the body", () => {
     expect(tables).toHaveLength(2);
     const modes = Array.from(tables[0]!.querySelectorAll("tbody tr")).map((row) => Array.from(row.children).map((cell) => cell.textContent));
     expect(modes).toEqual([
-      ["Egenförbrukning", "0,00 kr", "–"],
-      ["Balanserad (vald)", "8,12 kr", "51 kr"],
-      ["Max vinst", "9,05 kr", "51 kr"],
+      ["Egenförbrukning", "0 kr", "–"],
+      ["Balanserad (vald)", "8,1 kr", "51 kr"],
+      ["Max vinst", "9,1 kr", "51 kr"],
       ["Batteriets egen optimerare", "–", "45 kr"],
     ]);
     expect(tables[1]!.querySelectorAll("tbody tr")).toHaveLength(7);
@@ -260,7 +260,7 @@ describe("the battery app's views, calm", () => {
     expect(todayLine("sv", answer("house/house_learning.json"))).toBeNull();
     expect(todayDetail("sv", answer())).toBe("Elkostnad 38 kr");
     const value = answer();
-    expect(todayDetail("sv", { ...value, today: { ...value.today!, sold: 420 } })).toBe("Elkostnad 38 kr · sålt solel 4,20 kr");
+    expect(todayDetail("sv", { ...value, today: { ...value.today!, sold: 420 } })).toBe("Elkostnad 38 kr · sålt solel 4,2 kr");
     const card = body(answer(), {}, "sv");
     expect(card.querySelector("[data-line='today']")?.textContent).toBe("Batteriet har tjänat 11 kr i dag");
     expect(card.querySelector("[data-line='today-hint']")?.textContent).toBe("Samma mått som batteriets app.");
@@ -501,7 +501,7 @@ describe("the day in the battery app's terms", () => {
     expect(part.querySelector(".spotnav-house-compare-head")?.textContent).toMatch(/^Batteriappens mått, tors 12 nov/);
     expect(part.querySelector("[data-row='battery']")?.textContent).toContain("Batteriet mot inget batteri");
     expect(part.querySelector("[data-row='battery']")?.textContent).toContain("11 kr");
-    expect(part.querySelector("[data-row='sun']")?.textContent).toContain("8,20 kr");
+    expect(part.querySelector("[data-row='sun']")?.textContent).toContain("8,2 kr");
     expect(part.querySelector("[data-row='both']")?.textContent).toMatch(/19,50 kr|20 kr/);
     expect(part.textContent).toContain("samma dygn utan batteri");
     expect(part.querySelector("[data-line='baselines-coverage']")).toBeNull();

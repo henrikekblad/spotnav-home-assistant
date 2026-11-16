@@ -9,6 +9,7 @@ import { dateLabel, formatFixed, formatNumber } from "./format";
 import { renderFlow } from "./house-flow";
 import { decodeEnergyFlow, HOUSE_HISTORY_API_VERSION, MODES, type EnergyFlow } from "./house-model";
 import { amount } from "./house-view";
+import { HOUSE_CLASSES as H } from "./house-styles";
 import { pluralForm, translate, type Language, type TranslationKey } from "./i18n";
 import {
   axisShown,
@@ -524,26 +525,26 @@ function daysSection(input: HouseHistoryInput, answer: HouseHistory): HTMLElemen
   }
   const { doc, language } = input;
   const block = section(doc, translate(language, "hist.house.days"), "days");
-  const listNode = element(doc, "ul", "spotnav-period-runs");
-  for (const day of reviewed.by_day) {
-    const row = element(doc, "li");
-    row.dataset["date"] = day.date;
-    row.append(
-      element(doc, "span", undefined, dateLabel(language, day.date)),
-      element(
-        doc,
-        "span",
-        "spotnav-period-figure",
-        translate(language, "hist.house.dayRow", {
-          battery: day.battery_saving === null ? "–" : amount(language, day.battery_saving, answer.money),
-          plan: amount(language, day.plan_saving, answer.money),
-          own: amount(language, day.own_saving, answer.money),
-        }),
-      ),
-    );
-    listNode.append(row);
+  // A table, as the house card's own "Day by day": a figure never breaks over two lines on a phone.
+  const table = element(doc, "table", H.table);
+  const headRow = element(doc, "tr");
+  for (const key of ["house.days.date", "hist.house.col.battery", "hist.house.col.plan", "hist.house.col.own"] as const) {
+    headRow.append(element(doc, "th", undefined, translate(language, key)));
   }
-  block.append(listNode, note(doc, translate(language, "hist.house.daysNote")));
+  const head = element(doc, "thead");
+  head.append(headRow);
+  const rows = element(doc, "tbody");
+  for (const day of reviewed.by_day) {
+    const row = element(doc, "tr");
+    row.dataset["date"] = day.date;
+    row.append(element(doc, "td", undefined, dateLabel(language, day.date)));
+    for (const value of [day.battery_saving, day.plan_saving, day.own_saving]) {
+      row.append(element(doc, "td", undefined, value === null ? "–" : amount(language, value, answer.money)));
+    }
+    rows.append(row);
+  }
+  table.append(head, rows);
+  block.append(table, note(doc, translate(language, "hist.house.daysNote")));
   return block;
 }
 
