@@ -58,7 +58,11 @@ measurements; it is shown on the site's state sensor (`forecast`), in the diagno
   the outdoor temperature by the same model) and the rest (the house less heat), each logged with its outcome
   (`heat_kw`, and their sum as `house_kw_split` beside `house_kw`) so the nightly review shows whether the split
   forecasts the house better; each reviewed day's comparison is written to the log. Plans keep the whole load's
-  forecast: nothing a car or the battery is planned on changes.
+  forecast: nothing a car or the battery is planned on changes, except for the next point.
+* **The heat pump's relay** (`heat/runtime.py`, `heat_delta`): while the relay the heat settings name is closed, or
+  expected to close (the SpotNav blueprint's closings ahead), the heat it takes away and the rebound after it change
+  what the plans count on (`plan_kw_by_hour`, `battery_house_by_hour`, `surplus_house_by_hour`), never below 0 kW,
+  so the cars and the battery plan around the lowered hours. The shown forecast and the log stay as learned.
 """
 
 from __future__ import annotations
@@ -377,6 +381,9 @@ class SiteHouseForecast:
         self._closed = False
         #: The refresh in flight, cancelled at the close.
         self._task: asyncio.Task[None] | None = None
+        #: The heat pump relay's change to the expected load per hour (`heat/runtime.HeatShadow.forecast_delta`), set
+        #: by the site once its heat shadow exists; `None` without one.
+        self.heat_delta: Callable[[datetime], Mapping[datetime, float]] | None = None
         self._attribute: list[dict[str, Any]] = []
         self._rows: list[tuple[datetime, float]] = []
         self.refreshes = 0
@@ -752,17 +759,30 @@ class SiteHouseForecast:
             return None
         return forecast
 
-    def plan_kw_by_hour(self, now: datetime) -> dict[datetime, float]:
+    def _with_heat(self, by_hour: dict[datetime, float], now: datetime) -> dict[datetime, float]:
+        """`by_hour` with the heat pump relay's change (`heat_delta`) on the hours it has, never below 0 kW."""
+        if self.heat_delta is None or not by_hour:
+            return by_hour
+        try:
+            delta = self.heat_delta(now)
+        except Exception:  # noqa: BLE001 - the relay's change is extra: the forecast goes on without it
+            _LOGGER.debug("SpotNav house forecast: the heat relay's change could not be read", exc_info=True)
+            return by_hour
+        return {start: max(0.0, kw + delta.get(start, 0.0)) for start, kw in by_hour.items()}
+
+    def plan_kw_by_hour(self, now: datetime, *, heat: bool = True) -> dict[datetime, float]:
         """The import less the chargers expected per hour from the running hour on (`{hour_start (UTC): kW}`): the
         shown forecast on a site whose house figure is the net one, `import_forecast` where it is the whole load (see
         the module); the hours the profile
         knows only (`LoadForecast.known_by_hour`); empty without a forecast made in the last `PLAN_MAX_AGE_S`. An hour
-        left out is reckoned at the site's flat figure, as before the forecast."""
+        left out is reckoned at the site's flat figure, as before the forecast. With `heat` the heat pump relay's
+        lowered hours and rebound are counted (`heat_delta`)."""
         forecast = self._fresh(now)
         if forecast is None:
             return {}
         current = hour_start(now, self._demand.tracker.tz)
-        return {start: kw for start, kw in forecast.known_by_hour().items() if start >= current}
+        by_hour = {start: kw for start, kw in forecast.known_by_hour().items() if start >= current}
+        return self._with_heat(by_hour, now) if heat else by_hour
 
     def plan_kw_at(self, now: datetime) -> float | None:
         """The import less the chargers expected in the running hour, `None` when the profile does not know it (see
@@ -774,7 +794,7 @@ class SiteHouseForecast:
         figure's own forecast until a median is made), with what the figure is (`basis`) and whether the sun's
         production is in its hours (on the whole load: every hour had it added). Empty without a forecast."""
         forecast = self.median if self.median is not None else self.forecast
-        by_hour = {} if forecast is None else forecast.by_hour()
+        by_hour = {} if forecast is None else self._with_heat(forecast.by_hour(), dt_util.utcnow())
         return by_hour, self.basis, self.basis == BASIS_GROSS and self.history.gross_with_sun()
 
     def surplus_house_by_hour(self, now: datetime) -> tuple[dict[datetime, float], str]:
@@ -790,7 +810,12 @@ class SiteHouseForecast:
         if not self.history.gross_with_sun():
             return {}, SURPLUS_WITHOUT_SUN if self.solar_statistics else SURPLUS_NO_SOLAR_STATISTICS
         current = hour_start(now, self._demand.tracker.tz)
-        return {start: kw for start, kw in median.known_by_hour().items() if start >= current}, SURPLUS_OK
+        by_hour = {start: kw for start, kw in median.known_by_hour().items() if start >= current}
+        return self._with_heat(by_hour, now), SURPLUS_OK
+
+    def temperatures(self) -> dict[datetime, float]:
+        """The weather's hourly outdoor forecast (°C, UTC hour starts) as last read."""
+        return dict(self._temperatures)
 
     # ---- what is shown
 
