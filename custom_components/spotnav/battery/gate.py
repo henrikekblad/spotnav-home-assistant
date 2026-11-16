@@ -230,12 +230,16 @@ def modes_to_run(report: Mapping[str, Any] | None) -> tuple[str, ...]:
 
 
 def needs_run(report: Mapping[str, Any] | None) -> bool:
-    """Whether the routine has anything left to try for this key."""
+    """Whether the routine has anything left to try for this key: never after `MAX_ATTEMPTS` runs, also once hold
+    and normal passed (each run writes to the plant; a mode still pending then stays off)."""
     status = report_status(report)
     if status == "failed":
         return False
     if status == "none":
         return True
+    attempts = (report or {}).get("attempts")
+    if isinstance(attempts, int) and attempts >= MAX_ATTEMPTS:
+        return False
     return bool(modes_to_run(report)) or mode_verdict((_modes(report).get(MODE_NORMAL) or {}).get("outcome")) == "pending"
 
 

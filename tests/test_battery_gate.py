@@ -105,6 +105,14 @@ def test_a_mode_that_could_not_be_judged_is_tried_again_and_a_decided_one_is_kep
     assert report_status(stuck) == "failed" and not needs_run(stuck)
 
 
+def test_a_mode_left_pending_after_hold_and_normal_passed_is_tried_at_most_max_attempts_runs() -> None:
+    modes = {"hold": "obeyed", "charge": "aborted:fuse_headroom", "discharge_house": "obeyed", "normal": "restored"}
+    assert needs_run(_report(attempts=MAX_ATTEMPTS - 1, **modes))
+    spent = _report(attempts=MAX_ATTEMPTS, **modes)
+    assert report_status(spent) == "passed" and not needs_run(spent), "control runs on; the charge mode stays off"
+    assert allowed_actions(spent, Options()) == {"hold", "discharge_house"}
+
+
 def test_reports_are_bounded_newest_last() -> None:
     reports: dict = {}
     for index in range(5):
