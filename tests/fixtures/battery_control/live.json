@@ -1,0 +1,62 @@
+{
+ "api_version": 1,
+ "ok": true,
+ "error": null,
+ "status": {
+  "options": {
+   "battery_control_enabled": false,
+   "battery_control_shadow_only": true,
+   "battery_control_ai_takeover_ack": false,
+   "battery_control_allow_sell": false,
+   "battery_control_import_limit_acts": false
+  },
+  "state": "off",
+  "line": "off",
+  "key": "V100R001C21SPC117 | sigen 2.0.3",
+  "report": null,
+  "allowed_actions": [],
+  "verification": null,
+  "waiting_for": null,
+  "needs": [
+   "control_disabled:remote_ems",
+   "control_disabled:control_mode",
+   "control_disabled:charge_limit",
+   "ai_takeover_ack"
+  ],
+  "notes": [],
+  "trial": null,
+  "grid_charge_cap": {
+   "cap_kw": 0.0,
+   "rule": "conservative",
+   "main_fuse_a": 20.0,
+   "learned": {
+    "ready": false,
+    "raw_a": null,
+    "factor": 1.0,
+    "margin_a": 2.0,
+    "peaks_a": {
+     "L1": 5.5,
+     "L2": 4.5,
+     "L3": 12.2
+    },
+    "days_counted": 0,
+    "days_needed": 14,
+    "hours": 3,
+    "minutes": 106,
+    "heat_peak_w": {
+     "L1": 136.0,
+     "L2": 0.0,
+     "L3": 2022.0
+    },
+    "exact_a": {
+     "L1": 3.5,
+     "L2": 2.5,
+     "L3": 10.2
+    },
+    "exact_days": 0,
+    "exact_minutes": 106,
+    "basis": "exact"
+   }
+  }
+ }
+}

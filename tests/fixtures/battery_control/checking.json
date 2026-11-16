@@ -40,7 +40,11 @@
         "days_needed": 14,
         "hours": 360,
         "minutes": 21000,
-        "heat_peak_w": {"L1": 800.0, "L2": 800.0, "L3": 800.0}
+        "heat_peak_w": {"L1": 800.0, "L2": 800.0, "L3": 800.0},
+        "exact_a": {"L1": 5.5, "L2": 3.9, "L3": 4.7},
+        "exact_days": 3,
+        "exact_minutes": 4000,
+        "basis": "mixed"
       }
     }
   }

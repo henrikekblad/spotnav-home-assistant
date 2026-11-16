@@ -39,6 +39,7 @@ describe("decoding the site's answers", () => {
     for (const name of ["needs_ack.json", "checking.json"]) {
       expect(decodeBatteryControl(read("battery_control", name)).ok).toBe(true);
     }
+    expect(decodeBatteryControl(read("battery_control", "live.json")).ok).toBe(true);
     expect(decodeSiteView({ ...read("site_view", "villa.json"), extra: 1 })).toEqual({ ok: false, failure: "malformed" });
     expect(decodeSiteView({ ...read("site_view", "villa.json"), api_version: 2 })).toEqual({ ok: false, failure: "unsupported" });
     const status = read("battery_control", "checking.json");
