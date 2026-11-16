@@ -59,9 +59,9 @@ from .automations import SteeringAutomation, steering_automations
 from .config import BAND_C, PATH_SG_READY, HeatConfig
 from .meter_split import Levels, levels, state_now
 from .relay_control import (
+    closings_ahead as relay_closings_ahead,
     FAILED,
     GOOD_FOR,
-    MAX_RUN,
     MAX_WRITES_DAY,
     NO_LOWER_AT_C,
     PASSED,
@@ -79,7 +79,6 @@ from .relay_control import (
     planned_run_end,
     verdict,
 )
-from .shadow_rule import ACTION_LOWER
 
 if TYPE_CHECKING:
     from .runtime import HeatShadow
@@ -184,6 +183,8 @@ class HeatControl:
         self.state = STATE_OFF
         self.reason: str | None = None
         self.decision: Decision | None = None
+        #: The safety reason at the last look (`relay_control.SAFETY_*`).
+        self.safety: str | None = None
         self.automation: SteeringAutomation | None = None
         self.log: deque[dict[str, Any]] = deque(maxlen=LOG_SIZE)
         self._was_enabled: bool | None = None
@@ -477,7 +478,7 @@ class HeatControl:
             self._set(STATE_WAITING, blocker)
             return
         self._expect = read
-        safety = self._safety(config, now)
+        safety = self.safety = self._safety(config, now)
 
         result = self.checks.get(relay)
         if result is None or result.get("result") != PASSED:
@@ -759,23 +760,21 @@ class HeatControl:
         return out
 
     def closings_ahead(self, now: datetime) -> list[tuple[datetime, datetime]] | None:
-        """The relay's closings expected from now on while control runs (the plan's lowered runs, each at most
-        `MAX_RUN`; the running one to its decided end); `None` while it does not run."""
+        """The relay's closings expected from now on while control runs (`relay_control.closings_ahead`: the running
+        one to its decided end, then the plan's lowered runs by the rules); `None` while it does not run."""
         if self.state != STATE_RUNNING:
             return None
-        out: list[tuple[datetime, datetime]] = []
-        if self.held and self.decision is not None and self.decision.closed and self.decision.until is not None:
-            out.append((now, self.decision.until))
-        run: list[datetime] = []
-        for hour in sorted(self.shadow.plan, key=lambda item: item.start):
-            if hour.action == ACTION_LOWER and hour.start >= now and (not out or hour.start >= out[-1][1]):
-                if run and hour.start != run[-1] + timedelta(hours=1):
-                    out.append((run[0], min(run[-1] + timedelta(hours=1), run[0] + MAX_RUN)))
-                    run = []
-                run.append(hour.start)
-        if run:
-            out.append((run[0], min(run[-1] + timedelta(hours=1), run[0] + MAX_RUN)))
-        return out
+        held = self.held and self.decision is not None and self.decision.closed and self.decision.until is not None
+        return relay_closings_ahead(
+            self.shadow.plan,
+            now,
+            held_until=self.decision.until if held and self.decision is not None else None,
+            last_end=self.last_end,
+            lowerings=[(item[0], item[1]) for item in self.lowerings if item[1] is not None],  # type: ignore[misc]
+            writes=self.writes,
+            day_of=self._day,
+            safety=self.safety,
+        )
 
     def _set(self, state: str, reason: str | None) -> None:
         if (state, reason) != (self.state, self.reason):

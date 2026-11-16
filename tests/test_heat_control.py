@@ -744,3 +744,28 @@ async def test_the_lowered_hours_cap_is_a_rolling_day(hass: HomeAssistant, freez
     _plan(control, later, 0, 1)
     await control.async_look(later)
     assert relay.calls == [] and control.status()["reason"] in ("day_cap", "too_short")
+
+
+async def test_the_closings_ahead_keep_the_rest_and_the_rolling_cap(hass: HomeAssistant, freezer) -> None:
+    _site_, control, relay, now = await _running(hass, freezer, *range(12))
+    await control.async_look(now)
+    assert relay.calls == ["on"]
+    # Three hours (the longest run), an hour's rest, three more: then six hours in 24 and nothing more.
+    assert control.closings_ahead(now + MIN) == [(now + MIN, now + 3 * H), (now + 4 * H, now + 7 * H)]
+
+
+async def test_the_closings_ahead_keep_the_days_writes(hass: HomeAssistant, freezer) -> None:
+    _site_, control, relay, now = await _running(hass, freezer, 0, 2)
+    control.writes[control._day(now)] = 3  # noqa: SLF001
+    await control.async_look(now)
+    assert relay.calls == ["on"]
+    # Four writes today with this closing; its opening makes five: no room for another closing and opening today.
+    assert control._day(now + 2 * H) == control._day(now)  # noqa: SLF001 - the pilot's morning
+    assert control.closings_ahead(now + MIN) == [(now + MIN, now + H)]
+
+
+async def test_no_closings_ahead_while_a_safety_reason_holds(hass: HomeAssistant, freezer) -> None:
+    _site_, control, relay, now = await _running(hass, freezer, 0, 3, 4)
+    hass.states.async_set(OUTDOOR, "-16.0", {"unit_of_measurement": "°C"})
+    await control.async_look(now)
+    assert relay.calls == [] and control.closings_ahead(now + MIN) == []

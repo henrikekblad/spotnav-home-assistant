@@ -37,7 +37,7 @@ room for both. A moment that stops suiting during the baseline is no try (nothin
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Any, Final
@@ -168,6 +168,58 @@ def decide(s: Situation) -> Decision:
     if s.writes_today + 2 > MAX_WRITES_DAY:
         return Decision(False, REASON_WRITE_CAP)
     return Decision(True, REASON_PLANNED, until)
+
+
+def closings_ahead(
+    plan: Sequence[BandHour],
+    now: datetime,
+    *,
+    held_until: datetime | None,
+    last_end: datetime | None,
+    lowerings: Sequence[tuple[datetime, datetime | None]],
+    writes: Mapping[str, int],
+    day_of: Callable[[datetime], str],
+    safety: str | None = None,
+) -> list[tuple[datetime, datetime]]:
+    """The relay's closings to expect from `now` on by the rules (`decide`) on the plan as it stands: the running one
+    to `held_until`, then each lowered run of the plan from the end of the rest after the last, at most `MAX_RUN` in
+    a row (a longer run again after the rest), cut to what the rolling `MAX_DAY` leaves, none shorter than
+    `MIN_LOWER` or past the day's `MAX_WRITES_DAY`. None while a safety reason holds (ended now, none started)."""
+    if safety is not None and safety != SAFETY_SETTLING:
+        return []
+    out: list[tuple[datetime, datetime]] = []
+    done = [(begin, end if end is not None else (held_until or now)) for begin, end in lowerings]
+    counts = dict(writes)
+    if held_until is not None:
+        # The running one's opening is a write still to come.
+        out.append((now, held_until))
+        last_end = held_until
+        counts[day_of(held_until)] = counts.get(day_of(held_until), 0) + 1
+    runs: list[list[datetime]] = []
+    for hour in sorted(plan, key=lambda item: item.start):
+        end = hour.start + timedelta(hours=1)
+        if hour.action != ACTION_LOWER or end <= now:
+            continue
+        if runs and runs[-1][1] == hour.start:
+            runs[-1][1] = end
+        else:
+            runs.append([max(hour.start, now), end])
+    for run_start, run_end in runs:
+        moment = run_start
+        while True:
+            if last_end is not None:
+                moment = max(moment, last_end + MIN_NORMAL)
+            if moment >= run_end:
+                break
+            day_left = MAX_DAY - lowered_within(done + out, moment - timedelta(days=1), moment)
+            until = min(run_end, moment + MAX_RUN, moment + max(timedelta(0), day_left))
+            day = day_of(moment)
+            if until - moment < MIN_LOWER or counts.get(day, 0) + 2 > MAX_WRITES_DAY:
+                break
+            out.append((moment, until))
+            counts[day] = counts.get(day, 0) + 2
+            last_end = moment = until
+    return out
 
 
 def lowered_within(lowerings: Sequence[tuple[datetime, datetime | None]], start: datetime, end: datetime) -> timedelta:
