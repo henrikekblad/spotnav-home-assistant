@@ -1,8 +1,7 @@
-"""The battery's write path: turns a slot's planned action into the brand's commands, safely. Built, not reachable.
+"""The battery's write path: turns a slot's planned action into the brand's commands, safely.
 
-Nothing runs it in production: `shadow.ON_REACHABLE` is off, no service or setting starts it, and the shell
-(`control.py`) refuses to write while it is off. Tests drive it against fake entities. A later, explicit opt-in will
-use it. It is the one battery write route: since wave 7 the shadow hold for the car (`hold.py`) is a request for
+The shell (`control.py`) runs it only behind the site's gate (`gate.py`: the person's opt-in, the "shadow only" flag,
+off by default, and a passed verification for the plant's firmware). It is the one battery write route: since wave 7 the shadow hold for the car (`hold.py`) is a request for
 this executor's action `hold`, and what it logs comes from `preview`, which runs the executor's own start rules and
 commands on a throw-away instance and returns the writes and the hand-back without writing anything.
 
@@ -23,7 +22,8 @@ How it acts (`step`, one look every few seconds; pure, the shell does the writes
   measurement is lost; the plant leaves the grid; the fuse headroom falls under `RESTORE_HEADROOM_A` (or a grid
   charge cannot keep `MIN_RATE_KW` within it); the battery's management changes (its own optimiser, another planner,
   an app taking Remote EMS back: blocked, the block clears by itself after `MANAGEMENT_BLOCK_S`) or reads unknown
-  past `MANAGEMENT_GRACE_S` (handed back as stale data is, not blocked) or the site's battery is no longer that brand; someone else changes a control
+  past `MANAGEMENT_GRACE_S` (handed back as stale data is, not blocked) or the site's battery is no longer that brand
+  (a plant in its own optimiser is taken only when the person acknowledged the takeover, `ExecInputs.takeover`); someone else changes a control
   SpotNav owns (that control is given up and not written back over the other system, as the ledger says); a write
   is not taken; the monitor sees no effect; the day's write cap is reached. After a restart a stored snapshot is
   restored before anything else. A role SpotNav wrote is restored by writing its snapshot and reading it back even
@@ -219,6 +219,9 @@ class ExecInputs:
     #: SpotNav's other control instance on this plant runs it now (the battery control's Remote EMS): the modes it
     #: leaves (`BrandControl.own_states`) are SpotNav's own, not the plant's own management, for this instance too.
     sibling_active: bool = False
+    #: The person acknowledged that SpotNav may take the plant over from its own optimiser (`BrandControl.takeover`,
+    #: Sigenergy's AI mode); without it such a plant is only watched.
+    takeover: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -497,10 +500,35 @@ def _restore_value(role: Role, state: str | None, facts: BatteryFacts) -> Native
     return reading(role, state)
 
 
-def management_problem(facts: BatteryFacts, control: BrandControl, active: bool) -> str | None:
-    """Why the battery is not SpotNav's to run now; `unknown` when a setting cannot be read."""
+def taken_over(facts: BatteryFacts, control: BrandControl) -> bool:
+    """Whether the battery runs only its own optimiser in a mode SpotNav may take it over from
+    (`BrandControl.takeover`: Sigenergy's AI mode), with every other mode setting free."""
+    management = facts.management
+    if management.state != "self_managed" or not control.takeover:
+        return False
+    seen = False
+    for rule in control.adapter.modes:
+        if rule.label not in management.settings:
+            continue
+        state = management.settings[rule.label]
+        if state in rule.free:
+            continue
+        if state is not None and state in control.takeover.get(rule.label, frozenset()):
+            seen = True
+            continue
+        return False
+    return seen
+
+
+def management_problem(
+    facts: BatteryFacts, control: BrandControl, active: bool, *, takeover: bool = False
+) -> str | None:
+    """Why the battery is not SpotNav's to run now; `unknown` when a setting cannot be read. `takeover`: the person
+    acknowledged that SpotNav may take the plant over from its own optimiser (`taken_over`)."""
     management = facts.management
     if management.state == "free":
+        return None
+    if takeover and taken_over(facts, control):
         return None
     if management.state == "externally_controlled" or management.reason.startswith("planner:") or not active:
         # Another system drives it (`outside_control.py`): SpotNav only watches, whatever the modes read.
@@ -796,7 +824,9 @@ class Executor:
             return "fuse_headroom"
         # The battery's own instance runs the Remote EMS it turned on; the export instance only while the battery's
         # runs it (`sibling_active`): one taken by another controller (the app, a VPP) ends the curtail.
-        management = management_problem(facts, self.control, active=inputs.sibling_active if self._export else True)
+        management = management_problem(
+            facts, self.control, active=inputs.sibling_active if self._export else True, takeover=inputs.takeover
+        )
         if management == "unknown":
             since = self.state.management_unknown_since or inputs.now
             self.state = replace(self.state, management_unknown_since=since)
@@ -943,7 +973,7 @@ class Executor:
             return problem
         if facts.brand != self.control.brand:
             return "brand_mismatch"
-        management = management_problem(facts, self.control, active=inputs.sibling_active)
+        management = management_problem(facts, self.control, active=inputs.sibling_active, takeover=inputs.takeover)
         if management is not None:
             return management
         if facts.on_grid is False:

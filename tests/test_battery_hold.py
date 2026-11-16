@@ -178,6 +178,20 @@ def test_a_battery_that_runs_itself_is_left_alone_once_per_grid_charge() -> None
     assert [d.action for d in again] == ["left_alone"]
 
 
+def test_a_battery_in_ai_mode_is_held_when_the_person_acknowledged_the_takeover() -> None:
+    facts = _facts(management="self_managed")
+    memory, decisions = _run(
+        HoldMemory(),
+        _inputs(T0, facts=facts, takeover=True),
+        _inputs(T0 + timedelta(seconds=ARM_S), facts=facts, takeover=True),
+    )
+    assert [d.action for d in decisions] == ["would_write"]
+    assert memory.held and requested_action(memory) == "hold"
+    # Held under the takeover, the AI mode reading is no reason to let go.
+    memory, decisions = _run(memory, _inputs(T0 + timedelta(seconds=ARM_S + 10), facts=facts, takeover=True))
+    assert decisions == [] and memory.held
+
+
 def test_a_charging_battery_is_never_held() -> None:
     facts = _facts(2.5)
     memory, decisions = _run(HoldMemory(), *[_inputs(T0 + timedelta(seconds=s), facts=facts) for s in (0, 60, 120, 180)])

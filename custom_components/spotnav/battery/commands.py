@@ -19,8 +19,10 @@ The entity keys, options and services below were checked against each integratio
   (`unknown_is_unset`), never written back as `unknown`, and an `unknown` read-back is never a confirmed write.
   Remote EMS: limits first, then the switch, then the control mode; back: the control mode to Maximum Self
   Consumption (so 40031 never keeps a command for the next one who turns Remote EMS on), the switch off, the limits
-  back. Only a plant in Maximum Self Consumption is ever taken (`adapters.SIGENERGY`'s mode rule), and turning
-  Remote EMS off lands there (research §2.2), so the hand-back is clean. The discharge cut-off SoC is never
+  back. A plant is taken in Maximum Self Consumption (`adapters.SIGENERGY`'s mode rule), or in AI mode once the
+  person acknowledged the takeover (`BrandControl.takeover`); turning Remote EMS off lands in Maximum Self
+  Consumption either way (research §2.2), so the hand-back is clean and a plant taken from AI mode is not put back
+  in it (the person is reminded to set it again in the app). The discharge cut-off SoC is never
   written: with it above the SoC the plant grid-charges to reach it (research §3.1 D).
 * **SolarEdge Modbus Multi**, `solaredge_modbus_multi`, WillCodeForCats `0ab6569f1e20bb5abf735e5b5edf253cd8766cfd`:
   only while the storage control mode is already Remote Control (`select.py` `StorageControlMode`, option 4): the
@@ -142,6 +144,10 @@ class BrandControl:
     #: Mode-rule labels and the states SpotNav's own commands leave them in (a plant in Remote EMS that SpotNav
     #: turned on is not "managed by its own system").
     own_states: Mapping[str, frozenset[str]] = field(default_factory=dict)
+    #: Mode-rule labels and the states of the plant's own optimiser that SpotNav may take the plant over from, only
+    #: once the person acknowledged it (`ExecInputs.takeover`, the site's `battery_control_ai_takeover_ack`):
+    #: Sigenergy's AI mode. Its hand-back lands in the brand's plain mode, not back in the optimiser.
+    takeover: Mapping[str, frozenset[str]] = field(default_factory=dict)
     #: The roles renewed to keep a watchdog alive (`WATCHDOG_RENEW_S`); empty when the brand has none.
     watchdog_roles: tuple[str, ...] = ()
     #: Roles that must read a value before anything is written (`(role, allowed states, reason)`).
@@ -251,6 +257,9 @@ SIGENERGY_CONTROL: Final = BrandControl(
     enter_order=("charge_limit", "discharge_limit", "remote_ems", "control_mode"),
     restore_order=("control_mode", "remote_ems", "charge_limit", "discharge_limit"),
     own_states={"EMS work mode": frozenset({"remote_ems"})},
+    # AI mode (owner 2026-11-16): taken over only after the person acknowledged that turning control off leaves the
+    # plant in Maximum Self Consumption (Remote EMS off lands there), not in AI mode.
+    takeover={"EMS work mode": frozenset({"ai_mode"})},
     requires=(("remote_ems", frozenset({"off"}), "remote_ems_already_on"),),
     # A hold is the discharge limit at 0: lifting it lets the battery cover a peak at once (SigenStor covers each
     # phase on its own). A grid charge stops with the mode back at Maximum Self Consumption.
@@ -393,6 +402,7 @@ SIGENERGY_EXPORT_CONTROL: Final = BrandControl(
     restore_order=("export_limit",),
     # The battery control's own Remote EMS is not "managed by its own system" for the export limit either.
     own_states={"EMS work mode": frozenset({"remote_ems"})},
+    takeover={"EMS work mode": frozenset({"ai_mode"})},
     kind="export",
     note="Grid Export Limitation (40038) applies in every EMS mode and needs the plant's grid sensor; a never-set"
     " limit is restored as the plant's maximum output.",

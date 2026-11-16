@@ -88,6 +88,9 @@ class HoldInputs:
     car_kw: float | None = None
     #: The brand's control roles as found now (`executor.role_reads`).
     reads: Mapping[str, RoleRead] = field(default_factory=dict)
+    #: The person acknowledged that SpotNav may take the plant over from its own optimiser (Sigenergy's AI mode,
+    #: `executor.ExecInputs.takeover`).
+    takeover: bool = False
 
 
 def _natives(raw: Any) -> dict[str, Native]:
@@ -226,6 +229,7 @@ def _exec_inputs(inputs: HoldInputs) -> ExecInputs:
         measurement_ok=inputs.measurement_ok,
         headroom_a=inputs.headroom_a,
         volts_between_phases=inputs.volts_between_phases,
+        takeover=inputs.takeover,
     )
 
 
@@ -318,7 +322,7 @@ def _restore_reason(inputs: HoldInputs, memory: HoldMemory) -> str | None:
         return "no_brand_control"
     # The hold's own writes turn Remote EMS on: that is SpotNav's, not the plant's own management. A reading that
     # blinks (`unknown`) is the executor's to judge after its grace.
-    management = management_problem(facts, control, active=True)
+    management = management_problem(facts, control, active=True, takeover=inputs.takeover)
     if management is not None and management != "unknown":
         return management
     for name in memory.entities:
@@ -362,7 +366,7 @@ def step(memory: HoldMemory, inputs: HoldInputs) -> tuple[HoldMemory, HoldDecisi
     if control is None:
         management = None if facts.management.state == "free" else f"{facts.management.state}:{facts.management.reason}"
     else:
-        management = management_problem(facts, control, active=True)
+        management = management_problem(facts, control, active=True, takeover=inputs.takeover)
     if management is not None:
         return _note(memory, "left_alone", management, inputs)
     seen = would_hold(inputs, memory.writes_today)
