@@ -169,11 +169,11 @@ describe("the Electricity price section", () => {
     expect(section.querySelector("[data-row='area']")).not.toBeNull();
   });
 
-  it("names only the price for one charger, in the reader's language", async () => {
+  it("leaves out the name of a price only one charger uses: the area says it", async () => {
     const { element } = await open(dashboard(priceSource({ charger_count: 1 })), { language: "sv" });
     await settle();
     const section = priceSection(element);
-    expect(section.querySelector("[data-price-source]")?.textContent).toBe("Elpris SE4");
+    expect(section.querySelector("[data-price-source]")).toBeNull();
     expect(section.querySelector("[data-price-shared]")).toBeNull();
   });
 

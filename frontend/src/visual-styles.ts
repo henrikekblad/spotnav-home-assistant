@@ -298,6 +298,7 @@ export const VISUAL_CLASSES = {
   historyBarPart: "spotnav-history-bar-part",
   historyLegend: "spotnav-history-legend",
   linkButton: "spotnav-link-button",
+  settingsMore: "spotnav-settings-more",
   historyAxis: "spotnav-history-axis",
   historyScale: "spotnav-history-scale",
   historyReadout: "spotnav-history-readout",
@@ -2931,6 +2932,21 @@ export const VISUAL_STYLES = `
     text-decoration: underline;
     text-underline-offset: 3px;
     cursor: pointer;
+  }
+  /* Settings that are off, folded under one link ("More fees"); a row opened from it is a normal row. */
+  .${VISUAL_CLASSES.settingsMore} > summary {
+    list-style: none;
+    color: var(--secondary-text-color, #727272);
+  }
+  .${VISUAL_CLASSES.settingsMore} > summary::-webkit-details-marker {
+    display: none;
+  }
+  .${VISUAL_CLASSES.settingsMore} > summary::after {
+    content: " ▾";
+    text-decoration: none;
+  }
+  .${VISUAL_CLASSES.settingsMore}[open] > summary::after {
+    content: " ▴";
   }
   .${VISUAL_CLASSES.linkButton}:focus-visible {
     outline: 2px solid var(--primary-color, #03a9f4);

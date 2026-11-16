@@ -497,7 +497,7 @@ describe("the supplier's markup and what a sold kWh earns", () => {
     expect(keys.indexOf("sell_adjustment")).toBe(keys.indexOf("supplier_markup") + 1);
     const row = (key: string) => priceSection(element).querySelector(`[data-row='${key}']`)!;
     expect(row("supplier_markup").textContent).toBe("Påslag från elhandlaren4,5 öre/kWh");
-    expect(row("sell_adjustment").textContent).toBe("Såld kWh: tillägg eller avdrag−2 öre/kWh");
+    expect(row("sell_adjustment").textContent).toBe("Påslag för såld el−2 öre/kWh");
     // The grid fee included in the price locks the grid tariff's rows, not the supplier's.
     expect(row("supplier_markup").querySelector("button")).not.toBeNull();
     const before = await open(dashboard(NOTHING));

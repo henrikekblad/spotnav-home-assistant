@@ -155,17 +155,46 @@ export function priceSectionBody(input: PriceSectionInput): HTMLElement {
         ),
     }),
   );
+  // The fees that are set, in their usual order; the ones that are off behind "More fees", so a price with VAT, tax and
+  // a grid fee is a short list.
+  const more: HTMLElement[] = [];
+  const place = (nodes: HTMLElement[], set: boolean): void => {
+    if (set) {
+      section.append(...nodes);
+    } else {
+      more.push(...nodes);
+    }
+  };
+  const block = facts.gridTariff;
   for (const fiscal of fiscalRows(language, facts.fiscal)) {
     const component = fiscal.key as FiscalComponentName;
     const included = facts.fiscal?.[component].policy === "included";
     section.append(input.row(fiscal.key, fiscal.label, fiscal.value, included ? undefined : () => input.editFiscal(component)));
     if (component === "transfer") {
-      section.append(...gridTariffNodes(input));
+      for (const node of gridTariffNodes(input)) {
+        const key = node.dataset["row"] ?? "";
+        place([node], block === null || feeSet(key === "transfer_percent" ? block.transfer_percent : block.transfer_high));
+      }
     }
   }
-  section.append(...supplierNodes(input));
-  section.append(...demandNodes(input));
+  for (const node of supplierNodes(input)) {
+    const fee = node.dataset["row"] === "supplier_markup" ? block?.supplier_markup : block?.sell_adjustment;
+    place([node], fee == null || feeSet(fee));
+  }
+  place(demandNodes(input), (block?.demand?.components.length ?? 0) > 0);
+  if (more.length > 0) {
+    const details = element(doc, "details", C.settingsMore);
+    details.dataset["more"] = "fees";
+    const summary = element(doc, "summary", C.linkButton, translate(language, "price.moreFees"));
+    details.append(summary, ...more);
+    section.append(details);
+  }
   return section;
+}
+
+/** A fee counts as set while it is on (or held in the area's price); off, it waits under "More fees". */
+function feeSet(fee: { policy: string; effective_value: number | null }): boolean {
+  return fee.policy === "included" || (fee.policy !== "off" && fee.effective_value !== null);
 }
 
 /**
@@ -355,9 +384,12 @@ function priceEntryNodes(input: PriceSectionInput): HTMLElement[] {
           title,
           count: String(count),
         });
-  const sourceLine = element(doc, "p", C.siteApplies, sourceText);
-  sourceLine.dataset["priceSource"] = entry.entryId;
-  nodes.push(sourceLine);
+  // The entry's own name only says something when other chargers share it; alone it repeats the area.
+  if (count > 1) {
+    const sourceLine = element(doc, "p", C.siteApplies, sourceText);
+    sourceLine.dataset["priceSource"] = entry.entryId;
+    nodes.push(sourceLine);
+  }
   if (count > 1) {
     const shared = element(doc, "p", C.siteApplies, translate(language, "price.shared"));
     shared.dataset["priceShared"] = "";

@@ -185,7 +185,7 @@ Settings, below the grid fees. Neither has a suggestion: take them from your con
   **without VAT**, like the tax and the grid fee: VAT is added on top. It is a real cost, so it is in every plan's
   price, in what a charge cost and in the charge history; it adds the same to every hour, so it hardly moves when a
   plan charges. A grid fee that is a percentage of spot stays a percentage of the spot price alone.
-- **Sold kWh: extra or deduction**. What each kWh you sell earns beyond the spot price, **as it is paid out,
+- **Extra for sold power**. What each kWh you sell earns beyond the spot price, **as it is paid out,
   without VAT** (a private seller charges none): your grid operator's credit for production (*nätnytta*, a few öre
   in Sweden) plus or minus what your supplier adds or deducts for bought-back power. A deduction is a negative
   figure. A sold kWh earns spot + this figure, and nothing else is added to it. The home battery's plan, the
