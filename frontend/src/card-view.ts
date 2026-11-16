@@ -4422,10 +4422,7 @@ export function createCardView(input: CardViewInput): CardView {
     vehicleDialog.hide({ restoreFocus: false });
     entityDialog.hide({ restoreFocus: false });
     settingsOverviewDialog.show({
-      title:
-        model.chargerName === null
-          ? translate(model.language, "settings.overview.title")
-          : translate(model.language, "settings.overview.titleNamed", { name: model.chargerName }),
+      title: translate(model.language, "settings.overview.title"),
       body: settingsOverviewBody(),
       opener: settingsGeneral,
     });
