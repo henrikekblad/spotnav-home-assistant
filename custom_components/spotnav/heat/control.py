@@ -362,9 +362,9 @@ class HeatControl:
             if self.held and (self.hass.states.get(self.relay) is None or self._open_failures >= OPEN_TRIES):
                 # Removed, or it does not open: let go (logged) rather than stay stuck on it; the new relay is taken
                 # up. Nothing more can be written to it.
+                gone = self.hass.states.get(self.relay) is None
                 _LOGGER.warning(
-                    "SpotNav heat control: %s, held closed, %s; let go", self.relay,
-                    "is gone" if self.hass.states.get(self.relay) is None else "did not open",
+                    "SpotNav heat control: %s, held closed, %s; let go", self.relay, "is gone" if gone else "did not open"
                 )
                 self._log(now, "relay_let_go", relay=self.relay)
                 self.pending = None
@@ -402,7 +402,8 @@ class HeatControl:
                 if self.held:
                     self._reopen = True
             elif now - self.pending.at > READ_BACK:
-                if not self.pending.closed and self._own_reopen_at is not None and self.pending.at >= self._own_reopen_at and read is True:
+                own_reopen = self._own_reopen_at is not None and self.pending.at >= self._own_reopen_at
+                if not self.pending.closed and own_reopen and read is True:
                     # SpotNav opened what it took for its own late closing once; still closed: someone else's.
                     self.pending = None
                     self._log(now, "foreign_close")
@@ -449,7 +450,11 @@ class HeatControl:
             await self._async_write(False, now, why="own_late_close")
             return
         # Never fight another writer, but only on a change that reads on two looks a minute apart.
-        foreign = "open" if self.held and read is False else "close" if not self.held and read is True and self._expect is False else None
+        foreign = None
+        if self.held and read is False:
+            foreign = "open"
+        elif not self.held and read is True and self._expect is False:
+            foreign = "close"
         if foreign is None:
             self._foreign = None
         elif self._foreign is None or self._foreign[0] != foreign:
