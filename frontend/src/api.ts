@@ -25,8 +25,8 @@ import type { EntityRequest, VehicleSocRequest } from "./entity-config";
 import type { SiteSettingsRequest } from "./site-settings";
 import type { GridTariffBody } from "./grid-tariff";
 import { SUGGEST_IMPORT_TARGET_API_VERSION } from "./target-suggestion";
-import { HEAT_API_VERSION } from "./heat-model";
-import { HOUSE_API_VERSION } from "./house-model";
+import { HEAT_API_VERSION, HEAT_HISTORY_API_VERSION } from "./heat-model";
+import { HOUSE_API_VERSION, HOUSE_HISTORY_API_VERSION } from "./house-model";
 import { BATTERY_CONTROL_API_VERSION, SITE_VIEW_API_VERSION } from "./site-model";
 
 export const UNSUPPORTED_API_VERSION = "spotnav_unsupported_api_version";
@@ -667,6 +667,27 @@ export async function getHouse(hass: HomeAssistantLike, target: { site: string }
     api_version: HOUSE_API_VERSION,
     ...("site" in target ? { site_id: target.site } : { charger_id: target.charger }),
     // A past local day (`YYYY-MM-DD`); left out for today, so an older backend is asked as before.
+    ...(date === null ? {} : { date }),
+  });
+}
+
+/**
+ * One day, month or year of a site's house (`spotnav/get_house_history`) or heating (`spotnav/get_heat_history`):
+ * `period` and a day inside it (`YYYY-MM-DD`, `null` for today's); `unknown` until `decodeHouseHistory()` or
+ * `decodeHeatHistory()` decodes it. Read-only; any signed-in user may read it.
+ */
+export async function getPeriodHistory(
+  hass: HomeAssistantLike,
+  kind: "house" | "heat",
+  target: { site: string } | { charger: string },
+  period: "day" | "month" | "year",
+  date: string | null,
+): Promise<unknown> {
+  return await call<unknown>(hass, {
+    type: kind === "house" ? "spotnav/get_house_history" : "spotnav/get_heat_history",
+    api_version: kind === "house" ? HOUSE_HISTORY_API_VERSION : HEAT_HISTORY_API_VERSION,
+    ...("site" in target ? { site_id: target.site } : { charger_id: target.charger }),
+    period,
     ...(date === null ? {} : { date }),
   });
 }

@@ -4,6 +4,8 @@
 // (the card and the integration ship together, so a key the card does not know is a mismatch to fix, not to skip).
 
 export const HEAT_API_VERSION = 1;
+/** `spotnav/get_heat_history`'s version (`heat-history.ts`). */
+export const HEAT_HISTORY_API_VERSION = 1;
 
 export type Spec =
   | "number"

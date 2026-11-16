@@ -3,6 +3,8 @@
 // (additive fields); a missing or mistyped one makes the whole answer unreadable, never half-shown.
 
 export const HOUSE_API_VERSION = 1;
+/** `spotnav/get_house_history`'s version (`house-history.ts`). */
+export const HOUSE_HISTORY_API_VERSION = 1;
 
 export type BatteryAction = "grid_charge" | "export_discharge" | "hold";
 const BATTERY_ACTIONS: readonly BatteryAction[] = ["grid_charge", "export_discharge", "hold"];
@@ -492,6 +494,9 @@ function energyFlow(value: unknown): EnergyFlow | null {
     links: links.filter((link) => ids.has(link.from) && ids.has(link.to)),
   };
 }
+
+/** The energy flow block as `spotnav/get_house` and `spotnav/get_house_history` send it (`null` stays `null`). */
+export const decodeEnergyFlow = energyFlow;
 
 function shownDay(value: unknown): ShownDay | null {
   if (value === null) {
