@@ -187,6 +187,9 @@
   "services": {
     "get_prices": {
       "service": "mdi:cash-multiple"
+    },
+    "export_day": {
+      "service": "mdi:archive-arrow-down"
     }
   }
 }

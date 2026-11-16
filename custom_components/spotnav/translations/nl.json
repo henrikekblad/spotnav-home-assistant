@@ -1071,6 +1071,21 @@
     },
     "high_load_window_required": {
       "message": "Stel eerst de piekuren in: op het elektriciteitsprijsapparaat (Piekuren beginnen en eindigen, bij de verborgen entiteiten) of in de kaart."
+    },
+    "export_site_unknown": {
+      "message": "Geen geladen SpotNav-locatie heeft die id."
+    },
+    "export_no_site": {
+      "message": "Er is geen geladen SpotNav-locatie om te exporteren."
+    },
+    "export_site_required": {
+      "message": "Er is meer dan één locatie: geef aan welke geëxporteerd moet worden."
+    },
+    "export_date_future": {
+      "message": "Die dag is nog niet begonnen."
+    },
+    "export_write_failed": {
+      "message": "De dagrecords konden niet naar {path} worden geschreven."
     }
   },
   "services": {
@@ -1093,6 +1108,20 @@
         "end": {
           "name": "Einde",
           "description": "Waar het stopt (standaard: het einde van morgen als die prijzen gepubliceerd zijn, anders het einde van vandaag)."
+        }
+      }
+    },
+    "export_day": {
+      "name": "Dagrecords exporteren",
+      "description": "Schrijft één dag van een locatie, zoals SpotNav die besliste en mat, naar een JSON-bestand in de configuratiemap (spotnav_archive): de voorspellingen met hun uitkomst, de prijzen, de kwartieren en de evaluatie van het batterijplan, de uren van het huis, de instellingen en de schaduwlogboeken. Antwoordt met het pad van het bestand en de aantallen.",
+      "fields": {
+        "site": {
+          "name": "Locatie",
+          "description": "De te exporteren locatie. Weglaten als er maar één is."
+        },
+        "date": {
+          "name": "Datum",
+          "description": "De te exporteren lokale dag (standaard: gisteren)."
         }
       }
     }

@@ -1071,6 +1071,21 @@
     },
     "high_load_window_required": {
       "message": "Angi høylasttimene først: på strømprisenheten (Høylasttimer starter og slutter, blant de skjulte entitetene) eller i kortet."
+    },
+    "export_site_unknown": {
+      "message": "Ingen innlastet SpotNav-anlegg har den id-en."
+    },
+    "export_no_site": {
+      "message": "Det finnes ikke noe innlastet SpotNav-anlegg å eksportere."
+    },
+    "export_site_required": {
+      "message": "Det finnes mer enn ett anlegg: angi hvilket som skal eksporteres."
+    },
+    "export_date_future": {
+      "message": "Det døgnet har ikke begynt ennå."
+    },
+    "export_write_failed": {
+      "message": "Døgnets data kunne ikke skrives til {path}."
     }
   },
   "services": {
@@ -1093,6 +1108,20 @@
         "end": {
           "name": "Slutt",
           "description": "Hvor det stopper (standard: slutten av i morgen når de prisene er publisert, ellers slutten av i dag)."
+        }
+      }
+    },
+    "export_day": {
+      "name": "Eksporter et døgns data",
+      "description": "Skriver et døgn for et anlegg, slik SpotNav besluttet og målte det, til en JSON-fil i konfigurasjonsmappen (spotnav_archive): prognosene med utfall, prisene, batteriplanens kvarter og evaluering, husets timer, innstillingene og skyggeloggene. Svarer med filens sti og antall.",
+      "fields": {
+        "site": {
+          "name": "Anlegg",
+          "description": "Anlegget som skal eksporteres. Utelat når det bare finnes ett."
+        },
+        "date": {
+          "name": "Dato",
+          "description": "Det lokale døgnet som skal eksporteres (standard: i går)."
         }
       }
     }

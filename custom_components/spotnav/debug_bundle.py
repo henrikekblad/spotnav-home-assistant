@@ -91,6 +91,11 @@ days), and each day's review (30 days) (`site/house_forecast.py`). On a site wit
 the house figure is (`basis`: `net`, or `gross`, the house's whole load), how the sun's production was read
 (`production`), the battery plan's median (`median`), the import target's net forecast (`import_forecast`), the
 whole load's hours in `history` (`gross_*`) and its log kind `import_kw`.
+
+Since 3.0 a site section also carries `day_records` (additive, no new version): the last three completed days as the
+`export_day` service writes them (`day_record.py`, schema 1, newest first, without the chargers' plug-ins, which are
+under `chargers` already): the forecast log's rows and reviews of each day, its prices, the battery plan's quarter
+hours and review, the house's hours, the settings and the shadow logs of the switched load and the export limit.
 """
 
 from __future__ import annotations
@@ -128,6 +133,7 @@ from .const import (
     ENTRY_TYPE_PRICE,
     ENTRY_TYPE_SITE,
 )
+from .day_record import bundle_days
 from .debug_day import history_block
 from .diagnostics import _price_data, entry_diagnostics, TO_REDACT
 from .site.detected_hass import async_detected
@@ -551,6 +557,13 @@ async def async_build_debug_bundle(hass: HomeAssistant) -> dict[str, Any]:
             _LOGGER.warning("The debug bundle could not read what a site detected: %s", type(err).__name__)
             detected = {"available": False, "reason": "read_failed"}
         controller = site_controller_for(hass, entry.entry_id)
+        day_records: Any = []
+        if controller is not None:
+            try:
+                day_records = bundle_days(hass, entry, controller, dt_util.utcnow())
+            except Exception as err:  # noqa: BLE001 - the days kept must not cost the whole bundle
+                _LOGGER.warning("The debug bundle could not read a site's day records: %s", type(err).__name__)
+                day_records = {"available": False, "reason": "read_failed"}
         site_sections.append(
             {
                 "entry_id": entry.entry_id,
@@ -561,6 +574,8 @@ async def async_build_debug_bundle(hass: HomeAssistant) -> dict[str, Any]:
                 # What SpotNav detected, with the near-misses (`site/detected.py`).
                 "detected": detected,
                 "history_24h": None if controller is None else controller.history_samples,
+                # The last completed days as `export_day` writes them (`day_record.py`).
+                "day_records": day_records,
             }
         )
     vehicle_entities = [

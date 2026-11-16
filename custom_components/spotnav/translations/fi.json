@@ -1071,6 +1071,21 @@
     },
     "high_load_window_required": {
       "message": "Aseta huippukuormitustunnit ensin: sähkön hinnan laitteella (Huippukuormitustunnit alkavat ja päättyvät, piilotettujen entiteettien joukossa) tai kortissa."
+    },
+    "export_site_unknown": {
+      "message": "Millään ladatulla SpotNav-kohteella ei ole tätä tunnistetta."
+    },
+    "export_no_site": {
+      "message": "Vietävää ladattua SpotNav-kohdetta ei ole."
+    },
+    "export_site_required": {
+      "message": "Kohteita on useampi: nimeä vietävä kohde."
+    },
+    "export_date_future": {
+      "message": "Tämä vuorokausi ei ole vielä alkanut."
+    },
+    "export_write_failed": {
+      "message": "Vuorokauden tietoja ei voitu kirjoittaa kohteeseen {path}."
     }
   },
   "services": {
@@ -1093,6 +1108,20 @@
         "end": {
           "name": "Loppu",
           "description": "Mihin lopetetaan (oletus: huomisen loppu, kun sen hinnat on julkaistu, muuten tämän päivän loppu)."
+        }
+      }
+    },
+    "export_day": {
+      "name": "Vie vuorokauden tiedot",
+      "description": "Kirjoittaa yhden kohteen vuorokauden, sellaisena kuin SpotNav sen päätti ja mittasi, JSON-tiedostoon asetuskansioon (spotnav_archive): ennusteet toteumineen, hinnat, akkusuunnitelman varttitunnit ja arvion, talon tunnit, asetukset ja varjolokit. Vastaa tiedoston polulla ja määrillä.",
+      "fields": {
+        "site": {
+          "name": "Kohde",
+          "description": "Vietävä kohde. Jätä pois, kun kohteita on vain yksi."
+        },
+        "date": {
+          "name": "Päivä",
+          "description": "Vietävä paikallinen vuorokausi (oletus: eilen)."
         }
       }
     }

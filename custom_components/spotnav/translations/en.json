@@ -1071,6 +1071,21 @@
     },
     "high_load_window_required": {
       "message": "Set the high-load hours first: on the electricity price device (High-load hours start and end, shown under its hidden entities) or in the card."
+    },
+    "export_site_unknown": {
+      "message": "No loaded SpotNav site has that id."
+    },
+    "export_no_site": {
+      "message": "There is no loaded SpotNav site to export."
+    },
+    "export_site_required": {
+      "message": "There is more than one site: name the one to export."
+    },
+    "export_date_future": {
+      "message": "That day has not begun yet."
+    },
+    "export_write_failed": {
+      "message": "The day's records could not be written to {path}."
     }
   },
   "services": {
@@ -1093,6 +1108,20 @@
         "end": {
           "name": "End",
           "description": "Where to stop (default: the end of tomorrow when its prices are published, else the end of today)."
+        }
+      }
+    },
+    "export_day": {
+      "name": "Export a day's records",
+      "description": "Writes one site's day as SpotNav decided and measured it to a JSON file in the configuration folder (spotnav_archive): the forecasts with their outcomes, the prices, the battery plan's quarter hours and review, the house's hours, the settings and the shadow logs. Answers with the file's path and counts.",
+      "fields": {
+        "site": {
+          "name": "Site",
+          "description": "The site to export. Leave it out when there is only one."
+        },
+        "date": {
+          "name": "Date",
+          "description": "The local day to export (default: yesterday)."
         }
       }
     }
