@@ -6,7 +6,9 @@
 // * A block is never shorter than `MIN_NODE` (its words must fit), the rest of the height is shared by energy; every
 //   band has one scale (the fullest block's), so a band is as thick at both ends, and a block made taller for its
 //   words holds its bands centred.
-// * A block below `MIN_SHOWN_KWH` is left out with its bands (a use with no energy today, a car that did not charge).
+// * A block below `MIN_SHOWN_KWH` is left out with its bands (a use with no energy today, a car that did not charge),
+//   and so is a block left with no band (all its energy went to or came from blocks left out): no block stands
+//   alone. A band is never thinner than `MIN_BAND` px, so none is drawn without width.
 // * A role the card does not know (a newer backend's) is drawn in a neutral colour under its own name; a car giving
 //   energy back would come as `car` on the source side and is drawn as the car.
 // * The colours are custom properties a theme may set (`--spotnav-flow-solar` and so on), each fill bright enough for
@@ -29,6 +31,8 @@ const BLOCK_ROOM = 80;
 /** Blocks with less energy (kWh) are not drawn. */
 export const MIN_SHOWN_KWH = 0.05;
 const GAP = 6;
+/** The thinnest band (px). */
+export const MIN_BAND = 1.5;
 
 const ROLE_WORDS: Record<string, TranslationKey> = {
   solar: "house.flow.solar",
@@ -122,7 +126,9 @@ export function flowLabels(language: Language, total: number, past = false): Flo
 
 /** The diagram, `width` px wide; `null` when nothing is left to draw. */
 export function renderFlow(doc: Document, language: Language, flow: EnergyFlow, width: number, idPrefix: string, past = false): SVGSVGElement | null {
-  const shown = flow.nodes.filter((node) => node.kwh >= MIN_SHOWN_KWH);
+  const big = new Set(flow.nodes.filter((node) => node.kwh >= MIN_SHOWN_KWH).map((node) => node.id));
+  const linked = new Set(flow.links.filter((link) => link.kwh > 0 && big.has(link.from) && big.has(link.to)).flatMap((link) => [link.from, link.to]));
+  const shown = flow.nodes.filter((node) => linked.has(node.id));
   const sources = shown.filter((node) => node.side === "source");
   const uses = shown.filter((node) => node.side === "use");
   if (sources.length === 0 || uses.length === 0) {
@@ -166,10 +172,10 @@ export function renderFlow(doc: Document, language: Language, flow: EnergyFlow, 
     const otherOrder = [...otherMap.keys()];
     for (const [id, block] of placedMap) {
       const mine = links.filter((link) => link[key] === id).sort((a, b) => otherOrder.indexOf(a[otherKey]) - otherOrder.indexOf(b[otherKey]));
-      const used = mine.reduce((sum, link) => sum + link.kwh * scale, 0);
+      const used = mine.reduce((sum, link) => sum + Math.max(MIN_BAND, link.kwh * scale), 0);
       let y = block.y + Math.max(0, (block.h - used) / 2);
       for (const link of mine) {
-        const thick = link.kwh * scale;
+        const thick = Math.max(MIN_BAND, link.kwh * scale);
         target.set(link, [y, y + thick]);
         y += thick;
       }
