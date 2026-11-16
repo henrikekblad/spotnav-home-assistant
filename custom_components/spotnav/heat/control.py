@@ -91,6 +91,8 @@ RETRY_OPEN: Final = timedelta(minutes=5)
 FOREIGN_CONFIRM: Final = timedelta(seconds=60)
 #: A closed reading this soon after SpotNav's own write is SpotNav's own closing (late or bounced): opened once.
 OWN_WINDOW: Final = timedelta(minutes=5)
+#: Openings of a relay no longer chosen that were not read back before SpotNav lets it go.
+OPEN_TRIES: Final = 3
 #: How long a service call may take.
 CALL_TIMEOUT_S: Final = 10.0
 #: How long the shutdown waits for the opening to be read back (s).
@@ -182,6 +184,8 @@ class HeatControl:
         #: SpotNav's last write, and when it opened a late reading of its own closing (once per closing).
         self._own_at: datetime | None = None
         self._own_reopen_at: datetime | None = None
+        #: Openings in a row not read back.
+        self._open_failures = 0
         self._levels: Levels | None = None
         #: Whether anything can show the check an effect: a power meter or a calculated supply the pump reports.
         self.signal = False
@@ -324,9 +328,18 @@ class HeatControl:
             # The old relay is given back first: opened where SpotNav holds it, read back at the next looks.
             if self.pending is not None and self._read(self.relay) == self.pending.closed:
                 self._confirm(self.pending, now)
+            if self.held and (self.hass.states.get(self.relay) is None or self._open_failures >= OPEN_TRIES):
+                # Removed, or it does not open: let go (logged) rather than stay stuck on it; the new relay is taken
+                # up. Nothing more can be written to it.
+                _LOGGER.warning(
+                    "SpotNav heat control: %s, held closed, %s; let go", self.relay,
+                    "is gone" if self.hass.states.get(self.relay) is None else "did not open",
+                )
+                self._log(now, "relay_let_go", relay=self.relay)
+                self.pending = None
+                self._end_lowering(now)
             if self.held:
                 if self.pending is None or now - self.pending.at > READ_BACK:
-                    self.pending = None
                     await self._async_give_back(now, "relay_changed")
                 if self.held:
                     return
@@ -607,10 +620,12 @@ class HeatControl:
         if not pending.closed:
             self._end_lowering(pending.at)
             self._retry_open_at = None
+            self._open_failures = 0
 
     def _end_lowering(self, at: datetime) -> None:
         if self.held:
             self.last_end = at
+        self._open_failures = 0
         self.held, self.held_since = False, None
         for item in self.lowerings:
             if item[1] is None:
@@ -625,6 +640,7 @@ class HeatControl:
         self._pause(now, WAIT_NO_READ_BACK)
         self._set(STATE_WAITING, self.paused_reason)
         if pending is not None and not pending.closed:
+            self._open_failures += 1
             self._retry_open_at = now + RETRY_OPEN
         elif self.held and self.relay is not None:
             # A closing not seen may still take: opened all the same (the fail-safe); one that reads open is owed
@@ -639,6 +655,8 @@ class HeatControl:
         `READ_BACK` is given up: the opening is written all the same."""
         self.check.abort(why)
         if self.pending is not None and now - self.pending.at > READ_BACK:
+            if not self.pending.closed:
+                self._open_failures += 1
             self.pending = None
         if self.held and self.relay is not None and self.pending is None:
             await self._async_write(False, now, why=why)

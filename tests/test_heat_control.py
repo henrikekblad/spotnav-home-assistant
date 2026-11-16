@@ -568,3 +568,33 @@ async def test_a_relay_found_closed_is_noted_once_and_left_alone(hass: HomeAssis
     await control.async_look(now + MIN)
     assert relay.calls == [] and control.status()["reason"] == "relay_closed"
     assert [item["what"] for item in control.log].count("found_closed") == 1
+
+
+async def _change_relay(hass: HomeAssistant, site: Any) -> Relay:
+    other = Relay(hass, "input_boolean.vp_rele_2")
+    hass.config_entries.async_update_entry(
+        site, data={**site.data, CONF_HEAT: {**site.data[CONF_HEAT], "control_entity": "input_boolean.vp_rele_2"}}
+    )
+    return other
+
+
+async def test_a_removed_relay_held_closed_is_let_go_and_the_new_one_taken_up(hass: HomeAssistant, freezer) -> None:
+    site, control, relay, now = await _running(hass, freezer, 0, 1)
+    await control.async_look(now)
+    await _change_relay(hass, site)
+    hass.states.async_remove(RELAY)
+    for minute in range(5, 20):
+        await control.async_look(now + minute * MIN)
+    assert control.relay == "input_boolean.vp_rele_2" and not control.held
+    assert any(item["what"] == "relay_let_go" for item in control.log)
+
+
+async def test_an_old_relay_that_never_opens_is_let_go_after_a_few_tries(hass: HomeAssistant, freezer) -> None:
+    site, control, relay, now = await _running(hass, freezer, 0, 1)
+    await control.async_look(now)
+    relay.ignore = True
+    await _change_relay(hass, site)
+    for minute in range(5, 60, 2):
+        await control.async_look(now + minute * MIN)
+    assert 2 <= relay.calls.count("off") <= 4
+    assert control.relay == "input_boolean.vp_rele_2" and not control.held
