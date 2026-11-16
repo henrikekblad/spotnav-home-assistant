@@ -233,7 +233,7 @@ async def test_figures_that_cannot_be_read_are_left_out_of_the_answer(hass: Home
     async def no_recorder(*_args: Any, **_kwargs: Any) -> Any:
         raise KeyError("recorder_instance")
 
-    monkeypatch.setattr(house_api, "async_energy_flow", no_recorder)
+    monkeypatch.setattr(house_api, "async_day_flow", no_recorder)
     monkeypatch.setattr(house_api, "async_recorded_soc", no_recorder)
     hass.data.pop(house_api._FLOW_CACHE, None)  # noqa: SLF001
     answer = await ask(hass, 1, api_version=1, site_id=site.entry_id)
@@ -252,3 +252,89 @@ async def test_the_unload_forgets_the_sites_cached_flow(hass: HomeAssistant, fre
     await hass.async_block_till_done()
 
     assert not any(key[0] == site.entry_id for key in hass.data[house_api._FLOW_CACHE])  # noqa: SLF001
+
+
+def _flow_controller(now_box: list) -> Any:
+    from types import SimpleNamespace
+
+    meter = SimpleNamespace(found=False, entity_id=None, kind=None)
+    return SimpleNamespace(
+        demand=SimpleNamespace(tracker=SimpleNamespace(tz="Europe/Stockholm"), now=lambda: now_box[0]),
+        battery_shadow=SimpleNamespace(facts=SimpleNamespace(battery_entity_id=None, soc_pct=None)),
+        house_forecast=SimpleNamespace(heat=SimpleNamespace(meter=meter)),
+        config={},
+    )
+
+
+async def test_today_is_read_by_the_quarter_and_only_the_open_hour_again(hass: HomeAssistant, monkeypatch) -> None:
+    """Within the recorder's short-term window the flow reads 5-minute rows up to the last finished one, keeps the
+    finished hours and reads only the open hour again once a new row is in; a day before the window is read by the
+    hour; today's first minutes are the empty flow."""
+    from datetime import datetime, timedelta, timezone
+
+    from custom_components.spotnav.api import house as house_api
+
+    midnight = datetime(2026, 11, 15, 23, tzinfo=timezone.utc)  # 16 Nov, Stockholm
+    now_box = [midnight + timedelta(hours=2, minutes=7)]
+    controller = _flow_controller(now_box)
+    prefs = {"energy_sources": [{"type": "grid", "stat_energy_from": "sensor.import", "stat_energy_to": "sensor.export"}]}
+    reads: list[tuple] = []
+
+    async def fake_prefs(_hass):
+        return prefs
+
+    async def fake_statistics(_hass, ids, start, end, period):
+        reads.append((start, end, period))
+        step = timedelta(minutes=5) if period == "5minute" else timedelta(hours=1)
+        rows: dict[str, list] = {i: [] for i in ids}
+        moment = start
+        # The recorder has the rows that ended by now less a few seconds.
+        while moment + step <= min(end, now_box[0] - timedelta(seconds=15)):
+            rows["sensor.import"].append({"start": moment, "change": 0.1 if period == "5minute" else 1.2})
+            rows["sensor.export"].append({"start": moment, "change": 0.0})
+            moment += step
+        return rows
+
+    monkeypatch.setattr(house_api, "async_energy_prefs", fake_prefs)
+    monkeypatch.setattr(house_api, "async_statistics", fake_statistics)
+    monkeypatch.setattr(house_api, "short_term_days", lambda _hass: 10)
+    hass.data.pop(house_api._FLOW_CACHE, None)  # noqa: SLF001
+    hass.data.pop(house_api._PERIOD_CACHE, None)  # noqa: SLF001
+
+    flow = await house_api.async_cached_energy_flow(hass, "site", controller)
+    assert reads == [(midnight, now_box[0], "5minute")]
+    assert flow["through"] == (midnight + timedelta(hours=2, minutes=5)).isoformat()
+    assert flow["step_min"] == 15 and flow["hours"] == 9  # 8 quarters and the running one's first row
+    grid = next(node["kwh"] for node in flow["nodes"] if node["id"] == "source.grid")
+    assert grid == 2.5  # 25 rows of 0.1
+
+    # The same 5-minute row: the cache answers.
+    now_box[0] += timedelta(minutes=2)
+    await house_api.async_cached_energy_flow(hass, "site", controller)
+    assert len(reads) == 1
+    # A new row: only the open hour is read again.
+    now_box[0] += timedelta(minutes=3)
+    flow = await house_api.async_cached_energy_flow(hass, "site", controller)
+    assert reads[-1] == (midnight + timedelta(hours=2), now_box[0], "5minute")
+    assert flow["through"] == (midnight + timedelta(hours=2, minutes=10)).isoformat()
+    read = await house_api.async_cached_day_flow(hass, "site", controller)
+    assert read is not None and len(read.periods) == 9 and read.periods[-1].minutes == 10
+
+    # A day all of whose rows are within the last ten days is by the quarter; the one before it by the hour.
+    reads.clear()
+    from datetime import date
+
+    await house_api.async_day_flow(hass, controller, now_box[0], date(2026, 11, 7))
+    assert {period for _s, _e, period in reads} == {"5minute"}
+    reads.clear()
+    old = await house_api.async_energy_flow(hass, controller, now_box[0], date(2026, 11, 6))
+    assert {period for _s, _e, period in reads} == {"hour"} and old["step_min"] == 60 and old["hours"] == 24
+
+    # Today's first minutes: the empty flow until the first row is in.
+    now_box[0] = midnight + timedelta(minutes=3)
+    hass.data.pop(house_api._PERIOD_CACHE, None)  # noqa: SLF001
+    empty = await house_api.async_energy_flow(hass, controller, now_box[0])
+    assert (empty["hours"], empty["links"], empty["through"]) == (0, [], midnight.isoformat())
+    now_box[0] = midnight + timedelta(minutes=5, seconds=40)
+    first = await house_api.async_energy_flow(hass, controller, now_box[0])
+    assert first["hours"] == 1 and first["through"] == (midnight + timedelta(minutes=5)).isoformat()
