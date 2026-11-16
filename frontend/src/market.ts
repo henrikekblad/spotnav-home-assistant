@@ -286,6 +286,12 @@ export interface MarketFormValues {
 export type MarketDrafts = Record<string, Omit<MarketFormValues, "areaId">>;
 
 /**
+ * What the area editor reads from a record: the selected area and the fee rows. A charger's settings record, or an
+ * electricity price's own row (`{area_id, overrides: [row]}`) where a site writes its price (`spotnav/update_price`).
+ */
+export type PriceRecord = Pick<SettingsRecord, "area_id" | "overrides">;
+
+/**
  * One component's draft, read from an accepted row.
  *
  * | stored                     | checkbox  | figure shown        | intent      |
@@ -316,7 +322,7 @@ export function fiscalFormFrom(
  * with absent figures. No suggestion is enabled on the reader's behalf and nothing carries over from
  * another area (a figure in one currency is not a figure in another).
  */
-export function marketFormFor(record: SettingsRecord, areaId: string | null): MarketFormValues {
+export function marketFormFor(record: PriceRecord, areaId: string | null): MarketFormValues {
   const row =
     areaId === null
       ? null
@@ -335,7 +341,7 @@ export function marketFormFor(record: SettingsRecord, areaId: string | null): Ma
  * rewritten.
  */
 export function switchArea(
-  record: SettingsRecord,
+  record: PriceRecord,
   drafts: MarketDrafts,
   current: MarketFormValues | null,
   areaId: string | null,
@@ -407,7 +413,7 @@ export function fiscalUnit(
 
 export function marketAreaIsKnown(
   options: MarketOptionsV1,
-  base: SettingsRecord,
+  base: PriceRecord,
   areaId: string,
 ): boolean {
   return (
@@ -515,7 +521,7 @@ export type MarketReplacementCheck =
  * The selected area's form with one fee changed, as its own editor states it: a figure (the person's own), or
  * `null` for off (the figure that was typed is kept, as the area dialog keeps it).
  */
-export function fiscalValues(record: SettingsRecord, component: FiscalComponent, value: number | null): MarketFormValues {
+export function fiscalValues(record: PriceRecord, component: FiscalComponent, value: number | null): MarketFormValues {
   const values = marketFormFor(record, record.area_id);
   values[component] =
     value === null ? setEnabled(values[component], false) : { enabled: true, value: String(value), intent: "custom" };
@@ -527,6 +533,27 @@ export function marketReplacement(
   values: MarketFormValues,
   options: MarketOptionsV1,
 ): MarketReplacementCheck {
+  const stated = marketRow(base, values, options);
+  if (!stated.ok) {
+    return stated;
+  }
+  return {
+    ok: true,
+    body: { ...encodeBody(base), area_id: stated.row.area_id, overrides: stated.overrides },
+    changed: stated.changed,
+  };
+}
+
+/**
+ * The selected area's row one Save states, with the record's rows as they would be after it (`overrides`) and
+ * whether anything changed (see `marketReplacement`); or the sentence that stops it. A site's price write sends the
+ * row alone.
+ */
+export function marketRow(
+  base: PriceRecord,
+  values: MarketFormValues,
+  options: MarketOptionsV1,
+): { ok: true; row: AreaOverride; overrides: AreaOverride[]; changed: boolean } | { ok: false; errorKey: TranslationKey } {
   const areaId = values.areaId;
   if (areaId === null) {
     return { ok: false, errorKey: "market.error.areaRequired" };
@@ -572,11 +599,7 @@ export function marketReplacement(
       : existing === null
         ? [...base.overrides, row]
         : base.overrides.map((item) => (item.area_id === areaId ? row : item));
-  return {
-    ok: true,
-    body: { ...encodeBody(base), area_id: areaId, overrides },
-    changed,
-  };
+  return { ok: true, row, overrides, changed };
 }
 
 /**
