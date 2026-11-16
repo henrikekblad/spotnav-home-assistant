@@ -628,3 +628,18 @@ async def test_closings_already_measured_let_one_power_try_pass(hass: HomeAssist
     ]
     await _looks(control, now, 11)
     assert relay.calls == ["on", "off"] and control.checks[RELAY]["result"] == "passed"
+
+
+@pytest.mark.parametrize("room", ["unavailable", "55.0"])
+async def test_chosen_rooms_none_readable_release(hass: HomeAssistant, freezer, room: str) -> None:
+    _site_, control, relay, now = await _running(hass, freezer, 0, 1, 2)
+    await control.async_look(now)
+    hass.states.async_set(ROOM, room, {"unit_of_measurement": "°C"})
+    await control.async_look(now + 5 * MIN)
+    assert relay.calls == ["on", "off"] and control.status()["reason"] == "stale"
+
+
+async def test_no_chosen_room_still_lowers(hass: HomeAssistant, freezer) -> None:
+    _site_, control, relay, now = await _running(hass, freezer, 0, 1, indoor_sensors=[])
+    await control.async_look(now)
+    assert relay.calls == ["on"] and control.status()["reason"] == "planned"

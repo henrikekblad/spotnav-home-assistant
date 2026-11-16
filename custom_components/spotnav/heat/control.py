@@ -25,7 +25,7 @@ first contact only. Nothing is written without it. The rules and the check are p
    (`heat/facts.py`); without either nothing can be judged (`no_signal`). A failed check stops control
    (`check_failed`) until the switch is turned off and on again.
 6. **Control**: `relay_control.decide` on the heat shadow's plan, with SpotNav's lowerings of the day, its writes and
-   the safety reasons: no fresh plan or no outdoor reading (`stale`), outdoors at or below -15 °C, the coldest
+   the safety reasons: no fresh plan, no outdoor reading or chosen rooms none of which reads (`stale`), outdoors at or below -15 °C, the coldest
    counted room (its offset counted) below the band, SG Ready's second contact on or unreadable.
 
 **Every exit opens the relay** SpotNav holds (open = the pump's normal curve): the switch off, a block, a pause, a
@@ -542,6 +542,10 @@ class HeatControl:
         if outdoor <= NO_LOWER_AT_C:
             return SAFETY_TOO_COLD
         coldest = self.shadow.coldest_now(config)
+        if coldest is None and config.indoor_sensors:
+            # Rooms chosen but none reads (or none plausibly): not known to be warm enough.
+            self._good_since = None
+            return SAFETY_STALE
         if coldest is not None and coldest < config.target_c - BAND_C:
             return SAFETY_ROOM_COLD
         if config.control_path == PATH_SG_READY and config.control_entity_b is not None:
