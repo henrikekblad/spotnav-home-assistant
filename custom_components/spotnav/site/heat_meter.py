@@ -231,22 +231,34 @@ def _row_start(row: Mapping[str, Any]) -> datetime | None:
 def hourly_kw(rows: Sequence[Mapping[str, Any]], kind: str) -> dict[datetime, float]:
     """The statistics' hourly figure as kW per UTC hour start: a power sensor's `mean` (kW), an energy sensor's
     `change` (kWh in the hour). Negative figures count as 0; non-numbers and glitches above `MAX_KW` are left out."""
+    return period_kwh(rows, kind, 1.0)
+
+
+def period_kwh(rows: Sequence[Mapping[str, Any]], kind: str, hours: float) -> dict[datetime, float]:
+    """The statistics' figure as kWh per period start, `hours` long (1 for the hourly rows, 1/12 for the 5-minute
+    ones): a power sensor's `mean` (kW) times the period, an energy sensor's `change`. Negative figures count as 0;
+    non-numbers and glitches above `MAX_KW` (as a mean over the period) are left out."""
     if kind == KIND_ENERGY:
-        return {start: kw for start, kw in summed({"meter": list(rows)}, ("meter",)).items() if kw <= MAX_KW}
+        return {start: kwh for start, kwh in summed({"meter": list(rows)}, ("meter",)).items() if kwh <= MAX_KW * hours}
     out: dict[datetime, float] = {}
     for row in rows:
         start, mean = _row_start(row), row.get("mean")
         if start is None or not _number(mean) or mean > MAX_KW:
             continue
-        out[start] = max(0.0, float(mean))
+        out[start] = max(0.0, float(mean)) * hours
     return out
 
 
+#: The recorder's statistics periods the heat meter is read by, and each one's length in hours.
+PERIOD_HOURS: Final = {"hour": 1.0, "5minute": 5.0 / 60.0}
+
+
 async def async_heat_hours(
-    hass: HomeAssistant, meter: HeatMeter, start: datetime, end: datetime
+    hass: HomeAssistant, meter: HeatMeter, start: datetime, end: datetime, period: str = "hour"
 ) -> dict[datetime, float]:
-    """The meter's figure per hour in `[start, end)` (kW, UTC hour starts) from the recorder's hourly statistics, in
-    its executor; empty without a meter."""
+    """The meter's energy per `period` in `[start, end)` (kWh, UTC period starts; per hour that is the mean kW) from
+    the recorder's statistics (`"hour"`, or `"5minute"` within its short-term window), in its executor; empty
+    without a meter."""
     if not meter.found or meter.entity_id is None or end <= start:
         return {}
     from homeassistant.components.recorder import get_instance  # noqa: PLC0415 - only when loaded
@@ -257,10 +269,10 @@ async def async_heat_hours(
     types = {"mean"} if kind == KIND_POWER else {"change"}
 
     def read() -> list[dict[str, Any]]:
-        rows = statistics_during_period(hass, start, end, {entity_id}, "hour", units, types)
+        rows = statistics_during_period(hass, start, end, {entity_id}, period, units, types)
         return list(rows.get(entity_id) or [])
 
-    return hourly_kw(await get_instance(hass).async_add_executor_job(read), kind)
+    return period_kwh(await get_instance(hass).async_add_executor_job(read), kind, PERIOD_HOURS[period])
 
 
 # ------------------------------------------------------------------------------------------------ the forecast split
