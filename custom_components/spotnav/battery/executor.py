@@ -45,8 +45,12 @@ How it acts (`step`, one look every few seconds; pure, the shell does the writes
   The rate goes down at once and up only by `RATE_STEP_KW` after `RATE_UP_DWELL_S`.
 * **Peak cover under a hold.** A hold stops the battery covering the house, so a peak (a kettle, the oven, one
   phase) lands on the fuse. When the least phase headroom falls under `PEAK_COVER_A` the executor first lifts the
-  hold: one write, the brand's `peak_first` roles back to the value found (Sigenergy: the discharge limit, which
-  covers a one-phase peak on that phase at once), Remote EMS left on. If the headroom is not back at or above
+  hold: one write, the brand's `peak_first` roles back to the value found or to the brand's normal value
+  (Sigenergy: the discharge limit, lifted in Maximum Self Consumption, where the plant covers each phase itself;
+  with the mode-4 hold variant `pv_first` the control mode back to Maximum Self Consumption), Remote EMS left on. A
+  mode change may take the plant longer than a limit (its Remote EMS entities blink around a mode change, TypQxQ
+  issue #427; the plant's output ramps at its active power regulation gradient, register 40049); `PEAK_RECOVER_S`
+  bounds either, then the full hand-back follows. If the headroom is not back at or above
   `PEAK_COVER_A` within `PEAK_RECOVER_S` (or later stays under it that long), the battery is handed back in full.
   Under `RESTORE_HEADROOM_A` it is handed back at once, as before, and every hand-back of a hold or a grid charge
   writes the `peak_first` roles first (a grid charge: the mode that stops it). A hand-back for the fuse writes all
@@ -55,6 +59,15 @@ How it acts (`step`, one look every few seconds; pure, the shell does the writes
   by the day's write cap. A covered hold holds again only after `PEAK_REHOLD_S`, and only when the start rule
   allows it (the headroom keeps `HEADROOM_MARGIN_A` once the battery stops covering); otherwise it stays covered
   until the plan changes the action.
+* **A hold never charges from the grid.** A hold stores the sun only; a battery that charges while the site imports
+  (more than `HOLD_GRID_CHARGE_KW` of its charge comes from the grid) for `HOLD_GRID_CHARGE_S` is handed back and
+  the control blocked (`not_obeyed:hold:grid_charge`): Sigenergy's mode 4 is used by others as a grid charge at the
+  charge limit, so a plant that does that with the hold's limit at the rating is stopped within a minute, and its
+  verification fails that variant.
+* **Hold variants** (`BrandControl.hold_variants`): a brand may have more than one way to hold; the executor runs
+  one (`ExecState.variant`, stored so a restart hands back with that variant's order) and changes it only while it
+  holds nothing (`use_variant`). Every variant writes only the brand's roles, all of them in the snapshot, so the
+  hand-back is the same whichever ran.
 * **The export limit** (`commands.EXPORT_CONTROLS`, kind `export`): the same executor, ledger and rules run the
   site's export limit as its own instance, for the one action `curtail_export` (the limit at 0 kW while the sell price
   is below zero, `export_curtail.py`); anything else hands it back to the value found. It needs no battery reading
@@ -84,12 +97,14 @@ from typing import Any, Final, Literal
 from .commands import (
     ACTION_CURTAIL_EXPORT,
     NORMAL,
+    RATING,
     SNAPSHOT,
     WATCHDOG_RENEW_S,
     WATCHDOG_S,
     BrandControl,
     Native,
     Role,
+    native,
     reading,
 )
 from .facts import BatteryFacts, EntityFact, find_entity
@@ -118,6 +133,10 @@ PEAK_COVER_A: Final = 1.5
 PEAK_RECOVER_S: Final = 30.0
 #: A lifted hold holds again no sooner than this (s): its own lift is why the headroom recovered.
 PEAK_REHOLD_S: Final = 900.0
+#: A hold whose battery takes more than this from the grid (kW: its charge, at most the site's import) for this long
+#: (s) is handed back: a hold stores the sun only. The time rides out a cloud (the sun drops, the charge follows).
+HOLD_GRID_CHARGE_KW: Final = 0.5
+HOLD_GRID_CHARGE_S: Final = 60.0
 #: A grid charge below this is not worth running (kW).
 MIN_RATE_KW: Final = 0.5
 #: The rate goes up only by this much (kW), after this long since its last change (s).
@@ -284,6 +303,10 @@ class ExecState:
     peak_low_since: datetime | None = None
     day: str | None = None
     writes_today: int = 0
+    #: The hold variant this executor runs (`BrandControl.variant`), stored so a restart hands back with it.
+    variant: str | None = None
+    #: Since when a hold's battery has charged from the grid (`HOLD_GRID_CHARGE_S`); not stored.
+    grid_charge_since: datetime | None = None
 
     @property
     def holds_snapshot(self) -> bool:
@@ -323,6 +346,7 @@ class ExecState:
             "peak_low_since": iso(self.peak_low_since),
             "day": self.day,
             "writes_today": self.writes_today,
+            "variant": self.variant,
         }
 
     @classmethod
@@ -395,6 +419,7 @@ class ExecState:
             peak_low_since=parse_aware_datetime(data.get("peak_low_since")),
             day=text("day"),
             writes_today=writes if isinstance(writes, int) and not isinstance(writes, bool) and writes >= 0 else 0,
+            variant=text("variant"),
         )
 
 
@@ -576,11 +601,25 @@ class Executor:
         self, control: BrandControl, ledger: Ledger | None = None, monitor: Monitor | None = None,
         state: ExecState | None = None, *, watchdog_s: int = WATCHDOG_S,
     ) -> None:
-        self.control = control
         self.ledger = ledger or Ledger()
         self.monitor = monitor or Monitor()
         self.state = state or ExecState()
+        # A stored state runs (and hands back) with the variant it was written with.
+        self.control = control.with_hold(self.state.variant) if self.state.variant else control
+        self.state = replace(self.state, variant=self.control.variant)
         self.watchdog_s = watchdog_s
+
+    def use_variant(self, name: str | None) -> bool:
+        """Run the hold variant `name` from now on; only while nothing is held (never two variants' writes at once).
+        Whether the control now runs it."""
+        control = self.control.with_hold(name)
+        if control is self.control:
+            return self.control.variant == name
+        if self.state.phase in ("active", "restoring") or self.state.holds_snapshot:
+            return False
+        self.control = control
+        self.state = replace(self.state, variant=control.variant)
+        return True
 
     @property
     def _export(self) -> bool:
@@ -714,7 +753,10 @@ class Executor:
                 soc_min_pct=facts.reserve_soc_pct or 0.0,
                 site_cap_kw=inputs.house_deficit_kw if self.state.action == ACTION_DISCHARGE_HOUSE else None,
             )
-            judged = self.monitor.observe(Reading(facts.power_kw, inputs.battery_age_s, facts.soc_pct), capability, now)
+            grid = inputs.grid_import_kw if self.state.action == ACTION_HOLD and inputs.measurement_ok else None
+            judged = self.monitor.observe(
+                Reading(facts.power_kw, inputs.battery_age_s, facts.soc_pct, grid), capability, now
+            )
             if judged is not None and judged.kind == "failure":
                 events.append(_event(now, "monitor", judged.outcome, detail=judged.as_dict()))
                 if judged.outcome == "no_effect":
@@ -822,6 +864,8 @@ class Executor:
             return "headroom_unknown"
         if (action in _RAISES_IMPORT or self.state.action in _RAISES_IMPORT) and inputs.headroom_a < RESTORE_HEADROOM_A:
             return "fuse_headroom"
+        if self._hold_charges_from_grid(inputs):
+            return f"not_obeyed:{ACTION_HOLD}:grid_charge"
         # The battery's own instance runs the Remote EMS it turned on; the export instance only while the battery's
         # runs it (`sibling_active`): one taken by another controller (the app, a VPP) ends the curtail.
         management = management_problem(
@@ -840,6 +884,23 @@ class Executor:
         if _writes_today(self.state, inputs) >= DAILY_WRITE_CAP:
             return "daily_write_cap"
         return None
+
+    def _hold_charges_from_grid(self, inputs: ExecInputs) -> bool:
+        """Whether a running hold's battery has charged from the grid for `HOLD_GRID_CHARGE_S` (kept in the state)."""
+        state = self.state
+        power, grid = inputs.facts.power_kw, inputs.grid_import_kw
+        charging = (
+            not self._export and state.action == ACTION_HOLD and power is not None and grid is not None
+            and min(power, grid) > HOLD_GRID_CHARGE_KW
+        )
+        if not charging:
+            if state.grid_charge_since is not None:
+                self.state = replace(state, grid_charge_since=None)
+            return False
+        since = state.grid_charge_since or inputs.now
+        if state.grid_charge_since is None:
+            self.state = replace(state, grid_charge_since=since)
+        return (inputs.now - since).total_seconds() >= HOLD_GRID_CHARGE_S
 
     def _begin_restore(self, now: datetime, reason: str) -> list[dict[str, Any]]:
         state = self.state
@@ -862,6 +923,7 @@ class Executor:
         self.state = replace(
             state, phase="restoring", target=target, reason=reason, blocked=blocked, sent=(), renew=(),
             retries={}, unrestored=(), management_unknown_since=None, covered_at=None, peak_low_since=None,
+            grid_charge_since=None,
         )
         return [_event(now, "hand_back", reason)]
 
@@ -926,13 +988,28 @@ class Executor:
 
     # --- entering ---
 
-    def _wanted(self, action: str, rate_kw: float, restore_values: Mapping[str, Native]) -> dict[str, Native]:
+    def _wanted(
+        self, action: str, rate_kw: float, restore_values: Mapping[str, Native], facts: BatteryFacts
+    ) -> dict[str, Native]:
         wanted = self.control.wanted(action, rate_kw, self.watchdog_s)
-        return {
-            name: (restore_values[name] if value == SNAPSHOT else value)
-            for name, value in wanted.items()
-            if not (value == SNAPSHOT and name not in restore_values)
-        }
+        out: dict[str, Native] = {}
+        for name, value in wanted.items():
+            if value == SNAPSHOT:
+                if name in restore_values:
+                    out[name] = restore_values[name]
+            elif value == RATING:
+                rated = self._rated(name, facts)
+                if rated is not None:
+                    out[name] = rated
+            else:
+                out[name] = value
+        return out
+
+    def _rated(self, name: str, facts: BatteryFacts) -> float | None:
+        """A role's `RATING` in its unit, rounded down to its step; `None` when the battery's rating is not known."""
+        role = self.control.role(name)
+        rating = _rating(facts, role.unset_as_rating)
+        return None if rating is None or rating <= 0 else native(role, rating)
 
     def _rate(self, inputs: ExecInputs, commanded_kw: float) -> tuple[float, str | None]:
         """The rate to run the planned action at, and why it cannot run."""
@@ -1001,6 +1078,9 @@ class Executor:
         for name, allowed, why in self.control.requires:
             if reading(self.control.role(name), inputs.reads[name].state) not in allowed:
                 return why
+        for name, value in self.control.wanted(action, 1.0, self.watchdog_s).items():
+            if value == RATING and self._rated(name, facts) is None:
+                return f"rating_unknown:{name}"
         return None
 
     def _try_start(self, inputs: ExecInputs) -> tuple[bool, list[dict[str, Any]]]:
@@ -1032,7 +1112,7 @@ class Executor:
         assert action is not None
         self.state = replace(
             self.state, phase="active", brand=self.control.brand, action=action, rate_kw=rate,
-            target=self._wanted(action, rate, restore_values), snapshot=snapshot, restore_values=restore_values,
+            target=self._wanted(action, rate, restore_values, inputs.facts), snapshot=snapshot, restore_values=restore_values,
             entities=entities, device_id=device_id, snapshot_at=now, entered_at=now, rate_changed_at=now,
             watchdog_at=now, sent=(), renew=(), reason=None, given_up=(), management_unknown_since=None, written=(),
             covered_at=None, peak_low_since=None,
@@ -1063,7 +1143,7 @@ class Executor:
         events: list[dict[str, Any]] = []
         if action != state.action:
             self.state = replace(
-                state, action=action, rate_kw=rate, target=self._wanted(action, rate, state.restore_values),
+                state, action=action, rate_kw=rate, target=self._wanted(action, rate, state.restore_values, inputs.facts),
                 sent=(), renew=(), rate_changed_at=now, watchdog_at=now, covered_at=None, peak_low_since=None,
             )
             self._watch(inputs, action, rate)
@@ -1074,7 +1154,7 @@ class Executor:
             up = rate >= state.rate_kw + RATE_STEP_KW and since >= RATE_UP_DWELL_S
             if down or up:
                 self.state = replace(
-                    state, rate_kw=rate, target=self._wanted(action, rate, state.restore_values), sent=(),
+                    state, rate_kw=rate, target=self._wanted(action, rate, state.restore_values, inputs.facts), sent=(),
                     rate_changed_at=now,
                 )
                 self._watch(inputs, action, rate)
@@ -1145,7 +1225,7 @@ class Executor:
             self.state = state = replace(state, peak_low_since=None)
         if (now - state.covered_at).total_seconds() >= PEAK_REHOLD_S and hold_headroom_ok(inputs):
             self.state = replace(
-                state, target=self._wanted(ACTION_HOLD, 0.0, state.restore_values), covered_at=None,
+                state, target=self._wanted(ACTION_HOLD, 0.0, state.restore_values, inputs.facts), covered_at=None,
                 sent=tuple(name for name in state.sent if name not in first),
             )
             self._watch(inputs, ACTION_HOLD, 0.0)
@@ -1161,7 +1241,9 @@ class Executor:
         if restoring and role.idle_when and state in role.idle_when:
             return True
         snapshot = self.state.snapshot.get(role.name)
-        never_written = role.name not in self.state.written
+        # A role the action sets to the rating is always written (a never-set limit reads `unknown`, and what the
+        # plant does with "never set" in a command mode is not documented).
+        never_written = role.name not in self.state.written and (restoring or not self._sets_rating(role.name))
         if never_written and reading(role, state) is None and (
             restoring or wanted == self.state.restore_values.get(role.name)
         ):
@@ -1176,6 +1258,12 @@ class Executor:
             # SpotNav wrote is restored by writing its snapshot and reading it back, whatever it reads now.
             return True
         return bool(same(wanted, reading(role, state), None if read is None else (read.step or role.step)))
+
+    def _sets_rating(self, name: str) -> bool:
+        action = self.state.action
+        if action is None or action == ACTION_SELF_CONSUME or not self.control.supports(action):
+            return False
+        return self.control.wanted(action, 1.0, self.watchdog_s).get(name) == RATING
 
     def _next_role(self, state: ExecState, inputs: ExecInputs) -> str | None:
         """The first role, in the brand's order, that does not read what it should (or must be renewed)."""

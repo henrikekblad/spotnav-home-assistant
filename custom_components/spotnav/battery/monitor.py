@@ -12,8 +12,12 @@ commands written per day.
 
 What each command expects:
 
-* `hold` (no discharge): discharge at most `FLOOR_KW`. Still discharging is `no_effect` while it is at least
-  `1 - FAIL_FRACTION` of the discharge before the command, `partial` below that.
+* `hold` (no discharge, the sun still stored): discharge at most `FLOOR_KW`. Still discharging is `no_effect` while
+  it is at least `1 - FAIL_FRACTION` of the discharge before the command, `partial` below that. With the site's grid
+  power known (`Reading.grid_kw`): charging from the grid (more than `HOLD_GRID_TOLERANCE_KW` of the charge while the
+  site imports) is `no_effect` (Sigenergy's mode 4 can be a grid charge at the charge limit), and the site exporting
+  more than `EXPORT_TOLERANCE_KW` while the battery does not charge (below `CHARGE_TAPER_SOC_PCT`) is `partial`: the
+  hold stopped the sun charging too.
 * `curtail` (the site's export limit at 0 kW, judged on the site's grid power, + import): export at most
   `EXPORT_TOLERANCE_KW`, after `CURTAIL_GRACE_S`. Still exporting at least `1 - FAIL_FRACTION` of the export before
   the command is `no_effect`, less is `partial`.
@@ -59,6 +63,9 @@ CHARGE_TAPER_SOC_PCT: Final = 90.0
 DISCHARGE_MARGIN_PCT: Final = 5.0
 COUNTER_DAYS: Final = 30
 COUNTERS: Final[tuple[str, ...]] = ("writes", "no_effect", "partial")
+
+#: What a hold's battery may take from the grid (kW) before a reading counts as a grid charge.
+HOLD_GRID_TOLERANCE_KW: Final = 0.5
 
 CommandKind = Literal["hold", "charge", "discharge", "curtail"]
 ReadingVerdict = Literal["ok", "partial", "no_effect"]
@@ -121,6 +128,8 @@ class Reading:
     power_kw: float | None
     age_s: float | None = None
     soc_pct: float | None = None
+    #: The site's grid power (kW, + import), for a hold: `None` when unknown (then only the discharge is judged).
+    grid_kw: float | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -158,8 +167,10 @@ def deliverable_kw(command: Command, capability: Capability, soc_pct: float | No
     return expected, None
 
 
-def judge(command: Command, expected_kw: float, power_kw: float) -> ReadingVerdict:
-    """One reading against what the command expects."""
+def judge(
+    command: Command, expected_kw: float, power_kw: float, grid_kw: float | None = None, soc_pct: float | None = None
+) -> ReadingVerdict:
+    """One reading against what the command expects (a hold also against the site's grid power, when known)."""
     if command.kind == "curtail":
         export = max(-power_kw, 0.0)
         if export <= EXPORT_TOLERANCE_KW:
@@ -171,6 +182,13 @@ def judge(command: Command, expected_kw: float, power_kw: float) -> ReadingVerdi
     if command.kind == "hold":
         discharge = max(-power_kw, 0.0)
         if discharge <= FLOOR_KW:
+            if grid_kw is None or not math.isfinite(grid_kw):
+                return "ok"
+            if min(power_kw, grid_kw) > HOLD_GRID_TOLERANCE_KW:
+                return "no_effect"
+            sun_left = -grid_kw > EXPORT_TOLERANCE_KW and power_kw < FLOOR_KW
+            if sun_left and soc_pct is not None and soc_pct < CHARGE_TAPER_SOC_PCT:
+                return "partial"
             return "ok"
         before = None if command.before_kw is None else max(-command.before_kw, 0.0)
         if before is not None and before > FLOOR_KW and discharge >= (1.0 - FAIL_FRACTION) * before:
@@ -287,7 +305,7 @@ class Monitor:
         if expected is None:
             self.watch = replace(watch, run=(), last_reading_at=now, why_not=why_not)
             return None
-        verdict = judge(command, expected, power)
+        verdict = judge(command, expected, power, reading.grid_kw, reading.soc_pct)
         row = {"at": now.isoformat(), "power_kw": round(power, 3), "soc_pct": reading.soc_pct, "verdict": verdict}
         if not command.written:
             # A dry run judges nothing: it shows the first three readings it would have judged, as a baseline.

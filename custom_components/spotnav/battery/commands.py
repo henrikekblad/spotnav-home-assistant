@@ -20,7 +20,28 @@ The entity keys, options and services below were checked against each integratio
   (`unknown_is_unset`), never written back as `unknown`, and an `unknown` read-back is never a confirmed write.
   Remote EMS: limits first, then the switch, then the control mode; back: the control mode to Maximum Self
   Consumption (so 40031 never keeps a command for the next one who turns Remote EMS on), the switch off, the limits
-  back. A plant is taken in Maximum Self Consumption (`adapters.SIGENERGY`'s mode rule), or in AI mode once the
+  back. The select's options are TypQxQ's (`select.py` lines 105-114 at both pinned commits, mapped to Appendix 6
+  at lines 116-137): "Maximum Self Consumption" (2), "Command Charging (Grid First)" (3), "Command Charging (PV
+  First)" (4), "Command Discharging (PV First)" (5), "Command Discharging (ESS First)" (6).
+  **Which limit acts in which mode depends on the protocol generation.** Sigenergy Modbus Protocol V2.7, plant
+  parameters 23-25 (`sig27.txt` lines 1133-1149): the ESS max charging limit (40032) "takes effect when Remote EMS
+  control mode (40031) is 3 or 4", the max discharging limit (40034) "is 5 or 6", the PV max power limit (40036,
+  never written here) "3, 4, 5 or 6". V2.9 (2026-05-13), Table 5-2-1 rows 1-3 (`sig29.txt` lines 1120-1138): all
+  three "take effect globally regardless of the EMS operating mode". The grid import and export limits (40038/40040)
+  act in every mode in both (`SIGENERGY_LIMIT_MODES`). A grid charge (mode 3, charge limit) and an export discharge
+  (mode 5, discharge limit) keep to both generations. A hold has two variants (`SIGENERGY_HOLDS`), tried in order
+  by the verification: `msc_no_discharge`, Maximum Self Consumption with the discharge limit at 0 (valid on
+  V2.9-era firmware and seen obeyed on SPC117 with Remote EMS on, TypQxQ discussion #424; its peak cover lifts the
+  limit), then `pv_first`, mode 4 Command Charging (PV First) with the charge limit at the battery's rating (within
+  V2.7's scope: nothing discharges, the sun still charges; its peak cover writes the mode back to Maximum Self
+  Consumption, where the plant balances each phase itself). Several integrations use mode 4 as a grid charge at the
+  charge limit (haeo's Sigenergy walkthrough, Roving-Ronin's EMS-Events-Card "grid import + solar"), so a hold that
+  draws the grid into the battery is handed back (`executor.HOLD_GRID_CHARGE_S`) and fails its verification. A
+  discharge to the house has no mode in V2.7 ("cover the house, store nothing"): it stays Maximum Self Consumption
+  with the charge limit at 0, valid under V2.9 and at worst ignored under V2.7 (the battery then also stores a sun
+  surplus, as in self-consumption). V2.8 removed 41500 (Remote EMS dispatch enable, never used here); V2.9 added
+  0x08 V2G to 40031. 40049, Active power regulation gradient (%/s of the rated power, V2.8+), bounds how fast the
+  plant changes its output and so its reaction to a mode or limit change; SpotNav never writes it. A plant is taken in Maximum Self Consumption (`adapters.SIGENERGY`'s mode rule), or in AI mode once the
   person acknowledged the takeover (`BrandControl.takeover`); turning Remote EMS off lands in Maximum Self
   Consumption either way (research §2.2), so the hand-back is clean and a plant taken from AI mode is not put back
   in it (the person is reminded to set it again in the app). The discharge cut-off SoC is never
@@ -67,7 +88,7 @@ from __future__ import annotations
 import math
 import re
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any, Final, Literal
 
 from .adapters import HUAWEI, SIGENERGY, SOLAREDGE, SOLAX, Adapter, Match, _key
@@ -81,6 +102,9 @@ from .plan_model import (
 
 #: The value a role had before SpotNav first wrote it.
 SNAPSHOT: Final = "<snapshot>"
+#: The battery's own rating for the role's kind (`Role.unset_as_rating`), in the role's unit: resolved by the
+#: executor from the battery's facts; an action that needs it does not start without it.
+RATING: Final = "<rating>"
 
 #: How long a brand's own watchdog runs (s) and when SpotNav renews it: a command SpotNav stops renewing (HA died)
 #: falls back by itself within this.
@@ -133,6 +157,17 @@ class Want:
 
 
 @dataclass(frozen=True, slots=True)
+class HoldVariant:
+    """One way a brand can hold (no discharge, the sun still stored): its writes and the roles that let the battery
+    cover a peak again. The verification tries a brand's variants in order and control uses the first that passed."""
+
+    name: str
+    build: Callable[[float, int], tuple[Want, ...]]
+    peak_first: tuple[str, ...]
+    note: str = ""
+
+
+@dataclass(frozen=True, slots=True)
 class BrandControl:
     brand: str
     adapter: Adapter
@@ -172,12 +207,32 @@ class BrandControl:
     #: it acts (`battery_control_import_limit_acts`), it bounds a grid charge with Home Assistant down.
     import_limit: Match | None = None
     note: str = ""
+    #: Ways to hold, tried in order by the verification (`HoldVariant`); the first is in `states` and `peak_first`
+    #: until another is chosen (`with_hold`). Empty: the brand has one hold.
+    hold_variants: tuple[HoldVariant, ...] = ()
+    #: The hold variant this control runs (`None`: the brand has one hold).
+    variant: str | None = None
 
     def role(self, name: str) -> Role:
         for role in self.roles:
             if role.name == name:
                 return role
         raise KeyError(name)
+
+    def variant_names(self) -> tuple[str, ...]:
+        return tuple(variant.name for variant in self.hold_variants)
+
+    def with_hold(self, name: str | None) -> BrandControl:
+        """This control with the hold variant `name` (its writes and its peak cover); itself for `None`, for a name
+        it does not know or for a brand with one hold. Only one variant is ever in use: the executor changes it only
+        while it holds nothing."""
+        variant = next((item for item in self.hold_variants if item.name == name), None)
+        if variant is None or variant.name == self.variant:
+            return self
+        return replace(
+            self, states={**self.states, ACTION_HOLD: variant.build},
+            peak_first={**self.peak_first, ACTION_HOLD: variant.peak_first}, variant=variant.name,
+        )
 
     def supports(self, action: str) -> bool:
         return action == ACTION_SELF_CONSUME or action in self.states
@@ -243,7 +298,28 @@ _SIG_DISCHARGE = Role(
 _SIG_MSC: Final = "Maximum Self Consumption"
 
 
-def _sig(mode: str, **limits: Callable[[float], float]) -> Callable[[float, int], tuple[Want, ...]]:
+# TypQxQ `select.py` lines 105-114 (both pinned commits): the Remote EMS control mode's options, Appendix 6's 0-8.
+_SIG_GRID_FIRST: Final = "Command Charging (Grid First)"  # 3
+_SIG_PV_FIRST: Final = "Command Charging (PV First)"  # 4
+_SIG_DISCHARGE_PV_FIRST: Final = "Command Discharging (PV First)"  # 5
+
+#: The Remote EMS control modes each battery limit takes effect in, per protocol generation (`None`: every mode).
+#: V2.7 plant parameters 23-24 (`sig27.txt` lines 1133-1145); V2.9 Table 5-2-1 rows 1-2 (`sig29.txt` 1120-1135).
+SIGENERGY_LIMIT_MODES: Final[Mapping[str, Mapping[str, frozenset[str] | None]]] = {
+    "V2.7": {
+        "charge_limit": frozenset({_SIG_GRID_FIRST, _SIG_PV_FIRST}),
+        "discharge_limit": frozenset({_SIG_DISCHARGE_PV_FIRST, "Command Discharging (ESS First)"}),
+    },
+    "V2.9": {"charge_limit": None, "discharge_limit": None},
+}
+#: Writes outside V2.7's scope, each on purpose: (action or `hold:<variant>`, limit). Acted on where the firmware
+#: follows V2.9; ignored where it follows V2.7 (the hold's verification then fails and tries `pv_first`).
+SIGENERGY_OUT_OF_SCOPE_V27: Final = frozenset(
+    {("hold:msc_no_discharge", "discharge_limit"), (ACTION_DISCHARGE_HOUSE, "charge_limit")}
+)
+
+
+def _sig(mode: str, **limits: Callable[[float], Native]) -> Callable[[float, int], tuple[Want, ...]]:
     def build(rate_kw: float, _watchdog_s: int) -> tuple[Want, ...]:
         wants = [Want(name, fn(rate_kw)) for name, fn in limits.items()]
         return (*wants, Want("remote_ems", True), Want("control_mode", mode))
@@ -251,16 +327,33 @@ def _sig(mode: str, **limits: Callable[[float], float]) -> Callable[[float, int]
     return build
 
 
+#: Sigenergy's holds, in the order the verification tries them.
+SIGENERGY_HOLDS: Final = (
+    # The discharge limit at 0 in Maximum Self Consumption: acts on V2.9-era firmware (and on SPC117 with Remote EMS
+    # on, TypQxQ discussion #424). The peak cover lifts the limit; the plant balances each phase itself in MSC.
+    HoldVariant(
+        "msc_no_discharge", _sig(_SIG_MSC, discharge_limit=lambda _rate: 0.0), ("discharge_limit",),
+        "Maximum Self Consumption with the discharge limit at 0",
+    ),
+    # For firmware that follows V2.7 (no limit acts in mode 2): mode 4 with the charge limit at the rating, where
+    # that limit acts; nothing discharges, the sun charges. The peak cover writes the mode back to Maximum Self
+    # Consumption.
+    HoldVariant(
+        "pv_first", _sig(_SIG_PV_FIRST, charge_limit=lambda _rate: RATING), ("control_mode",),
+        "Command Charging (PV First) with the charge limit at the rating",
+    ),
+)
+
 SIGENERGY_CONTROL: Final = BrandControl(
     brand="sigenergy",
     adapter=SIGENERGY,
     roles=(_SIG_ENABLE, _SIG_MODE, _SIG_CHARGE, _SIG_DISCHARGE),
     states={
-        ACTION_HOLD: _sig(_SIG_MSC, discharge_limit=lambda _rate: 0.0),
-        ACTION_GRID_CHARGE: _sig("Command Charging (Grid First)", charge_limit=lambda rate: native(_SIG_CHARGE, rate)),
+        ACTION_HOLD: SIGENERGY_HOLDS[0].build,
+        ACTION_GRID_CHARGE: _sig(_SIG_GRID_FIRST, charge_limit=lambda rate: native(_SIG_CHARGE, rate)),
         ACTION_DISCHARGE_HOUSE: _sig(_SIG_MSC, charge_limit=lambda _rate: 0.0),
         ACTION_EXPORT_DISCHARGE: _sig(
-            "Command Discharging (PV First)", discharge_limit=lambda rate: native(_SIG_DISCHARGE, rate)
+            _SIG_DISCHARGE_PV_FIRST, discharge_limit=lambda rate: native(_SIG_DISCHARGE, rate)
         ),
     },
     enter_order=("charge_limit", "discharge_limit", "remote_ems", "control_mode"),
@@ -270,9 +363,9 @@ SIGENERGY_CONTROL: Final = BrandControl(
     # plant in Maximum Self Consumption (Remote EMS off lands there), not in AI mode.
     takeover={"EMS work mode": frozenset({"ai_mode"})},
     requires=(("remote_ems", frozenset({"off"}), "remote_ems_already_on"),),
-    # A hold is the discharge limit at 0: lifting it lets the battery cover a peak at once (SigenStor covers each
-    # phase on its own). A grid charge stops with the mode back at Maximum Self Consumption.
-    peak_first={ACTION_HOLD: ("discharge_limit",), ACTION_GRID_CHARGE: ("control_mode",)},
+    # A hold's peak cover is its variant's (`SIGENERGY_HOLDS`). A grid charge stops with the mode back at Maximum
+    # Self Consumption.
+    peak_first={ACTION_HOLD: SIGENERGY_HOLDS[0].peak_first, ACTION_GRID_CHARGE: ("control_mode",)},
     # A three-phase SigenStor charges from the grid balanced over its phases; a single-phase one says so in its
     # inverter's Output Type (TypQxQ 2.0.3 `static_sensor.py` key `inverter_output_type`, register 31004, disabled
     # by default). Grid Import Limitation: `number.py` key `plant_grid_maximum_import_limitation` (lines 201-216),
@@ -282,6 +375,8 @@ SIGENERGY_CONTROL: Final = BrandControl(
     import_limit=_key("plant_grid_maximum_import_limitation", "number"),
     note="Remote EMS replaces the app's mode only while it is on; SpotNav takes a plant in Maximum Self"
     " Consumption only, so turning it off hands back the mode it found.",
+    hold_variants=SIGENERGY_HOLDS,
+    variant=SIGENERGY_HOLDS[0].name,
 )
 
 #: An inverter's Output Type (Sigenergy's enum, lower-cased) as the phases it feeds.
@@ -443,9 +538,11 @@ CONTROLS: Final[tuple[BrandControl, ...]] = (SIGENERGY_CONTROL, SOLAREDGE_CONTRO
 EXPORT_CONTROLS: Final[tuple[BrandControl, ...]] = (SIGENERGY_EXPORT_CONTROL,)
 
 
-def control_for(brand: str | None) -> BrandControl | None:
-    """The brand's control, `None` for a brand SpotNav writes nothing to."""
-    return next((control for control in CONTROLS if control.brand == brand), None)
+def control_for(brand: str | None, variant: str | None = None) -> BrandControl | None:
+    """The brand's control (with its hold variant `variant`, the first when `None` or unknown), `None` for a brand
+    SpotNav writes nothing to."""
+    control = next((control for control in CONTROLS if control.brand == brand), None)
+    return None if control is None else control.with_hold(variant)
 
 
 def export_control_for(brand: str | None) -> BrandControl | None:
@@ -491,7 +588,13 @@ def table() -> list[dict[str, Any]]:
     for control in CONTROLS:
         for action in CONTROL_ACTIONS:
             wants = control.states[action](5.0, WATCHDOG_S)
-            rows.append({"brand": control.brand, "action": action, "writes": {w.role: w.value for w in wants}})
+            row = {"brand": control.brand, "action": action, "writes": {w.role: w.value for w in wants}}
+            if action == ACTION_HOLD and control.hold_variants:
+                row["variants"] = {
+                    variant.name: {w.role: w.value for w in variant.build(5.0, WATCHDOG_S)}
+                    for variant in control.hold_variants
+                }
+            rows.append(row)
         rows.append(
             {"brand": control.brand, "action": ACTION_SELF_CONSUME,
              "writes": dict(NORMAL.get(control.brand, {})) | {"*": SNAPSHOT}}
