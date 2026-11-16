@@ -6,6 +6,7 @@ import { clock, dateLabel, dayCue, formatFixed, formatNumber, hourLabel, type En
 import { heatShown, houseChartHeight, houseShown, renderHouseChart, sunShown, type HouseChart, type HouseChartView } from "./house-chart";
 import { MODES, type BatteryMode, type DayFlow, type HouseAnswer, type HouseHour } from "./house-model";
 import { renderFlow } from "./house-flow";
+import { hasPerfect, perfectDetails, perfectHeadline, perfectNotes, perfectRows } from "./perfect-view";
 import { hiddenIn, type HiddenSeries } from "./house-series";
 import { settingsGearButton, testChip } from "./heat-view";
 import { HEAT_CLASSES as X } from "./heat-styles";
@@ -362,6 +363,10 @@ function compareBlock(doc: Document, language: Language, answer: HouseAnswer): H
   if (battery === null) {
     return null;
   }
+  const perfect = perfectBlock(doc, language, answer);
+  if (perfect !== null) {
+    return perfect;
+  }
   const rows: Array<{ key: string; name: string; value: number | null; days: number; inForce: boolean }> = [];
   const optimiser = battery.management === "self_managed" ? OPTIMISER_NAMES[battery.brand ?? ""] : undefined;
   const ownName = `${translate(language, "house.compare.own")}${optimiser === undefined ? "" : ` (${optimiser})`}`;
@@ -428,6 +433,47 @@ function compareBlock(doc: Document, language: Language, answer: HouseAnswer): H
 
 /** The battery maker's own optimiser by brand, named where the battery runs it. */
 const OPTIMISER_NAMES: Record<string, string> = { sigenergy: "Sigenergy AI" };
+
+/** The battery's own control as the comparison names it: its optimiser where the battery runs one ("Sigenergy AI"). */
+function ownControlName(language: Language, answer: HouseAnswer): string {
+  const battery = answer.battery;
+  const optimiser = battery?.management === "self_managed" ? OPTIMISER_NAMES[battery.brand ?? ""] : undefined;
+  return optimiser ?? translate(language, "house.compare.own");
+}
+
+/** The perfect plan's figures shown: a past day's own, else the reviewed week's; `null` before the first. */
+function perfectShown(answer: HouseAnswer) {
+  const past = answer.day !== null && !answer.day.today;
+  const perfect = past ? (answer.day_review?.perfect ?? null) : (answer.battery?.review?.perfect ?? null);
+  return hasPerfect(perfect) ? { perfect, past } : null;
+}
+
+/** The comparison as each way's share of the perfect plan in hindsight (`perfect-view.ts`): the headline, a bar per
+ * way and the plain notes; the money behind it is in the details. `null` before the first perfect plan. */
+function perfectBlock(doc: Document, language: Language, answer: HouseAnswer): HTMLElement | null {
+  const shown = perfectShown(answer);
+  if (shown === null) {
+    return null;
+  }
+  const { perfect, past } = shown;
+  const ownName = ownControlName(language, answer);
+  const section = element(doc, "section", H.compare);
+  section.dataset["part"] = "modes";
+  section.dataset["view"] = "perfect";
+  const heading = past
+    ? translate(language, "perfect.headingDay", { day: dateLabel(language, answer.day!.date) })
+    : translate(language, `perfect.heading.${pluralForm(language, perfect.days + perfect.partial)}`, { days: String(perfect.days + perfect.partial) });
+  section.append(element(doc, "p", `${C.muted} ${H.compareHead}`, heading));
+  const headline = perfectHeadline(language, perfect, ownName);
+  if (headline !== null) {
+    const line = element(doc, "p", H.perfectHead, headline);
+    line.dataset["line"] = "perfect-headline";
+    section.append(line);
+  }
+  const inForce = past ? (answer.day_review?.mode ?? null) : (answer.battery?.mode ?? null);
+  section.append(perfectRows(doc, language, perfect, ownName, inForce), ...perfectNotes(doc, language, perfect, ownName, past));
+  return section;
+}
 
 /** The modes the comparison shows: self-consumption is what they are measured against. */
 const SAVING_MODES = MODES.filter((mode) => mode !== "self_consumption");
@@ -819,6 +865,16 @@ function modesTable(doc: Document, language: Language, answer: HouseAnswer): HTM
   return section;
 }
 
+/** The money behind the shares, the battery's work and the cells' temperature, in the details. */
+function perfectDetailsBlock(doc: Document, language: Language, answer: HouseAnswer): HTMLElement | null {
+  const past = answer.day !== null && !answer.day.today;
+  const perfect = past ? (answer.day_review?.perfect ?? null) : (answer.battery?.review?.perfect ?? null);
+  if (perfect === null || ((perfect.days === 0 || perfect.saving === null) && perfect.temperature === null)) {
+    return null;
+  }
+  return perfectDetails(doc, language, perfect, answer.money, ownControlName(language, answer));
+}
+
 function daysTable(doc: Document, language: Language, answer: HouseAnswer): HTMLElement | null {
   if (answer.days.length === 0) {
     return null;
@@ -1031,6 +1087,7 @@ export function houseBody(input: HouseRenderInput): HTMLElement {
       energyFlow === null ? flowBlock(doc, language, answer.flow) : flowNotes(doc, language, answer, energyFlow.querySelector("svg") !== null),
       baselinesBlock(doc, language, answer),
       modesTable(doc, language, answer),
+      perfectDetailsBlock(doc, language, answer),
       review,
       daysTable(doc, language, answer),
       sourcesBlock(doc, language, answer, input.entityWords),

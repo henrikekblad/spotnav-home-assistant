@@ -629,79 +629,118 @@
         "battery_saving": 400.0,
         "date": "2026-11-03",
         "own_saving": 50.0,
-        "plan_saving": 150.0
+        "own_share": null,
+        "plan_saving": 150.0,
+        "plan_share": null,
+        "share_note": null
       },
       {
         "battery_saving": 400.0,
         "date": "2026-11-04",
         "own_saving": 50.0,
-        "plan_saving": 150.0
+        "own_share": null,
+        "plan_saving": 150.0,
+        "plan_share": null,
+        "share_note": null
       },
       {
         "battery_saving": 400.0,
         "date": "2026-11-05",
         "own_saving": 50.0,
-        "plan_saving": 150.0
+        "own_share": null,
+        "plan_saving": 150.0,
+        "plan_share": null,
+        "share_note": null
       },
       {
         "battery_saving": 400.0,
         "date": "2026-11-06",
         "own_saving": 50.0,
-        "plan_saving": 150.0
+        "own_share": 77.5,
+        "plan_saving": 150.0,
+        "plan_share": 80.4,
+        "share_note": null
       },
       {
         "battery_saving": 400.0,
         "date": "2026-11-07",
         "own_saving": 50.0,
-        "plan_saving": 150.0
+        "own_share": null,
+        "plan_saving": 150.0,
+        "plan_share": null,
+        "share_note": "partial"
       },
       {
         "battery_saving": 400.0,
         "date": "2026-11-08",
         "own_saving": 50.0,
-        "plan_saving": 150.0
+        "own_share": 77.4,
+        "plan_saving": 150.0,
+        "plan_share": 77.4,
+        "share_note": null
       },
       {
         "battery_saving": 400.0,
         "date": "2026-11-09",
         "own_saving": 50.0,
-        "plan_saving": 150.0
+        "own_share": null,
+        "plan_saving": 150.0,
+        "plan_share": null,
+        "share_note": "small"
       },
       {
         "battery_saving": 400.0,
         "date": "2026-11-10",
         "own_saving": 50.0,
-        "plan_saving": 150.0
+        "own_share": 77.3,
+        "plan_saving": 150.0,
+        "plan_share": 74.5,
+        "share_note": null
       },
       {
         "battery_saving": 400.0,
         "date": "2026-11-11",
         "own_saving": 50.0,
-        "plan_saving": 150.0
+        "own_share": 77.2,
+        "plan_saving": 150.0,
+        "plan_share": 73.2,
+        "share_note": null
       },
       {
         "battery_saving": 400.0,
         "date": "2026-11-12",
         "own_saving": 50.0,
-        "plan_saving": 150.0
+        "own_share": 77.2,
+        "plan_saving": 150.0,
+        "plan_share": 71.9,
+        "share_note": null
       },
       {
         "battery_saving": 400.0,
         "date": "2026-11-13",
         "own_saving": 50.0,
-        "plan_saving": 150.0
+        "own_share": 77.2,
+        "plan_saving": 150.0,
+        "plan_share": 70.7,
+        "share_note": null
       },
       {
         "battery_saving": 400.0,
         "date": "2026-11-14",
         "own_saving": 50.0,
-        "plan_saving": 150.0
+        "own_share": 77.1,
+        "plan_saving": 150.0,
+        "plan_share": 69.5,
+        "share_note": null
       },
       {
         "battery_saving": 400.0,
         "date": "2026-11-15",
         "own_saving": 50.0,
-        "plan_saving": 150.0
+        "own_share": 77.1,
+        "plan_saving": 150.0,
+        "plan_share": 68.3,
+        "share_note": null
       }
     ],
     "days": 13,
@@ -722,6 +761,69 @@
     },
     "nothing_days": 13,
     "own_saving": 650.0,
+    "perfect": {
+      "clamped": [],
+      "days": 9,
+      "mode": "balanced",
+      "partial": 1,
+      "provisional": 1,
+      "saving": 9400.0,
+      "savings": {
+        "balanced": 6940.0,
+        "max_profit": 6440.0,
+        "own": 7235.0,
+        "self_consumption": 5170.0
+      },
+      "shares": {
+        "balanced": 73.8,
+        "max_profit": 63.4,
+        "own": 77.0,
+        "self_consumption": 55.0
+      },
+      "temperature": {
+        "days": 8,
+        "max_c": 27.5,
+        "mean_c": 21.8,
+        "minutes_above": 15
+      },
+      "work": {
+        "balanced": {
+          "cycles": 3.797,
+          "discharged_kwh": 153.0,
+          "grid_charge_kwh": 112.5,
+          "switches": 18,
+          "to_grid_kwh": 0.0
+        },
+        "max_profit": {
+          "cycles": 4.913,
+          "discharged_kwh": 198.0,
+          "grid_charge_kwh": 135.0,
+          "switches": 27,
+          "to_grid_kwh": 49.5
+        },
+        "own": {
+          "cycles": 3.685,
+          "discharged_kwh": 148.5,
+          "grid_charge_kwh": 81.0,
+          "switches": 36,
+          "to_grid_kwh": 3.6
+        },
+        "perfect": {
+          "cycles": 4.02,
+          "discharged_kwh": 162.0,
+          "grid_charge_kwh": 126.0,
+          "switches": 18,
+          "to_grid_kwh": 0.0
+        },
+        "self_consumption": {
+          "cycles": 2.68,
+          "discharged_kwh": 108.0,
+          "grid_charge_kwh": 0.0,
+          "switches": 9,
+          "to_grid_kwh": 0.0
+        }
+      }
+    },
     "period_days": 15,
     "plan_saving": 1950.0,
     "sun_days": 13,

@@ -22,6 +22,7 @@ from custom_components.spotnav.battery.plan_model import (
     ACTION_HOLD,
     ACTION_SELF_CONSUME,
 )
+from custom_components.spotnav.battery.hindsight import Candidate, CellTemperature, Facit, Work, share_of
 from custom_components.spotnav.battery.plan_shadow import (
     KIND_BATTERY,
     Bucket,
@@ -33,6 +34,7 @@ from custom_components.spotnav.battery.plan_shadow import (
 from custom_components.spotnav.battery.stored_value import DayMoney, StoredValue
 from custom_components.spotnav.planning.demand_charge import HourMean, hour_start
 from custom_components.spotnav.site.energy_flow import EnergyHour, energy_flow
+from custom_components.spotnav.site.perfect_view import perfect_block
 from custom_components.spotnav.site.forecast_log import (
     KIND_HEAT,
     KIND_HOUSE,
@@ -166,6 +168,36 @@ def battery_plan(now: datetime) -> tuple[PlannedSlot, ...]:
     return tuple(slots)
 
 
+def facit_for(
+    day: date, perfect: float, own: float, balanced: float, max_profit: float, *, provisional: bool = False, measured: int = 96
+) -> Facit:
+    """A day against its perfect plan (`battery/hindsight.py`), the savings against no battery in öre; [measured] of its
+    96 quarter hours (under 90 %: a partial day, no share)."""
+
+    def way(saving: float, against: float, discharged: float, switches: int, grid: float, sold: float) -> Candidate:
+        share, clamped = share_of(saving, against) if measured >= 87 else (None, False)
+        work = Work(discharged, discharged / 40.3, switches, grid, sold)
+        return Candidate(saving, against, share, clamped, work)
+
+    best = perfect * 1.08
+    return Facit(
+        computed_at=datetime.combine(day + timedelta(days=1), datetime.min.time(), timezone.utc) + timedelta(hours=13),
+        end_value=118.0 if provisional else 141.5,
+        basis="day_median" if provisional else "next_day",
+        mode="balanced",
+        no_battery_cost=4700.0,
+        quarters=96,
+        measured=measured,
+        perfect={"balanced": way(perfect, perfect, 18.0, 2, 14.0, 0.0), "max_profit": way(best, best, 24.0, 3, 16.0, 6.0)},
+        candidates={
+            "own": way(own, perfect, 16.5, 4, 9.0, 0.4),
+            "self_consumption": way(perfect * 0.55, perfect, 12.0, 1, 0.0, 0.0),
+            "balanced": way(balanced, perfect, 17.0, 2, 12.5, 0.0),
+            "max_profit": way(max_profit, best, 22.0, 3, 15.0, 5.5),
+        },
+    )
+
+
 def battery_reviews(now: datetime) -> list[DayReview]:
     reviews = []
     today = (now + CET).date()
@@ -192,6 +224,12 @@ def battery_reviews(now: datetime) -> list[DayReview]:
                 no_battery_cost=None if back == 11 else sc + 500.0,
                 sun_gave=800.0 + 20 * back,
                 sun_quarters=None if back == 7 else 60 if back == 5 else 96,
+                # The perfect plan in hindsight from the 9th day back (the days before it were reviewed before it), the
+                # last one still on the day's own end value; the cells' temperature where the battery reported it.
+                facit=None
+                if back > 9
+                else facit_for(day, 1100.0 + 15 * back, 880.0 + 10 * back, 960.0 + 5 * back, 900.0, provisional=back == 1),
+                cell_temperature=None if back > 6 else CellTemperature(21.0 + back * 0.4, 24.0 + back, 0 if back != 3 else 25, 1440),
             )
         )
     return reviews
@@ -486,7 +524,13 @@ def test_a_past_day_shows_its_own_hours_money_and_flow() -> None:
         "covered_quarters": 96,
         "day_quarters": 96,
         "sun_quarters": 96,
+        "perfect": perfect_block([review]),
     }
+    # Yesterday against its perfect plan: the next day's prices were not held yet, so it is provisional.
+    perfect = view["day_review"]["perfect"]
+    assert perfect["days"] == 1 and perfect["provisional"] == 1 and perfect["mode"] == "balanced"
+    assert perfect["saving"] == 1115.0 and perfect["shares"]["own"] == round(890 / 1115 * 100, 1)
+    assert perfect["temperature"] == {"days": 1, "mean_c": 21.4, "max_c": 25.0, "minutes_above": 0}
     _fixture("villa_past_day.json", view)
     # A day nothing was measured on says so.
     empty = house_view(replace(full_inputs(), day=date(2026, 11, 1), energy_flow=None, house_actual={}, log=ForecastLog(TZ), heat=None))

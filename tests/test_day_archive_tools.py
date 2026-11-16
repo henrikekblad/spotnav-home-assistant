@@ -243,3 +243,18 @@ def test_the_token_can_come_from_home_assistants_secrets(tmp_path) -> None:
     secrets.write_text('other: x\ninfluxdb_token: "abc 123" # comment\nplain: def\n', encoding="utf-8")
     assert tool.read_token(None, "influxdb_token", str(secrets)) == "abc 123"
     assert tool.read_token(None, "plain", str(secrets)) == "def"
+
+
+def test_the_day_against_its_perfect_plan(capsys: pytest.CaptureFixture[str]) -> None:
+    result = replay_day.facit(_record())
+    made = result["facit"]
+    # The record's price table holds the day only: the energy left is valued at the day's own end value, and says so.
+    assert made["basis"] == "day_median" and made["mode"] == "balanced"
+    perfect = made["perfect"]["balanced"]["saving"]
+    assert perfect > 0
+    for name, item in made["candidates"].items():
+        assert item["share"] is None or 0 <= item["share"] <= 100, name
+        assert set(item["work"]) == {"discharged_kwh", "cycles", "switches", "grid_charge_kwh", "to_grid_kwh"}
+    assert made["candidates"]["own"]["perfect"] == perfect
+    assert replay_day.main([str(FIXTURE), "--facit"]) == 0
+    assert "the perfect plan (balanced) saved" in capsys.readouterr().out

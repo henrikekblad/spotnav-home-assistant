@@ -35,6 +35,69 @@
       "first": "2026-11-06",
       "last": "2026-11-12",
       "own_saving": 4530.0,
+      "perfect": {
+        "clamped": [],
+        "days": 7,
+        "mode": "balanced",
+        "partial": 0,
+        "provisional": 1,
+        "saving": 8120.0,
+        "savings": {
+          "balanced": 6860.0,
+          "max_profit": 6300.0,
+          "own": 6440.0,
+          "self_consumption": 4466.0
+        },
+        "shares": {
+          "balanced": 84.5,
+          "max_profit": 71.8,
+          "own": 79.3,
+          "self_consumption": 55.0
+        },
+        "temperature": {
+          "days": 6,
+          "max_c": 30.0,
+          "mean_c": 22.4,
+          "minutes_above": 25
+        },
+        "work": {
+          "balanced": {
+            "cycles": 2.953,
+            "discharged_kwh": 119.0,
+            "grid_charge_kwh": 87.5,
+            "switches": 14,
+            "to_grid_kwh": 0.0
+          },
+          "max_profit": {
+            "cycles": 3.821,
+            "discharged_kwh": 154.0,
+            "grid_charge_kwh": 105.0,
+            "switches": 21,
+            "to_grid_kwh": 38.5
+          },
+          "own": {
+            "cycles": 2.866,
+            "discharged_kwh": 115.5,
+            "grid_charge_kwh": 63.0,
+            "switches": 28,
+            "to_grid_kwh": 2.8
+          },
+          "perfect": {
+            "cycles": 3.127,
+            "discharged_kwh": 126.0,
+            "grid_charge_kwh": 98.0,
+            "switches": 14,
+            "to_grid_kwh": 0.0
+          },
+          "self_consumption": {
+            "cycles": 2.084,
+            "discharged_kwh": 84.0,
+            "grid_charge_kwh": 0.0,
+            "switches": 7,
+            "to_grid_kwh": 0.0
+          }
+        }
+      },
       "plan_saving": 5110.0,
       "self_consumption_net": 30450.0,
       "sun_gave": 5220.0

@@ -2,7 +2,7 @@
 """Re-run the battery plan for an exported day (the `spotnav.export_day` action's file) with today's planner.
 
     .venv/bin/python tools/replay_day.py /config/spotnav_archive/<site_id>/<YYYY-MM-DD>.json [--json] [--once]
-        [--hindsight] [--measured-soc]
+        [--hindsight] [--measured-soc] [--facit]
 
 The day's quarter hours are planned again from what the record holds, and the new actions are reviewed the way the
 night's review does it (`battery/plan_shadow.review_day`: each mode's actions run against the measured load and sun
@@ -19,6 +19,11 @@ plans from the SoC the battery really read, as the day's plans did (on a battery
 not the plan's, so the review's figure is the plan's on someone else's battery); `--once` plans once at midnight; `--hindsight` plans on the measured house and sun instead of the forecasts (what a perfect forecast would
 have earned). The battery is the record's settings (as at the export) and its floor and round trip.
 
+`--facit` prints the day against its perfect plan in hindsight instead (`battery/hindsight.py`, as the night's review
+works it out): the perfect plan's saving against no battery and each way's share of it, with the energy left at
+midnight valued at the next day's mean buy price where the record's price table holds it, else at the day's own end
+value (`basis` says which). A day under 90 % measured, or one whose perfect plan saved under 5 kr, has no share.
+
 Only the pure planner modules are imported, never Home Assistant's runtime; the Python of the test environment
 (`.venv`, with the `homeassistant` package installed) runs it. Exit status: 0 done, 2 the record cannot be replayed.
 """
@@ -27,13 +32,14 @@ from __future__ import annotations
 
 import argparse
 from dataclasses import replace
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 import importlib
 import json
 from pathlib import Path
 import sys
 import types
 from typing import Any
+from zoneinfo import ZoneInfo
 
 ROOT = Path(__file__).resolve().parent.parent
 SCHEMA = 1
@@ -43,6 +49,23 @@ SUN_KINDS = ("sun_kwh_corrected", "sun_kwh")
 
 def _modules() -> tuple[Any, Any, Any]:
     """`plan_shadow`, `plan` and `plan_model`, without running the integration's `__init__`."""
+    _packages()
+    base = "custom_components.spotnav.battery."
+    return (
+        importlib.import_module(base + "plan_shadow"),
+        importlib.import_module(base + "plan"),
+        importlib.import_module(base + "plan_model"),
+    )
+
+
+def _hindsight() -> Any:
+    """`battery/hindsight.py`, the perfect plan's module."""
+    _packages()
+    return importlib.import_module("custom_components.spotnav.battery.hindsight")
+
+
+def _packages() -> None:
+    """The integration's packages as bare namespaces, so its `__init__` (Home Assistant's runtime) never runs."""
     for name, path in (
         ("custom_components", ROOT / "custom_components"),
         ("custom_components.spotnav", ROOT / "custom_components" / "spotnav"),
@@ -51,12 +74,6 @@ def _modules() -> tuple[Any, Any, Any]:
             package = types.ModuleType(name)
             package.__path__ = [str(path)]
             sys.modules[name] = package
-    base = "custom_components.spotnav.battery."
-    return (
-        importlib.import_module(base + "plan_shadow"),
-        importlib.import_module(base + "plan"),
-        importlib.import_module(base + "plan_model"),
-    )
 
 
 class ReplayError(ValueError):
@@ -130,10 +147,13 @@ def build_slots(
         measured = None if bucket is None else bucket.net_house_kw
         hour = _hour_of(moment, zone)
         if hindsight and measured is not None:
-            house_kw, solar_kw = max(0.0, measured), max(0.0, -measured)
-        else:
-            house_kw = house.get(hour, max(0.0, measured or 0.0))
-            solar_kw = sun.get(hour, 0.0)
+            # The measured house, sun and cars, as the perfect plan in hindsight sees them (`battery/hindsight.py`).
+            cap = cap_default if bucket.cap_kw is None else bucket.cap_kw
+            slots.append(replace(_hindsight().measured_slot(bucket), buy=float(buy), sell=float(sell), import_cap_kw=cap))
+            moment += shadow.BUCKET
+            continue
+        house_kw = house.get(hour, max(0.0, measured or 0.0))
+        solar_kw = sun.get(hour, 0.0)
         car_kw = 0.0
         if bucket is not None and bucket.covered:
             car_kw = bucket.scaled(bucket.car_kwh) / (shadow.BUCKET.total_seconds() / 3600.0)
@@ -281,6 +301,63 @@ def replay(
     }
 
 
+def facit(record: dict[str, Any]) -> dict[str, Any]:
+    """The day against its perfect plan in hindsight (see the module), as the night's review works it out."""
+    if not isinstance(record, dict) or record.get("kind") != "spotnav_day":
+        raise ReplayError("not a SpotNav day record")
+    shadow, _plan, model = _modules()
+    hindsight = _hindsight()
+    from custom_components.spotnav.battery.review_baselines import no_battery_cost  # noqa: PLC0415
+
+    battery = battery_of(record, model)
+    rows = (record.get("quarters") or {}).get("rows") or []
+    buckets = [bucket for bucket in (shadow.Bucket.from_row(row) for row in rows) if bucket is not None]
+    day, tz = date.fromisoformat(record["date"]), record["tz"]
+    usable = shadow.usable_buckets(buckets, day, tz)
+    review = shadow.DayReview.from_dict(record.get("battery_review"))
+    if review is None or not usable:
+        raise ReplayError("the record has no review or no measured quarter hour with its prices")
+    end = _instant(record["end"])
+    following = day + timedelta(days=2)
+    next_end = datetime(following.year, following.month, following.day, tzinfo=ZoneInfo(tz)).astimezone(timezone.utc)
+    table = [shadow.PriceSlot(first, last, float(buy), 0.0) for first, last, buy, _sell in _price_table(record) if buy is not None]
+    value = hindsight.end_value_next_day(table, end, next_end, battery)
+    basis = hindsight.BASIS_NEXT_DAY if value is not None else hindsight.BASIS_DAY
+    currency = (record.get("prices") or {}).get("currency") or (record.get("settings") or {}).get("currency")
+    made = hindsight.facit_day(
+        usable,
+        battery,
+        start_soc_pct=review.start_soc_pct,
+        actual_cost=review.actual.cost,
+        actual_end_soc_pct=review.actual.end_soc_pct,
+        mode=review.mode,
+        wear=model.wear_minor_per_kwh(currency) or model.DEFAULT_CYCLE_COST,
+        end_value=review.end_value if value is None else value,
+        basis=basis,
+        no_battery_cost=no_battery_cost(usable),
+        day_quarters=shadow.day_quarters(day, tz),
+        now=datetime.now(timezone.utc),
+    )
+    if made is None:
+        raise ReplayError("no perfect plan could be made")
+    return {"date": record["date"], "site_id": record.get("site_id"), "currency": currency, "facit": made.as_dict()}
+
+
+def render_facit(result: dict[str, Any]) -> str:
+    made = result["facit"]
+    lines = [
+        f"{result['date']} (site {result['site_id']}): the perfect plan ({made['mode']}) saved "
+        f"{made['perfect'][made['mode']]['saving']} minor {result['currency'] or 'currency'} units against no battery; "
+        f"the energy left at midnight at {made['end_value']} per kWh ({made['basis']}); {made['measured']} of "
+        f"{made['quarters']} quarter hours measured"
+        + ("" if made["measured"] >= 0.9 * made["quarters"] else " (an incomplete day: no share)"),
+    ]
+    for name, item in made["candidates"].items():
+        share = "-" if item["share"] is None else f"{item['share']} %" + (" (clamped)" if item["clamped"] else "")
+        lines.append(f"  {name}: saved {item['saving']} of {item['perfect']}: {share}; work {item['work']}")
+    return "\n".join(lines)
+
+
 def render(result: dict[str, Any]) -> str:
     unit = f"minor {result['currency'] or 'currency'} units"
     lines = [
@@ -309,15 +386,19 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--measured-soc", action="store_true", help="plan each hour from the SoC the battery read, not the replayed one"
     )
+    parser.add_argument("--facit", action="store_true", help="the day against its perfect plan in hindsight")
     args = parser.parse_args(argv)
     try:
         with open(args.record, encoding="utf-8") as handle:
             record = json.load(handle)
-        result = replay(record, once=args.once, hindsight=args.hindsight, measured_soc=args.measured_soc)
+        if args.facit:
+            result = facit(record)
+        else:
+            result = replay(record, once=args.once, hindsight=args.hindsight, measured_soc=args.measured_soc)
     except (OSError, ValueError) as err:
         print(f"Cannot replay {args.record}: {err}", file=sys.stderr)
         return 2
-    print(json.dumps(result, indent=2) if args.json else render(result))
+    print(json.dumps(result, indent=2) if args.json else render_facit(result) if args.facit else render(result))
     return 0
 
 
