@@ -803,6 +803,35 @@ async def test_with_the_acknowledgement_ai_mode_is_taken_over_and_turning_off_le
     assert control.status()["notes"] == []
 
 
+async def test_back_to_shadow_only_after_an_ai_mode_takeover_leaves_the_reminder(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    site, controller, plant = await _site(hass, monkeypatch, hass_storage)
+    hass.states.async_set(WORK_MODE, "ai_mode")
+    control = await _started(hass, site, controller, plan_source=_hold)
+    _options(hass, site, ai_takeover_ack=True)
+    await _looks(control, dt_util.now(), 6)
+    assert control.took_from_ai
+    status = await control.async_update_options({gate.CONF_SHADOW_ONLY: True})
+    assert hass.states.get(WORK_MODE).state == "max_self_consumption"
+    assert [note["code"] for note in status["notes"]] == ["ai_mode_back"]
+
+
+async def test_a_check_that_fails_after_an_ai_mode_takeover_leaves_the_reminder(
+    hass: HomeAssistant, monkeypatch: pytest.MonkeyPatch, hass_storage: dict[str, Any]
+) -> None:
+    site, controller, plant = await _site(hass, monkeypatch, hass_storage)
+    hass.states.async_set(WORK_MODE, "ai_mode")
+    plant.obeys = False
+    control = BatteryControl(hass, controller, plan_source=_hold)
+    await control.async_start()
+    _options(hass, site, enabled=True, shadow_only=False, ai_takeover_ack=True)
+    await _looks(control, dt_util.now(), 300)
+    status = control.status()
+    assert status["state"] == "failed" and hass.states.get(WORK_MODE).state == "max_self_consumption"
+    assert [note["code"] for note in status["notes"]] == ["ai_mode_back"]
+
+
 IMPORT_LIMIT = "number.sigen_plant_grid_import_limitation"
 
 

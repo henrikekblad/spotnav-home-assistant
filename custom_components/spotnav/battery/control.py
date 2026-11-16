@@ -31,9 +31,11 @@ The order on every path:
   between 30 and 80 %, no car charging, the plant SpotNav's to take), a mode that could not be judged is tried again
   at a later one; after a firmware or integration change the plant is handed back and checked again at the next
   suitable evening. The report is kept per firmware key.
-* **Sigenergy's AI mode** (owner 2026-11-16): taken over only with `battery_control_ai_takeover_ack`; when control
-  is turned off after such a takeover a note asks the person to set AI mode again in the app (the hand-back leaves
-  the plant in Maximum Self Consumption). Without the acknowledgement a plant in AI mode is only watched.
+* **Sigenergy's AI mode** (owner 2026-11-16): taken over only with `battery_control_ai_takeover_ack`; whenever
+  control stops running after such a takeover (turned off, back to shadow only, a failed check, a firmware change,
+  the acknowledgement withdrawn) a note asks the person to set AI mode again in the app (the hand-back leaves the
+  plant in Maximum Self Consumption); seeing AI mode again ends the note and the takeover. Without the
+  acknowledgement a plant in AI mode is only watched.
 * **The export limit** (`export_curtail.py`): a second executor on the brand's export control
   (`commands.EXPORT_CONTROLS`): `curtail_export` while the sell price now is below zero (`sell_source`, by default
   the plan shadow's `sell_at`), plain hand-back otherwise. Its plant is found from the battery or the grid meter
@@ -237,6 +239,8 @@ class BatteryControl:
         self._enabled_seen = False
         self.took_from_ai = False
         self.notes: list[dict[str, Any]] = []
+        #: Whether control ran (on, verifying or a test action) at the end of the last look (`_note_stopped`).
+        self._running = False
         self.trial: Trial | None = None
         #: Why the routine did not start at the last look (`gate.suitable`), and the last would-do logged.
         self.waiting_for: str | None = None
@@ -576,11 +580,21 @@ class BatteryControl:
             await self._async_export_release(now, "shadow_only" if options.enabled else "control_off")
         if options.enabled and options.shadow_only:
             self._shadow_look(now, options)
+        self._note_stopped(now)
         await self._async_save()
+
+    def _note_stopped(self, now: datetime) -> None:
+        """Control stopped running (out of on or verifying, a test action ended) on a plant SpotNav took over from its
+        own optimiser: the reminder to set AI mode again, whatever the path (turned off, back to shadow only, a failed
+        check, a firmware change, the acknowledgement withdrawn)."""
+        running = self.trial is not None or self.state() in ("on", "verifying")
+        if self._running and not running and self.took_from_ai:
+            self._add_note(NOTE_AI_MODE_BACK, now)
+        self._running = running
 
     def _transitions(self, options: gate.Options, now: datetime) -> None:
         """The opt-in turned on (blocks lifted, a failed check forgotten so it runs again, the reminder dropped) or
-        off (the reminder to set AI mode again, when SpotNav took the plant over from it)."""
+        off; the plant seen in AI mode again (the reminder done, the takeover forgotten)."""
         if options.enabled and not self._enabled_seen:
             for executor in (self.executor, self.export_executor):
                 if executor is not None:
@@ -592,15 +606,15 @@ class BatteryControl:
             self._log([{"at": now.isoformat(), "kind": "enabled", "reason": "opt_in"}])
         elif not options.enabled and self._enabled_seen:
             self._log([{"at": now.isoformat(), "kind": "disabled", "reason": "opt_out"}])
-            if self.took_from_ai:
-                self._add_note(NOTE_AI_MODE_BACK, now)
-        if not options.enabled:
-            self.took_from_ai = False
         self._enabled_seen = options.enabled
         control = control_for(self.facts.brand)
-        if control is not None and taken_over(self.facts, control):
-            # The person set AI mode again: the reminder is done.
+        executor = self.executor
+        handed_back = executor is None or (executor.state.phase in ("idle", "blocked") and not executor.state.holds_snapshot)
+        if control is not None and handed_back and taken_over(self.facts, control):
+            # The person set AI mode again (not a takeover still being written): the reminder is done, and the plant
+            # is no longer SpotNav's takeover.
             self.notes = [note for note in self.notes if note.get("code") != NOTE_AI_MODE_BACK]
+            self.took_from_ai = False
 
     def _add_note(self, code: str, now: datetime) -> None:
         if not any(note.get("code") == code for note in self.notes):
