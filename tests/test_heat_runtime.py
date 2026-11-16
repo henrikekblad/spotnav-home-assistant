@@ -89,7 +89,7 @@ async def test_a_closing_by_anyone_is_counted_in_what_the_plans_see(hass: HomeAs
     assert notes == [
         {
             "code": "automation_steers",
-            "params": {"entity_id": "automation.eget_rela_efter_pris", "name": "Eget relä efter pris", "targets": [], "relay": True},
+            "params": {"entity_id": "automation.eget_rela_efter_pris", "name": "Eget relä efter pris", "targets": [], "relay": True, "blocks": False},
         }
     ]
     assert any(hour["relay_min"] for hour in answer["band"]["hours"])
